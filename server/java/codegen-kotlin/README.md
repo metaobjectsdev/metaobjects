@@ -6,7 +6,7 @@ Kotlin codegen target for Spring-Boot-Kotlin consumers on Exposed + Flyway. Emit
 
 | Generator | Output | Per |
 |---|---|---|
-| `KotlinEntityGenerator` | `<Entity>.kt` — `@Serializable data class` | every `object.entity` AND `object.value` |
+| `KotlinEntityGenerator` | `<Entity>.kt` — Kotlin `data class` (Jackson-compatible; no `@Serializable`) | every `object.entity` AND `object.value` |
 | `KotlinExposedTableGenerator` | `<Entity>Table.kt` — Exposed `Table` object with PK + FK + `@storage` columns | every entity with `source.rdb` |
 | `KotlinRelationsGenerator` | `<Entity>Relations.kt` — extension fns for `cardinality=many` query helpers | entities with `cardinality=many` composition relationships |
 | `KotlinPayloadGenerator` | `<Template>Payload.kt` — `@Serializable` payload from `@payloadRef` view-object | every `template.prompt` / `template.output` |
@@ -28,7 +28,7 @@ Kotlin codegen target for Spring-Boot-Kotlin consumers on Exposed + Flyway. Emit
 | `field.uuid` | `java.util.UUID` | `uuid(name)` |
 | `field.enum` | typed Kotlin `enum class` (separate `<Entity><Field>.kt` file with `@Serializable`) | `enumerationByName(name, 64, <Entity><Field>::class)` |
 | `field.object` (`@storage="flattened"`) | reference to the generated VO data class | per-sub-field columns: `<parent>_<sub>` |
-| `field.object` (`@storage="jsonb"` or default) | reference to the generated VO data class | single `jsonb(name, { Json.encodeToString(it) }, { Json.decodeFromString(it) })` |
+| `field.object` (`@storage="jsonb"` or default) | reference to the generated VO data class | single `jsonb(name, { metaJsonbMapper.writeValueAsString(it) }, { metaJsonbMapper.readValue(it, VO::class.java) })` — backed by a generated per-package `MetaJsonbMapper.kt` Jackson `ObjectMapper` (array-of-VO uses a `TypeReference<List<VO>>`); consumers add `jackson-databind` + `jackson-module-kotlin` + `jackson-datatype-jsr310` (no `kotlin("plugin.serialization")` compiler plugin) |
 
 ## Relationships → FK columns
 
@@ -196,4 +196,4 @@ The shared cross-language codegen conformance corpus is **FR-007** — see [`doc
 
 ## Test count
 
-75 tests in this module (`mvn -pl codegen-kotlin test`). Snapshot tests gate within-Java output stability; `kotlin-compile-testing` gates generated-code validity; an E2E test exercises the full loop including the Java `Renderer`.
+272 tests in this module (`mvn -pl codegen-kotlin test`). Snapshot tests gate within-Java output stability; `kotlin-compile-testing` gates generated-code validity; an E2E test exercises the full loop including the Java `Renderer`.

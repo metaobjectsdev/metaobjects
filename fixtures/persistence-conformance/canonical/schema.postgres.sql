@@ -117,6 +117,7 @@ CREATE TABLE "all_types" (
   "inetVal" INET NOT NULL,
   "inet6Val" INET NOT NULL,
   "settings" JSONB,
+  "labels" JSONB,
   CONSTRAINT "all_types_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "all_types_enumVal_chk" CHECK ("enumVal" IN ('LOW', 'MEDIUM', 'HIGH'))
 );

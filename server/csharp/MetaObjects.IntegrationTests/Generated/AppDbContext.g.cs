@@ -31,6 +31,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<ProgramView>().ToView("v_program");
         modelBuilder.Entity<ProgramView>().Property(x => x.Status).HasConversion<string>();
         modelBuilder.Entity<AllTypes>().OwnsOne(x => x.Settings, b => b.ToJson("settings"));
+        modelBuilder.Entity<AllTypes>().OwnsMany(x => x.Labels, b => b.ToJson("labels"));
         modelBuilder.Entity<AllTypes>().Property(x => x.EnumVal).HasConversion<string>();
         modelBuilder.Entity<AllTypes>().Property(x => x.DecVal).HasPrecision(18, 6);
         modelBuilder.Entity<AllTypes>().Property(x => x.TsVal).HasColumnType("timestamp without time zone");

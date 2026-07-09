@@ -31,7 +31,7 @@ import com.metaobjects.template.TemplateConstants
  * **Per-category enumeration** (mirrors the Java `JavaApiModelBuilder` / C# / Python builders,
  * Kotlin/Exposed-flavored):
  * - **Objects** (`loader.metaObjects`): each concrete object → a [ApiSymbolKind.MODEL] symbol (the
- *   `@Serializable data class` from `KotlinEntityGenerator`). A writable-table entity additionally
+ *   plain (Jackson-compatible) `data class` from `KotlinEntityGenerator`). A writable-table entity additionally
  *   yields DATA_ACCESS (the Exposed `Table` object) / VALIDATION (the jakarta constraints on the
  *   data class, the controller's `@Valid @RequestBody`) / REST (one per controller route + each M:N
  *   traversal) / FILTER (the `<Entity>FilterAllowlist` object). A read-only `object.projection` →
@@ -102,7 +102,8 @@ class KotlinApiModelBuilder {
         // MODEL — documented only for concrete objects. An abstract object cannot be instantiated,
         // so we do not document a MODEL symbol for it (documented ⊆ generated). A concrete value
         // object / projection → MODEL only (plus a read-only data-access surface for a projection,
-        // below). The data class is the @Serializable model AND (for an entity) the controller body.
+        // below). The data class is a plain (Jackson-compatible) model AND (for an entity) the
+        // controller body — no kotlinx @Serializable.
         if (!KotlinGenUtil.isAbstractEntity(obj)) {
             symbols.add(
                 ApiSymbol(
@@ -111,9 +112,9 @@ class KotlinApiModelBuilder {
                     importLine = importLine(pkg, shortName),
                     signature = "data class $shortName",
                     usage = when {
-                        entity -> "the @Serializable entity model (also the controller request/response body)"
-                        projection -> "the @Serializable read-model (read-only projection of query results)"
-                        else -> "the @Serializable value-object model"
+                        entity -> "the entity model (plain Kotlin data class, Jackson-compatible; also the controller request/response body)"
+                        projection -> "the read-model (plain Kotlin data class, Jackson-compatible; read-only projection of query results)"
+                        else -> "the value-object model (plain Kotlin data class, Jackson-compatible)"
                     },
                 )
             )

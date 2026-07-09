@@ -37,6 +37,11 @@ description: |
       renders the identical minimal plain-decimal string (see normalization.md).
     - object: a typed @objectRef value-object stored as JSONB → re-serialized
       with sorted keys.
+    - object array: a typed @objectRef value-object with isArray:true stored as
+      JSONB (`labels`) → a JSON array of sorted-key objects; element order is
+      preserved. Row 1 writes 2 elements, row 2 an empty array ([] ≠ null), row 3
+      a single element — exercising the array-of-VO write+read codec each port
+      must implement (the gap that let a non-compiling/wrong array serializer ship).
     - uri: field.uri → TEXT column; round-trips as the verbatim URI string
       (no normalization — the port stores/returns it unchanged).
     - inet: field.inet → Postgres-native INET column. A HOST address (no CIDR
@@ -72,6 +77,11 @@ queries:
       inetVal: "192.168.1.1"
       inet6Val: "2001:db8::1"
       settings: { theme: "dark", notify: true, retries: 3 }
+      # array-of-VO stored as JSONB (field.object @isArray @storage:jsonb). Element
+      # order is preserved; each element's keys are sorted on read (like settings).
+      labels:
+        - { key: "alpha", weight: 10 }
+        - { key: "beta",  weight: 20 }
     expect:
       sVal: "hello"
       iVal: 42
@@ -91,6 +101,9 @@ queries:
       inetVal: "192.168.1.1"
       inet6Val: "2001:db8::1"
       settings: { notify: true, retries: 3, theme: "dark" }
+      labels:
+        - { key: "alpha", weight: 10 }
+        - { key: "beta",  weight: 20 }
 
   - name: write-whole-second-temporal-then-read-back
     op: roundtrip
@@ -114,6 +127,8 @@ queries:
       inetVal: "10.0.0.5"
       inet6Val: "fe80::1"
       settings: { theme: "light", notify: false, retries: 0 }
+      # empty array-of-VO: an empty JSON array must round-trip as [] (distinct from null).
+      labels: []
     expect:
       sVal: "second row"
       iVal: -7
@@ -133,6 +148,7 @@ queries:
       inetVal: "10.0.0.5"
       inet6Val: "fe80::1"
       settings: { notify: false, retries: 0, theme: "light" }
+      labels: []
 
   - name: write-full-int64-then-read-back
     description: |
@@ -170,6 +186,8 @@ queries:
       # compressed form, so the expected read-back is `2001:db8::8a2e:370:7334`.
       inet6Val: "2001:0db8:0000:0000:0000:8a2e:0370:7334"
       settings: { theme: "dark", notify: true, retries: 9 }
+      labels:
+        - { key: "solo", weight: 99 }
     expect:
       sVal: "int64 row"
       iVal: 1
@@ -189,3 +207,5 @@ queries:
       inetVal: "255.255.255.255"
       inet6Val: "2001:db8::8a2e:370:7334"
       settings: { notify: true, retries: 9, theme: "dark" }
+      labels:
+        - { key: "solo", weight: 99 }

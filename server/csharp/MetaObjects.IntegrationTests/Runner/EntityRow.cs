@@ -56,6 +56,16 @@ public static class EntityRow
         // pass it through so Normalization re-serializes the parsed value with sorted keys,
         // exactly as a string-typed jsonb column does. NOT a POCO to reflect over.
         if (value is JsonDocument or JsonElement) return value;
+        // An @isArray owned field materializes as a COLLECTION of POCOs (EF OwnsMany.ToJson) →
+        // a JSON ARRAY string: each element field-keyed, array ORDER preserved (Normalization
+        // sorts each element's keys but keeps element order). Mirrors the single-POCO jsonb
+        // projection. `string` is excluded above; other IEnumerables are the owned collection.
+        if (value is System.Collections.IEnumerable seq)
+        {
+            var arr = new JsonArray();
+            foreach (var item in seq) arr.Add(item is null ? null : LeafToJsonNode(item));
+            return arr.ToJsonString();
+        }
         // A nested owned POCO → field-keyed JSON string (Normalization sorts the keys).
         return PocoToJsonNode(value).ToJsonString();
     }

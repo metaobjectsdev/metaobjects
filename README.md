@@ -82,7 +82,7 @@ building blocks are complete in all five ports; MCP exposure of declared
 prompts/tools is the one remaining roadmap item:
 
 1. **Codegen** — emit idiomatic per-language code (Drizzle/Zod + Fastify for TS,
-   POJO + OMDB for Java, `@Serializable data class` + Exposed for Kotlin, EF Core
+   POJO + OMDB for Java, `data class` + Exposed for Kotlin, EF Core
    record + ASP.NET routes for C#, `@dataclass` for Python). Hand-edit-preserving
    regen via three-way merge.
 2. **Runtime metadata** — load metadata at runtime, drive behavior dynamically

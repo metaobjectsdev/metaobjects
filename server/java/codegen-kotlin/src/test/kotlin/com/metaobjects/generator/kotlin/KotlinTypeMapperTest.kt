@@ -454,12 +454,15 @@ class KotlinTypeMapperTest {
     }
 
     @Test fun `map field emits a single jsonb exposed column`() {
-        // field.map → ONE jsonb column (same emission as a jsonb-stored field.object).
+        // field.map → ONE jsonb column (same emission as a jsonb-stored field.object), encoded
+        // through the shared Jackson metaJsonbMapper (NOT kotlinx — the generated data classes are
+        // plain, no compiler plugin). A TypeReference<Map<String, V>> captures the erased generic.
         // Never flattened, never a native array.
         val f = MapField("labels")
         f.addMetaAttr(StringAttribute.create(MapField.ATTR_VALUE_TYPE, "string"))
         assertEquals(
-            "jsonb(\"labels\", { Json.encodeToString(it) }, { Json.decodeFromString(it) })",
+            "jsonb(\"labels\", { metaJsonbMapper.writeValueAsString(it) }, " +
+                "{ metaJsonbMapper.readValue(it, object : com.fasterxml.jackson.core.type.TypeReference<Map<String, kotlin.String>>() {}) })",
             KotlinTypeMapper.exposedColumnSpec(f),
         )
         // The jsonb column needs the exposed-json import.

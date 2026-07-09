@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import decimal as _decimal
+import json as _json
 import uuid as _uuid
 from collections.abc import Iterable
 from typing import Any, Protocol
@@ -693,9 +694,24 @@ def _coerce_write_value(field: MetaField, value: Any) -> Any:
         is_tz = field.get_meta_attr(dbc.FIELD_ATTR_LOCAL_TIME) is not True  # ADR-0039 resolving: @localTime may be inherited
         return _parse_datetime(str(value), tz_aware=is_tz)
 
-    # field.object (jsonb storage): a dict/list passes through — pg8000 binds it
-    # to the jsonb column natively (no manual JSON.stringify, unlike node-pg).
-    # A field.string pinned to a jsonb column behaves the same way.
+    # field.object / field.map stored as a single jsonb column: serialize to a
+    # JSON text string so pg8000 sends it as jsonb text (PG assignment-casts text
+    # → jsonb). pg8000 binds a native *dict* to jsonb natively, but a native
+    # *list* (array-of-VO, isArray:true) it adapts as a Postgres ARRAY literal
+    # `{...,...}` which the JSONB column rejects with 22P02 'invalid input syntax
+    # for type json' — so we cannot rely on driver magic for the list form.
+    # Serializing both shapes to a JSON string is the explicit codec every other
+    # port has (Java/Gson, C#/System.Text.Json, TS/JSON.stringify, Kotlin/Jackson)
+    # and handles dict (single VO), list (array-of-VO), and [] uniformly.
+    #
+    # Scope: only jsonb-storage field.object/field.map. A *flattened* field.object
+    # is expanded to separate scalar columns (never reaches here as the object
+    # node) and must not be touched; a field.string pinned to a jsonb column via
+    # @dbColumnType already carries a string value and is left alone above.
+    if sub in (fc.FIELD_SUBTYPE_OBJECT, fc.FIELD_SUBTYPE_MAP):
+        storage = field.get_meta_attr(fc.FIELD_ATTR_STORAGE)  # ADR-0039 resolving
+        if storage != "flattened":  # None / "jsonb" / "subdocument" → single jsonb column
+            return _json.dumps(value)
     # Everything else (string / int / long / double / float / boolean / enum)
     # is already the native type pg8000 binds directly.
     return value

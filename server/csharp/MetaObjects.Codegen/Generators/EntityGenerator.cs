@@ -965,12 +965,18 @@ public class EntityGenerator : IGenerator
         }
         var typeName = CSharpNaming.Pascal(target.Name);
         var propName = PropertyName(field);
-        // An object-typed field with @isArray:true is a COLLECTION of the value object,
-        // not a single nullable ref. Emit a non-nullable ICollection<T> with an empty-list
-        // initializer (matching the scalar/enum array convention — the list is never null).
-        if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
-            return $"    public ICollection<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();";
         var required = CSharpNaming.IsRequired(owner, field);
+        // An object-typed field with @isArray:true is a COLLECTION of the value object
+        // (EF maps it via .OwnsMany(...).ToJson(...)), not a single nullable ref. A REQUIRED
+        // array is a non-null collection with an empty-list initializer (never null). A
+        // NON-required array is a NULLABLE collection with NO initializer, so an absent value
+        // stays a NULL jsonb column (distinct from an explicit empty `[]`) — mirroring the
+        // single-VO nullability below. A non-null empty-list default would erase that
+        // null-vs-empty distinction (EF re-serializes the empty list to `[]` on write).
+        if (field.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
+            return required
+                ? $"    public ICollection<{typeName}> {propName} {{ get; set; }} = new List<{typeName}>();"
+                : $"    public ICollection<{typeName}>? {propName} {{ get; set; }}";
         return required
             ? $"    public {typeName} {propName} {{ get; set; }} = default!;"
             : $"    public {typeName}? {propName} {{ get; set; }}";

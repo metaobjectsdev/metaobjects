@@ -25,6 +25,7 @@ public class ObjectFieldCodegenTests
         { "field.string": { "name": "name", "@required": true } },
         { "field.object": { "name": "homeAddress", "@objectRef": "Address", "@storage": "flattened" } },
         { "field.object": { "name": "config", "@objectRef": "Address" } },
+        { "field.object": { "name": "tags", "@objectRef": "Address", "@storage": "jsonb", "isArray": true } },
         { "identity.primary": { "@fields": "id" } }
       ]}}
     ]}}
@@ -83,6 +84,20 @@ public class ObjectFieldCodegenTests
         Assert.Contains("b.Property(p => p.City).HasColumnName(\"homeAddress_city\");", dbContext);
         // Default (no @storage): single json column.
         Assert.Contains("modelBuilder.Entity<Customer>().OwnsOne(x => x.Config, b => b.ToJson(\"config\"));", dbContext);
+    }
+
+    [Fact]
+    public void DbContext_configures_array_of_value_object_jsonb_as_OwnsMany()
+    {
+        var ctx = Ctx(Load());
+        var dbContext = new DbContextGenerator().Generate(ctx).Single().Content;
+
+        // An @isArray object field is a COLLECTION of the value object (ICollection<Address>),
+        // so EF must map it with .OwnsMany(...).ToJson(...) — .OwnsOne over a collection fails
+        // at EF model finalization ("must be a non-interface reference type to be used as an
+        // entity type"). Regression gate for the array-of-VO jsonb path.
+        Assert.Contains("modelBuilder.Entity<Customer>().OwnsMany(x => x.Tags, b => b.ToJson(\"tags\"));", dbContext);
+        Assert.DoesNotContain("OwnsOne(x => x.Tags", dbContext);
     }
 
     [Fact]

@@ -93,6 +93,7 @@ final class QueryScenarioTests {
         // SP-H Unit 5 op:roundtrip — the every-subtype write keystone + its jsonb value object.
         bindings.put("fitness::AllTypes",    ValueObject.class);
         bindings.put("fitness::Settings",    ValueObject.class);
+        bindings.put("fitness::Label",       ValueObject.class);
         // FR-017 TPH corpus entities — the discriminator base + its three subtypes (single table).
         bindings.put("fitness::Auth",         ValueObject.class);
         bindings.put("fitness::BridgeAuth",   ValueObject.class);

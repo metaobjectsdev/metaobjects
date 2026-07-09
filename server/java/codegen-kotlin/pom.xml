@@ -117,6 +117,15 @@
       <version>2.18.1</version>
       <scope>test</scope>
     </dependency>
+    <!-- The generated typed-jsonb Exposed columns emit a shared `metaJsonbMapper` (MetaJsonbMapper.kt)
+         that wires jackson-datatype-jsr310 for java.time round-tripping. Test-scoped so any compile
+         harness that emits a typed jsonb table can resolve it. -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.datatype</groupId>
+      <artifactId>jackson-datatype-jsr310</artifactId>
+      <version>2.18.2</version>
+      <scope>test</scope>
+    </dependency>
     <!-- Required at test scope so kotlin-compile-testing can resolve @Serializable on generated code -->
     <dependency>
       <groupId>org.jetbrains.kotlinx</groupId>

@@ -68,8 +68,9 @@ public class ExtendsAbstractFieldInheritanceCodegenTests
         Assert.DoesNotContain("public string Tags ", contact);
 
         // `addresses` extends field.object(isArray:true, @objectRef:Address, @storage:jsonb):
-        // array-of-Address, honoring the inherited @objectRef + isArray.
-        Assert.Contains("ICollection<Address> Addresses", contact);
+        // array-of-Address, honoring the inherited @objectRef + isArray. Non-required (the
+        // abstract AddressBag has no @required) → a NULLABLE collection (null-vs-empty distinct).
+        Assert.Contains("ICollection<Address>? Addresses", contact);
 
         // `balance` extends field.decimal(@precision:12, @scale:2) -> decimal property.
         Assert.Contains("Balance", contact);

@@ -132,7 +132,9 @@ public class EntityGeneratorRound2Tests
         ]}}
         """;
         var customer = File(new EntityGenerator().Generate(Ctx(Load(model))), "Customer.g.cs");
-        Assert.Contains("public ICollection<ContactInfo> Contacts { get; set; } = new List<ContactInfo>();", customer);
+        // A NON-required array-of-VO is a NULLABLE collection (no empty-list initializer) so
+        // an absent value stays a NULL jsonb column, distinct from an explicit empty `[]`.
+        Assert.Contains("public ICollection<ContactInfo>? Contacts { get; set; }", customer);
         Assert.DoesNotContain("public ContactInfo? Contacts", customer);
     }
 

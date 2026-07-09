@@ -213,8 +213,12 @@ native-uuid-write.
 - The `AllTypes` entity (`all_types` table) in the canonical model exists to cover
   **every persistable field subtype** in one row — string / int / long / double /
   float / decimal / boolean / date / time / timestamp / timestamp(tz) / currency /
-  enum / uuid / object(`@objectRef`, jsonb storage). No read scenario references
-  it, so it is inert for the read runners (it just adds a table to the schema).
+  enum / uuid / object(`@objectRef`, jsonb storage) — plus an **array-of-VO**
+  `field.object @isArray @storage:jsonb` column (`labels`) written as a 2-element,
+  empty-`[]`, and single-element array across the three roundtrip rows, exercising
+  each port's array-of-value-object write+read jsonb codec (the gap that once let a
+  non-compiling / wrong array serializer ship). No read scenario references it, so
+  it is inert for the read runners (it just adds a table to the schema).
 - **Full int64 fidelity:** one roundtrip query writes the BIGINT max
   (`9223372036854775807`, > 2^53) to `field.long` AND `field.currency` as a
   numeric **string** — the write contract for those two subtypes accepts a base-10

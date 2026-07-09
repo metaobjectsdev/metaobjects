@@ -31,6 +31,41 @@ tests; **consumer-side wiring is the consumer's responsibility**, in line
 with the cross-port pattern (TS consumers add `zod`; C# uses BCL
 `System.Text.Json` — no add needed there; Python consumers add `pydantic`).
 
+## Consumer dependency: Jackson is required for typed jsonb columns
+
+**Status:** consumer-wired, not a code gap — documented here so adopters know what to add.
+
+`KotlinExposedTableGenerator` emits one shared `MetaJsonbMapper.kt` support file per
+package that declares at least one typed `field.object @storage:jsonb` (single or
+`@isArray` array-of-VO) or `field.map` column. That file holds an
+`internal metaJsonbMapper` — a `com.fasterxml.jackson.databind.ObjectMapper` built from
+`JsonMapper.builder().addModule(kotlinModule()).addModule(JavaTimeModule())
+.disable(WRITE_DATES_AS_TIMESTAMPS)` — that the generated `jsonb()` column codecs
+read/write through (a `TypeReference<List<VO>>` captures the array-of-VO generic).
+
+Jackson — not kotlinx — is the codec precisely so the generated entity/value/projection
+data classes carry NO `@Serializable` and need NO per-type serializer plumbing: a kotlinx
+serializer (`VO.serializer()`) would require the `kotlin("plugin.serialization")`
+compiler plugin, and the moment that plugin is on, every VO carrying a
+`java.util.UUID` / `java.time.*` / `java.math.BigDecimal` / `java.net.*` field fails to
+compile (kotlinx has no serializer for those `java.*` types). Jackson round-trips them
+via its kotlin + jsr310 modules with zero per-type wiring. Consumers generating any typed
+jsonb/map column must add to their build:
+
+```kotlin
+dependencies {
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.17.x")
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.17.x")
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.17.x")
+}
+```
+
+No `kotlin("plugin.serialization")` compiler plugin is needed for this path — the
+generated codec is pure runtime Jackson. The separate `field.string @dbColumnType:jsonb`
+"open-bag" column stays on the kotlinx lane above (it round-trips through the runtime
+`Json.parseToJsonElement` → kotlinx `JsonElement` API, which also needs no compiler
+plugin); only the typed object/map jsonb columns pull in Jackson.
+
 ## Single-field, `Long`-typed primary keys only
 
 **Status:** assumption baked into Day 1 — same rationale as codegen-spring.

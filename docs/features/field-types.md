@@ -141,7 +141,6 @@ public enum Status { DRAFT, PUBLISHED, ARCHIVED }
 
 ```kotlin
 // generated/acme/blog/Author.kt
-@Serializable
 data class Author(
     val id: Long,
     val name: String,
