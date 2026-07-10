@@ -2,7 +2,8 @@
 
 The Kotlin port is a **codegen tier built on top of the Java port** — the loader,
 render engine, and Maven plugin are all Java; `metaobjects-codegen-kotlin` emits
-idiomatic Kotlin (KotlinPoet: `@Serializable data class`, Exposed `Table` objects,
+idiomatic Kotlin (KotlinPoet: `data class` (no `@Serializable` — entities are
+Jackson-compatible, not kotlinx-serialized), Exposed `Table` objects,
 Spring `@RestController`). Codegen runs as the same Maven plugin goal the Java port
 uses (`mvn metaobjects:generate`). Schema migration and live-DB drift are
 **Node-`meta`-only** (ADR-0015). The runtime persistence tier is **JetBrains Exposed**

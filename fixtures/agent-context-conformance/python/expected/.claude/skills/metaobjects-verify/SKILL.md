@@ -1,6 +1,6 @@
 ---
 name: metaobjects-verify
-description: Use when verifying MetaObjects: drift checks (verify --db/--codegen/--templates), schema migrations, and interpreting conformance/test failures.
+description: Use when verifying MetaObjects — drift checks (verify --db/--codegen/--templates), schema migrations, and interpreting conformance/test failures.
 ---
 
 # MetaObjects verify + migrations

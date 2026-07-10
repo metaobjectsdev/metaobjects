@@ -2,7 +2,8 @@
 
 The Kotlin port is a **codegen tier built on top of the Java port**. The loader,
 render engine, and Maven plugin are all Java; `codegen-kotlin` emits idiomatic
-Kotlin (`@Serializable data class`, Exposed `Table` objects, Spring
+Kotlin (`data class` (no `@Serializable` — entities are Jackson-compatible, not
+kotlinx-serialized), Exposed `Table` objects, Spring
 `@RestController`/`@Configuration`) via KotlinPoet. Codegen runs as the same
 build-time Maven plugin goal the Java port uses — there is no standalone `meta`
 binary on the JVM side (the Node `meta` is for schema migrations only; see the
@@ -94,7 +95,7 @@ All live in `metaobjects-codegen-kotlin` under
 
 | Generator | Output |
 |---|---|
-| `KotlinEntityGenerator` | `<Entity>.kt` — `@Serializable data class` per `object.entity` / `object.value`. A TPH `@discriminator` base's data class is the **union** of every subtype's columns (each folded nullable, validation dropped) so one wire shape backs the polymorphic + per-subtype endpoints. |
+| `KotlinEntityGenerator` | `<Entity>.kt` — `data class` (no `@Serializable`; Jackson-compatible) per `object.entity` / `object.value`. A TPH `@discriminator` base's data class is the **union** of every subtype's columns (each folded nullable, validation dropped) so one wire shape backs the polymorphic + per-subtype endpoints. |
 | `KotlinExposedTableGenerator` | `<Entity>Table.kt` — Exposed `Table` object (PK + FK + `@storage` columns) for entities with `source.rdb`. A TPH `@discriminator` base emits ONE `Table` for the whole hierarchy — every subtype-only column folded in `.nullable()` (a row of another subtype stores null there) — single-table inheritance; subtype entities emit no table of their own. |
 | `KotlinRelationsGenerator` | `<Entity>Relations.kt` — extension fns for `@cardinality="many"` query helpers |
 | `KotlinSpringControllerGenerator` | `<Entity>Controller.kt` — Spring `@RestController`, five CRUD endpoints on the cross-port REST contract, for writable entities (`source.rdb` `@kind="table"`). A TPH `@discriminator` base emits ONE controller: polymorphic `GET /<base>(+/{id})` plus a per-subtype CRUD set at `/<base>/<discriminatorValue lowercased>` — create injects the discriminator from the URL (never the body); get/update/delete are scoped to the subtype (cross-subtype → 404); the discriminator is immutable. |

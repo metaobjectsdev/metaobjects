@@ -1,6 +1,6 @@
 ---
 name: metaobjects-prompts
-description: Use when declaring or using MetaObjects prompt construction: template.prompt/template.output, typed payload projections, provider-resolved text, deterministic render, prompt-drift verify, and parser-on-receipt.
+description: Use when declaring or using MetaObjects prompt construction — template.prompt/template.output, typed payload projections, provider-resolved text, deterministic render, prompt-drift verify, and parser-on-receipt.
 ---
 
 # MetaObjects prompt construction

@@ -1,6 +1,6 @@
 ---
 name: metaobjects-runtime-ui
-description: Use when wiring MetaObjects generated code into an app: runtime queries/CRUD, REST routes, and the web client (forms, grids, filters).
+description: Use when wiring MetaObjects generated code into an app — runtime queries/CRUD, REST routes, and the web client (forms, grids, filters).
 ---
 
 # Wiring MetaObjects runtime + web client

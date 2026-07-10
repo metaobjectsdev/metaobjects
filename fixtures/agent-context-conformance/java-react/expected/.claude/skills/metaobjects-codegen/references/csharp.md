@@ -20,13 +20,12 @@ command is `dotnet-meta`).
 ## Run
 
 ```bash
-dotnet meta gen \
-  --metadata-dir metaobjects \
-  --output-dir Generated \
+dotnet meta gen metaobjects \
+  --out Generated \
   --namespace Acme.Generated
 dotnet meta gen --list                      # list registered generators
-dotnet meta gen --generators entity,db-context,routes   # select a subset
-dotnet meta verify --codegen                # codegen-drift gate (regenerate + diff vs committed)
+dotnet meta gen metaobjects --out Generated --generators entity,db-context,routes   # select a subset
+dotnet meta verify metaobjects --codegen --out Generated   # codegen-drift gate (regenerate + diff vs committed)
 ```
 
 `dotnet meta verify` defaults to `--templates` (the FR-004 prompt/template drift
@@ -82,6 +81,8 @@ consuming fields reference a hand-written/third-party enum, and the C# namespace
 
 ## Re-scaffold this context
 
-`dotnet meta agent-docs --server csharp [--out <dir>]` (re)scaffolds the slim
-always-on Markdown + these `metaobjects-*` skills into the project — the C# tool
-bundles the agent-context tree, so a C# consumer needs no Node `meta`.
+Agent-context scaffolding is owned by the Node `meta` CLI (ADR-0015). `dotnet meta
+agent-docs` only prints a redirect and exits non-zero — it does **not** scaffold.
+(Re)scaffold the slim always-on Markdown + these `metaobjects-*` skills with
+`npx meta agent-docs --server csharp [--client <fw>] [--out <dir>]`. A C# consumer
+needs Node `meta` (npx) for this one scaffold step; codegen + verify stay on `dotnet meta`.

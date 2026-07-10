@@ -4,7 +4,7 @@ The Kotlin port runtime is **generated Exposed `Table` objects plus your own
 JetBrains Exposed transactions** — there is no Kotlin-specific persistence engine.
 `KotlinExposedTableGenerator` emits one `<Entity>Table.kt` per entity with a
 `source.rdb`; you hand-write the (trivial) transaction bodies, since the table
-column definitions and the `@Serializable` entity data class are both generated
+column definitions and the generated `data class` entity are both generated
 from the same metadata.
 
 (If you want a fully metadata-driven engine instead of hand-written Exposed, the
@@ -20,7 +20,6 @@ emit a data class and an Exposed `Table`:
 
 ```kotlin
 // generated/acme/blog/Author.kt
-@Serializable
 data class Author(
     val id: Long,
     val name: String,

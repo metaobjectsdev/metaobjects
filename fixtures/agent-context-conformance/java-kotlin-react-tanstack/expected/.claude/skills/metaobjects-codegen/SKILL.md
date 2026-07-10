@@ -1,6 +1,6 @@
 ---
 name: metaobjects-codegen
-description: Use when configuring or running MetaObjects code generation: generators/targets/dialect config, the gen command, and hand-edit-preserving regeneration.
+description: Use when configuring or running MetaObjects code generation — generators/targets/dialect config, the gen command, and hand-edit-preserving regeneration.
 ---
 
 # MetaObjects code generation
