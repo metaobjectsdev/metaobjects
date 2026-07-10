@@ -42,8 +42,8 @@ under **Shipped**; planned FRs under **Planned** + the **Release plan**. ✅ shi
 | FR-028 | Strict serializer parity + `meta export` CLI parity | 📋 | 1.1 | [#14](https://github.com/metaobjectsdev/metaobjects/issues/14) |
 | FR-029 | Metadata API + runtime-driven UI | 📋 | 1.4 | [#15](https://github.com/metaobjectsdev/metaobjects/issues/15) |
 | FR-030 | Runtime serializers (SPI/XML/binary/round-trip) | 📋 | 1.1 | [#16](https://github.com/metaobjectsdev/metaobjects/issues/16) |
-| FR-031 | MetaData read-path caching + perf | 📋 | 1.0 | [#17](https://github.com/metaobjectsdev/metaobjects/issues/17) |
-| FR-032 | Canonical FQN refs (YAML-only relative paths) | 🚧 impl (5 ports), pre-1.0 | 1.0 | [#21](https://github.com/metaobjectsdev/metaobjects/issues/21) |
+| FR-031 | MetaData read-path caching + perf | ✅ shipped | 1.0 | [#17](https://github.com/metaobjectsdev/metaobjects/issues/17) |
+| FR-032 | Canonical FQN refs (YAML-only relative paths) | ✅ shipped (5 ports) | 1.0 | [#21](https://github.com/metaobjectsdev/metaobjects/issues/21) |
 | FR-033 | Provider definitions as declarative data + metamodel docs for LLMs | 📋 designed | 1.x | [#23](https://github.com/metaobjectsdev/metaobjects/issues/23) |
 | FR-034 | Ecosystem tier — connected systems (`system`/`container`/`surface`/`environment`) | 📋 designed (**draft, deferred post-1.0**) | 1.1 | — |
 
