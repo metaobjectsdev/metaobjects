@@ -25,30 +25,37 @@ describe("assemble", () => {
     expect(agents.contents.toLowerCase()).toContain("react");
   });
 
-  test("installs ALL reference fragments regardless of stack (deploy-all; agent picks)", () => {
+  test("stack-scoped: installs only the stack's language/framework reference fragments", () => {
     const stack = makeStack(["typescript"], ["react"]); // a narrow stack...
     const p = paths(assemble({ contentRoot: CONTENT_ROOT, stack }));
-    // ...still gets every language's codegen reference:
+    // ...gets only its own language's codegen reference, not the others:
     expect(p).toContain(".claude/skills/metaobjects-codegen/references/typescript.md");
-    expect(p).toContain(".claude/skills/metaobjects-codegen/references/java.md");
-    expect(p).toContain(".claude/skills/metaobjects-codegen/references/kotlin.md");
-    expect(p).toContain(".claude/skills/metaobjects-codegen/references/csharp.md");
-    expect(p).toContain(".claude/skills/metaobjects-codegen/references/python.md");
-    // ...and all client refs regardless of which client is in the stack:
+    expect(p).not.toContain(".claude/skills/metaobjects-codegen/references/java.md");
+    expect(p).not.toContain(".claude/skills/metaobjects-codegen/references/kotlin.md");
+    expect(p).not.toContain(".claude/skills/metaobjects-codegen/references/csharp.md");
+    expect(p).not.toContain(".claude/skills/metaobjects-codegen/references/python.md");
+    // ...its client ref, not the client frameworks it doesn't use:
     expect(p).toContain(".claude/skills/metaobjects-runtime-ui/references/react.md");
-    expect(p).toContain(".claude/skills/metaobjects-runtime-ui/references/tanstack.md");
+    expect(p).not.toContain(".claude/skills/metaobjects-runtime-ui/references/tanstack.md");
+    // universal (non-language) fragments always install:
     expect(p).toContain(".claude/skills/metaobjects-verify/references/migration.md");
+    expect(p).toContain(".claude/skills/metaobjects-audit/references/capability-checklist.md");
     for (const s of ["authoring", "codegen", "runtime-ui", "prompts", "verify"]) {
       expect(p).toContain(`.claude/skills/metaobjects-${s}/SKILL.md`);
     }
   });
 
-  test("a different narrow stack (java) gets the SAME full reference set (deploy-all)", () => {
+  test("a java-only stack gets its java references, not other languages or unused clients", () => {
     const p = paths(assemble({ contentRoot: CONTENT_ROOT, stack: makeStack(["java"], []) }));
     expect(p).toContain(".claude/skills/metaobjects-codegen/references/java.md");
-    expect(p).toContain(".claude/skills/metaobjects-codegen/references/typescript.md");
-    expect(p).toContain(".claude/skills/metaobjects-runtime-ui/references/react.md");
-    expect(p).toContain(".claude/skills/metaobjects-runtime-ui/references/tanstack.md");
+    expect(p).not.toContain(".claude/skills/metaobjects-codegen/references/typescript.md");
+    // its language fragment in every skill that has one:
+    expect(p).toContain(".claude/skills/metaobjects-runtime-ui/references/java.md");
+    // no client in the stack → no client-framework refs:
+    expect(p).not.toContain(".claude/skills/metaobjects-runtime-ui/references/react.md");
+    expect(p).not.toContain(".claude/skills/metaobjects-runtime-ui/references/tanstack.md");
+    // universal fragments still present:
+    expect(p).toContain(".claude/skills/metaobjects-verify/references/migration.md");
   });
 
   test("a kotlin-primary stack assembles without throwing and uses the kotlin codegen command", () => {

@@ -1,6 +1,10 @@
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { SKILL_NAMES, type AssembledFile, type Stack } from "./types.js";
+import { SKILL_NAMES, SERVER_LANGS, CLIENT_FRAMEWORKS, type AssembledFile, type Stack } from "./types.js";
+
+// Language/framework reference fragments are stack-scoped; any other fragment
+// (e.g. capability-checklist) is universal and always installs.
+const LANGUAGE_FRAGMENT_TOKENS = new Set<string>([...SERVER_LANGS, ...CLIENT_FRAMEWORKS]);
 
 interface ServerMeta { displayName: string; install: string; codegenCommand: string; }
 
@@ -53,14 +57,17 @@ export function assemble(opts: { contentRoot: string; stack: Stack }): Assembled
 
     const refDir = join(skillDir, "references");
     if (existsSync(refDir) && statSync(refDir).isDirectory()) {
-      // Deploy-all: every reference fragment is installed; the agent reads the
-      // one(s) matching its stack (SKILL.md points to them). Robust to
-      // stack-detection misses — a narrow/empty stack never starves the agent.
+      // Stack-scoped: a language/framework fragment installs only when its token
+      // is in the resolved stack (Stack.tokens = servers ∪ clients ∪ {migration}).
+      // Non-language fragments (e.g. capability-checklist) are universal and always
+      // install. Keeps each skill's references/ to what the project actually uses,
+      // so the SKILL.md "read every references/*.md" footer stays accurate.
       const refs = readdirSync(refDir)
         .filter((f) => f.endsWith(".md"))
         .map((f) => f.replace(/\.md$/, ""))
         .sort();
       for (const token of refs) {
+        if (LANGUAGE_FRAGMENT_TOKENS.has(token) && !stack.tokens.has(token)) continue;
         out.push({
           path: `.claude/skills/${skill}/references/${token}.md`,
           contents: readFileSync(join(refDir, `${token}.md`), "utf8"),
