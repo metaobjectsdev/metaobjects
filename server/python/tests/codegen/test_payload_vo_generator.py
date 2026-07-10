@@ -65,6 +65,16 @@ def _field_with_origin(name: str, sub: str, origin: MetaOrigin) -> MetaField:
     return f
 
 
+def _object_field(name: str, object_ref: str, *, is_array: bool = False) -> MetaField:
+    """A plain ``field.object`` carrying an ``@objectRef`` (no origin child). The
+    ref is passed in the FQN form the loader produces post-ADR-0041 (e.g.
+    ``acme::ai::Note``) so the generator's package-stripping is exercised."""
+    f = MetaField(TYPE_FIELD, fc.FIELD_SUBTYPE_OBJECT, name)
+    f.set_attr(fc.FIELD_ATTR_OBJECT_REF, object_ref)
+    f.is_array = is_array
+    return f
+
+
 def _passthrough(from_ref: str) -> MetaOrigin:
     o = MetaOrigin(TYPE_ORIGIN, ORIGIN_SUBTYPE_PASSTHROUGH, "from")
     o.set_attr(ORIGIN_ATTR_FROM, from_ref)
@@ -368,6 +378,54 @@ def test_origin_collection_nested_payload_deduped_within_file() -> None:
     # Both fields type to it.
     assert "posts: list[PostPayload]" in out
     assert "drafts: list[PostPayload]" in out
+
+
+# ---------------------------------------------------------------------------
+# Plain field.object @objectRef (no origin) — the FQN must be stripped to the
+# bare name for BOTH the emitted field annotation AND the nested class
+# declaration. Cross-port regression guard: the TS payload generator once
+# emitted the raw ``@objectRef`` FQN verbatim (``notes: acme::ai::Note[]`` and
+# ``interface acme::ai::Note``). Python resolves the ref to the target
+# MetaObject and names off ``target.name`` (always bare), so this must stay
+# clean — this test locks that in.
+# ---------------------------------------------------------------------------
+
+
+def test_plain_object_field_strips_fqn_to_bare_nested_payload() -> None:
+    """A ``field.object`` whose ``@objectRef`` is a package-qualified FQN
+    (``acme::ai::Note`` — the form the loader emits post-ADR-0041) must type as
+    ``list[NotePayload]`` and emit ``class NotePayload(BaseModel):`` — the BARE
+    name — never the raw FQN. Guards the cross-port payload FQN leak that was
+    TS-only (``notes: acme::ai::Note[]`` / ``interface acme::ai::Note``)."""
+    note = _value_object(
+        "Note", [_field("text", fc.FIELD_SUBTYPE_STRING)], package="acme::ai"
+    )
+    report = _value_object(
+        "Report",
+        [_object_field("notes", "acme::ai::Note", is_array=True)],
+        package="acme::ai",
+    )
+    tmpl = _template("ReportOutput", "Report")
+    root = _root([note, report, tmpl])
+    out = render_payload_vo(tmpl, root)
+    assert out is not None
+    # Field annotation types to the BARE nested-payload class, wrapped as a list.
+    assert "notes: list[NotePayload]" in out
+    # Nested payload class declared under its BARE name, before the primary class.
+    assert "class NotePayload(BaseModel):" in out
+    assert out.find("class NotePayload(BaseModel):") < out.find(
+        "class ReportOutputPayload(BaseModel):"
+    )
+    assert "text: str" in out
+    # __all__ carries both BARE class names.
+    assert '__all__ = ["ReportOutputPayload", "NotePayload"]' in out
+    # The referenced VO's FQN must NOT leak anywhere in the emitted source.
+    assert "acme::ai::Note" not in out
+    # No package separator in the emitted CODE. (The generated header comment
+    # legitimately carries the module's OWN FQN — ``acme::ai::ReportOutput`` —
+    # so the ``::``-free check is scoped to non-comment lines.)
+    code = "\n".join(ln for ln in out.splitlines() if not ln.lstrip().startswith("#"))
+    assert "::" not in code
 
 
 # ---------------------------------------------------------------------------
