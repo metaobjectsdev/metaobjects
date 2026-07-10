@@ -105,16 +105,25 @@ DB didn't follow.
 
 ## Index modeling (Postgres)
 
-Secondary indexes carry physical-shape attributes contributed by the db provider
-(they live on `identity.secondary`, not core):
+Two index types, distinguished by uniqueness (ADR-0040) — both carry the same
+physical-shape escapes contributed by the db provider:
+
+- **`identity.secondary`** — a UNIQUE alternate key (uniqueness is the type; the legacy
+  `@unique` attr was removed from it).
+- **`index.lookup`** — a NON-unique retrieval index (`@fields` required).
+
+Shared physical escapes:
 
 - `@orders` — per-key sort direction, positional to `@fields` (`["asc", "desc"]`).
   Omit for all-ascending; drives `DESC`-ordered index keys (e.g. a recency index).
 - `@where` — a partial-index predicate (raw SQL, e.g. `"delivered_at IS NULL"`),
   emitted as `WHERE (<pred>)`. The index then covers only matching rows.
+- `@using` / `@expr` — index method and functional-expression escapes.
+
+A non-unique recency index is `index.lookup`:
 
 ```json
-{ "identity.secondary": { "@fields": ["userId", "createdAt"],
+{ "index.lookup": { "@fields": ["userId", "createdAt"],
     "@orders": ["asc", "desc"], "@where": "archived_at IS NULL" } }
 ```
 

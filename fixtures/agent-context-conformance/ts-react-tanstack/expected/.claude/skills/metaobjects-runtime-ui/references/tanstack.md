@@ -75,11 +75,11 @@ projections):
 
 | Hook | Verb / Path |
 |---|---|
-| `useAuthor(id)` | `GET /api/author/:id` |
-| `useAuthors(filter?)` | `GET /api/author?filter[..]=..&sort=..&limit=N&offset=N` |
-| `useCreateAuthor()` | `POST /api/author` |
-| `useUpdateAuthor()` | `PATCH /api/author/:id` |
-| `useDeleteAuthor()` | `DELETE /api/author/:id` |
+| `useAuthor(id)` | `GET /api/authors/:id` |
+| `useAuthors(filter?)` | `GET /api/authors?filter[..]=..&sort=..&limit=N&offset=N` |
+| `useCreateAuthor()` | `POST /api/authors` |
+| `useUpdateAuthor()` | `PATCH /api/authors/:id` |
+| `useDeleteAuthor()` | `DELETE /api/authors/:id` |
 
 Query hooks return `UseQueryResult`; mutation hooks return `UseMutationResult` and
 invalidate the entity's query keys so lists re-fetch after writes.

@@ -87,7 +87,7 @@ describe("capability checklist is registry-grounded", () => {
 
   test("every `type.subtype` named exists in the registry (or is an explicit exemption)", () => {
     const named = new Set(
-      [...text.matchAll(/\b(object|field|source|relationship|identity|origin|validator|view|layout|template|attr|api|operation|binding)\.([a-zA-Z][a-zA-Z0-9]*)\b/g)]
+      [...text.matchAll(/\b(object|field|source|relationship|identity|origin|index|validator|view|layout|template|attr|api|operation|binding)\.([a-zA-Z][a-zA-Z0-9]*)\b/g)]
         .map((m) => `${m[1]}.${m[2]}`),
     );
     const unknown = [...named].filter((t) => !subtypes.has(t) && !EXEMPT_SUBTYPES.has(t));
@@ -121,7 +121,7 @@ describe("audit skill files (SKILL.md + references) are registry-grounded", () =
     const bad: string[] = [];
     for (const { path, text } of files) {
       for (const m of text.matchAll(
-        /\b(object|field|source|relationship|identity|origin|validator|view|layout|template|attr|api|operation|binding)\.([a-zA-Z][a-zA-Z0-9]*)\b/g,
+        /\b(object|field|source|relationship|identity|origin|index|validator|view|layout|template|attr|api|operation|binding)\.([a-zA-Z][a-zA-Z0-9]*)\b/g,
       )) {
         const token = `${m[1]}.${m[2]}`;
         if (

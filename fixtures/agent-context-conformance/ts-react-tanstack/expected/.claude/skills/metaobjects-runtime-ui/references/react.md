@@ -33,7 +33,10 @@ validation rule) rides along automatically:
 ```ts
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
-import { entityFile, queriesFile, barrel } from "@metaobjectsdev/codegen-ts/generators";
+// Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own).
+import { entityFile } from "./codegen/generators/entity";
+import { queriesFile } from "./codegen/generators/queries";
+import { barrel } from "./codegen/generators/barrel";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
 
 export default defineConfig({

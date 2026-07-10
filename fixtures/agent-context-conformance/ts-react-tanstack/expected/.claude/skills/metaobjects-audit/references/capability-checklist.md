@@ -89,10 +89,17 @@ classify it (using the classification scheme in `SKILL.md`) and route the cutove
 
 - **`identity.primary`** (`@generation`) — hunt hand-assigned primary keys / ID generation
   the primary identity's `@generation` strategy models.
-- **`identity.secondary`** (`@unique`, `@where`, `@expr`) — hunt raw-SQL partial or functional
-  unique indexes a secondary identity with `@where` / `@expr` describes.
+- **`identity.secondary`** (`@fields`; physical escapes `@using`/`@expr`/`@where`/`@orders`) — a
+  UNIQUE alternate key (uniqueness is the type — the legacy `@unique` attr was removed from it);
+  hunt hand-rolled unique constraints or raw-SQL partial/functional unique indexes it models.
 - **`identity.reference`** (`@references`, `@enforce`) — hunt hand-written FK constraints /
   reference enforcement the reference identity already declares.
+
+## Index — `index.*` (non-unique retrieval)
+
+- **`index.lookup`** (`@fields` required; physical escapes `@using`/`@expr`/`@where`/`@orders`) —
+  a NON-unique retrieval index (uniqueness is what distinguishes it from `identity.secondary`);
+  hunt hand-created lookup / recency indexes (`CREATE INDEX …`) it models.
 
 ## Origin — `origin.*` (projection-field derivation)
 
