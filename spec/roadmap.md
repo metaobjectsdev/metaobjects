@@ -35,7 +35,7 @@ under **Shipped**; planned FRs under **Planned** + the **Release plan**. ✅ shi
 | FR-021 | api metadata + contract projections | 📋 | 1.3 | [#7](https://github.com/metaobjectsdev/metaobjects/issues/7) |
 | FR-022 | Contract emitters (JSON Schema/OpenAPI/protobuf) | 📋 | 1.3 | [#8](https://github.com/metaobjectsdev/metaobjects/issues/8) |
 | FR-023 | Metadata packages (cross-project sharing) | 📋 | 1.x | [#9](https://github.com/metaobjectsdev/metaobjects/issues/9) |
-| FR-024 | Entity surfaces (projection/value + declared API) | 🔵 active **pre-GA** (subtype taxonomy + B3/B4a/B4b/B5/B6 validation parity + projection codegen fan-out shipped all 5 ports; declared-API remains) | 1.0 | [#10](https://github.com/metaobjectsdev/metaobjects/issues/10) |
+| FR-024 | Entity surfaces (projection/value + declared API) | 🟢 taxonomy + B3/B4a/B4b/B5/B6 validation parity + projection codegen **shipped 5 ports (1.0)**; declared-API surface (`api.operational`/`operation`/`binding.rest`) **deferred to 1.1** (foundation for FR-034) | 1.0 · 1.1 | [#10](https://github.com/metaobjectsdev/metaobjects/issues/10) |
 | FR-025 | Cross-port package-binding codegen config | 📋 | 1.1 | [#11](https://github.com/metaobjectsdev/metaobjects/issues/11) |
 | FR-026 | Forms completeness (edit forms + view parity) | 📋 | 1.0 | [#12](https://github.com/metaobjectsdev/metaobjects/issues/12) |
 | FR-027 | DataGrid downloads (CSV/XLSX/PDF/TXT) | 📋 | 1.2 | [#13](https://github.com/metaobjectsdev/metaobjects/issues/13) |
@@ -45,6 +45,7 @@ under **Shipped**; planned FRs under **Planned** + the **Release plan**. ✅ shi
 | FR-031 | MetaData read-path caching + perf | 📋 | 1.0 | [#17](https://github.com/metaobjectsdev/metaobjects/issues/17) |
 | FR-032 | Canonical FQN refs (YAML-only relative paths) | 🚧 impl (5 ports), pre-1.0 | 1.0 | [#21](https://github.com/metaobjectsdev/metaobjects/issues/21) |
 | FR-033 | Provider definitions as declarative data + metamodel docs for LLMs | 📋 designed | 1.x | [#23](https://github.com/metaobjectsdev/metaobjects/issues/23) |
+| FR-034 | Ecosystem tier — connected systems (`system`/`container`/`surface`/`environment`) | 📋 designed (**draft, deferred post-1.0**) | 1.1 | — |
 
 _(FR-001 was the original metamodel foundation — pre-dates the FR-numbered tracking.)_
 _(FR-032 was developed under the working number "FR-026" — see commit history; renumbered to avoid the FR-026=Forms collision. Design: `docs/superpowers/specs/2026-06-13-fr-032-canonical-fqn-refs-design.md`, ADR-0032.)_
@@ -127,6 +128,7 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
 - **MCP exposure of declared prompts/tools** — the remaining library-side piece of the prompt-construction pillar. Surface a `template.output` / tool declaration over the Model Context Protocol (model-agnostic) so an LLM host can discover + register it, built on the shipped render / payload / verify / FR-006 / FR-010 primitives. Designed in `docs/superpowers/specs/2026-05-22-fr-004-cross-language-prompt-construction-design.md`.
 - **FR-024 — Entity surfaces: `object.projection`, universal field-`extends`, and the declared API.** A third object subtype (derived, read-only, borrowed identity via `extends`; the declared field set IS the exposure — fail-closed), universal `Entity.child` extends-resolution (load-time drift gate on every contract shape), `@via` single-hop-unique inference, multi-source entity view behavior, and the `api.operational` / `operation.query|command` / `binding.rest` surface — across all 5 ports, conformance-gated; the two pre-taxonomy spellings (entity-`extends`-entity views, proc-results-as-entities) are removed outright (hard cutover, pre-GA). Decisions: [ADR-0028](decisions/ADR-0028-object-taxonomy-projection-value-purity.md) / [ADR-0029](decisions/ADR-0029-entity-child-extends-and-via-inference.md) / [ADR-0030](decisions/ADR-0030-declared-api-surface-and-org-tier-boundary.md). Design: `docs/superpowers/specs/2026-06-12-fr-024-entity-surfaces-projections-design.md`; program plan: `docs/superpowers/plans/2026-06-12-fr-024-entity-surfaces-program.md`. Supersedes the shape-vocabulary half of the FR-021 sketch (its `api`/`wireId` direction stands, retyped onto projection/value).
 - **FR-021 — `api` metadata type + contract projections.** Declared API surfaces (operations + per-protocol bindings) over the derived-CRUD default; operation payloads are `object.value` projections (the same `origin.*` machinery as prompts and views); wire-stable `wireId` numbering lives on the contract projection (never the entity) so domain evolution can't break wire compat. Design sketch: `docs/superpowers/specs/2026-06-11-fr-021-api-metadata-and-contract-projections-design.md`. **Revised by FR-024:** contract shapes are `object.projection` (query outputs) / `object.value` (command inputs); subtype vocabulary `api.base`/`api.operational`; see ADR-0030.
+- **FR-034 — Ecosystem tier: connecting meta-modeled systems over a network.** A semantic topology layer that models the *ecosystem* — many meta-modeled systems and how they call each other — rather than a single system's shapes. C4-style two-level nesting: `system` (logical software system) → `container.service|client` (the deployable network participants), each carrying `surface.provided|consumed` edges whose `@apiRef` resolves (FQN, ADR-0041) to an `api.*` node in the same or a dependency package; plus `environment.deployment` (the named instantiation that keys a generated per-environment address-config matrix). URLs are **not** metadata (a generated, fail-closed *address contract* keyed per environment carries them); the logical topology moves **into** core (superseding ADR-0030 §5) while the physical tier stays permanently out. Reuses FR-023 (metadata-package transport), ADR-0041 (resolution), and ADR-0029 (the load-time drift gate, now spanning repos → cross-system drift detection = pillar 3, one tier up). Depends on the FR-024 declared-API surface. Owner rulings (2026-07-10): C4-nesting, topology-into-core, names-only environments, defer third-party. **Draft, deferred post-1.0.** Design: `docs/superpowers/specs/2026-07-10-fr-034-ecosystem-tier-connected-systems-design.md`.
 - **FR-022 — Contract emitters (Tier-2): JSON Schema 2020-12 (canonical + strict structured-output profile) → OpenAPI 3.1 → protobuf.** One shared neutral engine per ADR-0020; strict profile targets the cross-provider structured-output intersection (also MCP input schemas); proto emission consumes FR-021 `wireId`s, maps types per the locked table (Decimal/minor-units/uuid-string/optional/UNSPECIFIED-enum-zero), and inherits wire-compat regression detection via `buf breaking` on the emitted artifacts. Design sketch: `docs/superpowers/specs/2026-06-11-fr-022-contract-emitters-design.md`.
 - **FR-023 — Metadata packages: cross-repo distribution + reuse.** A code-free, versioned artifact (the `metaobjects/` tree + manifest) published through each ecosystem's registry (npm/Maven/PyPI/NuGet) and declared via `metadataDependencies` in config; loader source composition + overlay/extends across package boundaries (mechanics already shipped) with dependency-then-local merge order, collision rules, and per-package provenance attribution. Design sketch: `docs/superpowers/specs/2026-06-11-fr-023-metadata-packages-design.md`.
   - **Near-term doc-first quick wins (available now, no new code):** the *mechanics* of cross-project sharing already work — overlay merge, deferred cross-package `extends`, and dir/URI loaders — so before the full package-resolution build, ship **recipes**: (a) a monorepo pattern (one shared `metaobjects/` dir loaded by TS + Java + Python projects), (b) a git-submodule pattern (pull upstream metadata into a local `metaobjects/`), and (c) wire the already-defined-but-unused `.metaobjects/config.json` `sources` field (TS) to the loader so `{ kind: "path" }` overlays compose. These cover most "share a model across our backends" needs with documentation; FR-023 proper adds true dependency resolution + the `metaobjects.pkg.json` manifest. TS-only `libraries` mechanism (`metaobjects::ai`) is the single existing precedent — generalize it under FR-023.
@@ -167,18 +169,33 @@ properly without holding the GA.
   (the carve-out of FR-028 that's cheap; object↔JSON port-parity itself rides 1.1).
 - **GA mechanics** — the 0.10.0 publish (npm + NuGet/PyPI/Maven re-cut so `meta docs` /
   `verify --codegen/--db` / the SDK-docs parity are installable) → smoke → promote to 1.0.
-- **[DECISION] FR-024 — entity surfaces (projection/value taxonomy + declared API).** Its design
-  calls it a **pre-GA hard cutover** (the two pre-taxonomy spellings are removed outright), and
-  the serializer/download **field-subset** (SER-7) builds on `object.projection`. So either it
-  lands before 1.0, or its breaking metamodel change waits for 2.0 and the field-subset uses an
-  interim mechanism. **Confirm whether FR-024 is a 1.0 gate** — it's large but already scoped.
+- **[RESOLVED 2026-07-10] FR-024 — entity surfaces (projection/value taxonomy + declared API).**
+  The breaking half — the projection/value taxonomy + B3–B6 validation parity + projection
+  codegen — **shipped in the 1.0 line across all 5 ports** (the pre-GA hard cutover is done, and
+  the serializer/download **field-subset** (SER-7) can build on the now-shipped `object.projection`).
+  The **declared-API surface** (`api.operational`/`operation`/`binding.rest`) is confirmed **not a
+  1.0 gate** and **slips to 1.1**, where it becomes the foundation for FR-034 (ecosystem tier).
+  Rationale: it is greenfield additive vocabulary (nothing registered yet), so deferring costs no
+  compatibility and keeps the 1.0 line lean.
 - **[OPTIONAL] FR-019 — shared/provided enums** (small, already designed) — slot here or 1.1.
 - **[OPTIONAL] FR-025 — cross-port package-binding codegen config** (ready for implementation) — pulls into 1.0 *if* FR-024's cross-package generated imports need it; otherwise 1.1.
 - **[OPTIONAL] MCP exposure** — completes the prompt pillar's library side; pull to 1.0 only if
   "4 complete pillars" is a GA marketing bar, else 1.1.
 
-### 1.1 — Serialization foundation
+### 1.1 — Serialization foundation + connected-systems tier
 
+- **FR-024 declared-API surface** — the deferred half of FR-024: `api.base`/`api.operational`,
+  `operation.query|command`, `binding.rest`, `inputRef`/`outputRef`/`many`; loader ref-resolution +
+  path-template↔identity validation; per-port route-shell codegen (typed handler seam, verb bodies
+  hand-written); `meta verify` + `meta docs`; atomic `expected-registry.json` flip across 5 ports.
+  The foundation FR-034 references.
+- **FR-034 — ecosystem tier (connected systems).** Semantic topology for connecting meta-modeled
+  systems over a network: `system` (logical) → `container.service|client` (deployable participants)
+  → `surface.provided|consumed` (the API edge, `@apiRef` → an `api.*` node) + `environment.deployment`
+  (named instantiation, names-only in v1). URLs stay out of the metamodel (a generated address
+  contract, keyed per environment); supersedes ADR-0030 §5 for the logical tier. Reuses FR-023
+  (transport) + ADR-0041 (resolution) + ADR-0029 (cross-repo drift gate) — additive vocabulary, no
+  new machinery. Design: `docs/superpowers/specs/2026-07-10-fr-034-ecosystem-tier-connected-systems-design.md`.
 - **FR-028 finish** — object↔JSON strict parity (Python / C# / Kotlin).
 - **FR-030 core** — serializer SPI; **XML write** (revive the legacy core/dynamic JSON+XML);
   field-subset via FR-024 projections; Pojo/ValueObject/MetaObjectAware support; **json↔xml
