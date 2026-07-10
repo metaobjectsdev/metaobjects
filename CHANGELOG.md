@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.15.18] — 2026-07-10
+
+_npm-only patch (14-package lockstep). PyPI / NuGet / Maven unchanged — these are TS-only fixes. Non-breaking; advances the 1.0 quiet period._
+
+### Fixed
+
+- **`codegen-ts` `promptRender` emitted invalid TypeScript for FQN `@objectRef` payload refs.** A `template.prompt` payload value-object nesting a `field.object @objectRef` to another value-object leaked the fully-qualified name (`pkg::Name`, FR-032/ADR-0041) into both the emitted field type and the generated interface name — `::` is not a valid TS identifier. Now stripped to the bare name (retaining the FQN only for resolution/recursion), matching `entityFile`. Surfaced by dogfooding a package-declared consumer.
+- **agent-context skills** — four of six `metaobjects-*` skills had invalid YAML front-matter (an unquoted `:` inside `description:`) so they never intent-triggered under a strict-YAML loader; the C# codegen reference documented non-existent flags; the reference-fragment install was reverted from deploy-all to stack-scoped; deprecated `@metaobjectsdev/codegen-ts/generators` imports and singular tanstack route paths were corrected; and the ADR-0040 `index.lookup` vocabulary was added to the audit capability-checklist + verify migration doc. Also repaired a stale Kotlin `@Serializable`→Jackson reference fixture that had left `agent-context-conformance` red on `main`.
+
+### Added
+
+- Cross-port regression tests (Python + Kotlin) pinning that payload codegen strips an FQN `@objectRef` to the bare name — the bug was TS-only (Java and C# already had equivalent coverage). (#190)
+
 ## [0.15.17] — 2026-07-09
 
 _Coordinated release across all four registries: npm `0.15.17` (14-package lockstep) · PyPI `metaobjects 0.15.10` · NuGet `MetaObjects* 0.15.8` · Maven Central `com.metaobjects:* 7.7.8`. Three merged efforts: the breaking `origin.passthrough` type-preservation metamodel change (#185/#186), typed value-object jsonb columns across all ports (#187), and load-order-independent super-resolution (#188/#189)._
