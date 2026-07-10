@@ -134,6 +134,35 @@ describe("payload-codegen — generatePayloadInterfacesBatch", () => {
   });
 });
 
+describe("payload-codegen — FQN @objectRef (FR-032/ADR-0041) emits bare TS names", () => {
+  // Regression: under package declaration, a nested @objectRef canonicalizes to an FQN
+  // (`pkg::Name`). The emitter must strip the package for the emitted TS type AND the
+  // generated interface name — an FQN contains `::`, which is invalid TypeScript. (The
+  // 0.15.14 ADR-0041 fix extended FQN canonicalization into the payload tree but missed
+  // promptRender's generated-type emission; this pins it.)
+  test("a nested @objectRef given as an FQN emits a bare type + bare interface name (no `::`)", async () => {
+    const root = await loadRoot([
+      { "object.value": { name: "Note", children: [{ "field.string": { name: "text", "@required": true } }] } },
+      {
+        "object.value": {
+          name: "Report",
+          children: [
+            { "field.string": { name: "title", "@required": true } },
+            { "field.object": { name: "notes", "@objectRef": "acme::ai::Note", isArray: true, "@required": true } },
+          ],
+        },
+      },
+    ]);
+    const out = generatePayloadInterfacesBatch(root, ["Report"]);
+    // The defect emitted `notes: acme::ai::Note[];` and `export interface acme::ai::Note`.
+    expect(out).not.toContain("::");
+    expect(out).toContain("export interface Report {");
+    expect(out).toContain("notes: Note[];");
+    expect(out).toContain("export interface Note {");
+    expect(out).toContain("text: string;");
+  });
+});
+
 describe("payload-codegen — typed render handle", () => {
   test("emits a handle binding @textRef + @format and typing the payload", async () => {
     const root = await loadRoot(model);

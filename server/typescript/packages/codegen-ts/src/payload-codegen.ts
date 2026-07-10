@@ -67,7 +67,10 @@ function fieldTsType(
 ): { type: string; refVo?: string; enumAlias?: { name: string; decl: string } } {
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
-    const refName = typeof ref === "string" ? ref : "unknown";
+    // FR-032/ADR-0041 — @objectRef canonicalizes to an FQN (`pkg::Name`), which is not
+    // a valid TS identifier. The emitted TYPE is the bare name; the FQN is retained as
+    // refVo for resolution/recursion (findObject matches FQN or bare).
+    const refName = typeof ref === "string" ? stripPackage(ref) : "unknown";
     // isArray is a structural property on MetaData, not an attr.
     const isArray = field.resolvedIsArray();
     const result: { type: string; refVo?: string } = {
@@ -102,14 +105,18 @@ function isFieldRequired(field: MetaData): boolean {
 
 function emitInterface(
   root: MetaData,
-  voName: string,
+  voRef: string,
   emitted: Set<string>,
   out: string[],
   enumAliases: Set<string>,
 ): void {
-  if (emitted.has(voName)) return;
-  const vo = findObject(root, voName);
+  const vo = findObject(root, voRef);
   if (!vo) return;
+  // FR-032/ADR-0041 — voRef may arrive as an FQN (a nested @objectRef); the emitted
+  // interface NAME must be the bare, TS-valid name. Dedupe on the bare name too, so a
+  // VO reached once by bare name and once by FQN still emits exactly once.
+  const voName = vo.name;
+  if (emitted.has(voName)) return;
   emitted.add(voName);
   const aliasLines: string[] = [];
   const lines: string[] = [`export interface ${voName} {`];
