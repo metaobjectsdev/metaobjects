@@ -39,8 +39,9 @@ public static class OriginConstants
     public const string ORIGIN_AGGREGATE_ATTR_AGG = "agg";
     public const string ORIGIN_AGGREGATE_ATTR_OF  = "of";
     public const string ORIGIN_AGGREGATE_ATTR_VIA = "via";
-    // @filter (attr.filter object): optional scoping predicate on the aggregated
-    // rows, rendered as SQL FILTER (WHERE ...) by the projection view emitter.
+    // @filter (attr.filter object): an optional PORTABLE structured predicate scoping
+    // the aggregated rows (same shape as a preset filter). Codegen renders it per
+    // target -- the projection view emitter turns it into SQL FILTER (WHERE ...) / CASE WHEN.
     public const string ORIGIN_AGGREGATE_ATTR_FILTER = "filter";
 
     // collection attrs — a relationship-derived array of nested view-objects.

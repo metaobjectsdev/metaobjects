@@ -27,7 +27,7 @@
         { "type": "attr", "subType": "string", "name": "agg", "min": 1, "max": 1, "allowedValues": ["count", "sum", "avg", "min", "max"], "description": "Aggregate function applied over the relationship path: count, sum, avg, min, or max." },
         { "type": "attr", "subType": "string", "name": "of", "min": 1, "max": 1, "description": "Dotted Entity.field reference identifying the column being aggregated (e.g. 'Week.durationMinutes')." },
         { "type": "attr", "subType": "string", "name": "via", "min": 0, "max": 1, "description": "Dotted relationship path from the base entity to the aggregated rows (e.g. 'Program.weeks' or 'Program.weeks.workouts'). May be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (FR-024, ADR-0029)." },
-        { "type": "attr", "subType": "filter", "name": "filter", "min": 0, "max": 1, "description": "Optional scoping filter restricting which related rows the aggregate spans, rendered as a SQL FILTER (WHERE ...) clause. Structured filter object desugared to canonical { field: { op: value } } form at parse time." }
+        { "type": "attr", "subType": "filter", "name": "filter", "min": 0, "max": 1, "description": "Optional structured predicate scoping which related rows the aggregate spans. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view)." }
       ]
     },
     {

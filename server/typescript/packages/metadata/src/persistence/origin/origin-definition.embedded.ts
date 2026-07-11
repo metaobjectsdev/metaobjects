@@ -90,7 +90,7 @@ export const ORIGIN_DEFINITION: ProviderDefinition = {
           "name": "filter",
           "min": 0,
           "max": 1,
-          "description": "Optional scoping filter restricting which related rows the aggregate spans, rendered as a SQL FILTER (WHERE ...) clause. Structured filter object desugared to canonical { field: { op: value } } form at parse time."
+          "description": "Optional structured predicate scoping which related rows the aggregate spans. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view)."
         }
       ]
     },

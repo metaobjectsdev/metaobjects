@@ -22,6 +22,7 @@ ORIGIN_ATTR_CONVERT = "convert"
 # aggregate attrs
 ORIGIN_ATTR_AGG = "agg"
 ORIGIN_ATTR_OF = "of"
-# @filter (attr.filter object): optional scoping predicate on the aggregated rows,
-# rendered as SQL FILTER (WHERE ...) by the projection view emitter.
+# @filter (attr.filter object): an optional PORTABLE structured predicate scoping the
+# aggregated rows (same shape as a preset filter). Codegen renders it per target -- the
+# projection view emitter turns it into SQL FILTER (WHERE ...) / SQLite CASE WHEN.
 ORIGIN_ATTR_FILTER = "filter"

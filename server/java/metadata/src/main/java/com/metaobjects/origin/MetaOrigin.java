@@ -71,10 +71,11 @@ public abstract class MetaOrigin extends MetaData {
     public static final String ATTR_OF = "of";
 
     /**
-     * Optional scoping filter on {@code origin.aggregate} — a structured
-     * {@code attr.filter} object restricting which related rows the aggregate
-     * spans, rendered as SQL {@code FILTER (WHERE ...)} by the projection view
-     * emitter.
+     * Optional scoping filter on {@code origin.aggregate} — an optional PORTABLE
+     * structured {@code attr.filter} predicate scoping which related rows the
+     * aggregate spans (same shape as a preset filter). Codegen renders it per
+     * target — the projection view emitter turns it into SQL
+     * {@code FILTER (WHERE ...)} / SQLite {@code CASE WHEN}.
      */
     public static final String ATTR_FILTER = "filter";
 

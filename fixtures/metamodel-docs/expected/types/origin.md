@@ -25,7 +25,7 @@ A count/sum/avg/min/max (@agg) computed over a column (@of) reached along a rela
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
 | `@agg` | string | yes |  | `count`, `sum`, `avg`, `min`, `max` | metaobjects-core-types | Aggregate function applied over the relationship path: count, sum, avg, min, or max. |
-| `@filter` | filter | no |  |  | metaobjects-core-types | Optional scoping filter restricting which related rows the aggregate spans, rendered as a SQL FILTER (WHERE ...) clause. Structured filter object desugared to canonical { field: { op: value } } form at parse time. |
+| `@filter` | filter | no |  |  | metaobjects-core-types | Optional structured predicate scoping which related rows the aggregate spans. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view). |
 | `@of` | string | yes |  |  | metaobjects-core-types | Dotted Entity.field reference identifying the column being aggregated (e.g. 'Week.durationMinutes'). |
 | `@via` | string | no |  |  | metaobjects-core-types | Dotted relationship path from the base entity to the aggregated rows (e.g. 'Program.weeks' or 'Program.weeks.workouts'). May be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (FR-024, ADR-0029). |
 
