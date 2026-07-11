@@ -15,12 +15,14 @@ describe("init() --docs-only", () => {
     expect(existsSync(join(cwd, ".metaobjects/AGENTS.md"))).toBe(true);
     expect(existsSync(join(cwd, ".claude/skills/metaobjects-authoring/SKILL.md"))).toBe(true);
     expect(existsSync(join(cwd, ".metaobjects/.agent-context.json"))).toBe(true);
-    // deploy-all: all language reference fragments installed regardless of stack
+    // stack-scoped: only the declared stack's language references install (058be51c);
+    // this stack is java + kotlin (+ react/tanstack clients), so both JVM refs install
+    // and the other language refs do not.
     expect(existsSync(join(cwd, ".claude/skills/metaobjects-codegen/references/kotlin.md"))).toBe(true);
     expect(existsSync(join(cwd, ".claude/skills/metaobjects-codegen/references/java.md"))).toBe(true);
-    expect(existsSync(join(cwd, ".claude/skills/metaobjects-codegen/references/typescript.md"))).toBe(true);
-    expect(existsSync(join(cwd, ".claude/skills/metaobjects-codegen/references/csharp.md"))).toBe(true);
-    expect(existsSync(join(cwd, ".claude/skills/metaobjects-codegen/references/python.md"))).toBe(true);
+    expect(existsSync(join(cwd, ".claude/skills/metaobjects-codegen/references/typescript.md"))).toBe(false);
+    expect(existsSync(join(cwd, ".claude/skills/metaobjects-codegen/references/csharp.md"))).toBe(false);
+    expect(existsSync(join(cwd, ".claude/skills/metaobjects-codegen/references/python.md"))).toBe(false);
     // the project scaffold is NOT created (this is an existing-metaobjects/polyglot repo)
     expect(existsSync(join(cwd, "metaobjects"))).toBe(false);
     expect(existsSync(join(cwd, "metaobjects.config.ts"))).toBe(false);

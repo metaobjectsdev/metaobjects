@@ -9,7 +9,7 @@ test("meta agent-docs --server csharp scaffolds the agent-context (no metaobject
   const code = await run(["agent-docs", "--server", "csharp", "--cwd", dir]);
   expect(code).toBe(0);
   expect(existsSync(join(dir, ".claude/skills/metaobjects-codegen/references/csharp.md"))).toBe(true);
-  expect(existsSync(join(dir, ".claude/skills/metaobjects-codegen/references/python.md"))).toBe(true); // deploy-all
+  expect(existsSync(join(dir, ".claude/skills/metaobjects-codegen/references/python.md"))).toBe(false); // stack-scoped: --server csharp only
   expect(existsSync(join(dir, ".metaobjects/AGENTS.md"))).toBe(true);
   // codegenCommand for csharp comes from servers/csharp.meta.json
   expect(require("node:fs").readFileSync(join(dir, ".metaobjects/AGENTS.md"), "utf8")).toContain("dotnet meta gen");
