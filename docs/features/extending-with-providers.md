@@ -172,6 +172,12 @@ A provider can shape the metamodel three ways. Pick the lightest mechanism
 that fits — every new subtype is a new line item in the cross-port registry,
 in conformance tests, and in every consumer's mental model.
 
+> This section is the *mechanics*. For the judgment layer — whether to model the
+> concept at all, converging with core before inventing, and the design rules that
+> make downstream vocabulary age well (protocol/address-free nodes, names-only
+> fail-closed config, the register→extend→promote lifecycle) — see
+> [downstream-metadata-decisions.md](downstream-metadata-decisions.md).
+
 ### Default: extend an existing subtype with attrs (`registry.extend`)
 
 If the new concept is structurally identical to an existing subtype, only
