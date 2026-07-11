@@ -189,6 +189,43 @@ emits two distinct finders (named by the FK field) automatically — no annotati
 reverse finder is a **codegen feature, not an attribute** (there is no reverse-nav `@`-attr
 to author). Advisory severity — a modernization opportunity, not a failing finding.
 
+**New-vocabulary OPPORTUNITY (the inverse hunt — advisory).** The checks above audit
+custom vocabulary the adopter *already* registered; this one hunts where the app
+**should** register vocabulary but hand-coded the pattern instead. Smells
+(grep-then-verify; require a *recurring, closed* set — never flag a one-off):
+- **N parallel hand-written integration modules** sharing a payload shape and a config
+  pattern (a closed set of channels / providers / export targets, each a near-copy with
+  a different transport) → candidate for ONE project-registered subtype whose variants
+  sit behind a closed structural-variant discriminator (the `source.rdb` `@kind`
+  pattern), plus a small owned generator emitting the per-variant wiring.
+- **An ad-hoc string discriminator steering code switches** — a string column whose
+  values select per-variant behavior/config scattered across the codebase. If the values
+  are just a closed symbol set, that is `field.enum` (`@values`), NOT new vocabulary. It
+  earns a subtype only when the discriminated concept **owns behavior or attributes of
+  its own** (ADR-0037 step 2a).
+- **A provider-shaped pattern re-implemented per instance** — repeated registration /
+  config blocks restating a shape one declared node per instance could carry, with codegen
+  emitting the repetition.
+- **A downstream integration modeled entirely in code** (an outbound webhook / notifier /
+  queue publisher / tool wiring beyond `template.toolcall`) where registered vocabulary +
+  a small generator would own the payload wiring, the names-only fail-closed config check,
+  and drift detection.
+
+Run the **ADR-0037 ordered test** before proposing: derivable → derive; differs from an
+existing subtype only by a property → an attribute; a plain validated value → an
+attribute; one-off author-supplied properties → the `attr.properties` bag. Only a concept
+with its own behavior/attributes earns a subtype, and transport/protocol is never the
+subtype axis (keep the node protocol- and address-free; variants behind the discriminator).
+**Converge before inventing** — check shipped vocabulary AND the planned/chartered names
+(see CALIBRATION "planned, not shipped"); never claim a chartered name for a project-local
+type. **Recommendation:** propose a project-registered provider (explicit loader wiring,
+ADR-0023 — never a loosened `strict` free-ride), a `metadata_sketch` of the node, and the
+owned generator that retires the duplication; a second independent consumer needing the
+same concept is a consumer→core promotion candidate (ADR-0011 — file an upstream issue).
+**Verdict: VOCAB CANDIDATE (advisory)** — a modeling opportunity, never a failing finding,
+never a tier gate; bias to under-flagging (the >15% false-positive kill criterion applies
+with full force). Full guidance: `docs/features/downstream-metadata-decisions.md`.
+
 ---
 
 ## Classification scheme (every surface; classify on codegen AND runtime)
@@ -201,6 +238,7 @@ to author). Advisory severity — a modernization opportunity, not a failing fin
 | **CODEGEN CANDIDATE (partial)** | Generatable data layer, bespoke presentation. | Generate data layer; keep viz hand-written. |
 | **DYNAMIC-RUNTIME CANDIDATE** | Behavior that could be metadata-driven at runtime. | Assess runtime-metadata feasibility. |
 | **BESPOKE (keep)** | Genuine custom: irreducible SQL (recursive CTEs, window functions, set ops — NOT plain count/sum/avg rollups, which are `origin.aggregate` on a projection), graph, SSE, auth, search, viz. | Leave hand-written — still import generated types. |
+| **VOCAB CANDIDATE (advisory)** | A recurring, closed hand-coded pattern (parallel integration modules / an ad-hoc string discriminator) that project-registered vocabulary — a custom subtype/attr via a provider — plus a small owned generator would own. | Propose the provider + `metadata_sketch`; apply the ADR-0037 ordered test; advisory only. |
 
 **Gold-standard exception.** A hand-written component that *derives* from generated metadata
 cannot drift — flag as good. A "bespoke" component hardcoding a shape metadata knows is a
@@ -223,6 +261,7 @@ Per finding: `file:line` → what → generated-equivalent exists? → recommend
 8. **Hand-written `CREATE VIEW` / read-only SQL standing in for a projection (view-necessity test).** Grep migrations, checked-in `.sql`, and repository/query code for `CREATE [OR REPLACE] [MATERIALIZED] VIEW`, and for hand-rolled read-only queries that mirror a read model — a pure-`SELECT` repository/service method with joins or `GROUP BY` feeding a DTO, or a raw-SQL escape (`db.execute(sql…)`, `FromSqlRaw`, a JPA @Query with hand-written SQL). For each, run the **necessity test** — can `object.projection` + origins express this shape? It can when every output column is (a) a base-entity or relationship-joined column → `origin.passthrough` (`@from` / `@via`), (b) a count/sum/avg/min/max over related rows → `origin.aggregate` (`@agg` / `@of` / `@via`, optionally row-scoped with `@filter`), (c) a child collection → `origin.collection` (`@via`), or (d) a column borrowed via `extends` — and the joins follow declared relationships / `identity.reference` FKs.
    - **Expressible → CODEGEN CANDIDATE (high):** convert to an `object.projection` with a read-only `source.rdb` `@kind: view` child, let `meta migrate` emit the `CREATE VIEW`, and consume the generated read-only query — the hand-written view is a second source of truth for a derivable shape. Flag in the finding that **`meta verify --db` cannot catch this**: an unmodeled DB view is *unmanaged*, so this audit is the only gate that sees it. Parity-gate: the generated view returns row-identical results before the hand-written SQL is deleted.
    - **Not expressible → BESPOKE (keep), with a NAMED justification:** record the construct that makes it irreducible (recursive CTE, window function / `OVER`, `UNION` / `INTERSECT` / `EXCEPT`, `DISTINCT ON`, lateral join, non-aggregate expression column). "It's an aggregation" is NOT a justification — plain count/sum/avg/min/max rollups are `origin.aggregate`.
+9. **A closed variant-set hand-modeled per instance** — N sibling modules / classes / config blocks, one per channel / provider / target, sharing a payload + config shape and diverging only by transport. Grep for sibling-file families and switch-on-a-string dispatch; verify the set is closed and recurring (never a one-off). → axis I "New-vocabulary OPPORTUNITY" (VOCAB CANDIDATE, advisory).
 
 ---
 

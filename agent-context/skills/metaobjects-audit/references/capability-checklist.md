@@ -163,6 +163,12 @@ classify it (using the classification scheme in `SKILL.md`) and route the cutove
 - **`attr.class`** — binding facet (`field.class` binding); hunt hand-wired type-binding
   facets. (`attr.base`, `attr.string`, `attr.int`, `attr.long`, `attr.double`, `attr.boolean`
   are the value-type primitives behind typed attrs — not direct audit targets.)
+- **Custom-provider extension point** (`attr.properties` is the one-off escape hatch;
+  `template.toolcall` is the historical register→extend precedent) — hunt a *recurring,
+  closed* variant set hand-coded as parallel modules (channels / providers / export targets)
+  that a project-registered subtype with a closed variant discriminator + a small owned
+  generator would own. Apply the ADR-0037 ordered test before proposing; advisory (VOCAB
+  CANDIDATE); see SKILL.md axis I "New-vocabulary OPPORTUNITY".
 
 ## Common documentation attrs (any node)
 

@@ -1,6 +1,6 @@
 ---
 name: metaobjects-authoring
-description: Use when authoring or modifying MetaObjects metadata — fields, entities, relationships, sources, enums, abstracts/inheritance — in YAML or canonical JSON.
+description: Use when authoring or modifying MetaObjects metadata — fields, entities, relationships, sources, enums, abstracts/inheritance — in YAML or canonical JSON; includes deciding whether and how to register custom vocabulary (new subtypes or attributes via a provider).
 ---
 
 # Authoring MetaObjects metadata
@@ -355,17 +355,39 @@ metamodel attribute*: you declare the FK once via `identity.reference`, and the 
 finders fall out of codegen. So never hand-roll a `findByParentId` / `WHERE fk = ?` helper —
 consume the generated finder.
 
-**Extending the metamodel (custom providers):** the same ordered procedure above
-governs new vocabulary you register — apply it mechanically before registering
-anything. A would-be subtype that differs from an existing one only by a *property*
-is an **attribute**, not a subtype (a "short string" isn't a new field subtype —
-that is `@maxLength`); a plain string that merely needs validating is a **validation
-attribute**, not a subtype (its native type is still `string`, and there's no
-behavior to own); a concept with its own native type or behavior is a **subtype**,
-and structural variants *within* such a subtype are `@kind`. Every new first-class
-element also requires a registered provider + a `registry-conformance` fixture
-(ADR-0023 strict provenance), and closed enums (including any `@kind` value-set)
-carry `allowedValues` in the gate (ADR-0036). ADR-0037 is the authority.
+### Extending the metamodel — custom providers, and the downstream lifecycle
+
+The same ordered procedure above governs new vocabulary you register — apply it
+mechanically before registering anything. A would-be subtype that differs from an
+existing one only by a *property* is an **attribute**, not a subtype (a "short
+string" isn't a new field subtype — that is `@maxLength`); a plain string that merely
+needs validating is a **validation attribute**, not a subtype (its native type is
+still `string`, and there's no behavior to own); a concept with its own native type
+or behavior is a **subtype**, and structural variants *within* such a subtype are
+`@kind`. Every new first-class element also requires a registered provider + a
+`registry-conformance` fixture (ADR-0023 strict provenance), and closed enums
+(including any `@kind` value-set) carry `allowedValues` in the gate (ADR-0036).
+ADR-0037 is the authority.
+
+**Converge before inventing.** Search the shipped vocabulary first (`meta types
+<term>`) and check the roadmap — if core already models (or plans) the concept, model
+yours in a fold-in-friendly shape. The type names `api`, `operation`, `surface`, and
+`binding` are chartered for planned core vocabulary — never claim one for a
+project-local type (a later core release would force a breaking rename).
+
+**Design rules for downstream vocabulary that ages well.** Keep the node protocol-
+and address-free — the subtype names the *concept*; transport/protocol is a closed
+`@kind` variant *within* the subtype (as `source.rdb` puts table/view behind
+`@kind`), never the subtype axis, and endpoints/addresses never enter metadata.
+Declare config as the *names* of required keys (values stay in env/config) and
+generate a fail-closed check. Reference typed payloads instead of inlining shapes.
+
+**Lifecycle.** Register with explicit provider wiring — never loosen `strict` to
+free-ride ad-hoc attrs. When core later ships the concept your provider shrinks from
+`register` to `extend` (the `template.toolcall` precedent). A second independent
+consumer wanting the same concept is a consumer→core promotion candidate (ADR-0011) —
+open an upstream issue rather than adding core vocabulary yourself. Full guidance:
+`docs/features/downstream-metadata-decisions.md`.
 
 ### Currency
 
