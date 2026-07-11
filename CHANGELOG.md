@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.15.19] — 2026-07-11
+
+_Coordinated release: npm 0.15.19 · PyPI 0.15.11 · NuGet 0.15.9 · Maven 7.7.9. Additive, non-breaking._
+
+### Added
+
+- **`origin.aggregate @filter`** — a scoping filter (an `attr.filter` object) on an aggregate origin, restricting which related rows the aggregate spans; rendered as SQL `FILTER (WHERE …)` (Postgres) / `CASE WHEN` (SQLite). Registered across all five ports + registry-conformance, with a new `origin-aggregate-filtered` conformance fixture. Closes the "projections can't express my scoped aggregate" gap (the attribute was previously codegen-local and failed strict load under ADR-0023).
+- **Downstream metadata-decisions guide** (`docs/features/downstream-metadata-decisions.md`) — the judgment layer for extending the metamodel: exhaust existing vocab, converge-before-inventing (don't claim the chartered `api`/`operation`/`surface`/`binding` names), the ADR-0037 ordered test, and the design rules that make downstream vocabulary age well (protocol/address-free nodes, names-only fail-closed config, reference-typed payloads, the register→extend→promote lifecycle).
+
+### Changed
+
+- **Projection / DB-view guidance made explicit across the agent-context skills + docs.** A projection's `CREATE VIEW` DDL is generated from its `origin.*` children by the Node `meta migrate` — hand-writing a view for a shape origins can express is drift, and because an unmodeled DB view is *unmanaged* it is invisible to `meta verify --db`. Bounded the "custom SQL views" hand-write exception (codegen skill + `codegen-concepts.md`) to genuinely-irreducible views (recursive CTEs, window functions, set ops). The `metaobjects-audit` skill gains a **view-necessity** drift signature and a **VOCAB CANDIDATE** rule that flags where an app should register new vocabulary (a custom subtype/attr via a provider) instead of hand-coding a recurring pattern. Strengthened `metaobjects-authoring` with the extend-decision lifecycle.
+
 ## [0.15.18] — 2026-07-10
 
 _npm-only patch (14-package lockstep). PyPI / NuGet / Maven unchanged — these are TS-only fixes. Non-breaking; advances the 1.0 quiet period._
