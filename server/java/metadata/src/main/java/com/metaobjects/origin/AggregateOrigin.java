@@ -1,5 +1,6 @@
 package com.metaobjects.origin;
 
+import com.metaobjects.attr.FilterAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 
@@ -55,6 +56,9 @@ public class AggregateOrigin extends MetaOrigin {
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             def.optionalAttributeWithConstraints(ATTR_VIA)
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            // Optional scoping filter (attr.filter object) → SQL FILTER (WHERE ...).
+            def.optionalAttributeWithConstraints(ATTR_FILTER)
+               .ofType(FilterAttribute.SUBTYPE_FILTER).asSingle();
         });
     }
 }

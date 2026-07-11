@@ -11,7 +11,7 @@ The MetaObjects metamodel is built from 11 base types:
 - `layout` — object-level UI surfaces (subtypes: `dataGrid`, etc.)
 - `identity` — primary + secondary keys (subtypes: `primary`, `secondary`, `reference`)
 - `relationship` — associations between objects (subtypes: `association`, `composition`, etc.)
-- `source` — storage backend (subtypes: `dbTable`, `dbView`)
+- `source` — storage backend (subtype: `rdb`, with `@kind`: `table` | `view` | `materializedView` | `storedProc` | `tableFunction`; read-only-ness is derived from `@kind`)
 - `origin` — field provenance (subtypes: `passthrough`, `aggregate`)
 
 Each type has subtype-specific child rules + attrs.

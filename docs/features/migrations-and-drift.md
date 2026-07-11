@@ -13,8 +13,8 @@ There are **7 drift sources**, and the toolchain has a guard for each.
 |---|---|---|
 | **Code-vs-DB** | Codegen — the generated SQL DDL is emitted from the same metadata as the entity / table code. | Build time |
 | **Code-vs-API-doc** | Cross-port codegen from the same metadata. | Build time |
-| **DB-vs-metadata** | `meta verify --db` (TS CLI) — introspects the live DB and fails if it has drifted from metadata. This is a schema concern owned by the Node toolchain regardless of server language; on the JVM ports the runtime auto-create/validator path was removed (ADR-0015) and the `meta:verify` Maven goal is not available. | CI on every PR |
-| **Migration-vs-metadata** | `meta migrate` (TS / C# / Python) emits migrations FROM metadata diffs — they cannot drift from metadata by construction. Java/Kotlin schema migrations are also owned by the TS toolchain (`@metaobjectsdev/cli migrate`). | Build time |
+| **DB-vs-metadata** | `meta verify --db` (TS CLI) — introspects the live DB and fails if it has drifted from metadata. Includes modeled projection **view bodies** (a changed `CREATE VIEW` is `replace-view` drift); a hand-authored *unmodeled* view is unmanaged and never flagged. A schema concern owned by the Node toolchain regardless of server language; on the JVM ports the runtime auto-create/validator path was removed (ADR-0015) and the `meta:verify` Maven goal is not available. | CI on every PR |
+| **Migration-vs-metadata** | The Node `meta migrate` emits migrations FROM metadata diffs — they cannot drift from metadata by construction. Schema migrations for **every** port are owned by this Node toolchain (`@metaobjectsdev/cli migrate`, ADR-0015); the C# and Python migrate surfaces were removed. | Build time |
 | **Generated-edited** | `@generated` headers in emitted code + three-way merge that preserves hand-edits inside non-generated regions. | Code review |
 | **Prompt-vs-payload** | FR-004 `Renderer.verify` parses `{{...}}` references in templates and checks each one exists on the payload VO. | Build time + runtime |
 | **Generated-vs-runtime** | Kotlin / Java `MetadataStartupValidator` (from Spring `ApplicationReadyEvent`) re-loads metadata at startup and asserts the generated table objects match. | App startup |
@@ -83,25 +83,29 @@ meta migrate --db postgresql://... --apply
 
 ### C#
 
+Schema migrations for C# projects are owned by the **TypeScript toolchain**
+(`@metaobjectsdev/cli migrate`). Per ADR-0015 the C# migrate engine and the
+`--from-db` introspection surface were removed — the C# CLI (`dotnet meta`) is
+`gen` / `verify` only. Use the TS CLI against the same database the C# service
+connects to:
+
 ```bash
-# Full CREATE (initial)
-meta migrate ./metadata --out ./migrations/001_init.sql
-
-# Incremental — diff metadata against a live DB
-meta migrate ./metadata --out ./migrations/002.sql --from-db "Host=...;Database=..." --down ./migrations/002_down.sql
+meta migrate --db postgresql://... --slug initial   # emit migration SQL
+meta migrate --db postgresql://... --apply          # apply pending migrations
 ```
-
-The incremental path uses `NpgsqlIntrospector` to read the current Postgres schema
-and emit an `ALTER`-shaped migration.
 
 ### Python
 
-```bash
-python -m metaobjects.migrate --dry-run
-```
+Schema migrations for Python projects are owned by the **TypeScript toolchain**
+(`@metaobjectsdev/cli migrate`). Per ADR-0015 the Python `migrate` module was
+removed — the `metaobjects` console script is `gen` / `verify` only (the runtime is
+pure data-access via ObjectManager). Use the TS CLI against the same database the
+Python service connects to:
 
-(Migration codegen is in progress; see the [Python quickstart](../ports/python.md)
-for current status.)
+```bash
+meta migrate --db postgresql://... --slug initial   # emit migration SQL
+meta migrate --db postgresql://... --apply          # apply pending migrations
+```
 
 ## Drift verify commands per port
 

@@ -6,6 +6,7 @@ from .attr_class_map import attr_class_for
 from .meta.core.attr import meta_attr as _attr  # noqa: F401
 from .meta.core.attr.attr_constants import (
     ATTR_SUBTYPE_BOOLEAN,
+    ATTR_SUBTYPE_FILTER,
     ATTR_SUBTYPE_INT,
     ATTR_SUBTYPE_STRING,
     ATTR_SUBTYPES,
@@ -76,6 +77,7 @@ from .meta.persistence.origin.meta_origin import MetaOrigin
 from .meta.persistence.origin.origin_constants import (
     ORIGIN_ATTR_AGG,
     ORIGIN_ATTR_CONVERT,
+    ORIGIN_ATTR_FILTER,
     ORIGIN_ATTR_FROM,
     ORIGIN_ATTR_OF,
     ORIGIN_ATTR_VIA,
@@ -631,6 +633,7 @@ core_provider.add(
             ),
             AttrSchema(name=ORIGIN_ATTR_OF, value_type=ATTR_SUBTYPE_STRING, required=True),
             AttrSchema(name=ORIGIN_ATTR_VIA, value_type=ATTR_SUBTYPE_STRING, required=False),
+            AttrSchema(name=ORIGIN_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER, required=False),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )

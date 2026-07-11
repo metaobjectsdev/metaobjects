@@ -71,6 +71,14 @@ public abstract class MetaOrigin extends MetaData {
     public static final String ATTR_OF = "of";
 
     /**
+     * Optional scoping filter on {@code origin.aggregate} — a structured
+     * {@code attr.filter} object restricting which related rows the aggregate
+     * spans, rendered as SQL {@code FILTER (WHERE ...)} by the projection view
+     * emitter.
+     */
+    public static final String ATTR_FILTER = "filter";
+
+    /**
      * #185 — boolean acknowledgement that a passthrough field's declared type
      * deliberately differs from its {@code @from} source field's type. Optional on
      * {@code origin.passthrough}. Absent/false (the default) ⇒ the passthrough is

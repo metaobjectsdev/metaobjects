@@ -599,7 +599,12 @@ identity passes through via `extends` (`identity.primary: { name: id, extends:
 the exposure (fail-closed). Give it a read-only `source.rdb` `@kind: view`
 child (`source.rdb: { kind: view, table: v_author }`) — codegen keys projection
 detection + view DDL off that read-only source, so without it `meta gen` emits
-nothing for the projection.
+nothing for the projection. **The `CREATE VIEW` body is generated from those
+`origin.*` children by the Node `meta migrate` — never hand-author view SQL for a
+shape origins can express** (an unmodeled view is *unmanaged*, so `meta verify --db`
+can't even catch the drift). Hand-write a view only when a construct origins can't
+express (recursive CTE, window function, set operation) blocks projection authoring,
+and keep that DDL in a hand-edited migration file.
 
 **A `passthrough` field must match its `@from` source's type.** A passthrough
 forwards the source value unchanged, so the projection field's `field.<subType>`

@@ -89,6 +89,13 @@ first group together:
 | `SpringOutputParserGenerator` | the `template.output` parser-on-receipt (see the prompts reference) |
 | `SpringFilterAllowlistGenerator` | per-entity filter allowlist |
 
+**Projections (read-only views).** An `object.projection` (read-only `source.rdb`
+`@kind: view` child) is served read-only through OMDB at the ObjectManager layer
+(mutating ops throw); no controller is generated (controllers cover writable entities
+only). Its `CREATE VIEW` DDL is emitted by the Node `meta migrate` from the
+projection's `origin.*` children — never hand-author the view SQL for a shape origins
+can express (an unmodeled view is unmanaged and drifts silently).
+
 Metadata lives under `src/main/metaobjects/` in the same canonical JSON the other
 ports read — fused-key form, `source.rdb` + `@table`, `@column` for a renamed
 physical column.

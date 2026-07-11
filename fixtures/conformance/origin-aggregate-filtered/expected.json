@@ -1,0 +1,95 @@
+{
+  "metadata.root": {
+    "package": "acme::commerce",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "weeks",
+                "@objectRef": "acme::commerce::Week"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Week",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "status"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "ProgramSummary",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_program_summary"
+              }
+            },
+            {
+              "field.int": {
+                "name": "activeWeekCount",
+                "children": [
+                  {
+                    "origin.aggregate": {
+                      "@agg": "count",
+                      "@filter": {
+                        "status": {
+                          "eq": "active"
+                        }
+                      },
+                      "@of": "acme::commerce::Week.id",
+                      "@via": "acme::commerce::Program.weeks"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

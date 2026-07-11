@@ -63,7 +63,13 @@ classify it (using the classification scheme in `SKILL.md`) and route the cutove
 - **`source.rdb`** (`@table`, `@schema`) — hunt hard-coded physical table/schema names that
   diverge from the default naming the source models.
 - **`@kind` = `view` / `materializedView`** — hunt hand-written SQL views where an authored
-  projection source (read-only `@kind`) belongs.
+  projection source (read-only `@kind`) belongs. Apply the **view-necessity test** (SKILL.md,
+  drift signature 8): a hand-written `CREATE VIEW` (or read-only SQL mirroring a read model) is a
+  CODEGEN CANDIDATE when its shape is expressible via `origin.passthrough` / `origin.aggregate` /
+  `origin.collection` + `extends` — convert it to an `object.projection` so `meta migrate` emits
+  the view DDL. It is BESPOKE-keep only when a NAMED irreducible construct (recursive CTE, window
+  function, set op) blocks projection authoring. `meta verify --db` can't see an unmodeled view,
+  so this is audit-only.
 - **`@kind` = `storedProc` / `tableFunction`** (`@parameterRef`) — hunt hand-called procs /
   table functions that a modeled callable source with `@parameterRef` already describes.
 - **`@role` = `primary`** (multi-source write-through) — hunt manual CQRS / write-through

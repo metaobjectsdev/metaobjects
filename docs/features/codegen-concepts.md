@@ -15,8 +15,13 @@ See also: [ADR-0034 (scaffold-and-own)](../../spec/decisions/ADR-0034-codegen-sc
 
 If the metadata fully describes it (FK references, CRUD, validator chains, type-safe
 finders, relations), generate it. The only things you hand-write are what metadata
-genuinely *cannot* express (custom SQL views, regex from outside the model, business
-logic). This is the raison d'être; when in doubt, generate.
+genuinely *cannot* express (regex from outside the model, business logic, and
+*irreducible* SQL views — recursive CTEs, window functions, set ops). This is the
+raison d'être; when in doubt, generate. **Most SQL views are not irreducible:** a
+derived/aggregate read model is an [`object.projection`](source-kinds.md) whose
+`CREATE VIEW` DDL is generated from its `origin.*` children — hand-writing that view
+is drift, and because an unmodeled view is *unmanaged*, `meta verify --db` can't
+even see it.
 
 ## 2. You own your codegen (scaffold-and-own)
 

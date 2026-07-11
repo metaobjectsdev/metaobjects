@@ -39,6 +39,9 @@ public static class OriginConstants
     public const string ORIGIN_AGGREGATE_ATTR_AGG = "agg";
     public const string ORIGIN_AGGREGATE_ATTR_OF  = "of";
     public const string ORIGIN_AGGREGATE_ATTR_VIA = "via";
+    // @filter (attr.filter object): optional scoping predicate on the aggregated
+    // rows, rendered as SQL FILTER (WHERE ...) by the projection view emitter.
+    public const string ORIGIN_AGGREGATE_ATTR_FILTER = "filter";
 
     // collection attrs — a relationship-derived array of nested view-objects.
     // @via is the dotted relationship path (or a wildcard selector like "*.User"

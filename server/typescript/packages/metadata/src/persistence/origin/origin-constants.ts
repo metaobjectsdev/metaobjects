@@ -40,6 +40,10 @@ export const ORIGIN_COLLECTION_ATTR_VIA = "via";
 export const ORIGIN_AGGREGATE_ATTR_AGG = "agg";
 export const ORIGIN_AGGREGATE_ATTR_OF  = "of";
 export const ORIGIN_AGGREGATE_ATTR_VIA = "via";
+// @filter (attr.filter object): optional scoping predicate restricting which
+// related rows the aggregate spans — rendered as SQL FILTER (WHERE …). Same
+// structured shape as a preset filter; consumed by the projection view emitter.
+export const ORIGIN_AGGREGATE_ATTR_FILTER = "filter";
 
 // aggregate function vocabulary
 export const AGGREGATE_FUNCTIONS = ["count", "sum", "avg", "min", "max"] as const;

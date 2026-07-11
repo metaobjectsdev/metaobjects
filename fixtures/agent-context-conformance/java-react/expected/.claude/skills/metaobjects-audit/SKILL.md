@@ -200,7 +200,7 @@ to author). Advisory severity — a modernization opportunity, not a failing fin
 | **CODEGEN CANDIDATE (high)** | Standard CRUD/list/form over a modeled or modelable entity. | Author the view + generate; parity-gate. |
 | **CODEGEN CANDIDATE (partial)** | Generatable data layer, bespoke presentation. | Generate data layer; keep viz hand-written. |
 | **DYNAMIC-RUNTIME CANDIDATE** | Behavior that could be metadata-driven at runtime. | Assess runtime-metadata feasibility. |
-| **BESPOKE (keep)** | Genuine custom: aggregations, graph, SSE, auth, search, viz. | Leave hand-written — still import generated types. |
+| **BESPOKE (keep)** | Genuine custom: irreducible SQL (recursive CTEs, window functions, set ops — NOT plain count/sum/avg rollups, which are `origin.aggregate` on a projection), graph, SSE, auth, search, viz. | Leave hand-written — still import generated types. |
 
 **Gold-standard exception.** A hand-written component that *derives* from generated metadata
 cannot drift — flag as good. A "bespoke" component hardcoding a shape metadata knows is a
@@ -220,6 +220,9 @@ Per finding: `file:line` → what → generated-equivalent exists? → recommend
 5. **Runtime schema patching** (`ALTER TABLE … ADD COLUMN IF NOT EXISTS`, `_ensure_schema()`) — N schema owners.
 6. **N declarations of one shape** — same entity as Drizzle table + Zod schema + Pydantic model + hand dataclass; target is 1 + N generated.
 7. **`own*()` accessor read of an effective property** (ADR-0039) — `ownAttr` / `ownFields` / `own_children` / bare Python `attr(` / `getMetaAttr(name, false)` / native `IsArray` used to read a value or iterate members outside the sanctioned subclass-emit / own-serializer / `@dbColumnType` cases → silently drops `extends`-inherited values. A **correctness defect** (axis G2), not advisory.
+8. **Hand-written `CREATE VIEW` / read-only SQL standing in for a projection (view-necessity test).** Grep migrations, checked-in `.sql`, and repository/query code for `CREATE [OR REPLACE] [MATERIALIZED] VIEW`, and for hand-rolled read-only queries that mirror a read model — a pure-`SELECT` repository/service method with joins or `GROUP BY` feeding a DTO, or a raw-SQL escape (`db.execute(sql…)`, `FromSqlRaw`, a JPA @Query with hand-written SQL). For each, run the **necessity test** — can `object.projection` + origins express this shape? It can when every output column is (a) a base-entity or relationship-joined column → `origin.passthrough` (`@from` / `@via`), (b) a count/sum/avg/min/max over related rows → `origin.aggregate` (`@agg` / `@of` / `@via`, optionally row-scoped with `@filter`), (c) a child collection → `origin.collection` (`@via`), or (d) a column borrowed via `extends` — and the joins follow declared relationships / `identity.reference` FKs.
+   - **Expressible → CODEGEN CANDIDATE (high):** convert to an `object.projection` with a read-only `source.rdb` `@kind: view` child, let `meta migrate` emit the `CREATE VIEW`, and consume the generated read-only query — the hand-written view is a second source of truth for a derivable shape. Flag in the finding that **`meta verify --db` cannot catch this**: an unmodeled DB view is *unmanaged*, so this audit is the only gate that sees it. Parity-gate: the generated view returns row-identical results before the hand-written SQL is deleted.
+   - **Not expressible → BESPOKE (keep), with a NAMED justification:** record the construct that makes it irreducible (recursive CTE, window function / `OVER`, `UNION` / `INTERSECT` / `EXCEPT`, `DISTINCT ON`, lateral join, non-aggregate expression column). "It's an aggregation" is NOT a justification — plain count/sum/avg/min/max rollups are `origin.aggregate`.
 
 ---
 
@@ -238,6 +241,10 @@ Per finding: `file:line` → what → generated-equivalent exists? → recommend
   own + customize / author a template-spec / fix upstream / stopgap.
 - **Verify the DB artifact, not just the types** — computed view columns may appear in the
   contract but be dropped from the view DDL; the contract may lie.
+- **A hand-authored DB view is invisible to `meta verify --db`.** An unmodeled view is
+  *unmanaged* (informational only — never actionable drift, never auto-dropped), so a
+  hand-written view standing in for an expressible `object.projection` can never be
+  outsourced to the drift gate; hunt it here (drift signature 8, below).
 - **Version skew:** check *actually-resolved* package versions, not declared; consuming a fix
   requires a coordinated lockstep bump, not a source-file copy.
 

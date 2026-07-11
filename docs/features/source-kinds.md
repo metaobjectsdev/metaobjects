@@ -52,6 +52,16 @@ entity's primary source must be writable). A projection's identity is optional a
 present, MUST extend an entity identity; the example below omits it (a keyless read
 model).
 
+**The view's SQL is generated — never hand-write it.** The `CREATE VIEW` body is
+derived from the projection's `origin.*` children (passthrough columns, aggregates,
+collections) and emitted by the Node `meta migrate` (schema migrations are Node-owned
+for every port — ADR-0015). Hand-authoring the view SQL for a shape the origins can
+express is a second source of truth that drifts silently — and because an unmodeled DB
+view is *unmanaged*, `meta verify --db` can't even see it. Reach for a hand-written
+view **only** when a construct origins can't express (recursive CTE, window function,
+set operation) blocks projection authoring — then keep that DDL in a hand-edited
+migration file and justify it in review.
+
 ```json
 {
   "object.projection": {
@@ -73,6 +83,18 @@ model).
 `origin.*` children declare where each field's value comes from — see
 [templates-and-payloads.md](templates-and-payloads.md) for the full `origin`
 vocabulary (`passthrough`, `aggregate`, `collection`).
+
+A `count`/`sum`/`avg`/`min`/`max` can be **row-scoped** with an optional `@filter` — a
+structured predicate (the same shape as a preset filter) that the view emitter renders
+as SQL `FILTER (WHERE …)` (Postgres) or a portable `CASE WHEN` (SQLite). For example, a
+max over only the active rows — the filtered-scalar shape a plain aggregate can't express:
+
+```json
+{ "field.int": { "name": "activeMax", "children": [
+  { "origin.aggregate": { "@agg": "max", "@of": "Week.ordinal",
+    "@via": "Program.weeks", "@filter": { "status": "active" } } }
+]}}
+```
 
 ### Stored procedure
 
@@ -182,8 +204,9 @@ object AuthorViewTable : Table("v_author") {
 ### C#
 
 `MetaObjects.Codegen` emits `OwnsOne` / `DbSet` wiring as appropriate; for `@kind:
-"view"` the generated `AppDbContext` calls `entity.ToView("v_author")`. The
-`meta migrate` command emits a `CREATE VIEW` body for projections.
+"view"` the generated `AppDbContext` calls `entity.ToView("v_author")`. The `CREATE
+VIEW` body is emitted by the **Node** `meta migrate` (schema is Node-owned — ADR-0015;
+the C# migrate surface was removed), not by `dotnet meta`.
 
 ```csharp
 // generated/AppDbContext.cs (excerpt) — view registration

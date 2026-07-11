@@ -17,7 +17,12 @@ Drift is any place where a derived artifact has fallen out of sync with the
 metadata that should define it. The ones a developer must actively guard:
 
 - **DB-vs-metadata** — the live database schema has diverged from the metadata
-  (a column the metadata no longer declares, a missing index, a type mismatch).
+  (a column the metadata no longer declares, a missing index, a type mismatch). A
+  **modeled projection's** view body is compared too — a changed `CREATE VIEW` emits
+  a `replace-view`. But a **hand-authored, unmodeled view is *unmanaged*** (reported
+  as informational, never failed, never dropped), so a hand-written view standing in
+  for an expressible `object.projection` is the one drift class `verify --db` can't
+  catch — the `metaobjects-audit` skill is the only gate that sees it.
 - **Generated-vs-metadata (codegen)** — committed generated code no longer matches
   what the current metadata would emit (someone edited a `@generated` file, or
   forgot to regenerate after changing metadata).

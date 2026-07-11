@@ -3092,6 +3092,13 @@
           "description": "Aggregate function applied over the relationship path: count, sum, avg, min, or max."
         },
         {
+          "name": "filter",
+          "valueType": "filter",
+          "isArray": false,
+          "required": false,
+          "description": "Optional scoping filter restricting which related rows the aggregate spans, rendered as a SQL FILTER (WHERE ...) clause. Structured filter object desugared to canonical { field: { op: value } } form at parse time."
+        },
+        {
           "name": "of",
           "valueType": "string",
           "isArray": false,

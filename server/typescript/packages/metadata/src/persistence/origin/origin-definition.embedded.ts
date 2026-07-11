@@ -83,6 +83,14 @@ export const ORIGIN_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Dotted relationship path from the base entity to the aggregated rows (e.g. 'Program.weeks' or 'Program.weeks.workouts'). May be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (FR-024, ADR-0029)."
+        },
+        {
+          "type": "attr",
+          "subType": "filter",
+          "name": "filter",
+          "min": 0,
+          "max": 1,
+          "description": "Optional scoping filter restricting which related rows the aggregate spans, rendered as a SQL FILTER (WHERE ...) clause. Structured filter object desugared to canonical { field: { op: value } } form at parse time."
         }
       ]
     },

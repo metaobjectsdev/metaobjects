@@ -51,6 +51,12 @@ public static class OriginSchema
             ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
             Required: false,
             Description: "Dotted relationship path from the base entity to the aggregated rows (e.g. 'Program.weeks' or 'Program.weeks.workouts'). May be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (FR-024, ADR-0029)."),
+
+        new AttrSchema(
+            Name: OriginConstants.ORIGIN_AGGREGATE_ATTR_FILTER,
+            ValueType: AttrConstants.ATTR_SUBTYPE_FILTER,
+            Required: false,
+            Description: "Optional scoping filter restricting which related rows the aggregate spans, rendered as a SQL FILTER (WHERE ...) clause. Structured filter object desugared to canonical { field: { op: value } } form at parse time."),
     ];
 
     private static readonly IReadOnlyList<AttrSchema> CollectionOriginAttrs =

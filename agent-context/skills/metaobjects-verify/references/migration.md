@@ -127,6 +127,35 @@ A non-unique recency index is `index.lookup`:
     "@orders": ["asc", "desc"], "@where": "archived_at IS NULL" } }
 ```
 
+The `@where` / `@using` / `@expr` / `@orders` attributes are **index** physical
+escapes on `identity.secondary` / `index.lookup` — they are NOT a raw-SQL escape
+hatch for views. There is no attribute that injects hand-written SQL into a
+projection view body (by design — see below).
+
+## Projection views (generated view DDL)
+
+A read-only projection (`object.projection` with a `source.rdb` `@kind: view` child)
+does **not** get a hand-written `CREATE VIEW`. `meta migrate` synthesizes the view
+DDL from the projection's `origin.*` children — `passthrough` columns, `aggregate`
+rollups (`count`/`sum`/`avg`/`min`/`max`), and `collection` joins — through the one
+canonical view-SQL emitter shared with drift detection.
+
+- Change the projection (add a passthrough, change an aggregate) → `meta migrate`
+  emits a `create-view` / `replace-view`; a change to a source-table column the view
+  selects auto-recreates the dependent view.
+- `meta verify --db` **body-compares** a modeled view — a live `CREATE VIEW` that no
+  longer matches the projection is `replace-view` drift.
+- A **hand-authored, unmodeled** DB view is *unmanaged* — never diffed, never
+  dropped, never reported as actionable drift. That is the blind spot: a hand-written
+  view that could have been a projection drifts silently, so it is caught by the
+  `metaobjects-audit` skill, not here.
+
+**Do not hand-author view SQL for a shape origins can express** — model it as a
+projection so the view DDL is generated and drift-checked. The only case for
+hand-written view DDL is a genuinely irreducible view (recursive CTE, window
+function, set operation) that origins can't express; carry that in a hand-edited
+migration file.
+
 ## Adopting an existing database (non-destructive)
 
 `meta verify --db` / `meta migrate` can reach **zero drift** against a hand-built

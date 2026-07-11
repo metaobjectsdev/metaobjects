@@ -47,6 +47,7 @@ const EXPECTED: Record<string, Record<string, ExpectedAttr>> = {
     },
     of: { valueType: "string", required: true },
     via: { valueType: "string", required: false },
+    filter: { valueType: "filter", required: false },
   },
   collection: {
     via: { valueType: "string", required: true },

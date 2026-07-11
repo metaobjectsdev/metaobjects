@@ -22,3 +22,6 @@ ORIGIN_ATTR_CONVERT = "convert"
 # aggregate attrs
 ORIGIN_ATTR_AGG = "agg"
 ORIGIN_ATTR_OF = "of"
+# @filter (attr.filter object): optional scoping predicate on the aggregated rows,
+# rendered as SQL FILTER (WHERE ...) by the projection view emitter.
+ORIGIN_ATTR_FILTER = "filter"

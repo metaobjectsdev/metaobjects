@@ -11,6 +11,7 @@ import {
   ORIGIN_AGGREGATE_ATTR_AGG,
   ORIGIN_AGGREGATE_ATTR_OF,
   ORIGIN_AGGREGATE_ATTR_VIA,
+  ORIGIN_AGGREGATE_ATTR_FILTER,
   RELATIONSHIP_ATTR_OBJECT_REF,
   RELATIONSHIP_ATTR_CARDINALITY,
   CARDINALITY_ONE,
@@ -31,10 +32,6 @@ import type {
   JoinNode, JoinTree, SelectColumn, SelectSpec, ViewSpec, ViewFilterClause,
 } from "./view-spec.js";
 
-/** The optional scoping-filter attr on origin.aggregate (`@filter`). Not part of the
- *  metamodel registry vocabulary (kept here, codegen-local, to avoid a cross-port
- *  metamodel change); the loader stores it as a plain attr and codegen desugars it. */
-const ORIGIN_AGGREGATE_ATTR_FILTER = "filter";
 /** Compose keys in the attr.filter shape. */
 const FILTER_AND = "and";
 const FILTER_OR = "or";

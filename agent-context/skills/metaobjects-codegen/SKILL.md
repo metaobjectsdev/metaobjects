@@ -45,8 +45,12 @@ Every emitted file carries a `@generated` header. This is load-bearing:
 
 Practical rule: **pattern-derivable-from-metadata = regenerate; business logic =
 hand-write in a non-generated file.** FK columns, CRUD, validator chains,
-type-safe finders, `relations()` blocks — all derived, never hand-coded. Custom
-SQL views, regex from outside metadata, and domain logic are what you hand-write.
+type-safe finders, `relations()` blocks — all derived, never hand-coded. What you
+hand-write is what metadata genuinely can't express: regex from outside metadata,
+domain logic, and *irreducible* SQL views (recursive CTEs, window functions, set
+ops). Most views are NOT irreducible — model them as an `object.projection` and the
+view DDL is generated (see the projection bullet below); a hand-written view for a
+shape origins can express is drift the drift gate can't even see.
 
 ## Selecting generators by stable name
 
@@ -86,6 +90,14 @@ the data access too.
   `meta migrate` its DB view), and you **call that generated query from your
   route**. Declaring the projection is only half the win — *consuming* its
   generated query is the other half.
+  - **Never hand-author the view SQL for a shape origins can express.** The
+    `CREATE VIEW` body is emitted by the Node `meta migrate` from the projection's
+    `origin.*` children — hand-writing it is a second source of truth that drifts
+    silently, because an unmodeled DB view is *unmanaged*: `meta verify --db` never
+    flags it. Hand-written view SQL is legitimate only when a named construct
+    origins can't express (recursive CTE, window function, set op) blocks
+    projection authoring — then keep that DDL in a hand-edited migration file and
+    justify it in review.
 
 `meta gen --list` prints every generator by stable name; the `generators` array in
 `metaobjects.config.ts` is where you opt each one in or out.

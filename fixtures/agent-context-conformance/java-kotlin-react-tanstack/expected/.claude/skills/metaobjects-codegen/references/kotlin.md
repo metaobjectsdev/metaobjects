@@ -106,6 +106,13 @@ All live in `metaobjects-codegen-kotlin` under
 | `KotlinStoredProcGenerator` | stored-procedure call wrappers for `source.rdb` `@kind="storedProc"` |
 | `KotlinFilterAllowlistGenerator` | per-entity filter allowlist |
 
+**Projections (read-only views).** For an `object.projection` (read-only `source.rdb`
+`@kind: view` child), `KotlinExposedTableGenerator` emits a read-only Exposed `Table`
+wrapper (same column mapping, no write path). The `CREATE VIEW` DDL is emitted by the
+Node `meta migrate` from the projection's `origin.*` children — never hand-author the
+view SQL for a shape origins can express (an unmodeled view is unmanaged and drifts
+silently).
+
 Metadata lives under `src/main/metaobjects/` in the same canonical JSON the other
 ports read — fused-key form, `source.rdb` + `@table`, `@column` for a renamed
 physical column.
