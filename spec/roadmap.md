@@ -181,6 +181,15 @@ properly without holding the GA.
 - **[OPTIONAL] FR-025 — cross-port package-binding codegen config** (ready for implementation) — pulls into 1.0 *if* FR-024's cross-package generated imports need it; otherwise 1.1.
 - **[OPTIONAL] MCP exposure** — completes the prompt pillar's library side; pull to 1.0 only if
   "4 complete pillars" is a GA marketing bar, else 1.1.
+- **Reference-app coordination (wizardsofodd).** A live adopter reference —
+  [wizardsofodd.com](https://wizardsofodd.com), source at
+  [Draagon/wizardsofodd](https://github.com/Draagon/wizardsofodd) — is public: one metadata spine
+  drives its Cloudflare D1 schema, API types, LLM prompts, and SSE protocol, drift-gated in CI. As
+  part of the 1.0 launch: (1) **bump the reference to the 1.0 packages via a public, drift-gated PR**
+  — a green gate publicly demonstrates upgrade safety (the Dependabot `@metaobjectsdev/*` group PR
+  does this); (2) link it from **metaobjects.dev** as the "see it in production" proof (play it live /
+  read the source / watch the drift gate catch a rename); (3) keep it ≤ one published line behind —
+  fold "bump the reference app" into the release checklist so it never lags.
 
 ### 1.1 — Serialization foundation + connected-systems tier
 
