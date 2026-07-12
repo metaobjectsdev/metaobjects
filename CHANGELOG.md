@@ -7,6 +7,33 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.15.20] — 2026-07-12
+
+_npm `0.15.20` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
+_Coordinated release: npm 0.15.20 · PyPI 0.15.12 · NuGet 0.15.10 · Maven 7.7.10._
+_**BREAKING** — ADR-0042 bare-reference resolution; see Migration below. Shipped as a PATCH with the breaking notice in this entry (the pre-1.0 convention used by the 0.15.1 / 0.15.17 breaking releases), not signalled via the version number._
+
+### Changed
+
+- **BREAKING — [ADR-0042](spec/decisions/ADR-0042-bare-references-are-package-local.md): bare references are package-local.** A bare metadata reference (no `::`) now resolves in the referrer's package only, else a root-level (empty-package) object; every cross-package reference must be fully qualified. This retires ADR-0041's one-week-old "unique-anywhere" bare resolution (a bare ref silently binding across a package boundary), resolving the ADR-0032/ADR-0041 contradiction. The contract is uniform across every ref-bearing attribute — `@objectRef` (relationship / `field.object` / `field.map`), `@references`, the origin `@from`/`@of`/`@via` heads and hops, `@payloadRef`/`@responseRef`/`@parameterRef`, and now **`@through`** (brought into the desugar + ref set); `extends` is unchanged. Coordinated + conformance-gated across all five ports (TS / Python / Java / Kotlin / C#). Fixes #191.
+
+### Removed
+
+- **`ERR_AMBIGUOUS_REF` is retired.** With bare = package-local, cross-package ambiguity is unreachable; replace any handling of it with the per-attr unresolved codes (below).
+
+### Added
+
+- **`ERR_UNRESOLVED_OBJECT_REF`** — a dangling `field.object` / `field.map` `@objectRef` (present but resolving to no object) now fails closed at load, naming same-short-name objects in other packages so you can qualify it. Previously such a ref loaded clean and surfaced four layers downstream as a misleading `ERR_VAR_NOT_ON_PAYLOAD` (#191).
+
+### Fixed
+
+- **`meta verify --templates` now drift-checks `template.output @kind=email` and document-output bodies (#193).** The check gated on `@textRef`, so email templates (which use `@subjectRef`/`@htmlBodyRef`/`@textBodyRef`) were skipped and a mustache `{{field}}` that drifted from its `@payloadRef` was only caught later at `meta gen`. Every renderable ref is now verified against the payload.
+
+### Migration
+
+- **Qualify every cross-package reference with its package (FQN).** A bare reference that previously resolved to an object in another package now fails to resolve — the error hands you the exact FQN to write. YAML-authored models are unaffected (a bare ref already folds to the current package); this only affects hand-written canonical JSON that relied on unique-anywhere, or code handling the removed `ERR_AMBIGUOUS_REF`.
+
 ## [0.15.19] — 2026-07-11
 
 _Coordinated release: npm 0.15.19 · PyPI 0.15.11 · NuGet 0.15.9 · Maven 7.7.9. Additive, non-breaking._
