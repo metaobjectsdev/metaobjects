@@ -2,7 +2,7 @@
 
 ## Status
 
-**Accepted** (2026-07-05).
+**Accepted** (2026-07-05). **Amended by [ADR-0042](ADR-0042-bare-references-are-package-local.md)** (2026-07-12): §2(b) "unique elsewhere" and §2(c) `ERR_AMBIGUOUS_REF` are superseded — a bare reference is package-local (referrer's package or root only); cross-package references must be fully qualified. §1 (FQN-exact) and §2(a) (same-package preference) stand.
 
 ## Context
 
