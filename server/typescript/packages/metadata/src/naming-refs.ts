@@ -29,7 +29,7 @@
 import type { MetaData } from "./shared/meta-data.js";
 import { PACKAGE_SEPARATOR, PACKAGE_PARENT, CHILD_REF_SEPARATOR } from "./shared/structural.js";
 import { TYPE_OBJECT } from "./shared/base-types.js";
-import { RELATIONSHIP_ATTR_OBJECT_REF } from "./core/relationship/relationship-constants.js";
+import { RELATIONSHIP_ATTR_OBJECT_REF, RELATIONSHIP_ATTR_THROUGH } from "./core/relationship/relationship-constants.js";
 import { FIELD_ATTR_OBJECT_REF } from "./core/field/field-constants.js";
 import { IDENTITY_REFERENCE_ATTR_REFERENCES } from "./core/identity/identity-constants.js";
 import {
@@ -52,12 +52,15 @@ const PARENT_PREFIX = PACKAGE_PARENT + PACKAGE_SEPARATOR; // "..::"
  * a dotted relationship/field tail — expandRef preserves the tail);
  * `@parameterRef`/`@payloadRef`/`@responseRef` reference value-objects. These are
  * expanded by the YAML desugar and rejected (when still relative) by the
- * canonical-JSON guard. `@sourceRefField` (a FK FIELD name, not an object ref)
- * and `@through` are intentionally NOT in this set (out of scope for FR-032 T-slice).
+ * canonical-JSON guard. `@through` (the M:N junction ref) is in the set per
+ * ADR-0042 §4 — it desugars to FQN and resolves package-local like every other
+ * object ref. `@sourceRefField` (a FK FIELD name, not an object ref) is NOT in
+ * the set.
  */
 export const REF_BEARING_ATTR_NAMES: ReadonlySet<string> = new Set<string>([
   RELATIONSHIP_ATTR_OBJECT_REF, // = FIELD_ATTR_OBJECT_REF (same spelling "objectRef")
   FIELD_ATTR_OBJECT_REF,
+  RELATIONSHIP_ATTR_THROUGH, // ADR-0042: the M:N junction ref joins the desugar+resolution set.
   IDENTITY_REFERENCE_ATTR_REFERENCES,
   ORIGIN_PASSTHROUGH_ATTR_FROM,
   ORIGIN_PASSTHROUGH_ATTR_VIA, // = ORIGIN_AGGREGATE_ATTR_VIA = ORIGIN_COLLECTION_ATTR_VIA ("via")
@@ -146,56 +149,79 @@ export function expandRef(raw: string, packageContext: string): string {
 }
 
 /**
- * FR-032 — does a root-level object `node` satisfy an (already-expanded)
- * object reference `ref`? After the YAML desugar + corpus sweep every ref is
- * fully qualified, so resolution is a pure FQN match. Objects keep a BARE
- * `fqn()` per the FR5d cross-port contract, so the canonical FQN accessor is
- * `resolutionKey()` (`<package | fileDefaultPackage>::<name>`) — this mirrors
- * `super-resolve`'s `findInTree`. The bare `name`/`fqn()` arms cover legacy
- * same-tree refs and root-level (empty-package) objects.
+ * ADR-0042 — does root-level object `node` satisfy object reference `ref`,
+ * declared by a node whose effective package is `referrerPkg`? A single
+ * package-local matcher:
+ *   - **FQN** `ref` (contains `::`) → EXACT match on `resolutionKey()`. No
+ *     bare-tail fallback, so an FQN pointing at one package never binds a
+ *     same-named object in another.
+ *   - **bare** `ref` (no `::`) → the referrer's OWN package
+ *     (`<referrerPkg>::<ref>`), else a **root-level** (empty-package) object
+ *     whose resolution key IS `ref`. No cross-package bare resolution, no
+ *     globally-unique scan.
  *
- * This is the single matcher the non-super resolvers (origin `@from`/`@of`/
- * `@via` heads, template `@payloadRef`/`@responseRef`, source `@parameterRef`)
- * share, so FQN matching behaves identically everywhere a ref resolves.
+ * Objects keep a BARE `fqn()` per the FR5d cross-port contract, so the canonical
+ * FQN accessor is `resolutionKey()` (`<package | fileDefaultPackage>::<name>`) —
+ * this mirrors `super-resolve`'s `findInTree`. This is the single matcher the
+ * non-super resolvers (origin `@from`/`@of`/`@via` heads, template
+ * `@payloadRef`/`@responseRef`, source `@parameterRef`, relationship `@through`)
+ * share, so resolution behaves identically everywhere a ref resolves.
+ *
+ * `referrerPkg` defaults to `""` — the fail-closed FQN-exact-plus-root-level
+ * behavior. The LOADER always passes the real referrer package (bare refs there
+ * must resolve package-locally); downstream CODEGEN resolvers, which run on
+ * already-validated metadata whose refs are FQN, may omit it. An empty
+ * `referrerPkg` never binds a bare ref across a package boundary (fail-closed),
+ * so omission can only fail to resolve — never mis-resolve.
  */
-export function refMatchesObject(node: MetaData, ref: string): boolean {
-  return node.resolutionKey() === ref || node.fqn() === ref || node.name === ref;
-}
-
-/** The effective package of a root-level object (its `resolutionKey()` minus the
- *  trailing `::<name>`; "" for a root-level/empty-package object). */
-function objectPackage(node: MetaData): string {
+export function refMatchesObject(node: MetaData, ref: string, referrerPkg = ""): boolean {
   const key = node.resolutionKey();
-  const i = key.lastIndexOf(PACKAGE_SEPARATOR);
-  return i === -1 ? "" : key.slice(0, i);
+  if (ref.includes(PACKAGE_SEPARATOR)) return key === ref;
+  if (referrerPkg !== "" && key === `${referrerPkg}${PACKAGE_SEPARATOR}${ref}`) return true;
+  return key === ref; // root-level (empty-package) object whose key is the bare name
 }
 
 /**
- * Resolve a metadata OBJECT reference under the cross-package contract:
- *   - **FQN** (`ref` contains `::`) → EXACT match on `resolutionKey()`/`fqn()`.
- *     Never a bare-tail fallback, so an FQN pointing at one package never binds a
- *     same-named object in another (the cross-port bug this closes).
- *   - **bare** (no `::`) → prefer an object of that name in the REFERRER's own
- *     package; else a UNIQUE object of that name across all packages; else
- *     (>1 across OTHER packages, none in the referrer's) → `ambiguous`.
- *
- * `referrerPkg` is the effective package of the node carrying the ref. Returns
- * `{ node }` on a unique resolution, `{ ambiguous: true }` when a bare ref is
- * cross-package-ambiguous, or `{}` (node undefined) when nothing matches. The
- * SINGLE resolver every object-ref site shares so the contract is uniform.
+ * Resolve a metadata OBJECT reference under the ADR-0042 package-local contract
+ * (see `refMatchesObject` for the matcher). `referrerPkg` is the effective
+ * package of the node carrying the ref. Returns `{ node }` on resolution, or
+ * `{}` (node undefined) when nothing matches — there is NO ambiguous outcome
+ * (bare = package-local, so ambiguity is unreachable). The SINGLE resolver every
+ * object-ref site shares so the contract is uniform.
  */
 export function resolveObjectRef(
   root: MetaData,
   ref: string,
   referrerPkg: string,
-): { node?: MetaData | undefined; ambiguous?: boolean } {
+): { node?: MetaData | undefined } {
   const objects = root.children().filter((c) => c.type === TYPE_OBJECT);
   if (ref.includes(PACKAGE_SEPARATOR)) {
-    return { node: objects.find((c) => c.resolutionKey() === ref || c.fqn() === ref) };
+    return { node: objects.find((c) => c.resolutionKey() === ref) };
   }
-  const matches = objects.filter((c) => c.name === ref);
-  if (matches.length <= 1) return { node: matches[0] };
-  const own = matches.find((c) => objectPackage(c) === referrerPkg);
+  // Bare: PREFER the referrer's own package, THEN a root-level (empty-package)
+  // object — mirroring the loader symbol table's `byKey.get(localKey) ?? get(ref)`
+  // so both resolvers agree when a root-level object shares the bare name.
+  const localKey = referrerPkg !== "" ? `${referrerPkg}${PACKAGE_SEPARATOR}${ref}` : ref;
+  const own = objects.find((c) => c.resolutionKey() === localKey);
   if (own !== undefined) return { node: own };
-  return { ambiguous: true };
+  return { node: localKey !== ref ? objects.find((c) => c.resolutionKey() === ref) : undefined };
+}
+
+/**
+ * ADR-0042 §5 — a did-you-mean suffix for an UNRESOLVED object reference: the
+ * FQNs of same-short-name objects that DO exist (typically in other packages),
+ * so the author can qualify a bare ref they meant to point across a package
+ * boundary. Returns "" when no same-short-name object exists (nothing to
+ * suggest). Appended to the per-attr unresolved-ref error message.
+ */
+export function didYouMeanHint(root: MetaData, ref: string): string {
+  const { owner } = splitChildTail(ref);
+  const sep = owner.lastIndexOf(PACKAGE_SEPARATOR);
+  const shortName = sep === -1 ? owner : owner.slice(sep + PACKAGE_SEPARATOR.length);
+  const candidates = root
+    .children()
+    .filter((c) => c.type === TYPE_OBJECT && c.name === shortName)
+    .map((c) => c.resolutionKey());
+  if (candidates.length === 0) return "";
+  return ` An object named "${shortName}" exists in: ${candidates.join(", ")}. Qualify it with its package (FQN).`;
 }

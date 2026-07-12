@@ -27,7 +27,7 @@ describe("buildEnrichedPayloadTree — docs annotator payload walk", () => {
           { "field.object": { name: "fromAlpha", "@objectRef": "acme::alpha::Note" } },
           { "field.object": { name: "fromBeta", "@objectRef": "acme::beta::Note" } } ] } } ] } },
     );
-    const tree = buildEnrichedPayloadTree(root, "Digest");
+    const tree = buildEnrichedPayloadTree(root, "Digest", "acme::app");
     const alpha = tree.find((n) => n.name === "fromAlpha");
     const beta = tree.find((n) => n.name === "fromBeta");
     // The inner field name comes from the correctly-bound VO (pre-fix both were alphaText).

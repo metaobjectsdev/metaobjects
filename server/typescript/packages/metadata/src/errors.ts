@@ -71,12 +71,6 @@ export const ERROR_CODES = [
   // projection's base entity cannot be derived because its fields extend
   // multiple entities and no extended identity anchors the base.
   "ERR_AMBIGUOUS_PATH",
-  // Cross-package reference contract — a BARE reference (no `::`) to an object
-  // name that exists in MORE THAN ONE package, with no match in the referrer's
-  // OWN package, is ambiguous: the author must qualify it with the package
-  // (FQN). Applies to every object-ref-bearing attr (@objectRef, @references,
-  // @from/@of/@via heads, extends, @payloadRef/@responseRef, @through).
-  "ERR_AMBIGUOUS_REF",
   // FR-024 (ADR-0029 decision 6) — origin cardinality contract broken: a
   // passthrough @via path crosses a to-many hop (row-multiplying — you meant
   // aggregate), or an aggregate @via path is to-one at every hop (you meant
@@ -125,6 +119,11 @@ export const ERROR_CODES = [
   // ADR-0013 — a field.object REQUIRES @objectRef (open/untyped JSON uses
   // the physical @dbColumnType: jsonb escape hatch on field.string instead).
   "ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF",
+  // ADR-0042 — a field.object / field.map @objectRef does not resolve to any
+  // object in the loaded tree (a dangling target). Bare refs resolve
+  // package-locally (referrer's package, else root-level); FQN refs resolve
+  // exactly — a bare cross-package ref no longer binds elsewhere.
+  "ERR_UNRESOLVED_OBJECT_REF",
   // Source v2 (ADR-0007) error codes — enforcement added during the source-v2 rollout.
   "ERR_RESERVED_ATTR",
   "ERR_SOURCE_NO_PRIMARY",

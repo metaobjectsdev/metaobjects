@@ -90,7 +90,7 @@ function compile(dir: string, files: string[]): readonly ts.Diagnostic[] {
 describe("FR-004 T7 — THE DEMO (both failures)", () => {
   test("(a) compile-time: a wrong-shaped payload is rejected by the generated handle", async () => {
     const root = await loadRoot();
-    const payloads = generatePayloadInterfaces(root, "AuthorBrief");
+    const payloads = generatePayloadInterfaces(root, "AuthorBrief", "acme::ai");
     const handle = generateRenderHandle(root, "contentStrategyPrompt");
 
     // Sanity: the generators produced the demo inputs the plan describes.

@@ -57,6 +57,10 @@ describe("field.map loader validation", () => {
       - field.long: { name: id }
       - field.map: { name: m, ${mapBody} }
       - identity.primary: { fields: [id], generation: increment }
+  - object.value:
+      name: ToolSpec
+      children:
+      - field.string: { name: kind }
 `;
     const loader = new MetaDataLoader();
     const { writeFileSync, mkdtempSync } = await import("node:fs");

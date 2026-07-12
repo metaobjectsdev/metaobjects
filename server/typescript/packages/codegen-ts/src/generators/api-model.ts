@@ -95,7 +95,7 @@ import {
   TEMPLATE_KIND_DEFAULT,
   TYPE_SOURCE,
   SOURCE_ATTR_PARAMETER_REF,
-  refMatchesObject,
+  resolveObjectRef,
 } from "@metaobjectsdev/metadata";
 import {
   findByIdFnName,
@@ -759,10 +759,10 @@ function callableArgsRef(obj: MetaObject, root: MetaRoot): string | undefined {
     if (typeof ref === "string" && ref !== "") {
       // Only count it when it resolves to a value object (the template's guard).
       // ADR-0039: resolving — root has no super (children()==ownChildren()).
-      const vo = root
-        .children()
-        .find((c) => c.subType === OBJECT_SUBTYPE_VALUE && refMatchesObject(c, ref));
-      if (vo !== undefined) return ref;
+      // ADR-0042: a bare @parameterRef resolves in the callable entity's package.
+      const referrerPkg = obj.package ?? obj.fileDefaultPackage ?? "";
+      const vo = resolveObjectRef(root, ref, referrerPkg).node;
+      if (vo?.subType === OBJECT_SUBTYPE_VALUE) return ref;
     }
   }
   return undefined;

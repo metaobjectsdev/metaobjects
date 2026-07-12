@@ -44,7 +44,7 @@ const model = [
 describe("payload-codegen — typed payload interface (types only, no class/VO)", () => {
   test("emits an interface with scalar + nested-array fields and the element interface", async () => {
     const root = await loadRoot(model);
-    const out = generatePayloadInterfaces(root, "AuthorBrief");
+    const out = generatePayloadInterfaces(root, "AuthorBrief", "acme::ai");
     expect(out).toContain("export interface AuthorBrief {");
     expect(out).toContain("displayName: string;");
     expect(out).toContain("postCount: number;");
@@ -67,7 +67,7 @@ describe("payload-codegen — typed payload interface (types only, no class/VO)"
         },
       },
     ]);
-    const out = generatePayloadInterfaces(root, "Lists");
+    const out = generatePayloadInterfaces(root, "Lists", "acme::ai");
     expect(out).toContain("tags: string[];");
     expect(out).toContain("scores: number[];");
     expect(out).toContain("flags: boolean[];");
@@ -88,7 +88,7 @@ describe("payload-codegen — typed payload interface (types only, no class/VO)"
         },
       },
     ]);
-    const out = generatePayloadInterfaces(root, "MixedOptional");
+    const out = generatePayloadInterfaces(root, "MixedOptional", "acme::ai");
     expect(out).toContain("mandatory: string;");
     expect(out).toContain("discretionary?: string | null;");
     expect(out).toContain("explicitlyOptional?: string | null;");
@@ -125,7 +125,7 @@ describe("payload-codegen — generatePayloadInterfacesBatch", () => {
         },
       },
     ]);
-    const out = generatePayloadInterfacesBatch(root, ["A", "B"]);
+    const out = generatePayloadInterfacesBatch(root, ["A", "B"], "acme::ai");
     const lensDeclarations = out.match(/export interface Lens \{/g);
     expect(lensDeclarations).toHaveLength(1);
     expect(out).toContain("export interface A {");
@@ -153,7 +153,7 @@ describe("payload-codegen — FQN @objectRef (FR-032/ADR-0041) emits bare TS nam
         },
       },
     ]);
-    const out = generatePayloadInterfacesBatch(root, ["Report"]);
+    const out = generatePayloadInterfacesBatch(root, ["Report"], "acme::ai");
     // The defect emitted `notes: acme::ai::Note[];` and `export interface acme::ai::Note`.
     expect(out).not.toContain("::");
     expect(out).toContain("export interface Report {");

@@ -15,3 +15,8 @@ metadata:
           - identity.primary:
               name: pk
               fields: ["sku"]
+    - object.value:
+        name: Address
+        children:
+          - field.string:
+              name: street

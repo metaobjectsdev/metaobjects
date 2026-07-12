@@ -1,0 +1,20 @@
+{
+  "metadata.root": {
+    "package": "app::a",
+    "children": [
+      {
+        "object.value": {
+          "name": "Payload",
+          "children": [
+            {
+              "field.object": {
+                "name": "thing",
+                "@objectRef": "Thing"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

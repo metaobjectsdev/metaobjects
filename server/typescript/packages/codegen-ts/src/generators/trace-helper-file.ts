@@ -122,8 +122,13 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
         : "Format.JSON";
 
       // Collect VO names for interface emission (dedupe via batch emitter).
-      // Both refs are guaranteed strings by the guards above.
-      const interfaces = generatePayloadInterfacesBatch(ctx.loadedRoot, [payloadRef, responseRef]);
+      // Both refs are guaranteed strings by the guards above. ADR-0042: a bare
+      // ref resolves in the prompt's package.
+      const interfaces = generatePayloadInterfacesBatch(
+        ctx.loadedRoot,
+        [payloadRef, responseRef],
+        prompt.package ?? prompt.fileDefaultPackage ?? "",
+      );
 
       const requestType = payloadRef;
 

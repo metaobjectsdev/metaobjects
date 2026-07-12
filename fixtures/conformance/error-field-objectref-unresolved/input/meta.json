@@ -1,0 +1,39 @@
+{
+  "metadata.root": {
+    "package": "app",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Widget",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "widgets"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.object": {
+                "name": "config",
+                "@objectRef": "Settings",
+                "@storage": "jsonb"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

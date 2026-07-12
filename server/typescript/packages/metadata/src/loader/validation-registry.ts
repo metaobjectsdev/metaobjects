@@ -8,34 +8,35 @@
 
 import type { MetaData } from "../shared/meta-data.js";
 import { ParseError } from "../errors.js";
-import { refMatchesObject } from "../naming-refs.js";
+import { didYouMeanHint } from "../naming-refs.js";
 import { TYPE_OBJECT } from "../shared/base-types.js";
+import { PACKAGE_SEPARATOR } from "../shared/structural.js";
 import type { TypeRegistry } from "../registry.js";
 import type { LoaderCode, SymbolTable, ValidationContext } from "../validation-types.js";
 
 /** A symbol table of every top-level object, built once per load (the binder analogue). */
 class SymbolTableImpl implements SymbolTable {
-  private readonly byRef = new Map<string, MetaData>();
+  private readonly byKey = new Map<string, MetaData>();
 
   static build(root: MetaData): SymbolTableImpl {
     const t = new SymbolTableImpl();
     // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
     for (const child of root.children()) {
       if (child.type !== TYPE_OBJECT) continue;
-      if (child.name) t.byRef.set(child.name, child);
-      t.byRef.set(child.fqn(), child);
-      t.byRef.set(child.resolutionKey(), child);
+      // ADR-0042: key by the canonical resolution key ONLY (the FQN, or the bare
+      // name for a root-level/empty-package object) — NO bare-name fallback, so a
+      // bare ref never binds a same-named object in another package.
+      t.byKey.set(child.resolutionKey(), child);
     }
     return t;
   }
 
-  resolveObject(ref: string): MetaData | undefined {
-    const hit = this.byRef.get(ref);
-    if (hit) return hit;
-    for (const obj of this.byRef.values()) {
-      if (refMatchesObject(obj, ref)) return obj;
-    }
-    return undefined;
+  /** ADR-0042 package-local resolution: FQN → exact resolution-key match; bare →
+   *  the referrer's own package (`<referrerPkg>::<ref>`), else a root-level object. */
+  resolveObject(ref: string, referrerPkg: string): MetaData | undefined {
+    if (ref.includes(PACKAGE_SEPARATOR)) return this.byKey.get(ref);
+    const localKey = referrerPkg !== "" ? `${referrerPkg}${PACKAGE_SEPARATOR}${ref}` : ref;
+    return this.byKey.get(localKey) ?? this.byKey.get(ref);
   }
 }
 
@@ -54,10 +55,17 @@ class ValidationContextImpl implements ValidationContext {
  */
 export function runRegisteredValidation(root: MetaData, registry: TypeRegistry): ParseError[] {
   const ctx = new ValidationContextImpl(SymbolTableImpl.build(root));
-  walk(root);
+  walk(root, "");
   return ctx.errors;
 
-  function walk(node: MetaData): void {
+  function walk(node: MetaData, referrerPkg: string): void {
+    // ADR-0042: a top-level object establishes the package context for its
+    // subtree; nested ref-bearing nodes (relationship/field.object/
+    // identity.reference) resolve BARE refs against it. Nested nodes carry no
+    // `package`, so they inherit the enclosing object's (via fileDefaultPackage,
+    // else the threaded context).
+    const pkg =
+      node.type === TYPE_OBJECT ? (node.package ?? node.fileDefaultPackage ?? referrerPkg) : referrerPkg;
     const def = registry.find(node.type, node.subType);
     if (def) {
       for (const desc of def.references ?? []) {
@@ -66,7 +74,7 @@ export function runRegisteredValidation(root: MetaData, registry: TypeRegistry):
         const raw = node.attr(desc.attr);
         if (typeof raw !== "string" || raw === "") continue; // absence is the required-attr pass's job
         const entityRef = desc.dottedFieldPath ? (raw.split(".")[0] ?? raw) : raw;
-        const target = ctx.symbols.resolveObject(entityRef);
+        const target = ctx.symbols.resolveObject(entityRef, pkg);
         // Qualify the node name with its owning entity (e.g. "Order.items") so the error is
         // locatable from the message alone, not just the source envelope.
         const qname = node.parent?.name ? `${node.parent.name}.${node.name}` : node.name;
@@ -74,7 +82,7 @@ export function runRegisteredValidation(root: MetaData, registry: TypeRegistry):
           ctx.error(
             desc.errorCode,
             node,
-            `${node.type}.${node.subType} "${qname}" @${desc.attr} "${raw}" does not resolve to an object.`,
+            `${node.type}.${node.subType} "${qname}" @${desc.attr} "${raw}" does not resolve to an object.${didYouMeanHint(root, entityRef)}`,
           );
         } else if (
           target.type !== desc.targetType ||
@@ -93,6 +101,6 @@ export function runRegisteredValidation(root: MetaData, registry: TypeRegistry):
     }
     // ADR-0039: own — structural walk visiting every physical node once at its
     // declaration site (an inherited child is validated on its declaring parent).
-    for (const child of node.ownChildren()) walk(child);
+    for (const child of node.ownChildren()) walk(child, pkg);
   }
 }

@@ -24,7 +24,7 @@ import {
   OBJECT_SUBTYPE_VALUE,
   OBJECT_SUBTYPE_ENTITY,
 } from "../../core/object/object-constants.js";
-import { PACKAGE_SEPARATOR } from "../../shared/structural.js";
+import { resolveObjectRef } from "../../naming-refs.js";
 import { MetaSource } from "./meta-source.js";
 import {
   SOURCE_ATTR_PARAMETER_REF,
@@ -41,25 +41,13 @@ const CALLABLE_KINDS = new Set<string>([
 export function validateSourceParameterRef(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
 
-  // Pre-index every object by name, fqn AND effective FQN resolution key so
-  // resolution costs O(1) per source. FR-032 — @parameterRef is FQN-qualified
-  // after the desugar/sweep, but objects keep a BARE fqn() per the FR5d
-  // contract, so the FQN form `<package | fileDefaultPackage>::<name>` only
-  // matches via resolutionKey() (these fixtures declare package at metadata.root
-  // only, so obj.package is undefined and the file-default must be folded in).
-  const objectIndex = new Map<string, MetaData>();
   // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
   for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
-    objectIndex.set(obj.name, obj);
-    const fqn = obj.package !== undefined && obj.package !== ""
-      ? `${obj.package}${PACKAGE_SEPARATOR}${obj.name}`
-      : obj.name;
-    objectIndex.set(fqn, obj);
-    objectIndex.set(obj.resolutionKey(), obj);
-  }
-
-  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
-  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
+    // ADR-0042: a bare @parameterRef resolves package-local (this object's
+    // package, else root-level); an FQN resolves exactly. Shares the single
+    // resolveObjectRef matcher — NO bare-name-anywhere fallback (which would
+    // silently bind a same-named value-object in another package).
+    const referrerPkg = obj.package ?? obj.fileDefaultPackage ?? "";
     // ADR-0039: own — declaration-layer source iteration (mirrors validateSourceRoles).
     for (const source of obj.ownChildren().filter(
       (c): c is MetaSource =>
@@ -82,7 +70,7 @@ export function validateSourceParameterRef(root: MetaData): ParseError[] {
         continue;
       }
 
-      const target = objectIndex.get(ref);
+      const target = resolveObjectRef(root, ref, referrerPkg).node;
       if (target === undefined) {
         errors.push(
           new ParseError(

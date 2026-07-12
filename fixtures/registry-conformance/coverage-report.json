@@ -1,6 +1,6 @@
 {
   "registeredSubTypeCount": 64,
-  "exercisedSubTypeCount": 42,
+  "exercisedSubTypeCount": 43,
   "untestedSubTypes": [
     "attr.base",
     "attr.boolean",
@@ -11,7 +11,6 @@
     "attr.long",
     "attr.string",
     "field.base",
-    "field.map",
     "layout.base",
     "object.base",
     "origin.base",
@@ -169,6 +168,25 @@
         "instruction",
         "sortableDefaultOrder",
         "unique",
+        "xmlText"
+      ]
+    },
+    {
+      "key": "field.map",
+      "untestedAttrs": [
+        "column",
+        "db.indexed",
+        "dbColumnType",
+        "default",
+        "example",
+        "filterable",
+        "instruction",
+        "readOnly",
+        "required",
+        "sortable",
+        "sortableDefaultOrder",
+        "unique",
+        "valueType",
         "xmlText"
       ]
     },

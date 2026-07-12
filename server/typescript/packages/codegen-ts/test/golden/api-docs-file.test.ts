@@ -83,7 +83,7 @@ const COMMS_ORDER_TEMPLATE = JSON.stringify({
         "template.output": {
           name: "Order",
           "@kind": "document",
-          "@payloadRef": "Order",
+          "@payloadRef": "acme::sales::Order",
           "@textRef": "comms/order",
           "@format": "json",
         },

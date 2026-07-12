@@ -140,7 +140,7 @@ const COLLIDING_META = {
           name: "Order",
           package: "acme::comms",
           "@kind": "document",
-          "@payloadRef": "Order",
+          "@payloadRef": "acme::sales::Order",
           "@textRef": "comms/order",
           "@format": "html",
         },

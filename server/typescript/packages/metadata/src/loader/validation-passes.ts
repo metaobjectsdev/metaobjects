@@ -14,7 +14,7 @@ import type { MetaData } from "../shared/meta-data.js";
 import type { MetaObject } from "../core/object/meta-object.js";
 import type { MetaReferenceIdentity } from "../core/identity/meta-identity.js";
 import { ParseError } from "../errors.js";
-import { refMatchesObject, resolveObjectRef, REF_BEARING_ATTR_NAMES } from "../naming-refs.js";
+import { resolveObjectRef, didYouMeanHint } from "../naming-refs.js";
 import { PACKAGE_SEPARATOR, CHILD_REF_SEPARATOR } from "../shared/structural.js";
 import { resolvedSource, type ErrorSource } from "../source.js";
 import {
@@ -222,11 +222,14 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
       }
     }
 
+    // ADR-0042 — a bare @payloadRef/@responseRef resolves in the template's package.
+    const referrerPkg = tmpl.package ?? tmpl.fileDefaultPackage ?? "";
     // ADR-0039: resolving — a template may inherit @payloadRef via extends.
     const payloadRef = tmpl.attr(TEMPLATE_ATTR_PAYLOAD_REF);
     if (typeof payloadRef !== "string") continue; // absence handled by the required-attr schema check
     // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
-    const payload = root.children().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, payloadRef));
+    // ADR-0042: resolveObjectRef prefers the referrer's own package before a root-level object.
+    const payload = resolveObjectRef(root, payloadRef, referrerPkg).node;
     if (!payload || payload.subType !== OBJECT_SUBTYPE_VALUE) {
       // FR5d — @payloadRef is a reference; emit format=resolved with
       // referrer=template FQN, target=the unresolved payloadRef string.
@@ -245,7 +248,8 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
     const responseRef = tmpl.attr(TEMPLATE_ATTR_RESPONSE_REF);
     if (typeof responseRef === "string") {
       // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
-      const resVo = root.children().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, responseRef));
+      // ADR-0042: resolveObjectRef prefers the referrer's own package before a root-level object.
+      const resVo = resolveObjectRef(root, responseRef, referrerPkg).node;
       if (!resVo || resVo.subType !== OBJECT_SUBTYPE_VALUE) {
         errors.push(
           new ParseError(
@@ -282,56 +286,12 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
   return errors;
 }
 
-// ---------------------------------------------------------------------------
-// Cross-package reference ambiguity (the object-ref contract)
-// ---------------------------------------------------------------------------
-
-/**
- * A BARE object reference (no `::`) that names an object present in MORE THAN ONE
- * package, with NO match in the referrer's own package, is ambiguous → emit
- * ERR_AMBIGUOUS_REF (the author must qualify it with the package). An FQN ref is
- * exact (never ambiguous); a bare ref that matches the referrer's own package, or
- * exactly one package anywhere, resolves fine. Covers every object-ref-bearing
- * attr in `REF_BEARING_ATTR_NAMES` (@objectRef / @references / @from / @of / @via
- * / @parameterRef / @payloadRef / @responseRef) — the dotted `.child` tail of the
- * origin heads is stripped to the entity OWNER. `extends` is intentionally NOT
- * covered: its FR-032 super-resolver is same-package/root-strict and never
- * matches a packaged object by bare name, so a bare cross-package `extends` is
- * unresolved (ERR_UNRESOLVED_SUPER), not ambiguous.
- */
-export function validateCrossPackageRefs(root: MetaData): ParseError[] {
-  const errors: ParseError[] = [];
-  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
-    const referrerPkg = obj.package ?? obj.fileDefaultPackage ?? "";
-    const visit = (node: MetaData): void => {
-      for (const attrName of REF_BEARING_ATTR_NAMES) {
-        const raw = node.ownAttr(attrName);
-        if (typeof raw !== "string") continue;
-        // Owner = the object part; strip any FR-024 dotted `.child` tail. An FQN
-        // owner (has `::`) is resolved exactly and can never be ambiguous.
-        const dot = raw.indexOf(CHILD_REF_SEPARATOR);
-        const owner = dot === -1 ? raw : raw.slice(0, dot);
-        if (owner.includes(PACKAGE_SEPARATOR) || owner === "") continue;
-        if (!resolveObjectRef(root, owner, referrerPkg).ambiguous) continue;
-        const pkgs = root
-          .children()
-          .filter((c) => c.type === TYPE_OBJECT && c.name === owner)
-          .map((c) => c.resolutionKey());
-        errors.push(
-          new ParseError(
-            `${attrName} "${raw}" on ${obj.fqn()}: bare reference "${owner}" is ambiguous — it names an object ` +
-              `in multiple packages (${pkgs.join(", ")}) and none is in the referrer's package "${referrerPkg}". ` +
-              `Qualify it with the package (FQN).`,
-            { code: "ERR_AMBIGUOUS_REF", source: resolvedSource(node.source, obj.fqn(), owner) },
-          ),
-        );
-      }
-      for (const c of node.ownChildren()) visit(c);
-    };
-    visit(obj);
-  }
-  return errors;
-}
+// ADR-0042 — the cross-package ambiguity pass (ERR_AMBIGUOUS_REF) is RETIRED.
+// A bare reference now resolves package-locally (referrer's package, else
+// root-level) at every ref site via resolveObjectRef / refMatchesObject, so
+// cross-package ambiguity is unreachable; an unresolved ref fails closed with
+// its per-attr code (ERR_INVALID_RELATIONSHIP / ERR_INVALID_REFERENCE /
+// ERR_UNRESOLVED_OBJECT_REF / ERR_INVALID_ORIGIN / ERR_INVALID_TEMPLATE).
 
 // ---------------------------------------------------------------------------
 // @filterable without index validation
@@ -418,11 +378,11 @@ export function validateFilterableHasSupportedOps(root: MetaData): ParseError[] 
 // allowedValues on the origin.aggregate @agg attr schema — not here.
 // ---------------------------------------------------------------------------
 
-function _findObject(root: MetaData, name: string): MetaData | undefined {
-  // FR-032 — origin heads are FQN-qualified after the desugar/sweep; match on
-  // the effective FQN resolution key (with bare back-compat).
-  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
-  return root.children().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
+function _findObject(root: MetaData, name: string, referrerPkg: string): MetaData | undefined {
+  // ADR-0042 package-local resolution — an FQN resolves exactly on its
+  // resolution key; a bare name resolves in the referrer's package, else a
+  // root-level object. Shares the single resolveObjectRef matcher.
+  return resolveObjectRef(root, name, referrerPkg).node;
 }
 
 function _findField(obj: MetaData, name: string): MetaData | undefined {
@@ -490,6 +450,8 @@ function _validateFromPath(
   // FR5d — referrer is `<projection-FQN>::<fieldName>` (the canonical
   // "where the broken reference lives" identifier).
   const referrer = `${projection.fqn()}::${fieldName}`;
+  // ADR-0042 — a bare @from/@of head resolves in the projection's package.
+  const referrerPkg = projection.package ?? projection.fileDefaultPackage ?? "";
   const dotIdx = fromAttr.indexOf(".");
   if (dotIdx < 1 || dotIdx === fromAttr.length - 1) {
     // Malformed shape (not "Entity.field") — not a reference resolution
@@ -508,7 +470,7 @@ function _validateFromPath(
   }
   const entityName = fromAttr.slice(0, dotIdx);
   const targetFieldName = fromAttr.slice(dotIdx + 1);
-  const sourceObj = _findObject(root, entityName);
+  const sourceObj = _findObject(root, entityName, referrerPkg);
   if (!sourceObj) {
     // FR5d — entity half of the ref didn't resolve. target = full ref.
     errors.push(
@@ -555,6 +517,8 @@ function _validateViaPath(
   const projectionName = projection.name;
   // FR5d — referrer is `<projection-FQN>::<fieldName>`.
   const referrer = `${projection.fqn()}::${fieldName}`;
+  // ADR-0042 — a bare @via HEAD resolves in the projection's package.
+  const referrerPkg = projection.package ?? projection.fileDefaultPackage ?? "";
   const segments = viaAttr.split(".");
   if (segments.length < 2) {
     errors.push(
@@ -569,7 +533,7 @@ function _validateViaPath(
     return undefined;
   }
   const [entityName, ...relSegments] = segments as [string, ...string[]];
-  let currentObj = _findObject(root, entityName);
+  let currentObj = _findObject(root, entityName, referrerPkg);
   if (!currentObj) {
     errors.push(
       new ParseError(
@@ -624,7 +588,13 @@ function _validateViaPath(
       );
       return undefined;
     }
-    const nextObj = _findObject(root, refTarget);
+    // ADR-0042 — the hop target (@objectRef/@references) resolves in the package
+    // of the entity that DECLARES the relationship/reference, i.e. currentObj.
+    const nextObj = _findObject(
+      root,
+      refTarget,
+      currentObj.package ?? currentObj.fileDefaultPackage ?? "",
+    );
     if (!nextObj) {
       // FR5d — relationship's @objectRef points at a missing entity. This
       // is the @objectRef-resolution edge of the via-path walk (the "5th
@@ -682,14 +652,18 @@ function _hopCardinality(rel: MetaData): string | undefined {
  * anchor `Product` (what the author wrote), never `BaseEntity` (where the
  * child physically lives).
  */
-function _refNamedOwner(node: MetaData, root: MetaData): MetaData | undefined {
+function _refNamedOwner(node: MetaData, root: MetaData, referrerPkg: string): MetaData | undefined {
   const ref = node.superRef;
   if (ref === undefined) return undefined;
-  const lastSep = ref.lastIndexOf("::");
-  const tail = lastSep === -1 ? ref : ref.slice(lastSep + 2);
-  const dot = tail.indexOf(".");
-  if (dot <= 0) return undefined;
-  return _findObject(root, tail.slice(0, dot));
+  // Owner = everything before the child dot in the FINAL ::-segment (the object
+  // the extends anchors at). ADR-0042: resolve it AS AUTHORED — an FQN owner
+  // (`acme::Customer`) resolves exactly, a bare owner (`Product`) resolves in
+  // the referrer's package. Do NOT strip the package to a bare tail.
+  const lastSep = ref.lastIndexOf(PACKAGE_SEPARATOR);
+  const segStart = lastSep === -1 ? 0 : lastSep + PACKAGE_SEPARATOR.length;
+  const dotInSeg = ref.indexOf(CHILD_REF_SEPARATOR, segStart);
+  if (dotInSeg <= segStart) return undefined; // no dotted child owner
+  return _findObject(root, ref.slice(0, dotInSeg), referrerPkg);
 }
 
 function _deriveBaseEntity(
@@ -700,6 +674,8 @@ function _deriveBaseEntity(
   errors: ParseError[],
 ): MetaData | undefined {
   if (obj.subType !== OBJECT_SUBTYPE_PROJECTION) return obj;
+  // ADR-0042 — a bare extends owner resolves in this projection's package.
+  const referrerPkg = obj.package ?? obj.fileDefaultPackage ?? "";
 
   // 1) The extended identity anchors the base entity (declared, not inferred).
   //    The anchor is the entity NAMED in the ref's owner part — see _refNamedOwner.
@@ -708,7 +684,7 @@ function _deriveBaseEntity(
   for (const identity of obj.ownChildren().filter((c) => c.type === TYPE_IDENTITY)) {
     const extended = identity.superResolved;
     if (extended !== undefined && extended.type === TYPE_IDENTITY) {
-      const named = _refNamedOwner(identity, root);
+      const named = _refNamedOwner(identity, root, referrerPkg);
       if (named !== undefined) return named;
       const owner = extended.parent;
       if (owner !== undefined && owner.type === TYPE_OBJECT) return owner;
@@ -723,7 +699,7 @@ function _deriveBaseEntity(
   for (const f of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
     const sup = f.superResolved;
     if (sup === undefined) continue;
-    const named = _refNamedOwner(f, root);
+    const named = _refNamedOwner(f, root, referrerPkg);
     const owner = named ?? sup.parent;
     if (
       owner !== undefined &&
@@ -1459,6 +1435,8 @@ export function validateRelationships(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
   // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
   for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
+    // ADR-0042 — a bare @through resolves in the declaring entity's package.
+    const referrerPkg = obj.package ?? obj.fileDefaultPackage ?? "";
     // ADR-0039: own — a relationship is validated on the entity that DECLARES it
     // (the M:N slim-vocabulary rules apply to own-declared relationships; its
     // inheritable attrs are read resolving below).
@@ -1521,7 +1499,11 @@ export function validateRelationships(root: MetaData): ParseError[] {
       }
 
       // Rule (a): @symmetric is valid only on a self-join (@objectRef == declaring entity).
-      const isSelfJoin = typeof objectRef === "string" && stripPackage(objectRef) === obj.name;
+      // ADR-0042: resolve @objectRef and compare NODE IDENTITY — a bare "Widget"
+      // in this package is self, but an FQN "other::Widget" (a different same-short-
+      // name entity) is NOT (comparing stripped short names would misclassify it).
+      const isSelfJoin =
+        typeof objectRef === "string" && resolveObjectRef(root, objectRef, referrerPkg).node === obj;
       if (symmetric && !isSelfJoin) {
         errors.push(
           new ParseError(
@@ -1533,11 +1515,11 @@ export function validateRelationships(root: MetaData): ParseError[] {
       }
 
       // Rule (c): @through must name an entity declaring exactly two identity.reference children.
-      const junction = _findObject(root, through as string);
+      const junction = _findObject(root, through as string, referrerPkg);
       if (!junction) {
         errors.push(
           new ParseError(
-            `relationship "${obj.name}.${rel.name}" @${RELATIONSHIP_ATTR_THROUGH} "${through}" does not resolve to an entity.`,
+            `relationship "${obj.name}.${rel.name}" @${RELATIONSHIP_ATTR_THROUGH} "${through}" does not resolve to an entity.${didYouMeanHint(root, String(through))}`,
             { code: "ERR_INVALID_RELATIONSHIP", source: resolvedSource(rel.source, `${obj.fqn()}::${rel.name}`, String(through)) },
           ),
         );

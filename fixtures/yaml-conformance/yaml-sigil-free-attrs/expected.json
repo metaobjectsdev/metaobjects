@@ -30,6 +30,18 @@
             }
           ]
         }
+      },
+      {
+        "object.value": {
+          "name": "Address",
+          "children": [
+            {
+              "field.string": {
+                "name": "street"
+              }
+            }
+          ]
+        }
       }
     ]
   }

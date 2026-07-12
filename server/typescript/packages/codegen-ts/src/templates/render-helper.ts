@@ -27,7 +27,6 @@
 
 import {
   type MetaData,
-  TYPE_OBJECT,
   TYPE_FIELD,
   TYPE_TEMPLATE,
   FIELD_SUBTYPE_OBJECT,
@@ -43,7 +42,7 @@ import {
   TEMPLATE_ATTR_SUBJECT_REF,
   TEMPLATE_ATTR_HTML_BODY_REF,
   TEMPLATE_ATTR_TEXT_BODY_REF,
-  refMatchesObject,
+  resolveObjectRef,
 } from "@metaobjectsdev/metadata";
 import {
   verify,
@@ -54,8 +53,9 @@ import {
 } from "@metaobjectsdev/render";
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
-function findObject(root: MetaData, name: string): MetaData | undefined {
-  return root.children().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
+// ADR-0042: package-local — resolveObjectRef binds a bare @objectRef in `referrerPkg` first (else root-level), an FQN exactly.
+function findObject(root: MetaData, name: string, referrerPkg: string): MetaData | undefined {
+  return resolveObjectRef(root, name, referrerPkg).node;
 }
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
@@ -74,18 +74,24 @@ function findTemplate(root: MetaData, name: string): MetaData | undefined {
 function derivePayloadFieldTree(
   root: MetaData,
   voName: string,
+  referrerPkg: string,
   seen: ReadonlySet<string> = new Set(),
 ): PayloadField[] {
   if (seen.has(voName)) return [];
-  const vo = findObject(root, voName);
+  const vo = findObject(root, voName, referrerPkg);
   if (!vo) return [];
+  // ADR-0042: a nested @objectRef resolves in the FIELD's own declaring package
+  // (fallback below), which differs from this VO's when the field is inherited via
+  // extends from an abstract VO elsewhere.
+  const voPkg = vo.package ?? vo.fileDefaultPackage ?? "";
   const nextSeen = new Set(seen).add(voName);
   const fields: PayloadField[] = [];
   for (const f of vo.children().filter((c) => c.type === TYPE_FIELD)) {
     if (f.subType === FIELD_SUBTYPE_OBJECT) {
       const ref = f.attr(FIELD_ATTR_OBJECT_REF);
       if (typeof ref === "string") {
-        fields.push({ name: f.name, fields: derivePayloadFieldTree(root, ref, nextSeen) });
+        const fieldPkg = f.parent?.package ?? f.parent?.fileDefaultPackage ?? voPkg;
+        fields.push({ name: f.name, fields: derivePayloadFieldTree(root, ref, fieldPkg, nextSeen) });
         continue;
       }
     }
@@ -157,14 +163,16 @@ export function renderRenderHelper(
   if (typeof payloadRef !== "string") {
     throw new Error(`template "${templateName}" missing @payloadRef`);
   }
-  const vo = findObject(root, payloadRef);
+  // ADR-0042: a bare @payloadRef resolves in the template's package.
+  const tmplPkg = tmpl.package ?? tmpl.fileDefaultPackage ?? "";
+  const vo = findObject(root, payloadRef, tmplPkg);
   if (!vo) {
     throw new Error(
       `template "${templateName}" @payloadRef "${payloadRef}" not found in metadata root`,
     );
   }
 
-  const fields = derivePayloadFieldTree(root, payloadRef);
+  const fields = derivePayloadFieldTree(root, payloadRef, tmplPkg);
   const ft = fieldTreeLiteral(fields);
   const fnName = `render${templateName}`;
 

@@ -177,7 +177,7 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
       // Both subtypes verify that @payloadRef resolves to a loaded object.value.
       // The render-engine `verify()` would also throw on missing refs, but the
       // output branch doesn't call it — explicit check keeps the error symmetric.
-      const fieldTree = derivePayloadFieldTree(root, payloadRef);
+      const fieldTree = derivePayloadFieldTree(root, payloadRef, tmpl.package ?? tmpl.fileDefaultPackage ?? "");
       if (fieldTree.length === 0) {
         log.error(
           `[${tmpl.name}] (${tmpl.subType}) ${ERR_PARTIAL_UNRESOLVED}: ` +

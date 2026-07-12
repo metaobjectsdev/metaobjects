@@ -212,7 +212,7 @@ describe("Extractor codegen — source shape", () => {
 
   test("payload typing: field.enum is a value-constrained union alias (not unknown), single + array", async () => {
     const root = await loadRoot(MODEL);
-    const payloadSrc = generatePayloadInterfaces(root, "Order");
+    const payloadSrc = generatePayloadInterfaces(root, "Order", "acme::ai");
 
     // Inline enum naming = <Entity><FieldPascal> (reused from renderEnumTypeAliases).
     expect(payloadSrc).toContain(`export type OrderPriority = "LOW" | "HIGH";`);
@@ -246,7 +246,7 @@ describe("Extractor codegen — source shape", () => {
         },
       },
     ]);
-    const payloadSrc = generatePayloadInterfaces(sharedRoot, "SharedOrder");
+    const payloadSrc = generatePayloadInterfaces(sharedRoot, "SharedOrder", "acme::ai");
 
     // Exactly ONE union alias, named for the SUPER (`Priority`) — not per-field, not duplicated.
     expect(payloadSrc).toContain(`export type Priority = "LOW" | "HIGH";`);

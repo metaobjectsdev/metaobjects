@@ -1,0 +1,17 @@
+{
+  "errors": [
+    {
+      "code": "ERR_INVALID_RELATIONSHIP",
+      "source": {
+        "format": "resolved",
+        "files": [
+          "meta.rel.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[0]['relationship.association']",
+        "referrer": "Post::tags",
+        "target": "PostTag"
+      }
+    }
+  ],
+  "warnings": []
+}

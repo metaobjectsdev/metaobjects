@@ -61,9 +61,11 @@ export const promptRender = function promptRender(opts?: PromptRenderOpts): Gene
 
       // Emit payload interfaces with a single shared dedupe set so a lens
       // referenced by multiple payloads appears exactly once.
+      // ADR-0042: pass each payload's FQN (resolutionKey) so a bare name never
+      // mis-binds — payloads may span packages, so no single referrerPkg fits.
       const payloadInterfaces = generatePayloadInterfacesBatch(
         ctx.loadedRoot,
-        payloads.map((p) => p.name),
+        payloads.map((p) => p.resolutionKey()),
       );
       if (payloadInterfaces.length > 0) {
         parts.push(payloadInterfaces);

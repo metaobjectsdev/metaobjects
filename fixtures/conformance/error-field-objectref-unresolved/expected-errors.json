@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_UNRESOLVED_OBJECT_REF",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[2]['field.object']"
+      }
+    }
+  ],
+  "warnings": []
+}

@@ -21,30 +21,27 @@
 
 import {
   type MetaData,
-  TYPE_OBJECT,
   TYPE_FIELD,
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_ENUM,
   FIELD_ATTR_OBJECT_REF,
-  PACKAGE_SEPARATOR,
-  refMatchesObject,
+  resolveObjectRef,
 } from "@metaobjectsdev/metadata";
 import { fields, isArray, scalarKind, jsonStringLiteral } from "./fr010-field-mapping.js";
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
-function findObject(root: MetaData, name: string): MetaData | undefined {
-  return root.children().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
+// ADR-0042: resolveObjectRef gives package-local-before-root-level precedence for a bare ref, FQN-exact otherwise.
+function findObject(root: MetaData, name: string, referrerPkg = ""): MetaData | undefined {
+  return resolveObjectRef(root, name, referrerPkg).node;
 }
 
 /** The @objectRef target VO for a nested-object field, or undefined when unresolvable. */
 function refVo(field: MetaData, root: MetaData): MetaData | undefined {
   const ref = field.attr(FIELD_ATTR_OBJECT_REF);
   if (typeof ref !== "string") return undefined;
-  const direct = findObject(root, ref);
-  if (direct !== undefined) return direct;
-  const sep = ref.lastIndexOf(PACKAGE_SEPARATOR);
-  if (sep >= 0) return findObject(root, ref.slice(sep + PACKAGE_SEPARATOR.length));
-  return undefined;
+  // ADR-0042: resolve as authored — a bare ref binds the declaring VO's package,
+  // an FQN exactly; NO bare-tail fallback (never bind a same-named VO elsewhere).
+  return findObject(root, ref, field.parent?.package ?? field.parent?.fileDefaultPackage ?? "");
 }
 
 /** True iff the field is a nested object reference (field.object — distinct from the

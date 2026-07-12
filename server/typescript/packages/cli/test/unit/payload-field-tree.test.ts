@@ -42,7 +42,7 @@ const model = [
 describe("derivePayloadFieldTree — mirrors the payload-codegen VO walk", () => {
   test("scalar fields become leaf nodes; an object-ref field becomes a nested tree", async () => {
     const root = await loadRoot(model);
-    const tree = derivePayloadFieldTree(root, "AuthorBrief");
+    const tree = derivePayloadFieldTree(root, "AuthorBrief", "acme::ai");
     expect(tree).toEqual([
       { name: "displayName" },
       { name: "postCount" },
@@ -70,7 +70,7 @@ describe("derivePayloadFieldTree — mirrors the payload-codegen VO walk", () =>
           { "field.object": { name: "fromAlpha", "@objectRef": "acme::alpha::Note" } },
           { "field.object": { name: "fromBeta", "@objectRef": "acme::beta::Note" } } ] } } ] } },
     );
-    expect(derivePayloadFieldTree(root, "Digest")).toEqual([
+    expect(derivePayloadFieldTree(root, "Digest", "acme::app")).toEqual([
       { name: "fromAlpha", fields: [{ name: "alphaText" }] },
       { name: "fromBeta", fields: [{ name: "betaText" }] },
     ]);

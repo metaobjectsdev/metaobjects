@@ -13,11 +13,10 @@
 //   generators: [..., outputPrompt({ outDir: "src/generated/outputs" })]
 
 import {
-  TYPE_OBJECT,
   TYPE_TEMPLATE,
   TEMPLATE_SUBTYPE_OUTPUT,
   TEMPLATE_ATTR_PAYLOAD_REF,
-  refMatchesObject,
+  resolveObjectRef,
 } from "@metaobjectsdev/metadata";
 import {
   type EmittedFile,
@@ -52,7 +51,8 @@ export const outputPrompt = function outputPrompt(opts?: OutputPromptOpts): Gene
         // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
         const payloadRef = t.attr(TEMPLATE_ATTR_PAYLOAD_REF);
         if (typeof payloadRef !== "string") continue;
-        const vo = root.children().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, payloadRef));
+        // ADR-0042: a bare @payloadRef resolves in the template's package.
+        const vo = resolveObjectRef(root, payloadRef, t.package ?? t.fileDefaultPackage ?? "").node;
         if (!vo) continue;
         files.push({
           path: `${dirPrefix}${t.name}.prompt.ts`,

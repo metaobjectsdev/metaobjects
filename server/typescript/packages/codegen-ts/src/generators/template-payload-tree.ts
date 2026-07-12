@@ -21,23 +21,21 @@
 import {
   type MetaObject,
   type MetaRoot,
-  TYPE_OBJECT,
   FIELD_SUBTYPE_OBJECT,
   FIELD_ATTR_OBJECT_REF,
   stripPackage,
-  refMatchesObject,
+  resolveObjectRef,
 } from "@metaobjectsdev/metadata";
 import { isFieldRequired, neutralTypeStr } from "./docs-data-builder.js";
 import type { AnnotatePayloadField } from "./template-source-annotate.js";
 
-// ADR-0041: FQN-exact object resolution — a "::"-qualified @objectRef binds the exact
+// ADR-0041/0042: FQN-exact object resolution — a "::"-qualified @objectRef binds the exact
 // package (never a bare-tail fallback), so a same-named object.value in another package
-// can't be wrongly bound (which would attach the wrong owner/type/link to a doc node).
+// can't be wrongly bound (which would attach the wrong owner/type/link to a doc node); a
+// bare ref binds the referrer's package FIRST, else a root-level object.
 // Mirrors render-helper.ts's findObject + the CLI payload-field-tree resolver.
-function findObject(root: MetaRoot, ref: string): MetaObject | undefined {
-  return root.children().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, ref)) as
-    | MetaObject
-    | undefined;
+function findObject(root: MetaRoot, ref: string, referrerPkg = ""): MetaObject | undefined {
+  return resolveObjectRef(root, ref, referrerPkg).node as MetaObject | undefined;
 }
 
 /**
@@ -54,12 +52,17 @@ function findObject(root: MetaRoot, ref: string): MetaObject | undefined {
 export function buildEnrichedPayloadTree(
   root: MetaRoot,
   voName: string,
+  referrerPkg = "",
   seen: ReadonlySet<string> = new Set(),
 ): AnnotatePayloadField[] {
   if (seen.has(voName)) return [];
-  const vo: MetaObject | undefined = findObject(root, voName);
+  const vo: MetaObject | undefined = findObject(root, voName, referrerPkg);
   if (vo === undefined) return [];
   const owner = stripPackage(vo.name);
+  // ADR-0042: a nested @objectRef resolves in the FIELD's own declaring package
+  // (fallback below), which differs from this VO's when the field is inherited via
+  // extends from an abstract VO in another package (the bare ref was authored there).
+  const voPkg = vo.package ?? vo.fileDefaultPackage ?? "";
   const nextSeen = new Set(seen).add(voName);
   const out: AnnotatePayloadField[] = [];
   for (const f of vo.fields()) {
@@ -74,8 +77,10 @@ export function buildEnrichedPayloadTree(
       if (typeof ref === "string" && ref.length > 0) {
         // Owner switches to the nested VO for its fields (the recursion below
         // re-derives `owner` from the resolved VO's own name). Pass the FULL ref
-        // (not stripPackage) so findObject resolves it FQN-exact (ADR-0041).
-        node.fields = buildEnrichedPayloadTree(root, ref, nextSeen);
+        // (not stripPackage), resolved package-locally against the FIELD's declaring
+        // package (ADR-0042 — the bare ref was authored there, not on the concrete VO).
+        const fieldPkg = f.parent?.package ?? f.parent?.fileDefaultPackage ?? voPkg;
+        node.fields = buildEnrichedPayloadTree(root, ref, fieldPkg, nextSeen);
       }
     }
     out.push(node);

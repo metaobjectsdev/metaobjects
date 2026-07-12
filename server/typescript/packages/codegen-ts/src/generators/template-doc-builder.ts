@@ -114,10 +114,12 @@ export function buildTemplateDocData(
   const kind: "document" | "email" = isEmail ? TEMPLATE_KIND_EMAIL : TEMPLATE_KIND_DOCUMENT;
 
   const payloadRefRaw = template.attr(TEMPLATE_ATTR_PAYLOAD_REF);
-  const payloadName =
-    typeof payloadRefRaw === "string" && payloadRefRaw.length > 0
-      ? stripPackage(payloadRefRaw)
-      : "unknown";
+  // ADR-0042: keep the FULL ref for RESOLUTION (an FQN @payloadRef to another
+  // package must resolve exactly — the old bare-tail fallback that used to find
+  // it is gone); strip to the bare name only for DISPLAY labels.
+  const payloadRefFull =
+    typeof payloadRefRaw === "string" && payloadRefRaw.length > 0 ? payloadRefRaw : "unknown";
+  const payloadName = payloadRefFull !== "unknown" ? stripPackage(payloadRefFull) : "unknown";
 
   const requiredTags = attrStringList(template.attr(TEMPLATE_ATTR_REQUIRED_TAGS));
   const maxChars = readMaxChars(template.attr(TEMPLATE_ATTR_MAX_CHARS));
@@ -188,6 +190,7 @@ export function buildTemplateDocData(
       layout,
       template,
       payloadName,
+      payloadRefFull,
       // Document: the single @textRef (unlabeled). Email: one labeled part each.
       refs:
         parts !== undefined
@@ -221,7 +224,11 @@ interface BuildSectionArgs {
   /** The `template.output` node whose page is being built — the FROM page for
    *  every relative href on this section. */
   template: MetaData;
+  /** Bare payload name — DISPLAY only (labels, owner names). */
   payloadName: string;
+  /** Full @payloadRef (FQN for a cross-package payload, bare for same-package) —
+   *  used for RESOLUTION so a cross-package payload tree still resolves (ADR-0042). */
+  payloadRefFull: string;
   refs: SourceRefSpec[];
 }
 
@@ -236,8 +243,15 @@ interface BuildSectionArgs {
  * resolved, so the caller omits the section entirely.
  */
 function buildTemplateSourceSection(args: BuildSectionArgs): string | undefined {
-  const { provider, root, layout, template, payloadName, refs } = args;
-  const tree: AnnotatePayloadField[] = buildEnrichedPayloadTree(root, payloadName);
+  const { provider, root, layout, template, payloadName, payloadRefFull, refs } = args;
+  // ADR-0042: resolve the payload tree from the FULL ref — an FQN cross-package
+  // @payloadRef resolves exactly; a bare same-package ref resolves in the
+  // template's package.
+  const tree: AnnotatePayloadField[] = buildEnrichedPayloadTree(
+    root,
+    payloadRefFull,
+    template.package ?? template.fileDefaultPackage ?? "",
+  );
   const fromNode = docPageNode(template);
 
   // Layout-aware field href: route through the SAME docPageHref the Payload

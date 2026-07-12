@@ -319,7 +319,7 @@ describe("annotator ⇆ verify agreement — linked set equals verify's accepted
 	it("for each resolved template source: linked variables == NOT-flagged variables", async () => {
 		const { root, inputDir } = await loadFixture();
 		const provider = projectProvider(inputDir);
-		const tree = buildEnrichedPayloadTree(root, "Order");
+		const tree = buildEnrichedPayloadTree(root, "Order", "acme::shop");
 		const plain = toPlainTree(tree);
 
 		// Every mustache source the two templates reference.

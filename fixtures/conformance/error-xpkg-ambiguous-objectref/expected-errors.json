@@ -1,15 +1,13 @@
 {
   "errors": [
     {
-      "code": "ERR_AMBIGUOUS_REF",
+      "code": "ERR_INVALID_RELATIONSHIP",
       "source": {
-        "format": "resolved",
+        "format": "json",
         "files": [
           "meta.sales.json"
         ],
-        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[4]['relationship.association']",
-        "referrer": "Order",
-        "target": "Customer"
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[4]['relationship.association']"
       }
     }
   ],

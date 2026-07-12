@@ -72,7 +72,7 @@ import {
 } from "./shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
 import { OBJECT_SUBTYPES, OBJECT_SUBTYPE_ENTITY } from "./core/object/object-constants.js";
-import { FIELD_SUBTYPES } from "./core/field/field-constants.js";
+import { FIELD_SUBTYPES, FIELD_SUBTYPE_OBJECT, FIELD_SUBTYPE_MAP, FIELD_ATTR_OBJECT_REF } from "./core/field/field-constants.js";
 import { ATTR_SUBTYPES } from "./core/attr/attr-constants.js";
 import {
   VALIDATOR_SUBTYPES,
@@ -503,6 +503,19 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
         errorCode: "ERR_INVALID_REFERENCE",
       },
     ];
+  }
+  // ADR-0042 — a field.object / field.map @objectRef must resolve (a dangling
+  // target fails the load, closing the gap that surfaced downstream as a
+  // misleading ERR_VAR_NOT_ON_PAYLOAD; #191). The required-attr pass owns
+  // absence (ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF); this descriptor fires only
+  // when @objectRef is present but resolves to nothing → ERR_UNRESOLVED_OBJECT_REF.
+  for (const subType of [FIELD_SUBTYPE_OBJECT, FIELD_SUBTYPE_MAP]) {
+    const def = registry.find(TYPE_FIELD, subType);
+    if (def) {
+      def.references = [
+        { attr: FIELD_ATTR_OBJECT_REF, targetType: TYPE_OBJECT, errorCode: "ERR_UNRESOLVED_OBJECT_REF" },
+      ];
+    }
   }
 
   // Default subTypes for YAML authoring sugar: a bare `metadata:` / `object:`

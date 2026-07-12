@@ -12,9 +12,9 @@
             { "field.long": { "name": "productId", "@required": true } },
             { "field.int": { "name": "quantity", "@required": true } },
             { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
-            { "identity.reference": { "name": "ref_customer", "@fields": ["customerId"], "@references": "Customer" } },
+            { "identity.reference": { "name": "ref_customer", "@fields": ["customerId"], "@references": "shop::users::Customer" } },
             { "identity.reference": { "name": "ref_product", "@fields": ["productId"], "@references": "Product" } },
-            { "relationship.association": { "name": "customer", "@cardinality": "one", "@objectRef": "Customer" } },
+            { "relationship.association": { "name": "customer", "@cardinality": "one", "@objectRef": "shop::users::Customer" } },
             { "relationship.association": { "name": "product", "@cardinality": "one", "@objectRef": "Product" } }
           ]
         }
@@ -55,8 +55,8 @@
             { "field.string": { "name": "label", "@required": true, "@maxLength": 100 } },
             { "field.long": { "name": "customerId", "@required": true } },
             { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "increment" } },
-            { "identity.reference": { "name": "ref_customer", "@fields": ["customerId"], "@references": "Customer" } },
-            { "relationship.association": { "name": "customer", "@cardinality": "one", "@objectRef": "Customer" } }
+            { "identity.reference": { "name": "ref_customer", "@fields": ["customerId"], "@references": "shop::users::Customer" } },
+            { "relationship.association": { "name": "customer", "@cardinality": "one", "@objectRef": "shop::users::Customer" } }
           ]
         }
       }

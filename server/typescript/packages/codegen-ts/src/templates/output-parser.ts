@@ -11,7 +11,6 @@
 
 import {
   type MetaData,
-  TYPE_OBJECT,
   TYPE_FIELD,
   TYPE_TEMPLATE,
   TEMPLATE_SUBTYPE_OUTPUT,
@@ -19,7 +18,7 @@ import {
   FIELD_ATTR_OBJECT_REF,
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_FORMAT,
-  refMatchesObject,
+  resolveObjectRef,
 } from "@metaobjectsdev/metadata";
 import {
   nestedMirrorInterfaces,
@@ -43,10 +42,9 @@ const SCALAR_ZOD: Record<string, string> = {
 };
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
-function findObject(root: MetaData, name: string): MetaData | undefined {
-  // FR-032 — @payloadRef is FQN after the desugar/sweep; match on the effective
-  // FQN resolution key (with bare back-compat).
-  return root.children().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
+// ADR-0042: resolveObjectRef gives package-local-before-root-level precedence for a bare ref, FQN-exact otherwise.
+function findObject(root: MetaData, name: string, referrerPkg = ""): MetaData | undefined {
+  return resolveObjectRef(root, name, referrerPkg).node;
 }
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
@@ -67,7 +65,8 @@ function fieldZod(field: MetaData, root: MetaData, seen: ReadonlySet<string>, de
       // Cycle guard — emit unknown for self-references (rare; lazy schemas not in scope for v1).
       base = "z.unknown()";
     } else {
-      const inner = findObject(root, refName);
+      // ADR-0042: a bare nested @objectRef resolves in the declaring VO's package.
+      const inner = findObject(root, refName, field.parent?.package ?? field.parent?.fileDefaultPackage ?? "");
       base = inner ? renderObjectSchema(inner, root, new Set(seen).add(refName), depth + 1) : "z.unknown()";
     }
   } else {
@@ -107,7 +106,8 @@ export function renderOutputParser(root: MetaData, templateName: string): string
   if (typeof payloadRef !== "string") {
     throw new Error(`template "${templateName}" missing @payloadRef`);
   }
-  const vo = findObject(root, payloadRef);
+  // ADR-0042: a bare @payloadRef resolves in the template's package.
+  const vo = findObject(root, payloadRef, tmpl.package ?? tmpl.fileDefaultPackage ?? "");
   if (!vo) {
     throw new Error(`template "${templateName}" @payloadRef "${payloadRef}" not found in metadata root`);
   }

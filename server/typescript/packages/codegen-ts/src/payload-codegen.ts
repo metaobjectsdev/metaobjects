@@ -13,7 +13,6 @@
 import {
   type MetaData,
   type MetaField,
-  TYPE_OBJECT,
   TYPE_FIELD,
   TYPE_TEMPLATE,
   FIELD_SUBTYPE_OBJECT,
@@ -23,7 +22,7 @@ import {
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_TEXT_REF,
   TEMPLATE_ATTR_FORMAT,
-  refMatchesObject,
+  resolveObjectRef,
   stripPackage,
 } from "@metaobjectsdev/metadata";
 import { enumValues } from "./enum-meta.js";
@@ -47,10 +46,9 @@ const SCALAR_TS: Record<string, string> = {
 };
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
-function findObject(root: MetaData, name: string): MetaData | undefined {
-  // FR-032 — @payloadRef/@responseRef are FQN after the desugar/sweep; match on
-  // the effective FQN resolution key (with bare back-compat).
-  return root.children().find((c) => c.type === TYPE_OBJECT && refMatchesObject(c, name));
+// ADR-0042: resolveObjectRef gives package-local-before-root-level precedence for a bare ref, FQN-exact otherwise.
+function findObject(root: MetaData, name: string, referrerPkg = ""): MetaData | undefined {
+  return resolveObjectRef(root, name, referrerPkg).node;
 }
 
 /**
@@ -106,12 +104,18 @@ function isFieldRequired(field: MetaData): boolean {
 function emitInterface(
   root: MetaData,
   voRef: string,
+  referrerPkg: string,
   emitted: Set<string>,
   out: string[],
   enumAliases: Set<string>,
 ): void {
-  const vo = findObject(root, voRef);
+  const vo = findObject(root, voRef, referrerPkg);
   if (!vo) return;
+  // ADR-0042: a nested @objectRef resolves in the FIELD's OWN declaring package —
+  // which may differ from this resolved VO's package when the field is inherited
+  // via extends from an abstract VO in another package (the bare ref was authored
+  // there). Fall back to this VO's package when a field has no parent package.
+  const voPkg = vo.package ?? vo.fileDefaultPackage ?? "";
   // FR-032/ADR-0041 — voRef may arrive as an FQN (a nested @objectRef); the emitted
   // interface NAME must be the bare, TS-valid name. Dedupe on the bare name too, so a
   // VO reached once by bare name and once by FQN still emits exactly once.
@@ -120,7 +124,7 @@ function emitInterface(
   emitted.add(voName);
   const aliasLines: string[] = [];
   const lines: string[] = [`export interface ${voName} {`];
-  const refs: string[] = [];
+  const refs: { ref: string; pkg: string }[] = [];
   for (const f of vo.children().filter((c) => c.type === TYPE_FIELD)) {
     const { type, refVo, enumAlias } = fieldTsType(f, voName);
     // Hoist the enum union alias above the interface, deduped across the whole
@@ -138,18 +142,21 @@ function emitInterface(
     const tsType = isRequired ? type : `${type} | null`;
     const optional = isRequired ? "" : "?";
     lines.push(`  ${f.name}${optional}: ${tsType};`);
-    if (refVo) refs.push(refVo);
+    // The nested ref resolves in the FIELD's declaring package (ADR-0042), not the
+    // resolved VO's — they differ when `f` is inherited from an abstract VO elsewhere.
+    if (refVo) refs.push({ ref: refVo, pkg: f.parent?.package ?? f.parent?.fileDefaultPackage ?? voPkg });
   }
   lines.push("}");
   const block = aliasLines.length > 0 ? `${aliasLines.join("\n")}\n${lines.join("\n")}` : lines.join("\n");
   out.push(block);
-  for (const r of refs) emitInterface(root, r, emitted, out, enumAliases);
+  for (const r of refs) emitInterface(root, r.ref, r.pkg, emitted, out, enumAliases);
 }
 
-/** Emit the payload `interface` (+ nested element interfaces) for an object.value view-object. */
-export function generatePayloadInterfaces(root: MetaData, voName: string): string {
+/** Emit the payload `interface` (+ nested element interfaces) for an object.value view-object.
+ *  `referrerPkg` (ADR-0042) is the package a bare `voName` resolves in; pass an FQN and it is ignored. */
+export function generatePayloadInterfaces(root: MetaData, voName: string, referrerPkg = ""): string {
   const out: string[] = [];
-  emitInterface(root, voName, new Set<string>(), out, new Set<string>());
+  emitInterface(root, voName, referrerPkg, new Set<string>(), out, new Set<string>());
   return out.join("\n\n") + "\n";
 }
 
@@ -160,13 +167,17 @@ export function generatePayloadInterfaces(root: MetaData, voName: string): strin
  *
  * Returns the empty string when `voNames` is empty.
  */
-export function generatePayloadInterfacesBatch(root: MetaData, voNames: readonly string[]): string {
+export function generatePayloadInterfacesBatch(
+  root: MetaData,
+  voNames: readonly string[],
+  referrerPkg = "",
+): string {
   if (voNames.length === 0) return "";
   const out: string[] = [];
   const emitted = new Set<string>();
   const enumAliases = new Set<string>();
   for (const name of voNames) {
-    emitInterface(root, name, emitted, out, enumAliases);
+    emitInterface(root, name, referrerPkg, emitted, out, enumAliases);
   }
   return out.length === 0 ? "" : out.join("\n\n") + "\n";
 }

@@ -32,7 +32,7 @@
           "name": "OrderPage",
           "package": "acme::comms",
           "@kind": "document",
-          "@payloadRef": "Order",
+          "@payloadRef": "acme::shop::Order",
           "@textRef": "site/order",
           "@format": "html"
         }
@@ -42,7 +42,7 @@
           "name": "OrderEmail",
           "package": "acme::comms",
           "@kind": "email",
-          "@payloadRef": "Order",
+          "@payloadRef": "acme::shop::Order",
           "@subjectRef": "email/order.subject",
           "@htmlBodyRef": "email/order.html",
           "@textBodyRef": "email/order.text"

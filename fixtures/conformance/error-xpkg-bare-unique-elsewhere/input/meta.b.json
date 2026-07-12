@@ -1,0 +1,20 @@
+{
+  "metadata.root": {
+    "package": "app::b",
+    "children": [
+      {
+        "object.value": {
+          "name": "Thing",
+          "children": [
+            {
+              "field.string": {
+                "name": "label",
+                "@required": true
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

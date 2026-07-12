@@ -30,9 +30,11 @@ export interface ReferenceDescriptor {
   readonly errorCode: LoaderCode;
 }
 
-/** Resolve a ref string to its object node. */
+/** Resolve a ref string to its object node under the ADR-0042 package-local
+ *  contract. `referrerPkg` is the effective package of the node that declares
+ *  the ref (a bare ref resolves in that package, else root-level). */
 export interface SymbolTable {
-  resolveObject(ref: string): MetaData | undefined;
+  resolveObject(ref: string, referrerPkg: string): MetaData | undefined;
 }
 
 /** Handed to every validator: the symbol table + an error sink. */
