@@ -37,10 +37,16 @@ and which metadata vocabulary the project isn't asking for but would profit from
 
 1. Repo access (required). For monorepos: which subdirectory/service to scope to.
 2. Stack confirmation (detect, then confirm): language(s), DB, ORM, web framework.
-3. Whether an LLM/prompt surface exists (scopes pillar 4).
-4. Org constraints that gate verdicts: who owns the schema (DBA-gated?); is generated
+3. **Trajectory — you MUST ask; it is NOT in the code (see M8).** Is this system expected to
+   **grow** (more entities, a second language or service, an LLM surface, a team beyond one
+   person), or is it feature-complete and stable at its current size? Is it long-lived, or
+   disposable? A repo that will triple and a repo that is finished look **identical in git** —
+   and this is the single fact that decides the size-based verdict. If the human doesn't
+   answer, do not guess: state the assumption you made and mark the verdict conditional on it.
+4. Whether an LLM/prompt surface exists (scopes pillar 4).
+5. Org constraints that gate verdicts: who owns the schema (DBA-gated?); is generated
    code in the repo acceptable?
-5. Where to write output. Default: `metaobjects-fit/` at the target repo root.
+6. Where to write output. Default: `metaobjects-fit/` at the target repo root.
    **Never create `.metaobjects/`** — that directory is the marker of an adopted project.
 
 No secrets, no live-DB connection. You read code and migrations only; `verify --db` is
@@ -97,6 +103,31 @@ metadata-follows-the-code path). But you must ALSO name the **deep-adoption ceil
 for the target's port (§ P5-b) in one clearly-labeled paragraph, tagged
 `horizon: "later"` in JSON and never counted in the benefit numbers. Omitting a real
 option a deep adopter would take is a scored defect, just like inventing one.
+
+**M8 — The verdict-deciding fact is not always in the code. Size you can count;
+TRAJECTORY you cannot.** The honest NOT-A-FIT splits in two, and only one half is
+observable:
+- **Structural disqualifiers ARE in the repo** — language outside the five ports, no
+  relational store, a non-entity-shaped domain, a DBA-gated schema. Read them, cite them,
+  rule on them. These are the only grounds on which you may write a flat `NOT A FIT`.
+- **The economic disqualifier is NOT in the repo.** "Too small for the tooling to pay"
+  depends on whether the system will **grow** — and a 3-entity app that will become 90 is
+  byte-identical in git to a 3-entity app that is finished forever. **Never infer "this will
+  never grow" from a small codebase.** Absence of growth-so-far is not evidence of
+  no-growth-to-come (a young repo is small *because it is young*). This is the one place your
+  evidence discipline (M2) actively misleads you: there is no `file:line` for intent.
+
+So: **ask** (Input 3). If answered, rule on it and say whose answer it was. If unanswered,
+do NOT pick a side — emit **both branches** explicitly, e.g.: *"At 4 entities today the
+spine's leverage does not repay the tooling — if this system is done, don't adopt. If you
+expect it to grow past ~10 entities, add a second language, or add an LLM surface, adopt at
+that point; and note adoption gets more expensive later, because you will be retrofitting a
+spine onto more drift, not less."* Tag such claims `confidence: low` and
+`checkable: false` — they are conditional on a fact you were not given.
+
+Corollary for scoring/QA: a "negative control" for this assessment cannot be *any small
+repo* — it must be one whose trajectory is **known** (e.g. retrospectively: it stayed small
+for years). Anything else tests a fact the code does not contain.
 
 ---
 
@@ -260,7 +291,8 @@ this table worked row-by-row is invalid output):
 | Backend language outside TS/Java/Kotlin/C#/Python | NOT A FIT (codegen/runtime); prompt pillar only if a portable sidecar makes sense — usually no |
 | No relational store | persistence + `--db` N/A; assess prompt + value/projection pillars on their own merits |
 | DB not Postgres/SQLite/D1 | schema pillar (`migrate`, `verify --db`) OUT — say so plainly; data-access unaffected |
-| < ~3 entities or non-entity-shaped domain | MARGINAL/NOT A FIT — leverage won't pay for tooling |
+| Non-entity-shaped domain (no persistent typed records to speak of) | NOT A FIT — structural, and visible in the code |
+| Few entities today (< ~5) | **NOT a flat verdict — this is the M8 trap.** Small-today ≠ small-forever, and git cannot tell you which. Use the trajectory answer (Input 3): *done at this size* → MARGINAL/NOT A FIT (say so plainly — the leverage won't repay the tooling); *expected to grow / add a language / add an LLM surface* → FIT, and note adopting later costs more (you'd retrofit a spine onto more drift). **Unanswered → emit both branches, never guess.** |
 | Schema owned by another team (DBA-gated) | migrate pillar restricted; model read-only ("metadata follows the schema"); flag the org constraint |
 | Deep hand-tuned ORM investment | churn warning, not a disqualifier: the plan must reproduce those mappings (`@column`/`@table`/`@dbColumnType`) and price it |
 | Team rejects generated code in the repo | flag; regen-every-build works but `verify --codegen` semantics differ — call the tradeoff |
@@ -352,6 +384,12 @@ irreducible SQL / auth / bespoke viz stay hand-written; generated code runs with
 MetaObjects at runtime (local-first) but adopting means owning a codegen step; metadata
 authoring debt is real — price the wave-0 reconciliation; early `verify --db` runs will
 surface legacy oddities — triage as findings, not noise.
+
+**State this limit explicitly in §R7 (M8):** *this assessment can read your code, not your
+roadmap.* It counts what exists; it cannot see whether the system will grow, and growth is
+what decides the size-based verdict. Where the trajectory answer was given, name who gave it;
+where it wasn't, say which branch you assumed. An assessment that quietly converts "small
+today" into "not worth it, ever" is exactly the false negative this section exists to prevent.
 
 ---
 
@@ -480,6 +518,9 @@ Every prose prediction gets a claim. Ceiling statements (P5-b) MUST carry
 
 ## Final self-check before writing
 
+0. **Trajectory (M8): did you ASK, or did you infer "won't grow" from a small repo?** A flat
+   NOT-A-FIT is legal ONLY on a structural disqualifier. If the size row is doing the work and
+   the trajectory answer is missing, you must show both branches — not a verdict.
 1. Disqualifier table worked row-by-row? (Invalid output otherwise.)
 2. Census reconciliation block present, with predicted `object.entity` anchored to live
    tables, not ORM classes?
