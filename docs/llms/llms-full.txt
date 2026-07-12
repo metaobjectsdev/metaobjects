@@ -92,8 +92,8 @@ Because the render is conformance-gated, the determinism guarantee holds in ever
 | TypeScript | Reference implementation, npm `0.15.19` | All four pillars. 2500+ tests passing. Owns the canonical schema-migration toolchain used by every port (ADR-0015). Bun-first dev. |
 | Java | Maven Central `7.7.9` | Spring REST + JPA codegen, OMDB runtime persistence (pure data-access) with Spring-tx. Fully green across all conformance corpora. |
 | Kotlin | Maven Central `7.7.9` | KotlinPoet codegen + Exposed runtime + `metadata-ktx` facade. Ships via the Java reactor. |
-| C# | NuGet `0.15.8` (.NET tool) | Loader + canonical serializer + EF Core + ASP.NET codegen + render/verify. `dotnet meta` tool. |
-| Python | PyPI `0.15.10` | Loader + serializer + render + verify + codegen + `ObjectManager` runtime. Fully green across all corpora. |
+| C# | NuGet `0.15.9` (.NET tool) | Loader + canonical serializer + EF Core + ASP.NET codegen + render/verify. `dotnet meta` tool. |
+| Python | PyPI `0.15.11` | Loader + serializer + render + verify + codegen + `ObjectManager` runtime. Fully green across all corpora. |
 
 Conformance fixtures live at [`fixtures/`](https://github.com/metaobjectsdev/metaobjects/tree/main/fixtures). Every port runs the shared corpus byte-identically: metamodel (`conformance/`, ~90 fixtures), render, persistence (Testcontainers Postgres, with an `op: roundtrip` gate so every `field.*` subtype write+read round-trips on every port), api-contract (20 scenarios, two lanes — a reference server AND each port's generated API booted over HTTP), registry (byte-matched metamodel-vocabulary manifest, live + green in all five ports), and yaml/verify.
 

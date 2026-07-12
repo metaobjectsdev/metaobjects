@@ -167,7 +167,7 @@ How to publish the `MetaObjects*` C# packages to nuget.org. We use **Trusted Pub
 
 ## What gets published
 
-Four packages, version-locked at the C# port version (currently `0.11.1`):
+Four packages, version-locked at the C# port version (currently `0.15.9`):
 
 | Package | Contents |
 |---|---|
@@ -255,7 +255,7 @@ How to publish the **`metaobjects`** Python package to PyPI via **Trusted Publis
 ## What gets published
 
 One package, `metaobjects` (version in [`server/python/pyproject.toml`](../server/python/pyproject.toml),
-currently `0.11.1`), as an **sdist + a universal `py3-none-any` wheel** (pure Python).
+currently `0.15.11`), as an **sdist + a universal `py3-none-any` wheel** (pure Python).
 
 ## How we publish: Trusted Publishing (OIDC)
 
@@ -311,7 +311,7 @@ subsequent releases keyless.)
 # Releasing the Java/Kotlin modules to Maven Central
 
 The 18 `com.metaobjects:*` modules ship to **Maven Central via the Sonatype Central Portal**,
-versioned on the `7.x` line (currently `7.4.1`) in the parent + module poms. Signed with the
+versioned on the `7.x` line (currently `7.7.9`) in the parent + module poms. Signed with the
 maintainer's GPG key.
 
 ## Procedure
@@ -323,7 +323,7 @@ maintainer's GPG key.
    excluded modules behind, so their `<parent><version>` lags and the next tag fails
    `release-gate (java|kotlin)` with "Non-resolvable parent POM".
    ```bash
-   grep -rl 7.4.0 --include=pom.xml server/java | xargs sed -i 's/7\.4\.0/7.4.1/g'
+   grep -rl 7.7.8 --include=pom.xml server/java | xargs sed -i 's/7\.7\.8/7.7.9/g'
    ```
    (Verify every `<version>7.4.0</version>` is the project version, not a third-party dep.)
    Then assert the excluded modules are in sync: `scripts/check-pom-versions.sh`
