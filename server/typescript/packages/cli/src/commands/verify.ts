@@ -30,6 +30,12 @@ import {
   TEMPLATE_ATTR_TEXT_REF,
   TEMPLATE_ATTR_REQUIRED_SLOTS,
   TEMPLATE_ATTR_REQUIRED_TAGS,
+  TEMPLATE_ATTR_KIND,
+  TEMPLATE_KIND_EMAIL,
+  TEMPLATE_KIND_DEFAULT,
+  TEMPLATE_ATTR_SUBJECT_REF,
+  TEMPLATE_ATTR_HTML_BODY_REF,
+  TEMPLATE_ATTR_TEXT_BODY_REF,
 } from "@metaobjectsdev/metadata";
 import { verify, ERR_REQUIRED_SLOT_UNUSED, ERR_PARTIAL_UNRESOLVED } from "@metaobjectsdev/render";
 
@@ -168,15 +174,15 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
     let checked = 0;
 
     for (const tmpl of templates) {
-      // ADR-0039: effective attrs — @textRef/@payloadRef may be inherited via an abstract template.
-      const textRef = tmpl.attr(TEMPLATE_ATTR_TEXT_REF);
+      // ADR-0039: effective attrs — @payloadRef may be inherited via an abstract template.
       const payloadRef = tmpl.attr(TEMPLATE_ATTR_PAYLOAD_REF);
-      // Absent/typeless required attrs are a loader-schema concern, not verify's.
-      if (typeof textRef !== "string" || typeof payloadRef !== "string") continue;
+      // A typeless/absent @payloadRef is a loader-schema concern, not verify's. Every
+      // renderable template needs it (do NOT gate on @textRef — an @kind=email output
+      // has no @textRef, and gating on it silently skipped email drift; #193).
+      if (typeof payloadRef !== "string") continue;
 
-      // Both subtypes verify that @payloadRef resolves to a loaded object.value.
-      // The render-engine `verify()` would also throw on missing refs, but the
-      // output branch doesn't call it — explicit check keeps the error symmetric.
+      // @payloadRef must resolve to a loaded object.value (drives the field tree
+      // every render-engine drift check runs against).
       const fieldTree = derivePayloadFieldTree(root, payloadRef, tmpl.package ?? tmpl.fileDefaultPackage ?? "");
       if (fieldTree.length === 0) {
         log.error(
@@ -187,40 +193,69 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
         continue;
       }
 
+      // Collect every renderable mustache ref for this template + whether the
+      // prompt-only @requiredSlots/@requiredTags rules apply — mirroring the
+      // gen-time render-helper drift gate so `verify` and `gen` agree (#193):
+      //   template.prompt                    → the single @textRef (WITH required slots/tags).
+      //   template.output document (default) → the @textRef body.
+      //   template.output @kind=email        → @subjectRef + @htmlBodyRef + optional @textBodyRef.
+      let refs: { label: string; ref: string }[] = [];
+      let promptRules = false;
       if (tmpl.subType === TEMPLATE_SUBTYPE_PROMPT) {
-        // Render-engine drift check: template variables ↔ payload field names.
-        const text = provider.resolve(textRef);
+        // ADR-0039: effective attrs — @textRef may be inherited via an abstract template.
+        const textRef = tmpl.attr(TEMPLATE_ATTR_TEXT_REF);
+        if (typeof textRef === "string") refs = [{ label: "prompt", ref: textRef }];
+        promptRules = true;
+      } else if (tmpl.subType === TEMPLATE_SUBTYPE_OUTPUT) {
+        // ADR-0039: effective attrs — @kind / part refs may be inherited via an abstract template.
+        const kind = ((tmpl.attr(TEMPLATE_ATTR_KIND) as string | undefined) ?? TEMPLATE_KIND_DEFAULT).toLowerCase();
+        if (kind === TEMPLATE_KIND_EMAIL) {
+          const subjectRef = tmpl.attr(TEMPLATE_ATTR_SUBJECT_REF);
+          const htmlBodyRef = tmpl.attr(TEMPLATE_ATTR_HTML_BODY_REF);
+          const textBodyRef = tmpl.attr(TEMPLATE_ATTR_TEXT_BODY_REF);
+          if (typeof subjectRef === "string") refs.push({ label: "email/subject", ref: subjectRef });
+          if (typeof htmlBodyRef === "string") refs.push({ label: "email/html", ref: htmlBodyRef });
+          if (typeof textBodyRef === "string") refs.push({ label: "email/text", ref: textBodyRef });
+        } else {
+          const textRef = tmpl.attr(TEMPLATE_ATTR_TEXT_REF);
+          if (typeof textRef === "string") refs = [{ label: "document", ref: textRef }];
+        }
+      } else {
+        continue; // unknown subtype — loader-schema concern.
+      }
+
+      // No renderable body ref present — absent required refs are a loader-schema
+      // concern, not verify's (mirrors the pre-#193 behavior for a bodyless template).
+      if (refs.length === 0) continue;
+
+      // Slot/tag requirements are a template.prompt concept; the render-helper's
+      // email/document gate does NOT apply them per part (they would false-flag a
+      // slot as unused in each part). So only the prompt path carries them.
+      // ADR-0039: effective attrs — @requiredSlots/@requiredTags may be inherited.
+      const requiredSlots = promptRules ? attrAsStringArray(tmpl.attr(TEMPLATE_ATTR_REQUIRED_SLOTS)) : [];
+      const requiredTags = promptRules ? attrAsStringArray(tmpl.attr(TEMPLATE_ATTR_REQUIRED_TAGS)) : [];
+
+      for (const { label, ref } of refs) {
+        // Render-engine drift check: mustache variables ↔ payload field names.
+        const text = provider.resolve(ref);
         if (text === undefined) {
           log.error(
-            `[${tmpl.name}] (prompt) ${ERR_PARTIAL_UNRESOLVED}: @textRef "${textRef}" did not resolve under ${promptsDir}`,
+            `[${tmpl.name}] (${label}) ${ERR_PARTIAL_UNRESOLVED}: ref "${ref}" did not resolve under ${promptsDir}`,
           );
           errorCount++;
           continue;
         }
-
-        // ADR-0039: effective attrs — @requiredSlots/@requiredTags may be inherited via an abstract template.
-        const requiredSlots = attrAsStringArray(tmpl.attr(TEMPLATE_ATTR_REQUIRED_SLOTS));
-        const requiredTags = attrAsStringArray(tmpl.attr(TEMPLATE_ATTR_REQUIRED_TAGS));
-
         const drift = verify(text, fieldTree, { provider, requiredSlots, requiredTags });
         checked++;
         for (const e of drift) {
           if (e.code === ERR_REQUIRED_SLOT_UNUSED) {
-            log.warn(`[${tmpl.name}] (prompt) ${e.code}: ${e.path}`);
+            log.warn(`[${tmpl.name}] (${label}) ${e.code}: ${e.path}`);
             warnCount++;
           } else {
-            log.error(`[${tmpl.name}] (prompt) ${e.code}: ${e.path}`);
+            log.error(`[${tmpl.name}] (${label}) ${e.code}: ${e.path}`);
             errorCount++;
           }
         }
-      } else if (tmpl.subType === TEMPLATE_SUBTYPE_OUTPUT) {
-        // Output drift check: re-derive the payload field tree (already done above);
-        // if it resolved, the parser codegen can produce a schema. Field-type
-        // unsupported-by-Zod issues are caught by the codegen itself if/when
-        // `meta gen` runs; verify confines itself to ref-resolution checks.
-        checked++;
-      } else {
-        // Unknown subtype — ignore (loader-schema concern).
       }
     }
 

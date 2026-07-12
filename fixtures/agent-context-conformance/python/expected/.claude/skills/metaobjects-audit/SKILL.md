@@ -65,6 +65,39 @@ code behind a grep hit; a "duplicate" validator's *divergence* is the finding.
   subverbs (`--codegen` / `--templates` / `--db`)? Committed-codegen freshness gate?
   Advisories heeded? Routine `--no-verify` bypass? Loader `ERR_*` / warnings addressed?
   Parse the stable `code` field, not message text (ADR-0009).
+  **Coverage completeness — "wired" is not "covers it all."** A gate can be present
+  yet blind to a whole artifact class. Confirm each subverb actually covers what the
+  project HAS: (a) **templates** — `verify --templates` on a CLI before the #193 fix
+  SKIPS `template.output @kind=email` and does not body-check a document
+  `template.output`'s mustache, so a `{{field}}` that drifted from the payload sails
+  through; a project with email/output templates that relies on `verify` alone (no
+  `meta gen` + `git diff --exit-code`, and no CLI past the fix) can ship broken —
+  **finding**; (b) **codegen** — committed generated code needs `--codegen` (or
+  gen+no-diff), else hand-edits/regeneration drift silently; (c) **schema** — `--db`
+  (Node `meta` only) for DB drift. Flag a gate that is WIRED BUT INCOMPLETE for the
+  artifacts present, and recommend the specific missing coverage.
+- [ ] **F2. Over-generation — unnecessary generated files (codegen WASTE).**
+  Generated code is disposable, but that is NOT license to generate what nothing
+  consumes. Every generated file is a merge/review/maintenance surface and inflates
+  the leverage ratio falsely. Hunt OVER-generation (the inverse of A/B's
+  under-generation):
+  - **Dead generated files** — an `@generated` file that NOTHING imports or
+    references repo-wide (grep the emitted symbol / module path for importers):
+    delete it and stop generating it.
+  - **Artifacts an entity doesn't need** — REST routes / TanStack grids / forms /
+    hooks emitted for an entity that has no such surface. The per-entity opt-outs
+    exist for exactly this (`@emitRoutes: false`, `@emitTanstack: false`, a
+    `layout.dataGrid`-gated grid): flag the opt-out NOT used where the artifact is
+    unused.
+  - **Generators wired but unconsumed** — a generator in `metaobjects.config.ts`
+    `generators: [...]` (or the per-port equivalent) whose whole output class no
+    code imports: drop the generator rather than generate into the void.
+  - **Wrong target / duplicate output** — the same logical artifact emitted to two
+    places (a mis-set per-target `outDir`), one of which is orphaned.
+  Recommend generating ONLY what is consumed — narrow the generator set + use the
+  per-entity opt-outs. A smaller, fully-consumed generated surface beats a large one
+  with dead files (which also make the leverage ratio lie; discount them from the
+  census).
 - [ ] **G. Runtime-contract anti-patterns.** Module-global `db` vs context-as-parameter
   (ADR-0008); wire-canonicalization in the query path vs native in-process return types
   (ADR-0019); runtime reflection to resolve a type from FQN vs generated static imports /

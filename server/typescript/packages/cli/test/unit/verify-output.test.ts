@@ -101,4 +101,76 @@ describe("meta verify — template.output drift", () => {
     const code = await verifyCommand([], dir);
     expect(code).toBe(0);
   });
+
+  // #193 — verify --templates must drift-check @kind=email templates against
+  // their @payloadRef (parity with template.prompt), not silently skip them.
+  function writeEmailProject(htmlBody: string): void {
+    writeFileSync(
+      join(dir, "metaobjects", "meta.ai.json"),
+      JSON.stringify({
+        "metadata.root": {
+          package: "acme::ai",
+          children: [
+            { "object.value": { name: "P", children: [{ "field.string": { name: "name" } }] } },
+            {
+              "template.output": {
+                name: "Welcome",
+                "@kind": "email",
+                "@payloadRef": "P",
+                "@subjectRef": "e/subj",
+                "@htmlBodyRef": "e/html",
+              },
+            },
+          ],
+        },
+      }),
+    );
+    mkdirSync(join(dir, "prompts", "e"), { recursive: true });
+    writeFileSync(join(dir, "prompts", "e", "subj"), "Hello {{name}}");
+    writeFileSync(join(dir, "prompts", "e", "html"), htmlBody);
+  }
+
+  test("fails (exit 1) when a template.output @kind=email mustache references a field not on the payload (#193)", async () => {
+    writeEmailProject("<p>Hi {{nonExistentField}}</p>"); // drift: field not on payload P
+
+    const { verifyCommand } = await import("../../src/commands/verify.js");
+    const code = await verifyCommand([], dir);
+    expect(code).toBe(1);
+  });
+
+  test("passes when a template.output @kind=email mustache references only payload fields (#193)", async () => {
+    writeEmailProject("<p>Hi {{name}}</p>"); // clean: {{name}} is on payload P
+
+    const { verifyCommand } = await import("../../src/commands/verify.js");
+    const code = await verifyCommand([], dir);
+    expect(code).toBe(0);
+  });
+
+  test("fails (exit 1) when a document template.output @textRef mustache references a field not on the payload (#193 parity)", async () => {
+    writeFileSync(
+      join(dir, "metaobjects", "meta.ai.json"),
+      JSON.stringify({
+        "metadata.root": {
+          package: "acme::ai",
+          children: [
+            { "object.value": { name: "P", children: [{ "field.string": { name: "name" } }] } },
+            {
+              "template.output": {
+                name: "Doc",
+                "@payloadRef": "P",
+                "@textRef": "o/x",
+                "@format": "json",
+              },
+            },
+          ],
+        },
+      }),
+    );
+    mkdirSync(join(dir, "prompts", "o"), { recursive: true });
+    writeFileSync(join(dir, "prompts", "o", "x"), "spec for {{missingField}}"); // drift
+
+    const { verifyCommand } = await import("../../src/commands/verify.js");
+    const code = await verifyCommand([], dir);
+    expect(code).toBe(1);
+  });
 });
