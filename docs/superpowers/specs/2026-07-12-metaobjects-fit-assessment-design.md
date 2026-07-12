@@ -593,3 +593,73 @@ have used the URL.
    criterion** — Adopter A to tune, Adopter B to score, negative controls to prove
    the machinery can say no; >15% drift false-positives or a failing over-promise
    index blocks publication.
+
+---
+
+## Phase-0 findings + refinements (2026-07-12)
+
+Phase 0 ran as designed: a blinded high-end LLM session was given only the
+decontaminated Adopter-A baseline tree + this public repo, ran a v0 of the assessment,
+and was hand-scored against the actual migrated spine (94 `object.entity` /
+20 `object.projection` / 15 `object.value`, ~10k-line YAML spine) plus the adopter's
+own in-repo human migration plan as an independent expert baseline.
+
+**Result: STRONG GO.** The verdict (ADOPT, staged, wedge-first) and per-pillar scores
+were correct and well-calibrated. The drift-ledger centerpiece **exceeded the human
+expert plan**: where the human plan stated the drift thesis generically ("entity shape,
+schema, validation, payload shapes maintained in 3–4 places"), the blinded run found
+*specific, verified, production-biting* incidents — a status-enum vs `CHECK`-constraint
+chase spanning 146 migrations (one repair explicitly quoting a production constraint
+violation), a **currently-live** column-width divergence (DB widened by migration; the
+ORM annotation still declaring the old width — and feeding a second schema generator via
+the test profile), an orphan column confessed in a DAO comment, and a one-field-addition
+commit fanning out to 28 files across 4 modules. Every archaeology citation checked out
+real. The design's #1 risk — over-promising / brochure mode — **did not materialize**;
+the over-promise index was ~0. Every miss was a conservative **under-prediction**.
+
+### Under-prediction diagnosis → prompt fixes (v0 → v1)
+
+| # | Miss (predicted vs actual) | Diagnosis | v1 fix |
+|---|---|---|---|
+| U1 | **Entity count**: 49 predicted vs 94 actual `object.entity` (plus 20 projections + 15 values) | The run counted ORM `@Entity` classes and equated that with the future spine. But the spine models the **database, not the ORM layer**: junction tables, operational tables, and ORM-less tables all get modeled, read models become their own `object.projection`, payload shapes their own `object.value`. Even the raw class census was low (one mapping lane counted). | Mandatory **table-first census + reconciliation block** (prompt pass P2-a): reconstruct the live table set from the migration history; count ORM classes on *every* lane; anchor predicted `object.entity` ≈ live tables and predict the projection/value split explicitly. The JSON twin gains a structured `census_reconciliation` object so this claim is scored mechanically. |
+| U2 | **JSONB → value-object modeling under-headlined** (actual: 12 `field.object` + 15 `object.value` — a sizeable workstream; the human plan called opaque JSON columns a headline drift source) | The v0 contract had no mandated pass for opaque JSON columns. The drift signatures hunt *duplicated* declarations; an opaque `jsonb` column is the inverse smell — a shape with N **implicit** declarations (every `readValue`/`JSON.parse` call site) and **zero** checkable ones — so it fell through to a footnote ("`field.map`, typed later" — legal vocabulary, wrong weight). | Mandatory **opaque-payload hunt** (P2-b): grep DDL for `json/jsonb` + the per-port deserialization idioms; classify each column typed-somewhere (duplicate) vs fully-opaque (implicit-copy variant of drift signature 6); report counts in the census; carry `object.value` + `field.object @storage: jsonb` modeling as a **named migration-wave item**. |
+| U3 | **UI**: "nothing migrates" vs 5 `layout.dataGrid` actually authored | Two conflations: (a) UI-surface *detection* was React-scoped, so a server-rendered admin (tables with columns/sort/pagination) didn't register as a UI surface; (b) `layout.dataGrid` **metadata** (cross-port registry vocabulary, cheap to author on any port) was conflated with the grid **codegen/runtime** (genuinely TS/React-only). | Renderer-agnostic UI census (P2-c): a UI surface is anything grid-shaped, including server-rendered templates. The UI verdict is **two lines, never one**: UI-metadata authoring (cross-port; captures column/sort/page-size facts into the spine today) vs UI codegen+runtime (TS-only cap). "Nothing migrates" is only permitted on the second line. |
+| U4 | **Spine size ~2.5× low** (3.2–4k YAML lines predicted vs ~10k actual; ~40–60 vs ~106 lines/entity) | Flat lines-per-entity guess ignoring DDL richness. The actual vocabulary histogram is dominated by physical structure — `index.lookup` 319, `identity.reference` 117, `identity.secondary` 48 — i.e. indexes/FKs/unique keys are spine lines too. Compounded by U1's low object count. | **DDL-richness-derived estimator** (P6): count per-table indexes + uniques + FKs + enum-CHECKs and pick the lines-per-entity band accordingly (~25–40 bare; ~80–120 index/FK-rich), multiplied by the *reconciled* object count. |
+| U5 | **Runtime/persistence ceiling omitted**: "the ORM is not replaced" stated as flat fact; the actual adopter later moved to metadata-driven persistence (ObjectManagerDB, then generated Kotlin/Exposed entities, generated-base + hand-written-subclass ownership) | The run capped "what migrates" at the detected language's **stock generator lane** (Java/Spring generates DTOs/controllers/repo interfaces, not entities) and over-applied metadata-follows-the-code to the *end state* rather than the wave order — omitting the JVM's Kotlin lane (`codegen-kotlin` generates entity + Exposed table) and scaffold-and-own's owned-generator lever. | **Floor/ceiling rule** (M7 + P5-b): verdicts, plan, and benefit numbers stay on the conservative floor, but one clearly-labeled "deep-adoption ceiling" paragraph names the port's maximal lane, tagged `horizon: "later"` in JSON and never counted in benefits. Bounds the under-promise index without reopening over-promise risk. |
+| U6 | *(calibration nudge)* projection vocabulary led with `origin.aggregate`; the actual spine used `origin.passthrough` 42× and aggregates ~0 | Aggregates are the flashier suggestion; real projections are mostly passthrough/`extends` re-exposures. | The §R6 projection hunt now states: lead with `origin.passthrough`; aggregates are the minority case. |
+
+**Deliberately unchanged** — the machinery that produced the honest, grounded result is
+frozen: the worked disqualifier table, `file:line`/commit evidence discipline, the git
+archaeology + cost-of-change exhibit, bias-to-under-flagging with the >15%
+false-positive kill criterion, the per-port calibration caps, metadata-follows-the-code
++ author-from-the-live-schema (the run independently converged on the same
+reverse-engineer-from-the-live-schema methodology the human plan chose — now codified as
+rule M6), and the wedge-first plan shape. One negative check also passed: the run's one
+unusual vocabulary choice (`field.map`) was verified **registered** — the grounding rule
+(every capability claim traceable to `expected-registry.json`) held; no hallucinated
+vocabulary.
+
+The refined, self-contained, target-agnostic prompt (v1) folds in U1–U6 and is the
+draft content for the future `assess.md` / skill source below.
+
+### Build sequence (forward)
+
+1. **Land the skill** — `agent-context/skills/metaobjects-fit-assessment/` with
+   `SKILL.md` = prompt v1, `scaffold: false` (excluded from `meta init`, §7.2),
+   single-sourced with the audit's `capability-checklist.md` + calibration table, and
+   covered by the `agent-context-capability-grounding` test.
+2. **Build the retro-test harness** (§6.3 ground-truth extraction script + §6.4 scoring
+   sheet) so scoring is mechanical, not hand-adjudicated prose. The structured
+   `census_reconciliation` JSON block and the `horizon` tag were added to the contract
+   for exactly this.
+3. **Regression run on Adopter A** with v1: the five under-predictions must close
+   (entity count within the reconciliation band, JSONB as a named wave item, UI split
+   verdict, spine estimate within ×/÷2, ceiling paragraph present) while drift precision
+   and the over-promise index do not regress.
+4. **Holdout gate**: one blind run on the Adopter-B baseline + the negative controls,
+   scored once with no tuning — **this is the publish gate** for `assess.md`. Collapse
+   on the holdout relative to Adopter A = overfit; loop to step 3 with the failure
+   analysis, never tune on B.
+5. **Productize** per Phase 3 (assembler flatten step, publish to the site + mirror
+   into `docs/llms/`, `llms.txt` section, README/getting-started pointers, release-flow
+   version stamping).
