@@ -5,17 +5,18 @@ drive code generation, runtime metadata access, drift detection, and prompt
 construction — across TypeScript, Java, Kotlin, C#, and Python.
 
 The metamodel is the **durable spine**; generated code is the **disposable
-artifact**. Substrate is local-first: typed metadata lives in your repo,
-generated code is idiomatic per-language output that runs without any MetaObjects
-runtime dependency. If the package ecosystem disappears tomorrow, you keep
-working code.
+artifact**. Substrate is local-first: typed metadata lives in your repo, and the
+generated code is idiomatic per-language output with **no proprietary runtime** —
+the entity/model tier is dependency-free, and the optional client, prompt-render,
+and runtime tiers are ordinary Apache-2.0 packages you could vendor or fork. If
+the package ecosystem disappears tomorrow, you keep working code.
 
 > **Maintainer note.** MetaObjects is primarily a one-person, part-time project.
 > Issues and PRs are very welcome — expect responses on the order of days, not
 > hours. The metadata-driven *approach* has run in production for 20+ years; the
 > unified five-language *standard* in this repo is new and launching now. And by
-> design you are never blocked on the maintainer: the generated code runs with no
-> MetaObjects runtime dependency (see above), so you are never locked in.
+> design you are never blocked on the maintainer: the generated code carries no
+> proprietary runtime (see above), so you are never locked in.
 
 > **Built AI-first, verified by construction.** This standard is developed with heavy
 > AI assistance under a disciplined review-and-verify process — nothing ships that
@@ -77,16 +78,20 @@ the consumer-side wiring.
 
 ## Four pillars
 
-Equal-weight — all four ship per-language today. The fourth's library-side
-building blocks are complete in all five ports; MCP exposure of declared
-prompts/tools is the one remaining roadmap item:
+All four ship per-language today — but they are not uniformly deep. See the
+[capability matrix](#capability-matrix) for per-port coverage; in field
+materialization the ranking is **drift > codegen > prompts > runtime metadata**
+(the youngest pillar). The prompt pillar's library-side building blocks are
+complete in all five ports; MCP exposure of declared prompts/tools is the one
+remaining roadmap item:
 
 1. **Codegen** — emit idiomatic per-language code (Drizzle/Zod + Fastify for TS,
    POJO + OMDB for Java, `data class` + Exposed for Kotlin, EF Core
    record + ASP.NET routes for C#, `@dataclass` for Python). Hand-edit-preserving
    regen via three-way merge.
 2. **Runtime metadata** — load metadata at runtime, drive behavior dynamically
-   (CRUD, validation, relationships, dynamic admin UIs, LLM tool registration).
+   (CRUD, validation, relationships, dynamic admin UIs; typed tool payloads are
+   declared today, with MCP exposure on the roadmap).
 3. **Drift detection** — catch divergence across the 7 drift sources (code/DB,
    code/API-doc, DB/metadata, migration/metadata, generated-edited, prompt/payload,
    generated/runtime). See [`docs/features/migrations-and-drift.md`](docs/features/migrations-and-drift.md).
