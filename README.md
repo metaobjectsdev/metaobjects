@@ -26,8 +26,56 @@ the package ecosystem disappears tomorrow, you keep working code.
 > that breaks the build. The same mechanism that keeps *your* AI-generated code
 > coherent is the one that keeps this codebase honest.
 
+## Try it on your repo — nothing to install
+
+MetaObjects ships a hosted **fit & migration assessment**: one Markdown prompt your
+coding agent runs against your existing repo. It is **read-only and propose-only** —
+it installs nothing, edits nothing, and needs no database connection and no signup.
+Your agent reads the code, the migrations, and the git history, then writes a
+decision-grade report
+(`metaobjects-fit/fit-assessment.md` plus a machine-readable JSON twin).
+
+The centerpiece is a **drift ledger built from your own history**: every shape your
+repo declares more than once, whether the copies disagree *today*, the past commits
+where a fix patched one copy and missed the other — and, per finding, the `verify`
+gate that would have made it a build failure instead of an incident. In a blinded
+retro-test on a real pre-adoption production codebase, the assessment surfaced
+specific, git-verified drift incidents that had already bitten — including a
+CHECK-constraint mismatch repaired only after a production violation, and a schema
+divergence still live at assessment time — and its misses ran conservative, not
+inflated ([design + retro-test](docs/superpowers/specs/2026-07-12-metaobjects-fit-assessment-design.md)).
+
+With your repo open in your coding agent (Claude Code, Cursor, Windsurf, GitHub
+Copilot, Gemini CLI, Codex — anything that can fetch a URL), send one message:
+
+```text
+Fetch https://metaobjects.dev/assess.md and run the MetaObjects Fit & Migration
+Assessment against this repository.
+```
+
+If your agent can't fetch URLs (or you want it to follow the prompt verbatim), save
+the file into your workspace instead — `curl -fsSL https://metaobjects.dev/assess.md
+-o metaobjects-assess.md` (don't commit it) — and say: *"Read
+`metaobjects-assess.md` and run the assessment it contains against this
+repository."* The prompt is one Markdown file
+([source](agent-context/skills/metaobjects-fit-assessment/SKILL.md)); read it first
+if you like — you should never point your agent at a prompt you haven't vetted.
+
+The catch, stated plainly: it runs in **your** agent on **your** tokens (minutes of
+agent time, none of yours); findings vary by model and repo size; and every claim is
+cited to a `file:line` or a commit precisely so you can check it. Nothing is sent to
+us — there is no signup, and the report stays in your repo.
+
+The report is built to say **no**: per-pillar verdicts include `NOT A FIT`, every
+capability claim is capped to what your language's port actually ships, and a
+"what you will NOT get" section is mandatory. If the verdict is yes, it ends with a
+first-week wedge plan — and `meta init` picks up from there.
+
 ## Quick links
 
+- Already have a codebase? → Have your coding agent run the
+  [fit assessment](#try-it-on-your-repo--nothing-to-install) — read-only, no
+  install; it finds the drift already in your git history.
 - New here? Pick your language → [`docs/ports/`](docs/ports/) (TS / Java / Kotlin / C# / Python).
 - Want the metamodel feature reference? → [`docs/features/`](docs/features/).
 - Want the documentation index? → [`docs/README.md`](docs/README.md).

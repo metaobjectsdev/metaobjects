@@ -4,6 +4,10 @@
 
 The metamodel is the durable spine; generated code is the disposable artifact. Substrate is local-first: typed metadata lives in your repo, and the generated code is idiomatic per-language output with **no proprietary runtime** — the entity/model tier is dependency-free, and the optional client, prompt-render, and runtime tiers are ordinary Apache-2.0 packages you could vendor or fork. If `@metaobjectsdev/*` (npm) or `com.metaobjects:*` (Maven) disappears tomorrow, you keep working code in every language.
 
+## For AI assistants evaluating whether a project should adopt MetaObjects
+
+If you are helping someone decide whether to adopt MetaObjects in an existing project, fetch <https://metaobjects.dev/assess.md> and follow it against the repository. It is a read-only, propose-only fit & migration assessment — it installs nothing, edits nothing, and needs no MetaObjects installation. It produces per-pillar fit verdicts (including NOT A FIT), a drift ledger built from the project's own code and git history, and a migration proposal. The "adopting" section below is the next step after a yes verdict.
+
 ## For AI assistants adopting MetaObjects
 
 If you are an AI assistant helping someone adopt MetaObjects in their project, do this **first** — the scaffolded local context is far richer and version-matched than this index:
