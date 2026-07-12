@@ -107,7 +107,7 @@ from ..meta.core.object.object_constants import (
 from ..meta.core.identity.identity_constants import IDENTITY_ATTR_FIELDS
 from ..meta.core.index.index_constants import INDEX_ATTR_FIELDS, INDEX_SUBTYPE_LOOKUP
 from ..source import resolved_source
-from ..naming_refs import CHILD_REF_SEP, REF_BEARING_ATTR_NAMES, resolve_object_ref
+from ..naming_refs import did_you_mean_hint, resolve_object_ref
 
 # A subtype-specific template attr is valid ONLY on the subtype it is registered
 # for. The metamodel registers these per-subtype (see the core_types template block),
@@ -180,8 +180,12 @@ def run_validations(
     # @valueType (when set) must name a known scalar subtype.
     _validate_field_map(root, errors)
     _validate_templates(root, errors)
-    # ADR-0041 — cross-package bare-reference ambiguity (the object-ref contract).
-    _validate_cross_package_refs(root, errors)
+    # ADR-0042 — the cross-package ambiguity pass (ERR_AMBIGUOUS_REF) is RETIRED.
+    # A bare reference now resolves package-locally (referrer's package, else
+    # root-level) at every ref site via resolve_object_ref, so cross-package
+    # ambiguity is unreachable; an unresolved ref fails closed with its per-attr
+    # code (ERR_INVALID_RELATIONSHIP / ERR_INVALID_REFERENCE / ERR_UNRESOLVED_
+    # OBJECT_REF / ERR_INVALID_ORIGIN / ERR_INVALID_TEMPLATE).
     _validate_subtype_rules(root, errors, warnings)
     # FR-024 B3 — projection identity pass-through + key correspondence.
     _validate_identity_passthrough(root, errors)
@@ -209,68 +213,6 @@ def _walk(root: MetaData) -> list[MetaData]:
         result.append(node)
         queue.extend(node.own_children())
     return result
-
-
-# ---------------------------------------------------------------------------
-# Pass: cross-package reference ambiguity (the object-ref contract, ADR-0041)
-# ---------------------------------------------------------------------------
-
-
-def _validate_cross_package_refs(root: MetaData, errors: list[MetaError]) -> None:
-    """ADR-0041 — a BARE object reference (no ``::``) that names an object present
-    in MORE THAN ONE package, with NO match in the referrer's own package, is
-    ambiguous → ERR_AMBIGUOUS_REF (the author must qualify it with the package).
-
-    An FQN ref is exact (never ambiguous); a bare ref matching the referrer's own
-    package, or exactly one package anywhere, resolves fine. Covers every
-    object-ref-bearing attr in ``REF_BEARING_ATTR_NAMES`` (@objectRef / @references
-    / @from / @of / @via / @parameterRef / @payloadRef / @responseRef) — the dotted
-    ``.child`` tail of the origin heads is stripped to the entity OWNER. ``extends``
-    is intentionally NOT covered: its same-package/root-strict super-resolver never
-    matches a packaged object by bare name, so a bare cross-package ``extends`` is
-    unresolved (ERR_UNRESOLVED_SUPER), not ambiguous. Mirrors the TS reference
-    ``validateCrossPackageRefs``.
-    """
-
-    def _visit(node: MetaData, obj: MetaData, referrer_pkg: str) -> None:
-        for attr_name in REF_BEARING_ATTR_NAMES:
-            # ADR-0039 sanctioned own: judge the ref AUTHORED on THIS node; an
-            # inherited ref was judged on its declaring node. Mirrors the TS
-            # `node.ownAttr(attrName)`.
-            raw = node.attr(attr_name)
-            if not isinstance(raw, str):
-                continue
-            # Owner = the object part; strip any FR-024 dotted `.child` tail. An FQN
-            # owner (has `::`) is resolved exactly and can never be ambiguous.
-            dot = raw.find(CHILD_REF_SEP)
-            owner = raw if dot == -1 else raw[:dot]
-            if PACKAGE_SEP in owner or owner == "":
-                continue
-            if not resolve_object_ref(root, owner, referrer_pkg).ambiguous:
-                continue
-            pkgs = [
-                c.resolution_key()
-                for c in root.children()
-                if c.type == TYPE_OBJECT and c.name == owner
-            ]
-            errors.append(
-                MetaError(
-                    f'@{attr_name} "{raw}" on {obj.fqn()}: bare reference "{owner}" '
-                    f"is ambiguous — it names an object in multiple packages "
-                    f"({', '.join(pkgs)}) and none is in the referrer's package "
-                    f'"{referrer_pkg}". Qualify it with the package (FQN).',
-                    ErrorCode.ERR_AMBIGUOUS_REF,
-                    envelope=resolved_source(node.source, obj.fqn(), owner),
-                )
-            )
-        for c in node.own_children():
-            _visit(c, obj, referrer_pkg)
-
-    for obj in root.children():
-        if obj.type != TYPE_OBJECT:
-            continue
-        referrer_pkg = obj.package or obj.file_default_package or ""
-        _visit(obj, obj, referrer_pkg)
 
 
 # ---------------------------------------------------------------------------
@@ -996,28 +938,6 @@ def _validate_datagrid_filter_values(
 #   - Any missing entity/relationship → ERR_INVALID_ORIGIN.
 
 
-def _build_object_index(root: MetaData) -> dict[str, MetaObject]:
-    """Return a ref → MetaObject index of all top-level objects in *root*.
-
-    FR-032 (ADR-0032): origin ref heads (@from/@of/@via) and relationship
-    @objectRef values are FULLY QUALIFIED after the desugar/corpus sweep
-    (e.g. ``acme::commerce::Program``). Index each object under its bare
-    ``name``, its ``fqn()`` AND its package-folded ``resolution_key()`` so a
-    lookup FQN-matches regardless of which canonical form the ref carries.
-    Mirrors TS ``refMatchesObject`` / the C# @parameterRef index.
-    """
-    index: dict[str, MetaObject] = {}
-    # ADR-0039 sanctioned own: top-level object scan on the loader ROOT (never
-    # extended, own == effective) — mirrors the TS refMatchesObject index.
-    for child in root.own_children():
-        if child.type == TYPE_OBJECT and isinstance(child, MetaObject):
-            if child.name:
-                index[child.name] = child
-                index[child.fqn()] = child
-                index[child.resolution_key()] = child
-    return index
-
-
 def _relationships_by_name(obj: MetaObject) -> dict[str, MetaData]:
     """Return a name → node map of all relationship children on *obj* (effective)."""
     result: dict[str, MetaData] = {}
@@ -1059,7 +979,8 @@ def _validate_entity_field_ref(
     ref: str,
     attr_name: str,
     context: str,
-    object_index: dict[str, MetaObject],
+    root: MetaData,
+    referrer_pkg: str,
     errors: list[MetaError],
     origin_node: MetaData,
     referrer: str,
@@ -1090,7 +1011,8 @@ def _validate_entity_field_ref(
         )
         return None
     entity_name, field_name = parts
-    entity = object_index.get(entity_name)
+    # ADR-0042 — a bare @from/@of entity head resolves in the host/projection's package.
+    entity = resolve_object_ref(root, entity_name, referrer_pkg)
     if entity is None:
         # FR5d — entity half of the ref didn't resolve. target = full ref.
         errors.append(
@@ -1120,7 +1042,8 @@ def _validate_entity_field_ref(
 def _validate_via_path(
     via: str,
     context: str,
-    object_index: dict[str, MetaObject],
+    root: MetaData,
+    referrer_pkg: str,
     errors: list[MetaError],
     origin_node: MetaData,
     referrer: str,
@@ -1150,9 +1073,10 @@ def _validate_via_path(
         )
         return None
 
-    # First segment: starting entity
+    # First segment: starting entity. ADR-0042 — a bare @via HEAD resolves in the
+    # host/projection's package.
     current_name = segments[0]
-    current_entity = object_index.get(current_name)
+    current_entity = resolve_object_ref(root, current_name, referrer_pkg)
     if current_entity is None:
         errors.append(
             MetaError(
@@ -1205,7 +1129,10 @@ def _validate_via_path(
             )
             return None
 
-        next_entity = object_index.get(obj_ref)
+        # ADR-0042 — the hop target (@objectRef/@references) resolves in the package
+        # of the entity that DECLARES the relationship/reference, i.e. current_entity.
+        hop_pkg = current_entity.package or current_entity.file_default_package or ""
+        next_entity = resolve_object_ref(root, obj_ref, hop_pkg)
         if next_entity is None:
             # FR5d — the hop's target points at a missing entity.
             kind = "reference" if _is_reference_hop(rel_node) else "relationship"
@@ -1244,20 +1171,27 @@ def _hop_cardinality(rel: MetaData) -> str | None:
     return v if isinstance(v, str) else None
 
 
-def _ref_named_owner(node: MetaData, object_index: dict[str, MetaObject]) -> MetaData | None:
+def _ref_named_owner(
+    node: MetaData, root: MetaData, referrer_pkg: str
+) -> MetaData | None:
     """The entity NAMED by a node's dotted extends ref — the OWNER part of
     ``<owner>.<child>...``. Differs from ``super_data.parent`` when the resolved
     child is INHERITED: ``Product.id`` selecting BaseEntity's identity through
-    Product must anchor Product (what the author wrote), not BaseEntity."""
+    Product must anchor Product (what the author wrote), not BaseEntity.
+
+    ADR-0042 — resolve the owner AS AUTHORED: an FQN owner (``acme::Customer``)
+    resolves exactly, a bare owner (``Product``) resolves in the referrer's package.
+    Do NOT strip the package to a bare tail."""
     ref = node.super_ref
     if not ref:
         return None
+    # Owner = everything before the child dot in the FINAL ::-segment.
     last_sep = ref.rfind(PACKAGE_SEP)
-    tail = ref if last_sep == -1 else ref[last_sep + len(PACKAGE_SEP):]
-    dot = tail.find(".")
-    if dot <= 0:
-        return None
-    return object_index.get(tail[:dot])
+    seg_start = 0 if last_sep == -1 else last_sep + len(PACKAGE_SEP)
+    dot_in_seg = ref.find(".", seg_start)
+    if dot_in_seg <= seg_start:
+        return None  # no dotted child owner
+    return resolve_object_ref(root, ref[:dot_in_seg], referrer_pkg)
 
 
 def _is_base_relation_target(target: MetaData, base: MetaData, host: MetaData) -> bool:
@@ -1279,7 +1213,8 @@ def _is_base_relation_target(target: MetaData, base: MetaData, host: MetaData) -
 
 def _derive_base_entity(
     obj: MetaData,
-    object_index: dict[str, MetaObject],
+    root: MetaData,
+    referrer_pkg: str,
     field_name: str,
     origin_source: object,
     errors: list[MetaError],
@@ -1295,7 +1230,7 @@ def _derive_base_entity(
     for identity in (c for c in obj.own_children() if c.type == TYPE_IDENTITY):
         extended = identity.super_data
         if extended is not None and extended.type == TYPE_IDENTITY:
-            named = _ref_named_owner(identity, object_index)
+            named = _ref_named_owner(identity, root, referrer_pkg)
             if named is not None:
                 return named
             owner = extended.parent
@@ -1311,7 +1246,7 @@ def _derive_base_entity(
         sup = f.super_data
         if sup is None:
             continue
-        named = _ref_named_owner(f, object_index)
+        named = _ref_named_owner(f, root, referrer_pkg)
         owner = named if named is not None else sup.parent
         if (
             owner is not None
@@ -1534,8 +1469,6 @@ def _validate_origin_paths(
     Errors use ERR_INVALID_ORIGIN / ERR_AMBIGUOUS_PATH / ERR_ORIGIN_CARDINALITY /
     ERR_EXTENDS_ORIGIN_MISMATCH. Only validates; does NOT alter the tree.
     """
-    object_index = _build_object_index(root)
-
     for node in _walk(root):
         if node.type != TYPE_FIELD:
             continue
@@ -1543,6 +1476,9 @@ def _validate_origin_paths(
         obj = node.parent if hasattr(node, "parent") else None
         if obj is None or obj.type != TYPE_OBJECT:
             continue
+        # ADR-0042 — a bare origin head (@from/@of/@via) resolves in the host/
+        # projection's package.
+        host_pkg = obj.package or obj.file_default_package or ""
         # FR-024 B5: object.value hosts are EXEMPT from @via inference and
         # cardinality checks — a value's origin.passthrough is FR-015 parameter
         # lineage (constructed, not assembled). @from is still resolution-checked.
@@ -1574,7 +1510,7 @@ def _validate_origin_paths(
                     )
                     continue
                 from_target = _validate_entity_field_ref(
-                    from_ref, ORIGIN_ATTR_FROM, ctx, object_index, errors, origin, referrer
+                    from_ref, ORIGIN_ATTR_FROM, ctx, root, host_pkg, errors, origin, referrer
                 )
                 # FR-024 B6 — extends/origin agreement (host-agnostic).
                 if from_target is not None:
@@ -1589,7 +1525,7 @@ def _validate_origin_paths(
                     )
                 via = origin.attr(ORIGIN_ATTR_VIA)
                 if isinstance(via, str) and via:
-                    hops = _validate_via_path(via, ctx, object_index, errors, origin, referrer)
+                    hops = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
                     if hops is not None:
                         _check_passthrough_cardinality(hops, node.name, origin.source, errors)
                 elif from_target is not None and not is_value_host:
@@ -1597,7 +1533,7 @@ def _validate_origin_paths(
                     # base relation itself is a plain base column (no checks);
                     # otherwise infer the single-hop-unique path and gate cardinality.
                     base = _derive_base_entity(
-                        obj, object_index, node.name, origin.source, errors
+                        obj, root, host_pkg, node.name, origin.source, errors
                     )
                     if base is not None and not _is_base_relation_target(
                         from_target[0], base, obj
@@ -1625,11 +1561,11 @@ def _validate_origin_paths(
                 # NOTE (FR-024 B6): NO extends/origin agreement on aggregates —
                 # an aggregate computes something new (spec §4 is passthrough-only).
                 of_target = _validate_entity_field_ref(
-                    of_ref, ORIGIN_ATTR_OF, ctx, object_index, errors, origin, referrer
+                    of_ref, ORIGIN_ATTR_OF, ctx, root, host_pkg, errors, origin, referrer
                 )
                 via = origin.attr(ORIGIN_ATTR_VIA)
                 if isinstance(via, str) and via:
-                    hops = _validate_via_path(via, ctx, object_index, errors, origin, referrer)
+                    hops = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
                     if hops is not None:
                         _check_aggregate_cardinality(hops, node.name, origin.source, errors)
                     continue
@@ -1648,7 +1584,7 @@ def _validate_origin_paths(
                     )
                     continue
                 base = _derive_base_entity(
-                    obj, object_index, node.name, origin.source, errors
+                    obj, root, host_pkg, node.name, origin.source, errors
                 )
                 if base is None:
                     continue
@@ -1728,8 +1664,6 @@ def _count_junction_references(junction: MetaData) -> int:
 
 
 def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
-    object_index = _build_object_index(root)
-
     # ADR-0039: a relationship is validated on the entity that DECLARES it — the
     # M:N slim-vocabulary rules apply to own-declared relationships (obj.own_children()),
     # but each relationship's @through/@sourceRefField/@symmetric/@cardinality/@objectRef
@@ -1738,6 +1672,8 @@ def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
     # `rel.attr` which resolves — validation-passes.ts:1313-1324). (The junction's
     # identity.reference fields are also read resolving — see _count_junction_references.)
     for obj in (c for c in root.children() if c.type == TYPE_OBJECT):
+        # ADR-0042 — a bare @through / @objectRef resolves in the declaring entity's package.
+        referrer_pkg = obj.package or obj.file_default_package or ""
         for rel in (c for c in obj.own_children() if c.type == TYPE_RELATIONSHIP):
             through = rel.get_meta_attr(RELATIONSHIP_ATTR_THROUGH)
             source_ref_field = rel.get_meta_attr(RELATIONSHIP_ATTR_SOURCE_REF_FIELD)
@@ -1793,8 +1729,12 @@ def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
                 ))
 
             # Rule (a): @symmetric valid only on a self-join (@objectRef == declaring entity).
+            # ADR-0042: resolve @objectRef and compare NODE IDENTITY — a bare "Widget"
+            # in this package is self, but an FQN "other::Widget" (a different same-short-
+            # name entity) is NOT (comparing stripped short names would misclassify it).
             is_self_join = (
-                isinstance(object_ref, str) and _strip_package(object_ref) == obj.name
+                isinstance(object_ref, str)
+                and resolve_object_ref(root, object_ref, referrer_pkg) is obj
             )
             if symmetric and not is_self_join:
                 errors.append(MetaError(
@@ -1807,12 +1747,16 @@ def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
                 ))
 
             # Rule (c): @through must name an entity declaring exactly two
-            # identity.reference children.
-            junction = object_index.get(_strip_package(through))  # type: ignore[arg-type]
+            # identity.reference children. ADR-0042: resolve package-local (this
+            # entity's package, else root-level); an FQN resolves exactly — NO
+            # bare-name-anywhere fallback that would bind a same-named junction in
+            # another package.
+            junction = resolve_object_ref(root, str(through), referrer_pkg)
             if junction is None:
                 errors.append(MetaError(
                     f'relationship "{obj.name}.{rel.name}" '
-                    f'@{RELATIONSHIP_ATTR_THROUGH} "{through}" does not resolve to an entity.',
+                    f'@{RELATIONSHIP_ATTR_THROUGH} "{through}" does not resolve to an '
+                    f"entity.{did_you_mean_hint(root, str(through))}",
                     ErrorCode.ERR_INVALID_RELATIONSHIP,
                     envelope=resolved_source(
                         rel.source, f"{obj.fqn()}::{rel.name}", str(through)
@@ -2480,19 +2424,14 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
     # resolving via `tmpl.attr` (validation-passes.ts:169-253). Root has no super, so
     # the root scans below are children()==own_children() but resolving is the default.
     #
-    # FR-032 (ADR-0032): @payloadRef is FULLY QUALIFIED after the desugar/sweep
-    # (e.g. ``acme::ai::ReviewPayload``). Index each object under its bare name,
-    # its fqn() AND its package-folded resolution_key() so the FQN ref resolves.
-    objects_by_name: dict[str, MetaData] = {}
-    for child in root.children():
-        if child.type == TYPE_OBJECT:
-            objects_by_name.setdefault(child.name, child)
-            objects_by_name.setdefault(child.fqn(), child)
-            objects_by_name.setdefault(child.resolution_key(), child)
-
+    # ADR-0042 (was FR-032): @payloadRef resolves package-local — the template's
+    # own package first, else a root-level object.value; an FQN resolves exactly.
+    # No bare-name-anywhere fallback that would bind a same-named VO in another
+    # package. Shares the single resolve_object_ref matcher.
     for tpl in root.children():
         if tpl.type != TYPE_TEMPLATE:
             continue
+        referrer_pkg = tpl.package or tpl.file_default_package or ""
         is_prompt = tpl.sub_type == tc.TEMPLATE_SUBTYPE_PROMPT
         # ADR-0039: resolving — a template may inherit @payloadRef via extends.
         payload_ref = tpl.get_meta_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)
@@ -2565,7 +2504,7 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
         # R2 — @payloadRef must resolve to a root-level object.value
         # FR5d — @payloadRef is a reference; emit format=resolved with
         # referrer=template FQN, target=the unresolved payloadRef string.
-        payload = objects_by_name.get(payload_ref)
+        payload = resolve_object_ref(root, payload_ref, referrer_pkg)
         if payload is None or payload.sub_type != OBJECT_SUBTYPE_VALUE:
             errors.append(MetaError(
                 code=ErrorCode.ERR_INVALID_TEMPLATE,

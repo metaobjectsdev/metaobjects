@@ -57,7 +57,15 @@ public class ObjectField extends MetaField<Object>
                    // cross-port logical vocabulary — every field subtype carries
                    // them), so ObjectField inherits both via the snapshot rather
                    // than re-declaring them here.
-                   .inheritsFrom(TYPE_FIELD, SUBTYPE_BASE);
+                   .inheritsFrom(TYPE_FIELD, SUBTYPE_BASE)
+                   // ADR-0042 — @objectRef is a cross-reference to a real object (the
+                   // nested value's shape); the loader's registry-derived validation
+                   // resolves it package-locally (dangling target = load error). Fires
+                   // only when @objectRef is present (absence is
+                   // ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF's job).
+                   .reference(new com.metaobjects.validation.ReferenceDescriptor(
+                       MetaObject.ATTR_OBJECT_REF, MetaObject.TYPE_OBJECT,
+                       null, false, "ERR_UNRESOLVED_OBJECT_REF"));
             });
 
             log.debug("Registered ObjectField type with unified registry");

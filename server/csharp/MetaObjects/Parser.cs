@@ -240,6 +240,7 @@ public static class Parser
     {
         "objectRef", "references", "from", "of", "via",
         "payloadRef", "responseRef", "parameterRef",
+        "through", // ADR-0042: the M:N junction ref joins the desugar+resolution set.
     };
 
     /// <summary>

@@ -318,12 +318,18 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
 
     /**
      * Resolve a {@code field.object}'s {@code @objectRef} to its target
-     * {@code object.value} by BARE short-name — mirroring the TS render-helper's
-     * {@code findObject(root, ref)} ({@code c.type === OBJECT && c.name === ref}).
-     * The raw {@code @objectRef} attr value is read directly (NOT package-folded);
-     * if it carries a package, only the last {@code ::} segment is compared, against
-     * each {@code object.value}'s own short name. Returns {@code null} if the field
-     * has no {@code @objectRef} or no matching {@code object.value} is found.
+     * {@code object.value} under the ADR-0042 package-local contract — mirroring the
+     * TS render-helper's {@code resolveObjectRef(root, ref, declaringFieldPkg)}:
+     * <ul>
+     *   <li>an <b>FQN</b> {@code @objectRef} (contains {@code ::}) resolves EXACTLY on
+     *       the object's package-qualified name — never a bare-tail fallback that would
+     *       bind a same-named {@code object.value} in the WRONG package;</li>
+     *   <li>a <b>bare</b> {@code @objectRef} resolves in the DECLARING field's package
+     *       ({@code <fieldPkg>::<ref>} — correct for a {@code field.object} inherited via
+     *       extends across packages), else a root-level {@code object.value}. Package-local
+     *       BEFORE root-level; no cross-package short-name fallback.</li>
+     * </ul>
+     * Returns {@code null} if the field has no {@code @objectRef} or nothing resolves.
      */
     protected static MetaObject resolveNestedObjectRef(MetaDataLoader loader, ObjectField field) {
         // ADR-0039: @objectRef is an inheritable effective field property — a concrete
@@ -332,21 +338,21 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
         if (!field.hasMetaAttr(MetaObject.ATTR_OBJECT_REF)) return null;
         String ref = field.getMetaAttr(MetaObject.ATTR_OBJECT_REF).getValueAsString();
         if (ref == null || ref.isEmpty()) return null;
-        // ADR-0041: a FULLY-QUALIFIED @objectRef (contains "::") resolves EXACTLY on
-        // the package-qualified name — never a bare-tail fallback that would bind a
-        // same-named object.value in the WRONG package on a cross-package short-name
-        // collision. A bare ref matches the object.value's short name. Mirrors the
-        // Kotlin render helper + the templates-mode TemplateVerify resolver.
         boolean fqn = ref.contains("::");
-        String refShort = SpringNaming.splitFqn(ref)[1];
+        // The DECLARING field's package (walks parents; for an inherited field.object it is
+        // the package where the field is DECLARED, not where it is used).
+        String referrerPkg = com.metaobjects.util.MetaDataUtil.findPackageForMetaData(field);
+        if (referrerPkg == null) referrerPkg = "";
+        String localKey = (fqn || referrerPkg.isEmpty()) ? ref : referrerPkg + "::" + ref;
+        MetaObject own = null;
+        MetaObject rootLevel = null;
         for (MetaObject obj : loader.getMetaObjects()) {
             if (!MetaObject.SUBTYPE_VALUE.equals(obj.getSubType())) continue;
-            boolean matches = fqn
-                ? obj.getName().equals(ref)
-                : SpringNaming.splitFqn(obj.getName())[1].equals(refShort);
-            if (matches) return obj;
+            if (obj.getName().equals(localKey)) own = obj;
+            if (!fqn && obj.getName().equals(ref)) rootLevel = obj;
         }
-        return null;
+        if (fqn) return own;
+        return own != null ? own : rootLevel;
     }
 
     /**

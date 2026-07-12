@@ -492,6 +492,21 @@ public static class CoreTypes
                 IDENTITY_REFERENCE_ATTR_REFERENCES, TYPE_OBJECT, null, true, "ERR_INVALID_REFERENCE")];
         }
 
+        // ADR-0042 — a field.object / field.map @objectRef must resolve (a dangling target
+        // fails the load, closing the gap that surfaced downstream as a misleading runtime
+        // error; #191). The required-attr pass owns absence (ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF);
+        // this descriptor fires only when @objectRef is PRESENT but resolves to nothing →
+        // ERR_UNRESOLVED_OBJECT_REF. Mirrors the TS core-types.ts registration.
+        foreach (string subType in new[] { FIELD_SUBTYPE_OBJECT, FIELD_SUBTYPE_MAP })
+        {
+            var fdef = registry.Find(TYPE_FIELD, subType);
+            if (fdef is not null)
+            {
+                fdef.References = [new MetaObjects.Validation.ReferenceDescriptor(
+                    FIELD_ATTR_OBJECT_REF, TYPE_OBJECT, null, false, "ERR_UNRESOLVED_OBJECT_REF")];
+            }
+        }
+
         // index — 1 subtype (lookup). Non-unique lookup indexes for query-performance.
         // Distinct from identity.secondary (which enforces uniqueness). A single
         // MetaIndex class backs the lookup subtype; physical attrs (@orders/@expr/

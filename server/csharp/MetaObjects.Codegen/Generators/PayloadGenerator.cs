@@ -71,12 +71,15 @@ public class PayloadGenerator : IGenerator
         if (tmpl.Type != TYPE_TEMPLATE || tmpl.SubType != TEMPLATE_SUBTYPE_OUTPUT) return false;
         // ADR-0039: resolving — @payloadRef may be inherited via an abstract template base.
         if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef) return false;
-        return RenderHelperGenerator.ResolveValueObject(root, payloadRef) is not null;
+        // ADR-0042: a bare @payloadRef resolves in the template's package.
+        return RenderHelperGenerator.ResolveValueObject(
+            root, payloadRef, global::MetaObjects.NamingRefs.EffectivePackage(tmpl)) is not null;
     }
 
-    /// <summary>The root-level <c>object.value</c> a <c>@payloadRef</c> names, or null.</summary>
-    internal static MetaData? ResolvePayloadVo(MetaRoot root, string payloadRef) =>
-        RenderHelperGenerator.ResolveValueObject(root, payloadRef);
+    /// <summary>The <c>object.value</c> a <c>@payloadRef</c> names, or null. ADR-0042:
+    /// package-local — <paramref name="referrerPkg"/> is the declaring template's package.</summary>
+    internal static MetaData? ResolvePayloadVo(MetaRoot root, string payloadRef, string referrerPkg = "") =>
+        RenderHelperGenerator.ResolveValueObject(root, payloadRef, referrerPkg);
 
     protected virtual EmittedFile EmitPayload(string payloadRef, GenContext ctx)
     {

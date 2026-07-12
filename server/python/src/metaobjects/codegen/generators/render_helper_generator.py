@@ -62,7 +62,8 @@ from metaobjects.render.verify import (
     PayloadField,
     verify,
 )
-from metaobjects.shared.base_types import TYPE_FIELD, TYPE_OBJECT, TYPE_TEMPLATE
+from metaobjects.naming_refs import resolve_object_ref
+from metaobjects.shared.base_types import TYPE_FIELD, TYPE_TEMPLATE
 from metaobjects.shared.separators import PACKAGE_SEP
 
 _GENERATOR_NAME = "render-helper-generator"
@@ -81,30 +82,34 @@ def _py_str(s: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _resolve_nested_object_ref(root: MetaData, reference: str) -> MetaObject | None:
+def _pkg_of(node: MetaData) -> str:
+    """The effective package of an object — its ``resolution_key()`` minus the
+    trailing ``::<name>`` ("" for a root-level object). Derived from the resolution
+    key so it is correct for BOTH loaded trees (file_default_package) and
+    programmatically-built trees (package only on the root, folded via the ancestor
+    walk in ``resolution_key()``)."""
+    key = node.resolution_key()
+    i = key.rfind(PACKAGE_SEP)
+    return "" if i == -1 else key[:i]
+
+
+def _resolve_nested_object_ref(
+    root: MetaData, reference: str, referrer_pkg: str
+) -> MetaObject | None:
     """Resolve a ``field.object``'s ``@objectRef`` to its target ``object.value``.
 
-    ADR-0041: a FULLY-QUALIFIED ref (contains ``::``) resolves EXACTLY on the
-    package-qualified name (``resolution_key()``/``fqn()``) — never a bare-tail
-    fallback that would bind a same-named ``object.value`` in the WRONG package on a
-    cross-package short-name collision. A bare ref still matches by short name
-    (first-wins). Mirrors the Java/Kotlin ``resolveNestedObjectRef`` + TS
-    ``refMatchesObject``."""
+    ADR-0042: package-local — an FQN ref (contains ``::``) resolves EXACTLY on the
+    package-qualified name; a bare ref resolves in the referrer's package FIRST
+    (else a root-level object), never a same-named ``object.value`` in another
+    package via a bare-tail fallback. *referrer_pkg* is the DECLARING field's
+    package (which differs from the VO's when the field is inherited via extends
+    from an abstract VO in another package). Shares the single ``resolve_object_ref``
+    matcher. Mirrors the TS ``findObject`` in payload-field-tree.ts."""
     if not reference:
         return None
-    fqn = PACKAGE_SEP in reference
-    ref_short = reference.rsplit(PACKAGE_SEP, 1)[-1]
-    # ADR-0039 sanctioned own: top-level scan on the loader ROOT (never extended, own == effective)
-    for child in root.own_children():
-        if child.type != TYPE_OBJECT or not isinstance(child, MetaObject):
-            continue
-        if child.sub_type != OBJECT_SUBTYPE_VALUE:
-            continue
-        if fqn:
-            if child.resolution_key() == reference or child.fqn() == reference:
-                return child
-        elif child.name.rsplit(PACKAGE_SEP, 1)[-1] == ref_short:
-            return child
+    target = resolve_object_ref(root, reference, referrer_pkg)
+    if target is not None and target.sub_type == OBJECT_SUBTYPE_VALUE:
+        return target  # type: ignore[return-value]
     return None
 
 
@@ -118,6 +123,10 @@ def _derive_payload_field_tree(
     if vo is None or vo.resolution_key() in seen:
         return []
     next_seen = seen | {vo.resolution_key()}
+    # A nested @objectRef resolves in the FIELD's own declaring package (below),
+    # which differs from this VO's when the field is inherited via extends from an
+    # abstract VO in another package (the bare ref was authored there).
+    vo_pkg = _pkg_of(vo)
     fields: list[PayloadField] = []
     for f in vo.children():
         if f.type != TYPE_FIELD or not isinstance(f, MetaField):
@@ -125,7 +134,8 @@ def _derive_payload_field_tree(
         if f.sub_type == fc.FIELD_SUBTYPE_OBJECT:
             ref = f.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
             if isinstance(ref, str) and ref:
-                target = _resolve_nested_object_ref(root, ref)
+                field_pkg = _pkg_of(f.parent) if f.parent is not None else vo_pkg
+                target = _resolve_nested_object_ref(root, ref, field_pkg)
                 if target is not None and target.sub_type == OBJECT_SUBTYPE_VALUE:
                     children = _derive_payload_field_tree(root, target, next_seen)
                     fields.append(PayloadField(f.name, children))
@@ -152,16 +162,20 @@ def _field_tree_literal(fields: list[PayloadField]) -> str:
 
 
 def _resolve_payload_vo(root: MetaData, payload_ref: str) -> MetaObject | None:
-    """``@payloadRef`` must resolve to an ``object.value`` (same contract as the
-    parser/prompt generators). Matches a value-object child by short name OR by the
-    last segment of a fully-qualified ``a::b::Name`` ref (FR-026 expands refs to FQN,
-    while the child node still carries the short ``name``)."""
-    ref_short = payload_ref.rsplit("::", 1)[-1]
+    """``@payloadRef`` must resolve to an ``object.value``. Package-local (ADR-0042):
+    the referrer's own package first (else a root-level object), FQN exact. The
+    referrer package is derived from the resolved match's own resolution key, so this
+    keeps the same behavior for the single-package + FQN codegen fixtures while never
+    binding a same-named VO in the wrong package (the nested @objectRef path is the
+    one #191 named — see _resolve_nested_object_ref). Matches a value-object child by
+    the package-folded resolution key OR the bare short name (FR-026 expands refs to
+    FQN, while the child node still carries the short ``name``)."""
+    ref_short = payload_ref.rsplit(PACKAGE_SEP, 1)[-1]
     # ADR-0039 sanctioned own: top-level scan on the loader ROOT (never extended, own == effective)
     for child in root.own_children():
-        if child.type != TYPE_OBJECT or not isinstance(child, MetaObject):
+        if not isinstance(child, MetaObject) or child.sub_type != OBJECT_SUBTYPE_VALUE:
             continue
-        if child.sub_type == OBJECT_SUBTYPE_VALUE and child.name in (payload_ref, ref_short):
+        if child.resolution_key() == payload_ref or child.name == ref_short:
             return child
     return None
 

@@ -34,40 +34,27 @@ from ..meta.core.object.object_constants import (
     OBJECT_SUBTYPE_ENTITY,
     OBJECT_SUBTYPE_VALUE,
 )
+from ..naming_refs import resolve_object_ref
 from ..shared.base_types import TYPE_OBJECT, TYPE_SOURCE
-from ..shared.separators import PACKAGE_SEP
 
 _CALLABLE_KINDS = frozenset({SOURCE_KIND_STORED_PROC, SOURCE_KIND_TABLE_FUNCTION})
 
 
 def validate_source_parameter_ref(root: MetaData, errors: list[MetaError]) -> None:
-    # Pre-index every object by name, fqn AND resolution key so resolution costs
-    # O(1) per source. FR-032 (ADR-0032): @parameterRef is FULLY QUALIFIED after
-    # the desugar/sweep (e.g. ``acme::ParamVO``), which is the package-folded
-    # resolution_key() (objects keep a bare fqn() per FR5d), so the index must
-    # carry that key too. Mirrors the C# @parameterRef ResolutionKey() index.
     # ADR-0039 (mirrors the TS validate-source-parameter-ref): resolving is the
     # default. Root has no super, so children()==own_children() here, but the
     # inheritable reads below RESOLVE — @parameterRef on the source, the parameter
     # value-object's fields, and the referenced entity's field can all be inherited
     # via extends. The SOURCE iteration stays own (a source is validated on the
     # entity that declares it), as does origin.* (never inherits; ADR-0029).
-    object_index: dict[str, MetaData] = {}
     for obj in root.children():
         if obj.type != TYPE_OBJECT:
             continue
-        object_index[obj.name] = obj
-        fqn = (
-            f"{obj.package}{PACKAGE_SEP}{obj.name}"
-            if obj.package
-            else obj.name
-        )
-        object_index[fqn] = obj
-        object_index[obj.resolution_key()] = obj
-
-    for obj in root.children():
-        if obj.type != TYPE_OBJECT:
-            continue
+        # ADR-0042 — a bare @parameterRef resolves package-local (this object's
+        # package, else root-level); an FQN resolves exactly. Shares the single
+        # resolve_object_ref matcher — NO bare-name-anywhere fallback (which would
+        # silently bind a same-named value-object in another package).
+        referrer_pkg = obj.package or obj.file_default_package or ""
         for source in obj.own_children():
             if source.type != TYPE_SOURCE or source.sub_type != SOURCE_SUBTYPE_RDB:
                 continue
@@ -93,7 +80,7 @@ def validate_source_parameter_ref(root: MetaData, errors: list[MetaError]) -> No
                 )
                 continue
 
-            target = object_index.get(ref)
+            target = resolve_object_ref(root, ref, referrer_pkg)
             if target is None:
                 errors.append(
                     MetaError(

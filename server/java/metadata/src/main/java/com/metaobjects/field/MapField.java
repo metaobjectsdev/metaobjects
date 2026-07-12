@@ -66,7 +66,14 @@ public class MapField extends MetaField<Object>
                    // re-declaring them here. FR-033 strict-attr scoping keeps exactly
                    // @valueType + @objectRef on field.map (per spec/metamodel/field.json),
                    // so the manifest byte-matches the frozen registry fixture.
-                   .inheritsFrom(TYPE_FIELD, SUBTYPE_BASE);
+                   .inheritsFrom(TYPE_FIELD, SUBTYPE_BASE)
+                   // ADR-0042 — a value-object-valued map's @objectRef is a cross-reference
+                   // to a real object; the loader's registry-derived validation resolves it
+                   // package-locally (dangling target = load error). Fires only when
+                   // @objectRef is present (a scalar-valued map uses @valueType instead).
+                   .reference(new com.metaobjects.validation.ReferenceDescriptor(
+                       MetaObject.ATTR_OBJECT_REF, MetaObject.TYPE_OBJECT,
+                       null, false, "ERR_UNRESOLVED_OBJECT_REF"));
             });
 
             log.debug("Registered MapField type with unified registry");

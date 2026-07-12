@@ -246,12 +246,17 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
     }
 
     /**
-     * Resolve a `field.object`'s `@objectRef` to its target `object.value` by BARE
-     * short-name — mirroring the cross-port render-helper consensus. The raw
-     * `@objectRef` attr value is read directly (NOT package-folded); if it carries a
-     * package, only the last `::` segment is compared, against each `object.value`'s
-     * own short name. Returns null when the field has no `@objectRef` or no matching
-     * `object.value` is found.
+     * Resolve a `field.object`'s `@objectRef` to its target `object.value` under the
+     * ADR-0042 package-local contract — mirroring the TS render-helper's
+     * `resolveObjectRef(root, ref, declaringFieldPkg)`:
+     *  - an **FQN** `@objectRef` (contains `::`) resolves EXACTLY on the value-object's
+     *    package-qualified name — never a bare-tail fallback binding a same-named
+     *    `object.value` in the WRONG package;
+     *  - a **bare** `@objectRef` resolves in the DECLARING field's package
+     *    (`<fieldPkg>::<ref>` — correct for a `field.object` inherited via extends across
+     *    packages), else a root-level `object.value`. Package-local BEFORE root-level;
+     *    no cross-package short-name fallback.
+     * Returns null when the field has no `@objectRef` or nothing resolves.
      */
     private fun resolveNestedObjectRef(loader: MetaDataLoader, field: ObjectField): MetaObject? {
         // ADR-0039: @objectRef is an inheritable effective field property — RESOLVE
@@ -260,17 +265,19 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
         if (!field.hasMetaAttr(MetaObject.ATTR_OBJECT_REF, true)) return null
         val ref = field.getMetaAttr(MetaObject.ATTR_OBJECT_REF, true).valueAsString
         if (ref.isNullOrEmpty()) return null
-        // ADR-0041: a FULLY-QUALIFIED @objectRef (contains "::") resolves EXACTLY on the
-        // value-object's package-qualified name — never a bare-tail fallback (the closed
-        // bug: an FQN ref binding a same-named object.value in the WRONG package). A bare
-        // ref matches the object.value's short name (the cross-port render-helper consensus).
         val fqn = ref.contains("::")
+        // The DECLARING field's package (walks parents; for an inherited field.object it is
+        // the package where the field is DECLARED, not where it is used).
+        val referrerPkg = com.metaobjects.util.MetaDataUtil.findPackageForMetaData(field) ?: ""
+        val localKey = if (fqn || referrerPkg.isEmpty()) ref else "$referrerPkg::$ref"
+        var own: MetaObject? = null
+        var rootLevel: MetaObject? = null
         for (obj in loader.metaObjects) {
             if (MetaObject.SUBTYPE_VALUE != obj.subType) continue
-            val matches = if (fqn) obj.name == ref else obj.name.substringAfterLast("::") == ref
-            if (matches) return obj
+            if (obj.name == localKey) own = obj
+            if (!fqn && obj.name == ref) rootLevel = obj
         }
-        return null
+        return if (fqn) own else own ?: rootLevel
     }
 
     /**

@@ -374,6 +374,22 @@ for _def in core_provider._defs:  # noqa: SLF001 (provider build-time enrichment
         )
         break
 
+# ADR-0042 — a field.object / field.map @objectRef must RESOLVE (a dangling target
+# fails the load, closing the gap #191 surfaced as a misleading downstream error).
+# The required-attr pass owns absence (ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF); this
+# reference descriptor fires only when @objectRef is present but resolves to nothing
+# → ERR_UNRESOLVED_OBJECT_REF. Mirrors the TS core-types.ts registerCoreTypeDefs.
+for _def in core_provider._defs:  # noqa: SLF001 (provider build-time enrichment)
+    if _def.type == TYPE_FIELD and _def.sub_type in (
+        fc.FIELD_SUBTYPE_OBJECT,
+        fc.FIELD_SUBTYPE_MAP,
+    ):
+        _def.references.append(
+            ReferenceDescriptor(
+                FIELD_ATTR_OBJECT_REF, TYPE_OBJECT, None, False, "ERR_UNRESOLVED_OBJECT_REF"
+            )
+        )
+
 # field.enum — dedicated registration with required @values attr.
 # Inherits every common field attr (column / required / unique / default /
 # maxLength / filterable / sortable / etc.) so the D2 type-coercion guard

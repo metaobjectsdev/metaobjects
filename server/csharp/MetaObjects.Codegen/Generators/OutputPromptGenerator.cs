@@ -37,7 +37,9 @@ public class OutputPromptGenerator : IGenerator
             if (!AppliesTo(tmpl, ctx.Root)) continue;
             // ADR-0039: resolving — @payloadRef may be inherited via an abstract template base.
             var payloadRef = (string)tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF)!;
-            var vo = ctx.Root.Children().First(c => c.Type == TYPE_OBJECT && c.Name == payloadRef);
+            // ADR-0042: a bare @payloadRef resolves in the template's package (else root-level).
+            var vo = global::MetaObjects.NamingRefs.ResolveObjectRef(
+                ctx.Root, payloadRef, global::MetaObjects.NamingRefs.EffectivePackage(tmpl))!;
             files.Add(EmitPrompt(tmpl, vo, payloadRef, ctx));
         }
         return files;
@@ -59,8 +61,9 @@ public class OutputPromptGenerator : IGenerator
             format.Equals("xml", StringComparison.OrdinalIgnoreCase);
         if (!supported) return false;
         if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef) return false;
-        // ADR-0039: Children() — resolving root scan (behavior-identical; root has no super).
-        return root.Children().Any(c => c.Type == TYPE_OBJECT && c.Name == payloadRef);
+        // ADR-0042: a bare @payloadRef resolves in the template's package (else root-level).
+        return global::MetaObjects.NamingRefs.ResolveObjectRef(
+            root, payloadRef, global::MetaObjects.NamingRefs.EffectivePackage(tmpl)) is not null;
     }
 
     protected virtual EmittedFile EmitPrompt(MetaData tmpl, MetaData vo, string payloadRef, GenContext ctx)

@@ -27,13 +27,23 @@ public final class RegisteredValidation {
     /** Run validation derived from {@code registry} over the tree, COLLECTING all findings. */
     public static List<ValidationError> run(MetaRoot root, MetaDataRegistry registry) {
         ValidationContext ctx = new ValidationContext(SymbolTable.build(root));
-        walk(root, registry, ctx);
+        walk(root, registry, ctx, "");
         return ctx.errors();
     }
 
-    private static void walk(MetaData node, MetaDataRegistry registry, ValidationContext ctx) {
+    private static void walk(MetaData node, MetaDataRegistry registry, ValidationContext ctx,
+                             String referrerPkg) {
         String type = node.getType();
         String subType = node.getSubType();
+        // ADR-0042: a top-level object establishes the package context for its subtree;
+        // nested ref-bearing nodes (relationship / field.object / identity.reference) resolve
+        // BARE refs against it. Nested nodes carry no package of their own, so they inherit the
+        // enclosing object's. Mirrors TS validation-registry.ts.
+        String pkg = referrerPkg;
+        if (node instanceof MetaObject) {
+            String p = node.getPackage();
+            pkg = (p != null && !p.isEmpty()) ? p : referrerPkg;
+        }
         if (type != null && subType != null) {
             TypeDefinition def = registry.getTypeDefinition(type, subType);
             if (def != null) {
@@ -49,7 +59,9 @@ public final class RegisteredValidation {
                     if (raw == null || raw.isEmpty()) continue; // absence is the required-attr pass's job
                     int dot = raw.indexOf('.');
                     String entityRef = (desc.dottedFieldPath() && dot >= 0) ? raw.substring(0, dot) : raw;
-                    MetaObject target = ctx.symbols().resolveObject(entityRef);
+                    // ADR-0042: package-local resolution — an FQN resolves exactly, a bare ref
+                    // resolves in the referrer's package (else root-level). No bare-name fallback.
+                    MetaObject target = ctx.symbols().resolveObject(entityRef, pkg);
                     // Qualify the node name with its owning entity (e.g. "Order.items") so the
                     // error is locatable from the message alone, not just the source envelope.
                     String qname = (node.getParent() != null && node.getParent().getShortName() != null
@@ -59,7 +71,8 @@ public final class RegisteredValidation {
                     if (target == null) {
                         ctx.error(desc.errorCode(), node,
                             type + "." + subType + " \"" + qname + "\" @"
-                                + desc.attr() + " \"" + raw + "\" does not resolve to an object.");
+                                + desc.attr() + " \"" + raw + "\" does not resolve to an object."
+                                + didYouMeanHint(node, entityRef));
                     } else if (!target.getType().equals(desc.targetType())
                             || (desc.targetSubType() != null && !target.getSubType().equals(desc.targetSubType()))) {
                         String want = desc.targetSubType() != null
@@ -79,7 +92,30 @@ public final class RegisteredValidation {
         // node is validated exactly once at its declaration site (inherited members are
         // validated on the parent, not re-walked here).
         for (MetaData child : node.getChildren(MetaData.class, false)) {
-            walk(child, registry, ctx);
+            walk(child, registry, ctx, pkg);
         }
+    }
+
+    /**
+     * ADR-0042 §5 — a did-you-mean suffix for an UNRESOLVED object reference: the FQNs of
+     * same-short-name objects that DO exist (typically in other packages), so the author can
+     * qualify a bare ref they meant to point across a package boundary. Returns "" when no
+     * same-short-name object exists. Mirrors the TS {@code didYouMeanHint}.
+     */
+    private static String didYouMeanHint(MetaData node, String ref) {
+        int sep = ref.lastIndexOf(MetaData.PKG_SEPARATOR);
+        String shortName = (sep >= 0) ? ref.substring(sep + MetaData.PKG_SEPARATOR.length()) : ref;
+        MetaData root = node;
+        while (root.getParent() != null) root = root.getParent();
+        StringBuilder candidates = new StringBuilder();
+        for (MetaData child : root.getChildren(MetaData.class, false)) {
+            if (!(child instanceof MetaObject)) continue;
+            if (!shortName.equals(child.getShortName())) continue;
+            if (candidates.length() > 0) candidates.append(", ");
+            candidates.append(child.getName());
+        }
+        if (candidates.length() == 0) return "";
+        return " An object named \"" + shortName + "\" exists in: " + candidates
+            + ". Qualify it with its package (FQN).";
     }
 }

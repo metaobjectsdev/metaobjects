@@ -63,6 +63,7 @@ from metaobjects.meta.persistence.origin.origin_constants import (
 )
 from metaobjects.meta.template import template_constants as tc
 from metaobjects.meta.template.meta_template import MetaTemplate
+from metaobjects.naming_refs import resolve_object_ref
 from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_TEMPLATE
 from metaobjects.shared.separators import PACKAGE_SEP
 
@@ -102,6 +103,16 @@ def payload_module_name(template_name: str) -> str:
 # ---------------------------------------------------------------------------
 # Resolution helpers (lookup by short-name OR FQN — same contract as Kotlin).
 # ---------------------------------------------------------------------------
+
+
+def _pkg_of(node: MetaData) -> str:
+    """The effective package of an object — its ``resolution_key()`` minus the
+    trailing ``::<name>`` ("" for a root-level object). Derived from the resolution
+    key so it is correct for BOTH loaded trees (file_default_package) and
+    programmatically-built trees (package only on the root)."""
+    key = node.resolution_key()
+    i = key.rfind(PACKAGE_SEP)
+    return "" if i == -1 else key[:i]
 
 
 def _resolve_object_by_short_or_fqn(root: MetaData, ref: str) -> MetaObject | None:
@@ -192,9 +203,14 @@ def _resolve_object_field_type(
     ref = field.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
     if not isinstance(ref, str) or not ref:
         return _fallback_type(field)
-    target = _resolve_object_by_short_or_fqn(root, ref)
-    if target is None and PACKAGE_SEP in ref:
-        target = _resolve_object_by_short_or_fqn(root, ref.rsplit(PACKAGE_SEP, 1)[-1])
+    # ADR-0042 — a nested @objectRef resolves in the DECLARING field's package
+    # (correct for a field.object inherited via extends across packages); an FQN
+    # resolves exactly. NO bare-tail short-name fallback that would bind a same-named
+    # VO in the wrong package on a cross-package collision (#191). The declaring
+    # package is taken from the parent object's resolution key so it is correct for
+    # both loaded trees (file_default_package) and programmatic trees (root package).
+    referrer_pkg = _pkg_of(field.parent) if field.parent is not None else ""
+    target = resolve_object_ref(root, ref, referrer_pkg)
     if target is None:
         return _fallback_type(field)
     nested_class = payload_class_name(target.name)

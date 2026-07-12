@@ -14,10 +14,12 @@ public sealed record ReferenceDescriptor(
     bool DottedFieldPath,
     string ErrorCode);
 
-/// <summary>Resolve a ref string to its object node.</summary>
+/// <summary>Resolve a ref string to its object node under the ADR-0042 package-local
+/// contract. <paramref name="referrerPkg"/> is the effective package of the node that
+/// declares the ref (a bare ref resolves in that package, else root-level).</summary>
 public interface ISymbolTable
 {
-    MetaData? ResolveObject(string reference);
+    MetaData? ResolveObject(string reference, string referrerPkg);
 }
 
 /// <summary>Handed to every validator: the symbol table + an error sink.</summary>

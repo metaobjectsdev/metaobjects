@@ -478,140 +478,20 @@ public static class ValidationPasses
     // Origin helper: _findObject
     // -------------------------------------------------------------------------
 
-    private static MetaData? FindObject(MetaData root, string name)
-    {
-        // FR-032 (ADR-0032): origin ref heads (@from/@of/@via) and relationship
-        // @objectRef values are FULLY QUALIFIED after the desugar/corpus sweep
-        // (e.g. "acme::commerce::Program"). Match FQN-tolerantly — the canonical
-        // ResolutionKey()/Fqn() OR the bare Name. Mirrors TS refMatchesObject.
-        return root.OwnChildren()
-            .FirstOrDefault(c => c.Type == TYPE_OBJECT && RefMatchesObject(c, name));
-    }
+    // ADR-0042 — package-local OBJECT reference resolution. An FQN resolves exactly on the
+    // canonical ResolutionKey(); a bare name resolves in the referrer's package, else a
+    // root-level object. Shares the single NamingRefs.ResolveObjectRef matcher (the loader
+    // AND codegen resolvers must not drift). `referrerPkg` is the effective package of the
+    // node carrying the ref — see NamingRefs.EffectivePackage.
+    private static MetaData? FindObject(MetaData root, string name, string referrerPkg)
+        => NamingRefs.ResolveObjectRef(root, name, referrerPkg);
 
-    // FR-032 (ADR-0032) — does object `node` satisfy an (already-expanded) FQN ref?
-    // After the YAML desugar + corpus sweep every ref is fully qualified, so this
-    // is a pure FQN match against the canonical ResolutionKey(); the Fqn()/Name
-    // arms cover legacy same-tree refs and root-level (empty-package) objects.
-    // Mirrors TS refMatchesObject / Java ValidationPhase.nameMatches.
-    internal static bool RefMatchesObject(MetaData node, string reference)
-        => node.ResolutionKey() == reference
-        || node.Fqn() == reference
-        || node.Name == reference;
-
-    // =========================================================================
-    // ADR-0041 — cross-package OBJECT reference resolution + ambiguity pass.
-    //   Ported from typescript/packages/metadata/src/naming-refs.ts
-    //   (resolveObjectRef) + loader/validation-passes.ts (validateCrossPackageRefs).
-    // =========================================================================
-
-    /// <summary>The inline (bare) attribute names whose VALUE names another OBJECT and is
-    /// therefore subject to the ADR-0041 cross-package resolution contract. Mirrors TS
-    /// <c>REF_BEARING_ATTR_NAMES</c>. <c>extends</c> is intentionally absent — its super-
-    /// resolver is same-package/root-strict (a bare cross-package extends is
-    /// ERR_UNRESOLVED_SUPER, not ambiguous). Attrs are keyed bare (no <c>@</c>) on the node.</summary>
-    private static readonly IReadOnlyList<string> RefBearingAttrNames = new[]
-    {
-        RELATIONSHIP_ATTR_OBJECT_REF,          // = FIELD_ATTR_OBJECT_REF ("objectRef")
-        IDENTITY_REFERENCE_ATTR_REFERENCES,    // "references"
-        ORIGIN_PASSTHROUGH_ATTR_FROM,          // "from"
-        ORIGIN_PASSTHROUGH_ATTR_VIA,           // = ORIGIN_AGGREGATE_ATTR_VIA ("via")
-        ORIGIN_AGGREGATE_ATTR_OF,              // "of"
-        SOURCE_ATTR_PARAMETER_REF,             // "parameterRef"
-        TEMPLATE_ATTR_PAYLOAD_REF,             // "payloadRef"
-        TEMPLATE_ATTR_RESPONSE_REF,            // "responseRef"
-    };
-
-    /// <summary>The effective package of a root-level object (its <see cref="MetaData.ResolutionKey"/>
-    /// minus the trailing <c>::&lt;name&gt;</c>; "" for a root-level/empty-package object).
-    /// Mirrors TS <c>objectPackage</c>.</summary>
-    private static string ObjectPackage(MetaData node)
-    {
-        string key = node.ResolutionKey();
-        int i = key.LastIndexOf(PACKAGE_SEPARATOR, StringComparison.Ordinal);
-        return i == -1 ? "" : key[..i];
-    }
-
-    /// <summary>Outcome of <see cref="ResolveObjectRef"/>: the uniquely resolved object
-    /// (<see cref="Node"/>) or a cross-package-ambiguous bare ref (<see cref="Ambiguous"/>).</summary>
-    private readonly record struct ObjectRefResolution(MetaData? Node, bool Ambiguous);
-
-    /// <summary>
-    /// Resolve a metadata OBJECT reference under the ADR-0041 cross-package contract:
-    ///   - <b>FQN</b> (<paramref name="reference"/> contains <c>::</c>) → EXACT match on
-    ///     ResolutionKey()/Fqn(); never a bare-tail fallback, so an FQN pointing at one
-    ///     package never binds a same-named object in another.
-    ///   - <b>bare</b> (no <c>::</c>) → prefer an object of that name in the REFERRER's own
-    ///     package; else a UNIQUE object of that name anywhere; else (&gt;1 across OTHER
-    ///     packages, none in the referrer's) → ambiguous.
-    /// Mirrors TS <c>resolveObjectRef(root, ref, referrerPkg)</c>.
-    /// </summary>
-    private static ObjectRefResolution ResolveObjectRef(MetaData root, string reference, string referrerPkg)
-    {
-        var objects = root.Children().Where(c => c.Type == TYPE_OBJECT).ToList();
-        if (reference.Contains(PACKAGE_SEPARATOR, StringComparison.Ordinal))
-        {
-            return new ObjectRefResolution(
-                objects.FirstOrDefault(c => c.ResolutionKey() == reference || c.Fqn() == reference),
-                false);
-        }
-        var matches = objects.Where(c => c.Name == reference).ToList();
-        if (matches.Count <= 1) return new ObjectRefResolution(matches.Count == 1 ? matches[0] : null, false);
-        var own = matches.FirstOrDefault(c => ObjectPackage(c) == referrerPkg);
-        if (own is not null) return new ObjectRefResolution(own, false);
-        return new ObjectRefResolution(null, true);
-    }
-
-    /// <summary>
-    /// ADR-0041 — a BARE object reference (no <c>::</c>) that names an object present in
-    /// MORE THAN ONE package, with NO match in the referrer's own package, is ambiguous →
-    /// ERR_AMBIGUOUS_REF (the author must qualify it with the package). An FQN ref is exact
-    /// (never ambiguous); a bare ref matching the referrer's own package, or unique anywhere,
-    /// resolves fine. Covers every object-ref-bearing attr in <see cref="RefBearingAttrNames"/>
-    /// — the dotted <c>.child</c> tail of the origin heads is stripped to the entity OWNER.
-    /// <c>extends</c> is intentionally NOT covered (see <see cref="RefBearingAttrNames"/>).
-    /// Mirrors TS <c>validateCrossPackageRefs</c>.
-    /// </summary>
-    public static IReadOnlyList<MetaError> ValidateCrossPackageRefs(MetaData root)
-    {
-        var errors = new List<MetaError>();
-        foreach (var obj in root.Children().Where(c => c.Type == TYPE_OBJECT))
-        {
-            // Referrer package = the object's own package, else its file-default —
-            // ObjectPackage(obj) folds both (ResolutionKey minus ::name), matching
-            // TS `obj.package ?? obj.fileDefaultPackage ?? ""`.
-            string referrerPkg = ObjectPackage(obj);
-            VisitCrossPackageRefs(obj, obj, root, referrerPkg, errors);
-        }
-        return errors.AsReadOnly();
-    }
-
-    private static void VisitCrossPackageRefs(
-        MetaData node, MetaData obj, MetaData root, string referrerPkg, List<MetaError> errors)
-    {
-        foreach (var attrName in RefBearingAttrNames)
-        {
-            if (node.OwnAttr(attrName) is not string raw) continue;
-            // Owner = the object part; strip any FR-024 dotted `.child` tail. An FQN
-            // owner (has `::`) is resolved exactly and can never be ambiguous.
-            int dot = raw.IndexOf(CHILD_REF_SEPARATOR, StringComparison.Ordinal);
-            string owner = dot == -1 ? raw : raw[..dot];
-            if (owner.Contains(PACKAGE_SEPARATOR, StringComparison.Ordinal) || owner == "") continue;
-            if (!ResolveObjectRef(root, owner, referrerPkg).Ambiguous) continue;
-            var pkgs = root.Children()
-                .Where(c => c.Type == TYPE_OBJECT && c.Name == owner)
-                .Select(c => c.ResolutionKey());
-            errors.Add(new MetaError(
-                $"{attrName} \"{raw}\" on {obj.Fqn()}: bare reference \"{owner}\" is ambiguous — it names an object " +
-                $"in multiple packages ({string.Join(", ", pkgs)}) and none is in the referrer's package \"{referrerPkg}\". " +
-                "Qualify it with the package (FQN).",
-                ErrorCode.ERR_AMBIGUOUS_REF,
-                Envelope: ResolvedSource.From(node.Source, obj.Fqn(), owner)));
-        }
-        foreach (var child in node.OwnChildren())
-        {
-            VisitCrossPackageRefs(child, obj, root, referrerPkg, errors);
-        }
-    }
+    // ADR-0042 — the cross-package ambiguity pass (ERR_AMBIGUOUS_REF) is RETIRED. A bare
+    // reference now resolves package-locally (referrer's package, else root-level) at every
+    // ref site via NamingRefs.ResolveObjectRef, so cross-package ambiguity is unreachable; an
+    // unresolved ref fails closed with its per-attr code (ERR_INVALID_RELATIONSHIP /
+    // ERR_INVALID_REFERENCE / ERR_UNRESOLVED_OBJECT_REF / ERR_INVALID_ORIGIN /
+    // ERR_INVALID_TEMPLATE / ERR_PARAMETER_REF_UNRESOLVED).
 
     // -------------------------------------------------------------------------
     // Origin helper: _findField
@@ -706,7 +586,8 @@ public static class ValidationPasses
         string entityName = fromAttr[..dotIdx];
         string targetFieldName = fromAttr[(dotIdx + 1)..];
 
-        var sourceObj = FindObject(root, entityName);
+        // ADR-0042 — a bare @from/@of head resolves in the projection's package.
+        var sourceObj = FindObject(root, entityName, NamingRefs.EffectivePackage(projection));
         if (sourceObj is null)
         {
             // FR5d — entity half of the ref didn't resolve. target = full ref.
@@ -766,7 +647,8 @@ public static class ValidationPasses
         string entityName = segments[0];
         var relSegments = segments.Skip(1).ToArray();
 
-        var currentObj = FindObject(root, entityName);
+        // ADR-0042 — a bare @via HEAD resolves in the projection's package.
+        var currentObj = FindObject(root, entityName, NamingRefs.EffectivePackage(projection));
         if (currentObj is null)
         {
             errors.Add(new MetaError(
@@ -818,7 +700,9 @@ public static class ValidationPasses
                 return null;
             }
 
-            var nextObj = FindObject(root, refStr);
+            // ADR-0042 — the hop target (@objectRef/@references) resolves in the package of
+            // the entity that DECLARES the relationship/reference, i.e. currentObj.
+            var nextObj = FindObject(root, refStr, NamingRefs.EffectivePackage(currentObj));
             if (nextObj is null)
             {
                 // FR5d — the hop's target points at a missing entity.
@@ -855,15 +739,19 @@ public static class ValidationPasses
     /// FR-024: the entity NAMED by a node's dotted extends ref — the OWNER part
     /// of `<owner>.<child>...` resolved as an object. Differs from
     /// SuperData.Parent when the resolved child is INHERITED.
-    private static MetaData? RefNamedOwner(MetaData node, MetaData root)
+    /// ADR-0042: the owner is resolved AS AUTHORED — an FQN owner (`acme::Customer`)
+    /// resolves exactly, a bare owner (`Product`) resolves in <paramref name="referrerPkg"/>.
+    /// Do NOT strip the package to a bare tail.
+    private static MetaData? RefNamedOwner(MetaData node, MetaData root, string referrerPkg)
     {
         var reference = node.SuperRef;
         if (reference is null) return null;
-        int lastSep = reference.LastIndexOf("::", StringComparison.Ordinal);
-        string tail = lastSep == -1 ? reference : reference[(lastSep + 2)..];
-        int dot = tail.IndexOf('.', StringComparison.Ordinal);
-        if (dot <= 0) return null;
-        return FindObject(root, tail[..dot]);
+        // Owner = everything before the child dot in the FINAL ::-segment.
+        int lastSep = reference.LastIndexOf(PACKAGE_SEPARATOR, StringComparison.Ordinal);
+        int segStart = lastSep == -1 ? 0 : lastSep + PACKAGE_SEPARATOR.Length;
+        int dotInSeg = reference.IndexOf(CHILD_REF_SEPARATOR, segStart, StringComparison.Ordinal);
+        if (dotInSeg <= segStart) return null; // no dotted child owner
+        return FindObject(root, reference[..dotInSeg], referrerPkg);
     }
 
     /// Derive the BASE entity a no-`@via` origin path anchors at (spec §5).
@@ -873,13 +761,16 @@ public static class ValidationPasses
     {
         if (obj.SubType != OBJECT_SUBTYPE_PROJECTION) return obj;
 
+        // ADR-0042 — a bare extends owner resolves in this projection's package.
+        string referrerPkg = NamingRefs.EffectivePackage(obj);
+
         // 1) The extended identity anchors the base entity (declared, not inferred).
         foreach (var identity in obj.OwnChildren().Where(c => c.Type == TYPE_IDENTITY))
         {
             var extended = identity.SuperData;
             if (extended is not null && extended.Type == TYPE_IDENTITY)
             {
-                var named = RefNamedOwner(identity, root);
+                var named = RefNamedOwner(identity, root, referrerPkg);
                 if (named is not null) return named;
                 var owner = extended.Parent;
                 if (owner is not null && owner.Type == TYPE_OBJECT) return owner;
@@ -893,7 +784,7 @@ public static class ValidationPasses
         {
             var sup = f.SuperData;
             if (sup is null) continue;
-            var named = RefNamedOwner(f, root);
+            var named = RefNamedOwner(f, root, referrerPkg);
             var owner = named ?? sup.Parent;
             if (owner is not null && owner.Type == TYPE_OBJECT &&
                 owner.SubType != OBJECT_SUBTYPE_VALUE && !ReferenceEquals(owner, obj))
@@ -2306,19 +2197,14 @@ public static class ValidationPasses
     private static int CountJunctionReferences(MetaData junction) =>
         JunctionReferences(junction).Count;
 
-    /// <summary>Last <c>::</c>-segment of a (possibly package-qualified) name.</summary>
-    private static string StripPackage(string name)
-    {
-        int idx = name.LastIndexOf(PACKAGE_SEPARATOR, StringComparison.Ordinal);
-        return idx < 0 ? name : name[(idx + PACKAGE_SEPARATOR.Length)..];
-    }
-
     public static IReadOnlyList<MetaError> ValidateRelationships(MetaData root)
     {
         var errors = new List<MetaError>();
 
         foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT))
         {
+            // ADR-0042 — a bare @through / @objectRef resolves in the declaring entity's package.
+            string referrerPkg = NamingRefs.EffectivePackage(obj);
             foreach (var rel in obj.OwnChildren().Where(c => c.Type == TYPE_RELATIONSHIP))
             {
                 // ADR-0039: resolving — a relationship may inherit its M:N attrs via extends
@@ -2378,7 +2264,11 @@ public static class ValidationPasses
                 }
 
                 // Rule (a): @symmetric is valid only on a self-join (@objectRef == declaring entity).
-                bool isSelfJoin = objectRef is string objRefStr && StripPackage(objRefStr) == obj.Name;
+                // ADR-0042: resolve @objectRef and compare NODE IDENTITY — a bare "Widget" in this
+                // package is self, but an FQN "other::Widget" (a different same-short-name entity)
+                // is NOT (comparing stripped short names would misclassify it).
+                bool isSelfJoin = objectRef is string objRefStr &&
+                    ReferenceEquals(NamingRefs.ResolveObjectRef(root, objRefStr, referrerPkg), obj);
                 if (symmetric && !isSelfJoin)
                 {
                     errors.Add(new MetaError(
@@ -2389,7 +2279,8 @@ public static class ValidationPasses
                 }
 
                 // Rule (c): @through must name an entity declaring exactly two identity.reference children.
-                var junction = FindObject(root, (string)through!);
+                // ADR-0042 — a bare @through resolves in the declaring entity's package.
+                var junction = FindObject(root, (string)through!, referrerPkg);
                 if (junction is null)
                 {
                     errors.Add(new MetaError(
@@ -2493,9 +2384,9 @@ public static class ValidationPasses
 
             if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef) continue;
 
-            // FR-032 (ADR-0032): @payloadRef is FQN after the desugar/sweep — FQN-match.
-            var payload = root.OwnChildren()
-                .FirstOrDefault(c => c.Type == TYPE_OBJECT && RefMatchesObject(c, payloadRef));
+            // ADR-0042 — a bare @payloadRef resolves in the template's package (else root-level);
+            // an FQN resolves exactly. Shares the single NamingRefs.ResolveObjectRef matcher.
+            var payload = NamingRefs.ResolveObjectRef(root, payloadRef, NamingRefs.EffectivePackage(tmpl));
             if (payload is null || payload.SubType != OBJECT_SUBTYPE_VALUE)
             {
                 // FR5d — @payloadRef is a reference; emit format=resolved with
@@ -2812,20 +2703,13 @@ public static class ValidationPasses
     {
         var errors = new List<MetaError>();
 
-        // Pre-index every object by name, fqn AND resolution key. FR-032 (ADR-0032):
-        // @parameterRef is FQN after the desugar/sweep (e.g. "acme::ParamVO"), which
-        // is the canonical ResolutionKey() (objects keep a bare Fqn() per FR5d), so
-        // the index must carry that key too. Mirrors TS/Java FQN-tolerant resolution.
-        var index = new Dictionary<string, MetaData>();
         foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT))
         {
-            index[obj.Name] = obj;
-            index[obj.Fqn()] = obj;
-            index[obj.ResolutionKey()] = obj;
-        }
-
-        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT))
-        {
+            // ADR-0042 — a bare @parameterRef resolves package-local (this object's package,
+            // else root-level); an FQN resolves exactly. Shares the single
+            // NamingRefs.ResolveObjectRef matcher — NO bare-name-anywhere fallback (which would
+            // silently bind a same-named value-object in another package).
+            string referrerPkg = NamingRefs.EffectivePackage(obj);
             foreach (var source in obj.OwnChildren()
                 .Where(c => c.Type == TYPE_SOURCE && c.SubType == SOURCE_SUBTYPE_RDB && c is MetaSource)
                 .Cast<MetaSource>())
@@ -2844,7 +2728,8 @@ public static class ValidationPasses
                     continue;
                 }
 
-                if (!index.TryGetValue(refName, out var target))
+                var target = NamingRefs.ResolveObjectRef(root, refName, referrerPkg);
+                if (target is null)
                 {
                     errors.Add(new MetaError(
                         $"source.rdb on object \"{obj.Name}\" @parameterRef = \"{refName}\" does not resolve " +

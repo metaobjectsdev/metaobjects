@@ -24,12 +24,18 @@ public static class RegisteredValidation
     public static IReadOnlyList<MetaError> Run(MetaData root, TypeRegistry registry)
     {
         var ctx = new ValidationContext(SymbolTable.Build(root));
-        Walk(root, registry, ctx);
+        Walk(root, "", registry, ctx);
         return ctx.Errors;
     }
 
-    private static void Walk(MetaData node, TypeRegistry registry, ValidationContext ctx)
+    private static void Walk(MetaData node, string referrerPkg, TypeRegistry registry, ValidationContext ctx)
     {
+        // ADR-0042: a top-level object establishes the package context for its subtree; nested
+        // ref-bearing nodes (relationship / field.object / identity.reference) resolve BARE
+        // refs against it. Nested nodes carry no `package`, so they inherit the enclosing
+        // object's effective package (via file-default, else the threaded context).
+        string pkg = node.Type == TYPE_OBJECT ? NamingRefs.EffectivePackage(node) : referrerPkg;
+
         var def = registry.Find(node.Type, node.SubType);
         if (def is not null)
         {
@@ -40,14 +46,16 @@ public static class RegisteredValidation
                 if (node.Attr(desc.Attr) is not string raw || raw.Length == 0) continue;
                 int dot = raw.IndexOf('.');
                 var entityRef = (desc.DottedFieldPath && dot >= 0) ? raw[..dot] : raw;
-                var target = ctx.Symbols.ResolveObject(entityRef);
+                var target = ctx.Symbols.ResolveObject(entityRef, pkg);
                 // Qualify the node name with its owning entity (e.g. "Order.items") so the
                 // error is locatable from the message alone, not just the source envelope.
                 var qname = string.IsNullOrEmpty(node.Parent?.Name) ? node.Name : $"{node.Parent!.Name}.{node.Name}";
                 if (target is null)
                 {
+                    // ADR-0042 §5: a did-you-mean hint listing same-short-name objects in other packages.
                     ctx.Error(desc.ErrorCode, node,
-                        $"{node.Type}.{node.SubType} \"{qname}\" @{desc.Attr} \"{raw}\" does not resolve to an object.");
+                        $"{node.Type}.{node.SubType} \"{qname}\" @{desc.Attr} \"{raw}\" does not resolve to an object." +
+                        NamingRefs.DidYouMeanHint(node.Root(), entityRef));
                 }
                 else if (target.Type != desc.TargetType ||
                          (desc.TargetSubType is not null && target.SubType != desc.TargetSubType))
@@ -60,30 +68,34 @@ public static class RegisteredValidation
             }
             def.Validate?.Invoke(node, ctx);
         }
-        foreach (var child in node.OwnChildren()) Walk(child, registry, ctx);
+        foreach (var child in node.OwnChildren()) Walk(child, pkg, registry, ctx);
     }
 
     private sealed class SymbolTable : ISymbolTable
     {
-        private readonly List<MetaData> _objects = [];
+        // ADR-0042: key every top-level object by its canonical resolution key ONLY (the FQN,
+        // or the bare name for a root-level/empty-package object) — NO bare-name fallback, so a
+        // bare ref never binds a same-named object in another package. Mirrors TS SymbolTableImpl.
+        private readonly Dictionary<string, MetaData> _byKey = new(StringComparer.Ordinal);
 
         public static SymbolTable Build(MetaData root)
         {
             var t = new SymbolTable();
             foreach (var c in root.OwnChildren())
             {
-                if (c.Type == TYPE_OBJECT) t._objects.Add(c);
+                if (c.Type == TYPE_OBJECT) t._byKey[c.ResolutionKey()] = c;
             }
             return t;
         }
 
-        public MetaData? ResolveObject(string reference)
+        /// <summary>ADR-0042 package-local resolution: FQN → exact resolution-key match; bare →
+        /// the referrer's own package (<c>&lt;referrerPkg&gt;::&lt;ref&gt;</c>), else a root-level object.</summary>
+        public MetaData? ResolveObject(string reference, string referrerPkg)
         {
-            foreach (var o in _objects)
-            {
-                if (ValidationPasses.RefMatchesObject(o, reference)) return o;
-            }
-            return null;
+            if (reference.Contains(PACKAGE_SEPARATOR, StringComparison.Ordinal))
+                return _byKey.GetValueOrDefault(reference);
+            string localKey = referrerPkg.Length > 0 ? $"{referrerPkg}{PACKAGE_SEPARATOR}{reference}" : reference;
+            return _byKey.GetValueOrDefault(localKey) ?? _byKey.GetValueOrDefault(reference);
         }
     }
 

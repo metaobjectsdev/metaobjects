@@ -1245,7 +1245,7 @@ class KotlinExposedTableGeneratorTest {
                 { "source.rdb": { "@table": "users" } },
                 { "identity.primary": { "name": "pk", "@fields": ["id"] } },
                 { "identity.reference": { "name": "fkTenant",
-                    "@fields": "tenantId", "@references": "Tenant" } }
+                    "@fields": "tenantId", "@references": "acme::tenancy::Tenant" } }
             ] } }
           ] }
         }""".trimIndent()

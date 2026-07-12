@@ -29,11 +29,14 @@ NEVER expanded — it is the node's identity.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, NamedTuple, Optional
+from typing import TYPE_CHECKING, Optional
 
 from .meta.core.field.field_constants import FIELD_ATTR_OBJECT_REF
 from .meta.core.identity.identity_constants import IDENTITY_REFERENCE_ATTR_REFERENCES
-from .meta.core.relationship.relationship_constants import RELATIONSHIP_ATTR_OBJECT_REF
+from .meta.core.relationship.relationship_constants import (
+    RELATIONSHIP_ATTR_OBJECT_REF,
+    RELATIONSHIP_ATTR_THROUGH,
+)
 from .meta.persistence.origin.origin_constants import (
     ORIGIN_ATTR_FROM,
     ORIGIN_ATTR_OF,
@@ -72,11 +75,15 @@ def is_relative_ref(raw: str) -> bool:
 #: ``@objectRef``/``@references`` are pure object refs; ``@from``/``@of``/``@via``
 #: carry an entity HEAD with a possible dotted relationship/field tail (expand_ref
 #: preserves the tail); ``@parameterRef``/``@payloadRef``/``@responseRef``
-#: reference value-objects. The ``package`` attr is intentionally NOT here — it is
-#: the node's identity. Mirrors TS REF_BEARING_ATTR_NAMES.
+#: reference value-objects. ``@through`` (the M:N junction ref) is in the set per
+#: ADR-0042 §4 — it desugars to FQN and resolves package-local like every other
+#: object ref. ``@sourceRefField`` (a FK FIELD name, not an object ref) is NOT in
+#: the set. The ``package`` attr is intentionally NOT here — it is the node's
+#: identity. Mirrors TS REF_BEARING_ATTR_NAMES.
 REF_BEARING_ATTR_NAMES: frozenset[str] = frozenset({
     RELATIONSHIP_ATTR_OBJECT_REF,  # == FIELD_ATTR_OBJECT_REF ("objectRef")
     FIELD_ATTR_OBJECT_REF,
+    RELATIONSHIP_ATTR_THROUGH,  # ADR-0042: the M:N junction ref joins the desugar+resolution set.
     IDENTITY_REFERENCE_ATTR_REFERENCES,
     ORIGIN_ATTR_FROM,
     ORIGIN_ATTR_VIA,
@@ -148,61 +155,81 @@ def expand_ref(raw: str, package_context: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# ADR-0041 — cross-package OBJECT reference resolution contract
+# ADR-0042 — package-local OBJECT reference resolution contract
 # ---------------------------------------------------------------------------
-# The SINGLE resolver every object-ref site shares so the same-package-preference
-# contract is uniform. Mirrors the TS reference ``resolveObjectRef`` /
-# ``objectPackage`` in naming-refs.ts.
+# The SINGLE resolver every object-ref site shares so the package-local contract
+# is uniform. Mirrors the TS reference ``resolveObjectRef`` / ``refMatchesObject``
+# / ``didYouMeanHint`` in naming-refs.ts. A bare ref resolves in the referrer's
+# OWN package first, else a root-level (empty-package) object of that name — there
+# is NO unique-anywhere scan and NO bare-tail fallback, so cross-package ambiguity
+# is unreachable (ADR-0042 retires ERR_AMBIGUOUS_REF).
 
 
-class ObjectRefResolution(NamedTuple):
-    """Result of :func:`resolve_object_ref` — mirrors the TS ``{ node?, ambiguous? }``.
+def ref_matches_object(node: "MetaData", ref: str, referrer_pkg: str = "") -> bool:
+    """ADR-0042 — does root-level object *node* satisfy object reference *ref*,
+    declared by a node whose effective package is *referrer_pkg*?
 
-    * ``node`` — the uniquely-resolved object (``None`` when nothing matched, or
-      when a bare ref is cross-package-ambiguous).
-    * ``ambiguous`` — True ONLY for a BARE ref that names an object in more than
-      one OTHER package with none in the referrer's own package.
-    """
+    * **FQN** *ref* (contains ``::``) → EXACT match on ``resolution_key()``. No
+      bare-tail fallback, so an FQN pointing at one package never binds a
+      same-named object in another.
+    * **bare** *ref* (no ``::``) → the referrer's OWN package
+      (``<referrer_pkg>::<ref>``), else a **root-level** (empty-package) object
+      whose resolution key IS *ref*.
 
-    node: Optional["MetaData"]
-    ambiguous: bool
-
-
-def _object_package(node: "MetaData") -> str:
-    """The effective package of a root-level object — its ``resolution_key()`` minus
-    the trailing ``::<name>`` ("" for a root-level/empty-package object). Mirrors
-    the TS ``objectPackage``.
+    *referrer_pkg* defaults to ``""`` — the fail-closed FQN-exact-plus-root-level
+    behavior. Mirrors the TS ``refMatchesObject``.
     """
     key = node.resolution_key()
-    i = key.rfind(PACKAGE_SEP)
-    return "" if i == -1 else key[:i]
+    if PACKAGE_SEP in ref:
+        return key == ref
+    if referrer_pkg and key == f"{referrer_pkg}{PACKAGE_SEP}{ref}":
+        return True
+    return key == ref  # root-level (empty-package) object whose key is the bare name
 
 
 def resolve_object_ref(
     root: "MetaData", ref: str, referrer_pkg: str
-) -> ObjectRefResolution:
-    """Resolve a metadata OBJECT reference under the ADR-0041 cross-package contract.
-
-    * **FQN** (``ref`` contains ``::``) → EXACT match on ``resolution_key()``/
-      ``fqn()``. Never a bare-tail fallback, so an FQN pointing at one package never
-      binds a same-named object in another (the cross-port bug ADR-0041 closes).
-    * **bare** (no ``::``) → prefer an object of that name in the REFERRER's own
-      package; else a UNIQUE object of that name across all packages; else (>1
-      across OTHER packages, none in the referrer's) → ``ambiguous``.
-
-    *referrer_pkg* is the effective package of the node carrying the ref. Returns an
-    :class:`ObjectRefResolution`. Mirrors the TS ``resolveObjectRef``.
+) -> Optional["MetaData"]:
+    """Resolve a metadata OBJECT reference under the ADR-0042 package-local contract
+    (see :func:`ref_matches_object` for the matcher). *referrer_pkg* is the effective
+    package of the node carrying the ref. Returns the resolved object, or ``None``
+    when nothing matches — there is NO ambiguous outcome (bare = package-local, so
+    ambiguity is unreachable). The SINGLE resolver every object-ref site shares so
+    the contract is uniform. Mirrors the TS ``resolveObjectRef``.
     """
     objects = [c for c in root.children() if c.type == TYPE_OBJECT]
     if PACKAGE_SEP in ref:
-        for c in objects:
-            if c.resolution_key() == ref or c.fqn() == ref:
-                return ObjectRefResolution(c, False)
-        return ObjectRefResolution(None, False)
-    matches = [c for c in objects if c.name == ref]
-    if len(matches) <= 1:
-        return ObjectRefResolution(matches[0] if matches else None, False)
-    for c in matches:
-        if _object_package(c) == referrer_pkg:
-            return ObjectRefResolution(c, False)
-    return ObjectRefResolution(None, True)
+        return next((c for c in objects if c.resolution_key() == ref), None)
+    # Bare: PREFER the referrer's own package, THEN a root-level (empty-package)
+    # object — mirroring the loader symbol table so both resolvers agree when a
+    # root-level object shares the bare name.
+    local_key = f"{referrer_pkg}{PACKAGE_SEP}{ref}" if referrer_pkg else ref
+    own = next((c for c in objects if c.resolution_key() == local_key), None)
+    if own is not None:
+        return own
+    if local_key != ref:
+        return next((c for c in objects if c.resolution_key() == ref), None)
+    return None
+
+
+def did_you_mean_hint(root: "MetaData", ref: str) -> str:
+    """ADR-0042 §5 — a did-you-mean suffix for an UNRESOLVED object reference: the
+    FQNs of same-short-name objects that DO exist (typically in other packages), so
+    the author can qualify a bare ref they meant to point across a package boundary.
+    Returns ``""`` when no same-short-name object exists. Appended to the per-attr
+    unresolved-ref error message. Mirrors the TS ``didYouMeanHint``.
+    """
+    owner, _tail = _split_child_tail(ref)
+    sep = owner.rfind(PACKAGE_SEP)
+    short_name = owner if sep == -1 else owner[sep + len(PACKAGE_SEP):]
+    candidates = [
+        c.resolution_key()
+        for c in root.children()
+        if c.type == TYPE_OBJECT and c.name == short_name
+    ]
+    if not candidates:
+        return ""
+    return (
+        f' An object named "{short_name}" exists in: {", ".join(candidates)}. '
+        "Qualify it with its package (FQN)."
+    )

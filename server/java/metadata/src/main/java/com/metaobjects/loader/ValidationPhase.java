@@ -178,9 +178,12 @@ public final class ValidationPhase {
         pass(collected, () -> validateOnePrimarySource(root));
         pass(collected, () -> validateRelationshipReferentialActions(root));
         pass(collected, () -> validateRelationshipsM2M(root));
-        // ADR-0041 — cross-package reference ambiguity: a BARE object-ref naming an
-        // object in >1 package with none in the referrer's package → ERR_AMBIGUOUS_REF.
-        pass(collected, () -> validateCrossPackageRefs(root));
+        // ADR-0042 — the cross-package ambiguity pass (ERR_AMBIGUOUS_REF) is RETIRED. A bare
+        // reference now resolves package-locally (referrer's package, else root-level) at every
+        // ref site (SymbolTable / resolveRootObject), so cross-package ambiguity is unreachable;
+        // an unresolved ref fails closed with its per-attr code (ERR_INVALID_RELATIONSHIP /
+        // ERR_INVALID_REFERENCE / ERR_UNRESOLVED_OBJECT_REF / ERR_INVALID_ORIGIN /
+        // ERR_INVALID_TEMPLATE).
         // Phase 2 — validation DERIVED FROM THE TYPE REGISTRY: each node's TypeDefinition
         // carries its reference descriptors + imperative validator (relationship @objectRef,
         // identity.reference @references for core; a downstream provider's type carries its
@@ -1184,6 +1187,9 @@ public final class ValidationPhase {
 
     private static void validateRelationshipM2MNode(MetaRoot root, MetaObject obj,
                                                     MetaRelationship rel) {
+        // ADR-0042 — a bare @through / @objectRef self-join resolves in the declaring
+        // entity's package (an FQN resolves exactly).
+        String referrerPkg = obj.getPackage() == null ? "" : obj.getPackage();
         // ADR-0039: resolving — a relationship may inherit its M:N slim-vocabulary
         // attrs (@through/@sourceRefField/@objectRef/@cardinality/@symmetric) via
         // extends. Mirrors TS validateRelationships (validation-passes.ts:1320-1324),
@@ -1249,8 +1255,11 @@ public final class ValidationPhase {
         }
 
         // Rule (a): @symmetric is valid only on a self-join (@objectRef == declaring entity).
+        // ADR-0042: resolve @objectRef and compare NODE IDENTITY — a bare "Widget" in this
+        // package is self, but an FQN "other::Widget" (a different same-short-name entity) is
+        // NOT (comparing stripped short names would misclassify it).
         boolean isSelfJoin = objectRef != null
-            && stripPackageName(objectRef).equals(obj.getShortName());
+            && resolveRootObject(root, objectRef, referrerPkg) == obj;
         if (symmetric && !isSelfJoin) {
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_BAD_ATTR_VALUE
@@ -1263,14 +1272,17 @@ public final class ValidationPhase {
         }
 
         // Rule (c): @through must name an entity declaring exactly two identity.reference children.
-        MetaObject junction = findRootObject(root, through);
+        // ADR-0042: @through resolves package-locally when bare, exactly when FQN — a bare
+        // cross-package @through no longer binds a junction in another package.
+        MetaObject junction = resolveRootObject(root, through, referrerPkg);
         if (junction == null) {
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_INVALID_RELATIONSHIP
                     + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
                     + "\" @" + MetaRelationship.ATTR_THROUGH + " \"" + through
-                    + "\" does not resolve to an entity.",
-                ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource());
+                    + "\" does not resolve to an entity." + didYouMeanHint(root, through),
+                ErrorCode.ERR_INVALID_RELATIONSHIP,
+                ResolvedSource.from(rel.getSource(), obj.getShortName() + "::" + rel.getShortName(), through));
         }
         int refCount = countJunctionReferences(junction);
         if (refCount != 2) {
@@ -1328,12 +1340,6 @@ public final class ValidationPhase {
         return out;
     }
 
-    /** Bare name for an {@code @objectRef} value: tail segment after the last {@code "::"}. */
-    private static String stripPackageName(String name) {
-        if (name == null) return null;
-        int idx = name.lastIndexOf(MetaData.PKG_SEPARATOR);
-        return (idx >= 0) ? name.substring(idx + MetaData.PKG_SEPARATOR.length()) : name;
-    }
 
     // =========================================================================
     // identity.reference @references resolution
@@ -2236,7 +2242,10 @@ public final class ValidationPhase {
         // has been added on the output subtype). Skip R2/R3 silently.
         if (payloadRef == null || payloadRef.isEmpty()) return;
 
-        MetaObject payloadVo = findRootObject(root, payloadRef);
+        // ADR-0042 — a bare @payloadRef resolves in the template's package (else root-level);
+        // an FQN resolves exactly. No bare-tail cross-package fallback.
+        String referrerPkg = template.getPackage() == null ? "" : template.getPackage();
+        MetaObject payloadVo = resolveRootObject(root, payloadRef, referrerPkg);
         if (payloadVo == null || !MetaObject.SUBTYPE_VALUE.equals(payloadVo.getSubType())) {
             // FR5d — @payloadRef is a reference; emit format=resolved with
             // referrer=template bare (short) name to match TS/C#/Python (the
@@ -2335,7 +2344,9 @@ public final class ValidationPhase {
         String entityName = pathAttr.substring(0, dotIdx);
         String targetFieldName = pathAttr.substring(dotIdx + 1);
 
-        MetaObject sourceObj = findRootObject(root, entityName);
+        // ADR-0042 — a bare @from/@of head resolves in the projection's package.
+        String referrerPkg = projection.getPackage() == null ? "" : projection.getPackage();
+        MetaObject sourceObj = resolveRootObject(root, entityName, referrerPkg);
         if (sourceObj == null) {
             // FR5d — entity half of the ref didn't resolve. target = full ref.
             throw new MetaDataException(
@@ -2396,8 +2407,10 @@ public final class ValidationPhase {
                 ErrorCode.ERR_INVALID_ORIGIN,
                 ResolvedSource.from(envelope, referrer, viaAttr));
         }
+        // ADR-0042 — a bare @via HEAD resolves in the projection's package.
+        String referrerPkg = projection.getPackage() == null ? "" : projection.getPackage();
         String entityName = segments[0];
-        MetaObject currentObj = findRootObject(root, entityName);
+        MetaObject currentObj = resolveRootObject(root, entityName, referrerPkg);
         if (currentObj == null) {
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_INVALID_ORIGIN
@@ -2446,7 +2459,10 @@ public final class ValidationPhase {
                     ErrorCode.ERR_INVALID_ORIGIN,
                     ResolvedSource.from(envelope, referrer, viaAttr));
             }
-            MetaObject nextObj = findRootObject(root, refTarget);
+            // ADR-0042 — the hop target (@objectRef/@references) resolves in the package of the
+            // entity that DECLARES the relationship/reference, i.e. currentObj (NOT the projection).
+            String hopPkg = currentObj.getPackage() == null ? "" : currentObj.getPackage();
+            MetaObject nextObj = resolveRootObject(root, refTarget, hopPkg);
             if (nextObj == null) {
                 // FR5d — the hop's target points at a missing entity. This is the
                 // @objectRef/@references-resolution edge of the via-path walk (the
@@ -2470,111 +2486,72 @@ public final class ValidationPhase {
     }
 
     // =========================================================================
-    // ADR-0041 — cross-package reference ambiguity (ERR_AMBIGUOUS_REF).
-    // Mirrors TS validateCrossPackageRefs (validation-passes.ts).
+    // ADR-0042 — package-local object-reference resolution.
     // =========================================================================
 
     /**
-     * The inline attribute names whose VALUE names an OBJECT and is therefore
-     * subject to the cross-package resolution contract (ADR-0041). Mirrors the TS
-     * {@code REF_BEARING_ATTR_NAMES}: {@code @objectRef} (relationship + field.object,
-     * same spelling), {@code @references}, the origin heads {@code @from}/{@code @of}/{@code @via},
-     * {@code @parameterRef}, and the template {@code @payloadRef}/{@code @responseRef}.
-     * {@code extends} (structural, FQN-strict super-resolver) and {@code @through}
-     * are intentionally NOT in this set (parity with TS).
+     * ADR-0042 — resolve a metadata OBJECT reference to a top-level {@link MetaObject}
+     * under the package-local contract, or {@code null} when nothing matches:
+     * <ul>
+     *   <li><b>FQN</b> {@code ref} (contains {@code ::}) → EXACT match on the resolution
+     *       key ({@link MetaData#getName()}). No bare-tail fallback, so an FQN pointing at
+     *       one package never binds a same-named object in another.</li>
+     *   <li><b>bare</b> {@code ref} (no {@code ::}) → the referrer's OWN package
+     *       ({@code <referrerPkg>::<ref>}), else a root-level (empty-package) object whose
+     *       resolution key IS {@code ref}. Package-local BEFORE root-level; no cross-package
+     *       bare resolution, no globally-unique scan, no bare-tail fallback.</li>
+     * </ul>
+     * The single resolver every object-ref site shares (origin {@code @from}/{@code @of}/
+     * {@code @via} heads + hops, relationship {@code @through}, template payload/response,
+     * {@code @parameterRef}, extends-owner) so resolution is uniform. Mirrors the TS
+     * {@code resolveObjectRef} + the loader symbol table.
+     *
+     * @param referrerPkg the effective package of the node carrying the ref ("" for root-level)
      */
-    private static final java.util.Set<String> REF_BEARING_OBJECT_ATTRS = java.util.Set.of(
-        MetaRelationship.ATTR_OBJECT_REF,       // = ObjectField.ATTR_OBJECT_REF ("objectRef")
-        MetaIdentity.ATTR_REFERENCES,           // "references"
-        MetaOrigin.ATTR_FROM,                   // "from"
-        MetaOrigin.ATTR_VIA,                    // "via"
-        MetaOrigin.ATTR_OF,                     // "of"
-        RdbSource.ATTR_PARAMETER_REF,           // "parameterRef"
-        TemplateConstants.ATTR_PAYLOAD_REF,     // "payloadRef"
-        TemplateConstants.ATTR_RESPONSE_REF     // "responseRef"
-    );
-
-    /**
-     * ADR-0041 — a BARE object reference (no {@code ::}) that names an object present
-     * in MORE THAN ONE package, with NO match in the referrer's own package, is
-     * ambiguous → {@code ERR_AMBIGUOUS_REF} (the author must qualify it with the
-     * package). An FQN ref is exact (never ambiguous); a bare ref that matches the
-     * referrer's own package, or exactly one package anywhere, resolves fine. Walks
-     * every {@link #REF_BEARING_OBJECT_ATTRS} attr on each object's OWN subtree — the
-     * dotted {@code .child} tail of the origin heads is stripped to the entity OWNER.
-     * Mirrors the TS {@code validateCrossPackageRefs}.
-     */
-    static void validateCrossPackageRefs(MetaRoot root) {
-        for (MetaData child : root.getChildren(MetaData.class, false)) {
-            if (!(child instanceof MetaObject)) continue;
-            MetaObject obj = (MetaObject) child;
-            String referrerPkg = obj.getPackage() == null ? "" : obj.getPackage();
-            visitCrossPackageRefs(root, obj, obj, referrerPkg);
-        }
-    }
-
-    /** Recurse the OWN subtree of {@code obj}, checking each ref-bearing attr on
-     *  {@code node} for a bare cross-package-ambiguous object reference. */
-    private static void visitCrossPackageRefs(MetaRoot root, MetaObject obj, MetaData node,
-                                              String referrerPkg) {
-        for (String attrName : REF_BEARING_OBJECT_ATTRS) {
-            // OWN attr only (mirrors TS node.ownAttr) — an inherited attr is checked
-            // at its own declaration site, reached through that owner's subtree.
-            if (!node.hasMetaAttr(attrName, false)) continue;
-            String raw = node.getMetaAttr(attrName, false).getValueAsString();
-            if (raw == null) continue;
-            // Owner = the object part; strip any FR-024 dotted ".child" tail. An FQN
-            // owner (contains "::") resolves exactly and can never be ambiguous.
-            int dot = raw.indexOf('.');
-            String owner = (dot < 0) ? raw : raw.substring(0, dot);
-            if (owner.isEmpty() || owner.indexOf(MetaData.PKG_SEPARATOR) >= 0) continue;
-            if (!isAmbiguousBareRef(root, owner, referrerPkg)) continue;
-            throw new MetaDataException(
-                "ERR_AMBIGUOUS_REF: " + attrName + " \"" + raw + "\" on " + obj.getName()
-                    + ": bare reference \"" + owner + "\" is ambiguous — it names an object in "
-                    + "multiple packages and none is in the referrer's package \"" + referrerPkg
-                    + "\". Qualify it with the package (FQN).",
-                ErrorCode.ERR_AMBIGUOUS_REF,
-                ResolvedSource.from(node.getSource(), obj.getShortName(), owner));
-        }
-        for (MetaData c : node.getChildren(MetaData.class, false)) {
-            visitCrossPackageRefs(root, obj, c, referrerPkg);
-        }
-    }
-
-    /**
-     * True when a BARE object name resolves ambiguously under ADR-0041: it matches
-     * MORE THAN ONE root object and NONE of them is in {@code referrerPkg}. Mirrors
-     * the ambiguity arm of the TS {@code resolveObjectRef}.
-     */
-    private static boolean isAmbiguousBareRef(MetaRoot root, String bareOwner, String referrerPkg) {
-        int matches = 0;
-        boolean samePackage = false;
-        for (MetaData child : root.getChildren(MetaData.class, false)) {
-            if (!(child instanceof MetaObject)) continue;
-            if (!bareOwner.equals(child.getShortName())) continue;
-            matches++;
-            String pkg = child.getPackage() == null ? "" : child.getPackage();
-            if (pkg.equals(referrerPkg)) samePackage = true;
-        }
-        return matches > 1 && !samePackage;
-    }
-
-    /**
-     * Find a top-level MetaObject child of the root whose bare entity name
-     * matches. Origin reference paths ({@code @from}, {@code @of}, {@code @via})
-     * use bare entity names (e.g. {@code "Program.title"}, not
-     * {@code "acme::commerce::Program.title"}), so we compare against the
-     * package-stripped short name. Falls back to a tail-segment compare on the
-     * full name in case getShortName() is unset on some path.
-     */
-    private static MetaObject findRootObject(MetaRoot root, String name) {
-        for (MetaData child : root.getChildren(MetaData.class, false)) {
-            if (child instanceof MetaObject && nameMatches(child, name)) {
-                return (MetaObject) child;
+    private static MetaObject resolveRootObject(MetaRoot root, String ref, String referrerPkg) {
+        if (ref == null) return null;
+        String pkg = (referrerPkg == null) ? "" : referrerPkg;
+        if (ref.indexOf(MetaData.PKG_SEPARATOR) >= 0) {
+            for (MetaData child : root.getChildren(MetaData.class, false)) {
+                if (child instanceof MetaObject && ref.equals(child.getName())) {
+                    return (MetaObject) child;
+                }
             }
+            return null;
         }
-        return null;
+        String localKey = pkg.isEmpty() ? ref : pkg + MetaData.PKG_SEPARATOR + ref;
+        MetaObject own = null;
+        MetaObject rootLevel = null;
+        for (MetaData child : root.getChildren(MetaData.class, false)) {
+            if (!(child instanceof MetaObject)) continue;
+            String key = child.getName();
+            if (key == null) continue;
+            if (key.equals(localKey)) own = (MetaObject) child;
+            if (key.equals(ref)) rootLevel = (MetaObject) child;
+        }
+        if (own != null) return own;
+        return localKey.equals(ref) ? null : rootLevel;
+    }
+
+    /** ADR-0042 §5 — a did-you-mean suffix for an UNRESOLVED object reference: the FQNs of
+     *  same-short-name objects that DO exist (typically in other packages). Returns "" when
+     *  none exist. Mirrors the TS {@code didYouMeanHint}. */
+    private static String didYouMeanHint(MetaRoot root, String ref) {
+        if (ref == null) return "";
+        int sep = ref.lastIndexOf(MetaData.PKG_SEPARATOR);
+        String shortName = (sep >= 0) ? ref.substring(sep + MetaData.PKG_SEPARATOR.length()) : ref;
+        int dot = shortName.indexOf('.');
+        if (dot >= 0) shortName = shortName.substring(0, dot);
+        StringBuilder candidates = new StringBuilder();
+        for (MetaData child : root.getChildren(MetaData.class, false)) {
+            if (!(child instanceof MetaObject)) continue;
+            if (!shortName.equals(child.getShortName())) continue;
+            if (candidates.length() > 0) candidates.append(", ");
+            candidates.append(child.getName());
+        }
+        if (candidates.length() == 0) return "";
+        return " An object named \"" + shortName + "\" exists in: " + candidates
+            + ". Qualify it with its package (FQN).";
     }
 
     /**
@@ -2582,9 +2559,10 @@ public final class ValidationPhase {
      * (relationships declared on supers are visible to projections that extend
      * the base entity).
      *
-     * <p>Matches by getShortName() with a tail-segment fallback (consistent with
-     * {@link #findRootObject}), since relationships may be stored with the
-     * package prefix attached to {@code getName()}.</p>
+     * <p>Matches a CHILD by its bare name via {@link #nameMatches}, since relationships
+     * may be stored with the package prefix attached to {@code getName()}. (This resolves a
+     * relationship/reference NAME within an already-resolved entity — distinct from the
+     * package-local OBJECT resolution in {@link #resolveRootObject}.)</p>
      */
     private static MetaRelationship findRelationship(MetaObject obj, String name) {
         for (MetaData child : obj.getChildren(MetaData.class, true)) {
@@ -2642,13 +2620,11 @@ public final class ValidationPhase {
     private static boolean nameMatches(MetaData child, String name) {
         String bare = shortNameOf(child);
         if (bare == null) return false;
-        // ADR-0041: a FULLY-QUALIFIED ref (contains "::") resolves EXACTLY against
-        // the child's package-qualified name and NEVER falls back to a bare-tail
-        // match. (The closed bug: an FQN origin/object head like "xpkg::vendor::Customer"
-        // stripping to "Customer" and binding the first same-named object in ANY
-        // package.) A bare ref (relationship/field name in a @via path, or a bare
-        // object head) matches the child's bare name; cross-package ambiguity on a
-        // bare OBJECT ref is reported separately (ERR_AMBIGUOUS_REF).
+        // This matches a CHILD NAME (a relationship/reference/field within an already-
+        // resolved entity), NOT a top-level object ref. A FULLY-QUALIFIED name (contains
+        // "::") matches the child's package-qualified name exactly; a bare name matches the
+        // child's bare name. (Package-local OBJECT resolution — ADR-0042 — lives in
+        // resolveRootObject / the SymbolTable, not here.)
         if (name.indexOf(MetaData.PKG_SEPARATOR) >= 0) {
             return name.equals(child.getName());
         }
@@ -2703,14 +2679,18 @@ public final class ValidationPhase {
      * {@code Product.id} selecting BaseEntity's identity must anchor Product
      * (what the author wrote), not BaseEntity (where it physically lives).
      */
-    private static MetaObject refNamedOwner(MetaData node, MetaRoot root) {
+    private static MetaObject refNamedOwner(MetaData node, MetaRoot root, String referrerPkg) {
         String ref = node.getAuthoredSuperRef();
         if (ref == null) return null;
+        // Owner = everything before the child dot in the FINAL ::-segment (the object the
+        // extends anchors at). ADR-0042: resolve it AS AUTHORED — an FQN owner
+        // ("acme::Customer") resolves exactly, a bare owner ("Product") resolves in the
+        // referrer's package. Do NOT strip the package to a bare tail.
         int lastSep = ref.lastIndexOf(MetaData.PKG_SEPARATOR);
-        String tail = (lastSep == -1) ? ref : ref.substring(lastSep + MetaData.PKG_SEPARATOR.length());
-        int dot = tail.indexOf('.');
-        if (dot <= 0) return null;
-        return findRootObject(root, tail.substring(0, dot));
+        int segStart = (lastSep == -1) ? 0 : lastSep + MetaData.PKG_SEPARATOR.length();
+        int dotInSeg = ref.indexOf('.', segStart);
+        if (dotInSeg <= segStart) return null; // no dotted child owner
+        return resolveRootObject(root, ref.substring(0, dotInSeg), referrerPkg);
     }
 
     /**
@@ -2723,12 +2703,14 @@ public final class ValidationPhase {
     private static MetaObject deriveBaseEntity(MetaObject obj, MetaRoot root, String fieldName,
                                                com.metaobjects.source.ErrorSource originSource) {
         if (!MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType())) return obj;
+        // ADR-0042 — a bare extends owner resolves in this projection's package.
+        String referrerPkg = obj.getPackage() == null ? "" : obj.getPackage();
 
         for (MetaData ic : obj.getChildren(MetaData.class, false)) {
             if (!(ic instanceof MetaIdentity)) continue;
             MetaData extended = ic.getSuperData();
             if (extended != null && MetaIdentity.TYPE_IDENTITY.equals(extended.getType())) {
-                MetaObject named = refNamedOwner(ic, root);
+                MetaObject named = refNamedOwner(ic, root, referrerPkg);
                 if (named != null) return named;
                 MetaData owner = extended.getParent();
                 if (owner instanceof MetaObject) return (MetaObject) owner;
@@ -2740,7 +2722,7 @@ public final class ValidationPhase {
             if (!(fc instanceof MetaField)) continue;
             MetaData sup = fc.getSuperData();
             if (sup == null) continue;
-            MetaObject named = refNamedOwner(fc, root);
+            MetaObject named = refNamedOwner(fc, root, referrerPkg);
             MetaData owner = (named != null) ? named : sup.getParent();
             if (owner instanceof MetaObject) {
                 MetaObject mo = (MetaObject) owner;
@@ -3355,18 +3337,13 @@ public final class ValidationPhase {
         MetaSource.KIND_STORED_PROC, MetaSource.KIND_TABLE_FUNCTION);
 
     static void validateSourceParameterRef(MetaRoot root) {
-        // Pre-index every object by short name AND fqn.
-        Map<String, MetaObject> index = new java.util.HashMap<>();
-        for (MetaData rc : root.getChildren(MetaData.class, false)) {
-            if (!(rc instanceof MetaObject)) continue;
-            MetaObject o = (MetaObject) rc;
-            index.put(shortNameOf(o), o);
-            if (o.getName() != null) index.put(o.getName(), o);
-        }
-
         for (MetaData rc : root.getChildren(MetaData.class, false)) {
             if (!(rc instanceof MetaObject)) continue;
             MetaObject obj = (MetaObject) rc;
+            // ADR-0042 — a bare @parameterRef resolves package-local (this object's package,
+            // else root-level); an FQN resolves exactly. NO bare-name-anywhere fallback (which
+            // would silently bind a same-named value-object in another package).
+            String referrerPkg = obj.getPackage() == null ? "" : obj.getPackage();
             // ADR-0039: own — declaration-layer source iteration (mirrors TS
             // validateSourceParameterRef, which walks obj.ownChildren() sources).
             for (MetaSource source : obj.getSources(false)) {
@@ -3387,7 +3364,7 @@ public final class ValidationPhase {
                         ErrorCode.ERR_PARAMETER_REF_ON_NON_CALLABLE_KIND, source.getSource());
                 }
 
-                MetaObject target = index.get(ref);
+                MetaObject target = resolveRootObject(root, ref, referrerPkg);
                 if (target == null) {
                     throw new MetaDataException(
                         "ERR_PARAMETER_REF_UNRESOLVED"

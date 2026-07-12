@@ -208,7 +208,9 @@ public sealed class CSharpApiModelBuilder
             {
                 // ADR-0039: resolving — @payloadRef may be inherited via an abstract template base.
                 var payloadRef = (string)tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF)!;
-                var vo = PayloadGenerator.ResolvePayloadVo(root, payloadRef)!;
+                // ADR-0042: a bare @payloadRef resolves in the template's package.
+                var vo = PayloadGenerator.ResolvePayloadVo(
+                    root, payloadRef, global::MetaObjects.NamingRefs.EffectivePackage(tmpl))!;
                 symbols.Add(new ApiSymbol(
                     payloadRef, ApiSymbolKind.Payload, ns,
                     $"record {payloadRef}",

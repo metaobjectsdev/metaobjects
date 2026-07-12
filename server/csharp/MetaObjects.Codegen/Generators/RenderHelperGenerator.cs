@@ -98,7 +98,8 @@ public class RenderHelperGenerator : IGenerator
             }
             // @payloadRef must resolve to an object.value (same contract as the
             // parser/prompt generators). The VO record name == payloadRef (PayloadCodegen).
-            var vo = ResolveValueObject(ctx.Root, payloadRef);
+            // ADR-0042: a bare @payloadRef resolves in the template's package.
+            var vo = ResolveValueObject(ctx.Root, payloadRef, global::MetaObjects.NamingRefs.EffectivePackage(tmpl));
             if (vo is null) continue;
 
             // EmitHelper runs the build-time drift gate first and THROWS (fails
@@ -108,11 +109,15 @@ public class RenderHelperGenerator : IGenerator
         return files;
     }
 
-    /// <summary>The root-level <c>object.value</c> a <c>@payloadRef</c> names, or null.</summary>
-    internal static MetaData? ResolveValueObject(MetaRoot root, string payloadRef) =>
-        // ADR-0039: Children() — resolving root scan (behavior-identical; root has no super).
-        root.Children().FirstOrDefault(c =>
-            c.Type == TYPE_OBJECT && c.SubType == OBJECT_SUBTYPE_VALUE && c.Name == payloadRef);
+    /// <summary>The <c>object.value</c> a <c>@payloadRef</c> names, or null. ADR-0042:
+    /// package-local — an FQN binds the exact package; a bare ref binds
+    /// <paramref name="referrerPkg"/> (the template's package) FIRST, else a root-level object.
+    /// Must resolve to an <c>object.value</c>.</summary>
+    internal static MetaData? ResolveValueObject(MetaRoot root, string payloadRef, string referrerPkg = "")
+    {
+        var obj = global::MetaObjects.NamingRefs.ResolveObjectRef(root, payloadRef, referrerPkg);
+        return obj is not null && obj.SubType == OBJECT_SUBTYPE_VALUE ? obj : null;
+    }
 
     /// <summary>
     /// True iff this generator emits a render helper for <paramref name="tmpl"/>: a
@@ -125,7 +130,8 @@ public class RenderHelperGenerator : IGenerator
         if (tmpl.Type != TYPE_TEMPLATE || tmpl.SubType != TEMPLATE_SUBTYPE_OUTPUT) return false;
         // ADR-0039: resolving — @payloadRef may be inherited via an abstract template base.
         if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef) return false;
-        return ResolveValueObject(root, payloadRef) is not null;
+        // ADR-0042: a bare @payloadRef resolves in the template's package.
+        return ResolveValueObject(root, payloadRef, global::MetaObjects.NamingRefs.EffectivePackage(tmpl)) is not null;
     }
 
     protected virtual EmittedFile EmitHelper(MetaData tmpl, MetaData vo, string payloadRef, GenContext ctx)
@@ -249,7 +255,13 @@ public class RenderHelperGenerator : IGenerator
                 // ADR-0039: resolving — @objectRef may be inherited via extends (TS reads f.attr).
                 f.Attr(FIELD_ATTR_OBJECT_REF) is string refName)
             {
-                var target = ResolveNestedObjectRef(root, refName);
+                // ADR-0042: a nested @objectRef resolves in the DECLARING field's package —
+                // which differs from this VO's when the field is inherited via extends from an
+                // abstract VO in another package (the bare ref was authored there).
+                var fieldPkg = f.Parent is not null
+                    ? global::MetaObjects.NamingRefs.EffectivePackage(f.Parent)
+                    : global::MetaObjects.NamingRefs.EffectivePackage(vo);
+                var target = ResolveNestedObjectRef(root, refName, fieldPkg);
                 if (target is not null && target.SubType == OBJECT_SUBTYPE_VALUE)
                 {
                     var children = DerivePayloadFieldTree(root, target, new HashSet<string>(seen, StringComparer.Ordinal));
@@ -263,25 +275,19 @@ public class RenderHelperGenerator : IGenerator
     }
 
     /// <summary>
-    /// Resolve a <c>field.object</c>'s <c>@objectRef</c> to its target
-    /// <c>object.value</c>. ADR-0041: a FULLY-QUALIFIED ref (contains <c>::</c>) resolves
-    /// EXACTLY on the package-qualified name (<c>ResolutionKey()</c>/<c>Fqn()</c>) — never
-    /// a bare-tail fallback that would bind a same-named <c>object.value</c> in the WRONG
-    /// package on a cross-package short-name collision. A bare ref still matches by short
-    /// name (first-wins). Mirrors the Java/Kotlin <c>resolveNestedObjectRef</c> + TS
-    /// <c>refMatchesObject</c>. Returns null when no match is found.
+    /// Resolve a <c>field.object</c>'s <c>@objectRef</c> to its target <c>object.value</c>.
+    /// ADR-0042: package-local — an FQN ref (contains <c>::</c>) resolves EXACTLY on its
+    /// resolution key (never a bare-tail fallback that would bind a same-named
+    /// <c>object.value</c> in the WRONG package); a bare ref resolves in
+    /// <paramref name="referrerPkg"/> (the declaring field's package), else a root-level
+    /// object. Shares the single NamingRefs.ResolveObjectRef matcher (loader + codegen must
+    /// not drift). Returns null when no match is found.
     /// </summary>
-    private static MetaData? ResolveNestedObjectRef(MetaRoot root, string reference)
+    private static MetaData? ResolveNestedObjectRef(MetaRoot root, string reference, string referrerPkg)
     {
         if (string.IsNullOrEmpty(reference)) return null;
-        bool fqn = reference.Contains("::");
-        var refShort = CSharpNaming.StripPkg(reference);
-        // ADR-0039: Children() — resolving root scan (behavior-identical; root has no super).
-        return root.Children().FirstOrDefault(c =>
-            c.Type == TYPE_OBJECT && c.SubType == OBJECT_SUBTYPE_VALUE &&
-            (fqn
-                ? c.ResolutionKey() == reference || c.Fqn() == reference
-                : CSharpNaming.StripPkg(c.Name) == refShort));
+        var obj = global::MetaObjects.NamingRefs.ResolveObjectRef(root, reference, referrerPkg);
+        return obj is not null && obj.SubType == OBJECT_SUBTYPE_VALUE ? obj : null;
     }
 
     /// <summary>
