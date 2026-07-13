@@ -928,8 +928,13 @@ function subtypeToSqlType(field: MetaData): SqlType {
       if (typeof precision === "number" && typeof scale === "number") {
         return { kind: "numeric", precision, scale };
       }
+      // NUMERIC(p) IS NUMERIC(p,0) — the SQL standard defaults an omitted scale
+      // to zero, and Postgres stores it that way (information_schema reports
+      // numeric_scale = 0, not NULL). Model the scale the database will actually
+      // hold, or expected (bare p) and introspected (p, 0) can never converge and
+      // the column churns change-column-type on every migrate.
       if (typeof precision === "number") {
-        return { kind: "numeric", precision };
+        return { kind: "numeric", precision, scale: 0 };
       }
       return { kind: "numeric" };
     }

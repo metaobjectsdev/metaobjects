@@ -76,12 +76,32 @@ export async function introspectPostgres(db: Kysely<Record<string, unknown>>): P
  * before matching.
  *
  * If character_maximum_length is available, callers should pass `maxLength`.
+ *
+ * `numeric` carries its qualifier OUT-OF-BAND: `data_type` is a bare "numeric"
+ * for both NUMERIC and NUMERIC(9,4), so callers reading information_schema must
+ * pass `numeric.precision` / `numeric.scale` (from numeric_precision /
+ * numeric_scale) or the qualifier is lost. An inline "numeric(9,4)" string is
+ * still parsed — that form arrives from format_type()/pg_catalog callers and
+ * from unit tests — but it is NOT what information_schema produces.
+ *
+ * Only the numeric/decimal branch consults the qualifier: information_schema
+ * also populates numeric_precision for INTEGER columns (int4 → 32, radix 2),
+ * which has nothing to do with a NUMERIC qualifier.
  */
-export function pgTypeToSqlType(dataType: string, maxLength?: number | null, udtName?: string): SqlType {
+export function pgTypeToSqlType(
+  dataType: string,
+  maxLength?: number | null,
+  udtName?: string,
+  numeric?: { precision: number | null; scale: number | null },
+): SqlType {
   const dt = dataType.toLowerCase().trim();
 
   // Array columns: information_schema reports data_type "ARRAY" and the element
   // type in udt_name with a leading underscore (e.g. "_uuid", "_text", "_varchar").
+  // The element is deliberately left UNQUALIFIED: information_schema reports no
+  // qualifiers for array elements (numeric_precision/character_maximum_length are
+  // NULL when data_type = 'ARRAY'), and the expected side builds unqualified
+  // elements to match (see arrayElementSqlType in expected-schema).
   if (dt === "array" && typeof udtName === "string") {
     const elemUdt = udtName.replace(/^_/, "").toLowerCase();
     return { kind: "array", element: pgTypeToSqlType(elemUdt, maxLength) };
@@ -117,12 +137,20 @@ export function pgTypeToSqlType(dataType: string, maxLength?: number | null, udt
   if (dt === "float4" || dt === "real") return { kind: "real4" };
   if (dt === "float8" || dt === "double precision") return { kind: "real" };
 
-  // Arbitrary-precision numeric — "numeric(p,s)" or bare "numeric"/"decimal"
+  // Arbitrary-precision numeric — "numeric(p,s)" or bare "numeric"/"decimal".
+  // An inline qualifier wins when present; otherwise fall back to the
+  // out-of-band numeric_precision/numeric_scale, which is the only form
+  // information_schema ever gives us. An unconstrained NUMERIC reports both as
+  // NULL and stays a bare { kind: "numeric" }.
   const numMatch = /^(?:numeric|decimal)(?:\((\d+)(?:,\s*(\d+))?\))?$/.exec(dt);
   if (numMatch) {
     const out: SqlType = { kind: "numeric" };
-    if (numMatch[1]) out.precision = parseInt(numMatch[1], 10);
-    if (numMatch[2]) out.scale = parseInt(numMatch[2], 10);
+    const precision = numMatch[1] !== undefined ? parseInt(numMatch[1], 10) : numeric?.precision ?? null;
+    const scale = numMatch[1] !== undefined
+      ? (numMatch[2] !== undefined ? parseInt(numMatch[2], 10) : null)
+      : numeric?.scale ?? null;
+    if (precision !== null) out.precision = precision;
+    if (scale !== null) out.scale = scale;
     return out;
   }
 
@@ -290,18 +318,29 @@ interface RawColumn {
   data_type: string;
   udt_name: string;
   character_maximum_length: number | null;
+  numeric_precision: number | null;
+  numeric_scale: number | null;
   is_nullable: string;   // 'YES' | 'NO'
   column_default: string | null;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function readColumns(k: Kysely<any>, schema: string, tableName: string): Promise<ColumnDescriptor[]> {
+  // numeric_precision/_scale are the ONLY place a NUMERIC(p,s) qualifier survives:
+  // information_schema.columns.data_type reports a bare "numeric" for every
+  // NUMERIC column regardless of its qualifier, and character_maximum_length is
+  // NULL for numerics. Selecting them is what lets a `field.decimal @precision
+  // @scale` column converge — without them the expected side says NUMERIC(9,4),
+  // introspection reads back a bare NUMERIC, and the diff reports a (lossy, so
+  // BLOCKED) change-column-type on every single migrate, forever.
   const rows = await sql<RawColumn>`
     SELECT
       column_name,
       data_type,
       udt_name,
       character_maximum_length,
+      numeric_precision,
+      numeric_scale,
       is_nullable,
       column_default
     FROM information_schema.columns
@@ -311,7 +350,10 @@ async function readColumns(k: Kysely<any>, schema: string, tableName: string): P
   `.execute(k);
 
   return rows.rows.map((r) => {
-    const sqlType = pgTypeToSqlType(r.data_type, r.character_maximum_length, r.udt_name);
+    const sqlType = pgTypeToSqlType(r.data_type, r.character_maximum_length, r.udt_name, {
+      precision: r.numeric_precision,
+      scale: r.numeric_scale,
+    });
     const col: ColumnDescriptor = {
       name: r.column_name,
       sqlType,

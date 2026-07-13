@@ -66,7 +66,13 @@ describe("SQLite round-trip — trainer-website fixture", () => {
     // equal the introspected `timestamp{withTimezone:false}`.
     const expected = buildExpectedSchema(metadata, { dialect: "sqlite" });
     const actual0 = await introspectSqlite(k);
-    const initial = await diff(expected, actual0);
+    // `dialect` is REQUIRED to reproduce the production diff. The CLI always passes
+    // it, and two diff behaviors hang off it: FKs are keyed STRUCTURALLY (SQLite
+    // stores no FK names, so a @constraintName / composite FK can never match by
+    // name), and CHECK constraints are only diffed when a dialect is known (so an
+    // enum @values change is otherwise invisible). Omitting it here tested a shape
+    // the real pipeline never produces — and silently disarmed both gates.
+    const initial = await diff({ expected, actual: actual0, dialect: "sqlite" });
     expect(initial.blocked).toEqual([]);
 
     const { up } = emit(initial.changes, {
@@ -77,7 +83,7 @@ describe("SQLite round-trip — trainer-website fixture", () => {
     await applyRaw(k, up);
 
     const actual1 = await introspectSqlite(k);
-    const followup = await diff(expected, actual1);
+    const followup = await diff({ expected, actual: actual1, dialect: "sqlite" });
     if (followup.changes.length > 0) {
       console.error("ROUND-TRIP FAILURE — remaining changes:");
       for (const c of followup.changes) console.error(`  - ${c.kind}:`, JSON.stringify(c, null, 2));
@@ -89,7 +95,7 @@ describe("SQLite round-trip — trainer-website fixture", () => {
     const metadata1 = await loadFixture("trainer-website-entities");
     const expected1 = buildExpectedSchema(metadata1, { dialect: "sqlite" });
     {
-      const initial = await diff(expected1, await introspectSqlite(k));
+      const initial = await diff({ expected: expected1, actual: await introspectSqlite(k), dialect: "sqlite" });
       const { up } = emit(initial.changes, { dialect: "sqlite", expectedSchema: expected1 });
       await applyRaw(k, up);
     }
@@ -105,12 +111,12 @@ describe("SQLite round-trip — trainer-website fixture", () => {
     const metadata2 = (await new MetaDataLoader().load([new InMemoryStringSource(JSON.stringify(json))])).root;
     const expected2 = buildExpectedSchema(metadata2, { dialect: "sqlite" });
 
-    const second = await diff(expected2, await introspectSqlite(k));
+    const second = await diff({ expected: expected2, actual: await introspectSqlite(k), dialect: "sqlite" });
     expect(second.blocked).toEqual([]);
     const { up: up2 } = emit(second.changes, { dialect: "sqlite", expectedSchema: expected2 });
     await applyRaw(k, up2);
 
-    const followup = await diff(expected2, await introspectSqlite(k));
+    const followup = await diff({ expected: expected2, actual: await introspectSqlite(k), dialect: "sqlite" });
     if (followup.changes.length > 0) {
       console.error("ROUND-TRIP FAILURE (add-column) — remaining changes:");
       for (const c of followup.changes) console.error(`  - ${c.kind}:`, JSON.stringify(c, null, 2));

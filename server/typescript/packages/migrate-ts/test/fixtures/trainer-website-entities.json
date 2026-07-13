@@ -70,7 +70,38 @@
             { "field.string": { "name": "title", "@required": true } },
             { "field.int": { "name": "durationSeconds" } },
             { "field.timestamp": { "name": "createdAt", "@required": true, "@default": "CURRENT_TIMESTAMP" } },
-            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+            { "field.uuid": { "name": "thumbnailAssetId" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+            { "identity.reference": {
+                "name": "ref_thumbnail",
+                "@fields": ["thumbnailAssetId"],
+                "@references": "MediaAsset",
+                "@constraintName": "fk_video_thumbnail_asset"
+            } },
+            { "relationship.association": { "name": "thumbnail", "@cardinality": "one", "@objectRef": "MediaAsset" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "MediaAsset",
+          "children": [
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "storageKey", "@required": true } },
+            { "field.string": { "name": "caption", "@default": "n/a (unknown)" } },
+            { "field.string": { "name": "altText", "@default": "don't know" } },
+            { "field.boolean": { "name": "archived", "@required": true, "@default": "false" } },
+            { "field.decimal": { "name": "fileSizeMb", "@precision": 12, "@scale": 3 } },
+            { "field.enum": { "name": "kind", "@required": true, "@values": ["IMAGE", "VIDEO", "AUDIO"] } },
+            { "field.timestamp": { "name": "createdAt", "@required": true, "@autoSet": "onCreate" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "uuid" } },
+            { "identity.secondary": {
+                "name": "uniqueStorageKey",
+                "@fields": ["storageKey"],
+                "@where": "caption IS NOT NULL"
+            } },
+            { "index.lookup": { "name": "byCaptionLower", "@fields": ["caption"], "@expr": "lower(caption)" } },
+            { "index.lookup": { "name": "byCreated", "@fields": ["createdAt"], "@orders": ["desc"] } }
           ]
         }
       },

@@ -122,11 +122,14 @@ describe("PG round-trip — trainer-website fixture", () => {
 
     // Step 1: Build the expected schema from metadata.
     const expected = buildExpectedSchema(metadata);
-    expect(expected.tables).toHaveLength(6);
+    // 7 = the six original entities + MediaAsset, the uuid-PK kitchen sink.
+    expect(expected.tables).toHaveLength(7);
 
     // Step 2: Diff against empty DB — should want to create everything.
+    // `dialect` is what the CLI passes; it is also what switches CHECK-constraint
+    // diffing on, so without it an enum @values change is invisible.
     const actual0 = await introspectPostgres(kysely);
-    const initial = await diff(expected, actual0);
+    const initial = await diff({ expected, actual: actual0, dialect: "postgres" });
     expect(initial.blocked).toEqual([]);
     expect(initial.changes.length).toBeGreaterThan(0);
 
@@ -139,7 +142,7 @@ describe("PG round-trip — trainer-website fixture", () => {
 
     // Step 5: Re-introspect and re-diff — MUST yield no changes.
     const actual1 = await introspectPostgres(kysely);
-    const followup = await diff(expected, actual1);
+    const followup = await diff({ expected, actual: actual1, dialect: "postgres" });
 
     if (followup.changes.length > 0) {
       console.error("ROUND-TRIP FAILURE — remaining changes after apply:");
