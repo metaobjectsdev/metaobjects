@@ -44,7 +44,12 @@ export async function runMigrationScenario(scenario: MigrationScenario, connecti
   });
   try {
     const actual = await introspectPostgres(kysely);
-    const result = await diff({ expected, actual });
+    // `dialect` is not optional in practice — the CLI always passes it, and real diff
+    // behavior hangs off it. Omitting it here silently ran a DIFFERENT pipeline than
+    // production: CHECK constraints were never diffed, and views fell back to comparing
+    // body TEXT against Postgres's deparsed output (which can never match), so every
+    // view reported as changed on every run.
+    const result = await diff({ expected, actual, dialect: "postgres" });
 
     const emittable = result.changes.filter((c) => c.status.state !== "blocked");
     const emitted = emittable.length === 0

@@ -5,8 +5,22 @@ import type { SchemaSnapshot } from "../types.js";
  * On-disk format version for the committed schema snapshot. Bump when the
  * SchemaSnapshot descriptor gains a field (a DDL-coverage feature); add the
  * matching upgrade branch in parseSnapshot at the same time.
+ *
+ * v3 — ViewDescriptor gained `fingerprint`, `columns` and `dependents`. The
+ * fingerprint is how Postgres decides whether a view is up to date (Postgres deparses
+ * view SQL, so the emitted text can never be compared against what it stores). A
+ * toolchain that does not understand these fields would silently fall back to the old
+ * text comparison and re-propose every view on every migrate — so a v3 snapshot must
+ * hard-fail on an older reader rather than be quietly misread. Reading an OLDER (v2)
+ * snapshot stays fine: the missing fields read as `undefined`, which every consumer
+ * treats as "unknown" and fails safe on.
+ *
+ * NOTE for anyone touching canonicalize(): a view's `columns` array is ORDER-SENSITIVE.
+ * Postgres allows a non-destructive CREATE OR REPLACE only when the old column list is
+ * a PREFIX of the new one, so sorting that array would destroy the very information the
+ * decision rests on.
  */
-export const SNAPSHOT_FORMAT_VERSION = 2;
+export const SNAPSHOT_FORMAT_VERSION = 3;
 
 interface SnapshotFile {
   formatVersion: number;

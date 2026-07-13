@@ -59,6 +59,8 @@ import type {
   Dialect, SchemaSnapshot, TableDescriptor, ColumnDescriptor, IndexDescriptor, FkDescriptor,
   CheckDescriptor, ViewDescriptor,
 } from "./types.js";
+import { viewFingerprint } from "./view-fingerprint.js";
+import { resolveViewColumns, type ExpectedViewColumnInput } from "./view-column-types.js";
 import {
   resolveReferentialActions,
   validateSetNullNullability,
@@ -89,8 +91,25 @@ export interface BuildExpectedSchemaOptions {
    * generate view DDL itself (it stays dependency-pure — never importing the
    * code generator); view SQL has a single source, `emitViewDdl` in codegen-ts.
    * Defaults to none.
+   *
+   * The caller supplies each view's output columns PHYSICALLY but untyped
+   * (codegen-ts knows nothing of SqlType); Pass 4 resolves them against the
+   * expected tables and computes the view's fingerprint.
    */
-  views?: readonly ViewDescriptor[];
+  views?: readonly ExpectedViewInput[];
+}
+
+/**
+ * A view as the caller (codegen-ts `buildProjectionViews`) produces it — structurally
+ * an `ExpectedView`. It becomes a full `ViewDescriptor` in Pass 4, which is where the
+ * fingerprint is computed and the column types are resolved.
+ */
+export interface ExpectedViewInput {
+  name: string;
+  schema?: string;
+  sql?: string;
+  dependsOn?: readonly string[];
+  columns?: readonly ExpectedViewColumnInput[];
 }
 
 export function buildExpectedSchema(
@@ -209,7 +228,24 @@ export function buildExpectedSchema(
   // Pass 4: views from read-only projections — supplied by the caller (computed
   // via codegen-ts's buildProjectionViews, the single view-SQL source). migrate-ts
   // never generates view DDL itself, keeping it free of a codegen-ts dependency.
-  const views = (opts?.views ?? []) as ViewDescriptor[];
+  //
+  // Two things are derived here rather than by the caller:
+  //   - the FINGERPRINT, a hash of the generated body. It is the only sound way to
+  //     compare a view against Postgres, which deparses view SQL and so can never
+  //     hand back the text we wrote (see view-fingerprint.ts). Computed here so the
+  //     producer and the parser of the marker live in one package.
+  //   - the column SQL TYPES, resolved against the tables built above. They decide
+  //     whether a view change can use a non-destructive CREATE OR REPLACE.
+  const views: ViewDescriptor[] = (opts?.views ?? []).map((v) => {
+    const columns = resolveViewColumns(v.columns, tables);
+    return {
+      name: v.name,
+      ...(v.schema !== undefined ? { schema: v.schema } : {}),
+      ...(v.sql !== undefined ? { sql: v.sql, fingerprint: viewFingerprint(v.sql) } : {}),
+      ...(v.dependsOn !== undefined ? { dependsOn: v.dependsOn } : {}),
+      ...(columns !== undefined ? { columns } : {}),
+    };
+  });
 
   return { tables, views };
 }

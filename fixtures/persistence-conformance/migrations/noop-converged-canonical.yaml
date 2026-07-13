@@ -1,0 +1,29 @@
+name: noop-converged-canonical
+description: |
+  IDEMPOTENCE GATE. Apply the full canonical schema, then immediately diff the
+  SAME canonical metadata against the database it just produced. A converged
+  schema must produce ZERO migration SQL.
+
+  This is the cheapest structural gate in the corpus, and the one whose absence
+  let a family of destructive migrate bugs survive: every other migration
+  scenario applies once and then queries ROWS, so `emit` and `introspect` were
+  never in the same room. Anything emit writes that introspect reads back
+  differently — a synthesized DEFAULT, a normalized type, a dropped index
+  predicate — shows up here as phantom SQL on a schema with no metadata change.
+
+  Concretely, this catches: a uuid-PK table whose emit-time `gen_random_uuid()`
+  DEFAULT is read back as a real default and diffed against an expected side
+  that models uuid generation as `identity` (→ change-column-default on EVERY
+  migrate, forever, and on SQLite/D1 a full destructive table rebuild); an index
+  whose `@where` / `@expr` / `@orders` are dropped on emit; a boolean or string
+  default that round-trips through the engine in a different literal form.
+
+  Keep this scenario asserting NOTHING but emptiness — its value is that it
+  cannot be satisfied by agreeing with itself.
+
+seed-metadata: ../canonical/
+target-metadata: ../canonical/
+
+expect:
+  blocked: []
+  up-empty: true

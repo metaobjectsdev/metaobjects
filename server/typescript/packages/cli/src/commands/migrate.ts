@@ -65,7 +65,8 @@ MIGRATE FLAGS:
   --slug <name>        Required when changes are present (e.g., --slug add-user-shipping)
   --allow <csv>        Comma-separated destructive-change permissions:
                        drop-column,drop-table,type-change,drop-index,drop-fk,
-                       drop-check,drop-view,nullable-to-not-null
+                       drop-check,drop-view,drop-view-cascade,
+                       adopt-view,nullable-to-not-null
   --on-ambiguous abort|rename|drop-add
                        How to handle ambiguous renames (default: abort)
   --from-db            Introspect live DB instead of using the committed snapshot

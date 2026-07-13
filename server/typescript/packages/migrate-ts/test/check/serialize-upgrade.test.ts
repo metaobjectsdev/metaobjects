@@ -11,9 +11,13 @@ const snap = (): SchemaSnapshot => ({
   views: [],
 });
 
-describe("serialize with checks + formatVersion 2", () => {
-  test("format version is 2", () => {
-    expect(SNAPSHOT_FORMAT_VERSION).toBe(2);
+describe("serialize with checks + snapshot format version", () => {
+  // v3 added ViewDescriptor.fingerprint/columns/dependents. An older reader that does
+  // not understand them would silently fall back to comparing view TEXT against
+  // Postgres's deparsed output — which never matches — and re-propose every view on
+  // every migrate. So the version must be bumped, to hard-fail instead of misread.
+  test("format version is 3", () => {
+    expect(SNAPSHOT_FORMAT_VERSION).toBe(3);
   });
 
   test("checks round-trip and are order-stable", () => {

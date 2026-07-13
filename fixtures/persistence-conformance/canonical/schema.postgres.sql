@@ -148,6 +148,7 @@ CREATE VIEW "v_program" AS
     p.title AS title,
     p.status AS status
   FROM programs p;
+COMMENT ON VIEW "v_program" IS 'metaobjects:v1:sha256:0338b5e7329eb5d951e6d2311bde8d4c95d71204cac6aa895a903d7b7b5cbab4';
 
 CREATE VIEW "v_program_stat" AS
   SELECT
@@ -160,3 +161,4 @@ CREATE VIEW "v_program_stat" AS
   FROM programs p
   LEFT OUTER JOIN weeks w ON w."programId" = p.id
   GROUP BY p.id;
+COMMENT ON VIEW "v_program_stat" IS 'metaobjects:v1:sha256:9120c9f8899e257b52a087c4841b8e55f679d7f9c7a6e58d8823912855f2ab57';

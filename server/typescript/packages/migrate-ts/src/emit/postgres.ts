@@ -4,6 +4,8 @@ import type {
 } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
+import { renderFingerprintMarker, viewFingerprint } from "../view-fingerprint.js";
+import { viewReplaceIsLegal } from "../view-column-types.js";
 
 // Stages run low → high. drop-view + drop-fk run BEFORE drop-table so a view
 // that depends on a soon-to-be-dropped table is removed first. create-view
@@ -69,7 +71,7 @@ function renderUp(c: Change): string {
     case "add-check":              return `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD CONSTRAINT ${quote(c.check.name)} CHECK (${c.check.expression});`;
     case "drop-check":             return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.check)};`;
     case "create-view":            return renderCreateView(c.view, c.schema, /* orReplace */ false);
-    case "drop-view":              return `DROP VIEW ${quoteQualifiedView(c.view, c.schema)};`;
+    case "drop-view":              return renderDropView(c);
     case "replace-view":           return renderCreateView(c.view, c.schema, /* orReplace */ true);
   }
 }
@@ -128,8 +130,9 @@ function renderDown(c: Change): string {
         ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD CONSTRAINT ${quote(c.restore.name)} CHECK (${c.restore.expression});`
         : `-- WARNING: down migration cannot restore the original CHECK definition`;
     case "create-view":            return `DROP VIEW ${quoteQualifiedView(c.view.name, c.schema)};`;
-    case "drop-view":              return `-- WARNING: down migration cannot restore the original view definition`;
-    case "replace-view":           return `-- WARNING: down migration cannot restore the original view definition`;
+    // The deparsed body introspection captured IS a valid restore payload.
+    case "drop-view":              return renderRestoreView(c.restore, c.view, c.schema);
+    case "replace-view":           return renderRestoreView(c.restore, c.view.name, c.schema, c.view);
   }
 }
 
@@ -283,10 +286,105 @@ function quoteQualifiedView(view: string, schema: string | undefined): string {
   return quoteQualified(view, schema);
 }
 
+/**
+ * Emit the view AND stamp it with the fingerprint of the body we just wrote.
+ *
+ * The stamp is not decoration — it is the ONLY way a later migrate can tell whether
+ * this view is up to date. Postgres does not store view SQL (it deparses it from the
+ * parse tree), so the text can never be read back and compared; the fingerprint in the
+ * view's COMMENT can. Drop the stamp and every migrate re-proposes every view forever.
+ *
+ * `CREATE OR REPLACE VIEW` does NOT clear an existing comment, so re-stamping on every
+ * replace is both required (the body changed → the hash changed) and sufficient.
+ */
 function renderCreateView(v: ViewDescriptor, schema: string | undefined, orReplace: boolean): string {
   if (v.sql === undefined || v.sql.trim().length === 0) {
     throw new Error(`view "${v.name}" has no sql body — buildExpectedSchema must populate it before emit`);
   }
   const prefix = orReplace ? "CREATE OR REPLACE VIEW" : "CREATE VIEW";
-  return `${prefix} ${quoteQualifiedView(v.name, schema)} AS\n${v.sql};`;
+  const qualified = quoteQualifiedView(v.name, schema);
+  const create = `${prefix} ${qualified} AS\n${v.sql};`;
+  const fingerprint = v.fingerprint ?? viewFingerprint(v.sql);
+  return `${create}\n${renderViewComment(qualified, renderFingerprintMarker(fingerprint))}`;
+}
+
+function renderViewComment(qualifiedView: string, comment: string | null): string {
+  if (comment === null) return `COMMENT ON VIEW ${qualifiedView} IS NULL;`;
+  return `COMMENT ON VIEW ${qualifiedView} IS '${comment.replace(/'/g, "''")}';`;
+}
+
+/**
+ * DROP VIEW, plus — when the drop would cascade into relations we do not manage — a
+ * banner naming every one of them.
+ *
+ * The banner lives in the emitted SQL rather than only in CLI output on purpose: the
+ * migration file is committed and code-reviewed, and "this statement destroys three
+ * objects belonging to another application" is exactly the thing a reviewer must see.
+ *
+ * CASCADE is emitted ONLY when explicitly allowed. Otherwise a plain DROP VIEW is
+ * emitted even if dependents are known — so if a dependent appeared between introspect
+ * and apply, Postgres itself refuses the drop rather than silently destroying it.
+ */
+function renderDropView(c: Extract<Change, { kind: "drop-view" }>): string {
+  const qualified = quoteQualifiedView(c.view, c.schema);
+  const dependents = c.dependents ?? [];
+  if (dependents.length === 0) return `DROP VIEW ${qualified};`;
+
+  const listed = dependents
+    .map((d) => `--   ${d.schema}.${d.name} (${d.relkind === "m" ? "materialized view" : "view"})`)
+    .join("\n");
+  const rule = "-- " + "=".repeat(74);
+  return [
+    rule,
+    "-- WARNING: CASCADE DROP. The following dependent objects are DESTROYED by this",
+    "-- statement. MetaObjects does not manage them and the down migration does NOT",
+    "-- restore them:",
+    listed,
+    rule,
+    `DROP VIEW ${qualified} CASCADE;`,
+  ].join("\n");
+}
+
+/**
+ * Restore a view the up migration dropped or replaced.
+ *
+ * The payload is Postgres's own deparsed body (`pg_get_viewdef`) — useless for
+ * COMPARISON, but perfectly valid SQL that reproduces the view. So the thing that made
+ * the bug (the deparser) is what makes down migrations restorable. The prior stamp is
+ * replayed verbatim: the restored parse tree IS the pre-migration view, so its old
+ * fingerprint is still the truthful one.
+ */
+function renderRestoreView(
+  restore: ViewDescriptor | undefined,
+  name: string,
+  schema: string | undefined,
+  /** The view the UP migration left in place — i.e. what the down is replacing. */
+  current?: ViewDescriptor,
+): string {
+  if (restore?.sql === undefined || restore.sql.trim().length === 0) {
+    return `-- WARNING: down migration cannot restore the original view definition`;
+  }
+  const qualified = quoteQualifiedView(name, schema);
+  const body = restore.sql.trim().replace(/;\s*$/, "");
+
+  // Postgres's OR-REPLACE prefix rule applies to the down migration too, and usually
+  // REFUSES: undoing an appended field means REMOVING a view column, and
+  // `CREATE OR REPLACE VIEW` cannot drop columns ("cannot drop columns from view").
+  // So ask the same question the forward path asks, with the arguments swapped — and
+  // fall back to DROP + CREATE when the answer is no.
+  //
+  // The fallback DROP is deliberately NOT `CASCADE`: if a dependent has since been built
+  // on the newer shape, Postgres refuses the down migration rather than silently
+  // destroying that dependent. Loud beats convenient.
+  const stamp = restore.fingerprint !== undefined
+    ? renderViewComment(qualified, renderFingerprintMarker(restore.fingerprint))
+    // The view being restored carried NO fingerprint (hand-written, or pre-stamping).
+    // Clear ours — otherwise the restored view would advertise a stamp for a body it
+    // does not have, and the next migrate would believe the stamp and skip it.
+    : renderViewComment(qualified, null);
+
+  if (current !== undefined && !viewReplaceIsLegal(restore.columns, current.columns)) {
+    return `DROP VIEW ${qualified};\nCREATE VIEW ${qualified} AS\n${body};\n${stamp}`;
+  }
+  return `CREATE OR REPLACE VIEW ${qualified} AS\n${body};\n${stamp}`;
 }

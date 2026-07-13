@@ -18,6 +18,10 @@ const ALLOW_TOKEN_MAP: Record<string, keyof AllowOptions> = {
   // drop-view gates a REAL view removal (the diff's internal drop/create
   // recreate pair around a column change is not gated).
   "drop-view": "dropView",
+  // Gates DROP VIEW ... CASCADE. Additional to drop-view, never implied by it.
+  "drop-view-cascade": "dropViewCascade",
+  // Gates overwriting an unfingerprinted (hand-written or pre-fingerprint) view.
+  "adopt-view": "adoptView",
   "nullable-to-not-null": "nullableToNotNull",
 };
 

@@ -2,7 +2,8 @@
 import type { ColumnNamingStrategy, MetaData } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../expected-schema.js";
 import { diff, type DiffArgs } from "../diff/index.js";
-import type { Dialect, DiffResult, SchemaSnapshot, ViewDescriptor } from "../types.js";
+import type { Dialect, DiffResult, SchemaSnapshot } from "../types.js";
+import type { ExpectedViewInput } from "../expected-schema.js";
 
 export interface PlanOfflineArgs extends Pick<DiffArgs, "allow" | "onAmbiguous" | "ignoreTables"> {
   metadata: MetaData;
@@ -11,7 +12,7 @@ export interface PlanOfflineArgs extends Pick<DiffArgs, "allow" | "onAmbiguous" 
   snapshot: SchemaSnapshot;
   columnNamingStrategy?: ColumnNamingStrategy;
   /** Expected views (via codegen-ts `buildProjectionViews`) — threaded into buildExpectedSchema. */
-  views?: readonly ViewDescriptor[];
+  views?: readonly ExpectedViewInput[];
 }
 
 export interface PlanOfflineResult {
@@ -48,7 +49,7 @@ export function baselineFromMetadata(
   metadata: MetaData,
   dialect: Dialect,
   columnNamingStrategy?: ColumnNamingStrategy,
-  views?: readonly ViewDescriptor[],
+  views?: readonly ExpectedViewInput[],
 ): SchemaSnapshot {
   return buildExpectedSchema(metadata, {
     dialect,

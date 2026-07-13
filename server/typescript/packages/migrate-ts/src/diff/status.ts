@@ -57,10 +57,38 @@ function blockedReasonFor(
       return allow.dropFk ? null : "destructive: drop-fk not allowed (pass allow.dropFk)";
     case "drop-check":
       return allow.dropCheck ? null : "destructive: drop-check not allowed (pass allow.dropCheck)";
-    case "drop-view":
+    case "drop-view": {
+      // A drop that would destroy relations we do NOT manage is gated INDEPENDENTLY of
+      // whether our own view survives. Even the recreate pair — where our view comes
+      // back — cascades through to somebody else's dependent view and destroys it for
+      // good, and this tool cannot restore what it does not manage. So check dependents
+      // FIRST: it is the one thing `allow.dropView` must never be able to wave through.
+      const external = c.dependents ?? [];
+      if (external.length > 0 && !allow.dropViewCascade) {
+        return `destructive: dropping view "${c.view}" would CASCADE into ${external.length} object(s) `
+          + `MetaObjects does not manage and cannot restore `
+          + `(${external.map((d) => `${d.schema}.${d.name}`).join(", ")}) `
+          + `— pass allow.dropViewCascade to destroy them, or migrate them off this view first`;
+      }
       // Identity, not bare name — see viewIdentity().
       if (recreatedViews.has(viewIdentity(c.view, c.schema))) return null; // recreate pair — view survives
       return allow.dropView ? null : "destructive: drop-view not allowed (pass allow.dropView)";
+    }
+
+    case "replace-view":
+      // The DB view carries no MetaObjects fingerprint, so it is either hand-written or
+      // predates fingerprinting — and Postgres deparses view SQL, so the two are
+      // indistinguishable. Overwriting a hand-written view destroys SQL no down
+      // migration can recover, so fail closed and make the operator say yes.
+      //
+      // Every environment upgrading from a pre-fingerprint toolchain hits this exactly
+      // once, then its views are stamped and it never fires again.
+      if (c.unmanagedActual && !allow.adoptView) {
+        return `existing view "${c.view.name}" carries no MetaObjects fingerprint — it is hand-written, `
+          + `or was created before view fingerprinting. Overwriting it takes ownership and cannot be undone. `
+          + `Pass allow.adoptView to adopt it`;
+      }
+      return null;
 
     case "change-column-type":
       if (isWidening(c.from, c.to)) return null;     // widening always allowed
@@ -83,7 +111,6 @@ function blockedReasonFor(
     case "add-fk":
     case "add-check":
     case "create-view":
-    case "replace-view":
       return null;
   }
 }

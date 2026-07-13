@@ -1,6 +1,7 @@
 import type {
   SchemaSnapshot, TableDescriptor, ColumnDescriptor, IndexDescriptor, FkDescriptor,
   ViewDescriptor,
+  DependentRelation,
   Change, ChangeStatus, DiffResult, AllowOptions, AmbiguousCallback, Dialect,
 } from "../types.js";
 import type { SqlType } from "../sql-type.js";
@@ -8,6 +9,7 @@ import { sqlTypeEquals } from "../sql-type.js";
 import { applyStatus } from "./status.js";
 import { detectColumnRenames, detectTableRenames } from "./rename-heuristic.js";
 import { viewSqlEquals } from "../view-sql-compare.js";
+import { viewReplaceIsLegal } from "../view-column-types.js";
 import { checkExprEquals, normalizeCheckExpr } from "../check-expr-compare.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 
@@ -204,21 +206,26 @@ export async function diff(
     if (args.dialect !== undefined) diffTableChecks(expectedTable, actualTable, changes);
   }
 
-  // Pass 2b: views. Identity is (schema, name). A name present on both sides
-  // with a divergent body (whitespace-/wrapper-normalized) emits replace-view;
-  // introspect now reads the actual body so view-body drift is visible.
+  // Pass 2b: views. Identity is (schema, name). How "changed" is decided is
+  // DIALECT-DEPENDENT — see diffViews.
   const expectedViewsInScope = args.expected.views.filter((v) => inScope(v.schema));
-  diffViews(
-    expectedViewsInScope,
-    args.actual.views.filter((v) => inScope(v.schema)),
-    changes,
-  );
+  const actualViewsInScope = args.actual.views.filter((v) => inScope(v.schema));
+  diffViews(expectedViewsInScope, actualViewsInScope, changes, args.dialect);
 
   // Pass 2c: a column-altering change to a table a view reads forces the view to be
   // dropped before and recreated after — postgres blocks ALTER on a column a view
   // depends on, and sqlite rebuilds the table via recreate-and-copy. Body-unchanged
   // dependent views get no change from Pass 2b, so this is where they're picked up.
-  recreateViewsDependingOnChangedTables(expectedViewsInScope, changes);
+  recreateViewsDependingOnChangedTables(expectedViewsInScope, actualViewsInScope, changes);
+
+  // Any drop-view (from Pass 2b or 2c) that would destroy relations we do NOT manage
+  // must say so — a plain DROP fails at apply, and a CASCADE destroys them for good.
+  //
+  // Deliberately fed the UNSCOPED actual views: CASCADE does not respect our schema
+  // scoping. A downstream application's view lives in ITS OWN schema — precisely the
+  // schema the model never declares, and therefore the one scoping filters out — and
+  // that is exactly the object a cascade must not destroy silently.
+  annotateViewDropDependents(args.actual.views, changes);
 
   // Pass 3: detect table renames BEFORE column renames — so a renamed table's
   // columns are not scanned as orphaned drop/add pairs.
@@ -434,29 +441,147 @@ function viewIdentity(v: { name: string; schema?: string }): string {
   return (v.schema ?? DEFAULT_DB_SCHEMA_POSTGRES) + "." + v.name;
 }
 
+/**
+ * Decide, per view, whether the DB matches the model.
+ *
+ * TWO comparison strategies, because the engines differ in kind, not degree:
+ *
+ *   - SQLite/D1 store the view's SQL verbatim, so comparing the normalized body is
+ *     exact. Unchanged behavior.
+ *
+ *   - Postgres stores a PARSE TREE. `pg_get_viewdef()` deparses it into Postgres's own
+ *     style (`LEFT OUTER JOIN` → `LEFT JOIN`, parenthesized FROM items, lowercased
+ *     functions, dropped aliases), so the text we wrote can NEVER come back. Comparing
+ *     it reported a difference every single time — which is exactly why replace-view
+ *     fired on every migrate, forever, and why `verify --db` was permanently red for
+ *     any project with a projection. Postgres therefore compares FINGERPRINTS: a hash
+ *     of the body we generated, stamped into the view's COMMENT at emit time. Both
+ *     sides of that comparison come from our emitter; the deparser is never consulted.
+ *
+ * An unknown dialect keeps the old body comparison (legacy positional callers hold
+ * hand-built snapshots; changing their semantics silently is worse than leaving them).
+ */
 function diffViews(
   expected: ViewDescriptor[], actual: ViewDescriptor[], changes: Change[],
+  dialect: Dialect | undefined,
 ): void {
   const exp = new Map(expected.map((v) => [viewIdentity(v), v] as const));
   const act = new Map(actual.map((v) => [viewIdentity(v), v] as const));
+
   for (const [id, v] of exp) {
     const a = act.get(id);
     if (a === undefined) {
       changes.push({ kind: "create-view", view: v, ...schemaSpread(v.schema), status: ALLOWED });
-    } else if (
-      // Both bodies known and divergent → replace-view. When either body is
-      // absent (e.g. expected projection unresolvable, or an introspector that
-      // couldn't read the body) we cannot prove a change, so we leave it alone
-      // rather than emit a spurious replace.
-      v.sql !== undefined && a.sql !== undefined && !viewSqlEquals(v.sql, a.sql)
-    ) {
-      changes.push({ kind: "replace-view", view: v, ...schemaSpread(v.schema), status: ALLOWED });
+      continue;
+    }
+
+    if (dialect === "postgres") {
+      // No expected fingerprint (an unresolvable projection body) → we cannot prove a
+      // change. Leave it alone rather than propose a spurious replace.
+      if (v.fingerprint === undefined) continue;
+
+      // The DB view carries no stamp. It is EITHER a view created before fingerprinting
+      // existed, OR somebody's hand-written SQL sitting at a projection's name — and on
+      // Postgres those are indistinguishable, because the deparser destroyed the text
+      // evidence. Overwriting the second destroys work nothing can restore, so fail
+      // closed: propose the replace but BLOCK it pending `allow.adoptView`.
+      if (a.fingerprint === undefined) {
+        changes.push({
+          kind: "replace-view", view: v, ...schemaSpread(v.schema),
+          restore: a, unmanagedActual: true, status: ALLOWED,
+        });
+        continue;
+      }
+
+      // Stamped and equal → converged. THIS is the line that makes `meta migrate` a
+      // no-op on an unchanged schema.
+      if (a.fingerprint === v.fingerprint) continue;
+
+      // Stamped and different → the view genuinely changed. Prefer a non-destructive
+      // CREATE OR REPLACE; fall back to drop+create only when Postgres would refuse it.
+      pushViewUpdate(v, a, changes);
+      continue;
+    }
+
+    // SQLite/D1 (and unknown dialects): verbatim body comparison.
+    if (v.sql !== undefined && a.sql !== undefined && !viewSqlEquals(v.sql, a.sql)) {
+      changes.push({
+        kind: "replace-view", view: v, ...schemaSpread(v.schema), restore: a, status: ALLOWED,
+      });
     }
   }
+
   for (const [id, v] of act) {
     if (!exp.has(id)) {
-      changes.push({ kind: "drop-view", view: v.name, ...schemaSpread(v.schema), status: ALLOWED });
+      changes.push({
+        kind: "drop-view", view: v.name, ...schemaSpread(v.schema), restore: v, status: ALLOWED,
+      });
     }
+  }
+}
+
+/**
+ * Emit either a non-destructive replace, or the drop+create pair Postgres forces.
+ *
+ * Replace is strictly better when it is legal: dependent views, grants, and the
+ * object's OID all survive. And it IS legal for the common case by construction — a
+ * view's columns come out in projection DECLARATION order, so a field APPENDED to a
+ * projection lands last, which is exactly what Postgres's prefix rule permits.
+ */
+function pushViewUpdate(expected: ViewDescriptor, actual: ViewDescriptor, changes: Change[]): void {
+  const sx = schemaSpread(expected.schema);
+  if (viewReplaceIsLegal(expected.columns, actual.columns)) {
+    changes.push({ kind: "replace-view", view: expected, ...sx, restore: actual, status: ALLOWED });
+    return;
+  }
+  // The column list changed shape (removed / renamed / reordered / retyped), so
+  // Postgres refuses OR REPLACE. The view must be dropped and rebuilt — which is
+  // destructive to anything depending on it (annotateViewDropDependents makes that loud).
+  changes.push({ kind: "drop-view", view: expected.name, ...sx, restore: actual, status: ALLOWED });
+  changes.push({ kind: "create-view", view: expected, ...sx, status: ALLOWED });
+}
+
+/**
+ * Attach, to every planned `drop-view`, the relations a CASCADE would destroy.
+ *
+ * Only EXTERNAL dependents count. A managed view that this same migration drops and
+ * recreates is not a loss — it comes back. Everything else is: an unmanaged view, a
+ * materialized view, or a managed view not part of this migration. Those belong to
+ * someone else, a CASCADE destroys them irrecoverably, and this tool cannot restore
+ * what it does not manage.
+ *
+ * Dependencies are transitive: dropping A cascades to B which cascades to C.
+ */
+function annotateViewDropDependents(actual: readonly ViewDescriptor[], changes: Change[]): void {
+  const byId = new Map(actual.map((v) => [viewIdentity(v), v] as const));
+  // Views this migration drops AND recreates — they survive the migration, so a
+  // dependent that is one of them is not destroyed.
+  const recreated = new Set(
+    changes
+      .filter((c): c is Extract<Change, { kind: "create-view" }> => c.kind === "create-view")
+      .map((c) => viewIdentity(c.view)),
+  );
+
+  for (const c of changes) {
+    if (c.kind !== "drop-view") continue;
+    const dropped = viewIdentity({ name: c.view, ...(c.schema !== undefined ? { schema: c.schema } : {}) });
+
+    // Transitive closure over the dependency edges introspection gave us.
+    const seen = new Set<string>([dropped]);
+    const queue = [dropped];
+    const external: DependentRelation[] = [];
+    while (queue.length > 0) {
+      const cur = queue.shift()!;
+      for (const dep of byId.get(cur)?.dependents ?? []) {
+        const depId = viewIdentity(dep);
+        if (seen.has(depId)) continue;
+        seen.add(depId);
+        queue.push(depId);
+        if (dep.managed && recreated.has(depId)) continue;   // comes back — not a loss
+        external.push(dep);
+      }
+    }
+    if (external.length > 0) c.dependents = external;
   }
 }
 
@@ -468,8 +593,10 @@ const VIEW_RECREATE_TRIGGERS = new Set<Change["kind"]>([
 
 function recreateViewsDependingOnChangedTables(
   expectedViews: ViewDescriptor[],
+  actualViews: ViewDescriptor[],
   changes: Change[],
 ): void {
+  const actualById = new Map(actualViews.map((v) => [viewIdentity(v), v] as const));
   const alteredTables = new Set<string>();
   for (const c of changes) {
     if (VIEW_RECREATE_TRIGGERS.has(c.kind)) {
@@ -494,7 +621,12 @@ function recreateViewsDependingOnChangedTables(
       const c = changes[i]!;
       if (c.kind === "replace-view" && viewIdentity(c.view) === id) changes.splice(i, 1);
     }
-    changes.push({ kind: "drop-view", view: v.name, ...schemaSpread(v.schema), status: ALLOWED });
+    const prior = actualById.get(id);
+    changes.push({
+      kind: "drop-view", view: v.name, ...schemaSpread(v.schema),
+      ...(prior !== undefined ? { restore: prior } : {}),
+      status: ALLOWED,
+    });
     changes.push({ kind: "create-view", view: v, ...schemaSpread(v.schema), status: ALLOWED });
   }
 }

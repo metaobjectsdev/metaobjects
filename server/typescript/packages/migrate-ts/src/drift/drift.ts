@@ -37,9 +37,9 @@ export interface ComputeDriftOptions {
   /**
    * Expected views (projection → CREATE VIEW body), computed by the caller via
    * codegen-ts's `buildProjectionViews`. migrate-ts no longer generates view DDL
-   * itself; pass these so view-body drift is detected. Defaults to none.
+   * itself; pass these so view drift is detected. Defaults to none.
    */
-  views?: readonly import("../types.js").ViewDescriptor[];
+  views?: readonly import("../expected-schema.js").ExpectedViewInput[];
 }
 
 /**

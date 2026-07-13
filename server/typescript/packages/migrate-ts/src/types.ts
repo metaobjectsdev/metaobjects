@@ -111,6 +111,27 @@ export interface FkDescriptor {
 
 export type FkAction = "cascade" | "set-null" | "restrict" | "no-action";
 
+/** One output column of a view, in SELECT order. */
+export interface ViewColumnDescriptor {
+  name: string;
+  sqlType: SqlType;
+}
+
+/** A relation that depends on a view — i.e. what a `DROP ... CASCADE` would destroy. */
+export interface DependentRelation {
+  schema: string;
+  name: string;
+  /** 'v' = view, 'm' = materialized view. */
+  relkind: "v" | "m";
+  /**
+   * True when this dependent is a view MetaObjects manages (it carries our
+   * fingerprint). A managed dependent that the same migration recreates is
+   * harmless; an UNMANAGED one is somebody else's object and a CASCADE destroys
+   * it irrecoverably.
+   */
+  managed: boolean;
+}
+
 export interface ViewDescriptor {
   name: string;
   /** Same semantics as TableDescriptor.schema. */
@@ -119,16 +140,49 @@ export interface ViewDescriptor {
    * View definition SQL.
    *
    * On the EXPECTED side (`buildExpectedSchema` / `buildExpectedViews`) this is
-   * the view body — the SELECT clause through the FROM/WHERE/GROUP-BY tail.
+   * the view body — the SELECT clause through the FROM/WHERE/GROUP-BY tail. It is
+   * the input to `viewFingerprint()`.
    *
-   * On the ACTUAL side (`introspect`) this is whatever the DB catalog stores:
-   * sqlite's `sqlite_master.sql` is the full `CREATE VIEW <name> AS <body>`
-   * statement, while Postgres' `information_schema.views.view_definition` is the
-   * body only. `diff`'s view-body comparator normalizes both sides (strips any
-   * leading `CREATE VIEW ... AS`, collapses whitespace) before comparing, so a
-   * body change triggers a `replace-view`.
+   * On the ACTUAL side (`introspect`) this is whatever the DB catalog stores.
+   * Its role is DIALECT-DEPENDENT, and this is load-bearing:
+   *
+   *   - SQLite/D1 store `sqlite_master.sql` VERBATIM — the exact text we wrote —
+   *     so there the body is a sound basis for comparison (`viewSqlEquals`).
+   *
+   *   - Postgres does NOT store view SQL. It stores the parse tree, and
+   *     `pg_get_viewdef()` DEPARSES it back into Postgres's own canonical style
+   *     (lowercased functions, `LEFT OUTER JOIN` → `LEFT JOIN`, parenthesized FROM
+   *     items and ON predicates, dropped redundant aliases). It can never equal
+   *     what we emitted, so on Postgres the body is NOT used for comparison —
+   *     `fingerprint` is. The deparsed body is still carried, as the RESTORE
+   *     payload for a down migration (it is valid SQL that reproduces the view).
    */
   sql?: string;
+  /**
+   * Content hash of the generated body — `metaobjects:v1:sha256:<hex>` — stamped
+   * into the view's `COMMENT ON VIEW` at emit time and read back at introspect
+   * time. This, not the body text, is how Postgres decides whether a view is
+   * up to date (see view-fingerprint.ts).
+   *
+   * Absent on the actual side means the view carries NO MetaObjects stamp: either
+   * it is hand-written, or it predates fingerprinting. The two are
+   * indistinguishable on Postgres, so the diff fails CLOSED and blocks pending
+   * `allow.adoptView`.
+   */
+  fingerprint?: string;
+  /**
+   * The view's output columns, in SELECT order. Drives the replace-vs-drop
+   * decision: Postgres permits `CREATE OR REPLACE VIEW` only when the existing
+   * columns are a PREFIX of the new ones (same names, same types, same order,
+   * additions at the end only). Undefined = unknown → fail safe to drop+create.
+   */
+  columns?: readonly ViewColumnDescriptor[];
+  /**
+   * Relations that depend on this view (transitively). Populated on the ACTUAL
+   * side by introspection. A `DROP VIEW` with dependents needs CASCADE, which
+   * destroys every one of them — including views owned by other applications.
+   */
+  dependents?: readonly DependentRelation[];
   /**
    * Physical tables this view reads (base + joined tables). Populated on the
    * EXPECTED side only (the view producer knows the join graph; introspection
@@ -175,8 +229,36 @@ export type Change =
   | { kind: "drop-check"; table: string; schema?: string; check: string; restore?: CheckDescriptor; status: ChangeStatus }
   // Declared for v0.3, never produced in v0.1:
   | { kind: "create-view"; view: ViewDescriptor; schema?: string; status: ChangeStatus }
-  | { kind: "drop-view"; view: string; schema?: string; status: ChangeStatus }
-  | { kind: "replace-view"; view: ViewDescriptor; schema?: string; status: ChangeStatus };
+  | {
+      kind: "drop-view";
+      view: string;
+      schema?: string;
+      status: ChangeStatus;
+      /** The view as it exists in the DB — lets the down migration recreate it. */
+      restore?: ViewDescriptor;
+      /**
+       * Relations a CASCADE would destroy. EXTERNAL dependents only: a managed view
+       * this same migration recreates is filtered out (it comes back). Non-empty ⇒
+       * a plain DROP VIEW would fail at apply, and CASCADE would destroy objects we
+       * do not manage — so this is blocked pending `allow.dropViewCascade`.
+       */
+      dependents?: readonly DependentRelation[];
+    }
+  | {
+      kind: "replace-view";
+      view: ViewDescriptor;
+      schema?: string;
+      status: ChangeStatus;
+      /** The view as it exists in the DB — lets the down migration restore the old body. */
+      restore?: ViewDescriptor;
+      /**
+       * The DB view carries no MetaObjects fingerprint — hand-written, or created
+       * before fingerprinting existed. We cannot tell which (Postgres deparses away
+       * the text evidence), and overwriting a hand-written view destroys SQL no down
+       * migration can recover. Blocked pending `allow.adoptView`.
+       */
+      unmanagedActual?: boolean;
+    };
 
 export type ChangeKind = Change["kind"];
 
@@ -204,6 +286,24 @@ export interface AllowOptions {
    * view is re-created in the same migration).
    */
   dropView?: boolean;
+  /**
+   * Gates `DROP VIEW ... CASCADE`. A view with dependents cannot be dropped plainly
+   * (Postgres refuses), and CASCADE destroys every dependent — including views and
+   * materialized views owned by OTHER applications, which this tool does not manage
+   * and cannot restore. Strictly ADDITIONAL to `dropView`: `--allow drop-view` alone
+   * never cascades, and a plain non-cascading DROP VIEW stays the emitted form
+   * whenever there are no dependents, so Postgres itself backstops a stale
+   * dependents snapshot rather than silently cascading.
+   */
+  dropViewCascade?: boolean;
+  /**
+   * Gates overwriting an existing view that carries NO MetaObjects fingerprint —
+   * i.e. taking ownership of it. It is either hand-written or predates
+   * fingerprinting, and on Postgres those are indistinguishable. Every environment
+   * upgrading from an older toolchain needs exactly one `--allow adopt-view` run to
+   * stamp its existing views; after that they are fingerprinted and silent.
+   */
+  adoptView?: boolean;
   /** Existing data must satisfy NOT NULL; diff cannot verify this. */
   nullableToNotNull?: boolean;
 }

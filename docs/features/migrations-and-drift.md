@@ -139,6 +139,50 @@ class MetadataExposedConfig(private val dataSource: DataSource) {
 }
 ```
 
+## Migrating views (projections)
+
+A projection's `CREATE VIEW` is generated from its `origin.*` children, so `meta migrate`
+owns the view. Three things are worth knowing.
+
+**Append projection fields; don't insert them.** Postgres can update a view in place
+(`CREATE OR REPLACE VIEW`) only when the existing output columns are unchanged and any
+new ones are added at the **end**. A view's columns come out in projection *declaration*
+order, so:
+
+- adding a field **at the end** of a projection → non-destructive replace. Dependent
+  views, grants, and the view's identity all survive.
+- inserting a field **in the middle**, reordering, renaming, or removing one → the view
+  must be **dropped and recreated**, which is destructive to anything that depends on it
+  and is therefore gated (`--allow drop-view`).
+
+Body-only changes — a different join path, an `origin.aggregate @filter`, a changed
+aggregate that keeps the same result type — are always non-destructive.
+
+**A cascading drop is blocked, loudly.** If dropping a view would destroy dependent
+objects — another application's view, a materialized view — `meta migrate` blocks and
+names every one of them. Proceeding requires `--allow drop-view,drop-view-cascade`, and
+the emitted migration carries a `WARNING: CASCADE DROP` banner listing what it destroys.
+MetaObjects does not manage those objects and cannot restore them. `--allow drop-view`
+**alone never cascades.**
+
+**One-time upgrade step (`--allow adopt-view`).** Managed views carry a MetaObjects
+fingerprint in their `COMMENT ON VIEW`; that fingerprint — not the view's SQL text — is
+how migrate knows whether a view is current. (It cannot use the text: Postgres does not
+store view SQL, it stores a parse tree and regenerates the SQL in its own style, so what
+you wrote never comes back.) A view with **no** fingerprint is either hand-written or was
+created before fingerprinting existed, and those are indistinguishable — so migrate fails
+closed rather than overwrite somebody's hand-written SQL:
+
+```
+meta migrate --allow adopt-view      # once per environment, after upgrading
+```
+
+That stamps the existing views. Afterwards they converge silently. This is also what
+closes the loop on the doctrine in
+[downstream-metadata-decisions.md](downstream-metadata-decisions.md): a hand-written view
+sitting where a projection expects one is now **visible to `meta verify --db`** as drift,
+instead of being silently invisible to it.
+
 ## Verified by
 
 The following conformance fixtures gate this feature's behavior across ports:
@@ -148,6 +192,7 @@ The following conformance fixtures gate this feature's behavior across ports:
 - [`bootstrap-canonical-from-empty.yaml`](../../fixtures/persistence-conformance/migrations/bootstrap-canonical-from-empty.yaml) — full-CREATE bootstrap from an empty database
 - [`add-nullable-column.yaml`](../../fixtures/persistence-conformance/migrations/add-nullable-column.yaml) — incremental `ALTER TABLE … ADD COLUMN` for a new nullable field
 - [`drop-table-blocked-without-allow.yaml`](../../fixtures/persistence-conformance/migrations/drop-table-blocked-without-allow.yaml) — destructive operations require an explicit allow-flag
+- [`noop-converged-canonical.yaml`](../../fixtures/persistence-conformance/migrations/noop-converged-canonical.yaml) — **the idempotence gate**: apply the whole canonical schema, then diff the same metadata against the database it just produced. A converged schema must emit **zero** SQL. This is what catches any asymmetry between what `emit` writes, what `introspect` reads back, and what the expected schema models — the class of bug that makes `meta migrate` re-propose (and on SQLite, destructively rebuild) unchanged tables forever.
 
 **Template drift (`fixtures/verify-conformance/`)** — the `Renderer.verify` engine
 asserts that every variable, section, partial, and required-tag in a template

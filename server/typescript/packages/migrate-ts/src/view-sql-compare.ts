@@ -1,25 +1,30 @@
-// view-sql-compare.ts — the single shared comparator for view definition SQL.
+// view-sql-compare.ts — the SQLITE/D1 comparator for view definition SQL.
 //
-// View definition SQL arrives in two shapes across the pipeline:
-//   - EXPECTED (buildProjectionViews): the body only — `SELECT ... FROM ...`.
-//   - ACTUAL (introspect): sqlite's/D1's sqlite_master.sql is the full
-//     `CREATE VIEW <name> AS <body>`; Postgres' view_definition is body-only.
+// SCOPE — read this before reusing it. This comparator is sound ONLY on engines that
+// store view SQL VERBATIM. SQLite and D1 do: `sqlite_master.sql` hands back the exact
+// `CREATE VIEW <name> AS <body>` text we wrote, so normalizing away whitespace and the
+// CREATE wrapper leaves two strings that genuinely can be equal.
 //
-// normalizeViewSql reduces either of these to a comparable canonical form so the
-// diff (expected vs introspected) uses ONE comparison. It strips a leading
-// `CREATE [OR REPLACE] VIEW <name> AS`,
-// collapses runs of whitespace to a single space, drops a trailing `;`, and
-// lower-cases — view-body drift should be classified by structure, not by
-// incidental whitespace/case/wrapper differences.
+// It is NOT usable on Postgres, and used to be. Postgres does not store view SQL — it
+// stores the parse tree, and `pg_get_viewdef()` DEPARSES it back in Postgres's own
+// style (lowercased functions, `LEFT OUTER JOIN` rewritten to `LEFT JOIN`,
+// parenthesized FROM items and ON predicates, redundant aliases dropped). The text we
+// emitted therefore NEVER comes back, this comparator returned false every single
+// time, and `replace-view` fired on every migrate for every view, forever — while
+// `verify --db` stayed permanently red for any project with a projection. Postgres now
+// compares FINGERPRINTS instead (see view-fingerprint.ts), which never consults the
+// deparser at all. Do not point this function at Postgres again.
 //
-// CAVEAT (accepted tradeoff): lower-casing makes keyword/identifier comparison
-// case-insensitive but can mask a difference that lives ONLY in a case-sensitive
-// string literal in the body (e.g. `WHERE status = 'Active'` vs `'active'`) —
-// such a change would NOT be flagged as drift. Acceptable for generated
-// aggregate/passthrough projections (no literals); revisit if hand-authored
-// views with case-sensitive literals become a drift concern. The name regex
-// matches one whitespace/`(`-free token, so a quoted view name containing a
-// space would not strip cleanly — also a non-issue for generated identifiers.
+// normalizeViewSql strips a leading `CREATE [OR REPLACE] VIEW <name> AS`, collapses
+// whitespace runs, drops a trailing `;`, and lower-cases.
+//
+// CAVEAT (accepted tradeoff): lower-casing can mask a difference living ONLY in a
+// case-sensitive string literal (e.g. `WHERE status = 'Active'` vs `'active'`), which
+// an `origin.aggregate @filter` predicate can now carry. The fingerprint path
+// deliberately does NOT lowercase for exactly this reason; this SQLite path keeps it
+// for backwards-compatible behavior. The name regex matches one whitespace/`(`-free
+// token, so a quoted view name containing a space would not strip cleanly — a non-issue
+// for generated identifiers.
 
 const CREATE_VIEW_PREFIX =
   /^\s*create\s+(?:or\s+replace\s+)?(?:temp(?:orary)?\s+)?view\s+(?:if\s+not\s+exists\s+)?[^\s(]+(?:\s*\([^)]*\))?\s+as\s+/i;

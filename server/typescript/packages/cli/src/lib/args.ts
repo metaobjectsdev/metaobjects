@@ -168,6 +168,16 @@ const ALLOW_TOKENS = [
   // drop/create recreate pair around a column change is not gated).
   "drop-check",
   "drop-view",
+  // drop-view-cascade is STRICTLY ADDITIONAL to drop-view: it permits
+  // `DROP VIEW ... CASCADE`, which destroys every dependent object — including
+  // views and materialized views owned by OTHER applications, which this tool
+  // neither manages nor can restore. `--allow drop-view` alone never cascades.
+  "drop-view-cascade",
+  // adopt-view permits overwriting an existing view that carries no MetaObjects
+  // fingerprint — i.e. taking ownership of a hand-written view, or of one created
+  // before fingerprinting existed. Every environment upgrading from an older
+  // toolchain needs this exactly once, to stamp its existing views.
+  "adopt-view",
   "nullable-to-not-null",
 ] as const;
 type AllowToken = (typeof ALLOW_TOKENS)[number];

@@ -30,6 +30,9 @@ import type { Kysely } from "kysely";
 import { sql } from "kysely";
 import type { SchemaSnapshot, TableDescriptor, ColumnDescriptor, ColumnDefault, IndexDescriptor, FkDescriptor, FkAction, ViewDescriptor, CheckDescriptor } from "../types.js";
 import type { SqlType } from "../sql-type.js";
+import type { DependentRelation } from "../types.js";
+import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
+import { parseFingerprintMarker } from "../view-fingerprint.js";
 import { MIGRATIONS_TABLE } from "../apply/ledger.js";
 import { stripCheckWrapper } from "../check-expr-compare.js";
 
@@ -285,10 +288,16 @@ async function readPgViews(k: RawKysely): Promise<ViewDescriptor[]> {
     // `public`) belongs to the extension, not the model — reporting it makes
     // the very next migrate propose `DROP VIEW "pg_stat_statements";`, and
     // dropping it would break the extension.
-    const rows = await sql<{ table_name: string; table_schema: string; view_definition: string | null }>`
+    const rows = await sql<{
+      table_name: string;
+      table_schema: string;
+      view_definition: string | null;
+      view_comment: string | null;
+    }>`
       SELECT c.relname AS table_name,
              n.nspname AS table_schema,
-             pg_get_viewdef(c.oid) AS view_definition
+             pg_get_viewdef(c.oid) AS view_definition,
+             obj_description(c.oid, 'pg_class') AS view_comment
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE c.relkind = 'v'
@@ -302,15 +311,102 @@ async function readPgViews(k: RawKysely): Promise<ViewDescriptor[]> {
         )
       ORDER BY n.nspname, c.relname
     `.execute(k);
-    return rows.rows.map((r) => {
+
+    const dependents = await readPgViewDependents(k);
+
+    const views: ViewDescriptor[] = [];
+    for (const r of rows.rows) {
       const view: ViewDescriptor = { name: r.table_name, schema: r.table_schema };
+      // The deparsed body. NOT a comparison input on Postgres — pg_get_viewdef
+      // regenerates SQL from the parse tree and can never return the text we wrote.
+      // It IS valid SQL that reproduces the view, so it is the restore payload for a
+      // down migration.
       if (r.view_definition) view.sql = r.view_definition;
-      return view;
-    });
+      // The fingerprint is what the diff actually compares. Absent ⇒ the view carries
+      // no MetaObjects stamp ⇒ hand-written or pre-fingerprint ⇒ the diff fails closed.
+      const marker = parseFingerprintMarker(r.view_comment);
+      if (marker !== null) view.fingerprint = marker.fingerprint;
+      // A view is a relation: information_schema.columns describes its output columns
+      // exactly like a table's, so the same reader gives us the list (and the types)
+      // that decide whether a CREATE OR REPLACE is legal.
+      view.columns = (await readColumns(k, r.table_schema, r.table_name)).map((c) => ({
+        name: c.name,
+        sqlType: c.sqlType,
+      }));
+      views.push(view);
+    }
+
+    // Attach dependents, now that we know which views are managed (fingerprinted) —
+    // a CASCADE that destroys an UNMANAGED object is the dangerous case.
+    const managed = new Set(views.filter((v) => v.fingerprint !== undefined).map((v) => viewKey(v.schema, v.name)));
+    for (const view of views) {
+      const direct = dependents.get(viewKey(view.schema, view.name));
+      if (direct === undefined) continue;
+      view.dependents = direct.map((d) => ({ ...d, managed: managed.has(viewKey(d.schema, d.name)) }));
+    }
+    return views;
   } catch {
     // pg-mem: pg_class/pg_depend catalog introspection not supported — return empty view list.
     return [];
   }
+}
+
+function viewKey(schema: string | undefined, name: string): string {
+  return `${schema ?? DEFAULT_DB_SCHEMA_POSTGRES}.${name}`;
+}
+
+/**
+ * Every view's DIRECT dependents, in one query (no per-view N+1). Keyed by the
+ * depended-ON view; the transitive closure is computed in the diff.
+ *
+ * The catalog gotcha: a view's dependency on the relations it reads is NOT recorded as
+ * view-depends-on-relation. It is recorded as the view's REWRITE RULE (its `_RETURN`
+ * rule in pg_rewrite, which holds the parse tree) depending on each referenced
+ * relation. So finding dependents means joining pg_depend → pg_rewrite → pg_class —
+ * and every view depends on ITSELF through its own `_RETURN` rule, which must be
+ * excluded or a dependency walk never terminates.
+ *
+ * Materialized views (relkind 'm') are included deliberately: migrate does not manage
+ * them, but they can depend on our views and a CASCADE would destroy them anyway.
+ */
+async function readPgViewDependents(k: RawKysely): Promise<Map<string, Omit<DependentRelation, "managed">[]>> {
+  const out = new Map<string, Omit<DependentRelation, "managed">[]>();
+  try {
+    const rows = await sql<{
+      on_schema: string; on_name: string;
+      dep_schema: string; dep_name: string; dep_relkind: string;
+    }>`
+      SELECT ref_ns.nspname   AS on_schema,
+             ref_cl.relname   AS on_name,
+             dep_ns.nspname   AS dep_schema,
+             dep_cl.relname   AS dep_name,
+             dep_cl.relkind   AS dep_relkind
+      FROM pg_depend d
+      JOIN pg_rewrite    r      ON r.oid = d.objid
+      JOIN pg_class      dep_cl ON dep_cl.oid = r.ev_class
+      JOIN pg_namespace  dep_ns ON dep_ns.oid = dep_cl.relnamespace
+      JOIN pg_class      ref_cl ON ref_cl.oid = d.refobjid
+      JOIN pg_namespace  ref_ns ON ref_ns.oid = ref_cl.relnamespace
+      WHERE d.classid    = 'pg_rewrite'::regclass
+        AND d.refclassid = 'pg_class'::regclass
+        AND d.deptype    = 'n'
+        AND ref_cl.relkind = 'v'
+        AND dep_cl.oid <> ref_cl.oid
+        AND ref_ns.nspname NOT IN ('pg_catalog', 'information_schema')
+        AND ref_ns.nspname NOT LIKE 'pg_%'
+    `.execute(k);
+    for (const r of rows.rows) {
+      if (r.dep_relkind !== "v" && r.dep_relkind !== "m") continue;
+      const key = viewKey(r.on_schema, r.on_name);
+      const list = out.get(key) ?? [];
+      list.push({ schema: r.dep_schema, name: r.dep_name, relkind: r.dep_relkind });
+      out.set(key, list);
+    }
+  } catch {
+    // pg-mem: no pg_rewrite. Dependents unknown → treated as none. The real-PG
+    // integration tests are the gate for this path.
+  }
+  return out;
 }
 
 interface RawColumn {
