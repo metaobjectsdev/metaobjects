@@ -1,8 +1,20 @@
 # Generated mutation surface — partial patch, optimistic concurrency, and the Kotlin repository generator
 
 **Date:** 2026-07-13
-**Status:** Design proposal (no implementation yet). The `@rowVersion` metamodel attribute in §6
-**requires an explicit owner ruling** per ADR-0023 before any implementation.
+**Status:** Partially implemented. Phase 0 (the forcing-function gate) and the C#/Kotlin
+correctness fixes shipped in `7fab436b` (see §10). Phases 2–4 (the typed patch surface + the
+Kotlin repository generator) are the active remaining work.
+
+> **OWNER RULING (2026-07-13): `@rowVersion` / ADR-0043 is DECLINED.** Optimistic concurrency
+> stays out of the vocabulary. Rationale (ADR-0023 §"can't-be-computed" fails): `@autoSet:onUpdate`
+> is already registered with the semantics *"stamps on every write,"* and the legacy OMDB engine
+> already derives its optimistic-lock column from exactly that field (`getDirtyField()` — explicit
+> attr override, else the auto-on-update field). A new `@rowVersion` attribute would be a second
+> name for a concept the metamodel already carries — precisely what ADR-0037 forbids. If a robust
+> *counter* token is ever needed (temporal `@autoSet` is unsound on SQLite/D1 at 1-second
+> resolution), the move is to widen the existing `@autoSet` to `field.int`/`field.long` (auto-set
+> on update ⇒ increment), NOT to add vocabulary. **Phase 5 and PATCH-8 are dropped.** Partial
+> update (Phases 0–4) stands alone.
 **Issues:** [#197](https://github.com/metaobjectsdev/metaobjects/issues/197) (re-scoped: a generated
 Kotlin repository), [#198](https://github.com/metaobjectsdev/metaobjects/issues/198) (no generated
 partial/patch update). Both are one root cause: **the generated mutation surface is thin**, so
@@ -11,8 +23,8 @@ adopters hand-write exactly the SQL the metadata could own.
 **Ports touched:** all five. Kotlin gets the largest new artifact (a repository generator); C# and
 Java get correctness fixes to the generated update handler; TS and Python get typed patch shapes
 over already-partial runtimes.
-**New ADR proposed:** ADR-0043 (`@rowVersion` row-version optimistic concurrency) — gated on the
-owner ruling in §6.3.
+**New ADR proposed:** ~~ADR-0043 (`@rowVersion`)~~ — **DECLINED** by owner ruling (see banner
+above). No new vocabulary; no ADR.
 
 ---
 
@@ -696,12 +708,10 @@ by design. Files: the two YAML fixtures only.
 - Python: `codegen/generators/entity_model.py` (or sibling) emits `<Entity>Patch` TypedDicts;
   `router_generator.py` Protocol gains `patch` and the route calls it.
 
-**Phase 5 — `@rowVersion` (blocked on the owner ruling; severable).**
-- `spec/decisions/ADR-0043-row-version-optimistic-concurrency.md`.
-- Vocabulary in all five ports (TS `packages/metadata/src/constants.ts` + provider first, per
-  the constants discipline; then C#/Java/Python/Kotlin parallels) + conformance items 2/4/6 +
-  loader validation passes + per-port write-path wiring per §6.4 + migrate-ts default-column
-  coverage + the runtime `WriteOpts.expectedVersion` surfaces.
+**Phase 5 — ~~`@rowVersion`~~ — DROPPED (owner ruling, 2026-07-13).** Optimistic concurrency is
+not entering the vocabulary; see the banner at the top. This phase and PATCH-8 are cancelled. If
+the need resurfaces, it is handled by widening the existing `@autoSet` to integer fields, tracked
+separately — not here.
 
 **Phase 6 — docs.** Tier-2 feature doc (`docs/features/`), generated api-docs mention of patch
 semantics per port, agent-context skills note ("use the generated patch — never hand-write a
