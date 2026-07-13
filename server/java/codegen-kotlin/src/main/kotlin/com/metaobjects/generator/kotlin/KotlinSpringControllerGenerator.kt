@@ -359,7 +359,18 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             for (field in entity.metaFields) {
                 if (field is ObjectField || field is MapField) continue
                 if (field.name == pkFieldName) continue
-                append("            it[${field.name}] = dto.${field.name}\n")
+                // Partial merge: an OPTIONAL field omitted from a PATCH must not clobber the
+                // stored value. Optional DTO props are nullable + default to null, so absent
+                // reads as null here — null-guard them (the same merge the TPH per-subtype
+                // handler uses). Required props are non-null (Jackson rejects a body missing
+                // them with a 400 before this runs), so they are always present → written
+                // unconditionally. Guarding a non-null prop would be an always-true warning
+                // and break -Werror consumers. (Explicit-null-clears is the deferred tristate.)
+                if (KotlinGenUtil.isRequiredField(field)) {
+                    append("            it[${field.name}] = dto.${field.name}\n")
+                } else {
+                    append("            if (dto.${field.name} != null) it[${field.name}] = dto.${field.name}\n")
+                }
             }
             append("        }\n")
             append("        if (updated == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")

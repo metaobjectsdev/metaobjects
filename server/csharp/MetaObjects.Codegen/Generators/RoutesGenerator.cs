@@ -181,19 +181,45 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("            return Results.Created(prefix + \"/" + route + "\", input);");
             sb.AppendLine("        });");
 
-            // PATCH + PUT share the same handler — TS reference exposes both verbs,
-            // and both return the updated row (HTTP 200), matching the cross-port
-            // api-contract. The route id is authoritative for the key: stamp it onto
-            // the bound input BEFORE SetValues so EF sees the primary key unchanged
-            // (a default/zero key on the input would otherwise trip "the property is
-            // part of a key and so cannot be modified").
+            // PATCH + PUT share the same handler — TS reference exposes both verbs, and both
+            // return the updated row (HTTP 200), matching the cross-port api-contract.
+            //
+            // A PARTIAL merge of the JSON body, NOT a full-row overwrite. The previous
+            // implementation bound the body into a `cls input` and called
+            // `CurrentValues.SetValues(input)` — but a field ABSENT from a PATCH body
+            // deserializes to its CLR default (0 / null / false / DateTime.MinValue), and
+            // SetValues then wrote those defaults over the live row. A `PATCH {"name":"x"}`
+            // on a wide entity silently DESTROYED every other column. So enumerate the JSON
+            // that was actually sent and set only those properties — the same present-field
+            // merge the TPH per-subtype handler already uses. The PK stays route-authoritative.
+            //
+            // Null-valued properties are skipped (write present-NON-null only), matching the
+            // Kotlin controller and the Java repository merge, so the five ports agree on the
+            // "omitted field survives" contract. Distinguishing an explicit `null` (clear the
+            // column) from an omitted field is the deferred tristate (FR-035).
             sb.AppendLine();
-            sb.AppendLine("        async System.Threading.Tasks.Task<IResult> Update" + cls + "(" + pkType + " id, " + cls + " input, AppDbContext db)");
+            sb.AppendLine("        async System.Threading.Tasks.Task<IResult> Update" + cls + "(" + pkType + " id, HttpContext http, AppDbContext db)");
             sb.AppendLine("        {");
             sb.AppendLine("            var existing = await db." + dbSet + ".FindAsync(id);");
             sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
-            sb.AppendLine("            input." + pkProp + " = id;");
-            sb.AppendLine("            db.Entry(existing).CurrentValues.SetValues(input);");
+            sb.AppendLine("            using var body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body);");
+            sb.AppendLine("            // Deserialize each value with the app's CONFIGURED JSON options, not defaults —");
+            sb.AppendLine("            // a field.timestamp binds to DateTimeOffset via a custom converter registered on");
+            sb.AppendLine("            // ConfigureHttpJsonOptions, and default options cannot read the wire format, throwing 500.");
+            sb.AppendLine("            var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)");
+            sb.AppendLine("                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
+            sb.AppendLine("                .Value.SerializerOptions;");
+            sb.AppendLine("            var entry = db.Entry(existing);");
+            sb.AppendLine("            foreach (var prop in body.RootElement.EnumerateObject())");
+            sb.AppendLine("            {");
+            sb.AppendLine("                var target = entry.Metadata.FindProperty(prop.Name)");
+            sb.AppendLine("                    ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, System.StringComparison.OrdinalIgnoreCase));");
+            sb.AppendLine("                if (target is null) continue;");
+            sb.AppendLine("                if (target.IsPrimaryKey()) continue;                        // PK is route-authoritative");
+            sb.AppendLine("                if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null) continue; // present-non-null (see note)");
+            sb.AppendLine("                var clr = System.Nullable.GetUnderlyingType(target.ClrType) ?? target.ClrType;");
+            sb.AppendLine("                entry.CurrentValues[target] = System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts);");
+            sb.AppendLine("            }");
             sb.AppendLine("            await db.SaveChangesAsync();");
             sb.AppendLine("            return Results.Ok(existing);");
             sb.AppendLine("        }");
@@ -444,6 +470,11 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine($"            var existing = await db.{dbSet}.OfType<{subCls}>().FirstOrDefaultAsync(x => x.{pkProp} == id);");
         sb.AppendLine("            if (existing is null) return Results.NotFound(new { error = \"not_found\" });");
         sb.AppendLine("            var body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body);");
+        sb.AppendLine("            // Configured JSON options (not defaults) so a custom converter — e.g. the");
+        sb.AppendLine("            // field.timestamp DateTimeOffset converter — is honored; defaults throw 500 on it.");
+        sb.AppendLine("            var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)");
+        sb.AppendLine("                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
+        sb.AppendLine("                .Value.SerializerOptions;");
         sb.AppendLine("            var entry = db.Entry(existing);");
         sb.AppendLine("            foreach (var prop in body.RootElement.EnumerateObject())");
         sb.AppendLine("            {");
@@ -455,7 +486,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("                var clr = System.Nullable.GetUnderlyingType(target.ClrType) ?? target.ClrType;");
         sb.AppendLine("                object? value = prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null");
         sb.AppendLine("                    ? null");
-        sb.AppendLine("                    : System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr);");
+        sb.AppendLine("                    : System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts);");
         sb.AppendLine("                entry.CurrentValues[target] = value;");
         sb.AppendLine("            }");
         sb.AppendLine("            await db.SaveChangesAsync();");

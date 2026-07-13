@@ -1,0 +1,47 @@
+name: update-partial-omitted-field-survives
+description: >
+  A partial PATCH must not clobber a field it OMITS. This sends only `name` (plus
+  the required `createdAt`, so DTO-binding ports don't 400 on a missing required
+  field) and OMITS the optional `bio`, then asserts — via the PATCH response AND a
+  fresh GET — that `bio` still holds its seed value.
+
+  This is the forcing function for a data-corruption bug that shipped in generated
+  code and no existing scenario could see: the only other update scenario
+  (update-patch-and-put) sends every non-PK column, so there was never an omitted
+  field to clobber. Two ports overwrote omitted columns with type defaults on every
+  partial update:
+    - C#  — the handler bound the body into a full entity (absent fields → CLR
+            defaults 0/null/false/MinValue) and CurrentValues.SetValues wrote them all.
+    - Kotlin (base controller) — `it[field] = dto.field` for EVERY field, so an
+            omitted optional field's null was written over the stored value.
+  TS (Zod .partial()), Java and Python (present-field merges) were already correct.
+
+  Contract asserted here: an omitted field survives, in every port. (Whether an
+  EXPLICIT null clears a column — the absent-vs-null tristate — is deferred to FR-035;
+  this scenario deliberately does not exercise it.)
+
+requests:
+  - id: r1
+    method: PATCH
+    path: /api/authors/1
+    body:
+      name: "Ada (name patched, bio omitted)"
+      createdAt: "2026-01-01T10:00:00"
+    expect:
+      status: 200
+      body:
+        row:
+          id: 1
+          name: "Ada (name patched, bio omitted)"
+          bio: "First computer programmer"      # omitted from the PATCH → must be untouched
+  # Re-read from the DB, not just the mutation's echo, to prove it PERSISTED.
+  - id: r2
+    method: GET
+    path: /api/authors/1
+    expect:
+      status: 200
+      body:
+        row:
+          id: 1
+          name: "Ada (name patched, bio omitted)"
+          bio: "First computer programmer"

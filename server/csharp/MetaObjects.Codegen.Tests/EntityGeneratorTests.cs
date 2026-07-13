@@ -104,8 +104,11 @@ public class EntityGeneratorTests
         Assert.Contains("app.MapGet(prefix + \"/subscribers/{id}\", async (long id, AppDbContext db) =>", src);
         Assert.Contains("db.Subscribers.FindAsync(id)", src);
         Assert.Contains("app.MapPost(prefix + \"/subscribers\", async (Subscriber input, AppDbContext db) =>", src);
-        // PATCH + PUT share the same update handler (matches TS reference).
-        Assert.Contains("async System.Threading.Tasks.Task<IResult> UpdateSubscriber(long id, Subscriber input, AppDbContext db)", src);
+        // PATCH + PUT share the same update handler (matches TS reference). It takes the raw
+        // HttpContext (not a bound DTO) and PARTIAL-merges only the properties present in the
+        // JSON body — a bound DTO would fill omitted fields with CLR defaults and clobber them.
+        Assert.Contains("async System.Threading.Tasks.Task<IResult> UpdateSubscriber(long id, HttpContext http, AppDbContext db)", src);
+        Assert.Contains("foreach (var prop in body.RootElement.EnumerateObject())", src);
         Assert.Contains("app.MapPatch(prefix + \"/subscribers/{id}\", UpdateSubscriber);", src);
         Assert.Contains("app.MapPut(prefix + \"/subscribers/{id}\", UpdateSubscriber);", src);
         Assert.Contains("app.MapDelete(prefix + \"/subscribers/{id}\", async (long id, AppDbContext db) =>", src);

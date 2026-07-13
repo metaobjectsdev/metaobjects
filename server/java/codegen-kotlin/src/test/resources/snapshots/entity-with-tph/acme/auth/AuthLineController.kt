@@ -282,7 +282,7 @@ class AuthLineController {
     @RequestMapping(value = ["/{id}"], method = [RequestMethod.PATCH, RequestMethod.PUT])
     fun update(@PathVariable id: Long, @Valid @RequestBody dto: AuthLine): ResponseEntity<Any> = transaction {
         val updated = AuthLineTable.update({ AuthLineTable.id eq id }) {
-            it[label] = dto.label
+            if (dto.label != null) it[label] = dto.label
         }
         if (updated == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to "not_found") as Any)
         else {
