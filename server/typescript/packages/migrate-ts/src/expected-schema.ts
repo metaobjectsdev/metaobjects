@@ -152,7 +152,24 @@ export function buildExpectedSchema(
   if (dialect === "sqlite") {
     for (const table of tables) {
       for (const col of table.columns) {
+        const kindBefore = col.sqlType.kind;
         col.sqlType = normalizeForSqlite(col.sqlType);
+        // The default VALUE must be normalized alongside the TYPE, or the three layers
+        // disagree. A boolean column becomes an integer column here, so its canonical
+        // "true"/"false" literal must become "1"/"0" too:
+        //   - leave it as "false" → the emitter sees an integer column with a
+        //     non-numeric literal and quotes it (`DEFAULT 'false'`), which SQLite
+        //     stores as TEXT in a numeric-affinity column, so `WHERE col = 0` silently
+        //     matches nothing;
+        //   - emit `0` while the expected side still says "false" → introspection reads
+        //     back "0", `columnDefaultsEqual` is a strict string compare, and the diff
+        //     reports `change-column-default` forever — which on SQLite means a
+        //     destructive recreate-and-copy of the whole table on EVERY migrate.
+        // Normalizing here keeps expected == emitted == introspected.
+        if (kindBefore === "boolean" && col.default?.kind === "literal") {
+          const normalized = normalizeBooleanLiteralForSqlite(col.default.value);
+          if (normalized !== undefined) col.default = { kind: "literal", value: normalized };
+        }
       }
     }
   }
@@ -181,6 +198,25 @@ export function buildExpectedSchema(
  * sqlite stores all integers (including booleans) as INTEGER, and uses TEXT for
  * date/time/timestamp affinities by default.
  */
+/**
+ * SQLite has no boolean literal: the canonical "true"/"false" become 1/0 so the value
+ * matches the integer column the type is normalized to. Returns undefined for anything
+ * unrecognized (the loader validates coercibility long before here) so we never silently
+ * rewrite a value we don't understand.
+ */
+function normalizeBooleanLiteralForSqlite(value: string): string | undefined {
+  switch (value.trim().toLowerCase()) {
+    case "true":
+    case "1":
+      return "1";
+    case "false":
+    case "0":
+      return "0";
+    default:
+      return undefined;
+  }
+}
+
 function normalizeForSqlite(sqlType: SqlType): SqlType {
   switch (sqlType.kind) {
     case "boolean":

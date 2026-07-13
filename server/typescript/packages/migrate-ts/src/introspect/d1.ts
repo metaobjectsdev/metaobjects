@@ -67,7 +67,11 @@ export async function introspectD1(opts: IntrospectD1Options): Promise<SchemaSna
   //
   // Filter in the query, not after: `_cf_METADATA` must never even be fetched.
   const tableRows = await exec(
-    "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__new_%' AND name NOT LIKE '_cf_%' AND name != 'd1_migrations' ORDER BY name",
+    "SELECT name, sql FROM sqlite_master WHERE type='table'"
+      + " AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'"
+      + " AND name NOT LIKE '\\_\\_new\\_%' ESCAPE '\\'"
+      + " AND name NOT LIKE '\\_cf\\_%' ESCAPE '\\'"
+      + " AND name != 'd1_migrations' ORDER BY name",
   );
 
   const tables: TableDescriptor[] = [];
@@ -199,7 +203,9 @@ async function readViews(exec: Exec): Promise<ViewDescriptor[]> {
   // D1 gets the same view-body drift detection as the kysely sqlite path — the
   // diff's comparator strips the leading CREATE VIEW before comparing bodies.
   const rows = await exec(
-    "SELECT name, sql FROM sqlite_master WHERE type='view' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+    "SELECT name, sql FROM sqlite_master WHERE type='view'"
+      + " AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'"
+      + " AND name NOT LIKE '\\_cf\\_%' ESCAPE '\\' ORDER BY name",
   );
   return rows.map((r) => {
     const view: ViewDescriptor = { name: String(r.name) };

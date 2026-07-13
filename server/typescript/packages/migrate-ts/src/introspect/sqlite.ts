@@ -16,9 +16,14 @@ export async function introspectSqlite(db: Kysely<Record<string, unknown>>): Pro
   const versionRow = await sql<{ v: string }>`SELECT sqlite_version() AS v`.execute(k);
   const meta: SnapshotMeta = { sqliteVersion: versionRow.rows[0]?.v ?? "0.0.0" };
 
+  // NOTE: "_" is a single-character WILDCARD in SQL LIKE. Unescaped, '__new_%' also
+  // matches an ordinary table named "renewals" (verified against real SQLite), silently
+  // hiding it from introspection — so the diff re-proposes CREATE TABLE on every run and
+  // the next apply dies with "already exists". Escape the underscores.
   const tableNamesRows = await sql<{ name: string; sql: string | null }>`
     SELECT name, sql FROM sqlite_master
-    WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__new_%'
+    WHERE type='table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'
+      AND name NOT LIKE '\\_\\_new\\_%' ESCAPE '\\'
       AND name <> ${MIGRATIONS_TABLE}
     ORDER BY name
   `.execute(k);
@@ -52,7 +57,7 @@ async function readSqliteViews(k: RawKysely): Promise<ViewDescriptor[]> {
   // We carry it through on the descriptor so the diff can detect view-body
   // drift (not just name presence).
   const rows = await sql<{ name: string; sql: string | null }>`
-    SELECT name, sql FROM sqlite_master WHERE type='view' AND name NOT LIKE 'sqlite_%'
+    SELECT name, sql FROM sqlite_master WHERE type='view' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'
     ORDER BY name
   `.execute(k);
   return rows.rows.map((r) => {

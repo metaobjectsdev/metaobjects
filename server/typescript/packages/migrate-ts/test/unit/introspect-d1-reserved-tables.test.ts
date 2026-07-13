@@ -38,9 +38,23 @@ function d1Like(seen: string[]): D1Runner {
     if (command.includes("sqlite_master")) {
       const notLike = [...command.matchAll(/name NOT LIKE '([^']+)'/g)].map((m) => m[1]!);
       const notEq = [...command.matchAll(/name != '([^']+)'/g)].map((m) => m[1]!);
+      // Honour ESCAPE '\\': a backslash-escaped `_` is a LITERAL underscore, a bare `_`
+      // is a single-char wildcard. Simulating this is the whole point — a mock that
+      // ignores it would hide the very bug the escaping fixes.
+      const toRegex = (pat: string): RegExp => {
+        let out = "";
+        for (let i = 0; i < pat.length; i++) {
+          const ch = pat[i]!;
+          if (ch === "\\") { out += pat[++i]!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); continue; }
+          if (ch === "%") { out += ".*"; continue; }
+          if (ch === "_") { out += "."; continue; }
+          out += ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        }
+        return new RegExp(`^${out}$`);
+      };
       const rows = LIVE_TABLES.filter((n) => {
         if (notEq.includes(n)) return false;
-        return !notLike.some((p) => new RegExp(`^${p.replace(/%/g, ".*")}$`).test(n));
+        return !notLike.some((p) => toRegex(p).test(n));
       }).map((name) => ({ name, sql: `CREATE TABLE "${name}" (id TEXT)` }));
       return JSON.stringify([{ success: true, results: rows, meta: {} }]);
     }
@@ -75,10 +89,12 @@ describe("introspectD1 — Cloudflare/wrangler reserved tables", () => {
     const seen: string[] = [];
     await introspectD1({ runner: d1Like(seen), binding: "DB", remote: false, configPath: undefined });
     const q = seen.find((c) => c.includes("sqlite_master"))!;
-    expect(q).toContain("_cf_%");
+    // `_` is a LIKE wildcard, so the prefixes must be ESCAPE-d (an unescaped
+    // '__new_%' would also swallow a real table named "renewals").
+    expect(q).toContain("\\_cf\\_%");
     expect(q).toContain("d1_migrations");
-    // and the pre-existing exclusions are intact
-    expect(q).toContain("sqlite_%");
-    expect(q).toContain("__new_%");
+    expect(q).toContain("sqlite\\_%");
+    expect(q).toContain("\\_\\_new\\_%");
+    expect(q).toContain("ESCAPE");
   });
 });

@@ -69,9 +69,9 @@ function m2mEntriesFor(entity: MetaObject, ctx: RenderContext): RelationEntry[] 
 
 /** The `relation: (relation, sourceId) => ...` query-key factory line, included
  *  in the keys factory ONLY when the entity has M:N relationships. */
-function m2mKeyLine(keysVar: string): string {
+function m2mKeyLine(keysVar: string, pkType: string): string {
   return (
-    `  relation: (relation: string, sourceId: number | undefined) =>\n` +
+    `  relation: (relation: string, sourceId: ${pkType} | undefined) =>\n` +
     `    [...${keysVar}.all(), "relation", relation, sourceId ?? null] as const,`
   );
 }
@@ -88,6 +88,9 @@ function renderM2mHooks(
 ): Code | null {
   if (entries.length === 0) return null;
 
+  // sourceId IS this entity's PK — it is interpolated straight into
+  // `GET /<source-plural>/{sourceId}/<relation>`, so it must carry the declared PK type.
+  const pkType = getPkInfo(entity, ctx).tsType;
   const useQuerySym = imp("useQuery@@tanstack/react-query");
   const useQueryOptionsSym = imp("t:UseQueryOptions@@tanstack/react-query");
   const useQueryResultSym = imp("t:UseQueryResult@@tanstack/react-query");
@@ -124,7 +127,7 @@ function renderM2mHooks(
     const relLit = JSON.stringify(e.name);
     return code`
 export function ${hookName}(
-  sourceId: number | undefined,
+  sourceId: ${pkType} | undefined,
   opts?: Omit<${useQueryOptionsSym}<${targetSym}[]>, "queryKey" | "queryFn">,
 ): ${useQueryResultSym}<${targetSym}[]> {
   const fetcher = ${useEntityFetcherSym}();
@@ -158,7 +161,7 @@ function renderReadOnlyHooksFile(entity: MetaObject, entityModule: string, ctx: 
   const lcEntity = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const keysVar = `${lcEntity}Keys`;
   const m2mEntries = m2mEntriesFor(entity, ctx);
-  const relationKeyLine = m2mEntries.length > 0 ? `\n${m2mKeyLine(keysVar)}` : "";
+  const relationKeyLine = m2mEntries.length > 0 ? `\n${m2mKeyLine(keysVar, pkType)}` : "";
 
   const useQuerySym = imp("useQuery@@tanstack/react-query");
   const useQueryOptionsSym = imp("t:UseQueryOptions@@tanstack/react-query");
@@ -233,7 +236,7 @@ function renderFullHooksFile(entity: MetaObject, entityModule: string, ctx: Rend
   const lcEntity = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const keysVar = `${lcEntity}Keys`;
   const m2mEntries = m2mEntriesFor(entity, ctx);
-  const relationKeyLine = m2mEntries.length > 0 ? `\n${m2mKeyLine(keysVar)}` : "";
+  const relationKeyLine = m2mEntries.length > 0 ? `\n${m2mKeyLine(keysVar, pkType)}` : "";
 
   const useMutationSym = imp("useMutation@@tanstack/react-query");
   const useQuerySym = imp("useQuery@@tanstack/react-query");

@@ -64,6 +64,21 @@ describe("tanstack hooks — the id parameter follows the entity's real PK type"
     expect(member).toContain("{ id: string; input: MemberUpdate }");
   });
 
+  // The M:N `sourceId` IS the source entity's PK — it is fed straight into
+  // `GET /<source-plural>/{sourceId}/<relation>`. It was hardcoded `number` in the same
+  // file, so a uuid-PK entity with any M:N relation emitted a self-contradictory module:
+  // `detail: (id: string)` two lines above `useMemberTags(sourceId: number | undefined)`.
+  test("uuid PK + M:N: the relation hook's sourceId is a string, not a number", async () => {
+    const member = (await generate()).get("Member.hooks.ts")!;
+    expect(member).toContain("sourceId: string | undefined");
+    expect(member).not.toContain("sourceId: number | undefined");
+  });
+
+  test("uuid PK + M:N: the keys factory's relation() sourceId matches too", async () => {
+    const member = (await generate()).get("Member.hooks.ts")!;
+    expect(member).toMatch(/relation: \(relation: string, sourceId: string \| undefined\)/);
+  });
+
   test("regression guard: an increment/long PK still emits `id: number`", async () => {
     const subscriber = (await generate()).get("Subscriber.hooks.ts")!;
     expect(subscriber).toContain("id: number");

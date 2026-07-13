@@ -6,8 +6,17 @@
         "object.entity": {
           "name": "Member",
           "children": [
+            { "source.rdb": { "@table": "members" } },
             { "field.uuid": { "name": "id" } },
             { "field.string": { "name": "email", "children": [{ "view.text": {} }] } },
+            {
+              "relationship.association": {
+                "name": "tags",
+                "@cardinality": "many",
+                "@objectRef": "Tag",
+                "@through": "MemberTag"
+              }
+            },
             { "identity.primary": { "name": "id", "@fields": ["id"], "@generation": "uuid" } },
             {
               "layout.dataGrid": {
@@ -22,8 +31,33 @@
       },
       {
         "object.entity": {
+          "name": "Tag",
+          "children": [
+            { "source.rdb": { "@table": "tags" } },
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "name", "@required": true } },
+            { "identity.primary": { "name": "id", "@fields": ["id"], "@generation": "uuid" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "MemberTag",
+          "children": [
+            { "source.rdb": { "@table": "member_tags" } },
+            { "field.uuid": { "name": "memberId", "@required": true } },
+            { "field.uuid": { "name": "tagId", "@required": true } },
+            { "identity.primary": { "name": "id", "@fields": ["memberId", "tagId"] } },
+            { "identity.reference": { "name": "fkMember", "@fields": "memberId", "@references": "Member" } },
+            { "identity.reference": { "name": "fkTag", "@fields": "tagId", "@references": "Tag" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
           "name": "Subscriber",
           "children": [
+            { "source.rdb": { "@table": "subscribers" } },
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "email", "children": [{ "view.text": {} }] } },
             { "identity.primary": { "name": "id", "@fields": ["id"], "@generation": "increment" } },
