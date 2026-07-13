@@ -158,6 +158,9 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         String repoName = SpringNaming.repositoryName(shortName);
         String controllerName = SpringNaming.controllerName(shortName);
         String routeBase = SpringNaming.controllerPath(shortName);
+        // PK type derived from identity.primary (uuid → java.util.UUID, long → Long, …);
+        // a hard-coded Long made Spring 400 every uuid-keyed by-id request.
+        String pkType = SpringTypeMapper.primaryKeyJavaType(entity);
 
         // Sort allowlist: every scalar field is sortable. Skip ObjectField (no SQL column
         // surface today; @storage controls a separate column shape).
@@ -252,7 +255,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
 
         // GET /{id} — single by primary key.
         src.append("    @GetMapping(\"/{id}\")\n");
-        src.append("    public ResponseEntity<?> get(@PathVariable Long id) {\n");
+        src.append("    public ResponseEntity<?> get(@PathVariable ").append(pkType).append(" id) {\n");
         src.append("        return repository.findById(id)\n");
         src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
         src.append("                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\")));\n");
@@ -271,7 +274,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // in Spring MVC — only one composed @RequestMapping per method is honored, so the
         // other verb 405s. (Surfaced by the SP-F generated-controller HTTP lane.)
         src.append("    @RequestMapping(value = \"/{id}\", method = { RequestMethod.PATCH, RequestMethod.PUT })\n");
-        src.append("    public ResponseEntity<?> update(@PathVariable Long id, @Valid @RequestBody ").append(dtoName).append(" dto) {\n");
+        src.append("    public ResponseEntity<?> update(@PathVariable ").append(pkType)
+           .append(" id, @Valid @RequestBody ").append(dtoName).append(" dto) {\n");
         src.append("        return repository.update(id, dto)\n");
         src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
         src.append("                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\")));\n");
@@ -279,7 +283,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
 
         // DELETE — 204 on success, 404 envelope on miss.
         src.append("    @DeleteMapping(\"/{id}\")\n");
-        src.append("    public ResponseEntity<?> delete(@PathVariable Long id) {\n");
+        src.append("    public ResponseEntity<?> delete(@PathVariable ").append(pkType).append(" id) {\n");
         src.append("        if (repository.delete(id)) {\n");
         src.append("            return ResponseEntity.noContent().build();\n");
         src.append("        }\n");
@@ -296,7 +300,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             String finder = SpringRepositoryGenerator.m2mFinderName(nav.relationName());
             src.append("    @GetMapping(\"/{id}/").append(nav.relationName()).append("\")\n");
             src.append("    public ResponseEntity<List<").append(nav.targetDtoType()).append(">> ")
-               .append(finder).append("(@PathVariable Long id) {\n");
+               .append(finder).append("(@PathVariable ").append(pkType).append(" id) {\n");
             src.append("        return ResponseEntity.ok(repository.").append(finder).append("(id));\n");
             src.append("    }\n\n");
         }
@@ -352,6 +356,9 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         String controllerName = SpringNaming.controllerName(shortName);
         String routeBase = SpringNaming.controllerPath(shortName);
         String allowlistName = SpringNaming.filterAllowlistName(shortName);
+        // The single TPH table is keyed by the BASE's primary identity — every polymorphic
+        // + per-subtype by-id route binds that derived PK type (uuid → java.util.UUID, …).
+        String pkType = SpringTypeMapper.primaryKeyJavaType(base);
 
         // Sort allowlist: the base's own scalar columns (the polymorphic sort surface). Subtype
         // columns are not sortable across the polymorphic collection.
@@ -429,7 +436,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
 
         src.append("    // Polymorphic get — one row of whatever subtype it is.\n");
         src.append("    @GetMapping(\"/{id}\")\n");
-        src.append("    public ResponseEntity<?> get(@PathVariable Long id) {\n");
+        src.append("    public ResponseEntity<?> get(@PathVariable ").append(pkType).append(" id) {\n");
         src.append("        return repository.findById(id)\n");
         src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
         src.append("                .orElseGet(this::notFound);\n");
@@ -466,7 +473,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
 
             // per-subtype get (404 cross-subtype)
             src.append("    @GetMapping(\"/").append(seg).append("/{id}\")\n");
-            src.append("    public ResponseEntity<?> get").append(suffix).append("(@PathVariable Long id) {\n");
+            src.append("    public ResponseEntity<?> get").append(suffix)
+               .append("(@PathVariable ").append(pkType).append(" id) {\n");
             src.append("        return repository.findByIdAndType(id, \"").append(disc).append("\")\n");
             src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
             src.append("                .orElseGet(this::notFound);\n");
@@ -484,7 +492,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("    @RequestMapping(value = \"/").append(seg)
                .append("/{id}\", method = { RequestMethod.PATCH, RequestMethod.PUT })\n");
             src.append("    public ResponseEntity<?> update").append(suffix)
-               .append("(@PathVariable Long id, @RequestBody ").append(dtoName).append(" dto) {\n");
+               .append("(@PathVariable ").append(pkType).append(" id, @RequestBody ")
+               .append(dtoName).append(" dto) {\n");
             src.append("        return repository.updateByIdAndType(id, \"").append(disc).append("\", dto)\n");
             src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
             src.append("                .orElseGet(this::notFound);\n");
@@ -492,7 +501,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
 
             // per-subtype delete (404 cross-subtype)
             src.append("    @DeleteMapping(\"/").append(seg).append("/{id}\")\n");
-            src.append("    public ResponseEntity<?> delete").append(suffix).append("(@PathVariable Long id) {\n");
+            src.append("    public ResponseEntity<?> delete").append(suffix)
+               .append("(@PathVariable ").append(pkType).append(" id) {\n");
             src.append("        if (repository.deleteByIdAndType(id, \"").append(disc).append("\")) return ResponseEntity.noContent().build();\n");
             src.append("        return notFound();\n");
             src.append("    }\n\n");

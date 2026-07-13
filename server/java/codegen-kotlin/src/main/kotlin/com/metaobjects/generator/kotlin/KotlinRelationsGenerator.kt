@@ -138,6 +138,13 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
                 }
             }
             append("import org.jetbrains.exposed.sql.selectAll\n")
+            // java.util.UUID appears in helper signatures when the owner's PK (or a
+            // reverse-FK value type) is uuid — the param types were already derived, but
+            // without this import the generated file had an unresolved reference. Emitted
+            // conditionally so uuid-free files stay byte-identical.
+            if (pkParamSimpleName == "UUID" || reverseFks.any { it.valueType == "UUID" }) {
+                append("import java.util.UUID\n")
+            }
             append("\n")
             append("/** GENERATED — extension fns for `$ownerShort` to-many relationships. Do not hand-edit. */\n")
             var first = true
@@ -258,11 +265,12 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
     /**
      * Resolve the Kotlin type of [entity]'s primary key. Falls back to [LONG] when
      * the primary identity is missing, multi-field, or its field can't be resolved
-     * — Long matches the dominant convention (entities almost always have a single
-     * `field.long` PK; KotlinExposedTableGenerator's FK columns hard-code
-     * `long("…").references(...)`). Same lossy-tolerant policy as the table
-     * generator: defensive defaults rather than throwing on partially-formed
-     * metadata.
+     * — Long matches the dominant convention (a single `field.long` PK) and the
+     * same fallback KotlinExposedTableGenerator's FK column builder and
+     * KotlinSpringControllerGenerator's route signatures use, so the derived types
+     * stay in lockstep across the three generators. Same lossy-tolerant policy as
+     * the table generator: defensive defaults rather than throwing on
+     * partially-formed metadata.
      */
     protected open fun primaryKeyKotlinType(entity: MetaObject): TypeName {
         // ADR-0039: identities are inheritable — RESOLVE via getIdentities(true);

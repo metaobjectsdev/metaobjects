@@ -43,10 +43,12 @@ from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, pe
 from metaobjects.codegen.generators.m2m_codegen import (
     M2mDescriptor,
     build_object_index,
+    pk_field_name,
     resolve_m2m_descriptors,
 )
 from metaobjects.codegen.generators.tph_plan import TphPlan, is_tph_subtype, tph_plan_for
 from metaobjects.codegen.instance_artifacts import emits_instance_artifacts
+from metaobjects.codegen.type_map import PyType, py_type_for
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.identity.identity_constants import (
@@ -85,6 +87,23 @@ def _scalar_fields(entity: MetaObject) -> list[MetaField]:
     controllers use for the sort allowlist (object fields have no plain
     column to sort on)."""
     return [f for f in entity.fields() if f.sub_type != fc.FIELD_SUBTYPE_OBJECT]
+
+
+def _pk_py_type(entity: MetaObject) -> PyType:
+    """The Python type of the entity's primary-key path/id parameter, derived
+    from the PK field's declared subtype via ``type_map.py_type_for`` — the same
+    mapper the Pydantic entity model uses, so ``field.uuid`` binds ``uuid.UUID``
+    on the route exactly as it does on the model (mirrors the C#
+    RoutesGenerator's ``CSharpNaming.ScalarFor(pkField.SubType)``).
+
+    Composite PK → ``@fields[0]`` (the TS ``getPkInfo`` behavior); no primary
+    identity / unresolvable field → ``int`` (the ``field.long`` default).
+    """
+    name = pk_field_name(entity)
+    pk_field = next((f for f in entity.fields() if f.name == name), None)
+    if pk_field is None:
+        return PyType("int")
+    return py_type_for(pk_field)
 
 
 @dataclass(frozen=True)
@@ -140,13 +159,15 @@ class RouterGenerator:
 
     Override points:
 
-    * ``_emit_repository_protocol(repo_class, m2m)`` — the consumer-implemented
-      ``Repository`` ``Protocol`` block (CRUD finders + M:N ``find_related_*``).
+    * ``_emit_repository_protocol(repo_class, m2m, pk_type)`` — the consumer-
+      implemented ``Repository`` ``Protocol`` block (CRUD finders + M:N
+      ``find_related_*``); ``pk_type`` is the PK's Python annotation text.
     * ``_emit_reverse_finders(entity)`` — the ADR-0038 reverse-FK finder pair
       (``find_<e_plural>_by_<fk_segment>`` + ``…_in``) appended to the ``Protocol``.
     * ``_emit_route_handler(name, ...)`` — the CRUD route handlers (list / get /
       create / update / delete), keyed by ``name``.
-    * ``_emit_m2m_route(d, snake, pk_param, repo_class)`` — one M:N traversal route.
+    * ``_emit_m2m_route(d, snake, pk_param, pk_type, repo_class)`` — one M:N
+      traversal route.
     * ``render_router(entity, object_index)`` — the whole module (last resort).
 
     Skips entities without a ``source.rdb`` child and read-only kinds
@@ -156,11 +177,12 @@ class RouterGenerator:
     name = "router-generator"
 
     def _emit_repository_protocol(
-        self, repo_class: str, m2m: list[M2mDescriptor]
+        self, repo_class: str, m2m: list[M2mDescriptor], pk_type: str
     ) -> list[str]:
         """The repository ``Protocol`` block. Returns/accepts ``Any`` so this module
-        stays decoupled from the entity-model import. Override to add custom finder
-        signatures or change the seam shape."""
+        stays decoupled from the entity-model import; *pk_type* is the PK's Python
+        annotation text (metadata-derived — e.g. ``uuid.UUID`` / ``int`` / ``str``).
+        Override to add custom finder signatures or change the seam shape."""
         lines: list[str] = [
             f"class {repo_class}(Protocol):",
             '    """GENERATED — consumer implements with their preferred persistence layer."""',
@@ -172,14 +194,14 @@ class RouterGenerator:
             "        filters: list[FilterPredicate],",
             "    ) -> list[Any]: ...",
             "    def count(self, filters: list[FilterPredicate]) -> int: ...",
-            "    def find_by_id(self, id: int) -> Any | None: ...",
+            f"    def find_by_id(self, id: {pk_type}) -> Any | None: ...",
             "    def create(self, dto: Any) -> Any: ...",
-            "    def update(self, id: int, dto: Any) -> Any | None: ...",
-            "    def delete(self, id: int) -> bool: ...",
+            f"    def update(self, id: {pk_type}, dto: Any) -> Any | None: ...",
+            f"    def delete(self, id: {pk_type}) -> bool: ...",
         ]
         for d in m2m:
             lines.append(
-                f"    def find_related_{d.relation_name}(self, id: int) -> list[Any]: ..."
+                f"    def find_related_{d.relation_name}(self, id: {pk_type}) -> list[Any]: ..."
             )
         return lines
 
@@ -212,6 +234,7 @@ class RouterGenerator:
         snake: str,
         plural: str,
         pk_param: str,
+        pk_type: str,
         repo_class: str,
         fields_const: str,
         ops_const: str,
@@ -251,7 +274,7 @@ class RouterGenerator:
             return [
                 f'@router.get("/{{{pk_param}}}")',
                 f"def get_{snake}(",
-                f"    {pk_param}: int,",
+                f"    {pk_param}: {pk_type},",
                 f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
                 ") -> Any:",
                 f"    row = repo.find_by_id({pk_param})",
@@ -273,7 +296,7 @@ class RouterGenerator:
                 f'@router.patch("/{{{pk_param}}}")',
                 f'@router.put("/{{{pk_param}}}")',
                 f"def update_{snake}(",
-                f"    {pk_param}: int,",
+                f"    {pk_param}: {pk_type},",
                 "    dto: dict[str, Any],",
                 f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
                 ") -> Any:",
@@ -286,7 +309,7 @@ class RouterGenerator:
             return [
                 f'@router.delete("/{{{pk_param}}}", status_code=status.HTTP_204_NO_CONTENT)',
                 f"def delete_{snake}(",
-                f"    {pk_param}: int,",
+                f"    {pk_param}: {pk_type},",
                 f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
                 ") -> None:",
                 f"    if not repo.delete({pk_param}):",
@@ -295,7 +318,7 @@ class RouterGenerator:
         raise ValueError(f"unknown route handler '{name}'")
 
     def _emit_m2m_route(
-        self, d: M2mDescriptor, snake: str, pk_param: str, repo_class: str
+        self, d: M2mDescriptor, snake: str, pk_param: str, pk_type: str, repo_class: str
     ) -> list[str]:
         """One M:N traversal route ``GET /{id}/<relationName>`` — a thin pass-through
         to the repository's ``find_related_*`` finder. Override to add filtering /
@@ -303,7 +326,7 @@ class RouterGenerator:
         return [
             f'@router.get("/{{{pk_param}}}/{d.relation_name}")',
             f"def list_{snake}_{d.relation_name}(",
-            f"    {pk_param}: int,",
+            f"    {pk_param}: {pk_type},",
             f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
             ") -> list[Any]:",
             f"    return repo.find_related_{d.relation_name}({pk_param})",
@@ -343,6 +366,10 @@ class RouterGenerator:
         snake = _snake_case(short_name)
         plural = _plural_lowercase(short_name)
         pk_param = f"{snake}_id"
+        # PK type from the BASE's declared primary key (subtypes share the
+        # base's single table — mirrors the C# TPH pkType threading).
+        pk = _pk_py_type(entity)
+        pk_type = pk.expr
         repo_class = f"{short_name}Repository"
         upper = short_name.upper()
         fields_const = f"{upper}_FILTER_FIELDS"
@@ -371,6 +398,10 @@ class RouterGenerator:
         )
         parts.append("from __future__ import annotations")
         parts.append("")
+        for import_line in sorted(pk.imports):
+            parts.append(import_line)
+        if pk.imports:
+            parts.append("")
         parts.append("from typing import Annotated, Any, Protocol")
         parts.append("")
         parts.append("from fastapi import APIRouter, Depends, Query, Request, status")
@@ -420,10 +451,10 @@ class RouterGenerator:
         parts.append("        filters: list[FilterPredicate],")
         parts.append("    ) -> list[Any]: ...")
         parts.append("    def count(self, subtype: str | None, filters: list[FilterPredicate]) -> int: ...")
-        parts.append("    def find_by_id(self, subtype: str | None, id: int) -> Any | None: ...")
+        parts.append(f"    def find_by_id(self, subtype: str | None, id: {pk_type}) -> Any | None: ...")
         parts.append("    def create(self, subtype: str, dto: Any) -> Any: ...")
-        parts.append("    def update(self, subtype: str, id: int, dto: Any) -> Any | None: ...")
-        parts.append("    def delete(self, subtype: str, id: int) -> bool: ...")
+        parts.append(f"    def update(self, subtype: str, id: {pk_type}, dto: Any) -> Any | None: ...")
+        parts.append(f"    def delete(self, subtype: str, id: {pk_type}) -> bool: ...")
         parts.append("")
         parts.append("")
         parts.append(f"def get_repository() -> {repo_class}:")
@@ -445,7 +476,7 @@ class RouterGenerator:
                 ") -> Any:",
             ]
 
-        # --- Per-subtype routes FIRST (literal segments match before /{id:int}). ---
+        # --- Per-subtype routes FIRST (literal segments match before /{id}). ---
         for st in plan.subtypes:
             seg = st.route_segment
             val = st.value
@@ -464,7 +495,7 @@ class RouterGenerator:
             parts.append("")
             parts.append(f'@router.get("/{seg}/{{{pk_param}}}")')
             parts.append(f"def get_{plural}_{sfx}(")
-            parts.append(f"    {pk_param}: int,")
+            parts.append(f"    {pk_param}: {pk_type},")
             parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
             parts.append(") -> Any:")
             parts.append(f'    row = repo.find_by_id("{val}", {pk_param})')
@@ -476,7 +507,7 @@ class RouterGenerator:
             parts.append(f'@router.patch("/{seg}/{{{pk_param}}}")')
             parts.append(f'@router.put("/{seg}/{{{pk_param}}}")')
             parts.append(f"def update_{plural}_{sfx}(")
-            parts.append(f"    {pk_param}: int,")
+            parts.append(f"    {pk_param}: {pk_type},")
             parts.append("    dto: dict[str, Any],")
             parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
             parts.append(") -> Any:")
@@ -488,7 +519,7 @@ class RouterGenerator:
             parts.append("")
             parts.append(f'@router.delete("/{seg}/{{{pk_param}}}", status_code=status.HTTP_204_NO_CONTENT)')
             parts.append(f"def delete_{plural}_{sfx}(")
-            parts.append(f"    {pk_param}: int,")
+            parts.append(f"    {pk_param}: {pk_type},")
             parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
             parts.append(") -> None:")
             parts.append(f'    if not repo.delete("{val}", {pk_param}):')
@@ -496,14 +527,14 @@ class RouterGenerator:
             parts.append("")
             parts.append("")
 
-        # --- Polymorphic base routes LAST (so /{id:int} doesn't shadow /<segment>). ---
+        # --- Polymorphic base routes LAST (so /{id} doesn't shadow /<segment>). ---
         parts.extend(list_sig(f"list_{plural}", ""))
         parts.extend(self._emit_tph_list_body("None", fields_const, ops_const))
         parts.append("")
         parts.append("")
         parts.append(f'@router.get("/{{{pk_param}}}")')
         parts.append(f"def get_{snake}(")
-        parts.append(f"    {pk_param}: int,")
+        parts.append(f"    {pk_param}: {pk_type},")
         parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
         parts.append(") -> Any:")
         parts.append(f"    row = repo.find_by_id(None, {pk_param})")
@@ -560,6 +591,8 @@ class RouterGenerator:
         snake = _snake_case(short_name)
         plural = _plural_lowercase(short_name)
         pk_param = f"{snake}_id"
+        pk = _pk_py_type(entity)
+        pk_type = pk.expr
         repo_class = f"{short_name}Repository"
         sort_fields = [f.name for f in _scalar_fields(entity)]
         upper = short_name.upper()
@@ -578,6 +611,10 @@ class RouterGenerator:
         )
         parts.append("from __future__ import annotations")
         parts.append("")
+        for import_line in sorted(pk.imports):
+            parts.append(import_line)
+        if pk.imports:
+            parts.append("")
         parts.append("from typing import Annotated, Any, Protocol")
         parts.append("")
         parts.append("from fastapi import APIRouter, Depends, Query, Request, status")
@@ -616,7 +653,7 @@ class RouterGenerator:
         parts.append("    return _SortClause(field=parts[0], direction=direction)")
         parts.append("")
         parts.append("")
-        proto_lines = self._emit_repository_protocol(repo_class, m2m)
+        proto_lines = self._emit_repository_protocol(repo_class, m2m, pk_type)
         proto_lines.extend(self._emit_reverse_finders(entity))
         parts.extend(proto_lines)
         parts.append("")
@@ -631,6 +668,7 @@ class RouterGenerator:
             snake=snake,
             plural=plural,
             pk_param=pk_param,
+            pk_type=pk_type,
             repo_class=repo_class,
             fields_const=fields_const,
             ops_const=ops_const,
@@ -649,7 +687,7 @@ class RouterGenerator:
         # array for an orphan source — never a 404).
         for d in m2m:
             parts.append("")
-            parts.extend(self._emit_m2m_route(d, snake, pk_param, repo_class))
+            parts.extend(self._emit_m2m_route(d, snake, pk_param, pk_type, repo_class))
             parts.append("")
 
         return "\n".join(parts)

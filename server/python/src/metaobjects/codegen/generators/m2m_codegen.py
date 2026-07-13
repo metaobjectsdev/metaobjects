@@ -110,7 +110,7 @@ def _field_named(entity: MetaObject, field_name: str) -> MetaField | None:
     return None
 
 
-def _pk_field_name(entity: MetaObject) -> str:
+def pk_field_name(entity: MetaObject) -> str:
     """The single PK field name (``identity.primary @fields``), default ``id``."""
     for c in entity.children():
         if c.type == TYPE_IDENTITY and c.sub_type == IDENTITY_SUBTYPE_PRIMARY:
@@ -184,8 +184,8 @@ def resolve_m2m_descriptors(
                 source_column=_column_of(source_fk, fields.source_field),
                 target_column=_column_of(target_fk, fields.target_field),
                 target_pk_column=_column_of(
-                    _field_named(target, _pk_field_name(target)),
-                    _pk_field_name(target),
+                    _field_named(target, pk_field_name(target)),
+                    pk_field_name(target),
                 ),
                 symmetric=rel.symmetric(),
             )

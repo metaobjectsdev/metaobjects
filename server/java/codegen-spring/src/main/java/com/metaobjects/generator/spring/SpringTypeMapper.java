@@ -17,6 +17,7 @@ import com.metaobjects.field.UuidField;
 import com.metaobjects.field.UriField;
 import com.metaobjects.field.InetField;
 import com.metaobjects.database.CoreDBMetaDataProvider;
+import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.object.MetaObject;
 
 import java.util.HashSet;
@@ -123,6 +124,44 @@ public final class SpringTypeMapper {
         throw new IllegalArgumentException(
             "unsupported Spring DTO type mapping for "
                 + field.getClass().getSimpleName() + " '" + field.getName() + "'");
+    }
+
+    /**
+     * The Java type of {@code entity}'s primary key — the type every generated
+     * by-id surface must trade: the controller's {@code @PathVariable}
+     * (get/update/delete, M:N traversal, TPH polymorphic + per-subtype routes)
+     * and the repository's {@code findById}/{@code update}/{@code delete}/M:N
+     * finder/TPH {@code *ByIdAndType} parameters. Derived from the single-field
+     * {@code identity.primary}'s field via {@link #javaTypeName(MetaField)}, so a
+     * {@code field.uuid} PK yields {@code java.util.UUID}, {@code field.long}
+     * {@code Long}, {@code field.int} {@code Integer}, {@code field.string}
+     * {@code String} — mirroring the C# {@code RoutesGenerator}'s
+     * {@code CSharpNaming.ScalarFor} derivation (a hard-coded {@code Long} made
+     * Spring 400 every uuid-keyed by-id request and the repository interface
+     * un-implementable).
+     *
+     * <p>Falls back to {@code "Long"} when the primary identity is absent,
+     * composite, or its field cannot be resolved/mapped — the historical default
+     * (single-field PKs are the chartered by-id surface; composite-PK routing is
+     * a pre-existing cross-port gap).</p>
+     */
+    public static String primaryKeyJavaType(MetaObject entity) {
+        // ADR-0039: identities are inheritable — RESOLVE via getIdentities(true);
+        // own-only children would miss a BaseEntity-inherited identity.primary.
+        MetaIdentity primary = entity.getIdentities(true).stream()
+            .filter(MetaIdentity::isPrimary)
+            .findFirst()
+            .orElse(null);
+        if (primary == null) return "Long";
+        List<String> fields = primary.getFields();
+        if (fields.size() != 1) return "Long";
+        String pkFieldName = fields.get(0);
+        if (!entity.hasMetaField(pkFieldName)) return "Long";
+        try {
+            return javaTypeName(entity.getMetaField(pkFieldName));
+        } catch (IllegalArgumentException e) {
+            return "Long";
+        }
     }
 
     /**

@@ -99,8 +99,8 @@ def test_entity_model_class_header_override() -> None:
 
 def test_router_repository_protocol_override() -> None:
     class _CustomRouterGen(RouterGenerator):
-        def _emit_repository_protocol(self, repo_class, m2m):
-            lines = super()._emit_repository_protocol(repo_class, m2m)
+        def _emit_repository_protocol(self, repo_class, m2m, pk_type):
+            lines = super()._emit_repository_protocol(repo_class, m2m, pk_type)
             lines.append("    def custom_finder(self, q: str) -> list: ...")
             return lines
 

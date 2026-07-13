@@ -90,6 +90,9 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         String shortName = split[1];
         String dtoName = SpringNaming.dtoName(shortName);
         String repoName = SpringNaming.repositoryName(shortName);
+        // PK type derived from identity.primary (uuid → java.util.UUID, long → Long, …);
+        // a hard-coded Long made this interface un-implementable against a uuid-keyed table.
+        String pkType = SpringTypeMapper.primaryKeyJavaType(entity);
 
         StringBuilder src = new StringBuilder();
         if (!pkg.isEmpty()) {
@@ -109,10 +112,11 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("    List<").append(dtoName)
            .append("> list(int limit, int offset, SortClause sort, List<FilterPredicate> filters);\n");
         src.append("    long count(List<FilterPredicate> filters);\n");
-        src.append("    Optional<").append(dtoName).append("> findById(Long id);\n");
+        src.append("    Optional<").append(dtoName).append("> findById(").append(pkType).append(" id);\n");
         src.append("    ").append(dtoName).append(" create(").append(dtoName).append(" dto);\n");
-        src.append("    Optional<").append(dtoName).append("> update(Long id, ").append(dtoName).append(" dto);\n");
-        src.append("    boolean delete(Long id);\n");
+        src.append("    Optional<").append(dtoName).append("> update(").append(pkType).append(" id, ")
+           .append(dtoName).append(" dto);\n");
+        src.append("    boolean delete(").append(pkType).append(" id);\n");
 
         // FR-018 M:N finders — one per @cardinality:"many" + @through relationship.
         // The matching controller's GET /{id}/<relationName> sub-resource delegates here.
@@ -125,7 +129,7 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
             if (nav.symmetric()) src.append(" (symmetric — union on read)");
             src.append(". */\n");
             src.append("    List<").append(nav.targetDtoType()).append("> ")
-               .append(m2mFinderName(nav.relationName())).append("(Long sourceId);\n");
+               .append(m2mFinderName(nav.relationName())).append("(").append(pkType).append(" sourceId);\n");
         }
 
         // ADR-0038 reverse navigation — one finder PAIR per FK this entity holds
@@ -178,6 +182,9 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         String shortName = split[1];
         String dtoName = SpringNaming.dtoName(shortName);
         String repoName = SpringNaming.repositoryName(shortName);
+        // The single TPH table is keyed by the BASE's primary identity — polymorphic and
+        // per-subtype-scoped operations all trade that derived PK type (uuid → java.util.UUID, …).
+        String pkType = SpringTypeMapper.primaryKeyJavaType(base);
 
         StringBuilder src = new StringBuilder();
         if (!pkg.isEmpty()) src.append("package ").append(pkg).append(";\n\n");
@@ -197,15 +204,17 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("    List<").append(dtoName)
            .append("> list(int limit, int offset, SortClause sort, List<FilterPredicate> filters);\n");
         src.append("    long count(List<FilterPredicate> filters);\n");
-        src.append("    Optional<").append(dtoName).append("> findById(Long id);\n\n");
+        src.append("    Optional<").append(dtoName).append("> findById(").append(pkType).append(" id);\n\n");
         src.append("    // --- per-subtype (scoped to the discriminator value) ---\n");
         src.append("    List<").append(dtoName)
            .append("> listByType(String discriminator, int limit, int offset, SortClause sort, List<FilterPredicate> filters);\n");
-        src.append("    Optional<").append(dtoName).append("> findByIdAndType(Long id, String discriminator);\n");
+        src.append("    Optional<").append(dtoName).append("> findByIdAndType(")
+           .append(pkType).append(" id, String discriminator);\n");
         src.append("    ").append(dtoName).append(" createWithType(String discriminator, ").append(dtoName).append(" dto);\n");
         src.append("    Optional<").append(dtoName)
-           .append("> updateByIdAndType(Long id, String discriminator, ").append(dtoName).append(" dto);\n");
-        src.append("    boolean deleteByIdAndType(Long id, String discriminator);\n");
+           .append("> updateByIdAndType(").append(pkType).append(" id, String discriminator, ")
+           .append(dtoName).append(" dto);\n");
+        src.append("    boolean deleteByIdAndType(").append(pkType).append(" id, String discriminator);\n");
         src.append("}\n");
 
         try {

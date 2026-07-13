@@ -5,7 +5,14 @@ contracts: one router per writable entity (source.rdb @kind="table"); 5 CRUD end
 (GET list / GET by id / POST / PATCH+PUT / DELETE); ?sort, ?limit/?offset, ?withCount=1
 envelope, 404 + 400 envelopes per the cross-port API contract.
 """
+import json
+import shutil
+import tempfile
+from pathlib import Path
+
 import metaobjects.core_types  # noqa: F401  — side-effect: registers attr classes
+from metaobjects import MetaDataLoader
+from metaobjects.codegen.generators.m2m_codegen import build_object_index
 from metaobjects.codegen.generators.router_generator import render_router
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.field import field_constants as fc
@@ -158,3 +165,193 @@ def test_router_list_handler_calls_parse_filter() -> None:
     assert "repo.count(predicates)" in out
     # Repository protocol gains the filters parameter on list + count.
     assert "filters: list[FilterPredicate]" in out
+
+
+# ---------------------------------------------------------------------------
+# PK path-param typing — the route path param + the repository ``Protocol`` id
+# must carry the entity's DECLARED primary-key type (metadata-derived via
+# ``type_map.py_type_for``), never a hardcoded ``int``. Mirrors the C#
+# RoutesGenerator (``CSharpNaming.ScalarFor(pkField.SubType)`` threaded through
+# get/update/delete/M:N/TPH) and the TS ``getPkInfo`` (composite PK → fields[0];
+# no primary identity → the field.long default, i.e. ``int``).
+# ---------------------------------------------------------------------------
+
+
+def _load_entities(meta: dict) -> dict[str, MetaObject]:
+    """Author *meta* as a temp ``meta.json`` and load it through the real loader
+    (identity/relationship resolution included)."""
+    tmp = Path(tempfile.mkdtemp(prefix="router-pk-"))
+    try:
+        (tmp / "meta.json").write_text(json.dumps(meta))
+        result = MetaDataLoader.from_directory(str(tmp))
+        assert not result.errors, "; ".join(
+            f"{e.code}: {e.message}" for e in result.errors
+        )
+        return {
+            c.name: c
+            for c in result.root.children()
+            if c.type == TYPE_OBJECT and isinstance(c, MetaObject)
+        }
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+_PK_TYPES_META = {
+    "metadata.root": {
+        "package": "acme::pk",
+        "children": [
+            # uuid PK + an M:N navigation (traversal route + find_related finder).
+            {"object.entity": {
+                "name": "Gadget",
+                "children": [
+                    {"source.rdb": {"@table": "gadgets"}},
+                    {"field.uuid": {"name": "id", "@filterable": True, "@sortable": True}},
+                    {"field.string": {"name": "label", "@required": True, "@maxLength": 80}},
+                    {"relationship.association": {
+                        "name": "tags", "@cardinality": "many",
+                        "@objectRef": "Tag", "@through": "GadgetTag",
+                    }},
+                    {"identity.primary": {"name": "id", "@fields": "id", "@generation": "uuid"}},
+                ],
+            }},
+            {"object.entity": {
+                "name": "Tag",
+                "children": [
+                    {"source.rdb": {"@table": "tags"}},
+                    {"field.long": {"name": "id"}},
+                    {"field.string": {"name": "name", "@required": True, "@maxLength": 80}},
+                    {"identity.primary": {"name": "id", "@fields": "id", "@generation": "increment"}},
+                ],
+            }},
+            {"object.entity": {
+                "name": "GadgetTag",
+                "children": [
+                    {"source.rdb": {"@table": "gadget_tags"}},
+                    {"field.uuid": {"name": "gadgetId", "@required": True}},
+                    {"field.long": {"name": "tagId", "@required": True}},
+                    {"identity.primary": {"name": "id", "@fields": ["gadgetId", "tagId"]}},
+                    {"identity.reference": {"name": "fkGadget", "@fields": "gadgetId", "@references": "Gadget"}},
+                    {"identity.reference": {"name": "fkTag", "@fields": "tagId", "@references": "Tag"}},
+                ],
+            }},
+            # string PK whose field is NOT named "id" — the URL param name stays
+            # <entity>_id (cross-port grammar) but the TYPE follows the field.
+            {"object.entity": {
+                "name": "Coupon",
+                "children": [
+                    {"source.rdb": {"@table": "coupons"}},
+                    {"field.string": {"name": "code", "@required": True, "@maxLength": 40}},
+                    {"field.int": {"name": "percentOff"}},
+                    {"identity.primary": {"name": "code", "@fields": "code", "@generation": "assigned"}},
+                ],
+            }},
+            # long increment PK — the regression guard: must still be ``int``.
+            {"object.entity": {
+                "name": "Widget",
+                "children": [
+                    {"source.rdb": {"@table": "widgets"}},
+                    {"field.long": {"name": "id"}},
+                    {"field.string": {"name": "name", "@maxLength": 80}},
+                    {"identity.primary": {"name": "id", "@fields": "id", "@generation": "increment"}},
+                ],
+            }},
+        ],
+    }
+}
+
+
+def test_uuid_pk_types_every_path_param_and_protocol_site_as_uuid() -> None:
+    entities = _load_entities(_PK_TYPES_META)
+    index = build_object_index(list(entities.values()))
+    out = render_router(entities["Gadget"], index)
+    assert out is not None
+    # The module imports the stdlib uuid the annotation needs.
+    assert "import uuid" in out
+    # get / update / delete handlers + the M:N traversal route: 4 sites.
+    assert out.count("    gadget_id: uuid.UUID,") == 4
+    # Repository Protocol: find_by_id / update / delete / find_related_tags.
+    assert "def find_by_id(self, id: uuid.UUID) -> Any | None: ..." in out
+    assert "def update(self, id: uuid.UUID, dto: Any) -> Any | None: ..." in out
+    assert "def delete(self, id: uuid.UUID) -> bool: ..." in out
+    assert "def find_related_tags(self, id: uuid.UUID) -> list[Any]: ..." in out
+    # No int-typed pk leaks anywhere.
+    assert "gadget_id: int" not in out
+    assert "id: int)" not in out
+
+
+def test_string_pk_types_path_param_as_str() -> None:
+    entities = _load_entities(_PK_TYPES_META)
+    out = render_router(entities["Coupon"])
+    assert out is not None
+    # get / update / delete handlers: 3 sites (no M:N on Coupon).
+    assert out.count("    coupon_id: str,") == 3
+    assert "def find_by_id(self, id: str) -> Any | None: ..." in out
+    assert "coupon_id: int" not in out
+
+
+def test_long_increment_pk_still_types_int() -> None:
+    entities = _load_entities(_PK_TYPES_META)
+    out = render_router(entities["Widget"])
+    assert out is not None
+    assert out.count("    widget_id: int,") == 3
+    assert "def find_by_id(self, id: int) -> Any | None: ..." in out
+    assert "import uuid" not in out
+
+
+def test_no_primary_identity_defaults_to_int() -> None:
+    # The in-test Author has no identity.primary child — the PK type falls back
+    # to int (the field.long default), matching the TS getPkInfo default.
+    out = _require(_author())
+    assert out.count("    author_id: int,") == 3
+    assert "def find_by_id(self, id: int) -> Any | None: ..." in out
+
+
+_TPH_UUID_META = {
+    "metadata.root": {
+        "package": "acme::auth",
+        "children": [
+            {"object.entity": {
+                "name": "Auth",
+                "@discriminator": "type",
+                "children": [
+                    {"source.rdb": {"@table": "auths"}},
+                    {"field.uuid": {"name": "id", "@filterable": True, "@sortable": True}},
+                    {"field.enum": {"name": "type", "@values": ["Bridge", "Copay"], "@filterable": True}},
+                    {"field.string": {"name": "reference", "@required": True, "@maxLength": 80}},
+                    {"identity.primary": {"name": "id", "@fields": "id", "@generation": "uuid"}},
+                ],
+            }},
+            {"object.entity": {
+                "name": "BridgeAuth",
+                "extends": "Auth",
+                "@discriminatorValue": "Bridge",
+                "children": [
+                    {"field.int": {"name": "quantity", "@required": True}},
+                ],
+            }},
+            {"object.entity": {
+                "name": "CopayAuth",
+                "extends": "Auth",
+                "@discriminatorValue": "Copay",
+                "children": [
+                    {"field.string": {"name": "payer", "@maxLength": 80}},
+                ],
+            }},
+        ],
+    }
+}
+
+
+def test_tph_uuid_pk_types_base_and_subtype_routes_as_uuid() -> None:
+    entities = _load_entities(_TPH_UUID_META)
+    index = build_object_index(list(entities.values()))
+    out = render_router(entities["Auth"], index)
+    assert out is not None
+    assert "import uuid" in out
+    # Per-subtype get/update/delete (3 sites × 2 subtypes) + polymorphic base get.
+    assert out.count("    auth_id: uuid.UUID,") == 7
+    # Subtype-keyed repository Protocol.
+    assert "def find_by_id(self, subtype: str | None, id: uuid.UUID) -> Any | None: ..." in out
+    assert "def update(self, subtype: str, id: uuid.UUID, dto: Any) -> Any | None: ..." in out
+    assert "def delete(self, subtype: str, id: uuid.UUID) -> bool: ..." in out
+    assert "auth_id: int" not in out

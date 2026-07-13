@@ -14,6 +14,7 @@ import com.metaobjects.field.ObjectField
 import com.metaobjects.field.StringField
 import com.metaobjects.field.TimeField
 import com.metaobjects.field.TimestampField
+import com.metaobjects.field.UuidField
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.identity.MetaIdentity
@@ -135,10 +136,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         val routeBase = "/api/$routePath"
 
         // Primary key: single-field PKs only for v1. Composite PKs are uncommon for HTTP
-        // CRUD (you'd need a URL grammar for composite ids — out of scope). When the
-        // entity lacks a single-field PK, skip get/update/delete (list+create still work)
-        // — but for v1 we just default to "id" : Long for the route signatures since the
-        // canonical Author/BaseEntity convention is a single Long PK.
+        // CRUD (you'd need a URL grammar for composite ids — out of scope; the C# port
+        // degrades to collection-GET-only there). The by-id route signatures bind the PK
+        // FIELD's OWN Kotlin type (uuid → UUID, long → Long, int → Int, string → String)
+        // — a hard-coded Long against a uuid-PK entity's Exposed Column<UUID> does not
+        // compile. Fallback when no single-field PK resolves: "id" : Long (the
+        // historical default).
         // ADR-0039: identities are inheritable — an entity may inherit its primary
         // identity from a BaseEntity via extends. RESOLVE via getIdentities(true);
         // entity.children (own-only) would miss it.
@@ -146,6 +149,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             .filterIsInstance<MetaIdentity>()
             .firstOrNull { it.isPrimary }
         val pkFieldName = primary?.fields?.firstOrNull() ?: DEFAULT_PK_FIELD
+        val pkParamType = primaryKeyParamType(entity, pkFieldName)
 
         // Sort allowlist: every scalar field is sortable. Skip ObjectField (no SQL column
         // surface on the Exposed Table; @storage controls a separate column shape) and the
@@ -206,6 +210,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // is present so entities without one stay byte-identical.
             if (scalarFields.any { it.elementType == "Instant" }) {
                 append("import java.time.Instant\n")
+            }
+            // A uuid PK / uuid scalar column surfaces java.util.UUID in the by-id route
+            // signatures and the filter-dispatch casts; import it only when present so
+            // uuid-free entities stay byte-identical.
+            if (pkParamType == "UUID" || scalarFields.any { it.elementType == "UUID" }) {
+                append("import java.util.UUID\n")
             }
             // FR-009 (#179): a filterable enum column is compared as its stored string via
             // `col.castTo<String>(TextColumnType())`; import both only when such a column exists
@@ -315,7 +325,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
 
             // GET /{id}
             append("    @GetMapping(\"/{id}\")\n")
-            append("    fun get(@PathVariable id: Long): ResponseEntity<Any> = transaction {\n")
+            append("    fun get(@PathVariable id: $pkParamType): ResponseEntity<Any> = transaction {\n")
             append("        val row = ${tableObjectName}.selectAll().where { ${tableObjectName}.${pkFieldName} eq id }.singleOrNull()\n")
             append("            ?: return@transaction ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
             append("        ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
@@ -344,7 +354,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // in Spring MVC — only one composed @RequestMapping per method is honored, so the
             // other verb 405s. (Surfaced by the SP-F generated-controller HTTP lane.)
             append("    @RequestMapping(value = [\"/{id}\"], method = [RequestMethod.PATCH, RequestMethod.PUT])\n")
-            append("    fun update(@PathVariable id: Long, @Valid @RequestBody dto: ${shortName}): ResponseEntity<Any> = transaction {\n")
+            append("    fun update(@PathVariable id: $pkParamType, @Valid @RequestBody dto: ${shortName}): ResponseEntity<Any> = transaction {\n")
             append("        val updated = ${tableObjectName}.update({ ${tableObjectName}.${pkFieldName} eq id }) {\n")
             for (field in entity.metaFields) {
                 if (field is ObjectField || field is MapField) continue
@@ -367,7 +377,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // "Unresolved reference: eq" compile error. (Surfaced by the SP-F
             // generated-controller HTTP lane; mirrors the hand-rolled reference server.)
             append("    @DeleteMapping(\"/{id}\")\n")
-            append("    fun delete(@PathVariable id: Long): ResponseEntity<Any> = transaction {\n")
+            append("    fun delete(@PathVariable id: $pkParamType): ResponseEntity<Any> = transaction {\n")
             append("        val deleted = ${tableObjectName}.deleteWhere { with(SqlExpressionBuilder) { ${tableObjectName}.${pkFieldName} eq id } }\n")
             append("        if (deleted == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
             append("        else ResponseEntity.noContent().build<Any>()\n")
@@ -383,7 +393,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // KotlinRelationsGenerator (hetero / directed self-join / symmetric union-on-read,
             // junction FK fields derived via the cross-port M2MFields SSOT).
             for (nav in m2mNavs) {
-                emitM2mEndpoint(this, pkg, shortName, nav)
+                emitM2mEndpoint(this, pkg, shortName, nav, pkParamType)
             }
 
             append("}\n")
@@ -413,6 +423,14 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         val (pkg, shortName) = PackageMapping.splitFqn(base.name)
         val table = shortName + "Table"
         val routeBase = "/api/" + pluralLowercase(shortName)
+        // The single TPH table is keyed by the BASE's primary identity — every polymorphic
+        // + per-subtype by-id route binds the PK field's OWN Kotlin type (uuid → UUID, …),
+        // matching the Exposed Column<T> it is compared against (a hard-coded Long does
+        // not compile against a uuid PK). Same fallback policy as the vanilla emit.
+        val pkFieldName = base.getIdentities(true)
+            .filterIsInstance<MetaIdentity>()
+            .firstOrNull { it.isPrimary }?.fields?.firstOrNull() ?: DEFAULT_PK_FIELD
+        val pkParamType = primaryKeyParamType(base, pkFieldName)
         val discField = base.metaFields.first { it.name == plan.discriminatorField }
         val discEnum = KotlinTypeMapper.enumTypeName(discField, base)?.simpleName
             ?: error("TPH base ${base.name}: discriminator field '${plan.discriminatorField}' is not an enum")
@@ -447,7 +465,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             .map { ScalarFieldSpec(it.name, it.subType, columnElementType(it)) }
         // Non-discriminator, non-PK columns the create/update handlers write from the body.
         val writableFields = scalarFields.map { it.name }
-            .filter { it != plan.discriminatorField && it != "id" }
+            .filter { it != plan.discriminatorField && it != pkFieldName }
 
         val src = buildString {
             if (pkg.isNotEmpty()) append("package $pkg\n\n")
@@ -481,6 +499,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // byte-identical.
             if (filterSpecs.any { it.elementType == "Instant" }) {
                 append("import java.time.Instant\n")
+            }
+            // A uuid PK / uuid union column surfaces java.util.UUID in the by-id route
+            // signatures and the filter-dispatch casts — same conditional import as the
+            // vanilla controller, so uuid-free hierarchies stay byte-identical.
+            if (pkParamType == "UUID" || filterSpecs.any { it.elementType == "UUID" }) {
+                append("import java.util.UUID\n")
             }
             // FR-009 (#179): a non-discriminator filterable enum in the union is compared as its
             // stored string via `col.castTo<String>(TextColumnType())` — same conditional imports
@@ -553,8 +577,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
 
             // polymorphic get
             append("    @GetMapping(\"/{id}\")\n")
-            append("    fun get(@PathVariable id: Long): ResponseEntity<Any> = transaction {\n")
-            append("        val row = $table.selectAll().where { $table.id eq id }.singleOrNull()\n")
+            append("    fun get(@PathVariable id: $pkParamType): ResponseEntity<Any> = transaction {\n")
+            append("        val row = $table.selectAll().where { $table.$pkFieldName eq id }.singleOrNull()\n")
             append("            ?: return@transaction ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
             append("        ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
             append("    }\n\n")
@@ -593,8 +617,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
 
                 // per-subtype get
                 append("    @GetMapping(\"/$seg/{id}\")\n")
-                append("    fun get$sfx(@PathVariable id: Long): ResponseEntity<Any> = transaction {\n")
-                append("        val row = $table.selectAll().where { ($table.id eq id) and ($table.${plan.discriminatorField} eq $disc) }.singleOrNull()\n")
+                append("    fun get$sfx(@PathVariable id: $pkParamType): ResponseEntity<Any> = transaction {\n")
+                append("        val row = $table.selectAll().where { ($table.$pkFieldName eq id) and ($table.${plan.discriminatorField} eq $disc) }.singleOrNull()\n")
                 append("            ?: return@transaction ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
                 append("        ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
                 append("    }\n\n")
@@ -613,30 +637,30 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                     if (colNonNull) append("            it[$f] = dto.$f!!\n")
                     else append("            it[$f] = dto.$f\n")
                 }
-                append("        }[$table.id]\n")
-                append("        val saved = $table.selectAll().where { $table.id eq newId }.single()\n")
+                append("        }[$table.$pkFieldName]\n")
+                append("        val saved = $table.selectAll().where { $table.$pkFieldName eq newId }.single()\n")
                 append("        ResponseEntity.status(HttpStatus.CREATED).body(rowTo${shortName}(saved))\n")
                 append("    }\n\n")
 
                 // per-subtype update (partial patch; discriminator immutable; 404 cross-subtype)
                 append("    @RequestMapping(value = [\"/$seg/{id}\"], method = [RequestMethod.PATCH, RequestMethod.PUT])\n")
-                append("    fun update$sfx(@PathVariable id: Long, @RequestBody dto: $shortName): ResponseEntity<Any> = transaction {\n")
-                append("        val updated = $table.update({ ($table.id eq id) and ($table.${plan.discriminatorField} eq $disc) }) {\n")
+                append("    fun update$sfx(@PathVariable id: $pkParamType, @RequestBody dto: $shortName): ResponseEntity<Any> = transaction {\n")
+                append("        val updated = $table.update({ ($table.$pkFieldName eq id) and ($table.${plan.discriminatorField} eq $disc) }) {\n")
                 for (f in writableFields) {
                     append("            if (dto.$f != null) it[$f] = dto.$f\n")
                 }
                 append("        }\n")
                 append("        if (updated == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
                 append("        else {\n")
-                append("            val row = $table.selectAll().where { ($table.id eq id) and ($table.${plan.discriminatorField} eq $disc) }.single()\n")
+                append("            val row = $table.selectAll().where { ($table.$pkFieldName eq id) and ($table.${plan.discriminatorField} eq $disc) }.single()\n")
                 append("            ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
                 append("        }\n")
                 append("    }\n\n")
 
                 // per-subtype delete (404 cross-subtype)
                 append("    @DeleteMapping(\"/$seg/{id}\")\n")
-                append("    fun delete$sfx(@PathVariable id: Long): ResponseEntity<Any> = transaction {\n")
-                append("        val deleted = $table.deleteWhere { with(SqlExpressionBuilder) { ($table.id eq id) and ($table.${plan.discriminatorField} eq $disc) } }\n")
+                append("    fun delete$sfx(@PathVariable id: $pkParamType): ResponseEntity<Any> = transaction {\n")
+                append("        val deleted = $table.deleteWhere { with(SqlExpressionBuilder) { ($table.$pkFieldName eq id) and ($table.${plan.discriminatorField} eq $disc) } }\n")
                 append("        if (deleted == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
                 append("        else ResponseEntity.noContent().build<Any>()\n")
                 append("    }\n\n")
@@ -764,6 +788,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                     out.append("coerce${shortName}Timestamp(op, raw)\n")
                 TimeField.SUBTYPE_TIME ->
                     out.append("coerce${shortName}Time(op, raw)\n")
+                // uuid columns are Column<UUID> — the dispatch arm casts `p.value as UUID`,
+                // so the coerced value MUST be a java.util.UUID (allowlist band:
+                // eq/ne/in/isNull). A string passthrough would ClassCastException at runtime.
+                UuidField.SUBTYPE_UUID ->
+                    out.append("coerce${shortName}Uuid(op, raw)\n")
                 else ->
                     // Unrecognized subtype — fall through to a string pass-through. This branch
                     // is unreachable for fields that are actually @filterable (those subtypes
@@ -784,6 +813,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         emitTypedCoercer(out, shortName, "Double", "java.lang.Double.parseDouble")
         emitTypedCoercer(out, shortName, "Date", "LocalDate.parse")
         emitTypedCoercer(out, shortName, "Time", "LocalTime.parse")
+        // uuid coercer — emitted only when a uuid column exists (its `UUID.fromString`
+        // needs the conditional java.util.UUID import) so uuid-free entities stay
+        // byte-identical to pre-uuid output.
+        if (scalarFields.any { it.subType == UuidField.SUBTYPE_UUID }) {
+            emitTypedCoercer(out, shortName, "Uuid", "UUID.fromString")
+        }
         // Timestamp coercer. ADR-0036 Wave 2: a default `field.timestamp` column is an
         // absolute `java.time.Instant` (its WHERE-arm casts `p.value as Instant`), so the
         // coerced value MUST be an Instant — coercing into LocalDateTime would ClassCastException
@@ -970,6 +1005,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         sourcePkg: String,
         sourceShort: String,
         nav: KotlinM2mSupport.M2mNav,
+        pkParamType: String,
     ) {
         val sourceTable = sourceShort + "Table"
         val targetType = if (nav.targetPackage == sourcePkg || nav.targetPackage.isEmpty()) {
@@ -981,7 +1017,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         out.append("\n")
         out.append("    /** M:N traversal: the ${nav.targetShortName} rows related to this $sourceShort through ${nav.junctionShortName}$symMarker. */\n")
         out.append("    @GetMapping(\"/{id}/${nav.relationName}\")\n")
-        out.append("    fun ${nav.relationName}(@PathVariable id: Long): ResponseEntity<List<$targetType>> = transaction {\n")
+        out.append("    fun ${nav.relationName}(@PathVariable id: $pkParamType): ResponseEntity<List<$targetType>> = transaction {\n")
         out.append("        val rows = $sourceTable.${nav.relationName}Query(id).map { row ->\n")
         out.append("            $targetType(\n")
         for (fname in nav.targetScalarFields) {
@@ -1008,6 +1044,22 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
      * [EnumField] it is `String`, since the column is filtered by its stored string
      * (a CAST-to-text — see [emitPerFieldDispatchArm]).
      */
+    /**
+     * The Kotlin simple-name type of [entity]'s by-id route parameter — the PK FIELD's
+     * own type via [KotlinTypeMapper.kotlinTypeName] (uuid → `UUID`, long → `Long`,
+     * int → `Int`, string → `String`), so `@PathVariable id` matches the Exposed
+     * `Column<T>` it is compared against. Falls back to `Long` (the historical default)
+     * when the field can't be resolved or mapped — the same lossy-tolerant policy as
+     * [KotlinRelationsGenerator.primaryKeyKotlinType].
+     */
+    protected fun primaryKeyParamType(entity: MetaObject, pkFieldName: String): String {
+        // ADR-0039: resolving field lookup (the PK field may be inherited via extends).
+        val pkField = entity.metaFields.firstOrNull { it.name == pkFieldName } ?: return "Long"
+        return runCatching { KotlinTypeMapper.kotlinTypeName(pkField) }
+            .map { tn -> (tn as? com.squareup.kotlinpoet.ClassName)?.simpleName ?: tn.toString() }
+            .getOrDefault("Long")
+    }
+
     private fun columnElementType(field: com.metaobjects.field.MetaField<*>): String {
         // FR-009 (#179): an enum column is filtered by its stored string (compared against a
         // `CAST(col AS text)` in the WHERE arm — see emitPerFieldDispatchArm), so the predicate

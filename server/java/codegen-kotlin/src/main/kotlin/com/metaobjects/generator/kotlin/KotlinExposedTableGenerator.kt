@@ -1076,7 +1076,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val refSuffix = referentialActionSuffix(rel.onDeleteRaw, rel.onUpdateRaw)
         return FkColumnSpec(
             propertyName = propertyName,
-            columnExpr = "long(\"$colName\").references($targetTable.${primaryKeyProperty(target)}$refSuffix)",
+            columnExpr = "${fkColumnBuilder(target, colName)}.references($targetTable.${primaryKeyProperty(target)}$refSuffix)",
             refSuffix = refSuffix,
             declared = true,
             targetTable = targetTable,
@@ -1105,7 +1105,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val refSuffix = referentialActionSuffix(rel.onDeleteRaw, rel.onUpdateRaw)
         return FkColumnSpec(
             propertyName = propertyName,
-            columnExpr = "long(\"$colName\").references($ownerTable.${primaryKeyProperty(owner)}$refSuffix)",
+            columnExpr = "${fkColumnBuilder(owner, colName)}.references($ownerTable.${primaryKeyProperty(owner)}$refSuffix)",
             refSuffix = refSuffix,
             declared = false,
             targetTable = ownerTable,
@@ -1229,6 +1229,28 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
     private fun primaryKeyProperty(target: MetaObject): String {
         val pkField = target.getIdentities(true).firstOrNull { it.isPrimary }?.fields?.firstOrNull()
         return KotlinNaming.safeColumnProperty(pkField ?: "id")
+    }
+
+    /**
+     * The Exposed column builder for a FK column pointing at [target]'s primary key.
+     * The FK column's SQL type MUST match the referenced PK's — Exposed's typed
+     * `Column<S : T>.references(Column<T>)` rejects a mismatch at compile time, so a
+     * hard-coded `long("author_id")` referencing a uuid PK broke the build of ANY
+     * relationship aimed at a uuid-keyed entity. Derived from the target's single-field
+     * `identity.primary` via [KotlinTypeMapper.exposedColumnSpec] (uuid → `uuid("col")`,
+     * long → `long("col")`, int → `integer("col")`, string → text/varchar), with the FK's
+     * own physical column name. Falls back to `long("col")` when the PK field can't be
+     * resolved — the historical default (same lossy-tolerant policy as
+     * [primaryKeyProperty]).
+     */
+    private fun fkColumnBuilder(target: MetaObject, colName: String): String {
+        // ADR-0039: resolving lookups — the identity and its field may be inherited.
+        val pkFieldName = target.getIdentities(true).firstOrNull { it.isPrimary }
+            ?.fields?.firstOrNull() ?: return "long(\"$colName\")"
+        val pkField = target.metaFields.firstOrNull { it.name == pkFieldName }
+            ?: return "long(\"$colName\")"
+        return runCatching { KotlinTypeMapper.exposedColumnSpec(pkField, colName) }
+            .getOrDefault("long(\"$colName\")")
     }
 
     /** Read the `@column` attr on a relationship (inheritance allowed); null when absent. */
