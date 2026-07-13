@@ -265,7 +265,17 @@ function diffTableColumns(
         from: ac.nullable, to: ec.nullable, status: ALLOWED,
       });
     }
-    if (!columnDefaultsEqual(ec.default, ac.default)) {
+    // An `identity: "uuid"` PK's physical DEFAULT is synthesized purely at DDL-emit
+    // time (sqlite/d1: `(lower(hex(randomblob(16))))`; postgres: `gen_random_uuid()`)
+    // and is deliberately never recorded as a ColumnDefault on the expected side —
+    // uuid generation is modeled as `identity`, not `default`. Introspection, however,
+    // reads that DEFAULT back off the live table as a real `expr` default, so comparing
+    // the two always disagrees — for every uuid-PK table, on every run, with zero
+    // metadata changes. On SQLite/D1 the false positive is destructive rather than
+    // merely noisy: there is no ALTER COLUMN, so the recreate-and-copy path rebuilds
+    // the WHOLE table. Identity-driven values are not ordinary defaults — don't diff
+    // them (`increment` gets this implicitly: an AUTOINCREMENT column has no DEFAULT).
+    if (ec.identity !== "uuid" && !columnDefaultsEqual(ec.default, ac.default)) {
       const change: Change = {
         kind: "change-column-default", table, ...sx, column: name,
         status: ALLOWED,

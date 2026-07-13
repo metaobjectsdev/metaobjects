@@ -295,7 +295,7 @@ function renderColumnInline(c: ColumnDescriptor, isSinglePk = false): string {
   if (c.identity === "increment" && isSinglePk) s += " AUTOINCREMENT";
   s += c.nullable ? "" : " NOT NULL";
   if (c.default !== undefined) {
-    s += ` DEFAULT ${renderDefault(c.default)}`;
+    s += ` DEFAULT ${renderDefault(c.default, c.sqlType)}`;
   } else if (c.identity === "uuid") {
     // SQLite has no native uuid(); approximate via lower(hex(randomblob(16))).
     s += " DEFAULT (lower(hex(randomblob(16))))";
@@ -329,9 +329,38 @@ function sqliteType(t: SqlType, identity: ColumnDescriptor["identity"]): string 
   }
 }
 
-function renderDefault(d: ColumnDefault): string {
+/** A literal safely emittable unquoted on a numeric-affinity column. */
+const NUMERIC_LITERAL = /^[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?$/;
+
+/**
+ * Render a literal default according to the column's declared SQL type.
+ *
+ * Quoting must NOT be unconditional. SQLite applies the column's affinity when
+ * storing a default: a quoted literal that does not *look* numeric (e.g. `'false'`)
+ * cannot be coerced under NUMERIC/INTEGER affinity, so it is stored verbatim as
+ * TEXT — a mistyped value that a later `col = 0` comparison silently misses.
+ * (A numeric-looking `'0'` *is* coerced, which is exactly why this stayed hidden.)
+ *
+ * SQLite has no boolean literal, so the canonical "true"/"false" become 1/0.
+ * Non-numeric junk on a numeric column still falls back to quoting rather than
+ * emitting bare invalid SQL — the loader should reject it long before here.
+ */
+function renderDefault(d: ColumnDefault, t: SqlType): string {
   if (d.kind === "expr") return d.value;
-  return `'${d.value.replace(/'/g, "''")}'`;
+  const quoted = `'${d.value.replace(/'/g, "''")}'`;
+  switch (t.kind) {
+    case "boolean":
+      if (d.value === "true") return "1";
+      if (d.value === "false") return "0";
+      return NUMERIC_LITERAL.test(d.value) ? d.value : quoted;
+    case "integer":
+    case "real":
+    case "real4":
+    case "numeric":
+      return NUMERIC_LITERAL.test(d.value) ? d.value : quoted;
+    default:
+      return quoted;
+  }
 }
 
 function renderCreateIndex(table: string, ix: IndexDescriptor): string {

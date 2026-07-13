@@ -21,11 +21,16 @@ describe("renderSqlite — create-table", () => {
     ];
     const changes: Change[] = [{ kind: "create-table", table: table("users", cols, ["id"]), status: ALLOWED }];
     const { up } = emit(changes, { dialect: "sqlite" });
+    // NOTE: was `DEFAULT '1'`. A quoted literal on a BOOLEAN column (NUMERIC affinity)
+    // only worked by accident — SQLite coerces the numeric-looking string '1' to 1. The
+    // same path emitted `DEFAULT 'false'` for a boolean false, which is NOT coercible and
+    // got stored as TEXT, silently breaking `col = 0`. Defaults are now rendered per the
+    // column's SQL type; see emit-sqlite-typed-defaults.test.ts.
     expect(norm(up)).toBe(norm(`
       CREATE TABLE "users" (
         "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
         "email" TEXT NOT NULL,
-        "is_active" BOOLEAN NOT NULL DEFAULT '1'
+        "is_active" BOOLEAN NOT NULL DEFAULT 1
       );
     `));
   });

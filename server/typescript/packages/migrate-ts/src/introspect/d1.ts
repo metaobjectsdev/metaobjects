@@ -48,8 +48,26 @@ export async function introspectD1(opts: IntrospectD1Options): Promise<SchemaSna
   }
   const meta: SnapshotMeta = { sqliteVersion };
 
+  // Beyond SQLite's own `sqlite_%` and our rename-shadow `__new_%` tables, D1 carries
+  // two infrastructure tables that were never part of the declared schema and must
+  // never reach the diff:
+  //
+  //   `_cf_%`         Cloudflare/miniflare reserved bookkeeping (e.g. `_cf_METADATA`).
+  //                   It appears the moment ANY write touches a local D1, and D1's
+  //                   authorizer then denies even a bare `pragma_table_info` against it
+  //                   (SQLITE_AUTH). Since we call readTableInfo once per enumerated
+  //                   table, leaving it in the list aborts introspection outright — which
+  //                   breaks every second-and-later `meta migrate --dialect d1` (the first
+  //                   migration is the very write that creates it, so it is invisible until
+  //                   the first incremental run).
+  //
+  //   `d1_migrations` wrangler's own migration-tracking table. Queryable, so it doesn't
+  //                   crash — it just reads as an undeclared "extra" table, and the diff
+  //                   then proposes DROP TABLE on wrangler's own bookkeeping.
+  //
+  // Filter in the query, not after: `_cf_METADATA` must never even be fetched.
   const tableRows = await exec(
-    "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__new_%' ORDER BY name",
+    "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__new_%' AND name NOT LIKE '_cf_%' AND name != 'd1_migrations' ORDER BY name",
   );
 
   const tables: TableDescriptor[] = [];

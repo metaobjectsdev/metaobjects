@@ -3,7 +3,7 @@ import { sql, eq, and, count } from "drizzle-orm";
 import qs from "qs";
 import { parseFilterParams, FilterParseError } from "./filter-parser.js";
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
-import { isTruthyFlag, contractErrorCode } from "./util.js";
+import { isTruthyFlag, contractErrorCode, coerceIdForColumn, rawIdLiteral } from "./util.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user-supplied views
 type AnyView = any;
@@ -167,20 +167,21 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
   fastify.get(`${path}/:id`, async (req, reply) => {
     const { id } = req.params as { id: string };
     if (useRawSql) {
-      const numericId = Number(id);
-      if (!Number.isFinite(numericId)) {
-        return reply.code(400).send({ error: "invalid_id" });
-      }
       // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
-      const rows = await db.all(sql.raw(`SELECT * FROM "${viewName}" WHERE "${idCol}" = ${numericId} LIMIT 1`)) as any[];
+      const rows = await db.all(sql.raw(`SELECT * FROM "${viewName}" WHERE "${idCol}" = ${rawIdLiteral(id)} LIMIT 1`)) as any[];
       const row = rows[0] ? camelizeRow(rows[0]) : undefined;
       return row ?? reply.code(404).send({ error: "not_found" });
     }
     // biome-ignore lint/suspicious/noExplicitAny: Drizzle table/view column ref
     const colRef = (view as any)[idCol];
+    // Compare against the PK's real type — a uuid/text key must NOT go through Number().
+    const idValue = coerceIdForColumn(colRef, id);
+    if (idValue === undefined) {
+      return reply.code(400).send({ error: "invalid_id" });
+    }
     // Await + first row rather than `.get()` (libsql/better-sqlite3-only).
     const rows = await db.select().from(view).where(
-      colRef !== undefined ? eq(colRef, Number(id)) : undefined
+      colRef !== undefined ? eq(colRef, idValue) : undefined
     ).limit(1);
     const row = (rows as unknown[])[0];
     return row ?? reply.code(404).send({ error: "not_found" });

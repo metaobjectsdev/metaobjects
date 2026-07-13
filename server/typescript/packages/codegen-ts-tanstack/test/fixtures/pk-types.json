@@ -1,0 +1,43 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Member",
+          "children": [
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "email", "children": [{ "view.text": {} }] } },
+            { "identity.primary": { "name": "id", "@fields": ["id"], "@generation": "uuid" } },
+            {
+              "layout.dataGrid": {
+                "name": "default",
+                "@pageSize": 25,
+                "@filterable": true,
+                "@columns": ["email"]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Subscriber",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "email", "children": [{ "view.text": {} }] } },
+            { "identity.primary": { "name": "id", "@fields": ["id"], "@generation": "increment" } },
+            {
+              "layout.dataGrid": {
+                "name": "default",
+                "@pageSize": 25,
+                "@filterable": true,
+                "@columns": ["email"]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -10,7 +10,7 @@ import type {
   FilterAllowlist,
   SortAllowlist,
 } from "../drizzle-fastify/filter-allowlist.js";
-import { isTruthyFlag } from "../drizzle-fastify/util.js";
+import { isTruthyFlag, coerceIdForColumn, rawIdLiteral } from "../drizzle-fastify/util.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user-supplied views
 type AnyView = any;
@@ -155,21 +155,22 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
   app.get(`${path}/:id`, async (c) => {
     const id = c.req.param("id") ?? "";
     if (useRawSql) {
-      const numericId = Number(id);
-      if (!Number.isFinite(numericId)) {
-        return c.json({ error: "invalid_id" }, 400);
-      }
       // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
-      const rows = (await db.all(sql.raw(`SELECT * FROM "${viewName}" WHERE "${idCol}" = ${numericId} LIMIT 1`))) as any[];
+      const rows = (await db.all(sql.raw(`SELECT * FROM "${viewName}" WHERE "${idCol}" = ${rawIdLiteral(id)} LIMIT 1`))) as any[];
       const row = rows[0] ? camelizeRow(rows[0]) : undefined;
       return row ? c.json(row) : c.json({ error: "not_found" }, 404);
     }
     // biome-ignore lint/suspicious/noExplicitAny: Drizzle view column ref
     const colRef = (view as any)[idCol];
+    // Compare against the PK's real type — a uuid/text key must NOT go through Number().
+    const idValue = coerceIdForColumn(colRef, id);
+    if (idValue === undefined) {
+      return c.json({ error: "invalid_id" }, 400);
+    }
     const row = await db
       .select()
       .from(view)
-      .where(colRef !== undefined ? eq(colRef, Number(id)) : undefined)
+      .where(colRef !== undefined ? eq(colRef, idValue) : undefined)
       .get();
     return row ? c.json(row) : c.json({ error: "not_found" }, 404);
   });

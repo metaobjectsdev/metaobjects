@@ -8,6 +8,7 @@ import {
   entityModuleSpecifier,
   isTphDiscriminatorBase,
   tphPlan,
+  getPkInfo,
 } from "@metaobjectsdev/codegen-ts";
 
 /**
@@ -150,6 +151,9 @@ function capitalize(s: string): string {
 
 function renderReadOnlyHooksFile(entity: MetaObject, entityModule: string, ctx: RenderContext): string {
   const entityName = entity.name;
+  // The id parameter must follow the entity's DECLARED primary-key type — a uuid/string
+  // PK typed as `number` is simply wrong for the data (and a tsc error at every call site).
+  const pkType = getPkInfo(entity, ctx).tsType;
   const entityNamePlural = pluralize(entityName);
   const lcEntity = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const keysVar = `${lcEntity}Keys`;
@@ -176,13 +180,13 @@ export const ${keysVar} = {
   lists:   () => [...${keysVar}.all(), "list"] as const,
   list:    (filter?: ${entityName}Filter) => [...${keysVar}.lists(), filter ?? {}] as const,
   details: () => [...${keysVar}.all(), "detail"] as const,
-  detail:  (id: number) => [...${keysVar}.details(), id] as const,${relationKeyLine}
+  detail:  (id: ${pkType}) => [...${keysVar}.details(), id] as const,${relationKeyLine}
 };
 `;
 
   const queries: Code = code`
 export function use${entityName}(
-  id: number,
+  id: ${pkType},
   opts?: Omit<${useQueryOptionsSym}<${entityName}Row>, "queryKey" | "queryFn">,
 ): ${useQueryResultSym}<${entityName}Row> {
   const fetcher = ${useEntityFetcherSym}();
@@ -222,6 +226,9 @@ export function use${entityNamePlural}(
 
 function renderFullHooksFile(entity: MetaObject, entityModule: string, ctx: RenderContext): string {
   const entityName = entity.name;
+  // The id parameter must follow the entity's DECLARED primary-key type — a uuid/string
+  // PK typed as `number` is simply wrong for the data (and a tsc error at every call site).
+  const pkType = getPkInfo(entity, ctx).tsType;
   const entityNamePlural = pluralize(entityName);
   const lcEntity = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const keysVar = `${lcEntity}Keys`;
@@ -254,13 +261,13 @@ export const ${keysVar} = {
   lists:   () => [...${keysVar}.all(), "list"] as const,
   list:    (filter?: ${entityName}Filter) => [...${keysVar}.lists(), filter ?? {}] as const,
   details: () => [...${keysVar}.all(), "detail"] as const,
-  detail:  (id: number) => [...${keysVar}.details(), id] as const,${relationKeyLine}
+  detail:  (id: ${pkType}) => [...${keysVar}.details(), id] as const,${relationKeyLine}
 };
 `;
 
   const queries: Code = code`
 export function use${entityName}(
-  id: number,
+  id: ${pkType},
   opts?: Omit<${useQueryOptionsSym}<${entityName}Row>, "queryKey" | "queryFn">,
 ): ${useQueryResultSym}<${entityName}Row> {
   const fetcher = ${useEntityFetcherSym}();
@@ -308,8 +315,8 @@ export function useCreate${entityName}(
 }
 
 export function useUpdate${entityName}(
-  opts?: Omit<${useMutationOptionsSym}<${entityName}Row, Error, { id: number; input: ${entityName}Update }>, "mutationFn">,
-): ${useMutationResultSym}<${entityName}Row, Error, { id: number; input: ${entityName}Update }> {
+  opts?: Omit<${useMutationOptionsSym}<${entityName}Row, Error, { id: ${pkType}; input: ${entityName}Update }>, "mutationFn">,
+): ${useMutationResultSym}<${entityName}Row, Error, { id: ${pkType}; input: ${entityName}Update }> {
   const fetcher = ${useEntityFetcherSym}();
   const qc = ${useQueryClientSym}();
   return ${useMutationSym}({
@@ -327,8 +334,8 @@ export function useUpdate${entityName}(
 }
 
 export function useDelete${entityName}(
-  opts?: Omit<${useMutationOptionsSym}<void, Error, number>, "mutationFn">,
-): ${useMutationResultSym}<void, Error, number> {
+  opts?: Omit<${useMutationOptionsSym}<void, Error, ${pkType}>, "mutationFn">,
+): ${useMutationResultSym}<void, Error, ${pkType}> {
   const fetcher = ${useEntityFetcherSym}();
   const qc = ${useQueryClientSym}();
   return ${useMutationSym}({
@@ -359,6 +366,9 @@ export function useDelete${entityName}(
 
 function renderTphHooksFile(base: MetaObject, ctx: RenderContext, baseModule: string): string {
   const baseName = base.name;
+  // The id parameter must follow the entity's DECLARED primary-key type — a uuid/string
+  // PK typed as `number` is simply wrong for the data (and a tsc error at every call site).
+  const pkType = getPkInfo(base, ctx).tsType;
   const lcBase = baseName.charAt(0).toLowerCase() + baseName.slice(1);
   const keysVar = `${lcBase}Keys`;
   // Single source of truth for discriminator field + subtypes + route segments.
@@ -399,20 +409,20 @@ export const ${keysVar} = {
   lists:         () => [...${keysVar}.all(), "list"] as const,
   list:          (filter?: ${baseName}Filter) => [...${keysVar}.lists(), filter ?? {}] as const,
   details:       () => [...${keysVar}.all(), "detail"] as const,
-  detail:        (id: number) => [...${keysVar}.details(), id] as const,
+  detail:        (id: ${pkType}) => [...${keysVar}.details(), id] as const,
   subtypeLists:  (sub: string) => [...${keysVar}.all(), sub, "list"] as const,
   // filter is loosely typed here (cache-key identity only); the per-subtype
   // hooks below type it precisely as <Sub>Filter.
   subtypeList:   (sub: string, filter?: unknown) => [...${keysVar}.subtypeLists(sub), filter ?? {}] as const,
   subtypeDetails:(sub: string) => [...${keysVar}.all(), sub, "detail"] as const,
-  subtypeDetail: (sub: string, id: number) => [...${keysVar}.subtypeDetails(sub), id] as const,
+  subtypeDetail: (sub: string, id: ${pkType}) => [...${keysVar}.subtypeDetails(sub), id] as const,
 };
 `;
 
   // Polymorphic reads — return the discriminated union.
   const polymorphic: Code = code`
 export function use${baseName}(
-  id: number,
+  id: ${pkType},
   opts?: Omit<${useQueryOptionsSym}<${baseName}>, "queryKey" | "queryFn">,
 ): ${useQueryResultSym}<${baseName}> {
   const fetcher = ${useEntityFetcherSym}();
@@ -459,7 +469,7 @@ export function use${pluralize(subName)}(
 }
 
 export function use${subName}(
-  id: number,
+  id: ${pkType},
   opts?: Omit<${useQueryOptionsSym}<${subName}>, "queryKey" | "queryFn">,
 ): ${useQueryResultSym}<${subName}> {
   const fetcher = ${useEntityFetcherSym}();
@@ -490,8 +500,8 @@ export function useCreate${subName}(
 }
 
 export function useUpdate${subName}(
-  opts?: Omit<${useMutationOptionsSym}<${subName}, Error, { id: number; input: ${updateInput} }>, "mutationFn">,
-): ${useMutationResultSym}<${subName}, Error, { id: number; input: ${updateInput} }> {
+  opts?: Omit<${useMutationOptionsSym}<${subName}, Error, { id: ${pkType}; input: ${updateInput} }>, "mutationFn">,
+): ${useMutationResultSym}<${subName}, Error, { id: ${pkType}; input: ${updateInput} }> {
   const fetcher = ${useEntityFetcherSym}();
   const qc = ${useQueryClientSym}();
   return ${useMutationSym}({
@@ -509,8 +519,8 @@ export function useUpdate${subName}(
 }
 
 export function useDelete${subName}(
-  opts?: Omit<${useMutationOptionsSym}<void, Error, number>, "mutationFn">,
-): ${useMutationResultSym}<void, Error, number> {
+  opts?: Omit<${useMutationOptionsSym}<void, Error, ${pkType}>, "mutationFn">,
+): ${useMutationResultSym}<void, Error, ${pkType}> {
   const fetcher = ${useEntityFetcherSym}();
   const qc = ${useQueryClientSym}();
   return ${useMutationSym}({

@@ -8,6 +8,40 @@ export function parseId(raw: string): number | string {
   return Number.isFinite(n) && raw.trim() !== "" ? n : raw;
 }
 
+/**
+ * Coerce a path-param id to what the PK column actually expects.
+ *
+ * A Drizzle column carries its own JS `dataType`, so a mount can read the PK's type
+ * straight off the view rather than assuming it is numeric. Forcing every id through
+ * `Number()` makes a uuid/text PK unfindable: `Number(<uuid>)` is NaN, and `eq(col, NaN)`
+ * matches no row (libsql throws outright) — so a row that is plainly present in the list
+ * response 404s on its own detail route.
+ *
+ * Returns `undefined` only when the id is malformed FOR A NUMERIC column — the one case
+ * in which a bad id is actually knowable — so the caller can answer 400. With no column
+ * to inspect (a raw-SQL view with no declared columns) it falls back to `parseId`.
+ */
+export function coerceIdForColumn(colRef: unknown, raw: string): number | string | undefined {
+  const dataType = (colRef as { dataType?: string } | undefined)?.dataType;
+  if (dataType === "number") {
+    const n = Number(raw);
+    return Number.isFinite(n) && raw.trim() !== "" ? n : undefined;
+  }
+  if (dataType !== undefined) return raw; // string / uuid / bigint / … — compare as given
+  return parseId(raw);
+}
+
+/**
+ * SQL literal for an id on a raw-SQL view (no declared columns to inspect). Numeric ids
+ * stay unquoted; anything else is emitted as a quote-escaped string literal, so a uuid
+ * key is matched rather than coerced to NaN. SQLite applies column affinity on comparison,
+ * so both forms land on the right column type.
+ */
+export function rawIdLiteral(raw: string): string {
+  const v = parseId(raw);
+  return typeof v === "number" ? String(v) : `'${raw.replace(/'/g, "''")}'`;
+}
+
 // Accepts "1" or boolean true (the qs serialization of withCount: 1 from buildFilterQs).
 export function isTruthyFlag(v: unknown): boolean {
   if (v === undefined || v === null) return false;

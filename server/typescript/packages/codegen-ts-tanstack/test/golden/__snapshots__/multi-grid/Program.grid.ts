@@ -28,10 +28,10 @@ export function useProgramDefaultGrid() {
     for (const f of columnFilters) {
       filterObj[f.id] = f.value as unknown;
     }
-    const sort =
-      sorting.length > 0
-        ? `${sorting[0].id}:${sorting[0].desc ? "desc" : "asc"}`
-        : undefined;
+    const sortEntry = sorting[0];
+    const sort = sortEntry
+      ? `${sortEntry.id}:${sortEntry.desc ? "desc" : "asc"}`
+      : undefined;
     return buildFilterQs({
       ...filterObj,
       ...(sort !== undefined ? { sort } : {}),
@@ -79,10 +79,10 @@ export function useProgramCompactGrid() {
     for (const f of columnFilters) {
       filterObj[f.id] = f.value as unknown;
     }
-    const sort =
-      sorting.length > 0
-        ? `${sorting[0].id}:${sorting[0].desc ? "desc" : "asc"}`
-        : undefined;
+    const sortEntry = sorting[0];
+    const sort = sortEntry
+      ? `${sortEntry.id}:${sortEntry.desc ? "desc" : "asc"}`
+      : undefined;
     return buildFilterQs({
       ...filterObj,
       ...(sort !== undefined ? { sort } : {}),
