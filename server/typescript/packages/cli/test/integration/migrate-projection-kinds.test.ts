@@ -66,6 +66,22 @@ const META = JSON.stringify({
           ],
         },
       },
+      // STANDALONE read-model: a plain-view projection that declares its own columns and
+      // anchors NOTHING (no extends, no origin.*). Its SQL is hand-authored — the
+      // documented custom-SQL-view exception. THE BUG: this threw "cannot derive the base
+      // entity" inside buildProjectionViews, which the CLI calls unconditionally, so ONE
+      // such view aborted `meta migrate` for the ENTIRE model — Program included. An
+      // adopter with a couple of hand-written monitoring views could not run migrate at all.
+      {
+        "object.projection": {
+          name: "SessionHealth",
+          children: [
+            { "source.rdb": { name: "src", "@kind": "view", "@view": "v_session_health" } },
+            { "field.long": { name: "sessionId" } },
+            { "field.boolean": { name: "hasError" } },
+          ],
+        },
+      },
       // Matview projection — hand-managed; must not become a plain VIEW.
       {
         "object.projection": {
@@ -115,6 +131,11 @@ describe("meta migrate — proc/matview projection kinds (real sqlite)", () => {
       // …the matview is NOT silently created as a plain view, and the proc emits nothing.
       expect(byName.has("mv_program_stats")).toBe(false);
       expect([...byName.keys()].some((n) => n.includes("fn_phase_summary"))).toBe(false);
+      // …and the STANDALONE read-model is left alone: hand-authored SQL, so migrate
+      // neither creates nor drops it. The load-bearing assertion is `exit === 0` and
+      // `programs` existing above — before the fix, this projection aborted the entire
+      // command and NOTHING was migrated.
+      expect(byName.has("v_session_health")).toBe(false);
 
       // Idempotence: a second run writes no new migration.
       const migrationsRoot = join(repo, ".metaobjects", "migrations");

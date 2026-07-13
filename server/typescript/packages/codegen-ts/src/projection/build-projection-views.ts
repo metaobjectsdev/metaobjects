@@ -11,9 +11,13 @@
 import {
   type AggregateFunction,
   type MetaData,
+  MetaObject,
   MetaRoot,
   MetaSource,
   SOURCE_KIND_VIEW,
+  TYPE_FIELD,
+  TYPE_IDENTITY,
+  TYPE_ORIGIN,
   resolveTableName,
   resolveTableSchema,
 } from "@metaobjectsdev/metadata";
@@ -99,11 +103,22 @@ export function buildProjectionViews(
     //     through here silently created a PLAIN view under the matview's name.
     //     Matviews are hand-managed, like the documented custom-SQL-view
     //     exception: migrate neither creates nor drops them.
+    //   - a STANDALONE read-model — a plain view projection declaring its own
+    //     columns, with no origin.* children — is hand-authored SQL too. Codegen
+    //     already treats it that way on purpose (see projection-decl.ts: "lets a
+    //     standalone read-only view-entity — explicit columns, no `extends` —
+    //     generate its read model … standalone views hand-author their SQL").
+    //     The SCHEMA path never got that memo: extractViewSpec THREW on it
+    //     ("cannot derive the base entity"), and because the CLI calls this
+    //     function unconditionally, ONE such projection aborted `meta migrate`
+    //     for the ENTIRE model — every other entity included. Same crash class as
+    //     the proc projections above. Skip it instead.
     // ADR-0039: own — mirrors isProjection/viewName's own-source classification.
     const readOnlySource = projection.ownChildren().find(
       (c): c is MetaSource => c instanceof MetaSource && c.isReadOnly(),
     );
     if (readOnlySource?.effectiveKind !== SOURCE_KIND_VIEW) continue;
+    if (!viewIsDerived(projection)) continue;
     const spec = extractViewSpec(projection, root, { columnNamingStrategy });
     const baseTableName = joinTables[spec.joinTree.baseEntity];
     if (!baseTableName) continue; // unresolved base — skip (loader/codegen surface the error elsewhere)
@@ -156,6 +171,50 @@ function collectViewColumns(
     );
   }
   return out;
+}
+
+/**
+ * Is this projection's view DERIVED from the model — i.e. does migrate own its DDL?
+ *
+ * A derived view is synthesized from a BASE entity, and the base is anchored by an
+ * `extends` binding on the projection's own identity or one of its own fields (that is
+ * exactly what `baseEntityFor` resolves). So:
+ *
+ *   - ANCHORED (any own identity/field carries `extends`) → derived. Migrate generates
+ *     and owns the view. If the anchor is ambiguous, extractViewSpec throws — correctly,
+ *     that is a real authoring error.
+ *
+ *   - NOT anchored, but carries `origin.*` children → the author clearly MEANT a derived
+ *     view (an origin says "this column comes from that entity's column") but gave it
+ *     nothing to derive FROM. That is a malformed projection: fall through to
+ *     extractViewSpec so it throws its actionable message ("declare an extends-bound
+ *     identity to anchor the base"). Do NOT silently skip it.
+ *
+ *   - NOT anchored and NO origins → a STANDALONE read-model: it declares its own columns
+ *     and says nothing about where they come from, so there is nothing to synthesize a
+ *     body from. Its SQL is hand-authored. Codegen already treats this shape as
+ *     legitimate and intended (projection-decl.ts generates its read model and notes
+ *     "standalone views hand-author … their SQL") — the schema path simply never agreed,
+ *     and threw, which aborted `meta migrate` for the WHOLE model.
+ *
+ * Trade-off, stated plainly: a hand-authored view is UNMANAGED, so `meta verify --db`
+ * cannot drift-check it. That is the same bounded exception the docs already carve out
+ * for custom SQL views and matviews — not a new hole. What changes is only that ONE
+ * such view no longer blocks migration of every other entity in the tree.
+ *
+ * ADR-0039: own — a projection's derivation is declared locally; an inherited extends or
+ * origin belongs to the parent's own view.
+ */
+function viewIsDerived(projection: MetaObject): boolean {
+  const own = projection.ownChildren();
+  const anchored = own.some(
+    (c) => (c.type === TYPE_IDENTITY || c.type === TYPE_FIELD) && c.superRef !== undefined,
+  );
+  if (anchored) return true;
+  // Origins without an anchor = malformed, not standalone. Let extractViewSpec say so.
+  return own.some(
+    (f) => f.type === TYPE_FIELD && f.ownChildren().some((c) => c.type === TYPE_ORIGIN),
+  );
 }
 
 /** The base table plus every joined table, deduped — the physical tables the view reads. */
