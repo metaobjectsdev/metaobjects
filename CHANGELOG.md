@@ -7,6 +7,52 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.15.21] — 2026-07-13
+
+_npm `0.15.21` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
+_Coordinated release: npm 0.15.21 · PyPI 0.15.13 · Maven 7.7.11. **NuGet is unchanged at 0.15.10** — the C# port needed no fix (it already derived the primary-key type correctly, and became the reference the other three ports were fixed against)._
+
+A bug-fix release, sourced from a downstream consumer's adoption report (TypeScript + Cloudflare D1 + uuid primary keys) and then widened by an adversarial review that hunted the same bug *classes* across the whole codebase. Several of these fail **silently and unsafely** — a wrong-row `DELETE`, a cross-schema `DROP VIEW`, a partial-unique index becoming fully unique — and several make `meta migrate` either destroy work or refuse to run at all. **No metadata changes; no new vocabulary.** Existing metadata generates byte-identical output except where it was previously wrong.
+
+### Fixed — data loss and destructive migrations
+
+- **Writable mounts performed a WRONG-ROW write/delete (`runtime-ts`).** Every writable mount coerced the `:id` path param with a helper that numberifies any numeric-*looking* string. On a TEXT/uuid primary key that does not merely miss — it hits a different row: proven against real engines, `DELETE /docs/0123` deleted row `'123'` (bun:sqlite, via column affinity), while on libsql the row became permanently unfindable (404 on GET/PATCH/DELETE). All writable mounts (fastify, hono, ObjectManager, M:N) now resolve the id against the primary key's real column type. Also: a successful DELETE on bun:sqlite previously returned 404 *after* deleting the row.
+- **Every incremental `meta migrate` rebuilt every uuid-PK table.** A uuid primary key's physical `DEFAULT` is synthesized at emit time and deliberately not modelled on the expected side, but introspection read it back as a real default — so the diff reported a false `change-column-default` for every uuid-PK table, on every run. On SQLite/D1 (no `ALTER COLUMN`) that recreate-and-copies the whole table, forever. Postgres emitted a bogus `ALTER` instead.
+- **`drop-view` was auto-allowed.** An extension's view (e.g. `pg_stat_statements`) or any hand-written view got an un-gated `DROP VIEW` emitted. Now gated behind `allow.dropView`, extension-owned views are filtered via `pg_depend`, and the recreate-pair exemption is keyed by *(schema, name)* — keyed on the bare name, rebuilding `reporting.summary` un-gated a destructive drop of a hand-written `public.summary`.
+
+### Fixed — migrations that could not be applied, or silently did nothing
+
+- **`@autoSet` emitted `DEFAULT now()` on SQLite/D1** — invalid SQL, so *any* entity with the standard `createdAt @autoSet` produced a migration that could not be applied at all.
+- **Changing `field.enum @values` never migrated on SQLite.** CHECK constraints were create-time-only and no change kind triggered the recreate path, so `meta migrate` reported "No schema changes" while inserts of the new member kept violating the stale CHECK in production. (`--allow drop-check` was also *rejected* by CLI arg validation, making Postgres CHECK evolution ungrantable.)
+- **`@kind: storedProc` projections crashed `meta migrate` outright**; `@kind: materializedView` silently created a plain view under the materialized view's name.
+- **D1 introspection didn't exclude Cloudflare/wrangler tables.** `_cf_METADATA` appears after any write and D1's authorizer denies even `pragma_table_info` on it, aborting every *second-and-later* `meta migrate --dialect d1`; `d1_migrations` read as an undeclared table, so the diff proposed dropping wrangler's own bookkeeping.
+- **Infra-table exclusions used `_` as a literal when it is a `LIKE` wildcard** — so `'__new_%'` also matched an ordinary table named `renewals`, hiding it from introspection and re-proposing `CREATE TABLE` forever.
+
+### Fixed — silently wrong SQL and types
+
+- **The SQLite emitter dropped index `@expr` / `@where` / `@orders`.** An expression index emitted `CREATE INDEX x ON t ()` (invalid SQL), and a **partial UNIQUE index became a FULL UNIQUE constraint** — silently rejecting inserts the model says are valid.
+- **Boolean/numeric `@default` literals were quoted on SQLite** (`DEFAULT 'false'`), which SQLite stores as TEXT in a numeric column, so `WHERE flag = 0` silently matched nothing. Literals containing a quote (`"don't"`) or parentheses (`"n/a (unknown)"`) never round-tripped either.
+- **FK constraint names never converged on SQLite** (the engine stores none), so a composite FK or `@constraintName` produced a permanently blocked `drop-fk` and `meta migrate` exited 1 forever.
+- **`@isArray` on any scalar but string/uuid** generated a Drizzle `.array()` column against a migrated SCALAR column — the first insert failed, with no drift signal.
+
+### Fixed — generated code hardcoded the primary-key type (Java, Kotlin, Python)
+
+An entity declaring `identity.primary @generation: uuid` got broken generated output while its own DTO/model correctly used UUID. Not a metamodel gap — a missed reuse: each port already had the type mapper and was already using it a few lines away.
+
+- **Kotlin: the generated code did not compile.** `@PathVariable id: Long` against an Exposed `Column<UUID>` is a type error, and FK columns hardcoded `long(...)`, so *any* relationship pointing at a uuid-PK entity broke the build. Also: the FR-009 filter coercer had no uuid arm (`filter[id][eq]=<uuid>` would have thrown at runtime), and TPH `writableFields` hardcoded the literal `"id"`.
+- **Java:** `@PathVariable Long id` → Spring rejected a uuid path variable with 400, and the generated repository interface was un-implementable against a UUID-keyed entity.
+- **Python:** the generated FastAPI router typed every path id `int`, so a real uuid was rejected with **422** by Pydantic and never reached the handler — the endpoint was simply unusable.
+- **TypeScript:** the TanStack hooks hardcoded `id: number` (including the M:N `sourceId`), so consumer call sites failed to typecheck; and the generated grid hook failed under `noUncheckedIndexedAccess`.
+
+### Fixed — drift gates
+
+- **`meta verify --templates` skipped `@kind=email` templates** — mustache↔payload drift in an email's subject/body was only caught later at `meta gen`. (TypeScript and Python; the Java and C# CLIs still have this gap — tracked in #193.)
+
+### Notes
+
+Every migrate fix is now gated by an `emit → apply to a real engine → introspect → re-diff must be EMPTY` round-trip, plus value-semantics probes (insert the defaults, ask the engine what it actually stored). The absence of that gate — nothing ever ran the pipeline twice against a real database — is what let this whole class survive a large test suite. Two goldens were found to be *encoding* the bugs they pinned and were corrected against real-engine evidence rather than regenerated.
+
 ## [0.15.20] — 2026-07-12
 
 _npm `0.15.20` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
