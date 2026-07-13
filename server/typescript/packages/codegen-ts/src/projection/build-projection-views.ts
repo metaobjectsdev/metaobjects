@@ -11,6 +11,8 @@
 import {
   type MetaData,
   MetaRoot,
+  MetaSource,
+  SOURCE_KIND_VIEW,
   resolveTableName,
   resolveTableSchema,
 } from "@metaobjectsdev/metadata";
@@ -55,6 +57,25 @@ export function buildProjectionViews(
 
   const out: ExpectedView[] = [];
   for (const projection of root.objects().filter(isProjection)) {
+    // Only PLAIN-VIEW projections produce managed CREATE VIEW DDL. The other
+    // read-only kinds must be skipped, not fed to extractViewSpec:
+    //   - storedProc / tableFunction (FR-015) are CALLABLES, not views. They are
+    //     base-less (no extends-bound identity), so extractViewSpec THROWS for
+    //     them — and the CLI calls this function unconditionally, so one proc
+    //     projection used to crash `meta migrate` outright.
+    //   - materializedView cannot be managed by the migrate pipeline today:
+    //     there is no CREATE MATERIALIZED VIEW emit, and PG introspection cannot
+    //     even see matviews (information_schema.views excludes them), so a
+    //     "managed" matview would re-propose create-view on every run and the
+    //     apply would collide with the existing object. Worse, feeding it
+    //     through here silently created a PLAIN view under the matview's name.
+    //     Matviews are hand-managed, like the documented custom-SQL-view
+    //     exception: migrate neither creates nor drops them.
+    // ADR-0039: own — mirrors isProjection/viewName's own-source classification.
+    const readOnlySource = projection.ownChildren().find(
+      (c): c is MetaSource => c instanceof MetaSource && c.isReadOnly(),
+    );
+    if (readOnlySource?.effectiveKind !== SOURCE_KIND_VIEW) continue;
     const spec = extractViewSpec(projection, root, { columnNamingStrategy });
     const baseTableName = joinTables[spec.joinTree.baseEntity];
     if (!baseTableName) continue; // unresolved base — skip (loader/codegen surface the error elsewhere)

@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Doc",
+          "children": [
+            { "field.string": { "name": "id" } },
+            { "field.string": { "name": "title", "@required": true } },
+            { "identity.primary": { "name": "primary", "@fields": ["id"], "@generation": "assigned" } }
+          ]
+        }
+      }
+    ]
+  }
+}

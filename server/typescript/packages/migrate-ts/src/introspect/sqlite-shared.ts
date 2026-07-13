@@ -5,7 +5,7 @@
  * All three routines are pure mappings of SQLite's declared type / pragma
  * values to canonical migrate-ts types and carry no I/O dependencies.
  */
-import type { ColumnDefault, FkAction } from "../types.js";
+import type { CheckDescriptor, ColumnDefault, FkAction, IndexDescriptor } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 
 export const SQLITE_EXPR_DEFAULT_PATTERNS = [
@@ -17,11 +17,27 @@ export const SQLITE_EXPR_DEFAULT_PATTERNS = [
 
 export function parseSqliteDefault(raw: string | null): ColumnDefault | undefined {
   if (raw === null || raw === undefined || raw === "") return undefined;
+
+  // A QUOTE-WRAPPED value is a string literal BY CONSTRUCTION — SQLite always quotes a
+  // literal string default. This test MUST come before the expr patterns: one of those
+  // patterns is a bare /\(.*\)/, so a perfectly ordinary literal containing parentheses
+  // (`@default "n/a (unknown)"` → stored as `'n/a (unknown)'`) would otherwise be
+  // classified an EXPR with its quotes still attached. It could then never string-equal
+  // the expected literal, so the diff would report change-column-default on EVERY run —
+  // and on SQLite (no ALTER COLUMN) that recreate-and-copies the whole table, forever,
+  // un-gated, with `verify --db` permanently red. Exactly the failure this un-escaping
+  // was added to prevent.
+  //
+  // Then un-double the emitter's `''` escaping (`@default "don't"` → `'don''t'`), or the
+  // introspected `don''t` never equals the expected `don't` — same perpetual rebuild.
+  const quoted = /^'([\s\S]*)'$/.exec(raw);
+  if (quoted !== null) {
+    return { kind: "literal", value: quoted[1]!.replace(/''/g, "'") };
+  }
+
   const isExpr = SQLITE_EXPR_DEFAULT_PATTERNS.some((re) => re.test(raw));
   if (isExpr) return { kind: "expr", value: raw };
-  // SQLite stores literal string defaults with surrounding quotes.
-  const cleaned = raw.replace(/^'(.*)'$/, "$1");
-  return { kind: "literal", value: cleaned };
+  return { kind: "literal", value: raw };
 }
 
 export function sqliteTypeToSqlType(declaredType: string): SqlType {
@@ -66,6 +82,183 @@ export function sqliteTypeToSqlType(declaredType: string): SqlType {
   if (t === "JSON") return { kind: "json" };
 
   return { kind: "text" };
+}
+
+/**
+ * Parse NAMED CHECK constraints (`CONSTRAINT <name> CHECK (<expr>)`) out of a
+ * table's CREATE TABLE statement (sqlite_master.sql). SQLite exposes no pragma
+ * for CHECK constraints, so the stored DDL text is the only catalog.
+ *
+ * This is what makes CHECK evolution CONVERGE on sqlite: the diff proposes a
+ * check change → the emitter recreate-and-copies the table with the new inline
+ * CHECK → this reads the very DDL that recreate wrote, so the re-diff is empty.
+ * Without it the actual side always reported `checks: []` and every expected
+ * check re-surfaced as add-check on every single run.
+ *
+ * Unnamed checks (`CHECK (…)` with no CONSTRAINT clause — hand-written DDL) are
+ * NOT parsed: they have no identity to match on. A modeled check over such a
+ * table converges after one recreate (which rewrites it in named form).
+ *
+ * The expression is scanned with balanced parens and string-literal awareness
+ * (an enum member may contain `(`/`)`), and returned verbatim — the diff's
+ * checkExprEquals normalizes both sides before comparing.
+ */
+export function parseSqliteChecks(createSql: string | null | undefined): CheckDescriptor[] {
+  if (createSql === null || createSql === undefined || createSql === "") return [];
+  const out: CheckDescriptor[] = [];
+  const re = /\bCONSTRAINT\s+(?:"((?:[^"]|"")+)"|([A-Za-z_][A-Za-z0-9_$]*))\s+CHECK\s*\(/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(createSql)) !== null) {
+    const name = m[1] !== undefined ? m[1].replace(/""/g, '"') : m[2]!;
+    const open = re.lastIndex - 1; // position of the "(" the regex just consumed
+    let depth = 0;
+    let inString = false;
+    let close = -1;
+    for (let i = open; i < createSql.length; i++) {
+      const ch = createSql[i];
+      if (inString) {
+        if (ch === "'") {
+          if (createSql[i + 1] === "'") i++; // '' escape inside the literal
+          else inString = false;
+        }
+        continue;
+      }
+      if (ch === "'") inString = true;
+      else if (ch === "(") depth++;
+      else if (ch === ")") {
+        depth--;
+        if (depth === 0) { close = i; break; }
+      }
+    }
+    if (close === -1) break; // malformed tail — stop rather than mis-slice
+    out.push({ name, expression: createSql.slice(open + 1, close).trim() });
+    re.lastIndex = close + 1;
+  }
+  return out;
+}
+
+/** Skip a single-quoted SQL string starting at `i` (position of the opening
+ *  quote); returns the position just past the closing quote ('' escapes honored). */
+function skipSingleQuoted(s: string, i: number): number {
+  i++;
+  while (i < s.length) {
+    if (s[i] === "'") {
+      if (s[i + 1] === "'") { i += 2; continue; }
+      return i + 1;
+    }
+    i++;
+  }
+  return i;
+}
+
+/** Skip a double-quoted SQL identifier starting at `i`; "" escapes honored. */
+function skipDoubleQuoted(s: string, i: number): number {
+  i++;
+  while (i < s.length) {
+    if (s[i] === '"') {
+      if (s[i + 1] === '"') { i += 2; continue; }
+      return i + 1;
+    }
+    i++;
+  }
+  return i;
+}
+
+export interface ParsedSqliteIndexDef {
+  /** Raw key-list text between the balanced parens after `ON <table>`. */
+  keyList: string;
+  /** Raw partial-index predicate after WHERE; undefined for a full index. */
+  where?: string;
+}
+
+/**
+ * Parse a stored `CREATE [UNIQUE] INDEX … ON <table> (<keys>) [WHERE <pred>]`
+ * statement (sqlite_master.sql). SQLite has no pragma exposing an index's key
+ * EXPRESSIONS or its partial-index predicate — the stored DDL is the only
+ * catalog — so this powers reading `@expr` / `@where` indexes back for the diff
+ * to converge. Quote-aware: parens inside string literals or quoted identifiers
+ * never confuse the balanced scan.
+ */
+export function parseSqliteIndexDef(createSql: string | null | undefined): ParsedSqliteIndexDef | undefined {
+  if (createSql === null || createSql === undefined || createSql === "") return undefined;
+  const n = createSql.length;
+  // First "(" outside any quoted region = start of the key list.
+  let open = -1;
+  for (let i = 0; i < n; ) {
+    const ch = createSql[i];
+    if (ch === "'") { i = skipSingleQuoted(createSql, i); continue; }
+    if (ch === '"') { i = skipDoubleQuoted(createSql, i); continue; }
+    if (ch === "(") { open = i; break; }
+    i++;
+  }
+  if (open === -1) return undefined;
+  // Balanced scan (quote-aware) to the matching ")".
+  let close = -1;
+  for (let i = open, depth = 0; i < n; ) {
+    const ch = createSql[i];
+    if (ch === "'") { i = skipSingleQuoted(createSql, i); continue; }
+    if (ch === '"') { i = skipDoubleQuoted(createSql, i); continue; }
+    if (ch === "(") depth++;
+    else if (ch === ")") {
+      depth--;
+      if (depth === 0) { close = i; break; }
+    }
+    i++;
+  }
+  if (close === -1) return undefined;
+  const out: ParsedSqliteIndexDef = { keyList: createSql.slice(open + 1, close).trim() };
+  const m = /^\s*WHERE\s+([\s\S]+)$/i.exec(createSql.slice(close + 1));
+  if (m) out.where = m[1]!.trim().replace(/;\s*$/, "");
+  return out;
+}
+
+/** pragma_index_list row, dialect-neutrally coerced by the caller. */
+export interface SqliteIndexListEntry {
+  name: string;
+  unique: boolean;
+  partial: boolean;
+}
+
+/** A KEY column row from pragma_index_xinfo (key=1 rows only, seqno order). */
+export interface SqliteIndexKeyColumn {
+  /** Column name; null for an expression key (cid = -2). */
+  name: string | null;
+  /** true when the key is sorted DESC. */
+  desc: boolean;
+}
+
+/**
+ * Assemble an IndexDescriptor from the SQLite catalog pieces: pragma_index_list
+ * (unique/partial), pragma_index_xinfo key columns (names + DESC bits; name null
+ * for an expression key), and the stored CREATE INDEX DDL (expression key list +
+ * partial predicate — neither is exposed by any pragma).
+ *
+ * Mirrors the expected side's shape rules: an expression index carries the whole
+ * key list in `expr` with `columns: []`; `orders` is attached only when some key
+ * is DESC (all-ascending serializes as absent, like buildExpectedSchema).
+ */
+export function buildSqliteIndexDescriptor(
+  entry: SqliteIndexListEntry,
+  keyColumns: readonly SqliteIndexKeyColumn[],
+  createSql: string | null | undefined,
+): IndexDescriptor {
+  const parsed = parseSqliteIndexDef(createSql);
+  const descriptor: IndexDescriptor = {
+    name: entry.name,
+    columns: [],
+    unique: entry.unique,
+  };
+  if (keyColumns.some((c) => c.name === null)) {
+    // Expression key somewhere in the list → the whole key list is the expr
+    // (same convention as the Postgres introspector + buildExpectedSchema).
+    if (parsed !== undefined) descriptor.expr = parsed.keyList;
+  } else {
+    descriptor.columns = keyColumns.map((c) => c.name!);
+    const orders = keyColumns.map((c): "asc" | "desc" => (c.desc ? "desc" : "asc"));
+    if (orders.some((o) => o === "desc")) descriptor.orders = orders;
+  }
+  if (entry.partial && parsed?.where !== undefined) descriptor.where = parsed.where;
+  return descriptor;
 }
 
 export function sqliteRuleToAction(rule: string): FkAction {

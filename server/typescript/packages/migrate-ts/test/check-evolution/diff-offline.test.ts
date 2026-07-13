@@ -33,9 +33,17 @@ describe("diffTableChecks — postgres existing-table evolution", () => {
       actual: snap([CHK("orders_qty_numeric_chk", "(qty >= 1)")]), dialect: "postgres" });
     expect(r.changes.some((c) => c.kind.endsWith("-check"))).toBe(false);
   });
-  test("dialect gate: sqlite produces NO check changes even when they differ", async () => {
+  // INVERTED (adversarial-review fix): this test used to assert that sqlite
+  // produces NO check changes — which ENCODED the bug that an evolved
+  // `field.enum @values` never migrated on sqlite (the diff said "No schema
+  // changes" while production INSERTs violated the stale CHECK; nothing ever
+  // triggered the claimed table recreate). sqlite now evolves checks like
+  // postgres does; the emitter routes them through recreate-and-copy, and the
+  // real-engine gate (test/integration/sqlite-check-evolution.test.ts) proves
+  // apply + insert-new-member + re-diff-empty against live libsql.
+  test("sqlite evolves checks too (emitter recreates the table)", async () => {
     const r = await diff({ expected: snap([C0, C1]), actual: snap([C0]), dialect: "sqlite" });
-    expect(r.changes.some((c) => c.kind.endsWith("-check"))).toBe(false);
+    expect(r.changes.filter((c) => c.kind === "add-check").map((c) => (c as any).check.name)).toEqual(["orders_qty_max_chk"]);
   });
   test("no dialect passed → no check evolution (back-compat)", async () => {
     const r = await diff({ expected: snap([C0, C1]), actual: snap([C0]) });

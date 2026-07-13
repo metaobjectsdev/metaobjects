@@ -33,7 +33,10 @@ export type {
   FilterAllowlist,
   SortAllowlist,
 } from "../drizzle-fastify/filter-allowlist.js";
-import { isTruthyFlag } from "../drizzle-fastify/util.js";
+import { isTruthyFlag, coerceIdForColumn } from "../drizzle-fastify/util.js";
+// Back-compat re-export — the unsafe local copy was consolidated onto the one
+// shared (deprecated) helper so the three adapters can't silently diverge.
+export { parseId } from "../drizzle-fastify/util.js";
 
 // ---------------------------------------------------------------------------
 // Loose types — we don't bind to a specific Drizzle backend so the helper
@@ -156,10 +159,14 @@ export function mountListRoute(opts: VerbOptions): void {
 export function mountGetRoute(opts: VerbOptions): void {
   opts.app.get(`${opts.path}/:id`, async (c) => {
     const id = c.req.param("id") ?? "";
+    // Compare against the PK's real type — a numeric-LOOKING id on a TEXT pk
+    // must stay a string ('0123' ≠ '123'), or affinity matches the WRONG row.
+    const idValue = coerceIdForColumn(opts.table.id, id);
+    if (idValue === undefined) return c.json({ error: "invalid_id" }, 400);
     const row = await opts.db
       .select()
       .from(opts.table)
-      .where(eq(opts.table.id, parseId(id)))
+      .where(eq(opts.table.id, idValue))
       .get();
     return row ? c.json(row) : c.json({ error: "not_found" }, 404);
   });
@@ -186,10 +193,14 @@ export function mountUpdateRoute(opts: VerbOptions): void {
     if (!parsed.success) {
       return c.json({ error: "validation", issues: parsed.error.issues }, 400);
     }
+    // Compare against the PK's real type (see mountGetRoute) — a numeric-
+    // LOOKING id on a TEXT pk would otherwise UPDATE the wrong row.
+    const idValue = coerceIdForColumn(opts.table.id, id);
+    if (idValue === undefined) return c.json({ error: "invalid_id" }, 400);
     const result = await opts.db
       .update(opts.table)
       .set(parsed.data)
-      .where(eq(opts.table.id, parseId(id)))
+      .where(eq(opts.table.id, idValue))
       .returning();
     const row = (result as unknown[])[0];
     return row ? c.json(row) : c.json({ error: "not_found" }, 404);
@@ -205,9 +216,13 @@ export function mountUpdateRoute(opts: VerbOptions): void {
 export function mountDeleteRoute(opts: VerbOptions): void {
   opts.app.delete(`${opts.path}/:id`, async (c) => {
     const id = c.req.param("id") ?? "";
+    // Compare against the PK's real type (see mountGetRoute) — a numeric-
+    // LOOKING id on a TEXT pk would otherwise DELETE the wrong row (data loss).
+    const idValue = coerceIdForColumn(opts.table.id, id);
+    if (idValue === undefined) return c.json({ error: "invalid_id" }, 400);
     const result = await opts.db
       .delete(opts.table)
-      .where(eq(opts.table.id, parseId(id)));
+      .where(eq(opts.table.id, idValue));
     const affected = extractRowCount(result);
     if (affected > 0) {
       // 204 No Content — body must be empty.
@@ -221,17 +236,14 @@ function extractRowCount(result: unknown): number {
   if (typeof result === "number") return result;
   if (Array.isArray(result)) return result.length;
   if (result && typeof result === "object") {
-    const obj = result as { rowsAffected?: number | bigint; rowCount?: number };
+    const obj = result as { rowsAffected?: number | bigint; rowCount?: number; changes?: number };
     if (typeof obj.rowsAffected === "number") return obj.rowsAffected;
     if (typeof obj.rowsAffected === "bigint") return Number(obj.rowsAffected);
     if (typeof obj.rowCount === "number") return obj.rowCount;
+    // bun:sqlite / better-sqlite3 run() result shape.
+    if (typeof obj.changes === "number") return obj.changes;
   }
   return 0;
-}
-
-export function parseId(raw: string): number | string {
-  const n = Number(raw);
-  return Number.isFinite(n) && raw.trim() !== "" ? n : raw;
 }
 
 export { mountReadOnlyCrudRoutes, type MountReadOnlyOptions } from "./mount-read-only.js";

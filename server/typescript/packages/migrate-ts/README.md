@@ -97,7 +97,8 @@ Targets Cloudflare D1 via the wrangler CLI. Connection is read from `wrangler.to
 
 ## Not yet shipped
 
-- Triggers, generated columns, partial indexes, exclusion constraints, check constraints.
+- Triggers, generated columns, exclusion constraints.
+  (Partial/expression/ordered indexes and CHECK constraints ARE covered: `@where`/`@expr`/`@orders` emit + introspect on postgres AND sqlite; enum/validator-derived CHECKs evolve via ALTER on postgres and recreate-and-copy on sqlite.)
 - MySQL.
 - Data migrations (column-type changes that need data transformation: error with hint).
 - Multi-step migration scaffolding (add nullable → backfill → set notnull).

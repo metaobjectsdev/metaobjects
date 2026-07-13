@@ -2,7 +2,16 @@
  * Shared utilities for drizzle-fastify route helpers.
  */
 
-/** Coerce a path-param id to number when numeric, else keep the string key. */
+/**
+ * Coerce a path-param id to number when numeric, else keep the string key.
+ *
+ * @deprecated UNSAFE for any context that has a column (or metadata) to inspect:
+ * on a TEXT/string primary key a numeric-LOOKING id is silently converted
+ * ('0123' → 123), and SQLite's comparison affinity then matches the OTHER row
+ * ('123') — a wrong-row read/update/DELETE. Use `coerceIdForColumn` with the
+ * PK column ref instead. This remains only as the fallback for raw-SQL views
+ * with no declared columns (via `coerceIdForColumn`/`rawIdLiteral`).
+ */
 export function parseId(raw: string): number | string {
   const n = Number(raw);
   return Number.isFinite(n) && raw.trim() !== "" ? n : raw;

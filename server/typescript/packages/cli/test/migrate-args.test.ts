@@ -24,3 +24,16 @@ describe("parseMigrateArgs — snapshot mode", () => {
     expect(f.fromDb).toBe(true);
   });
 });
+
+describe("parseMigrateArgs — --allow tokens", () => {
+  test("drop-check and drop-view are valid tokens (drop-check gates enum @values evolution; drop-view gates real view removals)", () => {
+    // Both were previously REJECTED here ("invalid --allow token"), making the
+    // corresponding AllowOptions permissions impossible to grant from the CLI.
+    const f = parseMigrateArgs(["--allow", "drop-check,drop-view"]);
+    expect(f.allow).toEqual(["drop-check", "drop-view"]);
+  });
+
+  test("an unknown token is still rejected", () => {
+    expect(() => parseMigrateArgs(["--allow", "drop-everything"])).toThrow(/invalid --allow token/);
+  });
+});

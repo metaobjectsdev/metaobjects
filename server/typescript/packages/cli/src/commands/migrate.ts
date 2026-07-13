@@ -64,7 +64,8 @@ MIGRATE FLAGS:
   --out-dir <path>     Migration directory (default: ./.metaobjects/migrations)
   --slug <name>        Required when changes are present (e.g., --slug add-user-shipping)
   --allow <csv>        Comma-separated destructive-change permissions:
-                       drop-column,drop-table,type-change,drop-index,drop-fk,nullable-to-not-null
+                       drop-column,drop-table,type-change,drop-index,drop-fk,
+                       drop-check,drop-view,nullable-to-not-null
   --on-ambiguous abort|rename|drop-add
                        How to handle ambiguous renames (default: abort)
   --from-db            Introspect live DB instead of using the committed snapshot
@@ -823,6 +824,11 @@ async function runD1Migrate(
     diffResult = await diff({
       expected,
       actual,
+      // D1 is SQLite at the SQL level — the dialect activates the sqlite diff
+      // semantics (structural FK matching: SQLite stores no FK names; CHECK
+      // evolution via recreate-and-copy). Omitting it left composite-FK /
+      // @constraintName models churning and enum @values changes silent on D1.
+      dialect: "d1",
       allow: tokensToAllowOptions(config.allow),
       onAmbiguous: async (a) => {
         collectedAmbiguous.push(a);

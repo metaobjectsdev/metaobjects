@@ -4,7 +4,10 @@ import type {
   SchemaSnapshot, TableDescriptor, ColumnDescriptor, SnapshotMeta,
   IndexDescriptor, FkDescriptor, FkAction, ViewDescriptor,
 } from "../types.js";
-import { parseSqliteDefault, sqliteTypeToSqlType, sqliteRuleToAction } from "./sqlite-shared.js";
+import {
+  parseSqliteDefault, sqliteTypeToSqlType, sqliteRuleToAction, parseSqliteChecks,
+  buildSqliteIndexDescriptor,
+} from "./sqlite-shared.js";
 import { MIGRATIONS_TABLE } from "../apply/ledger.js";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -43,7 +46,9 @@ export async function introspectSqlite(db: Kysely<Record<string, unknown>>): Pro
       columns: cols,
       indexes: await readSqliteIndexes(k, t.name),
       foreignKeys: await readSqliteForeignKeys(k, t.name),
-      checks: [], // CHECK introspection is out of scope; expected-side derives them
+      // Named CHECKs parsed from the stored CREATE TABLE DDL — required for
+      // check evolution (enum @values changes) to converge on sqlite.
+      checks: parseSqliteChecks(t.sql),
       primaryKey: pk,
     });
   }
@@ -104,18 +109,33 @@ async function readSqliteIndexes(k: RawKysely, table: string): Promise<IndexDesc
     SELECT * FROM pragma_index_list(${table})
   `.execute(k);
 
+  // Stored CREATE INDEX DDL per index — the ONLY catalog for an index's key
+  // EXPRESSIONS and partial-index WHERE predicate (no pragma exposes either).
+  // Auto-created indexes (column UNIQUE constraints, origin 'u') have sql NULL,
+  // which is fine: they can't be partial or expression-keyed.
+  const sqlRows = await sql<{ name: string; sql: string | null }>`
+    SELECT name, sql FROM sqlite_master WHERE type='index' AND tbl_name = ${table}
+  `.execute(k);
+  const ddlByName = new Map(sqlRows.rows.map((r) => [r.name, r.sql] as const));
+
   const indexes: IndexDescriptor[] = [];
   for (const ix of listRows.rows) {
     if (ix.origin === "pk") continue;    // PK index — excluded (lives in TableDescriptor.primaryKey)
-    if (ix.partial === 1) continue;      // partial indexes deferred to v0.3
-    const cols = await sql<{ seqno: number; cid: number; name: string }>`
-      SELECT seqno, cid, name FROM pragma_index_info(${ix.name}) ORDER BY seqno
+    // pragma_index_xinfo (not index_info): includes the DESC bit and marks key
+    // columns (key=1) vs auxiliary rowid columns; an expression key has name
+    // NULL. SELECT * avoids "desc"/"key" reserved-keyword issues in libsql.
+    const xinfo = await sql<{
+      seqno: number; cid: number; name: string | null; desc: number; coll: string; key: number;
+    }>`
+      SELECT * FROM pragma_index_xinfo(${ix.name}) ORDER BY seqno
     `.execute(k);
-    indexes.push({
-      name: ix.name,
-      columns: cols.rows.map((c) => c.name),
-      unique: ix.unique === 1,
-    });
+    indexes.push(buildSqliteIndexDescriptor(
+      { name: ix.name, unique: ix.unique === 1, partial: ix.partial === 1 },
+      xinfo.rows
+        .filter((c) => c.key === 1)
+        .map((c) => ({ name: c.name, desc: c.desc === 1 })),
+      ddlByName.get(ix.name) ?? null,
+    ));
   }
   return indexes;
 }

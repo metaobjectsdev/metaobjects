@@ -96,10 +96,24 @@ export class ObjectManager {
     return { $and: [filter, disc] } as Filter;
   }
 
+  /**
+   * Coerce a raw string id (typically an HTTP path param) to the PK field's
+   * DECLARED type: a numeric-subtype pk gets Number(); a string/uuid pk keeps
+   * the string EXACTLY — '0123' and '123' are different keys, and Number()-ing
+   * them conflates the two (SQLite affinity then matches the WRONG row).
+   * Non-string ids and composite-pk entities pass through untouched.
+   */
+  private coerceIdArg(entity: MetaData, id: unknown): unknown {
+    if (typeof id !== "string") return id;
+    const pkFields = resolvePkFields(entity);
+    if (pkFields.length !== 1) return id;
+    return coercePkValue(entity, pkFields[0]!, id);
+  }
+
   async findById(entityName: string, id: unknown, opts: ReadOpts = {}): Promise<Row | null> {
     const entity = this.requireEntity(entityName);
     const pkField = resolvePkFields(entity)[0]!;
-    return this.findFirst(entityName, { [pkField]: id as string | number }, opts);
+    return this.findFirst(entityName, { [pkField]: this.coerceIdArg(entity, id) as string | number }, opts);
   }
 
   async findFirst(entityName: string, filter: Filter, opts: ReadOpts = {}): Promise<Row | null> {
@@ -204,7 +218,7 @@ export class ObjectManager {
 
     const coerced = coerceRowOnWrite(entity, restricted, driver.dialect);
     // FR-017 TPH: scope the by-id update to the subtype (cross-subtype → not found).
-    const spec = buildUpdateSpec(entity, coerced, id, this.columnNamingStrategy, this.tphScope(entity));
+    const spec = buildUpdateSpec(entity, coerced, this.coerceIdArg(entity, id), this.columnNamingStrategy, this.tphScope(entity));
     const dbRow = await driver.update(spec);
     if (dbRow === null) {
       const mode = opts.ifMissing ?? DEFAULT_IF_MISSING;
@@ -218,7 +232,7 @@ export class ObjectManager {
     const entity = this.requireEntity(entityName);
     const driver = opts.tx ?? this.driver;
     // FR-017 TPH: scope the by-id delete to the subtype (cross-subtype → not found).
-    const spec = buildDeleteSpec(entity, id, this.columnNamingStrategy, this.tphScope(entity));
+    const spec = buildDeleteSpec(entity, this.coerceIdArg(entity, id), this.columnNamingStrategy, this.tphScope(entity));
     const n = await driver.delete(spec);
     if (n === 0) {
       const mode = opts.ifMissing ?? DEFAULT_IF_MISSING;
@@ -498,7 +512,10 @@ const NUMERIC_SUBTYPES = new Set([
   FIELD_SUBTYPE_LONG, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_DECIMAL,
 ]);
 
-// decodeRef always returns strings; numeric PK fields need coercion back to number.
+// Coerce a raw string PK value to the field's declared type: numeric subtypes
+// get Number(); everything else keeps the string exactly. Serves decodeRef
+// (which always returns strings) AND raw HTTP path params via coerceIdArg —
+// a string/uuid pk must never be Number()-ed ('0123' ≠ '123').
 function coercePkValue(entity: MetaData, fieldName: string, rawValue: string): string | number {
   // ADR-0039: resolving — the PK field may be inherited from a BaseEntity via extends.
   const field = entity.children().find((c) => c.type === TYPE_FIELD && c.name === fieldName);

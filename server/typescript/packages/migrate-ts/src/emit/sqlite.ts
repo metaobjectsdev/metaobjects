@@ -27,6 +27,10 @@ const STAGE_ORDER: Record<Change["kind"], number> = {
 const RECREATE_TRIGGERING_KINDS = new Set<Change["kind"]>([
   "change-column-type", "change-column-nullable", "change-column-default",
   "add-fk", "drop-fk",
+  // CHECK constraints are create-time-only inline on SQLite (no ALTER … ADD/DROP
+  // CONSTRAINT), so any check change — e.g. an evolved `field.enum @values`
+  // membership — rebuilds the table with the new inline CHECK.
+  "add-check", "drop-check",
 ]);
 
 export function renderSqlite(
@@ -199,16 +203,14 @@ function renderUpNative(c: Change): string {
     case "drop-index":     return `DROP INDEX ${quote(c.index)};`;
     case "add-check":
     case "drop-check":
-      // Declared for future existing-table support; the diff does not yet produce
-      // these (checks are create-time-only, inlined in CREATE TABLE). Unreachable
-      // today — throw rather than silently mis-emit if one ever arrives here.
-      throw new Error("CHECK migration not implemented for sqlite (recreate path pending)");
     case "change-column-type":
     case "change-column-nullable":
     case "change-column-default":
     case "add-fk":
     case "drop-fk":
-      // These are handled by renderRecreate before reaching renderUpNative.
+      // These are handled by renderRecreate before reaching renderUpNative
+      // (checks are create-time-only inline on SQLite, so a check change is a
+      // recreate-triggering kind like the others).
       throw new Error(`renderUpNative: ${c.kind} should have been handled by recreate bundler`);
     // SQLite has no schema namespacing for views and no CREATE OR REPLACE VIEW;
     // a replace is DROP + CREATE. The view body lives in ViewDescriptor.sql.
@@ -237,16 +239,14 @@ function renderDownNative(c: Change): string {
     case "drop-index":     return `-- WARNING: down migration cannot restore the original index definition`;
     case "add-check":
     case "drop-check":
-      // Declared for future existing-table support; the diff does not yet produce
-      // these (checks are create-time-only, inlined in CREATE TABLE). Unreachable
-      // today — throw rather than silently mis-emit if one ever arrives here.
-      throw new Error("CHECK migration not implemented for sqlite (recreate path pending)");
     case "change-column-type":
     case "change-column-nullable":
     case "change-column-default":
     case "add-fk":
     case "drop-fk":
-      // These are handled by renderRecreate before reaching renderDownNative.
+      // These are handled by renderRecreate before reaching renderDownNative
+      // (checks are create-time-only inline on SQLite, so a check change is a
+      // recreate-triggering kind like the others).
       throw new Error(`renderDownNative: ${c.kind} should have been handled by recreate bundler`);
     case "create-view":   return `DROP VIEW IF EXISTS ${quote(c.view.name)};`;
     case "drop-view":     return `-- WARNING: down migration cannot restore the original view definition`;
@@ -272,8 +272,9 @@ function renderCreateTable(t: TableDescriptor): string {
     colDefs.push(clause);
   }
   // CHECK constraints are inlined into the CREATE TABLE DDL (SQLite supports
-  // inline named CHECK). Checks are create-time-only; the diff never produces
-  // add-check / drop-check, so this is the sole place SQLite emits a CHECK.
+  // inline named CHECK) — the sole place SQLite emits a CHECK. A check CHANGE
+  // on an existing table (add-check/drop-check from the diff) triggers
+  // recreate-and-copy, which lands back here with the updated check list.
   for (const chk of t.checks ?? []) {
     colDefs.push(`  CONSTRAINT ${quote(chk.name)} CHECK (${chk.expression})`);
   }
@@ -365,7 +366,24 @@ function renderDefault(d: ColumnDefault, t: SqlType): string {
 
 function renderCreateIndex(table: string, ix: IndexDescriptor): string {
   const u = ix.unique ? "UNIQUE " : "";
-  return `CREATE ${u}INDEX ${quote(ix.name)} ON ${quote(table)} (${ix.columns.map(quote).join(", ")});`;
+  // SQLite natively supports expression indexes, per-column DESC, and partial
+  // (WHERE) indexes — render all three. Dropping them is not an option:
+  //   - a dropped @expr leaves `();` (invalid SQL — the apply fails outright);
+  //   - a dropped @where turns a partial UNIQUE into a FULL unique constraint,
+  //     silently rejecting inserts the model says are valid;
+  //   - a dropped DESC churns drop/add on every diff once introspection reads
+  //     the real ordering back.
+  // @using is deliberately NOT rendered: SQLite has exactly one index access
+  // method (b-tree) and no USING clause — a plain index is the closest physical
+  // realization. The expected snapshot strips `using` for sqlite (Pass 3 in
+  // buildExpectedSchema) so the diff stays convergent.
+  const keys = ix.expr
+    ? ix.expr
+    : ix.columns
+        .map((c, i) => (ix.orders?.[i] === "desc" ? `${quote(c)} DESC` : quote(c)))
+        .join(", ");
+  const where = ix.where ? ` WHERE (${ix.where})` : "";
+  return `CREATE ${u}INDEX ${quote(ix.name)} ON ${quote(table)} (${keys})${where};`;
 }
 
 function quote(ident: string): string {

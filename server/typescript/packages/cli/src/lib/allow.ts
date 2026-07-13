@@ -11,6 +11,13 @@ const ALLOW_TOKEN_MAP: Record<string, keyof AllowOptions> = {
   "type-change": "typeChange",
   "drop-index": "dropIndex",
   "drop-fk": "dropFk",
+  // drop-check gates CHECK evolution (an evolved `field.enum @values` is a
+  // drop+add pair); it existed in AllowOptions but had no CLI token, so the
+  // permission was impossible to grant from `--allow`.
+  "drop-check": "dropCheck",
+  // drop-view gates a REAL view removal (the diff's internal drop/create
+  // recreate pair around a column change is not gated).
+  "drop-view": "dropView",
   "nullable-to-not-null": "nullableToNotNull",
 };
 

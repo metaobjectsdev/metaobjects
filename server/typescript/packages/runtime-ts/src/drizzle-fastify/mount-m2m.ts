@@ -21,7 +21,7 @@
 
 import type { FastifyInstance, RouteShorthandOptions } from "fastify";
 import { eq, or, inArray } from "drizzle-orm";
-import { parseId } from "./util.js";
+import { coerceIdForColumn } from "./util.js";
 
 // Loose Drizzle types — the helper works across libsql / better-sqlite3 / pg.
 // biome-ignore lint/suspicious/noExplicitAny: dynamic dispatch over user's Drizzle instance
@@ -58,12 +58,19 @@ export function mountM2mRoute(opts: M2mRouteOptions): void {
   const route = `${opts.path}/:id/${opts.relationName}`;
   const ro = opts.routeOptions ?? {};
 
-  opts.fastify.get(route, ro, async (req) => {
+  opts.fastify.get(route, ro, async (req, reply) => {
     const { id } = req.params as { id: string };
-    const sourceId = parseId(id);
 
     const srcCol = columnRef(opts.junctionTable, opts.sourceColumn);
     const tgtCol = columnRef(opts.junctionTable, opts.targetColumn);
+
+    // Compare against the junction FK's real type — a numeric-LOOKING id on a
+    // TEXT fk must stay a string ('0123' ≠ '123'), or affinity traverses the
+    // WRONG source row's relations.
+    const sourceId = coerceIdForColumn(srcCol, id);
+    if (sourceId === undefined) {
+      return reply.code(400).send({ error: "invalid_id" });
+    }
 
     // Stage 1 — junction rows for this source id.
     const joinWhere = opts.symmetric
@@ -78,7 +85,7 @@ export function mountM2mRoute(opts: M2mRouteOptions): void {
     // column that is NOT the source id (compared by string key to bridge
     // number/bigint-as-string driver skew). Otherwise: always the target column.
     const sourceKey = String(sourceId);
-    const relatedIds = new Set<string | number>();
+    const relatedIds = new Set<string | number | bigint>();
     for (const r of joinRows) {
       if (!opts.symmetric) {
         addId(relatedIds, r.tgt);
@@ -101,10 +108,12 @@ export function mountM2mRoute(opts: M2mRouteOptions): void {
   });
 }
 
-function addId(set: Set<string | number>, v: unknown): void {
+function addId(set: Set<string | number | bigint>, v: unknown): void {
   if (v === null || v === undefined) return;
-  if (typeof v === "number" || typeof v === "string") set.add(v);
-  else if (typeof v === "bigint") set.add(Number(v));
+  // Keep bigint AS bigint — Number(bigint) silently loses precision above
+  // 2^53, so a field.long id could round to a DIFFERENT row's key. Drizzle
+  // binds bigint params natively; the driver never needed the narrowing.
+  if (typeof v === "number" || typeof v === "string" || typeof v === "bigint") set.add(v);
 }
 
 /**

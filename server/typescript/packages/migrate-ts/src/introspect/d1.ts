@@ -2,7 +2,10 @@ import type {
   SchemaSnapshot, TableDescriptor, ColumnDescriptor, SnapshotMeta,
   IndexDescriptor, FkDescriptor, FkAction, ViewDescriptor,
 } from "../types.js";
-import { parseSqliteDefault, sqliteTypeToSqlType, sqliteRuleToAction } from "./sqlite-shared.js";
+import {
+  parseSqliteDefault, sqliteTypeToSqlType, sqliteRuleToAction, parseSqliteChecks,
+  buildSqliteIndexDescriptor,
+} from "./sqlite-shared.js";
 
 /**
  * Runner contract: takes a SQL command string and returns wrangler's raw
@@ -93,7 +96,9 @@ export async function introspectD1(opts: IntrospectD1Options): Promise<SchemaSna
       columns: cols,
       indexes: await readIndexes(exec, name),
       foreignKeys: await readForeignKeys(exec, name),
-      checks: [], // CHECK introspection is out of scope; expected-side derives them
+      // Named CHECKs parsed from the stored CREATE TABLE DDL — required for
+      // check evolution (enum @values changes) to converge on sqlite/D1.
+      checks: parseSqliteChecks(createSql),
       primaryKey: pk,
     });
   }
@@ -151,17 +156,26 @@ function extractPrimaryKey(rows: Record<string, unknown>[]): string[] {
 
 async function readIndexes(exec: Exec, table: string): Promise<IndexDescriptor[]> {
   const list = await exec(`SELECT * FROM pragma_index_list(${sqliteIdent(table)})`);
+  // Stored CREATE INDEX DDL per index — the only catalog for expression keys and
+  // partial-index predicates (mirrors introspectSqlite's readSqliteIndexes).
+  const ddlRows = await exec(
+    `SELECT name, sql FROM sqlite_master WHERE type='index' AND tbl_name = ${sqliteLiteral(table)}`,
+  );
+  const ddlByName = new Map(ddlRows.map((r) => [String(r.name), r.sql === null ? null : String(r.sql)] as const));
   const indexes: IndexDescriptor[] = [];
   for (const ix of list) {
     if (String(ix.origin) === "pk") continue;
-    if (Number(ix.partial) === 1) continue;
     const ixName = String(ix.name);
-    const cols = await exec(`SELECT seqno, cid, name FROM pragma_index_info(${sqliteIdent(ixName)}) ORDER BY seqno`);
-    indexes.push({
-      name: ixName,
-      columns: cols.map((c) => String(c.name)),
-      unique: Number(ix.unique) === 1,
-    });
+    // pragma_index_xinfo: DESC bit + key-vs-auxiliary flag; expression keys have
+    // name NULL (cid -2).
+    const keyRows = await exec(`SELECT * FROM pragma_index_xinfo(${sqliteIdent(ixName)}) ORDER BY seqno`);
+    indexes.push(buildSqliteIndexDescriptor(
+      { name: ixName, unique: Number(ix.unique) === 1, partial: Number(ix.partial) === 1 },
+      keyRows
+        .filter((c) => Number(c.key) === 1)
+        .map((c) => ({ name: c.name === null ? null : String(c.name), desc: Number(c.desc) === 1 })),
+      ddlByName.get(ixName) ?? null,
+    ));
   }
   return indexes;
 }
@@ -223,5 +237,13 @@ async function readViews(exec: Exec): Promise<ViewDescriptor[]> {
  */
 function sqliteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
+}
+
+/**
+ * Quote a VALUE as a SQL string literal (single quotes, '' escaping) for the
+ * same no-bind-params wrangler constraint sqliteIdent works around.
+ */
+function sqliteLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
 }
 

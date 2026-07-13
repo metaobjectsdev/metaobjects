@@ -192,11 +192,16 @@ export async function diff(
     if (!actualTable) continue;
     diffTableColumns(expectedTable, actualTable, changes);
     diffTableIndexes(expectedTable, actualTable, changes);
-    diffTableForeignKeys(expectedTable, actualTable, changes);
-    // CHECK constraints on existing tables are evolved for postgres only (SQLite
-    // evolves checks via table recreate, not ALTER). Gated on `actual.checks`
-    // being populated — by the snapshot offline, or pg_constraint introspection.
-    if (args.dialect === "postgres") diffTableChecks(expectedTable, actualTable, changes);
+    diffTableForeignKeys(expectedTable, actualTable, changes, args.dialect);
+    // CHECK constraints on existing tables are evolved whenever a dialect is
+    // known (postgres: ALTER ADD/DROP CONSTRAINT; sqlite/d1: the emitter routes
+    // the check change through recreate-and-copy — checks are create-time-only
+    // inline there). Requires `actual.checks` to be populated: pg_constraint
+    // introspection, sqlite_master DDL parsing, or the offline snapshot. With
+    // no dialect (legacy positional callers) checks stay un-diffed — those
+    // callers may hold hand-built snapshots with empty check lists, and
+    // diffing them would re-propose every modeled check forever.
+    if (args.dialect !== undefined) diffTableChecks(expectedTable, actualTable, changes);
   }
 
   // Pass 2b: views. Identity is (schema, name). A name present on both sides
@@ -324,29 +329,83 @@ function diffTableIndexes(
   }
 }
 
+/**
+ * FK identity key. Postgres stores constraint names, so name IS the identity.
+ * SQLite does NOT store FK names at all (the emitter writes unnamed FOREIGN KEY
+ * clauses; pragma_foreign_key_list has no name column), so introspection can only
+ * SYNTHESIZE a name — which diverges from the expected side for any composite FK
+ * (`t_a_fk` vs `t_a_b_fk`) and for every `@constraintName` override, producing a
+ * phantom drop-fk/add-fk (and thus a recreate-and-copy, or a permanently blocked
+ * migrate) on every run. On sqlite/d1 the FK's real identity is its COLUMN SET:
+ * key on that and let fkEquals (which never compares names) catch genuine
+ * refTable/refColumns/action changes as drop+add.
+ *
+ * If the same column set carries two FKs (possible in SQL, never produced by
+ * buildExpectedSchema), the map would silently collapse them — fall back to
+ * name-keying for that table rather than mis-diff.
+ */
+function fkColsKey(f: FkDescriptor): string {
+  return f.columns.join("\u001f");
+}
+
+/**
+ * Decide the FK keying mode for a table, considering BOTH sides at once.
+ *
+ * Structural (column-set) keying is what makes sqlite/d1 converge — the engine stores no
+ * FK names, so introspection synthesizes them and they can never match a composite or
+ * `@constraintName`-overridden expected name. But the duplicate-column-set fallback MUST
+ * be decided jointly: deciding it per side lets one side key by column set while the
+ * other keys by (synthesized, colliding) name, so even the FK that genuinely MATCHES
+ * mis-diffs into a phantom add + drops of both actual FKs.
+ */
+function fkKeyingIsStructural(
+  expected: readonly FkDescriptor[],
+  actual: readonly FkDescriptor[],
+  dialect: Dialect | undefined,
+): boolean {
+  if (dialect !== "sqlite" && dialect !== "d1") return false;
+  const distinct = (fks: readonly FkDescriptor[]): boolean =>
+    new Set(fks.map(fkColsKey)).size === fks.length;
+  // Either side carrying duplicate column sets → structural keying would drop one; both
+  // sides fall back to names together.
+  return distinct(expected) && distinct(actual);
+}
+
+function fkMapFor(
+  fks: readonly FkDescriptor[],
+  structural: boolean,
+): Map<string, FkDescriptor> {
+  return new Map(fks.map((f) => [structural ? fkColsKey(f) : f.name, f] as const));
+}
+
 function diffTableForeignKeys(
   expected: TableDescriptor,
   actual: TableDescriptor,
   changes: Change[],
+  dialect: Dialect | undefined,
 ): void {
   const table = expected.name;
   const sx = schemaSpread(expected.schema);
-  const expectedFk = new Map(expected.foreignKeys.map((f) => [f.name, f]));
-  const actualFk = new Map(actual.foreignKeys.map((f) => [f.name, f]));
-  for (const [name, fk] of expectedFk) {
-    const a = actualFk.get(name);
+  const structuralFk = fkKeyingIsStructural(expected.foreignKeys, actual.foreignKeys, dialect);
+  const expectedFk = fkMapFor(expected.foreignKeys, structuralFk);
+  const actualFk = fkMapFor(actual.foreignKeys, structuralFk);
+  // NOTE: the map key is the FK's identity (name on postgres; column set on
+  // sqlite/d1 — see fkMapFor). Change records always carry the DESCRIPTOR's
+  // constraint name, never the key.
+  for (const [key, fk] of expectedFk) {
+    const a = actualFk.get(key);
     if (!a) {
       changes.push({ kind: "add-fk", table, ...sx, fk, status: ALLOWED });
     } else if (!fkEquals(fk, a)) {
       // FK shape changed: drop + add. restore = the ACTUAL shape so the down
       // re-creates the original FK.
-      changes.push({ kind: "drop-fk", table, ...sx, fk: name, restore: a, status: ALLOWED });
+      changes.push({ kind: "drop-fk", table, ...sx, fk: a.name, restore: a, status: ALLOWED });
       changes.push({ kind: "add-fk", table, ...sx, fk, status: ALLOWED });
     }
   }
-  for (const [name, af] of actualFk) {
-    if (!expectedFk.has(name)) {
-      changes.push({ kind: "drop-fk", table, ...sx, fk: name, restore: af, status: ALLOWED });
+  for (const [key, af] of actualFk) {
+    if (!expectedFk.has(key)) {
+      changes.push({ kind: "drop-fk", table, ...sx, fk: af.name, restore: af, status: ALLOWED });
     }
   }
 }

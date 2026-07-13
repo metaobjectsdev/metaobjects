@@ -21,8 +21,8 @@ import qs from "qs";
 import type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 export type { FilterAllowlist, SortAllowlist } from "./filter-allowlist.js";
 import { parseFilterParams, FilterParseError } from "./filter-parser.js";
-import { isTruthyFlag, contractErrorCode, parseId } from "./util.js";
-export { isTruthyFlag, contractErrorCode, parseId } from "./util.js";
+import { isTruthyFlag, contractErrorCode, coerceIdForColumn } from "./util.js";
+export { isTruthyFlag, contractErrorCode, parseId, coerceIdForColumn } from "./util.js";
 
 // ---------------------------------------------------------------------------
 // Loose types — we don't bind to a specific Drizzle backend so the helper
@@ -179,7 +179,13 @@ export function mountGetRoute(opts: VerbOptions): void {
   opts.fastify.get(`${opts.path}/:id`, routeOpts(opts), async (req, reply) => {
     const { id } = req.params as { id: string };
     const discCond = discriminatorCond(opts);
-    const idCond = eq(opts.table.id, parseId(id));
+    // Compare against the PK's real type — a numeric-LOOKING id on a TEXT pk
+    // must stay a string ('0123' ≠ '123'), or affinity matches the WRONG row.
+    const idValue = coerceIdForColumn(opts.table.id, id);
+    if (idValue === undefined) {
+      return reply.code(400).send({ error: "invalid_id" });
+    }
+    const idCond = eq(opts.table.id, idValue);
     // Await + take the first row rather than `.get()` — `.get()` is a
     // libsql/better-sqlite3-only method; the node-postgres builder is thenable
     // but has no `.get()`. Awaiting works on both dialects.
@@ -228,7 +234,13 @@ export function mountUpdateRoute(opts: VerbOptions): void {
       const { [opts.discriminator.column]: _omit, ...rest } = data;
       data = rest;
     }
-    const idCond = eq(opts.table.id, parseId(id));
+    // Compare against the PK's real type (see mountGetRoute) — a numeric-
+    // LOOKING id on a TEXT pk would otherwise UPDATE the wrong row.
+    const idValue = coerceIdForColumn(opts.table.id, id);
+    if (idValue === undefined) {
+      return reply.code(400).send({ error: "invalid_id" });
+    }
+    const idCond = eq(opts.table.id, idValue);
     const result = await opts.db
       .update(opts.table)
       .set(data)
@@ -260,7 +272,13 @@ export function mountDeleteRoute(opts: VerbOptions): void {
   opts.fastify.delete(`${opts.path}/:id`, routeOpts(opts), async (req, reply) => {
     const { id } = req.params as { id: string };
     const discCond = discriminatorCond(opts);
-    const idCond = eq(opts.table.id, parseId(id));
+    // Compare against the PK's real type (see mountGetRoute) — a numeric-
+    // LOOKING id on a TEXT pk would otherwise DELETE the wrong row (data loss).
+    const idValue = coerceIdForColumn(opts.table.id, id);
+    if (idValue === undefined) {
+      return reply.code(400).send({ error: "invalid_id" });
+    }
+    const idCond = eq(opts.table.id, idValue);
     const result = await opts.db
       .delete(opts.table)
       .where(discCond ? and(idCond, discCond) : idCond);
@@ -277,10 +295,12 @@ function extractRowCount(result: unknown): number {
   if (typeof result === "number") return result;
   if (Array.isArray(result)) return result.length;
   if (result && typeof result === "object") {
-    const obj = result as { rowsAffected?: number | bigint; rowCount?: number };
+    const obj = result as { rowsAffected?: number | bigint; rowCount?: number; changes?: number };
     if (typeof obj.rowsAffected === "number") return obj.rowsAffected;
     if (typeof obj.rowsAffected === "bigint") return Number(obj.rowsAffected);
     if (typeof obj.rowCount === "number") return obj.rowCount;
+    // bun:sqlite / better-sqlite3 run() result shape.
+    if (typeof obj.changes === "number") return obj.changes;
   }
   return 0;
 }

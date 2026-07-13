@@ -170,6 +170,27 @@ export function buildExpectedSchema(
           const normalized = normalizeBooleanLiteralForSqlite(col.default.value);
           if (normalized !== undefined) col.default = { kind: "literal", value: normalized };
         }
+        // `now()` is Postgres-only; SQLite has no such function, so a
+        // `DEFAULT now()` (the @autoSet insert-time default, and any authored
+        // @default "now()") makes the emitted CREATE TABLE un-appliable
+        // (`near "(": syntax error`). Normalize to the SQL-standard
+        // CURRENT_TIMESTAMP *here* — not at emit time — so all three layers
+        // agree: emit renders `DEFAULT CURRENT_TIMESTAMP`, sqlite stores that
+        // token verbatim, and introspection reads back the identical expr,
+        // keeping the re-diff empty (an emit-only mapping would report
+        // change-column-default forever → recreate-and-copy on every run).
+        if (col.default?.kind === "expr" && /^now\(\)$/i.test(col.default.value.trim())) {
+          col.default = { kind: "expr", value: "CURRENT_TIMESTAMP" };
+        }
+      }
+      // `@using` names a Postgres index access method (gin/gist/hash/…).
+      // SQLite has exactly ONE access method (b-tree) and no USING clause, so
+      // the attr is physically meaningless there: the emitter cannot render it
+      // and introspection can never read it back. Strip it from the expected
+      // snapshot — the closest physical realization is a plain index — so the
+      // diff converges instead of proposing drop/add on every run.
+      for (const index of table.indexes) {
+        delete index.using;
       }
     }
   }
@@ -547,6 +568,14 @@ function buildChecks(
 ): CheckDescriptor[] {
   const checks: CheckDescriptor[] = [];
   for (const field of entity.fields()) {
+    // No field-level CHECKs on array columns: the derived expressions assume a
+    // SCALAR column. `"labels" IN ('A','B')` against a text[] is a type error at
+    // CREATE TABLE; `length(col)`/range checks are equally scalar-shaped. Array
+    // element validation (enum membership, ranges) is enforced app-side (Zod /
+    // per-port validators), matching codegen-ts's column-mapper which also skips
+    // the enum literal-union for isArray columns.
+    // ADR-0039: resolving — array-ness may be inherited via extends.
+    if (field.resolvedIsArray()) continue;
     const col = resolveColumnName(field, strategy);
     const qcol = quoteCheckCol(col);
     // Enum membership check.
@@ -806,17 +835,43 @@ function buildColumn(
 /**
  * The native Postgres array ELEMENT SqlType for an `isArray` scalar field, or
  * undefined when the subtype has no native-array form (object/map → single jsonb
- * column; everything else falls through to the scalar subtype default).
+ * column carrying the JSON array).
  *
- * dbColumnType slim-and-derive Phase 1 wires the two derived cases the design calls
- * out: `field.string` → `text[]`, `field.uuid` → `uuid[]`. This mirrors codegen-ts's
- * column-mapper, which emits native `.array()` for the same scalar subtypes.
+ * MUST agree with codegen-ts's column-mapper, which emits Drizzle `.array()` for
+ * EVERY scalar `@isArray` field on postgres (everything except object/map). When
+ * this mapped only string/uuid, `field.int @isArray` got a SCALAR integer DB
+ * column under an `integer("x").array()` Drizzle column — the first insert
+ * failed (`column "x" is of type integer but expression is of type integer[]`)
+ * with no drift signal, because both diff sides carried the same wrong scalar.
+ *
+ * Elements are deliberately UNQUALIFIED — bare `text` (no maxLength), bare
+ * `numeric` (no precision/scale): information_schema reports NO qualifiers for
+ * array elements (character_maximum_length / numeric_precision are NULL when
+ * data_type = 'ARRAY'; verified on live PG 16), so a qualified expected element
+ * could never converge with introspection and would churn change-column-type on
+ * every run. The element qualifier is a codegen/validation concern, not a
+ * migratable physical property.
  */
 function arrayElementSqlType(field: MetaData): SqlType | undefined {
   switch (field.subType) {
-    case FIELD_SUBTYPE_STRING: return { kind: "text" };
-    case FIELD_SUBTYPE_UUID:   return { kind: "uuid" };
-    default:                   return undefined;
+    case FIELD_SUBTYPE_STRING:
+    case FIELD_SUBTYPE_ENUM:      // enum[] stores as text[]; membership is app-level (no CHECK — see buildChecks)
+    case FIELD_SUBTYPE_URI:       return { kind: "text" };
+    case FIELD_SUBTYPE_UUID:      return { kind: "uuid" };
+    case FIELD_SUBTYPE_INT:       return { kind: "integer", bits: 32 };
+    case FIELD_SUBTYPE_LONG:
+    case FIELD_SUBTYPE_CURRENCY:  return { kind: "integer", bits: 64 };
+    case FIELD_SUBTYPE_DOUBLE:    return { kind: "real" };
+    case FIELD_SUBTYPE_FLOAT:     return { kind: "real4" };
+    case FIELD_SUBTYPE_DECIMAL:   return { kind: "numeric" };
+    case FIELD_SUBTYPE_BOOLEAN:   return { kind: "boolean" };
+    case FIELD_SUBTYPE_DATE:      return { kind: "date" };
+    case FIELD_SUBTYPE_TIME:      return { kind: "time" };
+    case FIELD_SUBTYPE_TIMESTAMP:
+      // ADR-0039: resolving — @localTime may be inherited via extends.
+      return { kind: "timestamp", withTimezone: field.attr(FIELD_ATTR_LOCAL_TIME) !== true };
+    case FIELD_SUBTYPE_INET:      return { kind: "inet" };
+    default:                      return undefined; // object/map → single jsonb column
   }
 }
 

@@ -162,7 +162,10 @@ function parseSort(
 export function mountGetRoute(opts: SingleVerbOptions): void {
   opts.fastify.get(`${opts.path}/:id`, routeOpts(opts), async (req, reply) => {
     const { id } = req.params as { id: string };
-    const row = await (await opts.om()).findById(opts.entity, parseId(id));
+    // Pass the RAW path param — ObjectManager coerces it against the PK field's
+    // declared metadata type. Pre-coercing here through parseId conflated
+    // '0123' with 123 on a string pk, hitting the WRONG row.
+    const row = await (await opts.om()).findById(opts.entity, id);
     return row ?? reply.code(404).send({ error: "not_found" });
   });
 }
@@ -196,7 +199,8 @@ export function mountUpdateRoute(opts: SingleVerbOptions): void {
     // Use ifMissing: "ignore" so the helper itself owns the 404 mapping
     // (consistent with mountDeleteRoute). ObjectManager's default behavior
     // throws NotFoundError, which Fastify would surface as 500.
-    const row = await (await opts.om()).update(opts.entity, parseId(id), parsed.data as Row, {
+    // Raw id — ObjectManager coerces per PK metadata (see mountGetRoute).
+    const row = await (await opts.om()).update(opts.entity, id, parsed.data as Row, {
       ifMissing: "ignore",
     });
     return row ?? reply.code(404).send({ error: "not_found" });
@@ -214,7 +218,9 @@ export function mountUpdateRoute(opts: SingleVerbOptions): void {
 export function mountDeleteRoute(opts: SingleVerbOptions): void {
   opts.fastify.delete(`${opts.path}/:id`, routeOpts(opts), async (req, reply) => {
     const { id } = req.params as { id: string };
-    const deleted = await (await opts.om()).delete(opts.entity, parseId(id));
+    // Raw id — ObjectManager coerces per PK metadata (see mountGetRoute).
+    // Pre-coercing conflated '0123' with 123 on a string pk: wrong-row DELETE.
+    const deleted = await (await opts.om()).delete(opts.entity, id);
     return deleted ? reply.code(204).send() : reply.code(404).send({ error: "not_found" });
   });
 }
@@ -223,11 +229,7 @@ export function mountDeleteRoute(opts: SingleVerbOptions): void {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Coerce a `:id` path param. Numeric strings parse as Number (covers long/int
- * PKs); anything else passes through as a string (UUIDs, string keys).
- */
-export function parseId(raw: string): number | string {
-  const n = Number(raw);
-  return Number.isFinite(n) && raw.trim() !== "" ? n : raw;
-}
+// Back-compat re-export — the unsafe local copy was consolidated onto the one
+// shared (deprecated) helper so the three adapters can't silently diverge.
+// The mounts above no longer use it: ObjectManager coerces ids per metadata.
+export { parseId } from "../drizzle-fastify/util.js";

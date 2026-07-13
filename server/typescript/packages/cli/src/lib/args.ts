@@ -163,6 +163,11 @@ const ALLOW_TOKENS = [
   "type-change",
   "drop-index",
   "drop-fk",
+  // drop-check gates CHECK evolution (an evolved `field.enum @values` is a
+  // drop+add pair); drop-view gates a REAL view removal (the diff's internal
+  // drop/create recreate pair around a column change is not gated).
+  "drop-check",
+  "drop-view",
   "nullable-to-not-null",
 ] as const;
 type AllowToken = (typeof ALLOW_TOKENS)[number];

@@ -197,6 +197,13 @@ export interface AllowOptions {
   dropIndex?: boolean;
   dropFk?: boolean;
   dropCheck?: boolean;
+  /**
+   * Gates a REAL view removal (present in the DB, absent from the model) — like
+   * every other drop. The internal drop/create recreate pair the diff emits
+   * around a column-altering change to a view's source table is NOT gated (the
+   * view is re-created in the same migration).
+   */
+  dropView?: boolean;
   /** Existing data must satisfy NOT NULL; diff cannot verify this. */
   nullableToNotNull?: boolean;
 }

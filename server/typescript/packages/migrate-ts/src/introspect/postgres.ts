@@ -200,8 +200,12 @@ export function parsePgDefault(raw: string | null | undefined): ColumnDefault | 
   if (raw.startsWith("'")) {
     // Strip the cast suffix (e.g. `::boolean`, `::text`, `::integer`)
     const withoutCast = raw.replace(/::[^']+$/, "");
-    // Strip the surrounding single-quotes
-    const cleaned = withoutCast.replace(/^'(.*)'$/, "$1");
+    // Strip the surrounding single-quotes, then un-double the embedded `''`
+    // escapes PG stores verbatim (e.g. `'don''t'::text`) — without this the
+    // introspected value never equals the expected literal and the diff issues
+    // a bogus SET DEFAULT on every run.
+    const m = /^'(.*)'$/.exec(withoutCast);
+    const cleaned = m !== null ? m[1]!.replace(/''/g, "'") : withoutCast;
     return { kind: "literal", value: cleaned };
   }
 
@@ -239,18 +243,36 @@ async function readTableNames(k: Kysely<any>): Promise<SchemaTableRef[]> {
 }
 
 async function readPgViews(k: RawKysely): Promise<ViewDescriptor[]> {
-  // pg-mem gap: information_schema.views is not supported — the query throws
-  // "relation views does not exist". We catch and return [] so other tests
-  // still pass on pg-mem. Real PG (Postgres 16) handles this correctly.
+  // pg-mem gap: the catalog joins below are not supported — the query throws.
+  // We catch and return [] so other tests still pass on pg-mem. Real PG
+  // (Postgres 16) handles this correctly.
   try {
-    // information_schema.views.view_definition is the SELECT body (not the
-    // full CREATE VIEW statement). We carry it through on the descriptor so the
-    // diff can detect view-body drift (not just name presence).
+    // pg_get_viewdef returns the SELECT body (not the full CREATE VIEW
+    // statement — same shape information_schema.view_definition had). We carry
+    // it through on the descriptor so the diff can detect view-body drift (not
+    // just name presence).
+    //
+    // EXTENSION-OWNED views are excluded (pg_depend deptype 'e'): a view that
+    // `CREATE EXTENSION` installed (e.g. pg_stat_statements drops one into
+    // `public`) belongs to the extension, not the model — reporting it makes
+    // the very next migrate propose `DROP VIEW "pg_stat_statements";`, and
+    // dropping it would break the extension.
     const rows = await sql<{ table_name: string; table_schema: string; view_definition: string | null }>`
-      SELECT table_name, table_schema, view_definition FROM information_schema.views
-      WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
-        AND table_schema NOT LIKE 'pg_%'
-      ORDER BY table_schema, table_name
+      SELECT c.relname AS table_name,
+             n.nspname AS table_schema,
+             pg_get_viewdef(c.oid) AS view_definition
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE c.relkind = 'v'
+        AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+        AND n.nspname NOT LIKE 'pg_%'
+        AND NOT EXISTS (
+          SELECT 1 FROM pg_depend d
+          WHERE d.classid = 'pg_class'::regclass
+            AND d.objid = c.oid
+            AND d.deptype = 'e'
+        )
+      ORDER BY n.nspname, c.relname
     `.execute(k);
     return rows.rows.map((r) => {
       const view: ViewDescriptor = { name: r.table_name, schema: r.table_schema };
@@ -258,7 +280,7 @@ async function readPgViews(k: RawKysely): Promise<ViewDescriptor[]> {
       return view;
     });
   } catch {
-    // pg-mem: information_schema.views not supported — return empty view list.
+    // pg-mem: pg_class/pg_depend catalog introspection not supported — return empty view list.
     return [];
   }
 }

@@ -62,7 +62,8 @@ MIGRATE FLAGS:
   --out-dir <path>      Migration directory (default: ./.metaobjects/migrations)
   --slug <name>         Required when changes are present (e.g., add-user-shipping)
   --allow <csv>         Comma-separated destructive-change permissions:
-                        drop-column,drop-table,type-change,drop-index,drop-fk,nullable-to-not-null
+                        drop-column,drop-table,type-change,drop-index,drop-fk,
+                        drop-check,drop-view,nullable-to-not-null
   --on-ambiguous abort|rename|drop-add   Default abort
   --d1 <binding>        D1 binding name from wrangler.toml (only with --dialect d1)
   --remote              Target remote D1 instead of local (only with --dialect d1)

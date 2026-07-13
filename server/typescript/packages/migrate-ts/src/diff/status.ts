@@ -1,5 +1,18 @@
 import type { Change, AllowOptions } from "../types.js";
 import { isWidening } from "../sql-type.js";
+import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
+
+/**
+ * A view's identity is (schema, name) — NOT the bare name. Keying the recreate-pair
+ * exemption on the name alone let a same-named view in a DIFFERENT schema inherit the
+ * exemption: an expected `reporting.summary` being rebuilt (create-view) would un-gate a
+ * destructive DROP of an unmodeled, hand-written `public.summary`. Normalize the absent
+ * schema to the postgres default so expected (often undefined) compares equal to
+ * introspected (always populated).
+ */
+function viewIdentity(name: string, schema: string | undefined): string {
+  return (schema ?? DEFAULT_DB_SCHEMA_POSTGRES) + "." + name;
+}
 
 /**
  * Mutates each Change's `status` field per the rules in spec §6.5.
@@ -7,8 +20,19 @@ import { isWidening } from "../sql-type.js";
  * `allow.*` flag is set.
  */
 export function applyStatus(changes: Change[], allow: AllowOptions = {}): void {
+  // A drop-view paired with a create-view/replace-view for the SAME view in this
+  // change list is the diff's internal recreate around a column-altering change
+  // (Pass 2c) — the view survives the migration, so it is not a destructive drop
+  // and must not require allow.dropView. Only an unpaired drop-view (the view is
+  // gone from the model, or was never modeled) is a real removal.
+  const recreatedViews = new Set<string>();
   for (const c of changes) {
-    const blockedReason = blockedReasonFor(c, allow);
+    if (c.kind === "create-view" || c.kind === "replace-view") {
+      recreatedViews.add(viewIdentity(c.view.name, c.schema));
+    }
+  }
+  for (const c of changes) {
+    const blockedReason = blockedReasonFor(c, allow, recreatedViews);
     if (blockedReason !== null) {
       c.status = { state: "blocked", blockedReason };
     } else {
@@ -17,7 +41,11 @@ export function applyStatus(changes: Change[], allow: AllowOptions = {}): void {
   }
 }
 
-function blockedReasonFor(c: Change, allow: AllowOptions): string | null {
+function blockedReasonFor(
+  c: Change,
+  allow: AllowOptions,
+  recreatedViews: ReadonlySet<string>,
+): string | null {
   switch (c.kind) {
     case "drop-column":
       return allow.dropColumn ? null : "destructive: drop-column not allowed (pass allow.dropColumn)";
@@ -29,6 +57,10 @@ function blockedReasonFor(c: Change, allow: AllowOptions): string | null {
       return allow.dropFk ? null : "destructive: drop-fk not allowed (pass allow.dropFk)";
     case "drop-check":
       return allow.dropCheck ? null : "destructive: drop-check not allowed (pass allow.dropCheck)";
+    case "drop-view":
+      // Identity, not bare name — see viewIdentity().
+      if (recreatedViews.has(viewIdentity(c.view, c.schema))) return null; // recreate pair — view survives
+      return allow.dropView ? null : "destructive: drop-view not allowed (pass allow.dropView)";
 
     case "change-column-type":
       if (isWidening(c.from, c.to)) return null;     // widening always allowed
@@ -51,7 +83,6 @@ function blockedReasonFor(c: Change, allow: AllowOptions): string | null {
     case "add-fk":
     case "add-check":
     case "create-view":
-    case "drop-view":
     case "replace-view":
       return null;
   }
