@@ -86,6 +86,10 @@ public static class ExtractEngine
                         data[f.Name] = coerced;
                         report.AddCoercion(new Coercion(path, "", f.DefaultValue, "default"));
                         report.Set(path, FieldExtraction.DEFAULTED);
+                        // A default SATISFIES @required, so this field never appears in
+                        // LostRequired() — which is what the generated guards key on. Record it
+                        // separately so "the document did not answer a required field" stays askable.
+                        if (f.Required) report.MarkDefaultedRequired(path);
                         continue;
                     }
                 }

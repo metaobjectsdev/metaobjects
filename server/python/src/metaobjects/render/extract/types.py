@@ -299,6 +299,7 @@ class ExtractionReport:
     def __init__(self) -> None:
         self._states: dict[str, FieldExtraction] = {}
         self._coercions: list[Coercion] = []
+        self._defaulted_required: list[str] = []
         self._empty: bool = False
 
     def set(self, field_path: str, state: FieldExtraction) -> None:
@@ -327,6 +328,36 @@ class ExtractionReport:
 
     def has_lost_required(self) -> bool:
         return len(self.lost_required()) > 0
+
+    def mark_defaulted_required(self, field_path: str) -> None:
+        """Called by extract when an absent **required** field is filled from its ``@default``."""
+        if field_path not in self._defaulted_required:
+            self._defaulted_required.append(field_path)
+
+    def defaulted(self) -> list[str]:
+        """Every field the document did not answer, whose value came from its ``@default``."""
+        return self._by_state(FieldExtraction.DEFAULTED)
+
+    def defaulted_required(self) -> list[str]:
+        """The dangerous subset: ``@required`` fields the document did NOT answer, whose value
+        was silently supplied by their ``@default``.
+
+        These do NOT appear in :meth:`lost_required`, and that is deliberate — a default IS an
+        answer, so the field is not "lost". But it means a ``@default`` **switches off loss
+        detection for that field**, including in generated code: the generated extractor keys its
+        failure signal on :meth:`has_lost_required`, so a required field carrying a default can
+        never make it fire.
+
+        That is a sharp edge worth being able to SEE. It propagates through ``extends`` — adding
+        an innocuous ``@default`` to a shared abstract field silently disables loss detection for
+        every field inheriting it — and a missing value then becomes indistinguishable from a real
+        one. Check this alongside :meth:`has_lost_required` when an absent answer must not be
+        mistaken for a given one.
+        """
+        return list(self._defaulted_required)
+
+    def has_defaulted_required(self) -> bool:
+        return len(self._defaulted_required) > 0
 
     def _by_state(self, s: FieldExtraction) -> list[str]:
         return [k for k, v in self._states.items() if v == s]

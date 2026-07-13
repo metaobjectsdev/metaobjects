@@ -79,6 +79,10 @@ function extractFields(
           data[f.name] = coerced;
           report.addCoercion({ fieldPath: path, from: "", to: f.defaultValue, kind: "default" });
           report.set(path, FieldExtraction.DEFAULTED);
+          // A default SATISFIES @required, so this field will never appear in
+          // lostRequired() — which is what the generated guards key on. Record it
+          // separately so "the document did not answer a required field" stays askable.
+          if (f.required) report.markDefaultedRequired(path);
           continue;
         }
       }

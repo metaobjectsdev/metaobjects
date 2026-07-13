@@ -323,6 +323,7 @@ export class ExtractionReport {
   // Insertion-ordered (Map preserves insertion order, mirroring Java LinkedHashMap).
   private readonly _states = new Map<string, FieldExtraction>();
   private readonly _coercions: Coercion[] = [];
+  private readonly _defaultedRequired = new Set<string>();
   private _empty = false;
 
   set(fieldPath: string, state: FieldExtraction): void {
@@ -359,6 +360,40 @@ export class ExtractionReport {
 
   hasLostRequired(): boolean {
     return this.lostRequired().length > 0;
+  }
+
+  /** Every field the document did not answer, whose value came from its `@default`. */
+  defaulted(): string[] {
+    return this.byState(FieldExtraction.DEFAULTED);
+  }
+
+  /**
+   * The dangerous subset: **`@required` fields the document did NOT answer**, whose value
+   * was silently supplied by their `@default`.
+   *
+   * These do NOT appear in `lostRequired()`, and that is deliberate — a default IS an
+   * answer, so the field is not "lost". But it means a `@default` **switches off loss
+   * detection for that field**, including in generated code: the generated extractor and
+   * `dataOrThrow()` both key their failure signal on `hasLostRequired()`, so a required
+   * field with a default can never make them fire.
+   *
+   * That is a sharp edge worth being able to SEE. It propagates through `extends` — adding
+   * an innocuous `@default` to a shared abstract field silently disables loss detection for
+   * every field inheriting it — and a missing value then becomes indistinguishable from a
+   * real one. Check this alongside `hasLostRequired()` when an absent answer must not be
+   * mistaken for a given one.
+   */
+  defaultedRequired(): string[] {
+    return [...this._defaultedRequired];
+  }
+
+  hasDefaultedRequired(): boolean {
+    return this._defaultedRequired.size > 0;
+  }
+
+  /** Called by extract when an absent **required** field is filled from its `@default`. */
+  markDefaultedRequired(fieldPath: string): void {
+    this._defaultedRequired.add(fieldPath);
   }
 
   private byState(s: FieldExtraction): string[] {

@@ -92,6 +92,12 @@ def _extract(
                     data[f.name] = coerced
                     report.add_coercion(Coercion(path, "", f.default_value, "default"))
                     report.set(path, FieldExtraction.DEFAULTED)
+                    # A default SATISFIES @required, so this field never appears in
+                    # lost_required() — which is what the generated guards key on. Record
+                    # it separately so "the document did not answer a required field"
+                    # stays askable.
+                    if f.required:
+                        report.mark_defaulted_required(path)
                     continue
             report.set(
                 path,

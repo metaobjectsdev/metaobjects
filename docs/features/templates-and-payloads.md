@@ -398,6 +398,54 @@ emitted). In practice the loader's template-validation pass rejects malformed
 user-visible under normal flow; it only matters for defensive paths in
 custom embedding scenarios. Tracked as a cross-port consistency item.
 
+### Reading the extraction report — and one sharp edge
+
+Parsing a model's answer is best-effort, so the parser returns a value **and** an
+`ExtractionReport` classifying every field it could not populate:
+
+| verdict | meaning |
+|---|---|
+| `EXTRACTED` | the document answered it |
+| `DEFAULTED` | the document did **not** answer it; the value came from the field's `@default` |
+| `LOST_OPTIONAL` | absent, no default, not required |
+| `LOST_REQUIRED` | absent, no default, and **required** |
+| `MALFORMED` | present but unusable |
+
+The generated failure signal keys on `hasLostRequired()` — the generated extractor throws
+on it, and Java's `ExtractionResult.dataOrThrow()` throws iff it is true.
+
+> **A `@default` satisfies `@required`.** An absent field carrying a `@default` is filled
+> and classified `DEFAULTED` — so it is **never** `LOST_REQUIRED`, and it can never make
+> the generated guard fire.
+>
+> That is deliberate (a default *is* an answer), but the consequence is easy to miss:
+> **declaring a `@default` switches off loss detection for that field.** And it propagates
+> through `extends` — adding an innocuous `@default` to a shared *abstract* field silently
+> disables loss detection for **every field that inherits it**. A value the model never gave
+> you then becomes indistinguishable from one it did: no exception, no warning, a
+> healthy-looking log line.
+>
+> When an absent answer must not be mistaken for a given one, check
+> **`hasDefaultedRequired()` / `defaultedRequired()`** alongside `hasLostRequired()`. It names
+> exactly the required fields the document failed to answer and that were silently filled:
+>
+> ```ts
+> const { data, report } = parseTriage(raw);
+> if (report.hasLostRequired() || report.hasDefaultedRequired()) {
+>   // the model did not actually answer everything we required
+> }
+> ```
+>
+> (`defaulted()` lists every defaulted field, required or not.) The same accessors exist in
+> every port: `defaultedRequired()` / `hasDefaultedRequired()` in TS, Java/Kotlin and C#,
+> and `defaulted_required()` / `has_defaulted_required()` in Python.
+
+Note the same reasoning applies to anything you hand-write **downstream** of the parser.
+The report is a complete account of what survived *the parser* — a hand-written mapper that
+turns an absent value into a plausible one (`Boolean.TRUE.equals(vo.getFlag())` → `false`)
+un-catches what the framework caught. Prefer declaring the default in metadata (where it is
+reported) over defaulting in code (where it is not).
+
 ## Drift detection: `verify`
 
 For every template, `verify` resolves the text, parses the `{{...}}` references,
