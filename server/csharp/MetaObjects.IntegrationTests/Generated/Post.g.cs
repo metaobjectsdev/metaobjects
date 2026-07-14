@@ -15,8 +15,9 @@ public class Post
     [Column("id")]
     public long Id { get; set; }
     [Column("title")]
+    [Required(AllowEmptyStrings = true)]
     [MaxLength(200)]
-    [Required]
+    [MinLength(1)]
     public string Title { get; set; } = default!;
     public ICollection<Tag> Tags { get; set; } = new List<Tag>();
 }

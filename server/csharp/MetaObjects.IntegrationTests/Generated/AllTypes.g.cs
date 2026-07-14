@@ -17,8 +17,9 @@ public class AllTypes
     [Column("id")]
     public Guid Id { get; set; }
     [Column("sVal")]
+    [Required(AllowEmptyStrings = true)]
     [MaxLength(200)]
-    [Required]
+    [MinLength(1)]
     public string SVal { get; set; } = default!;
     [Column("iVal")]
     public int IVal { get; set; }

@@ -51,7 +51,8 @@ public class EntityGeneratorTests
         Assert.Contains("[Key]", src);
         Assert.Contains("[Column(\"id\")]", src);
         Assert.Contains("public long Id { get; set; }", src);
-        // required string -> [Required] + [MaxLength] + non-nullable w/ default!
+        // required string -> [Required(AllowEmptyStrings)] + [MaxLength] + [MinLength(1)] (FR-036 A1)
+        // + non-nullable w/ default!
         Assert.Contains("[Column(\"email\")]", src);
         Assert.Contains("[MaxLength(255)]", src);
         Assert.Contains("public string Email { get; set; } = default!;", src);

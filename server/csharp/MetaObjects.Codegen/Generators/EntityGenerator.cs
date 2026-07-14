@@ -803,11 +803,22 @@ public class EntityGenerator : IGenerator
                 sb.AppendLine("    [Key]");
             sb.AppendLine($"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]");
             if (baseType == "string")
-                AppendStringValidatorAttributes(sb, field);
+            {
+                // FR-036 A1 — a @required string is NON-EMPTY, but whitespace-only is ACCEPTED
+                // (owner ruling). The default [Required] TRIMS a string (rejecting whitespace);
+                // instead allow empty strings at [Required] and enforce non-empty via a length
+                // floor of 1, folded into the length validator (see AppendStringValidatorAttributes)
+                // so a validator.length @min is not double-emitted.
+                if (required)
+                    sb.AppendLine("    [Required(AllowEmptyStrings = true)]");
+                AppendStringValidatorAttributes(sb, field, requiredMinFloor: required ? 1 : 0);
+            }
             else
+            {
                 AppendNumericValidatorAttributes(sb, field);
-            if (required && !isValue)
-                sb.AppendLine("    [Required]");
+                if (required && !isValue)
+                    sb.AppendLine("    [Required]");
+            }
         }
 
         var type = required ? baseType : baseType + "?";
@@ -829,11 +840,20 @@ public class EntityGenerator : IGenerator
     // String length + pattern DataAnnotations for a string scalar, combining the field
     // @maxLength attr with validator.length (@min/@max) and validator.regex (@pattern).
     //
-    // Length: when both a minimum (validator.length @min) and a maximum (@maxLength or
-    // validator.length @max) apply, emit a single [StringLength(max, MinimumLength = min)]
-    // — the form TryValidateObject enforces on BOTH ends. Min-only → [MinLength]; max-only
-    // → [MaxLength] (preserving the existing @maxLength semantics).
-    protected static void AppendStringValidatorAttributes(StringBuilder sb, MetaField field)
+    // Length: when both a validator.length @min AND a maximum (@maxLength or validator.length
+    // @max) apply, emit a single [StringLength(max, MinimumLength = min)] — the form
+    // TryValidateObject enforces on BOTH ends. Validator-@min-only → [MinLength]; max-only →
+    // [MaxLength] (preserving the existing @maxLength semantics).
+    //
+    // FR-036 A3 — when @maxLength AND validator.length @max both apply, the effective max is
+    // the STRICTEST (min of the two), not one-wins.
+    //
+    // FR-036 A1 — <paramref name="requiredMinFloor"/> is the non-empty floor for a @required
+    // string (1). It combines with any validator.length @min as max(floor, @min): when a
+    // validator @min is present the floor folds into it; when it is not, the floor becomes a
+    // standalone [MinLength] alongside the [MaxLength] (so the max attribute is undisturbed).
+    protected static void AppendStringValidatorAttributes(
+        StringBuilder sb, MetaField field, long requiredMinFloor = 0)
     {
         // ADR-0036 Wave 3 — @stringFormat narrows a plain string to a closed validated
         // format. The canonical matcher per format lives HERE (codegen), never author
@@ -850,14 +870,17 @@ public class EntityGenerator : IGenerator
                 break;
         }
 
-        long? min = null;
+        long? validatorMin = null;
         long? max = field.MaxLength;
         foreach (var v in field.Validators())
         {
             if (v.SubType == VALIDATOR_SUBTYPE_LENGTH)
             {
-                if (v.Min is long lmin) min = lmin;
-                if (v.Max is long lmax) max = lmax;
+                if (v.Min is long lmin)
+                    validatorMin = validatorMin is long curMin ? System.Math.Max(curMin, lmin) : lmin;
+                // FR-036 A3 — strictest-wins: effective max = min(@maxLength, validator.length @max).
+                if (v.Max is long lmax)
+                    max = max is long curMax ? System.Math.Min(curMax, lmax) : lmax;
             }
             else if (v.SubType == VALIDATOR_SUBTYPE_REGEX
                      && v is MetaRegexValidator { Pattern: { } pattern })
@@ -866,8 +889,24 @@ public class EntityGenerator : IGenerator
             }
         }
 
+        // FR-036 A1 — fold the @required non-empty floor into the min (max(floor, @min)).
+        long? min = validatorMin;
+        if (requiredMinFloor > 0)
+            min = min is long m ? System.Math.Max(m, requiredMinFloor) : requiredMinFloor;
+
         if (min is long mn && max is long mx)
-            sb.AppendLine($"    [StringLength({mx}, MinimumLength = {mn})]");
+        {
+            // A validator.length @min + a max → a single [StringLength] gating both ends.
+            // A pure required-floor min (no validator @min) keeps [MaxLength] and adds a
+            // standalone [MinLength], leaving the max attribute unchanged.
+            if (validatorMin is not null)
+                sb.AppendLine($"    [StringLength({mx}, MinimumLength = {mn})]");
+            else
+            {
+                sb.AppendLine($"    [MaxLength({mx})]");
+                sb.AppendLine($"    [MinLength({mn})]");
+            }
+        }
         else if (min is long mn2)
             sb.AppendLine($"    [MinLength({mn2})]");
         else if (max is long mx2)

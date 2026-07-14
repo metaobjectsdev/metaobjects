@@ -176,6 +176,7 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine();
             sb.AppendLine("        app.MapPost(prefix + \"/" + route + "\", async (" + cls + " input, AppDbContext db) =>");
             sb.AppendLine("        {");
+            AppendCreateValidation(sb);
             sb.AppendLine("            db." + dbSet + ".Add(input);");
             sb.AppendLine("            await db.SaveChangesAsync();");
             sb.AppendLine("            return Results.Created(prefix + \"/" + route + "\", input);");
@@ -399,12 +400,27 @@ public class RoutesGenerator : PerEntityGenerator
         return new EmittedFile($"{baseCls}Routes.g.cs", sb.ToString());
     }
 
+    // FR-036 A2 — the shared create-validation preamble for a generated POST handler
+    // (vanilla entity + each TPH per-subtype create). Runs the model's DataAnnotations
+    // (the emitted [Required]/[MaxLength]/[MinLength]/[Range]/[RegularExpression]) over the
+    // bound `input` and rejects a violating body with the cross-port {error:"validation"}
+    // envelope BEFORE the row is persisted (ASP.NET minimal-API model binding never runs
+    // DataAnnotations on its own). Assumes the bound local `input` is in scope.
+    private static void AppendCreateValidation(StringBuilder sb)
+    {
+        sb.AppendLine("            var __vr = new System.Collections.Generic.List<System.ComponentModel.DataAnnotations.ValidationResult>();");
+        sb.AppendLine("            if (!System.ComponentModel.DataAnnotations.Validator.TryValidateObject(");
+        sb.AppendLine("                    input, new System.ComponentModel.DataAnnotations.ValidationContext(input), __vr, true))");
+        sb.AppendLine("                return Results.BadRequest(new { error = \"validation\" });");
+    }
+
     // FR-035 PATCH-2 — the shared present-key merge loop for the generated update
     // handler (vanilla entity + each TPH subtype). Enumerates the JSON body and writes
     // ONLY the present keys: an explicit null CLEARS a nullable column, an explicit null
     // on a NOT-NULL (@required) column is a 400 {error:"validation"}, and the PK — plus
     // the TPH discriminator when `discProp` is non-null — is never written. Assumes the
-    // locals `body` (JsonDocument), `entry` (EntityEntry) and `jsonOpts` are in scope.
+    // locals `body` (JsonDocument), `existing` (the entity instance), `entry` (EntityEntry)
+    // and `jsonOpts` are in scope.
     private static void AppendPartialMergeLoop(StringBuilder sb, string? discProp)
     {
         sb.AppendLine("            foreach (var prop in body.RootElement.EnumerateObject())");
@@ -426,7 +442,15 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("                    continue;");
         sb.AppendLine("                }");
         sb.AppendLine("                var clr = System.Nullable.GetUnderlyingType(target.ClrType) ?? target.ClrType;");
-        sb.AppendLine("                entry.CurrentValues[target] = System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts);");
+        sb.AppendLine("                var __val = System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts);");
+        sb.AppendLine("                // FR-036 A2 — validate the PRESENT, non-null value with the same per-field");
+        sb.AppendLine("                // DataAnnotations as create. This validates ONLY the present value (never the");
+        sb.AppendLine("                // whole row) so an ABSENT @required field is untouched, not a 400.");
+        sb.AppendLine("                var __pr = new System.Collections.Generic.List<System.ComponentModel.DataAnnotations.ValidationResult>();");
+        sb.AppendLine("                if (!System.ComponentModel.DataAnnotations.Validator.TryValidateProperty(__val,");
+        sb.AppendLine("                        new System.ComponentModel.DataAnnotations.ValidationContext(existing) { MemberName = target.Name }, __pr))");
+        sb.AppendLine("                    return Results.BadRequest(new { error = \"validation\" });");
+        sb.AppendLine("                entry.CurrentValues[target] = __val;");
         sb.AppendLine("            }");
     }
 
@@ -479,6 +503,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine();
         sb.AppendLine("        app.MapPost(prefix + \"/" + subRoute + "\", async (" + subCls + " input, AppDbContext db) =>");
         sb.AppendLine("        {");
+        AppendCreateValidation(sb);
         sb.AppendLine($"            db.{dbSet}.Add(input);");
         sb.AppendLine("            await db.SaveChangesAsync();");
         sb.AppendLine("            return Results.Created(prefix + \"/" + subRoute + "/\" + input." + pkProp + ", input);");

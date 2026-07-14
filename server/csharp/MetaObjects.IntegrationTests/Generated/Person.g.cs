@@ -15,8 +15,9 @@ public class Person
     [Column("id")]
     public long Id { get; set; }
     [Column("name")]
+    [Required(AllowEmptyStrings = true)]
     [MaxLength(80)]
-    [Required]
+    [MinLength(1)]
     public string Name { get; set; } = default!;
     [NotMapped]
     public ICollection<Person> Following { get; set; } = new List<Person>();

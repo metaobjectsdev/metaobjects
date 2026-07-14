@@ -15,8 +15,9 @@ public class Node
     [Column("id")]
     public long Id { get; set; }
     [Column("label")]
+    [Required(AllowEmptyStrings = true)]
     [MaxLength(80)]
-    [Required]
+    [MinLength(1)]
     public string Label { get; set; } = default!;
     [Column("parentId")]
     public long? ParentId { get; set; }

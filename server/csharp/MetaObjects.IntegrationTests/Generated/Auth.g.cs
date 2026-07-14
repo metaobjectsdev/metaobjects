@@ -18,7 +18,8 @@ public abstract class Auth
     [Column("type")]
     public AuthType? Type { get; set; }
     [Column("reference")]
+    [Required(AllowEmptyStrings = true)]
     [MaxLength(80)]
-    [Required]
+    [MinLength(1)]
     public string Reference { get; set; } = default!;
 }

@@ -15,7 +15,8 @@ public class Tag
     [Column("id")]
     public long Id { get; set; }
     [Column("name")]
+    [Required(AllowEmptyStrings = true)]
     [MaxLength(80)]
-    [Required]
+    [MinLength(1)]
     public string Name { get; set; } = default!;
 }

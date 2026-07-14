@@ -484,10 +484,25 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         await SendJsonAsync(ctx, 200, RowToMap(rdr));
     }
 
+    // FR-036 — the corpus Author model's @maxLength bounds (name 100, bio 1000). Only a
+    // PRESENT, non-null string is measured; an absent field is ignored (untouched on PATCH;
+    // required-presence is enforced separately).
+    private static bool ExceedsAuthorMaxLength(Dictionary<string, object?> body) =>
+        (body.GetValueOrDefault("name") is string n && n.Length > 100)
+        || (body.GetValueOrDefault("bio") is string b && b.Length > 1000);
+
     private async Task CreateAuthorAsync(HttpListenerContext ctx)
     {
         var parsed = await ReadJsonBodyAsync(ctx);
         if (parsed is not Dictionary<string, object?> body)
+        {
+            await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
+            return;
+        }
+        // FR-036 — mirror the corpus Author @maxLength bounds so this lane rejects an
+        // over-length string with the same {error:"validation"} envelope the generated
+        // lane's [MaxLength] produces (otherwise a too-long name would 500 on the PG write).
+        if (ExceedsAuthorMaxLength(body))
         {
             await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
             return;
@@ -536,6 +551,13 @@ internal sealed class AuthorApiServer : IAsyncDisposable
                 await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
                 return;
             }
+        }
+        // FR-036 — a PRESENT, non-null value that exceeds @maxLength is a 400 (same envelope);
+        // an absent field is untouched (never checked). Mirrors the generated-lane [MaxLength].
+        if (ExceedsAuthorMaxLength(body))
+        {
+            await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
+            return;
         }
         var sets = new List<string>();
         var vals = new List<object?>();

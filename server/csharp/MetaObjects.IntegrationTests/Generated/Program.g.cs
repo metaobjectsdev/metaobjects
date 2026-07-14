@@ -16,8 +16,9 @@ public class Program
     [Column("id")]
     public long Id { get; set; }
     [Column("title")]
+    [Required(AllowEmptyStrings = true)]
     [MaxLength(200)]
-    [Required]
+    [MinLength(1)]
     public string Title { get; set; } = default!;
     [Column("priceCents")]
     public long PriceCents { get; set; }
