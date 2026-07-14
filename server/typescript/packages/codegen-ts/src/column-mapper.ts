@@ -295,8 +295,14 @@ function getMaxLength(field: MetaField): number | undefined {
 }
 
 /** Check for validator.required child OR @required attr.
- *  Uses field.validators() (effective) so inherited validators are seen. */
-function isRequired(field: MetaField): boolean {
+ *  Uses field.validators() (effective) so inherited validators are seen.
+ *
+ *  Exported because it is load-bearing for FR-035: this predicate drives the
+ *  Drizzle column's `.notNull()` (below), and the SAME predicate must drive the
+ *  Zod UpdateSchema's `.nullable()` exclusion (zod-validators.ts) — a non-required
+ *  column is nullable in BOTH or the two disagree and `.set({field:null})` fails
+ *  the typecheck / NOT NULL. Sharing one function keeps them aligned by construction. */
+export function isRequired(field: MetaField): boolean {
   if (field.attr(FIELD_ATTR_REQUIRED) === true) return true;
   return field.validators().some((child) => child.subType === VALIDATOR_SUBTYPE_REQUIRED);
 }

@@ -43,7 +43,7 @@ export const WorkoutUpdateSchema = z.object({
   weekId: z.number().int().optional(),
   title: z.string().min(1).max(200).optional(),
   orderIndex: z.number().int().optional(),
-  durationMinutes: z.number().int().optional(),
+  durationMinutes: z.number().int().optional().nullable(),
 });
 
 /** Typed patch shape for Workout: every settable field, optional (FR-035 PATCH). A

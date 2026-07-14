@@ -48,9 +48,9 @@ export const ExerciseInsertSchema = z.object({
 export const ExerciseUpdateSchema = z.object({
   workoutId: z.number().int().optional(),
   name: z.string().min(1).max(200).optional(),
-  sets: z.number().int().optional(),
-  reps: z.number().int().optional(),
-  notes: z.string().optional(),
+  sets: z.number().int().optional().nullable(),
+  reps: z.number().int().optional().nullable(),
+  notes: z.string().optional().nullable(),
 });
 
 /** Typed patch shape for Exercise: every settable field, optional (FR-035 PATCH). A

@@ -169,11 +169,13 @@ describe("api-docs agent-usability gate — an agent could write a compiling cal
     expect(createLine!).toContain("data: {");
     expect(createLine!).toContain("name"); // a real, @required field
     expect(createLine!).toContain("status"); // the enum field
-    // And the update line likewise shows a shape (all-optional on PATCH).
+    // And the update line likewise shows a shape (all-optional on PATCH) inlined
+    // into its `patch:` param — never the opaque `patch: ProductPatch` type NAME.
     const updateLine = out.split("\n").find((l) => l.includes("updateProduct("));
     expect(updateLine).toBeDefined();
     expect(updateLine!).not.toContain("data: unknown");
-    expect(updateLine!).toContain("data: {");
+    expect(updateLine!).not.toContain("patch: ProductPatch");
+    expect(updateLine!).toContain("patch: {");
     expect(updateLine!).toContain("name");
   });
 

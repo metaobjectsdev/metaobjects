@@ -31,7 +31,7 @@ export const ProgramInsertSchema = z.object({
 export const ProgramUpdateSchema = z.object({
   slug: z.string().min(1).max(100).optional(),
   title: z.string().min(1).max(200).optional(),
-  description: z.string().optional(),
+  description: z.string().optional().nullable(),
   priceCents: z.number().int().optional(),
   isPublished: z.boolean().optional(),
   createdAt: z.string().optional(),

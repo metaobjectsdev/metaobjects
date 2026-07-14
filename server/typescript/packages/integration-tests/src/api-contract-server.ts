@@ -22,7 +22,7 @@
 
 import Fastify, { type FastifyInstance, type RouteHandlerMethod } from "fastify";
 import { type MetaRoot } from "@metaobjectsdev/metadata";
-import { ObjectManager, type Filter } from "@metaobjectsdev/runtime-ts";
+import { ObjectManager, ValidationError, type Filter } from "@metaobjectsdev/runtime-ts";
 import { kyselyDriver } from "@metaobjectsdev/runtime-ts/drivers";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
@@ -101,6 +101,20 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
 
   const fastify = Fastify();
 
+  // FR-035 PATCH-2: a per-field validation failure (e.g. an explicit null on a
+  // @required field, or a value that fails a length/format rule) surfaces from
+  // om.create/om.update as a ValidationError. Map it to the cross-port 400
+  // {error:"validation"} envelope uniformly across create + update + updateMany,
+  // rather than a per-handler try/catch. Any other error keeps Fastify's default
+  // 500 handling.
+  fastify.setErrorHandler((err, _req, reply) => {
+    if (err instanceof ValidationError) {
+      reply.code(400).send({ error: "validation" });
+      return;
+    }
+    throw err;
+  });
+
   // Fastify pattern: every handler MUST either `return value` OR `reply.send()`,
   // never both — doing both raises ERR_HTTP_HEADERS_SENT. We use `reply.send()`
   // explicitly and return the reply object (Fastify's recommended async pattern
@@ -160,6 +174,8 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
   // PATCH + PUT /api/authors/:id — same body shape per the cross-port contract.
   const updateHandler: RouteHandlerMethod = async (req, reply) => {
     const { id } = req.params as { id: string };
+    // A ValidationError (e.g. FR-035 present-null on a @required field) propagates
+    // to the shared setErrorHandler above → 400 {error:"validation"}.
     const row = await om.update(ENTITY, Number(id), req.body as Record<string, unknown>, { ifMissing: "ignore" });
     if (row) return row;
     reply.code(404).send({ error: "not_found" });

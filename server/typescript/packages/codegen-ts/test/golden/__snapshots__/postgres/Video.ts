@@ -45,8 +45,8 @@ export const VideoInsertSchema = z.object({
 export const VideoUpdateSchema = z.object({
   exerciseId: z.number().int().optional(),
   url: z.string().min(1).max(500).optional(),
-  title: z.string().max(200).optional(),
-  durationSeconds: z.number().int().optional(),
+  title: z.string().max(200).optional().nullable(),
+  durationSeconds: z.number().int().optional().nullable(),
 });
 
 /** Typed patch shape for Video: every settable field, optional (FR-035 PATCH). A

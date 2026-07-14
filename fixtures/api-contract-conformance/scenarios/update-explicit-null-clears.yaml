@@ -1,0 +1,79 @@
+name: update-explicit-null-clears
+description: >
+  FR-035 tristate (present-key PATCH semantics). An EXPLICIT null in a PATCH body
+  CLEARS a nullable column; an explicit null on a @required field is a 400; and a
+  PATCH may OMIT @required fields entirely (they are untouched, never a 400). This
+  closes two shipped cross-port divergences that no existing gate could see:
+
+    1. PATCH {"bio": null} produced FOUR different answers across the five ports —
+       TS 400, Python + C#-TPH cleared the column, C#-plain + Kotlin + Java
+       silently no-op'd. (A mutation API that quietly ignores "set this to null"
+       is the worst failure mode, and it is hostile to the LLM-tools pillar.)
+    2. A PATCH that OMITS a @required field 400'd on Java (DTO @NotNull + @Valid)
+       and Kotlin (non-null ctor params) but was accepted by TS/Python/C#. So the
+       core partial-update gesture — patch one optional field — worked on three
+       ports and 400'd on two.
+
+  Contract asserted (PATCH-2 finalized, design §12.3):
+    - present null on a NON-@required field  → column set SQL NULL (200)
+    - present null on a @required field       → 400 {error: "validation"}
+    - an OMITTED @required field              → untouched (no 400)
+    - a cleared column is settable again      → 200
+
+  r1 deliberately OMITS the required `name`/`createdAt`, so it simultaneously gates
+  the required-field-omission fix (bug 2) AND the explicit-null-clears fix (bug 1).
+
+  Runs on all five ports, BOTH lanes (hand-rolled reference server + the generated
+  API artifact booted over HTTP) — the two-lane real-boot is what convicts this
+  class; a golden snapshot cannot see it.
+
+requests:
+  # r1 — explicit null on the nullable `bio` clears it; the required `name` /
+  #      `createdAt` are OMITTED and must survive untouched (must NOT 400).
+  - id: r1
+    method: PATCH
+    path: /api/authors/1
+    body:
+      bio: null
+    expect:
+      status: 200
+      body:
+        row:
+          id: 1
+          name: "Ada Lovelace"     # omitted from the PATCH → untouched (still the seed)
+          bio: null                # explicit null → column cleared
+  # r2 — the clear PERSISTED: re-read from the DB, not the mutation's echo.
+  - id: r2
+    method: GET
+    path: /api/authors/1
+    expect:
+      status: 200
+      body:
+        row:
+          id: 1
+          name: "Ada Lovelace"
+          bio: null
+  # r3 — the cleared column is settable again (proves the clear was not terminal
+  #      and leaves the row in a deterministic state).
+  - id: r3
+    method: PATCH
+    path: /api/authors/1
+    body:
+      bio: "restored"
+    expect:
+      status: 200
+      body:
+        row:
+          id: 1
+          bio: "restored"
+  # r4 — explicit null on the @required `name` is rejected with the cross-port
+  #      validation envelope (like the filter-allowlist discipline).
+  - id: r4
+    method: PATCH
+    path: /api/authors/1
+    body:
+      name: null
+    expect:
+      status: 400
+      body:
+        error: "validation"

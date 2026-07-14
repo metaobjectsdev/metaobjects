@@ -64,7 +64,11 @@ export function runValidators(
     const hasDefault = field.attr(FIELD_ATTR_DEFAULT) !== undefined;
     if (required && (value === undefined || value === null)) {
       if (opts.partial && !present) continue;
-      if (hasDefault) continue;
+      // A @default exempts a required field only when it is ABSENT (the DB fills
+      // it on insert / an omitted patch key is untouched). It does NOT rescue an
+      // EXPLICIT present null — nulling a required field is a deliberate clear the
+      // default cannot cover (FR-035 PATCH-2: present-null on @required → error).
+      if (hasDefault && !present) continue;
       errors.push({
         field: field.name,
         rule: "required",

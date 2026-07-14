@@ -55,7 +55,7 @@ export const WorkoutEventUpdateSchema = z.object({
   subscriberId: z.number().int().optional(),
   workoutId: z.number().int().optional(),
   completedAt: z.string().optional(),
-  durationMinutes: z.number().int().optional(),
+  durationMinutes: z.number().int().optional().nullable(),
 });
 
 /** Typed patch shape for WorkoutEvent: every settable field, optional (FR-035 PATCH). A

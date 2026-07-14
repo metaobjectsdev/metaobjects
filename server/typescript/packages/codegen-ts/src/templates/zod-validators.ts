@@ -36,6 +36,9 @@ import { sharedEnumImportSpecifier } from "../enum-import.js";
 import { sharedEnumZodConstName } from "./enums-file.js";
 import type { RenderContext } from "../render-context.js";
 import { valueObjectModuleSpecifier } from "../import-path.js";
+// FR-035: the SAME required-predicate that drives the Drizzle column's .notNull()
+// drives the UpdateSchema's .nullable() exclusion — shared so they cannot drift.
+import { isRequired } from "../column-mapper.js";
 
 /**
  * FR-017 Tier 1 — when this object is a TPH subtype (@discriminatorValue set
@@ -109,19 +112,34 @@ ${joinCode(fieldLines, { on: ",\n" })}
 `;
 }
 
+/** Field names participating in the object's PRIMARY identity, normalized to a
+ *  list. Empty when the object has no primary identity. */
+function primaryIdentityFieldNames(obj: MetaObject): string[] {
+  const primary = obj.primaryIdentity();
+  if (!primary) return [];
+  const fields = primary.attr(IDENTITY_ATTR_FIELDS);
+  if (Array.isArray(fields)) return fields.map(String);
+  if (typeof fields === "string") return [fields];
+  return [];
+}
+
 /** Auto-generated PK field names that should be omitted from InsertSchema. */
 function autoGenPkFieldNames(obj: MetaObject): Set<string> {
-  const out = new Set<string>();
-  const primary = obj.primaryIdentity();
-  if (primary) {
-    const generation = primary.attr(IDENTITY_ATTR_GENERATION);
-    if (generation === GENERATION_INCREMENT || generation === GENERATION_UUID) {
-      const fields = primary.attr(IDENTITY_ATTR_FIELDS);
-      const fieldsList = Array.isArray(fields) ? fields : (typeof fields === "string" ? [fields] : []);
-      for (const f of fieldsList) out.add(String(f));
-    }
-  }
-  return out;
+  const generation = obj.primaryIdentity()?.attr(IDENTITY_ATTR_GENERATION);
+  if (generation !== GENERATION_INCREMENT && generation !== GENERATION_UUID) return new Set();
+  return new Set(primaryIdentityFieldNames(obj));
+}
+
+/** ALL field names participating in the object's PRIMARY identity, regardless of
+ *  @generation. A PK column is never NULL (single-col via Drizzle `.primaryKey()`,
+ *  composite via `.notNull()`), so FR-035 PATCH-2 must NOT make a PK field
+ *  `.nullable()` in the UpdateSchema even when it carries no @required — otherwise
+ *  an explicit null typechecks into Drizzle's `.set()` (which rejects null on a
+ *  not-null column) and would violate NOT NULL at runtime. Unlike
+ *  autoGenPkFieldNames (which only lists increment/uuid PKs, already excluded from
+ *  the schema), this covers assigned + extended-identity projection PKs too. */
+function primaryKeyFieldNames(obj: MetaObject): Set<string> {
+  return new Set(primaryIdentityFieldNames(obj));
 }
 
 /**
@@ -259,6 +277,7 @@ export function updateSchemaFields(obj: MetaObject): SchemaFieldShape[] {
 export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code {
   const z = imp("z@zod");
   const autoGenPkFields = autoGenPkFieldNames(obj);
+  const pkFields = primaryKeyFieldNames(obj);
   const tphPin = tphDiscriminatorPin(obj);
 
   const insertFieldLines: Code[] = [];
@@ -305,9 +324,16 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
       // zodFieldExpr already appends .optional() when the field is non-required
       // OR has a default; only append once more when it didn't.
       const baseExpr = zodFieldExpr(child, obj, ctx);
-      updateFieldLines.push(
-        fieldWillBeOptional(child) ? code`  ${child.name}: ${baseExpr}` : code`  ${child.name}: ${baseExpr}.optional()`,
-      );
+      let expr = fieldWillBeOptional(child) ? baseExpr : code`${baseExpr}.optional()`;
+      // FR-035 PATCH-2: a NON-@required field additionally accepts an explicit
+      // null — a present null CLEARS the column (`.set({field: null})` writes NULL).
+      // Keyed on required-ness, NOT fieldWillBeOptional: a required-with-@default
+      // field stays non-nullable so an explicit null on it is a 400 (validation),
+      // never a silent clear. PK fields are excluded: their Drizzle column is
+      // always not-null, so a nullable Zod type would fail `.set()`'s typecheck
+      // (and NOT NULL at runtime) — see primaryKeyFieldNames.
+      if (!isRequired(child) && !pkFields.has(child.name)) expr = code`${expr}.nullable()`;
+      updateFieldLines.push(code`  ${child.name}: ${expr}`);
     }
   }
 
@@ -492,12 +518,8 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
 /** Mirrors the optional-or-not decision inside appendValidatorChain so the update-schema
  *  caller can avoid stacking a second `.optional()` onto an already-optional expression. */
 function fieldWillBeOptional(field: MetaField): boolean {
-  let isRequired = field.attr(FIELD_ATTR_REQUIRED) === true;
-  for (const child of field.validators()) {
-    if (child.subType === VALIDATOR_SUBTYPE_REQUIRED) isRequired = true;
-  }
   const hasDefault = field.attr(FIELD_ATTR_DEFAULT) !== undefined;
-  return !isRequired || hasDefault;
+  return !isRequired(field) || hasDefault;
 }
 
 /** Numeric field subtypes whose Zod base is `z.number()` — value bounds apply. */

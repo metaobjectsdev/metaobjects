@@ -35,7 +35,7 @@ export const SubscriberInsertSchema = z.object({
 export const SubscriberUpdateSchema = z.object({
   email: z.string().min(1).max(255).optional(),
   firstName: z.string().min(1).max(100).optional(),
-  lastName: z.string().max(100).optional(),
+  lastName: z.string().max(100).optional().nullable(),
   subscribed: z.boolean().optional(),
   createdAt: z.string().optional(),
 });

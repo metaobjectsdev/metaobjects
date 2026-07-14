@@ -459,10 +459,14 @@ function agentSignature(s: ApiSymbol): string {
     case "model":
       return `interface ${s.name} ${shape}`;
     case "data-access":
-      // create/update carry a `data: unknown` body param to specialize.
-      return s.signature.includes("data: unknown")
-        ? s.signature.replace("data: unknown", `data: ${shape}`)
-        : s.signature;
+      // Inline the body shape so the agent sees the fields, never an opaque
+      // `unknown` or a bare type NAME. create carries `data: unknown`; update
+      // carries a typed `patch: <Name>Patch` (FR-035 typed patch surface) — inline
+      // BOTH. Reads (findById/list/delete) carry no field shape and fall through.
+      if (s.signature.includes("data: unknown")) {
+        return s.signature.replace("data: unknown", `data: ${shape}`);
+      }
+      return s.signature.replace(/patch: \w+Patch\b/, `patch: ${shape}`);
     case "validation":
       return s.signature.replace("ZodType", `ZodType<${shape}>`);
     case "rest":

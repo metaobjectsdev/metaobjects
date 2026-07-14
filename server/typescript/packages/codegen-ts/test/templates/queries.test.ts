@@ -122,22 +122,28 @@ describe("renderCreateFn", () => {
 });
 
 describe("renderUpdateFn", () => {
-  test("emits updatePost with partial Zod validation and .returning()", () => {
+  test("emits updatePost with UPDATE-schema (patch) validation and .returning()", () => {
     const post = makePost();
     const ctx = makeCtx(post);
     const out = renderUpdateFn(post, ctx).toString();
     expect(out).toContain("updatePost");
-    expect(out).toContain("PostInsertSchema.partial().parse(data)");
+    // FR-035: assignments validate against the all-optional UPDATE schema — NOT
+    // InsertSchema.partial() — so no insert-time transforms (@autoSet onCreate →
+    // now(), TPH discriminator injection) leak into the patch path.
+    expect(out).toContain("PostUpdateSchema.parse(patch)");
     expect(out).toContain(".returning()");
     expect(out).toContain("Promise<Post | null>");
+    // PATCH-5: an empty patch is a no-op read-back, never an empty-SET SQL error.
+    expect(out).toContain("findPostById(db, id)");
   });
 
-  test("first parameter is db: Db", () => {
+  test("signature is (db: Db, id: number, patch: <Entity>Patch)", () => {
     const post = makePost();
     const ctx = makeCtx(post);
     const out = renderUpdateFn(post, ctx).toString();
-    // Signature: updatePost(db: Db, id: number, data: unknown)
-    expect(out).toMatch(/updatePost\(\s*db:\s*Db\s*,\s*id:\s*number\s*,\s*data:\s*unknown\s*\)/);
+    // FR-035 typed patch surface: the param is the compile-safe PostPatch, not an
+    // opaque `data: unknown` — a renamed/dropped field is a call-site compile error.
+    expect(out).toMatch(/updatePost\(\s*db:\s*Db\s*,\s*id:\s*number\s*,\s*patch:\s*PostPatch\s*\)/);
   });
 });
 

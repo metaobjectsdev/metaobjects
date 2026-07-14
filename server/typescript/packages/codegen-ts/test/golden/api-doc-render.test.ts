@@ -155,9 +155,9 @@ Request body (data):
 
 Throws: ZodError when data fails ProductInsertSchema validation.
 
-### \`updateProduct(db: Db, id: number, data: unknown): Promise<Product | null>\`
+### \`updateProduct(db: Db, id: number, patch: ProductPatch): Promise<Product | null>\`
 
-Partially update an existing Product by primary key; null when not found.
+Partially update a Product by primary key — writes only the assigned fields; null when not found. A renamed/dropped field is a compile error.
 
 \`\`\`ts
 import { updateProduct } from "./Product.queries"
@@ -169,7 +169,7 @@ Request body (data):
 |---|---|---|---|
 | \`name\` | \`string\` |  |  |
 
-Throws: ZodError when data fails the partial ProductInsertSchema validation.
+Throws: ZodError when the patch fails ProductUpdateSchema validation.
 
 ### \`deleteProductById(db: Db, id: number): Promise<boolean>\`
 
@@ -442,7 +442,7 @@ Generated API reference for this project; call these exactly as written. Imports
 - \`findProductById(db: Db, id: number): Promise<Product | null>\` — Fetch a single Product by its primary key; null when not found.
 - \`listProducts(db: Db, opts?: { limit?: number; offset?: number }): Promise<Product[]>\` — List Product rows with optional limit/offset paging.
 - \`createProduct(db: Db, data: { name?: string }): Promise<Product>\` — Validate (via ProductInsertSchema) and insert a new Product. [throws: ZodError when data fails ProductInsertSchema validation.]
-- \`updateProduct(db: Db, id: number, data: { name?: string }): Promise<Product | null>\` — Partially update an existing Product by primary key; null when not found. [throws: ZodError when data fails the partial ProductInsertSchema validation.]
+- \`updateProduct(db: Db, id: number, patch: { name?: string }): Promise<Product | null>\` — Partially update a Product by primary key — writes only the assigned fields; null when not found. A renamed/dropped field is a compile error. [throws: ZodError when the patch fails ProductUpdateSchema validation.]
 - \`deleteProductById(db: Db, id: number): Promise<boolean>\` — Delete a Product by primary key; true when a row was removed.
 
 \`import { productRoutes } from "./Product.routes"\`
