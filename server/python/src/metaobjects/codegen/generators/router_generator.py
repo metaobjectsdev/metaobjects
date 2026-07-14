@@ -464,11 +464,12 @@ class RouterGenerator:
         parts.append(")")
         parts.append("")
         parts.append(f"from .{allowlist_module} import {fields_const}, {ops_const}")
-        # FR-036: each concrete subtype's create + all-optional PATCH models drive the
-        # field constraints run on the per-subtype POST / PATCH (sibling modules).
+        # FR-036: each concrete subtype's CREATE + all-optional PATCH validation models
+        # drive the field constraints run on the per-subtype POST / PATCH (sibling
+        # modules). These are the wire-shaped validation models, NOT the read model.
         for st in plan.subtypes:
             sub = st.entity.name
-            parts.append(f"from .{sub} import {sub}, {sub}Patch")
+            parts.append(f"from .{sub} import {sub}Create, {sub}Patch")
         parts.append("")
         parts.append(f'router = APIRouter(prefix="/api/{plural}", tags=["{plural}"])')
         parts.append("")
@@ -551,7 +552,7 @@ class RouterGenerator:
             parts.append(") -> Any:")
             parts.append("    # FR-036: run the subtype's field constraints before persisting.")
             parts.append("    try:")
-            parts.append(f"        {sub}(**dto)")
+            parts.append(f"        {sub}Create(**dto)")
             parts.append("    except ValidationError:")
             parts.append('        return JSONResponse(status_code=400, content={"error": "validation"})')
             parts.append(f'    return repo.create("{val}", dto)')
@@ -701,9 +702,11 @@ class RouterGenerator:
         parts.append(")")
         parts.append("")
         parts.append(f"from .{allowlist_module} import {fields_const}, {ops_const}")
-        # FR-036: the generated create + all-optional PATCH models drive the field
-        # constraints run on POST / PATCH (sibling module, one per entity).
-        parts.append(f"from .{short_name} import {short_name}, {short_name}Patch")
+        # FR-036: the generated CREATE + all-optional PATCH validation models drive the
+        # field constraints run on POST / PATCH. These are the WIRE-shaped validation
+        # models (auto-gen PK / @readOnly omitted from create; PK omitted from patch;
+        # both keyed by field.name), NOT the read/entity-shape model.
+        parts.append(f"from .{short_name} import {short_name}Create, {short_name}Patch")
         parts.append("")
         parts.append(f'router = APIRouter(prefix="/api/{plural}", tags=["{plural}"])')
         parts.append("")
@@ -752,7 +755,7 @@ class RouterGenerator:
             repo_class=repo_class,
             fields_const=fields_const,
             ops_const=ops_const,
-            model_name=short_name,
+            model_name=f"{short_name}Create",
             patch_model=f"{short_name}Patch",
         )
         for i, hname in enumerate(("list", "get", "create", "update", "delete")):

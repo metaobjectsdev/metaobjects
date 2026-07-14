@@ -1,9 +1,20 @@
+import importlib.util
+import sys
+import tempfile
+import uuid as _uuid
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+
 import metaobjects.core_types  # noqa: F401  — side-effect: registers attr classes (set_attr needs them)
 from metaobjects.codegen.generators.entity_model import render_entity_model
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.field import field_constants as fc
-from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_FIELD
+from metaobjects.meta.core.identity import identity_constants as ic
+from metaobjects.meta.core.identity.meta_identity import MetaIdentity
+from metaobjects.shared.base_types import TYPE_IDENTITY, TYPE_OBJECT, TYPE_FIELD
 
 
 def _entity(
@@ -41,6 +52,30 @@ def _f(
     return f
 
 
+def _primary_identity(fields: list[str], generation: str) -> MetaIdentity:
+    ident = MetaIdentity(TYPE_IDENTITY, ic.IDENTITY_SUBTYPE_PRIMARY, "primary")
+    ident.set_attr(ic.IDENTITY_ATTR_FIELDS, fields)
+    ident.set_attr(ic.IDENTITY_ATTR_GENERATION, generation)
+    return ident
+
+
+def _load_models(entity: MetaObject):
+    """Render *entity*'s model and import it as a REAL module (registered in
+    ``sys.modules``) so pydantic can resolve forward-ref annotations (datetime / uuid),
+    then return the module. Mirrors how the generated api-contract lanes import the
+    emitted model before constructing it."""
+    src = render_entity_model(entity)
+    mod_name = f"genmodel_{_uuid.uuid4().hex[:8]}"
+    path = Path(tempfile.mkdtemp()) / f"{mod_name}.py"
+    path.write_text(src)
+    spec = importlib.util.spec_from_file_location(mod_name, path)
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[mod_name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
 def test_vanilla_entity_model() -> None:
     e = _entity("Subscriber", [
         _f("email", fc.FIELD_SUBTYPE_STRING, required=True, max_length=200),
@@ -63,9 +98,10 @@ def test_extends_subclasses_base_and_imports_it() -> None:
     assert "class Program(BaseEntity):" in out
     assert "name: str" in out
     # The MAIN model emits OWN fields only — the inherited id is not re-emitted in the
-    # Program class body (ADR-0039 subclass-emit). The flat FR-036 ProgramPatch model
-    # DOES restate id (all effective fields, all optional), so scope the check.
-    main_body = out.split("class ProgramPatch")[0]
+    # Program class body (ADR-0039 subclass-emit). The flat FR-036 ProgramCreate /
+    # ProgramPatch models DO restate id (all effective fields), so scope to the read
+    # model by splitting on the first generated validation model.
+    main_body = out.split("class ProgramCreate")[0]
     assert "id" not in main_body
 
 
@@ -80,17 +116,21 @@ def test_nested_object_array_imports_ref() -> None:
 
 
 def test_column_attr_overrides_python_field_name() -> None:
-    """A field's ``@column`` (the physical DB column) is the Pydantic field name
-    when present, falling back to ``field.name``. This lets one entity carry the
+    """A field's ``@column`` (the physical DB column) is the READ-model Pydantic field
+    name when present, falling back to ``field.name``. This lets one entity carry the
     camelCase ``field.name`` the TS port emits as a property AND the snake_case
-    ``@column`` the Python port emits as the model field (= DB column), so a single
-    cross-port entity feeds both languages idiomatically."""
+    ``@column`` the Python read model emits as the model field (= DB column), so a single
+    cross-port entity feeds both languages idiomatically. The FR-036 create/patch
+    VALIDATION models, by contrast, key by the WIRE name (field.name) — the router
+    validates the raw wire body (see test_create_model_validates_against_wire_name)."""
     f = _f("callPurpose", fc.FIELD_SUBTYPE_STRING, required=True)
     f.set_attr(fc.FIELD_ATTR_COLUMN, "call_purpose")
     e = _entity("LlmCall", [f], package="app::telemetry")
     out = render_entity_model(e)
-    assert "call_purpose: str" in out
-    assert "callPurpose" not in out
+    # Scope to the read model (before the first validation model): it binds @column.
+    read_model = out.split("class LlmCallCreate")[0]
+    assert "call_purpose: str" in read_model
+    assert "callPurpose" not in read_model
 
 
 def test_field_name_used_when_no_column_attr() -> None:
@@ -194,3 +234,77 @@ def test_dbcolumntype_jsonb_field_is_any_with_import() -> None:
     out = render_entity_model(_entity("Event", [payload], package="myapp::events"))
     assert "from typing import Any" in out
     assert "payload: Any | None = None" in out
+
+
+# --------------------------------------------------------------------------- #
+# FR-036 — the CREATE/PATCH validation models the router binds (findings #1–#4).
+# The router validates the raw WIRE body against these (POST → <Entity>Create,
+# PATCH → <Entity>Patch), so they must reflect the create/patch SHAPE, not the
+# read/entity shape.
+# --------------------------------------------------------------------------- #
+
+
+def test_create_model_makes_server_filled_required_fields_optional() -> None:
+    """FR-036 #1 (REGRESSION) — a @required field with a server-side @default (a SQL
+    expression like ``now()``) or an @autoSet is DB/trigger-filled, so the
+    CREATE-validation model makes it OPTIONAL: a POST that omits it must not 400. A
+    genuinely-@required field (no default / autoSet) stays required."""
+    expr_default = _f("createdAt", fc.FIELD_SUBTYPE_TIMESTAMP, required=True)
+    expr_default.set_attr(fc.FIELD_ATTR_DEFAULT, "now()")
+    auto_set = _f("updatedAt", fc.FIELD_SUBTYPE_TIMESTAMP, required=True)
+    auto_set.set_attr(fc.FIELD_ATTR_AUTO_SET, fc.AUTO_SET_ON_UPDATE)
+    name = _f("name", fc.FIELD_SUBTYPE_STRING, required=True, max_length=50)
+    mod = _load_models(_entity("Widget", [expr_default, auto_set, name], package="app::w"))
+
+    # createdAt (SQL-expr default) + updatedAt (@autoSet) omitted → constructs cleanly.
+    inst = mod.WidgetCreate(name="ok")
+    assert inst.createdAt is None and inst.updatedAt is None
+    # The genuinely-@required name is still enforced.
+    with pytest.raises(ValidationError):
+        mod.WidgetCreate()
+
+
+def test_create_model_excludes_auto_generated_pk() -> None:
+    """FR-036 #2 (REGRESSION) — an auto-generated PK (identity.primary @generation) is
+    server-assigned, so it is EXCLUDED from the CREATE-validation model even when the PK
+    field is @required: a POST omitting the id must not 400."""
+    pk = _f("id", fc.FIELD_SUBTYPE_LONG, required=True)
+    label = _f("label", fc.FIELD_SUBTYPE_STRING, required=True, max_length=80)
+    e = _entity("Gadget", [pk, label], package="app::g")
+    e.add_child(_primary_identity(["id"], ic.GENERATION_INCREMENT))
+    mod = _load_models(e)
+
+    assert "id" not in mod.GadgetCreate.model_fields
+    # Omitting the server-assigned id constructs cleanly (label supplied).
+    assert mod.GadgetCreate(label="anvil").label == "anvil"
+
+
+def test_create_model_validates_against_wire_name_not_column() -> None:
+    """FR-036 #3 (constraint bypass) — the router validates the raw WIRE body (field.name
+    keys), so the CREATE-validation model must key by the wire name, NOT @column;
+    otherwise pydantic's ``extra='ignore'`` DROPS the wire key and never enforces its
+    @maxLength. The read/entity model keeps its @column naming (unchanged)."""
+    f = _f("fullName", fc.FIELD_SUBTYPE_STRING, required=True, max_length=5)
+    f.set_attr(fc.FIELD_ATTR_COLUMN, "full_name")
+    mod = _load_models(_entity("Person", [f], package="app::p"))
+
+    # Read model keeps the @column name; the create model keys by the wire name.
+    assert "full_name" in mod.Person.model_fields
+    assert "fullName" in mod.PersonCreate.model_fields
+    # An over-length WIRE value is now actually rejected (was silently dropped before).
+    with pytest.raises(ValidationError):
+        mod.PersonCreate(fullName="toolong")
+    assert mod.PersonCreate(fullName="ok").fullName == "ok"
+
+
+def test_patch_model_excludes_primary_key() -> None:
+    """FR-036 #4 — the PK is route-authoritative (taken from the URL), so it is EXCLUDED
+    from the all-optional <Entity>Patch model (TS/C#/Java exclude it too)."""
+    pk = _f("id", fc.FIELD_SUBTYPE_LONG, required=True)
+    name = _f("name", fc.FIELD_SUBTYPE_STRING, max_length=80)
+    e = _entity("Article", [pk, name], package="app::a")
+    e.add_child(_primary_identity(["id"], ic.GENERATION_INCREMENT))
+    mod = _load_models(e)
+
+    assert "id" not in mod.ArticlePatch.model_fields
+    assert "name" in mod.ArticlePatch.model_fields

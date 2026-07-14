@@ -13,8 +13,15 @@ class Program(BaseEntity):
     name: str = Field(min_length=1)
 
 
+class ProgramCreate(BaseModel):
+    """GENERATED — CREATE input: auto-gen PK / @readOnly omitted; @default/@autoSet optional; present values validated (FR-036)."""
+
+    id: int
+    name: str = Field(min_length=1)
+
+
 class ProgramPatch(BaseModel):
-    """GENERATED — PATCH input: all fields optional; present values validated (FR-036)."""
+    """GENERATED — PATCH input: all fields optional (PK excluded); present values validated (FR-036)."""
 
     id: int | None = None
     name: str | None = Field(default=None, min_length=1)

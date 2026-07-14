@@ -11,7 +11,13 @@ class BaseEntity(BaseModel):
     id: int
 
 
+class BaseEntityCreate(BaseModel):
+    """GENERATED — CREATE input: auto-gen PK / @readOnly omitted; @default/@autoSet optional; present values validated (FR-036)."""
+
+    id: int
+
+
 class BaseEntityPatch(BaseModel):
-    """GENERATED — PATCH input: all fields optional; present values validated (FR-036)."""
+    """GENERATED — PATCH input: all fields optional (PK excluded); present values validated (FR-036)."""
 
     id: int | None = None

@@ -7,6 +7,12 @@ from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY
 from metaobjects.meta.core.field import field_constants as fc
+from metaobjects.meta.core.identity.identity_constants import (
+    GENERATION_INCREMENT,
+    GENERATION_UUID,
+    IDENTITY_ATTR_FIELDS,
+    IDENTITY_ATTR_GENERATION,
+)
 from metaobjects.meta.core.validator import validator_constants as vc
 from metaobjects.shared.base_types import TYPE_VALIDATOR
 from metaobjects.shared.separators import PACKAGE_SEP
@@ -261,6 +267,90 @@ def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple
     return f"    {py_name}: {annotation}{assignment}", uses_field
 
 
+def _primary_identity_field_names(entity: MetaObject) -> list[str]:
+    """The field names in the entity's primary identity (``identity.primary @fields``),
+    normalized to a list. Empty when there is no primary identity. Mirrors the TS
+    ``primaryIdentityFieldNames``."""
+    primary = entity.primary_identity()
+    if primary is None:
+        return []
+    # ADR-0039: resolving (identity attr) — an identity.primary may be inherited via extends.
+    fields = primary.get_meta_attr(IDENTITY_ATTR_FIELDS)
+    if isinstance(fields, (list, tuple)):
+        return [str(f) for f in fields]
+    if isinstance(fields, str) and fields:
+        return [s.strip() for s in fields.split(",") if s.strip()]
+    return []
+
+
+def _auto_gen_pk_field_names(entity: MetaObject) -> set[str]:
+    """Primary-key field names that the SERVER generates (``identity.primary
+    @generation: increment|uuid``) — excluded from the create-validation shape because
+    the caller never supplies them. An ``assigned`` (or ungenerated) PK is NOT excluded
+    (the caller provides it). Mirrors the TS ``autoGenPkFieldNames``."""
+    primary = entity.primary_identity()
+    if primary is None:
+        return set()
+    # ADR-0039: resolving (identity attr).
+    generation = primary.get_meta_attr(IDENTITY_ATTR_GENERATION)
+    if generation not in (GENERATION_INCREMENT, GENERATION_UUID):
+        return set()
+    return set(_primary_identity_field_names(entity))
+
+
+def _create_field_line(
+    field: MetaField, imports: set[str], config: GenConfig
+) -> tuple[str, bool]:
+    """A CREATE-model field line (FR-036): keyed by the WIRE name (``field.name``) and
+    carrying the same per-field constraints as the read model. A ``@required`` field
+    that is SERVER-FILLED — it has ANY ``@default`` (a literal OR a SQL expression such
+    as ``now()`` / ``gen_random_uuid()`` / ``CURRENT_TIMESTAMP``) or an ``@autoSet`` — is
+    emitted OPTIONAL, because the DB / trigger provides it and a POST that omits it must
+    not 400 (mirrors the TS InsertSchema ``fieldWillBeOptional``). A literal ``@default``
+    is preserved as the Python default; a SQL-expression default / ``@autoSet`` carries
+    no Python default (the server fills it). Returns (source line, uses_field)."""
+    type_expr, enum_type_name = _type_expr_for_field(field, imports, config)
+    required = field.attrs().get(fc.FIELD_ATTR_REQUIRED) is True
+    default_raw = field.attrs().get(fc.FIELD_ATTR_DEFAULT)
+    literal_default = default_raw is not None and not _is_sql_expr_default(default_raw)
+    auto_set = field.attrs().get(fc.FIELD_ATTR_AUTO_SET)
+    is_auto_set = auto_set in (fc.AUTO_SET_ON_CREATE, fc.AUTO_SET_ON_UPDATE)
+    # A field is required in the CREATE shape only when @required AND not server-filled:
+    # ANY @default (literal or SQL-expr) or @autoSet means the DB fills it, so the wire
+    # body may omit it (the FR-036 #1 regression fix).
+    server_filled = default_raw is not None or is_auto_set
+    create_required = required and not server_filled
+
+    parts = _constraint_parts(_validator_constraints(field))
+    uses_field = bool(parts)
+
+    py_name = field.name  # FR-036 #3 — validation models key by the WIRE name (field.name)
+
+    if literal_default:
+        # Preserve the literal @default (enum member or Python literal) exactly as the
+        # read model does — the caller may omit the field and the model fills the default.
+        if enum_type_name is not None and not field_is_array(field):
+            default_expr = f"{enum_type_name}.{str(default_raw).upper()}"
+        else:
+            default_expr = repr(default_raw)
+        annotation = type_expr
+        assignment = (
+            f" = Field(default={default_expr}, {', '.join(parts)})"
+            if uses_field
+            else f" = {default_expr}"
+        )
+    elif create_required:
+        annotation = type_expr
+        assignment = f" = Field({', '.join(parts)})" if uses_field else ""
+    else:
+        annotation = f"{type_expr} | None"
+        assignment = (
+            f" = Field(default=None, {', '.join(parts)})" if uses_field else " = None"
+        )
+
+    return f"    {py_name}: {annotation}{assignment}", uses_field
+
+
 def _patch_field_line(
     field: MetaField, imports: set[str], config: GenConfig
 ) -> tuple[str, bool]:
@@ -271,7 +361,7 @@ def _patch_field_line(
     Returns (source line, uses_field)."""
     type_expr, _enum = _type_expr_for_field(field, imports, config)
     parts = _constraint_parts(_validator_constraints(field))
-    py_name = field.attrs().get(fc.FIELD_ATTR_COLUMN) or field.name
+    py_name = field.name  # FR-036 #3 — validation models key by the WIRE name (field.name)
     if parts:
         return f"    {py_name}: {type_expr} | None = Field(default=None, {', '.join(parts)})", True
     return f"    {py_name}: {type_expr} | None = None", False
@@ -346,6 +436,49 @@ class EntityModelGenerator:
                 lines.append(f"    {d.relation_name}: list[{element}] = []")
         return lines, uses_field
 
+    def _emit_create_lines(
+        self,
+        entity: MetaObject,
+        imports: set[str],
+        config: GenConfig | None = None,
+    ) -> tuple[list[str], bool]:
+        """The ``<Name>Create`` body — the CREATE-validation shape the generated router
+        validates a POST body against (FR-036). Restates every EFFECTIVE field (own +
+        inherited via ``extends``) EXCEPT the ones the server owns: an auto-generated PK
+        (``identity.primary @generation``; FR-036 #2) and any ``@readOnly`` field
+        (FR-013) are omitted, and a ``@required`` server-filled field (``@default`` /
+        ``@autoSet``; FR-036 #1) is made optional. Keyed by the wire name; a TPH
+        subtype's discriminator is pinned to its ``Literal`` value (the route injects it
+        from the URL, so it stays optional with a default). M:N navigations are omitted
+        (a create body targets columns, not relations). Returns ``(lines, uses_field)``.
+        Override to add/transform create-model lines."""
+        cfg = config if config is not None else GenConfig(out_dir="")
+        auto_gen_pk = _auto_gen_pk_field_names(entity)
+        binding = tph_subtype_binding(entity)
+        disc_field = binding[0] if binding is not None else None
+        uses_field = False
+        lines: list[str] = []
+        # RESOLVING (fields()): the flat Create model subclasses BaseModel (not the entity
+        # base), so it restates inherited fields too — unlike the read model's own_fields
+        # subclass-emit.
+        for f in entity.fields():
+            if disc_field is not None and f.name == disc_field:
+                continue  # pinned below (prepended), never as a normal field line
+            if f.name in auto_gen_pk:
+                continue  # FR-036 #2 — a server-generated PK is never in the create body
+            if f.attrs().get(fc.FIELD_ATTR_READ_ONLY) is True:
+                continue  # FR-013 — a read-only column is DB/owner-written, not create input
+            line, used = _create_field_line(f, imports, cfg)
+            uses_field = uses_field or used
+            lines.append(line)
+        # FR-017 TPH: pin the inherited discriminator to this subtype's value (with a
+        # default so the URL-injected create body may omit it) — mirrors the read model.
+        if binding is not None:
+            disc_name, disc_value = binding
+            lines = [f'    {disc_name}: Literal["{disc_value}"] = "{disc_value}"', *lines]
+            imports.add("from typing import Literal")
+        return lines, uses_field
+
     def _emit_patch_lines(
         self,
         entity: MetaObject,
@@ -355,15 +488,19 @@ class EntityModelGenerator:
         """The ``<Name>Patch`` body: every EFFECTIVE field (own + inherited via
         ``extends``) made Optional while retaining its create-model constraints, so the
         generated PATCH handler can validate present, non-null values without
-        bean-validating absent ones (FR-036). M:N navigations are omitted (a patch
+        bean-validating absent ones (FR-036). The primary-key field(s) are excluded
+        (route-authoritative; FR-036 #4) and M:N navigations are omitted (a patch
         targets columns, not relations). Returns ``(lines, uses_field)``. Override to
         add/transform patch-model lines."""
         cfg = config if config is not None else GenConfig(out_dir="")
+        pk_fields = set(_primary_identity_field_names(entity))
         uses_field = False
         lines: list[str] = []
         # RESOLVING (fields()): the flat Patch model is self-contained (subclasses
         # BaseModel, not the entity base), so it restates inherited fields too.
         for f in entity.fields():
+            if f.name in pk_fields:
+                continue  # FR-036 #4 — the PK is route-authoritative, never patched
             line, used = _patch_field_line(f, imports, cfg)
             uses_field = uses_field or used
             lines.append(line)
@@ -407,23 +544,29 @@ class EntityModelGenerator:
             imports.add("from typing import Literal")
         body = lines if lines else ["    pass"]
 
-        # FR-036 — an object.entity also emits an all-optional ``<Name>Patch`` model
-        # carrying the create-model constraints, so the generated PATCH handler can
-        # validate present, non-null values without bean-validating absent ones. Value
-        # objects / projections are never patched over a router, so they emit none.
-        emit_patch = entity.sub_type == OBJECT_SUBTYPE_ENTITY
+        # FR-036 — an object.entity also emits two flat validation models the generated
+        # router binds: a ``<Name>Create`` (POST-body shape: auto-gen PK / @readOnly
+        # omitted, @default/@autoSet optional, other @required required) and an
+        # all-optional ``<Name>Patch`` (PATCH-body shape: PK excluded). Both key by the
+        # WIRE name and carry the field constraints, so present values are validated with
+        # the create rules. Value objects / projections are never routed, so they emit
+        # neither (only the read model). See findings #1–#4.
+        emit_validation_models = entity.sub_type == OBJECT_SUBTYPE_ENTITY
+        create_lines: list[str] = []
+        create_uses_field = False
         patch_lines: list[str] = []
         patch_uses_field = False
-        if emit_patch:
+        if emit_validation_models:
+            create_lines, create_uses_field = self._emit_create_lines(entity, imports, config)
             patch_lines, patch_uses_field = self._emit_patch_lines(entity, imports, config)
 
         # Import only the pydantic names actually referenced. The main model imports
-        # BaseModel only when it has no super, but the flat Patch model always
-        # subclasses BaseModel, so its presence forces the import regardless.
+        # BaseModel only when it has no super, but the flat Create/Patch models always
+        # subclass BaseModel, so their presence forces the import regardless.
         pyd_names: list[str] = []
-        if entity.super_data is None or emit_patch:
+        if entity.super_data is None or emit_validation_models:
             pyd_names.append("BaseModel")
-        if uses_field or patch_uses_field:
+        if uses_field or create_uses_field or patch_uses_field:
             pyd_names.append("Field")
 
         parts: list[str] = [
@@ -437,12 +580,18 @@ class EntityModelGenerator:
         if pyd_names:
             parts += [f"from pydantic import {', '.join(pyd_names)}", ""]
         parts += ["", self._emit_class_header(entity, base_class), *body]
-        if emit_patch:
+        if emit_validation_models:
             parts += [
                 "",
                 "",
+                f"class {entity.name}Create(BaseModel):",
+                '    """GENERATED — CREATE input: auto-gen PK / @readOnly omitted; '
+                '@default/@autoSet optional; present values validated (FR-036)."""',
+                *create_lines,
+                "",
+                "",
                 f"class {entity.name}Patch(BaseModel):",
-                '    """GENERATED — PATCH input: all fields optional; present values validated (FR-036)."""',
+                '    """GENERATED — PATCH input: all fields optional (PK excluded); present values validated (FR-036)."""',
                 *patch_lines,
             ]
         parts += [""]
