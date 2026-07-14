@@ -46,7 +46,10 @@ def test_multi_level_chain_subclasses_each_level_with_own_fields() -> None:
 
 
 def test_concrete_only_declares_its_own_fields_not_inherited_ones() -> None:
-    # Python inherits (does not flatten): Product must NOT redeclare the chain's fields.
+    # Python inherits (does not flatten): the MAIN model must NOT redeclare the chain's
+    # fields. (The flat FR-036 ProductPatch DOES restate every effective field as
+    # optional, so scope the invariant check to the create-model class body.)
     product = render_entity_model(_by_name()["Product"])
+    main = product.split("class ProductPatch")[0]
     for inherited in ("id:", "createdBy:", "updatedBy:"):
-        assert inherited not in product, f"Product must inherit, not redeclare, {inherited!r}"
+        assert inherited not in main, f"Product must inherit, not redeclare, {inherited!r}"

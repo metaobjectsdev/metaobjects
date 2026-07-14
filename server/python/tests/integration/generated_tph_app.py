@@ -29,6 +29,7 @@ from typing import Any
 from fastapi import FastAPI
 
 from metaobjects import MetaDataLoader
+from metaobjects.codegen.generators.entity_model import render_entity_model
 from metaobjects.codegen.generators.filter_allowlist_generator import render_filter_allowlist
 from metaobjects.codegen.generators.m2m_codegen import build_object_index
 from metaobjects.codegen.generators.router_generator import render_router
@@ -98,6 +99,12 @@ def build_generated_tph_app(tph_dir: Path) -> tuple[FastAPI, "InMemoryTphReposit
     if allowlist_src is None or router_src is None:
         raise RuntimeError(f"generators returned None for {base.name}")
     (pkg_dir / f"{snake}_filter_allowlist.py").write_text(allowlist_src)
+    # FR-036: the generated TPH router imports each concrete subtype's entity + PATCH
+    # models (`from .BridgeAuth import BridgeAuth, BridgeAuthPatch`, …) to run field
+    # constraints on the per-subtype POST / PATCH. Emit every entity's model module
+    # (base + subtypes) into the package so those relative imports resolve.
+    for ent in entities.values():
+        (pkg_dir / f"{ent.name}.py").write_text(render_entity_model(ent, index))
     (pkg_dir / f"{snake}_router.py").write_text(router_src)
 
     spec = importlib.util.spec_from_file_location(

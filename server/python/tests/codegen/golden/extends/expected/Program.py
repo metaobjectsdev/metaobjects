@@ -4,8 +4,17 @@
 
 from __future__ import annotations
 
+from pydantic import BaseModel, Field
+
 from .BaseEntity import BaseEntity
 
 
 class Program(BaseEntity):
-    name: str
+    name: str = Field(min_length=1)
+
+
+class ProgramPatch(BaseModel):
+    """GENERATED — PATCH input: all fields optional; present values validated (FR-036)."""
+
+    id: int | None = None
+    name: str | None = Field(default=None, min_length=1)

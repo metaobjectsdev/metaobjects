@@ -34,6 +34,7 @@ from fastapi.testclient import TestClient
 
 from metaobjects import MetaDataLoader
 from metaobjects.codegen.generators.filter_allowlist_generator import render_filter_allowlist
+from metaobjects.codegen.generators.entity_model import render_entity_model
 from metaobjects.codegen.generators.router_generator import render_router
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.shared.base_types import TYPE_OBJECT
@@ -140,6 +141,8 @@ def _build_app(entity_name: str) -> tuple[TestClient, _InMemoryRepo]:
     pkg_dir.mkdir()
     (pkg_dir / "__init__.py").write_text("")
     (pkg_dir / f"{snake}_filter_allowlist.py").write_text(allowlist_src)
+    # FR-036: the router imports the entity + PATCH models to run field constraints.
+    (pkg_dir / f"{entity.name}.py").write_text(render_entity_model(entity))
     (pkg_dir / f"{snake}_router.py").write_text(router_src)
 
     sys.path.insert(0, str(tmp))

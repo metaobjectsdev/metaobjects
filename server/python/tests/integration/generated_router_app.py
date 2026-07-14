@@ -34,6 +34,7 @@ from typing import Any
 from fastapi import FastAPI
 
 from metaobjects import MetaDataLoader
+from metaobjects.codegen.generators.entity_model import render_entity_model
 from metaobjects.codegen.generators.filter_allowlist_generator import render_filter_allowlist
 from metaobjects.codegen.generators.router_generator import render_router
 from metaobjects.codegen.runtime.filter_parser import FilterPredicate
@@ -77,6 +78,10 @@ def build_generated_app(corpus_root: Path) -> tuple[FastAPI, "InMemoryAuthorRepo
     allowlist_src = render_filter_allowlist(author)
     if router_src is None or allowlist_src is None:
         raise RuntimeError("router_generator / filter_allowlist_generator returned None for Author")
+    # FR-036: the generated router imports the entity + PATCH models (`from .Author
+    # import Author, AuthorPatch`) to run field constraints on POST / PATCH, so the
+    # generated model module must be emitted alongside it in the temp package.
+    model_src = render_entity_model(author)
 
     # Emit into a uniquely-named temp package so the router's relative import
     # `from .author_filter_allowlist import ...` resolves, and repeated imports
@@ -87,6 +92,7 @@ def build_generated_app(corpus_root: Path) -> tuple[FastAPI, "InMemoryAuthorRepo
     pkg_dir.mkdir()
     (pkg_dir / "__init__.py").write_text("")
     (pkg_dir / "author_filter_allowlist.py").write_text(allowlist_src)
+    (pkg_dir / f"{author.name}.py").write_text(model_src)
     (pkg_dir / "author_router.py").write_text(router_src)
 
     sys.path.insert(0, str(tmp))

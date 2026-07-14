@@ -49,6 +49,10 @@ def test_inherited_required_field_generates_as_required() -> None:
     # The gate: an inherited @required must produce a REQUIRED field, not Optional.
     # RED until #56 is fixed (entity_model reads field.attr(@required) own-only).
     source = render_entity_model(widget)
-    assert "label: str" in source, source
-    assert "label: Optional" not in source, source
-    assert "label: str | None" not in source, source
+    # Scope to the MAIN model: the flat FR-036 WidgetPatch restates every field as
+    # optional (label: str | None), which is expected — the invariant here is that the
+    # create model renders an inherited @required field as REQUIRED, not Optional.
+    main = source.split("class WidgetPatch")[0]
+    assert "label: str" in main, source
+    assert "label: Optional" not in main, source
+    assert "label: str | None" not in main, source

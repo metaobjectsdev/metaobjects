@@ -84,6 +84,23 @@ _TIMESTAMP_FMT = "%Y-%m-%dT%H:%M:%S"
 _INVALID_COERCION = object()
 
 
+# FR-036 — the Author entity's @maxLength caps (name ≤ 100, bio ≤ 1000). The
+# reference lane hand-codes what the generated lane runs through the Pydantic
+# model, so both lanes reject an over-length PRESENT value with the cross-port
+# 400 envelope (POST always; PATCH only on a present, non-null value).
+_MAX_LENGTHS: dict[str, int] = {"name": 100, "bio": 1000}
+
+
+def _length_violation(dto: dict[str, Any]) -> bool:
+    """True iff a present string value in *dto* exceeds its @maxLength cap. A
+    None / absent value never trips this (present-null clears; absent is untouched)."""
+    for field, cap in _MAX_LENGTHS.items():
+        value = dto.get(field)
+        if isinstance(value, str) and len(value) > cap:
+            return True
+    return False
+
+
 def _coerce_scalar(raw: str, sub_type: str) -> Any:
     """Coerce a raw URL-decoded string to a pg8000-bindable value for a single
     column subtype. Returns _INVALID_COERCION on parse failure."""
@@ -412,6 +429,9 @@ def make_app(repo: AuthorRepository) -> FastAPI:
     # POST /api/authors
     @app.post("/api/authors", status_code=status.HTTP_201_CREATED)
     def create_author(dto: dict[str, Any]) -> Any:
+        # FR-036: reject an over-length field before persisting (cross-port 400).
+        if _length_violation(dto):
+            return JSONResponse(status_code=400, content={"error": "validation"})
         return repo.create(dto)
 
     # PATCH + PUT /api/authors/{id}
@@ -424,6 +444,9 @@ def make_app(repo: AuthorRepository) -> FastAPI:
         for _k in ("name", "createdAt"):
             if _k in dto and dto[_k] is None:
                 return JSONResponse(status_code=400, content={"error": "validation"})
+        # FR-036: reject an over-length PRESENT value with the cross-port 400.
+        if _length_violation(dto):
+            return JSONResponse(status_code=400, content={"error": "validation"})
         saved = repo.update(author_id, dto)
         if saved is None:
             return JSONResponse(status_code=404, content={"error": "not_found"})

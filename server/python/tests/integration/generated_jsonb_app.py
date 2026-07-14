@@ -25,6 +25,7 @@ from fastapi import FastAPI
 
 from metaobjects import MetaDataLoader
 from metaobjects.codegen.generators.filter_allowlist_generator import render_filter_allowlist
+from metaobjects.codegen.generators.entity_model import render_entity_model
 from metaobjects.codegen.generators.router_generator import render_router
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.shared.base_types import TYPE_OBJECT
@@ -62,6 +63,8 @@ def build_generated_jsonb_app(corpus_root: Path) -> tuple[FastAPI, "InMemoryDocu
     pkg_dir.mkdir()
     (pkg_dir / "__init__.py").write_text("")
     (pkg_dir / "document_filter_allowlist.py").write_text(allowlist_src)
+    # FR-036: the router imports the entity + PATCH models to run field constraints.
+    (pkg_dir / f"{document.name}.py").write_text(render_entity_model(document))
     (pkg_dir / "document_router.py").write_text(router_src)
 
     sys.path.insert(0, str(tmp))

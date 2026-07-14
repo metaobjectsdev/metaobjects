@@ -82,9 +82,11 @@ def test_entity_inherits_fields_via_base_entity_subclass_emit() -> None:
     # Subclass-emit: extends the generated base, imports it.
     assert "class Contact(BaseEntity):" in contact
     assert "from .BaseEntity import BaseEntity" in contact
-    # Inherited PK/timestamp are NOT re-emitted on the subclass (own_fields only).
-    assert "\n    id:" not in contact
-    assert "createdAt" not in contact
+    # Inherited PK/timestamp are NOT re-emitted on the MAIN subclass (own_fields only);
+    # the flat FR-036 ContactPatch restates them, so scope the check to the create model.
+    main = contact.split("class ContactPatch")[0]
+    assert "\n    id:" not in main
+    assert "createdAt" not in main
     # But the entity's own field IS present.
     assert "name:" in contact
 

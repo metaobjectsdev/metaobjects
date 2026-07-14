@@ -29,6 +29,7 @@ from typing import Any
 from fastapi import FastAPI
 
 from metaobjects import MetaDataLoader
+from metaobjects.codegen.generators.entity_model import render_entity_model
 from metaobjects.codegen.generators.filter_allowlist_generator import render_filter_allowlist
 from metaobjects.codegen.generators.m2m_codegen import (
     M2mDescriptor,
@@ -104,6 +105,12 @@ def build_generated_m2m_app(m2m_dir: Path) -> tuple[FastAPI, "InMemoryM2mReposit
     pkg_mod = importlib.util.module_from_spec(pkg_spec)
     sys.modules[pkg_name] = pkg_mod
     pkg_spec.loader.exec_module(pkg_mod)
+
+    # FR-036: each generated router imports its entity + PATCH models, and an M:N
+    # entity model also imports its target-entity models (nested collections). Emit
+    # every entity model module so those relative imports resolve.
+    for ent in entities.values():
+        (pkg_dir / f"{ent.name}.py").write_text(render_entity_model(ent, index))
 
     for src_name in ("Post", "Person"):
         entity = entities[src_name]

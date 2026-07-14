@@ -8,5 +8,12 @@ from pydantic import BaseModel, Field
 
 
 class Subscriber(BaseModel):
-    email: str = Field(max_length=200)
+    email: str = Field(min_length=1, max_length=200)
+    subscribed: bool | None = None
+
+
+class SubscriberPatch(BaseModel):
+    """GENERATED — PATCH input: all fields optional; present values validated (FR-036)."""
+
+    email: str | None = Field(default=None, min_length=1, max_length=200)
     subscribed: bool | None = None

@@ -257,10 +257,14 @@ class RouterGenerator:
         repo_class: str,
         fields_const: str,
         ops_const: str,
+        model_name: str,
+        patch_model: str,
     ) -> list[str]:
         """One CRUD route handler block, dispatched by *name*
         (``list`` / ``get`` / ``create`` / ``update`` / ``delete``). Override to
-        change a handler's body / decorators / response shape."""
+        change a handler's body / decorators / response shape. *model_name* /
+        *patch_model* are the generated create + all-optional PATCH Pydantic models
+        used to run field constraints on POST / PATCH (FR-036)."""
         if name == "list":
             return [
                 '@router.get("")',
@@ -308,6 +312,12 @@ class RouterGenerator:
                 "    dto: dict[str, Any],",
                 f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
                 ") -> Any:",
+                "    # FR-036: run the generated field constraints (length / pattern /",
+                "    # numeric bounds) before persisting; a violation is the cross-port 400.",
+                "    try:",
+                f"        {model_name}(**dto)",
+                "    except ValidationError:",
+                '        return JSONResponse(status_code=400, content={"error": "validation"})',
                 "    return repo.create(dto)",
             ]
         if name == "update":
@@ -325,6 +335,12 @@ class RouterGenerator:
                 "    for _k in _REQUIRED_FIELDS:",
                 "        if _k in dto and dto[_k] is None:",
                 '            return JSONResponse(status_code=400, content={"error": "validation"})',
+                "    # FR-036: validate PRESENT, non-null values with the create rules (the",
+                "    # all-optional patch model never fires required-checks on ABSENT fields).",
+                "    try:",
+                f"        {patch_model}(**dto)",
+                "    except ValidationError:",
+                '        return JSONResponse(status_code=400, content={"error": "validation"})',
                 f"    saved = repo.update({pk_param}, dto)",
                 "    if saved is None:",
                 '        return JSONResponse(status_code=404, content={"error": "not_found"})',
@@ -440,7 +456,7 @@ class RouterGenerator:
         parts.append("")
         parts.append("from fastapi import APIRouter, Depends, Query, Request, status")
         parts.append("from fastapi.responses import JSONResponse")
-        parts.append("from pydantic import BaseModel")
+        parts.append("from pydantic import BaseModel, ValidationError")
         parts.append("")
         parts.append("from metaobjects.codegen.runtime.filter_parser import (")
         parts.append("    FilterPredicate,")
@@ -448,6 +464,11 @@ class RouterGenerator:
         parts.append(")")
         parts.append("")
         parts.append(f"from .{allowlist_module} import {fields_const}, {ops_const}")
+        # FR-036: each concrete subtype's create + all-optional PATCH models drive the
+        # field constraints run on the per-subtype POST / PATCH (sibling modules).
+        for st in plan.subtypes:
+            sub = st.entity.name
+            parts.append(f"from .{sub} import {sub}, {sub}Patch")
         parts.append("")
         parts.append(f'router = APIRouter(prefix="/api/{plural}", tags=["{plural}"])')
         parts.append("")
@@ -517,6 +538,7 @@ class RouterGenerator:
         for st in plan.subtypes:
             seg = st.route_segment
             val = st.value
+            sub = st.entity.name  # the subtype's generated create + PATCH model classes
             sfx = st.route_segment  # handler-name suffix = URL segment (e.g. "bridge"), matches the route
             parts.extend(list_sig(f"list_{plural}_{sfx}", f"/{seg}"))
             parts.extend(self._emit_tph_list_body(f'"{val}"', fields_const, ops_const))
@@ -527,6 +549,11 @@ class RouterGenerator:
             parts.append("    dto: dict[str, Any],")
             parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
             parts.append(") -> Any:")
+            parts.append("    # FR-036: run the subtype's field constraints before persisting.")
+            parts.append("    try:")
+            parts.append(f"        {sub}(**dto)")
+            parts.append("    except ValidationError:")
+            parts.append('        return JSONResponse(status_code=400, content={"error": "validation"})')
             parts.append(f'    return repo.create("{val}", dto)')
             parts.append("")
             parts.append("")
@@ -552,6 +579,11 @@ class RouterGenerator:
             parts.append("    for _k in _REQUIRED_FIELDS:")
             parts.append("        if _k in dto and dto[_k] is None:")
             parts.append('            return JSONResponse(status_code=400, content={"error": "validation"})')
+            parts.append("    # FR-036: validate PRESENT, non-null values with the subtype's create rules.")
+            parts.append("    try:")
+            parts.append(f"        {sub}Patch(**dto)")
+            parts.append("    except ValidationError:")
+            parts.append('        return JSONResponse(status_code=400, content={"error": "validation"})')
             parts.append(f'    saved = repo.update("{val}", {pk_param}, dto)')
             parts.append("    if saved is None:")
             parts.append('        return JSONResponse(status_code=404, content={"error": "not_found"})')
@@ -661,7 +693,7 @@ class RouterGenerator:
         parts.append("")
         parts.append("from fastapi import APIRouter, Depends, Query, Request, status")
         parts.append("from fastapi.responses import JSONResponse")
-        parts.append("from pydantic import BaseModel")
+        parts.append("from pydantic import BaseModel, ValidationError")
         parts.append("")
         parts.append("from metaobjects.codegen.runtime.filter_parser import (")
         parts.append("    FilterPredicate,")
@@ -669,6 +701,9 @@ class RouterGenerator:
         parts.append(")")
         parts.append("")
         parts.append(f"from .{allowlist_module} import {fields_const}, {ops_const}")
+        # FR-036: the generated create + all-optional PATCH models drive the field
+        # constraints run on POST / PATCH (sibling module, one per entity).
+        parts.append(f"from .{short_name} import {short_name}, {short_name}Patch")
         parts.append("")
         parts.append(f'router = APIRouter(prefix="/api/{plural}", tags=["{plural}"])')
         parts.append("")
@@ -717,6 +752,8 @@ class RouterGenerator:
             repo_class=repo_class,
             fields_const=fields_const,
             ops_const=ops_const,
+            model_name=short_name,
+            patch_model=f"{short_name}Patch",
         )
         for i, hname in enumerate(("list", "get", "create", "update", "delete")):
             if i > 0:

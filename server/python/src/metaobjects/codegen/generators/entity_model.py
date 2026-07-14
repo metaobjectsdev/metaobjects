@@ -5,6 +5,7 @@ import re
 
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
+from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.validator import validator_constants as vc
 from metaobjects.shared.base_types import TYPE_VALIDATOR
@@ -98,7 +99,10 @@ def _validator_constraints(field: MetaField) -> dict[str, object]:
     max_len = _first_attr(field, vc.VALIDATOR_SUBTYPE_LENGTH, vc.VALIDATOR_ATTR_MAX)
     field_max = field.attrs().get(fc.FIELD_ATTR_MAX_LENGTH)
     if _is_int(field_max):
-        max_len = field_max
+        # FR-036 A3 — strictest-wins: when BOTH a validator.length @max and a field
+        # @maxLength cap a string, the smaller bound governs (never the field attr
+        # unconditionally, which could loosen a tighter validator).
+        max_len = field_max if max_len is None else min(max_len, field_max)
     if min_len is not None:
         kwargs["min_length"] = min_len
     if max_len is not None:
@@ -127,7 +131,11 @@ def _validator_constraints(field: MetaField) -> dict[str, object]:
         # located via the resolving field.children() in _validators().
         pattern = v.attr(vc.VALIDATOR_ATTR_PATTERN)
         if isinstance(pattern, str):
-            kwargs["pattern"] = pattern
+            # FR-036 Pin 2 — a validator.regex is a FULL match. Pydantic v2 `pattern=`
+            # is search/partial (un-anchored), so wrap the authored expression in an
+            # anchored non-capturing group so alternation still spans the whole value
+            # (a redundant anchor on an already-anchored pattern matches identically).
+            kwargs["pattern"] = f"^(?:{pattern})$"
             break
 
     # ADR-0036/0037 Wave 3 — @stringFormat: hostname -> a codegen-owned canonical
@@ -137,60 +145,87 @@ def _validator_constraints(field: MetaField) -> dict[str, object]:
     if field.attrs().get(fc.FIELD_ATTR_STRING_FORMAT) == fc.STRING_FORMAT_HOSTNAME:
         kwargs["pattern"] = _HOSTNAME_REGEX
 
+    # FR-036 Pin 1 — a @required non-array string is non-empty: reject null / "" but
+    # ACCEPT whitespace-only. Emit an implicit min_length of 1, keeping the stricter
+    # floor if a validator.length @min already set one.
+    if (
+        field.sub_type == fc.FIELD_SUBTYPE_STRING
+        and not field_is_array(field)
+        and field.attrs().get(fc.FIELD_ATTR_REQUIRED) is True
+    ):
+        existing_min = kwargs.get("min_length")
+        kwargs["min_length"] = max(1, existing_min) if isinstance(existing_min, int) else 1
+
     return kwargs
 
 
-def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple[str, bool]:
-    """Return (source line, uses_field). Collects required imports into *imports*."""
-    # FR-019: a field resolving to a package-level shared enum is typed by the materialized
-    # standalone class (imported from the shared `enums` module) or — when @provided — an
-    # external module from per-port config; inline enums keep their `Literal[...]` (py_type_for).
+# Constraint kwargs are emitted in this fixed order so generated output is deterministic.
+_CONSTRAINT_ORDER = ("pattern", "ge", "le", "min_length", "max_length")
+
+
+def _constraint_parts(constraints: dict[str, object]) -> list[str]:
+    """The ``Field(...)`` constraint kwargs rendered in the stable, deterministic order."""
+    return [f"{k}={constraints[k]!r}" for k in _CONSTRAINT_ORDER if k in constraints]
+
+
+def _type_expr_for_field(
+    field: MetaField, imports: set[str], config: GenConfig
+) -> tuple[str, str | None]:
+    """The Python annotation text for *field* (arrays wrapped in ``list[...]``) plus the
+    shared-enum class name when the field resolves to one (used to render an enum
+    default). Collects any required imports into *imports*. Shared by the create-model
+    and patch-model emitters so both carry byte-identical typing.
+
+    FR-019: a field resolving to a package-level shared enum is typed by the materialized
+    standalone class (imported from the shared ``enums`` module) or — when @provided — an
+    external module; inline enums keep their ``Literal[...]`` (py_type_for)."""
     shared = (
         fr019.shared_enum_for_field(field)
         if field.sub_type == fc.FIELD_SUBTYPE_ENUM
         else None
     )
+    enum_type_name: str | None = None
     if shared is not None:
         type_name, import_line = fr019.enum_type_and_import(shared, config)
         imports.add(import_line)
+        enum_type_name = type_name
         type_expr = f"list[{type_name}]" if field_is_array(field) else type_name
     else:
         pt = py_type_for(field)
         imports.update(pt.imports)
         type_expr = pt.expr
-    # ADR-0036/0037 Wave 3 — @stringFormat: email narrows a plain string to a
-    # validated email. Bind Pydantic's idiomatic EmailStr (the Python analogue of
-    # Zod .email()); hostname stays a plain str with a codegen-owned canonical
-    # pattern= (handled in _validator_constraints). The field stays a string.
+    # ADR-0036/0037 Wave 3 — @stringFormat: email narrows a plain string to a validated
+    # email (Pydantic EmailStr, the Python analogue of Zod .email()); hostname stays a
+    # plain str with a codegen-owned canonical pattern= (in _validator_constraints).
     if (
         field.sub_type == fc.FIELD_SUBTYPE_STRING
         and field.attrs().get(fc.FIELD_ATTR_STRING_FORMAT) == fc.STRING_FORMAT_EMAIL
     ):
-        base_expr = "EmailStr"
         imports.add("from pydantic import EmailStr")
-        type_expr = f"list[{base_expr}]" if field_is_array(field) else base_expr
+        type_expr = "list[EmailStr]" if field_is_array(field) else "EmailStr"
     if field.sub_type in (fc.FIELD_SUBTYPE_OBJECT, fc.FIELD_SUBTYPE_MAP):
-        # A field.object (-> VO) and a field.map with @objectRef (-> dict[str, VO])
-        # both reference a value-object by name; import it so the annotation
-        # py_type_for emitted resolves.
+        # A field.object (-> VO) and a field.map with @objectRef (-> dict[str, VO]) both
+        # reference a value-object by name; import it so the emitted annotation resolves.
+        # @objectRef is FQN-expanded at load; the generated VOs live flat in one package,
+        # so import by the bare class name.
         ref = field.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
         if ref:
-            # @objectRef is FQN-expanded at load time; the generated VOs live
-            # flat in one package, so import by the bare class name.
             ref_name = str(ref).split("::")[-1]
             imports.add(f"from .{ref_name} import {ref_name}")
+    return type_expr, enum_type_name
+
+
+def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple[str, bool]:
+    """Return (source line, uses_field). Collects required imports into *imports*."""
+    type_expr, enum_type_name = _type_expr_for_field(field, imports, config)
     required = field.attrs().get(fc.FIELD_ATTR_REQUIRED) is True
     default_raw = field.attrs().get(fc.FIELD_ATTR_DEFAULT)
     # A server-side expression default (now(), gen_random_uuid(), CURRENT_TIMESTAMP)
     # is filled by the DB — the Python model carries no default for it (the field keeps
     # its required/optional shape). Only literal defaults become Pydantic defaults.
     has_default = default_raw is not None and not _is_sql_expr_default(default_raw)
-    enum_type_name = type_name if shared is not None else None
 
-    constraints = _validator_constraints(field)
-    # Emit kwargs in a stable order so generated output is deterministic.
-    _order = ["pattern", "ge", "le", "min_length", "max_length"]
-    parts = [f"{k}={constraints[k]!r}" for k in _order if k in constraints]
+    parts = _constraint_parts(_validator_constraints(field))
     uses_field = bool(parts)
 
     # @default — render an enum member (Type.MEMBER, UPPER_CASE) or a Python literal.
@@ -224,6 +259,22 @@ def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple
     # @column emit field.name unchanged.
     py_name = field.attrs().get(fc.FIELD_ATTR_COLUMN) or field.name
     return f"    {py_name}: {annotation}{assignment}", uses_field
+
+
+def _patch_field_line(
+    field: MetaField, imports: set[str], config: GenConfig
+) -> tuple[str, bool]:
+    """A PATCH-model field line: the field is made Optional (default ``None``) yet
+    carries the SAME per-field constraints as the create model, so a present, non-null
+    value is validated with the create rules (FR-036) while an absent field is left
+    untouched. A ``@default`` is never emitted (a patch does not default a column).
+    Returns (source line, uses_field)."""
+    type_expr, _enum = _type_expr_for_field(field, imports, config)
+    parts = _constraint_parts(_validator_constraints(field))
+    py_name = field.attrs().get(fc.FIELD_ATTR_COLUMN) or field.name
+    if parts:
+        return f"    {py_name}: {type_expr} | None = Field(default=None, {', '.join(parts)})", True
+    return f"    {py_name}: {type_expr} | None = None", False
 
 
 def _effective_fqn(entity: MetaObject) -> str:
@@ -295,6 +346,29 @@ class EntityModelGenerator:
                 lines.append(f"    {d.relation_name}: list[{element}] = []")
         return lines, uses_field
 
+    def _emit_patch_lines(
+        self,
+        entity: MetaObject,
+        imports: set[str],
+        config: GenConfig | None = None,
+    ) -> tuple[list[str], bool]:
+        """The ``<Name>Patch`` body: every EFFECTIVE field (own + inherited via
+        ``extends``) made Optional while retaining its create-model constraints, so the
+        generated PATCH handler can validate present, non-null values without
+        bean-validating absent ones (FR-036). M:N navigations are omitted (a patch
+        targets columns, not relations). Returns ``(lines, uses_field)``. Override to
+        add/transform patch-model lines."""
+        cfg = config if config is not None else GenConfig(out_dir="")
+        uses_field = False
+        lines: list[str] = []
+        # RESOLVING (fields()): the flat Patch model is self-contained (subclasses
+        # BaseModel, not the entity base), so it restates inherited fields too.
+        for f in entity.fields():
+            line, used = _patch_field_line(f, imports, cfg)
+            uses_field = uses_field or used
+            lines.append(line)
+        return lines, uses_field
+
     def render_entity_model(
         self,
         entity: MetaObject,
@@ -333,11 +407,23 @@ class EntityModelGenerator:
             imports.add("from typing import Literal")
         body = lines if lines else ["    pass"]
 
-        # Import only the pydantic names actually referenced.
+        # FR-036 — an object.entity also emits an all-optional ``<Name>Patch`` model
+        # carrying the create-model constraints, so the generated PATCH handler can
+        # validate present, non-null values without bean-validating absent ones. Value
+        # objects / projections are never patched over a router, so they emit none.
+        emit_patch = entity.sub_type == OBJECT_SUBTYPE_ENTITY
+        patch_lines: list[str] = []
+        patch_uses_field = False
+        if emit_patch:
+            patch_lines, patch_uses_field = self._emit_patch_lines(entity, imports, config)
+
+        # Import only the pydantic names actually referenced. The main model imports
+        # BaseModel only when it has no super, but the flat Patch model always
+        # subclasses BaseModel, so its presence forces the import regardless.
         pyd_names: list[str] = []
-        if entity.super_data is None:
+        if entity.super_data is None or emit_patch:
             pyd_names.append("BaseModel")
-        if uses_field:
+        if uses_field or patch_uses_field:
             pyd_names.append("Field")
 
         parts: list[str] = [
@@ -350,7 +436,16 @@ class EntityModelGenerator:
             parts += [*extra_imports, ""]
         if pyd_names:
             parts += [f"from pydantic import {', '.join(pyd_names)}", ""]
-        parts += ["", self._emit_class_header(entity, base_class), *body, ""]
+        parts += ["", self._emit_class_header(entity, base_class), *body]
+        if emit_patch:
+            parts += [
+                "",
+                "",
+                f"class {entity.name}Patch(BaseModel):",
+                '    """GENERATED — PATCH input: all fields optional; present values validated (FR-036)."""',
+                *patch_lines,
+            ]
+        parts += [""]
         return "\n".join(parts)
 
     def _render_shared_enums_module(self, entities: list[MetaObject]) -> EmittedFile | None:

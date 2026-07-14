@@ -4,11 +4,11 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .PostBrief import PostBrief
 
 
 class AuthorBrief(BaseModel):
-    displayName: str
+    displayName: str = Field(min_length=1)
     posts: list[PostBrief] | None = None

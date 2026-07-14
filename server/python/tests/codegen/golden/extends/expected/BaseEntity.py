@@ -9,3 +9,9 @@ from pydantic import BaseModel
 
 class BaseEntity(BaseModel):
     id: int
+
+
+class BaseEntityPatch(BaseModel):
+    """GENERATED — PATCH input: all fields optional; present values validated (FR-036)."""
+
+    id: int | None = None
