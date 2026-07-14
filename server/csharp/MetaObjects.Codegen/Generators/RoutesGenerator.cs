@@ -193,10 +193,10 @@ public class RoutesGenerator : PerEntityGenerator
             // that was actually sent and set only those properties — the same present-field
             // merge the TPH per-subtype handler already uses. The PK stays route-authoritative.
             //
-            // Null-valued properties are skipped (write present-NON-null only), matching the
-            // Kotlin controller and the Java repository merge, so the five ports agree on the
-            // "omitted field survives" contract. Distinguishing an explicit `null` (clear the
-            // column) from an omitted field is the deferred tristate (FR-035).
+            // FR-035 PATCH-2 tristate: an OMITTED field is untouched; an explicit null
+            // CLEARS a nullable column; an explicit null on a NOT-NULL (@required) column
+            // is a 400. The per-key merge (shared with the TPH per-subtype handler) is
+            // emitted by AppendPartialMergeLoop.
             sb.AppendLine();
             sb.AppendLine("        async System.Threading.Tasks.Task<IResult> Update" + cls + "(" + pkType + " id, HttpContext http, AppDbContext db)");
             sb.AppendLine("        {");
@@ -210,16 +210,7 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
             sb.AppendLine("                .Value.SerializerOptions;");
             sb.AppendLine("            var entry = db.Entry(existing);");
-            sb.AppendLine("            foreach (var prop in body.RootElement.EnumerateObject())");
-            sb.AppendLine("            {");
-            sb.AppendLine("                var target = entry.Metadata.FindProperty(prop.Name)");
-            sb.AppendLine("                    ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, System.StringComparison.OrdinalIgnoreCase));");
-            sb.AppendLine("                if (target is null) continue;");
-            sb.AppendLine("                if (target.IsPrimaryKey()) continue;                        // PK is route-authoritative");
-            sb.AppendLine("                if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null) continue; // present-non-null (see note)");
-            sb.AppendLine("                var clr = System.Nullable.GetUnderlyingType(target.ClrType) ?? target.ClrType;");
-            sb.AppendLine("                entry.CurrentValues[target] = System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts);");
-            sb.AppendLine("            }");
+            AppendPartialMergeLoop(sb, null);
             sb.AppendLine("            await db.SaveChangesAsync();");
             sb.AppendLine("            return Results.Ok(existing);");
             sb.AppendLine("        }");
@@ -408,6 +399,37 @@ public class RoutesGenerator : PerEntityGenerator
         return new EmittedFile($"{baseCls}Routes.g.cs", sb.ToString());
     }
 
+    // FR-035 PATCH-2 — the shared present-key merge loop for the generated update
+    // handler (vanilla entity + each TPH subtype). Enumerates the JSON body and writes
+    // ONLY the present keys: an explicit null CLEARS a nullable column, an explicit null
+    // on a NOT-NULL (@required) column is a 400 {error:"validation"}, and the PK — plus
+    // the TPH discriminator when `discProp` is non-null — is never written. Assumes the
+    // locals `body` (JsonDocument), `entry` (EntityEntry) and `jsonOpts` are in scope.
+    private static void AppendPartialMergeLoop(StringBuilder sb, string? discProp)
+    {
+        sb.AppendLine("            foreach (var prop in body.RootElement.EnumerateObject())");
+        sb.AppendLine("            {");
+        sb.AppendLine("                var target = entry.Metadata.FindProperty(prop.Name)");
+        sb.AppendLine("                    ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, System.StringComparison.OrdinalIgnoreCase));");
+        sb.AppendLine("                if (target is null) continue;");
+        sb.AppendLine("                if (target.IsPrimaryKey()) continue;                        // PK is route-authoritative");
+        if (discProp is not null)
+        {
+            sb.AppendLine($"                if (string.Equals(target.Name, \"{discProp}\", System.StringComparison.Ordinal)) continue; // discriminator is immutable");
+        }
+        sb.AppendLine("                if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null)");
+        sb.AppendLine("                {");
+        sb.AppendLine("                    // FR-035 PATCH-2: explicit null clears a nullable column; on a");
+        sb.AppendLine("                    // NOT-NULL (@required) column it is a 400 (matching the cross-port contract).");
+        sb.AppendLine("                    if (!target.IsNullable) return Results.BadRequest(new { error = \"validation\" });");
+        sb.AppendLine("                    entry.CurrentValues[target] = null;");
+        sb.AppendLine("                    continue;");
+        sb.AppendLine("                }");
+        sb.AppendLine("                var clr = System.Nullable.GetUnderlyingType(target.ClrType) ?? target.ClrType;");
+        sb.AppendLine("                entry.CurrentValues[target] = System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts);");
+        sb.AppendLine("            }");
+    }
+
     // Emit the per-subtype CRUD route set under /<base>/<segment>. Scoped to the subtype
     // via db.<DbSet>.OfType<Sub>(); cross-subtype ids are invisible (404). Create binds the
     // subtype CLR type (discriminator injected by EF on Add); update is a partial merge
@@ -476,19 +498,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
         sb.AppendLine("                .Value.SerializerOptions;");
         sb.AppendLine("            var entry = db.Entry(existing);");
-        sb.AppendLine("            foreach (var prop in body.RootElement.EnumerateObject())");
-        sb.AppendLine("            {");
-        sb.AppendLine("                var target = entry.Metadata.FindProperty(prop.Name)");
-        sb.AppendLine("                    ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, System.StringComparison.OrdinalIgnoreCase));");
-        sb.AppendLine("                if (target is null) continue;");
-        sb.AppendLine("                if (target.IsPrimaryKey()) continue;                       // PK is route-authoritative");
-        sb.AppendLine($"                if (string.Equals(target.Name, \"{discProp}\", System.StringComparison.Ordinal)) continue; // discriminator is immutable");
-        sb.AppendLine("                var clr = System.Nullable.GetUnderlyingType(target.ClrType) ?? target.ClrType;");
-        sb.AppendLine("                object? value = prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null");
-        sb.AppendLine("                    ? null");
-        sb.AppendLine("                    : System.Text.Json.JsonSerializer.Deserialize(prop.Value.GetRawText(), clr, jsonOpts);");
-        sb.AppendLine("                entry.CurrentValues[target] = value;");
-        sb.AppendLine("            }");
+        AppendPartialMergeLoop(sb, discProp);
         sb.AppendLine("            await db.SaveChangesAsync();");
         sb.AppendLine("            return Results.Ok(existing);");
         sb.AppendLine("        }");

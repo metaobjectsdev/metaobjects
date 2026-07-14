@@ -526,6 +526,17 @@ internal sealed class AuthorApiServer : IAsyncDisposable
             await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
             return;
         }
+        // FR-035 PATCH-2: an explicit null on a @required field (name / createdAt, per
+        // meta.json) is a 400 — a present null on the nullable bio clears it, and an
+        // omitted required field is untouched (never a 400).
+        foreach (var reqField in new[] { "name", "createdAt" })
+        {
+            if (body.TryGetValue(reqField, out var rv) && rv is null)
+            {
+                await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
+                return;
+            }
+        }
         var sets = new List<string>();
         var vals = new List<object?>();
         if (body.TryGetValue("name", out var n) && n is string ns) { sets.Add("name = @p" + vals.Count); vals.Add(ns); }
