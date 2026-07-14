@@ -149,8 +149,10 @@ class GeneratedM2mControllerHarness(
             SchemaUtils.create(*tables.toTypedArray())
             seedRaw()
         }
-        postMvc = standalone(postControllerClass.getDeclaredConstructor(ObjectMapper::class.java).newInstance(mapper))
-        personMvc = standalone(personControllerClass.getDeclaredConstructor(ObjectMapper::class.java).newInstance(mapper))
+        // FR-036: the generated controller ctors now also take a jakarta Validator.
+        val validator = jakarta.validation.Validation.buildDefaultValidatorFactory().validator
+        postMvc = standalone(postControllerClass.getDeclaredConstructor(ObjectMapper::class.java, jakarta.validation.Validator::class.java).newInstance(mapper, validator))
+        personMvc = standalone(personControllerClass.getDeclaredConstructor(ObjectMapper::class.java, jakarta.validation.Validator::class.java).newInstance(mapper, validator))
     }
 
     /** Dispatch to the controller owning the source URL segment. */

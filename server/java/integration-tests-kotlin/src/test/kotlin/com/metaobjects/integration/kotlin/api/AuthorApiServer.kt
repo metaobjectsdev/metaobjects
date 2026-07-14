@@ -178,6 +178,10 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
         @Suppress("UNCHECKED_CAST")
         val body = readJsonBody(exchange) as? Map<String, Any?>
             ?: return sendJson(exchange, 400, mapOf("error" to "validation"))
+        // FR-036: enforce @maxLength (name 100 / bio 1000) at the wire boundary — a too-long
+        // present value is a 400 {error:"validation"} BEFORE the insert (mirrors the generated
+        // controller's validator.validate on POST).
+        if (violatesMaxLength(body)) return sendJson(exchange, 400, mapOf("error" to "validation"))
         val newId = transaction(db) {
             AuthorTable.insert {
                 it[name] = body["name"] as String
@@ -203,6 +207,9 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
         for (f in listOf("name", "createdAt")) {
             if (body.containsKey(f) && body[f] == null) return sendJson(exchange, 400, mapOf("error" to "validation"))
         }
+        // FR-036: validate PRESENT, non-null values against @maxLength (same rule as create) — a
+        // too-long present value is a 400 BEFORE the write, leaving the stored row untouched.
+        if (violatesMaxLength(body)) return sendJson(exchange, 400, mapOf("error" to "validation"))
         val updated = transaction(db) {
             AuthorTable.update({ AuthorTable.id eq id }) {
                 (body["name"] as? String)?.let { v -> it[name] = v }
@@ -235,6 +242,17 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
+
+    /**
+     * FR-036: true iff a PRESENT string value exceeds its `@maxLength` (name 100 / bio 1000).
+     * Only present, non-null strings are checked — absent fields and nulls are handled by the
+     * per-verb guards. Mirrors the generated controller's field constraints over HTTP.
+     */
+    private fun violatesMaxLength(body: Map<String, Any?>): Boolean {
+        (body["name"] as? String)?.let { if (it.length > 100) return true }
+        (body["bio"] as? String)?.let { if (it.length > 1000) return true }
+        return false
+    }
 
     private fun rowToMap(row: ResultRow): Map<String, Any?> {
         val ts = row[AuthorTable.createdAt]

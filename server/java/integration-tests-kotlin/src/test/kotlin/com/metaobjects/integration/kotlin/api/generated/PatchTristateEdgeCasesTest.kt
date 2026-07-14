@@ -128,7 +128,9 @@ class PatchTristateEdgeCasesTest {
                 "jdbc:h2:mem:patch_mismatch;DB_CLOSE_DELAY=-1;MODE=PostgreSQL", driver = "org.h2.Driver")
             transaction(db) { SchemaUtils.create(docTable) }
 
-            val controller = controllerClass.getDeclaredConstructor(ObjectMapper::class.java).newInstance(mapper)
+            // FR-036: the generated controller ctor now also takes a jakarta Validator.
+            val controller = controllerClass.getDeclaredConstructor(ObjectMapper::class.java, jakarta.validation.Validator::class.java)
+                .newInstance(mapper, jakarta.validation.Validation.buildDefaultValidatorFactory().validator)
             val converter = MappingJackson2HttpMessageConverter().apply { objectMapper = mapper }
             val mvc = MockMvcBuilders.standaloneSetup(controller).setMessageConverters(converter).build()
 

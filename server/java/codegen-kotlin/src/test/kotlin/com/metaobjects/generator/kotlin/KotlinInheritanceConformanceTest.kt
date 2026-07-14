@@ -44,7 +44,10 @@ class KotlinInheritanceConformanceTest {
                 assertTrue("val $field" in src, "Product must carry inherited/own field `$field`; saw:\n$src")
 
             // The inherited required `createdBy` keeps its validation (flattened from Base).
-            assertTrue("@field:Size(max = 80)" in src, "inherited createdBy must keep @Size(max=80); saw:\n$src")
+            // FR-036 Pin 1: a required string folds the non-empty floor (min = 1) into the same
+            // @Size as its @maxLength cap (@NotBlank is gone).
+            assertTrue("@field:Size(min = 1, max = 80)" in src,
+                "inherited required createdBy must carry @Size(min = 1, max = 80); saw:\n$src")
         } finally {
             out.toFile().deleteRecursively()
         }

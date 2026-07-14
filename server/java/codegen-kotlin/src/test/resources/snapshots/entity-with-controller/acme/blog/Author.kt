@@ -1,6 +1,5 @@
 package acme.blog
 
-import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
 import kotlin.Long
@@ -12,7 +11,6 @@ import kotlin.String
 public data class Author(
   public val id: Long? = null,
   @field:NotNull
-  @field:NotBlank
-  @field:Size(max = 100)
+  @field:Size(min = 1, max = 100)
   public val name: String,
 )

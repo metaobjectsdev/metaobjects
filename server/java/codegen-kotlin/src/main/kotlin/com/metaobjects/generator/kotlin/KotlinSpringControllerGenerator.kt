@@ -211,7 +211,10 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 append("import com.fasterxml.jackson.core.type.TypeReference\n")
                 append("import com.fasterxml.jackson.databind.ObjectMapper\n")
             }
-            append("import jakarta.validation.Valid\n")
+            // FR-036: the controller enforces the entity's field constraints over HTTP through a
+            // jakarta Validator (POST body + present PATCH values) — always injected in this
+            // writable-table path (a read-only projection controller never reaches emit()).
+            append("import jakarta.validation.Validator\n")
             append("import org.springframework.http.HttpStatus\n")
             append("import org.springframework.http.ResponseEntity\n")
             append("import org.springframework.web.bind.annotation.DeleteMapping\n")
@@ -305,14 +308,15 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("/** GENERATED — REST controller for ${shortName} entity. Implements the cross-port API contract. */\n")
             append("@RestController\n")
             append("@RequestMapping(\"$routeBase\")\n")
-            // FR-035 present-key PATCH: the update handler binds the RAW JsonNode (not the
+            // FR-036: `validator` is always injected (POST + present-PATCH-value enforcement).
+            // FR-035 present-key PATCH: the update handler binds the RAW JsonNode (not a
             // @Valid data class, which cannot see absent-vs-null) and per-field-binds present
             // values via the Spring-configured ObjectMapper — injected only when there ARE
             // settable fields (a PK + only object/jsonb columns needs no mapper).
             if (hasPatchFields) {
-                append("class ${shortName}Controller(private val objectMapper: ObjectMapper) {\n\n")
+                append("class ${shortName}Controller(private val objectMapper: ObjectMapper, private val validator: Validator) {\n\n")
             } else {
-                append("class ${shortName}Controller {\n\n")
+                append("class ${shortName}Controller(private val validator: Validator) {\n\n")
             }
 
             // List handler — pagination + sort + withCount + FR-009 filter operators.
@@ -360,9 +364,13 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("        ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
             append("    }\n\n")
 
-            // POST — create
+            // POST — create. FR-036: validate the bound body through the jakarta Validator and
+            // 400 with the cross-port envelope on any violation BEFORE the insert. (@Valid's
+            // default 400 body is NOT the cross-port {error:"validation"} shape and does not fire
+            // under MockMvc standaloneSetup — so the check is explicit here.)
             append("    @PostMapping\n")
-            append("    fun create(@Valid @RequestBody dto: ${shortName}): ResponseEntity<${shortName}> = transaction {\n")
+            append("    fun create(@RequestBody dto: ${shortName}): ResponseEntity<Any> = transaction {\n")
+            append("        if (validator.validate(dto).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
             append("        val newId = ${tableObjectName}.insert {\n")
             for (field in entity.metaFields) {
                 if (field is ObjectField || field is MapField) continue
@@ -379,7 +387,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             }
             append("        }[${tableObjectName}.${pkFieldName}]\n")
             append("        val saved = ${tableObjectName}.selectAll().where { ${tableObjectName}.${pkFieldName} eq newId }.single()\n")
-            append("        ResponseEntity.status(HttpStatus.CREATED).body(rowTo${shortName}(saved))\n")
+            append("        ResponseEntity.status(HttpStatus.CREATED).body(rowTo${shortName}(saved) as Any)\n")
             append("    }\n\n")
 
             // PATCH + PUT — single handler (per API contract; same body shape both verbs).
@@ -408,25 +416,45 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 val settableNamesList = patchSettableFields.joinToString(", ") { "\"${it.name}\"" }
                 append("        if (listOf($settableNamesList).any { body.has(it) }) {\n")
                 // A present value that cannot bind to its column's Kotlin type (e.g. a JSON object
-                // for a String column) throws from treeToValue INSIDE the statement build — map
-                // that to 400 (the create @Valid path 400s the same value), not a 500. Catch the
-                // specific Jackson JsonMappingException so no unrelated exception is swallowed.
+                // for a String column) throws from treeToValue — map that to 400, not a 500. Catch
+                // the specific Jackson JsonMappingException so no unrelated exception is swallowed.
                 append("            try {\n")
-                append("                ${tableObjectName}.update({ ${tableObjectName}.${pkFieldName} eq id }) {\n")
+                // FR-036: bind each PRESENT value into a typed local, then validate present NON-NULL
+                // values against the entity's field constraints (validator.validateValue) — a bind
+                // failure OR a constraint violation → 400 BEFORE any write. Binding happens here (not
+                // inside the Exposed update{} lambda) so `return@transaction` on a violation is legal
+                // (a qualified return cannot cross the non-inline update{} lambda). present-null on a
+                // @required field was already 400'd above; present-null on a nullable field clears it
+                // (no bind, no validation).
                 for (field in patchSettableFields) {
                     // The DATA-CLASS element type (a field.enum's materialized enum class, not the
-                    // wire String) so the bound value matches the Exposed Column<E>. Columns are
-                    // qualified (`Table.col`) so a field named like the `body` param can't shadow them.
+                    // wire String) so the bound value matches the Exposed Column<E>.
                     val elem = KotlinTypeMapper.enumTypeName(field, entity) ?: KotlinTypeMapper.kotlinTypeName(field)
                     val ktType = if (field.isArrayType) "kotlin.collections.List<$elem>" else "$elem"
-                    val col = "$tableObjectName.${field.name}"
-                    // A typed local coerces the ObjectMapper's platform return type to the exact
-                    // column type (matching the data-class property the old handler assigned) so
-                    // Exposed's set() overload resolves for enum / EntityID-FK columns too.
+                    val fn = field.name
+                    val cap = capitalizeFirst(fn)
+                    append("                val has$cap = body.has(\"$fn\")\n")
                     if (KotlinGenUtil.isRequiredField(field)) {
-                        append("                    if (body.has(\"${field.name}\")) { val v: $ktType = objectMapper.treeToValue(body.get(\"${field.name}\"), object : TypeReference<$ktType>() {}); it[$col] = v }\n")
+                        // required: present ⇒ non-null (present-null was 400'd above).
+                        append("                val v$cap: $ktType? = if (has$cap) objectMapper.treeToValue(body.get(\"$fn\"), object : TypeReference<$ktType>() {}) else null\n")
+                        append("                if (has$cap && validator.validateValue(${shortName}::class.java, \"$fn\", v$cap).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
                     } else {
-                        append("                    if (body.has(\"${field.name}\")) { val n = body.get(\"${field.name}\"); if (n.isNull) it[$col] = null else { val v: $ktType = objectMapper.treeToValue(n, object : TypeReference<$ktType>() {}); it[$col] = v } }\n")
+                        append("                val null$cap = has$cap && body.get(\"$fn\").isNull\n")
+                        append("                val v$cap: $ktType? = if (has$cap && !null$cap) objectMapper.treeToValue(body.get(\"$fn\"), object : TypeReference<$ktType>() {}) else null\n")
+                        append("                if (has$cap && !null$cap && validator.validateValue(${shortName}::class.java, \"$fn\", v$cap).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+                    }
+                }
+                // Apply the already-bound + validated values. Columns are qualified (`Table.col`)
+                // so a field named like the `body`/`id` params can't shadow them.
+                append("                ${tableObjectName}.update({ ${tableObjectName}.${pkFieldName} eq id }) {\n")
+                for (field in patchSettableFields) {
+                    val fn = field.name
+                    val cap = capitalizeFirst(fn)
+                    val col = "$tableObjectName.$fn"
+                    if (KotlinGenUtil.isRequiredField(field)) {
+                        append("                    if (has$cap) it[$col] = v$cap!!\n")
+                    } else {
+                        append("                    if (has$cap) { if (null$cap) it[$col] = null else it[$col] = v$cap }\n")
                     }
                 }
                 append("                }\n")

@@ -153,7 +153,9 @@ class GeneratedDocumentControllerHarness(
             user = pg.username, password = pg.password)
         transaction(db) { SchemaUtils.create(documentTable) }
 
-        mockMvc = standalone(controllerClass.getDeclaredConstructor(ObjectMapper::class.java).newInstance(mapper))
+        // FR-036: the generated controller ctor now also takes a jakarta Validator.
+        mockMvc = standalone(controllerClass.getDeclaredConstructor(ObjectMapper::class.java, jakarta.validation.Validator::class.java)
+            .newInstance(mapper, jakarta.validation.Validation.buildDefaultValidatorFactory().validator))
 
         if (seed) {
             for (r in seedRows) {

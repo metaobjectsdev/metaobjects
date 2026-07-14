@@ -13,7 +13,7 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
-import jakarta.validation.Valid
+import jakarta.validation.Validator
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -235,7 +235,7 @@ private fun rowToAuthor(row: ResultRow): Author = Author(
 /** GENERATED — REST controller for Author entity. Implements the cross-port API contract. */
 @RestController
 @RequestMapping("/api/authors")
-class AuthorController(private val objectMapper: ObjectMapper) {
+class AuthorController(private val objectMapper: ObjectMapper, private val validator: Validator) {
 
     @GetMapping
     fun list(
@@ -274,12 +274,13 @@ class AuthorController(private val objectMapper: ObjectMapper) {
     }
 
     @PostMapping
-    fun create(@Valid @RequestBody dto: Author): ResponseEntity<Author> = transaction {
+    fun create(@RequestBody dto: Author): ResponseEntity<Any> = transaction {
+        if (validator.validate(dto).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
         val newId = AuthorTable.insert {
             it[name] = dto.name
         }[AuthorTable.id]
         val saved = AuthorTable.selectAll().where { AuthorTable.id eq newId }.single()
-        ResponseEntity.status(HttpStatus.CREATED).body(rowToAuthor(saved))
+        ResponseEntity.status(HttpStatus.CREATED).body(rowToAuthor(saved) as Any)
     }
 
     @RequestMapping(value = ["/{id}"], method = [RequestMethod.PATCH, RequestMethod.PUT])
@@ -288,8 +289,11 @@ class AuthorController(private val objectMapper: ObjectMapper) {
         if (body.has("name") && body.get("name").isNull) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
         if (listOf("name").any { body.has(it) }) {
             try {
+                val hasName = body.has("name")
+                val vName: kotlin.String? = if (hasName) objectMapper.treeToValue(body.get("name"), object : TypeReference<kotlin.String>() {}) else null
+                if (hasName && validator.validateValue(Author::class.java, "name", vName).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
                 AuthorTable.update({ AuthorTable.id eq id }) {
-                    if (body.has("name")) { val v: kotlin.String = objectMapper.treeToValue(body.get("name"), object : TypeReference<kotlin.String>() {}); it[AuthorTable.name] = v }
+                    if (hasName) it[AuthorTable.name] = vName!!
                 }
             } catch (e: com.fasterxml.jackson.databind.JsonMappingException) {
                 return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)

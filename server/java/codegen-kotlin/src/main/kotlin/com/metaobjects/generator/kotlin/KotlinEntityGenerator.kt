@@ -276,9 +276,12 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * <p>Cross-port semantics (the SP-C validator-parity contract — mirrors the Spring
      * port's `SpringDtoGenerator`):
      * <ul>
-     *   <li>required (field `@required` or `validator.required`) → `@NotNull`, plus
-     *       `@NotBlank` for non-array strings so an empty string fails too.</li>
-     *   <li>`validator.length @min` + field `@maxLength` → `@Size(min=…, max=…)`.</li>
+     *   <li>required (field `@required` or `validator.required`) → `@NotNull`. FR-036 Pin 1:
+     *       NO `@NotBlank` — a `@required` string is NON-EMPTY (rejects null / "") but
+     *       WHITESPACE-ONLY is ACCEPTED, so the non-empty floor is a `@Size(min >= 1)` on the
+     *       string-length annotation (which `@NotBlank`'s trim-based check would over-reject).</li>
+     *   <li>`validator.length @min/@max` folded with field `@maxLength` (strictest-wins on max)
+     *       into ONE `@Size(min=…, max=…)` — non-array strings only.</li>
      *   <li>`validator.regex @pattern` → `@Pattern(regexp=…)`.</li>
      *   <li>`validator.numeric @min/@max` → `@Min(…)` / `@Max(…)`.</li>
      *   <li>`validator.array @min/@max` → `@Size(min=…, max=…)` on the `List`.</li>
@@ -291,20 +294,36 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
         val required = KotlinGenUtil.isRequiredField(field) || hasValidator(field, RequiredValidator::class.java)
         if (required) {
+            // FR-036 Pin 1: @required → @NotNull only. NO @NotBlank (it rejects whitespace-only,
+            // which the cross-port owner ruling ACCEPTS). The non-empty floor for a required
+            // non-array string is a @Size(min >= 1) folded into the string-length block below.
             out.add(constraint(NOT_NULL))
-            if (isString && !isArray) out.add(constraint(NOT_BLANK))
         }
 
-        // String length: combine validator.length @min with the field-level @maxLength cap.
-        var lengthMin: Int? = null
-        var lengthMax: Int? = null
-        validator(field, LengthValidator::class.java)?.let { length ->
-            lengthMin = attrInt(length, LengthValidator.ATTR_MIN)
-            lengthMax = attrInt(length, LengthValidator.ATTR_MAX)
-        }
-        attrInt(field, StringField.ATTR_MAX_LENGTH)?.let { lengthMax = it }
-        if (lengthMin != null || lengthMax != null) {
-            out.add(sizeAnnotation(lengthMin, lengthMax))
+        // String length (non-array strings only): ONE @Size folding validator.length @min/@max,
+        // the field-level @maxLength cap, and — for a required string — a min of at least 1.
+        // Guarded by isString && !isArray so a string-ARRAY's @maxLength never emits a char-count
+        // @Size on the List (its element-count @Size comes from validator.array below).
+        if (isString && !isArray) {
+            var lengthMin: Int? = null
+            var lengthMax: Int? = null
+            validator(field, LengthValidator::class.java)?.let { length ->
+                lengthMin = attrInt(length, LengthValidator.ATTR_MIN)
+                lengthMax = attrInt(length, LengthValidator.ATTR_MAX)
+            }
+            // A3 strictest-wins: the effective max is the SMALLER of @maxLength and
+            // validator.length @max (either may be absent).
+            attrInt(field, StringField.ATTR_MAX_LENGTH)?.let { cap ->
+                lengthMax = lengthMax?.let { minOf(it, cap) } ?: cap
+            }
+            // FR-036 Pin 1: a required string is non-empty → fold in a min of at least 1,
+            // combined with any explicit validator.length @min by taking the max.
+            if (required) {
+                lengthMin = maxOf(lengthMin ?: 0, 1)
+            }
+            if (lengthMin != null || lengthMax != null) {
+                out.add(sizeAnnotation(lengthMin, lengthMax))
+            }
         }
 
         // Regex pattern.
@@ -371,12 +390,20 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             .useSiteTarget(AnnotationSpec.UseSiteTarget.FIELD)
             .build()
 
-    /** `@field:Size(min = …, max = …)` — each bound omitted when null. */
+    /**
+     * `@field:Size(min = …, max = …)` — each bound omitted when null. Emitted as ONE member
+     * (a single literal) so a two-bound `@Size` stays single-line, matching the historical
+     * single-bound shape (KotlinPoet wraps multi-`addMember` annotations across lines).
+     */
     private fun sizeAnnotation(min: Int?, max: Int?): AnnotationSpec {
-        val b = AnnotationSpec.builder(SIZE).useSiteTarget(AnnotationSpec.UseSiteTarget.FIELD)
-        if (min != null) b.addMember("min = %L", min)
-        if (max != null) b.addMember("max = %L", max)
-        return b.build()
+        val bounds = buildList {
+            if (min != null) add("min = $min")
+            if (max != null) add("max = $max")
+        }
+        return AnnotationSpec.builder(SIZE)
+            .useSiteTarget(AnnotationSpec.UseSiteTarget.FIELD)
+            .addMember("%L", bounds.joinToString(", "))
+            .build()
     }
 
     /** Read an int-valued attr from a node, trying each name in order; null when absent/unparseable. */
@@ -415,7 +442,6 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // jakarta.validation.constraints annotation types (SP-C validator parity).
         private const val JAKARTA_CONSTRAINTS = "jakarta.validation.constraints"
         val NOT_NULL = ClassName(JAKARTA_CONSTRAINTS, "NotNull")
-        val NOT_BLANK = ClassName(JAKARTA_CONSTRAINTS, "NotBlank")
         val SIZE = ClassName(JAKARTA_CONSTRAINTS, "Size")
         val PATTERN = ClassName(JAKARTA_CONSTRAINTS, "Pattern")
         val MIN = ClassName(JAKARTA_CONSTRAINTS, "Min")

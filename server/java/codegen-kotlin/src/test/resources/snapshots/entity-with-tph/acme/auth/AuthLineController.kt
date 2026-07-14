@@ -13,7 +13,7 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
-import jakarta.validation.Valid
+import jakarta.validation.Validator
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -235,7 +235,7 @@ private fun rowToAuthLine(row: ResultRow): AuthLine = AuthLine(
 /** GENERATED — REST controller for AuthLine entity. Implements the cross-port API contract. */
 @RestController
 @RequestMapping("/api/authlines")
-class AuthLineController(private val objectMapper: ObjectMapper) {
+class AuthLineController(private val objectMapper: ObjectMapper, private val validator: Validator) {
 
     @GetMapping
     fun list(
@@ -274,12 +274,13 @@ class AuthLineController(private val objectMapper: ObjectMapper) {
     }
 
     @PostMapping
-    fun create(@Valid @RequestBody dto: AuthLine): ResponseEntity<AuthLine> = transaction {
+    fun create(@RequestBody dto: AuthLine): ResponseEntity<Any> = transaction {
+        if (validator.validate(dto).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
         val newId = AuthLineTable.insert {
             it[label] = dto.label
         }[AuthLineTable.id]
         val saved = AuthLineTable.selectAll().where { AuthLineTable.id eq newId }.single()
-        ResponseEntity.status(HttpStatus.CREATED).body(rowToAuthLine(saved))
+        ResponseEntity.status(HttpStatus.CREATED).body(rowToAuthLine(saved) as Any)
     }
 
     @RequestMapping(value = ["/{id}"], method = [RequestMethod.PATCH, RequestMethod.PUT])
@@ -287,8 +288,12 @@ class AuthLineController(private val objectMapper: ObjectMapper) {
         if (!body.isObject) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
         if (listOf("label").any { body.has(it) }) {
             try {
+                val hasLabel = body.has("label")
+                val nullLabel = hasLabel && body.get("label").isNull
+                val vLabel: kotlin.String? = if (hasLabel && !nullLabel) objectMapper.treeToValue(body.get("label"), object : TypeReference<kotlin.String>() {}) else null
+                if (hasLabel && !nullLabel && validator.validateValue(AuthLine::class.java, "label", vLabel).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
                 AuthLineTable.update({ AuthLineTable.id eq id }) {
-                    if (body.has("label")) { val n = body.get("label"); if (n.isNull) it[AuthLineTable.label] = null else { val v: kotlin.String = objectMapper.treeToValue(n, object : TypeReference<kotlin.String>() {}); it[AuthLineTable.label] = v } }
+                    if (hasLabel) { if (nullLabel) it[AuthLineTable.label] = null else it[AuthLineTable.label] = vLabel }
                 }
             } catch (e: com.fasterxml.jackson.databind.JsonMappingException) {
                 return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)

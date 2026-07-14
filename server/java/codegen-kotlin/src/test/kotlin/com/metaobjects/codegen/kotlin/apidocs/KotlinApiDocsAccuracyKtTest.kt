@@ -418,7 +418,7 @@ class KotlinApiDocsAccuracyKtTest {
         val header = src.substring(open + 1, close)
 
         val names = sortedSetOf<String>()
-        for (raw in header.split(",")) {
+        for (raw in splitTopLevel(header)) {
             val part = raw.trim()
             if (part.isEmpty()) continue
             // A KotlinPoet ctor param is `[@anno] val <name>: <Type> [= default]`. Take the token
@@ -429,6 +429,27 @@ class KotlinApiDocsAccuracyKtTest {
             names.add(nameTok.substringBefore(':').trim())
         }
         return names
+    }
+
+    /**
+     * Split a constructor header on TOP-LEVEL commas only — commas nested inside an
+     * annotation argument list (`@field:Size(min = 1, max = 100)`) or a generic type
+     * (`Map<String, V>`) must NOT split a parameter.
+     */
+    private fun splitTopLevel(header: String): List<String> {
+        val parts = mutableListOf<String>()
+        val sb = StringBuilder()
+        var depth = 0
+        for (c in header) {
+            when (c) {
+                '(', '<', '[' -> { depth++; sb.append(c) }
+                ')', '>', ']' -> { depth--; sb.append(c) }
+                ',' -> if (depth == 0) { parts.add(sb.toString()); sb.clear() } else sb.append(c)
+                else -> sb.append(c)
+            }
+        }
+        if (sb.isNotBlank()) parts.add(sb.toString())
+        return parts
     }
 
     private fun fileEndingWith(suffix: String): String {
