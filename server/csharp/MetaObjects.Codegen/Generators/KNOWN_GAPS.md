@@ -35,7 +35,13 @@ Update when a gap closes or a new one surfaces.
 
 **Contract.** The exact `error` code vocabulary is NOT a hard Tier-1 invariant; consumers should treat any 4xx as user-facing and 5xx as retryable. Reference: [`api-contract.md` "Error response"](../../../../docs/features/api-contract.md).
 
-**Today.** We emit `{ "error": "not_found" }` for 404 and `{ "error": "validation", "message": "..." }` for the sort-validation 400. The TS reference emits `{ "error": "validation", "issues": [...] }` (Zod issue array) for body-validation 400; we currently rely on ASP.NET's default model-validation response for POST/PATCH bodies — that is per-port idiomatic (Tier 2), not a Tier-1 gap.
+**Today.** We emit `{ "error": "not_found" }` for 404 and `{ "error": "validation", "message": "..." }` for the sort-validation 400. **FR-036 wired explicit body validation with the cross-port `{ "error": "validation" }` envelope:** a POST runs `Validator.TryValidateObject(input, ...)` and a PATCH runs `Validator.TryValidateProperty(value, ...)` per present value → 400 `{ "error": "validation" }` (ASP.NET minimal-API never runs DataAnnotations on its own, so the annotations were previously decorative at the wire tier). The `issues` array is still TS-only idiomatic (Tier 2).
+
+### G7 — Object/value-typed columns are non-PATCHable (deliberate, cross-port)
+
+**Contract.** A `field.object`/`field.map` column (a value-object mapped to jsonb, single or `@isArray`) is EF-mapped as an owned navigation (`.OwnsOne`/`.OwnsMany(...).ToJson`).
+
+**Today.** The partial-PATCH merge loop keys off `entry.Metadata.FindProperty(prop.Name)`, which returns null for a navigation, so a VO-typed column is skipped on PATCH (present values too). This is a **deliberate cross-port Day-1 simplification**, consistent with Java + Kotlin (both exclude `ObjectField` from the patch set) — NOT a C#-specific bug (FR-036 assessed a C#-only fix and rejected it: it would break the api-contract byte-identical parity). Making VO-typed columns PATCHable (bind the owned nav via `entry.Navigation(...).CurrentValue`, cross-port) is a separately-scoped follow-up FR.
 
 ### G5 — `EfCoreFilterDispatch` ordered-comparison fallback
 

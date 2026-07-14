@@ -25,9 +25,9 @@ TS is the only complete port; C#/Python are partial (field-attrs only); Java/Kot
 
 ## Canonical validator semantics (TS is the reference)
 
-- `validator.required` / field `@required` → value must be present (and for strings, non-empty: `.min(1)`).
-- `validator.length` (`@min`/`@max`) + field `@maxLength` → string **character count** in `[min, max]`.
-- `validator.regex` (`@pattern`) → string matches the (un-anchored unless authored) regex.
+- `validator.required` / field `@required` → value must be present, and for strings **non-empty** (`.min(1)`): reject `null`/`""`, accept whitespace-only (FR-036 Ruling 1 — never trim/`@NotBlank`).
+- `validator.length` (`@min`/`@max`) + field `@maxLength` → string **character count** in `[min, max]`, where the effective max is **`min(@maxLength, validator.max)`** (FR-036 A3 strictest-wins).
+- `validator.regex` (`@pattern`) → the **whole value** matches the regex (FR-036 Ruling 2 — **full-match**; search-mode engines like JS `RegExp.test`/Pydantic `pattern=` anchor as `^(?:…)$`, `matches()`/.NET `[RegularExpression]` are already full-match).
 - `validator.numeric` (`@min`/`@max`) → numeric **value** in `[min, max]`.
 - `validator.array` (`@min`/`@max`) → array **element count** in `[min, max]`.
 

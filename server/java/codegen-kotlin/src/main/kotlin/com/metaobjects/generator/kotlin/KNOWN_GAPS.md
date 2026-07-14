@@ -52,13 +52,26 @@ byte-identical to the Java port by construction.
 The generated `@RestController`'s PATCH/PUT handler binds the raw `JsonNode` and
 per-field-binds present values via the Spring `ObjectMapper` (absent → untouched;
 explicit null → clears a nullable column or 400 on a `@required` field; present
-value → set). Two deliberate gaps:
+value → set). Notes:
 
-- **Present-value constraint validation** is NOT run on PATCH. Dropping `@Valid`
-  means `@Size` / `@Pattern` / `@NotBlank` / `@Min` / `@Max` (emitted by
-  `validationAnnotations`) no longer fire on a PATCH body's present values — only a
-  present-null-on-`@required` → 400. This matches the C#/Java partial-PATCH state; TS
-  and Python DO validate present values on PATCH. A cross-port PATCH-4 follow-up.
+- **Present-value constraint validation (RESOLVED by FR-036).** The handler now
+  injects a `jakarta.validation.Validator` and runs `validateValue(<Entity>::class.java,
+  field, value)` on each present value → 400 `{"error":"validation"}`, on both the
+  vanilla and (FR-036 Program B) the TPH per-subtype update paths. (The prior claim
+  that "TS and Python DO validate present values on PATCH" was wrong — before FR-036
+  only TS's vanilla path did.) One TPH caveat: the TPH union data class carries no
+  constraint annotations, so `validateValue` against it is a structural no-op — a TPH
+  PATCH's present-null-on-`@required` is still rejected (explicit guard), but a
+  present-VALUE subtype constraint is not enforced (Java, using per-subtype `<Sub>Dto`,
+  does enforce it). Minor pre-existing divergence, untested by any gate.
+- **Object/value-typed columns are non-PATCHable (deliberate, cross-port).** A
+  `field.object`/`field.map` column (VO → jsonb, single or `@isArray`) — and a
+  `field.string @dbColumnType=jsonb` open-bag — are EXCLUDED from the patch settable
+  set (`patchSettableFields` skips `ObjectField`/`MapField`/`isJsonbOpenBag`), so a
+  `PATCH` leaves them untouched. This is a **deliberate cross-port Day-1 simplification**
+  (Java + Kotlin exclude `ObjectField`; C# skips the owned-nav) — NOT a per-port bug.
+  Making VO/open-bag columns PATCHable is a separately-scoped cross-port follow-up FR;
+  a single-port fix would break the api-contract byte-identical parity.
 - **`field.string @dbColumnType=jsonb` open-bag** is a **create-only** column on the
   generated CRUD. The generated `create` writes it (bound from the `@Valid` DTO's
   kotlinx `JsonElement` property — exercised by the `jsonb-open-bag-roundtrip` corpus),

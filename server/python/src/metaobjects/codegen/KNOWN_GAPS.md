@@ -32,6 +32,14 @@ The generated router takes `dto: dict[str, Any]` for `POST` / `PATCH` /
 `PUT` request bodies and returns `Any` for responses. The repository
 `Protocol` likewise uses `Any` for the row type.
 
+**FR-036 update:** the router now DOES import the generated Pydantic models
+(`from .<Entity> import <Entity>, <Entity>Patch`) and constructs them to enforce
+field constraints over HTTP — POST validates `<Entity>(**dto)`, PATCH validates
+the all-optional `<Entity>Patch(**dto)` (present values only) → `400 {"error":"validation"}`.
+The repository seam still receives the original `dict` (preserving the FR-035
+present-key tristate + wire values), so the strong-typing simplification below
+remains for the repo/response types; only the validation import was added.
+
 This keeps the router module decoupled from sibling generated files
 (the entity-model generator emits one `@dataclass`/Pydantic model per
 entity in a separate file — wiring router→entity-model would require

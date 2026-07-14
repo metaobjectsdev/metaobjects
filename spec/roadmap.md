@@ -46,6 +46,8 @@ under **Shipped**; planned FRs under **Planned** + the **Release plan**. ✅ shi
 | FR-032 | Canonical FQN refs (YAML-only relative paths) | ✅ shipped (5 ports) | 1.0 | [#21](https://github.com/metaobjectsdev/metaobjects/issues/21) |
 | FR-033 | Provider definitions as declarative data + metamodel docs for LLMs | 📋 designed | 1.x | [#23](https://github.com/metaobjectsdev/metaobjects/issues/23) |
 | FR-034 | Ecosystem tier — connected systems (`system`/`container`/`surface`/`environment`) | 📋 designed (**draft, deferred post-1.0**) | 1.1 | — |
+| FR-035 | Present-key PATCH tristate (mutation surface) | 🟢 shipped 5 ports (absent→untouched / present-null→clears / null-on-`@required`→400); coordinated **breaking** release held for FR-036 | 1.0 | — |
+| FR-036 | Constraint-validation enforcement + semantic pins | 🟡 in progress (required-string = non-empty·accept-whitespace · `@Pattern` = full-match · strictest-wins length; HTTP-tier enforcement all 5 ports; TPH tristate) | 1.0 | — |
 
 _(FR-001 was the original metamodel foundation — pre-dates the FR-numbered tracking.)_
 _(FR-032 was developed under the working number "FR-026" — see commit history; renumbered to avoid the FR-026=Forms collision. Design: `docs/superpowers/specs/2026-06-13-fr-032-canonical-fqn-refs-design.md`, ADR-0032.)_

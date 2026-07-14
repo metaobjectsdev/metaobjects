@@ -118,17 +118,26 @@ escaping. Field names and enum members are identifier-safe and alias
 `@enumAlias` *key* containing a `"` or `\`. Add a `javaStringLiteral(...)`
 escape if adopters hit it.
 
-## FR-035 partial PATCH — no present-value constraint validation
+## FR-035 partial PATCH — present-value validation (RESOLVED by FR-036)
 
 The generated `PATCH`/`PUT` handler binds a raw `JsonNode` and builds an
-`<Entity>Patch` (presence-tracked), rather than an `@Valid` DTO. This is what
-gives it the FR-035 tristate (absent ≠ explicit null), but it means the
-`jakarta.validation` constraints the DTO carries — `@Size` / `@Pattern` /
-`@NotBlank` / `@Email` / `@Min` / `@Max` — are **not** enforced on *present
-values* over the PATCH path. The only PATCH-time validation is
-present-null-on-`@required` → HTTP 400 (via `PatchValidationException`).
+`<Entity>Patch` (presence-tracked) — this is what gives it the FR-035 tristate
+(absent ≠ explicit null). **FR-036 wired present-value constraint validation on
+top of it:** the handler injects a `jakarta.validation.Validator` and runs
+`validateValue(<Entity>Dto.class, field, value)` on each PRESENT value (per-field,
+never the whole bean — so an absent `@required` field is not a false 400) →
+HTTP 400 `{"error":"validation"}`. This holds on both the vanilla and (FR-036
+Program B) the TPH per-subtype update paths. (The prior note here — and the claim
+that "TS/Python DO validate on PATCH" — was wrong: before FR-036 only TS's vanilla
+path validated present values; the TPH path validated on no port. All ports now do.)
 
-This is a cross-port PATCH-4 follow-up: TS/Python DO run per-field value
-validation on PATCH; C# and Java do not yet. Tracked here rather than fixed —
-adding constraint validation to the patch path (re-running the same rules the
-DTO's annotations express) is a deliberate, separately-scoped change.
+## Object/value-typed columns are non-PATCHable (deliberate, cross-port)
+
+A `field.object` / `field.map` column (a value-object mapped to a jsonb column,
+single or `@isArray`) is EXCLUDED from `<Entity>Patch`'s settable set
+(`SpringDtoGenerator.settableFields` skips `ObjectField`). So a `PATCH` leaves a
+VO-typed column untouched. This is a **deliberate cross-port Day-1 simplification**,
+consistent across Java, Kotlin (both exclude `ObjectField`), and C# (the owned-nav
+`FindProperty`-miss skip) — NOT a per-port bug. Making VO-typed columns PATCHable
+(bind VO JSON → validate → write jsonb) is a separately-scoped cross-port follow-up
+FR; a single-port fix would break the api-contract byte-identical parity.
