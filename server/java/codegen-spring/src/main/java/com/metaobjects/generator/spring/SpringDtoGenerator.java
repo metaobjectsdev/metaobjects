@@ -106,6 +106,14 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
                     && !TphPlan.isTphSubtype(entity)) {
                 emitPatch(entity, outRoot);
             }
+            // FR-036 Program B: a concrete TPH subtype ALSO gets a presence-tracked <Sub>Patch —
+            // the base controller's per-subtype update route binds it for the present-key PATCH
+            // tristate (mirroring the vanilla path). The subtype's standalone <Sub>Dto (emitted by
+            // emit() above) carries the field constraints the controller validates present values
+            // against. The base itself emits only its union DTO (no patch — writes go per subtype).
+            if (TphPlan.isTphSubtype(entity)) {
+                emitTphSubtypePatch(entity, outRoot);
+            }
         }
     }
 
@@ -150,12 +158,40 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      * repository referencing a missing {@code <Entity>Patch}.
      */
     private void emitPatch(MetaObject entity, Path outRoot) {
+        String shortName = SpringNaming.splitFqn(entity.getName())[1];
+        writePatch(entity, outRoot, SpringNaming.patchName(shortName),
+            SpringNaming.dtoName(shortName), settableFields(entity));
+    }
+
+    /**
+     * FR-036 Program B: emit the presence-tracked {@code <Sub>Patch} for ONE concrete TPH subtype —
+     * the same tristate shape as the vanilla {@link #emitPatch}, but its settable members are the
+     * subtype's EFFECTIVE scalar fields (base + subtype) MINUS the primary key AND the discriminator
+     * field (both immutable on a per-subtype update). The base's {@code @required} columns keep the
+     * present-null &rarr; validation-error rule; a nullable subtype column clears on an explicit
+     * null. Consumed by the TPH base controller's per-subtype update route and the repository
+     * {@code patchByIdAndType} seam.
+     */
+    private void emitTphSubtypePatch(MetaObject subtype, Path outRoot) {
+        String shortName = SpringNaming.splitFqn(subtype.getName())[1];
+        // The discriminator field is immutable on a per-subtype PATCH — exclude it from the patch.
+        String discriminatorField = TphPlan.discriminatorFieldOf(subtype);
+        writePatch(subtype, outRoot, SpringNaming.patchName(shortName),
+            SpringNaming.dtoName(shortName), settableFields(subtype, discriminatorField));
+    }
+
+    /**
+     * Shared FR-035/FR-036 patch emitter — writes {@code <patchName>.java} (a presence-tracked
+     * partial-update shape) for {@code entity} over the {@code settable} field list, qualifying an
+     * inline {@code field.enum} against {@code dtoName}. Both the vanilla {@link #emitPatch} and the
+     * TPH {@link #emitTphSubtypePatch} paths funnel through here so the tristate semantics (absent /
+     * present-null-clears / present-null-on-@required-throws / present-value-binds) cannot drift.
+     */
+    private void writePatch(MetaObject entity, Path outRoot, String patchName, String dtoName,
+            List<MetaField> settable) {
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
-        String patchName = SpringNaming.patchName(shortName);
-        String dtoName = SpringNaming.dtoName(shortName);
-        List<MetaField> settable = settableFields(entity);
 
         StringBuilder src = new StringBuilder();
         if (!pkg.isEmpty()) src.append("package ").append(pkg).append(";\n\n");
@@ -238,6 +274,15 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
 
     /** Scalar (non-object) fields MINUS the primary-key field(s) — the caller-settable set. */
     private static List<MetaField> settableFields(MetaObject entity) {
+        return settableFields(entity, null);
+    }
+
+    /**
+     * As {@link #settableFields(MetaObject)}, additionally excluding the field named
+     * {@code alsoExclude} (or nothing when {@code null}) — the FR-036 TPH per-subtype patch passes
+     * the discriminator field name so the immutable discriminator is never a settable member.
+     */
+    private static List<MetaField> settableFields(MetaObject entity, String alsoExclude) {
         List<String> pkFields = entity.getIdentities(true).stream()
             .filter(MetaIdentity::isPrimary)
             .findFirst()
@@ -245,7 +290,9 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             .orElse(List.of());
         List<MetaField> out = new ArrayList<>();
         for (MetaField field : scalarFields(entity)) {
-            if (!pkFields.contains(field.getName())) out.add(field);
+            if (pkFields.contains(field.getName())) continue;
+            if (alsoExclude != null && alsoExclude.equals(field.getName())) continue;
+            out.add(field);
         }
         return out;
     }

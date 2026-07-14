@@ -59,6 +59,19 @@ public final class TphPlan {
     }
 
     /**
+     * The discriminator FIELD NAME governing {@code obj} — the {@code @discriminator} attr value on
+     * the nearest discriminator-bearing ancestor (or self), or {@code null} when {@code obj} is not
+     * part of a TPH hierarchy. ADR-0039: {@code @discriminator} is a declaration-layer marker read
+     * own-only per hop; {@link #discriminatorRoot} does the resolving super-walk. Used by the FR-036
+     * TPH per-subtype patch to drop the immutable discriminator from the settable set.
+     */
+    public static String discriminatorFieldOf(MetaObject obj) {
+        MetaObject root = discriminatorRoot(obj);
+        if (root == null) return null;
+        return root.getMetaAttr(MetaObject.ATTR_DISCRIMINATOR, false).getValueAsString();
+    }
+
+    /**
      * True when {@code obj} is a concrete TPH subtype: it declares {@code @discriminatorValue}
      * (own attr) and (transitively) extends a {@code @discriminator}-bearing base. Such an entity
      * emits NO standalone controller/repository — it is folded into the base's single table.

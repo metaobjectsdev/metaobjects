@@ -39,6 +39,7 @@ final class InMemoryAuthRepositorySource {
         import java.util.ArrayList;
         import java.util.Comparator;
         import java.util.List;
+        import java.util.Map;
         import java.util.Optional;
         import java.util.concurrent.atomic.AtomicLong;
 
@@ -121,6 +122,26 @@ final class InMemoryAuthRepositorySource {
                         dto.quantity()    != null ? dto.quantity()    : cur.quantity(),
                         dto.copayAmount() != null ? dto.copayAmount() : cur.copayAmount(),
                         dto.approver()    != null ? dto.approver()    : cur.approver());
+                    rows.set(i, merged);
+                    return Optional.of(merged);
+                }
+                return Optional.empty(); // absent or cross-subtype → controller 404s
+            }
+
+            // FR-036 Program B present-key PATCH: apply ONLY the columns PRESENT in `assigned` (an
+            // explicit null → cleared; an absent column keeps its stored value). `assigned` is the
+            // controller's <Sub>Patch.assignedValues() map; id + discriminator (type) are immutable.
+            @Override
+            public Optional<AuthDto> patchByIdAndType(Long id, String discriminator, Map<String, Object> assigned) {
+                for (int i = 0; i < rows.size(); i++) {
+                    AuthDto cur = rows.get(i);
+                    if (!id.equals(cur.id()) || !discriminator.equals(cur.type().name())) continue;
+                    AuthDto merged = new AuthDto(
+                        id, cur.type(),
+                        assigned.containsKey("reference")   ? (String) assigned.get("reference")      : cur.reference(),
+                        assigned.containsKey("quantity")    ? (Integer) assigned.get("quantity")       : cur.quantity(),
+                        assigned.containsKey("copayAmount") ? (BigDecimal) assigned.get("copayAmount") : cur.copayAmount(),
+                        assigned.containsKey("approver")    ? (String) assigned.get("approver")        : cur.approver());
                     rows.set(i, merged);
                     return Optional.of(merged);
                 }

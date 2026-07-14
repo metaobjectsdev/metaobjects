@@ -220,6 +220,14 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("    Optional<").append(dtoName)
            .append("> updateByIdAndType(").append(pkType).append(" id, String discriminator, ")
            .append(dtoName).append(" dto);\n");
+        // FR-036 Program B: presence-tracked partial update for a per-subtype route. `assigned` is a
+        // <Sub>Patch.assignedValues() map — the PRESENT columns (name→value, incl. an explicit
+        // null), scoped to the discriminator. The impl applies ONLY the present keys (an absent
+        // column is untouched; an explicit null clears it); id + discriminator are immutable. This
+        // is the TPH analogue of the vanilla patch(id, <Entity>Patch) seam.
+        src.append("    Optional<").append(dtoName)
+           .append("> patchByIdAndType(").append(pkType)
+           .append(" id, String discriminator, java.util.Map<String, Object> assigned);\n");
         src.append("    boolean deleteByIdAndType(").append(pkType).append(" id, String discriminator);\n");
         src.append("}\n");
 

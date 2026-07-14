@@ -412,6 +412,13 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
 
         StringBuilder src = new StringBuilder();
         if (!pkg.isEmpty()) src.append("package ").append(pkg).append(";\n\n");
+        // FR-036 Program B: the per-subtype update handler binds the RAW JsonNode + builds the
+        // presence-tracked <Sub>Patch (present-key PATCH tristate), so it needs Jackson + the
+        // PatchValidationException + the jakarta Validator (present-value constraint checks) —
+        // exactly the vanilla update handler's dependency set.
+        src.append("import com.fasterxml.jackson.databind.JsonNode;\n");
+        src.append("import com.fasterxml.jackson.databind.ObjectMapper;\n");
+        src.append("import com.metaobjects.generator.spring.runtime.PatchValidationException;\n");
         src.append("import org.springframework.http.HttpStatus;\n");
         src.append("import org.springframework.http.ResponseEntity;\n");
         src.append("import org.springframework.web.bind.annotation.DeleteMapping;\n");
@@ -427,6 +434,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("import com.metaobjects.generator.spring.runtime.FilterParser;\n");
         src.append("import com.metaobjects.generator.spring.runtime.FilterPredicate;\n");
         src.append("import jakarta.servlet.http.HttpServletRequest;\n");
+        src.append("import jakarta.validation.Validator;\n");
         src.append("import java.util.List;\n");
         src.append("import java.util.Map;\n");
         src.append("import java.util.Set;\n\n");
@@ -444,9 +452,18 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         }
         src.append(");\n\n");
 
-        src.append("    private final ").append(repoName).append(" repository;\n\n");
-        src.append("    public ").append(controllerName).append("(").append(repoName).append(" repository) {\n");
+        // FR-036 Program B: constructor-inject the ObjectMapper (binds each present PATCH value via
+        // <Sub>Patch.fromJson, same wire codecs as create) + the jakarta Validator (per-field
+        // present-value constraint checks on the per-subtype update) — same 3-arg shape the vanilla
+        // controller uses. The polymorphic + read routes ignore them.
+        src.append("    private final ").append(repoName).append(" repository;\n");
+        src.append("    private final ObjectMapper objectMapper;\n");
+        src.append("    private final Validator validator;\n\n");
+        src.append("    public ").append(controllerName).append("(").append(repoName)
+           .append(" repository, ObjectMapper objectMapper, Validator validator) {\n");
         src.append("        this.repository = repository;\n");
+        src.append("        this.objectMapper = objectMapper;\n");
+        src.append("        this.validator = validator;\n");
         src.append("    }\n\n");
 
         // --- polymorphic collection ---
@@ -489,6 +506,14 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             String seg = st.routeSegment();              // url segment (e.g. "bridge")
             String disc = st.value();                    // discriminator value (e.g. "Bridge")
             String suffix = SpringNaming.capitalize(disc); // method-name suffix (e.g. "Bridge")
+            // FR-036 Program B: the per-subtype route binds this subtype's presence-tracked
+            // <Sub>Patch (emitted by SpringDtoGenerator) and validates present values against its
+            // standalone annotated <Sub>Dto. Referenced by FQN so a subtype in another package
+            // still resolves without an import.
+            String[] stSplit = SpringNaming.splitFqn(st.entity().getName());
+            String stPrefix = stSplit[0].isEmpty() ? "" : stSplit[0] + ".";
+            String subPatch = stPrefix + SpringNaming.patchName(stSplit[1]);
+            String subDto = stPrefix + SpringNaming.dtoName(stSplit[1]);
 
             src.append("    // --- subtype ").append(disc).append(" (segment /").append(seg).append(") ---\n");
 
@@ -530,13 +555,31 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("        return ResponseEntity.status(HttpStatus.CREATED).body(saved);\n");
             src.append("    }\n\n");
 
-            // per-subtype update (404 cross-subtype; discriminator immutable)
+            // per-subtype update — FR-036 Program B present-key PATCH tristate (mirrors the vanilla
+            // update handler; 404 cross-subtype; id + discriminator immutable). Bind the RAW
+            // JsonNode (NOT the union DTO, which conflates absent with null and would 400 an omitted
+            // @required column), build the presence-tracked <Sub>Patch (an explicit null clears a
+            // nullable column; an explicit null on a @required base column throws
+            // PatchValidationException → 400), validate each PRESENT value against the subtype DTO's
+            // constraints, then patch scoped to the discriminator.
             src.append("    @RequestMapping(value = \"/").append(seg)
                .append("/{id}\", method = { RequestMethod.PATCH, RequestMethod.PUT })\n");
             src.append("    public ResponseEntity<?> update").append(suffix)
-               .append("(@PathVariable ").append(pkType).append(" id, @RequestBody ")
-               .append(dtoName).append(" dto) {\n");
-            src.append("        return repository.updateByIdAndType(id, \"").append(disc).append("\", dto)\n");
+               .append("(@PathVariable ").append(pkType).append(" id, @RequestBody JsonNode body) {\n");
+            src.append("        ").append(subPatch).append(" patch;\n");
+            src.append("        try {\n");
+            src.append("            patch = ").append(subPatch).append(".fromJson(body, objectMapper);\n");
+            src.append("        } catch (PatchValidationException e) {\n");
+            src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+            src.append("        }\n");
+            src.append("        for (Map.Entry<String, Object> __e : patch.assignedValues().entrySet()) {\n");
+            src.append("            if (!validator.validateValue(").append(subDto)
+               .append(".class, __e.getKey(), __e.getValue()).isEmpty()) {\n");
+            src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+            src.append("            }\n");
+            src.append("        }\n");
+            src.append("        return repository.patchByIdAndType(id, \"").append(disc)
+               .append("\", patch.assignedValues())\n");
             src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
             src.append("                .orElseGet(this::notFound);\n");
             src.append("    }\n\n");

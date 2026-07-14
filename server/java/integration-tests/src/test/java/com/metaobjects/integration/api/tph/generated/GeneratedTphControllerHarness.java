@@ -9,6 +9,9 @@ import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.uri.URIHelper;
 
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
+
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
@@ -74,9 +77,13 @@ public final class GeneratedTphControllerHarness implements AutoCloseable {
     private final URLClassLoader classLoader;
     private final Constructor<?> dtoCtor;        // (Long id, AuthType type, String reference, Integer quantity, BigDecimal copayAmount, String approver)
     private final Class<?> authTypeClass;        // the generated value-constrained enum discriminator (AuthDto.AuthType)
-    private final Constructor<?> controllerCtor; // (AuthRepository)
+    private final Constructor<?> controllerCtor; // (AuthRepository, ObjectMapper, Validator)
     private final Constructor<?> repoCtor;       // (List<AuthDto> seed)
     private final List<Map<String, Object>> seedRows;
+    // FR-036 Program B: the generated TPH controller now injects a jakarta Validator (3-arg ctor)
+    // so its per-subtype update can enforce present-value constraints over HTTP. One reference-impl
+    // validator for the harness (mirrors GeneratedAuthorControllerHarness).
+    private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
 
     private MockMvc mockMvc;
 
@@ -116,7 +123,8 @@ public final class GeneratedTphControllerHarness implements AutoCloseable {
         this.dtoCtor = dtoClass.getDeclaredConstructor(
             Long.class, authTypeClass, String.class, Integer.class, BigDecimal.class, String.class);
         Class<?> repoInterface = classLoader.loadClass(REPO_FQCN);
-        this.controllerCtor = classLoader.loadClass(CONTROLLER_FQCN).getDeclaredConstructor(repoInterface);
+        this.controllerCtor = classLoader.loadClass(CONTROLLER_FQCN)
+            .getDeclaredConstructor(repoInterface, ObjectMapper.class, Validator.class);
         this.repoCtor = classLoader.loadClass(InMemoryAuthRepositorySource.FQCN).getDeclaredConstructor(List.class);
     }
 
@@ -125,7 +133,7 @@ public final class GeneratedTphControllerHarness implements AutoCloseable {
         List<Object> dtos = new ArrayList<>();
         for (Map<String, Object> row : seedRows) dtos.add(dtoFromRow(row));
         Object repo = repoCtor.newInstance(dtos);
-        Object controller = controllerCtor.newInstance(repo);
+        Object controller = controllerCtor.newInstance(repo, mapper, validator);
 
         MappingJackson2HttpMessageConverter converter = new MappingJackson2HttpMessageConverter();
         converter.setObjectMapper(mapper);
