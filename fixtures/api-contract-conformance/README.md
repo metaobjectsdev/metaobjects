@@ -26,7 +26,9 @@ fixtures/api-contract-conformance/
     ├── get-by-id.yaml
     ├── get-by-id-not-found.yaml
     ├── create-201.yaml
+    ├── create-constraint-violation-400.yaml # FR-036 POST field-constraint → 400 {error:"validation"}
     ├── update-patch-and-put.yaml
+    ├── update-constraint-violation-400.yaml # FR-036 PATCH present-value constraint → 400
     ├── delete-204-and-404.yaml
     ├── invalid-sort-400.yaml
     ├── filter-eq.yaml             # FR-009 filter operators

@@ -73,17 +73,19 @@ describe("renderZodValidators", () => {
     expect(out).not.toContain("acme::ai::");
   });
 
-  test("validator.regex emits .regex(new RegExp(pattern)) — Zod expects a RegExp object, not a string", () => {
+  test("validator.regex emits a full-match RegExp object (FR-036 Pin 2), not a bare-string search", () => {
     const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
     const slug = metaField(FIELD_SUBTYPE_STRING, "slug");
     slug.setAttr("required", true);
     const regex = meta(new TypeId(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_REGEX), "slugFormat");
-    regex.setAttr("pattern", "^[a-z0-9-]+$");
+    // Authored UN-anchored: the emitter must wrap it as ^(?:…)$ so the whole
+    // value must match (full-match), not merely contain a match (search).
+    regex.setAttr("pattern", "[a-z0-9-]+");
     slug.addChild(regex);
     post.addChild(slug);
 
     const out = renderZodValidators(post).toString();
-    expect(out).toContain('.regex(new RegExp("^[a-z0-9-]+$"))');
+    expect(out).toContain('.regex(new RegExp("^(?:[a-z0-9-]+)$"))');
     expect(out).not.toMatch(/\.regex\("[^"]*"\)/); // no bare-string regex argument
   });
 

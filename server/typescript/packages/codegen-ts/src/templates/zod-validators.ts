@@ -551,7 +551,10 @@ function appendValidatorChain(base: Code, field: MetaField): Code {
     if (child.subType === VALIDATOR_SUBTYPE_LENGTH) {
       const max = child.attr(VALIDATOR_ATTR_MAX);
       const min = child.attr(VALIDATOR_ATTR_MIN);
-      if (typeof max === "number") maxLen = max;
+      // FR-036 A3: @maxLength × validator.length @max = strictest-wins (min).
+      // maxLen already carries the field-level @maxLength; fold the validator's
+      // @max in as a lower bound so the effective cap is min(@maxLength, @max).
+      if (typeof max === "number") maxLen = maxLen === undefined ? max : Math.min(maxLen, max);
       if (typeof min === "number") minLen = min;
     }
     if (child.subType === VALIDATOR_SUBTYPE_REGEX) {
@@ -588,7 +591,13 @@ function appendValidatorChain(base: Code, field: MetaField): Code {
     if (minLen !== undefined) chain = code`${chain}.min(${minLen})`;
     else if (isRequired) chain = code`${chain}.min(1)`;
     if (maxLen !== undefined) chain = code`${chain}.max(${maxLen})`;
-    if (pattern !== undefined) chain = code`${chain}.regex(new RegExp(${JSON.stringify(pattern)}))`;
+    if (pattern !== undefined) {
+      // FR-036 Pin 2: validator.regex @pattern is FULL-MATCH — the whole value
+      // must match. JS RegExp.test searches, so anchor as ^(?:…)$ (always-wrap;
+      // a redundant anchor on an already-anchored pattern still matches identically).
+      const anchored = `^(?:${pattern})$`;
+      chain = code`${chain}.regex(new RegExp(${JSON.stringify(anchored)}))`;
+    }
   } else if (NUMERIC_FIELD_SUBTYPES.has(field.subType)) {
     if (numMin !== undefined) chain = code`${chain}.min(${numMin})`;
     if (numMax !== undefined) chain = code`${chain}.max(${numMax})`;

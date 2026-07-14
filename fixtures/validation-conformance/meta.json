@@ -10,13 +10,16 @@
           { "field.string":     { "name": "name", "@required": true, "@maxLength": 10 } },
           { "field.string":     { "name": "code", "children": [
             { "validator.length": { "@min": 3 } },
-            { "validator.regex":  { "@pattern": "^[A-Z]+$" } }
+            { "validator.regex":  { "@pattern": "[A-Z]+" } }
           ] } },
           { "field.int":        { "name": "score", "children": [
             { "validator.numeric": { "@min": 0, "@max": 100 } }
           ] } },
           { "field.string":     { "name": "tags", "isArray": true, "children": [
             { "validator.array": { "@min": 1, "@max": 3 } }
+          ] } },
+          { "field.string":     { "name": "label", "@maxLength": 8, "children": [
+            { "validator.length": { "@max": 4 } }
           ] } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
         ]

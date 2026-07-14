@@ -44,6 +44,31 @@
       "name": "tags-too-many",
       "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["a", "b", "c", "d"] },
       "expectValid": false
+    },
+    {
+      "name": "name-empty",
+      "payload": { "name": "", "code": "ABC", "score": 50, "tags": ["x"] },
+      "expectValid": false
+    },
+    {
+      "name": "name-whitespace",
+      "payload": { "name": "   ", "code": "ABC", "score": 50, "tags": ["x"] },
+      "expectValid": true
+    },
+    {
+      "name": "pattern-unanchored",
+      "payload": { "name": "Acme", "code": "xxABCyy", "score": 50, "tags": ["x"] },
+      "expectValid": false
+    },
+    {
+      "name": "both-length-ok",
+      "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "label": "1234" },
+      "expectValid": true
+    },
+    {
+      "name": "both-length-bounds",
+      "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "label": "12345" },
+      "expectValid": false
     }
   ]
 }

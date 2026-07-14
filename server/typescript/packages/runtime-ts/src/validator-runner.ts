@@ -135,7 +135,9 @@ export function runValidators(
       if (typeof value !== "string") continue;
       let regex: RegExp;
       try {
-        regex = new RegExp(pattern);
+        // FR-036 Pin 2: validator.regex @pattern is FULL-MATCH — anchor as ^(?:…)$
+        // so the runtime OM matches the generated Zod schema's full-match semantic.
+        regex = new RegExp(`^(?:${pattern})$`);
       } catch {
         errors.push({
           field: field.name,

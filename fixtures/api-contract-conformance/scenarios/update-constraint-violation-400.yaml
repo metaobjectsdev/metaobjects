@@ -1,0 +1,37 @@
+name: update-constraint-violation-400
+description: >
+  FR-036 wire-tier constraint enforcement (PATCH). A PATCH whose PRESENT `name`
+  value exceeds `@maxLength: 100` is rejected with HTTP 400 and the cross-port
+  `{error: "validation"}` envelope — the stored row is left untouched.
+
+  This is the PATCH half of the constraint-enforcement gate. The FR-035 tristate
+  validates PRESENT, non-null values with the same per-field rules as create;
+  it must NOT bean-validate the whole patch (that would fire required-checks on
+  ABSENT fields — see update-explicit-null-clears) and must NOT validate the
+  post-merge row. Before FR-036 only TS validated present values on PATCH — the
+  JVM ports rebound the body to a raw JsonNode (dropping `@Valid`), C# ran no
+  DataAnnotations, and Python bound `dict[str, Any]`, so a too-long name on PATCH
+  was silently accepted (in-memory lanes) or 500'd (PG lanes).
+
+  `name` is 110 chars, violating the length rule; it is present and non-null, so
+  a wired port validates it and rejects. Runs on all five ports, BOTH lanes.
+requests:
+  - id: r1
+    method: PATCH
+    path: /api/authors/1
+    body:
+      name: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    expect:
+      status: 400
+      body:
+        error: "validation"
+  # r2 — the reject was atomic: the stored row still has the seed name, unmodified.
+  - id: r2
+    method: GET
+    path: /api/authors/1
+    expect:
+      status: 200
+      body:
+        row:
+          id: 1
+          name: "Ada Lovelace"

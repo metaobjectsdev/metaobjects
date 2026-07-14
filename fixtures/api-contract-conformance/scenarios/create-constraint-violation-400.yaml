@@ -1,0 +1,42 @@
+name: create-constraint-violation-400
+description: >
+  FR-036 wire-tier constraint enforcement (POST). A POST whose `name` exceeds the
+  entity's `@maxLength: 100` is rejected with HTTP 400 and the cross-port
+  `{error: "validation"}` envelope — BEFORE the row is persisted.
+
+  This gates a class the artifact-only `validation-conformance` corpus could not
+  see: whether each port actually RUNS its generated field constraints over HTTP.
+  Before FR-036 the answer diverged — only TS enforced on POST; C# minimal-API
+  model binding never ran DataAnnotations, Python bound `dict[str, Any]` and never
+  constructed the Pydantic model, and the JVM ports emitted `@Valid` but produced
+  the framework's default 400 body, not the cross-port envelope. So a too-long
+  name was variously a 201 (in-memory lanes with no DB backstop), a 500 (PG lanes
+  `22001 value too long`), or a wrong-envelope 400 — never a clean
+  `400 {error: "validation"}`.
+
+  `name` is 110 chars (11 × "AAAAAAAAAA"), so it violates `@Size(max=100)` /
+  Zod `.max(100)` / `[MaxLength(100)]` / Pydantic `max_length=100` at the
+  validation layer. `createdAt` is supplied so the ONLY violation is the name
+  length — a wired port rejects on the length rule alone.
+
+  Runs on all five ports, BOTH lanes (hand-rolled reference server + the generated
+  API artifact booted over HTTP). r2 proves the reject did not partially insert.
+requests:
+  - id: r1
+    method: POST
+    path: /api/authors
+    body:
+      name: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      createdAt: "2026-02-02T10:00:00"
+    expect:
+      status: 400
+      body:
+        error: "validation"
+  # r2 — the rejected POST did NOT persist: the table still holds only the 5 seed rows.
+  - id: r2
+    method: GET
+    path: /api/authors
+    expect:
+      status: 200
+      body:
+        length: 5

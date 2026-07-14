@@ -22,9 +22,10 @@ README.md
 |---------|---------------------------------------------------------|
 | `id`    | `field.long` + `identity.primary @generation=increment` (auto, excluded from insert) |
 | `name`  | `field.string` `@required` + `@maxLength: 10`           |
-| `code`  | `field.string` + `validator.length @min=3` + `validator.regex @pattern="^[A-Z]+$"` |
+| `code`  | `field.string` + `validator.length @min=3` + `validator.regex @pattern="[A-Z]+"` (un-anchored on purpose — see the full-match pin below) |
 | `score` | `field.int` + `validator.numeric @min=0 @max=100`       |
 | `tags`  | `field.string isArray` + `validator.array @min=1 @max=3` |
+| `label` | `field.string` + `@maxLength: 8` + `validator.length @max=4` (both length bounds on one field — see the strictest-wins pin below) |
 
 ## Behavioral contract — payload → boolean verdict
 
@@ -47,6 +48,23 @@ Cases: `valid-baseline` (true), then `name-missing`, `name-too-long`,
 `code-too-short`, `code-pattern-mismatch`, `score-below-min`, `score-above-max`,
 `tags-empty`, `tags-too-many` (all false).
 
+FR-036 pin cases (the two semantic pins + the length-precedence pin):
+
+- `name-empty` (`""` → **false**) and `name-whitespace` (`"   "` → **true**) pin
+  **required string = non-empty** (FR-036 Ruling 1): a `@required` string rejects
+  `null`/`""` but *accepts* whitespace-only. No port may trim (`@NotBlank`,
+  `[Required]`-default) or emit nothing for a required string.
+- `pattern-unanchored` (`code="xxABCyy"` → **false**) pins **`validator.regex`
+  `@pattern` = full-match** (FR-036 Ruling 2): the whole value must match the
+  authored (un-anchored) `[A-Z]+`. Ports whose regex primitive searches
+  (JS `RegExp.test`, Pydantic `pattern=`) must anchor as `^(?:…)$`; `matches()`
+  (jakarta) / `[RegularExpression]` (.NET) are already full-match.
+- `both-length-ok` (`label="1234"` → **true**) and `both-length-bounds`
+  (`label="12345"` → **false**) pin **`@maxLength` × `validator.length @max`
+  precedence = strictest-wins**: effective max = `min(@maxLength, validator.max)`
+  (here `min(8, 4) = 4`), so a 5-char value is rejected even though `@maxLength`
+  alone (8) would admit it.
+
 ## CI gate
 
 All five port runners are wired into `.github/workflows/conformance.yml` (the
@@ -56,9 +74,12 @@ boolean verdicts across all five generated validation artifacts.
 
 ## Notes
 
-- **Cross-engine-safe regex.** The `code` pattern `^[A-Z]+$` is a plain ASCII
-  character class with anchors only — it behaves identically across the JS,
-  Java, .NET, and Python regex engines. No PCRE-only constructs are used.
+- **Cross-engine-safe regex.** The `code` pattern `[A-Z]+` is a plain ASCII
+  character class — it behaves identically across the JS, Java, .NET, and Python
+  regex engines. No PCRE-only constructs are used. It is deliberately left
+  **un-anchored** in the metadata so the `pattern-unanchored` case can convict
+  the full-match pin: a searching engine accepts `"xxABCyy"`, a full-match engine
+  rejects it. Every port must render full-match semantics (see the pin cases).
 - **Numeric field is `int`.** jakarta `@Min`/`@Max` are long-valued; keeping
   `score` an int avoids decimal-string parsing nuance. A decimal-range case is a
   deferred enhancement.
