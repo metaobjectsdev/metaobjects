@@ -58,6 +58,15 @@ object KotlinNaming {
     /** [KotlinSpringControllerGenerator]: `shortName + "Controller"`. */
     fun controllerName(shortName: String): String = shortName + "Controller"
 
+    /**
+     * FR-036 [KotlinEntityGenerator] / [KotlinSpringControllerGenerator]: the per-subtype TPH
+     * validation class `shortName + "Validation"`. A discriminator base's union data class is
+     * annotation-free (a row of any other subtype stores NULL in a subtype column), so the base
+     * controller's per-subtype POST/PATCH validates present values against this annotated,
+     * validation-only shape instead. Mirrors the Java port's standalone `<Sub>Dto`.
+     */
+    fun tphSubtypeValidationName(shortName: String): String = shortName + "Validation"
+
     /** [KotlinRepositoryGenerator]: `shortName + "RepositoryBase"` — the open persistence base a consumer extends. */
     fun repositoryBaseName(shortName: String): String = shortName + "RepositoryBase"
 

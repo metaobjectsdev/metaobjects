@@ -85,11 +85,18 @@ class KotlinOutputCompilesTest {
             val emitted = Files.walk(outDir).filter { it.isRegularFile() }.sorted().toList()
             val names = emitted.map { it.fileName.toString() }.toSet()
             // The base emits the union + the discriminator enum + the folded subtype enum; the
-            // subtypes emit nothing (they fold into the base — the whole point of the skip).
+            // subtypes emit NO entity data class or enum of their own (they fold into the base).
             assertTrue("AuthTier.kt" in names,
                 "the folded subtype enum (CopayAuth.tier) must be emitted by the base; got $names")
-            assertFalse(names.any { it.startsWith("BridgeAuth") || it.startsWith("CopayAuth") },
-                "TPH subtypes must emit no data class / enum of their own; got $names")
+            assertFalse("BridgeAuth.kt" in names || "CopayAuth.kt" in names,
+                "TPH subtypes must emit no entity data class of their own; got $names")
+            assertFalse("BridgeAuthTier.kt" in names || "CopayAuthTier.kt" in names,
+                "a subtype must not re-emit a folded enum under its own name; got $names")
+            // FR-036: each concrete subtype DOES emit a validation-only <Sub>Validation shape (the
+            // base controller validates per-subtype POST/PATCH present values against it) — BridgeAuth
+            // has a @required `quantity`, CopayAuth an unconstrained enum `tier`.
+            assertTrue("BridgeAuthValidation.kt" in names && "CopayAuthValidation.kt" in names,
+                "each concrete TPH subtype must emit its annotated <Sub>Validation shape; got $names")
 
             val result = KotlinCompilation().apply {
                 this.sources = emitted.map { SourceFile.kotlin(it.fileName.toString(), it.readText()) }

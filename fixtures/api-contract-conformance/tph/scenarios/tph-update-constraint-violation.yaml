@@ -1,0 +1,56 @@
+name: tph-update-constraint-violation
+description: >
+  FR-036 — the TPH per-subtype PATCH must enforce the subtype's present-VALUE field
+  constraints, exactly as the vanilla PATCH and the TPH per-subtype CREATE do. The
+  discriminator base's union DTO is annotation-free (a row of any other subtype stores
+  NULL in a subtype column, so the union carries no @required/@maxLength), so a
+  per-subtype PATCH must validate each PRESENT value against the subtype's ANNOTATED
+  shape — an over-@maxLength column is a 400 {error:"validation"}, not a silent 200.
+  TS/C#/Python/Java already validate TPH PATCH present values; this scenario gates it
+  cross-port (the Kotlin per-subtype PATCH previously validated against the
+  annotation-free union, a structural no-op).
+
+  This gates only PRESENT-VALUE constraints — the FR-035 null semantics (present-null
+  clears / present-null-on-@required → 400 / omitted → untouched) are gated separately
+  by tph-update-explicit-null-clears. Uses the PriorAuth subtype (id=3): `reference` is
+  the @required @maxLength:80 BASE column shared by every subtype; `approver` is the
+  @maxLength:80 PriorAuth-only column (folded nullable into the union, hence unannotated
+  there). A well-formed PATCH still succeeds (200) — the guard rejects only violations.
+requests:
+  # r1 — positive control: a valid present value on the constrained base `reference`
+  #      column still succeeds (the guard must not over-reject a well-formed body).
+  - id: r1
+    method: PATCH
+    path: /api/auths/priorauth/3
+    body:
+      reference: "REF-UPDATED"
+    expect:
+      status: 200
+      body:
+        row:
+          id: 3
+          type: "PriorAuth"
+          reference: "REF-UPDATED"
+  # r2 — an over-@maxLength(80) present value on the @required base `reference` → 400
+  #      validation. The annotation-free union would silently accept it; the subtype's
+  #      annotated shape rejects it.
+  - id: r2
+    method: PATCH
+    path: /api/auths/priorauth/3
+    body:
+      reference: "RXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+    expect:
+      status: 400
+      body:
+        error: "validation"
+  # r3 — an over-@maxLength(80) present value on the PriorAuth-only `approver` column →
+  #      400 validation (the subtype-own constraint is enforced, not just the base's).
+  - id: r3
+    method: PATCH
+    path: /api/auths/priorauth/3
+    body:
+      approver: "AXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+    expect:
+      status: 400
+      body:
+        error: "validation"

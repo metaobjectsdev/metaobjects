@@ -91,8 +91,13 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             }
             // FR-017 TPH: a discriminator subtype folds into its base's union data class +
             // discriminator enum. A per-subtype data class is dead and re-emits the inherited
-            // enum under a spurious name. Mirror the controller/table skip.
-            if (KotlinTphPlan.isTphSubtype(obj)) continue
+            // enum under a spurious name. Mirror the controller/table skip — but FR-036 still
+            // emits the subtype's annotated <Sub>Validation shape (the base controller's per-subtype
+            // POST/PATCH validates present values against it; the union base is annotation-free).
+            if (KotlinTphPlan.isTphSubtype(obj)) {
+                emitTphSubtypeValidation(obj, outRoot, loader)
+                continue
+            }
             emit(obj, outRoot, loader, emittedEnumFqns)
         }
     }
@@ -168,6 +173,59 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             .build()
 
         fileSpec.writeTo(outRoot)
+    }
+
+    /**
+     * FR-036 — emit the annotated per-subtype validation class {@code <Sub>Validation} for a concrete
+     * TPH subtype. A discriminator base's union data class is annotation-free (a row of any other
+     * subtype stores NULL in a subtype column, so the union carries no {@code @required}/
+     * {@code @maxLength}), so the base controller's per-subtype POST/PATCH cannot enforce field
+     * constraints against it. This lightweight, validation-ONLY data class (never persisted, never
+     * the request body — the union stays the bound + persisted type) carries the subtype's settable
+     * scalar fields ([KotlinTphPlan.subtypeSettableFields] — the SSOT the controller validates
+     * against), each with the SAME {@code @field:} jakarta annotations [validationAnnotations]
+     * produces for a non-TPH entity. Mirrors the Java port's standalone {@code <Sub>Dto}.
+     *
+     * <p>Skipped when the subtype has no settable scalar (nothing to validate; a Kotlin data class
+     * needs at least one property) — the controller likewise emits no validation call there.
+     *
+     * <p>Property types resolve with the BASE as owner so a folded {@code field.enum} references the
+     * base-emitted enum class (matching the union column + the value the controller binds). All
+     * properties are nullable + defaulted: the shape is validated, never constructed, and a
+     * {@code @NotNull} still fires on a null value (the create absent-{@code @required} check).
+     */
+    protected open fun emitTphSubtypeValidation(subtype: MetaObject, outRoot: Path, loader: MetaDataLoader) {
+        val fields = KotlinTphPlan.subtypeSettableFields(subtype)
+        if (fields.isEmpty()) return
+        val base = KotlinTphPlan.discriminatorBaseOf(subtype) ?: return
+        val (pkg, shortName) = PackageMapping.splitFqn(subtype.name)
+        val className = KotlinNaming.tphSubtypeValidationName(shortName)
+
+        val typeBuilder = TypeSpec.classBuilder(className)
+            .addModifiers(KModifier.DATA)
+            .addKdoc(
+                "GENERATED — do not hand-edit. Regenerated from metadata.\n" +
+                    "FR-036 validation-only shape for the $shortName TPH subtype: the base controller's\n" +
+                    "per-subtype POST/PATCH validates present values against these field constraints\n" +
+                    "(the folded union base data class is annotation-free). Never persisted or bound.\n"
+            )
+
+        val ctorBuilder = FunSpec.constructorBuilder()
+        for (field in fields) {
+            val propType = resolvePropertyType(field, base, loader).copy(nullable = true)
+            val propName = field.name
+            ctorBuilder.addParameter(
+                ParameterSpec.builder(propName, propType).defaultValue("null").build()
+            )
+            val propBuilder = PropertySpec.builder(propName, propType).initializer(propName)
+            for (annotation in validationAnnotations(field)) propBuilder.addAnnotation(annotation)
+            typeBuilder.addProperty(propBuilder.build())
+        }
+
+        FileSpec.builder(pkg, className)
+            .addType(typeBuilder.primaryConstructor(ctorBuilder.build()).build())
+            .build()
+            .writeTo(outRoot)
     }
 
     /**

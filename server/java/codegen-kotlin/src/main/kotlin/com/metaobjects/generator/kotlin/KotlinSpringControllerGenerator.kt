@@ -566,15 +566,14 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         val writableFields = scalarFields.map { it.name }
             .filter { it != plan.discriminatorField && it != pkFieldName }
 
-        // FR-035/FR-036 Program B: the per-subtype PATCH-settable columns = the subtype's EFFECTIVE
-        // scalar fields (base + own, resolved via extends) minus the PK and the discriminator,
-        // EXCLUDING object/map/jsonb-open-bag (same rule as the vanilla patchSettableFields — an open
-        // bag is a create-only column, see KNOWN_GAPS). Computed PER SUBTYPE so a PriorAuth patch never
-        // touches a Bridge-only column (the old handler bound the whole union for every subtype).
+        // FR-035/FR-036 Program B: the per-subtype settable columns = the subtype's EFFECTIVE scalar
+        // fields (base + own, resolved via extends) minus the PK and the discriminator, EXCLUDING
+        // object/map/jsonb-open-bag (an open bag is a create-only column, see KNOWN_GAPS). Delegated to
+        // [KotlinTphPlan.subtypeSettableFields] — the SSOT the entity generator's <Sub>Validation shape
+        // is built from, so the create/PATCH validated set never drifts from the annotated class. This
+        // is per-subtype so a PriorAuth patch never touches a Bridge-only column.
         fun subtypePatchFields(st: KotlinTphPlan.Subtype) =
-            st.entity.metaFields.filterNot {
-                it is ObjectField || it is MapField || KotlinTypeMapper.isJsonbOpenBag(it)
-            }.filter { it.name != pkFieldName && it.name != plan.discriminatorField }
+            KotlinTphPlan.subtypeSettableFields(st.entity)
         // When NO subtype has a settable column (a PK + discriminator + only object/jsonb columns) the
         // controller emits no ObjectMapper/Validator ctor param or TypeReference import (they would be
         // unused → allWarningsAsErrors). A real TPH base always contributes ≥1 base scalar, so this is
@@ -721,6 +720,18 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 val seg = st.routeSegment
                 val disc = "$discEnum.${st.value}"   // e.g. AuthType.Bridge
                 val sfx = capitalizeFirst(st.value)   // method-name suffix, e.g. Bridge
+                // FR-036: the annotated <Sub>Validation shape (emitted by KotlinEntityGenerator) that
+                // the per-subtype POST + PATCH validate present values against — the bound union base
+                // data class is annotation-free. Referenced FQN-qualified when the subtype lives in a
+                // different package (this hand-rolled builder owns no import machinery, like emitM2m*),
+                // else bare.
+                val (stPkg, stShort) = PackageMapping.splitFqn(st.entity.name)
+                val validationRef = KotlinNaming.tphSubtypeValidationName(stShort).let { cls ->
+                    if (stPkg == pkg || stPkg.isEmpty()) cls else "$stPkg.$cls"
+                }
+                // The subtype's settable columns (SSOT shared with the <Sub>Validation shape) — the
+                // create body + present PATCH values are both validated against exactly this set.
+                val stPatch = subtypePatchFields(st)
 
                 append("    // --- subtype ${st.value} (segment /$seg) ---\n")
 
@@ -757,9 +768,20 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 append("        ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
                 append("    }\n\n")
 
-                // per-subtype create (discriminator injected from URL)
+                // per-subtype create (discriminator injected from URL). FR-036: validate each body
+                // value against the subtype's ANNOTATED <Sub>Validation constraints BEFORE persisting,
+                // 400ing with the cross-port {"error":"validation"} envelope on any violation (an
+                // over-@maxLength or missing-@required column is a 400, not a silent 201). The bound
+                // body stays the union base data class (the shape the insert consumes), but the union is
+                // annotation-free — so validation runs PER FIELD against <Sub>Validation, the SAME
+                // annotated shape + field set the per-subtype PATCH validates. validateValue applies
+                // @NotNull to a null value, so an absent @required column 400s too — mirroring the
+                // vanilla create's whole-bean validate, scoped to this subtype.
                 append("    @PostMapping(\"/$seg\")\n")
-                append("    fun create$sfx(@RequestBody dto: $shortName): ResponseEntity<$shortName> = transaction {\n")
+                append("    fun create$sfx(@RequestBody dto: $shortName): ResponseEntity<Any> = transaction {\n")
+                for (field in stPatch) {
+                    append("        if (validator.validateValue($validationRef::class.java, \"${field.name}\", dto.${field.name}).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+                }
                 append("        val newId = $table.insert {\n")
                 append("            it[${plan.discriminatorField}] = $disc\n")
                 for (f in writableFields) {
@@ -773,7 +795,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 }
                 append("        }[$table.$pkFieldName]\n")
                 append("        val saved = $table.selectAll().where { $table.$pkFieldName eq newId }.single()\n")
-                append("        ResponseEntity.status(HttpStatus.CREATED).body(rowTo${shortName}(saved))\n")
+                append("        ResponseEntity.status(HttpStatus.CREATED).body(rowTo${shortName}(saved) as Any)\n")
                 append("    }\n\n")
 
                 // per-subtype update — FR-035/FR-036 present-key PATCH tristate (mirrors the vanilla
@@ -782,14 +804,13 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 // absent-vs-null is visible: a non-object body, or an explicit null on a @required column
                 // (base or subtype), is a 400; an explicit null on a nullable column CLEARS it; an omitted
                 // column is untouched; a present value binds through the ObjectMapper (same codecs as
-                // create) and its present non-null value is validated via the jakarta Validator. Binding +
-                // validation run at the transaction-lambda top level (a qualified return@transaction cannot
-                // cross the non-inline Exposed update{} lambda). An empty effective patch skips the update{}
-                // (Exposed rejects an empty SET) — a no-op read-back. (The union data class carries no
-                // constraint annotations, so validateValue is a structural no-op here — the r4 present-null
-                // rejection is the explicit @required guard below — but it is wired for cross-port parity
-                // and enforces a subtype that DOES surface annotations.)
-                val stPatch = subtypePatchFields(st)
+                // create) and its present non-null value is validated via the jakarta Validator against the
+                // subtype's ANNOTATED <Sub>Validation shape (the folded union base data class is
+                // annotation-free — so an over-@maxLength present value is a 400, matching the vanilla
+                // path + the per-subtype create). Binding + validation run at the transaction-lambda top
+                // level (a qualified return@transaction cannot cross the non-inline Exposed update{}
+                // lambda). An empty effective patch skips the update{} (Exposed rejects an empty SET) — a
+                // no-op read-back.
                 append("    @RequestMapping(value = [\"/$seg/{id}\"], method = [RequestMethod.PATCH, RequestMethod.PUT])\n")
                 append("    fun update$sfx(@PathVariable id: $pkParamType, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {\n")
                 append("        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
@@ -814,11 +835,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                         if (KotlinGenUtil.isRequiredField(field)) {
                             // required: present ⇒ non-null (present-null was 400'd above).
                             append("                val v$cap: $ktType? = if (has$cap) objectMapper.treeToValue(body.get(\"$fn\"), object : TypeReference<$ktType>() {}) else null\n")
-                            append("                if (has$cap && validator.validateValue(${shortName}::class.java, \"$fn\", v$cap).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+                            append("                if (has$cap && validator.validateValue($validationRef::class.java, \"$fn\", v$cap).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
                         } else {
                             append("                val null$cap = has$cap && body.get(\"$fn\").isNull\n")
                             append("                val v$cap: $ktType? = if (has$cap && !null$cap) objectMapper.treeToValue(body.get(\"$fn\"), object : TypeReference<$ktType>() {}) else null\n")
-                            append("                if (has$cap && !null$cap && validator.validateValue(${shortName}::class.java, \"$fn\", v$cap).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+                            append("                if (has$cap && !null$cap && validator.validateValue($validationRef::class.java, \"$fn\", v$cap).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
                         }
                     }
                     // Apply the already-bound + validated values, scoped to (pk eq id) and (disc eq value).

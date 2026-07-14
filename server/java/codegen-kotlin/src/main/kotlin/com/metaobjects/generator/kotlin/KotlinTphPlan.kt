@@ -1,6 +1,9 @@
 package com.metaobjects.generator.kotlin
 
+import com.metaobjects.field.MapField
 import com.metaobjects.field.MetaField
+import com.metaobjects.field.ObjectField
+import com.metaobjects.identity.MetaIdentity
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
 import java.util.Locale
@@ -94,6 +97,43 @@ object KotlinTphPlan {
 
     /** True when [obj] carries `@discriminator` AND has at least one concrete subtype. */
     fun isTphBase(obj: MetaObject, loader: MetaDataLoader): Boolean = planFor(obj, loader) != null
+
+    /**
+     * The `@discriminator`-bearing base a concrete TPH subtype folds into, or null when [subtype]
+     * is not a TPH subtype. (The nearest `@discriminator` ancestor via the [discriminatorRoot]
+     * super-walk, excluding [subtype] itself.)
+     */
+    fun discriminatorBaseOf(subtype: MetaObject): MetaObject? =
+        discriminatorRoot(subtype)?.takeIf { it !== subtype }
+
+    /** The base's primary-key field name; falls back to "id" when no `identity.primary` is declared. */
+    private fun primaryKeyFieldName(base: MetaObject): String =
+        base.getIdentities(true).filterIsInstance<MetaIdentity>()
+            .firstOrNull { it.isPrimary }?.fields?.firstOrNull() ?: DEFAULT_PK_FIELD
+
+    /**
+     * FR-036 — the settable scalar fields for a concrete TPH subtype's per-subtype POST/PATCH: the
+     * subtype's EFFECTIVE scalar fields (base + own, resolved via `extends`) MINUS the primary key
+     * AND the discriminator (both immutable / URL-injected), EXCLUDING `field.object` / `field.map`
+     * and the `field.string @dbColumnType=jsonb` open bag (an open bag is a create-only CRUD column,
+     * the same rule as the vanilla patch-settable set).
+     *
+     * This is the ONE source of truth shared by the entity generator (which emits the annotated
+     * `<Sub>Validation` shape carrying exactly these fields) and the controller generator (which
+     * validates present POST/PATCH values against it), so the validated field set never drifts
+     * between the two. Empty when [subtype] is not a TPH subtype (no base resolves).
+     */
+    fun subtypeSettableFields(subtype: MetaObject): List<MetaField<*>> {
+        val base = discriminatorBaseOf(subtype) ?: return emptyList()
+        val discField = base.getMetaAttr(MetaObject.ATTR_DISCRIMINATOR, false).valueAsString
+        val pk = primaryKeyFieldName(base)
+        return subtype.metaFields.filterNot {
+            it is ObjectField || it is MapField || KotlinTypeMapper.isJsonbOpenBag(it)
+        }.filter { it.name != pk && it.name != discField }
+    }
+
+    /** Default primary-key field name when a TPH base declares no `identity.primary`. */
+    private const val DEFAULT_PK_FIELD = "id"
 
     /**
      * The subtype-only fields folded into the base's single TPH table, deduplicated by name across
