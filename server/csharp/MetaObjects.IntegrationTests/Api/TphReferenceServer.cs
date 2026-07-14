@@ -138,7 +138,7 @@ internal sealed class TphReferenceServer : IAsyncDisposable
                     // (and the vanilla POST + the per-subtype PATCH). `reference` is the base
                     // @required @maxLength:80 column shared by every subtype; an over-length
                     // value is a 400 {error:"validation"}, not a 500 on the PG write.
-                    if (ExceedsReferenceMaxLength(body))
+                    if (ExceedsMaxLength(body))
                     {
                         await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
                         return;
@@ -172,6 +172,13 @@ internal sealed class TphReferenceServer : IAsyncDisposable
                             await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
                             return;
                         }
+                    }
+                    // FR-036 — a present value exceeding @maxLength:80 (reference/approver) is a
+                    // 400, matching the generated controller's per-present-value PATCH validation.
+                    if (ExceedsMaxLength(body))
+                    {
+                        await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
+                        return;
                     }
                     var updated = await UpdateAsync(disc, subId, body);
                     await Respond(ctx, updated);
@@ -310,12 +317,16 @@ internal sealed class TphReferenceServer : IAsyncDisposable
 
     // -------- helpers --------
 
-    // FR-036 — the TPH base `reference` column is @maxLength:80. A per-subtype create whose
-    // `reference` exceeds 80 chars is a validation error (mirrors the generated <Sub>Dto's
-    // [MaxLength(80)] and the vanilla server's ExceedsAuthorMaxLength guard), rejected as a
-    // 400 {error:"validation"} before the PG write (which would otherwise 500 with 22001).
-    private static bool ExceedsReferenceMaxLength(JsonObject body) =>
-        body.TryGetPropertyValue("reference", out var node)
+    // FR-036 — the TPH @maxLength:80 string columns: `reference` (base) and `approver`
+    // (PriorAuth subtype). A present value exceeding 80 chars is a 400 {error:"validation"}
+    // (mirrors the generated <Sub>Dto's [MaxLength(80)] + the vanilla ExceedsAuthorMaxLength
+    // guard), rejected before the PG write (which would otherwise 500 with 22001) — on the
+    // per-subtype create AND on a present PATCH value.
+    private static bool ExceedsMaxLength(JsonObject body) =>
+        IsOverLength(body, "reference") || IsOverLength(body, "approver");
+
+    private static bool IsOverLength(JsonObject body, string col) =>
+        body.TryGetPropertyValue(col, out var node)
         && node is JsonValue jv && jv.TryGetValue<string>(out var s) && s.Length > 80;
 
     private static object CoerceColumn(string col, JsonNode v) => col switch
