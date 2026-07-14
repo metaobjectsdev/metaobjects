@@ -281,8 +281,14 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      * As {@link #settableFields(MetaObject)}, additionally excluding the field named
      * {@code alsoExclude} (or nothing when {@code null}) — the FR-036 TPH per-subtype patch passes
      * the discriminator field name so the immutable discriminator is never a settable member.
+     *
+     * <p>Public so {@link SpringControllerGenerator#emitTph} can validate a TPH per-subtype CREATE
+     * body against exactly the field set the sibling {@code <Sub>Patch} covers (effective scalars
+     * MINUS the primary key MINUS the discriminator), keeping create + patch validation on one
+     * SSOT: the PK is auto-generated and the discriminator is injected from the URL, so neither is
+     * validated from the body.</p>
      */
-    private static List<MetaField> settableFields(MetaObject entity, String alsoExclude) {
+    public static List<MetaField> settableFields(MetaObject entity, String alsoExclude) {
         List<String> pkFields = entity.getIdentities(true).stream()
             .filter(MetaIdentity::isPrimary)
             .findFirst()

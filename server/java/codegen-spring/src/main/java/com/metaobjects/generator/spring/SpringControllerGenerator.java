@@ -377,7 +377,8 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
      *   <li>the polymorphic collection — {@code GET /} (union list) + {@code GET /{id}} (any subtype);</li>
      *   <li>per subtype {@code <seg>} (the {@code @discriminatorValue} lowercased): {@code GET /<seg>}
      *       (subtype-scoped list), {@code GET /<seg>/{id}} (404 cross-subtype),
-     *       {@code POST /<seg>} (discriminator injected from the URL, never the body),
+     *       {@code POST /<seg>} (discriminator injected from the URL, never the body; body values
+     *       validated against the subtype {@code <Sub>Dto} constraints &rarr; 400 {@code {"error":"validation"}}),
      *       {@code PATCH|PUT /<seg>/{id}} (404 cross-subtype; discriminator immutable),
      *       {@code DELETE /<seg>/{id}} (404 cross-subtype).</li>
      * </ul>
@@ -547,10 +548,28 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("                .orElseGet(this::notFound);\n");
             src.append("    }\n\n");
 
-            // per-subtype create (discriminator injected from URL)
+            // per-subtype create (discriminator injected from URL) — FR-036: validate each body
+            // value against the subtype's ANNOTATED <Sub>Dto constraints BEFORE persisting, emitting
+            // the cross-port {"error":"validation"} envelope on any violation (so an over-@maxLength
+            // or missing-@required column is a 400, not a silent 201). The bound body stays the union
+            // <Base>Dto (the shape repository.createWithType consumes), but the union is annotation-
+            // free — so validation runs PER FIELD against the subtype DTO (the annotated shape), the
+            // exact type the per-subtype PATCH validates against. The validated set is the sibling
+            // <Sub>Patch's settable fields (effective scalars MINUS PK MINUS discriminator): the PK
+            // is auto-generated and the discriminator is injected from the URL, so neither is checked.
+            // validateValue applies @NotNull to a null value, so an absent @required column 400s too —
+            // matching the vanilla create's whole-bean validate, scoped to this subtype.
+            List<MetaField> createValidated =
+                SpringDtoGenerator.settableFields(st.entity(), TphPlan.discriminatorFieldOf(st.entity()));
             src.append("    @PostMapping(\"/").append(seg).append("\")\n");
-            src.append("    public ResponseEntity<").append(dtoName).append("> create").append(suffix)
+            src.append("    public ResponseEntity<?> create").append(suffix)
                .append("(@RequestBody ").append(dtoName).append(" dto) {\n");
+            for (MetaField vf : createValidated) {
+                src.append("        if (!validator.validateValue(").append(subDto).append(".class, \"")
+                   .append(vf.getName()).append("\", dto.").append(vf.getName()).append("()).isEmpty()) {\n");
+                src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+                src.append("        }\n");
+            }
             src.append("        ").append(dtoName).append(" saved = repository.createWithType(\"").append(disc).append("\", dto);\n");
             src.append("        return ResponseEntity.status(HttpStatus.CREATED).body(saved);\n");
             src.append("    }\n\n");

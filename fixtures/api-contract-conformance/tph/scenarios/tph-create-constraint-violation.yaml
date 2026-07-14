@@ -1,0 +1,51 @@
+name: tph-create-constraint-violation
+description: >
+  FR-036 — the TPH per-subtype CREATE must enforce the subtype's present-value field
+  constraints, exactly as the vanilla POST and the TPH per-subtype PATCH already do.
+  The discriminator base's union DTO is annotation-free (a row of any other subtype
+  stores NULL in a subtype column, so the union carries no @required/@maxLength), so a
+  per-subtype POST must validate the body against the subtype's ANNOTATED <Sub>Dto
+  before persisting — an over-@maxLength column is a 400 {error:"validation"}, not a
+  silent 201. TS/C#/Python already validate TPH create; this scenario gates it cross-port.
+
+  `reference` is a @required @maxLength:80 base column shared by every subtype. A create
+  whose `reference` exceeds 80 chars must be rejected on BOTH subtype segments (the
+  discriminator is injected from the URL, never the body). A well-formed create still
+  succeeds (201) — the guard rejects only violations, never valid bodies.
+requests:
+  # r1 — a valid PriorAuth create still succeeds (positive control: the constraint
+  #      guard must not over-reject a well-formed body).
+  - id: r1
+    method: POST
+    path: /api/auths/priorauth
+    body:
+      reference: "REF-OK"
+      approver: "Dr. Smith"
+    expect:
+      status: 201
+      body:
+        row: { type: "PriorAuth", reference: "REF-OK", approver: "Dr. Smith" }
+  # r2 — an over-@maxLength(80) `reference` on the PriorAuth segment → 400 validation.
+  - id: r2
+    method: POST
+    path: /api/auths/priorauth
+    body:
+      reference: "RXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+      approver: "Dr. Smith"
+    expect:
+      status: 400
+      body:
+        error: "validation"
+  # r3 — the same over-length `reference` on the Bridge segment → 400 validation
+  #      (cross-subtype: every per-subtype create validates against its own <Sub>Dto).
+  #      `quantity` is supplied valid so the rejection is unambiguously the length constraint.
+  - id: r3
+    method: POST
+    path: /api/auths/bridge
+    body:
+      reference: "RXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+      quantity: 3
+    expect:
+      status: 400
+      body:
+        error: "validation"
