@@ -78,9 +78,13 @@ public class SpringControllerGeneratorTest extends SharedRegistryTestBase {
         // @GetMapping("/{id}") — get by id.
         assertTrue("expected @GetMapping(\"/{id}\"); saw:\n" + src,
             src.contains("@GetMapping(\"/{id}\")"));
-        // @PostMapping — create.
+        // @PostMapping — create. FR-036: no @Valid (its default 400 body is not the cross-port
+        // envelope); the handler binds the raw DTO and validates it explicitly with the injected
+        // Validator, returning {"error":"validation"} on any field-constraint violation.
         assertTrue("expected @PostMapping create handler; saw:\n" + src,
-            Pattern.compile("@PostMapping\\s*\\n\\s*public ResponseEntity<AuthorDto> create").matcher(src).find());
+            Pattern.compile("@PostMapping\\s*\\n\\s*public ResponseEntity<\\?> create\\(@RequestBody AuthorDto dto\\)").matcher(src).find());
+        assertTrue("expected explicit validator.validate(dto) on create (FR-036); saw:\n" + src,
+            src.contains("validator.validate(dto)"));
         // PATCH AND PUT share the update handler (per API contract) — expressed as a single
         // @RequestMapping with method={PATCH, PUT}. Stacking @PatchMapping + @PutMapping on
         // one method only registers one verb in Spring MVC (the other 405s).

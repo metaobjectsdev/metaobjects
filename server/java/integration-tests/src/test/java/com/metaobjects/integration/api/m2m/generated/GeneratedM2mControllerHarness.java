@@ -9,6 +9,9 @@ import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.uri.URIHelper;
 
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
+
 import org.springframework.http.HttpMethod;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.test.web.servlet.MockMvc;
@@ -68,6 +71,8 @@ public final class GeneratedM2mControllerHarness implements AutoCloseable {
     private static final String ENTITY_PKG = "acme.social";
 
     private final ObjectMapper mapper = new ObjectMapper();
+    // FR-036: the generated controllers now inject a jakarta Validator (3-arg ctor).
+    private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
     private final URLClassLoader classLoader;
     private final Map<String, List<Map<String, Object>>> seed;
 
@@ -115,9 +120,9 @@ public final class GeneratedM2mControllerHarness implements AutoCloseable {
         Class<?> postRepoIf = classLoader.loadClass(ENTITY_PKG + ".PostRepository");
         Class<?> personRepoIf = classLoader.loadClass(ENTITY_PKG + ".PersonRepository");
         this.postControllerCtor = classLoader.loadClass(ENTITY_PKG + ".PostController")
-            .getDeclaredConstructor(postRepoIf, ObjectMapper.class);
+            .getDeclaredConstructor(postRepoIf, ObjectMapper.class, Validator.class);
         this.personControllerCtor = classLoader.loadClass(ENTITY_PKG + ".PersonController")
-            .getDeclaredConstructor(personRepoIf, ObjectMapper.class);
+            .getDeclaredConstructor(personRepoIf, ObjectMapper.class, Validator.class);
         this.postRepoCtor = classLoader.loadClass(InMemoryM2mRepositorySources.POST_FQCN)
             .getDeclaredConstructor(List.class, List.class);
         this.personRepoCtor = classLoader.loadClass(InMemoryM2mRepositorySources.PERSON_FQCN)
@@ -132,8 +137,8 @@ public final class GeneratedM2mControllerHarness implements AutoCloseable {
             M2mSeedRows.rows(seed, "people"), M2mSeedRows.rows(seed, "follows"),
             M2mSeedRows.rows(seed, "friendships"));
 
-        this.postMvc = standalone(postControllerCtor.newInstance(postRepo, mapper));
-        this.personMvc = standalone(personControllerCtor.newInstance(personRepo, mapper));
+        this.postMvc = standalone(postControllerCtor.newInstance(postRepo, mapper, validator));
+        this.personMvc = standalone(personControllerCtor.newInstance(personRepo, mapper, validator));
     }
 
     /**

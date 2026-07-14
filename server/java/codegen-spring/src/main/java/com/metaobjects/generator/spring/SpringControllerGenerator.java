@@ -192,7 +192,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("import com.metaobjects.generator.spring.runtime.FilterParser;\n");
         src.append("import com.metaobjects.generator.spring.runtime.FilterPredicate;\n");
         src.append("import jakarta.servlet.http.HttpServletRequest;\n");
-        src.append("import jakarta.validation.Valid;\n");
+        src.append("import jakarta.validation.Validator;\n");
         src.append("import java.util.List;\n");
         src.append("import java.util.Map;\n");
         src.append("import java.util.Set;\n\n");
@@ -216,12 +216,17 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // field-injection magic, plays well with final fields + final test seams). The
         // ObjectMapper (Spring's configured bean) binds the FR-035 patch body's per-field
         // values via <Entity>Patch.fromJson, so the same wire codecs apply as on create.
+        // FR-036: the injected jakarta Validator runs the DTO's field constraints over HTTP
+        // (POST validates the whole DTO; PATCH validates each present value) so a constraint
+        // violation returns the cross-port {"error":"validation"} envelope, not Spring's default.
         src.append("    private final ").append(repoName).append(" repository;\n");
-        src.append("    private final ObjectMapper objectMapper;\n\n");
+        src.append("    private final ObjectMapper objectMapper;\n");
+        src.append("    private final Validator validator;\n\n");
         src.append("    public ").append(controllerName).append("(").append(repoName)
-           .append(" repository, ObjectMapper objectMapper) {\n");
+           .append(" repository, ObjectMapper objectMapper, Validator validator) {\n");
         src.append("        this.repository = repository;\n");
         src.append("        this.objectMapper = objectMapper;\n");
+        src.append("        this.validator = validator;\n");
         src.append("    }\n\n");
 
         // GET (list) — pagination + sort + withCount + FR-009 filter operators.
@@ -269,9 +274,15 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\")));\n");
         src.append("    }\n\n");
 
-        // POST — create.
+        // POST — create. FR-036: bind the raw DTO (no @Valid, whose default 400 body is NOT the
+        // cross-port envelope and does not even fire under the standaloneSetup test harness) and
+        // validate it EXPLICITLY with the injected Validator, emitting {"error":"validation"} on
+        // any field-constraint violation BEFORE persisting.
         src.append("    @PostMapping\n");
-        src.append("    public ResponseEntity<").append(dtoName).append("> create(@Valid @RequestBody ").append(dtoName).append(" dto) {\n");
+        src.append("    public ResponseEntity<?> create(@RequestBody ").append(dtoName).append(" dto) {\n");
+        src.append("        if (!validator.validate(dto).isEmpty()) {\n");
+        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+        src.append("        }\n");
         src.append("        ").append(dtoName).append(" saved = repository.create(dto);\n");
         src.append("        return ResponseEntity.status(HttpStatus.CREATED).body(saved);\n");
         src.append("    }\n\n");
@@ -296,6 +307,16 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("            patch = ").append(patchName).append(".fromJson(body, objectMapper);\n");
         src.append("        } catch (PatchValidationException e) {\n");
         src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+        src.append("        }\n");
+        // FR-036: validate each PRESENT patch value against the DTO's field constraints (per-field,
+        // NOT a whole-bean validate — that would fire @NotNull on ABSENT fields). jakarta
+        // validateValue skips null for @Size/@Pattern and non-required fields carry no @NotNull, so
+        // a present-null-clears on a nullable field composes cleanly.
+        src.append("        for (Map.Entry<String, Object> __e : patch.assignedValues().entrySet()) {\n");
+        src.append("            if (!validator.validateValue(").append(dtoName)
+           .append(".class, __e.getKey(), __e.getValue()).isEmpty()) {\n");
+        src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+        src.append("            }\n");
         src.append("        }\n");
         src.append("        return repository.patch(id, patch)\n");
         src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");

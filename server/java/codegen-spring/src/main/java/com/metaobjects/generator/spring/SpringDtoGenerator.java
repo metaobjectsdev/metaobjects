@@ -186,6 +186,10 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         }
         src.append("\n    /** The field names ASSIGNED by this patch (present in the body), in order. */\n");
         src.append("    public Set<String> assignedFields() { return assigned.keySet(); }\n\n");
+        // FR-036: the assigned name→value map (present values, incl. an explicit null), for the
+        // controller to bean-validate each PRESENT non-null value against the DTO's constraints.
+        src.append("    /** The name&rarr;value map of fields ASSIGNED by this patch (present values, incl. explicit null). */\n");
+        src.append("    public java.util.Map<String, Object> assignedValues() { return java.util.Collections.unmodifiableMap(assigned); }\n\n");
 
         // fromJson — the presence-tracked builder.
         src.append("    /**\n");
@@ -499,11 +503,15 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      * <p>Cross-port semantics (see the SP-C validator-parity contract):</p>
      * <ul>
      *   <li>required (field {@code @required} or {@code validator.required}) →
-     *       {@code @NotNull}, plus {@code @NotBlank} for non-array strings so an
-     *       empty string fails too.</li>
-     *   <li>{@code validator.length @min} + field {@code @maxLength} →
-     *       {@code @Size(min=…, max=…)} (each bound omitted when absent).</li>
-     *   <li>{@code validator.regex @pattern} → {@code @Pattern(regexp=…)}.</li>
+     *       {@code @NotNull}; a required non-array string additionally gets
+     *       {@code @Size(min = 1)} (FR-036 Ruling 1: reject {@code null} + {@code ""},
+     *       ACCEPT whitespace-only) — never {@code @NotBlank}, which trims and would
+     *       wrongly reject a whitespace value.</li>
+     *   <li>{@code validator.length} + field {@code @maxLength} →
+     *       {@code @Size(min=…, max=…)} on a NON-array string; the effective max is
+     *       {@code min(validator.max, @maxLength)} (FR-036 A3 strictest-wins).</li>
+     *   <li>{@code validator.regex @pattern} → {@code @Pattern(regexp=…)} (jakarta
+     *       {@code matches()} is full-match — FR-036 Ruling 2, no anchoring needed).</li>
      *   <li>{@code validator.numeric @min/@max} → {@code @Min(…)} / {@code @Max(…)}.</li>
      *   <li>{@code validator.array @min/@max} → {@code @Size(min=…, max=…)} on the {@code List}.</li>
      * </ul>
@@ -514,25 +522,38 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         List<String> out = new ArrayList<>();
 
         boolean required = isRequired(field);
+        // FR-036 Ruling 1: a @required value → @NotNull (rejects null). Non-empty for a
+        // @required NON-ARRAY string is enforced by @Size(min>=1) in the string-length arm
+        // below — NOT @NotBlank, which trims and would wrongly reject a whitespace-only value.
+        // A @required array keeps @NotNull only (no @NotEmpty).
         if (required) {
             out.add("@NotNull");
-            if (isString && !isArray) out.add("@NotBlank");
         }
 
-        // String length: combine validator.length @min with the field-level @maxLength cap.
-        Integer lengthMin = null;
-        Integer lengthMax = null;
-        LengthValidator length = validator(field, LengthValidator.class);
-        if (length != null) {
-            lengthMin = attrInt(length, LengthValidator.ATTR_MIN);
-            lengthMax = attrInt(length, LengthValidator.ATTR_MAX);
-        }
-        Integer fieldMaxLength = attrInt(field, StringField.ATTR_MAX_LENGTH);
-        if (fieldMaxLength != null) {
-            lengthMax = fieldMaxLength;
-        }
-        if (lengthMin != null || lengthMax != null) {
-            out.add(sizeAnnotation(lengthMin, lengthMax));
+        // String character-length @Size — a NON-array string field only (FR-036 A3): a
+        // field.string @isArray @maxLength must NOT carry a char-count @Size on its List
+        // (element-count bounds come solely from the validator.array arm below). Combines
+        // the explicit validator.length bounds with the field-level @maxLength.
+        if (isString && !isArray) {
+            Integer lengthMin = null;
+            Integer lengthMax = null;
+            LengthValidator length = validator(field, LengthValidator.class);
+            if (length != null) {
+                lengthMin = attrInt(length, LengthValidator.ATTR_MIN);
+                lengthMax = attrInt(length, LengthValidator.ATTR_MAX);
+            }
+            Integer fieldMaxLength = attrInt(field, StringField.ATTR_MAX_LENGTH);
+            if (fieldMaxLength != null) {
+                // FR-036 A3 precedence: strictest-wins — min(validator.length @max, @maxLength).
+                lengthMax = (lengthMax == null) ? fieldMaxLength : Math.min(lengthMax, fieldMaxLength);
+            }
+            if (required) {
+                // FR-036 Ruling 1 non-empty floor; keep a stricter authored @min.
+                lengthMin = (lengthMin == null) ? 1 : Math.max(lengthMin, 1);
+            }
+            if (lengthMin != null || lengthMax != null) {
+                out.add(sizeAnnotation(lengthMin, lengthMax));
+            }
         }
 
         // Regex pattern.

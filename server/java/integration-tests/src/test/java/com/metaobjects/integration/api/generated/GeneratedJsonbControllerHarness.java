@@ -9,6 +9,9 @@ import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.uri.URIHelper;
 
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
+
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -62,6 +65,8 @@ public final class GeneratedJsonbControllerHarness implements AutoCloseable {
     private final Constructor<?> controllerCtor;
     private final Constructor<?> repoCtor;        // (List<DocumentDto> seed)
     private final List<Map<String, Object>> seedRows;
+    // FR-036: the generated controller now injects a jakarta Validator (3-arg ctor).
+    private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
 
     private MockMvc mockMvc;
 
@@ -100,7 +105,8 @@ public final class GeneratedJsonbControllerHarness implements AutoCloseable {
         this.dtoCtor = dtoClass.getDeclaredConstructor(Long.class, String.class, Object.class);
         Class<?> repoInterface = classLoader.loadClass(REPO_FQCN);
         Class<?> controllerClass = classLoader.loadClass(CONTROLLER_FQCN);
-        this.controllerCtor = controllerClass.getDeclaredConstructor(repoInterface, ObjectMapper.class);
+        this.controllerCtor = controllerClass.getDeclaredConstructor(
+            repoInterface, ObjectMapper.class, Validator.class);
         Class<?> repoImplClass = classLoader.loadClass(InMemoryDocumentRepositorySource.FQCN);
         this.repoCtor = repoImplClass.getDeclaredConstructor(List.class);
     }
@@ -110,7 +116,7 @@ public final class GeneratedJsonbControllerHarness implements AutoCloseable {
         List<Object> dtos = new ArrayList<>();
         for (Map<String, Object> row : seedRows) dtos.add(dtoFromRow(row));
         Object repo = repoCtor.newInstance(dtos);
-        Object controller = controllerCtor.newInstance(repo, mapper);
+        Object controller = controllerCtor.newInstance(repo, mapper, validator);
 
         MappingJackson2HttpMessageConverter converter = new MappingJackson2HttpMessageConverter();
         converter.setObjectMapper(mapper);

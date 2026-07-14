@@ -416,6 +416,10 @@ final class AuthorApiServer implements AutoCloseable {
             return;
         }
         Map<String, Object> body = (Map<String, Object>) parsed;
+        // FR-036 wire-tier constraint enforcement: reject an over-length name/bio with the
+        // cross-port {"error":"validation"} envelope BEFORE persisting (mirrors the generated
+        // controller's @Size(max=…) rules).
+        if (violatesLength(body)) { sendJson(exchange, 400, Map.of("error", "validation")); return; }
         long newId;
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement(
@@ -456,6 +460,10 @@ final class AuthorApiServer implements AutoCloseable {
             }
         }
 
+        // FR-036 wire-tier constraint enforcement: a PRESENT, non-null over-length name/bio is a
+        // 400 (matches the generated controller's per-present-value PATCH validation).
+        if (violatesLength(body)) { sendJson(exchange, 400, Map.of("error", "validation")); return; }
+
         // Dynamic SET clause — only update fields present in the body.
         List<String> setClauses = new ArrayList<>();
         List<Object> values = new ArrayList<>();
@@ -489,6 +497,20 @@ final class AuthorApiServer implements AutoCloseable {
             try (ResultSet rs = ps.executeQuery()) { rs.next(); row = rowToMap(rs); }
         }
         sendJson(exchange, 200, row);
+    }
+
+    /**
+     * FR-036 wire-tier length enforcement mirroring the generated controller's
+     * {@code @Size(max=…)} rules (name {@code @maxLength} 100, bio {@code @maxLength} 1000).
+     * Only a PRESENT, non-null value is checked: an absent field is untouched (PATCH), a
+     * present null on the nullable bio clears it, and a present null on a {@code @required}
+     * field is already rejected upstream. Returns {@code true} when a bound is exceeded so
+     * the caller emits the {@code {"error":"validation"}} envelope.
+     */
+    private static boolean violatesLength(Map<String, Object> body) {
+        if (body.get("name") instanceof String n && n.length() > 100) return true;
+        if (body.get("bio") instanceof String b && b.length() > 1000) return true;
+        return false;
     }
 
     private void deleteAuthor(HttpExchange exchange, String idStr) throws IOException, SQLException {
