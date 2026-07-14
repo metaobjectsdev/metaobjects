@@ -80,7 +80,7 @@ export function renderQueriesFile(obj: MetaObject, ctx: RenderContext): string {
 ${dbTypeImport}
 ${dbTypeAlias}
 
-import { ${varName}, type ${entityName}, ${entityName}InsertSchema } from ${JSON.stringify(entityFileName)};
+import { ${varName}, type ${entityName}, type ${entityName}Patch, ${entityName}InsertSchema, ${entityName}UpdateSchema } from ${JSON.stringify(entityFileName)};
 `;
 
   const sections: Code[] = [

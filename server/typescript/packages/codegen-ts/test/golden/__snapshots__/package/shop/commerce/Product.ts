@@ -37,6 +37,10 @@ export const ProductUpdateSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   tagId: z.number().int().optional(),
 });
+
+/** Typed patch shape for Product: every settable field, optional (FR-035 PATCH). A
+ * renamed/dropped field is a compile error at every `updateProduct` call site. */
+export type ProductPatch = z.input<typeof ProductUpdateSchema>;
 /**
  * Metadata constants for Product.
  *

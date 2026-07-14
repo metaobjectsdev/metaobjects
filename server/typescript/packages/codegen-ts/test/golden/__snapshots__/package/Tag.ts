@@ -40,6 +40,10 @@ export const TagUpdateSchema = z.object({
   label: z.string().min(1).max(100).optional(),
   customerId: z.number().int().optional(),
 });
+
+/** Typed patch shape for Tag: every settable field, optional (FR-035 PATCH). A
+ * renamed/dropped field is a compile error at every `updateTag` call site. */
+export type TagPatch = z.input<typeof TagUpdateSchema>;
 /**
  * Metadata constants for Tag.
  *

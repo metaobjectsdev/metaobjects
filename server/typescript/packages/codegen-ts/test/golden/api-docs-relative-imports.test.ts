@@ -234,6 +234,15 @@ declare module "pg" {
 }
 declare module "zod" {
   export const z: any;
+  // The generated entity file derives \`<Entity>Patch = z.input<typeof <Entity>UpdateSchema>\`,
+  // which uses \`z\` as a TYPE namespace (real zod merges the value with a namespace of
+  // input/infer/output helpers). The stub must expose those or \`z.input\` is TS2503 here,
+  // even though the code compiles cleanly against real zod.
+  export namespace z {
+    type input<T> = any;
+    type infer<T> = any;
+    type output<T> = any;
+  }
 }
 declare module "@metaobjectsdev/runtime-ts/drizzle-fastify" {
   export type FilterAllowlist = any;

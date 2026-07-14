@@ -6,7 +6,13 @@ import { eq, inArray } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;
 
-import { type Product, ProductInsertSchema, products } from "./Product";
+import {
+  type Product,
+  ProductInsertSchema,
+  type ProductPatch,
+  products,
+  ProductUpdateSchema,
+} from "./Product";
 export async function findProductById(
   db: Db,
   id: number,
@@ -39,9 +45,14 @@ export async function createProduct(db: Db, data: unknown): Promise<Product> {
 export async function updateProduct(
   db: Db,
   id: number,
-  data: unknown,
+  patch: ProductPatch,
 ): Promise<Product | null> {
-  const validated = ProductInsertSchema.partial().parse(data);
+  const validated = ProductUpdateSchema.parse(patch);
+  // PATCH-5: an empty patch is a no-op — return the current row rather than let
+  // Drizzle throw on an empty SET clause.
+  if (Object.keys(validated).length === 0) {
+    return findProductById(db, id);
+  }
   const [product] = await db
     .update(products)
     .set(validated)

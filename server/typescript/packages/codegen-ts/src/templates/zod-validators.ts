@@ -325,6 +325,10 @@ ${joinCode(insertFieldLines, { on: ",\n" })}
 ${docsPrefix}export const ${updateSchemaName} = ${z}.object({
 ${joinCode(updateFieldLines, { on: ",\n" })}
 });
+
+/** Typed patch shape for ${obj.name}: every settable field, optional (FR-035 PATCH). A
+ * renamed/dropped field is a compile error at every \`update${obj.name}\` call site. */
+export type ${obj.name}Patch = ${z}.input<typeof ${updateSchemaName}>;
 `;
 }
 

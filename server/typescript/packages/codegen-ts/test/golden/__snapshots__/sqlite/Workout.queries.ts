@@ -6,7 +6,13 @@ import { eq, inArray } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;
 
-import { type Workout, WorkoutInsertSchema, workouts } from "./Workout";
+import {
+  type Workout,
+  WorkoutInsertSchema,
+  type WorkoutPatch,
+  workouts,
+  WorkoutUpdateSchema,
+} from "./Workout";
 export async function findWorkoutById(
   db: Db,
   id: number,
@@ -39,9 +45,14 @@ export async function createWorkout(db: Db, data: unknown): Promise<Workout> {
 export async function updateWorkout(
   db: Db,
   id: number,
-  data: unknown,
+  patch: WorkoutPatch,
 ): Promise<Workout | null> {
-  const validated = WorkoutInsertSchema.partial().parse(data);
+  const validated = WorkoutUpdateSchema.parse(patch);
+  // PATCH-5: an empty patch is a no-op — return the current row rather than let
+  // Drizzle throw on an empty SET clause.
+  if (Object.keys(validated).length === 0) {
+    return findWorkoutById(db, id);
+  }
   const [workout] = await db
     .update(workouts)
     .set(validated)

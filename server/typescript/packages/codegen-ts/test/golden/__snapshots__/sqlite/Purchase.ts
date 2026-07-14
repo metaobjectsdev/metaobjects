@@ -54,6 +54,10 @@ export const PurchaseUpdateSchema = z.object({
   amountCents: z.number().int().optional(),
   purchasedAt: z.string().optional(),
 });
+
+/** Typed patch shape for Purchase: every settable field, optional (FR-035 PATCH). A
+ * renamed/dropped field is a compile error at every `updatePurchase` call site. */
+export type PurchasePatch = z.input<typeof PurchaseUpdateSchema>;
 /**
  * Metadata constants for Purchase.
  *

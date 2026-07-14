@@ -19,6 +19,10 @@ export const CustomerInsertSchema = z.object({
 export const CustomerUpdateSchema = z.object({
   email: z.string().min(1).max(255).optional(),
 });
+
+/** Typed patch shape for Customer: every settable field, optional (FR-035 PATCH). A
+ * renamed/dropped field is a compile error at every `updateCustomer` call site. */
+export type CustomerPatch = z.input<typeof CustomerUpdateSchema>;
 /**
  * Metadata constants for Customer.
  *

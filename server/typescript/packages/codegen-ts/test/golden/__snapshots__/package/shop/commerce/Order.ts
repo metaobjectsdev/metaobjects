@@ -49,6 +49,10 @@ export const OrderUpdateSchema = z.object({
   productId: z.number().int().optional(),
   quantity: z.number().int().optional(),
 });
+
+/** Typed patch shape for Order: every settable field, optional (FR-035 PATCH). A
+ * renamed/dropped field is a compile error at every `updateOrder` call site. */
+export type OrderPatch = z.input<typeof OrderUpdateSchema>;
 /**
  * Metadata constants for Order.
  *

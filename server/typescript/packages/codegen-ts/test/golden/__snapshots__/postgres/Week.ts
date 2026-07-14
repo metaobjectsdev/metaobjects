@@ -45,6 +45,10 @@ export const WeekUpdateSchema = z.object({
   weekNumber: z.number().int().optional(),
   title: z.string().min(1).max(200).optional(),
 });
+
+/** Typed patch shape for Week: every settable field, optional (FR-035 PATCH). A
+ * renamed/dropped field is a compile error at every `updateWeek` call site. */
+export type WeekPatch = z.input<typeof WeekUpdateSchema>;
 /**
  * Metadata constants for Week.
  *

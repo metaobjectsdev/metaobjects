@@ -22,6 +22,10 @@ export const TagUpdateSchema = z.object({
   name: z.string().min(1).max(50).optional(),
   slug: z.string().min(1).max(50).optional(),
 });
+
+/** Typed patch shape for Tag: every settable field, optional (FR-035 PATCH). A
+ * renamed/dropped field is a compile error at every `updateTag` call site. */
+export type TagPatch = z.input<typeof TagUpdateSchema>;
 /**
  * Metadata constants for Tag.
  *

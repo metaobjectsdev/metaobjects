@@ -9,7 +9,9 @@ type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;
 import {
   type Subscriber,
   SubscriberInsertSchema,
+  type SubscriberPatch,
   subscribers,
+  SubscriberUpdateSchema,
 } from "./Subscriber";
 export async function findSubscriberById(
   db: Db,
@@ -49,9 +51,14 @@ export async function createSubscriber(
 export async function updateSubscriber(
   db: Db,
   id: number,
-  data: unknown,
+  patch: SubscriberPatch,
 ): Promise<Subscriber | null> {
-  const validated = SubscriberInsertSchema.partial().parse(data);
+  const validated = SubscriberUpdateSchema.parse(patch);
+  // PATCH-5: an empty patch is a no-op — return the current row rather than let
+  // Drizzle throw on an empty SET clause.
+  if (Object.keys(validated).length === 0) {
+    return findSubscriberById(db, id);
+  }
   const [subscriber] = await db
     .update(subscribers)
     .set(validated)

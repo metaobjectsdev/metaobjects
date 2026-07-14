@@ -9,7 +9,9 @@ type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;
 import {
   type WorkoutEvent,
   WorkoutEventInsertSchema,
+  type WorkoutEventPatch,
   workoutEvents,
+  WorkoutEventUpdateSchema,
 } from "./WorkoutEvent";
 export async function findWorkoutEventById(
   db: Db,
@@ -49,9 +51,14 @@ export async function createWorkoutEvent(
 export async function updateWorkoutEvent(
   db: Db,
   id: number,
-  data: unknown,
+  patch: WorkoutEventPatch,
 ): Promise<WorkoutEvent | null> {
-  const validated = WorkoutEventInsertSchema.partial().parse(data);
+  const validated = WorkoutEventUpdateSchema.parse(patch);
+  // PATCH-5: an empty patch is a no-op — return the current row rather than let
+  // Drizzle throw on an empty SET clause.
+  if (Object.keys(validated).length === 0) {
+    return findWorkoutEventById(db, id);
+  }
   const [workoutEvent] = await db
     .update(workoutEvents)
     .set(validated)

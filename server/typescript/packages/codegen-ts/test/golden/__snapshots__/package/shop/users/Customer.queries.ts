@@ -6,7 +6,13 @@ import { eq } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;
 
-import { type Customer, CustomerInsertSchema, customers } from "./Customer";
+import {
+  type Customer,
+  CustomerInsertSchema,
+  type CustomerPatch,
+  customers,
+  CustomerUpdateSchema,
+} from "./Customer";
 export async function findCustomerById(
   db: Db,
   id: number,
@@ -39,9 +45,14 @@ export async function createCustomer(db: Db, data: unknown): Promise<Customer> {
 export async function updateCustomer(
   db: Db,
   id: number,
-  data: unknown,
+  patch: CustomerPatch,
 ): Promise<Customer | null> {
-  const validated = CustomerInsertSchema.partial().parse(data);
+  const validated = CustomerUpdateSchema.parse(patch);
+  // PATCH-5: an empty patch is a no-op — return the current row rather than let
+  // Drizzle throw on an empty SET clause.
+  if (Object.keys(validated).length === 0) {
+    return findCustomerById(db, id);
+  }
   const [customer] = await db
     .update(customers)
     .set(validated)

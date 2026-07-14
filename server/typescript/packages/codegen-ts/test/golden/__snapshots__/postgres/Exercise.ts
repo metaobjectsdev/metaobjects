@@ -52,6 +52,10 @@ export const ExerciseUpdateSchema = z.object({
   reps: z.number().int().optional(),
   notes: z.string().optional(),
 });
+
+/** Typed patch shape for Exercise: every settable field, optional (FR-035 PATCH). A
+ * renamed/dropped field is a compile error at every `updateExercise` call site. */
+export type ExercisePatch = z.input<typeof ExerciseUpdateSchema>;
 /**
  * Metadata constants for Exercise.
  *

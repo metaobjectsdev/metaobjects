@@ -33,6 +33,10 @@ export const SubscriberUpdateSchema = z.object({
   subscribed: z.boolean().optional(),
   createdAt: z.string().optional(),
 });
+
+/** Typed patch shape for Subscriber: every settable field, optional (FR-035 PATCH). A
+ * renamed/dropped field is a compile error at every `updateSubscriber` call site. */
+export type SubscriberPatch = z.input<typeof SubscriberUpdateSchema>;
 /**
  * Metadata constants for Subscriber.
  *

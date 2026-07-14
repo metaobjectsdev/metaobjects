@@ -91,12 +91,23 @@ export function renderUpdateFn(entity: MetaObject, ctx: RenderContext): Code {
   const singularVar = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const { fieldName: pkField, tsType: pkType } = getPkInfo(entity, ctx);
   const fnName = updateFnName(entityName);
-  const schemaName = `${entityName}InsertSchema`;
+  const findByIdFn = findByIdFnName(entityName);
+  // PATCH contract (FR-035): validate the caller's assignments against the
+  // UPDATE schema (all-optional, PK/@readOnly excluded, no insert-time transforms
+  // like @autoSet-onCreate → now() or the InsertSchema's discriminator handling)
+  // — NOT `InsertSchema.partial()`. The typed `<Entity>Patch` param makes a
+  // renamed/dropped field a compile error at every call site (PATCH-1..4);
+  // `.set()` writes ONLY the assigned columns, so an omitted field is untouched.
+  const updateSchemaName = `${entityName}UpdateSchema`;
+  const patchType = `${entityName}Patch`;
   const eqSym = imp("eq@drizzle-orm");
 
   return code`
-export async function ${fnName}(db: Db, ${pkField}: ${pkType}, data: unknown): Promise<${entityName} | null> {
-  const validated = ${schemaName}.partial().parse(data);
+export async function ${fnName}(db: Db, ${pkField}: ${pkType}, patch: ${patchType}): Promise<${entityName} | null> {
+  const validated = ${updateSchemaName}.parse(patch);
+  // PATCH-5: an empty patch is a no-op — return the current row rather than let
+  // Drizzle throw on an empty SET clause.
+  if (Object.keys(validated).length === 0) return ${findByIdFn}(db, ${pkField});
   const [${singularVar}] = await db.update(${varName}).set(validated).where(${eqSym}(${varName}.${pkField}, ${pkField})).returning();
   return ${singularVar} ?? null;
 }

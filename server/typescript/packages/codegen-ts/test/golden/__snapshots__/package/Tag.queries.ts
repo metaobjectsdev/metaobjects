@@ -6,7 +6,13 @@ import { eq, inArray } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;
 
-import { type Tag, TagInsertSchema, tags } from "./Tag";
+import {
+  type Tag,
+  TagInsertSchema,
+  type TagPatch,
+  tags,
+  TagUpdateSchema,
+} from "./Tag";
 export async function findTagById(db: Db, id: number): Promise<Tag | null> {
   const [tag] = await db.select().from(tags).where(eq(tags.id, id)).limit(1);
   return tag ?? null;
@@ -32,9 +38,14 @@ export async function createTag(db: Db, data: unknown): Promise<Tag> {
 export async function updateTag(
   db: Db,
   id: number,
-  data: unknown,
+  patch: TagPatch,
 ): Promise<Tag | null> {
-  const validated = TagInsertSchema.partial().parse(data);
+  const validated = TagUpdateSchema.parse(patch);
+  // PATCH-5: an empty patch is a no-op — return the current row rather than let
+  // Drizzle throw on an empty SET clause.
+  if (Object.keys(validated).length === 0) {
+    return findTagById(db, id);
+  }
   const [tag] = await db
     .update(tags)
     .set(validated)

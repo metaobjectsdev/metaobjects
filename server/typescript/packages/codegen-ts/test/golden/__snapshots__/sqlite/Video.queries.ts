@@ -6,7 +6,13 @@ import { eq, inArray } from "drizzle-orm";
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
 type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;
 
-import { type Video, VideoInsertSchema, videos } from "./Video";
+import {
+  type Video,
+  VideoInsertSchema,
+  type VideoPatch,
+  videos,
+  VideoUpdateSchema,
+} from "./Video";
 export async function findVideoById(db: Db, id: number): Promise<Video | null> {
   const [video] = await db
     .select()
@@ -36,9 +42,14 @@ export async function createVideo(db: Db, data: unknown): Promise<Video> {
 export async function updateVideo(
   db: Db,
   id: number,
-  data: unknown,
+  patch: VideoPatch,
 ): Promise<Video | null> {
-  const validated = VideoInsertSchema.partial().parse(data);
+  const validated = VideoUpdateSchema.parse(patch);
+  // PATCH-5: an empty patch is a no-op — return the current row rather than let
+  // Drizzle throw on an empty SET clause.
+  if (Object.keys(validated).length === 0) {
+    return findVideoById(db, id);
+  }
   const [video] = await db
     .update(videos)
     .set(validated)

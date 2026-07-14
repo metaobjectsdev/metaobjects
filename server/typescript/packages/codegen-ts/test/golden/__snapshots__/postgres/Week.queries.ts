@@ -6,7 +6,13 @@ import { eq, inArray } from "drizzle-orm";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 type Db = PgDatabase<PgQueryResultHKT, Record<string, never>>;
 
-import { type Week, WeekInsertSchema, weeks } from "./Week";
+import {
+  type Week,
+  WeekInsertSchema,
+  type WeekPatch,
+  weeks,
+  WeekUpdateSchema,
+} from "./Week";
 export async function findWeekById(db: Db, id: number): Promise<Week | null> {
   const [week] = await db.select().from(weeks).where(eq(weeks.id, id)).limit(1);
   return week ?? null;
@@ -32,9 +38,14 @@ export async function createWeek(db: Db, data: unknown): Promise<Week> {
 export async function updateWeek(
   db: Db,
   id: number,
-  data: unknown,
+  patch: WeekPatch,
 ): Promise<Week | null> {
-  const validated = WeekInsertSchema.partial().parse(data);
+  const validated = WeekUpdateSchema.parse(patch);
+  // PATCH-5: an empty patch is a no-op — return the current row rather than let
+  // Drizzle throw on an empty SET clause.
+  if (Object.keys(validated).length === 0) {
+    return findWeekById(db, id);
+  }
   const [week] = await db
     .update(weeks)
     .set(validated)

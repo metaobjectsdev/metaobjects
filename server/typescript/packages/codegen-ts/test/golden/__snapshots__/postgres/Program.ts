@@ -44,6 +44,10 @@ export const ProgramUpdateSchema = z.object({
   isPublished: z.boolean().optional(),
   createdAt: z.string().optional(),
 });
+
+/** Typed patch shape for Program: every settable field, optional (FR-035 PATCH). A
+ * renamed/dropped field is a compile error at every `updateProgram` call site. */
+export type ProgramPatch = z.input<typeof ProgramUpdateSchema>;
 /**
  * Metadata constants for Program.
  *

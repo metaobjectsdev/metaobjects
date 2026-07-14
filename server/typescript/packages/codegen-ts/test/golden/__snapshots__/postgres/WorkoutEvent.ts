@@ -57,6 +57,10 @@ export const WorkoutEventUpdateSchema = z.object({
   completedAt: z.string().optional(),
   durationMinutes: z.number().int().optional(),
 });
+
+/** Typed patch shape for WorkoutEvent: every settable field, optional (FR-035 PATCH). A
+ * renamed/dropped field is a compile error at every `updateWorkoutEvent` call site. */
+export type WorkoutEventPatch = z.input<typeof WorkoutEventUpdateSchema>;
 /**
  * Metadata constants for WorkoutEvent.
  *

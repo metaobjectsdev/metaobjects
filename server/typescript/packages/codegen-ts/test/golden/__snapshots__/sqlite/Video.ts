@@ -46,6 +46,10 @@ export const VideoUpdateSchema = z.object({
   title: z.string().max(200).optional(),
   durationSeconds: z.number().int().optional(),
 });
+
+/** Typed patch shape for Video: every settable field, optional (FR-035 PATCH). A
+ * renamed/dropped field is a compile error at every `updateVideo` call site. */
+export type VideoPatch = z.input<typeof VideoUpdateSchema>;
 /**
  * Metadata constants for Video.
  *

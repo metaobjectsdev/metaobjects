@@ -6,7 +6,13 @@ import { eq } from "drizzle-orm";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 type Db = PgDatabase<PgQueryResultHKT, Record<string, never>>;
 
-import { type Program, ProgramInsertSchema, programs } from "./Program";
+import {
+  type Program,
+  ProgramInsertSchema,
+  type ProgramPatch,
+  programs,
+  ProgramUpdateSchema,
+} from "./Program";
 export async function findProgramById(
   db: Db,
   id: number,
@@ -39,9 +45,14 @@ export async function createProgram(db: Db, data: unknown): Promise<Program> {
 export async function updateProgram(
   db: Db,
   id: number,
-  data: unknown,
+  patch: ProgramPatch,
 ): Promise<Program | null> {
-  const validated = ProgramInsertSchema.partial().parse(data);
+  const validated = ProgramUpdateSchema.parse(patch);
+  // PATCH-5: an empty patch is a no-op — return the current row rather than let
+  // Drizzle throw on an empty SET clause.
+  if (Object.keys(validated).length === 0) {
+    return findProgramById(db, id);
+  }
   const [program] = await db
     .update(programs)
     .set(validated)
