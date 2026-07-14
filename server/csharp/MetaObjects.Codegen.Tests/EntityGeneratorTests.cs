@@ -104,7 +104,15 @@ public class EntityGeneratorTests
         Assert.Contains("app.MapGet(prefix + \"/subscribers\", async (HttpContext http, AppDbContext db) =>", src);
         Assert.Contains("app.MapGet(prefix + \"/subscribers/{id}\", async (long id, AppDbContext db) =>", src);
         Assert.Contains("db.Subscribers.FindAsync(id)", src);
-        Assert.Contains("app.MapPost(prefix + \"/subscribers\", async (Subscriber input, AppDbContext db) =>", src);
+        // FR-036 #4 — an entity with a @required field (Subscriber.email) gets the
+        // presence-checking create handler: it reads the raw JSON body (HttpContext),
+        // rejects a body missing/null-ing any @required key with 400 {error:"validation"}
+        // BEFORE binding (a value-type default can't be seen as "missing" by [Required]),
+        // then deserializes + DataAnnotations-validates.
+        Assert.Contains("app.MapPost(prefix + \"/subscribers\", async (HttpContext http, AppDbContext db) =>", src);
+        Assert.Contains("foreach (var __req in new[] { \"email\" })", src);
+        Assert.Contains("if (!__present.Contains(__req)) return Results.BadRequest(new { error = \"validation\" });", src);
+        Assert.Contains("var input = System.Text.Json.JsonSerializer.Deserialize<Subscriber>(__body.RootElement.GetRawText(), jsonOpts);", src);
         // PATCH + PUT share the same update handler (matches TS reference). It takes the raw
         // HttpContext (not a bound DTO) and PARTIAL-merges only the properties present in the
         // JSON body — a bound DTO would fill omitted fields with CLR defaults and clobber them.

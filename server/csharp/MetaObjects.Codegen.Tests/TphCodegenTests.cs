@@ -172,10 +172,17 @@ public class TphCodegenTests
         Assert.Contains("prefix + \"/auths/bridge\"", auth);
         Assert.Contains("prefix + \"/auths/copay\"", auth);
         Assert.Contains("prefix + \"/auths/priorauth\"", auth);
-        // Per-subtype CRUD: create binds the subtype CLR type (discriminator injected by
-        // EF via the CLR type on Add; the POST body omits it), scopes reads/mutations via
-        // OfType<Sub>().
-        Assert.Contains("MapPost(prefix + \"/auths/bridge\", async (BridgeAuth input", auth);
+        // Per-subtype CRUD: create scopes reads/mutations via OfType<Sub>() and injects the
+        // discriminator via the subtype CLR type on Add (the POST body omits it). FR-036 #4 —
+        // because every subtype has a @required field (the base string `reference`, and
+        // BridgeAuth's OWN value-type int `quantity`), the create is the presence-checking
+        // handler: it reads the raw JSON (HttpContext) and 400s a body missing/null-ing any
+        // @required key BEFORE binding — so an omitted value-type `quantity` is a 400, not a 201
+        // with a default 0. The PK `id` and the discriminator `type` are excluded from the set.
+        Assert.Contains("MapPost(prefix + \"/auths/bridge\", async (HttpContext http, AppDbContext db) =>", auth);
+        Assert.Contains("System.Text.Json.JsonSerializer.Deserialize<BridgeAuth>(", auth);
+        Assert.Matches(@"new\[\] \{[^}]*""reference""[^}]*\}", auth);   // base @required string
+        Assert.Matches(@"new\[\] \{[^}]*""quantity""[^}]*\}", auth);    // own @required value-type
         Assert.Contains("OfType<BridgeAuth>()", auth);
         Assert.Contains("OfType<CopayAuth>()", auth);
         Assert.Contains("OfType<PriorAuthAuth>()", auth);

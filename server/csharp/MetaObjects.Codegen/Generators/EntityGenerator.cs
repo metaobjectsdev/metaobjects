@@ -885,7 +885,15 @@ public class EntityGenerator : IGenerator
             else if (v.SubType == VALIDATOR_SUBTYPE_REGEX
                      && v is MetaRegexValidator { Pattern: { } pattern })
             {
-                sb.AppendLine($"    [RegularExpression(\"{EscapeAttrString(pattern)}\")]");
+                // FR-036 Pin-2 — ALWAYS anchor the emitted pattern as a FULL match ^(?:…)$.
+                // .NET's RegularExpressionAttribute is valid only when the match starts at
+                // index 0 AND spans the whole value; for an UNanchored ordered-alternation
+                // whose earlier branch is a prefix of a later one (e.g. (a|ab) vs "ab") the
+                // engine matches the shorter branch ("a", length 1 ≠ 2) and REJECTS a string
+                // the anchored TS/Python (^(?:…)$) and Java/Kotlin (Matcher.matches) ports
+                // ACCEPT. Wrapping forces the engine to backtrack to a full match. Redundant
+                // on an already-anchored authored pattern (^(?:^…$)$ matches identically).
+                sb.AppendLine($"    [RegularExpression(\"^(?:{EscapeAttrString(pattern)})$\")]");
             }
         }
 

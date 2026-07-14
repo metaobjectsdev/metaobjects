@@ -173,14 +173,14 @@ public class RoutesGenerator : PerEntityGenerator
 
         if (writable)
         {
+            // FR-036 #4 — @required-key presence set (the non-PK @required fields whose keys
+            // must be PRESENT + non-null on a create body). A @required VALUE-TYPE field (e.g.
+            // field.timestamp → non-nullable DateTimeOffset) binds to a CLR default when
+            // omitted, invisible to [Required], so the create handler checks raw-JSON presence.
+            var requiredKeys = RequiredCreateKeys(entity, f => pkFields.Contains(f.Name));
             sb.AppendLine();
-            sb.AppendLine("        app.MapPost(prefix + \"/" + route + "\", async (" + cls + " input, AppDbContext db) =>");
-            sb.AppendLine("        {");
-            AppendCreateValidation(sb);
-            sb.AppendLine("            db." + dbSet + ".Add(input);");
-            sb.AppendLine("            await db.SaveChangesAsync();");
-            sb.AppendLine("            return Results.Created(prefix + \"/" + route + "\", input);");
-            sb.AppendLine("        });");
+            AppendCreateHandler(sb, "/" + route, cls, dbSet, requiredKeys,
+                "Results.Created(prefix + \"/" + route + "\", input)");
 
             // PATCH + PUT share the same handler — TS reference exposes both verbs, and both
             // return the updated row (HTTP 200), matching the cross-port api-contract.
@@ -400,6 +400,79 @@ public class RoutesGenerator : PerEntityGenerator
         return new EmittedFile($"{baseCls}Routes.g.cs", sb.ToString());
     }
 
+    // FR-036 #4 — the wire keys of the @required fields whose keys must be PRESENT (and
+    // non-null) on a create body. Uses the SAME required-predicate as the DTO's [Required]
+    // (MetaField.IsRequired = own @required OR a validator.required child), matching the
+    // cross-port contract (Java's @NotNull set / Python-Pydantic required set). The caller
+    // supplies the exclusion for the PK (server-/route-assigned) and, for a TPH subtype, the
+    // (EF-injected) discriminator. Returns the camelCase field names — matched case-insensitively
+    // against the raw JSON keys, so a camelCase wire key resolves to its PascalCase property.
+    private static List<string> RequiredCreateKeys(MetaObject obj, Func<MetaField, bool> isPkOrDisc) =>
+        obj.Fields()
+            .Where(f => f.IsRequired && !isPkOrDisc(f))
+            .Select(f => f.Name)
+            .ToList();
+
+    // FR-036 A2 / #4 — emit a create (POST) handler. When the entity carries at least one
+    // @required (non-PK/non-discriminator) field, FIRST enforce those keys are PRESENT and
+    // non-null on the raw JSON body (a @required value-type field binds to a CLR default when
+    // omitted, which [Required] cannot detect as "missing"), THEN deserialize + run the model's
+    // DataAnnotations. When there is no such field, fall back to the plain model-bound handler
+    // (minimal-API binding + DataAnnotations) — byte-identical to the pre-FR-036 output.
+    // A missing key, an explicit null on a @required key, or a DataAnnotations violation all
+    // return the cross-port {error:"validation"} envelope BEFORE the row is persisted.
+    private static void AppendCreateHandler(
+        StringBuilder sb, string mapPath, string cls, string dbSet,
+        IReadOnlyList<string> requiredKeys, string createdExpr)
+    {
+        if (requiredKeys.Count == 0)
+        {
+            sb.AppendLine($"        app.MapPost(prefix + \"{mapPath}\", async ({cls} input, AppDbContext db) =>");
+            sb.AppendLine("        {");
+            AppendCreateValidation(sb);
+            sb.AppendLine($"            db.{dbSet}.Add(input);");
+            sb.AppendLine("            await db.SaveChangesAsync();");
+            sb.AppendLine($"            return {createdExpr};");
+            sb.AppendLine("        });");
+            return;
+        }
+
+        sb.AppendLine($"        app.MapPost(prefix + \"{mapPath}\", async (HttpContext http, AppDbContext db) =>");
+        sb.AppendLine("        {");
+        AppendJsonOptsLocal(sb);
+        sb.AppendLine("            using var __body = await System.Text.Json.JsonDocument.ParseAsync(http.Request.Body);");
+        sb.AppendLine("            if (__body.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)");
+        sb.AppendLine("                return Results.BadRequest(new { error = \"validation\" });");
+        // FR-036 #4 — @required-key presence: an omitted key OR an explicit null on a @required
+        // field → 400, matching the JVM/Python "missing @required → 400" contract. Case-insensitive
+        // so a camelCase wire key ("createdAt") matches its PascalCase property ("CreatedAt").
+        sb.AppendLine("            var __present = new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase);");
+        sb.AppendLine("            foreach (var __p in __body.RootElement.EnumerateObject())");
+        sb.AppendLine("                if (__p.Value.ValueKind != System.Text.Json.JsonValueKind.Null) __present.Add(__p.Name);");
+        sb.Append("            foreach (var __req in new[] { ");
+        sb.Append(string.Join(", ", requiredKeys.Select(k => "\"" + k + "\"")));
+        sb.AppendLine(" })");
+        sb.AppendLine("                if (!__present.Contains(__req)) return Results.BadRequest(new { error = \"validation\" });");
+        sb.AppendLine($"            var input = System.Text.Json.JsonSerializer.Deserialize<{cls}>(__body.RootElement.GetRawText(), jsonOpts);");
+        sb.AppendLine("            if (input is null) return Results.BadRequest(new { error = \"validation\" });");
+        AppendCreateValidation(sb);
+        sb.AppendLine($"            db.{dbSet}.Add(input);");
+        sb.AppendLine("            await db.SaveChangesAsync();");
+        sb.AppendLine($"            return {createdExpr};");
+        sb.AppendLine("        });");
+    }
+
+    // The configured System.Text.Json options local (`jsonOpts`) — the app's
+    // ConfigureHttpJsonOptions serializer options, NOT defaults, so a custom converter (e.g.
+    // the field.timestamp DateTimeOffset converter) is honored; default options 500 on it.
+    // Assumes `HttpContext http` is in scope.
+    private static void AppendJsonOptsLocal(StringBuilder sb)
+    {
+        sb.AppendLine("            var jsonOpts = ((Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>)");
+        sb.AppendLine("                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
+        sb.AppendLine("                .Value.SerializerOptions;");
+    }
+
     // FR-036 A2 — the shared create-validation preamble for a generated POST handler
     // (vanilla entity + each TPH per-subtype create). Runs the model's DataAnnotations
     // (the emitted [Required]/[MaxLength]/[MinLength]/[Range]/[RegularExpression]) over the
@@ -499,15 +572,18 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("                : Results.NotFound(new { error = \"not_found\" }));");
 
         // Per-subtype create: POST /<base>/<seg> — discriminator injected by EF via the
-        // subtype CLR type; the POST body OMITS the discriminator.
+        // subtype CLR type; the POST body OMITS the discriminator. FR-036 #4: the @required-key
+        // presence set spans the subtype's EFFECTIVE fields (base + own) minus the PK and the
+        // (EF-injected) discriminator, so an omitted @required value-type field → 400.
+        var requiredKeys = RequiredCreateKeys(st.Entity, f =>
+        {
+            var p = CSharpNaming.Pascal(f.Name);
+            return string.Equals(p, pkProp, System.StringComparison.Ordinal)
+                   || string.Equals(p, discProp, System.StringComparison.Ordinal);
+        });
         sb.AppendLine();
-        sb.AppendLine("        app.MapPost(prefix + \"/" + subRoute + "\", async (" + subCls + " input, AppDbContext db) =>");
-        sb.AppendLine("        {");
-        AppendCreateValidation(sb);
-        sb.AppendLine($"            db.{dbSet}.Add(input);");
-        sb.AppendLine("            await db.SaveChangesAsync();");
-        sb.AppendLine("            return Results.Created(prefix + \"/" + subRoute + "/\" + input." + pkProp + ", input);");
-        sb.AppendLine("        });");
+        AppendCreateHandler(sb, "/" + subRoute, subCls, dbSet, requiredKeys,
+            "Results.Created(prefix + \"/" + subRoute + "/\" + input." + pkProp + ", input)");
 
         // Per-subtype update (PATCH + PUT): partial merge of the JSON body onto the scoped
         // entity, NEVER touching the PK or the discriminator. Cross-subtype id → 404.
