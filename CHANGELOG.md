@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.16.0] — 2026-07-14
+
+_Coordinated **breaking** release across all four registries: npm `0.16.0` · PyPI `0.16.0` · NuGet `0.16.0` · Maven Central `7.8.0` (full lockstep; the two `angular` packages stay on their `0.6.x` line)._
+
+**⚠️ BREAKING — this release bundles two coordinated breaking changes (FR-035 + FR-036). The single change most likely to surprise an adopter: C# and Python now ENFORCE field constraints over HTTP where they were previously decorative — a POST/PATCH that a prior version silently accepted may now return `400 {"error":"validation"}`.**
+
+### FR-035 — present-key PATCH tristate (mutation surface)
+
+The generated PATCH now distinguishes an ABSENT key from an explicit `null`, identically across all five ports (previously four different behaviors): an absent field is untouched; a present `null` on a nullable column CLEARS it; a present `null` on a `@required` field is `400 {"error":"validation"}`; and a PATCH may omit `@required` fields entirely (no 400). Holds on both the vanilla and the TPH per-subtype update paths.
+
+### FR-036 — cross-port constraint-validation enforcement + semantic pins
+
+- **`@required` string = NON-EMPTY** (reject `null` and `""`, **accept whitespace-only**) — Java/Kotlin no longer reject whitespace (the auto-`@NotBlank` is retired for `@NotNull` + `@Size(min=1)`); C# emits `[Required(AllowEmptyStrings=true)]` + `[MinLength(1)]`; Python emits `min_length=1`; TS was already correct.
+- **`validator.regex @pattern` = FULL-MATCH** (the whole value must match) — TS + Python now anchor the authored pattern as `^(?:…)$`; C# `[RegularExpression]` is anchored too (it was not a true full-match for ordered-alternation patterns).
+- **C# and Python now enforce field constraints over HTTP** (both were decorative at the wire tier — C# minimal-API never ran DataAnnotations, Python bound `dict[str,Any]`). POST and PATCH now validate present values → `400 {"error":"validation"}` on all five ports, vanilla + TPH.
+- **`@maxLength` × `validator.length @max` precedence is strictest-wins** (`min` of the two).
+- A missing `@required` value-type field on POST now 400s on every port (previously C# accepted a garbage default); a `@required` field with a server-side `@default`/`@autoSet` (or an auto-generated PK) is correctly OPTIONAL on POST (a POST omitting `createdAt @default:now()` is 201, not 400).
+
+New cross-port conformance gates (validation-conformance + api-contract, both lanes) lock all of the above so it can't silently drift.
+
 ## [0.15.21] — 2026-07-13
 
 _npm `0.15.21` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
