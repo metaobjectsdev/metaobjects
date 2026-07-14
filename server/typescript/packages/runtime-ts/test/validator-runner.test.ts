@@ -48,6 +48,20 @@ describe("runValidators — required", () => {
     });
     expect(runValidators(e, { title: "hello" }).ok).toBe(true);
   });
+
+  test("FR-036 Pin 1: a present empty string on a @required field → error; whitespace-only → ok", () => {
+    const e = makeEntity((post) => {
+      const title = meta(new TypeId(TYPE_FIELD, FIELD_SUBTYPE_STRING), "title");
+      title.setAttr("required", true);
+      post.addChild(title);
+    });
+    // Non-empty floor: "" is rejected (matches the generated Zod .min(1)) …
+    const empty = runValidators(e, { title: "" });
+    expect(empty.ok).toBe(false);
+    if (!empty.ok) expect(empty.errors[0]?.rule).toBe("length");
+    // … but whitespace-only is accepted (Ruling 1 — never trim).
+    expect(runValidators(e, { title: "   " }).ok).toBe(true);
+  });
 });
 
 describe("runValidators — length", () => {

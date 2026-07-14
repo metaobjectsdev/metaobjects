@@ -588,8 +588,11 @@ function appendValidatorChain(base: Code, field: MetaField): Code {
     if (arrMin !== undefined) chain = code`${chain}.min(${arrMin})`;
     if (arrMax !== undefined) chain = code`${chain}.max(${arrMax})`;
   } else if (field.subType === FIELD_SUBTYPE_STRING && !isJsonbBag) {
-    if (minLen !== undefined) chain = code`${chain}.min(${minLen})`;
-    else if (isRequired) chain = code`${chain}.min(1)`;
+    // FR-036 Pin 1: a @required string is non-empty. The floor is max(@min, 1) so an
+    // explicit `validator.length @min: 0` on a required field can't suppress it to
+    // `.min(0)` (which would accept ""). A non-required field keeps its authored @min.
+    const effectiveMin = Math.max(minLen ?? 0, isRequired ? 1 : 0);
+    if (effectiveMin > 0) chain = code`${chain}.min(${effectiveMin})`;
     if (maxLen !== undefined) chain = code`${chain}.max(${maxLen})`;
     if (pattern !== undefined) {
       // FR-036 Pin 2: validator.regex @pattern is FULL-MATCH — the whole value

@@ -114,12 +114,17 @@ export function runValidators(
           received: value.length,
         });
       }
-      if (minLen !== undefined && value.length < minLen) {
+      // FR-036 Pin 1: a @required string is non-empty. The effective floor is
+      // max(@min, 1) so the runtime OM rejects "" for a required string exactly as
+      // the generated Zod InsertSchema (.min(1)) does — the two enforcement surfaces
+      // stay in lockstep. A non-required field keeps its authored @min.
+      const effectiveMin = Math.max(minLen ?? 0, required ? 1 : 0);
+      if (effectiveMin > 0 && value.length < effectiveMin) {
         errors.push({
           field: field.name,
           rule: "length",
-          message: `'${field.name}' must be at least ${minLen} chars (got ${value.length})`,
-          expected: { min: minLen },
+          message: `'${field.name}' must be at least ${effectiveMin} chars (got ${value.length})`,
+          expected: { min: effectiveMin },
           received: value.length,
         });
       }

@@ -4,7 +4,7 @@ import { TypeId, TYPE_IDENTITY, TYPE_VALIDATOR,
          FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET,
          FIELD_ATTR_STRING_FORMAT, STRING_FORMAT_EMAIL, STRING_FORMAT_HOSTNAME,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
-         VALIDATOR_SUBTYPE_REGEX,
+         VALIDATOR_SUBTYPE_REGEX, VALIDATOR_SUBTYPE_LENGTH,
          MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { meta, metaObject, metaField } from "../_meta-build.js";
 import { renderZodValidators } from "../../src/templates/zod-validators.js";
@@ -87,6 +87,21 @@ describe("renderZodValidators", () => {
     const out = renderZodValidators(post).toString();
     expect(out).toContain('.regex(new RegExp("^(?:[a-z0-9-]+)$"))');
     expect(out).not.toMatch(/\.regex\("[^"]*"\)/); // no bare-string regex argument
+  });
+
+  test("FR-036 Pin 1: a @required string's non-empty floor survives an explicit validator.length @min:0 (.min(1), never .min(0))", () => {
+    const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
+    const title = metaField(FIELD_SUBTYPE_STRING, "title");
+    title.setAttr("required", true);
+    // An explicit @min:0 must NOT suppress the required-string non-empty floor.
+    const len = meta(new TypeId(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_LENGTH), "titleLen");
+    len.setAttr("min", 0);
+    title.addChild(len);
+    post.addChild(title);
+
+    const out = renderZodValidators(post).toString();
+    expect(out).toContain(".min(1)");
+    expect(out).not.toContain(".min(0)");
   });
 
   test("emits JSDoc above InsertSchema + UpdateSchema from entity @description", async () => {
