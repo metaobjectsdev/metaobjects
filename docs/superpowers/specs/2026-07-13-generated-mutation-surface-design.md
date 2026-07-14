@@ -761,3 +761,139 @@ test/codegen-seam); Phase 5 is its own coordinated release with the ADR.
    `InsertSchema.partial()` silently replaces a caller-supplied `@autoSet onCreate` value with
    `now()` on update (verified against Zod 4.4.3 behavior — supplied keys run the transform;
    absent keys are dropped). The routes tier is unaffected (it uses `UpdateSchema`).
+
+---
+
+## 12. Tristate decision (2026-07-13, post-Phase-0/1 verification)
+
+**Decision: DO THE TRISTATE (option B), scoped precisely as *present-key semantics at the
+generated HTTP mutation surface*, sequenced cheap-ports-first behind a red conformance gate.
+Java's presence-tracked `<Entity>Patch` is built as part of it — and ONLY as part of it (under
+option A it would be pointless; see §12.5).**
+
+### 12.1 The verified ground truth that forced the decision
+
+`PATCH /authors/{id}` with body `{"bio": null}` (`bio` = nullable, non-`@required`) currently
+produces **four different behaviors across the five ports — including a split inside C# itself**:
+
+| Port / handler | Behavior | Evidence |
+|---|---|---|
+| TS (all three route runtimes) | **400** `{"error":"validation"}` | `UpdateSchema` fields are `.optional()` and never `.nullable()` (`server/typescript/packages/codegen-ts/src/templates/zod-validators.ts:307-310`, `appendValidatorChain` line 579); `mountUpdateRoute` safeParse→400 (`server/typescript/packages/runtime-ts/src/drizzle-fastify/index.ts:225-228`; same in `fastify/index.ts:195`, `hono/index.ts:192`). Confirmed empirically: Zod `.optional()` rejects `null`. |
+| Python | **200, clears the column** | Router binds `dto: dict[str, Any]` — raw present keys (`server/python/src/metaobjects/codegen/generators/router_generator.py:300`); repo/`ObjectManager.update` write every present key, `None` → SQL NULL (`server/python/tests/integration/generated_router_app.py:231`; `src/metaobjects/runtime/object_manager.py:270-306`). |
+| C# — plain entity | **200, silent no-op** | `if (prop.Value.ValueKind == JsonValueKind.Null) continue;` (`server/csharp/MetaObjects.Codegen/Generators/RoutesGenerator.cs:219`) — added by `7fab436b` as a deliberate deferral. |
+| C# — TPH subtype | **200, clears the column** | The per-subtype handler WRITES the null (`RoutesGenerator.cs:487-490`) — pre-existing; `7fab436b` split the port against itself. |
+| Kotlin | **200, silent no-op** | `if (dto.f != null) it[f] = dto.f` null-guard (`server/java/codegen-kotlin/src/main/kotlin/com/metaobjects/generator/kotlin/KotlinSpringControllerGenerator.kt:357-372`). |
+| Java | **200, silent no-op** | Controller binds the full `@Valid @RequestBody <Entity>Dto` — absent and null are indistinguishable after Jackson binding (`server/java/codegen-spring/src/main/java/com/metaobjects/generator/spring/SpringControllerGenerator.java:276-282`); the repository merge null-guards (reference: `server/java/integration-tests/src/test/java/com/metaobjects/integration/api/generated/InMemoryAuthorRepositorySource.java:110-114`). |
+
+No conformance scenario exercises explicit-null (`update-partial-omitted-field-survives.yaml`
+lines 19-21 defer it by name), so the divergence is shipped and invisible to every gate.
+
+Two corrections to earlier text in this document:
+- §3 PATCH-2's claim that present-key-null is "*matching what all five ports' JSON stacks
+  naturally do*" is **false**: TS's Zod stack naturally REJECTS null, and Kotlin's/Java's DTO
+  binding naturally cannot SEE it. Only Python and C#'s raw-JSON enumeration do it naturally.
+- §1.1's framing survives, but note the **second** shipped divergence found on the same path:
+  Java (`@NotNull`/`@NotBlank` from `SpringDtoGenerator.java:375-379` + `@Valid` on PATCH) and
+  Kotlin (non-null constructor params) **400 any PATCH that omits a `@required` field**;
+  TS/Python/C# accept it. `update-partial-omitted-field-survives.yaml` papers over this by
+  sending `createdAt` in the body (its own description admits it, lines 3-5). Patching a single
+  optional field — the core partial-update gesture — currently works on three ports and 400s on
+  two.
+
+### 12.2 Why B and not A ("stop and document")
+
+1. **This is the exact defect class the project exists to prevent.** A client cannot send
+   `{"bio": null}` and get the same answer from two backends — 400 vs clears vs silent no-op.
+   The silent no-op is the worst failure mode (a mutation API that quietly ignores an
+   instruction), and it is especially hostile to the LLM-tools pillar: a model calling a
+   generated CRUD tool will emit `{"field": null}` intending to clear, and on three ports
+   nothing happens and nothing says so.
+2. **Null-to-clear is a standard adopter need, not theater** — unassign a nullable FK, clear a
+   due date, blank a bio. RFC 7396 merge-patch made present-null-clears the lingua franca of
+   partial updates.
+3. **Every port's runtime substrate already supports the tristate natively** — Drizzle `.set()`,
+   EF tracked entities, Exposed `patch(id){}` (shipped in `ad632ac9`,
+   `AuthorRepositoryBase.kt:52`), OMDB modified-fields, Python dict merge. Only the generated
+   HTTP handlers lose presence. This is bounded generator work, not an architecture change.
+4. **The "cheap middle path" (just stop skipping nulls in C#/Kotlin) is illusory for the JVM
+   ports.** After DTO binding, null IS absence — un-skipping nulls would re-introduce the
+   `7fab436b` clobber bug. Any fix that clears columns requires reading raw JSON presence,
+   i.e. the tristate. At the HTTP tier, "present-key semantics" and "the tristate" are the same
+   work; there is no cheaper unification. (C# is the exception: it already reads raw JSON — its
+   fix really is deleting one line and adding a guard.)
+5. **Fixing Java/Kotlin's handlers pays twice**: moving them off full-DTO `@Valid` binding to
+   raw-presence reading also fixes the required-fields-must-be-present-in-every-PATCH wart
+   (§12.1), unifying BOTH shipped divergences with one change per port.
+
+Cost honestly stated: TS, C#, Python are each roughly half a day. Java is 1–2 days (new
+generated `<Entity>Patch` + controller rebind + reference repos). **Kotlin is the expensive
+port** (2–3 days): its controller must stop binding the typed data class and drive per-field
+JSON dispatch through the already-shipped `repo.patch {}` — this is §10 Phase 3, with its full
+controller-snapshot churn. Total ≈ one focused week across ports, gated the whole way.
+
+### 12.3 PATCH-2, finalized (supersedes the §3 wording)
+
+For the generated HTTP update handler (PATCH and PUT alike, per PATCH-7), per body key:
+
+- **Absent** → the column is untouched (already gated by `update-partial-omitted-field-survives`).
+- **Present `null`** → non-`@required` field: the column is set SQL NULL, through the same write
+  path as any value. `@required` field: **400** with the port's structured validation envelope.
+- **Present value** → written via the same codec as create (PATCH-4, unchanged).
+- A PATCH body may omit `@required` fields (they are simply untouched) — Java/Kotlin's current
+  400 on that is retired by the same handler change.
+- **Unknown keys: silently ignored** — the shipped TS (Zod strip) and C# (`FindProperty` miss →
+  `continue`) behavior, adopted uniformly. §3 PATCH-3's unknown-key-400 is explicitly DEFERRED
+  as its own later decision (it would force `.strict()` into TS's Zod schemas — separate blast
+  radius; today's ports diverge on this axis too, but at far lower severity).
+
+Programmatic tier: unchanged where native tristate already exists (TS `<Entity>Patch` via
+`z.input` — needs `.nullable()` to actually admit null; Kotlin `repo.patch {}`; C# tracked
+entity; Python dict). Java gains the §4.3 presence-tracked `<Entity>Patch` because its HTTP
+handler needs it anyway.
+
+### 12.4 Per-port work and the gate
+
+- **Gate first (red by design):** new
+  `fixtures/api-contract-conformance/scenarios/update-explicit-null-clears.yaml`, both lanes,
+  all five ports: r1 `PATCH {"bio": null}` → 200 with `bio: null`; r2 `GET` → `bio: null`
+  persisted; r3 `PATCH {"bio": "restored"}` → 200 (provably settable again; leaves state
+  deterministic); r4 `PATCH {"name": null}` → 400 envelope (required-null). The body of r1
+  deliberately omits `name`/`createdAt` — it simultaneously gates the required-field-omission
+  fix. Expected initial state: red on all five (TS 400s r1; Python lacks the r4 guard; C# base
+  no-ops r1; Kotlin/Java 400 r1 for the wrong reason). Optionally add an explicit-null column to
+  a persistence-conformance `op: update` scenario to gate the runtime codecs, which are believed
+  already correct.
+- **TS:** in `zod-validators.ts`, non-`@required` UpdateSchema fields append `.nullable()` (keyed
+  on required-ness, NOT `fieldWillBeOptional` — a required-with-default field must still reject
+  null); `.set({bio: null})` already writes NULL. Goldens + queries tests.
+- **Python:** write path already correct; `router_generator.py` emits a `_REQUIRED_FIELDS`
+  frozenset (sibling of the filter allowlist) and the update handler 400s present-null on those
+  keys before calling the repo.
+- **C#:** `RoutesGenerator.cs` — base handler replaces the line-219 `continue` with the TPH
+  branch's null-write, PLUS a `!target.IsNullable` → 400 guard; the TPH handler (487-490) gains
+  the same guard (today it would 500 on save). One shared emitter for both, per §10 Phase 1.
+- **Java:** `<Entity>Patch.fromJson(JsonNode, ObjectMapper)` — bind values by
+  `mapper.treeToValue` per present field (Jackson handles every subtype exactly as create does;
+  no hand-rolled parse arms), track presence/null from the node, 400 on required-null; controller
+  binds `JsonNode` and calls `repository.patch(id, patch)`; `update(id, dto)` stays for
+  programmatic full-merge use; reference in-memory repos implement `patch` (~15 lines each).
+- **Kotlin (the hard one):** controller update handler binds `@RequestBody body: JsonNode`
+  instead of the `@Valid` data class; per present field, `mapper.treeToValue(node, FieldType)`
+  (per-field, so non-null ctor params never bite) into the existing generated
+  `repo.patch(id) { it[col] = v }`; required-null → 400. Reuses the per-field spec list the
+  generator already builds for filter dispatch. Absorbs the §10 Phase-3 controller-snapshot
+  churn — commit separately, behavior-gated by the api-contract generated lane across the
+  refactor.
+- **Release shape:** coordinated across npm/NuGet/Maven (+ PyPI), CHANGELOG breaking-banner:
+  explicit-null in PATCH now clears on C#/Kotlin/Java instead of being silently ignored; TS no
+  longer 400s it; required-field explicit-null is 400 everywhere; Java/Kotlin PATCH no longer
+  requires `@required` fields in the body. Land TS/C#/Python first, then Java, then Kotlin;
+  nothing releases until all five are green on the new scenario.
+
+### 12.5 The Java-patch coupling (why A would also cancel `<Entity>Patch`)
+
+Under option A (present-non-null forever), a presence-tracked `AuthorPatch` is pointless: fed
+from a null-guarded merge, presence degenerates to value-non-null — exactly what the existing
+compile-safe `update(id, dto)` full-DTO already expresses. Java's patch type earns its existence
+only by carrying the absent/null distinction the DTO cannot. The two decisions are one decision;
+this section makes them together.
