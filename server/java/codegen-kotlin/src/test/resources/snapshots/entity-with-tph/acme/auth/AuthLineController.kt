@@ -10,6 +10,9 @@ import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.transactions.transaction
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.ObjectMapper
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -232,7 +235,7 @@ private fun rowToAuthLine(row: ResultRow): AuthLine = AuthLine(
 /** GENERATED — REST controller for AuthLine entity. Implements the cross-port API contract. */
 @RestController
 @RequestMapping("/api/authlines")
-class AuthLineController {
+class AuthLineController(private val objectMapper: ObjectMapper) {
 
     @GetMapping
     fun list(
@@ -280,15 +283,20 @@ class AuthLineController {
     }
 
     @RequestMapping(value = ["/{id}"], method = [RequestMethod.PATCH, RequestMethod.PUT])
-    fun update(@PathVariable id: Long, @Valid @RequestBody dto: AuthLine): ResponseEntity<Any> = transaction {
-        val updated = AuthLineTable.update({ AuthLineTable.id eq id }) {
-            if (dto.label != null) it[label] = dto.label
+    fun update(@PathVariable id: Long, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
+        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+        if (listOf("label").any { body.has(it) }) {
+            try {
+                AuthLineTable.update({ AuthLineTable.id eq id }) {
+                    if (body.has("label")) { val n = body.get("label"); if (n.isNull) it[AuthLineTable.label] = null else { val v: kotlin.String = objectMapper.treeToValue(n, object : TypeReference<kotlin.String>() {}); it[AuthLineTable.label] = v } }
+                }
+            } catch (e: com.fasterxml.jackson.databind.JsonMappingException) {
+                return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+            }
         }
-        if (updated == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to "not_found") as Any)
-        else {
-            val row = AuthLineTable.selectAll().where { AuthLineTable.id eq id }.single()
-            ResponseEntity.ok(rowToAuthLine(row) as Any)
-        }
+        val row = AuthLineTable.selectAll().where { AuthLineTable.id eq id }.singleOrNull()
+        if (row == null) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to "not_found") as Any)
+        else ResponseEntity.ok(rowToAuthLine(row) as Any)
     }
 
     @DeleteMapping("/{id}")

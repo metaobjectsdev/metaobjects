@@ -89,7 +89,7 @@ class EnumFilterControllerRunTest {
                 "jdbc:h2:mem:enum_filter;DB_CLOSE_DELAY=-1;MODE=PostgreSQL", driver = "org.h2.Driver")
             transaction(db) { SchemaUtils.create(widgetTable) }
 
-            val controller = controllerClass.getDeclaredConstructor().newInstance()
+            val controller = controllerClass.getDeclaredConstructor(ObjectMapper::class.java).newInstance(mapper)
             val converter = MappingJackson2HttpMessageConverter().apply { objectMapper = mapper }
             val mvc = MockMvcBuilders.standaloneSetup(controller).setMessageConverters(converter).build()
 

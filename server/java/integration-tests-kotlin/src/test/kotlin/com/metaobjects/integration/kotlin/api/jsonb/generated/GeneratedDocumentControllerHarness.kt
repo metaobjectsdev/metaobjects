@@ -153,7 +153,7 @@ class GeneratedDocumentControllerHarness(
             user = pg.username, password = pg.password)
         transaction(db) { SchemaUtils.create(documentTable) }
 
-        mockMvc = standalone(controllerClass.getDeclaredConstructor().newInstance())
+        mockMvc = standalone(controllerClass.getDeclaredConstructor(ObjectMapper::class.java).newInstance(mapper))
 
         if (seed) {
             for (r in seedRows) {

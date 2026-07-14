@@ -149,8 +149,8 @@ class GeneratedM2mControllerHarness(
             SchemaUtils.create(*tables.toTypedArray())
             seedRaw()
         }
-        postMvc = standalone(postControllerClass.getDeclaredConstructor().newInstance())
-        personMvc = standalone(personControllerClass.getDeclaredConstructor().newInstance())
+        postMvc = standalone(postControllerClass.getDeclaredConstructor(ObjectMapper::class.java).newInstance(mapper))
+        personMvc = standalone(personControllerClass.getDeclaredConstructor(ObjectMapper::class.java).newInstance(mapper))
     }
 
     /** Dispatch to the controller owning the source URL segment. */

@@ -126,7 +126,7 @@ class UuidPkControllerRunTest {
                 exec("""INSERT INTO authors (id, "name") VALUES ('$aliceId', 'Alice')""")
             }
 
-            val controller = controllerClass.getDeclaredConstructor().newInstance()
+            val controller = controllerClass.getDeclaredConstructor(ObjectMapper::class.java).newInstance(mapper)
             val converter = MappingJackson2HttpMessageConverter().apply { objectMapper = mapper }
             val mvc = MockMvcBuilders.standaloneSetup(controller).setMessageConverters(converter).build()
 

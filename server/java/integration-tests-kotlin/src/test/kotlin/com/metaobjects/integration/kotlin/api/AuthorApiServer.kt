@@ -197,6 +197,12 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
         @Suppress("UNCHECKED_CAST")
         val body = readJsonBody(exchange) as? Map<String, Any?>
             ?: return sendJson(exchange, 400, mapOf("error" to "validation"))
+        // FR-035 PATCH-2: an explicit null on a @required field (name / createdAt, per
+        // meta.json) is a 400 — a present null on the nullable bio clears it, and an
+        // omitted required field is untouched (never a 400).
+        for (f in listOf("name", "createdAt")) {
+            if (body.containsKey(f) && body[f] == null) return sendJson(exchange, 400, mapOf("error" to "validation"))
+        }
         val updated = transaction(db) {
             AuthorTable.update({ AuthorTable.id eq id }) {
                 (body["name"] as? String)?.let { v -> it[name] = v }

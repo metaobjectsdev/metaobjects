@@ -151,6 +151,19 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         val pkFieldName = primary?.fields?.firstOrNull() ?: DEFAULT_PK_FIELD
         val pkParamType = primaryKeyParamType(entity, pkFieldName)
 
+        // FR-035: the PATCH-settable columns = scalar fields minus the PK. ObjectField / MapField
+        // (jsonb value-objects) and the `field.string @dbColumnType=jsonb` open bag are excluded:
+        // their in-process type is a kotlinx JsonElement / VO with no clean Jackson treeToValue
+        // bind on the raw-JsonNode patch path. (create DOES write the open bag from the DTO;
+        // an open bag is thus a create-only CRUD column — see KNOWN_GAPS.)
+        // When this is EMPTY (a PK + only object/map/jsonb columns) the controller emits no
+        // ObjectMapper ctor param / TypeReference import (they'd be unused → allWarningsAsErrors).
+        val patchSettableFields = entity.metaFields.filter {
+            it !is ObjectField && it !is MapField && it.name != pkFieldName &&
+                !KotlinTypeMapper.isJsonbOpenBag(it)
+        }
+        val hasPatchFields = patchSettableFields.isNotEmpty()
+
         // Sort allowlist: every scalar field is sortable. Skip ObjectField (no SQL column
         // surface on the Exposed Table; @storage controls a separate column shape) and the
         // `field.string @dbColumnType=jsonb` open bag — a JSONB value is not a scalar sort
@@ -190,6 +203,14 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("import org.jetbrains.exposed.sql.selectAll\n")
             append("import org.jetbrains.exposed.sql.update\n")
             append("import org.jetbrains.exposed.sql.transactions.transaction\n")
+            append("import com.fasterxml.jackson.databind.JsonNode\n")
+            // ObjectMapper + TypeReference are used ONLY by the per-field patch bind, which is
+            // emitted only when there ARE settable fields — omit them otherwise (unused import /
+            // ctor param would fail the module's allWarningsAsErrors compile).
+            if (hasPatchFields) {
+                append("import com.fasterxml.jackson.core.type.TypeReference\n")
+                append("import com.fasterxml.jackson.databind.ObjectMapper\n")
+            }
             append("import jakarta.validation.Valid\n")
             append("import org.springframework.http.HttpStatus\n")
             append("import org.springframework.http.ResponseEntity\n")
@@ -284,7 +305,15 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("/** GENERATED — REST controller for ${shortName} entity. Implements the cross-port API contract. */\n")
             append("@RestController\n")
             append("@RequestMapping(\"$routeBase\")\n")
-            append("class ${shortName}Controller {\n\n")
+            // FR-035 present-key PATCH: the update handler binds the RAW JsonNode (not the
+            // @Valid data class, which cannot see absent-vs-null) and per-field-binds present
+            // values via the Spring-configured ObjectMapper — injected only when there ARE
+            // settable fields (a PK + only object/jsonb columns needs no mapper).
+            if (hasPatchFields) {
+                append("class ${shortName}Controller(private val objectMapper: ObjectMapper) {\n\n")
+            } else {
+                append("class ${shortName}Controller {\n\n")
+            }
 
             // List handler — pagination + sort + withCount + FR-009 filter operators.
             //
@@ -341,6 +370,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 // If the entity has no auto-incrementing PK the consumer can override the
                 // generated handler; this is the 95% case.
                 if (field.name == pkFieldName) continue
+                // NOTE: a `field.string @dbColumnType=jsonb` open bag IS written here (create
+                // binds it from the @Valid DTO's kotlinx JsonElement property, gated by the
+                // jsonb-open-bag-roundtrip corpus). PATCH cannot (the raw-JsonNode path can't bind
+                // a JsonElement without surfacing the un-imported type the #179 guard forbids), so
+                // an open bag is a create-only column on the generated CRUD — see KNOWN_GAPS.
                 append("            it[${field.name}] = dto.${field.name}\n")
             }
             append("        }[${tableObjectName}.${pkFieldName}]\n")
@@ -353,31 +387,57 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // Stacking @PatchMapping + @PutMapping on the same method does NOT register both
             // in Spring MVC — only one composed @RequestMapping per method is honored, so the
             // other verb 405s. (Surfaced by the SP-F generated-controller HTTP lane.)
+            // FR-035 present-key tristate: bind the RAW JsonNode so absent-vs-null is visible.
+            // A non-object body, or an explicit null on a @required field, is a 400; an explicit
+            // null on a nullable field CLEARS it; an omitted field is untouched; a present value
+            // binds through the configured ObjectMapper (same codecs as create). An empty
+            // effective patch is a no-op read-back (avoids Exposed's empty-SET error).
+            // Settable columns are `patchSettableFields` (computed up top): scalar fields minus
+            // the PK, EXCLUDING object/map/jsonb-open-bag (an open bag is a create-only CRUD
+            // column — PATCH can't bind a kotlinx JsonElement; see KNOWN_GAPS). When empty, no
+            // update{} block is emitted (an empty Exposed SET throws) — a no-op read-back.
             append("    @RequestMapping(value = [\"/{id}\"], method = [RequestMethod.PATCH, RequestMethod.PUT])\n")
-            append("    fun update(@PathVariable id: $pkParamType, @Valid @RequestBody dto: ${shortName}): ResponseEntity<Any> = transaction {\n")
-            append("        val updated = ${tableObjectName}.update({ ${tableObjectName}.${pkFieldName} eq id }) {\n")
-            for (field in entity.metaFields) {
-                if (field is ObjectField || field is MapField) continue
-                if (field.name == pkFieldName) continue
-                // Partial merge: an OPTIONAL field omitted from a PATCH must not clobber the
-                // stored value. Optional DTO props are nullable + default to null, so absent
-                // reads as null here — null-guard them (the same merge the TPH per-subtype
-                // handler uses). Required props are non-null (Jackson rejects a body missing
-                // them with a 400 before this runs), so they are always present → written
-                // unconditionally. Guarding a non-null prop would be an always-true warning
-                // and break -Werror consumers. (Explicit-null-clears is the deferred tristate.)
+            append("    fun update(@PathVariable id: $pkParamType, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {\n")
+            append("        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+            for (field in patchSettableFields) {
                 if (KotlinGenUtil.isRequiredField(field)) {
-                    append("            it[${field.name}] = dto.${field.name}\n")
-                } else {
-                    append("            if (dto.${field.name} != null) it[${field.name}] = dto.${field.name}\n")
+                    append("        if (body.has(\"${field.name}\") && body.get(\"${field.name}\").isNull) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
                 }
             }
-            append("        }\n")
-            append("        if (updated == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
-            append("        else {\n")
-            append("            val row = ${tableObjectName}.selectAll().where { ${tableObjectName}.${pkFieldName} eq id }.single()\n")
-            append("            ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
-            append("        }\n")
+            if (hasPatchFields) {
+                val settableNamesList = patchSettableFields.joinToString(", ") { "\"${it.name}\"" }
+                append("        if (listOf($settableNamesList).any { body.has(it) }) {\n")
+                // A present value that cannot bind to its column's Kotlin type (e.g. a JSON object
+                // for a String column) throws from treeToValue INSIDE the statement build — map
+                // that to 400 (the create @Valid path 400s the same value), not a 500. Catch the
+                // specific Jackson JsonMappingException so no unrelated exception is swallowed.
+                append("            try {\n")
+                append("                ${tableObjectName}.update({ ${tableObjectName}.${pkFieldName} eq id }) {\n")
+                for (field in patchSettableFields) {
+                    // The DATA-CLASS element type (a field.enum's materialized enum class, not the
+                    // wire String) so the bound value matches the Exposed Column<E>. Columns are
+                    // qualified (`Table.col`) so a field named like the `body` param can't shadow them.
+                    val elem = KotlinTypeMapper.enumTypeName(field, entity) ?: KotlinTypeMapper.kotlinTypeName(field)
+                    val ktType = if (field.isArrayType) "kotlin.collections.List<$elem>" else "$elem"
+                    val col = "$tableObjectName.${field.name}"
+                    // A typed local coerces the ObjectMapper's platform return type to the exact
+                    // column type (matching the data-class property the old handler assigned) so
+                    // Exposed's set() overload resolves for enum / EntityID-FK columns too.
+                    if (KotlinGenUtil.isRequiredField(field)) {
+                        append("                    if (body.has(\"${field.name}\")) { val v: $ktType = objectMapper.treeToValue(body.get(\"${field.name}\"), object : TypeReference<$ktType>() {}); it[$col] = v }\n")
+                    } else {
+                        append("                    if (body.has(\"${field.name}\")) { val n = body.get(\"${field.name}\"); if (n.isNull) it[$col] = null else { val v: $ktType = objectMapper.treeToValue(n, object : TypeReference<$ktType>() {}); it[$col] = v } }\n")
+                    }
+                }
+                append("                }\n")
+                append("            } catch (e: com.fasterxml.jackson.databind.JsonMappingException) {\n")
+                append("                return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+                append("            }\n")
+                append("        }\n")
+            }
+            append("        val row = ${tableObjectName}.selectAll().where { ${tableObjectName}.${pkFieldName} eq id }.singleOrNull()\n")
+            append("        if (row == null) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
+            append("        else ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
             append("    }\n\n")
 
             // DELETE — Exposed's `deleteWhere` is an extension fn on Table; the import

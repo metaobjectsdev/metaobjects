@@ -177,7 +177,7 @@ class GeneratedAuthorControllerHarness(
         // identifiers).
         transaction(db) { SchemaUtils.create(authorTable) }
 
-        val controller = controllerClass.getDeclaredConstructor().newInstance()
+        val controller = controllerClass.getDeclaredConstructor(ObjectMapper::class.java).newInstance(mapper)
         val converter = MappingJackson2HttpMessageConverter().apply { objectMapper = mapper }
         val mvc = MockMvcBuilders.standaloneSetup(controller)
             .setMessageConverters(converter)

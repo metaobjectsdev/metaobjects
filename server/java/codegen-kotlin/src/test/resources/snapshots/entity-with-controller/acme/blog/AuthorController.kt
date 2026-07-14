@@ -10,6 +10,9 @@ import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.transactions.transaction
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.ObjectMapper
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -232,7 +235,7 @@ private fun rowToAuthor(row: ResultRow): Author = Author(
 /** GENERATED — REST controller for Author entity. Implements the cross-port API contract. */
 @RestController
 @RequestMapping("/api/authors")
-class AuthorController {
+class AuthorController(private val objectMapper: ObjectMapper) {
 
     @GetMapping
     fun list(
@@ -280,15 +283,21 @@ class AuthorController {
     }
 
     @RequestMapping(value = ["/{id}"], method = [RequestMethod.PATCH, RequestMethod.PUT])
-    fun update(@PathVariable id: Long, @Valid @RequestBody dto: Author): ResponseEntity<Any> = transaction {
-        val updated = AuthorTable.update({ AuthorTable.id eq id }) {
-            it[name] = dto.name
+    fun update(@PathVariable id: Long, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
+        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+        if (body.has("name") && body.get("name").isNull) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+        if (listOf("name").any { body.has(it) }) {
+            try {
+                AuthorTable.update({ AuthorTable.id eq id }) {
+                    if (body.has("name")) { val v: kotlin.String = objectMapper.treeToValue(body.get("name"), object : TypeReference<kotlin.String>() {}); it[AuthorTable.name] = v }
+                }
+            } catch (e: com.fasterxml.jackson.databind.JsonMappingException) {
+                return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+            }
         }
-        if (updated == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to "not_found") as Any)
-        else {
-            val row = AuthorTable.selectAll().where { AuthorTable.id eq id }.single()
-            ResponseEntity.ok(rowToAuthor(row) as Any)
-        }
+        val row = AuthorTable.selectAll().where { AuthorTable.id eq id }.singleOrNull()
+        if (row == null) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to "not_found") as Any)
+        else ResponseEntity.ok(rowToAuthor(row) as Any)
     }
 
     @DeleteMapping("/{id}")

@@ -46,3 +46,25 @@ byte-identical to the Java port by construction.
     `metaobjects-om` (which transitively brings `render` + `metadata`) and
     `com.metaobjects.loader.MetaDataLoader`. Consumers wanting nested extraction must have
     `metaobjects-om` on the classpath.
+
+## FR-035 partial-PATCH (present-key tristate)
+
+The generated `@RestController`'s PATCH/PUT handler binds the raw `JsonNode` and
+per-field-binds present values via the Spring `ObjectMapper` (absent → untouched;
+explicit null → clears a nullable column or 400 on a `@required` field; present
+value → set). Two deliberate gaps:
+
+- **Present-value constraint validation** is NOT run on PATCH. Dropping `@Valid`
+  means `@Size` / `@Pattern` / `@NotBlank` / `@Min` / `@Max` (emitted by
+  `validationAnnotations`) no longer fire on a PATCH body's present values — only a
+  present-null-on-`@required` → 400. This matches the C#/Java partial-PATCH state; TS
+  and Python DO validate present values on PATCH. A cross-port PATCH-4 follow-up.
+- **`field.string @dbColumnType=jsonb` open-bag** is a **create-only** column on the
+  generated CRUD. The generated `create` writes it (bound from the `@Valid` DTO's
+  kotlinx `JsonElement` property — exercised by the `jsonb-open-bag-roundtrip` corpus),
+  but the generated `update` does NOT: the raw-JsonNode patch path cannot bind a kotlinx
+  `JsonElement` via Jackson `treeToValue`, and the type name must not surface
+  un-imported in the controller (the #179 filter/sort guard). So a `PATCH` leaves an
+  open-bag column untouched. A consumer needing to PATCH an open-bag column overrides
+  the generated update handler. Typed value-object jsonb (`field.object`) is
+  object-typed and separately out of the CRUD DTO scope.
