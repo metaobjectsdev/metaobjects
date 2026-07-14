@@ -1,1 +1,7 @@
-{ "generators": ["entity", "table"] }
+{
+  "generators": [
+    "entity",
+    "table",
+    "repository"
+  ]
+}

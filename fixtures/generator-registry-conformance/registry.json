@@ -89,9 +89,9 @@
       "ports": ["csharp"]
     },
     "repository": {
-      "concept": "Per-entity Spring Data repository.",
+      "concept": "Per-entity repository seam (Java: Spring Data interface; Kotlin: an open Exposed persistence base with CRUD + patch bodies).",
       "tier": "native",
-      "ports": ["java"]
+      "ports": ["java", "kotlin"]
     },
     "dto": {
       "concept": "Per-entity Spring DTO.",

@@ -58,6 +58,9 @@ object KotlinNaming {
     /** [KotlinSpringControllerGenerator]: `shortName + "Controller"`. */
     fun controllerName(shortName: String): String = shortName + "Controller"
 
+    /** [KotlinRepositoryGenerator]: `shortName + "RepositoryBase"` — the open persistence base a consumer extends. */
+    fun repositoryBaseName(shortName: String): String = shortName + "RepositoryBase"
+
     /** [KotlinFilterAllowlistGenerator]: `shortName + "FilterAllowlist"`. */
     fun filterAllowlistName(shortName: String): String = shortName + "FilterAllowlist"
 

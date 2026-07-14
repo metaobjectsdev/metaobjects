@@ -55,6 +55,7 @@ class KotlinCodegenSnapshotTest {
                     "relations"  -> KotlinRelationsGenerator()
                     "storedproc" -> KotlinStoredProcGenerator()
                     "controller" -> KotlinSpringControllerGenerator()
+                    "repository" -> KotlinRepositoryGenerator()
                     "filter-allowlist" -> KotlinFilterAllowlistGenerator()
                     "output-parser" -> KotlinOutputParserGenerator()
                     "output-prompt" -> KotlinOutputPromptGenerator()

@@ -70,6 +70,12 @@ val GENERATOR_REGISTRY: Map<String, GeneratorInfo> = linkedMapOf(
         tier = GeneratorTier.NATIVE,
         factory = ::KotlinSpringControllerGenerator,
     ),
+    "repository" to GeneratorInfo(
+        name = "repository",
+        description = "Per-entity Kotlin persistence repository base (row-mapper + CRUD + patch).",
+        tier = GeneratorTier.NATIVE,
+        factory = ::KotlinRepositoryGenerator,
+    ),
     "output-parser" to GeneratorInfo(
         name = "output-parser",
         description = "Per-template tolerant output parser (recover-on-receipt).",

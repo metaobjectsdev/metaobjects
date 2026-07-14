@@ -1,4 +1,9 @@
 {
-  "generators": ["entity", "table", "validator"],
+  "generators": [
+    "entity",
+    "table",
+    "validator",
+    "repository"
+  ],
   "validatorPackage": "acme.demo"
 }
