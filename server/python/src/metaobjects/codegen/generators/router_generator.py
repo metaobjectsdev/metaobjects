@@ -39,6 +39,7 @@ from metaobjects.apidocs.naming import reverse_finder_fn, reverse_finder_in_fn
 from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
+from metaobjects.codegen.fr010_field_mapping import is_required
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator, per_entity
 from metaobjects.codegen.generators.m2m_codegen import (
     M2mDescriptor,
@@ -87,6 +88,24 @@ def _scalar_fields(entity: MetaObject) -> list[MetaField]:
     controllers use for the sort allowlist (object fields have no plain
     column to sort on)."""
     return [f for f in entity.fields() if f.sub_type != fc.FIELD_SUBTYPE_OBJECT]
+
+
+def _required_field_names(entity: MetaObject) -> list[str]:
+    """Every @required field name — scalar AND object/jsonb (unlike
+    _scalar_fields, which drops object fields for the sort allowlist). FR-035
+    PATCH-2 guards present-null on any of these, and a @required jsonb column can
+    be nulled just like a scalar one."""
+    return [f.name for f in entity.fields() if is_required(f)]
+
+
+def _py_set_literal(names: list[str], *, frozen: bool = False) -> str:
+    """A Python set/frozenset literal from field names, matching the generated
+    allowlist idiom (one quoted name per line). Empty → ``frozenset()`` / ``set()``."""
+    empty = "frozenset()" if frozen else "set()"
+    if not names:
+        return empty
+    body = "{\n" + "".join(f'    "{name}",\n' for name in names) + "}"
+    return f"frozenset({body})" if frozen else body
 
 
 def _pk_py_type(entity: MetaObject) -> PyType:
@@ -300,6 +319,12 @@ class RouterGenerator:
                 "    dto: dict[str, Any],",
                 f"    repo: Annotated[{repo_class}, Depends(get_repository)],",
                 ") -> Any:",
+                "    # FR-035 PATCH-2: an explicit null on a @required field is a 400 —",
+                "    # a present null on a NON-required field falls through and clears it,",
+                "    # and an OMITTED required field is untouched (never a 400).",
+                "    for _k in _REQUIRED_FIELDS:",
+                "        if _k in dto and dto[_k] is None:",
+                '            return JSONResponse(status_code=400, content={"error": "validation"})',
                 f"    saved = repo.update({pk_param}, dto)",
                 "    if saved is None:",
                 '        return JSONResponse(status_code=404, content={"error": "not_found"})',
@@ -385,9 +410,18 @@ class RouterGenerator:
                 if f.name not in seen:
                     seen.add(f.name)
                     sort_fields.append(f.name)
-        sort_set_body = "set()" if not sort_fields else (
-            "{\n" + "".join(f'    "{name}",\n' for name in sort_fields) + "}"
-        )
+        sort_set_body = _py_set_literal(sort_fields)
+        # FR-035 PATCH-2: @required fields across the base AND every subtype — an
+        # explicit null on any of these is a 400 (the per-subtype update handlers
+        # guard against it before the repo call). Union, stable order.
+        required_names: list[str] = _required_field_names(entity)
+        req_seen = set(required_names)
+        for st in plan.subtypes:
+            for name in _required_field_names(st.entity):
+                if name not in req_seen:
+                    req_seen.add(name)
+                    required_names.append(name)
+        required_set_body = _py_set_literal(required_names, frozen=True)
 
         h = generated_header(short_name, _effective_fqn(entity)).rstrip()
         parts: list[str] = []
@@ -425,6 +459,9 @@ class RouterGenerator:
         parts.append("")
         parts.append("")
         parts.append(f"_SORT_ALLOWLIST: set[str] = {sort_set_body}")
+        parts.append("")
+        parts.append("")
+        parts.append(f"_REQUIRED_FIELDS: frozenset[str] = {required_set_body}")
         parts.append("")
         parts.append("")
         parts.append("def _parse_sort(raw: str) -> _SortClause | None:")
@@ -511,6 +548,10 @@ class RouterGenerator:
             parts.append("    dto: dict[str, Any],")
             parts.append(f"    repo: Annotated[{repo_class}, Depends(get_repository)],")
             parts.append(") -> Any:")
+            parts.append("    # FR-035 PATCH-2: an explicit null on a @required field is a 400.")
+            parts.append("    for _k in _REQUIRED_FIELDS:")
+            parts.append("        if _k in dto and dto[_k] is None:")
+            parts.append('            return JSONResponse(status_code=400, content={"error": "validation"})')
             parts.append(f'    saved = repo.update("{val}", {pk_param}, dto)')
             parts.append("    if saved is None:")
             parts.append('        return JSONResponse(status_code=404, content={"error": "not_found"})')
@@ -600,9 +641,10 @@ class RouterGenerator:
         ops_const = f"{upper}_FILTER_OPS_BY_FIELD"
         allowlist_module = f"{snake}_filter_allowlist"
 
-        sort_set_body = "set()" if not sort_fields else (
-            "{\n" + "".join(f'    "{name}",\n' for name in sort_fields) + "}"
-        )
+        sort_set_body = _py_set_literal(sort_fields)
+        # FR-035 PATCH-2: an explicit null on a @required field (scalar or jsonb)
+        # is a 400 — the update handler guards these before the repo call.
+        required_set_body = _py_set_literal(_required_field_names(entity), frozen=True)
 
         parts: list[str] = []
         parts.append(
@@ -640,6 +682,9 @@ class RouterGenerator:
         parts.append("")
         parts.append("")
         parts.append(f"_SORT_ALLOWLIST: set[str] = {sort_set_body}")
+        parts.append("")
+        parts.append("")
+        parts.append(f"_REQUIRED_FIELDS: frozenset[str] = {required_set_body}")
         parts.append("")
         parts.append("")
         parts.append('def _parse_sort(raw: str) -> _SortClause | None:')

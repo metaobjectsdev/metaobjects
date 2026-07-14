@@ -418,6 +418,12 @@ def make_app(repo: AuthorRepository) -> FastAPI:
     @app.patch("/api/authors/{author_id}")
     @app.put("/api/authors/{author_id}")
     def update_author(author_id: int, dto: dict[str, Any]) -> Any:
+        # FR-035 PATCH-2: an explicit null on a @required field (name / createdAt,
+        # per meta.json) is a 400 — a present null on the nullable bio clears it,
+        # and an omitted required field is simply untouched (never a 400).
+        for _k in ("name", "createdAt"):
+            if _k in dto and dto[_k] is None:
+                return JSONResponse(status_code=400, content={"error": "validation"})
         saved = repo.update(author_id, dto)
         if saved is None:
             return JSONResponse(status_code=404, content={"error": "not_found"})
