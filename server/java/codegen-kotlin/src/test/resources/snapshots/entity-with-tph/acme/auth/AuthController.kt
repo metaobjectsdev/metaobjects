@@ -10,6 +10,10 @@ import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.transactions.transaction
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.ObjectMapper
+import jakarta.validation.Validator
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -256,7 +260,7 @@ private fun rowToAuth(row: ResultRow): Auth = Auth(
 /** GENERATED — TPH discriminator-base controller for Auth (polymorphic + per-subtype CRUD). */
 @RestController
 @RequestMapping("/api/auths")
-class AuthController {
+class AuthController(private val objectMapper: ObjectMapper, private val validator: Validator) {
 
     @GetMapping
     fun list(
@@ -335,18 +339,29 @@ class AuthController {
     }
 
     @RequestMapping(value = ["/bridge/{id}"], method = [RequestMethod.PATCH, RequestMethod.PUT])
-    fun updateBridge(@PathVariable id: Long, @RequestBody dto: Auth): ResponseEntity<Any> = transaction {
-        val updated = AuthTable.update({ (AuthTable.id eq id) and (AuthTable.type eq AuthType.Bridge) }) {
-            if (dto.reference != null) it[reference] = dto.reference
-            if (dto.quantity != null) it[quantity] = dto.quantity
-            if (dto.copayAmount != null) it[copayAmount] = dto.copayAmount
-            if (dto.priorAuthNumber != null) it[priorAuthNumber] = dto.priorAuthNumber
+    fun updateBridge(@PathVariable id: Long, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
+        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+        if (body.has("quantity") && body.get("quantity").isNull) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+        if (body.has("reference") && body.get("reference").isNull) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+        if (listOf("quantity", "reference").any { body.has(it) }) {
+            try {
+                val hasQuantity = body.has("quantity")
+                val vQuantity: kotlin.Int? = if (hasQuantity) objectMapper.treeToValue(body.get("quantity"), object : TypeReference<kotlin.Int>() {}) else null
+                if (hasQuantity && validator.validateValue(Auth::class.java, "quantity", vQuantity).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+                val hasReference = body.has("reference")
+                val vReference: kotlin.String? = if (hasReference) objectMapper.treeToValue(body.get("reference"), object : TypeReference<kotlin.String>() {}) else null
+                if (hasReference && validator.validateValue(Auth::class.java, "reference", vReference).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+                AuthTable.update({ (AuthTable.id eq id) and (AuthTable.type eq AuthType.Bridge) }) {
+                    if (hasQuantity) it[AuthTable.quantity] = vQuantity!!
+                    if (hasReference) it[AuthTable.reference] = vReference!!
+                }
+            } catch (e: com.fasterxml.jackson.databind.JsonMappingException) {
+                return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+            }
         }
-        if (updated == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to "not_found") as Any)
-        else {
-            val row = AuthTable.selectAll().where { (AuthTable.id eq id) and (AuthTable.type eq AuthType.Bridge) }.single()
-            ResponseEntity.ok(rowToAuth(row) as Any)
-        }
+        val row = AuthTable.selectAll().where { (AuthTable.id eq id) and (AuthTable.type eq AuthType.Bridge) }.singleOrNull()
+        if (row == null) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to "not_found") as Any)
+        else ResponseEntity.ok(rowToAuth(row) as Any)
     }
 
     @DeleteMapping("/bridge/{id}")
@@ -402,18 +417,29 @@ class AuthController {
     }
 
     @RequestMapping(value = ["/copay/{id}"], method = [RequestMethod.PATCH, RequestMethod.PUT])
-    fun updateCopay(@PathVariable id: Long, @RequestBody dto: Auth): ResponseEntity<Any> = transaction {
-        val updated = AuthTable.update({ (AuthTable.id eq id) and (AuthTable.type eq AuthType.Copay) }) {
-            if (dto.reference != null) it[reference] = dto.reference
-            if (dto.quantity != null) it[quantity] = dto.quantity
-            if (dto.copayAmount != null) it[copayAmount] = dto.copayAmount
-            if (dto.priorAuthNumber != null) it[priorAuthNumber] = dto.priorAuthNumber
+    fun updateCopay(@PathVariable id: Long, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
+        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+        if (body.has("reference") && body.get("reference").isNull) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+        if (listOf("copayAmount", "reference").any { body.has(it) }) {
+            try {
+                val hasCopayAmount = body.has("copayAmount")
+                val nullCopayAmount = hasCopayAmount && body.get("copayAmount").isNull
+                val vCopayAmount: java.math.BigDecimal? = if (hasCopayAmount && !nullCopayAmount) objectMapper.treeToValue(body.get("copayAmount"), object : TypeReference<java.math.BigDecimal>() {}) else null
+                if (hasCopayAmount && !nullCopayAmount && validator.validateValue(Auth::class.java, "copayAmount", vCopayAmount).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+                val hasReference = body.has("reference")
+                val vReference: kotlin.String? = if (hasReference) objectMapper.treeToValue(body.get("reference"), object : TypeReference<kotlin.String>() {}) else null
+                if (hasReference && validator.validateValue(Auth::class.java, "reference", vReference).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+                AuthTable.update({ (AuthTable.id eq id) and (AuthTable.type eq AuthType.Copay) }) {
+                    if (hasCopayAmount) { if (nullCopayAmount) it[AuthTable.copayAmount] = null else it[AuthTable.copayAmount] = vCopayAmount }
+                    if (hasReference) it[AuthTable.reference] = vReference!!
+                }
+            } catch (e: com.fasterxml.jackson.databind.JsonMappingException) {
+                return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+            }
         }
-        if (updated == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to "not_found") as Any)
-        else {
-            val row = AuthTable.selectAll().where { (AuthTable.id eq id) and (AuthTable.type eq AuthType.Copay) }.single()
-            ResponseEntity.ok(rowToAuth(row) as Any)
-        }
+        val row = AuthTable.selectAll().where { (AuthTable.id eq id) and (AuthTable.type eq AuthType.Copay) }.singleOrNull()
+        if (row == null) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to "not_found") as Any)
+        else ResponseEntity.ok(rowToAuth(row) as Any)
     }
 
     @DeleteMapping("/copay/{id}")
@@ -469,18 +495,29 @@ class AuthController {
     }
 
     @RequestMapping(value = ["/priorauth/{id}"], method = [RequestMethod.PATCH, RequestMethod.PUT])
-    fun updatePriorAuth(@PathVariable id: Long, @RequestBody dto: Auth): ResponseEntity<Any> = transaction {
-        val updated = AuthTable.update({ (AuthTable.id eq id) and (AuthTable.type eq AuthType.PriorAuth) }) {
-            if (dto.reference != null) it[reference] = dto.reference
-            if (dto.quantity != null) it[quantity] = dto.quantity
-            if (dto.copayAmount != null) it[copayAmount] = dto.copayAmount
-            if (dto.priorAuthNumber != null) it[priorAuthNumber] = dto.priorAuthNumber
+    fun updatePriorAuth(@PathVariable id: Long, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {
+        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+        if (body.has("reference") && body.get("reference").isNull) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+        if (listOf("priorAuthNumber", "reference").any { body.has(it) }) {
+            try {
+                val hasPriorAuthNumber = body.has("priorAuthNumber")
+                val nullPriorAuthNumber = hasPriorAuthNumber && body.get("priorAuthNumber").isNull
+                val vPriorAuthNumber: kotlin.String? = if (hasPriorAuthNumber && !nullPriorAuthNumber) objectMapper.treeToValue(body.get("priorAuthNumber"), object : TypeReference<kotlin.String>() {}) else null
+                if (hasPriorAuthNumber && !nullPriorAuthNumber && validator.validateValue(Auth::class.java, "priorAuthNumber", vPriorAuthNumber).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+                val hasReference = body.has("reference")
+                val vReference: kotlin.String? = if (hasReference) objectMapper.treeToValue(body.get("reference"), object : TypeReference<kotlin.String>() {}) else null
+                if (hasReference && validator.validateValue(Auth::class.java, "reference", vReference).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+                AuthTable.update({ (AuthTable.id eq id) and (AuthTable.type eq AuthType.PriorAuth) }) {
+                    if (hasPriorAuthNumber) { if (nullPriorAuthNumber) it[AuthTable.priorAuthNumber] = null else it[AuthTable.priorAuthNumber] = vPriorAuthNumber }
+                    if (hasReference) it[AuthTable.reference] = vReference!!
+                }
+            } catch (e: com.fasterxml.jackson.databind.JsonMappingException) {
+                return@transaction ResponseEntity.badRequest().body(mapOf("error" to "validation") as Any)
+            }
         }
-        if (updated == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to "not_found") as Any)
-        else {
-            val row = AuthTable.selectAll().where { (AuthTable.id eq id) and (AuthTable.type eq AuthType.PriorAuth) }.single()
-            ResponseEntity.ok(rowToAuth(row) as Any)
-        }
+        val row = AuthTable.selectAll().where { (AuthTable.id eq id) and (AuthTable.type eq AuthType.PriorAuth) }.singleOrNull()
+        if (row == null) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf("error" to "not_found") as Any)
+        else ResponseEntity.ok(rowToAuth(row) as Any)
     }
 
     @DeleteMapping("/priorauth/{id}")

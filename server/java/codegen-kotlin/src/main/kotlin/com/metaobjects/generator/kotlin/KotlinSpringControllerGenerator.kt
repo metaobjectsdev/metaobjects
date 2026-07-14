@@ -562,9 +562,24 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             .filter { it.name != plan.discriminatorField && it !is com.metaobjects.field.DecimalField &&
                 !KotlinTypeMapper.isJsonbOpenBag(it) }
             .map { ScalarFieldSpec(it.name, it.subType, columnElementType(it)) }
-        // Non-discriminator, non-PK columns the create/update handlers write from the body.
+        // Non-discriminator, non-PK columns the create handler writes from the body.
         val writableFields = scalarFields.map { it.name }
             .filter { it != plan.discriminatorField && it != pkFieldName }
+
+        // FR-035/FR-036 Program B: the per-subtype PATCH-settable columns = the subtype's EFFECTIVE
+        // scalar fields (base + own, resolved via extends) minus the PK and the discriminator,
+        // EXCLUDING object/map/jsonb-open-bag (same rule as the vanilla patchSettableFields — an open
+        // bag is a create-only column, see KNOWN_GAPS). Computed PER SUBTYPE so a PriorAuth patch never
+        // touches a Bridge-only column (the old handler bound the whole union for every subtype).
+        fun subtypePatchFields(st: KotlinTphPlan.Subtype) =
+            st.entity.metaFields.filterNot {
+                it is ObjectField || it is MapField || KotlinTypeMapper.isJsonbOpenBag(it)
+            }.filter { it.name != pkFieldName && it.name != plan.discriminatorField }
+        // When NO subtype has a settable column (a PK + discriminator + only object/jsonb columns) the
+        // controller emits no ObjectMapper/Validator ctor param or TypeReference import (they would be
+        // unused → allWarningsAsErrors). A real TPH base always contributes ≥1 base scalar, so this is
+        // true in practice; the guard keeps the pathological hierarchy byte-clean.
+        val anyPatchFields = plan.subtypes.any { subtypePatchFields(it).isNotEmpty() }
 
         val src = buildString {
             if (pkg.isNotEmpty()) append("package $pkg\n\n")
@@ -578,6 +593,19 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("import org.jetbrains.exposed.sql.selectAll\n")
             append("import org.jetbrains.exposed.sql.update\n")
             append("import org.jetbrains.exposed.sql.transactions.transaction\n")
+            // FR-035 present-key PATCH: the per-subtype update handler binds the RAW JsonNode (not the
+            // union data class, which cannot see absent-vs-null) so the tristate (omitted / present-null
+            // / present-value) is visible.
+            append("import com.fasterxml.jackson.databind.JsonNode\n")
+            // FR-036: each present PATCH value binds via the Spring-configured ObjectMapper and is
+            // validated through a jakarta Validator — imported only when at least one subtype has a
+            // settable column (an unused import/ctor param would fail the module's allWarningsAsErrors
+            // compile).
+            if (anyPatchFields) {
+                append("import com.fasterxml.jackson.core.type.TypeReference\n")
+                append("import com.fasterxml.jackson.databind.ObjectMapper\n")
+                append("import jakarta.validation.Validator\n")
+            }
             append("import org.springframework.http.HttpStatus\n")
             append("import org.springframework.http.ResponseEntity\n")
             append("import org.springframework.web.bind.annotation.DeleteMapping\n")
@@ -647,7 +675,14 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("/** GENERATED — TPH discriminator-base controller for $shortName (polymorphic + per-subtype CRUD). */\n")
             append("@RestController\n")
             append("@RequestMapping(\"$routeBase\")\n")
-            append("class ${shortName}Controller {\n\n")
+            // FR-036: the per-subtype PATCH tristate binds present values through the Spring-configured
+            // ObjectMapper and validates them via the jakarta Validator — both injected only when a
+            // subtype has a settable column (else a no-arg controller, keeping unused params out).
+            if (anyPatchFields) {
+                append("class ${shortName}Controller(private val objectMapper: ObjectMapper, private val validator: Validator) {\n\n")
+            } else {
+                append("class ${shortName}Controller {\n\n")
+            }
 
             // polymorphic list
             append("    @GetMapping\n")
@@ -741,19 +776,73 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 append("        ResponseEntity.status(HttpStatus.CREATED).body(rowTo${shortName}(saved))\n")
                 append("    }\n\n")
 
-                // per-subtype update (partial patch; discriminator immutable; 404 cross-subtype)
+                // per-subtype update — FR-035/FR-036 present-key PATCH tristate (mirrors the vanilla
+                // update handler), scoped to THIS subtype's own effective columns; discriminator immutable;
+                // 404 cross-subtype via the discriminator-scoped read-back. Bind the RAW JsonNode so
+                // absent-vs-null is visible: a non-object body, or an explicit null on a @required column
+                // (base or subtype), is a 400; an explicit null on a nullable column CLEARS it; an omitted
+                // column is untouched; a present value binds through the ObjectMapper (same codecs as
+                // create) and its present non-null value is validated via the jakarta Validator. Binding +
+                // validation run at the transaction-lambda top level (a qualified return@transaction cannot
+                // cross the non-inline Exposed update{} lambda). An empty effective patch skips the update{}
+                // (Exposed rejects an empty SET) — a no-op read-back. (The union data class carries no
+                // constraint annotations, so validateValue is a structural no-op here — the r4 present-null
+                // rejection is the explicit @required guard below — but it is wired for cross-port parity
+                // and enforces a subtype that DOES surface annotations.)
+                val stPatch = subtypePatchFields(st)
                 append("    @RequestMapping(value = [\"/$seg/{id}\"], method = [RequestMethod.PATCH, RequestMethod.PUT])\n")
-                append("    fun update$sfx(@PathVariable id: $pkParamType, @RequestBody dto: $shortName): ResponseEntity<Any> = transaction {\n")
-                append("        val updated = $table.update({ ($table.$pkFieldName eq id) and ($table.${plan.discriminatorField} eq $disc) }) {\n")
-                for (f in writableFields) {
-                    append("            if (dto.$f != null) it[$f] = dto.$f\n")
+                append("    fun update$sfx(@PathVariable id: $pkParamType, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {\n")
+                append("        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+                for (field in stPatch) {
+                    if (KotlinGenUtil.isRequiredField(field)) {
+                        append("        if (body.has(\"${field.name}\") && body.get(\"${field.name}\").isNull) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+                    }
                 }
-                append("        }\n")
-                append("        if (updated == 0) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
-                append("        else {\n")
-                append("            val row = $table.selectAll().where { ($table.$pkFieldName eq id) and ($table.${plan.discriminatorField} eq $disc) }.single()\n")
-                append("            ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
-                append("        }\n")
+                if (stPatch.isNotEmpty()) {
+                    val settableNamesList = stPatch.joinToString(", ") { "\"${it.name}\"" }
+                    append("        if (listOf($settableNamesList).any { body.has(it) }) {\n")
+                    append("            try {\n")
+                    for (field in stPatch) {
+                        // The union column's element type — a field.enum's materialized enum class resolved
+                        // with the BASE as owner (exactly as the union data class + table type the folded
+                        // column), NOT the wire String — so the bound value matches Exposed's Column<E?>.
+                        val elem = KotlinTypeMapper.enumTypeName(field, base) ?: KotlinTypeMapper.kotlinTypeName(field)
+                        val ktType = if (field.isArrayType) "kotlin.collections.List<$elem>" else "$elem"
+                        val fn = field.name
+                        val cap = capitalizeFirst(fn)
+                        append("                val has$cap = body.has(\"$fn\")\n")
+                        if (KotlinGenUtil.isRequiredField(field)) {
+                            // required: present ⇒ non-null (present-null was 400'd above).
+                            append("                val v$cap: $ktType? = if (has$cap) objectMapper.treeToValue(body.get(\"$fn\"), object : TypeReference<$ktType>() {}) else null\n")
+                            append("                if (has$cap && validator.validateValue(${shortName}::class.java, \"$fn\", v$cap).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+                        } else {
+                            append("                val null$cap = has$cap && body.get(\"$fn\").isNull\n")
+                            append("                val v$cap: $ktType? = if (has$cap && !null$cap) objectMapper.treeToValue(body.get(\"$fn\"), object : TypeReference<$ktType>() {}) else null\n")
+                            append("                if (has$cap && !null$cap && validator.validateValue(${shortName}::class.java, \"$fn\", v$cap).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+                        }
+                    }
+                    // Apply the already-bound + validated values, scoped to (pk eq id) and (disc eq value).
+                    // Columns are qualified ($table.col) so a field named like the body/id params can't shadow.
+                    append("                $table.update({ ($table.$pkFieldName eq id) and ($table.${plan.discriminatorField} eq $disc) }) {\n")
+                    for (field in stPatch) {
+                        val fn = field.name
+                        val cap = capitalizeFirst(fn)
+                        val col = "$table.$fn"
+                        if (KotlinGenUtil.isRequiredField(field)) {
+                            append("                    if (has$cap) it[$col] = v$cap!!\n")
+                        } else {
+                            append("                    if (has$cap) { if (null$cap) it[$col] = null else it[$col] = v$cap }\n")
+                        }
+                    }
+                    append("                }\n")
+                    append("            } catch (e: com.fasterxml.jackson.databind.JsonMappingException) {\n")
+                    append("                return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+                    append("            }\n")
+                    append("        }\n")
+                }
+                append("        val row = $table.selectAll().where { ($table.$pkFieldName eq id) and ($table.${plan.discriminatorField} eq $disc) }.singleOrNull()\n")
+                append("        if (row == null) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
+                append("        else ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
                 append("    }\n\n")
 
                 // per-subtype delete (404 cross-subtype)

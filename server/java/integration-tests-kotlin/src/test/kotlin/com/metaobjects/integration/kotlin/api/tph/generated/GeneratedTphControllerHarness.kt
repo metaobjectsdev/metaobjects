@@ -110,7 +110,11 @@ class GeneratedTphControllerHarness(
         val db = Database.connect("jdbc:h2:mem:$dbName;DB_CLOSE_DELAY=-1;MODE=PostgreSQL", driver = "org.h2.Driver")
         transaction(db) { SchemaUtils.create(authTable) }
 
-        val controller = controllerClass.getDeclaredConstructor().newInstance()
+        // FR-036 Program B: the generated TPH controller ctor now takes the Spring-configured
+        // ObjectMapper (per-field PATCH bind) + a jakarta Validator (present-value validation),
+        // mirroring the vanilla generated-controller harness.
+        val controller = controllerClass.getDeclaredConstructor(ObjectMapper::class.java, jakarta.validation.Validator::class.java)
+            .newInstance(mapper, jakarta.validation.Validation.buildDefaultValidatorFactory().validator)
         val converter = MappingJackson2HttpMessageConverter().apply { objectMapper = mapper }
         mockMvc = MockMvcBuilders.standaloneSetup(controller).setMessageConverters(converter).build()
 
