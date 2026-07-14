@@ -149,6 +149,20 @@ internal sealed class TphReferenceServer : IAsyncDisposable
                 if (method is "PATCH" or "PUT")
                 {
                     var body = await ReadBodyAsync(ctx);
+                    // FR-036 Program B: a present null on the @required (NOT NULL) base
+                    // `reference` column is a 400, matching the generated controller's
+                    // not-null merge guard. In the single TPH table only base-required
+                    // columns are NOT NULL; subtype columns (quantity/copayAmount/approver)
+                    // are nullable, so a present null there clears them (FR-035 tristate).
+                    if (body.ContainsKey("reference"))
+                    {
+                        var refVal = body["reference"];
+                        if (refVal is null || refVal.GetValueKind() == JsonValueKind.Null)
+                        {
+                            await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
+                            return;
+                        }
+                    }
                     var updated = await UpdateAsync(disc, subId, body);
                     await Respond(ctx, updated);
                     return;

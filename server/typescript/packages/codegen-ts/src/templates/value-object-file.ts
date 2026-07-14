@@ -14,6 +14,7 @@ import type { RenderContext } from "../render-context.js";
 import { renderValueObjectInterface, renderEnumTypeAliases } from "./inferred-types.js";
 import {
   renderInsertSchemaOnly,
+  renderZodValidators,
   isTphSubtype,
   renderTphSubtypeReadSchema,
   tphDiscriminatorPin,
@@ -49,7 +50,13 @@ export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: Ren
     renderValueObjectInterface(obj, ctx),
     ...(enumAliases !== null ? [enumAliases] : []),
     ...(tphReadSchema !== null ? [tphReadSchema] : []),
-    renderInsertSchemaOnly(obj, ctx),
+    // FR-036 Program B: a TPH subtype needs BOTH schemas — its per-subtype PATCH
+    // route must carry the FR-035 present-key tristate (a non-@required subtype
+    // column accepts an explicit null → clears), which lives in the UpdateSchema
+    // (.nullable() for non-required). renderZodValidators emits <Sub>InsertSchema +
+    // <Sub>UpdateSchema (the update omits the pinned discriminator). A pure value
+    // object stays insert-only (no PATCH semantics — an UpdateSchema would mislead).
+    tphSubtype ? renderZodValidators(obj, ctx) : renderInsertSchemaOnly(obj, ctx),
     ...(tphConstants !== null ? [tphConstants] : []),
     ...(tphFilterAllowlist !== null ? [tphFilterAllowlist] : []),
     ...(tphSortAllowlist !== null ? [tphSortAllowlist] : []),

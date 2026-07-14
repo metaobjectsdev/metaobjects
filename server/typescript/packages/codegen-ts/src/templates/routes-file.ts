@@ -352,6 +352,14 @@ function renderTphRoutesFile(base: MetaObject, ctx: RenderContext): string {
       ctx.selfTarget, ctx.entityModuleTarget, sub.package, sub.name, ctx.extStyle,
     );
     const subInsertSym = imp(`${sub.name}InsertSchema@${subFileSpec}`);
+    // FR-036 Program B: the per-subtype UPDATE must carry the FR-035 present-key
+    // tristate (a non-@required subtype column accepts an explicit null → clears;
+    // a @required column's explicit null is rejected). The subtype's own
+    // UpdateSchema encodes exactly that (.optional() + .nullable() for non-required),
+    // whereas insertSchema.partial() only makes fields optional, not nullable — so a
+    // PATCH {col: null} on a nullable subtype column wrongly 400'd. The base
+    // polymorphic mount already uses the base UpdateSchema; this aligns the subtypes.
+    const subUpdateSym = imp(`${sub.name}UpdateSchema@${subFileSpec}`);
     // FR-017 Tier 3: each subtype carries its OWN filter/sort allowlist
     // (discriminator excluded — it's pinned by this path).
     const subFilterSym = imp(`${sub.name}FilterAllowlist@${subFileSpec}`);
@@ -363,7 +371,7 @@ function renderTphRoutesFile(base: MetaObject, ctx: RenderContext): string {
       db: ${dbSym},
       table: ${tableSym},
       insertSchema: ${subInsertSym}.omit({ ${discField}: true }),
-      updateSchema: ${subInsertSym}.omit({ ${discField}: true }).partial(),
+      updateSchema: ${subUpdateSym},
       filterAllowlist: ${subFilterSym},
       sortAllowlist: ${subSortSym},
       dialect: ${dialectLit},
