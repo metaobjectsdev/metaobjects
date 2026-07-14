@@ -9,6 +9,7 @@ import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
 import com.metaobjects.generator.util.GeneratorUtil;
+import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.validator.ArrayValidator;
@@ -94,6 +95,17 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             // (each folded nullable) so polymorphic + per-subtype endpoints share one wire shape.
             if (TphPlan.isTphBase(entity, loader)) emitTphUnion(entity, loader, outRoot);
             else emit(entity, outRoot);
+            // FR-035: a presence-tracked <Entity>Patch alongside the DTO, for exactly the
+            // entities whose non-TPH repository interface gains patch(...) — a concrete
+            // writable table entity that is neither a TPH base nor a TPH subtype. Emitted
+            // from THIS generator (which every consumer already runs) so a re-run of an
+            // existing <generators> config that omits a separate patch generator cannot
+            // produce a controller/repository that references a missing <Entity>Patch.
+            if (SpringRepositoryGenerator.appliesTo(entity)
+                    && !TphPlan.isTphBase(entity, loader)
+                    && !TphPlan.isTphSubtype(entity)) {
+                emitPatch(entity, outRoot);
+            }
         }
     }
 
@@ -123,6 +135,127 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         List<String> annotationsPerField = new ArrayList<>(fields.size());
         for (MetaField field : fields) annotationsPerField.add(validationAnnotations(field));
         emitRecord(entity, outRoot, fields, annotationsPerField);
+    }
+
+    /**
+     * FR-035: emit the presence-tracked {@code <Entity>Patch} — a sibling of the DTO that
+     * carries the absent / null / value tristate a record cannot. Only the caller-settable
+     * fields (scalar fields MINUS the primary key) are members; {@code has<F>()} reports
+     * presence (incl. an explicit null), {@code <f>()} the value. {@code fromJson} rejects a
+     * non-object body, binds present values via Jackson exactly as create does, clears a
+     * non-{@code @required} field on an explicit null, and throws a
+     * {@code PatchValidationException} on an explicit null on a {@code @required} field (the
+     * controller maps both to HTTP 400). Emitted here — from the DTO generator every consumer
+     * already runs — so no separate generator can be forgotten and leave a controller /
+     * repository referencing a missing {@code <Entity>Patch}.
+     */
+    private void emitPatch(MetaObject entity, Path outRoot) {
+        String[] split = SpringNaming.splitFqn(entity.getName());
+        String pkg = split[0];
+        String shortName = split[1];
+        String patchName = SpringNaming.patchName(shortName);
+        String dtoName = SpringNaming.dtoName(shortName);
+        List<MetaField> settable = settableFields(entity);
+
+        StringBuilder src = new StringBuilder();
+        if (!pkg.isEmpty()) src.append("package ").append(pkg).append(";\n\n");
+        src.append("import com.fasterxml.jackson.core.JsonProcessingException;\n");
+        src.append("import com.fasterxml.jackson.core.type.TypeReference;\n");
+        src.append("import com.fasterxml.jackson.databind.JsonNode;\n");
+        src.append("import com.fasterxml.jackson.databind.ObjectMapper;\n");
+        src.append("import com.metaobjects.generator.spring.runtime.PatchValidationException;\n");
+        src.append("import java.util.LinkedHashMap;\n");
+        src.append("import java.util.Map;\n");
+        src.append("import java.util.Set;\n\n");
+        src.append("/** GENERATED — presence-tracked partial-update (PATCH) shape for ")
+           .append(shortName).append(". Do not hand-edit; regenerated from metadata. */\n");
+        src.append("public final class ").append(patchName).append(" {\n\n");
+        src.append("    private final Map<String, Object> assigned;\n\n");
+        src.append("    private ").append(patchName)
+           .append("(Map<String, Object> assigned) { this.assigned = assigned; }\n\n");
+
+        // Per settable field: has<Field>() (presence, incl. explicit null) + <field>() (value).
+        for (MetaField field : settable) {
+            String name = field.getName();
+            String cap = SpringNaming.capitalize(name);
+            String type = patchComponentType(field, entity, dtoName);
+            src.append("    public boolean has").append(cap)
+               .append("() { return assigned.containsKey(\"").append(name).append("\"); }\n");
+            src.append("    public ").append(type).append(' ').append(name).append("() { return (")
+               .append(type).append(") assigned.get(\"").append(name).append("\"); }\n");
+        }
+        src.append("\n    /** The field names ASSIGNED by this patch (present in the body), in order. */\n");
+        src.append("    public Set<String> assignedFields() { return assigned.keySet(); }\n\n");
+
+        // fromJson — the presence-tracked builder.
+        src.append("    /**\n");
+        src.append("     * Build from a JSON body. A non-object body is rejected; an ABSENT key is\n");
+        src.append("     * untouched; a present null CLEARS a non-@required field and is a validation\n");
+        src.append("     * error on a @required one; a present value binds via Jackson exactly as\n");
+        src.append("     * create does. Unknown keys are ignored (FR-035 PATCH-3 deferred).\n");
+        src.append("     */\n");
+        src.append("    public static ").append(patchName)
+           .append(" fromJson(JsonNode body, ObjectMapper mapper) {\n");
+        src.append("        if (!body.isObject()) throw new PatchValidationException(\"(request body)\");\n");
+        src.append("        Map<String, Object> assigned = new LinkedHashMap<>();\n");
+        for (MetaField field : settable) {
+            String name = field.getName();
+            String type = patchComponentType(field, entity, dtoName);
+            boolean required = isRequired(field);
+            // A TypeReference (not a raw Class) so a generic component — e.g. a
+            // field.<scalar> @isArray List<Long> — binds with its element type intact.
+            src.append("        bind(body, mapper, assigned, \"").append(name)
+               .append("\", new TypeReference<").append(type).append(">() {}, ")
+               .append(required).append(");\n");
+        }
+        src.append("        return new ").append(patchName).append("(assigned);\n");
+        src.append("    }\n\n");
+
+        // bind — one settable field. treeToValue lets Jackson handle every subtype (no hand-rolled arms).
+        src.append("    private static void bind(JsonNode body, ObjectMapper mapper, Map<String, Object> assigned,\n");
+        src.append("            String field, TypeReference<?> type, boolean required) {\n");
+        src.append("        if (!body.has(field)) return;                         // absent → untouched\n");
+        src.append("        JsonNode node = body.get(field);\n");
+        src.append("        if (node.isNull()) {\n");
+        src.append("            if (required) throw new PatchValidationException(field);\n");
+        src.append("            assigned.put(field, null);                         // explicit null → clear\n");
+        src.append("            return;\n");
+        src.append("        }\n");
+        src.append("        try {\n");
+        src.append("            assigned.put(field, mapper.treeToValue(node, type));\n");
+        src.append("        } catch (JsonProcessingException e) {\n");
+        src.append("            throw new PatchValidationException(field);\n");
+        src.append("        }\n");
+        src.append("    }\n");
+        src.append("}\n");
+
+        writeJavaFile(entity, outRoot, pkg, patchName, src.toString());
+    }
+
+    /** Scalar (non-object) fields MINUS the primary-key field(s) — the caller-settable set. */
+    private static List<MetaField> settableFields(MetaObject entity) {
+        List<String> pkFields = entity.getIdentities(true).stream()
+            .filter(MetaIdentity::isPrimary)
+            .findFirst()
+            .map(MetaIdentity::getFields)
+            .orElse(List.of());
+        List<MetaField> out = new ArrayList<>();
+        for (MetaField field : scalarFields(entity)) {
+            if (!pkFields.contains(field.getName())) out.add(field);
+        }
+        return out;
+    }
+
+    /** The {@code <Entity>Patch} component type for {@code field}. Identical to the DTO's
+     *  FR-019-aware {@link #componentTypeFr019} EXCEPT for an INLINE {@code field.enum}: its
+     *  enum is declared nested in the DTO record body, so the sibling {@code <Entity>Patch}
+     *  must qualify it as {@code <Entity>Dto.<EnumName>}. A shared / materialized / {@code @provided}
+     *  enum is a top-level type, resolvable unqualified. */
+    private String patchComponentType(MetaField<?> field, MetaObject entity, String dtoName) {
+        if (field instanceof EnumField && Fr019SharedEnum.sharedEnumForField(field) == null) {
+            return SpringTypeMapper.payloadJavaTypeName(field, entity, dtoName + ".");
+        }
+        return componentTypeFr019(field, entity);
     }
 
     /**
@@ -348,6 +481,14 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         return decls;
     }
 
+    /** True iff {@code field} is {@code @required} — its own {@code @required} attr OR a
+     *  {@code validator.required} child. The SINGLE required-predicate reused across the
+     *  DTO's {@code @NotNull} and the FR-035 patch's present-null-on-@required → 400 rule
+     *  (the FR-035 patch emit below), so the two cannot drift. */
+    public static boolean isRequired(MetaField<?> field) {
+        return attrBool(field, MetaField.ATTR_REQUIRED) || hasValidator(field, RequiredValidator.class);
+    }
+
     /**
      * Build the space-joined jakarta.validation annotation string for a record
      * component from the field's constraint metadata — both field attrs
@@ -372,7 +513,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         boolean isString = field instanceof StringField;
         List<String> out = new ArrayList<>();
 
-        boolean required = attrBool(field, MetaField.ATTR_REQUIRED) || hasValidator(field, RequiredValidator.class);
+        boolean required = isRequired(field);
         if (required) {
             out.add("@NotNull");
             if (isString && !isArray) out.add("@NotBlank");

@@ -446,6 +446,16 @@ final class AuthorApiServer implements AutoCloseable {
         if (!(parsed instanceof Map<?, ?>)) { sendJson(exchange, 400, Map.of("error", "validation")); return; }
         Map<String, Object> body = (Map<String, Object>) parsed;
 
+        // FR-035 PATCH-2: an explicit null on a @required field (name / createdAt, per
+        // meta.json) is a 400 — a present null on the nullable bio clears it, and an
+        // omitted required field is untouched (never a 400).
+        for (String reqField : List.of("name", "createdAt")) {
+            if (body.containsKey(reqField) && body.get(reqField) == null) {
+                sendJson(exchange, 400, Map.of("error", "validation"));
+                return;
+            }
+        }
+
         // Dynamic SET clause — only update fields present in the body.
         List<String> setClauses = new ArrayList<>();
         List<Object> values = new ArrayList<>();

@@ -100,6 +100,23 @@ final class InMemoryDocumentRepositorySource {
                 return Optional.empty();
             }
 
+            // FR-035 present-key PATCH: apply only the ASSIGNED fields (has<F>()).
+            @Override
+            public Optional<DocumentDto> patch(Long id, DocumentPatch patch) {
+                for (int i = 0; i < rows.size(); i++) {
+                    DocumentDto cur = rows.get(i);
+                    if (id.equals(cur.id())) {
+                        DocumentDto merged = new DocumentDto(
+                            id,
+                            patch.hasTitle()   ? patch.title()   : cur.title(),
+                            patch.hasPayload() ? patch.payload() : cur.payload());
+                        rows.set(i, merged);
+                        return Optional.of(merged);
+                    }
+                }
+                return Optional.empty();
+            }
+
             @Override
             public boolean delete(Long id) {
                 return rows.removeIf(d -> id.equals(d.id()));

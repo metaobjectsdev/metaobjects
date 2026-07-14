@@ -250,6 +250,7 @@ public class GeneratedM2mTraversalCompileRunTest {
             @Override public Optional<PostDto> findById(Long id) { return Optional.empty(); }
             @Override public PostDto create(PostDto dto) { return dto; }
             @Override public Optional<PostDto> update(Long id, PostDto dto) { return Optional.empty(); }
+            @Override public Optional<PostDto> patch(Long id, PostPatch patch) { return Optional.empty(); }
             @Override public boolean delete(Long id) { return false; }
         }
         """;
@@ -314,6 +315,7 @@ public class GeneratedM2mTraversalCompileRunTest {
             @Override public Optional<PersonDto> findById(Long id) { return Optional.empty(); }
             @Override public PersonDto create(PersonDto dto) { return dto; }
             @Override public Optional<PersonDto> update(Long id, PersonDto dto) { return Optional.empty(); }
+            @Override public Optional<PersonDto> patch(Long id, PersonPatch patch) { return Optional.empty(); }
             @Override public boolean delete(Long id) { return false; }
         }
         """;

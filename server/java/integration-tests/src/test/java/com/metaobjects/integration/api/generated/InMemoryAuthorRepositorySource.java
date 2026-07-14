@@ -119,6 +119,25 @@ final class InMemoryAuthorRepositorySource {
                 return Optional.empty();
             }
 
+            // FR-035 present-key PATCH: apply only the ASSIGNED fields (has<F>()), so an
+            // explicit null CLEARS the column while an omitted field keeps its stored value.
+            @Override
+            public Optional<AuthorDto> patch(Long id, AuthorPatch patch) {
+                for (int i = 0; i < rows.size(); i++) {
+                    AuthorDto cur = rows.get(i);
+                    if (id.equals(cur.id())) {
+                        AuthorDto merged = new AuthorDto(
+                            id,
+                            patch.hasName()      ? patch.name()      : cur.name(),
+                            patch.hasBio()       ? patch.bio()       : cur.bio(),
+                            patch.hasCreatedAt() ? patch.createdAt() : cur.createdAt());
+                        rows.set(i, merged);
+                        return Optional.of(merged);
+                    }
+                }
+                return Optional.empty();
+            }
+
             @Override
             public boolean delete(Long id) {
                 return rows.removeIf(a -> id.equals(a.id()));

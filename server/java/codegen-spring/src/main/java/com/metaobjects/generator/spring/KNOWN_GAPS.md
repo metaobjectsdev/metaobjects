@@ -117,3 +117,18 @@ escaping. Field names and enum members are identifier-safe and alias
 *values* are canonical members, so the only at-risk input is an
 `@enumAlias` *key* containing a `"` or `\`. Add a `javaStringLiteral(...)`
 escape if adopters hit it.
+
+## FR-035 partial PATCH — no present-value constraint validation
+
+The generated `PATCH`/`PUT` handler binds a raw `JsonNode` and builds an
+`<Entity>Patch` (presence-tracked), rather than an `@Valid` DTO. This is what
+gives it the FR-035 tristate (absent ≠ explicit null), but it means the
+`jakarta.validation` constraints the DTO carries — `@Size` / `@Pattern` /
+`@NotBlank` / `@Email` / `@Min` / `@Max` — are **not** enforced on *present
+values* over the PATCH path. The only PATCH-time validation is
+present-null-on-`@required` → HTTP 400 (via `PatchValidationException`).
+
+This is a cross-port PATCH-4 follow-up: TS/Python DO run per-field value
+validation on PATCH; C# and Java do not yet. Tracked here rather than fixed —
+adding constraint validation to the patch path (re-running the same rules the
+DTO's annotations express) is a deliberate, separately-scoped change.

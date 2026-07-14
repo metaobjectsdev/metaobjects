@@ -116,6 +116,12 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("    ").append(dtoName).append(" create(").append(dtoName).append(" dto);\n");
         src.append("    Optional<").append(dtoName).append("> update(").append(pkType).append(" id, ")
            .append(dtoName).append(" dto);\n");
+        // FR-035: presence-tracked partial update. The <Entity>Patch carries the
+        // absent/null/value tristate the full DTO cannot, so an explicit null clears a
+        // nullable column (an explicit null on a @required field is rejected at the
+        // controller). Same package as the interface — no import needed.
+        src.append("    Optional<").append(dtoName).append("> patch(").append(pkType).append(" id, ")
+           .append(SpringNaming.patchName(shortName)).append(" patch);\n");
         src.append("    boolean delete(").append(pkType).append(" id);\n");
 
         // FR-018 M:N finders — one per @cardinality:"many" + @through relationship.

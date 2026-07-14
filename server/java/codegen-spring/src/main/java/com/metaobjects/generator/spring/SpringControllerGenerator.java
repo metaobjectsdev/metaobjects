@@ -174,6 +174,9 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         if (!pkg.isEmpty()) {
             src.append("package ").append(pkg).append(";\n\n");
         }
+        src.append("import com.fasterxml.jackson.databind.JsonNode;\n");
+        src.append("import com.fasterxml.jackson.databind.ObjectMapper;\n");
+        src.append("import com.metaobjects.generator.spring.runtime.PatchValidationException;\n");
         src.append("import org.springframework.http.HttpStatus;\n");
         src.append("import org.springframework.http.ResponseEntity;\n");
         src.append("import org.springframework.web.bind.annotation.DeleteMapping;\n");
@@ -210,10 +213,15 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append(");\n\n");
 
         // Repository wiring — constructor injection (Spring's recommended idiom; avoids
-        // field-injection magic, plays well with final fields + final test seams).
-        src.append("    private final ").append(repoName).append(" repository;\n\n");
-        src.append("    public ").append(controllerName).append("(").append(repoName).append(" repository) {\n");
+        // field-injection magic, plays well with final fields + final test seams). The
+        // ObjectMapper (Spring's configured bean) binds the FR-035 patch body's per-field
+        // values via <Entity>Patch.fromJson, so the same wire codecs apply as on create.
+        src.append("    private final ").append(repoName).append(" repository;\n");
+        src.append("    private final ObjectMapper objectMapper;\n\n");
+        src.append("    public ").append(controllerName).append("(").append(repoName)
+           .append(" repository, ObjectMapper objectMapper) {\n");
         src.append("        this.repository = repository;\n");
+        src.append("        this.objectMapper = objectMapper;\n");
         src.append("    }\n\n");
 
         // GET (list) — pagination + sort + withCount + FR-009 filter operators.
@@ -273,10 +281,23 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // Stacking @PatchMapping + @PutMapping on the same method does NOT register both
         // in Spring MVC — only one composed @RequestMapping per method is honored, so the
         // other verb 405s. (Surfaced by the SP-F generated-controller HTTP lane.)
+        // FR-035 present-key PATCH: bind the RAW JsonNode (not the @Valid full DTO, which
+        // conflates absent with null and 400s an omitted @required field), build the
+        // presence-tracked <Entity>Patch, and delegate to repository.patch. An explicit
+        // null clears a nullable column; an explicit null on a @required field throws
+        // PatchValidationException → 400 {"error":"validation"}. update(id, dto) stays on
+        // the interface for programmatic full-DTO use.
+        String patchName = SpringNaming.patchName(shortName);
         src.append("    @RequestMapping(value = \"/{id}\", method = { RequestMethod.PATCH, RequestMethod.PUT })\n");
         src.append("    public ResponseEntity<?> update(@PathVariable ").append(pkType)
-           .append(" id, @Valid @RequestBody ").append(dtoName).append(" dto) {\n");
-        src.append("        return repository.update(id, dto)\n");
+           .append(" id, @RequestBody JsonNode body) {\n");
+        src.append("        ").append(patchName).append(" patch;\n");
+        src.append("        try {\n");
+        src.append("            patch = ").append(patchName).append(".fromJson(body, objectMapper);\n");
+        src.append("        } catch (PatchValidationException e) {\n");
+        src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+        src.append("        }\n");
+        src.append("        return repository.patch(id, patch)\n");
         src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
         src.append("                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\")));\n");
         src.append("    }\n\n");

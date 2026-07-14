@@ -163,7 +163,7 @@ public final class GeneratedAuthorControllerHarness implements AutoCloseable {
             Long.class, String.class, String.class, Instant.class);
         Class<?> repoInterface = classLoader.loadClass(REPO_FQCN);
         Class<?> controllerClass = classLoader.loadClass(CONTROLLER_FQCN);
-        this.controllerCtor = controllerClass.getDeclaredConstructor(repoInterface);
+        this.controllerCtor = controllerClass.getDeclaredConstructor(repoInterface, ObjectMapper.class);
         Class<?> repoImplClass = classLoader.loadClass(InMemoryAuthorRepositorySource.FQCN);
         this.repoCtor = repoImplClass.getDeclaredConstructor(List.class);
     }
@@ -179,7 +179,7 @@ public final class GeneratedAuthorControllerHarness implements AutoCloseable {
             for (Map<String, Object> row : seedRows) dtos.add(dtoFromRow(row));
         }
         Object repo = repoCtor.newInstance(dtos);
-        Object controller = controllerCtor.newInstance(repo);
+        Object controller = controllerCtor.newInstance(repo, mapper);
 
         MappingJackson2HttpMessageConverter converter = new MappingJackson2HttpMessageConverter();
         converter.setObjectMapper(mapper);

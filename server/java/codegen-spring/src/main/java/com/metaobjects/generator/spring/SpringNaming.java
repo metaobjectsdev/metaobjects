@@ -96,6 +96,11 @@ public final class SpringNaming {
         return shortName + "Repository";
     }
 
+    /** {@code SpringDtoGenerator} (FR-035): {@code shortName + "Patch"} — the presence-tracked patch shape. */
+    public static String patchName(String shortName) {
+        return shortName + "Patch";
+    }
+
     /** {@code SpringControllerGenerator}: {@code shortName + "Controller"}. */
     public static String controllerName(String shortName) {
         return shortName + "Controller";

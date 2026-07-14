@@ -115,9 +115,9 @@ public final class GeneratedM2mControllerHarness implements AutoCloseable {
         Class<?> postRepoIf = classLoader.loadClass(ENTITY_PKG + ".PostRepository");
         Class<?> personRepoIf = classLoader.loadClass(ENTITY_PKG + ".PersonRepository");
         this.postControllerCtor = classLoader.loadClass(ENTITY_PKG + ".PostController")
-            .getDeclaredConstructor(postRepoIf);
+            .getDeclaredConstructor(postRepoIf, ObjectMapper.class);
         this.personControllerCtor = classLoader.loadClass(ENTITY_PKG + ".PersonController")
-            .getDeclaredConstructor(personRepoIf);
+            .getDeclaredConstructor(personRepoIf, ObjectMapper.class);
         this.postRepoCtor = classLoader.loadClass(InMemoryM2mRepositorySources.POST_FQCN)
             .getDeclaredConstructor(List.class, List.class);
         this.personRepoCtor = classLoader.loadClass(InMemoryM2mRepositorySources.PERSON_FQCN)
@@ -132,8 +132,8 @@ public final class GeneratedM2mControllerHarness implements AutoCloseable {
             M2mSeedRows.rows(seed, "people"), M2mSeedRows.rows(seed, "follows"),
             M2mSeedRows.rows(seed, "friendships"));
 
-        this.postMvc = standalone(postControllerCtor.newInstance(postRepo));
-        this.personMvc = standalone(personControllerCtor.newInstance(personRepo));
+        this.postMvc = standalone(postControllerCtor.newInstance(postRepo, mapper));
+        this.personMvc = standalone(personControllerCtor.newInstance(personRepo, mapper));
     }
 
     /**
