@@ -28,10 +28,18 @@ from metaobjects.codegen.generators.filter_allowlist_generator import render_fil
 from metaobjects.codegen.generators.entity_model import render_entity_model
 from metaobjects.codegen.generators.router_generator import render_router
 from metaobjects.meta.core.object.meta_object import MetaObject
+from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_VALUE
 from metaobjects.shared.base_types import TYPE_OBJECT
 
 
-def _find_document_entity(meta_json: Path) -> MetaObject:
+def _load_corpus_objects(meta_json: Path) -> tuple[MetaObject, list[MetaObject]]:
+    """Load the corpus and return ``(Document entity, [value objects])``.
+
+    The Document entity references the ``Marker`` value object via its VO columns
+    (``field.object @storage:jsonb``); the generated ``Document.py`` imports it
+    (``from .Marker import Marker``), so every reachable ``object.value`` must be
+    generated + written alongside the entity for the import to resolve.
+    """
     tmp = Path(tempfile.mkdtemp(prefix="apic-jsonb-meta-"))
     shutil.copy(meta_json, tmp / "meta.json")
     result = MetaDataLoader.from_directory(str(tmp))
@@ -42,15 +50,19 @@ def _find_document_entity(meta_json: Path) -> MetaObject:
         c for c in result.root.children()
         if c.type == TYPE_OBJECT and isinstance(c, MetaObject)
     ]
-    for obj in objects:
-        if obj.name == "Document" or obj.name.endswith("::Document"):
-            return obj
-    raise RuntimeError(f"Document entity not found among {[o.name for o in objects]}")
+    document = next(
+        (o for o in objects if o.name == "Document" or o.name.endswith("::Document")),
+        None,
+    )
+    if document is None:
+        raise RuntimeError(f"Document entity not found among {[o.name for o in objects]}")
+    value_objects = [o for o in objects if o.sub_type == OBJECT_SUBTYPE_VALUE]
+    return document, value_objects
 
 
 def build_generated_jsonb_app(corpus_root: Path) -> tuple[FastAPI, "InMemoryDocumentRepository"]:
     """Generate the Document router, import it, mount it, and wire the seam."""
-    document = _find_document_entity(corpus_root / "meta.json")
+    document, value_objects = _load_corpus_objects(corpus_root / "meta.json")
 
     router_src = render_router(document)
     allowlist_src = render_filter_allowlist(document)
@@ -63,6 +75,10 @@ def build_generated_jsonb_app(corpus_root: Path) -> tuple[FastAPI, "InMemoryDocu
     pkg_dir.mkdir()
     (pkg_dir / "__init__.py").write_text("")
     (pkg_dir / "document_filter_allowlist.py").write_text(allowlist_src)
+    # Program D: emit each referenced value object (e.g. Marker) so the entity
+    # model's `from .Marker import Marker` (its VO columns) resolves on import.
+    for vo in value_objects:
+        (pkg_dir / f"{vo.name}.py").write_text(render_entity_model(vo))
     # FR-036: the router imports the entity + PATCH models to run field constraints.
     (pkg_dir / f"{document.name}.py").write_text(render_entity_model(document))
     (pkg_dir / "document_router.py").write_text(router_src)
