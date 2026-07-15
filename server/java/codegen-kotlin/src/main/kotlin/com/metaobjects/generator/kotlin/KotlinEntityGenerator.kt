@@ -154,6 +154,14 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 for (annotation in validationAnnotations(field)) {
                     propBuilder.addAnnotation(annotation)
                 }
+                // Program D (spec §0): a field.object (value-object) member carries @field:Valid so a
+                // parent validator.validate(bean) / @Valid cascades into the nested VO's own
+                // constraints (the create-body POST path). jakarta validateValue does NOT cascade, so
+                // the PATCH path validates present VO values explicitly in the controller. MapField is
+                // NOT an ObjectField (dict-of-VO is staged out), so it never gets @Valid here.
+                if (field is ObjectField) {
+                    propBuilder.addAnnotation(constraint(VALID))
+                }
             }
             typeBuilder.addProperty(propBuilder.build())
         }
@@ -505,6 +513,11 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val MIN = ClassName(JAKARTA_CONSTRAINTS, "Min")
         val MAX = ClassName(JAKARTA_CONSTRAINTS, "Max")
         val EMAIL = ClassName(JAKARTA_CONSTRAINTS, "Email")
+
+        /** Program D: `@field:Valid` on a value-object member so a parent `@Valid` / whole-bean
+         *  validate cascades into the nested VO's own constraints (lives in `jakarta.validation`,
+         *  NOT `jakarta.validation.constraints`). */
+        val VALID = ClassName("jakarta.validation", "Valid")
 
         /**
          * Canonical DNS-hostname matcher for `@stringFormat: hostname` (ADR-0036/0037 Wave 3).

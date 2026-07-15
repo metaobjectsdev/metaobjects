@@ -166,6 +166,54 @@ class KotlinEntityGeneratorTest {
         }
     }
 
+    @Test fun valueObjectMembersCarryValidAndNestedConstraints() {
+        // Program D: a field.object value-object member on an entity carries @field:Valid so a
+        // parent validator.validate(bean) cascades into the nested VO's own constraints; the VO's
+        // own members keep their jakarta constraints (Marker.label @required @maxLength 40 →
+        // @field:NotNull + @field:Size(min = 1, max = 40)). Mirrors the gate fixture.
+        val fx = """{
+          "metadata.root": { "package": "acme::store", "children": [
+            { "object.value": { "name": "Marker", "children": [
+                { "field.string": { "name": "label", "@required": true, "@maxLength": 40 } },
+                { "field.int":    { "name": "score" } }
+            ] } },
+            { "object.entity": { "name": "Document", "children": [
+                { "field.long":   { "name": "id" } },
+                { "field.object": { "name": "primaryMarker", "@objectRef": "Marker",
+                    "@storage": "jsonb", "@required": true } },
+                { "field.object": { "name": "markers", "@objectRef": "Marker",
+                    "@storage": "jsonb", "isArray": true } }
+            ] } }
+          ] }
+        }""".trimIndent()
+
+        val outDir = Files.createTempDirectory("kgen-vo-valid-")
+        try {
+            val gen = KotlinEntityGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("vo-valid", fx))
+
+            val docSrc = Files.readString(outDir.resolve("acme/store/Document.kt"))
+            // The single + array VO members both carry @field:Valid (cascade on POST).
+            assertTrue("@field:Valid" in docSrc, "expected @field:Valid on VO members in:\n$docSrc")
+            assertTrue("import jakarta.validation.Valid" in docSrc,
+                "expected jakarta.validation.Valid import in:\n$docSrc")
+            assertTrue("val primaryMarker: Marker" in docSrc,
+                "expected typed VO property in:\n$docSrc")
+
+            val markerSrc = Files.readString(outDir.resolve("acme/store/Marker.kt"))
+            // The VO's own members carry the jakarta constraints the nested validation enforces.
+            assertTrue("@field:NotNull" in markerSrc, "expected @field:NotNull on Marker.label in:\n$markerSrc")
+            assertTrue("@field:Size(" in markerSrc && "max = 40" in markerSrc,
+                "expected @field:Size(...max = 40) on Marker.label in:\n$markerSrc")
+            // A pure-value VO with no nested VO member carries NO @field:Valid of its own.
+            assertFalse("@field:Valid" in markerSrc,
+                "Marker has no nested VO member — expected NO @field:Valid in:\n$markerSrc")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     // === field.enum coverage ===============================================
 
     private val enumFixture = """{

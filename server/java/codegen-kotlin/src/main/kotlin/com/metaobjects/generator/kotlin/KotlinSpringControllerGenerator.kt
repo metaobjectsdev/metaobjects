@@ -151,15 +151,16 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         val pkFieldName = primary?.fields?.firstOrNull() ?: DEFAULT_PK_FIELD
         val pkParamType = primaryKeyParamType(entity, pkFieldName)
 
-        // FR-035: the PATCH-settable columns = scalar fields minus the PK. ObjectField / MapField
-        // (jsonb value-objects) and the `field.string @dbColumnType=jsonb` open bag are excluded:
-        // their in-process type is a kotlinx JsonElement / VO with no clean Jackson treeToValue
-        // bind on the raw-JsonNode patch path. (create DOES write the open bag from the DTO;
-        // an open bag is thus a create-only CRUD column — see KNOWN_GAPS.)
-        // When this is EMPTY (a PK + only object/map/jsonb columns) the controller emits no
-        // ObjectMapper ctor param / TypeReference import (they'd be unused → allWarningsAsErrors).
+        // FR-035: the PATCH-settable columns = scalar + value-object fields minus the PK. Program D:
+        // a field.object value-object jsonb column IS settable — bound via Jackson treeToValue into
+        // the generated VO record / List<VO> and validated (spec §0). Still EXCLUDED: MapField
+        // (dict-of-VO, staged out) and the `field.string @dbColumnType=jsonb` open bag (its
+        // in-process type is a kotlinx JsonElement the raw-JsonNode patch path can't bind — a
+        // create-only column, see KNOWN_GAPS).
+        // When this is EMPTY (a PK + only map/open-bag columns) the controller emits no ObjectMapper
+        // ctor param / TypeReference import (they'd be unused → allWarningsAsErrors).
         val patchSettableFields = entity.metaFields.filter {
-            it !is ObjectField && it !is MapField && it.name != pkFieldName &&
+            it !is MapField && it.name != pkFieldName &&
                 !KotlinTypeMapper.isJsonbOpenBag(it)
         }
         val hasPatchFields = patchSettableFields.isNotEmpty()
@@ -293,14 +294,16 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             //      type at compile time (no reflection / runtime cast surprises).
             emitFilterPipeline(this, shortName, tableObjectName, allowlistName, scalarFields)
 
-            // rowTo<Entity>: ResultRow → data class. Scalar fields only; ObjectField is
-            // skipped here for the same reason as the sort allowlist (the Table object's
-            // jsonb/flattened column shape would require type-specific deserialization
-            // which is generator-future work).
+            // rowTo<Entity>: ResultRow → data class. Program D: a field.object value-object jsonb
+            // column IS read here — the Exposed Column<VO> codec (the shared Jackson metaJsonbMapper)
+            // already decodes the jsonb text to the VO record / List<VO>, so `row[Table.col]` yields
+            // the typed value the data-class property expects. MapField (dict-of-VO) stays skipped
+            // (staged out). The `field.string @dbColumnType=jsonb` open bag is a StringField, so it is
+            // read here too (its column decodes to a kotlinx JsonElement).
             append("/** GENERATED — map an Exposed ResultRow to the ${shortName} data class. */\n")
             append("private fun rowTo${shortName}(row: ResultRow): ${shortName} = ${shortName}(\n")
             for (field in entity.metaFields) {
-                if (field is ObjectField || field is MapField) continue
+                if (field is MapField) continue
                 append("    ${field.name} = row[${tableObjectName}.${field.name}],\n")
             }
             append(")\n\n")
@@ -373,7 +376,10 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("        if (validator.validate(dto).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
             append("        val newId = ${tableObjectName}.insert {\n")
             for (field in entity.metaFields) {
-                if (field is ObjectField || field is MapField) continue
+                // Program D: a field.object value-object jsonb column IS written on create — the
+                // DTO property is the typed VO (record / List<VO>) and the Exposed Column<VO> codec
+                // encodes it to jsonb. MapField (dict-of-VO) stays skipped (staged out).
+                if (field is MapField) continue
                 // Skip the PK column on insert — the table's @generation=increment owns it.
                 // If the entity has no auto-incrementing PK the consumer can override the
                 // generated handler; this is the 95% case.
@@ -400,10 +406,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // null on a nullable field CLEARS it; an omitted field is untouched; a present value
             // binds through the configured ObjectMapper (same codecs as create). An empty
             // effective patch is a no-op read-back (avoids Exposed's empty-SET error).
-            // Settable columns are `patchSettableFields` (computed up top): scalar fields minus
-            // the PK, EXCLUDING object/map/jsonb-open-bag (an open bag is a create-only CRUD
-            // column — PATCH can't bind a kotlinx JsonElement; see KNOWN_GAPS). When empty, no
-            // update{} block is emitted (an empty Exposed SET throws) — a no-op read-back.
+            // Settable columns are `patchSettableFields` (computed up top): scalar + value-object
+            // fields minus the PK, EXCLUDING map/jsonb-open-bag (an open bag is a create-only CRUD
+            // column — PATCH can't bind a kotlinx JsonElement; see KNOWN_GAPS). Program D: a present
+            // field.object VO binds via Jackson treeToValue and is validated in FULL (spec §0).
+            // When empty, no update{} block is emitted (an empty Exposed SET throws) — a no-op read-back.
             append("    @RequestMapping(value = [\"/{id}\"], method = [RequestMethod.PATCH, RequestMethod.PUT])\n")
             append("    fun update(@PathVariable id: $pkParamType, @RequestBody body: JsonNode): ResponseEntity<Any> = transaction {\n")
             append("        if (!body.isObject) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
@@ -427,10 +434,17 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 // @required field was already 400'd above; present-null on a nullable field clears it
                 // (no bind, no validation).
                 for (field in patchSettableFields) {
-                    // The DATA-CLASS element type (a field.enum's materialized enum class, not the
-                    // wire String) so the bound value matches the Exposed Column<E>.
-                    val elem = KotlinTypeMapper.enumTypeName(field, entity) ?: KotlinTypeMapper.kotlinTypeName(field)
-                    val ktType = if (field.isArrayType) "kotlin.collections.List<$elem>" else "$elem"
+                    // The DATA-CLASS element type: a field.enum's materialized enum class; a
+                    // field.object's referenced value-object record (Program D — bound via Jackson
+                    // treeToValue into the VO / List<VO>); else the scalar Kotlin type — so the bound
+                    // value matches the Exposed Column<E>. A VO type is emitted fully-qualified so the
+                    // controller needs no extra import (mirrors the Exposed column codec).
+                    val elem: String = if (field is ObjectField) {
+                        voElementTypeFqn(field, loader)
+                    } else {
+                        (KotlinTypeMapper.enumTypeName(field, entity) ?: KotlinTypeMapper.kotlinTypeName(field)).toString()
+                    }
+                    val ktType = if (field.isArrayType) "kotlin.collections.List<$elem>" else elem
                     val fn = field.name
                     val cap = capitalizeFirst(fn)
                     append("                val has$cap = body.has(\"$fn\")\n")
@@ -442,6 +456,17 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                         append("                val null$cap = has$cap && body.get(\"$fn\").isNull\n")
                         append("                val v$cap: $ktType? = if (has$cap && !null$cap) objectMapper.treeToValue(body.get(\"$fn\"), object : TypeReference<$ktType>() {}) else null\n")
                         append("                if (has$cap && !null$cap && validator.validateValue(${shortName}::class.java, \"$fn\", v$cap).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+                    }
+                    // Program D (spec §0): jakarta validateValue does NOT cascade @Valid into a nested
+                    // value-object's constraints, so a present VO is validated EXPLICITLY —
+                    // validator.validate(voElement) per element (single VO whole; array VO per element),
+                    // 400 on any violation. (A present-null / cleared value is already handled above.)
+                    if (field is ObjectField) {
+                        if (field.isArrayType) {
+                            append("                if (v$cap != null && v$cap.any { validator.validate(it).isNotEmpty() }) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+                        } else {
+                            append("                if (v$cap != null && validator.validate(v$cap).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+                        }
                     }
                 }
                 // Apply the already-bound + validated values. Columns are qualified (`Table.col`)
@@ -1277,6 +1302,25 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         return KotlinTypeMapper.kotlinTypeName(field).let { tn ->
             (tn as? com.squareup.kotlinpoet.ClassName)?.simpleName ?: tn.toString()
         }
+    }
+
+    /** Read the `@objectRef` attr off a value-object [field] (resolving); null when absent. */
+    private fun readObjectRef(field: ObjectField): String? {
+        if (!field.hasMetaAttr(ObjectField.ATTR_OBJECTREF, true)) return null
+        return runCatching { field.getMetaAttr(ObjectField.ATTR_OBJECTREF, true).valueAsString }.getOrNull()
+    }
+
+    /**
+     * The fully-qualified Kotlin type of the value object a [field] `field.object` references
+     * (e.g. `acme.store.Marker`) — the Jackson bind target for the PATCH TypeReference. Emitted
+     * fully-qualified so the generated controller needs no extra import (mirrors the Exposed
+     * column codec in [KotlinExposedTableGenerator]). Falls back to a Jackson `JsonNode` when the
+     * `@objectRef` cannot resolve (defensive — the loader gates the attr's presence).
+     */
+    private fun voElementTypeFqn(field: ObjectField, loader: MetaDataLoader): String {
+        val target = readObjectRef(field)?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
+        return target?.let { PackageMapping.toKotlin(it.name) }
+            ?: "com.fasterxml.jackson.databind.JsonNode"
     }
 
     private companion object {

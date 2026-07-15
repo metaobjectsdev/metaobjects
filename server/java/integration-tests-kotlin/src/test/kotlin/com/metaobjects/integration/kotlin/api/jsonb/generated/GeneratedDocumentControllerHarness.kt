@@ -164,6 +164,12 @@ class GeneratedDocumentControllerHarness(
                     "title" to r["title"],
                     "payload" to r["payload"],
                 )
+                // Program D: the seed rows carry the required primaryMarker (+ optional single/array
+                // VO on row 1). Pass every present VO column through the generated controller's OWN
+                // create path — so the create MUST handle value objects for seeding to succeed.
+                for (k in listOf("primaryMarker", "optionalMarker", "markers")) {
+                    if (r.containsKey(k)) body[k] = r[k]
+                }
                 val res = exchange("POST", "/api/documents", body)
                 check(res.status == 201) { "seed POST failed (status ${res.status}); body: ${res.body}" }
             }
