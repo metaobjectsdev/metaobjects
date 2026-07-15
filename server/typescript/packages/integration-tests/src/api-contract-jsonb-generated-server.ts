@@ -70,14 +70,19 @@ export const db = drizzle(pool);
   writeFileSync(join(tmp, "db.ts"), dbModule, "utf8");
 
   // Provision the schema to match the EMITTED Drizzle table. Default
-  // snake_case naming keeps the single-word fields (`title`, `payload`) as-is.
-  // `payload` is a bare jsonb column — the open bag.
+  // snake_case naming keeps the single-word fields (`title`, `payload`) as-is
+  // and lowers the Marker VO columns to `primary_marker` / `optional_marker` /
+  // `markers`. `payload` is the open bag; the three VO columns are jsonb too
+  // (`primary_marker` is @required → NOT NULL). Program D.
   await executeSql(
     connectionUri,
     `CREATE TABLE IF NOT EXISTS "documents" (
        "id" bigserial PRIMARY KEY,
        "title" varchar(200) NOT NULL,
-       "payload" jsonb
+       "payload" jsonb,
+       "primary_marker" jsonb NOT NULL,
+       "optional_marker" jsonb,
+       "markers" jsonb
      )`,
   );
 
@@ -99,12 +104,15 @@ export const db = drizzle(pool);
     applySeed: async (rows: DocumentRow[]) => {
       await executeSql(connectionUri, 'TRUNCATE TABLE "documents" RESTART IDENTITY');
       for (const r of rows) {
-        const payloadSql = r.payload === undefined ? "NULL" : `${sqlStr(JSON.stringify(r.payload))}::jsonb`;
+        const jsonbSql = (v: unknown) =>
+          v === undefined || v === null ? "NULL" : `${sqlStr(JSON.stringify(v))}::jsonb`;
         await executeSql(
           connectionUri,
-          `INSERT INTO "documents" ("id", "title", "payload") VALUES (${
+          `INSERT INTO "documents" ("id", "title", "payload", "primary_marker", "optional_marker", "markers") VALUES (${
             r.id ?? "DEFAULT"
-          }, ${sqlStr(r.title)}, ${payloadSql})`,
+          }, ${sqlStr(r.title)}, ${jsonbSql(r.payload)}, ${jsonbSql(r.primaryMarker)}, ${jsonbSql(
+            r.optionalMarker,
+          )}, ${jsonbSql(r.markers)})`,
         );
       }
       await executeSql(

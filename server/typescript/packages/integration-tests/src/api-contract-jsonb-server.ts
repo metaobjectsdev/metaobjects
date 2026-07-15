@@ -12,9 +12,9 @@
 // jsonb scenario only POSTs + GETs by id (no filter / sort / pagination), so
 // this server implements just the verbs the scenario drives.
 
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type RouteHandlerMethod } from "fastify";
 import { type MetaRoot } from "@metaobjectsdev/metadata";
-import { ObjectManager } from "@metaobjectsdev/runtime-ts";
+import { ObjectManager, ValidationError } from "@metaobjectsdev/runtime-ts";
 import { kyselyDriver } from "@metaobjectsdev/runtime-ts/drivers";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
@@ -24,10 +24,18 @@ import { bigintAsNumberTypes } from "./pg-bigint-number-types.ts";
 const ENTITY = "Document";
 const ROUTE_BASE = "/api/documents";
 
+export interface Marker {
+  label: string;
+  score?: number;
+}
+
 export interface DocumentRow {
   id?: number;
   title: string;
   payload?: unknown;
+  primaryMarker?: Marker;
+  optionalMarker?: Marker | null;
+  markers?: Marker[] | null;
 }
 
 export interface JsonbServerHandle {
@@ -50,18 +58,35 @@ export async function startJsonbServer(connectionUri: string, root: MetaRoot): P
 
   // Literal column naming (the corpus pins physical name = field name), so a
   // small CREATE TABLE matches the entity. `payload` is a bare jsonb column —
-  // the open bag holds any JSON value.
+  // the open bag holds any JSON value. The three Marker value-object columns
+  // are jsonb too (single / single-nullable / array); `primaryMarker` is
+  // @required (NOT NULL). Program D exercises VO-column POST + PATCH here.
   await kysely.schema
     .createTable("documents")
     .addColumn("id", "bigserial", (c) => c.primaryKey())
     .addColumn("title", "varchar(200)", (c) => c.notNull())
     .addColumn("payload", "jsonb")
+    .addColumn("primaryMarker", "jsonb", (c) => c.notNull())
+    .addColumn("optionalMarker", "jsonb")
+    .addColumn("markers", "jsonb")
     .execute();
 
   const driver = kyselyDriver({ db: kysely as never, dialect: "postgres" });
   const om = new ObjectManager({ metadata: root, driver, columnNamingStrategy: "literal" });
 
   const fastify = Fastify();
+
+  // A per-field validation failure (FR-035 present-null on a @required field,
+  // a value that fails a length rule, or a nested VO constraint) surfaces from
+  // om.create/om.update as a ValidationError → the cross-port 400
+  // {error:"validation"} envelope. Any other error keeps Fastify's 500.
+  fastify.setErrorHandler((err, _req, reply) => {
+    if (err instanceof ValidationError) {
+      reply.code(400).send({ error: "validation" });
+      return;
+    }
+    throw err;
+  });
 
   // GET /api/documents/:id
   fastify.get(`${ROUTE_BASE}/:id`, async (req, reply) => {
@@ -78,6 +103,21 @@ export async function startJsonbServer(connectionUri: string, root: MetaRoot): P
     reply.code(201).send(row);
     return reply;
   });
+
+  // PATCH + PUT /api/documents/:id — FR-035 tristate + VO-column PATCH. A
+  // ValidationError (present-null on a @required column, nested VO violation)
+  // propagates to the shared setErrorHandler → 400.
+  const updateHandler: RouteHandlerMethod = async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const row = await om.update(ENTITY, Number(id), req.body as Record<string, unknown>, {
+      ifMissing: "ignore",
+    });
+    if (row) return row;
+    reply.code(404).send({ error: "not_found" });
+    return reply;
+  };
+  fastify.patch(`${ROUTE_BASE}/:id`, updateHandler);
+  fastify.put(`${ROUTE_BASE}/:id`, updateHandler);
 
   const baseUrl = await fastify.listen({ host: "127.0.0.1", port: 0 });
 

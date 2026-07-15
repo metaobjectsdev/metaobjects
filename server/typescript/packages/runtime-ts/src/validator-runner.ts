@@ -1,15 +1,16 @@
 // Pure function: NEVER throws. ObjectManager wraps a non-ok result in a ValidationError on writes;
 // om.validate() returns the result directly.
 
-import type { MetaData } from "@metaobjectsdev/metadata";
+import { MetaRoot, type MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_FIELD, TYPE_VALIDATOR,
   VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_FLOAT, FIELD_SUBTYPE_CURRENCY,
-  FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_UUID,
+  FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_OBJECT,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_DEFAULT,
-  FIELD_ATTR_DB_COLUMN_TYPE, DB_COLUMN_TYPE_JSONB,
+  FIELD_ATTR_DB_COLUMN_TYPE, DB_COLUMN_TYPE_JSONB, FIELD_ATTR_OBJECT_REF,
+  PACKAGE_SEPARATOR,
   VALIDATOR_ATTR_MIN, VALIDATOR_ATTR_MAX, VALIDATOR_ATTR_PATTERN,
 } from "@metaobjectsdev/metadata";
 import type { ValidationFailure } from "./errors.js";
@@ -90,6 +91,47 @@ export function runValidators(
       continue;
     }
 
+    // Value-object column (`field.object @objectRef`): recurse into the VO's
+    // member constraints. A present VO is validated in FULL (never partial) —
+    // the generated Zod UpdateSchema embeds the VO InsertSchema, so required
+    // members must be present + valid even inside a partial parent update. Both
+    // single and @isArray VO columns; each array element is a VO. Keeps the
+    // runtime OM byte-identical with the generated validator on nested VO.
+    if (field.subType === FIELD_SUBTYPE_OBJECT) {
+      const vo = resolveVoRef(field);
+      if (vo !== undefined) {
+        if (field.isArray && !Array.isArray(value)) {
+          errors.push({
+            field: field.name, rule: "type",
+            message: `'${field.name}' must be an array of ${vo.name}`,
+            expected: "array", received: typeof value,
+          });
+          continue;
+        }
+        const elements: unknown[] = field.isArray ? (value as unknown[]) : [value];
+        elements.forEach((el, i) => {
+          if (typeof el !== "object" || el === null || Array.isArray(el)) {
+            errors.push({
+              field: field.name, rule: "type",
+              message: `'${field.name}' must be a ${vo.name} object`,
+              expected: vo.name, received: el === null ? "null" : typeof el,
+            });
+            return;
+          }
+          const sub = runValidators(vo, el as Record<string, unknown>);
+          if (!sub.ok) {
+            for (const e of sub.errors) {
+              errors.push({
+                ...e,
+                field: field.isArray ? `${field.name}[${i}].${e.field}` : `${field.name}.${e.field}`,
+              });
+            }
+          }
+        });
+      }
+      continue;
+    }
+
     const typeError = checkType(field.subType, value);
     if (typeError !== null) {
       errors.push({
@@ -165,6 +207,22 @@ export function runValidators(
   }
 
   return errors.length === 0 ? { ok: true } : { ok: false, errors };
+}
+
+/** Resolve a `field.object`'s `@objectRef` to its value-object MetaData by walking
+ *  to the tree root. The ref may be a bare name or a `pkg::Name` FQN. Mirrors the
+ *  extract-object resolver. Returns undefined when unresolvable (→ no VO recursion).
+ *  ADR-0039: resolving — @objectRef may be inherited via extends. */
+function resolveVoRef(field: MetaData): MetaData | undefined {
+  const ref = field.attr(FIELD_ATTR_OBJECT_REF);
+  if (typeof ref !== "string" || ref.length === 0) return undefined;
+  const root = field.root();
+  if (!(root instanceof MetaRoot)) return undefined;
+  const direct = root.findObject(ref);
+  if (direct !== undefined) return direct;
+  const sep = ref.lastIndexOf(PACKAGE_SEPARATOR);
+  if (sep >= 0) return root.findObject(ref.slice(sep + PACKAGE_SEPARATOR.length));
+  return undefined;
 }
 
 function isRequired(field: MetaData): boolean {
