@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Program D — value-object jsonb columns are PATCH-able cross-port
+
+Value-object jsonb columns (`field.object @objectRef @storage:jsonb`, single AND `@isArray`) are now bound → nested-validated → written on `POST` and `PATCH` in **all five ports** (TS / Python / Java / Kotlin / C#), closing the deliberate FR-036 Day-1 simplification (Java/Kotlin/C# previously excluded VO columns from the patch set, so a single-port fix would have broken byte-identical api-contract parity). Nested VO constraints validate in full (a VO string member over `@maxLength`, an empty `@required` member, a present-`null` on a required member → `400 {"error":"validation"}`), identically across ports. The FR-035 tristate holds for VO columns: absent → untouched; present-`null` clears a nullable column but 400s a `@required` one; present-`[]` writes an empty array (distinct from present-`null` → SQL NULL). Gated by `fixtures/api-contract-conformance/jsonb/scenarios/jsonb-value-object-patch.yaml` in both lanes (hand-rolled reference server + generated artifact over Testcontainers Postgres), all five ports. A latent TS runtime bug was fixed along the way: the `ObjectManager` validator did not recurse into `field.object` member constraints (nested violations wrote a 201). `field.map` (dict-of-VO), the Kotlin `field.string @dbColumnType=jsonb` open-bag PATCH, and TPH entities with VO columns remain tracked follow-ups.
+
 ## [0.16.0] — 2026-07-14
 
 _Coordinated **breaking** release across all four registries: npm `0.16.0` · PyPI `0.16.0` · NuGet `0.16.0` · Maven Central `7.8.0` (full lockstep; the two `angular` packages stay on their `0.6.x` line)._

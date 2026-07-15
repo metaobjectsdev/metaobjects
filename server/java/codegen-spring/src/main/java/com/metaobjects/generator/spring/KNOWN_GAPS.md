@@ -131,13 +131,22 @@ Program B) the TPH per-subtype update paths. (The prior note here — and the cl
 that "TS/Python DO validate on PATCH" — was wrong: before FR-036 only TS's vanilla
 path validated present values; the TPH path validated on no port. All ports now do.)
 
-## Object/value-typed columns are non-PATCHable (deliberate, cross-port)
+## Value-object jsonb columns are PATCHable (Program D — SHIPPED)
 
-A `field.object` / `field.map` column (a value-object mapped to a jsonb column,
-single or `@isArray`) is EXCLUDED from `<Entity>Patch`'s settable set
-(`SpringDtoGenerator.settableFields` skips `ObjectField`). So a `PATCH` leaves a
-VO-typed column untouched. This is a **deliberate cross-port Day-1 simplification**,
-consistent across Java, Kotlin (both exclude `ObjectField`), and C# (the owned-nav
-`FindProperty`-miss skip) — NOT a per-port bug. Making VO-typed columns PATCHable
-(bind VO JSON → validate → write jsonb) is a separately-scoped cross-port follow-up
-FR; a single-port fix would break the api-contract byte-identical parity.
+A `field.object` value-object column mapped to a jsonb column (single or
+`@isArray`) is now bound → validated → written on `PATCH` and `POST`, cross-port
+(TS / Python / Java / Kotlin / C#), gated by
+`fixtures/api-contract-conformance/jsonb/scenarios/jsonb-value-object-patch.yaml`
+in both lanes. `SpringDtoGenerator.settableFields` includes `ObjectField`; a new
+`SpringValueObjectGenerator` emits the VO records the DTO/Patch bind. Nested VO
+constraints validate in full (spec §0: `validateValue` does NOT cascade `@Valid`,
+so the controller adds an explicit `validator.validate(voElement)` per present
+element). FR-035 tristate holds for VO columns (absent → untouched; present-null
+clears a nullable column / 400s a `@required` one; present-`[]` writes an empty
+array, distinct from present-null → SQL NULL).
+
+**Still staged out** (tracked follow-ups): `field.map` (dict-of-VO — needs a
+persistence-conformance roundtrip column first) and the Kotlin `field.string
+@dbColumnType=jsonb` open-bag PATCH (needs a kotlinx `parseToJsonElement` bridge).
+TPH entities with VO columns also remain out of scope (the TPH union skips
+`ObjectField`).
