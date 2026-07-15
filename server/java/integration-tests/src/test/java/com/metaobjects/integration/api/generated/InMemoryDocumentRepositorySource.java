@@ -79,7 +79,8 @@ final class InMemoryDocumentRepositorySource {
 
             @Override
             public DocumentDto create(DocumentDto dto) {
-                DocumentDto saved = new DocumentDto(nextId.getAndIncrement(), dto.title(), dto.payload());
+                DocumentDto saved = new DocumentDto(nextId.getAndIncrement(), dto.title(), dto.payload(),
+                    dto.primaryMarker(), dto.optionalMarker(), dto.markers());
                 rows.add(saved);
                 return saved;
             }
@@ -92,7 +93,10 @@ final class InMemoryDocumentRepositorySource {
                         DocumentDto merged = new DocumentDto(
                             id,
                             dto.title()   != null ? dto.title()   : cur.title(),
-                            dto.payload() != null ? dto.payload() : cur.payload());
+                            dto.payload() != null ? dto.payload() : cur.payload(),
+                            dto.primaryMarker()  != null ? dto.primaryMarker()  : cur.primaryMarker(),
+                            dto.optionalMarker() != null ? dto.optionalMarker() : cur.optionalMarker(),
+                            dto.markers()        != null ? dto.markers()        : cur.markers());
                         rows.set(i, merged);
                         return Optional.of(merged);
                     }
@@ -100,7 +104,8 @@ final class InMemoryDocumentRepositorySource {
                 return Optional.empty();
             }
 
-            // FR-035 present-key PATCH: apply only the ASSIGNED fields (has<F>()).
+            // FR-035 present-key PATCH: apply only the ASSIGNED fields (has<F>()). A present-null
+            // clears a nullable value-object column; an absent key is untouched (Program D).
             @Override
             public Optional<DocumentDto> patch(Long id, DocumentPatch patch) {
                 for (int i = 0; i < rows.size(); i++) {
@@ -109,7 +114,10 @@ final class InMemoryDocumentRepositorySource {
                         DocumentDto merged = new DocumentDto(
                             id,
                             patch.hasTitle()   ? patch.title()   : cur.title(),
-                            patch.hasPayload() ? patch.payload() : cur.payload());
+                            patch.hasPayload() ? patch.payload() : cur.payload(),
+                            patch.hasPrimaryMarker()  ? patch.primaryMarker()  : cur.primaryMarker(),
+                            patch.hasOptionalMarker() ? patch.optionalMarker() : cur.optionalMarker(),
+                            patch.hasMarkers()        ? patch.markers()        : cur.markers());
                         rows.set(i, merged);
                         return Optional.of(merged);
                     }

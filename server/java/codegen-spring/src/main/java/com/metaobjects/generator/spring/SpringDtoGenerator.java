@@ -138,10 +138,17 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
     }
 
     protected void emit(MetaObject entity, Path outRoot) {
-        List<MetaField> fields = scalarFields(entity);
-        // Each scalar field carries its full validation (the standard, non-TPH DTO).
+        List<MetaField> fields = dtoComponentFields(entity);
+        // Each field carries its full validation (the standard, non-TPH DTO). A value-object
+        // jsonb column additionally gets @Valid so the POST path's validator.validate(dto)
+        // cascades into the nested VO's constraints (spec section 0 — @Valid cascades on
+        // validate(bean), unlike the PATCH path's per-field validateValue).
         List<String> annotationsPerField = new ArrayList<>(fields.size());
-        for (MetaField field : fields) annotationsPerField.add(validationAnnotations(field));
+        for (MetaField field : fields) {
+            String a = validationAnnotations(field);
+            if (isValueObjectJsonbField(field)) a = a.isEmpty() ? "@Valid" : "@Valid " + a;
+            annotationsPerField.add(a);
+        }
         emitRecord(entity, outRoot, fields, annotationsPerField);
     }
 
@@ -272,15 +279,19 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         writeJavaFile(entity, outRoot, pkg, patchName, src.toString());
     }
 
-    /** Scalar (non-object) fields MINUS the primary-key field(s) — the caller-settable set. */
+    /**
+     * The vanilla {@code <Entity>Patch} settable set: DTO component fields (scalars PLUS
+     * value-object jsonb columns, Program D) MINUS the primary-key field(s).
+     */
     private static List<MetaField> settableFields(MetaObject entity) {
-        return settableFields(entity, null);
+        return minusPk(entity, dtoComponentFields(entity), null);
     }
 
     /**
-     * As {@link #settableFields(MetaObject)}, additionally excluding the field named
-     * {@code alsoExclude} (or nothing when {@code null}) — the FR-036 TPH per-subtype patch passes
-     * the discriminator field name so the immutable discriminator is never a settable member.
+     * The TPH per-subtype settable set: {@link #scalarFields(MetaObject)} MINUS the primary key
+     * MINUS the field named {@code alsoExclude} (the immutable discriminator, or nothing when
+     * {@code null}). Scalar-only — value-object columns on a TPH hierarchy are out of scope
+     * (Program D), so a TPH base's union DTO and per-subtype patch stay VO-free.
      *
      * <p>Public so {@link SpringControllerGenerator#emitTph} can validate a TPH per-subtype CREATE
      * body against exactly the field set the sibling {@code <Sub>Patch} covers (effective scalars
@@ -289,13 +300,18 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      * validated from the body.</p>
      */
     public static List<MetaField> settableFields(MetaObject entity, String alsoExclude) {
+        return minusPk(entity, scalarFields(entity), alsoExclude);
+    }
+
+    /** {@code pool} MINUS the entity's primary-key field(s) MINUS {@code alsoExclude} (when non-null). */
+    private static List<MetaField> minusPk(MetaObject entity, List<MetaField> pool, String alsoExclude) {
         List<String> pkFields = entity.getIdentities(true).stream()
             .filter(MetaIdentity::isPrimary)
             .findFirst()
             .map(MetaIdentity::getFields)
             .orElse(List.of());
         List<MetaField> out = new ArrayList<>();
-        for (MetaField field : scalarFields(entity)) {
+        for (MetaField field : pool) {
             if (pkFields.contains(field.getName())) continue;
             if (alsoExclude != null && alsoExclude.equals(field.getName())) continue;
             out.add(field);
@@ -345,6 +361,9 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         String recordName = SpringNaming.dtoName(shortName);
 
         boolean usesValidation = annotationsPerField.stream().anyMatch(a -> !a.isEmpty());
+        // @Valid (jakarta.validation, NOT ...constraints) cascades validation into a
+        // value-object jsonb component — emitted on VO fields by emit() (Program D).
+        boolean usesValid = annotationsPerField.stream().anyMatch(a -> a.contains("@Valid"));
 
         StringBuilder src = new StringBuilder();
         if (!pkg.isEmpty()) {
@@ -352,8 +371,14 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         }
         // Wildcard import keeps the emit simple — record components carry a small,
         // closed set of jakarta.validation.constraints annotations.
+        if (usesValid) {
+            src.append("import jakarta.validation.Valid;\n");
+        }
         if (usesValidation) {
-            src.append("import jakarta.validation.constraints.*;\n\n");
+            src.append("import jakarta.validation.constraints.*;\n");
+        }
+        if (usesValid || usesValidation) {
+            src.append('\n');
         }
         src.append("/** GENERATED — wire DTO for ").append(shortName)
            .append(". Do not hand-edit; regenerated from metadata. */\n");
@@ -434,8 +459,10 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
 
     /**
      * Return the entity's scalar fields — i.e. every {@link MetaField} that is
-     * not an {@link ObjectField}. The {@code field.object} arm is deliberately
-     * deferred (see class javadoc).
+     * not an {@link ObjectField}. Value-object {@code field.object} columns are
+     * carried separately by {@link #dtoComponentFields(MetaObject)}; this
+     * scalar-only view still backs the TPH union / abstract-shape / sort surfaces
+     * (which are value-object-agnostic).
      */
     public static List<MetaField> scalarFields(MetaObject entity) {
         List<MetaField> out = new ArrayList<>();
@@ -444,6 +471,67 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             out.add(field);
         }
         return out;
+    }
+
+    /** The single legal {@code @storage} value for a value-object jsonb column (Program D);
+     *  {@code flattened} / {@code subdocument} owned-object storage is out of scope. */
+    static final String STORAGE_JSONB = "jsonb";
+
+    /**
+     * The vanilla {@code <Entity>Dto} / {@code <Entity>Patch} component fields: every scalar
+     * field PLUS every value-object jsonb column ({@code field.object @objectRef=<value> @storage:jsonb},
+     * single or {@code @isArray}), in declared order. Program D: the VO columns become
+     * strongly-typed record components (bound to the generated {@code <VO>} record) so they
+     * POST + PATCH with nested validation. A non-VO {@link ObjectField} (flattened / subdocument
+     * storage, or an unresolved / non-value {@code @objectRef}) is still skipped.
+     */
+    public static List<MetaField> dtoComponentFields(MetaObject entity) {
+        List<MetaField> out = new ArrayList<>();
+        for (MetaField field : entity.getMetaFields()) {
+            if (field instanceof ObjectField) {
+                if (isValueObjectJsonbField(field)) out.add(field);
+                continue;
+            }
+            out.add(field);
+        }
+        return out;
+    }
+
+    /** The value-object jsonb columns of {@code entity}, in declared order (Program D) — the
+     *  fields the controller runs explicit nested-VO validation over on PATCH (spec section 0). */
+    public static List<ObjectField> valueObjectJsonbFields(MetaObject entity) {
+        List<ObjectField> out = new ArrayList<>();
+        for (MetaField field : entity.getMetaFields()) {
+            if (isValueObjectJsonbField(field)) out.add((ObjectField) field);
+        }
+        return out;
+    }
+
+    /**
+     * True iff {@code field} is a value-object jsonb column: a {@link ObjectField} whose
+     * {@code @objectRef} resolves to an {@code object.value} and whose {@code @storage} is
+     * jsonb (explicit, or the single-jsonb-column default when {@code @storage} is absent).
+     * Flattened / subdocument owned-object storage is out of scope (Program D).
+     */
+    public static boolean isValueObjectJsonbField(MetaField<?> field) {
+        if (!(field instanceof ObjectField of)) return false;
+        if (!of.hasMetaAttr(ObjectField.ATTR_OBJECTREF)) return false;
+        MetaObject ref;
+        try {
+            ref = of.getObjectRef();
+        } catch (RuntimeException unresolved) {
+            return false;
+        }
+        if (ref == null || !MetaObject.SUBTYPE_VALUE.equals(ref.getSubType())) return false;
+        if (!of.hasMetaAttr(ObjectField.ATTR_STORAGE)) return true; // default single-jsonb-column
+        Object storage = of.getMetaAttr(ObjectField.ATTR_STORAGE).getValue();
+        return STORAGE_JSONB.equalsIgnoreCase(String.valueOf(storage).trim());
+    }
+
+    /** The referenced {@code object.value} when {@code field} is a value-object jsonb column,
+     *  else {@code null}. Used by {@link SpringValueObjectGenerator}'s reachability walk. */
+    static MetaObject valueObjectRefOf(MetaField<?> field) {
+        return isValueObjectJsonbField(field) ? ((ObjectField) field).getObjectRef() : null;
     }
 
     // === validation (SP-C validator parity) =================================

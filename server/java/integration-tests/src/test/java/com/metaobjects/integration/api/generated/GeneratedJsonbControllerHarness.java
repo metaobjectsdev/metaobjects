@@ -5,6 +5,7 @@ import com.metaobjects.generator.spring.SpringControllerGenerator;
 import com.metaobjects.generator.spring.SpringDtoGenerator;
 import com.metaobjects.generator.spring.SpringFilterAllowlistGenerator;
 import com.metaobjects.generator.spring.SpringRepositoryGenerator;
+import com.metaobjects.generator.spring.SpringValueObjectGenerator;
 import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.loader.uri.URIHelper;
@@ -61,7 +62,7 @@ public final class GeneratedJsonbControllerHarness implements AutoCloseable {
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final URLClassLoader classLoader;
-    private final Constructor<?> dtoCtor;        // (Long id, String title, Object payload)
+    private final Class<?> dtoClass;             // acme.store.DocumentDto (record w/ VO components)
     private final Constructor<?> controllerCtor;
     private final Constructor<?> repoCtor;        // (List<DocumentDto> seed)
     private final List<Map<String, Object>> seedRows;
@@ -82,12 +83,13 @@ public final class GeneratedJsonbControllerHarness implements AutoCloseable {
         // 1. Load the corpus metadata.
         MetaDataLoader loader = loadCorpus(corpusRoot.resolve("meta.json"));
 
-        // 2. Run the four generators — emit the GENERATED controller + DTO + repo interface +
-        //    filter allowlist into srcDir, UNMODIFIED.
+        // 2. Run the generators — emit the GENERATED controller + DTO + repo interface +
+        //    filter allowlist + value-object records (Program D) into srcDir, UNMODIFIED.
         runGenerator(new SpringControllerGenerator(), loader, srcDir);
         runGenerator(new SpringDtoGenerator(), loader, srcDir);
         runGenerator(new SpringRepositoryGenerator(), loader, srcDir);
         runGenerator(new SpringFilterAllowlistGenerator(), loader, srcDir);
+        runGenerator(new SpringValueObjectGenerator(), loader, srcDir);
 
         // 3. Emit the ONLY hand-written piece — the in-memory repo impl — alongside.
         Path repoImpl = srcDir.resolve(ENTITY_PKG.replace('.', '/'))
@@ -101,8 +103,7 @@ public final class GeneratedJsonbControllerHarness implements AutoCloseable {
         // 5. Load the compiled classes (child of the test loader so Spring + runtime types resolve).
         this.classLoader = new URLClassLoader(
             new URL[]{ classesDir.toUri().toURL() }, getClass().getClassLoader());
-        Class<?> dtoClass = classLoader.loadClass(DTO_FQCN);
-        this.dtoCtor = dtoClass.getDeclaredConstructor(Long.class, String.class, Object.class);
+        this.dtoClass = classLoader.loadClass(DTO_FQCN);
         Class<?> repoInterface = classLoader.loadClass(REPO_FQCN);
         Class<?> controllerClass = classLoader.loadClass(CONTROLLER_FQCN);
         this.controllerCtor = controllerClass.getDeclaredConstructor(
@@ -208,11 +209,14 @@ public final class GeneratedJsonbControllerHarness implements AutoCloseable {
         }
     }
 
-    /** Build a generated {@code DocumentDto} from a seed row map (payload stays an Object). */
-    private Object dtoFromRow(Map<String, Object> row) throws Exception {
-        Long id = row.get("id") == null ? null : ((Number) row.get("id")).longValue();
-        String title = (String) row.get("title");
-        Object payload = row.get("payload");   // open JSON bag — a Map/List/scalar
-        return dtoCtor.newInstance(id, title, payload);
+    /**
+     * Build a generated {@code DocumentDto} from a seed row map. Jackson {@code convertValue}
+     * binds the whole record — {@code payload} stays an {@code Object} (open JSON bag), and the
+     * value-object columns ({@code primaryMarker} / {@code optionalMarker} / {@code markers})
+     * convert to the generated {@code Marker} record / {@code List<Marker>} (Program D). An
+     * absent VO key on a seed row becomes {@code null}.
+     */
+    private Object dtoFromRow(Map<String, Object> row) {
+        return mapper.convertValue(row, dtoClass);
     }
 }

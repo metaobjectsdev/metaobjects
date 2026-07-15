@@ -10,6 +10,7 @@ import com.metaobjects.field.FloatField;
 import com.metaobjects.field.IntegerField;
 import com.metaobjects.field.LongField;
 import com.metaobjects.field.MetaField;
+import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.field.TimeField;
 import com.metaobjects.field.TimestampField;
@@ -121,6 +122,19 @@ public final class SpringTypeMapper {
         // inet — native java.net.InetAddress binding (ADR-0036/0037 Wave 3). Wire/storage
         // stays a String; the DB column is the Postgres-native inet type.
         if (field instanceof InetField) return "java.net.InetAddress";
+        // field.object @objectRef → the referenced value object's generated record type
+        // (Program D). A jsonb value-object column surfaces as the <VO> record (single) or
+        // — via componentType wrapping — List<<VO>> (isArray). Fully-qualified so the
+        // consuming DTO / <Entity>Patch / VO record needs no import. Only reached for the
+        // VO-ref fields the DTO/patch paths select via
+        // SpringDtoGenerator.isValueObjectJsonbField; a non-VO ObjectField never lands here.
+        if (field instanceof ObjectField of && of.hasMetaAttr(ObjectField.ATTR_OBJECTREF)) {
+            MetaObject ref = of.getObjectRef();
+            if (ref != null) {
+                String[] split = SpringNaming.splitFqn(ref.getName());
+                return split[0].isEmpty() ? split[1] : split[0] + "." + split[1];
+            }
+        }
         throw new IllegalArgumentException(
             "unsupported Spring DTO type mapping for "
                 + field.getClass().getSimpleName() + " '" + field.getName() + "'");

@@ -318,6 +318,12 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
         src.append("            }\n");
         src.append("        }\n");
+        // Program D (spec section 0): validateValue does NOT cascade @Valid into a nested value
+        // object's own constraints, so validate each PRESENT VO element EXPLICITLY. The property's
+        // OWN constraints (@NotNull on a @required column, present-null tristate) are already
+        // covered above / in <Entity>Patch.fromJson; this closes the nested-constraint gap (e.g. a
+        // Marker.label over @maxLength, or null on a @required nested member) with a 400.
+        appendValueObjectValidation(src, entity);
         src.append("        return repository.patch(id, patch)\n");
         src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
         src.append("                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\")));\n");
@@ -367,6 +373,36 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + controllerName + ".java for entity " + entity.getName() + ": " + e, e);
+        }
+    }
+
+    /**
+     * Program D — append per-value-object nested-validation guards into the vanilla PATCH handler,
+     * one per {@code field.object @storage:jsonb} column (spec section 0). A present single VO
+     * value is validated whole; a present array is validated element-by-element. Skips null
+     * (present-null clears / is caught upstream) so the tristate composes. Emits nothing for an
+     * entity with no value-object columns, keeping non-VO controllers byte-identical.
+     */
+    private static void appendValueObjectValidation(StringBuilder src, MetaObject entity) {
+        for (ObjectField vf : SpringDtoGenerator.valueObjectJsonbFields(entity)) {
+            String name = vf.getName();
+            String cap = SpringNaming.capitalize(name);
+            if (vf.isArrayType()) {
+                src.append("        if (patch.has").append(cap).append("() && patch.")
+                   .append(name).append("() != null) {\n");
+                src.append("            for (var __el : patch.").append(name).append("()) {\n");
+                src.append("                if (__el != null && !validator.validate(__el).isEmpty()) {\n");
+                src.append("                    return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+                src.append("                }\n");
+                src.append("            }\n");
+                src.append("        }\n");
+            } else {
+                src.append("        if (patch.has").append(cap).append("() && patch.")
+                   .append(name).append("() != null && !validator.validate(patch.")
+                   .append(name).append("()).isEmpty()) {\n");
+                src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
+                src.append("        }\n");
+            }
         }
     }
 

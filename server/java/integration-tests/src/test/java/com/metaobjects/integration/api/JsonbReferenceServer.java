@@ -16,6 +16,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -74,18 +75,25 @@ final class JsonbReferenceServer implements AutoCloseable {
             st.execute("CREATE TABLE \"documents\" ("
                 + "id BIGSERIAL PRIMARY KEY, "
                 + "title VARCHAR(200) NOT NULL, "
-                + "payload JSONB)");
+                + "payload JSONB, "
+                + "primary_marker JSONB NOT NULL, "   // required single VO (Program D)
+                + "optional_marker JSONB, "           // nullable single VO
+                + "markers JSONB)");                  // nullable array-of-VO
         }
     }
 
     private void applySeed(List<Map<String, Object>> seedRows) throws SQLException {
         try (Connection c = connect()) {
             try (PreparedStatement ps = c.prepareStatement(
-                "INSERT INTO \"documents\" (id, title, payload) VALUES (?, ?, ?)")) {
+                "INSERT INTO \"documents\" (id, title, payload, primary_marker, optional_marker, markers) "
+                + "VALUES (?, ?, ?, ?, ?, ?)")) {
                 for (Map<String, Object> r : seedRows) {
                     ps.setLong(1, ((Number) r.get("id")).longValue());
                     ps.setString(2, String.valueOf(r.get("title")));
                     bindJsonb(ps, 3, r.get("payload"));
+                    bindJsonb(ps, 4, r.get("primaryMarker"));
+                    bindJsonb(ps, 5, r.get("optionalMarker"));
+                    bindJsonb(ps, 6, r.get("markers"));
                     ps.executeUpdate();
                 }
             }
@@ -127,9 +135,21 @@ final class JsonbReferenceServer implements AutoCloseable {
         }
         if (method.equals("POST") && (rest.isEmpty() || rest.equals("/"))) {
             Map<String, Object> body = readBody(exchange);
-            Map<String, Object> created = create(
-                String.valueOf(body.get("title")), body.get("payload"));
-            sendJson(exchange, 201, created);
+            // Program D: nested value-object validation on CREATE (required primaryMarker present +
+            // valid; a present optional/array VO valid) → 400 before persisting.
+            if (!voValidForCreate(body)) { sendJson(exchange, 400, Map.of("error", "validation")); return; }
+            sendJson(exchange, 201, create(body));
+            return;
+        }
+        if ((method.equals("PATCH") || method.equals("PUT")) && rest.startsWith("/")) {
+            long id = Long.parseLong(rest.substring(1));
+            Map<String, Object> body = readBody(exchange);
+            // FR-035 tristate + Program D nested VO validation: present-null on the @required
+            // primaryMarker → 400; a present value must be a valid Marker (single or array) → 400.
+            if (!voValidForPatch(body)) { sendJson(exchange, 400, Map.of("error", "validation")); return; }
+            Map<String, Object> row = patch(id, body);
+            if (row == null) { sendJson(exchange, 404, Map.of("error", "not_found")); return; }
+            sendJson(exchange, 200, row);
             return;
         }
         sendJson(exchange, 404, Map.of("error", "not_found"));
@@ -138,7 +158,8 @@ final class JsonbReferenceServer implements AutoCloseable {
     private Map<String, Object> findById(long id) throws SQLException {
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement(
-                 "SELECT id, title, payload FROM \"documents\" WHERE id = ?")) {
+                 "SELECT id, title, payload, primary_marker, optional_marker, markers "
+                 + "FROM \"documents\" WHERE id = ?")) {
             ps.setLong(1, id);
             try (ResultSet rs = ps.executeQuery()) {
                 return rs.next() ? rowFrom(rs) : null;
@@ -146,12 +167,17 @@ final class JsonbReferenceServer implements AutoCloseable {
         }
     }
 
-    private Map<String, Object> create(String title, Object payload) throws SQLException {
+    private Map<String, Object> create(Map<String, Object> body) throws SQLException {
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement(
-                 "INSERT INTO \"documents\" (title, payload) VALUES (?, ?) RETURNING id, title, payload")) {
-            ps.setString(1, title);
-            bindJsonb(ps, 2, payload);
+                 "INSERT INTO \"documents\" (title, payload, primary_marker, optional_marker, markers) "
+                 + "VALUES (?, ?, ?, ?, ?) "
+                 + "RETURNING id, title, payload, primary_marker, optional_marker, markers")) {
+            ps.setString(1, String.valueOf(body.get("title")));
+            bindJsonb(ps, 2, body.get("payload"));
+            bindJsonb(ps, 3, body.get("primaryMarker"));
+            bindJsonb(ps, 4, body.get("optionalMarker"));
+            bindJsonb(ps, 5, body.get("markers"));
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 return rowFrom(rs);
@@ -159,13 +185,104 @@ final class JsonbReferenceServer implements AutoCloseable {
         }
     }
 
-    /** Project a row, parsing the jsonb {@code payload} column to a JSON value (not a string). */
+    /**
+     * FR-035 present-key PATCH: apply ONLY the columns present in the body (an absent key is
+     * untouched; a present null clears a nullable VO column / is rejected upstream on a required
+     * one; a present value / empty array is written). Returns {@code null} when the id is absent.
+     */
+    private Map<String, Object> patch(long id, Map<String, Object> body) throws SQLException {
+        if (findById(id) == null) return null;   // 404
+        List<String> setClauses = new ArrayList<>();
+        List<Object> values = new ArrayList<>();
+        List<Boolean> jsonb = new ArrayList<>();
+        addAssignment(body, "title", "title", false, setClauses, values, jsonb);
+        addAssignment(body, "payload", "payload", true, setClauses, values, jsonb);
+        addAssignment(body, "primaryMarker", "primary_marker", true, setClauses, values, jsonb);
+        addAssignment(body, "optionalMarker", "optional_marker", true, setClauses, values, jsonb);
+        addAssignment(body, "markers", "markers", true, setClauses, values, jsonb);
+        if (!setClauses.isEmpty()) {
+            String sql = "UPDATE \"documents\" SET " + String.join(", ", setClauses) + " WHERE id = ?";
+            try (Connection c = connect(); PreparedStatement ps = c.prepareStatement(sql)) {
+                int idx = 1;
+                for (int i = 0; i < values.size(); i++) {
+                    if (jsonb.get(i)) bindJsonb(ps, idx++, values.get(i));
+                    else ps.setString(idx++, values.get(i) == null ? null : String.valueOf(values.get(i)));
+                }
+                ps.setLong(idx, id);
+                ps.executeUpdate();
+            }
+        }
+        return findById(id);
+    }
+
+    /** Record a {@code column = ?} assignment iff {@code wireKey} is PRESENT in the body. */
+    private static void addAssignment(Map<String, Object> body, String wireKey, String column,
+            boolean isJsonb, List<String> setClauses, List<Object> values, List<Boolean> jsonb) {
+        if (!body.containsKey(wireKey)) return;
+        setClauses.add(column + " = ?");
+        values.add(body.get(wireKey));
+        jsonb.add(isJsonb);
+    }
+
+    /** Project a row, parsing each jsonb column to a JSON value (never a JSON-encoded string). */
     private Map<String, Object> rowFrom(ResultSet rs) throws SQLException {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("id", rs.getLong("id"));
         row.put("title", rs.getString("title"));
         row.put("payload", parseJson(rs.getString("payload")));
+        row.put("primaryMarker", parseJson(rs.getString("primary_marker")));
+        row.put("optionalMarker", parseJson(rs.getString("optional_marker")));
+        row.put("markers", parseJson(rs.getString("markers")));
         return row;
+    }
+
+    // --- nested value-object validation (Program D — mirrors the cross-port contract) --------
+
+    /** CREATE: primaryMarker required + valid; a present optional/array VO valid. */
+    private static boolean voValidForCreate(Map<String, Object> body) {
+        Object pm = body.get("primaryMarker");
+        if (!body.containsKey("primaryMarker") || pm == null || !validMarker(pm)) return false;
+        if (body.containsKey("optionalMarker")) {
+            Object om = body.get("optionalMarker");
+            if (om != null && !validMarker(om)) return false;
+        }
+        if (body.containsKey("markers")) {
+            Object mk = body.get("markers");
+            if (mk != null && !validMarkerArray(mk)) return false;
+        }
+        return true;
+    }
+
+    /** PATCH: present-null on required primaryMarker → invalid; a present value must be a valid VO. */
+    private static boolean voValidForPatch(Map<String, Object> body) {
+        if (body.containsKey("primaryMarker")) {
+            Object pm = body.get("primaryMarker");
+            if (pm == null || !validMarker(pm)) return false;   // present-null on @required → 400
+        }
+        if (body.containsKey("optionalMarker")) {
+            Object om = body.get("optionalMarker");
+            if (om != null && !validMarker(om)) return false;
+        }
+        if (body.containsKey("markers")) {
+            Object mk = body.get("markers");
+            if (mk != null && !validMarkerArray(mk)) return false;
+        }
+        return true;
+    }
+
+    /** A Marker is valid iff {@code label} is a non-empty String &le; 40 chars (FR-036 Ruling 1:
+     *  reject null / "", accept whitespace); {@code score} is unconstrained. */
+    private static boolean validMarker(Object v) {
+        if (!(v instanceof Map<?, ?> m)) return false;
+        Object label = m.get("label");
+        if (!(label instanceof String s)) return false;
+        return s.length() >= 1 && s.length() <= 40;
+    }
+
+    private static boolean validMarkerArray(Object v) {
+        if (!(v instanceof List<?> list)) return false;
+        for (Object el : list) if (!validMarker(el)) return false;
+        return true;
     }
 
     // -----------------------------------------------------------------------
