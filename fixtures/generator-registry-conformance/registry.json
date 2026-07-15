@@ -98,6 +98,11 @@
       "tier": "native",
       "ports": ["java"]
     },
+    "value-object": {
+      "concept": "Per-value-object Spring record with jakarta constraints (the DTO/Patch bind target for a field.object jsonb column).",
+      "tier": "native",
+      "ports": ["java"]
+    },
     "exposed-table": {
       "concept": "Per-entity Kotlin Exposed table object.",
       "tier": "native",

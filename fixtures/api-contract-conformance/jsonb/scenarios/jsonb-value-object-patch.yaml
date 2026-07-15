@@ -199,3 +199,21 @@ requests:
       primaryMarker: { label: null, score: 4 }
     expect:
       status: 400
+
+  # --- PATCH wrong SHAPE: a JSON object for an array-of-VO column -> 400 (not 500) ---
+  - id: r21
+    method: PATCH
+    path: /api/documents/1
+    body:
+      markers: { label: "x", score: 1 }
+    expect:
+      status: 400
+
+  # --- PATCH wrong SHAPE: a JSON array for a single-VO column -> 400 (not 500) ---
+  - id: r22
+    method: PATCH
+    path: /api/documents/1
+    body:
+      primaryMarker: [ { label: "x", score: 1 } ]
+    expect:
+      status: 400

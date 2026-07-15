@@ -57,13 +57,15 @@ public final class JavaFieldShapes {
 
     /**
      * The DTO record's documented field shapes for {@code entity}: one
-     * {@link FieldShape} per scalar field the {@link SpringDtoGenerator} emits.
-     * Reuses the generator's scalar-field iteration, component-type mapping, and
-     * validation-annotation derivation so the docs can't drift from the record.
+     * {@link FieldShape} per component field the {@link SpringDtoGenerator} emits —
+     * scalars PLUS value-object jsonb columns (Program D), matching the record's own
+     * {@link SpringDtoGenerator#dtoComponentFields} iteration. Reuses the generator's
+     * component-type mapping and validation-annotation derivation so the docs can't
+     * drift from the record (a @required VO column shows @NotNull → required).
      */
     public static List<FieldShape> dtoFields(MetaObject entity) {
         List<FieldShape> out = new ArrayList<>();
-        for (MetaField field : SpringDtoGenerator.scalarFields(entity)) {
+        for (MetaField field : SpringDtoGenerator.dtoComponentFields(entity)) {
             String type = SpringDtoGenerator.componentType(field, entity);
             String annotations = SpringDtoGenerator.validationAnnotations(field);
             // Required iff the DTO component carries @NotNull or @NotBlank — read

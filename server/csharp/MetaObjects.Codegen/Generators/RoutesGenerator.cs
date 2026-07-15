@@ -500,7 +500,13 @@ public class RoutesGenerator : PerEntityGenerator
         sb.Append(string.Join(", ", requiredKeys.Select(k => "\"" + k + "\"")));
         sb.AppendLine(" })");
         sb.AppendLine("                if (!__present.Contains(__req)) return Results.BadRequest(new { error = \"validation\" });");
-        sb.AppendLine($"            var input = System.Text.Json.JsonSerializer.Deserialize<{cls}>(__body.RootElement.GetRawText(), jsonOpts);");
+        // A malformed body (e.g. a JSON array for a single-VO / scalar for an object column)
+        // throws JsonException — return the cross-port 400 {error:"validation"} rather than an
+        // unhandled 500 (matches the no-required-keys path's automatic model-binding 400, and
+        // every other port). Program D — the VO columns make wrong-shaped bodies reachable.
+        sb.AppendLine($"            {cls} input;");
+        sb.AppendLine("            try { input = System.Text.Json.JsonSerializer.Deserialize<" + cls + ">(__body.RootElement.GetRawText(), jsonOpts); }");
+        sb.AppendLine("            catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
         sb.AppendLine("            if (input is null) return Results.BadRequest(new { error = \"validation\" });");
         AppendCreateValidation(sb);
         AppendCreateVoValidation(sb, voFields);
@@ -610,7 +616,12 @@ public class RoutesGenerator : PerEntityGenerator
                 sb.AppendLine("                        continue;");
             }
             sb.AppendLine("                    }");
-            sb.AppendLine($"                    var {v} = System.Text.Json.JsonSerializer.Deserialize<{vf.DeserType}>(prop.Value.GetRawText(), jsonOpts);");
+            // A wrong-shaped VO value (e.g. a JSON array for a single-VO column, an object for an
+            // array column) throws JsonException — return the cross-port 400 rather than an
+            // unhandled 500 (matches every other port + this port's own reference lane).
+            sb.AppendLine($"                    {vf.DeserType} {v};");
+            sb.AppendLine($"                    try {{ {v} = System.Text.Json.JsonSerializer.Deserialize<{vf.DeserType}>(prop.Value.GetRawText(), jsonOpts); }}");
+            sb.AppendLine("                    catch (System.Text.Json.JsonException) { return Results.BadRequest(new { error = \"validation\" }); }");
             sb.AppendLine($"                    if (!ValueObjectValidator.Validate({v})) return Results.BadRequest(new {{ error = \"validation\" }});");
             sb.AppendLine($"                    existing.{vf.Nav} = {v}{(vf.Required ? "!" : "")};");
             sb.AppendLine("                    continue;");

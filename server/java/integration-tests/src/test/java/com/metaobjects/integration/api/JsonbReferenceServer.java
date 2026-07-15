@@ -238,8 +238,22 @@ final class JsonbReferenceServer implements AutoCloseable {
 
     // --- nested value-object validation (Program D — mirrors the cross-port contract) --------
 
-    /** CREATE: primaryMarker required + valid; a present optional/array VO valid. */
+    /**
+     * The scalar {@code title} is {@code @required @maxLength 200}. A present title must be a
+     * non-empty string within the cap (FR-036: non-empty, whitespace allowed); a present-null /
+     * empty / over-length is a 400 — matching the generated {@code DocumentPatch}/DTO, so the
+     * reference lane does not instead hit the NOT NULL column and 500. Absence is the caller's
+     * concern (required on CREATE, untouched on PATCH).
+     */
+    private static boolean titlePresentValueValid(Map<String, Object> body) {
+        if (!body.containsKey("title")) return true;
+        Object t = body.get("title");
+        return t instanceof String s && !s.isEmpty() && s.length() <= 200;
+    }
+
+    /** CREATE: title required + valid; primaryMarker required + valid; a present optional/array VO valid. */
     private static boolean voValidForCreate(Map<String, Object> body) {
+        if (!body.containsKey("title") || !titlePresentValueValid(body)) return false;
         Object pm = body.get("primaryMarker");
         if (!body.containsKey("primaryMarker") || pm == null || !validMarker(pm)) return false;
         if (body.containsKey("optionalMarker")) {
@@ -253,8 +267,9 @@ final class JsonbReferenceServer implements AutoCloseable {
         return true;
     }
 
-    /** PATCH: present-null on required primaryMarker → invalid; a present value must be a valid VO. */
+    /** PATCH: a present title/VO value must be valid; present-null on a @required field → invalid. */
     private static boolean voValidForPatch(Map<String, Object> body) {
+        if (!titlePresentValueValid(body)) return false;   // present-null/empty/over-length title → 400
         if (body.containsKey("primaryMarker")) {
             Object pm = body.get("primaryMarker");
             if (pm == null || !validMarker(pm)) return false;   // present-null on @required → 400

@@ -11,6 +11,7 @@ import com.metaobjects.generator.spring.SpringOutputPromptGenerator;
 import com.metaobjects.generator.spring.SpringPayloadGenerator;
 import com.metaobjects.generator.spring.SpringRenderHelperGenerator;
 import com.metaobjects.generator.spring.SpringRepositoryGenerator;
+import com.metaobjects.generator.spring.SpringValueObjectGenerator;
 import com.metaobjects.render.templategen.TemplateGenerator;
 
 import java.util.Collections;
@@ -119,6 +120,9 @@ public final class GeneratorRegistry {
                 "Per-entity Spring Data repository.", Tier.NATIVE);
         register(m, "dto", SpringDtoGenerator.class.getName(),
                 "Per-entity Spring DTO record.", Tier.NATIVE);
+        register(m, "value-object", SpringValueObjectGenerator.class.getName(),
+                "Per-value-object Spring record with jakarta constraints — the typed "
+                    + "component the DTO/Patch bind for a field.object @storage:jsonb column.", Tier.NATIVE);
         register(m, "trace-helper", LlmTraceHelperGenerator.class.getName(),
                 "Per-entity typed record<Entity> LLM-trace helper (extract + buildLlmCallRow + persist; "
                     + "LlmCallBase-derived entities only).", Tier.NATIVE);

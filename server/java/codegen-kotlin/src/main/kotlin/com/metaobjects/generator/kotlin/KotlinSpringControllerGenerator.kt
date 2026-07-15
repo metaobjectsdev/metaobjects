@@ -161,7 +161,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         // ctor param / TypeReference import (they'd be unused → allWarningsAsErrors).
         val patchSettableFields = entity.metaFields.filter {
             it !is MapField && it.name != pkFieldName &&
-                !KotlinTypeMapper.isJsonbOpenBag(it)
+                !KotlinTypeMapper.isJsonbOpenBag(it) &&
+                // Program D: only a jsonb value-object column is settable. A flattened object
+                // field (@storage:flattened) is materialised by the Exposed table as per-subfield
+                // columns — there is no single `Table.<field>` to bind — so it stays excluded.
+                (it !is ObjectField || isJsonbObjectColumn(it))
         }
         val hasPatchFields = patchSettableFields.isNotEmpty()
 
@@ -303,7 +307,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("/** GENERATED — map an Exposed ResultRow to the ${shortName} data class. */\n")
             append("private fun rowTo${shortName}(row: ResultRow): ${shortName} = ${shortName}(\n")
             for (field in entity.metaFields) {
-                if (field is MapField) continue
+                // MapField (staged out) and a flattened object field (materialised as per-subfield
+                // columns, no single `Table.<field>`) are skipped — the data class defaults them.
+                if (field is MapField || (field is ObjectField && !isJsonbObjectColumn(field))) continue
                 append("    ${field.name} = row[${tableObjectName}.${field.name}],\n")
             }
             append(")\n\n")
@@ -378,8 +384,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             for (field in entity.metaFields) {
                 // Program D: a field.object value-object jsonb column IS written on create — the
                 // DTO property is the typed VO (record / List<VO>) and the Exposed Column<VO> codec
-                // encodes it to jsonb. MapField (dict-of-VO) stays skipped (staged out).
-                if (field is MapField) continue
+                // encodes it to jsonb. MapField (dict-of-VO) stays skipped (staged out); a flattened
+                // object field (no single `Table.<field>`) is skipped too.
+                if (field is MapField || (field is ObjectField && !isJsonbObjectColumn(field))) continue
                 // Skip the PK column on insert — the table's @generation=increment owns it.
                 // If the entity has no auto-incrementing PK the consumer can override the
                 // generated handler; this is the 95% case.
@@ -1311,6 +1318,19 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
     }
 
     /**
+     * True iff [field] is a `field.object` stored as a single jsonb column (`@storage` != flattened,
+     * the default). The Exposed table emits one `Table.<field>` column only for these — a flattened
+     * object field is materialised as per-subfield columns, so the controller must NOT reference
+     * `Table.<field>` for it (it is skipped, defaulting to null in the data class). Mirrors
+     * [KotlinExposedTableGenerator]'s `readStorage != STORAGE_FLATTENED` column check.
+     */
+    private fun isJsonbObjectColumn(field: ObjectField): Boolean {
+        if (!field.hasMetaAttr(ObjectField.ATTR_STORAGE, true)) return true   // default = single jsonb column
+        val storage = runCatching { field.getMetaAttr(ObjectField.ATTR_STORAGE, true).valueAsString }.getOrNull()
+        return !STORAGE_FLATTENED.equals(storage?.trim(), ignoreCase = true)
+    }
+
+    /**
      * The fully-qualified Kotlin type of the value object a [field] `field.object` references
      * (e.g. `acme.store.Marker`) — the Jackson bind target for the PATCH TypeReference. Emitted
      * fully-qualified so the generated controller needs no extra import (mirrors the Exposed
@@ -1326,6 +1346,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
     private companion object {
         /** Default primary-key field name when the entity declares no identity.primary. */
         const val DEFAULT_PK_FIELD = "id"
+
+        /** `@storage:flattened` on a field.object — the one storage mode the controller excludes
+         *  (materialised as per-subfield columns, not a single jsonb `Table.<field>`). Cross-language
+         *  @storage vocabulary; mirrors KotlinExposedTableGenerator's constant. */
+        const val STORAGE_FLATTENED = "flattened"
 
         @JvmStatic
         val LOG = LoggerFactory.getLogger(KotlinSpringControllerGenerator::class.java)

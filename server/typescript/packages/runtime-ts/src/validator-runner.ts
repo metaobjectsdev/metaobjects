@@ -10,7 +10,7 @@ import {
   FIELD_SUBTYPE_BOOLEAN, FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_OBJECT,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_DEFAULT,
   FIELD_ATTR_DB_COLUMN_TYPE, DB_COLUMN_TYPE_JSONB, FIELD_ATTR_OBJECT_REF,
-  PACKAGE_SEPARATOR,
+  PACKAGE_SEPARATOR, OBJECT_SUBTYPE_VALUE,
   VALIDATOR_ATTR_MIN, VALIDATOR_ATTR_MAX, VALIDATOR_ATTR_PATTERN,
 } from "@metaobjectsdev/metadata";
 import type { ValidationFailure } from "./errors.js";
@@ -211,18 +211,22 @@ export function runValidators(
 
 /** Resolve a `field.object`'s `@objectRef` to its value-object MetaData by walking
  *  to the tree root. The ref may be a bare name or a `pkg::Name` FQN. Mirrors the
- *  extract-object resolver. Returns undefined when unresolvable (→ no VO recursion).
+ *  extract-object resolver. Returns undefined when unresolvable OR when the target
+ *  is not an `object.value` (→ no VO recursion). Cross-port parity: C#/Java/Kotlin
+ *  gate the recursion on the ref being a value object, so a `field.object @objectRef`
+ *  pointing at a non-value object validates identically (skipped) on every port.
  *  ADR-0039: resolving — @objectRef may be inherited via extends. */
 function resolveVoRef(field: MetaData): MetaData | undefined {
   const ref = field.attr(FIELD_ATTR_OBJECT_REF);
   if (typeof ref !== "string" || ref.length === 0) return undefined;
   const root = field.root();
   if (!(root instanceof MetaRoot)) return undefined;
-  const direct = root.findObject(ref);
-  if (direct !== undefined) return direct;
-  const sep = ref.lastIndexOf(PACKAGE_SEPARATOR);
-  if (sep >= 0) return root.findObject(ref.slice(sep + PACKAGE_SEPARATOR.length));
-  return undefined;
+  let target = root.findObject(ref);
+  if (target === undefined) {
+    const sep = ref.lastIndexOf(PACKAGE_SEPARATOR);
+    if (sep >= 0) target = root.findObject(ref.slice(sep + PACKAGE_SEPARATOR.length));
+  }
+  return target?.subType === OBJECT_SUBTYPE_VALUE ? target : undefined;
 }
 
 function isRequired(field: MetaData): boolean {
