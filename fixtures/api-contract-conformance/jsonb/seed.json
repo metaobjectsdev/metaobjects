@@ -1,6 +1,10 @@
 {
   "rows": [
-    { "id": 1, "title": "alpha", "payload": { "seeded": true, "n": 1 } },
-    { "id": 2, "title": "beta",  "payload": { "k": "v" } }
+    { "id": 1, "title": "alpha", "payload": { "seeded": true, "n": 1 },
+      "primaryMarker": { "label": "seed-owner-a", "score": 1 },
+      "optionalMarker": { "label": "seed-opt-a", "score": 2 },
+      "markers": [ { "label": "m1", "score": 10 }, { "label": "m2", "score": 20 } ] },
+    { "id": 2, "title": "beta",  "payload": { "k": "v" },
+      "primaryMarker": { "label": "seed-owner-b", "score": 3 } }
   ]
 }

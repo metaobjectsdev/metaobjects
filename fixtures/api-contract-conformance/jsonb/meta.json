@@ -2,6 +2,13 @@
   "metadata.root": {
     "package": "acme::store",
     "children": [
+      { "object.value": {
+        "name": "Marker",
+        "children": [
+          { "field.string": { "name": "label", "@required": true, "@maxLength": 40 } },
+          { "field.int":    { "name": "score" } }
+        ]
+      }},
       { "object.entity": {
         "name": "Document",
         "children": [
@@ -9,6 +16,9 @@
           { "field.long":       { "name": "id", "@filterable": true, "@sortable": true } },
           { "field.string":     { "name": "title", "@required": true, "@maxLength": 200, "@filterable": true, "@sortable": true } },
           { "field.string":     { "name": "payload", "@dbColumnType": "jsonb" } },
+          { "field.object":     { "name": "primaryMarker",  "@objectRef": "Marker", "@storage": "jsonb", "@required": true } },
+          { "field.object":     { "name": "optionalMarker", "@objectRef": "Marker", "@storage": "jsonb" } },
+          { "field.object":     { "name": "markers",        "@objectRef": "Marker", "@storage": "jsonb", "isArray": true } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
         ]
       }}

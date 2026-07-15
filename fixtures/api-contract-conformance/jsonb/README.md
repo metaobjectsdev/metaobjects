@@ -14,14 +14,21 @@ port already carries the fix on `main` (TS `z.unknown()`, Python `Any`,
 Java `Object`, Kotlin `JsonElement`, C# `JsonDocument`); this corpus locks it
 in cross-port.
 
-The single `Document` entity (`acme::store`, `@table="documents"`) carries one
-open-bag field:
+The single `Document` entity (`acme::store`, `@table="documents"`) carries an
+open-bag field plus three value-object columns:
 
-| Field     | Type                              | Notes                       |
-|-----------|-----------------------------------|-----------------------------|
-| `id`      | `field.long`                      | `identity.primary @generation=increment` |
-| `title`   | `field.string`                    | `@required` + `@maxLength 200` |
-| `payload` | `field.string @dbColumnType=jsonb`| open JSON bag — parsed value over the wire |
+| Field            | Type                                                      | Notes                                    |
+|------------------|----------------------------------------------------------|------------------------------------------|
+| `id`             | `field.long`                                             | `identity.primary @generation=increment` |
+| `title`          | `field.string`                                           | `@required` + `@maxLength 200`           |
+| `payload`        | `field.string @dbColumnType=jsonb`                       | open JSON bag — parsed value over the wire |
+| `primaryMarker`  | `field.object @objectRef=Marker @storage=jsonb @required`| required single VO — present-null → 400   |
+| `optionalMarker` | `field.object @objectRef=Marker @storage=jsonb`          | nullable single VO — FR-035 tristate      |
+| `markers`        | `field.object @objectRef=Marker @storage=jsonb isArray`  | nullable array of VO — `[]` ≠ null        |
+
+The `Marker` value object (`object.value`) is `{ label: field.string @required
+@maxLength 40; score: field.int }` — so a nested-constraint violation
+(`null` / `""` / label > 40 chars) is a 400.
 
 `source.rdb @table="documents"` → the URL segment is `/api/documents`
 (lowercased + pluralized), per the cross-port grammar.
@@ -31,10 +38,11 @@ open-bag field:
 ```
 jsonb/
 ├── README.md              # this file
-├── meta.json              # the Document entity
-├── seed.json              # 2 seed Documents (ids 1, 2), each with a jsonb object
+├── meta.json              # the Document entity + Marker value object
+├── seed.json              # 2 seed Documents (ids 1, 2), jsonb object + VO columns
 └── scenarios/
-    └── jsonb-open-bag-roundtrip.yaml
+    ├── jsonb-open-bag-roundtrip.yaml   # open-bag parsed-value contract
+    └── jsonb-value-object-patch.yaml   # Program D — cross-port VO-column PATCH/POST
 ```
 
 `seed.json` is applied fresh before the scenario; the runner advances the id
@@ -58,6 +66,30 @@ normalization (the corpus's existing canonical form), so the gate is
 object-vs-string and structure-preserving — it does not pin jsonb key order.
 A regressed port that returned `"{\"k\":\"v\"}"` (a string) instead of
 `{"k":"v"}` (an object) fails here.
+
+## Scenario — `jsonb-value-object-patch.yaml` (Program D)
+
+Cross-port PATCH/POST parity for value-object jsonb columns. Every mutation is
+re-read via GET to convict persistence (the C#/Kotlin generated lanes boot
+full-stack over Testcontainers Postgres). Coverage:
+
+| Requests | What it pins |
+|---|---|
+| `r1` GET | a seeded row surfaces required + optional single VO and an array-of-VO as parsed objects/arrays |
+| `r2`/`r3` POST + GET | POST valid single + array VO → 201 → persisted read-back |
+| `r4` POST | nested-constraint violation (label > 40) on CREATE → 400 |
+| `r5` POST | missing the required VO column → 400 |
+| `r6`/`r7` PATCH + GET | PATCH present single VO → 200 → persisted |
+| `r8`/`r9` PATCH + GET | PATCH present array VO → 200 → persisted |
+| `r10` PATCH | nested-constraint violation in an array element → 400 |
+| `r11`/`r12` PATCH + GET | present-null on nullable single → cleared |
+| `r13`/`r14` PATCH + GET | present-`[]` on array → empty array persists (`[]` ≠ null) |
+| `r15`/`r16` PATCH + GET | present-null on array → null (distinct from `[]`) |
+| `r17`/`r18` PATCH + GET | absent VO keys → untouched (title-only PATCH) |
+| `r19` PATCH | present-null on the **required** VO column → 400 (metadata-driven) |
+| `r20` PATCH | nested-member-null on the required VO → 400 (validation recurses) |
+
+Byte-identical across TS / Python / Java / Kotlin / C#, both lanes.
 
 ## Per-port wiring status
 
