@@ -1,0 +1,201 @@
+name: jsonb-value-object-patch
+description: >
+  Program D — cross-port value-object jsonb-column PATCH/POST parity. The
+  Document entity carries a required single VO (primaryMarker), a nullable
+  single VO (optionalMarker), and a nullable array-of-VO (markers), all
+  field.object @storage:jsonb over the Marker value object
+  (label @required @maxLength 40; score int). Every mutation re-reads via GET
+  to convict persistence. Byte-identical across TS/Python/Java/Kotlin/C#,
+  both lanes.
+requests:
+  # --- READ a seeded row: VO columns surface as parsed objects/arrays ---
+  - id: r1
+    method: GET
+    path: /api/documents/1
+    expect:
+      status: 200
+      body:
+        row:
+          id: 1
+          title: "alpha"
+          primaryMarker: { label: "seed-owner-a", score: 1 }
+          optionalMarker: { label: "seed-opt-a", score: 2 }
+          markers: [ { label: "m1", score: 10 }, { label: "m2", score: 20 } ]
+
+  # --- POST valid single + array VO -> 201 -> persisted (id 3) ---
+  - id: r2
+    method: POST
+    path: /api/documents
+    body:
+      title: "created"
+      primaryMarker: { label: "owner-c", score: 5 }
+      optionalMarker: { label: "opt-c", score: 6 }
+      markers: [ { label: "a", score: 1 }, { label: "b", score: 2 } ]
+    expect:
+      status: 201
+      body:
+        hasId: true
+        row:
+          title: "created"
+          primaryMarker: { label: "owner-c", score: 5 }
+          markers: [ { label: "a", score: 1 }, { label: "b", score: 2 } ]
+  - id: r3
+    method: GET
+    path: /api/documents/3
+    expect:
+      status: 200
+      body:
+        row:
+          id: 3
+          primaryMarker: { label: "owner-c", score: 5 }
+          optionalMarker: { label: "opt-c", score: 6 }
+          markers: [ { label: "a", score: 1 }, { label: "b", score: 2 } ]
+
+  # --- POST nested-constraint violation (label > 40 chars) -> 400 (CREATE gap) ---
+  - id: r4
+    method: POST
+    path: /api/documents
+    body:
+      title: "bad-create"
+      primaryMarker: { label: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", score: 1 }
+    expect:
+      status: 400
+
+  # --- POST missing required VO column -> 400 ---
+  - id: r5
+    method: POST
+    path: /api/documents
+    body:
+      title: "no-owner"
+    expect:
+      status: 400
+
+  # --- PATCH present valid single VO (optionalMarker) -> 200 -> persisted ---
+  - id: r6
+    method: PATCH
+    path: /api/documents/1
+    body:
+      optionalMarker: { label: "patched-opt", score: 99 }
+    expect:
+      status: 200
+  - id: r7
+    method: GET
+    path: /api/documents/1
+    expect:
+      status: 200
+      body:
+        row:
+          optionalMarker: { label: "patched-opt", score: 99 }
+
+  # --- PATCH present valid array VO (markers) -> 200 -> persisted ---
+  - id: r8
+    method: PATCH
+    path: /api/documents/1
+    body:
+      markers: [ { label: "x", score: 7 }, { label: "y", score: 8 }, { label: "z", score: 9 } ]
+    expect:
+      status: 200
+  - id: r9
+    method: GET
+    path: /api/documents/1
+    expect:
+      status: 200
+      body:
+        row:
+          markers: [ { label: "x", score: 7 }, { label: "y", score: 8 }, { label: "z", score: 9 } ]
+
+  # --- PATCH nested-constraint violation in array element -> 400 ---
+  - id: r10
+    method: PATCH
+    path: /api/documents/1
+    body:
+      markers: [ { label: "ok", score: 1 }, { label: "", score: 2 } ]
+    expect:
+      status: 400
+
+  # --- PATCH present-null on nullable single -> 200 -> cleared (null) ---
+  - id: r11
+    method: PATCH
+    path: /api/documents/1
+    body:
+      optionalMarker: null
+    expect:
+      status: 200
+  - id: r12
+    method: GET
+    path: /api/documents/1
+    expect:
+      status: 200
+      body:
+        row:
+          optionalMarker: null
+
+  # --- PATCH present-[] on array -> 200 -> empty array (NOT null) ---
+  - id: r13
+    method: PATCH
+    path: /api/documents/1
+    body:
+      markers: []
+    expect:
+      status: 200
+  - id: r14
+    method: GET
+    path: /api/documents/1
+    expect:
+      status: 200
+      body:
+        row:
+          markers: []
+
+  # --- PATCH present-null on array -> 200 -> null (distinct from []) ---
+  - id: r15
+    method: PATCH
+    path: /api/documents/1
+    body:
+      markers: null
+    expect:
+      status: 200
+  - id: r16
+    method: GET
+    path: /api/documents/1
+    expect:
+      status: 200
+      body:
+        row:
+          markers: null
+
+  # --- PATCH absent (title only) -> VO columns untouched ---
+  - id: r17
+    method: PATCH
+    path: /api/documents/2
+    body:
+      title: "beta-renamed"
+    expect:
+      status: 200
+  - id: r18
+    method: GET
+    path: /api/documents/2
+    expect:
+      status: 200
+      body:
+        row:
+          title: "beta-renamed"
+          primaryMarker: { label: "seed-owner-b", score: 3 }
+
+  # --- PATCH present-null on REQUIRED VO column -> 400 (metadata-required) ---
+  - id: r19
+    method: PATCH
+    path: /api/documents/2
+    body:
+      primaryMarker: null
+    expect:
+      status: 400
+
+  # --- PATCH nested-member-null on required VO -> 400 (nested recursion) ---
+  - id: r20
+    method: PATCH
+    path: /api/documents/2
+    body:
+      primaryMarker: { label: null, score: 4 }
+    expect:
+      status: 400
