@@ -3,12 +3,16 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
 public class Label
 {
+    [JsonPropertyName("key")]
     public string? Key { get; set; }
+    [JsonPropertyName("weight")]
     public int? Weight { get; set; }
 }

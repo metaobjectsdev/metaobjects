@@ -1,12 +1,21 @@
-// JsonbReferenceServer — minimal hand-rolled reference server for the #98 jsonb
-// open-bag api-contract lane. Implements just the two routes the jsonb scenarios
-// exercise — GET /api/documents/{id} and POST /api/documents — over a Postgres
-// testcontainer whose `payload` column is native jsonb.
+// JsonbReferenceServer — hand-rolled reference server for the jsonb api-contract
+// lane, over a Postgres testcontainer whose `payload` column is native jsonb (the
+// #98 open bag) plus three value-object jsonb columns (Program D): `primaryMarker`
+// (required single VO), `optionalMarker` (nullable single VO), `markers` (nullable
+// array-of-VO), over the Marker value object (label @required @maxLength 40; score).
 //
-// The contract the lane proves: a posted JSON OBJECT is stored as jsonb and read
-// back as a parsed OBJECT, never as a double-encoded string. The reference server
-// is the independent second implementation; JsonbGeneratedServerFactory hosts the
-// real generated routes/AppDbContext (the artifact that locks the #105 codegen).
+// Routes exercised by the jsonb scenarios:
+//   GET   /api/documents/{id}   read (VO columns surface as parsed objects/arrays)
+//   POST  /api/documents        create (validates required + nested VO constraints)
+//   PATCH /api/documents/{id}   update (FR-035 tristate + nested VO validation)
+//   PUT   /api/documents/{id}   alias of PATCH
+//
+// The contract the lane proves: a posted JSON OBJECT/array is stored as jsonb and
+// read back parsed (never a double-encoded string); a nested VO constraint violation
+// (label null / "" / >40) is a 400; present-null clears a nullable VO column but 400s
+// a @required one; present-[] is distinct from present-null. The reference server is
+// the independent second implementation; JsonbGeneratedServerFactory hosts the real
+// generated routes/AppDbContext, and the two lanes share the corpus + assertions.
 
 using System.Net;
 using System.Text;
@@ -26,6 +35,12 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
     private readonly CancellationTokenSource _cts = new();
 
     public string BaseUrl { get; }
+
+    // The Marker VO's max label length (fixtures/api-contract-conformance/jsonb).
+    private const int MarkerLabelMaxLength = 40;
+
+    // The jsonb columns carried in a document row's wire projection (id + title are scalar).
+    private static readonly string[] JsonbColumns = { "payload", "primaryMarker", "optionalMarker", "markers" };
 
     private JsonbReferenceServer(PostgresContainer pg, HttpListener listener, string baseUrl)
     {
@@ -101,6 +116,7 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
 
         if (method == "GET" && idSegment is not null) { await GetDocumentAsync(ctx, idSegment); return; }
         if (method == "POST" && idSegment is null) { await CreateDocumentAsync(ctx); return; }
+        if ((method is "PATCH" or "PUT") && idSegment is not null) { await UpdateDocumentAsync(ctx, idSegment); return; }
 
         await SendJsonAsync(ctx, 404, new Dictionary<string, object?> { ["error"] = "not_found" });
     }
@@ -112,7 +128,7 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
         await using var c = new NpgsqlConnection(_pg.ConnectionString);
         await c.OpenAsync();
         await using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT id, title, payload FROM \"documents\" WHERE id = @id";
+        cmd.CommandText = "SELECT * FROM \"documents\" WHERE id = @id";
         cmd.Parameters.AddWithValue("@id", id.Value);
         await using var rdr = await cmd.ExecuteReaderAsync();
         if (!await rdr.ReadAsync())
@@ -125,16 +141,16 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
 
     private async Task CreateDocumentAsync(HttpListenerContext ctx)
     {
-        var parsed = await ReadJsonBodyAsync(ctx);
-        if (parsed is not Dictionary<string, object?> body)
-        {
-            await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
-            return;
-        }
-        // payload travels through as a parsed structure (Dictionary/List/scalar) — store
-        // it as jsonb (serialize the structure back to JSON text, bind NpgsqlDbType.Jsonb).
-        body.TryGetValue("payload", out var payloadObj);
-        string? payloadJson = payloadObj is null ? null : JsonSerializer.Serialize(payloadObj, JsonOpts);
+        var body = await ReadJsonObjectAsync(ctx);
+        if (body is null) { await BadValidation(ctx); return; }
+
+        // Required keys: title + primaryMarker present + non-null (mirrors the generated
+        // create handler's @required-key presence check).
+        if (!PresentNonNull(body, "title")) { await BadValidation(ctx); return; }
+        if (!PresentNonNull(body, "primaryMarker") || !ValidMarker(body["primaryMarker"])) { await BadValidation(ctx); return; }
+        // Optional VO columns: when present + non-null, validate nested constraints.
+        if (PresentNonNull(body, "optionalMarker") && !ValidMarker(body["optionalMarker"])) { await BadValidation(ctx); return; }
+        if (PresentNonNull(body, "markers") && !ValidMarkerArray(body["markers"])) { await BadValidation(ctx); return; }
 
         long newId;
         await using var c = new NpgsqlConnection(_pg.ConnectionString);
@@ -142,27 +158,113 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
         await using (var ins = c.CreateCommand())
         {
             ins.CommandText =
-                "INSERT INTO \"documents\" (title, payload) VALUES (@title, @payload) RETURNING id";
-            ins.Parameters.AddWithValue("@title", body.GetValueOrDefault("title") as string ?? "");
-            ins.Parameters.Add(new NpgsqlParameter("@payload", NpgsqlDbType.Jsonb)
-            {
-                Value = (object?)payloadJson ?? DBNull.Value,
-            });
+                "INSERT INTO \"documents\" (\"title\", \"payload\", \"primaryMarker\", \"optionalMarker\", \"markers\") " +
+                "VALUES (@title, @payload, @primaryMarker, @optionalMarker, @markers) RETURNING id";
+            ins.Parameters.AddWithValue("@title", body["title"]!.GetValue<string>());
+            AddJsonbParam(ins, "@payload", body["payload"]);
+            AddJsonbParam(ins, "@primaryMarker", body["primaryMarker"]);
+            AddJsonbParam(ins, "@optionalMarker", body["optionalMarker"]);
+            AddJsonbParam(ins, "@markers", body["markers"]);
             newId = Convert.ToInt64(await ins.ExecuteScalarAsync());
         }
-        Dictionary<string, object?> row;
-        await using (var sel = c.CreateCommand())
-        {
-            sel.CommandText = "SELECT id, title, payload FROM \"documents\" WHERE id = @id";
-            sel.Parameters.AddWithValue("@id", newId);
-            await using var rdr = await sel.ExecuteReaderAsync();
-            await rdr.ReadAsync();
-            row = RowToMap(rdr);
-        }
-        await SendJsonAsync(ctx, 201, row);
+        await SendJsonAsync(ctx, 201, await SelectRowAsync(c, newId) ?? new Dictionary<string, object?>());
     }
 
-    // ----- helpers -----
+    private async Task UpdateDocumentAsync(HttpListenerContext ctx, string idStr)
+    {
+        long? id = ParseLongOrNull(idStr);
+        if (id is null) { await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "invalid_id" }); return; }
+        var body = await ReadJsonObjectAsync(ctx);
+        if (body is null) { await BadValidation(ctx); return; }
+
+        // FR-035 tristate + FR-036 nested validation of the PRESENT keys:
+        //   title (required scalar)   — present-null → 400.
+        //   primaryMarker (required)  — present-null → 400; present value must be a valid VO.
+        //   optionalMarker (nullable) — present-null clears; present value must be a valid VO.
+        //   markers (nullable array)  — present-null clears; present [] persists; present value valid.
+        if (body.ContainsKey("title") && !PresentNonNull(body, "title")) { await BadValidation(ctx); return; }
+        if (body.ContainsKey("primaryMarker"))
+        {
+            if (!PresentNonNull(body, "primaryMarker") || !ValidMarker(body["primaryMarker"])) { await BadValidation(ctx); return; }
+        }
+        if (PresentNonNull(body, "optionalMarker") && !ValidMarker(body["optionalMarker"])) { await BadValidation(ctx); return; }
+        if (PresentNonNull(body, "markers") && !ValidMarkerArray(body["markers"])) { await BadValidation(ctx); return; }
+
+        await using var c = new NpgsqlConnection(_pg.ConnectionString);
+        await c.OpenAsync();
+
+        var sets = new List<string>();
+        await using var upd = c.CreateCommand();
+        if (body.ContainsKey("title"))
+        {
+            sets.Add("\"title\" = @title");
+            upd.Parameters.AddWithValue("@title", body["title"]!.GetValue<string>());
+        }
+        foreach (var col in JsonbColumns)
+        {
+            if (!body.ContainsKey(col)) continue;              // absent → untouched
+            sets.Add($"\"{col}\" = @{col}");
+            AddJsonbParam(upd, "@" + col, body[col]);          // present-null → SQL NULL (clears)
+        }
+
+        if (sets.Count == 0)
+        {
+            // No mutable key present — return the current row (or 404).
+            await Respond(ctx, await SelectRowAsync(c, id.Value));
+            return;
+        }
+
+        upd.CommandText = $"UPDATE \"documents\" SET {string.Join(", ", sets)} WHERE \"id\" = @id RETURNING *";
+        upd.Parameters.AddWithValue("@id", id.Value);
+        await using var rdr = await upd.ExecuteReaderAsync();
+        await Respond(ctx, await rdr.ReadAsync() ? RowToMap(rdr) : null);
+    }
+
+    // ----- validation -----
+
+    // A present VO must be a JSON object whose `label` is present, non-null, non-empty (FR-036:
+    // a @required string is NON-EMPTY, whitespace accepted) and <= @maxLength chars.
+    private static bool ValidMarker(JsonNode? node)
+    {
+        if (node is not JsonObject obj) return false;
+        if (!obj.TryGetPropertyValue("label", out var labelNode) || labelNode is null
+            || labelNode.GetValueKind() == JsonValueKind.Null) return false;
+        if (labelNode is not JsonValue jv || !jv.TryGetValue<string>(out var label)) return false;
+        return label.Length >= 1 && label.Length <= MarkerLabelMaxLength;
+    }
+
+    // A present array-of-VO: every element must be a valid Marker (an empty [] is valid).
+    private static bool ValidMarkerArray(JsonNode? node)
+    {
+        if (node is not JsonArray arr) return false;
+        foreach (var el in arr)
+            if (!ValidMarker(el)) return false;
+        return true;
+    }
+
+    private static bool PresentNonNull(JsonObject body, string key) =>
+        body.TryGetPropertyValue(key, out var node) && node is not null
+        && node.GetValueKind() != JsonValueKind.Null;
+
+    private Task BadValidation(HttpListenerContext ctx) =>
+        SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
+
+    // ----- data / helpers -----
+
+    private async Task<Dictionary<string, object?>?> SelectRowAsync(NpgsqlConnection c, long id)
+    {
+        await using var sel = c.CreateCommand();
+        sel.CommandText = "SELECT * FROM \"documents\" WHERE id = @id";
+        sel.Parameters.AddWithValue("@id", id);
+        await using var rdr = await sel.ExecuteReaderAsync();
+        return await rdr.ReadAsync() ? RowToMap(rdr) : null;
+    }
+
+    private async Task Respond(HttpListenerContext ctx, Dictionary<string, object?>? row)
+    {
+        if (row is null) { await SendJsonAsync(ctx, 404, new Dictionary<string, object?> { ["error"] = "not_found" }); return; }
+        await SendJsonAsync(ctx, 200, row);
+    }
 
     private static Dictionary<string, object?> RowToMap(NpgsqlDataReader rdr)
     {
@@ -171,27 +273,30 @@ internal sealed class JsonbReferenceServer : IAsyncDisposable
             ["id"] = rdr.GetInt64(rdr.GetOrdinal("id")),
             ["title"] = rdr.GetString(rdr.GetOrdinal("title")),
         };
-        int pOrd = rdr.GetOrdinal("payload");
-        if (rdr.IsDBNull(pOrd))
+        // jsonb columns arrive as raw text — parse each so it surfaces as a real parsed
+        // value (Dictionary/List/scalar), NOT a JSON-encoded string; NULL → null.
+        foreach (var col in JsonbColumns)
         {
-            row["payload"] = null;
-        }
-        else
-        {
-            // jsonb arrives as raw text — parse it so the field surfaces as a real
-            // parsed value (Dictionary/List/scalar), NOT a JSON-encoded string.
-            string raw = rdr.GetFieldValue<string>(pOrd);
-            row["payload"] = JsonNodeToObject(JsonNode.Parse(raw));
+            int ord = rdr.GetOrdinal(col);
+            row[col] = rdr.IsDBNull(ord) ? null : JsonNodeToObject(JsonNode.Parse(rdr.GetFieldValue<string>(ord)));
         }
         return row;
     }
 
-    private static async Task<object?> ReadJsonBodyAsync(HttpListenerContext ctx)
+    private static void AddJsonbParam(NpgsqlCommand cmd, string name, JsonNode? node)
+    {
+        object value = node is null || node.GetValueKind() == JsonValueKind.Null
+            ? DBNull.Value
+            : node.ToJsonString();
+        cmd.Parameters.Add(new NpgsqlParameter(name, NpgsqlDbType.Jsonb) { Value = value });
+    }
+
+    private static async Task<JsonObject?> ReadJsonObjectAsync(HttpListenerContext ctx)
     {
         using var reader = new StreamReader(ctx.Request.InputStream, ctx.Request.ContentEncoding);
         string text = await reader.ReadToEndAsync();
         if (string.IsNullOrEmpty(text)) return null;
-        return JsonNodeToObject(JsonNode.Parse(text));
+        return JsonNode.Parse(text) as JsonObject;
     }
 
     private static object? JsonNodeToObject(JsonNode? node)

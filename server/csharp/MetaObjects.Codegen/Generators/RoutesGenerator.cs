@@ -27,6 +27,7 @@
 
 using System.Text;
 using MetaObjects.Meta;
+using static MetaObjects.Core.Field.FieldConstants;
 
 namespace MetaObjects.Codegen.Generators;
 
@@ -86,6 +87,19 @@ public class RoutesGenerator : PerEntityGenerator
         bool isProjection = entity.IsReadOnlyProjection();
         bool hasItem = pkType is not null;           // GET by id (readable by key)
         bool writable = hasItem && !isProjection;    // mutations only on writable sources
+
+        // Program D — value-object jsonb columns (field.object @storage:jsonb, single AND
+        // @isArray). These are EF owned-nav properties (not scalar EntityType.Properties), so
+        // the generic PATCH merge loop's FindProperty misses them; the create handler's
+        // top-level TryValidateObject also does NOT recurse into them. The generator emits
+        // typed per-field merge arms + per-field POST validation for each.
+        var voFields = ValueObjectFields(entity, ctx.Root, ctx.Config.ColumnNamingStrategy);
+        // Physical table + PK column for the post-save array-null clear (EF OwnsMany ToJson
+        // writes [] for a null nav, so a nullable array column is NULLed via raw SQL).
+        var table = CSharpNaming.Table(entity);
+        var pkColumn = pkFields.Count == 1 && entity.Fields().FirstOrDefault(f => f.Name == pkFields[0]) is { } pkf
+            ? CSharpNaming.Column(pkf, ctx.Config.ColumnNamingStrategy)
+            : "id";
         if (!hasItem)
             ctx.Warn($"{Name}: \"{entity.Name}\" has no single-column primary key — emitting collection GET only.");
 
@@ -180,7 +194,7 @@ public class RoutesGenerator : PerEntityGenerator
             var requiredKeys = RequiredCreateKeys(entity, f => pkFields.Contains(f.Name));
             sb.AppendLine();
             AppendCreateHandler(sb, "/" + route, cls, dbSet, requiredKeys,
-                "Results.Created(prefix + \"/" + route + "\", input)");
+                "Results.Created(prefix + \"/" + route + "\", input)", voFields);
 
             // PATCH + PUT share the same handler — TS reference exposes both verbs, and both
             // return the updated row (HTTP 200), matching the cross-port api-contract.
@@ -211,8 +225,9 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
             sb.AppendLine("                .Value.SerializerOptions;");
             sb.AppendLine("            var entry = db.Entry(existing);");
-            AppendPartialMergeLoop(sb, null);
+            AppendPartialMergeLoop(sb, null, voFields);
             sb.AppendLine("            await db.SaveChangesAsync();");
+            AppendArrayNullClears(sb, voFields, table, pkColumn);
             sb.AppendLine("            return Results.Ok(existing);");
             sb.AppendLine("        }");
             sb.AppendLine("        app.MapPatch(prefix + \"/" + route + "/{id}\", Update" + cls + ");");
@@ -413,6 +428,37 @@ public class RoutesGenerator : PerEntityGenerator
             .Select(f => f.Name)
             .ToList();
 
+    // Program D — a value-object column the entity carries: a field.object whose @objectRef
+    // resolves to an object.value (single or @isArray). The generated create + PATCH handlers
+    // deserialize, validate, and assign these as CLR owned-nav properties. WireName is the
+    // metadata (camelCase) field name; Nav is the PascalCase property; DeserType is the VO
+    // POCO type (or List<VO> for an array); JsonColumn is the physical jsonb column (the
+    // .ToJson name); IsArray / Required drive the merge semantics (present-null: a nullable
+    // single/array clears, a @required column 400s).
+    private sealed record VoField(
+        string WireName, string Nav, string DeserType, string JsonColumn, bool IsArray, bool Required);
+
+    private static List<VoField> ValueObjectFields(MetaObject entity, MetaRoot root, ColumnNamingStrategy strategy)
+    {
+        var list = new List<VoField>();
+        foreach (var f in entity.Fields())
+        {
+            if (f.SubType != FIELD_SUBTYPE_OBJECT || f.ObjectRef is not { } oref) continue;
+            var target = root.FindObject(CSharpNaming.StripPkg(oref));
+            if (target is null || !target.IsValue()) continue;   // value objects only (jsonb-stored)
+            var voType = CSharpNaming.Pascal(target.Name);
+            var isArray = f.ResolvedIsArray();                    // ADR-0039: resolving array-ness
+            list.Add(new VoField(
+                WireName: f.Name,
+                Nav: CSharpNaming.Pascal(f.Name),
+                DeserType: isArray ? $"System.Collections.Generic.List<{voType}>" : voType,
+                JsonColumn: CSharpNaming.Column(f, strategy),
+                IsArray: isArray,
+                Required: f.IsRequired));
+        }
+        return list;
+    }
+
     // FR-036 A2 / #4 — emit a create (POST) handler. When the entity carries at least one
     // @required (non-PK/non-discriminator) field, FIRST enforce those keys are PRESENT and
     // non-null on the raw JSON body (a @required value-type field binds to a CLR default when
@@ -423,13 +469,14 @@ public class RoutesGenerator : PerEntityGenerator
     // return the cross-port {error:"validation"} envelope BEFORE the row is persisted.
     private static void AppendCreateHandler(
         StringBuilder sb, string mapPath, string cls, string dbSet,
-        IReadOnlyList<string> requiredKeys, string createdExpr)
+        IReadOnlyList<string> requiredKeys, string createdExpr, IReadOnlyList<VoField> voFields)
     {
         if (requiredKeys.Count == 0)
         {
             sb.AppendLine($"        app.MapPost(prefix + \"{mapPath}\", async ({cls} input, AppDbContext db) =>");
             sb.AppendLine("        {");
             AppendCreateValidation(sb);
+            AppendCreateVoValidation(sb, voFields);
             sb.AppendLine($"            db.{dbSet}.Add(input);");
             sb.AppendLine("            await db.SaveChangesAsync();");
             sb.AppendLine($"            return {createdExpr};");
@@ -456,10 +503,43 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine($"            var input = System.Text.Json.JsonSerializer.Deserialize<{cls}>(__body.RootElement.GetRawText(), jsonOpts);");
         sb.AppendLine("            if (input is null) return Results.BadRequest(new { error = \"validation\" });");
         AppendCreateValidation(sb);
+        AppendCreateVoValidation(sb, voFields);
         sb.AppendLine($"            db.{dbSet}.Add(input);");
         sb.AppendLine("            await db.SaveChangesAsync();");
         sb.AppendLine($"            return {createdExpr};");
         sb.AppendLine("        });");
+    }
+
+    // Program D — post-save raw NULL for each nullable array-of-VO column a request cleared
+    // to present-null. EF Core 8 OwnsMany(...).ToJson persists a null collection nav as `[]`
+    // (never SQL NULL), so the merge loop sets the CLR nav to null (for the returned row) AND
+    // flags the column; here we run a targeted UPDATE to actually NULL the jsonb column AFTER
+    // SaveChanges (the fixed table/column names are codegen constants; the PK value is
+    // parameterized). Emits nothing when the entity has no nullable array-of-VO column.
+    private static void AppendArrayNullClears(
+        StringBuilder sb, IReadOnlyList<VoField> voFields, string table, string pkColumn)
+    {
+        for (int i = 0; i < voFields.Count; i++)
+        {
+            var vf = voFields[i];
+            if (!vf.IsArray || vf.Required) continue;
+            sb.AppendLine(
+                $"            if (__clearVo{i}) await db.Database.ExecuteSqlRawAsync(" +
+                $"\"UPDATE \\\"{table}\\\" SET \\\"{vf.JsonColumn}\\\" = NULL WHERE \\\"{pkColumn}\\\" = {{0}}\", id);");
+        }
+    }
+
+    // Program D — validate each present value-object column on CREATE. The top-level
+    // TryValidateObject (AppendCreateValidation) does NOT recurse into an owned-nav VO, so a
+    // nested-constraint violation (e.g. a VO string member over @maxLength) would slip through.
+    // ValueObjectValidator.Validate runs the VO's own DataAnnotations per element + recurses
+    // into nested VO members; a null nav is vacuously valid (a missing required VO column is
+    // already caught by the @required-key presence check). Assumes `input` is in scope.
+    private static void AppendCreateVoValidation(StringBuilder sb, IReadOnlyList<VoField> voFields)
+    {
+        foreach (var vf in voFields)
+            sb.AppendLine(
+                $"            if (!ValueObjectValidator.Validate(input.{vf.Nav})) return Results.BadRequest(new {{ error = \"validation\" }});");
     }
 
     // The configured System.Text.Json options local (`jsonOpts`) — the app's
@@ -494,10 +574,48 @@ public class RoutesGenerator : PerEntityGenerator
     // the TPH discriminator when `discProp` is non-null — is never written. Assumes the
     // locals `body` (JsonDocument), `existing` (the entity instance), `entry` (EntityEntry)
     // and `jsonOpts` are in scope.
-    private static void AppendPartialMergeLoop(StringBuilder sb, string? discProp)
+    private static void AppendPartialMergeLoop(StringBuilder sb, string? discProp, IReadOnlyList<VoField> voFields)
     {
+        // A nullable array-of-VO column that a request clears to null (present-null) can NOT be
+        // NULLed by an owned-nav assignment — EF OwnsMany(...).ToJson writes `[]` for a null
+        // collection nav, not SQL NULL. Track it via a flag + a post-save raw UPDATE
+        // (AppendArrayNullClears). Declared before the loop so the post-save clears see it.
+        for (int i = 0; i < voFields.Count; i++)
+            if (voFields[i].IsArray && !voFields[i].Required)
+                sb.AppendLine($"            var __clearVo{i} = false;");
+
         sb.AppendLine("            foreach (var prop in body.RootElement.EnumerateObject())");
         sb.AppendLine("            {");
+        // Program D — typed value-object arms FIRST (owned-nav columns are invisible to
+        // EF's FindProperty below, so the generic scalar path would silently drop them).
+        // Present value → deserialize + recursive VO validation + assign the CLR nav
+        // property (EF .ToJson persists via full-document replacement on DetectChanges);
+        // present-null clears a NULLABLE VO column, or 400s a @required one; absent →
+        // untouched (not enumerated). Keyed on the wire (metadata) field name.
+        for (int i = 0; i < voFields.Count; i++)
+        {
+            var vf = voFields[i];
+            var v = "__vo" + i;
+            sb.AppendLine($"                if (string.Equals(prop.Name, \"{vf.WireName}\", System.StringComparison.OrdinalIgnoreCase))");
+            sb.AppendLine("                {");
+            sb.AppendLine("                    if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null)");
+            sb.AppendLine("                    {");
+            if (vf.Required)
+                sb.AppendLine("                        return Results.BadRequest(new { error = \"validation\" }); // @required VO column: present-null is a 400");
+            else
+            {
+                sb.AppendLine($"                        existing.{vf.Nav} = null;");
+                if (vf.IsArray)
+                    sb.AppendLine($"                        __clearVo{i} = true; // NULL the jsonb column post-save (EF writes [] for a null OwnsMany nav)");
+                sb.AppendLine("                        continue;");
+            }
+            sb.AppendLine("                    }");
+            sb.AppendLine($"                    var {v} = System.Text.Json.JsonSerializer.Deserialize<{vf.DeserType}>(prop.Value.GetRawText(), jsonOpts);");
+            sb.AppendLine($"                    if (!ValueObjectValidator.Validate({v})) return Results.BadRequest(new {{ error = \"validation\" }});");
+            sb.AppendLine($"                    existing.{vf.Nav} = {v}{(vf.Required ? "!" : "")};");
+            sb.AppendLine("                    continue;");
+            sb.AppendLine("                }");
+        }
         sb.AppendLine("                var target = entry.Metadata.FindProperty(prop.Name)");
         sb.AppendLine("                    ?? entry.Metadata.GetProperties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, System.StringComparison.OrdinalIgnoreCase));");
         sb.AppendLine("                if (target is null) continue;");
@@ -582,8 +700,9 @@ public class RoutesGenerator : PerEntityGenerator
                    || string.Equals(p, discProp, System.StringComparison.Ordinal);
         });
         sb.AppendLine();
+        // VO columns on a TPH subtype are out of scope (Program D §6) — no typed arms.
         AppendCreateHandler(sb, "/" + subRoute, subCls, dbSet, requiredKeys,
-            "Results.Created(prefix + \"/" + subRoute + "/\" + input." + pkProp + ", input)");
+            "Results.Created(prefix + \"/" + subRoute + "/\" + input." + pkProp + ", input)", []);
 
         // Per-subtype update (PATCH + PUT): partial merge of the JSON body onto the scoped
         // entity, NEVER touching the PK or the discriminator. Cross-subtype id → 404.
@@ -599,7 +718,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
         sb.AppendLine("                .Value.SerializerOptions;");
         sb.AppendLine("            var entry = db.Entry(existing);");
-        AppendPartialMergeLoop(sb, discProp);
+        AppendPartialMergeLoop(sb, discProp, []);
         sb.AppendLine("            await db.SaveChangesAsync();");
         sb.AppendLine("            return Results.Ok(existing);");
         sb.AppendLine("        }");

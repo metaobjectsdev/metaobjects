@@ -3,13 +3,18 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
 public class Settings
 {
+    [JsonPropertyName("theme")]
     public string? Theme { get; set; }
+    [JsonPropertyName("notify")]
     public bool? Notify { get; set; }
+    [JsonPropertyName("retries")]
     public int? Retries { get; set; }
 }

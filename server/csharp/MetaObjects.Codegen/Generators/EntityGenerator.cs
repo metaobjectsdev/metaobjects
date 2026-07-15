@@ -566,9 +566,16 @@ public class EntityGenerator : IGenerator
         sb.AppendLine("#nullable enable");
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Collections.Generic;");
+        // A VO's own members carry validation DataAnnotations ([Required]/[MaxLength]/etc.)
+        // so a nested value-object is validated in FULL on POST/PATCH (Program D).
+        sb.AppendLine("using System.ComponentModel.DataAnnotations;");
         // A value-object field with an explicit @column emits [Column(...)] — same as the entity
         // paths, so it needs the Schema namespace too (was omitted here → CS0246 on Column).
         sb.AppendLine("using System.ComponentModel.DataAnnotations.Schema;");
+        // [JsonPropertyName] pins each VO member's jsonb element name (+ wire name) to the
+        // metadata field name (camelCase). EF Core 8 owned-JSON (.ToJson) honors it, so the
+        // stored jsonb keys match the shared seed + the wire contract cross-port (Program D).
+        sb.AppendLine("using System.Text.Json.Serialization;");
         // A @dbColumnType:jsonb field surfaces as a System.Text.Json.JsonDocument (issue #98).
         if (CSharpNaming.RequiresSystemTextJson(vo))
             sb.AppendLine("using System.Text.Json;");
@@ -593,7 +600,9 @@ public class EntityGenerator : IGenerator
         {
             string? member = null;
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
-                member = ScalarProperty(vo, field, [], withAttributes: false);
+                // VO POCO members carry NO EF-mapping attrs but DO carry validation
+                // DataAnnotations (the VO is validated in full on POST/PATCH; Program D).
+                member = ScalarProperty(vo, field, [], withAttributes: false, withValidationAttributes: true);
             else if (field.SubType == FIELD_SUBTYPE_ENUM)
                 member = EnumProperty(vo, field, ctx.Config, ctx.Config.ColumnNamingStrategy);
             else if (field.SubType == FIELD_SUBTYPE_OBJECT && ObjectNavProperty(vo, field, ctx) is { } nav)
@@ -601,6 +610,9 @@ public class EntityGenerator : IGenerator
             else if (field.SubType == FIELD_SUBTYPE_MAP)
                 member = MapProperty(vo, field, ctx, withAttributes: false);
             if (member is null) continue;
+            // Pin the jsonb element name (+ wire name) to the metadata field name so the
+            // stored owned-JSON keys match the shared seed + the cross-port wire contract.
+            member = $"    [JsonPropertyName(\"{field.Name}\")]\n" + member;
             member = ApplyPropertyAttributes(member, vo, field, ctx);
             members.Add(XmlDocBuilder.Prepend(member, field, "    "));
         }
@@ -756,9 +768,15 @@ public class EntityGenerator : IGenerator
         return $"{colAttr}    public {type} {propName} {{ get; set; }}";
     }
 
-    // A scalar property. withAttributes adds the EF mapping annotations ([Key] for a
-    // single-column PK, [Column], [MaxLength], [Required]); value-object POCOs omit
-    // them (column mapping is fluent/JSON, not annotation-driven).
+    // A scalar property. withAttributes adds the EF-mapping annotations ([Key] for a
+    // single-column PK, [Column]); value-object POCOs omit them (column mapping is
+    // fluent/JSON, not annotation-driven). withValidationAttributes controls the
+    // DataAnnotations validation attrs ([Required]/[StringLength]/[MinLength]/
+    // [MaxLength]/[Range]/[RegularExpression]) INDEPENDENTLY — a VO POCO carries these
+    // (its members are validated on POST/PATCH — Program D) even though it carries NO
+    // EF-mapping attrs; an attribute-free abstract shape carries neither. When null,
+    // validation attrs follow withAttributes (mapped entities emit both, byte-identical
+    // to before).
     //
     // When the field is an array (isArray: true), emit List<T> with an empty-list
     // initializer instead of a scalar T property. Arrays are always non-nullable
@@ -766,8 +784,9 @@ public class EntityGenerator : IGenerator
     protected virtual string ScalarProperty(
         MetaObject owner, MetaField field, IReadOnlyList<string> pkFields,
         bool withAttributes, ColumnNamingStrategy strategy = ColumnNamingStrategy.Literal,
-        string? baseTypeOverride = null)
+        string? baseTypeOverride = null, bool? withValidationAttributes = null)
     {
+        var emitValidation = withValidationAttributes ?? withAttributes;
         // A @dbColumnType:jsonb open-bag shifts the CLR property to a parsed JSON value
         // (JsonDocument) — issue #98 — taking precedence over the logical scalar. A uuid
         // override keeps the logical CLR type (converted at the DB seam). ScalarForField
@@ -784,11 +803,10 @@ public class EntityGenerator : IGenerator
         {
             var arr = new StringBuilder();
             if (withAttributes)
-            {
                 arr.AppendLine($"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]");
-                // validator.array @min/@max → element-count bounds on the collection.
+            // validator.array @min/@max → element-count bounds on the collection.
+            if (emitValidation)
                 AppendArrayValidatorAttributes(arr, field);
-            }
             arr.Append($"    public ICollection<{baseType}> {propName} {{ get; set; }} = new List<{baseType}>();");
             return arr.ToString();
         }
@@ -797,11 +815,19 @@ public class EntityGenerator : IGenerator
         var isValue = CSharpNaming.IsValueType(baseType);
 
         var sb = new StringBuilder();
+        // EF-mapping attributes ([Key]/[Column]) — mapped entities only; a VO POCO's
+        // JSON member mapping is fluent (.ToJson), so it carries none of these.
         if (withAttributes)
         {
             if (pkFields.Count == 1 && pkFields[0] == field.Name)
                 sb.AppendLine("    [Key]");
             sb.AppendLine($"    [Column(\"{CSharpNaming.Column(field, strategy)}\")]");
+        }
+        // Validation DataAnnotations — mapped entities AND value-object POCOs (a VO's
+        // own members are validated on POST/PATCH; Program D), never an attribute-free
+        // abstract shape.
+        if (emitValidation)
+        {
             if (baseType == "string")
             {
                 // FR-036 A1 — a @required string is NON-EMPTY, but whitespace-only is ACCEPTED
