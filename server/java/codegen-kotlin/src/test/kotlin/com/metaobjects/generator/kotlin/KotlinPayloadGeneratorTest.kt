@@ -251,6 +251,86 @@ class KotlinPayloadGeneratorTest {
         }
     }
 
+    @Test fun `issue-195 new origins resolve native payload types (any-all Boolean, collect List, first nullable, computed nullable)`() {
+        // The four #195 projection read-model capabilities, hosted on a payload VO. The payload
+        // generator's origin dispatch must type each derived field from its origin (NOT the raw
+        // declared subType), matching the TS/other-port native-typing contract:
+        //   - origin.aggregate @agg:any|all → Boolean (a predicate quantifier over @filter; non-null)
+        //   - origin.aggregate @agg:collect → List<T> where T = the @of element type (non-null)
+        //   - origin.first                  → the @of source type, NULLABLE (empty set → null)
+        //   - origin.computed               → the field's own declared subType, NULLABLE (conservative)
+        //
+        // Shapes obey the #195 loader validation: any/all carry @filter + @via and FORBID @of;
+        // collect is isArray with a subtype-matching @of; first's field is non-@required; computed's
+        // @expr references the host VO's own field (`bio`). The Kotlin dispatch keys on @agg / the
+        // origin subtype, never on @filter/@orderBy.
+        val fx = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Author", "children": [
+                { "field.long":   { "name": "id" } },
+                { "relationship.aggregation": { "name": "posts",
+                    "@objectRef": "Post", "@cardinality": "many" } }
+            ] } },
+            { "object.entity": { "name": "Post", "children": [
+                { "field.long":   { "name": "id" } },
+                { "field.string": { "name": "category" } }
+            ] } },
+            { "object.value": { "name": "AuthorSummary", "children": [
+                { "field.string": { "name": "bio" } },
+                { "field.boolean": { "name": "hasAnyPost", "children": [
+                    { "origin.aggregate": { "@agg": "any", "@via": "Author.posts",
+                        "@filter": { "category": "tech" } } }
+                ] } },
+                { "field.boolean": { "name": "allPosts", "children": [
+                    { "origin.aggregate": { "@agg": "all", "@via": "Author.posts",
+                        "@filter": { "category": "tech" } } }
+                ] } },
+                { "field.string": { "name": "categories", "isArray": true, "children": [
+                    { "origin.aggregate": { "@agg": "collect", "@of": "Post.category", "@via": "Author.posts" } }
+                ] } },
+                { "field.string": { "name": "latestCategory", "children": [
+                    { "origin.first": { "@of": "Post.category", "@via": "Author.posts",
+                        "@orderBy": ["id:desc"] } }
+                ] } },
+                { "field.boolean": { "name": "hasBio", "children": [
+                    { "origin.computed": { "@expr": { "op": "isNotNull", "arg": { "field": "bio" } } } }
+                ] } }
+            ] } },
+            { "template.prompt": { "name": "AuthorStats",
+                "@payloadRef": "AuthorSummary", "@textRef": "demo/author" } }
+          ] }
+        }""".trimIndent()
+
+        val outDir = Files.createTempDirectory("kpay-195-")
+        try {
+            val gen = KotlinPayloadGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("test-195", fx))
+
+            val emitted = outDir.resolve("acme/demo/prompts/AuthorStatsPayload.kt")
+            assertTrue(Files.exists(emitted),
+                "expected $emitted; files=${Files.walk(outDir).toList()}")
+            val src = Files.readString(emitted)
+
+            // any / all → Boolean (non-null)
+            assertTrue("val hasAnyPost: Boolean" in src && "val hasAnyPost: Boolean?" !in src,
+                "origin.aggregate @agg:any must be non-null Boolean; saw:\n$src")
+            assertTrue("val allPosts: Boolean" in src && "val allPosts: Boolean?" !in src,
+                "origin.aggregate @agg:all must be non-null Boolean; saw:\n$src")
+            // collect → List<String> (non-null), element = @of (Post.category) type
+            assertTrue("val categories: List<String>" in src && "val categories: List<String>?" !in src,
+                "origin.aggregate @agg:collect must be non-null List<String>; saw:\n$src")
+            // first → the @of source type (String), NULLABLE
+            assertTrue("val latestCategory: String?" in src,
+                "origin.first must be nullable @of source type (String?); saw:\n$src")
+            // computed → declared subType (Boolean), NULLABLE (conservative)
+            assertTrue("val hasBio: Boolean?" in src,
+                "origin.computed must be nullable declared subType (Boolean?); saw:\n$src")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     @Test fun `nested field-object objectRef given as a cross-package FQN emits bare payload names, no package-qualified identifier`() {
         // Regression companion to the TS promptRender FQN-leak fix (0.15.17): a payload VO whose
         // naked `field.object @objectRef` points at ANOTHER object.value declared in a DIFFERENT

@@ -160,6 +160,125 @@ class KotlinProjectionCompileTest {
         }
     }
 
+    // A projection carrying all four #195 read-model origin capabilities. Every derived field is
+    // NON-required, so pre-#195 they would all be nullable; #195 makes the COALESCE-guaranteed
+    // origins (any/all/collect) non-null while first/computed stay nullable.
+    private val originsFixture = """{
+      "metadata.root": { "package": "acme::demo", "children": [
+        { "object.entity": { "name": "Author", "children": [
+            { "field.long":   { "name": "id" } },
+            { "field.string": { "name": "bio" } },
+            { "source.rdb":   { "@table": "authors" } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
+            { "relationship.association": { "name": "posts", "@objectRef": "Post", "@cardinality": "many" } }
+        ] } },
+        { "object.entity": { "name": "Post", "children": [
+            { "field.long":   { "name": "id" } },
+            { "field.long":   { "name": "authorId" } },
+            { "field.string": { "name": "category" } },
+            { "source.rdb":   { "@table": "posts" } },
+            { "identity.primary":   { "name": "id", "@fields": "id", "@generation": "increment" } },
+            { "identity.reference": { "name": "ref_author", "@fields": "authorId", "@references": "Author" } }
+        ] } },
+        { "object.projection": { "name": "AuthorSummary", "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_author_summary" } },
+            { "field.long": { "name": "id", "extends": "acme::demo::Author.id", "@required": true } },
+            { "field.boolean": { "name": "hasAnyPost", "children": [
+                { "origin.aggregate": { "@agg": "any", "@via": "Author.posts", "@filter": { "category": "tech" } } }
+            ] } },
+            { "field.boolean": { "name": "allPosts", "children": [
+                { "origin.aggregate": { "@agg": "all", "@via": "Author.posts", "@filter": { "category": "tech" } } }
+            ] } },
+            { "field.string": { "name": "categories", "isArray": true, "children": [
+                { "origin.aggregate": { "@agg": "collect", "@of": "Post.category", "@via": "Author.posts" } }
+            ] } },
+            { "field.string": { "name": "latestCategory", "children": [
+                { "origin.first": { "@of": "Post.category", "@via": "Author.posts", "@orderBy": ["id:desc"] } }
+            ] } },
+            { "field.boolean": { "name": "hasBio", "children": [
+                { "origin.computed": { "@expr": { "op": "isNotNull", "arg": { "field": "bio" } } } }
+            ] } },
+            { "identity.primary": { "name": "id", "extends": "acme::demo::Author.id" } }
+        ] } }
+      ] }
+    }""".trimIndent()
+
+    @Test fun `issue-195 origin-aware nullability - any-all-collect non-null, first-computed nullable, read-write consistent`() {
+        val outDir = Files.createTempDirectory("kproj-195-")
+        try {
+            val loader = loadString("projection-195", originsFixture)
+            for (gen in listOf(KotlinEntityGenerator(), KotlinExposedTableGenerator())) {
+                gen.setArgs(mapOf("outputDir" to outDir.toString()))
+                gen.execute(loader)
+            }
+
+            val summaryKt = outDir.resolve("acme/demo/AuthorSummary.kt")
+            val summaryTableKt = outDir.resolve("acme/demo/AuthorSummaryTable.kt")
+            assertTrue(Files.exists(summaryKt),
+                "expected projection data class $summaryKt; files=${Files.walk(outDir).toList()}")
+            assertTrue(Files.exists(summaryTableKt),
+                "expected projection Exposed table $summaryTableKt; files=${Files.walk(outDir).toList()}")
+
+            val src = Files.readString(summaryKt)
+            val tableSrc = Files.readString(summaryTableKt)
+
+            // --- Data-class read types (#195 origin-aware nullability precision) ---
+            // any/all → COALESCE-guaranteed non-null Boolean even though the field is not @required.
+            // (KotlinPoet emits each ctor param on its own line: `val hasAnyPost: Boolean,`.)
+            assertTrue(Regex("""val hasAnyPost: Boolean(?![?A-Za-z])""").containsMatchIn(src),
+                "@agg:any derived field must be non-null Boolean; saw:\n$src")
+            assertFalse("val hasAnyPost: Boolean? = null" in src,
+                "@agg:any must NOT be nullable; saw:\n$src")
+            assertFalse("val allPosts: Boolean? = null" in src,
+                "@agg:all must NOT be nullable; saw:\n$src")
+            // collect → non-null List<String> (empty set → []).
+            assertTrue("val categories: List<String>" in src,
+                "@agg:collect derived field must be List<String>; saw:\n$src")
+            assertFalse("val categories: List<String>? = null" in src,
+                "@agg:collect must NOT be nullable; saw:\n$src")
+            // first → nullable (empty related set → null).
+            assertTrue("val latestCategory: String? = null" in src,
+                "origin.first derived field must be nullable String?; saw:\n$src")
+            // computed → conservative nullable.
+            assertTrue("val hasBio: Boolean? = null" in src,
+                "origin.computed derived field must be nullable Boolean?; saw:\n$src")
+
+            // --- Exposed view columns must MATCH the read types (PR-#80 read/write consistency) ---
+            assertTrue("bool(\"has_any_post\")" in tableSrc,
+                "@agg:any view column must be emitted; saw:\n$tableSrc")
+            assertFalse("bool(\"has_any_post\").nullable()" in tableSrc,
+                "@agg:any view column must NOT be nullable; saw:\n$tableSrc")
+            assertFalse("bool(\"all_posts\").nullable()" in tableSrc,
+                "@agg:all view column must NOT be nullable; saw:\n$tableSrc")
+            assertFalse("\"categories\", org.jetbrains.exposed.sql.TextColumnType()).nullable()" in tableSrc,
+                "@agg:collect view column must NOT be nullable; saw:\n$tableSrc")
+            assertTrue("text(\"latest_category\").nullable()" in tableSrc,
+                "origin.first view column must be nullable; saw:\n$tableSrc")
+            assertTrue("bool(\"has_bio\").nullable()" in tableSrc,
+                "origin.computed view column must be nullable; saw:\n$tableSrc")
+
+            // --- TRUE compile of the projection data class (non-null-no-default ordering, etc.) ---
+            val dataClassSources = Files.walk(outDir).filter { it.isRegularFile() }
+                .filter { !it.fileName.toString().endsWith("Table.kt") }
+                .toList()
+                .map { path ->
+                    SourceFile.kotlin(
+                        path.parent.relativize(path).toString().replace('/', '_'),
+                        path.readText(),
+                    )
+                }
+            val result = KotlinCompilation().apply {
+                this.sources = dataClassSources
+                inheritClassPath = true
+                messageOutputStream = System.out
+            }.compile()
+            assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode,
+                "generated projection Kotlin data classes failed to compile:\n${result.messages}")
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
     @Test fun `write-surface generators skip the projection`() {
         val outDir = Files.createTempDirectory("kproj-skip-")
         try {

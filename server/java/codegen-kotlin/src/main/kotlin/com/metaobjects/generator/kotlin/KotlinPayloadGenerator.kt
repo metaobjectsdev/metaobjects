@@ -9,10 +9,13 @@ import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.origin.AggregateOrigin
 import com.metaobjects.origin.CollectionOrigin
+import com.metaobjects.origin.ComputedOrigin
+import com.metaobjects.origin.FirstOrigin
 import com.metaobjects.origin.MetaOrigin
 import com.metaobjects.origin.PassthroughOrigin
 import com.metaobjects.relationship.MetaRelationship
 import com.metaobjects.template.MetaTemplate
+import com.squareup.kotlinpoet.BOOLEAN
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.DOUBLE
 import com.squareup.kotlinpoet.FileSpec
@@ -40,9 +43,15 @@ import java.nio.file.Paths
  * <ul>
  *   <li>{@code origin.passthrough} (@from "Entity.field") — type of the referenced source field.</li>
  *   <li>{@code origin.aggregate}  (@agg count) — {@code Long}; (@agg avg) — {@code Double};
- *       (@agg sum/min/max) — type of the referenced `@of` field.</li>
+ *       (@agg sum/min/max) — type of the referenced `@of` field; (@agg any/all) — {@code Boolean}
+ *       (a predicate quantifier, #195); (@agg collect) — {@code List<T>} where T is the `@of`
+ *       element type (an array rollup, #195).</li>
  *   <li>{@code origin.collection} (@via "Parent.rel") — {@code List<TargetPayload>}, and the
  *       nested payload class is recursively emitted alongside (deduped per execute() run).</li>
+ *   <li>{@code origin.computed} (@expr ...) — the field's own declared subType, NULLABLE
+ *       (expression nullability is conservative, #195).</li>
+ *   <li>{@code origin.first} (@of "Entity.field" @orderBy [...]) — the `@of` source column's type,
+ *       NULLABLE (an empty related set → null, #195).</li>
  *   <li>No origin child — fall back to {@link KotlinTypeMapper#payloadTypeName(MetaField)}
  *       (parsed JSON value for a `field.string @dbColumnType=jsonb` open bag; otherwise the
  *       same mapping as {@code kotlinTypeName}).</li>
@@ -159,6 +168,13 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 is CollectionOrigin -> resolveCollectionType(
                     origin, loader, nestedPkg, outRoot, emittedNestedFqns, emittedEnumFqns, field
                 )
+                // #195 origin.computed: a row-level value; its type is the field's own declared
+                // subType (validation pins the inferred root type == field subType). Conservative
+                // nullable — an expression's null-ness is expression-dependent.
+                is ComputedOrigin -> KotlinTypeMapper.payloadTypeName(field).copy(nullable = true)
+                // #195 origin.first: the @of source column's type, NULLABLE (an empty related set
+                // after @filter selects no row → null).
+                is FirstOrigin -> resolveFirstType(origin, loader, field)
                 else -> KotlinTypeMapper.payloadTypeName(field)
             }
         }
@@ -260,10 +276,12 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     }
 
     /**
-     * `origin.aggregate @agg X @of "Entity.field"`: type rule —
+     * `origin.aggregate @agg X [@of "Entity.field"]`: type rule —
      *  - count → Long
      *  - avg → Double
      *  - sum/min/max → type of the `@of` field
+     *  - any/all → Boolean (a predicate quantifier; empty set → false/true, never null — #195)
+     *  - collect → List<T> where T is the `@of` element type (array rollup; empty set → [] — #195)
      */
     private fun resolveAggregateType(
         origin: AggregateOrigin,
@@ -273,6 +291,18 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         return when (origin.agg) {
             MetaOrigin.AGG_COUNT -> LONG
             MetaOrigin.AGG_AVG -> DOUBLE
+            // #195 boolean rollup — a quantifier over the related row-set. Always Boolean,
+            // COALESCE-guaranteed non-null (the payload emits fields non-null by default).
+            MetaOrigin.AGG_ANY, MetaOrigin.AGG_ALL -> BOOLEAN
+            // #195 array rollup — List<element-of-@of>, non-null (empty set → []). The @of names
+            // the collected scalar column; payloadTypeName gives its element type.
+            MetaOrigin.AGG_COLLECT -> {
+                val of = origin.of ?: return KotlinTypeMapper.payloadTypeName(fallbackField)
+                val sourceField = resolveDottedFieldRef(loader, of)
+                    ?: return KotlinTypeMapper.payloadTypeName(fallbackField)
+                ClassName("kotlin.collections", "List")
+                    .parameterizedBy(KotlinTypeMapper.payloadTypeName(sourceField))
+            }
             MetaOrigin.AGG_SUM, MetaOrigin.AGG_MIN, MetaOrigin.AGG_MAX -> {
                 val of = origin.of ?: return KotlinTypeMapper.payloadTypeName(fallbackField)
                 val sourceField = resolveDottedFieldRef(loader, of)
@@ -281,6 +311,23 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             }
             else -> KotlinTypeMapper.payloadTypeName(fallbackField)
         }
+    }
+
+    /**
+     * `origin.first @of "Entity.field" @orderBy [...]`: type = the `@of` source column's Kotlin
+     * type, made NULLABLE — an empty related set (after `@filter`) selects no row, so the projected
+     * value can be null (#195). Falls back to the payload field's own (nullable) type when `@of`
+     * can't be resolved (defensive — the loader's ValidationPhase gates `@of` presence/shape).
+     */
+    private fun resolveFirstType(
+        origin: FirstOrigin,
+        loader: MetaDataLoader,
+        fallbackField: MetaField<*>,
+    ): TypeName {
+        val of = origin.of ?: return KotlinTypeMapper.payloadTypeName(fallbackField).copy(nullable = true)
+        val sourceField = resolveDottedFieldRef(loader, of)
+            ?: return KotlinTypeMapper.payloadTypeName(fallbackField).copy(nullable = true)
+        return KotlinTypeMapper.payloadTypeName(sourceField).copy(nullable = true)
     }
 
     /**

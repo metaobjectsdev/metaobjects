@@ -487,7 +487,12 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 // field.map is always a single jsonb column.
                 if (field is ObjectField || field is MapField) continue
                 val isPk = field.name in primaryFieldSet
-                val nullable = !isPk && !KotlinGenUtil.isRequiredField(field)
+                // #195: an origin.aggregate @agg:any|all|collect view column is COALESCE-guaranteed
+                // non-null (any→false, all→true, collect→[]), so it is emitted NON-null even when the
+                // field is not @required — keeping the view column consistent with the projection
+                // data-class read type ([KotlinEntityGenerator]); the PR-#80 read/write invariant.
+                val nullable = !isPk && !KotlinGenUtil.isRequiredField(field) &&
+                    !KotlinGenUtil.originGuaranteedNonNull(field)
                 val baseSpec = if (field is EnumField) {
                     // field.enum → typed Exposed enumerationByName column referencing the
                     // generated enum class. Length matches the historical VARCHAR fallback

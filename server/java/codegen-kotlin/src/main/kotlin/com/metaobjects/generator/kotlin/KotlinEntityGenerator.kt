@@ -142,7 +142,14 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val ctorBuilder = FunSpec.constructorBuilder()
         for (field in obj.metaFields) {
             val baseType = resolvePropertyType(field, obj, loader)
-            val nullable = tphBase || !KotlinGenUtil.isRequiredField(field)
+            // #195: a field derived by origin.aggregate @agg:any|all|collect is COALESCE-guaranteed
+            // non-null in the synthesized read-model view (any→false, all→true, collect→[]), so its
+            // read type is non-null even when the field is NOT @required — matching the Exposed view
+            // column ([KotlinExposedTableGenerator]) so the read/write types stay consistent (the
+            // PR-#80 nullable-column-vs-non-null-read-type invariant). origin.first / origin.computed
+            // keep the conservative nullable default.
+            val nullable = tphBase ||
+                (!KotlinGenUtil.isRequiredField(field) && !KotlinGenUtil.originGuaranteedNonNull(field))
             val propType = if (nullable) baseType.copy(nullable = true) else baseType
             val propName = field.name
             val param = ParameterSpec.builder(propName, propType)

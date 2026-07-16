@@ -4,6 +4,8 @@ import com.metaobjects.MetaData
 import com.metaobjects.field.MetaField
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
+import com.metaobjects.origin.AggregateOrigin
+import com.metaobjects.origin.MetaOrigin
 import com.metaobjects.source.RdbSource
 
 /**
@@ -87,6 +89,27 @@ public object KotlinGenUtil {
             is String -> raw.equals("true", ignoreCase = true)
             else -> false
         }
+    }
+
+    /**
+     * #195 — true iff [field]'s value is derived by an `origin.aggregate` whose `@agg` is one of
+     * the COALESCE-guaranteed-non-null reducers: `any`/`all` (a boolean quantifier, empty set →
+     * `false`/`true` — never null) or `collect` (an array rollup, empty set → `[]` — never null).
+     * A projection/read-model field so derived is non-null in the synthesized view EVEN WHEN it is
+     * not `@required`, so its generated Kotlin type (data-class property AND Exposed view column)
+     * must be non-null — the analog of the TypeScript `originGuaranteedNonNull` predicate that joins
+     * `isRequired()` in the column mapper's not-null decision. `origin.first` (empty related set →
+     * null) and `origin.computed` (expression-dependent) are deliberately NOT here — they keep the
+     * conservative nullable default.
+     *
+     * ADR-0039/ADR-0029: `origin.*` never inherits, so this reads the field's OWN children
+     * (`field.children`) — matching [KotlinPayloadGenerator]'s origin dispatch.
+     */
+    fun originGuaranteedNonNull(field: MetaField<*>): Boolean {
+        val origin = field.children.filterIsInstance<AggregateOrigin>().firstOrNull() ?: return false
+        return origin.agg == MetaOrigin.AGG_ANY ||
+            origin.agg == MetaOrigin.AGG_ALL ||
+            origin.agg == MetaOrigin.AGG_COLLECT
     }
 
     /**
