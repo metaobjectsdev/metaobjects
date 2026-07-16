@@ -1,4 +1,4 @@
-import type { ColumnNamingStrategy, MetaData, MetaObject, MetaRoot, MetaValidator } from "@metaobjectsdev/metadata";
+import type { ColumnNamingStrategy, MetaData, MetaField, MetaObject, MetaRoot, MetaValidator } from "@metaobjectsdev/metadata";
 import {
   VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
   VALIDATOR_SUBTYPE_COMPARISON, VALIDATOR_SUBTYPE_REQUIRED_WHEN,
@@ -375,6 +375,12 @@ function buildTable(
 
   const columns: ColumnDescriptor[] = [];
   for (const field of entity.fields()) {
+    // #213 — a derived (origin-bearing) field is read-only and lives only on the
+    // read (view) side (FR-024 §7 / ADR-0028); it is NOT a physical column on the
+    // entity's write table. Excluding it here stops the leak that put a joined
+    // passthrough onto the write table (and collided with a hand-written
+    // `SELECT o.*, extra` view's alias).
+    if (field.isDerived()) continue;
     const isPk = pkJsNames.includes(field.name);
     if (
       field.subType === FIELD_SUBTYPE_OBJECT &&
@@ -401,6 +407,8 @@ function buildTable(
       // fields (inherited base fields are already emitted on the base table).
       for (const field of sub.ownChildren()) {
         if (field.type !== TYPE_FIELD) continue;
+        // #213 — a TPH subtype's derived field is read-only too; never a column.
+        if ((field as MetaField).isDerived()) continue;
         const col = buildColumn(field, false, undefined, strategy);
         if (existing.has(col.name)) continue;
         col.nullable = true; // subtype-only columns are always nullable in TPH

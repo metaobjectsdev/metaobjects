@@ -175,7 +175,9 @@ export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Co
     // FR-013: @readOnly fields are populated by DB / replication / external
     // owner; the application has no path to write them. Exclude from the
     // create-shape schema entirely.
-    if (child.attr(FIELD_ATTR_READ_ONLY) === true) continue;
+    // #213 — a derived (origin-bearing) field is read-only (FR-024 §7 / ADR-0028):
+    // excluded from the Insert/Update/preserving schemas, exactly like @readOnly.
+    if (child.attr(FIELD_ATTR_READ_ONLY) === true || child.isDerived()) continue;
 
     // FR-017 Tier 1: TPH subtype pins its discriminator field to z.literal(...).
     if (tphPin !== undefined && child.name === tphPin.fieldName) {
@@ -239,7 +241,9 @@ export function insertSchemaFields(obj: MetaObject): SchemaFieldShape[] {
   const out: SchemaFieldShape[] = [];
   for (const child of obj.fields()) {
     if (autoGenPkFields.has(child.name)) continue;
-    if (child.attr(FIELD_ATTR_READ_ONLY) === true) continue;
+    // #213 — a derived (origin-bearing) field is read-only (FR-024 §7 / ADR-0028):
+    // excluded from the Insert/Update/preserving schemas, exactly like @readOnly.
+    if (child.attr(FIELD_ATTR_READ_ONLY) === true || child.isDerived()) continue;
     if (tphPin !== undefined && child.name === tphPin.fieldName) {
       out.push({ name: child.name, optional: false, pinnedLiteral: tphPin.value });
       continue;
@@ -269,7 +273,9 @@ export function updateSchemaFields(obj: MetaObject): SchemaFieldShape[] {
   const out: SchemaFieldShape[] = [];
   for (const child of obj.fields()) {
     if (autoGenPkFields.has(child.name)) continue;
-    if (child.attr(FIELD_ATTR_READ_ONLY) === true) continue;
+    // #213 — a derived (origin-bearing) field is read-only (FR-024 §7 / ADR-0028):
+    // excluded from the Insert/Update/preserving schemas, exactly like @readOnly.
+    if (child.attr(FIELD_ATTR_READ_ONLY) === true || child.isDerived()) continue;
     // TPH subtype discriminator: omitted from the update schema entirely.
     if (tphPin !== undefined && child.name === tphPin.fieldName) continue;
     const autoSet = child.attr(FIELD_ATTR_AUTO_SET);
@@ -306,7 +312,9 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
     // The DB / trigger / replication owns the write path; the app must not
     // pass these values in POST/PATCH bodies (routesFile enforces the same
     // contract at the boundary with a 400 response).
-    if (child.attr(FIELD_ATTR_READ_ONLY) === true) continue;
+    // #213 — a derived (origin-bearing) field is read-only (FR-024 §7 / ADR-0028):
+    // excluded from the Insert/Update/preserving schemas, exactly like @readOnly.
+    if (child.attr(FIELD_ATTR_READ_ONLY) === true || child.isDerived()) continue;
 
     // FR-017 Tier 1: TPH subtype pins its discriminator field to z.literal(...).
     // The discriminator is implicit on subtype rows (controlled by URL / insert

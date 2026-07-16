@@ -16,7 +16,7 @@ import {
   DATA_TYPE_OBJECT,
 } from "../../data-type.js";
 import { convertToDataType } from "../../data-converter.js";
-import { TYPE_VALIDATOR, TYPE_VIEW, SUBTYPE_BASE } from "../../shared/base-types.js";
+import { TYPE_VALIDATOR, TYPE_VIEW, TYPE_ORIGIN, SUBTYPE_BASE } from "../../shared/base-types.js";
 import {
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_INT,
@@ -194,6 +194,18 @@ export class MetaField extends MetaData implements DataTypeAware {
       // ADR-0039: own-accessor definition — the deliberate own-only API twin of views().
       this.ownChildren().filter((c): c is MetaView => c.type === TYPE_VIEW),
     );
+  }
+
+  /**
+   * True when this field carries an `origin.*` child (passthrough / aggregate /
+   * computed / first): its value is DERIVED from other data, not stored in the
+   * object's own writable table. A derived field is read-only wherever it lives
+   * (ADR-0028) — excluded from the write-table DDL, the ORM table def, and the
+   * Insert/Update codecs; it exists only on the read (view) side. `origin.*` never
+   * inherits (ADR-0029), so the check is own-only (category 4). */
+  isDerived(): boolean {
+    // ADR-0039 own (category 4): origin.* never inherits (ADR-0029) — own by policy.
+    return this.ownChildren().some((c) => c.type === TYPE_ORIGIN);
   }
 
   /** The typed supertype field if `extends:` resolved, else undefined. */

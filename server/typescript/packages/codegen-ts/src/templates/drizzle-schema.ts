@@ -66,6 +66,11 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   // Collect CHECK constraints for enum columns; emitted as table-level check() callbacks.
   const checkConstraints: Array<{ name: string; expr: string }> = [];
   for (const child of obj.fields()) {
+    // #213 — a derived (origin-bearing) field is read-only, materialized on the
+    // read (view) side, NOT a column on the entity's write table (FR-024 §7).
+    // Emitting it here would declare a Drizzle column for a table column migrate
+    // no longer creates.
+    if (child.isDerived()) continue;
     const isPk = pkFieldNames.has(child.name);
     const isUnique = uniqueFieldNames.has(child.name) && !isPk;
     const fkInfo = fkMap.get(child.name);
@@ -90,6 +95,8 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   // stamp onto other-subtype inserts), regardless of the field's @required.
   // Subtype entities emit no table of their own (the value-object path).
   for (const child of collectTphSubtypeFields(obj, ctx.loadedRoot)) {
+    // #213 — a TPH subtype's derived field is read-only too; never a table column.
+    if (child.isDerived()) continue;
     const spec = mapColumnType(child, ctx.dialect, ctx.columnNamingStrategy, ctx.timestampMode);
     const fieldDocs = renderDocsFor(child);
     const columnLine = renderColumn(
