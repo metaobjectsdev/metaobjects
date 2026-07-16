@@ -364,6 +364,24 @@ public enum ErrorCode {
      */
     ERR_INVALID_INDEX,
 
+    /**
+     * #195: an {@code origin.computed} {@code @expr} tree contains a node whose
+     * kind/op/fn is not in the closed expression grammar (field/value refs,
+     * comparisons sharing the filter op vocabulary, {@code isNull}/{@code isNotNull},
+     * {@code and}/{@code or}/{@code not}, {@code coalesce}). Fail-closed per ADR-0023;
+     * the detail names the offending token.
+     */
+    ERR_UNKNOWN_EXPR_NODE,
+
+    /**
+     * #195: an {@code origin.computed} {@code @expr} tree's inferred root type does
+     * not equal the carrying field's declared {@code field.<subType>}. A computed
+     * column's type is DERIVED from its expression, never asserted (no {@code @convert}
+     * escape), so a mismatch is a hard load error (sibling of
+     * {@code ERR_PASSTHROUGH_TYPE_MISMATCH}).
+     */
+    ERR_COMPUTED_TYPE_MISMATCH,
+
     /** An internal loader error with no stable error code. */
     ERR_UNKNOWN,
 }

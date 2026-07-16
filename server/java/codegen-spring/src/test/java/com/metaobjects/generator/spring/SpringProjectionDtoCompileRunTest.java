@@ -151,6 +151,89 @@ public class SpringProjectionDtoCompileRunTest extends SharedRegistryTestBase {
     }
 
     /**
+     * #195 native typing — a projection field derived by {@code origin.aggregate}
+     * {@code @agg:any|all|collect} is COALESCE-guaranteed non-null on read, so its DTO
+     * component is {@code @NotNull}; an {@code origin.first} (empty set &rarr; null) and
+     * an {@code origin.computed} (expression-dependent nullability) component stay nullable
+     * (no {@code @NotNull}). Mirrors the TS {@code originGuaranteedNonNull} change.
+     */
+    private static final String NULLABILITY_FIXTURE = """
+        {
+          "metadata.root": { "package": "acme::sessions", "children": [
+            { "object.entity": { "name": "Session", "children": [
+                { "source.rdb": { "@table": "sessions" } },
+                { "field.long": { "name": "id" } },
+                { "relationship.association": { "name": "turns", "@objectRef": "Turn", "@cardinality": "many" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+            ] } },
+            { "object.entity": { "name": "Turn", "children": [
+                { "source.rdb": { "@table": "turns" } },
+                { "field.long": { "name": "id" } },
+                { "field.boolean": { "name": "success" } },
+                { "field.string": { "name": "label" } },
+                { "field.timestamp": { "name": "createdAt" } },
+                { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+            ] } },
+            { "object.projection": { "name": "SessionSummary", "children": [
+                { "source.rdb": { "@table": "v_session", "@kind": "view" } },
+                { "field.long": { "name": "id", "extends": "Session.id" } },
+                { "field.string": { "name": "labelsCollect", "isArray": true, "children": [
+                    { "origin.aggregate": { "@agg": "collect", "@of": "Turn.label", "@via": "Session.turns" } } ] } },
+                { "field.boolean": { "name": "anyError", "children": [
+                    { "origin.aggregate": { "@agg": "any", "@via": "Session.turns", "@filter": { "success": false } } } ] } },
+                { "field.string": { "name": "latestLabel", "children": [
+                    { "origin.first": { "@of": "Turn.label", "@via": "Session.turns", "@orderBy": ["createdAt:desc"] } } ] } },
+                { "field.boolean": { "name": "computedFlag", "children": [
+                    { "origin.computed": { "@expr": { "op": "isNotNull", "arg": { "field": "id" } } } } ] } },
+                { "identity.primary": { "name": "pk", "extends": "Session.pk" } }
+            ] } }
+          ] }
+        }
+        """;
+
+    @Test
+    public void originAnyAllCollectFieldsAreNotNull_firstAndComputedStayNullable() throws Exception {
+        Path gen = tmp.newFolder("gen-nullability").toPath();
+        Path ws  = tmp.newFolder("ws-nullability").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(ws, "nullability", NULLABILITY_FIXTURE);
+
+        MetaObject summary = loader.getMetaObjectByName("acme::sessions::SessionSummary");
+        assertNotNull("projection must load", summary);
+
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", gen.toString());
+        SpringDtoGenerator dtoGen = new SpringDtoGenerator();
+        dtoGen.setArgs(args);
+        dtoGen.execute(loader);
+
+        Path dto = gen.resolve("acme/sessions/SessionSummaryDto.java");
+        assertTrue("expected SessionSummaryDto.java at " + dto, Files.exists(dto));
+        String src = Files.readString(dto);
+
+        // collect + any → COALESCE-guaranteed non-null → @NotNull on the component.
+        assertTrue("collect field must be @NotNull; saw:\n" + src, componentIsNotNull(src, "labelsCollect"));
+        assertTrue("any-predicate field must be @NotNull; saw:\n" + src, componentIsNotNull(src, "anyError"));
+        // first (empty set → null) + computed (expression-dependent) → stay nullable.
+        assertFalse("first field must stay nullable (no @NotNull); saw:\n" + src, componentIsNotNull(src, "latestLabel"));
+        assertFalse("computed field must stay nullable (no @NotNull); saw:\n" + src, componentIsNotNull(src, "computedFlag"));
+
+        compile(gen);
+    }
+
+    /** True iff the DTO record component for {@code fieldName} (one line ending in the
+     *  name, optionally comma-terminated) carries {@code @NotNull}. */
+    private static boolean componentIsNotNull(String src, String fieldName) {
+        for (String line : src.split("\n")) {
+            String t = line.trim();
+            if (t.equals(fieldName) || t.equals(fieldName + ",")
+                    || t.endsWith(" " + fieldName) || t.endsWith(" " + fieldName + ",")) {
+                return t.contains("@NotNull");
+            }
+        }
+        throw new AssertionError("no DTO component line found for field '" + fieldName + "' in:\n" + src);
+    }
+
+    /**
      * Compile every generated {@code .java} under {@code gen} with the in-process
      * JDK compiler ({@code render}/{@code om} are on the test classpath). Fails
      * with the diagnostics + source dump if compilation does not succeed.

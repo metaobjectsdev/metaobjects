@@ -43,8 +43,11 @@ import com.metaobjects.layout.DataGridLayout;
 import com.metaobjects.layout.MetaLayout;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.object.MetaObject;
+import com.metaobjects.attr.ExpressionAttribute;
 import com.metaobjects.origin.AggregateOrigin;
 import com.metaobjects.origin.CollectionOrigin;
+import com.metaobjects.origin.ComputedOrigin;
+import com.metaobjects.origin.FirstOrigin;
 import com.metaobjects.origin.MetaOrigin;
 import com.metaobjects.origin.PassthroughOrigin;
 import com.metaobjects.relationship.MetaRelationship;
@@ -1605,6 +1608,7 @@ public final class ValidationPhase {
         }
 
         if (AggregateOrigin.SUBTYPE_AGGREGATE.equals(subType)) {
+            com.metaobjects.source.ErrorSource src = origin.getSource();
             // Re-check @agg vocabulary — the .withEnum constraint on the base
             // can be subverted by inline attribute parsing paths; mirror the
             // belt-and-braces approach used for relationship referential actions.
@@ -1614,26 +1618,132 @@ public final class ValidationPhase {
                     ErrorMessageConstants.ERR_BAD_ATTR_VALUE
                         + ": origin.aggregate on " + obj.getName() + "." + field.getName()
                         + " @agg '" + agg + "' is not a valid value; allowed: "
-                        + "count, sum, avg, min, max",
-                    ErrorCode.ERR_BAD_ATTR_VALUE, origin.getSource());
+                        + "count, sum, avg, min, max, any, all, collect",
+                    ErrorCode.ERR_BAD_ATTR_VALUE, src);
             }
 
             String of = origin.getOf();
-            if (of == null || of.isEmpty()) {
+            boolean ofPresent = of != null && !of.isEmpty();
+            boolean hasFilter = origin.hasMetaAttr(MetaOrigin.ATTR_FILTER, false);
+            boolean hasDistinct = origin.hasMetaAttr(MetaOrigin.ATTR_DISTINCT, false);
+            boolean hasOrderBy = origin.hasMetaAttr(MetaOrigin.ATTR_ORDER_BY, false);
+            boolean isPredicate = MetaOrigin.AGG_ANY.equals(agg) || MetaOrigin.AGG_ALL.equals(agg);
+            boolean isCollect = MetaOrigin.AGG_COLLECT.equals(agg);
+
+            // --- #195 field-shape rules ---
+            // collect ⇒ the carrying field is an array (it produces a list); every
+            // other @agg reduces to a scalar (the inverse rule closes a latent hole).
+            if (isCollect && !field.isArrayType()) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": origin.aggregate @agg:collect on " + obj.getName() + "." + field.getName()
+                        + ": the carrying field must be isArray:true (collect produces a list).",
+                    ErrorCode.ERR_INVALID_ORIGIN, src);
+            } else if (!isCollect && field.isArrayType()) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": origin.aggregate @agg:" + agg + " on " + obj.getName() + "." + field.getName()
+                        + ": a non-collect aggregate reduces to a scalar — the field must be isArray:false.",
+                    ErrorCode.ERR_INVALID_ORIGIN, src);
+            }
+            // any/all yield a boolean.
+            if (isPredicate && !BooleanField.SUBTYPE_BOOLEAN.equals(field.getSubType())) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": origin.aggregate @agg:" + agg + " on " + obj.getName() + "." + field.getName()
+                        + ": a predicate quantifier yields a boolean — the field must be field.boolean.",
+                    ErrorCode.ERR_INVALID_ORIGIN, src);
+            }
+
+            // --- #195 attr-presence rules ---
+            if (hasDistinct && !isCollect) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": origin.aggregate on " + obj.getName() + "." + field.getName()
+                        + ": @distinct is valid only on @agg:collect.",
+                    ErrorCode.ERR_INVALID_ORIGIN, src);
+            }
+            if (hasOrderBy && !isCollect) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": origin.aggregate on " + obj.getName() + "." + field.getName()
+                        + ": @orderBy is valid only on @agg:collect.",
+                    ErrorCode.ERR_INVALID_ORIGIN, src);
+            }
+            if (isCollect && hasDistinct && hasOrderBy) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": origin.aggregate @agg:collect on " + obj.getName() + "." + field.getName()
+                        + ": @orderBy and @distinct are mutually exclusive — a distinct collect uses"
+                        + " value-ascending order (explicit element order is meaningful only without dedupe).",
+                    ErrorCode.ERR_INVALID_ORIGIN, src);
+            }
+
+            if (isPredicate) {
+                // --- any/all: @filter REQUIRED, @of FORBIDDEN, @via REQUIRED (no @of
+                // to infer the path from) + must be to-many. ---
+                if (!hasFilter) {
+                    throw new MetaDataException(
+                        ErrorMessageConstants.ERR_INVALID_ORIGIN
+                            + ": origin.aggregate @agg:" + agg + " on " + obj.getName() + "." + field.getName()
+                            + ": a predicate quantifier requires @filter (the quantified predicate);"
+                            + " \"does any related row exist\" is @agg:count.",
+                        ErrorCode.ERR_INVALID_ORIGIN, src);
+                }
+                if (ofPresent) {
+                    throw new MetaDataException(
+                        ErrorMessageConstants.ERR_INVALID_ORIGIN
+                            + ": origin.aggregate @agg:" + agg + " on " + obj.getName() + "." + field.getName()
+                            + ": @of is forbidden — a quantifier ranges over rows, not a column"
+                            + " (the predicate is @filter).",
+                        ErrorCode.ERR_INVALID_ORIGIN, src);
+                }
+                String via = origin.getVia();
+                if (via == null || via.isEmpty()) {
+                    throw new MetaDataException(
+                        ErrorMessageConstants.ERR_INVALID_ORIGIN
+                            + ": origin.aggregate @agg:" + agg + " on " + obj.getName() + "." + field.getName()
+                            + ": requires an explicit @via (a quantifier has no @of to infer the path from).",
+                        ErrorCode.ERR_INVALID_ORIGIN, src);
+                }
+                java.util.List<MetaData> hops =
+                    validateViaPath(via, root, obj, field.getName(), src);
+                checkAggregateCardinality(hops, obj, field.getName(), src);
+                return;
+            }
+
+            // --- count/sum/avg/min/max/collect: @of REQUIRED ---
+            if (!ofPresent) {
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_INVALID_ORIGIN
                         + ": origin.aggregate on " + obj.getName() + "." + field.getName()
                         + ": missing @of.",
-                    ErrorCode.ERR_INVALID_ORIGIN, origin.getSource());
+                    ErrorCode.ERR_INVALID_ORIGIN, src);
             }
             OriginTarget ofTarget = validateFromOrOfPath(of, root, obj, field.getName(),
-                "origin.aggregate.@of", origin.getSource());
+                "origin.aggregate.@of", src);
+            // #195 — collect preserves the element type: the array field's own subType
+            // must equal the @of column's subType (the #185 doctrine on the element).
+            if (isCollect && !field.getSubType().equals(ofTarget.field.getSubType())) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": origin.aggregate @agg:collect on " + obj.getName() + "." + field.getName()
+                        + ": field element type field." + field.getSubType()
+                        + " does not match the @of column type field." + ofTarget.field.getSubType()
+                        + " — collect preserves the element type.",
+                    ErrorCode.ERR_INVALID_ORIGIN, src);
+            }
+            // @orderBy keys (collect only, non-distinct) resolve against the @of entity.
+            if (isCollect && hasOrderBy && !hasDistinct) {
+                validateOrderByKeys(originOrderBy(origin), ofTarget.entity, obj, field.getName(),
+                    "origin.aggregate @agg:collect", src);
+            }
 
             String via = origin.getVia();
             if (via != null && !via.isEmpty()) {
                 java.util.List<MetaData> hops =
-                    validateViaPath(via, root, obj, field.getName(), origin.getSource());
-                checkAggregateCardinality(hops, obj, field.getName(), origin.getSource());
+                    validateViaPath(via, root, obj, field.getName(), src);
+                checkAggregateCardinality(hops, obj, field.getName(), src);
                 return;
             }
             // FR-024 §6 — no @via on an aggregate: inference applies only when @of
@@ -1644,21 +1754,21 @@ public final class ValidationPhase {
                     ErrorMessageConstants.ERR_INVALID_ORIGIN
                         + ": origin.aggregate on " + obj.getName() + "." + field.getName()
                         + ": missing @via (aggregates require a relationship path).",
-                    ErrorCode.ERR_INVALID_ORIGIN, origin.getSource());
+                    ErrorCode.ERR_INVALID_ORIGIN, src);
             }
-            MetaObject base = deriveBaseEntity(obj, root, field.getName(), origin.getSource());
+            MetaObject base = deriveBaseEntity(obj, root, field.getName(), src);
             if (base == null) return; // base underivable — error already thrown
             if (isBaseRelationTarget(ofTarget.entity, base, obj)) {
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_INVALID_ORIGIN
                         + ": origin.aggregate on " + obj.getName() + "." + field.getName()
                         + ": missing @via (aggregates require a relationship path).",
-                    ErrorCode.ERR_INVALID_ORIGIN, origin.getSource());
+                    ErrorCode.ERR_INVALID_ORIGIN, src);
             }
             java.util.List<MetaData> hops = inferViaSingleHop(
                 base, ofTarget.entity, obj, field.getName(), of,
-                "origin.aggregate.@of", origin.getSource());
-            checkAggregateCardinality(hops, obj, field.getName(), origin.getSource());
+                "origin.aggregate.@of", src);
+            checkAggregateCardinality(hops, obj, field.getName(), src);
             return;
         }
 
@@ -1673,6 +1783,215 @@ public final class ValidationPhase {
                         + ": origin.collection on " + obj.getName() + "." + field.getName()
                         + ": missing @via.",
                     ErrorCode.ERR_INVALID_ORIGIN, origin.getSource());
+            }
+            return;
+        }
+
+        // origin.computed — #195: a row-level expression over the base entity's OWN
+        // fields. No @via/@of (strict scoping already rejects them as ERR_UNKNOWN_ATTR).
+        if (ComputedOrigin.SUBTYPE_COMPUTED.equals(subType)) {
+            com.metaobjects.source.ErrorSource src = origin.getSource();
+            // @expr is a required object-valued attr (ExpressionAttribute → Map).
+            Object expr = origin.hasMetaAttr(MetaOrigin.ATTR_EXPR, false)
+                ? origin.getMetaAttr(MetaOrigin.ATTR_EXPR, false).getValue() : null;
+            if (!(expr instanceof Map)) {
+                return; // schema requires @expr (ERR_MISSING_REQUIRED_ATTR fires elsewhere)
+            }
+            // Structural grammar (fail-closed unknown node) is validated HERE, not in
+            // the attr class, so every port validates the closed grammar identically
+            // (the other ports store @expr verbatim; TS/C#/Python/Kotlin mirror this pass).
+            List<String> structural = ExpressionAttribute.validateExprNode(expr);
+            if (!structural.isEmpty()) {
+                throw new MetaDataException(
+                    "ERR_UNKNOWN_EXPR_NODE"
+                        + ": origin.computed on " + obj.getName() + "." + field.getName()
+                        + ": " + structural.get(0),
+                    ErrorCode.ERR_UNKNOWN_EXPR_NODE, src);
+            }
+            // Type inference against the base entity's EFFECTIVE fields (ADR-0039).
+            MetaObject base = deriveBaseEntity(obj, root, field.getName(), src);
+            if (base == null) return;
+            final MetaObject baseEntity = base;
+            ExpressionAttribute.InferResult inferred = ExpressionAttribute.inferExprType(
+                expr, name -> resolvedFieldSubType(baseEntity, name));
+            if (!inferred.errors.isEmpty()) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": origin.computed on " + obj.getName() + "." + field.getName()
+                        + ": " + inferred.errors.get(0),
+                    ErrorCode.ERR_INVALID_ORIGIN, src);
+            }
+            if (inferred.type != null && !inferred.type.equals(field.getSubType())) {
+                throw new MetaDataException(
+                    "ERR_COMPUTED_TYPE_MISMATCH"
+                        + ": origin.computed on " + obj.getName() + "." + field.getName()
+                        + ": @expr infers field." + inferred.type + " but the field is declared field."
+                        + field.getSubType() + " — a computed column's type is derived from its"
+                        + " expression and must match (no @convert escape).",
+                    ErrorCode.ERR_COMPUTED_TYPE_MISMATCH, src);
+            }
+            return;
+        }
+
+        // origin.first — #195: pick one related row by @orderBy along @via, project @of.
+        if (FirstOrigin.SUBTYPE_FIRST.equals(subType)) {
+            com.metaobjects.source.ErrorSource src = origin.getSource();
+            String of = origin.getOf();
+            boolean ofPresent = of != null && !of.isEmpty();
+            if (!ofPresent) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": origin.first on " + obj.getName() + "." + field.getName()
+                        + ": missing @of.",
+                    ErrorCode.ERR_INVALID_ORIGIN, src);
+            }
+            // The carrying field must NOT be @required — an empty related set (after
+            // @filter) selects no row, so the value is null. ADR-0039: resolving.
+            if (fieldIsRequired(field)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": origin.first on " + obj.getName() + "." + field.getName()
+                        + ": the field must not be @required — an empty related set (after @filter)"
+                        + " yields null.",
+                    ErrorCode.ERR_INVALID_ORIGIN, src);
+            }
+            OriginTarget ofTarget = validateFromOrOfPath(of, root, obj, field.getName(),
+                "origin.first.@of", src);
+            // #185 type-preservation: first projects the @of column unchanged, so the
+            // field's subType must equal the @of column's subType (first is scalar).
+            if (!field.getSubType().equals(ofTarget.field.getSubType())) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": origin.first on " + obj.getName() + "." + field.getName()
+                        + ": field field." + field.getSubType() + " does not match the @of column field."
+                        + ofTarget.field.getSubType() + " — first projects the column unchanged, so the"
+                        + " types must match.",
+                    ErrorCode.ERR_INVALID_ORIGIN, src);
+            }
+            // @via — explicit (validated + cardinality) or single-hop-unique inferred.
+            String via = origin.getVia();
+            if (via != null && !via.isEmpty()) {
+                java.util.List<MetaData> hops =
+                    validateViaPath(via, root, obj, field.getName(), src);
+                checkAggregateCardinality(hops, obj, field.getName(), src);
+            } else if (!isValueHost) {
+                MetaObject base = deriveBaseEntity(obj, root, field.getName(), src);
+                if (base != null && !isBaseRelationTarget(ofTarget.entity, base, obj)) {
+                    java.util.List<MetaData> hops = inferViaSingleHop(
+                        base, ofTarget.entity, obj, field.getName(), of,
+                        "origin.first.@of", src);
+                    checkAggregateCardinality(hops, obj, field.getName(), src);
+                }
+            }
+            // @orderBy keys resolve against the related (@of) entity.
+            validateOrderByKeys(originOrderBy(origin), ofTarget.entity, obj, field.getName(),
+                "origin.first", src);
+            return;
+        }
+    }
+
+    /**
+     * #195 — the resolving (effective) subType of {@code entity}'s field named
+     * {@code name}, or {@code null} when no such field exists. Used by the
+     * {@code origin.computed} type-inference resolver; walks inherited fields
+     * (ADR-0039 resolving) so an expression may reference a field the base entity
+     * inherits via {@code extends}.
+     */
+    private static String resolvedFieldSubType(MetaObject entity, String name) {
+        for (MetaData c : entity.getChildren(MetaData.class, true)) {
+            if (c instanceof MetaField && nameMatches(c, name)) {
+                return c.getSubType();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * #195 — the effective boolean value of a field's own {@code @required} attr
+     * (resolving, ADR-0039). Mirrors the TS {@code field.attr(FIELD_ATTR_REQUIRED)
+     * === true} check the {@code origin.first} rule uses — the {@code @required}
+     * attr only, NOT a {@code validator.required} child.
+     */
+    private static boolean fieldIsRequired(MetaField<?> field) {
+        if (!field.hasMetaAttr(MetaField.ATTR_REQUIRED)) return false;
+        Object v = field.getMetaAttr(MetaField.ATTR_REQUIRED).getValue();
+        return (v instanceof Boolean) ? (Boolean) v : Boolean.parseBoolean(String.valueOf(v));
+    }
+
+    /** #195 — the {@code asc}/{@code desc} order directions (mirrors the TS
+     *  {@code SORT_ORDER_VALUES}). A bare {@code @orderBy} key needs no suffix. */
+    private static final Set<String> SORT_ORDER_VALUES =
+        Set.of("asc", "desc");
+
+    /**
+     * #195 — the own {@code @orderBy} keys of an origin as a {@code List<String>}
+     * (each {@code 'field[:asc|desc]'}), or an empty list when absent. Handles both
+     * the stored {@code List} (array-mode {@code StringAttribute}) and a
+     * comma-delimited single string, mirroring {@link MetaIdentity#getFields()}.
+     */
+    private static List<String> originOrderBy(MetaOrigin origin) {
+        if (!origin.hasMetaAttr(MetaOrigin.ATTR_ORDER_BY, false)) {
+            return java.util.Collections.emptyList();
+        }
+        Object raw = origin.getMetaAttr(MetaOrigin.ATTR_ORDER_BY, false).getValue();
+        if (raw instanceof List) {
+            List<String> out = new java.util.ArrayList<>();
+            for (Object o : (List<?>) raw) if (o != null) out.add(String.valueOf(o));
+            return out;
+        }
+        if (raw instanceof String) {
+            String s = ((String) raw).trim();
+            if (s.isEmpty()) return java.util.Collections.emptyList();
+            List<String> out = new java.util.ArrayList<>();
+            for (String part : s.split(",")) {
+                String t = part.trim();
+                if (!t.isEmpty()) out.add(t);
+            }
+            return out;
+        }
+        return java.util.Collections.emptyList();
+    }
+
+    /**
+     * #195 — validate {@code @orderBy} keys ({@code 'field[:asc|desc]'}) resolve
+     * against the RELATED entity's effective fields (the entity reached via
+     * {@code @via}/{@code @of}), and that any direction suffix is {@code asc}/{@code desc}.
+     * Null placement is pinned (nulls-last) and carries no vocabulary. Shared by
+     * {@code @agg:collect} (element order) and {@code origin.first} (row selection).
+     * A {@code null} related entity means a prior error already fired — skip silently.
+     * Mirrors the TS {@code _validateOrderByKeys}.
+     */
+    private static void validateOrderByKeys(List<String> orderBy, MetaObject relatedEntity,
+            MetaObject obj, String fieldName, String label,
+            com.metaobjects.source.ErrorSource originSource) {
+        if (orderBy == null || relatedEntity == null) return;
+        for (String raw : orderBy) {
+            if (raw == null) continue;
+            int colonIdx = raw.indexOf(':');
+            String key = colonIdx == -1 ? raw : raw.substring(0, colonIdx);
+            String dir = colonIdx == -1 ? null : raw.substring(colonIdx + 1);
+            // ADR-0039: resolving — an ordering key may target an inherited field.
+            MetaField<?> target = null;
+            for (MetaData f : relatedEntity.getChildren(MetaData.class, true)) {
+                if (f instanceof MetaField && nameMatches(f, key)) {
+                    target = (MetaField<?>) f;
+                    break;
+                }
+            }
+            if (target == null) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": " + label + " on " + obj.getName() + "." + fieldName
+                        + ": @orderBy key \"" + raw + "\" — no such field \"" + key
+                        + "\" on " + relatedEntity.getName() + ".",
+                    ErrorCode.ERR_INVALID_ORIGIN, originSource);
+            }
+            if (dir != null && !SORT_ORDER_VALUES.contains(dir)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                        + ": " + label + " on " + obj.getName() + "." + fieldName
+                        + ": @orderBy key \"" + raw + "\" — direction must be one of asc|desc.",
+                    ErrorCode.ERR_INVALID_ORIGIN, originSource);
             }
         }
     }

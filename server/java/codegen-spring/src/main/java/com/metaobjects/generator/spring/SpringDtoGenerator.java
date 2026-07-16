@@ -12,6 +12,8 @@ import com.metaobjects.generator.util.GeneratorUtil;
 import com.metaobjects.identity.MetaIdentity;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
+import com.metaobjects.origin.AggregateOrigin;
+import com.metaobjects.origin.MetaOrigin;
 import com.metaobjects.validator.ArrayValidator;
 import com.metaobjects.validator.LengthValidator;
 import com.metaobjects.validator.MetaValidator;
@@ -635,6 +637,31 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
     }
 
     /**
+     * #195 — a field whose value is derived by an {@code origin.aggregate}
+     * {@code @agg:any|all|collect} is COALESCE-guaranteed non-null in the synthesized
+     * view (any&rarr;false, all&rarr;true, collect&rarr;empty-array), so its read type
+     * is non-null even when the field is not {@code @required}. Drives {@code @NotNull}
+     * in {@link #validationAnnotations} so a projection DTO's read shape agrees with its
+     * view column — adopters no longer handle a null that never occurs.
+     *
+     * <p>{@code origin.first} is deliberately NOT here (an empty related set selects no
+     * row &rarr; null); {@code origin.computed} nullability is expression-dependent, so
+     * it stays the conservative nullable default. Mirrors the TS
+     * {@code originGuaranteedNonNull} (codegen-ts {@code column-mapper}).</p>
+     */
+    public static boolean originGuaranteedNonNull(MetaField<?> field) {
+        // ADR-0039: own — origin.* never inherits (ADR-0029), so an own-only read is correct.
+        for (MetaData c : field.getChildren(MetaData.class, false)) {
+            if (!(c instanceof MetaOrigin)) continue;
+            if (!AggregateOrigin.SUBTYPE_AGGREGATE.equals(c.getSubType())) continue;
+            String agg = ((MetaOrigin) c).getAgg();
+            return MetaOrigin.AGG_ANY.equals(agg) || MetaOrigin.AGG_ALL.equals(agg)
+                || MetaOrigin.AGG_COLLECT.equals(agg);
+        }
+        return false;
+    }
+
+    /**
      * Build the space-joined jakarta.validation annotation string for a record
      * component from the field's constraint metadata — both field attrs
      * ({@code @required}, {@code @maxLength}) and {@code validator.*} children
@@ -667,7 +694,11 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         // @required NON-ARRAY string is enforced by @Size(min>=1) in the string-length arm
         // below — NOT @NotBlank, which trims and would wrongly reject a whitespace-only value.
         // A @required array keeps @NotNull only (no @NotEmpty).
-        if (required) {
+        // #195: an origin.aggregate any/all/collect field is COALESCE-guaranteed non-null on
+        // read (any→false / all→true / collect→[]), so it is @NotNull even when not @required
+        // (the non-empty @Size(min=1) floor below stays keyed on @required only — such fields
+        // are boolean or array, never a non-array string).
+        if (required || originGuaranteedNonNull(field)) {
             out.add("@NotNull");
         }
 
