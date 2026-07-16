@@ -330,7 +330,9 @@ When a list needs computed columns (counts, sums, joined fields), create a **pro
 
 \`meta gen\` produces a read-only \`useProgramSummaries(filter)\` hook, a SQL view DDL in the migration, and a read-only GET-only route.
 
-**Aggregate vocabulary**: \`count\`, \`sum\`, \`avg\`, \`min\`, \`max\`.
+**Aggregate vocabulary** (\`origin.aggregate @agg\`): \`count\`, \`sum\`, \`avg\`, \`min\`, \`max\`; plus \`any\`/\`all\` (a boolean predicate quantifier over a required \`@filter\` — no \`@of\`; "did any/every related row match?"), and \`collect\` (an array rollup of \`@of\` — the field must be \`isArray: true\`; \`@distinct\` dedupes, \`@orderBy\` sets element order).
+
+**Other read-model origins**: \`origin.computed\` — a row-level value from the base row's own fields via a structured \`@expr\` tree (e.g. \`{ "op": "isNotNull", "arg": { "field": "payloadJson" } }\` → a boolean, to avoid shipping a heavy column); \`origin.first\` — the single related row picked by \`@orderBy\` along \`@via\`, projecting \`@of\` (e.g. "the latest child's status"; the field must not be \`@required\` — an empty related set yields null).
 
 **Multi-level via paths** are supported: \`@via: "Program.weeks.workouts"\` builds a 2-level JOIN tree.
 
