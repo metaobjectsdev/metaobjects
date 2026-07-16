@@ -1,0 +1,22 @@
+{
+  "metadata.root": {
+    "package": "acme::events",
+    "children": [
+      { "object.entity": { "name": "Event", "children": [
+          { "source.rdb":      { "@table": "events" } },
+          { "field.long":      { "name": "id" } },
+          { "field.string":    { "name": "name", "@required": true, "@maxLength": 120 } },
+          { "field.timestamp": { "name": "createdAt", "@autoSet": "onCreate" } },
+          { "field.timestamp": { "name": "updatedAt", "@autoSet": "onUpdate" } },
+          { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+      ] } },
+      { "object.entity": { "name": "Note", "children": [
+          { "source.rdb":      { "@table": "notes" } },
+          { "field.long":      { "name": "id" } },
+          { "field.string":    { "name": "title", "@required": true, "@maxLength": 200 } },
+          { "field.string":    { "name": "body" } },
+          { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+      ] } }
+    ]
+  }
+}

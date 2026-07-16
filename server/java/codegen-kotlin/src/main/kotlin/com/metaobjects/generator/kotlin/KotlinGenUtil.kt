@@ -1,7 +1,10 @@
 package com.metaobjects.generator.kotlin
 
 import com.metaobjects.MetaData
+import com.metaobjects.field.DateField
 import com.metaobjects.field.MetaField
+import com.metaobjects.field.TimeField
+import com.metaobjects.field.TimestampField
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.origin.AggregateOrigin
@@ -19,6 +22,16 @@ import com.metaobjects.source.RdbSource
  * `PackageMapping` helper objects are already public for the same reason).
  */
 public object KotlinGenUtil {
+
+    /**
+     * `@autoSet` policy values — mirror the TS `AUTO_SET_ON_CREATE` / `AUTO_SET_ON_UPDATE`
+     * (`field-constants.ts`). The Java `metadata` module registers the attr name
+     * ([MetaField.ATTR_AUTO_SET]) but carries no value constants, so codegen-kotlin declares
+     * them here (issue #203). A `field.timestamp @autoSet: onCreate` is stamped by the CRUD
+     * layer at insert; `onUpdate` is stamped at every write.
+     */
+    const val AUTO_SET_ON_CREATE = "onCreate"
+    const val AUTO_SET_ON_UPDATE = "onUpdate"
 
     /**
      * Resolve a MetaObject (entity OR value) by exact FQN match or by short-name match
@@ -90,6 +103,41 @@ public object KotlinGenUtil {
             else -> false
         }
     }
+
+    /**
+     * The `@autoSet` policy of [field] — [AUTO_SET_ON_CREATE] / [AUTO_SET_ON_UPDATE] — or null
+     * when the field is not auto-set (issue #203). Read RESOLVING (ADR-0039, `includeParentData
+     * = true`): `@autoSet` is idiomatically declared once on a shared base entity's
+     * `createdAt`/`updatedAt` and inherited by every concrete entity via `extends`, so a field
+     * that inherits the marker must still be stamped. Only the two recognized policy strings are
+     * returned; any other value is treated as absent.
+     */
+    fun autoSetPolicy(field: MetaField<*>): String? {
+        if (!field.hasMetaAttr(MetaField.ATTR_AUTO_SET, true)) return null
+        val raw = runCatching { field.getMetaAttr(MetaField.ATTR_AUTO_SET, true).value }.getOrNull()
+        return when (raw) {
+            AUTO_SET_ON_CREATE, AUTO_SET_ON_UPDATE -> raw as String
+            else -> null
+        }
+    }
+
+    /**
+     * True iff [field] is a temporal subtype (`field.date` / `field.time` / `field.timestamp`) —
+     * the only subtypes `@autoSet` stamping applies to. The registry constrains `@autoSet` to
+     * these subtypes; this guard keeps the generated `now()` well-typed (every temporal Kotlin
+     * type — `Instant`/`LocalDate`/`LocalTime`/`LocalDateTime` — has a static `now()`), so a
+     * stray `@autoSet` on a non-temporal field is ignored rather than emitting non-compiling code.
+     */
+    fun isTemporalField(field: MetaField<*>): Boolean =
+        field is DateField || field is TimeField || field is TimestampField
+
+    /**
+     * True iff [field] should be CRUD-stamped: it carries a recognized [autoSetPolicy] AND is a
+     * [temporal][isTemporalField] subtype. The single predicate the repository generator branches
+     * on so the "which columns does the CRUD layer own" decision has one definition (issue #203).
+     */
+    fun isAutoSetField(field: MetaField<*>): Boolean =
+        isTemporalField(field) && autoSetPolicy(field) != null
 
     /**
      * #195 — true iff [field]'s value is derived by an `origin.aggregate` whose `@agg` is one of

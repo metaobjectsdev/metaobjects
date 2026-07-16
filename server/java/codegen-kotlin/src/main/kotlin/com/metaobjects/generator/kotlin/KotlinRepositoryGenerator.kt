@@ -114,6 +114,66 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         val uuidPk = primary?.isUuid == true
         val incrementPk = primary?.isIncrement == true
 
+        // Issue #203: `@autoSet` timestamp columns are OWNED by the CRUD layer — the caller does
+        // not supply them. onCreate columns are stamped once at insert (never rewritten); onUpdate
+        // columns are stamped at every write (insert / update / patch). They are excluded from the
+        // regular column loops and written by the shared `applyAutoSetColumns` helper instead.
+        val autoSetFields = scalarFields.filter {
+            it.name != pkFieldName && KotlinGenUtil.isAutoSetField(it)
+        }
+        val onCreateFields = autoSetFields.filter {
+            KotlinGenUtil.autoSetPolicy(it) == KotlinGenUtil.AUTO_SET_ON_CREATE
+        }
+        val onUpdateFields = autoSetFields.filter {
+            KotlinGenUtil.autoSetPolicy(it) == KotlinGenUtil.AUTO_SET_ON_UPDATE
+        }
+        val autoSetNames = autoSetFields.map { it.name }.toSet()
+        val hasAutoSet = autoSetFields.isNotEmpty()
+        val hasOnUpdate = onUpdateFields.isNotEmpty()
+
+        // Emit the non-PK, non-autoSet ("regular") columns of an insert into the current builder,
+        // then (when present) the shared autoSet stamping. `preserve` == insertPreserving: write
+        // the autoSet columns verbatim from the dto rather than stamping now().
+        fun StringBuilder.appendInsertColumns(preserve: Boolean) {
+            for (field in scalarFields) {
+                if (field.name == pkFieldName) continue
+                if (field.name in autoSetNames) continue
+                append("            it[$table.${field.name}] = dto.${field.name}\n")
+            }
+            if (hasAutoSet) {
+                append("            applyAutoSetColumns(it${if (preserve) ", dto, stampAutoSet = false" else ""})\n")
+            }
+        }
+
+        // The whole insert transaction body, branching on `identity.primary @generation`. Shared by
+        // `insert` (preserve=false → stamp) and `insertPreserving` (preserve=true → verbatim) so the
+        // PK/read-back logic has one definition.
+        fun StringBuilder.appendInsertBody(preserve: Boolean) {
+            when {
+                incrementPk -> {
+                    append("        val newId = $table.insert {\n")
+                    appendInsertColumns(preserve)
+                    append("        }[$table.$pkFieldName]\n")
+                    append("        $table.selectAll().where { $table.$pkFieldName eq newId }.single().let(::rowTo$shortName)\n")
+                }
+                uuidPk -> {
+                    append("        val newId = UUID.randomUUID()\n")
+                    append("        $table.insert {\n")
+                    append("            it[$table.$pkFieldName] = newId\n")
+                    appendInsertColumns(preserve)
+                    append("        }\n")
+                    append("        $table.selectAll().where { $table.$pkFieldName eq newId }.single().let(::rowTo$shortName)\n")
+                }
+                else -> {
+                    append("        $table.insert {\n")
+                    append("            it[$table.$pkFieldName] = dto.$pkFieldName\n")
+                    appendInsertColumns(preserve)
+                    append("        }\n")
+                    append("        $table.selectAll().where { $table.$pkFieldName eq dto.$pkFieldName }.single().let(::rowTo$shortName)\n")
+                }
+            }
+        }
+
         val src = buildString {
             if (pkg.isNotEmpty()) append("package $pkg\n\n")
 
@@ -122,6 +182,8 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
             append("import org.jetbrains.exposed.sql.deleteWhere\n")
             append("import org.jetbrains.exposed.sql.insert\n")
             append("import org.jetbrains.exposed.sql.selectAll\n")
+            // The @autoSet stamping helper writes through the common insert/update supertype.
+            if (hasAutoSet) append("import org.jetbrains.exposed.sql.statements.UpdateBuilder\n")
             append("import org.jetbrains.exposed.sql.statements.UpdateStatement\n")
             append("import org.jetbrains.exposed.sql.update\n")
             append("import org.jetbrains.exposed.sql.transactions.transaction\n")
@@ -151,59 +213,69 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
             append("        $table.selectAll().where { $table.$pkFieldName eq id }.singleOrNull()?.let(::rowTo$shortName)\n")
             append("    }\n\n")
 
+            // --- @autoSet stamping (issue #203) ---
+            if (hasAutoSet) {
+                append("    /**\n")
+                append("     * Write the `@autoSet` timestamp columns of $shortName into an insert/update builder\n")
+                append("     * (the CRUD layer owns them — the caller does not supply them). ONE column-list\n")
+                append("     * definition shared by insert / insertPreserving / update / patch:\n")
+                append("     *  - `stampAutoSet` — stamp `now()` (base CRUD) vs. write the [dto] value verbatim\n")
+                append("     *    (insertPreserving, for import/restore/replication that keep original timestamps);\n")
+                append("     *  - `includeOnCreate` — write the write-once onCreate columns (insert) or skip them\n")
+                append("     *    (update/patch never rewrite created_at — the latent lost-update bug otherwise).\n")
+                append("     * [dto] is only read on the verbatim path, so the stamping callers pass null.\n")
+                append("     * `now()` is keyed off each COLUMN's temporal type, so it generalizes beyond Instant.\n")
+                append("     */\n")
+                append("    protected open fun applyAutoSetColumns(\n")
+                append("        stmt: UpdateBuilder<*>,\n")
+                append("        dto: $shortName? = null,\n")
+                append("        stampAutoSet: Boolean = true,\n")
+                append("        includeOnCreate: Boolean = true,\n")
+                append("    ) {\n")
+                if (onCreateFields.isNotEmpty()) {
+                    append("        if (includeOnCreate) {\n")
+                    for (field in onCreateFields) {
+                        append("            stmt[$table.${field.name}] = if (stampAutoSet) ${nowExpr(field)} else dto!!.${field.name}\n")
+                    }
+                    append("        }\n")
+                }
+                for (field in onUpdateFields) {
+                    append("        stmt[$table.${field.name}] = if (stampAutoSet) ${nowExpr(field)} else dto!!.${field.name}\n")
+                }
+                append("    }\n\n")
+            }
+
             // --- insert (branches on @generation) ---
+            // @autoSet columns are stamped now() by applyAutoSetColumns — a fresh row's onUpdate
+            // column equals its onCreate column, and the dto's value for them is ignored (#203).
             append("    /** Insert a $shortName and return it with the persisted primary key. */\n")
             append("    open fun insert(dto: $shortName): $shortName = transaction {\n")
-            when {
-                incrementPk -> {
-                    // DB owns the key (autoIncrement column) — skip it on write, capture the
-                    // generated value, re-read. Same pattern the generated controller's create uses,
-                    // proven by the api-contract create-201 (hasId) lane on H2.
-                    append("        val newId = $table.insert {\n")
-                    for (field in scalarFields) {
-                        if (field.name == pkFieldName) continue
-                        append("            it[$table.${field.name}] = dto.${field.name}\n")
-                    }
-                    append("        }[$table.$pkFieldName]\n")
-                    append("        $table.selectAll().where { $table.$pkFieldName eq newId }.single().let(::rowTo$shortName)\n")
-                }
-                uuidPk -> {
-                    // Client-generate the uuid so the insert deterministically returns the assigned
-                    // key on any engine — it does NOT rely on the driver reporting a server-DEFAULT
-                    // gen_random_uuid() value back through getGeneratedKeys (unproven here). An
-                    // explicit INSERT value simply wins over the column's DEFAULT in production.
-                    append("        val newId = UUID.randomUUID()\n")
-                    append("        $table.insert {\n")
-                    append("            it[$table.$pkFieldName] = newId\n")
-                    for (field in scalarFields) {
-                        if (field.name == pkFieldName) continue
-                        append("            it[$table.${field.name}] = dto.${field.name}\n")
-                    }
-                    append("        }\n")
-                    append("        $table.selectAll().where { $table.$pkFieldName eq newId }.single().let(::rowTo$shortName)\n")
-                }
-                else -> {
-                    // @generation: assigned (or absent) — the caller supplies the key. This is the
-                    // branch the controller never had (it unconditionally skipped the PK); writing
-                    // the caller's PK here is the #197 "never reads @generation" fix.
-                    append("        $table.insert {\n")
-                    append("            it[$table.$pkFieldName] = dto.$pkFieldName\n")
-                    for (field in scalarFields) {
-                        if (field.name == pkFieldName) continue
-                        append("            it[$table.${field.name}] = dto.${field.name}\n")
-                    }
-                    append("        }\n")
-                    append("        $table.selectAll().where { $table.$pkFieldName eq dto.$pkFieldName }.single().let(::rowTo$shortName)\n")
-                }
-            }
+            appendInsertBody(preserve = false)
             append("    }\n\n")
 
+            // --- insertPreserving (escape hatch; only when the entity declares @autoSet fields) ---
+            if (hasAutoSet) {
+                append("    /**\n")
+                append("     * Insert a $shortName writing its `@autoSet` timestamp columns VERBATIM from the dto\n")
+                append("     * instead of stamping `now()` — the import / restore / replication escape hatch that\n")
+                append("     * must keep the original timestamps. Primary-key handling matches [insert].\n")
+                append("     */\n")
+                append("    open fun insertPreserving(dto: $shortName): $shortName = transaction {\n")
+                appendInsertBody(preserve = true)
+                append("    }\n\n")
+            }
+
             // --- update (full-row, present-non-null) ---
+            // @autoSet onUpdate columns are stamped now(); onCreate columns are SKIPPED entirely —
+            // a full-row update never rewrites created_at from the dto's (possibly stale) value (#203).
             append("    /** Overwrite every column of the row (present-non-null merge). Null if no such row. */\n")
             append("    open fun update(id: $pkParamType, dto: $shortName): $shortName? = transaction {\n")
             append("        val n = $table.update({ $table.$pkFieldName eq id }) {\n")
             for (field in scalarFields) {
                 if (field.name == pkFieldName) continue
+                // @autoSet columns are owned by applyAutoSetColumns (onUpdate stamped, onCreate
+                // skipped) — never in the caller-value merge loop.
+                if (field.name in autoSetNames) continue
                 // Required fields are non-null in the DTO → write unconditionally (a null-guard would
                 // be an always-true `-Werror` warning). Optional fields are nullable → guard, so an
                 // absent value does not clobber the stored one. Matches the controller PATCH fix.
@@ -212,6 +284,9 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
                 } else {
                     append("            if (dto.${field.name} != null) it[$table.${field.name}] = dto.${field.name}\n")
                 }
+            }
+            if (hasOnUpdate) {
+                append("            applyAutoSetColumns(it, includeOnCreate = false)\n")
             }
             append("        }\n")
             append("        if (n == 0) null else $table.selectAll().where { $table.$pkFieldName eq id }.single().let(::rowTo$shortName)\n")
@@ -222,9 +297,21 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
             append("     * Partial update — the block sets only the columns it names, e.g.\n")
             append("     * `repo.patch(id) { it[${table}.<col>] = value }`. A renamed or dropped column is a\n")
             append("     * COMPILE error, not a silently skipped write. Null if no such row.\n")
+            if (hasOnUpdate) {
+                append("     * `@autoSet` onUpdate columns are stamped BEFORE the block runs, so a partial\n")
+                append("     * update still bumps them even if the block does not name them (#203).\n")
+            }
             append("     */\n")
             append("    open fun patch(id: $pkParamType, block: $table.(UpdateStatement) -> Unit): $shortName? = transaction {\n")
-            append("        val n = $table.update({ $table.$pkFieldName eq id }, body = block)\n")
+            if (hasOnUpdate) {
+                // Stamp onUpdate first, then let the caller's block win on any column it names.
+                append("        val n = $table.update({ $table.$pkFieldName eq id }) {\n")
+                append("            applyAutoSetColumns(it, includeOnCreate = false)\n")
+                append("            this.block(it)\n")
+                append("        }\n")
+            } else {
+                append("        val n = $table.update({ $table.$pkFieldName eq id }, body = block)\n")
+            }
             append("        if (n == 0) null else $table.selectAll().where { $table.$pkFieldName eq id }.single().let(::rowTo$shortName)\n")
             append("    }\n\n")
 
@@ -261,6 +348,20 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         KotlinTypeMapper.kotlinTypeName(field).let { tn ->
             (tn as? com.squareup.kotlinpoet.ClassName)?.simpleName ?: tn.toString()
         }
+
+    /**
+     * The `now()` expression for [field]'s temporal COLUMN type (issue #203) — keyed off the
+     * column, not any parameter, so it generalizes across every temporal subtype: `field.timestamp`
+     * (default) → `java.time.Instant.now()`, `@localTime` → `java.time.LocalDateTime.now()`,
+     * `field.date` → `java.time.LocalDate.now()`, `field.time` → `java.time.LocalTime.now()`. Each of
+     * those `java.time` types exposes a static `now()`. Fully-qualified so no import bookkeeping is
+     * needed (the four types would otherwise collide on simple names across generated repositories).
+     */
+    private fun nowExpr(field: com.metaobjects.field.MetaField<*>): String {
+        val tn = KotlinTypeMapper.kotlinTypeName(field)
+        val fqn = (tn as? com.squareup.kotlinpoet.ClassName)?.canonicalName ?: tn.toString()
+        return "$fqn.now()"
+    }
 
     private companion object {
         const val DEFAULT_PK_FIELD = "id"
