@@ -94,6 +94,11 @@ public class RoutesGenerator : PerEntityGenerator
         // top-level TryValidateObject also does NOT recurse into them. The generator emits
         // typed per-field merge arms + per-field POST validation for each.
         var voFields = ValueObjectFields(entity, ctx.Root, ctx.Config.ColumnNamingStrategy);
+        // Issue #203 — @autoSet timestamp columns the generated CRUD stamps with now()
+        // (insert stamps all; update stamps onUpdate; the merge loop skips them; an
+        // InsertPreserving escape hatch is emitted when any exist).
+        var autoSetFields = AutoSetFields(entity);
+        var autoSetNavs = autoSetFields.Select(a => a.Nav).ToList();
         // Physical table + PK column for the post-save array-null clear (EF OwnsMany ToJson
         // writes [] for a null nav, so a nullable array column is NULLed via raw SQL).
         var table = CSharpNaming.Table(entity);
@@ -194,7 +199,7 @@ public class RoutesGenerator : PerEntityGenerator
             var requiredKeys = RequiredCreateKeys(entity, f => pkFields.Contains(f.Name));
             sb.AppendLine();
             AppendCreateHandler(sb, "/" + route, cls, dbSet, requiredKeys,
-                "Results.Created(prefix + \"/" + route + "\", input)", voFields);
+                "Results.Created(prefix + \"/" + route + "\", input)", voFields, autoSetFields);
 
             // PATCH + PUT share the same handler — TS reference exposes both verbs, and both
             // return the updated row (HTTP 200), matching the cross-port api-contract.
@@ -225,7 +230,8 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
             sb.AppendLine("                .Value.SerializerOptions;");
             sb.AppendLine("            var entry = db.Entry(existing);");
-            AppendPartialMergeLoop(sb, null, voFields);
+            AppendUpdateAutoSet(sb, autoSetFields);
+            AppendPartialMergeLoop(sb, null, voFields, autoSetNavs);
             sb.AppendLine("            await db.SaveChangesAsync();");
             AppendArrayNullClears(sb, voFields, table, pkColumn);
             sb.AppendLine("            return Results.Ok(existing);");
@@ -269,6 +275,10 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            _ => (IOrderedQueryable<" + cls + ">)q.OrderBy(x => 0),");
         sb.AppendLine("        };");
         sb.AppendLine("    }");
+        // Issue #203 — the verbatim-insert escape hatch, only for an entity with @autoSet
+        // fields (writable entities only; a read-only projection has no insert path).
+        if (writable && autoSetFields.Count > 0)
+            AppendInsertPreserving(sb, cls, dbSet);
         sb.AppendLine("}");
 
         return new EmittedFile($"{cls}Routes.g.cs", sb.ToString());
@@ -410,6 +420,13 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            _ => (IOrderedQueryable<" + baseCls + ">)q.OrderBy(x => 0),");
         sb.AppendLine("        };");
         sb.AppendLine("    }");
+        // Issue #203 — a verbatim-insert escape hatch per subtype that declares @autoSet
+        // fields (overloaded by the subtype parameter type; the discriminator is injected by
+        // EF via the subtype CLR type on Add). Only when the subtype has @autoSet columns.
+        if (hasItem)
+            foreach (var st in tph.Subtypes)
+                if (AutoSetFields(st.Entity).Count > 0)
+                    AppendInsertPreserving(sb, CSharpNaming.Pascal(st.Entity.Name), dbSet);
         sb.AppendLine("}");
 
         return new EmittedFile($"{baseCls}Routes.g.cs", sb.ToString());
@@ -424,9 +441,54 @@ public class RoutesGenerator : PerEntityGenerator
     // against the raw JSON keys, so a camelCase wire key resolves to its PascalCase property.
     private static List<string> RequiredCreateKeys(MetaObject obj, Func<MetaField, bool> isPkOrDisc) =>
         obj.Fields()
-            .Where(f => f.IsRequired && !isPkOrDisc(f))
+            // Issue #203 — an @autoSet field is server-filled (the CRUD stamps now() on
+            // insert), so it is OPTIONAL on the create body even when @required. Matching
+            // the cross-port contract ("a server-defaulted/@autoSet @required field is
+            // correctly optional on POST") + the TS InsertSchema (autoSet fields are
+            // present-but-optional). Excluded here so an omitted createdAt/updatedAt is
+            // not a 400.
+            .Where(f => f.IsRequired && f.AutoSet is null && !isPkOrDisc(f))
             .Select(f => f.Name)
             .ToList();
+
+    // Issue #203 — one @autoSet timestamp column the generated CRUD stamps with now().
+    // Nav is the PascalCase CLR property; NowExpr is the now() literal keyed off the
+    // COLUMN's temporal CLR type (generalizes beyond DateTimeOffset). OnUpdate columns
+    // are stamped on both insert and update; onCreate columns are stamped on insert only
+    // (never rewritten on update — the write-once created-at contract).
+    private sealed record AutoSetField(string Nav, string NowExpr, bool OnUpdate);
+
+    // The @autoSet fields (effective — inherited @autoSet resolves) whose CLR type is a
+    // temporal that has a now() form. A non-temporal @autoSet field (not expected per the
+    // spec) is skipped rather than emitting an ill-typed assignment.
+    private static List<AutoSetField> AutoSetFields(MetaObject entity)
+    {
+        var list = new List<AutoSetField>();
+        foreach (var f in entity.Fields())
+        {
+            if (f.AutoSet is not (AUTO_SET_ON_CREATE or AUTO_SET_ON_UPDATE)) continue;
+            if (NowExprFor(f) is not { } now) continue;   // non-temporal @autoSet — skip
+            list.Add(new AutoSetField(
+                Nav: CSharpNaming.Pascal(f.Name),
+                NowExpr: now,
+                OnUpdate: f.AutoSet == AUTO_SET_ON_UPDATE));
+        }
+        return list;
+    }
+
+    // The now() expression for a field, keyed off its COLUMN's temporal CLR type
+    // (ADR-0036 Wave 2: field.timestamp is DateTimeOffset, or DateTime under @localTime;
+    // field.date → DateOnly; field.time → TimeOnly). Fully qualified so no extra using is
+    // needed. Returns null for a non-temporal field.
+    private static string? NowExprFor(MetaField field) =>
+        CSharpNaming.ScalarForField(field) switch
+        {
+            "DateTimeOffset" => "System.DateTimeOffset.UtcNow",
+            "DateTime"       => "System.DateTime.Now",           // @localTime: naive wall-clock
+            "DateOnly"       => "System.DateOnly.FromDateTime(System.DateTime.UtcNow)",
+            "TimeOnly"       => "System.TimeOnly.FromDateTime(System.DateTime.UtcNow)",
+            _                => null,
+        };
 
     // Program D — a value-object column the entity carries: a field.object whose @objectRef
     // resolves to an object.value (single or @isArray). The generated create + PATCH handlers
@@ -469,7 +531,8 @@ public class RoutesGenerator : PerEntityGenerator
     // return the cross-port {error:"validation"} envelope BEFORE the row is persisted.
     private static void AppendCreateHandler(
         StringBuilder sb, string mapPath, string cls, string dbSet,
-        IReadOnlyList<string> requiredKeys, string createdExpr, IReadOnlyList<VoField> voFields)
+        IReadOnlyList<string> requiredKeys, string createdExpr, IReadOnlyList<VoField> voFields,
+        IReadOnlyList<AutoSetField> autoSetFields)
     {
         if (requiredKeys.Count == 0)
         {
@@ -477,6 +540,7 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("        {");
             AppendCreateValidation(sb);
             AppendCreateVoValidation(sb, voFields);
+            AppendCreateAutoSet(sb, autoSetFields);
             sb.AppendLine($"            db.{dbSet}.Add(input);");
             sb.AppendLine("            await db.SaveChangesAsync();");
             sb.AppendLine($"            return {createdExpr};");
@@ -510,10 +574,51 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            if (input is null) return Results.BadRequest(new { error = \"validation\" });");
         AppendCreateValidation(sb);
         AppendCreateVoValidation(sb, voFields);
+        AppendCreateAutoSet(sb, autoSetFields);
         sb.AppendLine($"            db.{dbSet}.Add(input);");
         sb.AppendLine("            await db.SaveChangesAsync();");
         sb.AppendLine($"            return {createdExpr};");
         sb.AppendLine("        });");
+    }
+
+    // Issue #203 — stamp EVERY @autoSet column (onCreate AND onUpdate) with now() on
+    // insert, overriding whatever the client sent (the model's value is ignored, so a
+    // fresh row's updated-at equals its created-at). Emits nothing when the entity has no
+    // @autoSet field. Assumes the bound local `input` is in scope.
+    private static void AppendCreateAutoSet(StringBuilder sb, IReadOnlyList<AutoSetField> autoSetFields)
+    {
+        foreach (var a in autoSetFields)
+            sb.AppendLine($"            input.{a.Nav} = {a.NowExpr};");
+    }
+
+    // Issue #203 — stamp each onUpdate @autoSet column with now() on update, BEFORE the
+    // caller's partial merge (so a partial PATCH still bumps updated-at). onCreate columns
+    // are NOT stamped — they are never rewritten (the write-once created-at contract). The
+    // merge loop skips every @autoSet column, so this assignment is authoritative. Assumes
+    // the tracked entity local `existing` is in scope.
+    private static void AppendUpdateAutoSet(StringBuilder sb, IReadOnlyList<AutoSetField> autoSetFields)
+    {
+        foreach (var a in autoSetFields)
+            if (a.OnUpdate)
+                sb.AppendLine($"            existing.{a.Nav} = {a.NowExpr};");
+    }
+
+    // Issue #203 — the InsertPreserving escape hatch for one entity: a public static helper
+    // that persists `input` WITHOUT @autoSet stamping (the onCreate/onUpdate columns are
+    // written verbatim), for import / restore / replication paths that must keep the
+    // original timestamps. Emitted only for an entity that declares @autoSet fields (else
+    // there is nothing to preserve — the normal POST already writes every column verbatim).
+    private static void AppendInsertPreserving(StringBuilder sb, string cls, string dbSet)
+    {
+        sb.AppendLine();
+        sb.AppendLine("    /// <summary>Escape hatch: insert without @autoSet stamping (created-at/updated-at");
+        sb.AppendLine("    /// written verbatim from <paramref name=\"input\"/>) for import / restore / replication.</summary>");
+        sb.AppendLine($"    public static async System.Threading.Tasks.Task<{cls}> InsertPreserving(AppDbContext db, {cls} input)");
+        sb.AppendLine("    {");
+        sb.AppendLine($"        db.{dbSet}.Add(input);");
+        sb.AppendLine("        await db.SaveChangesAsync();");
+        sb.AppendLine("        return input;");
+        sb.AppendLine("    }");
     }
 
     // Program D — post-save raw NULL for each nullable array-of-VO column a request cleared
@@ -580,7 +685,9 @@ public class RoutesGenerator : PerEntityGenerator
     // the TPH discriminator when `discProp` is non-null — is never written. Assumes the
     // locals `body` (JsonDocument), `existing` (the entity instance), `entry` (EntityEntry)
     // and `jsonOpts` are in scope.
-    private static void AppendPartialMergeLoop(StringBuilder sb, string? discProp, IReadOnlyList<VoField> voFields)
+    private static void AppendPartialMergeLoop(
+        StringBuilder sb, string? discProp, IReadOnlyList<VoField> voFields,
+        IReadOnlyList<string> autoSetNavs)
     {
         // A nullable array-of-VO column that a request clears to null (present-null) can NOT be
         // NULLed by an owned-nav assignment — EF OwnsMany(...).ToJson writes `[]` for a null
@@ -635,6 +742,11 @@ public class RoutesGenerator : PerEntityGenerator
         {
             sb.AppendLine($"                if (string.Equals(target.Name, \"{discProp}\", System.StringComparison.Ordinal)) continue; // discriminator is immutable");
         }
+        // Issue #203 — @autoSet columns are server-owned: an onUpdate column is stamped to
+        // now() (below), an onCreate column is never rewritten. Either way the caller can
+        // never set them via the PATCH/PUT body, so skip any present key.
+        foreach (var nav in autoSetNavs)
+            sb.AppendLine($"                if (string.Equals(target.Name, \"{nav}\", System.StringComparison.Ordinal)) continue; // @autoSet: server-owned");
         sb.AppendLine("                if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null)");
         sb.AppendLine("                {");
         sb.AppendLine("                    // FR-035 PATCH-2: explicit null clears a nullable column; on a");
@@ -667,6 +779,12 @@ public class RoutesGenerator : PerEntityGenerator
         var subCls = CSharpNaming.Pascal(st.Entity.Name);
         var seg = st.RouteSegment;
         var subRoute = baseRoute + "/" + seg;
+
+        // Issue #203 — @autoSet columns on the subtype's EFFECTIVE fields (a shared
+        // BaseEntity.createdAt/updatedAt is inherited by every subtype). Stamped on
+        // create/update and skipped in the merge, exactly like a vanilla entity.
+        var autoSetFields = AutoSetFields(st.Entity);
+        var autoSetNavs = autoSetFields.Select(a => a.Nav).ToList();
 
         // Per-subtype list: GET /<base>/<seg>
         sb.AppendLine();
@@ -713,7 +831,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine();
         // VO columns on a TPH subtype are out of scope (Program D §6) — no typed arms.
         AppendCreateHandler(sb, "/" + subRoute, subCls, dbSet, requiredKeys,
-            "Results.Created(prefix + \"/" + subRoute + "/\" + input." + pkProp + ", input)", []);
+            "Results.Created(prefix + \"/" + subRoute + "/\" + input." + pkProp + ", input)", [], autoSetFields);
 
         // Per-subtype update (PATCH + PUT): partial merge of the JSON body onto the scoped
         // entity, NEVER touching the PK or the discriminator. Cross-subtype id → 404.
@@ -729,7 +847,8 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("                http.RequestServices.GetService(typeof(Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>))!)");
         sb.AppendLine("                .Value.SerializerOptions;");
         sb.AppendLine("            var entry = db.Entry(existing);");
-        AppendPartialMergeLoop(sb, discProp, []);
+        AppendUpdateAutoSet(sb, autoSetFields);
+        AppendPartialMergeLoop(sb, discProp, [], autoSetNavs);
         sb.AppendLine("            await db.SaveChangesAsync();");
         sb.AppendLine("            return Results.Ok(existing);");
         sb.AppendLine("        }");

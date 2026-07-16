@@ -150,6 +150,16 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
     public bool ReadOnly => Attr(FIELD_ATTR_READ_ONLY) is true;
 
     /// <summary>
+    /// Issue #203 — the effective <c>@autoSet</c> semantics for a timestamp-like field
+    /// (<c>"onCreate"</c> or <c>"onUpdate"</c>), or <see langword="null"/> when unset. The
+    /// generated CRUD owns these columns and stamps <c>now()</c>: insert stamps every
+    /// onCreate AND onUpdate column; update stamps onUpdate only (never rewriting an
+    /// onCreate/created-at column). ADR-0039: resolving — a concrete field may inherit
+    /// <c>@autoSet</c> from an abstract base (e.g. a shared <c>BaseEntity.createdAt</c>).
+    /// </summary>
+    public string? AutoSet => Attr(FIELD_ATTR_AUTO_SET) as string;
+
+    /// <summary>
     /// Own member symbols of an enum-subtype field (the <c>@values</c> attr),
     /// or <see langword="null"/> when not set on this node (e.g. a concrete field
     /// that inherits via <c>extends:</c>). ADR-0039: intentionally OWN-only — the
