@@ -812,6 +812,13 @@ public class EntityGenerator : IGenerator
         }
 
         var required = CSharpNaming.IsRequired(owner, field);
+        // #195 — a field derived by origin.aggregate @agg:any|all|collect is
+        // COALESCE-guaranteed non-null in the synthesized view (any→false, all→true,
+        // collect→[]), so its CLR read type is non-null even when not @required. The
+        // [Required] validation attr stays keyed on `required` (author intent), while
+        // the nullability `?` + `= default!;` init follow `nonNull` — mirroring TS
+        // column-mapper, where notNull = isRequired || originGuaranteedNonNull.
+        var nonNull = required || OriginGuaranteedNonNull(field);
         var isValue = CSharpNaming.IsValueType(baseType);
 
         var sb = new StringBuilder();
@@ -847,14 +854,14 @@ public class EntityGenerator : IGenerator
             }
         }
 
-        var type = required ? baseType : baseType + "?";
+        var type = nonNull ? baseType : baseType + "?";
         // A literal-safe @default (bool / integer / floating / string) emits a property
         // initializer (e.g. `= false;`), taking precedence over the `= default!;` filler
         // for required reference types. @default is a cross-port metadata concept.
         var defaultInit = DefaultInitializer(field, baseType);
         var init = defaultInit.Length > 0
             ? defaultInit
-            : (required && !isValue ? " = default!;" : string.Empty);
+            : (nonNull && !isValue ? " = default!;" : string.Empty);
         // FR-013 — a @readOnly scalar is read-after-insert-only: EF materializes it on
         // read via a private setter; application code cannot write it, and the
         // DbContext excludes the column from INSERT / UPDATE (SetAfterSaveBehavior.Ignore).
@@ -1092,6 +1099,21 @@ public class EntityGenerator : IGenerator
         var sourceObj = ctx.Root.FindObject(CSharpNaming.StripPkg(of[..dot]));
         var sourceField = sourceObj?.FindField(of[(dot + 1)..]);
         return sourceField is null ? null : CSharpNaming.ScalarForField(sourceField);
+    }
+
+    // #195 — a field whose value is derived by an origin.aggregate @agg:any|all|collect
+    // is COALESCE-guaranteed non-null in the synthesized view (any→false, all→true,
+    // collect→[]), so its read type is non-null even when the field is not @required.
+    // origin.first is deliberately NOT here (an empty related set selects no row → null);
+    // origin.computed nullability is expression-dependent, so it stays the conservative
+    // nullable default. Mirrors codegen-ts column-mapper.originGuaranteedNonNull. A collect
+    // field already materializes as a non-null List<T> (the array branch of ScalarProperty),
+    // so in practice this flips only the any/all boolean scalar from `bool?` to `bool`.
+    protected static bool OriginGuaranteedNonNull(MetaField field)
+    {
+        // ADR-0039: own — origin.* never inherits (ADR-0029), so own is correct.
+        var agg = field.OwnChildren().OfType<MetaAggregateOrigin>().FirstOrDefault();
+        return agg?.Agg is AGG_ANY or AGG_ALL or AGG_COLLECT;
     }
 
     // True for the fields that reference a value-object by @objectRef and so contribute

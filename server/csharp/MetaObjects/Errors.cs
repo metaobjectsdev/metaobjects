@@ -79,6 +79,18 @@ public enum ErrorCode
     // UNIVERSAL check replaces the retired narrow ERR_PARAMETER_REF_PASSTHROUGH_
     // TYPE_MISMATCH (it also covers FR-015 parameter-ref value objects + array-ness).
     ERR_PASSTHROUGH_TYPE_MISMATCH,
+    // #195 — the two dedicated origin-capability codes (all other #195 origin rules
+    // emit ERR_INVALID_ORIGIN). Mirrors fixtures/conformance/ERROR-CODES.json.
+    // ERR_COMPUTED_TYPE_MISMATCH — an origin.computed @expr tree's inferred root type
+    // does not equal the carrying field's declared field.<subType> (a computed column's
+    // type is DERIVED from its expression, never asserted; no @convert escape). Sibling
+    // of ERR_PASSTHROUGH_TYPE_MISMATCH.
+    // ERR_UNKNOWN_EXPR_NODE — an origin.computed @expr tree contains a node whose
+    // kind/op/fn is outside the closed expression grammar (field/value refs, comparisons
+    // sharing the filter op vocabulary, isNull/isNotNull, and/or/not, coalesce).
+    // Fail-closed per ADR-0023.
+    ERR_COMPUTED_TYPE_MISMATCH,
+    ERR_UNKNOWN_EXPR_NODE,
 
     // FR-024 (ADR-0028) hard cutover: an entity's PRIMARY source has a read-only @kind —
     // read-only kinds only in non-primary roles; a derived read model is an object.projection.

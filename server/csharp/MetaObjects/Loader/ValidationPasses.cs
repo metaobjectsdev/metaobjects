@@ -9,6 +9,7 @@
 // errors / warnings. No loader state is read or written — pure functions.
 
 using System.Text.RegularExpressions;
+using MetaObjects.Core.Attr;
 using MetaObjects.Meta;
 using MetaObjects.Persistence.Source;
 using MetaObjects.Source;
@@ -418,25 +419,104 @@ public static class ValidationPasses
                     }
                     else if (origin.SubType == ORIGIN_SUBTYPE_AGGREGATE)
                     {
+                        // ADR-0039: own — origin.* never inherits (ADR-0029).
+                        var src = origin.Source;
+                        string? agg = origin.OwnAttr(ORIGIN_AGGREGATE_ATTR_AGG) as string;
                         var ofObj = origin.OwnAttr(ORIGIN_AGGREGATE_ATTR_OF);
-                        if (ofObj is not string of || of == "")
+                        bool ofPresent = ofObj is string ofPeek && ofPeek != "";
+                        bool hasFilter = origin.OwnAttr(ORIGIN_AGGREGATE_ATTR_FILTER) is not null;
+                        bool hasDistinct = origin.OwnAttr(ORIGIN_ATTR_DISTINCT) is not null;
+                        var orderBy = origin.OwnAttr(ORIGIN_ATTR_ORDER_BY);
+                        bool hasOrderBy = orderBy is not null;
+                        bool isPredicate = agg == AGG_ANY || agg == AGG_ALL;
+                        bool isCollect = agg == AGG_COLLECT;
+
+                        // --- #195 field-shape rules ---
+                        // collect ⇒ the carrying field is an array (it produces a list);
+                        // every other @agg reduces to a scalar (the inverse rule).
+                        if (isCollect && !field.ResolvedIsArray())
+                            errors.Add(new MetaError(
+                                $"origin.aggregate @agg:collect on {obj.Name}.{field.Name}: the carrying field must be isArray:true (collect produces a list).",
+                                ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+                        else if (!isCollect && field.ResolvedIsArray())
+                            errors.Add(new MetaError(
+                                $"origin.aggregate @agg:{agg} on {obj.Name}.{field.Name}: a non-collect aggregate reduces to a scalar — the field must be isArray:false.",
+                                ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+                        // any/all yield a boolean.
+                        if (isPredicate && field.SubType != FIELD_SUBTYPE_BOOLEAN)
+                            errors.Add(new MetaError(
+                                $"origin.aggregate @agg:{agg} on {obj.Name}.{field.Name}: a predicate quantifier yields a boolean — the field must be field.boolean.",
+                                ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+
+                        // --- #195 attr-presence rules ---
+                        if (hasDistinct && !isCollect)
+                            errors.Add(new MetaError(
+                                $"origin.aggregate on {obj.Name}.{field.Name}: @distinct is valid only on @agg:collect.",
+                                ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+                        if (hasOrderBy && !isCollect)
+                            errors.Add(new MetaError(
+                                $"origin.aggregate on {obj.Name}.{field.Name}: @orderBy is valid only on @agg:collect.",
+                                ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+                        if (isCollect && hasDistinct && hasOrderBy)
+                            errors.Add(new MetaError(
+                                $"origin.aggregate @agg:collect on {obj.Name}.{field.Name}: @orderBy and @distinct are mutually exclusive — a distinct collect uses value-ascending order (explicit element order is meaningful only without dedupe).",
+                                ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+
+                        if (isPredicate)
+                        {
+                            // --- any/all: @filter REQUIRED, @of FORBIDDEN, @via REQUIRED
+                            // (no @of to infer the path from) + must be to-many. ---
+                            if (!hasFilter)
+                                errors.Add(new MetaError(
+                                    $"origin.aggregate @agg:{agg} on {obj.Name}.{field.Name}: a predicate quantifier requires @filter (the quantified predicate); \"does any related row exist\" is @agg:count.",
+                                    ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+                            if (ofPresent)
+                                errors.Add(new MetaError(
+                                    $"origin.aggregate @agg:{agg} on {obj.Name}.{field.Name}: @of is forbidden — a quantifier ranges over rows, not a column (the predicate is @filter).",
+                                    ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+                            if (origin.OwnAttr(ORIGIN_AGGREGATE_ATTR_VIA) is not string predVia || predVia == "")
+                                errors.Add(new MetaError(
+                                    $"origin.aggregate @agg:{agg} on {obj.Name}.{field.Name}: requires an explicit @via (a quantifier has no @of to infer the path from).",
+                                    ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+                            else
+                            {
+                                var predHops = ValidateViaPath(predVia, root, obj, field.Name, errors, src);
+                                if (predHops is not null) CheckAggregateCardinality(predHops, obj, field.Name, src, errors);
+                            }
+                            continue;
+                        }
+
+                        // --- count/sum/avg/min/max/collect: @of REQUIRED ---
+                        if (!ofPresent)
                         {
                             // Missing-attr — keep origin's own source envelope.
                             errors.Add(new MetaError(
                                 $"origin.aggregate on {obj.Name}.{field.Name}: missing @of.",
-                                ErrorCode.ERR_INVALID_ORIGIN,
-                                Envelope: origin.Source));
+                                ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
                             continue;
                         }
+                        string of = (string)ofObj!;
                         // NOTE (FR-024 B6): NO extends/origin agreement on aggregates.
                         var ofTarget = ValidateFromPath(of, root, obj, field.Name, errors,
-                            "origin.aggregate.@of", origin.Source);
+                            "origin.aggregate.@of", src);
+                        // #195 — collect preserves the element type: the array field's own
+                        // subType must equal the @of column's subType (the #185 doctrine).
+                        if (isCollect && ofTarget is ResolvedFromTarget collectTarget
+                            && field.SubType != collectTarget.Field.SubType)
+                            errors.Add(new MetaError(
+                                $"origin.aggregate @agg:collect on {obj.Name}.{field.Name}: field element type field.{field.SubType} does not match the @of column type field.{collectTarget.Field.SubType} — collect preserves the element type.",
+                                ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+                        // @orderBy keys (collect only, non-distinct) resolve against the @of entity.
+                        if (isCollect && hasOrderBy && !hasDistinct)
+                            ValidateOrderByKeys(orderBy, ofTarget is ResolvedFromTarget ct ? ct.Entity : null,
+                                obj, field.Name, "origin.aggregate @agg:collect", src, errors);
+
                         var viaObj = origin.OwnAttr(ORIGIN_AGGREGATE_ATTR_VIA);
                         if (viaObj is string via && via != "")
                         {
-                            var hops = ValidateViaPath(via, root, obj, field.Name, errors, origin.Source);
+                            var hops = ValidateViaPath(via, root, obj, field.Name, errors, src);
                             if (hops is not null)
-                                CheckAggregateCardinality(hops, obj, field.Name, origin.Source, errors);
+                                CheckAggregateCardinality(hops, obj, field.Name, src, errors);
                             continue;
                         }
                         // FR-024 §6 — no @via on an aggregate: inference applies only
@@ -447,31 +527,159 @@ public static class ValidationPasses
                             errors.Add(new MetaError(
                                 $"origin.aggregate on {obj.Name}.{field.Name}: missing @via " +
                                 "(aggregates require a relationship path).",
-                                ErrorCode.ERR_INVALID_ORIGIN,
-                                Envelope: origin.Source));
+                                ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
                             continue;
                         }
-                        var aggBase = DeriveBaseEntity(obj, root, field.Name, origin.Source, errors);
+                        var aggBase = DeriveBaseEntity(obj, root, field.Name, src, errors);
                         if (aggBase is null) continue; // base underivable — error already pushed
                         if (IsBaseRelationTarget(oft.Entity, aggBase, obj))
                         {
                             errors.Add(new MetaError(
                                 $"origin.aggregate on {obj.Name}.{field.Name}: missing @via " +
                                 "(aggregates require a relationship path).",
-                                ErrorCode.ERR_INVALID_ORIGIN,
-                                Envelope: origin.Source));
+                                ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
                             continue;
                         }
                         var aggHops = InferViaSingleHop(aggBase, oft.Entity, obj, field.Name, of,
-                            "origin.aggregate.@of", origin.Source, errors);
+                            "origin.aggregate.@of", src, errors);
                         if (aggHops is not null)
-                            CheckAggregateCardinality(aggHops, obj, field.Name, origin.Source, errors);
+                            CheckAggregateCardinality(aggHops, obj, field.Name, src, errors);
+                    }
+                    else if (origin.SubType == ORIGIN_SUBTYPE_COMPUTED)
+                    {
+                        // #195 — a row-level expression over the base entity's OWN fields.
+                        // No @via/@of (strict scoping already rejects them as ERR_UNKNOWN_ATTR).
+                        var src = origin.Source;
+                        var expr = origin.OwnAttr(ORIGIN_COMPUTED_ATTR_EXPR);
+                        // schema requires @expr as an object (ERR_MISSING_REQUIRED_ATTR /
+                        // ERR_BAD_ATTR_VALUE) — a non-object is already flagged there.
+                        if (expr is not IReadOnlyDictionary<string, object?>) continue;
+                        // Structural closed-grammar (fail-closed unknown node) is validated
+                        // HERE, not in the attr class, so every port validates identically
+                        // (the other ports store @expr verbatim).
+                        var structural = ExpressionGrammar.ValidateExprNode(expr);
+                        if (structural.Count > 0)
+                        {
+                            foreach (var m in structural)
+                                errors.Add(new MetaError(
+                                    $"origin.computed on {obj.Name}.{field.Name}: {m}",
+                                    ErrorCode.ERR_UNKNOWN_EXPR_NODE, Envelope: src));
+                            continue;
+                        }
+                        // Type inference against the base entity's EFFECTIVE fields (ADR-0039).
+                        var computedBase = DeriveBaseEntity(obj, root, field.Name, src, errors);
+                        if (computedBase is null) continue;
+                        Func<string, string?> resolveField = name =>
+                            computedBase!.Children()
+                                .FirstOrDefault(f => f.Type == TYPE_FIELD && f.Name == name)?.SubType;
+                        var inferred = ExpressionGrammar.InferExprType(expr, resolveField);
+                        if (inferred.Errors.Count > 0)
+                        {
+                            foreach (var m in inferred.Errors)
+                                errors.Add(new MetaError(
+                                    $"origin.computed on {obj.Name}.{field.Name}: {m}",
+                                    ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+                            continue;
+                        }
+                        if (inferred.Type is not null && inferred.Type != field.SubType)
+                            errors.Add(new MetaError(
+                                $"origin.computed on {obj.Name}.{field.Name}: @expr infers field.{inferred.Type} but the field is declared field.{field.SubType} — a computed column's type is derived from its expression and must match (no @convert escape).",
+                                ErrorCode.ERR_COMPUTED_TYPE_MISMATCH, Envelope: src));
+                    }
+                    else if (origin.SubType == ORIGIN_SUBTYPE_FIRST)
+                    {
+                        // #195 — pick one related row by @orderBy along @via, project @of.
+                        var src = origin.Source;
+                        var ofObj = origin.OwnAttr(ORIGIN_FIRST_ATTR_OF);
+                        if (ofObj is not string of || of == "")
+                        {
+                            errors.Add(new MetaError(
+                                $"origin.first on {obj.Name}.{field.Name}: missing @of.",
+                                ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+                            continue;
+                        }
+                        // The carrying field must NOT be @required — an empty related set
+                        // (after @filter) selects no row, so the value is null. ADR-0039: resolving.
+                        if (field.Attr(FIELD_ATTR_REQUIRED) is true)
+                            errors.Add(new MetaError(
+                                $"origin.first on {obj.Name}.{field.Name}: the field must not be @required — an empty related set (after @filter) yields null.",
+                                ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+                        var ofTarget = ValidateFromPath(of, root, obj, field.Name, errors,
+                            "origin.first.@of", src);
+                        // #185 type-preservation: first projects the @of column unchanged, so
+                        // the field's subType must equal the @of column's subType (scalar).
+                        if (ofTarget is ResolvedFromTarget firstTarget && field.SubType != firstTarget.Field.SubType)
+                            errors.Add(new MetaError(
+                                $"origin.first on {obj.Name}.{field.Name}: field field.{field.SubType} does not match the @of column field.{firstTarget.Field.SubType} — first projects the column unchanged, so the types must match.",
+                                ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+                        // @via — explicit (validated + cardinality) or single-hop-unique inferred.
+                        var viaObj = origin.OwnAttr(ORIGIN_FIRST_ATTR_VIA);
+                        if (viaObj is string via && via != "")
+                        {
+                            var hops = ValidateViaPath(via, root, obj, field.Name, errors, src);
+                            if (hops is not null) CheckAggregateCardinality(hops, obj, field.Name, src, errors);
+                        }
+                        else if (ofTarget is ResolvedFromTarget inferTarget && !isValueHost)
+                        {
+                            var firstBase = DeriveBaseEntity(obj, root, field.Name, src, errors);
+                            if (firstBase is not null && !IsBaseRelationTarget(inferTarget.Entity, firstBase, obj))
+                            {
+                                var hops = InferViaSingleHop(firstBase, inferTarget.Entity, obj, field.Name, of,
+                                    "origin.first.@of", src, errors);
+                                if (hops is not null) CheckAggregateCardinality(hops, obj, field.Name, src, errors);
+                            }
+                        }
+                        // @orderBy keys resolve against the related (@of) entity.
+                        ValidateOrderByKeys(origin.OwnAttr(ORIGIN_ATTR_ORDER_BY),
+                            ofTarget is ResolvedFromTarget orderTarget ? orderTarget.Entity : null,
+                            obj, field.Name, "origin.first", src, errors);
                     }
                 }
             }
         }
 
         return errors.AsReadOnly();
+    }
+
+    // -------------------------------------------------------------------------
+    // #195 — @orderBy key resolution (shared by @agg:collect + origin.first)
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// #195 — validate <c>@orderBy</c> keys (<c>field[:asc|desc]</c>) resolve against
+    /// the RELATED entity's effective fields (reached via <c>@via</c>/<c>@of</c>), and
+    /// any direction suffix is <c>asc</c>/<c>desc</c>. Null placement is pinned
+    /// (nulls-last) and carries no vocabulary. Shared by <c>@agg:collect</c> (element
+    /// order) and <c>origin.first</c> (row selection). A null related entity means a
+    /// prior error already fired — skip silently. Mirrors TS <c>_validateOrderByKeys</c>.
+    /// </summary>
+    private static void ValidateOrderByKeys(
+        object? orderBy, MetaData? relatedEntity, MetaData obj, string fieldName,
+        string label, ErrorSource originSource, List<MetaError> errors)
+    {
+        // @orderBy is a declared string[] attr → stored as IReadOnlyList<string>.
+        if (orderBy is not IReadOnlyList<string> keys || relatedEntity is null) return;
+        foreach (var raw in keys)
+        {
+            int colonIdx = raw.IndexOf(':');
+            string key = colonIdx == -1 ? raw : raw[..colonIdx];
+            string? dir = colonIdx == -1 ? null : raw[(colonIdx + 1)..];
+            // ADR-0039: resolving — an ordering key may target an inherited field.
+            var target = relatedEntity.Children()
+                .FirstOrDefault(f => f.Type == TYPE_FIELD && f.Name == key);
+            if (target is null)
+            {
+                errors.Add(new MetaError(
+                    $"{label} on {obj.Name}.{fieldName}: @orderBy key \"{raw}\" — no such field \"{key}\" on {relatedEntity.Name}.",
+                    ErrorCode.ERR_INVALID_ORIGIN, Envelope: originSource));
+            }
+            else if (dir is not null && !SORT_ORDER_VALUES.Contains(dir))
+            {
+                errors.Add(new MetaError(
+                    $"{label} on {obj.Name}.{fieldName}: @orderBy key \"{raw}\" — direction must be one of {string.Join("|", SORT_ORDER_VALUES)}.",
+                    ErrorCode.ERR_INVALID_ORIGIN, Envelope: originSource));
+            }
+        }
     }
 
     // -------------------------------------------------------------------------
