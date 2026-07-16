@@ -13,6 +13,7 @@ import {
   renderFindByIdFn,
   renderListFn,
   renderCreateFn,
+  renderInsertPreservingFn,
   renderUpdateFn,
   renderDeleteByIdFn,
   renderReverseFinderFns,
@@ -23,6 +24,7 @@ import { pluralize, findByIdFnName, listFnName } from "../naming.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { isTphDiscriminatorBase, tphConcreteSubtypes } from "./tph-discriminator.js";
 import { isProjection } from "../projection/projection-detector.js";
+import { hasAutoSetFields } from "./zod-validators.js";
 
 export function renderQueriesFile(obj: MetaObject, ctx: RenderContext): string {
   // FR-017 Tier 2 — a TPH discriminator base gets a polymorphic queries file:
@@ -74,13 +76,18 @@ export function renderQueriesFile(obj: MetaObject, ctx: RenderContext): string {
       // (the most common SQLite driver) with "is not assignable".
       : `type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;`;
 
+  // #203 — an @autoSet entity additionally imports its preserving-shape schema
+  // and emits the `insertPreserving<Entity>` escape hatch after `create<Entity>`.
+  const autoSet = hasAutoSetFields(obj);
+  const preservingImport = autoSet ? `, ${entityName}InsertPreservingSchema` : "";
+
   // Literal imports (Db type + entity types) live in a code block so they sort
   // alongside ts-poet's hoisted imp() imports at the top of the body.
   const literalImports = code`
 ${dbTypeImport}
 ${dbTypeAlias}
 
-import { ${varName}, type ${entityName}, type ${entityName}Patch, ${entityName}InsertSchema, ${entityName}UpdateSchema } from ${JSON.stringify(entityFileName)};
+import { ${varName}, type ${entityName}, type ${entityName}Patch, ${entityName}InsertSchema${preservingImport}, ${entityName}UpdateSchema } from ${JSON.stringify(entityFileName)};
 `;
 
   const sections: Code[] = [
@@ -88,6 +95,7 @@ import { ${varName}, type ${entityName}, type ${entityName}Patch, ${entityName}I
     renderFindByIdFn(obj, ctx),
     renderListFn(obj, ctx),
     renderCreateFn(obj, ctx),
+    ...(autoSet ? [renderInsertPreservingFn(obj, ctx)] : []),
     renderUpdateFn(obj, ctx),
     renderDeleteByIdFn(obj, ctx),
   ];

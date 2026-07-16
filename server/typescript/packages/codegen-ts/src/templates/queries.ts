@@ -9,6 +9,7 @@ import {
   findByIdFnName,
   listFnName,
   createFnName,
+  insertPreservingFnName,
   updateFnName,
   deleteByIdFnName,
   reverseFinderFnName,
@@ -75,6 +76,31 @@ export function renderCreateFn(entity: MetaObject, ctx: RenderContext): Code {
   const singularVar = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const fnName = createFnName(entityName);
   const schemaName = `${entityName}InsertSchema`;
+
+  return code`
+export async function ${fnName}(db: Db, data: unknown): Promise<${entityName}> {
+  const validated = ${schemaName}.parse(data);
+  const [${singularVar}] = await db.insert(${varName}).values(validated).returning();
+  return ${singularVar}!;
+}
+`;
+}
+
+/**
+ * #203 — the `insertPreserving<Entity>` escape hatch. Cross-port with the Java /
+ * Kotlin / C# / Python ports: emitted ONLY for an entity that declares @autoSet
+ * fields, it persists the row WITHOUT the create-time now() stamp — the @autoSet
+ * columns are written verbatim from the caller's data — for import / restore /
+ * replication paths that must keep the original timestamps. It validates through
+ * `<Entity>InsertPreservingSchema` (the preserving-shape schema whose @autoSet
+ * columns carry no transform); the normal `create<Entity>` always stamps now().
+ */
+export function renderInsertPreservingFn(entity: MetaObject, ctx: RenderContext): Code {
+  const varName = ctx.collectionName(entity.name);
+  const entityName = entity.name;
+  const singularVar = entityName.charAt(0).toLowerCase() + entityName.slice(1);
+  const fnName = insertPreservingFnName(entityName);
+  const schemaName = `${entityName}InsertPreservingSchema`;
 
   return code`
 export async function ${fnName}(db: Db, data: unknown): Promise<${entityName}> {

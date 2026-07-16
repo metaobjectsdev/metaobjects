@@ -73,6 +73,19 @@ export function isTphSubtype(obj: MetaObject): boolean {
   return tphDiscriminatorPin(obj) !== undefined;
 }
 
+/** True when this object declares at least one @autoSet timestamp field
+ *  (onCreate or onUpdate). Drives whether codegen emits the #203
+ *  `<Entity>InsertPreservingSchema` + `insertPreserving<Entity>` escape hatch —
+ *  a plain entity has nothing to preserve, so both are omitted. Resolving
+ *  (ADR-0039): honors an @autoSet inherited via extends. */
+export function hasAutoSetFields(obj: MetaObject): boolean {
+  for (const child of obj.fields()) {
+    const autoSet = child.attr(FIELD_ATTR_AUTO_SET);
+    if (autoSet === AUTO_SET_ON_CREATE || autoSet === AUTO_SET_ON_UPDATE) return true;
+  }
+  return false;
+}
+
 /**
  * FR-017 Tier 2 — the per-subtype FULL read schema `<Sub>Schema`. Unlike the
  * insert schema, this includes every effective field (PK included) so a raw DB
@@ -282,6 +295,11 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
 
   const insertFieldLines: Code[] = [];
   const updateFieldLines: Code[] = [];
+  // #203 — the `insertPreserving` escape hatch's schema: same shape as the insert
+  // schema, but @autoSet columns are written VERBATIM (no create-time now()
+  // transform). Only emitted when the entity declares @autoSet fields.
+  const preservingFieldLines: Code[] = [];
+  const emitPreserving = hasAutoSetFields(obj);
   for (const child of obj.fields()) {
     if (autoGenPkFields.has(child.name)) continue;
     // FR-013: @readOnly fields appear in neither InsertSchema nor UpdateSchema.
@@ -295,9 +313,9 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
     // path) — the app never writes it via the body and never updates it.
     // Insert: pinned literal. Update: omitted entirely (clients can't change subtype).
     if (tphPin !== undefined && child.name === tphPin.fieldName) {
-      insertFieldLines.push(
-        code`  ${child.name}: z.literal(${JSON.stringify(tphPin.value)})`,
-      );
+      const litLine = code`  ${child.name}: z.literal(${JSON.stringify(tphPin.value)})`;
+      insertFieldLines.push(litLine);
+      preservingFieldLines.push(litLine);
       continue;
     }
 
@@ -308,8 +326,13 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
       insertFieldLines.push(
         code`  ${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
       );
+      // Preserving schema: the @autoSet column is validated verbatim (its natural
+      // field expr) so an import/restore keeps the caller's original timestamp.
+      preservingFieldLines.push(code`  ${child.name}: ${zodFieldExpr(child, obj, ctx)}`);
     } else {
-      insertFieldLines.push(code`  ${child.name}: ${zodFieldExpr(child, obj, ctx)}`);
+      const fieldLine = code`  ${child.name}: ${zodFieldExpr(child, obj, ctx)}`;
+      insertFieldLines.push(fieldLine);
+      preservingFieldLines.push(fieldLine);
     }
 
     // Update schema: @autoSet onCreate → omit entirely; onUpdate → transform
@@ -339,9 +362,23 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
 
   const insertSchemaName = `${obj.name}InsertSchema`;
   const updateSchemaName = `${obj.name}UpdateSchema`;
+  const preservingSchemaName = `${obj.name}InsertPreservingSchema`;
 
   const docs = renderDocsFor(obj);
   const docsPrefix = docs ? `${docs}\n` : "";
+
+  // #203 — emit the preserving insert-shape only for @autoSet entities (nothing to
+  // preserve otherwise). Backs `insertPreserving<Entity>` (import/restore/replication).
+  const preservingBlock = emitPreserving
+    ? code`
+
+/** Insert-shape for import / restore / replication of ${obj.name}: identical to
+ * ${insertSchemaName}, but the @autoSet timestamp columns are written VERBATIM
+ * (no create-time now() stamp) so the caller's original values are preserved. */
+export const ${preservingSchemaName} = ${z}.object({
+${joinCode(preservingFieldLines, { on: ",\n" })}
+});`
+    : code``;
 
   return code`
 ${docsPrefix}export const ${insertSchemaName} = ${z}.object({
@@ -354,7 +391,7 @@ ${joinCode(updateFieldLines, { on: ",\n" })}
 
 /** Typed patch shape for ${obj.name}: every settable field, optional (FR-035 PATCH). A
  * renamed/dropped field is a compile error at every \`update${obj.name}\` call site. */
-export type ${obj.name}Patch = ${z}.input<typeof ${updateSchemaName}>;
+export type ${obj.name}Patch = ${z}.input<typeof ${updateSchemaName}>;${preservingBlock}
 `;
 }
 

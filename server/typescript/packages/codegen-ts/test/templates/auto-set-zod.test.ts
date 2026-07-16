@@ -58,25 +58,29 @@ describe("Zod insert schema honors @autoSet", () => {
   });
 });
 
+/** The field-list body of the emitted UpdateSchema object literal (between its
+ *  `z.object({` and the closing `})`). Bounds the section so assertions can't
+ *  spill into the #203 InsertPreservingSchema that trails the file (which DOES
+ *  carry createdAt verbatim — that's the point). */
+function updateSchemaBody(out: string): string {
+  return out.split("FooUpdateSchema = z.object({")[1]?.split("})")[0] ?? "";
+}
+
 describe("Zod update schema omits onCreate, transforms onUpdate", () => {
   test("@autoSet: onCreate field is OMITTED from update schema", () => {
     const out = renderZodValidators(makeEntity()).toString();
     expect(out).toContain("export const FooUpdateSchema");
-    // createdAt must not appear in UpdateSchema at all
-    // Split on UpdateSchema to check only that section
-    const updateSection = out.split("export const FooUpdateSchema")[1] ?? "";
-    expect(updateSection).not.toContain("createdAt");
+    // createdAt must not appear in the UpdateSchema body at all.
+    expect(updateSchemaBody(out)).not.toContain("createdAt");
   });
 
   test("@autoSet: onUpdate field is present in update schema with transform", () => {
     const out = renderZodValidators(makeEntity()).toString();
-    const updateSection = out.split("export const FooUpdateSchema")[1] ?? "";
-    expect(updateSection).toMatch(/updatedAt:.*optional\(\)\.transform\(\(\) => new Date\(\)\.toISOString\(\)\)/);
+    expect(updateSchemaBody(out)).toMatch(/updatedAt:.*optional\(\)\.transform\(\(\) => new Date\(\)\.toISOString\(\)\)/);
   });
 
   test("ordinary required fields become optional in update schema", () => {
     const out = renderZodValidators(makeEntity()).toString();
-    const updateSection = out.split("export const FooUpdateSchema")[1] ?? "";
-    expect(updateSection).toMatch(/name:.*optional\(\)/);
+    expect(updateSchemaBody(out)).toMatch(/name:.*optional\(\)/);
   });
 });

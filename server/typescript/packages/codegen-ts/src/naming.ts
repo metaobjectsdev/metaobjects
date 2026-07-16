@@ -111,6 +111,13 @@ export function createFnName(entityName: string): string {
   return `create${entityName}`;
 }
 
+/** Generated insert-preserving helper name: `insertPreserving<Entity>` (#203 —
+ *  the import/restore/replication escape hatch that writes @autoSet columns
+ *  verbatim). Emitted only for entities that declare @autoSet fields. */
+export function insertPreservingFnName(entityName: string): string {
+  return `insertPreserving${entityName}`;
+}
+
 /** Generated update helper name: `update<Entity>`. */
 export function updateFnName(entityName: string): string {
   return `update${entityName}`;
