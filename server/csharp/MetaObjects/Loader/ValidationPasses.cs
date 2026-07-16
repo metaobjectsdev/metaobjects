@@ -1744,9 +1744,13 @@ public static class ValidationPasses
                 (value is IReadOnlyList<object?> ol && ol.All(e => e is string)),
 
             ATTR_SUBTYPE_PROPERTIES or
-            ATTR_SUBTYPE_FILTER =>
+            ATTR_SUBTYPE_FILTER or
+            ATTR_SUBTYPE_EXPRESSION =>
                 // Object-typed attrs must be a dictionary (not string, not array).
                 // A string @filter value is the legacy form → fails this check → ERR_BAD_ATTR_VALUE.
+                // #195: a non-object origin.computed @expr (e.g. a raw-SQL string) likewise fails
+                // here → ERR_BAD_ATTR_VALUE, matching TS (ExpressionAttr.validateValue) + Java;
+                // an object @expr then flows to the closed-grammar check in the origin pass.
                 value is IReadOnlyDictionary<string, object?>,
 
             _ => true, // SUBTYPE_BASE or unknown → accept anything

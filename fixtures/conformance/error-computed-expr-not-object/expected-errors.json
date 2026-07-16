@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_BAD_ATTR_VALUE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.observability.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.projection'].children[2]['field.boolean'].children[0]['origin.computed']"
+      }
+    }
+  ],
+  "warnings": []
+}
