@@ -6,12 +6,34 @@ import {
   MetaSource,
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
+  ORIGIN_SUBTYPE_COMPUTED,
+  ORIGIN_SUBTYPE_FIRST,
   ORIGIN_PASSTHROUGH_ATTR_FROM,
   ORIGIN_PASSTHROUGH_ATTR_VIA,
   ORIGIN_AGGREGATE_ATTR_AGG,
   ORIGIN_AGGREGATE_ATTR_OF,
   ORIGIN_AGGREGATE_ATTR_VIA,
   ORIGIN_AGGREGATE_ATTR_FILTER,
+  ORIGIN_ATTR_DISTINCT,
+  ORIGIN_ATTR_ORDER_BY,
+  ORIGIN_COMPUTED_ATTR_EXPR,
+  ORIGIN_FIRST_ATTR_OF,
+  ORIGIN_FIRST_ATTR_VIA,
+  ORIGIN_FIRST_ATTR_FILTER,
+  AGG_ANY,
+  AGG_ALL,
+  AGG_COLLECT,
+  AGGREGATE_FUNCTIONS,
+  FILTER_OP_EQ,
+  FILTER_OP_NE,
+  FILTER_OP_GT,
+  FILTER_OP_GTE,
+  FILTER_OP_LT,
+  FILTER_OP_LTE,
+  FILTER_OP_IS_NULL,
+  FILTER_COMPOSE_AND,
+  FILTER_COMPOSE_OR,
+  SORT_ORDER_DESC,
   RELATIONSHIP_ATTR_OBJECT_REF,
   RELATIONSHIP_ATTR_CARDINALITY,
   CARDINALITY_ONE,
@@ -30,11 +52,28 @@ import {
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import type {
   JoinNode, JoinTree, SelectColumn, SelectSpec, ViewSpec, ViewFilterClause,
+  ViewExprNode, ViewExprLiteral, ViewOrderKey,
 } from "./view-spec.js";
 
 /** Compose keys in the attr.filter shape. */
-const FILTER_AND = "and";
-const FILTER_OR = "or";
+const FILTER_AND = FILTER_COMPOSE_AND;
+const FILTER_OR = FILTER_COMPOSE_OR;
+
+// #195 — the three expression-only op/fn names of the attr.expression grammar. They
+// mirror EXPR_OP_IS_NOT_NULL / EXPR_OP_NOT / EXPR_FN_COALESCE in the metadata package's
+// meta-attr-expression module, which is not re-exported through the public barrel; the
+// remaining node ops (eq/ne/gt/… , isNull, and/or) are the shared FILTER_* vocabulary
+// imported above.
+const EXPR_OP_IS_NOT_NULL = "isNotNull";
+const EXPR_OP_NOT = "not";
+const EXPR_FN_COALESCE = "coalesce";
+
+/** The scalar-reduce @agg values that map to the plain `aggregate` SelectColumn kind. */
+const SCALAR_AGG_FUNCTIONS: ReadonlySet<string> = new Set(AGGREGATE_FUNCTIONS);
+/** Expression comparison ops (share the filter vocabulary + per-subtype legality bands). */
+const EXPR_COMPARISON_OPS: ReadonlySet<string> = new Set([
+  FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_GT, FILTER_OP_GTE, FILTER_OP_LT, FILTER_OP_LTE,
+]);
 
 /**
  * Desugar a single field clause to the canonical `{ op: value }` form (scalar→eq,
@@ -250,6 +289,122 @@ function joinColumnFor(entity: MetaObject, fieldName: string, ctx: ExtractContex
   return f ? sourceColumnNameFor(f, ctx) : columnNameFromField(fieldName, ctx.columnNamingStrategy);
 }
 
+/** The physical column of an entity's primary-key field — the LEFT-JOIN phantom guard
+ *  (#195) tests `<joined>.<pk> IS NOT NULL`, and it is origin.first's tie-breaker. */
+function primaryKeyColumn(entity: MetaObject, ctx: ExtractContext): string | undefined {
+  // ADR-0039: resolving — a projection base may inherit its primary identity via extends.
+  const pkField = entity.primaryIdentity()?.fields[0];
+  return pkField ? joinColumnFor(entity, pkField, ctx) : undefined;
+}
+
+/**
+ * Walk a `@via` dotted path to its terminal (related) entity name. any/all carry no
+ * `@of` to name the aggregated entity, so it is derived from the last `@via` hop.
+ * Returns undefined if any hop fails to resolve (a prior loader error already fired).
+ */
+function viaTerminalEntity(via: string, root: MetaRoot): string | undefined {
+  const segments = via.split(".");
+  const rawEntity = segments[0];
+  if (!rawEntity) return undefined;
+  let currentObj = root.findObject(stripPackage(rawEntity));
+  if (!currentObj) return undefined;
+  let terminal = currentObj.name;
+  for (const relName of segments.slice(1)) {
+    const resolved = resolveHop(currentObj, relName);
+    if (!resolved) return undefined;
+    const target = root.findObject(stripPackage(resolved.targetName));
+    if (!target) return undefined;
+    currentObj = target;
+    terminal = target.name;
+  }
+  return terminal;
+}
+
+/**
+ * Resolve `@orderBy` keys ('field[:asc|desc]') against `entity`'s effective fields into
+ * physical {column, dir} pairs (naming strategy applied). Default direction is asc; nulls
+ * placement is pinned (nulls-last) at emit, not spelled here. Unknown keys are skipped
+ * (the loader validates key existence — `_validateOrderByKeys`).
+ */
+function resolveOrderByKeys(
+  orderBy: unknown,
+  entity: MetaObject,
+  ctx: ExtractContext,
+): ViewOrderKey[] {
+  if (!Array.isArray(orderBy)) return [];
+  const keys: ViewOrderKey[] = [];
+  for (const raw of orderBy) {
+    if (typeof raw !== "string") continue;
+    const colonIdx = raw.indexOf(":");
+    const name = colonIdx === -1 ? raw : raw.slice(0, colonIdx);
+    const dir = colonIdx === -1 ? undefined : raw.slice(colonIdx + 1);
+    const field = entity.fields().find((f) => f.name === name);
+    if (!field) continue;
+    keys.push({ column: sourceColumnNameFor(field, ctx), dir: dir === SORT_ORDER_DESC ? "desc" : "asc" });
+  }
+  return keys;
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Resolve a raw `attr.expression` node (from origin.computed `@expr`) into a {@link
+ * ViewExprNode} whose `{field}` refs are lowered to the base alias's physical columns
+ * (naming strategy applied). The emitter then walks the resolved tree. Returns undefined
+ * if any node is structurally malformed or references a non-base field — the loader's
+ * origin.computed validation already rejects those, so this is defensive only.
+ */
+function resolveExprNode(
+  raw: unknown,
+  base: MetaObject,
+  baseAlias: string,
+  ctx: ExtractContext,
+): ViewExprNode | undefined {
+  if (!isPlainObject(raw)) return undefined;
+
+  if ("field" in raw) {
+    const name = raw.field;
+    if (typeof name !== "string") return undefined;
+    const field = base.fields().find((f) => f.name === name);
+    if (!field) return undefined;
+    return { kind: "col", ref: `${baseAlias}.${sourceColumnNameFor(field, ctx)}` };
+  }
+  if ("value" in raw) {
+    return { kind: "lit", value: raw.value as ViewExprLiteral };
+  }
+  if ("fn" in raw) {
+    if (raw.fn !== EXPR_FN_COALESCE || !Array.isArray(raw.args)) return undefined;
+    const args = raw.args.map((a) => resolveExprNode(a, base, baseAlias, ctx));
+    if (args.some((a) => a === undefined)) return undefined;
+    return { kind: "coalesce", args: args as ViewExprNode[] };
+  }
+  if ("op" in raw && typeof raw.op === "string") {
+    const op = raw.op;
+    if (EXPR_COMPARISON_OPS.has(op)) {
+      const left = resolveExprNode(raw.left, base, baseAlias, ctx);
+      const right = resolveExprNode(raw.right, base, baseAlias, ctx);
+      return left && right ? { kind: "cmp", op, left, right } : undefined;
+    }
+    if (op === FILTER_OP_IS_NULL || op === EXPR_OP_IS_NOT_NULL) {
+      const arg = resolveExprNode(raw.arg, base, baseAlias, ctx);
+      return arg ? { kind: "nullTest", negated: op === EXPR_OP_IS_NOT_NULL, arg } : undefined;
+    }
+    if (op === EXPR_OP_NOT) {
+      const arg = resolveExprNode(raw.arg, base, baseAlias, ctx);
+      return arg ? { kind: "not", arg } : undefined;
+    }
+    if (op === FILTER_COMPOSE_AND || op === FILTER_COMPOSE_OR) {
+      if (!Array.isArray(raw.args)) return undefined;
+      const args = raw.args.map((a) => resolveExprNode(a, base, baseAlias, ctx));
+      if (args.some((a) => a === undefined)) return undefined;
+      return { kind: "logic", op: op === FILTER_COMPOSE_AND ? "and" : "or", args: args as ViewExprNode[] };
+    }
+  }
+  return undefined;
+}
+
 function shortAliasFor(entityName: string, used: Set<string>): string {
   const base = (entityName[0] ?? "x").toLowerCase();
   if (!used.has(base)) { used.add(base); return base; }
@@ -302,9 +457,19 @@ function buildJoinTree(
     for (const origin of field.ownChildren()) {
       if (origin.type !== TYPE_ORIGIN) continue;
       // ADR-0039: own (category 4) — origin.* never inherits (ADR-0029).
-      const viaAttr = origin.subType === ORIGIN_SUBTYPE_AGGREGATE
-        ? (origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA) as string | undefined)
-        : (origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_VIA) as string | undefined);
+      // Only aggregate (count/sum/avg/min/max/any/all/collect) and passthrough origins
+      // contribute a LEFT-JOIN branch. origin.computed is row-level (no @via); origin.first
+      // (#195) lowers to a CORRELATED subquery, NOT a join — its @via must NOT enter the
+      // join tree (both @from-via and @first-via share the physical name "via", so an
+      // unguarded read would wrongly join a `first`).
+      let viaAttr: string | undefined;
+      if (origin.subType === ORIGIN_SUBTYPE_AGGREGATE) {
+        viaAttr = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA) as string | undefined;
+      } else if (origin.subType === ORIGIN_SUBTYPE_PASSTHROUGH) {
+        viaAttr = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_VIA) as string | undefined;
+      } else {
+        continue;
+      }
       if (!viaAttr) continue;
 
       const segments = viaAttr.split(".");
@@ -426,6 +591,7 @@ function buildSelectSpec(
   joinTree: JoinTree,
   root: MetaRoot,
   ctx: ExtractContext,
+  usedAliases: Set<string>,
 ): SelectSpec {
   const columns: SelectColumn[] = [];
 
@@ -482,9 +648,41 @@ function buildSelectSpec(
       });
     } else if (origin.subType === ORIGIN_SUBTYPE_AGGREGATE) {
       // ADR-0039: own (category 4) — origin.* never inherits (ADR-0029).
-      const agg = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_AGG) as AggregateFunction;
-      const of_ = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_OF) as string;
-      if (!agg || !of_) continue;
+      const agg = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_AGG) as string | undefined;
+      if (!agg) continue;
+      const filterAttr = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_FILTER);
+
+      if (agg === AGG_ANY || agg === AGG_ALL) {
+        // #195 predicate quantifier — no @of; the related entity is @via's terminal
+        // hop, and @filter is the (required) quantified predicate.
+        const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA) as string | undefined;
+        if (!via) continue;
+        const relatedName = viaTerminalEntity(via, root);
+        if (!relatedName) continue;
+        const relatedEntity = root.findObject(relatedName);
+        const sourceAlias = findAliasInTree(joinTree, relatedName);
+        if (!relatedEntity || sourceAlias === undefined) continue;
+        const joinedPk = primaryKeyColumn(relatedEntity, ctx);
+        if (joinedPk === undefined) continue;
+        const pred = filterAttr !== undefined
+          ? resolveAggregateFilter(filterAttr, relatedEntity, sourceAlias, ctx)
+          : undefined;
+        if (pred === undefined) continue; // loader requires @filter on any/all
+        columns.push({
+          kind: "predicateAgg",
+          fieldName: field.name,
+          dbColAlias: dbCol,
+          quant: agg === AGG_ANY ? "any" : "all",
+          sourceAlias,
+          joinedPkColumn: joinedPk,
+          pred,
+        });
+        continue;
+      }
+
+      // collect + the scalar reduces (count/sum/avg/min/max) all name @of.
+      const of_ = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_OF) as string | undefined;
+      if (!of_) continue;
       const dotIdx = of_.indexOf(".");
       if (dotIdx < 1) continue;
       const entityName = stripPackage(of_.slice(0, dotIdx));
@@ -494,20 +692,97 @@ function buildSelectSpec(
       if (!targetEntity || sourceAlias === undefined) continue;
       const targetField = targetEntity.fields().find((f) => f.name === fieldName);
       if (!targetField) continue;
-      // Optional scoping filter — resolved against the aggregated entity (the @of
-      // entity, reached at `sourceAlias`), e.g. max(version) over only active rows.
-      // ADR-0039: own (category 4) — origin.* never inherits (ADR-0029).
-      const filterAttr = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_FILTER);
+
+      if (agg === AGG_COLLECT) {
+        // #195 array rollup — collect @of across the related set. @distinct = set
+        // semantics; @orderBy (non-distinct) sets element order, else value-ascending.
+        const joinedPk = primaryKeyColumn(targetEntity, ctx);
+        if (joinedPk === undefined) continue;
+        const distinct = origin.ownAttr(ORIGIN_ATTR_DISTINCT) === true;
+        const orderBy = resolveOrderByKeys(origin.ownAttr(ORIGIN_ATTR_ORDER_BY), targetEntity, ctx);
+        columns.push({
+          kind: "collectAgg",
+          fieldName: field.name,
+          dbColAlias: dbCol,
+          sourceAlias,
+          sourceColumn: sourceColumnNameFor(targetField, ctx),
+          joinedPkColumn: joinedPk,
+          distinct,
+          orderBy,
+        });
+        continue;
+      }
+
+      if (SCALAR_AGG_FUNCTIONS.has(agg)) {
+        // Optional scoping filter — resolved against the aggregated entity (the @of
+        // entity, reached at `sourceAlias`), e.g. max(version) over only active rows.
+        const filter = filterAttr !== undefined
+          ? resolveAggregateFilter(filterAttr, targetEntity, sourceAlias, ctx)
+          : undefined;
+        columns.push({
+          kind: "aggregate",
+          fieldName: field.name,
+          dbColAlias: dbCol,
+          agg: agg as AggregateFunction,
+          sourceAlias,
+          sourceColumn: sourceColumnNameFor(targetField, ctx),
+          ...(filter !== undefined ? { filter } : {}),
+        });
+      }
+    } else if (origin.subType === ORIGIN_SUBTYPE_COMPUTED) {
+      // #195 row-level computed value from the base entity's own fields (@expr tree,
+      // no @via). ADR-0039: own — origin.* never inherits (ADR-0029).
+      const rawExpr = origin.ownAttr(ORIGIN_COMPUTED_ATTR_EXPR);
+      const expr = resolveExprNode(rawExpr, base, joinTree.baseAlias, ctx);
+      if (expr === undefined) continue;
+      columns.push({ kind: "computed", fieldName: field.name, dbColAlias: dbCol, expr });
+    } else if (origin.subType === ORIGIN_SUBTYPE_FIRST) {
+      // #195 correlated latest-row — argmax-then-project. Resolves to a correlated
+      // subquery (NOT a join). ADR-0039: own — origin.* never inherits (ADR-0029).
+      const of_ = origin.ownAttr(ORIGIN_FIRST_ATTR_OF) as string | undefined;
+      if (!of_) continue;
+      const dotIdx = of_.indexOf(".");
+      if (dotIdx < 1) continue;
+      const childName = stripPackage(of_.slice(0, dotIdx));
+      const ofFieldName = of_.slice(dotIdx + 1);
+      const childEntity = root.findObject(childName);
+      if (!childEntity) continue;
+      const ofField = childEntity.fields().find((f) => f.name === ofFieldName);
+      if (!ofField) continue;
+      // The base↔child correlation FK — resolved exactly as buildJoinTree resolves a
+      // single hop (the identity.reference is the FK-direction SSOT). Single-hop @via;
+      // a multi-hop @via on origin.first is not lowered here (rare, and validated away).
+      const ref = findReferenceBetween(base, childEntity);
+      if (!ref) continue;
+      const fkField = ref.referenceIdentity.fields[0];
+      if (!fkField) continue;
+      const pkField = ref.referenceIdentity.resolvedTargetPkField(root) ?? "id";
+      const referenceHolder: "source" | "target" =
+        ref.holder.name === base.name ? "source" : "target";
+      const fkHolder = referenceHolder === "source" ? base : childEntity;
+      const pkHolder = referenceHolder === "source" ? childEntity : base;
+      const childPk = primaryKeyColumn(childEntity, ctx);
+      if (childPk === undefined) continue;
+      // A FRESH alias — the subquery is an independent correlated scope, never the
+      // JOIN-tree alias (reserved against usedAliases so it can never collide).
+      const childAlias = shortAliasFor(childEntity.name, usedAliases);
+      const orderBy = resolveOrderByKeys(origin.ownAttr(ORIGIN_ATTR_ORDER_BY), childEntity, ctx);
+      const filterAttr = origin.ownAttr(ORIGIN_FIRST_ATTR_FILTER);
       const filter = filterAttr !== undefined
-        ? resolveAggregateFilter(filterAttr, targetEntity, sourceAlias, ctx)
+        ? resolveAggregateFilter(filterAttr, childEntity, childAlias, ctx)
         : undefined;
       columns.push({
-        kind: "aggregate",
+        kind: "first",
         fieldName: field.name,
         dbColAlias: dbCol,
-        agg,
-        sourceAlias,
-        sourceColumn: sourceColumnNameFor(targetField, ctx),
+        childEntity: childEntity.name,
+        childAlias,
+        sourceColumn: sourceColumnNameFor(ofField, ctx),
+        referenceHolder,
+        fkColumn: joinColumnFor(fkHolder, fkField, ctx),
+        pkColumn: joinColumnFor(pkHolder, pkField, ctx),
+        childPkColumn: childPk,
+        orderBy,
         ...(filter !== undefined ? { filter } : {}),
       });
     }
@@ -516,8 +791,29 @@ function buildSelectSpec(
   return { columns };
 }
 
+/** The inflation-sensitive aggregate kinds: a non-distinct row multiplication corrupts
+ *  their value (sum/avg double-count; a non-distinct collect duplicates elements).
+ *  count is DISTINCT-guarded; min/max and any/all are inflation-immune. */
+function isInflationSensitive(c: SelectColumn): boolean {
+  if (c.kind === "aggregate") return c.agg === "sum" || c.agg === "avg";
+  if (c.kind === "collectAgg") return !c.distinct;
+  return false;
+}
+
+/** Count top-level join branches that traverse at least one to-many hop. Two or more
+ *  independent many-branches multiply (cartesian) and inflate sensitive aggregates. */
+function countManyBranches(joinTree: JoinTree): number {
+  const hasMany = (node: JoinNode): boolean =>
+    node.cardinality === "many" || node.children.some(hasMany);
+  return joinTree.joins.filter(hasMany).length;
+}
+
 function buildGroupBy(spec: SelectSpec): string[] {
-  const hasAgg = spec.columns.some((c) => c.kind === "aggregate");
+  // predicateAgg (bool_or/bool_and) and collectAgg (array_agg) are real aggregates and
+  // force GROUP BY too; computed/first are scalar-per-row and never grouped.
+  const hasAgg = spec.columns.some(
+    (c) => c.kind === "aggregate" || c.kind === "predicateAgg" || c.kind === "collectAgg",
+  );
   if (!hasAgg) return [];
   return spec.columns
     .filter((c) => c.kind === "passthrough")
@@ -547,13 +843,40 @@ export function extractViewSpec(
   const usedAliases = new Set<string>();
   const baseAlias = shortAliasFor(base.name, usedAliases);
   const joinTree = buildJoinTree(projection, base, root, usedAliases, baseAlias, ctx);
-  const selectSpec = buildSelectSpec(projection, base, joinTree, root, ctx);
+  const selectSpec = buildSelectSpec(projection, base, joinTree, root, ctx, usedAliases);
   const groupBy = buildGroupBy(selectSpec);
 
+  const view = viewName(projection, ctx);
+  warnOnJoinInflation(projection, view, joinTree, selectSpec);
+
   return {
-    viewName: viewName(projection, ctx),
+    viewName: view,
     joinTree,
     selectSpec,
     groupBy,
   };
+}
+
+/**
+ * #195 (spec §6, risk 2) — emit a load-time WARN when an inflation-sensitive aggregate
+ * (`sum`/`avg`/non-distinct `collect`) coexists with ≥2 independent to-many join
+ * branches in one view. Two many-branches multiply (cartesian), silently double-counting
+ * — a latent bug for `sum`/`avg` today, now surfaced. count is DISTINCT-guarded and
+ * min/max/any/all are inflation-immune, so they never trip it.
+ */
+function warnOnJoinInflation(
+  projection: MetaObject,
+  viewName: string,
+  joinTree: JoinTree,
+  spec: SelectSpec,
+): void {
+  if (countManyBranches(joinTree) < 2) return;
+  const sensitive = spec.columns.filter(isInflationSensitive).map((c) => c.fieldName);
+  if (sensitive.length === 0) return;
+  console.warn(
+    `[codegen-ts] projection "${projection.name}" (view ${viewName}): inflation-sensitive ` +
+      `aggregate field(s) [${sensitive.join(", ")}] coexist with ${countManyBranches(joinTree)} ` +
+      `independent to-many join branches — the joins multiply, so these values may double-count. ` +
+      `Split them into separate projections, or scope with @filter/@distinct.`,
+  );
 }

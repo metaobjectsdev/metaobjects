@@ -1,4 +1,6 @@
-import type { JoinNode, ViewSpec, ViewFilterClause } from "./view-spec.js";
+import type {
+  JoinNode, ViewSpec, ViewFilterClause, ViewExprNode, ViewOrderKey, SelectColumn,
+} from "./view-spec.js";
 
 // Quote an identifier only when it isn't a plain lowercase snake identifier —
 // exactly postgres's own rule. This keeps snake_case output unquoted (the common
@@ -63,25 +65,144 @@ function renderFilterCond(clause: ViewFilterClause, dialect: EmitOptions["dialec
   return `${ref} ${op} ${sqlLiteral(clause.value, dialect)}`;
 }
 
-function renderColumn(c: import("./view-spec.js").SelectColumn, dialect: EmitOptions["dialect"]): string {
-  const src = `${c.sourceAlias}.${quoteIfNeeded(c.sourceColumn)}`;
+/**
+ * Render resolved ordering keys, applying the #195 nulls-last pin (`NULLS LAST` in
+ * both directions — PG + SQLite ≥ 3.30). `alias` qualifies each key's column.
+ */
+function renderOrderKeys(keys: readonly ViewOrderKey[], alias: string): string {
+  return keys
+    .map((k) => `${alias}.${quoteIfNeeded(k.column)} ${k.dir.toUpperCase()} NULLS LAST`)
+    .join(", ");
+}
+
+/** Lower a resolved computed expression tree (#195 origin.computed) to a SQL scalar expression. */
+function renderExpr(node: ViewExprNode, dialect: EmitOptions["dialect"]): string {
+  switch (node.kind) {
+    case "col":
+      return quoteRef(node.ref);
+    case "lit":
+      return sqlLiteral(node.value, dialect);
+    case "cmp": {
+      const op = FILTER_OP_SQL[node.op];
+      if (!op) throw new Error(`view-ddl-emit: unsupported computed comparison operator "${node.op}".`);
+      return `${renderExpr(node.left, dialect)} ${op} ${renderExpr(node.right, dialect)}`;
+    }
+    case "nullTest":
+      return `${renderExpr(node.arg, dialect)} IS ${node.negated ? "NOT " : ""}NULL`;
+    case "not":
+      return `NOT (${renderExpr(node.arg, dialect)})`;
+    case "logic": {
+      const joiner = node.op === "and" ? " AND " : " OR ";
+      return `(${node.args.map((a) => renderExpr(a, dialect)).join(joiner)})`;
+    }
+    case "coalesce":
+      return `COALESCE(${node.args.map((a) => renderExpr(a, dialect)).join(", ")})`;
+  }
+}
+
+/**
+ * Lower an `origin.first` column (#195) to a correlated scalar subquery. The subquery
+ * keys on the OUTER base alias (`baseAlias`), so it composes with the view's GROUP BY
+ * (the base PK is always a grouped passthrough column). The child PK ascending is
+ * ALWAYS appended as the final tie-breaker so equal-order rows stay byte-deterministic.
+ */
+function renderFirst(
+  c: Extract<SelectColumn, { kind: "first" }>,
+  options: EmitOptions,
+  baseAlias: string,
+): string {
+  const childTable = options.joinTables[c.childEntity];
+  if (!childTable) {
+    throw new Error(`view-ddl-emit: no table name registered for origin.first child entity "${c.childEntity}".`);
+  }
+  const of = `${c.childAlias}.${quoteIfNeeded(c.sourceColumn)}`;
+  const fk = quoteIfNeeded(c.fkColumn);
+  const pk = quoteIfNeeded(c.pkColumn);
+  // Mirror renderJoin's ON clause, with the child in the subquery and the base outside.
+  //   referenceHolder "source" → FK on base:  child.pk = base.fk   (belongs-to)
+  //   referenceHolder "target" → FK on child: child.fk = base.pk   (has-many)
+  const correlation = c.referenceHolder === "source"
+    ? `${c.childAlias}.${pk} = ${baseAlias}.${fk}`
+    : `${c.childAlias}.${fk} = ${baseAlias}.${pk}`;
+  const filterClause = c.filter ? ` AND ${renderFilterCond(c.filter, options.dialect)}` : "";
+  // The @orderBy keys carry the nulls-last pin; the appended PK tie-breaker never does
+  // (a primary key is non-null, so NULLS LAST would be noise). Its ASC direction makes
+  // equal-order rows byte-deterministic.
+  const tieBreak = `${c.childAlias}.${quoteIfNeeded(c.childPkColumn)} ASC`;
+  const orderKeys = c.orderBy.length > 0
+    ? `${renderOrderKeys(c.orderBy, c.childAlias)}, ${tieBreak}`
+    : tieBreak;
+  return (
+    `(SELECT ${of} FROM ${quoteIfNeeded(childTable)} ${c.childAlias}` +
+    ` WHERE ${correlation}${filterClause} ORDER BY ${orderKeys} LIMIT 1) AS ${quoteIfNeeded(c.dbColAlias)}`
+  );
+}
+
+function renderColumn(c: SelectColumn, options: EmitOptions, baseAlias: string): string {
+  const dialect = options.dialect;
   const alias = quoteIfNeeded(c.dbColAlias);
+
   if (c.kind === "passthrough") {
-    return `${src} AS ${alias}`;
+    return `${c.sourceAlias}.${quoteIfNeeded(c.sourceColumn)} AS ${alias}`;
   }
-  // aggregate — use DISTINCT for count() over joined PKs to avoid join inflation.
-  // A scoping @filter renders as postgres `FILTER (WHERE …)`; sqlite (no aggregate
-  // FILTER pre-3.30) uses the portable `CASE WHEN … END` argument form.
-  const cond = c.filter ? renderFilterCond(c.filter, dialect) : undefined;
-  if (c.agg === "count") {
-    if (cond && dialect === "sqlite") return `COUNT(DISTINCT CASE WHEN ${cond} THEN ${src} END) AS ${alias}`;
-    if (cond) return `COUNT(DISTINCT ${src}) FILTER (WHERE ${cond}) AS ${alias}`;
-    return `COUNT(DISTINCT ${src}) AS ${alias}`;
+
+  if (c.kind === "aggregate") {
+    const src = `${c.sourceAlias}.${quoteIfNeeded(c.sourceColumn)}`;
+    // aggregate — use DISTINCT for count() over joined PKs to avoid join inflation.
+    // A scoping @filter renders as postgres `FILTER (WHERE …)`; sqlite (no aggregate
+    // FILTER pre-3.30) uses the portable `CASE WHEN … END` argument form.
+    const cond = c.filter ? renderFilterCond(c.filter, dialect) : undefined;
+    if (c.agg === "count") {
+      if (cond && dialect === "sqlite") return `COUNT(DISTINCT CASE WHEN ${cond} THEN ${src} END) AS ${alias}`;
+      if (cond) return `COUNT(DISTINCT ${src}) FILTER (WHERE ${cond}) AS ${alias}`;
+      return `COUNT(DISTINCT ${src}) AS ${alias}`;
+    }
+    const fn = c.agg.toUpperCase();
+    if (cond && dialect === "sqlite") return `${fn}(CASE WHEN ${cond} THEN ${src} END) AS ${alias}`;
+    if (cond) return `${fn}(${src}) FILTER (WHERE ${cond}) AS ${alias}`;
+    return `${fn}(${src}) AS ${alias}`;
   }
-  const fn = c.agg.toUpperCase();
-  if (cond && dialect === "sqlite") return `${fn}(CASE WHEN ${cond} THEN ${src} END) AS ${alias}`;
-  if (cond) return `${fn}(${src}) FILTER (WHERE ${cond}) AS ${alias}`;
-  return `${fn}(${src}) AS ${alias}`;
+
+  if (c.kind === "predicateAgg") {
+    // #195 any/all. The phantom-row guard (joined.pk IS NOT NULL) EXCLUDES null-extended
+    // LEFT-JOIN non-matches, so the empty-related-set pins hold: any=false / all=true.
+    const pred = renderFilterCond(c.pred, dialect);
+    const guard = `${c.sourceAlias}.${quoteIfNeeded(c.joinedPkColumn)} IS NOT NULL`;
+    if (dialect === "sqlite") {
+      // No boolean aggregates: MAX≡bool_or, MIN≡bool_and over 1/0. The outer CASE yields
+      // NULL (not 0) for phantom rows so MIN/MAX ignore them — the COALESCE default then
+      // supplies the empty-set pin (0 for any, 1 for all).
+      const fn = c.quant === "any" ? "MAX" : "MIN";
+      const empty = c.quant === "any" ? "0" : "1";
+      return `COALESCE(${fn}(CASE WHEN ${guard} THEN (CASE WHEN ${pred} THEN 1 ELSE 0 END) END), ${empty}) AS ${alias}`;
+    }
+    const fn = c.quant === "any" ? "bool_or" : "bool_and";
+    const empty = c.quant === "any" ? "FALSE" : "TRUE";
+    return `COALESCE(${fn}(${pred}) FILTER (WHERE ${guard}), ${empty}) AS ${alias}`;
+  }
+
+  if (c.kind === "collectAgg") {
+    const src = `${c.sourceAlias}.${quoteIfNeeded(c.sourceColumn)}`;
+    const guard = `${c.sourceAlias}.${quoteIfNeeded(c.joinedPkColumn)} IS NOT NULL`;
+    const distinctKw = c.distinct ? "DISTINCT " : "";
+    // Element order: @distinct always orders by the value (PG's array_agg(DISTINCT x
+    // ORDER BY x) co-occurrence rule); otherwise an explicit @orderBy, else the
+    // value-ascending default (both for conformance byte-stability).
+    const orderClause = !c.distinct && c.orderBy.length > 0
+      ? `ORDER BY ${renderOrderKeys(c.orderBy, c.sourceAlias)}`
+      : `ORDER BY ${src} ASC`;
+    if (dialect === "sqlite") {
+      return `COALESCE(json_group_array(${distinctKw}${src} ${orderClause}) FILTER (WHERE ${guard}), json_array()) AS ${alias}`;
+    }
+    return `COALESCE(array_agg(${distinctKw}${src} ${orderClause}) FILTER (WHERE ${guard}), '{}') AS ${alias}`;
+  }
+
+  if (c.kind === "computed") {
+    return `${renderExpr(c.expr, dialect)} AS ${alias}`;
+  }
+
+  // first — a correlated scalar subquery keyed on the base alias.
+  return renderFirst(c, options, baseAlias);
 }
 
 function renderJoin(
@@ -115,7 +236,7 @@ function renderJoin(
 
 export function emitViewDdl(spec: ViewSpec, options: EmitOptions): string {
   const cols = spec.selectSpec.columns
-    .map((c) => "    " + renderColumn(c, options.dialect))
+    .map((c) => "    " + renderColumn(c, options, spec.joinTree.baseAlias))
     .join(",\n");
   const fromClause = `  FROM ${quoteIfNeeded(options.baseTableName)} ${spec.joinTree.baseAlias}`;
   const joinsClause = spec.joinTree.joins

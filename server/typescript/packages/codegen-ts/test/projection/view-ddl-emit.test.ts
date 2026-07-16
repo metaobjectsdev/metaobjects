@@ -133,6 +133,216 @@ describe("emitViewDdl — non-id parent join (pkColumn)", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// #195 — the four projection read-model origin lowerings.
+// ---------------------------------------------------------------------------
+
+describe("emitViewDdl — #195 predicate quantifier (any/all)", () => {
+  const base = (quant: "any" | "all"): ViewSpec => ({
+    viewName: "v_session_summary",
+    joinTree: {
+      baseEntity: "Session",
+      baseAlias: "s",
+      joins: [
+        { relationship: "turns", targetEntity: "Turn", alias: "t", cardinality: "many",
+          fkColumn: "session_id", pkColumn: "id", referenceHolder: "target", children: [] },
+      ],
+    },
+    selectSpec: {
+      columns: [
+        { kind: "passthrough", fieldName: "id", dbColAlias: "id", sourceAlias: "s", sourceColumn: "id" },
+        { kind: "predicateAgg", fieldName: "hasError", dbColAlias: "has_error", quant,
+          sourceAlias: "t", joinedPkColumn: "id",
+          pred: { kind: "cmp", ref: "t.success", op: "eq", value: false } },
+      ],
+    },
+    groupBy: ["s.id"],
+  });
+
+  test("any → COALESCE(bool_or(pred) FILTER (WHERE pk IS NOT NULL), FALSE) on postgres", () => {
+    const sql = emitViewDdl(base("any"), { dialect: "postgres", baseTableName: "sessions", joinTables: { Turn: "turns" } });
+    expect(sql).toContain("COALESCE(bool_or(t.success = FALSE) FILTER (WHERE t.id IS NOT NULL), FALSE) AS has_error");
+  });
+
+  test("all → COALESCE(bool_and(pred) FILTER (WHERE pk IS NOT NULL), TRUE) on postgres", () => {
+    const sql = emitViewDdl(base("all"), { dialect: "postgres", baseTableName: "sessions", joinTables: { Turn: "turns" } });
+    expect(sql).toContain("COALESCE(bool_and(t.success = FALSE) FILTER (WHERE t.id IS NOT NULL), TRUE) AS has_error");
+  });
+
+  test("any → MAX(CASE …) with phantom rows excluded (empty ⇒ 0) on sqlite", () => {
+    const sql = emitViewDdl(base("any"), { dialect: "sqlite", baseTableName: "sessions", joinTables: { Turn: "turns" } });
+    expect(sql).toContain(
+      "COALESCE(MAX(CASE WHEN t.id IS NOT NULL THEN (CASE WHEN t.success = 0 THEN 1 ELSE 0 END) END), 0) AS has_error",
+    );
+  });
+
+  test("all → MIN(CASE …) with phantom rows excluded (empty ⇒ 1) on sqlite", () => {
+    const sql = emitViewDdl(base("all"), { dialect: "sqlite", baseTableName: "sessions", joinTables: { Turn: "turns" } });
+    expect(sql).toContain(
+      "COALESCE(MIN(CASE WHEN t.id IS NOT NULL THEN (CASE WHEN t.success = 0 THEN 1 ELSE 0 END) END), 1) AS has_error",
+    );
+  });
+});
+
+describe("emitViewDdl — #195 array rollup (collect)", () => {
+  const collect = (distinct: boolean, orderBy: { column: string; dir: "asc" | "desc" }[]): ViewSpec => ({
+    viewName: "v_order_summary",
+    joinTree: {
+      baseEntity: "Order",
+      baseAlias: "o",
+      joins: [
+        { relationship: "items", targetEntity: "Item", alias: "i", cardinality: "many",
+          fkColumn: "order_id", pkColumn: "id", referenceHolder: "target", children: [] },
+      ],
+    },
+    selectSpec: {
+      columns: [
+        { kind: "passthrough", fieldName: "id", dbColAlias: "id", sourceAlias: "o", sourceColumn: "id" },
+        { kind: "collectAgg", fieldName: "categories", dbColAlias: "categories",
+          sourceAlias: "i", sourceColumn: "category", joinedPkColumn: "id", distinct, orderBy },
+      ],
+    },
+    groupBy: ["o.id"],
+  });
+
+  test("distinct → array_agg(DISTINCT of ORDER BY of ASC) FILTER phantom guard, coalesced to '{}' on postgres", () => {
+    const sql = emitViewDdl(collect(true, []), { dialect: "postgres", baseTableName: "orders", joinTables: { Item: "items" } });
+    expect(sql).toContain(
+      "COALESCE(array_agg(DISTINCT i.category ORDER BY i.category ASC) FILTER (WHERE i.id IS NOT NULL), '{}') AS categories",
+    );
+  });
+
+  test("default (non-distinct, no @orderBy) → value-ascending element order on postgres", () => {
+    const sql = emitViewDdl(collect(false, []), { dialect: "postgres", baseTableName: "orders", joinTables: { Item: "items" } });
+    expect(sql).toContain(
+      "COALESCE(array_agg(i.category ORDER BY i.category ASC) FILTER (WHERE i.id IS NOT NULL), '{}') AS categories",
+    );
+  });
+
+  test("with @orderBy → orders by the resolved key (nulls last) on postgres", () => {
+    const sql = emitViewDdl(collect(false, [{ column: "created_at", dir: "desc" }]),
+      { dialect: "postgres", baseTableName: "orders", joinTables: { Item: "items" } });
+    expect(sql).toContain(
+      "COALESCE(array_agg(i.category ORDER BY i.created_at DESC NULLS LAST) FILTER (WHERE i.id IS NOT NULL), '{}') AS categories",
+    );
+  });
+
+  test("sqlite → json_group_array coalesced to json_array()", () => {
+    const sql = emitViewDdl(collect(true, []), { dialect: "sqlite", baseTableName: "orders", joinTables: { Item: "items" } });
+    expect(sql).toContain(
+      "COALESCE(json_group_array(DISTINCT i.category ORDER BY i.category ASC) FILTER (WHERE i.id IS NOT NULL), json_array()) AS categories",
+    );
+  });
+});
+
+describe("emitViewDdl — #195 computed expression", () => {
+  const computed = (): ViewSpec => ({
+    viewName: "v_session_flags",
+    joinTree: { baseEntity: "Session", baseAlias: "s", joins: [] },
+    selectSpec: {
+      columns: [
+        { kind: "passthrough", fieldName: "id", dbColAlias: "id", sourceAlias: "s", sourceColumn: "id" },
+        { kind: "computed", fieldName: "hasPayload", dbColAlias: "has_payload",
+          expr: { kind: "nullTest", negated: true, arg: { kind: "col", ref: "s.payload_json" } } },
+      ],
+    },
+    groupBy: [],
+  });
+
+  test("isNotNull → `<col> IS NOT NULL` on both dialects", () => {
+    for (const dialect of ["postgres", "sqlite"] as const) {
+      const sql = emitViewDdl(computed(), { dialect, baseTableName: "sessions", joinTables: {} });
+      expect(sql).toContain("s.payload_json IS NOT NULL AS has_payload");
+    }
+  });
+
+  test("nested and/coalesce/comparison lowers to a SQL boolean expression", () => {
+    const spec: ViewSpec = {
+      viewName: "v_flags",
+      joinTree: { baseEntity: "Session", baseAlias: "s", joins: [] },
+      selectSpec: {
+        columns: [
+          { kind: "computed", fieldName: "flag", dbColAlias: "flag",
+            expr: { kind: "logic", op: "and", args: [
+              { kind: "nullTest", negated: true, arg: { kind: "col", ref: "s.payload_json" } },
+              { kind: "cmp", op: "gt",
+                left: { kind: "coalesce", args: [ { kind: "col", ref: "s.score" }, { kind: "lit", value: 0 } ] },
+                right: { kind: "lit", value: 90 } } ] } },
+        ],
+      },
+      groupBy: [],
+    };
+    const sql = emitViewDdl(spec, { dialect: "postgres", baseTableName: "sessions", joinTables: {} });
+    expect(sql).toContain("(s.payload_json IS NOT NULL AND COALESCE(s.score, 0) > 90) AS flag");
+  });
+});
+
+describe("emitViewDdl — #195 correlated first (argmax-then-project)", () => {
+  const firstSpec = (extraCols: import("../../src/projection/view-spec.js").SelectColumn[] = [], groupBy: string[] = []): ViewSpec => ({
+    viewName: "v_parent_summary",
+    joinTree: { baseEntity: "Parent", baseAlias: "p", joins: [] },
+    selectSpec: {
+      columns: [
+        { kind: "passthrough", fieldName: "id", dbColAlias: "id", sourceAlias: "p", sourceColumn: "id" },
+        ...extraCols,
+        { kind: "first", fieldName: "currentLabel", dbColAlias: "current_label",
+          childEntity: "ChildA", childAlias: "c0", sourceColumn: "label",
+          referenceHolder: "target", fkColumn: "parent_id", pkColumn: "id", childPkColumn: "id",
+          orderBy: [{ column: "created_at", dir: "desc" }],
+          filter: { kind: "cmp", ref: "c0.is_active", op: "eq", value: true } },
+      ],
+    },
+    groupBy,
+  });
+
+  test("emits a correlated scalar subquery with the PK tie-breaker appended, on postgres", () => {
+    const sql = emitViewDdl(firstSpec(), { dialect: "postgres", baseTableName: "parents", joinTables: { ChildA: "child_as" } });
+    expect(sql).toContain(
+      "(SELECT c0.label FROM child_as c0 WHERE c0.parent_id = p.id AND c0.is_active = TRUE ORDER BY c0.created_at DESC NULLS LAST, c0.id ASC LIMIT 1) AS current_label",
+    );
+  });
+
+  test("sqlite emits the same shape with a sqlite boolean literal in the filter", () => {
+    const sql = emitViewDdl(firstSpec(), { dialect: "sqlite", baseTableName: "parents", joinTables: { ChildA: "child_as" } });
+    expect(sql).toContain(
+      "(SELECT c0.label FROM child_as c0 WHERE c0.parent_id = p.id AND c0.is_active = 1 ORDER BY c0.created_at DESC NULLS LAST, c0.id ASC LIMIT 1) AS current_label",
+    );
+  });
+
+  test("Task 2.5 mix: passthrough + aggregate + first — the correlated subquery composes with GROUP BY", () => {
+    const agg: import("../../src/projection/view-spec.js").SelectColumn = {
+      kind: "aggregate", fieldName: "childCount", dbColAlias: "child_count",
+      agg: "count", sourceAlias: "c1", sourceColumn: "id",
+    };
+    const spec: ViewSpec = {
+      viewName: "v_parent_summary",
+      joinTree: {
+        baseEntity: "Parent", baseAlias: "p",
+        joins: [ { relationship: "childAs", targetEntity: "ChildA", alias: "c1", cardinality: "many",
+          fkColumn: "parent_id", pkColumn: "id", referenceHolder: "target", children: [] } ],
+      },
+      selectSpec: {
+        columns: [
+          { kind: "passthrough", fieldName: "id", dbColAlias: "id", sourceAlias: "p", sourceColumn: "id" },
+          agg,
+          { kind: "first", fieldName: "currentLabel", dbColAlias: "current_label",
+            childEntity: "ChildA", childAlias: "c0", sourceColumn: "label",
+            referenceHolder: "target", fkColumn: "parent_id", pkColumn: "id", childPkColumn: "id",
+            orderBy: [{ column: "created_at", dir: "desc" }] },
+        ],
+      },
+      groupBy: ["p.id"],
+    };
+    const sql = emitViewDdl(spec, { dialect: "postgres", baseTableName: "parents", joinTables: { ChildA: "child_as" } });
+    // The GROUP BY (base PK) coexists with the correlated subquery keyed on p.id.
+    expect(sql).toContain("GROUP BY p.id");
+    expect(sql).toContain("COUNT(DISTINCT c1.id) AS child_count");
+    expect(sql).toContain(
+      "(SELECT c0.label FROM child_as c0 WHERE c0.parent_id = p.id ORDER BY c0.created_at DESC NULLS LAST, c0.id ASC LIMIT 1) AS current_label",
+    );
+  });
+});
+
 describe("emitViewDdl — belongs-to (reference on source)", () => {
   test("emits target.pk = parent.fk when reference holder is source", () => {
     const spec: ViewSpec = {

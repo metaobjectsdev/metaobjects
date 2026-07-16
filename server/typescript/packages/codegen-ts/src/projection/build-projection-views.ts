@@ -24,7 +24,7 @@ import {
 import { isProjection } from "./projection-detector.js";
 import { extractViewSpec } from "./extract-view-spec.js";
 import { emitViewDdl } from "./view-ddl-emit.js";
-import type { JoinNode, JoinTree, ViewSpec } from "./view-spec.js";
+import type { JoinNode, ViewSpec } from "./view-spec.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 
 /** Structurally matches migrate-ts's `ViewDescriptor` (name + body sql + optional schema). */
@@ -124,7 +124,7 @@ export function buildProjectionViews(
     if (!baseTableName) continue; // unresolved base — skip (loader/codegen surface the error elsewhere)
     const body = emitViewDdl(spec, { dialect, baseTableName, joinTables, bodyOnly: true });
     const schema = resolveTableSchema(projection);
-    const dependsOn = collectDependsOn(spec.joinTree, baseTableName, joinTables);
+    const dependsOn = collectDependsOn(spec, baseTableName, joinTables);
     const columns = collectViewColumns(spec, baseTableName, joinTables);
     out.push({
       name: spec.viewName,
@@ -158,6 +158,14 @@ function collectViewColumns(
 
   const out: ExpectedViewColumn[] = [];
   for (const c of spec.selectSpec.columns) {
+    // #195: the four new origin column kinds (predicateAgg/collectAgg/computed/first) do
+    // not resolve to a single (table, column) SqlType via the prefix rule — computed is
+    // an expression, first is a correlated subquery, and the array/boolean aggregate
+    // result types are richer than the OR-REPLACE prefix check models. Per this module's
+    // fail-safe doctrine (unknown → drop+create, never a wrong-but-confident replace),
+    // an unknown column drops the whole list so migrate routes through a gated
+    // drop+create. Precise native typing is a later phase.
+    if (c.kind !== "passthrough" && c.kind !== "aggregate") return [];
     const sourceTable = aliasToTable.get(c.sourceAlias);
     // An unresolvable alias would make the column list a lie, and a wrong list would
     // make the diff propose an ILLEGAL `CREATE OR REPLACE VIEW` that fails at apply.
@@ -217,9 +225,13 @@ function viewIsDerived(projection: MetaObject): boolean {
   );
 }
 
-/** The base table plus every joined table, deduped — the physical tables the view reads. */
+/** The base table plus every joined table AND every origin.first child table, deduped —
+ *  the physical tables the view reads. A `first` column is a correlated subquery, so its
+ *  child table is NOT in the join tree (#195) yet the view still depends on it: if the
+ *  child's columns change, the view must be dropped+recreated. Missing it would let a
+ *  column-altering change on that table fail at apply. */
 function collectDependsOn(
-  joinTree: JoinTree,
+  spec: ViewSpec,
   baseTableName: string,
   joinTables: Readonly<Record<string, string>>,
 ): string[] {
@@ -229,6 +241,12 @@ function collectDependsOn(
     if (t) tables.add(t);
     for (const child of node.children) walk(child);
   };
-  for (const j of joinTree.joins) walk(j);
+  for (const j of spec.joinTree.joins) walk(j);
+  for (const c of spec.selectSpec.columns) {
+    if (c.kind === "first") {
+      const t = joinTables[c.childEntity];
+      if (t) tables.add(t);
+    }
+  }
   return [...tables];
 }
