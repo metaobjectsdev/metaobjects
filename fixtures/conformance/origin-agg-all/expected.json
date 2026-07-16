@@ -1,0 +1,112 @@
+{
+  "metadata.root": {
+    "package": "acme::sessions",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Session",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "sessions"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "turns",
+                "@cardinality": "many",
+                "@objectRef": "acme::sessions::Turn"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Turn",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "turns"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "success"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "SessionSummary",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_session_summary"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::sessions::Session.id"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "allSucceeded",
+                "children": [
+                  {
+                    "origin.aggregate": {
+                      "@agg": "all",
+                      "@filter": {
+                        "success": {
+                          "eq": true
+                        }
+                      },
+                      "@via": "acme::sessions::Session.turns"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::sessions::Session.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

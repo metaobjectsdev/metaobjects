@@ -1,0 +1,53 @@
+{
+  "metadata.root": {
+    "package": "acme::sessions",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Session",
+          "children": [
+            { "source.rdb": { "@table": "sessions" } },
+            { "field.long": { "name": "id" } },
+            { "relationship.association": { "name": "turns", "@objectRef": "acme::sessions::Turn", "@cardinality": "many" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Turn",
+          "children": [
+            { "source.rdb": { "@table": "turns" } },
+            { "field.long": { "name": "id" } },
+            { "field.boolean": { "name": "success" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "SessionSummary",
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_session_summary" } },
+            { "field.long": { "name": "id", "extends": "acme::sessions::Session.id" } },
+            {
+              "field.boolean": {
+                "name": "hasError",
+                "children": [
+                  {
+                    "origin.aggregate": {
+                      "@agg": "any",
+                      "@via": "acme::sessions::Session.turns",
+                      "@filter": { "success": false }
+                    }
+                  }
+                ]
+              }
+            },
+            { "identity.primary": { "name": "id", "extends": "acme::sessions::Session.id" } }
+          ]
+        }
+      }
+    ]
+  }
+}
