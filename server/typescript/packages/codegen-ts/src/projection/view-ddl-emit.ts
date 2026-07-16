@@ -245,6 +245,13 @@ export function emitViewDdl(spec: ViewSpec, options: EmitOptions): string {
   const joinsClause = spec.joinTree.joins
     .map((j) => renderJoin(j, spec.joinTree.baseAlias, options))
     .join("\n");
+  // #207 — a projection-level row @filter is an outer WHERE that scopes which base
+  // rows the view returns. It renders AFTER the joins and BEFORE any GROUP BY (it
+  // filters rows, not aggregate groups — a post-aggregate HAVING is a separate concern).
+  const whereClause =
+    spec.where !== undefined
+      ? `\n  WHERE ${renderFilterCond(spec.where, options.dialect)}`
+      : "";
   const groupByClause =
     spec.groupBy.length > 0
       ? `\n  GROUP BY ${spec.groupBy.map(quoteRef).join(", ")}`
@@ -252,7 +259,7 @@ export function emitViewDdl(spec: ViewSpec, options: EmitOptions): string {
 
   const body = `  SELECT
 ${cols}
-${fromClause}${joinsClause ? "\n" + joinsClause : ""}${groupByClause}`;
+${fromClause}${joinsClause ? "\n" + joinsClause : ""}${whereClause}${groupByClause}`;
 
   if (options.bodyOnly) return body;
   return `CREATE VIEW ${quoteIfNeeded(spec.viewName)} AS

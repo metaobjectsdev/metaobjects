@@ -156,4 +156,12 @@ export interface ViewSpec {
   readonly selectSpec: SelectSpec;
   /** non-aggregate column SQL fragments to put in GROUP BY (empty if no aggregates). */
   readonly groupBy: readonly string[];
+  /**
+   * #207 — a projection-level row `@filter` (view-level WHERE): a resolved predicate
+   * over the projection's OWN fields (each ref already lowered to `alias.column`),
+   * rendered as an outer `WHERE` BEFORE any `GROUP BY` — it scopes which base rows the
+   * view returns (soft-delete / status / type views). Distinct from an aggregate's
+   * `@filter`, which scopes the rows a single aggregate spans. Undefined = no filter.
+   */
+  readonly where?: ViewFilterClause;
 }
