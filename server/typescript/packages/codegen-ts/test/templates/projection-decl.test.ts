@@ -473,19 +473,17 @@ describe("#195 projection read-schema nullability (any/all/collect non-null; fir
   test("any/all/collect columns are non-null; first is nullable (#195 nullability)", async () => {
     const code = await loadOrderView();
     // The Drizzle view columns: collect + any are COALESCE-guaranteed non-null;
-    // first is nullable. (The element/array-ness of collect — text[] vs text — is
-    // the separate projection-array typing gap tracked by #204; asserted array-
-    // agnostically here so this golden pins ONLY the #195 nullability contract and
-    // does not encode the #204 scalar-drop.)
-    expect(code).toMatch(/categories:\s*text\([^)]*\)(?:\.array\(\))?\.notNull\(\)/);
+    // first is nullable. #204 (now fixed) carries the collect field's array-ness
+    // through: the postgres view column is `text(...).array().notNull()`.
+    expect(code).toMatch(/categories:\s*text\([^)]*\)\.array\(\)\.notNull\(\)/);
     expect(code).toMatch(/hasElectronics:\s*boolean\([^)]*\)\.notNull\(\)/);
     // first → nullable (no .notNull() on the view column, → `.nullable()` read type).
     expect(code).toContain("latestCategory: text(\"latest_category\"),");
-    // Zod read schema: any → non-null boolean; first → nullable; collect non-null
-    // (its z.array wrap arrives with #204 — assert only that it is NOT nullable).
+    // Zod read schema: any → non-null boolean; first → nullable; collect → a
+    // non-null array of the element type (`z.array(z.string())`, #204).
     expect(code).toContain("hasElectronics: z.boolean(),");
     expect(code).not.toContain("hasElectronics: z.boolean().nullable()");
     expect(code).toContain("latestCategory: z.string().nullable(),");
-    expect(code).toMatch(/categories:\s*z\.[^\n]*(?<!\.nullable\(\)),/);
+    expect(code).toContain("categories: z.array(z.string()),");
   });
 });

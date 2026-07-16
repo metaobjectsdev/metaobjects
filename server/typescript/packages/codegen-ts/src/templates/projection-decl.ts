@@ -157,7 +157,12 @@ export function renderProjectionDecl(
         : code`${schemaSym}`;
       return code`  ${f.name}: ${base}${nullable}`;
     }
-    return code`  ${f.name}: ${z}.${zodTypeFor(f).replace(/^z\./, "")}${nullable}`;
+    // #204 — array-wrap a scalar array passthrough so the read type is `T[]`
+    // (was scalar `T`, diverging from the Drizzle view column above + the Kotlin
+    // port). zodTypeFor returns the ELEMENT type; the array-ness rides here.
+    const inner = code`${z}.${zodTypeFor(f).replace(/^z\./, "")}`;
+    const zbase = f.resolvedIsArray() ? code`${z}.array(${inner})` : inner;
+    return code`  ${f.name}: ${zbase}${nullable}`;
   });
 
   // Typed view column map for the Drizzle `.existing()` declaration — keyed by
@@ -172,19 +177,33 @@ export function renderProjectionDecl(
       spec.fnOptions && Object.keys(spec.fnOptions).length > 0
         ? `, ${JSON.stringify(spec.fnOptions)}`
         : "";
-    // Of the table modifiers, only `.notNull()` carries to an existing view (it
-    // shapes the SELECT type); `.primaryKey()`/`.default()`/`.references()` are
-    // table-DDL concerns and invalid on a `.existing()` view declaration.
-    const notNull = spec.modifiers.includes(".notNull()") ? ".notNull()" : "";
-    // Narrow a jsonb passthrough to its value-object type — `.$type<VO>()` —
-    // mirroring the entity column, so the read row is typed (not `unknown`).
+    // #204 — of the table modifiers, only `.array()` (postgres native array
+    // element typing) and `.notNull()` (shapes the SELECT type) carry to an
+    // existing view; `.primaryKey()`/`.default()`/`.references()`/`.unique()` are
+    // table-DDL concerns and invalid on a `.existing()` view declaration. Preserve
+    // the canonical order (`.array()` before `.notNull()`). Dropping `.array()`
+    // typed a `text[]` passthrough as scalar `string`, diverging from the Kotlin port.
+    const viewModifiers = spec.modifiers
+      .filter((m) => m === ".array()" || m === ".notNull()")
+      .join("");
+    // Narrow the column to its resolved element/value type — `.$type<…>()` —
+    // mirroring the entity column (drizzle-schema.ts) so the read row is typed
+    // (not `unknown`) and an array column reads as `T[]`, not `T`. #204: the
+    // scalar-array (`.$type<string[]>()`, SQLite's json-array path) and map kinds
+    // were dropped here — only objectRef was carried.
     let dollarType: Code | string = "";
     const dtr = spec.dollarTypeRef;
-    if (dtr?.kind === "objectRef") {
+    if (dtr?.kind === "scalar") {
+      dollarType = `.$type<${dtr.tsType}${dtr.array ? "[]" : ""}>()`;
+    } else if (dtr?.kind === "objectRef") {
       const voTypeSym = imp(`${dtr.name}@${voModule(dtr.name)}`);
       dollarType = dtr.array ? code`.$type<${voTypeSym}[]>()` : code`.$type<${voTypeSym}>()`;
+    } else if (dtr?.kind === "map") {
+      dollarType = "scalar" in dtr.value
+        ? `.$type<Record<string, ${dtr.value.scalar}>>()`
+        : code`.$type<Record<string, ${imp(`${dtr.value.objectRef}@${voModule(dtr.value.objectRef)}`)}>>()`;
     }
-    return code`  ${f.name}: ${colSym}(${JSON.stringify(spec.dbName)}${optsArg})${dollarType}${notNull}`;
+    return code`  ${f.name}: ${colSym}(${JSON.stringify(spec.dbName)}${optsArg})${dollarType}${viewModifiers}`;
   });
 
   const constFieldLines: string[] = allFields.map((f) => {
