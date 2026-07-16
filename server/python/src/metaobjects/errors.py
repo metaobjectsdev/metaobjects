@@ -60,6 +60,13 @@ class ErrorCode(str, Enum):
     # is to-one at every hop (you meant passthrough).
     ERR_AMBIGUOUS_PATH = "ERR_AMBIGUOUS_PATH"
     ERR_ORIGIN_CARDINALITY = "ERR_ORIGIN_CARDINALITY"
+    # #195 — origin.computed @expr validation. ERR_UNKNOWN_EXPR_NODE: the expression
+    # tree contains a node whose kind/op/fn is not in the closed grammar (fail-closed
+    # per ADR-0023). ERR_COMPUTED_TYPE_MISMATCH: the @expr tree's inferred root type
+    # does not equal the carrying field's declared field.<subType> (a computed column's
+    # type is DERIVED from its expression, never asserted — no @convert escape).
+    ERR_UNKNOWN_EXPR_NODE = "ERR_UNKNOWN_EXPR_NODE"
+    ERR_COMPUTED_TYPE_MISMATCH = "ERR_COMPUTED_TYPE_MISMATCH"
     # FR-024 B6 — extends/origin agreement + derived-field providability. Vocabulary-
     # only here until FR-024 Phase E (the Python loader does not run these checks yet):
     # ERR_EXTENDS_ORIGIN_MISMATCH — a field's entity-nested extends (shape lineage)

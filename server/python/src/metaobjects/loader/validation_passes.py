@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 import re
+from typing import Callable, NamedTuple
 
 from ..errors import ErrorCode, MetaError
 from ..source.error_source import LoaderWarning
@@ -21,6 +22,7 @@ from ..meta.core.field.field_constants import (
     FIELD_ATTR_COERCE_DEFAULT,
     FIELD_ATTR_DEFAULT,
     FIELD_ATTR_OBJECT_REF,
+    FIELD_ATTR_REQUIRED,
     FIELD_ATTR_STORAGE,
     FIELD_ATTR_VALUE_TYPE,
     FIELD_ATTR_VALUES,
@@ -78,11 +80,21 @@ from ..meta.presentation.layout.layout_constants import (
     LAYOUT_SUBTYPE_DATA_GRID,
 )
 from ..meta.persistence.origin.origin_constants import (
+    AGG_ALL,
+    AGG_ANY,
+    AGG_COLLECT,
+    ORIGIN_ATTR_AGG,
     ORIGIN_ATTR_CONVERT,
+    ORIGIN_ATTR_DISTINCT,
+    ORIGIN_ATTR_EXPR,
+    ORIGIN_ATTR_FILTER,
     ORIGIN_ATTR_FROM,
     ORIGIN_ATTR_OF,
+    ORIGIN_ATTR_ORDER_BY,
     ORIGIN_ATTR_VIA,
     ORIGIN_SUBTYPE_AGGREGATE,
+    ORIGIN_SUBTYPE_COMPUTED,
+    ORIGIN_SUBTYPE_FIRST,
     ORIGIN_SUBTYPE_PASSTHROUGH,
 )
 from ..meta.core.relationship.relationship_constants import (
@@ -851,6 +863,169 @@ def ops_for_subtype(field_subtype: str) -> frozenset[str]:
 
 
 # ---------------------------------------------------------------------------
+# #195 — attr.expression closed grammar (validate + infer)
+# ---------------------------------------------------------------------------
+# The closed structured-expression node grammar backing origin.computed: a
+# row-level value computed from a base entity's own fields. Mirrors the TS
+# reference meta-attr-expression.ts (validateExprNode + inferExprType). Both the
+# structural well-formedness check and the entity-aware type inference are called
+# from the origin.computed validation pass (NOT the attr class), so every port
+# validates the closed grammar identically (the other ports store @expr verbatim).
+
+# Ordering keys carry an optional 'asc'|'desc' direction suffix (nulls-last is
+# pinned and carries no vocabulary). Mirrors the TS SORT_ORDER_VALUES.
+SORT_ORDER_VALUES: tuple[str, ...] = ("asc", "desc")
+
+# Expression-only op/fn names (comparisons + and/or/isNull are the shared filter
+# vocabulary; these three are new). Mirrors the TS EXPR_OP_* / EXPR_FN_COALESCE.
+EXPR_OP_IS_NOT_NULL = "isNotNull"
+EXPR_OP_NOT = "not"
+EXPR_FN_COALESCE = "coalesce"
+
+# Filter-op / compose names shared with the filter vocabulary (see query-constants.ts).
+_FILTER_OP_EQ = "eq"
+_FILTER_OP_NE = "ne"
+_FILTER_OP_GT = "gt"
+_FILTER_OP_GTE = "gte"
+_FILTER_OP_LT = "lt"
+_FILTER_OP_LTE = "lte"
+_FILTER_OP_IS_NULL = "isNull"
+_FILTER_COMPOSE_AND = "and"
+_FILTER_COMPOSE_OR = "or"
+
+_COMPARISON_OPS: frozenset[str] = frozenset(
+    {_FILTER_OP_EQ, _FILTER_OP_NE, _FILTER_OP_GT, _FILTER_OP_GTE, _FILTER_OP_LT, _FILTER_OP_LTE}
+)
+_NULL_OPS: frozenset[str] = frozenset({_FILTER_OP_IS_NULL, EXPR_OP_IS_NOT_NULL})
+_VARIADIC_LOGIC_OPS: frozenset[str] = frozenset({_FILTER_COMPOSE_AND, _FILTER_COMPOSE_OR})
+
+
+def validate_expr_node(node: object) -> list[str]:
+    """Structural well-formedness of an expression tree (known node kinds, ops,
+    arity). Returns [] when valid. No entity/type context — see infer_expr_type
+    for typing. Mirrors the TS validateExprNode."""
+    if not isinstance(node, dict):
+        kind = (
+            "null" if node is None
+            else "array" if isinstance(node, list)
+            else type(node).__name__
+        )
+        return [f"expression node must be an object, got {kind}"]
+    if "field" in node:
+        f = node["field"]
+        return [] if isinstance(f, str) and len(f) > 0 else ["expression 'field' must be a non-empty string"]
+    if "value" in node:
+        v = node["value"]
+        return (
+            []
+            if (v is None or isinstance(v, (str, int, float, bool)))
+            else ["expression 'value' must be a scalar literal (string/number/boolean/null)"]
+        )
+    if "fn" in node:
+        if node["fn"] != EXPR_FN_COALESCE:
+            return [f"unknown expression fn '{node['fn']}'"]
+        args = node.get("args")
+        if isinstance(args, list) and len(args) >= 1:
+            return [m for a in args for m in validate_expr_node(a)]
+        return [f"'{EXPR_FN_COALESCE}' requires a non-empty args array"]
+    if "op" in node:
+        op = node["op"]
+        if not isinstance(op, str):
+            return ["expression 'op' must be a string"]
+        if op in _COMPARISON_OPS:
+            if "left" in node and "right" in node:
+                return [*validate_expr_node(node["left"]), *validate_expr_node(node["right"])]
+            return [f"comparison op '{op}' requires 'left' and 'right'"]
+        if op in _NULL_OPS or op == EXPR_OP_NOT:
+            if "arg" in node:
+                return validate_expr_node(node["arg"])
+            return [f"op '{op}' requires 'arg'"]
+        if op in _VARIADIC_LOGIC_OPS:
+            args = node.get("args")
+            if isinstance(args, list) and len(args) >= 1:
+                return [m for a in args for m in validate_expr_node(a)]
+            return [f"op '{op}' requires a non-empty args array"]
+        return [f"unknown expression op '{op}'"]
+    return ["expression node must be one of {field}, {value}, {op,…}, {fn,…}"]
+
+
+def _literal_type(v: object) -> str | None:
+    """The subtype of a scalar literal (coarse: a whole number → int, else double)."""
+    # bool is a subclass of int in Python — check it FIRST (mirrors TS boolean-before-number).
+    if isinstance(v, bool):
+        return FIELD_SUBTYPE_BOOLEAN
+    if isinstance(v, str):
+        return FIELD_SUBTYPE_STRING
+    if isinstance(v, (int, float)):
+        return FIELD_SUBTYPE_INT if float(v).is_integer() else FIELD_SUBTYPE_DOUBLE
+    return None  # null literal
+
+
+class InferResult(NamedTuple):
+    """The inferred field subType of an expression's root (or None if untypable),
+    plus any type/resolution/op-legality errors (empty when it types cleanly)."""
+
+    type: str | None
+    errors: list[str]
+
+
+def infer_expr_type(
+    node: object, resolve_field: Callable[[str], str | None]
+) -> InferResult:
+    """Bottom-up type inference for a computed expression. ``resolve_field(name)``
+    returns the subType of a base-entity field ref (None = unresolvable). Comparisons /
+    null-tests / logic → boolean; a field ref → its subType; coalesce → the unified arg
+    subType. Also enforces per-operand op legality against the same bands filters use.
+    Mirrors the TS inferExprType."""
+    structural = validate_expr_node(node)
+    if structural:
+        return InferResult(None, structural)
+    n = node  # type: ignore[assignment]
+    assert isinstance(n, dict)
+
+    if "field" in n:
+        t = resolve_field(n["field"])
+        return (
+            InferResult(None, [f"expression field '{n['field']}' does not resolve to a base entity field"])
+            if t is None
+            else InferResult(t, [])
+        )
+    if "value" in n:
+        return InferResult(_literal_type(n["value"]), [])
+
+    if "fn" in n:  # coalesce
+        arg_results = [infer_expr_type(a, resolve_field) for a in n["args"]]
+        errors = [e for r in arg_results for e in r.errors]
+        arg_types = [r.type for r in arg_results if r.type is not None]
+        unified = arg_types[0] if arg_types else None
+        if unified is not None and any(t != unified for t in arg_types):
+            distinct = ", ".join(dict.fromkeys(arg_types))
+            errors.append(f"'{EXPR_FN_COALESCE}' arguments have differing types ({distinct})")
+        return InferResult(unified, errors)
+
+    op = n["op"]
+    if op in _COMPARISON_OPS:
+        left = infer_expr_type(n["left"], resolve_field)
+        right = infer_expr_type(n["right"], resolve_field)
+        errors = [*left.errors, *right.errors]
+        if left.type is not None and op not in ops_for_subtype(left.type):
+            errors.append(f"op '{op}' is not legal for a {left.type} operand")
+        return InferResult(FIELD_SUBTYPE_BOOLEAN, errors)
+    if op in _NULL_OPS:
+        return InferResult(FIELD_SUBTYPE_BOOLEAN, infer_expr_type(n["arg"], resolve_field).errors)
+    if op == EXPR_OP_NOT or op in _VARIADIC_LOGIC_OPS:
+        kids = [n["arg"]] if op == EXPR_OP_NOT else n["args"]
+        errors = []
+        for k in kids:
+            kt = infer_expr_type(k, resolve_field)
+            errors.extend(kt.errors)
+            if kt.type is not None and kt.type != FIELD_SUBTYPE_BOOLEAN:
+                errors.append(f"op '{op}' requires boolean operands, got {kt.type}")
+        return InferResult(FIELD_SUBTYPE_BOOLEAN, errors)
+    return InferResult(None, [f"unknown expression op '{op}'"])
+
+
+# ---------------------------------------------------------------------------
 # Pass: dataGrid @filter field + op validation
 # ---------------------------------------------------------------------------
 # For each object.* node, build a filterable map from effective fields.
@@ -1459,6 +1634,53 @@ def _check_passthrough_type(
     )
 
 
+def _validate_order_by_keys(
+    order_by: object,
+    related_entity: MetaData | None,
+    obj: MetaData,
+    field_name: str,
+    label: str,
+    origin_source: object,
+    errors: list[MetaError],
+) -> None:
+    """#195 — validate that ``@orderBy`` keys ('field[:asc|desc]') resolve against the
+    RELATED entity's effective fields (the entity reached via @via/@of), and that any
+    direction suffix is asc/desc. Shared by @agg:collect (element order) and origin.first
+    (row selection). A missing related entity means a prior error already fired — skip.
+    Mirrors the TS _validateOrderByKeys."""
+    if not isinstance(order_by, (list, tuple)) or related_entity is None:
+        return
+    for raw in order_by:
+        if not isinstance(raw, str):
+            continue
+        colon = raw.find(":")
+        key = raw if colon == -1 else raw[:colon]
+        direction = None if colon == -1 else raw[colon + 1:]
+        # ADR-0039: resolving — an ordering key may target an inherited field.
+        target = next(
+            (f for f in related_entity.children() if f.type == TYPE_FIELD and f.name == key),
+            None,
+        )
+        if target is None:
+            errors.append(
+                MetaError(
+                    f'{label} on {obj.name}.{field_name}: @orderBy key "{raw}" — no such '
+                    f'field "{key}" on {related_entity.name}.',
+                    ErrorCode.ERR_INVALID_ORIGIN,
+                    envelope=origin_source,
+                )
+            )
+        elif direction is not None and direction not in SORT_ORDER_VALUES:
+            errors.append(
+                MetaError(
+                    f'{label} on {obj.name}.{field_name}: @orderBy key "{raw}" — direction '
+                    f"must be one of {'|'.join(SORT_ORDER_VALUES)}.",
+                    ErrorCode.ERR_INVALID_ORIGIN,
+                    envelope=origin_source,
+                )
+            )
+
+
 def _validate_origin_paths(
     root: MetaData,
     errors: list[MetaError],
@@ -1548,13 +1770,91 @@ def _validate_origin_paths(
                             )
 
             elif origin.sub_type == ORIGIN_SUBTYPE_AGGREGATE:
+                # ADR-0039 sanctioned own throughout — origin.* never inherits (ADR-0029).
+                src = origin.source
+                agg = origin.attr(ORIGIN_ATTR_AGG)
                 of_ref = origin.attr(ORIGIN_ATTR_OF)
-                if not isinstance(of_ref, str) or not of_ref:
+                of_present = isinstance(of_ref, str) and bool(of_ref)
+                has_filter = origin.attr(ORIGIN_ATTR_FILTER) is not None
+                has_distinct = origin.attr(ORIGIN_ATTR_DISTINCT) is not None
+                order_by = origin.attr(ORIGIN_ATTR_ORDER_BY)
+                has_order_by = order_by is not None
+                is_predicate = agg in (AGG_ANY, AGG_ALL)
+                is_collect = agg == AGG_COLLECT
+
+                # --- #195 field-shape rules ---
+                # collect ⇒ the carrying field is an array (it produces a list); every
+                # other @agg reduces to a scalar (the inverse rule closes a latent hole).
+                if is_collect and not node.resolved_is_array():
+                    errors.append(MetaError(
+                        f"origin.aggregate @agg:collect on {obj.name}.{node.name}: the "
+                        f"carrying field must be isArray:true (collect produces a list).",
+                        ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
+                elif not is_collect and node.resolved_is_array():
+                    errors.append(MetaError(
+                        f"origin.aggregate @agg:{agg} on {obj.name}.{node.name}: a non-collect "
+                        f"aggregate reduces to a scalar — the field must be isArray:false.",
+                        ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
+                # any/all yield a boolean.
+                if is_predicate and node.sub_type != FIELD_SUBTYPE_BOOLEAN:
+                    errors.append(MetaError(
+                        f"origin.aggregate @agg:{agg} on {obj.name}.{node.name}: a predicate "
+                        f"quantifier yields a boolean — the field must be field.boolean.",
+                        ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
+
+                # --- #195 attr-presence rules ---
+                if has_distinct and not is_collect:
+                    errors.append(MetaError(
+                        f"origin.aggregate on {obj.name}.{node.name}: @distinct is valid only "
+                        f"on @agg:collect.",
+                        ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
+                if has_order_by and not is_collect:
+                    errors.append(MetaError(
+                        f"origin.aggregate on {obj.name}.{node.name}: @orderBy is valid only "
+                        f"on @agg:collect.",
+                        ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
+                if is_collect and has_distinct and has_order_by:
+                    errors.append(MetaError(
+                        f"origin.aggregate @agg:collect on {obj.name}.{node.name}: @orderBy and "
+                        f"@distinct are mutually exclusive — a distinct collect uses value-"
+                        f"ascending order (explicit element order is meaningful only without "
+                        f"dedupe).",
+                        ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
+
+                if is_predicate:
+                    # any/all: @filter REQUIRED, @of FORBIDDEN, @via REQUIRED (no @of to
+                    # infer the path from) + must be to-many.
+                    if not has_filter:
+                        errors.append(MetaError(
+                            f"origin.aggregate @agg:{agg} on {obj.name}.{node.name}: a predicate "
+                            f"quantifier requires @filter (the quantified predicate); \"does any "
+                            f"related row exist\" is @agg:count.",
+                            ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
+                    if of_present:
+                        errors.append(MetaError(
+                            f"origin.aggregate @agg:{agg} on {obj.name}.{node.name}: @of is "
+                            f"forbidden — a quantifier ranges over rows, not a column (the "
+                            f"predicate is @filter).",
+                            ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
+                    via = origin.attr(ORIGIN_ATTR_VIA)
+                    if not isinstance(via, str) or not via:
+                        errors.append(MetaError(
+                            f"origin.aggregate @agg:{agg} on {obj.name}.{node.name}: requires an "
+                            f"explicit @via (a quantifier has no @of to infer the path from).",
+                            ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
+                    else:
+                        hops = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
+                        if hops is not None:
+                            _check_aggregate_cardinality(hops, node.name, src, errors)
+                    continue
+
+                # --- count/sum/avg/min/max/collect: @of REQUIRED ---
+                if not of_present:
                     errors.append(
                         MetaError(
                             f"{ctx} is missing required attribute '@{ORIGIN_ATTR_OF}'",
                             ErrorCode.ERR_INVALID_ORIGIN,
-                            envelope=origin.source,
+                            envelope=src,
                         )
                     )
                     continue
@@ -1563,11 +1863,24 @@ def _validate_origin_paths(
                 of_target = _validate_entity_field_ref(
                     of_ref, ORIGIN_ATTR_OF, ctx, root, host_pkg, errors, origin, referrer
                 )
+                # #195 — collect preserves the element type: the array field's own subType
+                # must equal the @of column's subType (the #185 doctrine on the element).
+                if is_collect and of_target is not None and node.sub_type != of_target[1].sub_type:
+                    errors.append(MetaError(
+                        f"origin.aggregate @agg:collect on {obj.name}.{node.name}: field element "
+                        f"type field.{node.sub_type} does not match the @of column type "
+                        f"field.{of_target[1].sub_type} — collect preserves the element type.",
+                        ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
+                # @orderBy keys (collect only, non-distinct) resolve against the @of entity.
+                if is_collect and has_order_by and not has_distinct:
+                    _validate_order_by_keys(
+                        order_by, of_target[0] if of_target is not None else None,
+                        obj, node.name, "origin.aggregate @agg:collect", src, errors)
                 via = origin.attr(ORIGIN_ATTR_VIA)
                 if isinstance(via, str) and via:
                     hops = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
                     if hops is not None:
-                        _check_aggregate_cardinality(hops, node.name, origin.source, errors)
+                        _check_aggregate_cardinality(hops, node.name, src, errors)
                     continue
                 # FR-024 §6 — no @via on an aggregate: inference applies only when
                 # @of targets a non-base entity from a non-value host.
@@ -1579,12 +1892,12 @@ def _validate_origin_paths(
                             f"{ctx} is missing required attribute '@{ORIGIN_ATTR_VIA}' "
                             f"(aggregates require a relationship path)",
                             ErrorCode.ERR_INVALID_ORIGIN,
-                            envelope=origin.source,
+                            envelope=src,
                         )
                     )
                     continue
                 base = _derive_base_entity(
-                    obj, root, host_pkg, node.name, origin.source, errors
+                    obj, root, host_pkg, node.name, src, errors
                 )
                 if base is None:
                     continue
@@ -1594,16 +1907,112 @@ def _validate_origin_paths(
                             f"{ctx} is missing required attribute '@{ORIGIN_ATTR_VIA}' "
                             f"(aggregates require a relationship path)",
                             ErrorCode.ERR_INVALID_ORIGIN,
-                            envelope=origin.source,
+                            envelope=src,
                         )
                     )
                     continue
                 hops = _infer_via_single_hop(
                     base, of_target[0], obj, node.name, of_ref, ctx,
-                    origin.source, referrer, errors,
+                    src, referrer, errors,
                 )
                 if hops is not None:
-                    _check_aggregate_cardinality(hops, node.name, origin.source, errors)
+                    _check_aggregate_cardinality(hops, node.name, src, errors)
+
+            elif origin.sub_type == ORIGIN_SUBTYPE_COMPUTED:
+                # #195 — a row-level expression over the base entity's OWN fields. No
+                # @via/@of (strict scoping rejects them). ADR-0039 sanctioned own.
+                src = origin.source
+                expr = origin.attr(ORIGIN_ATTR_EXPR)
+                if not isinstance(expr, dict):
+                    continue  # schema requires @expr (ERR_MISSING_REQUIRED_ATTR)
+                # Structural closed-grammar check (fail-closed unknown node) runs HERE, not
+                # in the attr class, so every port validates identically (the other ports
+                # store @expr verbatim). Mirrors the TS origin.computed pass.
+                structural = validate_expr_node(expr)
+                if structural:
+                    for m in structural:
+                        errors.append(MetaError(
+                            f"origin.computed on {obj.name}.{node.name}: {m}",
+                            ErrorCode.ERR_UNKNOWN_EXPR_NODE, envelope=src))
+                    continue
+                # Type inference against the base entity's EFFECTIVE fields (ADR-0039).
+                base = _derive_base_entity(obj, root, host_pkg, node.name, src, errors)
+                if base is None:
+                    continue
+
+                def _resolve_field(name: str, _base: MetaData = base) -> str | None:
+                    for f in _base.children():
+                        if f.type == TYPE_FIELD and f.name == name:
+                            return f.sub_type
+                    return None
+
+                inferred = infer_expr_type(expr, _resolve_field)
+                if inferred.errors:
+                    for m in inferred.errors:
+                        errors.append(MetaError(
+                            f"origin.computed on {obj.name}.{node.name}: {m}",
+                            ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
+                    continue
+                if inferred.type is not None and inferred.type != node.sub_type:
+                    errors.append(MetaError(
+                        f"origin.computed on {obj.name}.{node.name}: @expr infers "
+                        f"field.{inferred.type} but the field is declared field.{node.sub_type} "
+                        f"— a computed column's type is derived from its expression and must "
+                        f"match (no @convert escape).",
+                        ErrorCode.ERR_COMPUTED_TYPE_MISMATCH, envelope=src))
+
+            elif origin.sub_type == ORIGIN_SUBTYPE_FIRST:
+                # #195 — pick one related row by @orderBy along @via, project @of.
+                # ADR-0039 sanctioned own on origin.attr; resolving on the field's @required.
+                src = origin.source
+                of_ref = origin.attr(ORIGIN_ATTR_OF)
+                of_present = isinstance(of_ref, str) and bool(of_ref)
+                if not of_present:
+                    errors.append(
+                        MetaError(
+                            f"{ctx} is missing required attribute '@{ORIGIN_ATTR_OF}'",
+                            ErrorCode.ERR_INVALID_ORIGIN,
+                            envelope=src,
+                        )
+                    )
+                    continue
+                # The carrying field must NOT be @required — an empty related set (after
+                # @filter) selects no row, so the value is null. ADR-0039: resolving.
+                if node.get_meta_attr(FIELD_ATTR_REQUIRED) is True:
+                    errors.append(MetaError(
+                        f"origin.first on {obj.name}.{node.name}: the field must not be "
+                        f"@required — an empty related set (after @filter) yields null.",
+                        ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
+                of_target = _validate_entity_field_ref(
+                    of_ref, ORIGIN_ATTR_OF, ctx, root, host_pkg, errors, origin, referrer
+                )
+                # #185 type-preservation: first projects the @of column unchanged, so the
+                # field's subType must equal the @of column's subType (first is scalar).
+                if of_target is not None and node.sub_type != of_target[1].sub_type:
+                    errors.append(MetaError(
+                        f"origin.first on {obj.name}.{node.name}: field field.{node.sub_type} "
+                        f"does not match the @of column field.{of_target[1].sub_type} — first "
+                        f"projects the column unchanged, so the types must match.",
+                        ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
+                # @via — explicit (validated + cardinality) or single-hop-unique inferred.
+                via = origin.attr(ORIGIN_ATTR_VIA)
+                if isinstance(via, str) and via:
+                    hops = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
+                    if hops is not None:
+                        _check_aggregate_cardinality(hops, node.name, src, errors)
+                elif of_target is not None and not is_value_host:
+                    base = _derive_base_entity(obj, root, host_pkg, node.name, src, errors)
+                    if base is not None and not _is_base_relation_target(of_target[0], base, obj):
+                        hops = _infer_via_single_hop(
+                            base, of_target[0], obj, node.name, of_ref, ctx, src, referrer, errors,
+                        )
+                        if hops is not None:
+                            _check_aggregate_cardinality(hops, node.name, src, errors)
+                # @orderBy keys resolve against the related (@of) entity.
+                _validate_order_by_keys(
+                    origin.attr(ORIGIN_ATTR_ORDER_BY),
+                    of_target[0] if of_target is not None else None,
+                    obj, node.name, "origin.first", src, errors)
 
 
 # ---------------------------------------------------------------------------

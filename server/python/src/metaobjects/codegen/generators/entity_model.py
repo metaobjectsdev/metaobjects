@@ -14,7 +14,14 @@ from metaobjects.meta.core.identity.identity_constants import (
     IDENTITY_ATTR_GENERATION,
 )
 from metaobjects.meta.core.validator import validator_constants as vc
-from metaobjects.shared.base_types import TYPE_VALIDATOR
+from metaobjects.meta.persistence.origin.origin_constants import (
+    AGG_ALL,
+    AGG_ANY,
+    AGG_COLLECT,
+    ORIGIN_ATTR_AGG,
+    ORIGIN_SUBTYPE_AGGREGATE,
+)
+from metaobjects.shared.base_types import TYPE_ORIGIN, TYPE_VALIDATOR
 from metaobjects.shared.separators import PACKAGE_SEP
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.constants import generated_header
@@ -221,6 +228,22 @@ def _type_expr_for_field(
     return type_expr, enum_type_name
 
 
+def origin_guaranteed_non_null(field: MetaField) -> bool:
+    """#195 — a field derived by an origin.aggregate ``@agg:any|all|collect`` is
+    COALESCE-guaranteed non-null in the synthesized view (any→false, all→true,
+    collect→[]), so its read type is non-null even when the field is not ``@required``.
+    origin.first is deliberately NOT here — an empty related set selects no row (→ null);
+    origin.computed nullability is expression-dependent, so it stays the conservative
+    nullable default. Mirrors the TS originGuaranteedNonNull."""
+    # ADR-0039 sanctioned own — origin.* never inherits (ADR-0029), so own is correct.
+    for child in field.own_children():
+        if child.type == TYPE_ORIGIN and child.sub_type == ORIGIN_SUBTYPE_AGGREGATE:
+            agg = child.attr(ORIGIN_ATTR_AGG)  # ADR-0039 own — origin attr
+            if agg in (AGG_ANY, AGG_ALL, AGG_COLLECT):
+                return True
+    return False
+
+
 def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple[str, bool]:
     """Return (source line, uses_field). Collects required imports into *imports*."""
     type_expr, enum_type_name = _type_expr_for_field(field, imports, config)
@@ -243,15 +266,20 @@ def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple
     else:
         default_expr = None
 
-    # A field is Optional only when it is neither required nor carries a @default.
-    annotation = type_expr if (required or has_default) else f"{type_expr} | None"
+    # #195 — a field derived by an origin.aggregate any|all|collect always COALESCEs
+    # to a value (any→false, all→true, collect→[]), so its read type is mandatory
+    # non-null exactly like a @required field (no `| None`, no default). origin.first /
+    # origin.computed stay the conservative nullable default.
+    mandatory = required or origin_guaranteed_non_null(field)
+    # A field is Optional only when it is neither mandatory nor carries a @default.
+    annotation = type_expr if (mandatory or has_default) else f"{type_expr} | None"
     if has_default and uses_field:
         assignment = f" = Field(default={default_expr}, {', '.join(parts)})"
     elif has_default:
         assignment = f" = {default_expr}"
-    elif required and uses_field:
+    elif mandatory and uses_field:
         assignment = f" = Field({', '.join(parts)})"
-    elif required:
+    elif mandatory:
         assignment = ""
     elif uses_field:
         assignment = f" = Field(default=None, {', '.join(parts)})"

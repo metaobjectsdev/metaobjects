@@ -28,6 +28,12 @@ ORIGIN_ATTR_CONVERT = "convert"
 
 # aggregate attrs
 ORIGIN_ATTR_AGG = "agg"
+# #195 — @agg vocabulary: the scalar reducers (count|sum|avg|min|max) plus the
+# predicate quantifiers any|all (→ boolean) and the array rollup collect (→ list).
+# Mirrors the TS AGG_ANY / AGG_ALL / AGG_COLLECT.
+AGG_ANY = "any"
+AGG_ALL = "all"
+AGG_COLLECT = "collect"
 ORIGIN_ATTR_OF = "of"
 # @filter (attr.filter object): an optional PORTABLE structured predicate scoping the
 # aggregated rows (same shape as a preset filter). On @agg:any|all it is the QUANTIFIED
