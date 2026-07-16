@@ -227,7 +227,10 @@ function renderJoin(
   const onClause = node.referenceHolder === "source"
     ? `${childAlias}.${pkCol} = ${parentAlias}.${fkCol}`
     : `${childAlias}.${fkCol} = ${parentAlias}.${pkCol}`;
-  let sql = `  LEFT OUTER JOIN ${quoteIfNeeded(table)} ${childAlias} ON ${onClause}`;
+  // #209 — join type derived from FK optionality (extract-view-spec): a required
+  // belongs-to FK → INNER (matches the hand-written INNER-join view); else LEFT OUTER.
+  const joinKw = node.joinType === "inner" ? "INNER JOIN" : "LEFT OUTER JOIN";
+  let sql = `  ${joinKw} ${quoteIfNeeded(table)} ${childAlias} ON ${onClause}`;
   for (const childJoin of node.children) {
     sql += "\n" + renderJoin(childJoin, childAlias, options);
   }

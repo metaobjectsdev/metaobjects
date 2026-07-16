@@ -16,6 +16,12 @@ export interface JoinNode {
   readonly pkColumn: string;
   /** Which side of this hop physically holds the FK: the parent (source) or the child (target). */
   readonly referenceHolder: "source" | "target";
+  /** #209 — `inner` when this is a belongs-to hop whose FK is NOT NULL (required):
+   *  the join can neither drop nor NULL-fill a base row, so it is semantically INNER
+   *  and matches the hand-written INNER-join view it stands in for. `left` otherwise —
+   *  a nullable belongs-to FK, or ANY has-many (inverse-FK) hop, where a base row with
+   *  no match must survive (aggregates COALESCE to 0, not drop the row). */
+  readonly joinType: "inner" | "left";
   /** Child joins. */
   readonly children: readonly JoinNode[];
 }

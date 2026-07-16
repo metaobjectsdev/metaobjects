@@ -49,6 +49,9 @@ import {
   columnNameFromField,
   viewNameFromProjection,
 } from "../naming.js";
+// #209 — the SAME NOT-NULL predicate that drives a column's `.notNull()` decides
+// whether a belongs-to join is INNER (required FK) vs LEFT OUTER (nullable FK).
+import { isRequired } from "../column-mapper.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import type {
   JoinNode, JoinTree, SelectColumn, SelectSpec, ViewSpec, ViewFilterClause,
@@ -428,6 +431,8 @@ interface PathStep {
   fkColumn: string;
   pkColumn: string;
   referenceHolder: "source" | "target";
+  /** #209 — derived join type: `inner` for a required belongs-to FK, else `left`. */
+  joinType: "inner" | "left";
   targetEntity: string;
 }
 
@@ -513,6 +518,18 @@ function buildJoinTree(
         const fkHolder = referenceHolder === "source" ? currentObj : target;
         const pkHolder = referenceHolder === "source" ? target : currentObj;
 
+        // #209 — a belongs-to hop (FK on the parent) whose FK is NOT NULL is
+        // semantically INNER: every base row has a match, so INNER and LEFT OUTER
+        // return the same set, and INNER matches the hand-written view it stands in
+        // for (and keeps `verify --db` fingerprints aligned). A nullable belongs-to
+        // FK, or ANY has-many hop (FK on the child — a base row may have zero
+        // children), stays LEFT OUTER so no base row is dropped.
+        const fkFieldObj = (fkHolder as MetaObject).findField(fkField);
+        const joinType: "inner" | "left" =
+          referenceHolder === "source" && fkFieldObj !== undefined && isRequired(fkFieldObj)
+            ? "inner"
+            : "left";
+
         path.push({
           entity: currentObj,
           relationship: relName,
@@ -520,6 +537,7 @@ function buildJoinTree(
           fkColumn: joinColumnFor(fkHolder, fkField, ctx),
           pkColumn: joinColumnFor(pkHolder, resolvedPkField, ctx),
           referenceHolder,
+          joinType,
           targetEntity: stripPackage(targetName),
         });
         currentObj = target;
@@ -552,6 +570,7 @@ function buildJoinTree(
       fkColumn: step.fkColumn,
       pkColumn: step.pkColumn,
       referenceHolder: step.referenceHolder,
+      joinType: step.joinType,
       children: Array.from(node.children.values()).map(toJoinNode),
     };
   }

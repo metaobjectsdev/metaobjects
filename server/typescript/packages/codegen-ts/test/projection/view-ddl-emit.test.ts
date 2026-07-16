@@ -16,6 +16,7 @@ const programSummarySpec: ViewSpec = {
         fkColumn: "program_id",
         pkColumn: "id",
         referenceHolder: "target",
+        joinType: "left",
         children: [
           {
             relationship: "workouts",
@@ -25,6 +26,7 @@ const programSummarySpec: ViewSpec = {
             fkColumn: "week_id",
             pkColumn: "id",
             referenceHolder: "target",
+            joinType: "left",
             children: [],
           },
         ],
@@ -106,6 +108,7 @@ describe("emitViewDdl — non-id parent join (pkColumn)", () => {
             fkColumn: "customer_email",
             pkColumn: "email",  // non-id join
             referenceHolder: "target",
+            joinType: "left",
             children: [],
           },
         ],
@@ -145,7 +148,7 @@ describe("emitViewDdl — #195 predicate quantifier (any/all)", () => {
       baseAlias: "s",
       joins: [
         { relationship: "turns", targetEntity: "Turn", alias: "t", cardinality: "many",
-          fkColumn: "session_id", pkColumn: "id", referenceHolder: "target", children: [] },
+          fkColumn: "session_id", pkColumn: "id", referenceHolder: "target", joinType: "left", children: [] },
       ],
     },
     selectSpec: {
@@ -192,7 +195,7 @@ describe("emitViewDdl — #195 array rollup (collect)", () => {
       baseAlias: "o",
       joins: [
         { relationship: "items", targetEntity: "Item", alias: "i", cardinality: "many",
-          fkColumn: "order_id", pkColumn: "id", referenceHolder: "target", children: [] },
+          fkColumn: "order_id", pkColumn: "id", referenceHolder: "target", joinType: "left", children: [] },
       ],
     },
     selectSpec: {
@@ -319,7 +322,7 @@ describe("emitViewDdl — #195 correlated first (argmax-then-project)", () => {
       joinTree: {
         baseEntity: "Parent", baseAlias: "p",
         joins: [ { relationship: "childAs", targetEntity: "ChildA", alias: "c1", cardinality: "many",
-          fkColumn: "parent_id", pkColumn: "id", referenceHolder: "target", children: [] } ],
+          fkColumn: "parent_id", pkColumn: "id", referenceHolder: "target", joinType: "left", children: [] } ],
       },
       selectSpec: {
         columns: [
@@ -359,6 +362,7 @@ describe("emitViewDdl — belongs-to (reference on source)", () => {
             fkColumn: "program_id",
             pkColumn: "id",
             referenceHolder: "source",
+            joinType: "left",
             children: [],
           },
         ],
