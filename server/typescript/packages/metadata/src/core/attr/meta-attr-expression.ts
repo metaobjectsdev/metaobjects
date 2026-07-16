@@ -215,10 +215,15 @@ export class ExpressionAttr extends MetaAttr {
   }
 
   override validateValue(value: AttrValue): ValueError[] {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      return [{ message: `attribute '@${this.name}' must be of type 'expression' but got ${runtimeTypeName(value)}` }];
-    }
-    return validateExprNode(value).map((message) => ({ message }));
+    // Only shape (must be an object) is checked here — the CLOSED node grammar
+    // (fail-closed unknown op/fn/kind → ERR_UNKNOWN_EXPR_NODE) and entity-aware
+    // type inference are validated in the origin.computed validation pass, where
+    // the base entity's fields are known. Keeping the deep check out of the attr
+    // class matches the cross-port contract (C#/Java/Python store @expr verbatim)
+    // and mirrors FilterAttr, which likewise validates only shape.
+    return typeof value === "object" && value !== null && !Array.isArray(value)
+      ? []
+      : [{ message: `attribute '@${this.name}' must be of type 'expression' but got ${runtimeTypeName(value)}` }];
   }
 }
 

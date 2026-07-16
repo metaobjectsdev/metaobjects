@@ -72,6 +72,7 @@ import {
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_MAP,
+  FIELD_ATTR_REQUIRED,
   FIELD_ATTR_VALUE_TYPE,
   FIELD_SUBTYPE_STRING,
   FIELD_SUBTYPE_DATE,
@@ -88,12 +89,31 @@ import {
 import {
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
+  ORIGIN_SUBTYPE_COMPUTED,
+  ORIGIN_SUBTYPE_FIRST,
   ORIGIN_PASSTHROUGH_ATTR_FROM,
   ORIGIN_PASSTHROUGH_ATTR_VIA,
   ORIGIN_PASSTHROUGH_ATTR_CONVERT,
+  ORIGIN_AGGREGATE_ATTR_AGG,
   ORIGIN_AGGREGATE_ATTR_OF,
   ORIGIN_AGGREGATE_ATTR_VIA,
+  ORIGIN_AGGREGATE_ATTR_FILTER,
+  ORIGIN_ATTR_DISTINCT,
+  ORIGIN_ATTR_ORDER_BY,
+  ORIGIN_COMPUTED_ATTR_EXPR,
+  ORIGIN_FIRST_ATTR_OF,
+  ORIGIN_FIRST_ATTR_VIA,
+  ORIGIN_FIRST_ATTR_FILTER,
+  AGG_ANY,
+  AGG_ALL,
+  AGG_COLLECT,
 } from "../persistence/origin/origin-constants.js";
+import {
+  inferExprType,
+  validateExprNode,
+  type ExprNode,
+} from "../core/attr/meta-attr-expression.js";
+import { SORT_ORDER_VALUES } from "../core/query/query-constants.js";
 import {
   RELATIONSHIP_ATTR_OBJECT_REF,
   RELATIONSHIP_ATTR_CARDINALITY,
@@ -959,6 +979,49 @@ function _checkPassthroughType(
   );
 }
 
+/**
+ * #195 — validate `@orderBy` keys ('field[:asc|desc]') resolve against the
+ * RELATED entity's effective fields (the entity reached via `@via`/`@of`), and
+ * that any direction suffix is `asc`/`desc`. Null placement is pinned (nulls-last)
+ * and carries no vocabulary. Shared by `@agg:collect` (element order) and
+ * `origin.first` (row selection). A missing related entity means a prior error
+ * already fired — skip silently.
+ */
+function _validateOrderByKeys(
+  orderBy: unknown,
+  relatedEntity: MetaData | undefined,
+  obj: MetaData,
+  fieldName: string,
+  label: string,
+  originSource: ErrorSource,
+  errors: ParseError[],
+): void {
+  if (!Array.isArray(orderBy) || relatedEntity === undefined) return;
+  for (const raw of orderBy) {
+    if (typeof raw !== "string") continue;
+    const colonIdx = raw.indexOf(":");
+    const key = colonIdx === -1 ? raw : raw.slice(0, colonIdx);
+    const dir = colonIdx === -1 ? undefined : raw.slice(colonIdx + 1);
+    // ADR-0039: resolving — an ordering key may target an inherited field.
+    const target = relatedEntity.children().find((f) => f.type === TYPE_FIELD && f.name === key);
+    if (target === undefined) {
+      errors.push(
+        new ParseError(
+          `${label} on ${obj.name}.${fieldName}: @orderBy key "${raw}" — no such field "${key}" on ${relatedEntity.name}.`,
+          { code: "ERR_INVALID_ORIGIN", source: originSource },
+        ),
+      );
+    } else if (dir !== undefined && !(SORT_ORDER_VALUES as readonly string[]).includes(dir)) {
+      errors.push(
+        new ParseError(
+          `${label} on ${obj.name}.${fieldName}: @orderBy key "${raw}" — direction must be one of ${SORT_ORDER_VALUES.join("|")}.`,
+          { code: "ERR_INVALID_ORIGIN", source: originSource },
+        ),
+      );
+    }
+  }
+}
+
 export function validateOriginPaths(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
   // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
@@ -1020,26 +1083,106 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           }
         } else if (origin.subType === ORIGIN_SUBTYPE_AGGREGATE) {
           // ADR-0039: own — origin.* never inherits (ADR-0029).
+          const src = origin.source;
+          const agg = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_AGG);
           const of_ = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_OF);
-          if (typeof of_ !== "string" || of_ === "") {
-            errors.push(
-              new ParseError(
-                `origin.aggregate on ${obj.name}.${field.name}: missing @of.`,
-                { code: "ERR_INVALID_ORIGIN", source: origin.source },
-              ),
-            );
+          const ofPresent = typeof of_ === "string" && of_ !== "";
+          const hasFilter = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_FILTER) !== undefined;
+          const hasDistinct = origin.ownAttr(ORIGIN_ATTR_DISTINCT) !== undefined;
+          const orderBy = origin.ownAttr(ORIGIN_ATTR_ORDER_BY);
+          const hasOrderBy = orderBy !== undefined;
+          const isPredicate = agg === AGG_ANY || agg === AGG_ALL;
+          const isCollect = agg === AGG_COLLECT;
+
+          // --- #195 field-shape rules ---
+          // collect ⇒ the carrying field is an array (it produces a list); every
+          // other @agg reduces to a scalar (the inverse rule closes a latent hole).
+          if (isCollect && !field.resolvedIsArray()) {
+            errors.push(new ParseError(
+              `origin.aggregate @agg:collect on ${obj.name}.${field.name}: the carrying field must be isArray:true (collect produces a list).`,
+              { code: "ERR_INVALID_ORIGIN", source: src }));
+          } else if (!isCollect && field.resolvedIsArray()) {
+            errors.push(new ParseError(
+              `origin.aggregate @agg:${String(agg)} on ${obj.name}.${field.name}: a non-collect aggregate reduces to a scalar — the field must be isArray:false.`,
+              { code: "ERR_INVALID_ORIGIN", source: src }));
+          }
+          // any/all yield a boolean.
+          if (isPredicate && field.subType !== FIELD_SUBTYPE_BOOLEAN) {
+            errors.push(new ParseError(
+              `origin.aggregate @agg:${String(agg)} on ${obj.name}.${field.name}: a predicate quantifier yields a boolean — the field must be field.boolean.`,
+              { code: "ERR_INVALID_ORIGIN", source: src }));
+          }
+
+          // --- #195 attr-presence rules ---
+          if (hasDistinct && !isCollect) {
+            errors.push(new ParseError(
+              `origin.aggregate on ${obj.name}.${field.name}: @distinct is valid only on @agg:collect.`,
+              { code: "ERR_INVALID_ORIGIN", source: src }));
+          }
+          if (hasOrderBy && !isCollect) {
+            errors.push(new ParseError(
+              `origin.aggregate on ${obj.name}.${field.name}: @orderBy is valid only on @agg:collect.`,
+              { code: "ERR_INVALID_ORIGIN", source: src }));
+          }
+          if (isCollect && hasDistinct && hasOrderBy) {
+            errors.push(new ParseError(
+              `origin.aggregate @agg:collect on ${obj.name}.${field.name}: @orderBy and @distinct are mutually exclusive — a distinct collect uses value-ascending order (explicit element order is meaningful only without dedupe).`,
+              { code: "ERR_INVALID_ORIGIN", source: src }));
+          }
+
+          if (isPredicate) {
+            // --- any/all: @filter REQUIRED, @of FORBIDDEN, @via REQUIRED (no @of
+            // to infer the path from) + must be to-many. ---
+            if (!hasFilter) {
+              errors.push(new ParseError(
+                `origin.aggregate @agg:${String(agg)} on ${obj.name}.${field.name}: a predicate quantifier requires @filter (the quantified predicate); "does any related row exist" is @agg:count.`,
+                { code: "ERR_INVALID_ORIGIN", source: src }));
+            }
+            if (ofPresent) {
+              errors.push(new ParseError(
+                `origin.aggregate @agg:${String(agg)} on ${obj.name}.${field.name}: @of is forbidden — a quantifier ranges over rows, not a column (the predicate is @filter).`,
+                { code: "ERR_INVALID_ORIGIN", source: src }));
+            }
+            const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA);
+            if (typeof via !== "string" || via === "") {
+              errors.push(new ParseError(
+                `origin.aggregate @agg:${String(agg)} on ${obj.name}.${field.name}: requires an explicit @via (a quantifier has no @of to infer the path from).`,
+                { code: "ERR_INVALID_ORIGIN", source: src }));
+            } else {
+              const hops = _validateViaPath(via, root, obj, field.name, src, errors);
+              if (hops !== undefined) _checkAggregateCardinality(hops, obj, field.name, src, errors);
+            }
+            continue;
+          }
+
+          // --- count/sum/avg/min/max/collect: @of REQUIRED ---
+          if (!ofPresent) {
+            errors.push(new ParseError(
+              `origin.aggregate on ${obj.name}.${field.name}: missing @of.`,
+              { code: "ERR_INVALID_ORIGIN", source: src }));
             continue;
           }
           // NOTE (FR-024 B6): NO extends/origin agreement check on aggregates —
           // an aggregate computes something new (count/sum/…); spec §4 defines
           // agreement for passthrough only.
-          const ofTarget = _validateFromPath(of_, root, obj, field.name, origin.source, errors, "origin.aggregate.@of");
+          const ofTarget = _validateFromPath(of_, root, obj, field.name, src, errors, "origin.aggregate.@of");
+          // #195 — collect preserves the element type: the array field's own subType
+          // must equal the @of column's subType (the #185 doctrine on the element).
+          if (isCollect && ofTarget !== undefined && field.subType !== ofTarget.field.subType) {
+            errors.push(new ParseError(
+              `origin.aggregate @agg:collect on ${obj.name}.${field.name}: field element type field.${field.subType} does not match the @of column type field.${ofTarget.field.subType} — collect preserves the element type.`,
+              { code: "ERR_INVALID_ORIGIN", source: src }));
+          }
+          // @orderBy keys (collect only, non-distinct) resolve against the @of entity.
+          if (isCollect && hasOrderBy && !hasDistinct) {
+            _validateOrderByKeys(orderBy, ofTarget?.entity, obj, field.name, "origin.aggregate @agg:collect", src, errors);
+          }
           // ADR-0039: own — origin.* never inherits (ADR-0029).
           const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA);
           if (typeof via === "string" && via !== "") {
-            const hops = _validateViaPath(via, root, obj, field.name, origin.source, errors);
+            const hops = _validateViaPath(via, root, obj, field.name, src, errors);
             if (hops !== undefined) {
-              _checkAggregateCardinality(hops, obj, field.name, origin.source, errors);
+              _checkAggregateCardinality(hops, obj, field.name, src, errors);
             }
             continue;
           }
@@ -1051,29 +1194,110 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             errors.push(
               new ParseError(
                 `origin.aggregate on ${obj.name}.${field.name}: missing @via (aggregates require a relationship path).`,
-                { code: "ERR_INVALID_ORIGIN", source: origin.source },
+                { code: "ERR_INVALID_ORIGIN", source: src },
               ),
             );
             continue;
           }
-          const base = _deriveBaseEntity(obj, root, field.name, origin.source, errors);
+          const base = _deriveBaseEntity(obj, root, field.name, src, errors);
           if (base === undefined) continue; // base underivable — error already pushed
           if (_isBaseRelationTarget(ofTarget.entity, base, obj)) {
             errors.push(
               new ParseError(
                 `origin.aggregate on ${obj.name}.${field.name}: missing @via (aggregates require a relationship path).`,
-                { code: "ERR_INVALID_ORIGIN", source: origin.source },
+                { code: "ERR_INVALID_ORIGIN", source: src },
               ),
             );
             continue;
           }
           const hops = _inferViaSingleHop(
             base, ofTarget.entity, obj, field.name, of_,
-            "origin.aggregate.@of", origin.source, errors,
+            "origin.aggregate.@of", src, errors,
           );
           if (hops !== undefined) {
-            _checkAggregateCardinality(hops, obj, field.name, origin.source, errors);
+            _checkAggregateCardinality(hops, obj, field.name, src, errors);
           }
+        } else if (origin.subType === ORIGIN_SUBTYPE_COMPUTED) {
+          // #195 — a row-level expression over the base entity's OWN fields. No
+          // @via/@of (strict scoping already rejects them as ERR_UNKNOWN_ATTR).
+          const src = origin.source;
+          const expr = origin.ownAttr(ORIGIN_COMPUTED_ATTR_EXPR);
+          if (typeof expr !== "object" || expr === null) continue; // schema requires @expr (ERR_MISSING_REQUIRED_ATTR)
+          // Structural grammar (fail-closed unknown node) is validated HERE, not in
+          // the attr class, so every port validates the closed grammar identically
+          // (the other ports store @expr verbatim; C#/Python/Java mirror this pass).
+          const structural = validateExprNode(expr as ExprNode);
+          if (structural.length > 0) {
+            for (const m of structural) {
+              errors.push(new ParseError(
+                `origin.computed on ${obj.name}.${field.name}: ${m}`,
+                { code: "ERR_UNKNOWN_EXPR_NODE", source: src }));
+            }
+            continue;
+          }
+          // Type inference against the base entity's EFFECTIVE fields (ADR-0039).
+          const base = _deriveBaseEntity(obj, root, field.name, src, errors);
+          if (base === undefined) continue;
+          const resolveField = (name: string): string | undefined =>
+            base.children().find((f) => f.type === TYPE_FIELD && f.name === name)?.subType;
+          const inferred = inferExprType(expr as ExprNode, resolveField);
+          if (inferred.errors.length > 0) {
+            for (const m of inferred.errors) {
+              errors.push(new ParseError(
+                `origin.computed on ${obj.name}.${field.name}: ${m}`,
+                { code: "ERR_INVALID_ORIGIN", source: src }));
+            }
+            continue;
+          }
+          if (inferred.type !== undefined && inferred.type !== field.subType) {
+            errors.push(new ParseError(
+              `origin.computed on ${obj.name}.${field.name}: @expr infers field.${inferred.type} but the field is declared field.${field.subType} — a computed column's type is derived from its expression and must match (no @convert escape).`,
+              { code: "ERR_COMPUTED_TYPE_MISMATCH", source: src }));
+          }
+        } else if (origin.subType === ORIGIN_SUBTYPE_FIRST) {
+          // #195 — pick one related row by @orderBy along @via, project @of.
+          const src = origin.source;
+          const of_ = origin.ownAttr(ORIGIN_FIRST_ATTR_OF);
+          const ofPresent = typeof of_ === "string" && of_ !== "";
+          if (!ofPresent) {
+            errors.push(new ParseError(
+              `origin.first on ${obj.name}.${field.name}: missing @of.`,
+              { code: "ERR_INVALID_ORIGIN", source: src }));
+            continue;
+          }
+          // The carrying field must NOT be @required — an empty related set (after
+          // @filter) selects no row, so the value is null. ADR-0039: resolving.
+          if (field.attr(FIELD_ATTR_REQUIRED) === true) {
+            errors.push(new ParseError(
+              `origin.first on ${obj.name}.${field.name}: the field must not be @required — an empty related set (after @filter) yields null.`,
+              { code: "ERR_INVALID_ORIGIN", source: src }));
+          }
+          const ofTarget = _validateFromPath(of_, root, obj, field.name, src, errors, "origin.first.@of");
+          // #185 type-preservation: first projects the @of column unchanged, so the
+          // field's subType must equal the @of column's subType (first is scalar).
+          if (ofTarget !== undefined && field.subType !== ofTarget.field.subType) {
+            errors.push(new ParseError(
+              `origin.first on ${obj.name}.${field.name}: field field.${field.subType} does not match the @of column field.${ofTarget.field.subType} — first projects the column unchanged, so the types must match.`,
+              { code: "ERR_INVALID_ORIGIN", source: src }));
+          }
+          // @via — explicit (validated + cardinality) or single-hop-unique inferred.
+          const via = origin.ownAttr(ORIGIN_FIRST_ATTR_VIA);
+          if (typeof via === "string" && via !== "") {
+            const hops = _validateViaPath(via, root, obj, field.name, src, errors);
+            if (hops !== undefined) _checkAggregateCardinality(hops, obj, field.name, src, errors);
+          } else if (ofTarget !== undefined && !isValueHost) {
+            const base = _deriveBaseEntity(obj, root, field.name, src, errors);
+            if (base !== undefined && !_isBaseRelationTarget(ofTarget.entity, base, obj)) {
+              const hops = _inferViaSingleHop(
+                base, ofTarget.entity, obj, field.name, of_,
+                "origin.first.@of", src, errors);
+              if (hops !== undefined) _checkAggregateCardinality(hops, obj, field.name, src, errors);
+            }
+          }
+          // @orderBy keys resolve against the related (@of) entity.
+          _validateOrderByKeys(
+            origin.ownAttr(ORIGIN_ATTR_ORDER_BY), ofTarget?.entity,
+            obj, field.name, "origin.first", src, errors);
         }
       }
     }

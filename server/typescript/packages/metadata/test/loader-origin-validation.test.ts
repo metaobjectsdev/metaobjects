@@ -1003,3 +1003,262 @@ describe("FR-024 B6 — derived-field providability (ERR_DERIVED_FIELD_NO_READ_S
     expect(result.errors).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// #195 — four projection read-model origin capabilities.
+// ---------------------------------------------------------------------------
+
+// A Session/Turn graph + a projection carrying one origin field (configurable).
+function sessionModel(originField: unknown) {
+  return [
+    {
+      "object.entity": {
+        name: "Session",
+        children: [
+          { "field.long": { name: "id" } },
+          { "relationship.association": { name: "turns", "@objectRef": "Turn", "@cardinality": "many" } },
+          { "identity.primary": { "name": "id", "@fields": "id" } },
+        ],
+      },
+    },
+    {
+      "object.entity": {
+        name: "Turn",
+        children: [
+          { "field.long": { name: "id" } },
+          { "field.boolean": { name: "success" } },
+          { "field.string": { name: "label" } },
+          { "field.timestamp": { name: "createdAt" } },
+          { "identity.primary": { "name": "id", "@fields": "id" } },
+        ],
+      },
+    },
+    {
+      "object.projection": {
+        name: "SessionSummary",
+        children: [
+          { "source.rdb": { "@kind": "view", "@table": "v_session" } },
+          { "field.long": { name: "id", extends: "Session.id" } },
+          originField,
+          { "identity.primary": { "name": "id", extends: "Session.id" } },
+        ],
+      },
+    },
+  ];
+}
+
+describe("#195 origin.aggregate @agg any|all validation", () => {
+  test("any: boolean field + @filter + @via, no @of → no error", async () => {
+    const result = await load(sessionModel({
+      "field.boolean": { name: "hasError", children: [
+        { "origin.aggregate": { "@agg": "any", "@via": "Session.turns", "@filter": { success: false } } },
+      ] },
+    }));
+    expect(result.errors).toEqual([]);
+  });
+
+  test("all: vacuous-truth quantifier is likewise valid", async () => {
+    const result = await load(sessionModel({
+      "field.boolean": { name: "allOk", children: [
+        { "origin.aggregate": { "@agg": "all", "@via": "Session.turns", "@filter": { success: true } } },
+      ] },
+    }));
+    expect(result.errors).toEqual([]);
+  });
+
+  test("any without @filter → ERR_INVALID_ORIGIN", async () => {
+    const result = await loadRaw(sessionModel({
+      "field.boolean": { name: "hasError", children: [
+        { "origin.aggregate": { "@agg": "any", "@via": "Session.turns" } },
+      ] },
+    }));
+    expect(result.errors.some((e) => e.code === "ERR_INVALID_ORIGIN" && /@filter/.test(e.message))).toBe(true);
+  });
+
+  test("any WITH @of → ERR_INVALID_ORIGIN (@of forbidden for quantifiers)", async () => {
+    const result = await loadRaw(sessionModel({
+      "field.boolean": { name: "hasError", children: [
+        { "origin.aggregate": { "@agg": "any", "@via": "Session.turns", "@filter": { success: false }, "@of": "Turn.success" } },
+      ] },
+    }));
+    expect(result.errors.some((e) => e.code === "ERR_INVALID_ORIGIN" && /@of/.test(e.message))).toBe(true);
+  });
+
+  test("any on a non-boolean field → ERR_INVALID_ORIGIN", async () => {
+    const result = await loadRaw(sessionModel({
+      "field.string": { name: "hasError", children: [
+        { "origin.aggregate": { "@agg": "any", "@via": "Session.turns", "@filter": { success: false } } },
+      ] },
+    }));
+    expect(result.errors.some((e) => e.code === "ERR_INVALID_ORIGIN" && /boolean/.test(e.message))).toBe(true);
+  });
+
+  test("any on an isArray field → ERR_INVALID_ORIGIN (inverse rule)", async () => {
+    const result = await loadRaw(sessionModel({
+      "field.boolean": { name: "hasError", isArray: true, children: [
+        { "origin.aggregate": { "@agg": "any", "@via": "Session.turns", "@filter": { success: false } } },
+      ] },
+    }));
+    expect(result.errors.some((e) => e.code === "ERR_INVALID_ORIGIN" && /isArray|array/.test(e.message))).toBe(true);
+  });
+});
+
+describe("#195 origin.aggregate @agg collect validation", () => {
+  test("collect: isArray field + @of + @via → no error", async () => {
+    const result = await load(sessionModel({
+      "field.string": { name: "labels", isArray: true, children: [
+        { "origin.aggregate": { "@agg": "collect", "@of": "Turn.label", "@via": "Session.turns", "@distinct": true } },
+      ] },
+    }));
+    expect(result.errors).toEqual([]);
+  });
+
+  test("collect on a non-array field → ERR_INVALID_ORIGIN", async () => {
+    const result = await loadRaw(sessionModel({
+      "field.string": { name: "labels", children: [
+        { "origin.aggregate": { "@agg": "collect", "@of": "Turn.label", "@via": "Session.turns" } },
+      ] },
+    }));
+    expect(result.errors.some((e) => e.code === "ERR_INVALID_ORIGIN" && /isArray|array/.test(e.message))).toBe(true);
+  });
+
+  test("collect element type must match @of subtype → ERR_INVALID_ORIGIN", async () => {
+    const result = await loadRaw(sessionModel({
+      "field.long": { name: "labels", isArray: true, children: [
+        { "origin.aggregate": { "@agg": "collect", "@of": "Turn.label", "@via": "Session.turns" } },
+      ] },
+    }));
+    expect(result.errors.some((e) => e.code === "ERR_INVALID_ORIGIN" && /type|subType|match/i.test(e.message))).toBe(true);
+  });
+
+  test("@distinct on a non-collect aggregate → ERR_INVALID_ORIGIN", async () => {
+    const result = await loadRaw(sessionModel({
+      "field.long": { name: "turnCount", children: [
+        { "origin.aggregate": { "@agg": "count", "@of": "Turn.id", "@via": "Session.turns", "@distinct": true } },
+      ] },
+    }));
+    expect(result.errors.some((e) => e.code === "ERR_INVALID_ORIGIN" && /distinct/.test(e.message))).toBe(true);
+  });
+
+  test("@orderBy WITH @distinct on collect → ERR_INVALID_ORIGIN", async () => {
+    const result = await loadRaw(sessionModel({
+      "field.string": { name: "labels", isArray: true, children: [
+        { "origin.aggregate": { "@agg": "collect", "@of": "Turn.label", "@via": "Session.turns", "@distinct": true, "@orderBy": ["label:asc"] } },
+      ] },
+    }));
+    expect(result.errors.some((e) => e.code === "ERR_INVALID_ORIGIN" && /orderBy/.test(e.message))).toBe(true);
+  });
+
+  test("non-collect aggregate on an isArray field → ERR_INVALID_ORIGIN (inverse rule)", async () => {
+    const result = await loadRaw(sessionModel({
+      "field.long": { name: "turnCount", isArray: true, children: [
+        { "origin.aggregate": { "@agg": "count", "@of": "Turn.id", "@via": "Session.turns" } },
+      ] },
+    }));
+    expect(result.errors.some((e) => e.code === "ERR_INVALID_ORIGIN" && /isArray|array/.test(e.message))).toBe(true);
+  });
+});
+
+describe("#195 origin.computed validation", () => {
+  // A computed field references the base entity's OWN fields (no @via).
+  function computedModel(field: unknown) {
+    return [
+      {
+        "object.entity": {
+          name: "LlmCall",
+          children: [
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "payloadJson" } },
+            { "field.long": { name: "durationMs" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } },
+          ],
+        },
+      },
+      {
+        "object.projection": {
+          name: "LlmCallSummary",
+          children: [
+            { "source.rdb": { "@kind": "view", "@table": "v_llm" } },
+            { "field.long": { name: "id", extends: "LlmCall.id" } },
+            field,
+            { "identity.primary": { "name": "id", extends: "LlmCall.id" } },
+          ],
+        },
+      },
+    ];
+  }
+
+  test("isNotNull over a base field → boolean field, no error", async () => {
+    const result = await load(computedModel({
+      "field.boolean": { name: "hasPayload", children: [
+        { "origin.computed": { "@expr": { op: "isNotNull", arg: { field: "payloadJson" } } } },
+      ] },
+    }));
+    expect(result.errors).toEqual([]);
+  });
+
+  test("inferred boolean vs declared string field → ERR_COMPUTED_TYPE_MISMATCH", async () => {
+    const result = await loadRaw(computedModel({
+      "field.string": { name: "hasPayload", children: [
+        { "origin.computed": { "@expr": { op: "isNotNull", arg: { field: "payloadJson" } } } },
+      ] },
+    }));
+    expect(result.errors.some((e) => e.code === "ERR_COMPUTED_TYPE_MISMATCH")).toBe(true);
+  });
+
+  test("field ref to a non-existent base field → error", async () => {
+    const result = await loadRaw(computedModel({
+      "field.boolean": { name: "hasPayload", children: [
+        { "origin.computed": { "@expr": { op: "isNotNull", arg: { field: "nope" } } } },
+      ] },
+    }));
+    expect(result.errors.some((e) => /nope/.test(e.message) && (e.code === "ERR_INVALID_ORIGIN" || e.code === "ERR_UNKNOWN_EXPR_NODE"))).toBe(true);
+  });
+
+  test("unknown expression op → ERR_UNKNOWN_EXPR_NODE", async () => {
+    const result = await loadRaw(computedModel({
+      "field.boolean": { name: "hasPayload", children: [
+        { "origin.computed": { "@expr": { op: "regexp", arg: { field: "payloadJson" } } } },
+      ] },
+    }));
+    expect(result.errors.some((e) => e.code === "ERR_UNKNOWN_EXPR_NODE")).toBe(true);
+  });
+});
+
+describe("#195 origin.first validation", () => {
+  test("first: @of + @via + @orderBy + @filter, non-required field → no error", async () => {
+    const result = await load(sessionModel({
+      "field.string": { name: "latestLabel", children: [
+        { "origin.first": { "@of": "Turn.label", "@via": "Session.turns", "@orderBy": ["createdAt:desc"], "@filter": { success: true } } },
+      ] },
+    }));
+    expect(result.errors).toEqual([]);
+  });
+
+  test("first on a @required field → ERR_INVALID_ORIGIN (empty set → null)", async () => {
+    const result = await loadRaw(sessionModel({
+      "field.string": { name: "latestLabel", "@required": true, children: [
+        { "origin.first": { "@of": "Turn.label", "@via": "Session.turns", "@orderBy": ["createdAt:desc"] } },
+      ] },
+    }));
+    expect(result.errors.some((e) => e.code === "ERR_INVALID_ORIGIN" && /required/.test(e.message))).toBe(true);
+  });
+
+  test("first @of type-preservation: field.long vs @of string → ERR_INVALID_ORIGIN", async () => {
+    const result = await loadRaw(sessionModel({
+      "field.long": { name: "latestLabel", children: [
+        { "origin.first": { "@of": "Turn.label", "@via": "Session.turns", "@orderBy": ["createdAt:desc"] } },
+      ] },
+    }));
+    expect(result.errors.some((e) => e.code === "ERR_INVALID_ORIGIN" && /type|subType|match/i.test(e.message))).toBe(true);
+  });
+
+  test("first @orderBy key that does not resolve on the related entity → ERR_INVALID_ORIGIN", async () => {
+    const result = await loadRaw(sessionModel({
+      "field.string": { name: "latestLabel", children: [
+        { "origin.first": { "@of": "Turn.label", "@via": "Session.turns", "@orderBy": ["nope:desc"] } },
+      ] },
+    }));
+    expect(result.errors.some((e) => e.code === "ERR_INVALID_ORIGIN" && /nope|orderBy/.test(e.message))).toBe(true);
+  });
+});
