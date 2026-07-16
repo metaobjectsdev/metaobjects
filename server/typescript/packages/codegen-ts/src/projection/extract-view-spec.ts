@@ -525,10 +525,15 @@ function buildJoinTree(
         // FK, or ANY has-many hop (FK on the child — a base row may have zero
         // children), stays LEFT OUTER so no base row is dropped.
         const fkFieldObj = (fkHolder as MetaObject).findField(fkField);
+        const selfInner =
+          referenceHolder === "source" && fkFieldObj !== undefined && isRequired(fkFieldObj);
+        // Nested-chain safety: joins render flat + left-associative, so an INNER hop
+        // BELOW any LEFT ancestor drops the base row (its ON references a column the
+        // LEFT ancestor NULLed). An INNER only survives when the ENTIRE ancestor chain
+        // is INNER; otherwise demote to LEFT (lossless — under a LEFT ancestor, LEFT is
+        // the correct type). `path` holds this chain's ancestor hops accumulated so far.
         const joinType: "inner" | "left" =
-          referenceHolder === "source" && fkFieldObj !== undefined && isRequired(fkFieldObj)
-            ? "inner"
-            : "left";
+          selfInner && path.every((prior) => prior.joinType === "inner") ? "inner" : "left";
 
         path.push({
           entity: currentObj,
