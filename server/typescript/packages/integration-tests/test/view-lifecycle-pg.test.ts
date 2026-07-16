@@ -199,6 +199,45 @@ describe("view lifecycle — real Postgres", () => {
     await assertConverged(second.expected);
   });
 
+  // #213 — a write-through ENTITY (FR-024 §7 read-view): the writable table carries
+  // NO derived column, its replica view IS emitted, and the whole thing converges on
+  // a real engine (emit → apply → introspect → re-diff EMPTY). This gates BOTH holes
+  // end-to-end: hole 1 (derived-field leak into the table) and hole 2 (view never
+  // emitted). literal naming strategy → column names are the field names verbatim.
+  test("CONVERGENCE: a write-through entity's table (no derived col) + replica view migrate once, then NO-OP (#213)", async () => {
+    const m = JSON.stringify({ "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Customer", children: [
+        { "source.rdb": { "@table": "customers" } },
+        { "field.long": { name: "id" } },
+        { "field.string": { name: "name" } },
+        { "identity.primary": { name: "pk", "@fields": "id" } },
+      ] } },
+      { "object.entity": { name: "Order", children: [
+        { "source.rdb": { "@role": "primary", "@table": "orders" } },
+        { "source.rdb": { "@role": "replica", "@kind": "view", "@table": "v_order_with_customer" } },
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "customerId", "@required": true } },
+        { "field.string": { name: "customerName", children: [
+          { "origin.passthrough": { "@from": "Customer.name", "@via": "Order.customer" } } ] } },
+        { "relationship.association": { name: "customer", "@objectRef": "Customer", "@cardinality": "one" } },
+        { "identity.primary": { name: "pk", "@fields": "id" } },
+        { "identity.reference": { name: "ref_customer", "@fields": "customerId", "@references": "Customer" } },
+      ] } },
+    ]}});
+    const { expected, up } = await migrate(m);
+
+    // The writable table is created WITHOUT the derived column; the replica view is created.
+    expect(up).toContain(`CREATE TABLE "orders"`);
+    expect(up).toContain(`CREATE VIEW "v_order_with_customer" AS`);
+    // The orders TABLE carries only the stored fields — never the derived customerName.
+    expect(await viewCols("orders")).toEqual(["id", "customerId"]);
+    // The VIEW exposes o.* (stored) + the derived join column.
+    expect(await viewCols("v_order_with_customer")).toEqual(["id", "customerId", "customerName"]);
+
+    // THE gate: a second migrate against the just-migrated DB is a no-op.
+    await assertConverged(expected);
+  });
+
   // -------------------------------------------------------------------------
   // Non-destructive replace — the part that protects downstream applications.
   // -------------------------------------------------------------------------
