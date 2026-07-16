@@ -6,6 +6,7 @@ from .attr_class_map import attr_class_for
 from .meta.core.attr import meta_attr as _attr  # noqa: F401
 from .meta.core.attr.attr_constants import (
     ATTR_SUBTYPE_BOOLEAN,
+    ATTR_SUBTYPE_EXPRESSION,
     ATTR_SUBTYPE_FILTER,
     ATTR_SUBTYPE_INT,
     ATTR_SUBTYPE_STRING,
@@ -77,12 +78,17 @@ from .meta.persistence.origin.meta_origin import MetaOrigin
 from .meta.persistence.origin.origin_constants import (
     ORIGIN_ATTR_AGG,
     ORIGIN_ATTR_CONVERT,
+    ORIGIN_ATTR_DISTINCT,
+    ORIGIN_ATTR_EXPR,
     ORIGIN_ATTR_FILTER,
     ORIGIN_ATTR_FROM,
     ORIGIN_ATTR_OF,
+    ORIGIN_ATTR_ORDER_BY,
     ORIGIN_ATTR_VIA,
     ORIGIN_SUBTYPE_AGGREGATE,
     ORIGIN_SUBTYPE_COLLECTION,
+    ORIGIN_SUBTYPE_COMPUTED,
+    ORIGIN_SUBTYPE_FIRST,
     ORIGIN_SUBTYPE_PASSTHROUGH,
 )
 from .meta.template.meta_template import MetaTemplate
@@ -628,13 +634,13 @@ core_provider.add(
     )
 )
 
-# origin.aggregate — @agg + @of required; @agg has allowed values.
-# FR-024 (ADR-0029): @via flipped REQUIRED → OPTIONAL — it is inferable when
-# exactly one single-hop relationship reaches the @of entity (the inference
-# PASS itself is Phase-E validation parity). The cross-port manifest still
-# records the pre-flip required:true via the registry_manifest FR024_PENDING
-# required-override until the atomic all-ports manifest flip.
-_AGG_ALLOWED = ("count", "sum", "avg", "min", "max")
+# origin.aggregate — @agg required; @of/@via/@distinct/@orderBy optional.
+# FR-024 (ADR-0029): @via is inferable when exactly one single-hop relationship
+# reaches the @of entity. #195: @of relaxed to optional (any/all forbid it, the
+# rest require it) — presence is enforced per-@agg in the origin validation pass;
+# @agg vocabulary extended with any/all (predicate quantifiers) + collect (array
+# rollup); @distinct (collect set-semantics) + @orderBy (element/row ordering) added.
+_AGG_ALLOWED = ("count", "sum", "avg", "min", "max", "any", "all", "collect")
 core_provider.add(
     TypeDefinition(
         type=TYPE_ORIGIN,
@@ -647,8 +653,41 @@ core_provider.add(
                 required=True,
                 allowed_values=_AGG_ALLOWED,
             ),
+            AttrSchema(name=ORIGIN_ATTR_OF, value_type=ATTR_SUBTYPE_STRING, required=False),
+            AttrSchema(name=ORIGIN_ATTR_VIA, value_type=ATTR_SUBTYPE_STRING, required=False),
+            AttrSchema(name=ORIGIN_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER, required=False),
+            AttrSchema(name=ORIGIN_ATTR_DISTINCT, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
+            AttrSchema(name=ORIGIN_ATTR_ORDER_BY, value_type=ATTR_SUBTYPE_STRING, required=False, is_array=True),
+        ],
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
+)
+
+# origin.computed (#195) — a row-level value from the base entity's own fields
+# via a structured @expr tree (attr.expression). No related rows / @via.
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_ORIGIN,
+        sub_type=ORIGIN_SUBTYPE_COMPUTED,
+        factory=MetaOrigin,
+        attrs=[
+            AttrSchema(name=ORIGIN_ATTR_EXPR, value_type=ATTR_SUBTYPE_EXPRESSION, required=True),
+        ],
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
+)
+
+# origin.first (#195) — the single related row selected by @orderBy along @via,
+# projecting @of. @of + @orderBy required; @via + @filter optional.
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_ORIGIN,
+        sub_type=ORIGIN_SUBTYPE_FIRST,
+        factory=MetaOrigin,
+        attrs=[
             AttrSchema(name=ORIGIN_ATTR_OF, value_type=ATTR_SUBTYPE_STRING, required=True),
             AttrSchema(name=ORIGIN_ATTR_VIA, value_type=ATTR_SUBTYPE_STRING, required=False),
+            AttrSchema(name=ORIGIN_ATTR_ORDER_BY, value_type=ATTR_SUBTYPE_STRING, required=True, is_array=True),
             AttrSchema(name=ORIGIN_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER, required=False),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],

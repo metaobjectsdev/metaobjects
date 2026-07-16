@@ -170,6 +170,14 @@ export const ERROR_CODES = [
   // index.lookup field-resolution: @fields is empty or names a field that does
   // not exist on the owning entity's effective (resolved via extends) field set.
   "ERR_INVALID_INDEX",
+  // #195 — origin.computed @expr: the expression tree's inferred root type does
+  // not equal the carrying field's declared field.<subType>. A computed column's
+  // type is DERIVED from its expression, never asserted (no @convert escape),
+  // so a mismatch is a hard load error (sibling of ERR_PASSTHROUGH_TYPE_MISMATCH).
+  "ERR_COMPUTED_TYPE_MISMATCH",
+  // #195 — origin.computed @expr contains a node whose kind/op/fn is not in the
+  // closed expression grammar (ADR-0023 fail-closed). Detail names the bad token.
+  "ERR_UNKNOWN_EXPR_NODE",
   "ERR_UNKNOWN",
 ] as const;
 

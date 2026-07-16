@@ -22,6 +22,7 @@ import org.slf4j.LoggerFactory;
  * <li><strong>attr.class:</strong> Class attributes</li>
  * <li><strong>attr.properties:</strong> Properties attributes</li>
  * <li><strong>attr.filter:</strong> Filter constraint attributes (object-valued, owns desugar)</li>
+ * <li><strong>attr.expression:</strong> Expression tree attributes (object-valued, stored verbatim)</li>
  * </ul>
  *
  * <strong>Array Support:</strong>
@@ -56,6 +57,7 @@ public class AttributeTypesMetaDataProvider implements MetaDataTypeProvider {
         ClassAttribute.registerTypes(registry);
         PropertiesAttribute.registerTypes(registry);
         FilterAttribute.registerTypes(registry);
+        ExpressionAttribute.registerTypes(registry);
 
         log.debug("Attribute types registered via provider");
     }

@@ -18,6 +18,11 @@ public static class OriginConstants
     public const string ORIGIN_SUBTYPE_PASSTHROUGH = "passthrough";
     public const string ORIGIN_SUBTYPE_AGGREGATE   = "aggregate";
     public const string ORIGIN_SUBTYPE_COLLECTION  = "collection";
+    // #195 — computed: a row-level value from the base entity's own fields via a
+    // structured @expr tree. first: the single related row picked by @orderBy
+    // along @via, projecting @of (argmax-then-project).
+    public const string ORIGIN_SUBTYPE_COMPUTED    = "computed";
+    public const string ORIGIN_SUBTYPE_FIRST       = "first";
 
     public static readonly string[] ORIGIN_SUBTYPES =
     [
@@ -25,6 +30,8 @@ public static class OriginConstants
         ORIGIN_SUBTYPE_PASSTHROUGH,
         ORIGIN_SUBTYPE_AGGREGATE,
         ORIGIN_SUBTYPE_COLLECTION,
+        ORIGIN_SUBTYPE_COMPUTED,
+        ORIGIN_SUBTYPE_FIRST,
     ];
 
     // passthrough attrs
@@ -40,16 +47,36 @@ public static class OriginConstants
     public const string ORIGIN_AGGREGATE_ATTR_OF  = "of";
     public const string ORIGIN_AGGREGATE_ATTR_VIA = "via";
     // @filter (attr.filter object): an optional PORTABLE structured predicate scoping
-    // the aggregated rows (same shape as a preset filter). Codegen renders it per
-    // target -- the projection view emitter turns it into SQL FILTER (WHERE ...) / CASE WHEN.
+    // the aggregated rows (same shape as a preset filter). On @agg:any|all it is the
+    // QUANTIFIED predicate (required there). Codegen renders it per target -- the
+    // projection view emitter turns it into SQL FILTER (WHERE ...) / CASE WHEN.
     public const string ORIGIN_AGGREGATE_ATTR_FILTER = "filter";
+    // #195 — shared origin attrs. @distinct (collect-only) applies set semantics;
+    // @orderBy carries ordering keys ('field[:asc|desc]', nulls-last) used by
+    // @agg:collect (element order) and required by origin.first (row selection).
+    public const string ORIGIN_ATTR_DISTINCT  = "distinct";
+    public const string ORIGIN_ATTR_ORDER_BY  = "orderBy";
+
+    // computed attrs — @expr is the structured expression tree (attr.expression).
+    public const string ORIGIN_COMPUTED_ATTR_EXPR = "expr";
+
+    // first attrs — reuse the same physical names as aggregate (@of/@via/@filter)
+    // plus the required @orderBy above.
+    public const string ORIGIN_FIRST_ATTR_OF     = "of";
+    public const string ORIGIN_FIRST_ATTR_VIA    = "via";
+    public const string ORIGIN_FIRST_ATTR_FILTER = "filter";
 
     // collection attrs — a relationship-derived array of nested view-objects.
     // @via is the dotted relationship path (or a wildcard selector like "*.User"
     // for a package-spanning collection).
     public const string ORIGIN_COLLECTION_ATTR_VIA = "via";
 
-    // aggregate function vocabulary
+    // aggregate function vocabulary.
+    //
+    // AGGREGATE_FUNCTIONS is the NUMERIC/ORDINAL reduce set — each maps directly to
+    // a SQL aggregate over @of. The predicate quantifiers (any/all) and the array
+    // rollup (collect) are distinct reducing behaviors; the full @agg vocabulary is
+    // ORIGIN_AGG_VALUES.
     public const string AGGREGATE_FN_COUNT = "count";
     public const string AGGREGATE_FN_SUM   = "sum";
     public const string AGGREGATE_FN_AVG   = "avg";
@@ -58,4 +85,14 @@ public static class OriginConstants
 
     public static readonly string[] AGGREGATE_FUNCTIONS =
         [AGGREGATE_FN_COUNT, AGGREGATE_FN_SUM, AGGREGATE_FN_AVG, AGGREGATE_FN_MIN, AGGREGATE_FN_MAX];
+
+    // #195 — the predicate-quantifier + array-rollup @agg values.
+    public const string AGG_ANY     = "any";
+    public const string AGG_ALL     = "all";
+    public const string AGG_COLLECT = "collect";
+
+    /// <summary>The full @agg attribute vocabulary (matches origin.json allowedValues).</summary>
+    public static readonly string[] ORIGIN_AGG_VALUES =
+        [AGGREGATE_FN_COUNT, AGGREGATE_FN_SUM, AGGREGATE_FN_AVG, AGGREGATE_FN_MIN, AGGREGATE_FN_MAX,
+         AGG_ANY, AGG_ALL, AGG_COLLECT];
 }

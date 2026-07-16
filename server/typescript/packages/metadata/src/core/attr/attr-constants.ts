@@ -14,6 +14,9 @@ export const ATTR_SUBTYPE_BOOLEAN = "boolean";
 export const ATTR_SUBTYPE_CLASS = "class";
 export const ATTR_SUBTYPE_PROPERTIES = "properties";
 export const ATTR_SUBTYPE_FILTER = "filter";
+// #195 — a structured expression tree over a base entity's own fields (backs
+// origin.computed). Object-shaped; a closed node grammar (see meta-attr-expression.ts).
+export const ATTR_SUBTYPE_EXPRESSION = "expression";
 
 /**
  * The retired `stringarray` array attr subtype. It is NO LONGER a registered
@@ -37,6 +40,7 @@ export const ATTR_SUBTYPES = [
   ATTR_SUBTYPE_CLASS,
   ATTR_SUBTYPE_PROPERTIES,
   ATTR_SUBTYPE_FILTER,
+  ATTR_SUBTYPE_EXPRESSION,
 ] as const;
 export type AttrSubType =
   | (typeof ATTR_SUBTYPES)[number]

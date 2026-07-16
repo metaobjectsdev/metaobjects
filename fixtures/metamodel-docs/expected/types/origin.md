@@ -12,21 +12,23 @@ documentation attributes are omitted here (see [providers.md](../providers.md)).
 
 ### origin.aggregate
 
-A count/sum/avg/min/max (@agg) computed over a column (@of) reached along a relationship path (@via) from the base entity.
+A value reduced from the related row-set reached along a relationship path (@via) from the base entity: count/sum/avg/min/max over a column (@of); any/all predicate quantifiers over a @filter; or collect (an array rollup of @of).
 
 **Owning provider:** metaobjects-core-types
 
-**Rules:** @via may be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (single-hop-unique inference; FR-024, ADR-0029). Multi-hop paths must always be stated explicitly.
+**Rules:** @via may be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (single-hop-unique inference; FR-024, ADR-0029). Multi-hop paths must always be stated explicitly. @of is required for count/sum/avg/min/max/collect and forbidden for any/all (which quantify over rows via @filter, not a column). @filter is required for any/all. The field must be isArray:true for collect and isArray:false for every other @agg. @distinct and @orderBy are collect-only.
 
-**When to use:** A projection needs a derived count/sum/avg/min/max over related rows. Declare it instead of hand-writing the aggregate query — it stays consistent and regenerates.
+**When to use:** A projection needs a value derived by reducing related rows — a count/sum/avg/min/max, a 'did any/every related row match' flag, or an array of collected values. Declare it instead of hand-writing the aggregate query — it stays consistent and regenerates.
 
 **Attributes**
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@agg` | string | yes |  | `count`, `sum`, `avg`, `min`, `max` | metaobjects-core-types | Aggregate function applied over the relationship path: count, sum, avg, min, or max. |
-| `@filter` | filter | no |  |  | metaobjects-core-types | Optional structured predicate scoping which related rows the aggregate spans. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view). |
-| `@of` | string | yes |  |  | metaobjects-core-types | Dotted Entity.field reference identifying the column being aggregated (e.g. 'Week.durationMinutes'). |
+| `@agg` | string | yes |  | `count`, `sum`, `avg`, `min`, `max`, `any`, `all`, `collect` | metaobjects-core-types | The reducing function applied over the related row-set: count/sum/avg/min/max (numeric/ordinal reduces over @of); any/all (predicate quantifiers over @filter — @of forbidden; empty set → any=false, all=true); collect (array rollup of @of — the field must be isArray). |
+| `@distinct` | boolean | no |  |  | metaobjects-core-types | Set (collect-only) to dedupe collected values (set semantics). |
+| `@filter` | filter | no |  |  | metaobjects-core-types | Optional structured predicate scoping which related rows the aggregate spans (required for any/all, where it is the quantified predicate). A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view). |
+| `@of` | string | no |  |  | metaobjects-core-types | Dotted Entity.field reference identifying the column being aggregated (e.g. 'Week.durationMinutes'). Required for count/sum/avg/min/max/collect; forbidden for any/all (which quantify over rows via @filter, not a column). |
+| `@orderBy` | string[] | no |  |  | metaobjects-core-types | Ordering keys as 'field[:asc\|desc]' (default asc) over the related entity's fields; nulls sort last. On @agg:collect sets element order (non-distinct only); on origin.first (required) selects the row. Semantic — carries no SQL syntax. |
 | `@via` | string | no |  |  | metaobjects-core-types | Dotted relationship path from the base entity to the aggregated rows (e.g. 'Program.weeks' or 'Program.weeks.workouts'). May be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (FR-024, ADR-0029). |
 
 **Allowed children**
@@ -60,6 +62,47 @@ A relationship-derived array of nested view-objects: walks @via to produce the c
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
 | `@via` | string | yes |  |  | metaobjects-core-types | Dotted relationship path the collection walks to produce an array of nested view-objects (e.g. 'Author.posts'), or a wildcard selector for a package-spanning collection (e.g. '*.User'). |
+
+**Allowed children**
+
+_No structural children._
+
+### origin.computed
+
+A row-level value computed from the base entity's own fields via a structured expression tree (@expr). No related rows, no @via. Read-only; the expression's inferred type must equal the field's declared subType.
+
+**Owning provider:** metaobjects-core-types
+
+**When to use:** A projection field is a cheap derived value over the base row itself (e.g. 'payload IS NOT NULL' to avoid shipping a heavy column). Declare the expression tree instead of hand-writing the derived SELECT column.
+
+**Attributes**
+
+| Attribute | Type | Required | Default | Allowed values | Provider | Description |
+| --- | --- | --- | --- | --- | --- | --- |
+| `@expr` | expression | yes |  |  | metaobjects-core-types | The structured expression tree computing this field's value from the base entity's own fields (closed node grammar; shares the filter op vocabulary). Its inferred root type must equal the field's declared subType (ERR_COMPUTED_TYPE_MISMATCH). |
+
+**Allowed children**
+
+_No structural children._
+
+### origin.first
+
+The single related row selected by @orderBy along @via, projecting its @of column (argmax then project). Latest = @orderBy desc. Read-only; empty related set (after @filter) → null, so the field must not be @required.
+
+**Owning provider:** metaobjects-core-types
+
+**Rules:** @via may be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (FR-024, ADR-0029). The related entity's primary key ascending is always appended as the final ordering tie-breaker so the selection is deterministic.
+
+**When to use:** A projection needs one related row's column chosen by an ordering — 'the latest child's status', 'the earliest event's timestamp'. Declare @via + @of + @orderBy instead of hand-writing the correlated ORDER BY … LIMIT 1 subquery.
+
+**Attributes**
+
+| Attribute | Type | Required | Default | Allowed values | Provider | Description |
+| --- | --- | --- | --- | --- | --- | --- |
+| `@filter` | filter | no |  |  | metaobjects-core-types | Optional structured predicate scoping which related rows are eligible for selection. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time. |
+| `@of` | string | yes |  |  | metaobjects-core-types | Dotted Entity.field reference identifying the column projected from the selected row (e.g. 'ChildA.label'). Type-preserving: the field's declared subType must equal this column's subType (#185 doctrine). |
+| `@orderBy` | string[] | yes |  |  | metaobjects-core-types | Ordering keys as 'field[:asc\|desc]' (default asc) over the related entity's fields; nulls sort last. Selects the single row (the first after ordering). The related PK ascending is appended as the deterministic tie-breaker. Semantic — carries no SQL syntax. |
+| `@via` | string | no |  |  | metaobjects-core-types | Dotted relationship path from the base entity to the related rows (e.g. 'Parent.childAs'). May be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (FR-024, ADR-0029). |
 
 **Allowed children**
 

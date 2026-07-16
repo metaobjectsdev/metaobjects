@@ -1,11 +1,12 @@
 {
-  "registeredSubTypeCount": 64,
-  "exercisedSubTypeCount": 43,
+  "registeredSubTypeCount": 67,
+  "exercisedSubTypeCount": 45,
   "untestedSubTypes": [
     "attr.base",
     "attr.boolean",
     "attr.class",
     "attr.double",
+    "attr.expression",
     "attr.filter",
     "attr.int",
     "attr.long",
@@ -199,7 +200,6 @@
         "example",
         "instruction",
         "readOnly",
-        "required",
         "sortable",
         "sortableDefaultOrder",
         "unique",

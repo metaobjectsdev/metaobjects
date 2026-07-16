@@ -6,10 +6,10 @@ import com.metaobjects.registry.MetaDataTypeProvider;
 /**
  * Origin Types MetaData provider.
  *
- * <p>Registers the abstract {@code origin.base} type plus the three concrete
- * subtypes {@code origin.passthrough}, {@code origin.aggregate}, and
- * {@code origin.collection}. Depends on {@code core-types} for
- * {@code metadata.base} inheritance.</p>
+ * <p>Registers the abstract {@code origin.base} type plus the concrete subtypes
+ * {@code origin.passthrough}, {@code origin.aggregate}, {@code origin.collection},
+ * {@code origin.computed}, and {@code origin.first}. Depends on {@code core-types}
+ * for {@code metadata.base} inheritance.</p>
  *
  * <p>Discovered via the standard {@link MetaDataTypeProvider} ServiceLoader
  * mechanism — wired through
@@ -26,6 +26,8 @@ public class OriginTypesMetaDataProvider implements MetaDataTypeProvider {
         PassthroughOrigin.registerTypes(registry);
         AggregateOrigin.registerTypes(registry);
         CollectionOrigin.registerTypes(registry);
+        ComputedOrigin.registerTypes(registry);
+        FirstOrigin.registerTypes(registry);
     }
 
     @Override
@@ -40,6 +42,6 @@ public class OriginTypesMetaDataProvider implements MetaDataTypeProvider {
 
     @Override
     public String getDescription() {
-        return "Origin Types (passthrough / aggregate / collection — field-level provenance)";
+        return "Origin Types (passthrough / aggregate / collection / computed / first — field-level provenance)";
     }
 }

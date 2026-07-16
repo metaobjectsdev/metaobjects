@@ -9,6 +9,7 @@ from .attr_constants import (
     ATTR_SUBTYPE_BOOLEAN,
     ATTR_SUBTYPE_CLASS,
     ATTR_SUBTYPE_DOUBLE,
+    ATTR_SUBTYPE_EXPRESSION,
     ATTR_SUBTYPE_FILTER,
     ATTR_SUBTYPE_INT,
     ATTR_SUBTYPE_LONG,
@@ -117,6 +118,16 @@ class FilterAttr(MetaAttr):
         return {field: _desugar_filter_value(v) for field, v in value.items()}
 
 
+class ExpressionAttr(MetaAttr):
+    """attr.expression (#195) — an object-shaped closed expression tree backing
+    origin.computed. Stored verbatim (no desugar); structural closed-grammar
+    validation is enforced in the origin validation pass. Mirrors TS ExpressionAttr."""
+
+    @property
+    def data_type(self) -> DataType:
+        return DataType.OBJECT
+
+
 class PropertiesAttr(MetaAttr):
     @property
     def data_type(self) -> DataType:
@@ -133,4 +144,5 @@ register_fallback_attr_class(MetaAttr)
 register_attr_class(ATTR_SUBTYPE_STRINGARRAY, StringArrayAttr)
 register_attr_class(ATTR_SUBTYPE_FILTER, FilterAttr)
 register_attr_class(ATTR_SUBTYPE_PROPERTIES, PropertiesAttr)
+register_attr_class(ATTR_SUBTYPE_EXPRESSION, ExpressionAttr)
 register_attr_class(ATTR_SUBTYPE_CLASS, ClassAttr)

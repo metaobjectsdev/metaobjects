@@ -12,10 +12,10 @@
 // coalesce), which is why the expression tree is its own grammar rather than a
 // reused filter object.
 //
-// This module exposes the STANDALONE grammar (validate / infer / embed). The
-// `attr.expression` MetaAttr registration + spec/manifest wiring is a COORDINATED
-// cross-port step (the registry manifest is a single shared byte-matched file),
-// not a TS-only change.
+// This module exposes the STANDALONE grammar (validate / infer / embed) AND the
+// `attr.expression` MetaAttr registration. The registration is only live once the
+// subtype is in ATTR_SUBTYPES + the canonical spec (a COORDINATED cross-port step,
+// since the registry manifest is a single shared byte-matched file) — #195.
 
 import {
   FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_GT, FILTER_OP_GTE, FILTER_OP_LT, FILTER_OP_LTE,
@@ -25,6 +25,11 @@ import {
 import {
   FIELD_SUBTYPE_STRING, FIELD_SUBTYPE_INT, FIELD_SUBTYPE_DOUBLE, FIELD_SUBTYPE_BOOLEAN,
 } from "../field/field-constants.js";
+import { MetaAttr, type ValueError, runtimeTypeName } from "./meta-attr.js";
+import { type AttrValue } from "../../shared/meta-data.js";
+import { DATA_TYPE_OBJECT, type DataType } from "../../data-type.js";
+import { ATTR_SUBTYPE_EXPRESSION } from "./attr-constants.js";
+import { registerAttrClass } from "../../attr-class-map.js";
 
 // --- Expression-only op/fn names (the comparison + and/or/isNull names are the
 // --- shared filter vocabulary above; these three are new). ---
@@ -189,3 +194,32 @@ export function filterToExpr(filter: Record<string, unknown>): ExprNode {
   const [only] = clauses;
   return clauses.length === 1 && only !== undefined ? only : { op: FILTER_COMPOSE_AND, args: clauses };
 }
+
+/**
+ * ExpressionAttr — attr subtype `expression`. Object-shaped value holding a
+ * closed expression tree (`@expr` on origin.computed). Stored verbatim (no
+ * desugar); `validateValue` enforces STRUCTURAL well-formedness of the node
+ * grammar (a fail-closed unknown op/fn/kind is a load error, ADR-0023). Entity-
+ * aware TYPE inference (`inferExprType` → ERR_COMPUTED_TYPE_MISMATCH) runs later
+ * in the projection validation pass, where the base entity's fields are known.
+ */
+export class ExpressionAttr extends MetaAttr {
+  override get dataType(): DataType {
+    return DATA_TYPE_OBJECT;
+  }
+
+  override coerce(raw: unknown): AttrValue {
+    // The expression tree is the canonical shape; pass a non-object through so
+    // validateValue rejects it.
+    return raw as AttrValue;
+  }
+
+  override validateValue(value: AttrValue): ValueError[] {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return [{ message: `attribute '@${this.name}' must be of type 'expression' but got ${runtimeTypeName(value)}` }];
+    }
+    return validateExprNode(value).map((message) => ({ message }));
+  }
+}
+
+registerAttrClass(ATTR_SUBTYPE_EXPRESSION, ExpressionAttr);

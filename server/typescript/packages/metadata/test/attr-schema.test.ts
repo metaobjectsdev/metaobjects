@@ -216,17 +216,35 @@ describe("Phase A2 — core attribute schemas", () => {
     return m;
   };
 
-  it("origin.aggregate declares @agg + @of (required) and @via (optional since FR-024 — inferable)", () => {
+  it("origin.aggregate declares @agg (required) + @of/@via/@distinct/@orderBy (optional); @agg vocab is 8 values (#195)", () => {
     const attrs = byName(TYPE_ORIGIN, ORIGIN_SUBTYPE_AGGREGATE);
-    for (const n of ["agg", "of"]) {
-      expect(attrs.get(n)).toBeDefined();
-      expect(attrs.get(n)!.required).toBe(true);
-    }
+    expect(attrs.get("agg")).toBeDefined();
+    expect(attrs.get("agg")!.required).toBe(true);
+    // #195: @of relaxed to optional (any/all forbid it, the rest require it) —
+    // presence is enforced per-@agg in the origin-path validation pass.
+    expect(attrs.get("of")).toBeDefined();
+    expect(attrs.get("of")!.required).toBe(false);
     // FR-024 (ADR-0029 decision 5): @via may be omitted when exactly one
     // single-hop relationship leads from the base entity to the @of entity.
     expect(attrs.get("via")).toBeDefined();
     expect(attrs.get("via")!.required).toBe(false);
-    expect(attrs.get("agg")!.allowedValues).toEqual(["count", "sum", "avg", "min", "max"]);
+    // #195: @distinct (collect set-semantics) + @orderBy (element/row ordering).
+    expect(attrs.get("distinct")!.required).toBe(false);
+    expect(attrs.get("orderBy")!.required).toBe(false);
+    expect(attrs.get("agg")!.allowedValues).toEqual(
+      ["count", "sum", "avg", "min", "max", "any", "all", "collect"],
+    );
+  });
+
+  it("origin.computed declares @expr (required, expression) and origin.first declares @of/@orderBy (required) + @via/@filter (optional) (#195)", () => {
+    const computed = byName(TYPE_ORIGIN, "computed");
+    expect(computed.get("expr")!.required).toBe(true);
+    expect(computed.get("expr")!.valueType).toBe("expression");
+    const first = byName(TYPE_ORIGIN, "first");
+    expect(first.get("of")!.required).toBe(true);
+    expect(first.get("orderBy")!.required).toBe(true);
+    expect(first.get("via")!.required).toBe(false);
+    expect(first.get("filter")!.required).toBe(false);
   });
 
   it("origin.passthrough declares @from (required) and @via (optional)", () => {

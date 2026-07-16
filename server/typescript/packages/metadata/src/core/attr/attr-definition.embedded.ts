@@ -62,6 +62,12 @@ export const ATTR_DEFINITION: ProviderDefinition = {
       "subType": "filter",
       "dataType": "object",
       "description": "A filter-expression-valued metadata attribute. Object-shaped value that desugars a preset filter to the canonical { field: { op: value } } form (scalar→eq, array→in, null→isNull; or/and recurse)."
+    },
+    {
+      "type": "attr",
+      "subType": "expression",
+      "dataType": "object",
+      "description": "A structured expression tree over a base entity's own fields (closed node grammar: field/value refs, comparisons sharing the filter op vocabulary, isNull/isNotNull, and/or/not, coalesce). Backs origin.computed; a filter object embeds canonically. Additive node kinds (arithmetic/case/via-joined refs) are #159."
     }
   ]
 };

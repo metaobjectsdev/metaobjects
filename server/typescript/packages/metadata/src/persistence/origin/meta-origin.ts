@@ -15,8 +15,13 @@ import {
   ORIGIN_AGGREGATE_ATTR_OF,
   ORIGIN_AGGREGATE_ATTR_VIA,
   ORIGIN_COLLECTION_ATTR_VIA,
-  type AggregateFunction,
+  ORIGIN_COMPUTED_ATTR_EXPR,
+  ORIGIN_FIRST_ATTR_OF,
+  ORIGIN_FIRST_ATTR_VIA,
+  ORIGIN_ATTR_ORDER_BY,
+  type OriginAggValue,
 } from "./origin-constants.js";
+import type { ExprNode } from "../../core/attr/meta-attr-expression.js";
 
 export class MetaOrigin extends MetaData {}
 
@@ -50,11 +55,11 @@ export class MetaPassthroughOrigin extends MetaOrigin {
  * Carries `@agg`, `@of`, and `@via` (all required).
  */
 export class MetaAggregateOrigin extends MetaOrigin {
-  /** The aggregate function (count | sum | avg | min | max). */
-  get agg(): AggregateFunction | undefined {
+  /** The reducing function (count | sum | avg | min | max | any | all | collect). */
+  get agg(): OriginAggValue | undefined {
     // ADR-0039: own — origin.* never inherits (ADR-0029), so own is correct.
     const v = this.ownAttr(ORIGIN_AGGREGATE_ATTR_AGG);
-    return typeof v === "string" ? (v as AggregateFunction) : undefined;
+    return typeof v === "string" ? (v as OriginAggValue) : undefined;
   }
 
   /** The dotted-path target of the aggregate (e.g. "Week.id"). */
@@ -84,5 +89,51 @@ export class MetaCollectionOrigin extends MetaOrigin {
     // ADR-0039: own — origin.* never inherits (ADR-0029), so own is correct.
     const v = this.ownAttr(ORIGIN_COLLECTION_ATTR_VIA);
     return typeof v === "string" ? v : undefined;
+  }
+}
+
+/**
+ * Computed origin (#195) — a row-level value computed from the base entity's own
+ * fields via a structured expression tree (`@expr`). No related rows, no `@via`.
+ * The expression's inferred type must equal the carrying field's declared subType
+ * (ERR_COMPUTED_TYPE_MISMATCH).
+ */
+export class MetaComputedOrigin extends MetaOrigin {
+  /** The structured expression tree computing this field's value. */
+  get expr(): ExprNode | undefined {
+    // ADR-0039: own — origin.* never inherits (ADR-0029), so own is correct.
+    const v = this.ownAttr(ORIGIN_COMPUTED_ATTR_EXPR);
+    return typeof v === "object" && v !== null && !Array.isArray(v) ? (v as ExprNode) : undefined;
+  }
+}
+
+/**
+ * First origin (#195) — the single related row selected by `@orderBy` along
+ * `@via`, projecting its `@of` column (argmax-then-project). Empty related set
+ * (after `@filter`) → null, so the carrying field must not be `@required`.
+ *
+ * Carries `@of` (required, type-preserving), `@via` (optional; single-hop-unique
+ * inference), `@orderBy` (required), and an optional `@filter`.
+ */
+export class MetaFirstOrigin extends MetaOrigin {
+  /** The dotted Entity.field reference projected from the selected row (e.g. "ChildA.label"). */
+  get of(): string | undefined {
+    // ADR-0039: own — origin.* never inherits (ADR-0029), so own is correct.
+    const v = this.ownAttr(ORIGIN_FIRST_ATTR_OF);
+    return typeof v === "string" ? v : undefined;
+  }
+
+  /** The dotted relationship path to the related rows (e.g. "Parent.childAs"). */
+  get via(): string | undefined {
+    // ADR-0039: own — origin.* never inherits (ADR-0029), so own is correct.
+    const v = this.ownAttr(ORIGIN_FIRST_ATTR_VIA);
+    return typeof v === "string" ? v : undefined;
+  }
+
+  /** The ordering keys ('field[:asc|desc]') selecting the single row. */
+  get orderBy(): string[] | undefined {
+    // ADR-0039: own — origin.* never inherits (ADR-0029), so own is correct.
+    const v = this.ownAttr(ORIGIN_ATTR_ORDER_BY);
+    return Array.isArray(v) ? (v as string[]) : undefined;
   }
 }

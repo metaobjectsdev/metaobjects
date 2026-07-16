@@ -1,0 +1,125 @@
+{
+  "metadata.root": {
+    "package": "acme::support",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Ticket",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "tickets"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "comments",
+                "@cardinality": "many",
+                "@objectRef": "acme::support::Comment"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Comment",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "comments"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "body"
+              }
+            },
+            {
+              "field.boolean": {
+                "name": "isPublic"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "createdAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "TicketSummary",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_ticket_summary"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::support::Ticket.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "latestCommentBody",
+                "children": [
+                  {
+                    "origin.first": {
+                      "@filter": {
+                        "isPublic": {
+                          "eq": true
+                        }
+                      },
+                      "@of": "acme::support::Comment.body",
+                      "@orderBy": [
+                        "createdAt:desc"
+                      ],
+                      "@via": "acme::support::Ticket.comments"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::support::Ticket.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

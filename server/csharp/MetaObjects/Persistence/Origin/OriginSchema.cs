@@ -37,14 +37,17 @@ public static class OriginSchema
             Name: OriginConstants.ORIGIN_AGGREGATE_ATTR_AGG,
             ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
             Required: true,
-            AllowedValues: [.. OriginConstants.AGGREGATE_FUNCTIONS],
-            Description: "Aggregate function applied over the relationship path: count, sum, avg, min, or max."),
+            // #195 — the full @agg vocabulary (numeric reduces + any/all quantifiers + collect).
+            AllowedValues: [.. OriginConstants.ORIGIN_AGG_VALUES],
+            Description: "The reducing function applied over the related row-set: count/sum/avg/min/max, any/all (predicate quantifiers over @filter), or collect (array rollup of @of)."),
 
+        // #195 — @of relaxed to optional (any/all forbid it, the rest require it);
+        // presence is enforced per-@agg in the origin-path validation pass.
         new AttrSchema(
             Name: OriginConstants.ORIGIN_AGGREGATE_ATTR_OF,
             ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
-            Required: true,
-            Description: "Dotted Entity.field reference identifying the column being aggregated (e.g. 'Week.durationMinutes')."),
+            Required: false,
+            Description: "Dotted Entity.field reference identifying the column being aggregated (e.g. 'Week.durationMinutes'). Required for count/sum/avg/min/max/collect; forbidden for any/all."),
 
         new AttrSchema(
             Name: OriginConstants.ORIGIN_AGGREGATE_ATTR_VIA,
@@ -56,7 +59,21 @@ public static class OriginSchema
             Name: OriginConstants.ORIGIN_AGGREGATE_ATTR_FILTER,
             ValueType: AttrConstants.ATTR_SUBTYPE_FILTER,
             Required: false,
-            Description: "Optional structured predicate scoping which related rows the aggregate spans. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view)."),
+            Description: "Optional structured predicate scoping which related rows the aggregate spans (required for any/all)."),
+
+        // #195 — @distinct (collect set-semantics) + @orderBy (element order).
+        new AttrSchema(
+            Name: OriginConstants.ORIGIN_ATTR_DISTINCT,
+            ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
+            Required: false,
+            Description: "Set (collect-only) to dedupe collected values (set semantics)."),
+
+        new AttrSchema(
+            Name: OriginConstants.ORIGIN_ATTR_ORDER_BY,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            IsArray: true,
+            Description: "Ordering keys as 'field[:asc|desc]' over the related entity's fields; nulls sort last. On @agg:collect sets element order (non-distinct only)."),
     ];
 
     private static readonly IReadOnlyList<AttrSchema> CollectionOriginAttrs =
@@ -68,9 +85,48 @@ public static class OriginSchema
             Description: "Dotted relationship path the collection walks to produce an array of nested view-objects (e.g. 'Author.posts'), or a wildcard selector for a package-spanning collection (e.g. '*.User')."),
     ];
 
+    // #195 — computed: a row-level value via a structured @expr tree (attr.expression).
+    private static readonly IReadOnlyList<AttrSchema> ComputedOriginAttrs =
+    [
+        new AttrSchema(
+            Name: OriginConstants.ORIGIN_COMPUTED_ATTR_EXPR,
+            ValueType: AttrConstants.ATTR_SUBTYPE_EXPRESSION,
+            Required: true,
+            Description: "The structured expression tree computing this field's value from the base entity's own fields. Its inferred root type must equal the field's declared subType (ERR_COMPUTED_TYPE_MISMATCH)."),
+    ];
+
+    // #195 — first: the single related row picked by @orderBy along @via, projecting @of.
+    private static readonly IReadOnlyList<AttrSchema> FirstOriginAttrs =
+    [
+        new AttrSchema(
+            Name: OriginConstants.ORIGIN_FIRST_ATTR_OF,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: true,
+            Description: "Dotted Entity.field reference identifying the column projected from the selected row (e.g. 'ChildA.label'). Type-preserving (#185 doctrine)."),
+
+        new AttrSchema(
+            Name: OriginConstants.ORIGIN_FIRST_ATTR_VIA,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            Description: "Dotted relationship path from the base entity to the related rows (e.g. 'Parent.childAs'). May be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (FR-024, ADR-0029)."),
+
+        new AttrSchema(
+            Name: OriginConstants.ORIGIN_ATTR_ORDER_BY,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: true,
+            IsArray: true,
+            Description: "Ordering keys as 'field[:asc|desc]' over the related entity's fields; nulls sort last. Selects the single row; the related PK ascending is appended as the deterministic tie-breaker."),
+
+        new AttrSchema(
+            Name: OriginConstants.ORIGIN_FIRST_ATTR_FILTER,
+            ValueType: AttrConstants.ATTR_SUBTYPE_FILTER,
+            Required: false,
+            Description: "Optional structured predicate scoping which related rows are eligible for selection."),
+    ];
+
     /// <summary>
-    /// Attrs per origin subtype. base has none; passthrough, aggregate, and
-    /// collection carry their respective attrs.
+    /// Attrs per origin subtype. base has none; passthrough, aggregate,
+    /// collection, computed (#195), and first (#195) carry their respective attrs.
     /// </summary>
     public static readonly IReadOnlyDictionary<string, IReadOnlyList<AttrSchema>> OriginAttrsMap =
         new Dictionary<string, IReadOnlyList<AttrSchema>>
@@ -79,5 +135,7 @@ public static class OriginSchema
             [OriginConstants.ORIGIN_SUBTYPE_PASSTHROUGH]   = [.. PassthroughOriginAttrs],
             [OriginConstants.ORIGIN_SUBTYPE_AGGREGATE]     = [.. AggregateOriginAttrs],
             [OriginConstants.ORIGIN_SUBTYPE_COLLECTION]    = [.. CollectionOriginAttrs],
+            [OriginConstants.ORIGIN_SUBTYPE_COMPUTED]      = [.. ComputedOriginAttrs],
+            [OriginConstants.ORIGIN_SUBTYPE_FIRST]         = [.. FirstOriginAttrs],
         };
 }

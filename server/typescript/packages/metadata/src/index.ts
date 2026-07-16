@@ -107,6 +107,8 @@ export {
   MetaPassthroughOrigin,
   MetaAggregateOrigin,
   MetaCollectionOrigin,
+  MetaComputedOrigin,
+  MetaFirstOrigin,
 } from "./persistence/origin/meta-origin.js";
 // Template: single class backs both subtypes (FR-004)
 export { MetaTemplate } from "./template/meta-template.js";

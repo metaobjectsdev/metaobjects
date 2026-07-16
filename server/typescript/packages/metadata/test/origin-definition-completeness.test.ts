@@ -43,19 +43,32 @@ const EXPECTED: Record<string, Record<string, ExpectedAttr>> = {
     agg: {
       valueType: "string",
       required: true,
-      allowedValues: ["count", "sum", "avg", "min", "max"],
+      allowedValues: ["count", "sum", "avg", "min", "max", "any", "all", "collect"],
     },
-    of: { valueType: "string", required: true },
+    // #195 — @of is now OPTIONAL at the schema tier (presence is enforced per-@agg
+    // in validation: required for count/sum/avg/min/max/collect, forbidden for any/all).
+    of: { valueType: "string", required: false },
     via: { valueType: "string", required: false },
     filter: { valueType: "filter", required: false },
+    distinct: { valueType: "boolean", required: false },
+    orderBy: { valueType: "string", required: false },
   },
   collection: {
     via: { valueType: "string", required: true },
   },
+  computed: {
+    expr: { valueType: "expression", required: true },
+  },
+  first: {
+    of: { valueType: "string", required: true },
+    via: { valueType: "string", required: false },
+    orderBy: { valueType: "string", required: true },
+    filter: { valueType: "filter", required: false },
+  },
 };
 
 describe("origin provider externalization — completeness", () => {
-  test("registers all 4 origin subtypes", () => {
+  test("registers all origin subtypes", () => {
     const registered = registry.allSubTypesOf(TYPE_ORIGIN).sort();
     expect(registered).toEqual([...ORIGIN_SUBTYPES].sort());
   });
@@ -101,9 +114,15 @@ describe("origin provider externalization — completeness", () => {
     expect(attrOf("passthrough", "from").required).toBe(true);
     expect(attrOf("passthrough", "via").required).toBe(false);
     expect(attrOf("aggregate", "agg").required).toBe(true);
-    expect(attrOf("aggregate", "of").required).toBe(true);
+    // #195 — @of relaxed to optional (per-@agg presence in validation).
+    expect(attrOf("aggregate", "of").required).toBe(false);
     expect(attrOf("aggregate", "via").required).toBe(false);
     expect(attrOf("collection", "via").required).toBe(true);
+    // #195 — computed.@expr + first.@of/@orderBy required; first.@via optional.
+    expect(attrOf("computed", "expr").required).toBe(true);
+    expect(attrOf("first", "of").required).toBe(true);
+    expect(attrOf("first", "orderBy").required).toBe(true);
+    expect(attrOf("first", "via").required).toBe(false);
   });
 
   test("origins carry no dataType", () => {

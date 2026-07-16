@@ -31,6 +31,13 @@
     },
     {
       "type": "attr",
+      "subType": "expression",
+      "description": "A structured expression tree over a base entity's own fields (closed node grammar: field/value refs, comparisons sharing the filter op vocabulary, isNull/isNotNull, and/or/not, coalesce). Backs origin.computed; a filter object embeds canonically. Additive node kinds (arithmetic/case/via-joined refs) are #159.",
+      "attrs": [],
+      "children": []
+    },
+    {
+      "type": "attr",
       "subType": "filter",
       "description": "A filter-expression-valued metadata attribute. Object-shaped value that desugars a preset filter to the canonical { field: { op: value } } form (scalar→eq, array→in, null→isNull; or/and recurse).",
       "attrs": [],
@@ -3073,9 +3080,9 @@
     {
       "type": "origin",
       "subType": "aggregate",
-      "description": "A count/sum/avg/min/max (@agg) computed over a column (@of) reached along a relationship path (@via) from the base entity.",
-      "rules": "@via may be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (single-hop-unique inference; FR-024, ADR-0029). Multi-hop paths must always be stated explicitly.",
-      "whenToUse": "A projection needs a derived count/sum/avg/min/max over related rows. Declare it instead of hand-writing the aggregate query — it stays consistent and regenerates.",
+      "description": "A value reduced from the related row-set reached along a relationship path (@via) from the base entity: count/sum/avg/min/max over a column (@of); any/all predicate quantifiers over a @filter; or collect (an array rollup of @of).",
+      "rules": "@via may be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (single-hop-unique inference; FR-024, ADR-0029). Multi-hop paths must always be stated explicitly. @of is required for count/sum/avg/min/max/collect and forbidden for any/all (which quantify over rows via @filter, not a column). @filter is required for any/all. The field must be isArray:true for collect and isArray:false for every other @agg. @distinct and @orderBy are collect-only.",
+      "whenToUse": "A projection needs a value derived by reducing related rows — a count/sum/avg/min/max, a 'did any/every related row match' flag, or an array of collected values. Declare it instead of hand-writing the aggregate query — it stays consistent and regenerates.",
       "attrs": [
         {
           "name": "agg",
@@ -3087,23 +3094,40 @@
             "sum",
             "avg",
             "min",
-            "max"
+            "max",
+            "any",
+            "all",
+            "collect"
           ],
-          "description": "Aggregate function applied over the relationship path: count, sum, avg, min, or max."
+          "description": "The reducing function applied over the related row-set: count/sum/avg/min/max (numeric/ordinal reduces over @of); any/all (predicate quantifiers over @filter — @of forbidden; empty set → any=false, all=true); collect (array rollup of @of — the field must be isArray)."
+        },
+        {
+          "name": "distinct",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "Set (collect-only) to dedupe collected values (set semantics)."
         },
         {
           "name": "filter",
           "valueType": "filter",
           "isArray": false,
           "required": false,
-          "description": "Optional structured predicate scoping which related rows the aggregate spans. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view)."
+          "description": "Optional structured predicate scoping which related rows the aggregate spans (required for any/all, where it is the quantified predicate). A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time; codegen renders it per target (e.g. SQL FILTER (WHERE ...) or SQLite CASE WHEN for a relational view)."
         },
         {
           "name": "of",
           "valueType": "string",
           "isArray": false,
-          "required": true,
-          "description": "Dotted Entity.field reference identifying the column being aggregated (e.g. 'Week.durationMinutes')."
+          "required": false,
+          "description": "Dotted Entity.field reference identifying the column being aggregated (e.g. 'Week.durationMinutes'). Required for count/sum/avg/min/max/collect; forbidden for any/all (which quantify over rows via @filter, not a column)."
+        },
+        {
+          "name": "orderBy",
+          "valueType": "string",
+          "isArray": true,
+          "required": false,
+          "description": "Ordering keys as 'field[:asc|desc]' (default asc) over the related entity's fields; nulls sort last. On @agg:collect sets element order (non-distinct only); on origin.first (required) selects the row. Semantic — carries no SQL syntax."
         },
         {
           "name": "via",
@@ -3134,6 +3158,60 @@
           "isArray": false,
           "required": true,
           "description": "Dotted relationship path the collection walks to produce an array of nested view-objects (e.g. 'Author.posts'), or a wildcard selector for a package-spanning collection (e.g. '*.User')."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "origin",
+      "subType": "computed",
+      "description": "A row-level value computed from the base entity's own fields via a structured expression tree (@expr). No related rows, no @via. Read-only; the expression's inferred type must equal the field's declared subType.",
+      "whenToUse": "A projection field is a cheap derived value over the base row itself (e.g. 'payload IS NOT NULL' to avoid shipping a heavy column). Declare the expression tree instead of hand-writing the derived SELECT column.",
+      "attrs": [
+        {
+          "name": "expr",
+          "valueType": "expression",
+          "isArray": false,
+          "required": true,
+          "description": "The structured expression tree computing this field's value from the base entity's own fields (closed node grammar; shares the filter op vocabulary). Its inferred root type must equal the field's declared subType (ERR_COMPUTED_TYPE_MISMATCH)."
+        }
+      ],
+      "children": []
+    },
+    {
+      "type": "origin",
+      "subType": "first",
+      "description": "The single related row selected by @orderBy along @via, projecting its @of column (argmax then project). Latest = @orderBy desc. Read-only; empty related set (after @filter) → null, so the field must not be @required.",
+      "rules": "@via may be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (FR-024, ADR-0029). The related entity's primary key ascending is always appended as the final ordering tie-breaker so the selection is deterministic.",
+      "whenToUse": "A projection needs one related row's column chosen by an ordering — 'the latest child's status', 'the earliest event's timestamp'. Declare @via + @of + @orderBy instead of hand-writing the correlated ORDER BY … LIMIT 1 subquery.",
+      "attrs": [
+        {
+          "name": "filter",
+          "valueType": "filter",
+          "isArray": false,
+          "required": false,
+          "description": "Optional structured predicate scoping which related rows are eligible for selection. A portable attr.filter object (eq/ne/in/isNull with and/or), desugared to canonical { field: { op: value } } at parse time."
+        },
+        {
+          "name": "of",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "Dotted Entity.field reference identifying the column projected from the selected row (e.g. 'ChildA.label'). Type-preserving: the field's declared subType must equal this column's subType (#185 doctrine)."
+        },
+        {
+          "name": "orderBy",
+          "valueType": "string",
+          "isArray": true,
+          "required": true,
+          "description": "Ordering keys as 'field[:asc|desc]' (default asc) over the related entity's fields; nulls sort last. Selects the single row (the first after ordering). The related PK ascending is appended as the deterministic tie-breaker. Semantic — carries no SQL syntax."
+        },
+        {
+          "name": "via",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "Dotted relationship path from the base entity to the related rows (e.g. 'Parent.childAs'). May be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (FR-024, ADR-0029)."
         }
       ],
       "children": []

@@ -66,6 +66,20 @@ _No subtype-specific attributes._
 
 _No structural children._
 
+### attr.expression
+
+A structured expression tree over a base entity's own fields (closed node grammar: field/value refs, comparisons sharing the filter op vocabulary, isNull/isNotNull, and/or/not, coalesce). Backs origin.computed; a filter object embeds canonically. Additive node kinds (arithmetic/case/via-joined refs) are #159.
+
+**Owning provider:** metaobjects-core-types
+
+**Attributes**
+
+_No subtype-specific attributes._
+
+**Allowed children**
+
+_No structural children._
+
 ### attr.filter
 
 A filter-expression-valued metadata attribute. Object-shaped value that desugars a preset filter to the canonical { field: { op: value } } form (scalar→eq, array→in, null→isNull; or/and recurse).

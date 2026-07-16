@@ -18,6 +18,7 @@ import { attrClassFor, type NodeConstructor } from "./attr-class-map.js";
 import "./core/attr/meta-attr-stringarray.js";
 import "./core/attr/meta-attr-filter.js";
 import "./core/attr/meta-attr-properties.js";
+import "./core/attr/meta-attr-expression.js";
 import {
   MetaValidator,
   MetaRequiredValidator,
@@ -36,7 +37,7 @@ import {
 import { MetaRelationship } from "./core/relationship/meta-relationship.js";
 import { MetaLayout } from "./presentation/layout/meta-layout.js";
 import { MetaSource } from "./persistence/source/meta-source.js";
-import { MetaOrigin, MetaPassthroughOrigin, MetaAggregateOrigin, MetaCollectionOrigin } from "./persistence/origin/meta-origin.js";
+import { MetaOrigin, MetaPassthroughOrigin, MetaAggregateOrigin, MetaCollectionOrigin, MetaComputedOrigin, MetaFirstOrigin } from "./persistence/origin/meta-origin.js";
 import { defineProviderFromData, type FactoryMap } from "./provider-data.js";
 import { FIELD_DEFINITION } from "./core/field/field-definition.embedded.js";
 import { OBJECT_DEFINITION } from "./core/object/object-definition.embedded.js";
@@ -98,6 +99,8 @@ import {
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
   ORIGIN_SUBTYPE_COLLECTION,
+  ORIGIN_SUBTYPE_COMPUTED,
+  ORIGIN_SUBTYPE_FIRST,
 } from "./persistence/origin/origin-constants.js";
 
 // ---------------------------------------------------------------------------
@@ -161,6 +164,8 @@ const ORIGIN_CLASS_MAP = new Map<string, NodeConstructor>([
   [ORIGIN_SUBTYPE_PASSTHROUGH, MetaPassthroughOrigin],
   [ORIGIN_SUBTYPE_AGGREGATE, MetaAggregateOrigin],
   [ORIGIN_SUBTYPE_COLLECTION, MetaCollectionOrigin],
+  [ORIGIN_SUBTYPE_COMPUTED, MetaComputedOrigin],
+  [ORIGIN_SUBTYPE_FIRST, MetaFirstOrigin],
 ]);
 
 // ATTR_CLASS_MAP + attrClassFor live in the leaf module ./attr-class-map.ts

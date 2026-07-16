@@ -133,6 +133,7 @@ public static class CoreTypes
         [ATTR_SUBTYPE_BOOLEAN]       = DataType.Boolean,
         [ATTR_SUBTYPE_PROPERTIES]    = DataType.Object,
         [ATTR_SUBTYPE_FILTER]        = DataType.Object,
+        [ATTR_SUBTYPE_EXPRESSION]    = DataType.Object,
     };
 
     // -------------------------------------------------------------------------

@@ -21,6 +21,9 @@ public static class AttrConstants
     public const string ATTR_SUBTYPE_CLASS       = "class";
     public const string ATTR_SUBTYPE_PROPERTIES  = "properties";
     public const string ATTR_SUBTYPE_FILTER      = "filter";
+    // #195 — a structured expression tree over a base entity's own fields (backs
+    // origin.computed). Object-shaped (a closed node grammar); mirrors attr.filter.
+    public const string ATTR_SUBTYPE_EXPRESSION  = "expression";
 
     /// <summary>
     /// The retired <c>stringarray</c> array attr subtype. It is NO LONGER a
@@ -43,5 +46,6 @@ public static class AttrConstants
         ATTR_SUBTYPE_CLASS,
         ATTR_SUBTYPE_PROPERTIES,
         ATTR_SUBTYPE_FILTER,
+        ATTR_SUBTYPE_EXPRESSION,
     ];
 }

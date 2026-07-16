@@ -20,6 +20,10 @@ import java.util.Set;
  *       / min / max).</li>
  *   <li>{@link CollectionOrigin} ({@code origin.collection}) — the (array) field's
  *       value is a relationship-derived array of nested view-objects (FR-004 R4).</li>
+ *   <li>{@link ComputedOrigin} ({@code origin.computed}) — a row-level value computed
+ *       from the base entity's own fields via a structured expression tree (#195).</li>
+ *   <li>{@link FirstOrigin} ({@code origin.first}) — one related row selected by
+ *       {@code @orderBy} along {@code @via}, projecting its {@code @of} column (#195).</li>
  * </ul>
  *
  * <p>This Java port mirrors the TypeScript reference
@@ -91,20 +95,43 @@ public abstract class MetaOrigin extends MetaData {
      */
     public static final String ATTR_CONVERT = "convert";
 
+    /**
+     * Optional boolean on {@code origin.aggregate} (collect-only) — dedupe collected
+     * values (set semantics).
+     */
+    public static final String ATTR_DISTINCT = "distinct";
+
+    /**
+     * Ordering keys ({@code 'field[:asc|desc]'} array). Optional on
+     * {@code origin.aggregate} (collect element order); required on
+     * {@code origin.first} (selects the single row). Semantic — carries no SQL.
+     */
+    public static final String ATTR_ORDER_BY = "orderBy";
+
+    /**
+     * Structured expression tree ({@code attr.expression}) computing a field's value
+     * from the base entity's own fields. Required on {@code origin.computed}.
+     */
+    public static final String ATTR_EXPR = "expr";
+
     // === AGGREGATE FUNCTION VOCABULARY ===
 
-    public static final String AGG_COUNT = "count";
-    public static final String AGG_SUM   = "sum";
-    public static final String AGG_AVG   = "avg";
-    public static final String AGG_MIN   = "min";
-    public static final String AGG_MAX   = "max";
+    public static final String AGG_COUNT   = "count";
+    public static final String AGG_SUM     = "sum";
+    public static final String AGG_AVG     = "avg";
+    public static final String AGG_MIN     = "min";
+    public static final String AGG_MAX     = "max";
+    public static final String AGG_ANY     = "any";
+    public static final String AGG_ALL     = "all";
+    public static final String AGG_COLLECT = "collect";
 
     /**
      * Closed set of valid {@code @agg} values. Used by
      * {@link com.metaobjects.loader.ValidationPhase} for enum-membership checks.
      */
     public static final Set<String> AGGREGATE_FUNCTIONS = Set.of(
-        AGG_COUNT, AGG_SUM, AGG_AVG, AGG_MIN, AGG_MAX
+        AGG_COUNT, AGG_SUM, AGG_AVG, AGG_MIN, AGG_MAX,
+        AGG_ANY, AGG_ALL, AGG_COLLECT
     );
 
     // -----------------------------------------------------------------------

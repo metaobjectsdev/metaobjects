@@ -9,6 +9,10 @@ ATTR_SUBTYPE_BOOLEAN = "boolean"
 ATTR_SUBTYPE_FILTER = "filter"
 ATTR_SUBTYPE_PROPERTIES = "properties"
 ATTR_SUBTYPE_CLASS = "class"
+# #195 — a structured expression tree over a base entity's own fields (backs
+# origin.computed). Object-shaped; a closed node grammar. Mirrors TS
+# ATTR_SUBTYPE_EXPRESSION / meta-attr-expression.ts.
+ATTR_SUBTYPE_EXPRESSION = "expression"
 
 # The retired "stringarray" array attr subtype. It is NO LONGER a registered
 # (attr, sub_type) (not in ATTR_SUBTYPES) — array-ness is modeled as a "string"
@@ -28,4 +32,5 @@ ATTR_SUBTYPES = (
     ATTR_SUBTYPE_FILTER,
     ATTR_SUBTYPE_PROPERTIES,
     ATTR_SUBTYPE_CLASS,
+    ATTR_SUBTYPE_EXPRESSION,
 )

@@ -1,0 +1,138 @@
+{
+  "metadata.root": {
+    "package": "acme::commerce",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "orders"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "items",
+                "@cardinality": "many",
+                "@objectRef": "acme::commerce::Item"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Item",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "items"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "category"
+              }
+            },
+            {
+              "field.string": {
+                "name": "sku"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "createdAt"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "OrderSummary",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_order_summary"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "extends": "acme::commerce::Order.id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "categories",
+                "isArray": true,
+                "children": [
+                  {
+                    "origin.aggregate": {
+                      "@agg": "collect",
+                      "@distinct": true,
+                      "@of": "acme::commerce::Item.category",
+                      "@via": "acme::commerce::Order.items"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "skuTimeline",
+                "isArray": true,
+                "children": [
+                  {
+                    "origin.aggregate": {
+                      "@agg": "collect",
+                      "@of": "acme::commerce::Item.sku",
+                      "@orderBy": [
+                        "createdAt:asc"
+                      ],
+                      "@via": "acme::commerce::Order.items"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "acme::commerce::Order.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
