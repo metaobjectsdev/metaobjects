@@ -283,7 +283,13 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         src.append("        if (!validator.validate(dto).isEmpty()) {\n");
         src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
         src.append("        }\n");
-        src.append("        ").append(dtoName).append(" saved = repository.create(dto);\n");
+        // Issue #203: honor @autoSet — stamp EVERY onCreate AND onUpdate column with now() before
+        // persisting (the caller's value is ignored; a fresh row's updated_at equals its created_at).
+        // The stamp is a static helper on the DTO record; entities with no @autoSet field call
+        // repository.create(dto) verbatim (byte-identical to the pre-#203 handler).
+        String createArg = AutoSetSupport.hasAutoSetFields(entity)
+            ? dtoName + ".stampForInsert(dto)" : "dto";
+        src.append("        ").append(dtoName).append(" saved = repository.create(").append(createArg).append(");\n");
         src.append("        return ResponseEntity.status(HttpStatus.CREATED).body(saved);\n");
         src.append("    }\n\n");
 
@@ -324,6 +330,13 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
         // covered above / in <Entity>Patch.fromJson; this closes the nested-constraint gap (e.g. a
         // Marker.label over @maxLength, or null on a @required nested member) with a 400.
         appendValueObjectValidation(src, entity);
+        // Issue #203: honor @autoSet onUpdate — bump every onUpdate column to now() on EVERY partial
+        // update (the model value is ignored; the server owns the timestamp), injected AFTER the
+        // caller's present values are validated and BEFORE delegating so a PATCH that omits the
+        // timestamp still bumps it. onCreate columns are never touched here (created_at is immutable).
+        if (AutoSetSupport.hasOnUpdateFields(entity)) {
+            src.append("        patch.stampAutoSetOnUpdate();\n");
+        }
         src.append("        return repository.patch(id, patch)\n");
         src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");
         src.append("                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(\"error\", \"not_found\")));\n");

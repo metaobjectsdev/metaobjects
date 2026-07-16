@@ -151,7 +151,18 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             if (isValueObjectJsonbField(field)) a = a.isEmpty() ? "@Valid" : "@Valid " + a;
             annotationsPerField.add(a);
         }
-        emitRecord(entity, outRoot, fields, annotationsPerField);
+        // Issue #203: for an entity declaring @autoSet timestamp fields, emit the record-body
+        // stamping helpers (stampForInsert / stampForUpdate / insertPreserving) the generated
+        // controller uses to honor onCreate/onUpdate — and that a consumer's full-DTO
+        // repository.update / import path can reuse. Empty (no helpers) otherwise, so a
+        // non-@autoSet DTO stays byte-identical. Gated on the writable-controller predicate so
+        // a read-only projection DTO never sprouts write-path helpers.
+        List<String> extraBodyMembers =
+            (SpringRepositoryGenerator.appliesTo(entity) && AutoSetSupport.hasAutoSetFields(entity))
+                ? autoSetStampHelpers(entity, fields, SpringNaming.dtoName(
+                      SpringNaming.splitFqn(entity.getName())[1]))
+                : List.of();
+        emitRecord(entity, outRoot, fields, annotationsPerField, extraBodyMembers);
     }
 
     /**
@@ -168,8 +179,10 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      */
     private void emitPatch(MetaObject entity, Path outRoot) {
         String shortName = SpringNaming.splitFqn(entity.getName())[1];
+        // Issue #203: the vanilla patch gains stampAutoSetOnUpdate() for each @autoSet onUpdate
+        // column, so the generated controller's PATCH handler bumps updated_at on every write.
         writePatch(entity, outRoot, SpringNaming.patchName(shortName),
-            SpringNaming.dtoName(shortName), settableFields(entity));
+            SpringNaming.dtoName(shortName), settableFields(entity), AutoSetSupport.onUpdateFields(entity));
     }
 
     /**
@@ -185,8 +198,10 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         String shortName = SpringNaming.splitFqn(subtype.getName())[1];
         // The discriminator field is immutable on a per-subtype PATCH — exclude it from the patch.
         String discriminatorField = TphPlan.discriminatorFieldOf(subtype);
+        // TPH per-subtype writes flow through repository.patchByIdAndType(..., assignedValues()) —
+        // no stampAutoSetOnUpdate() hook (issue #203 @autoSet stamping is the vanilla path today).
         writePatch(subtype, outRoot, SpringNaming.patchName(shortName),
-            SpringNaming.dtoName(shortName), settableFields(subtype, discriminatorField));
+            SpringNaming.dtoName(shortName), settableFields(subtype, discriminatorField), List.of());
     }
 
     /**
@@ -197,7 +212,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      * present-null-clears / present-null-on-@required-throws / present-value-binds) cannot drift.
      */
     private void writePatch(MetaObject entity, Path outRoot, String patchName, String dtoName,
-            List<MetaField> settable) {
+            List<MetaField> settable, List<MetaField> onUpdateAutoSet) {
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
@@ -235,6 +250,21 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         // controller to bean-validate each PRESENT non-null value against the DTO's constraints.
         src.append("    /** The name&rarr;value map of fields ASSIGNED by this patch (present values, incl. explicit null). */\n");
         src.append("    public java.util.Map<String, Object> assignedValues() { return java.util.Collections.unmodifiableMap(assigned); }\n\n");
+
+        // Issue #203 — @autoSet onUpdate stamping. The generated controller's PATCH handler calls
+        // this AFTER binding + validating the caller's present values and BEFORE delegating to
+        // repository.patch, so every partial update bumps updated_at (the model value is ignored:
+        // the server owns onUpdate timestamps). now() is keyed off each column's temporal type. Only
+        // emitted for entities that declare an @autoSet onUpdate column.
+        if (!onUpdateAutoSet.isEmpty()) {
+            src.append("    /** Issue #203 @autoSet: stamp every onUpdate column to now() (server-owned; bumps on every PATCH). */\n");
+            src.append("    public void stampAutoSetOnUpdate() {\n");
+            for (MetaField field : onUpdateAutoSet) {
+                src.append("        assigned.put(\"").append(field.getName()).append("\", ")
+                   .append(AutoSetSupport.nowExpr(field)).append(");\n");
+            }
+            src.append("    }\n\n");
+        }
 
         // fromJson — the presence-tracked builder.
         src.append("    /**\n");
@@ -352,11 +382,16 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         // the Kotlin lane's all-nullable union data class.
         List<String> annotationsPerField = new ArrayList<>(fields.size());
         for (int i = 0; i < fields.size(); i++) annotationsPerField.add("");
-        emitRecord(base, outRoot, fields, annotationsPerField);
+        // TPH union is a read/polymorphic-write wire shape — no @autoSet stamping helpers
+        // (per-subtype writes go through the base controller's discriminator routes).
+        emitRecord(base, outRoot, fields, annotationsPerField, List.of());
     }
 
-    /** Shared record emitter: write {@code <Entity>Dto} record from a field + per-field annotation list. */
-    private void emitRecord(MetaObject entity, Path outRoot, List<MetaField> fields, List<String> annotationsPerField) {
+    /** Shared record emitter: write {@code <Entity>Dto} record from a field + per-field annotation
+     *  list, plus {@code extraBodyMembers} (static methods / declarations) appended after the
+     *  nested-enum declarations in the record body — e.g. the issue #203 @autoSet stamping helpers. */
+    private void emitRecord(MetaObject entity, Path outRoot, List<MetaField> fields,
+            List<String> annotationsPerField, List<String> extraBodyMembers) {
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
@@ -403,15 +438,88 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         // enum is NOT nested here — its type is materialized standalone (or @provided externally)
         // and merely referenced. Inline enums stay nested (cross-port parity, byte-identical default).
         List<String> enumDecls = collectEnumDecls(entity, fields);
-        if (enumDecls.isEmpty()) {
+        if (enumDecls.isEmpty() && extraBodyMembers.isEmpty()) {
             src.append(") {}\n");
         } else {
             src.append(") {\n");
             for (String decl : enumDecls) src.append("    ").append(decl).append('\n');
+            for (String member : extraBodyMembers) src.append(member);
             src.append("}\n");
         }
 
         writeJavaFile(entity, outRoot, pkg, recordName, src.toString());
+    }
+
+    /**
+     * Issue #203 — build the record-body {@code @autoSet} stamping helpers for {@code entity}
+     * (whose DTO record is {@code recordName}, over the component list {@code fields}):
+     * <ul>
+     *   <li>{@code stampForInsert(dto)} — a copy with EVERY {@code @autoSet} column (onCreate AND
+     *       onUpdate) stamped to {@code now()} (a fresh row's updated_at equals its created_at —
+     *       one shared {@code now()} local per temporal type guarantees the equality);</li>
+     *   <li>{@code stampForUpdate(dto)} — a copy with {@code onUpdate} columns stamped to
+     *       {@code now()} and {@code onCreate} PRESERVED (never rewrites created_at);</li>
+     *   <li>{@code insertPreserving(dto)} — the DTO written VERBATIM (import/restore/replication).</li>
+     * </ul>
+     * Each rebuilds the immutable record via its canonical constructor, copying every non-stamped
+     * component through and substituting {@code now()} for the stamped ones.
+     */
+    private List<String> autoSetStampHelpers(MetaObject entity, List<MetaField> fields, String recordName) {
+        List<MetaField> stampAll = AutoSetSupport.stampFields(entity);      // onCreate + onUpdate
+        List<MetaField> onUpdate = AutoSetSupport.onUpdateFields(entity);   // onUpdate only
+        List<String> members = new ArrayList<>();
+        members.add(stampHelper(recordName, "stampForInsert", fields, stampAll,
+            "a copy with every @autoSet column (onCreate AND onUpdate) stamped to now() on insert "
+                + "(the model value is ignored; a fresh row's updated_at equals its created_at)"));
+        members.add(stampHelper(recordName, "stampForUpdate", fields, onUpdate,
+            "a copy with @autoSet onUpdate columns stamped to now(); onCreate columns are preserved "
+                + "(never rewrites created_at — the full-DTO update path)"));
+        members.add(
+            "\n    /** Issue #203 @autoSet escape hatch: the DTO written VERBATIM (import/restore/replication). */\n"
+            + "    public static " + recordName + " insertPreserving(" + recordName + " dto) { return dto; }\n");
+        return members;
+    }
+
+    /**
+     * One {@code public static <Record> <method>(<Record> dto)} stamping helper: rebuild the record
+     * via its canonical constructor, substituting {@code now()} (keyed off each column's temporal
+     * type) for every field in {@code stamp} and copying the rest through. One {@code now()} local
+     * per distinct temporal Java type so all fields of that type share a single instant.
+     */
+    private static String stampHelper(String recordName, String methodName, List<MetaField> fields,
+            List<MetaField> stamp, String doc) {
+        java.util.Set<String> stampNames = new java.util.LinkedHashSet<>();
+        for (MetaField f : stamp) stampNames.add(f.getName());
+
+        StringBuilder b = new StringBuilder();
+        b.append("\n    /** Issue #203 @autoSet: ").append(doc).append(". */\n");
+        b.append("    public static ").append(recordName).append(' ').append(methodName)
+         .append('(').append(recordName).append(" dto) {\n");
+        // One shared now() local per distinct temporal Java type among the stamped fields.
+        java.util.LinkedHashMap<String, String> typeToVar = new java.util.LinkedHashMap<>();
+        for (MetaField f : stamp) {
+            String javaType = SpringTypeMapper.javaTypeName(f);
+            typeToVar.computeIfAbsent(javaType, jt -> {
+                String var = "__now" + jt.substring(jt.lastIndexOf('.') + 1);
+                b.append("        ").append(jt).append(' ').append(var).append(" = ")
+                 .append(AutoSetSupport.nowExpr(f)).append(";\n");
+                return var;
+            });
+        }
+        b.append("        return new ").append(recordName).append("(\n");
+        for (int i = 0; i < fields.size(); i++) {
+            MetaField field = fields.get(i);
+            String name = field.getName();
+            String value = stampNames.contains(name)
+                ? typeToVar.get(SpringTypeMapper.javaTypeName(field))
+                : "dto." + name + "()";
+            b.append("            ").append(value);
+            if (i < fields.size() - 1) b.append(',');
+            b.append('\n');
+        }
+        b.append("        );\n");
+        b.append("    }\n");
+        return b.toString();
     }
 
     /**
@@ -685,6 +793,13 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      * </ul>
      */
     public static String validationAnnotations(MetaField<?> field) {
+        // Issue #203: an @autoSet field is CRUD-owned (server stamps now() on insert/update),
+        // so it is never caller-required and never caller-validated. Emit NO constraint
+        // annotations — parity with TS, whose InsertSchema makes @autoSet fields
+        // `.optional().transform(...)` (a @required @autoSet field would otherwise emit
+        // @NotNull and wrongly 400 a POST that omits the server-filled timestamp).
+        if (AutoSetSupport.isAutoSet(field)) return "";
+
         boolean isArray = field.isArrayType();
         boolean isString = field instanceof StringField;
         List<String> out = new ArrayList<>();
