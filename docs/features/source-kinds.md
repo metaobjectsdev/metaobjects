@@ -59,9 +59,21 @@ This is **not** a projection — it is the `Order` entity *with a read route*. R
 **entity read-view** first: an `object.entity` that keeps its writable `table` source and
 adds a **non-primary** read-only `view` source, declaring only the *extra* as a derived
 (`origin.*`) field. The entity's own field set **is** the `o.*`, so you re-state nothing
-but the extra. Writes route to the table (derived fields don't exist there and are excluded
-from the write codecs); reads route to the view; the `CREATE VIEW` DDL is emitted by
-`meta migrate` from the **same assembly logic** as a projection view — one emitter, two hosts.
+but the extra. The FR-024 §7 contract: writes route to the table (derived fields don't exist
+there and are excluded from the write codecs); reads route to the view; the `CREATE VIEW` DDL
+is emitted by `meta migrate` from the **same assembly logic** as a projection view — one
+emitter, two hosts.
+
+> **Status — authoring is validated; the schema/codegen pipeline is pending
+> [#213](https://github.com/metaobjectsdev/metaobjects/issues/213).** The shape above
+> loads and is loader-validated (the `origin.*` providability guardrail below), but the
+> schema half of the contract is **not yet implemented**: today `meta migrate` emits the
+> derived field as a spurious column on the *write* table (which then collides with a
+> hand-written `SELECT o.*, extra` view's alias), and the replica-view DDL is **not** emitted.
+> Until #213 lands, either keep derived join columns off the entity (model that read as a
+> separate `object.projection`), or expect to hand-manage the view. (`@readOnly: true` on a
+> derived field guards the generated write codecs but not the table DDL.) The decision table
+> and boundaries below are stable regardless.
 
 ```json
 {
