@@ -45,10 +45,69 @@ in a non-primary read `@role`.
 `@kind` is omitted — it defaults to `"table"`. `@table` is the physical table name
 (NOT `@name`).
 
+### Entity read-view — the `SELECT A.*, extras` legacy shape
+
+The single most common legacy view is an entity's **own** columns plus a joined extra:
+
+```sql
+CREATE VIEW order_with_customer AS
+  SELECT o.*, c.name AS customer_name
+  FROM   orders o JOIN customers c ON o.customer_id = c.id;
+```
+
+This is **not** a projection — it is the `Order` entity *with a read route*. Reach for an
+**entity read-view** first: an `object.entity` that keeps its writable `table` source and
+adds a **non-primary** read-only `view` source, declaring only the *extra* as a derived
+(`origin.*`) field. The entity's own field set **is** the `o.*`, so you re-state nothing
+but the extra. Writes route to the table (derived fields don't exist there and are excluded
+from the write codecs); reads route to the view; the `CREATE VIEW` DDL is emitted by
+`meta migrate` from the **same assembly logic** as a projection view — one emitter, two hosts.
+
+```json
+{
+  "object.entity": {
+    "name": "Order",
+    "children": [
+      { "source.rdb": { "@role": "primary", "@table": "orders" } },
+      { "source.rdb": { "@role": "replica", "@kind": "view", "@table": "v_order_with_customer" } },
+      { "field.long":   { "name": "id" } },
+      { "field.long":   { "name": "customerId", "@required": true } },
+      { "field.string": { "name": "customerName",
+        "children": [ { "origin.passthrough": { "@from": "Customer.name" } } ] } },
+      { "relationship.association": { "name": "customer", "@objectRef": "Customer", "@cardinality": "one" } },
+      { "identity.primary":   { "name": "pk", "@fields": "id" } },
+      { "identity.reference": { "name": "ref_customer", "@fields": ["customerId"], "@references": "Customer" } }
+    ]
+  }
+}
+```
+
+A derived field must be **providable** — a read-capable source must be able to carry it. A
+derived field on a table-only entity (no read source) is a load error
+(`ERR_DERIVED_FIELD_NO_READ_SOURCE`).
+
+### Entity read-view vs projection — which to reach for
+
+| Use an **entity read-view** when | Use a **projection** when |
+|---|---|
+| the extras sit over the entity's **own** table | it is an independent **exposure contract** |
+| same read trust-domain — a new entity field appearing in the view is correct, not a leak | a subset / **renamed** columns / versioned / external consumers |
+| you can still INSERT the base and it is the record of truth | keyless, multi-base, or proc-backed; all-derived; borrowed / no identity |
+
+Two boundaries still push you to a projection (or a later FR):
+
+- **Renamed base columns.** A field carries one `@column` per paradigm, so renaming a base
+  column *in the view* is the projection's whole point — a projection field maps an
+  `extends`-bound source column to a new `@column`.
+- **Row-filtered views** (`… WHERE status = 'active'`, soft-delete) have no view-level `WHERE`
+  slot yet — tracked by the view-level `@filter` FR ([#207](https://github.com/metaobjectsdev/metaobjects/issues/207)).
+
 ### View — projection over an existing entity
 
-A read-only view is declared as an `object.projection`, not an `object.entity` (an
-entity's primary source must be writable). A projection's identity is optional and, when
+When the read shape is an **independent exposure contract** (a subset, renamed columns, a
+versioned or externally-consumed shape — see the decision table above) rather than the
+owning entity's own columns, declare it as an `object.projection`, not an `object.entity`
+(an entity's primary source must be writable). A projection's identity is optional and, when
 present, MUST extend an entity identity; the example below omits it (a keyless read
 model).
 
@@ -250,6 +309,10 @@ The following conformance fixtures gate this feature's behavior across ports:
 
 - [`fixtures/conformance/source-db-view-projection/`](../../fixtures/conformance/source-db-view-projection/) — view with origins
 - [`fixtures/conformance/source-db-view-with-schema/`](../../fixtures/conformance/source-db-view-with-schema/) — `@schema` on view
+
+**Entity read-view (derived field must be providable)**
+
+- [`fixtures/conformance/error-derived-field-no-read-source/`](../../fixtures/conformance/error-derived-field-no-read-source/) — a derived (`origin.*`) field on a table-only entity (no read-capable source) is `ERR_DERIVED_FIELD_NO_READ_SOURCE`
 
 **Multi-source via `@role`**
 
