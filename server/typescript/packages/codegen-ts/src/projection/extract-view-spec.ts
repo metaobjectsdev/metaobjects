@@ -44,11 +44,14 @@ import {
   stripPackage,
   type AggregateFunction,
 } from "@metaobjectsdev/metadata";
-import { type MetaData, type MetaRoot, MetaObject } from "@metaobjectsdev/metadata";
+import { type MetaData, type MetaField, type MetaRoot, MetaObject } from "@metaobjectsdev/metadata";
 import {
   columnNameFromField,
   viewNameFromProjection,
 } from "../naming.js";
+// #213 — a write-through ENTITY (FR-024 §7 read-view) hosts its own view; the base
+// is the entity itself, not an extends-anchored projection.
+import { isWriteThrough } from "./projection-detector.js";
 // #209 — the SAME NOT-NULL predicate that drives a column's `.notNull()` decides
 // whether a belongs-to join is INNER (required FK) vs LEFT OUTER (nullable FK).
 import { isRequired } from "../column-mapper.js";
@@ -625,12 +628,17 @@ function buildSelectSpec(
   // is removed with the B4b cutover: base columns are declared explicitly as
   // extends-bound fields (`{ field.int: { name: id, extends: "Program.id" } }`).
 
-  // Fields explicitly declared on the projection.
-  // ADR-0039: own — the projection's DECLARED field set IS the exposure
-  // (FR-024/ADR-0028); iterate own fields + each field's own origin. origin.*
-  // NEVER inherits (ADR-0029), so the origin attr reads below are own (category 4).
-  for (const field of projection.ownChildren()) {
-    if (field.type !== TYPE_FIELD) continue;
+  // #213 — an entity read-view HOST (base === projection, FR-024 §7) exposes its
+  // EFFECTIVE field set: the `o.*` includes fields inherited via extends (a
+  // BaseEntity id/createdAt). A plain projection exposes only its DECLARED (own)
+  // fields — the declared set IS the exposure (FR-024/ADR-0028). Either way, each
+  // field's own origin decides passthrough-from-base vs derived-from-join. origin.*
+  // NEVER inherits (ADR-0029), so the origin reads below are own (category 4).
+  const declaredFields: MetaField[] =
+    base === projection
+      ? base.fields()
+      : projection.ownChildren().filter((c): c is MetaField => c.type === TYPE_FIELD);
+  for (const field of declaredFields) {
     const origin = field.ownChildren().find((c) => c.type === TYPE_ORIGIN);
     const dbCol = sourceColumnNameFor(field, ctx);
 
@@ -863,7 +871,10 @@ export function extractViewSpec(
   root: MetaRoot,
   ctx: ExtractContext,
 ): ViewSpec {
-  const base = baseEntityFor(projection, root);
+  // #213 — a write-through entity (FR-024 §7) IS its own base: stored fields SELECT
+  // from the base alias (o.*), derived (origin.*) fields from the joins. A plain
+  // projection anchors its base via an extends binding (baseEntityFor).
+  const base = isWriteThrough(projection) ? projection : baseEntityFor(projection, root);
   const usedAliases = new Set<string>();
   const baseAlias = shortAliasFor(base.name, usedAliases);
   const joinTree = buildJoinTree(projection, base, root, usedAliases, baseAlias, ctx);

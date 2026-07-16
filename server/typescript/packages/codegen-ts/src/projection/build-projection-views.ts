@@ -21,7 +21,7 @@ import {
   resolveTableName,
   resolveTableSchema,
 } from "@metaobjectsdev/metadata";
-import { isProjection } from "./projection-detector.js";
+import { isProjection, isWriteThrough } from "./projection-detector.js";
 import { extractViewSpec } from "./extract-view-spec.js";
 import { emitViewDdl } from "./view-ddl-emit.js";
 import type { JoinNode, ViewSpec } from "./view-spec.js";
@@ -119,22 +119,52 @@ export function buildProjectionViews(
     );
     if (readOnlySource?.effectiveKind !== SOURCE_KIND_VIEW) continue;
     if (!viewIsDerived(projection)) continue;
-    const spec = extractViewSpec(projection, root, { columnNamingStrategy });
-    const baseTableName = joinTables[spec.joinTree.baseEntity];
-    if (!baseTableName) continue; // unresolved base — skip (loader/codegen surface the error elsewhere)
-    const body = emitViewDdl(spec, { dialect, baseTableName, joinTables, bodyOnly: true });
-    const schema = resolveTableSchema(projection);
-    const dependsOn = collectDependsOn(spec, baseTableName, joinTables);
-    const columns = collectViewColumns(spec, baseTableName, joinTables);
-    out.push({
-      name: spec.viewName,
-      sql: body,
-      dependsOn,
-      columns,
-      ...(schema !== undefined ? { schema } : {}),
-    });
+    emitViewFor(projection, root, joinTables, dialect, columnNamingStrategy, out);
+  }
+
+  // #213 hole 2 — a write-through ENTITY (FR-024 §7 read-view: a writable table
+  // source PLUS a non-primary read-only view source, with derived origin.* fields)
+  // hosts its OWN view. Emit it through the SAME canonical emitter — "one emitter,
+  // two hosts". `isWriteThrough` had zero call sites, so this replica view was never
+  // generated or owned by migrate. Unlike a projection there is no extends anchor
+  // and no viewIsDerived gate: the entity IS the base (extractViewSpec detects the
+  // write-through host), and it always has a derived view to emit. Only a plain
+  // `view` read source synthesizes CREATE VIEW DDL — a matview/proc/tableFunction
+  // read source is hand-managed, exactly as for projections above.
+  for (const entity of root.objects().filter(isWriteThrough)) {
+    const readOnlySource = entity.ownChildren().find(
+      (c): c is MetaSource => c instanceof MetaSource && c.isReadOnly(),
+    );
+    if (readOnlySource?.effectiveKind !== SOURCE_KIND_VIEW) continue;
+    emitViewFor(entity, root, joinTables, dialect, columnNamingStrategy, out);
   }
   return out;
+}
+
+/** Extract + emit one host's (projection or write-through entity) view body and
+ *  push it onto `out`. The single tail shared by both walks in buildProjectionViews. */
+function emitViewFor(
+  host: MetaObject,
+  root: MetaRoot,
+  joinTables: Record<string, string>,
+  dialect: "postgres" | "sqlite",
+  columnNamingStrategy: ColumnNamingStrategy,
+  out: ExpectedView[],
+): void {
+  const spec = extractViewSpec(host, root, { columnNamingStrategy });
+  const baseTableName = joinTables[spec.joinTree.baseEntity];
+  if (!baseTableName) return; // unresolved base — skip (loader/codegen surface the error elsewhere)
+  const body = emitViewDdl(spec, { dialect, baseTableName, joinTables, bodyOnly: true });
+  const schema = resolveTableSchema(host);
+  const dependsOn = collectDependsOn(spec, baseTableName, joinTables);
+  const columns = collectViewColumns(spec, baseTableName, joinTables);
+  out.push({
+    name: spec.viewName,
+    sql: body,
+    dependsOn,
+    columns,
+    ...(schema !== undefined ? { schema } : {}),
+  });
 }
 
 /**
