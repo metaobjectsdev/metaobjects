@@ -37,6 +37,12 @@ import {
   DB_COLUMN_TYPE_UUID,
   DB_COLUMN_TYPE_JSONB,
   FIELD_ATTR_LOCAL_TIME,
+  TYPE_ORIGIN,
+  ORIGIN_SUBTYPE_AGGREGATE,
+  ORIGIN_AGGREGATE_ATTR_AGG,
+  AGG_ANY,
+  AGG_ALL,
+  AGG_COLLECT,
 } from "@metaobjectsdev/metadata";
 import { columnNameFromField } from "./naming.js";
 import { enumValues } from "./enum-meta.js";
@@ -307,6 +313,25 @@ export function isRequired(field: MetaField): boolean {
   return field.validators().some((child) => child.subType === VALIDATOR_SUBTYPE_REQUIRED);
 }
 
+/**
+ * #195 — a field whose value is derived by an origin.aggregate `@agg:any|all|collect`
+ * is COALESCE-guaranteed non-null in the synthesized view (any→false, all→true,
+ * collect→[]), so its read type is non-null even when the field is not `@required`.
+ * Drives `.notNull()` below so the Drizzle view column AND the Zod read schema agree
+ * (projection-decl derives its `.nullable()` from these modifiers). origin.first is
+ * deliberately NOT here — an empty related set selects no row (→ null); origin.computed
+ * nullability is expression-dependent, so it stays the conservative nullable default.
+ */
+export function originGuaranteedNonNull(field: MetaField): boolean {
+  // ADR-0039: own — origin.* never inherits (ADR-0029), so own is correct.
+  const origin = field
+    .ownChildren()
+    .find((c) => c.type === TYPE_ORIGIN && c.subType === ORIGIN_SUBTYPE_AGGREGATE);
+  if (origin === undefined) return false;
+  const agg = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_AGG);
+  return agg === AGG_ANY || agg === AGG_ALL || agg === AGG_COLLECT;
+}
+
 /** The bare (package-stripped) @objectRef name on a field.object, or undefined
  *  when unset. Used as the `.$type<VO>()` target + its sibling-module import.
  *  A fully-qualified ref (acme::ai::SourceLens) strips to the short name. */
@@ -527,7 +552,7 @@ export function mapColumnType(
   // Note: dollarTypeRef is read alongside (and rendered ahead of) `modifiers`
   // by `renderColumn` — see drizzle-schema.ts.
 
-  if (isRequired(field)) {
+  if (isRequired(field) || originGuaranteedNonNull(field)) {
     modifiers.push(".notNull()");
   }
 

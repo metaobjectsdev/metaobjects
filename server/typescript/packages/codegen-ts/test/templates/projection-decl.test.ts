@@ -422,3 +422,70 @@ describe("renderProjectionDecl — standalone view-entity (no extends)", () => {
     expect(code).not.toContain("LobbyRosterUpdate");
   });
 });
+
+// ---------------------------------------------------------------------------
+// #195 — native read-schema nullability for the four new origins.
+// any/all/collect are COALESCE-guaranteed non-null (never `.nullable()`);
+// origin.first is nullable (empty related set → null).
+// ---------------------------------------------------------------------------
+describe("#195 projection read-schema nullability (any/all/collect non-null; first nullable)", () => {
+  async function loadOrderView() {
+    const json = JSON.stringify({
+      "metadata.root": {
+        package: "test",
+        children: [
+          { "object.entity": { name: "Order", children: [
+            { "source.rdb": { "@table": "orders" } },
+            { "field.long": { name: "id" } },
+            { "relationship.association": { name: "items", "@objectRef": "test::Item", "@cardinality": "many" } },
+            { "identity.primary": { name: "id", "@fields": "id" } },
+          ] } },
+          { "object.entity": { name: "Item", children: [
+            { "source.rdb": { "@table": "items" } },
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "category" } },
+            { "field.timestamp": { name: "createdAt" } },
+            { "identity.primary": { name: "id", "@fields": "id" } },
+          ] } },
+          { "object.projection": { name: "OrderView", children: [
+            { "source.rdb": { "@kind": "view", "@table": "v_order_view" } },
+            { "field.long": { name: "id", extends: "Order.id" } },
+            { "field.string": { name: "categories", isArray: true, children: [
+              { "origin.aggregate": { "@agg": "collect", "@of": "Item.category", "@via": "Order.items" } },
+            ] } },
+            { "field.string": { name: "latestCategory", children: [
+              { "origin.first": { "@of": "Item.category", "@via": "Order.items", "@orderBy": ["createdAt:desc"] } },
+            ] } },
+            { "field.boolean": { name: "hasElectronics", children: [
+              { "origin.aggregate": { "@agg": "any", "@via": "Order.items", "@filter": { category: "electronics" } } },
+            ] } },
+            { "identity.primary": { name: "id", extends: "Order.id" } },
+          ] } },
+        ],
+      },
+    });
+    const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
+    if (result.errors.length > 0) throw new Error(result.errors.map((e) => e.message).join("\n"));
+    const projection = result.root.objects().find((o) => o.name === "OrderView")!;
+    return renderProjectionDecl(projection, result.root, { columnNamingStrategy: "snake_case", dialect: "postgres" });
+  }
+
+  test("any/all/collect columns are non-null; first is nullable (#195 nullability)", async () => {
+    const code = await loadOrderView();
+    // The Drizzle view columns: collect + any are COALESCE-guaranteed non-null;
+    // first is nullable. (The element/array-ness of collect — text[] vs text — is
+    // the separate projection-array typing gap tracked by #204; asserted array-
+    // agnostically here so this golden pins ONLY the #195 nullability contract and
+    // does not encode the #204 scalar-drop.)
+    expect(code).toMatch(/categories:\s*text\([^)]*\)(?:\.array\(\))?\.notNull\(\)/);
+    expect(code).toMatch(/hasElectronics:\s*boolean\([^)]*\)\.notNull\(\)/);
+    // first → nullable (no .notNull() on the view column, → `.nullable()` read type).
+    expect(code).toContain("latestCategory: text(\"latest_category\"),");
+    // Zod read schema: any → non-null boolean; first → nullable; collect non-null
+    // (its z.array wrap arrives with #204 — assert only that it is NOT nullable).
+    expect(code).toContain("hasElectronics: z.boolean(),");
+    expect(code).not.toContain("hasElectronics: z.boolean().nullable()");
+    expect(code).toContain("latestCategory: z.string().nullable(),");
+    expect(code).toMatch(/categories:\s*z\.[^\n]*(?<!\.nullable\(\)),/);
+  });
+});
