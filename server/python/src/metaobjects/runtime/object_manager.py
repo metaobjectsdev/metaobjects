@@ -218,8 +218,45 @@ class ObjectManager:
         caller omits (e.g. a ``gen_random_uuid()`` PK) are left out of the INSERT
         and filled by Postgres; the full row — including the generated PK — is
         returned via ``RETURNING`` so a round-trip read can key off it.
+
+        #203 — ``@autoSet`` stamping: EVERY ``onCreate`` AND ``onUpdate`` temporal
+        column is stamped with a single shared ``now()`` (keyed off the column's
+        type), OVERRIDING any caller-supplied value — so a fresh row's updated
+        timestamp equals its created one. Use :meth:`insert_preserving` for the
+        import/restore path that must keep original timestamps.
         """
         entity = self._require_entity(entity_name)
+        # #203: stamp every onCreate AND onUpdate column with one shared now() (the
+        # caller's value is ignored). No-op for entities that declare no @autoSet field.
+        on_create, on_update = _auto_set_fields(entity)
+        if on_create or on_update:
+            base = _dt.datetime.now(_dt.timezone.utc)
+            data = {**data}
+            for f in (*on_create, *on_update):
+                data[f.name] = _auto_set_stamp(f, base)
+        return self._insert_row(entity, entity_name, data)
+
+    def insert_preserving(self, entity_name: str, data: dict[str, Any]) -> dict[str, Any]:
+        """#203 escape hatch — INSERT that writes the ``@autoSet`` columns VERBATIM
+        from *data*, skipping the ``now()`` stamping :meth:`create` applies.
+
+        For import / restore / replication paths that must persist the ORIGINAL
+        ``createdAt`` / ``updatedAt`` timestamps a row carried, not fresh ones.
+        Every other column behaves exactly as :meth:`create` (same write codec,
+        same TPH discriminator injection, same ``RETURNING`` row). For an entity
+        that declares no ``@autoSet`` field this is identical to :meth:`create`.
+        """
+        entity = self._require_entity(entity_name)
+        return self._insert_row(entity, entity_name, data)
+
+    def _insert_row(
+        self, entity: MetaObject, entity_name: str, data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Shared INSERT core for :meth:`create` / :meth:`insert_preserving` — the
+        two differ only in whether *data* was ``@autoSet``-stamped before arriving
+        here. Builds the parameterized INSERT (coercing each value via the write
+        codec), runs it ``RETURNING`` the full physical column set, and maps the
+        row back to metadata field names."""
         table = self._table_name(entity)
 
         # FR-017 TPH: a subtype create injects its discriminator value (the entity
@@ -284,6 +321,11 @@ class ObjectManager:
         PATCH path cannot silently skip the type coercion INSERT applies — the
         per-port hazard the ``update-delete-all-types`` corpus gates.
 
+        #203 — ``@autoSet`` stamping: every ``onUpdate`` temporal column is bumped
+        to ``now()`` (overriding any caller value), while ``onCreate`` columns are
+        stripped and never rewritten — a full-row update carrying a stale
+        ``createdAt`` cannot clobber the write-once creation timestamp.
+
         Returns the updated row (mapped to metadata field names) via ``RETURNING``.
         When no row matched the (TPH-scoped) PK, behavior follows *if_missing*
         (mirrors the TS ``WriteOpts.ifMissing``): ``"ignore"`` (default) → ``None``
@@ -296,6 +338,19 @@ class ObjectManager:
         table = self._table_name(entity)
         pk_field = self._primary_pk_field(entity)
         pk_col = _column_of(entity.find_field(pk_field))
+
+        # #203 — @autoSet: bump every onUpdate column to now(), and NEVER rewrite an
+        # onCreate column — strip it even if the caller supplied a (stale) value.
+        # Omitting this onCreate-skip is the latent lost-update bug the issue calls
+        # out. No-op for entities that declare no @autoSet field.
+        on_create, on_update = _auto_set_fields(entity)
+        if on_create or on_update:
+            base = _dt.datetime.now(_dt.timezone.utc)
+            data = {**data}
+            for f in on_create:
+                data.pop(f.name, None)  # created_at is write-once — never overwritten on update
+            for f in on_update:
+                data[f.name] = _auto_set_stamp(f, base)
 
         # FR-017 TPH: the discriminator is immutable — strip it from the patch; the
         # by-id write is subtype-scoped (a row of a different subtype is invisible).
@@ -715,6 +770,62 @@ def _coerce_write_value(field: MetaField, value: Any) -> Any:
     # Everything else (string / int / long / double / float / boolean / enum)
     # is already the native type pg8000 binds directly.
     return value
+
+
+# ----------------------------------------------------------------------------
+# #203 — @autoSet CRUD stamping. A ``field.timestamp`` (or any temporal field)
+# marked ``@autoSet: onCreate|onUpdate`` declares "the runtime owns this
+# timestamp, the caller does not." create() stamps every onCreate AND onUpdate
+# column; update() bumps onUpdate and NEVER rewrites onCreate (the lost-update
+# guard); insert_preserving() writes them verbatim. The stamp is keyed off the
+# COLUMN's temporal type (generalizes past ``datetime`` to date/time), matching
+# the TS Zod-transform contract (server owns the value; a fresh row's updated
+# timestamp equals its created one).
+# ----------------------------------------------------------------------------
+
+_AUTO_SET_TEMPORAL_SUBTYPES = (
+    fc.FIELD_SUBTYPE_TIMESTAMP,
+    fc.FIELD_SUBTYPE_DATE,
+    fc.FIELD_SUBTYPE_TIME,
+)
+
+
+def _auto_set_fields(entity: MetaObject) -> tuple[list[MetaField], list[MetaField]]:
+    """The entity's ``@autoSet`` temporal fields split into ``(onCreate, onUpdate)``.
+
+    Reads the RESOLVING ``@autoSet`` (ADR-0039) so a field inherited from an
+    abstract base — the common ``BaseEntity.createdAt/updatedAt`` pattern — is
+    honored. A non-temporal field is skipped (``@autoSet`` is a temporal-only
+    marker). Both lists are empty for an entity that declares no ``@autoSet``
+    field, so the write path stays byte-identical for those entities."""
+    on_create: list[MetaField] = []
+    on_update: list[MetaField] = []
+    for f in entity.fields():
+        if f.sub_type not in _AUTO_SET_TEMPORAL_SUBTYPES:
+            continue
+        mode = f.get_meta_attr(fc.FIELD_ATTR_AUTO_SET)  # ADR-0039 resolving: may be inherited via extends
+        if mode == fc.AUTO_SET_ON_CREATE:
+            on_create.append(f)
+        elif mode == fc.AUTO_SET_ON_UPDATE:
+            on_update.append(f)
+    return on_create, on_update
+
+
+def _auto_set_stamp(field: MetaField, base: _dt.datetime) -> Any:
+    """The native ``now()`` value for an ``@autoSet`` *field*, derived from the
+    single shared *base* instant so every column stamped in one operation is
+    equal (a fresh row's created == updated). Keyed off the COLUMN's temporal
+    type: ``field.date`` → ``date``; ``field.time`` → ``time``; ``field.timestamp``
+    → a tz-aware ``datetime`` (the instant default) unless ``@localTime`` opts into
+    a naive wall-clock value (matching :func:`_coerce_write_value`)."""
+    sub = field.sub_type
+    if sub == fc.FIELD_SUBTYPE_DATE:
+        return base.date()
+    if sub == fc.FIELD_SUBTYPE_TIME:
+        return base.time()
+    # field.timestamp: instant / tz-aware by default; @localTime → naive wall clock.
+    is_tz = field.get_meta_attr(dbc.FIELD_ATTR_LOCAL_TIME) is not True  # ADR-0039 resolving
+    return base if is_tz else base.replace(tzinfo=None)
 
 
 def _parse_datetime(text: str, *, tz_aware: bool) -> _dt.datetime:
