@@ -38,4 +38,25 @@ public static class ObjectSchema
                 "string) controls codegen + storage coercion. Required on every concrete " +
                 "subtype of a discriminated entity."),
     ];
+
+    /// <summary>
+    /// #207 — the optional row-scope @filter on an object.projection (a portable
+    /// attr.filter object, the same subType origin.aggregate's @filter uses). Selects
+    /// which rows the derived view returns; lowered to an outer SQL WHERE. Registered
+    /// ONLY on object.projection (see CoreTypes); the description is single-sourced
+    /// from spec/metamodel/object.json via ApplySpecDescriptions, so this text is a
+    /// fallback that already matches the canonical.
+    /// </summary>
+    public static readonly AttrSchema ProjectionFilterAttr =
+        new AttrSchema(
+            Name: ObjectConstants.OBJECT_PROJECTION_ATTR_FILTER,
+            ValueType: AttrConstants.ATTR_SUBTYPE_FILTER,
+            Required: false,
+            Description:
+                "Optional row-scope predicate (a portable attr.filter object: " +
+                "eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to " +
+                "{ field: { op: value } } at parse time) selecting which rows the view " +
+                "returns — lowered to an outer SQL WHERE. Resolves against the " +
+                "projection's own declared fields; an aggregate-derived field is not " +
+                "addressable (fail-closed).");
 }

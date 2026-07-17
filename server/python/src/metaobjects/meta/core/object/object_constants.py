@@ -18,3 +18,9 @@ OBJECT_SUBTYPES = (
 #   @discriminatorValue — on a subtype: the value identifying its rows.
 OBJECT_ATTR_DISCRIMINATOR = "discriminator"
 OBJECT_ATTR_DISCRIMINATOR_VALUE = "discriminatorValue"
+
+# #207 — object.projection row-scope @filter (view-level WHERE). An optional
+# row-scope predicate on an object.projection (a portable attr.filter object —
+# the SAME attr subtype as origin.aggregate's @filter) that lowers to an outer
+# SQL WHERE. Mirrors TS object-constants.ts OBJECT_PROJECTION_ATTR_FILTER.
+OBJECT_PROJECTION_ATTR_FILTER = "filter"

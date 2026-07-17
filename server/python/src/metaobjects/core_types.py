@@ -56,6 +56,7 @@ from .meta.core.object.meta_object import MetaObject
 from .meta.core.object.object_constants import (
     OBJECT_ATTR_DISCRIMINATOR,
     OBJECT_ATTR_DISCRIMINATOR_VALUE,
+    OBJECT_PROJECTION_ATTR_FILTER,
     OBJECT_SUBTYPE_ENTITY,
     OBJECT_SUBTYPE_PROJECTION,
     OBJECT_SUBTYPES,
@@ -258,6 +259,26 @@ for _obj_sub in OBJECT_SUBTYPES:
             attrs=list(_OBJECT_COMMON_ATTRS),
         )
     )
+
+# #207 — object.projection carries an optional row-scope @filter (a portable
+# attr.filter object — the SAME attr subtype as origin.aggregate's @filter) that
+# lowers to a view-level SQL WHERE. The object loop above registered every subtype
+# with the shared discriminator attrs; append @filter to the projection def
+# (mirrors the field.currency enrichment below, and the TS object provider, where
+# object.json's projection block declares the filter attr child). The strict
+# per-subtype attr scoping (apply_spec_descriptions) then keeps @filter on
+# projection and prunes the shared discriminator attrs — object.json's projection
+# block declares ONLY @filter.
+for _def in core_provider._defs:  # noqa: SLF001 (provider build-time enrichment)
+    if _def.type == TYPE_OBJECT and _def.sub_type == OBJECT_SUBTYPE_PROJECTION:
+        _def.attrs.append(
+            AttrSchema(
+                name=OBJECT_PROJECTION_ATTR_FILTER,
+                value_type=ATTR_SUBTYPE_FILTER,
+                required=False,
+            )
+        )
+        break
 
 # field.* (one factory, data_type by subtype)
 # Note: FIELD_SUBTYPE_ENUM is excluded from FIELD_SUBTYPES; it is registered

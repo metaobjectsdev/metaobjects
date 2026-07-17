@@ -254,7 +254,13 @@ public static class CoreTypes
             // mode for its enum fields' tolerant extract) is re-homed to the
             // metaobjects-prompt concern provider (reads prompt.json's object.value
             // extends), so core no longer appends it here.
-            List<AttrSchema> objectAttrs = ObjectSchema.ObjectAttrs.ToList();
+            // #207: object.projection additionally carries the row-scope @filter (an
+            // attr.filter object lowered to a view-level WHERE). Strict attr scoping
+            // (from spec object.json's projection allow-list) keeps it here and prunes
+            // the discriminator attrs, which projection does not declare.
+            List<AttrSchema> objectAttrs = subType == OBJECT_SUBTYPE_PROJECTION
+                ? [.. ObjectSchema.ObjectAttrs, ObjectSchema.ProjectionFilterAttr]
+                : ObjectSchema.ObjectAttrs.ToList();
 
             List<ChildRule> rules = subType == OBJECT_SUBTYPE_PROJECTION
                 ? new List<ChildRule>(projectionRules)

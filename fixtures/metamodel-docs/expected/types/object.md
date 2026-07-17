@@ -69,7 +69,9 @@ A derived read-only representation of entities. Its fields are extends-bound / o
 
 **Attributes**
 
-_No subtype-specific attributes._
+| Attribute | Type | Required | Default | Allowed values | Provider | Description |
+| --- | --- | --- | --- | --- | --- | --- |
+| `@filter` | filter | no |  |  | metaobjects-core-types | Optional row-scope predicate (a portable attr.filter object: eq/ne/gt/gte/lt/lte/like/in/isNull with and/or, desugared to { field: { op: value } } at parse time) selecting which rows the view returns — lowered to an outer SQL WHERE. Resolves against the projection's own declared fields; an aggregate-derived field is not addressable (fail-closed). |
 
 **Allowed children**
 

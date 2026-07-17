@@ -45,6 +45,19 @@ public static class ObjectConstants
     /// </summary>
     public const string OBJECT_ATTR_DISCRIMINATOR_VALUE = "discriminatorValue";
 
+    // -----------------------------------------------------------------------
+    // #207 — projection row-scope @filter (view-level WHERE)
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// #207: an optional row-scope predicate on an object.projection (an attr.filter
+    /// object — the same subType origin.aggregate's @filter uses) selecting which rows
+    /// the derived view returns; lowered to an outer SQL WHERE. Mirrors
+    /// origin.aggregate's @filter placement (attr.filter subType), optional (min 0 /
+    /// max 1). Mirrors TS OBJECT_PROJECTION_ATTR_FILTER.
+    /// </summary>
+    public const string OBJECT_PROJECTION_ATTR_FILTER = "filter";
+
     public static readonly string[] OBJECT_SUBTYPES =
     [
         BaseTypes.SUBTYPE_BASE,

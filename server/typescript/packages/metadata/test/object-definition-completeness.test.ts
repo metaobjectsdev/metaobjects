@@ -65,10 +65,17 @@ const NORMALIZE: Record<string, ExpectedAttr> = {
   },
 };
 
+// #207 — object.projection carries a row-scope @filter (an attr.filter object lowered
+// to a view-level WHERE); mirrors origin.aggregate's filter-attr placement.
+const PROJECTION_FILTER: Record<string, ExpectedAttr> = {
+  filter: { valueType: "filter", required: false },
+};
+
 function expectedAttrsFor(subType: string): Record<string, ExpectedAttr> {
   if (subType === OBJECT_SUBTYPE_ENTITY) return { ...DISCRIMINATOR };
   if (subType === OBJECT_SUBTYPE_VALUE) return { ...NORMALIZE };
-  // base + projection carry NO attrs (discriminator moved to entity only).
+  if (subType === OBJECT_SUBTYPE_PROJECTION) return { ...PROJECTION_FILTER };
+  // base carries NO attrs (discriminator moved to entity only).
   return {};
 }
 

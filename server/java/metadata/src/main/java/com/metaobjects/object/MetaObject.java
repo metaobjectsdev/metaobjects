@@ -2,6 +2,7 @@ package com.metaobjects.object;
 
 import com.metaobjects.*;
 import com.metaobjects.attr.BooleanAttribute;
+import com.metaobjects.attr.FilterAttribute;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.constraint.PlacementConstraint;
@@ -79,6 +80,16 @@ public abstract class MetaObject extends MetaData {
 
     /** FR-014: this subtype's discriminator value (matched against the root's {@code @discriminator} field). */
     public static final String ATTR_DISCRIMINATOR_VALUE = "discriminatorValue";
+
+    /**
+     * #207: an optional row-scope predicate on an {@code object.projection} — a
+     * portable {@code attr.filter} object (the same subtype {@code origin.aggregate}
+     * and {@code origin.first} carry) selecting which rows the projection's view
+     * returns, lowered to an outer SQL {@code WHERE}. Projection-scoped (mirrors TS
+     * {@code OBJECT_PROJECTION_ATTR_FILTER}); the spec allow-list
+     * ({@code spec/metamodel/object.json}) scopes it to {@code object.projection} only.
+     */
+    public static final String ATTR_FILTER = "filter";
 
     /**
      * Register MetaObject type and constraints with registry.
@@ -200,10 +211,19 @@ public abstract class MetaObject extends MetaData {
         // exclude — childRules are excluded from the cross-port manifest, and the
         // real projection rules are the Phase-E validation passes, so this is a
         // licensing-surface note, not a behavioral divergence.
-        registry.registerType(ProjectionMetaObject.class, def -> def
-            .type(TYPE_OBJECT).subType(SUBTYPE_PROJECTION)
-            .description("Projection object (derived, read-only) — value access via the reflection/map hybrid")
-            .inheritsFrom(TYPE_OBJECT, SUBTYPE_BASE));
+        registry.registerType(ProjectionMetaObject.class, def -> {
+            def.type(TYPE_OBJECT).subType(SUBTYPE_PROJECTION)
+               .description("Projection object (derived, read-only) — value access via the reflection/map hybrid")
+               .inheritsFrom(TYPE_OBJECT, SUBTYPE_BASE);
+
+            // #207 — row-scope @filter: an optional portable attr.filter object (the
+            // same subtype origin.aggregate/first carry) lowered to the projection
+            // view's outer SQL WHERE. The strict per-subtype allow-list (Pass 5 of
+            // applySpecDescriptions, reading spec/metamodel/object.json) scopes it to
+            // object.projection, so it survives pruning here while staying off entity/value.
+            def.optionalAttributeWithConstraints(ATTR_FILTER)
+               .ofType(FilterAttribute.SUBTYPE_FILTER).asSingle();
+        });
 
         // ADR-0006 Rule 1 — bare `object:` YAML key fuses to `object.entity`.
         registry.setDefaultSubType(TYPE_OBJECT, SUBTYPE_ENTITY);

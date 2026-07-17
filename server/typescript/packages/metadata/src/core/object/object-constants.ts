@@ -39,3 +39,13 @@ export const OBJECT_ATTR_DISCRIMINATOR = "discriminator";
 /** FR-014: on a subtype of an entity with @discriminator: the value that
  *  identifies rows of this subtype in the shared discriminator field. */
 export const OBJECT_ATTR_DISCRIMINATOR_VALUE = "discriminatorValue";
+
+// ---------------------------------------------------------------------------
+// #207 — projection row-scope @filter (view-level WHERE)
+// ---------------------------------------------------------------------------
+/** #207: an optional row-scope predicate on an object.projection (an attr.filter
+ *  object) selecting which rows the derived view returns — lowered to an outer
+ *  SQL WHERE. Mirrors origin.aggregate's @filter placement (attr.filter subType),
+ *  but resolves against the projection's OWN declared fields rather than one
+ *  aggregated entity. An aggregate-derived field is not addressable (fail-closed). */
+export const OBJECT_PROJECTION_ATTR_FILTER = "filter";

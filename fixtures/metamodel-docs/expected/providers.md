@@ -28,6 +28,7 @@ Core metaobjects metamodel types and subtypes.
 - `identity.reference`: `@enforce`, `@fields`, `@references`
 - `identity.secondary`: `@fields`
 - `object.entity`: `@discriminator`, `@discriminatorValue`
+- `object.projection`: `@filter`
 - `origin.aggregate`: `@agg`, `@distinct`, `@filter`, `@of`, `@orderBy`, `@via`
 - `origin.collection`: `@via`
 - `origin.computed`: `@expr`

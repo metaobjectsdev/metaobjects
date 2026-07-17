@@ -1,0 +1,30 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            { "source.rdb": { "@table": "orders" } },
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "status" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "ActiveOrders",
+          "@filter": { "status": { "ne": "archived" } },
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_active_orders" } },
+            { "field.uuid": { "name": "id", "extends": "demo::Order.id", "@column": "id" } },
+            { "field.string": { "name": "status", "extends": "demo::Order.status" } },
+            { "identity.primary": { "name": "id", "extends": "demo::Order.id" } }
+          ]
+        }
+      }
+    ]
+  }
+}
