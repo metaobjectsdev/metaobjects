@@ -273,14 +273,22 @@ class ObjectManager:
                 raise ValueError(
                     f"create('{entity_name}'): no field '{field_name}' in metadata"
                 )
+            # #214: a DERIVED (origin.*) field has no column on the write table — it is
+            # view-computed. A read-modify-write round-trip (a client POSTs back the read
+            # model, which carries derived fields) must not try to INSERT it; drop it here.
+            if f.is_derived():
+                continue
             insert_cols.append(_column_of(f))
             params.append(_coerce_write_value(f, raw))
 
-        # Always RETURNING the full physical column set so the inserted row —
-        # including any server-generated PK / default — comes back, then map
-        # columns → metadata field names for cross-port row-shape parity.
-        all_cols = [_column_of(f) for f in entity.fields()]
-        col_to_field = {_column_of(f): f.name for f in entity.fields()}
+        # RETURNING the physical column set so the inserted row — including any
+        # server-generated PK / default — comes back, then map columns → metadata field
+        # names for cross-port row-shape parity. #214: a DERIVED (origin.*) field has no
+        # column on the write table (it is computed by the replica view), so it is
+        # excluded from RETURNING; the write-through re-read below fetches it via the view.
+        returning_fields = [f for f in entity.fields() if not f.is_derived()]
+        all_cols = [_column_of(f) for f in returning_fields]
+        col_to_field = {_column_of(f): f.name for f in returning_fields}
 
         if insert_cols:
             col_list = ", ".join(_q(c) for c in insert_cols)
@@ -302,7 +310,15 @@ class ObjectManager:
             col_to_field.get(c, c): oid for c, oid in result.column_oids.items()
         }
         row = result.rows[0]
-        return {col_to_field.get(k, k): v for k, v in row.items()}
+        mapped = {col_to_field.get(k, k): v for k, v in row.items()}
+        # #214: a write-through entity's INSERT RETURNING covers only the table (non-derived)
+        # columns; re-read the persisted row through the replica VIEW by PK so the returned row
+        # carries the derived origin.* fields (read-your-writes). find_by_id routes to the view.
+        if entity.is_write_through():
+            reread = self.find_by_id(entity_name, mapped[self._primary_pk_field(entity)])
+            if reread is not None:
+                return reread
+        return mapped
 
     def update(
         self,
@@ -366,6 +382,11 @@ class ObjectManager:
                 raise ValueError(
                     f"update('{entity_name}'): no field '{field_name}' in metadata"
                 )
+            # #214: a DERIVED (origin.*) field has no column on the write table (view-computed).
+            # A read-modify-write round-trip PATCHing back the whole read model must not try to
+            # UPDATE it; drop it from the SET list.
+            if f.is_derived():
+                continue
             set_cols.append(_column_of(f))
             params.append(_coerce_write_value(f, raw))
         if not set_cols:
@@ -373,8 +394,12 @@ class ObjectManager:
             row = self.find_by_id(entity_name, id_value)
             return self._on_missing_update(entity_name, pk_field, id_value, if_missing) if row is None else row
 
-        all_cols = [_column_of(f) for f in entity.fields()]
-        col_to_field = {_column_of(f): f.name for f in entity.fields()}
+        # #214: exclude DERIVED (origin.*) fields from RETURNING — they have no column on
+        # the write table (computed by the replica view); the write-through re-read below
+        # fetches them via the view.
+        returning_fields = [f for f in entity.fields() if not f.is_derived()]
+        all_cols = [_column_of(f) for f in returning_fields]
+        col_to_field = {_column_of(f): f.name for f in returning_fields}
         assignments = ", ".join(f"{_q(c)} = %s" for c in set_cols)
         params.append(_coerce_write_value(entity.find_field(pk_field), id_value))
         where = f"{_q(pk_col)} = %s"
@@ -397,7 +422,14 @@ class ObjectManager:
             col_to_field.get(c, c): oid for c, oid in result.column_oids.items()
         }
         row = result.rows[0]
-        return {col_to_field.get(k, k): v for k, v in row.items()}
+        mapped = {col_to_field.get(k, k): v for k, v in row.items()}
+        # #214: re-read the updated row through the replica VIEW by PK so the returned row
+        # carries the derived origin.* fields (write targeted the table, which lacks them).
+        if entity.is_write_through():
+            reread = self.find_by_id(entity_name, id_value)
+            if reread is not None:
+                return reread
+        return mapped
 
     @staticmethod
     def _on_missing_update(
@@ -442,7 +474,10 @@ class ObjectManager:
         offset: int | None = None,
     ) -> list[dict[str, Any]]:
         entity = self._require_entity(entity_name)
-        table = self._table_name(entity)
+        # #214: reads route to the replica VIEW for a write-through entity (carrying the
+        # derived origin.* columns), else the entity's own primary source. All effective
+        # fields (incl. derived) are selected — the view exposes them.
+        table = self._read_source_name(entity)
         cols = [_column_of(f) for f in entity.fields()]
         sql = f'SELECT {", ".join(_q(c) for c in cols)} FROM {_q(table)}'
         params: list[Any] = []
@@ -480,7 +515,9 @@ class ObjectManager:
 
     def count(self, entity_name: str, filter: Filter | None = None) -> int:
         entity = self._require_entity(entity_name)
-        table = self._table_name(entity)
+        # #214: count reads through the same source as find_many (the replica view for a
+        # write-through entity — a 1:1 replica, so the count is unchanged).
+        table = self._read_source_name(entity)
         sql = f"SELECT COUNT(*) FROM {_q(table)}"
         params: list[Any] = []
         filter = self._scope_filter(filter, tph_subtype_of(entity))  # FR-017 TPH subtype scope
@@ -590,6 +627,23 @@ class ObjectManager:
                 if pn:
                     return pn
         return entity.name
+
+    def _read_source_name(self, entity: MetaObject) -> str:
+        """The physical relation READS run against. FR-024 §7 (#214): a write-through
+        entity read-view reads through its read-only REPLICA VIEW (which carries the
+        derived ``origin.*`` columns), while writes still target the table
+        (:meth:`_table_name`). Every other object reads its own primary source (=
+        ``_table_name``), so vanilla/projection behavior is unchanged.
+
+        OWN + role-agnostic: the replica view carries ``@role: replica``, so it is found
+        by read-only kind among the entity's own sources, not a primary-role accessor."""
+        if entity.is_write_through():
+            for c in entity.own_children():
+                if isinstance(c, MetaSource) and c.is_read_only():
+                    pn = c.physical_name()
+                    if pn:
+                        return pn
+        return self._table_name(entity)
 
     @staticmethod
     def _scope_filter(filter: Filter | None, tph: TphSubtype | None) -> Filter | None:

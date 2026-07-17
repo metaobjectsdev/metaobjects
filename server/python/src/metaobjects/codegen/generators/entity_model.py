@@ -496,6 +496,8 @@ class EntityModelGenerator:
                 continue  # FR-036 #2 — a server-generated PK is never in the create body
             if f.attrs().get(fc.FIELD_ATTR_READ_ONLY) is True:
                 continue  # FR-013 — a read-only column is DB/owner-written, not create input
+            if f.is_derived():
+                continue  # FR-024 §7 (#214) — a derived (origin.*) field is view-computed, not create input
             line, used = _create_field_line(f, imports, cfg)
             uses_field = uses_field or used
             lines.append(line)
@@ -529,6 +531,8 @@ class EntityModelGenerator:
         for f in entity.fields():
             if f.name in pk_fields:
                 continue  # FR-036 #4 — the PK is route-authoritative, never patched
+            if f.is_derived():
+                continue  # FR-024 §7 (#214) — a derived (origin.*) field is view-computed, never patched
             line, used = _patch_field_line(f, imports, cfg)
             uses_field = uses_field or used
             lines.append(line)

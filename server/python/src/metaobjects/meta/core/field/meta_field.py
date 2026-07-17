@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from ....datatype import DataType
+from ....shared.base_types import TYPE_ORIGIN
 from ...meta_data import MetaData
 from . import field_constants as fc
 
@@ -52,6 +53,20 @@ class MetaField(MetaData):
         """
         v = self.get_meta_attr(fc.FIELD_ATTR_OBJECT_REF)
         return str(v) if v is not None else None
+
+    def is_derived(self) -> bool:
+        """Whether this field is DERIVED — it carries an ``origin.*`` child
+        (``passthrough`` / ``aggregate`` / …), so its value is computed from a read
+        source (a view join or aggregate), not stored on the writable table.
+
+        Derived ⇒ read-only wherever the field lives (ADR-0028): excluded from the
+        write table + create/update inputs, carried only on the read shape (FR-024 §7,
+        #214). Mirrors the TS/Java ``MetaField.isDerived()``.
+
+        OWN-only (ADR-0029/0039): an ``origin.*`` never inherits via ``extends``, so
+        this reads own children (matched by ``type`` so no ``MetaOrigin`` import is
+        needed — the core field module must not depend on the persistence layer)."""
+        return any(c.type == TYPE_ORIGIN for c in self.own_children())
 
     def get_value(self, obj: object, name: str | None = None) -> object:
         """Read this field's value from a backing object.

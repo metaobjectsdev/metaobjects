@@ -645,7 +645,12 @@ class RouterGenerator:
         src = _primary_source_rdb(entity)
         if src is None:
             return None
-        if src.effective_kind() != SOURCE_KIND_TABLE:
+        # FR-024 §7 (#214): a write-through entity read-view is writable (owns a table
+        # source) and MUST emit its CRUD router regardless of source declaration order —
+        # the first-source gate below would wrongly skip a view-source-first write-through
+        # entity. Reads route to the replica view in the ObjectManager (not here). A
+        # projection (read-only source only) is not write-through, so it still skips.
+        if not entity.is_write_through() and src.effective_kind() != SOURCE_KIND_TABLE:
             return None
 
         # FR-017 TPH: a discriminator base emits a polymorphic collection at the base

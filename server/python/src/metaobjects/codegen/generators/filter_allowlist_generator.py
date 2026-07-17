@@ -250,7 +250,12 @@ class FilterAllowlistGenerator:
         src = _primary_source_rdb(entity)
         if src is None:
             return None
-        if src.effective_kind() != SOURCE_KIND_TABLE:
+        # FR-024 §7 (#214): a write-through entity read-view is writable and its generated
+        # router imports this allowlist — so it MUST be emitted for write-through regardless of
+        # source declaration order (matching the router gate; else a view-source-first
+        # write-through router imports a never-generated module and FastAPI startup crashes). A
+        # projection (read-only source only) is not write-through, so it still skips.
+        if not entity.is_write_through() and src.effective_kind() != SOURCE_KIND_TABLE:
             return None
 
         short_name = entity.name
