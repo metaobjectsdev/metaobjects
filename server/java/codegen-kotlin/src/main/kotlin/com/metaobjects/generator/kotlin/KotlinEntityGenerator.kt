@@ -138,17 +138,29 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // NO validation (a per-subtype POST/PATCH supplies only its own columns; the DB column
         // nullability is the real constraint). Non-TPH entities keep their per-field required rules.
         val tphBase = KotlinTphPlan.isTphBase(obj, loader)
+        // #214 FR-024 §7: on a WRITE-THROUGH entity the single read data class is ALSO the create
+        // @RequestBody, so a DERIVED (origin.*) field — view-computed, never client-supplied — must
+        // be a NULLABLE, default-null ctor param (else a guaranteed-non-null aggregate / @required
+        // derived field is a non-null param with no default and a create body omitting the
+        // view-computed value fails jackson-module-kotlin deserialization → HTTP 400). Its validation
+        // annotations are suppressed too (no @field:NotNull to reject the omitted value). Mirrors the
+        // Java port dropping @NotNull for derived-on-write-through. A projection is read-only
+        // (isWriteThrough=false), so its derived fields keep their origin-aware non-null read type.
+        val writeThrough = obj.isWriteThrough
 
         val ctorBuilder = FunSpec.constructorBuilder()
         for (field in obj.metaFields) {
             val baseType = resolvePropertyType(field, obj, loader)
+            val derivedReadOnly = writeThrough && KotlinGenUtil.isDerivedField(field)
             // #195: a field derived by origin.aggregate @agg:any|all|collect is COALESCE-guaranteed
             // non-null in the synthesized read-model view (any→false, all→true, collect→[]), so its
             // read type is non-null even when the field is NOT @required — matching the Exposed view
             // column ([KotlinExposedTableGenerator]) so the read/write types stay consistent (the
             // PR-#80 nullable-column-vs-non-null-read-type invariant). origin.first / origin.computed
-            // keep the conservative nullable default.
-            val nullable = tphBase ||
+            // keep the conservative nullable default. #214 overrides this to nullable on a
+            // write-through entity (the create-body relaxation above; the view column stays non-null,
+            // which maps safely into a nullable property).
+            val nullable = tphBase || derivedReadOnly ||
                 (!KotlinGenUtil.isRequiredField(field) && !KotlinGenUtil.originGuaranteedNonNull(field))
             val propType = if (nullable) baseType.copy(nullable = true) else baseType
             val propName = field.name
@@ -157,7 +169,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 .build()
             ctorBuilder.addParameter(param)
             val propBuilder = PropertySpec.builder(propName, propType).initializer(propName)
-            if (!tphBase) {
+            if (!tphBase && !derivedReadOnly) {
                 for (annotation in validationAnnotations(field)) {
                     propBuilder.addAnnotation(annotation)
                 }

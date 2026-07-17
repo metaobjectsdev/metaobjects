@@ -67,17 +67,25 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
             // TODO(FR-035 Phase 2): a TPH subtype folds into its base's table — the base's
             // repository would own the polymorphic + per-subtype-scoped surface (not built yet).
             if (KotlinTphPlan.isTphSubtype(entity)) continue
-            // ADR-0039: resolving source lookup (inherited source.rdb via extends).
-            val sourceRdb = KotlinGenUtil.firstRdbSource(entity) ?: continue
-            val kind = sourceRdb.effectiveKind
-            if (kind != MetaSource.KIND_TABLE) {
-                // TODO(FR-035 Phase 2): view / materializedView → a read-only repository (mapper +
-                // finders only); storedProc/tableFunction are callables (no repository).
-                LOG.debug(
-                    "skipping repository for {} — source.rdb @kind='{}' is not a writable table",
-                    entity.name, kind
-                )
-                continue
+            // #214 FR-024 §7: a write-through entity read-view is writable (own table source), so it
+            // GETS a repository — writes target the `<Short>Table`, reads (mapper / findById /
+            // re-reads) route to the `<Short>View`. Detected order-independently (NEVER
+            // firstRdbSource). A plain view/materializedView projection stays a Phase-2 read-only
+            // follow-up (skipped below).
+            val writeThrough = entity.isWriteThrough
+            if (!writeThrough) {
+                // ADR-0039: resolving source lookup (inherited source.rdb via extends).
+                val sourceRdb = KotlinGenUtil.firstRdbSource(entity) ?: continue
+                val kind = sourceRdb.effectiveKind
+                if (kind != MetaSource.KIND_TABLE) {
+                    // TODO(FR-035 Phase 2): view / materializedView → a read-only repository (mapper +
+                    // finders only); storedProc/tableFunction are callables (no repository).
+                    LOG.debug(
+                        "skipping repository for {} — source.rdb @kind='{}' is not a writable table",
+                        entity.name, kind
+                    )
+                    continue
+                }
             }
             // TODO(FR-035 Phase 2): a TPH discriminator base needs the polymorphic + per-subtype
             // repository variant (mirroring the controller's emitTph). Not built yet.
@@ -96,21 +104,30 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
                 continue
             }
 
-            emit(entity, outRoot, primary)
+            emit(entity, outRoot, primary, writeThrough)
         }
     }
 
-    private fun emit(entity: MetaObject, outRoot: Path, primary: MetaIdentity?) {
+    private fun emit(entity: MetaObject, outRoot: Path, primary: MetaIdentity?, writeThrough: Boolean) {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
-        val table = KotlinNaming.tableObjectName(shortName)
+        // #214: writes target the `<Short>Table`; reads (rowTo / findById / the post-insert +
+        // post-update re-reads) route to the `<Short>View`. For a vanilla entity both are the
+        // table object, so the emitted repository is byte-identical.
+        val writeObj = KotlinNaming.tableObjectName(shortName)
+        val readObj = if (writeThrough) KotlinNaming.viewObjectName(shortName) else writeObj
         val repoName = KotlinNaming.repositoryBaseName(shortName)
         val pkFieldName = primary?.fields?.firstOrNull() ?: DEFAULT_PK_FIELD
         val pkParamType = primaryKeyParamType(entity, pkFieldName)
 
         // Scalar columns only — ObjectField / MapField carry a jsonb/flattened shape the mapper
         // does not handle in v1 (the controller's rowTo makes the same exclusion).
-        val scalarFields = entity.metaFields.filter { it !is ObjectField && it !is MapField }
-        val hasUuidColumn = scalarFields.any { columnElementType(it) == "UUID" }
+        // #214 read/write split: the READ set (rowTo, mapping the view row) carries ALL scalars
+        // incl. derived; the WRITE set (insert / update / patch / @autoSet) EXCLUDES derived
+        // fields — they have no column on the write table (computed by the view). Vanilla entity =
+        // no derived fields, so the two sets are equal → byte-identical output.
+        val readScalarFields = entity.metaFields.filter { it !is ObjectField && it !is MapField }
+        val scalarFields = readScalarFields.filterNot { writeThrough && KotlinGenUtil.isDerivedField(it) }
+        val hasUuidColumn = readScalarFields.any { columnElementType(it) == "UUID" }
         val uuidPk = primary?.isUuid == true
         val incrementPk = primary?.isIncrement == true
 
@@ -138,7 +155,7 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
             for (field in scalarFields) {
                 if (field.name == pkFieldName) continue
                 if (field.name in autoSetNames) continue
-                append("            it[$table.${field.name}] = dto.${field.name}\n")
+                append("            it[$writeObj.${field.name}] = dto.${field.name}\n")
             }
             if (hasAutoSet) {
                 append("            applyAutoSetColumns(it${if (preserve) ", dto, stampAutoSet = false" else ""})\n")
@@ -149,27 +166,29 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         // `insert` (preserve=false → stamp) and `insertPreserving` (preserve=true → verbatim) so the
         // PK/read-back logic has one definition.
         fun StringBuilder.appendInsertBody(preserve: Boolean) {
+            // Writes target the write table; the by-PK read-back routes to the read object
+            // (the view for a write-through entity) so the returned entity carries derived fields.
             when {
                 incrementPk -> {
-                    append("        val newId = $table.insert {\n")
+                    append("        val newId = $writeObj.insert {\n")
                     appendInsertColumns(preserve)
-                    append("        }[$table.$pkFieldName]\n")
-                    append("        $table.selectAll().where { $table.$pkFieldName eq newId }.single().let(::rowTo$shortName)\n")
+                    append("        }[$writeObj.$pkFieldName]\n")
+                    append("        $readObj.selectAll().where { $readObj.$pkFieldName eq newId }.single().let(::rowTo$shortName)\n")
                 }
                 uuidPk -> {
                     append("        val newId = UUID.randomUUID()\n")
-                    append("        $table.insert {\n")
-                    append("            it[$table.$pkFieldName] = newId\n")
+                    append("        $writeObj.insert {\n")
+                    append("            it[$writeObj.$pkFieldName] = newId\n")
                     appendInsertColumns(preserve)
                     append("        }\n")
-                    append("        $table.selectAll().where { $table.$pkFieldName eq newId }.single().let(::rowTo$shortName)\n")
+                    append("        $readObj.selectAll().where { $readObj.$pkFieldName eq newId }.single().let(::rowTo$shortName)\n")
                 }
                 else -> {
-                    append("        $table.insert {\n")
-                    append("            it[$table.$pkFieldName] = dto.$pkFieldName\n")
+                    append("        $writeObj.insert {\n")
+                    append("            it[$writeObj.$pkFieldName] = dto.$pkFieldName\n")
                     appendInsertColumns(preserve)
                     append("        }\n")
-                    append("        $table.selectAll().where { $table.$pkFieldName eq dto.$pkFieldName }.single().let(::rowTo$shortName)\n")
+                    append("        $readObj.selectAll().where { $readObj.$pkFieldName eq dto.$pkFieldName }.single().let(::rowTo$shortName)\n")
                 }
             }
         }
@@ -200,17 +219,19 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
             append("open class $repoName {\n\n")
 
             // --- row-mapper (verbatim shape from the controller's rowTo) ---
+            // Reads the READ object's row (the view for a write-through entity) and maps ALL scalar
+            // fields incl. derived — the derived columns live only on the view.
             append("    /** Map an Exposed ResultRow to the $shortName data class. */\n")
             append("    open fun rowTo$shortName(row: ResultRow): $shortName = $shortName(\n")
-            for (field in scalarFields) {
-                append("        ${field.name} = row[$table.${field.name}],\n")
+            for (field in readScalarFields) {
+                append("        ${field.name} = row[$readObj.${field.name}],\n")
             }
             append("    )\n\n")
 
             // --- findById ---
             append("    /** The $shortName with this primary key, or null. */\n")
             append("    open fun findById(id: $pkParamType): $shortName? = transaction {\n")
-            append("        $table.selectAll().where { $table.$pkFieldName eq id }.singleOrNull()?.let(::rowTo$shortName)\n")
+            append("        $readObj.selectAll().where { $readObj.$pkFieldName eq id }.singleOrNull()?.let(::rowTo$shortName)\n")
             append("    }\n\n")
 
             // --- @autoSet stamping (issue #203) ---
@@ -235,12 +256,12 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
                 if (onCreateFields.isNotEmpty()) {
                     append("        if (includeOnCreate) {\n")
                     for (field in onCreateFields) {
-                        append("            stmt[$table.${field.name}] = if (stampAutoSet) ${nowExpr(field)} else dto!!.${field.name}\n")
+                        append("            stmt[$writeObj.${field.name}] = if (stampAutoSet) ${nowExpr(field)} else dto!!.${field.name}\n")
                     }
                     append("        }\n")
                 }
                 for (field in onUpdateFields) {
-                    append("        stmt[$table.${field.name}] = if (stampAutoSet) ${nowExpr(field)} else dto!!.${field.name}\n")
+                    append("        stmt[$writeObj.${field.name}] = if (stampAutoSet) ${nowExpr(field)} else dto!!.${field.name}\n")
                 }
                 append("    }\n\n")
             }
@@ -270,7 +291,7 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
             // a full-row update never rewrites created_at from the dto's (possibly stale) value (#203).
             append("    /** Overwrite every column of the row (present-non-null merge). Null if no such row. */\n")
             append("    open fun update(id: $pkParamType, dto: $shortName): $shortName? = transaction {\n")
-            append("        val n = $table.update({ $table.$pkFieldName eq id }) {\n")
+            append("        val n = $writeObj.update({ $writeObj.$pkFieldName eq id }) {\n")
             for (field in scalarFields) {
                 if (field.name == pkFieldName) continue
                 // @autoSet columns are owned by applyAutoSetColumns (onUpdate stamped, onCreate
@@ -280,39 +301,39 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
                 // be an always-true `-Werror` warning). Optional fields are nullable → guard, so an
                 // absent value does not clobber the stored one. Matches the controller PATCH fix.
                 if (KotlinGenUtil.isRequiredField(field)) {
-                    append("            it[$table.${field.name}] = dto.${field.name}\n")
+                    append("            it[$writeObj.${field.name}] = dto.${field.name}\n")
                 } else {
-                    append("            if (dto.${field.name} != null) it[$table.${field.name}] = dto.${field.name}\n")
+                    append("            if (dto.${field.name} != null) it[$writeObj.${field.name}] = dto.${field.name}\n")
                 }
             }
             if (hasOnUpdate) {
                 append("            applyAutoSetColumns(it, includeOnCreate = false)\n")
             }
             append("        }\n")
-            append("        if (n == 0) null else $table.selectAll().where { $table.$pkFieldName eq id }.single().let(::rowTo$shortName)\n")
+            append("        if (n == 0) null else $readObj.selectAll().where { $readObj.$pkFieldName eq id }.single().let(::rowTo$shortName)\n")
             append("    }\n\n")
 
             // --- patch (Exposed statement-lambda) ---
             append("    /**\n")
             append("     * Partial update — the block sets only the columns it names, e.g.\n")
-            append("     * `repo.patch(id) { it[${table}.<col>] = value }`. A renamed or dropped column is a\n")
+            append("     * `repo.patch(id) { it[${writeObj}.<col>] = value }`. A renamed or dropped column is a\n")
             append("     * COMPILE error, not a silently skipped write. Null if no such row.\n")
             if (hasOnUpdate) {
                 append("     * `@autoSet` onUpdate columns are stamped BEFORE the block runs, so a partial\n")
                 append("     * update still bumps them even if the block does not name them (#203).\n")
             }
             append("     */\n")
-            append("    open fun patch(id: $pkParamType, block: $table.(UpdateStatement) -> Unit): $shortName? = transaction {\n")
+            append("    open fun patch(id: $pkParamType, block: $writeObj.(UpdateStatement) -> Unit): $shortName? = transaction {\n")
             if (hasOnUpdate) {
                 // Stamp onUpdate first, then let the caller's block win on any column it names.
-                append("        val n = $table.update({ $table.$pkFieldName eq id }) {\n")
+                append("        val n = $writeObj.update({ $writeObj.$pkFieldName eq id }) {\n")
                 append("            applyAutoSetColumns(it, includeOnCreate = false)\n")
                 append("            this.block(it)\n")
                 append("        }\n")
             } else {
-                append("        val n = $table.update({ $table.$pkFieldName eq id }, body = block)\n")
+                append("        val n = $writeObj.update({ $writeObj.$pkFieldName eq id }, body = block)\n")
             }
-            append("        if (n == 0) null else $table.selectAll().where { $table.$pkFieldName eq id }.single().let(::rowTo$shortName)\n")
+            append("        if (n == 0) null else $readObj.selectAll().where { $readObj.$pkFieldName eq id }.single().let(::rowTo$shortName)\n")
             append("    }\n\n")
 
             // --- delete ---
@@ -320,7 +341,7 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
             append("    open fun delete(id: $pkParamType): Boolean = transaction {\n")
             // `eq` must resolve through SqlExpressionBuilder inside deleteWhere's receiver (same
             // gotcha the controller documents — a bare `Table.pk eq id` is "Unresolved reference: eq").
-            append("        $table.deleteWhere { with(SqlExpressionBuilder) { $table.$pkFieldName eq id } } > 0\n")
+            append("        $writeObj.deleteWhere { with(SqlExpressionBuilder) { $writeObj.$pkFieldName eq id } } > 0\n")
             append("    }\n")
 
             append("}\n")

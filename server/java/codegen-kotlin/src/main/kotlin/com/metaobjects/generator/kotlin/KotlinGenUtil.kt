@@ -62,6 +62,38 @@ public object KotlinGenUtil {
     fun hasRdbSource(obj: MetaObject): Boolean = firstRdbSource(obj) != null
 
     /**
+     * The OWN writable-kind `source.rdb` of [obj] (a `@kind: table`) — the WRITE target of a
+     * write-through entity read-view (FR-024 §7, #214). Own-only + role-agnostic:
+     * `getSources(false)` reads only this object's declared sources, and partitioning on
+     * `isWritable` is declaration-order-independent (unlike [firstRdbSource], which returns the
+     * FIRST-declared source and so can't safely pick table-vs-view for a two-source entity).
+     * NOTE: a replica view carries `@role: replica`, so the role-scoped
+     * `MetaObject.findPrimaryReadOnlySource()` cannot be used to find its counterpart — hence
+     * these role-agnostic selectors. Null when [obj] declares no own writable rdb source.
+     */
+    fun writableRdbSource(obj: MetaObject): RdbSource? =
+        obj.getSources(false).filterIsInstance<RdbSource>().firstOrNull { it.isWritable }
+
+    /**
+     * The OWN read-only-kind `source.rdb` of [obj] (a `@kind: view` / materializedView / …) —
+     * the READ target of a write-through entity read-view (FR-024 §7, #214). Own-only +
+     * role-agnostic (see [writableRdbSource]); use the source's [RdbSource.getPhysicalName]
+     * for its physical view name (a `@role: replica @kind: view` source returns its `@view`
+     * alias). Null when [obj] declares no own read-only rdb source.
+     */
+    fun readOnlyRdbSource(obj: MetaObject): RdbSource? =
+        obj.getSources(false).filterIsInstance<RdbSource>().firstOrNull { it.isReadOnly }
+
+    /**
+     * True iff [field] is DERIVED — it carries an `origin.*` child (its value is computed from a
+     * read source, not stored on the writable table). Delegates to the shared
+     * [MetaField.isDerived] predicate (own-only; `origin.*` never inherits — ADR-0029/0039).
+     * A derived field is EXCLUDED from the write table + create/patch inputs and carried only on
+     * the read (view) shape (#214). Thin wrapper so the generators read one named predicate.
+     */
+    fun isDerivedField(field: MetaField<*>): Boolean = field.isDerived
+
+    /**
      * Split `"A.b"` into `("A","b")`; null if the ref isn't a single-dot ref
      * (no dot, leading dot, or trailing dot).
      */

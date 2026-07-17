@@ -137,6 +137,88 @@ class RepositoryGeneratorRunTest {
         }
     """.trimIndent()
 
+    // --- #214 write-through entity read-view --------------------------------------------------
+    // Customer (table `customers`) + a write-through Order: a writable `orders` table source AND a
+    // read-only replica view `v_order_with_customer`, with a DERIVED `customerName` pass-through
+    // (Customer.name via the Order.customer relationship). The repository writes to `orders` and
+    // re-reads through the view, so the returned Order carries the view-computed derived column.
+    private val writeThroughFixture = """{
+      "metadata.root": { "package": "acme::repo", "children": [
+        { "object.entity": { "name": "Customer", "children": [
+            { "field.long":   { "name": "id" } },
+            { "field.string": { "name": "fullName", "@required": true, "@maxLength": 200 } },
+            { "source.rdb":   { "@table": "customers" } },
+            { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+        ] } },
+        { "object.entity": { "name": "Order", "children": [
+            { "source.rdb": { "@role": "primary", "@table": "orders" } },
+            { "source.rdb": { "@role": "replica", "@kind": "view", "@view": "v_order_with_customer" } },
+            { "field.long":   { "name": "id" } },
+            { "field.long":   { "name": "customerId", "@required": true } },
+            { "field.string": { "name": "customerName", "children": [
+                { "origin.passthrough": { "@from": "acme::repo::Customer.fullName", "@via": "Order.customer" } }
+            ] } },
+            { "relationship.association": { "name": "customer", "@objectRef": "Customer", "@cardinality": "one" } },
+            { "identity.primary":   { "@fields": "id", "@generation": "increment" } },
+            { "identity.reference": { "name": "ref_customer", "@fields": "customerId", "@references": "Customer" } }
+        ] } }
+      ] }
+    }""".trimIndent()
+
+    // Reads route to the view, writes to the table. SchemaUtils.create builds the two tables; the
+    // view is created by hand (Exposed cannot CREATE a view — its OrderView object is SELECT-only).
+    // The derived customerName is NOT a column of the `orders` table; the repository must read it
+    // back through v_order_with_customer (read-your-writes across the write→view boundary).
+    private val writeThroughDriver = """
+        package acme.repo
+        import org.jetbrains.exposed.sql.Database
+        import org.jetbrains.exposed.sql.SchemaUtils
+        import org.jetbrains.exposed.sql.transactions.transaction
+
+        object OrderRepoDriver {
+            fun run(jdbcUrl: String): String {
+                val db = Database.connect(jdbcUrl, driver = "org.h2.Driver")
+                return transaction(db) {
+                    SchemaUtils.create(CustomerTable, OrderTable)
+                    exec(
+                        "CREATE VIEW v_order_with_customer AS " +
+                        "SELECT o.id AS id, o.customer_id AS customer_id, c.full_name AS customer_name " +
+                        "FROM orders o JOIN customers c ON o.customer_id = c.id"
+                    )
+                    val customers = CustomerRepositoryBase()
+                    val orders = OrderRepositoryBase()
+
+                    val cust = customers.insert(Customer(fullName = "Acme"))
+                    val custId = cust.id!!
+
+                    // insert writes the `orders` table, then RE-READS through the view — so the
+                    // returned Order carries the derived customerName the write table never stored.
+                    val created = orders.insert(Order(customerId = custId))
+                    check(created.id != null) { "order insert did not return a PK" }
+                    check(created.customerId == custId) { "insert lost customerId: ${'$'}{created.customerId}" }
+                    check(created.customerName == "Acme") {
+                        "read-your-writes FAILED: derived customerName not read back through the view: ${'$'}{created.customerName}"
+                    }
+
+                    // findById reads through the view too.
+                    val fetched = orders.findById(created.id!!)
+                    check(fetched?.customerName == "Acme") {
+                        "findById through the view lost the derived column: ${'$'}{fetched?.customerName}"
+                    }
+
+                    check(orders.delete(created.id!!)) { "order delete returned false" }
+                    check(orders.findById(created.id!!) == null) { "order row still present after delete" }
+                    "OK"
+                }
+            }
+        }
+    """.trimIndent()
+
+    @Test
+    fun `write-through repository — insert re-reads the derived column through the view (read-your-writes)`() {
+        runRepoScenario("repo-wt", writeThroughFixture, "OrderRepoDriver", writeThroughDriver, "jdbc:h2:mem:repo_wt;DB_CLOSE_DELAY=-1;MODE=PostgreSQL")
+    }
+
     @Test
     fun `increment-PK repository — insert returns id, findById, patch keeps omitted col, update, delete`() {
         runRepoScenario("repo-inc", incFixture, "ItemRepoDriver", incDriver, "jdbc:h2:mem:repo_inc;DB_CLOSE_DELAY=-1;MODE=PostgreSQL")

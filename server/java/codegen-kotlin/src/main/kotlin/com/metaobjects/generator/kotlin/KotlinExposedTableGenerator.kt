@@ -94,6 +94,20 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             // a partial column set (a footgun). The subtype inherits source.rdb via extends, so
             // the resolving lookup below would otherwise emit one — mirror the controller's skip.
             if (KotlinTphPlan.isTphSubtype(entity)) continue
+            // #214 FR-024 §7: a WRITE-THROUGH entity read-view (own writable table source + own
+            // read-only replica view source + derived origin.* fields) emits TWO Exposed objects:
+            // the derived-free write `<Short>Table` AND the derived-carrying read-only `<Short>View`.
+            // Detected order-independently via MetaObject.isWriteThrough() — NEVER firstRdbSource,
+            // which returns the FIRST-declared source and can't pick table-vs-view. A projection
+            // owns only a read-only source (isWriteThrough() = false), so it stays on the single-
+            // object path below.
+            if (entity.subType == MetaObject.SUBTYPE_ENTITY && entity.isWriteThrough) {
+                emitWriteThrough(
+                    entity, outRoot, loader, fkMap, refDecorationMap,
+                    packagesNeedingInstantTzHelper, packagesNeedingInetUriHelper, packagesNeedingJacksonMapper,
+                )
+                continue
+            }
             // ADR-0039: resolving source lookup — an entity inheriting its source.rdb via
             // extends must still emit a table (own-only .children returned null → no table).
             val sourceRdb = KotlinGenUtil.firstRdbSource(entity) ?: continue
@@ -157,6 +171,64 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         for (pkg in packagesNeedingJacksonMapper) {
             emitJsonbMapperSupportFile(pkg, outRoot)
         }
+    }
+
+    /**
+     * #214 FR-024 §7 — emit the TWO Exposed objects of a write-through entity read-view:
+     *
+     *  - the WRITE `<Short>Table` from the entity's OWN writable `source.rdb` (physical `@table`
+     *    name), EXCLUDING derived (`origin.*`) fields but keeping the PK / autoIncrement /
+     *    `.references(...)` / `uniqueIndex` write shape (`excludeDerivedFields = true`,
+     *    `isView` = false since the source is a table kind);
+     *  - the READ `<Short>View` from the entity's OWN read-only replica view source (physical
+     *    name via [RdbSource.getPhysicalName]), carrying ALL fields incl. derived, in the
+     *    read-only shape (no autoIncrement / references / uniqueIndex — the existing view-kind
+     *    branch of [emit], reached because the source is a view kind).
+     *
+     * Both objects live in the same package, so the per-package instant-tz / inet-uri / jsonb
+     * support-file needs are recorded once (the sets dedupe). Order-independent: the sources are
+     * selected by writable-vs-read-only classification, not declaration order.
+     */
+    private fun emitWriteThrough(
+        entity: MetaObject,
+        outRoot: Path,
+        loader: MetaDataLoader,
+        fkMap: Map<String, List<FkColumnSpec>>,
+        refDecorationMap: Map<String, Map<String, RefDecoration>>,
+        packagesNeedingInstantTzHelper: MutableSet<String>,
+        packagesNeedingInetUriHelper: MutableSet<String>,
+        packagesNeedingJacksonMapper: MutableSet<String>,
+    ) {
+        val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
+        val writeSource = KotlinGenUtil.writableRdbSource(entity)
+        val readSource = KotlinGenUtil.readOnlyRdbSource(entity)
+        // Defensive: isWriteThrough() already guaranteed both are present; a null here would be a
+        // metadata-model contract break, so fail loud rather than emit a half table.
+        if (writeSource == null || readSource == null) {
+            LOG.warn(
+                "skipping write-through {} — expected both a writable and a read-only source.rdb (write={}, read={})",
+                entity.name, writeSource != null, readSource != null
+            )
+            return
+        }
+        // WRITE table: derived-free, full write shape (PK/autoIncrement/references/uniqueIndex).
+        val usedInstantTzWrite = emit(
+            entity, writeSource, outRoot, loader,
+            fkMap[entity.name].orEmpty(), refDecorationMap[entity.name].orEmpty(),
+            objectNameOverride = KotlinNaming.tableObjectName(shortName),
+            excludeDerivedFields = true,
+        )
+        // READ view: carries ALL fields incl. derived; read-only shape (no FK/uniqueIndex — the
+        // isView branch of emit(), since readSource is a view kind).
+        val usedInstantTzRead = emit(
+            entity, readSource, outRoot, loader,
+            emptyList(), emptyMap(),
+            objectNameOverride = KotlinNaming.viewObjectName(shortName),
+            excludeDerivedFields = false,
+        )
+        if (usedInstantTzWrite || usedInstantTzRead) packagesNeedingInstantTzHelper += pkg
+        if (entityNeedsInetUriHelper(entity, loader)) packagesNeedingInetUriHelper += pkg
+        if (entityNeedsJacksonMapper(entity, loader)) packagesNeedingJacksonMapper += pkg
     }
 
     /**
@@ -282,10 +354,18 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         loader: MetaDataLoader,
         fkColumns: List<FkColumnSpec>,
         refDecorations: Map<String, RefDecoration>,
+        // #214: a write-through entity read-view emits TWO objects from the SAME entity — the
+        // write `<Short>Table` and the read `<Short>View` — so the caller passes an explicit
+        // object name (default: `tableObjectName(shortName)`, byte-identical for a vanilla entity).
+        objectNameOverride: String? = null,
+        // #214: on the write table, DERIVED fields (`origin.*` children) are excluded — they are
+        // not stored on the writable table, only computed by the read view. Vanilla entities carry
+        // no derived fields, so the default `false` keeps their output byte-identical.
+        excludeDerivedFields: Boolean = false,
     ): Boolean {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         val isView = isViewKind(sourceRdb)
-        val tableObjectName = KotlinNaming.tableObjectName(shortName)
+        val tableObjectName = objectNameOverride ?: KotlinNaming.tableObjectName(shortName)
         // FR-016: getPhysicalName() implements the four-step rule (kind-matching
         // alias -> legacy @table -> snake_case(source.name) -> pluralize(snake_case(entity))),
         // so it returns a valid name for any rdb @kind. The local fallback is
@@ -486,6 +566,10 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 // can emit @storage flattened (N columns) or jsonb (1 column) uniformly; a
                 // field.map is always a single jsonb column.
                 if (field is ObjectField || field is MapField) continue
+                // #214: on the WRITE table of a write-through entity, a DERIVED (origin.*) field
+                // has no physical column — it is computed by the read view — so it is excluded.
+                // No-op for a vanilla entity or the read view (excludeDerivedFields = false).
+                if (excludeDerivedFields && KotlinGenUtil.isDerivedField(field)) continue
                 val isPk = field.name in primaryFieldSet
                 // #195: an origin.aggregate @agg:any|all|collect view column is COALESCE-guaranteed
                 // non-null (any→false, all→true, collect→[]), so it is emitted NON-null even when the

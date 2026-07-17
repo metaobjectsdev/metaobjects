@@ -59,12 +59,19 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
             // (unioned across subtype columns via isTphBase) is the only one the polymorphic
             // controller uses; a per-subtype allowlist is dead. Mirror the controller/table skip.
             if (KotlinTphPlan.isTphSubtype(entity)) continue
-            // ADR-0039: resolving source lookup (inherited source.rdb via extends).
-            val sourceRdb = KotlinGenUtil.firstRdbSource(entity) ?: continue
-            // Only writable tables get a filter allowlist (the controller is also
-            // table-only). View / materializedView are read-only; storedProc has its
-            // own dispatch; tableFunction has no controller surface today.
-            if (sourceRdb.effectiveKind != MetaSource.KIND_TABLE) continue
+            // #214 FR-024 §7: a write-through entity read-view is writable and gets a CRUD
+            // controller, which references this <Short>FilterAllowlist — so the allowlist MUST be
+            // emitted for it too (else the generated controller references a missing symbol). Match
+            // the controller/repository gate: order-independent (NEVER firstRdbSource, which would
+            // skip a view-source-first write-through entity while the controller still emitted).
+            if (!entity.isWriteThrough) {
+                // ADR-0039: resolving source lookup (inherited source.rdb via extends).
+                val sourceRdb = KotlinGenUtil.firstRdbSource(entity) ?: continue
+                // Only writable tables get a filter allowlist (the controller is also
+                // table-only). View / materializedView are read-only; storedProc has its
+                // own dispatch; tableFunction has no controller surface today.
+                if (sourceRdb.effectiveKind != MetaSource.KIND_TABLE) continue
+            }
             emit(entity, outRoot, loader)
         }
     }

@@ -28,6 +28,16 @@ object KotlinNaming {
     /** [KotlinExposedTableGenerator]: `shortName + "Table"`. */
     fun tableObjectName(shortName: String): String = shortName + "Table"
 
+    /**
+     * [KotlinExposedTableGenerator]: `shortName + "View"` — the read-view Exposed object of a
+     * WRITE-THROUGH entity read-view (FR-024 §7, #214). A write-through entity emits TWO Exposed
+     * objects: the write `<Short>Table` (from the writable `source.rdb`, derived-free) and this
+     * read `<Short>View` (from the read-only replica view source, carrying the derived fields).
+     * The distinct suffix keeps the two objects from colliding; this is the SSOT for the read
+     * object's name so the repository / controller reads route to the same symbol.
+     */
+    fun viewObjectName(shortName: String): String = shortName + "View"
+
     /** [KotlinStoredProcGenerator]: `shortName + "Proc"` — the stored-proc callable object. */
     fun procObjectName(shortName: String): String = shortName + "Proc"
 

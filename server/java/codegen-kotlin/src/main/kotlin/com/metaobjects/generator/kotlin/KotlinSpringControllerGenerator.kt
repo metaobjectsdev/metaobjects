@@ -95,11 +95,16 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // ADR-0039: resolving source lookup (inherited source.rdb via extends).
             val sourceRdb = KotlinGenUtil.firstRdbSource(entity) ?: continue
             val kind = sourceRdb.effectiveKind
+            // #214 FR-024 §7: a write-through entity read-view IS writable (own table source), so it
+            // gets a CRUD controller — reads route to the `<Short>View`, writes to the `<Short>Table`.
+            // Detected order-independently (NEVER firstRdbSource, which the pre-#214 gate wrongly
+            // used — it would skip a view-source-first write-through entity).
+            val writeThrough = entity.isWriteThrough
             // Only writable tables get a CRUD controller. View / materializedView are
             // read-only (would need a different controller shape — list + get only);
             // storedProc is handled by KotlinStoredProcGenerator; tableFunction has no
             // dedicated controller story today.
-            if (kind != MetaSource.KIND_TABLE) {
+            if (!writeThrough && kind != MetaSource.KIND_TABLE) {
                 when (kind) {
                     MetaSource.KIND_VIEW, MetaSource.KIND_MATERIALIZED_VIEW -> {
                         LOG.debug(
@@ -132,6 +137,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
     protected open fun emit(entity: MetaObject, outRoot: Path, loader: MetaDataLoader) {
         val (pkg, shortName) = PackageMapping.splitFqn(entity.name)
         val tableObjectName = KotlinNaming.tableObjectName(shortName)
+        // #214 FR-024 §7: writes (create / update / delete) target the write `<Short>Table`; reads
+        // (rowTo, list, get, the filter + sort surface, and the create/update re-reads) route to the
+        // `<Short>View` for a write-through entity so the derived fields come back. For a vanilla
+        // entity readObj == tableObjectName, so the emitted controller is byte-identical.
+        val writeThrough = entity.isWriteThrough
+        val readObj = if (writeThrough) KotlinNaming.viewObjectName(shortName) else tableObjectName
         val routePath = pluralLowercase(shortName)
         val routeBase = "/api/$routePath"
 
@@ -165,7 +176,10 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 // Program D: only a jsonb value-object column is settable. A flattened object
                 // field (@storage:flattened) is materialised by the Exposed table as per-subfield
                 // columns — there is no single `Table.<field>` to bind — so it stays excluded.
-                (it !is ObjectField || isJsonbObjectColumn(it))
+                (it !is ObjectField || isJsonbObjectColumn(it)) &&
+                // #214: a DERIVED (origin.*) field on a write-through entity has no column on the
+                // write table — it is computed by the read view — so it is never a write/patch target.
+                !(writeThrough && KotlinGenUtil.isDerivedField(it))
         }
         val hasPatchFields = patchSettableFields.isNotEmpty()
 
@@ -296,7 +310,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             //      Op<Boolean> bound against ${tableObjectName}'s columns. Multiple
             //      predicates AND together. Per-field arms know each column's Kotlin
             //      type at compile time (no reflection / runtime cast surprises).
-            emitFilterPipeline(this, shortName, tableObjectName, allowlistName, scalarFields)
+            // #214: the filter + sort surface reads through the READ object (the view for a
+            // write-through entity), so its per-field Exposed dispatch binds against `readObj`.
+            emitFilterPipeline(this, shortName, readObj, allowlistName, scalarFields)
 
             // rowTo<Entity>: ResultRow → data class. Program D: a field.object value-object jsonb
             // column IS read here — the Exposed Column<VO> codec (the shared Jackson metaJsonbMapper)
@@ -304,13 +320,15 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // the typed value the data-class property expects. MapField (dict-of-VO) stays skipped
             // (staged out). The `field.string @dbColumnType=jsonb` open bag is a StringField, so it is
             // read here too (its column decodes to a kotlinx JsonElement).
+            // #214: reads route to `readObj` (the view for a write-through entity), which carries the
+            // DERIVED columns — so a derived scalar field (a StringField / etc.) maps here too.
             append("/** GENERATED — map an Exposed ResultRow to the ${shortName} data class. */\n")
             append("private fun rowTo${shortName}(row: ResultRow): ${shortName} = ${shortName}(\n")
             for (field in entity.metaFields) {
                 // MapField (staged out) and a flattened object field (materialised as per-subfield
                 // columns, no single `Table.<field>`) are skipped — the data class defaults them.
                 if (field is MapField || (field is ObjectField && !isJsonbObjectColumn(field))) continue
-                append("    ${field.name} = row[${tableObjectName}.${field.name}],\n")
+                append("    ${field.name} = row[${readObj}.${field.name}],\n")
             }
             append(")\n\n")
 
@@ -350,12 +368,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("            return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to filterResult.error) as Any)\n")
             append("        }\n")
             append("        val whereOp = ${shortName}WhereOp(filterResult.predicates)\n")
-            append("        var q = if (whereOp != null) ${tableObjectName}.selectAll().where { whereOp } else ${tableObjectName}.selectAll()\n")
+            append("        var q = if (whereOp != null) ${readObj}.selectAll().where { whereOp } else ${readObj}.selectAll()\n")
             append("        if (sort != null) {\n")
             append("            val parsed = parse${shortName}Sort(sort)\n")
             append("                ?: return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"invalid_sort\") as Any)\n")
             append("            val (field, dir) = parsed\n")
-            append("            q = q.orderBy(${tableObjectName}.columns.first { it.name == field } to dir)\n")
+            append("            q = q.orderBy(${readObj}.columns.first { it.name == field } to dir)\n")
             append("        }\n")
             append("        val total: Long = if (withCount == 1) q.count() else -1L\n")
             append("        val effectiveLimit = limit ?: 50\n")
@@ -368,7 +386,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             // GET /{id}
             append("    @GetMapping(\"/{id}\")\n")
             append("    fun get(@PathVariable id: $pkParamType): ResponseEntity<Any> = transaction {\n")
-            append("        val row = ${tableObjectName}.selectAll().where { ${tableObjectName}.${pkFieldName} eq id }.singleOrNull()\n")
+            append("        val row = ${readObj}.selectAll().where { ${readObj}.${pkFieldName} eq id }.singleOrNull()\n")
             append("            ?: return@transaction ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
             append("        ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
             append("    }\n\n")
@@ -391,6 +409,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 // If the entity has no auto-incrementing PK the consumer can override the
                 // generated handler; this is the 95% case.
                 if (field.name == pkFieldName) continue
+                // #214: a DERIVED (origin.*) field on a write-through entity has no column on the
+                // write table (computed by the view), so it is never written on create.
+                if (writeThrough && KotlinGenUtil.isDerivedField(field)) continue
                 // NOTE: a `field.string @dbColumnType=jsonb` open bag IS written here (create
                 // binds it from the @Valid DTO's kotlinx JsonElement property, gated by the
                 // jsonb-open-bag-roundtrip corpus). PATCH cannot (the raw-JsonNode path can't bind
@@ -399,7 +420,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 append("            it[${field.name}] = dto.${field.name}\n")
             }
             append("        }[${tableObjectName}.${pkFieldName}]\n")
-            append("        val saved = ${tableObjectName}.selectAll().where { ${tableObjectName}.${pkFieldName} eq newId }.single()\n")
+            // #214: re-read the persisted row through the READ object (the view for a write-through
+            // entity) by PK so the returned entity carries the derived fields (read-your-writes).
+            append("        val saved = ${readObj}.selectAll().where { ${readObj}.${pkFieldName} eq newId }.single()\n")
             append("        ResponseEntity.status(HttpStatus.CREATED).body(rowTo${shortName}(saved) as Any)\n")
             append("    }\n\n")
 
@@ -495,7 +518,9 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 append("            }\n")
                 append("        }\n")
             }
-            append("        val row = ${tableObjectName}.selectAll().where { ${tableObjectName}.${pkFieldName} eq id }.singleOrNull()\n")
+            // #214: read the (possibly-updated) row back through the READ object so the response
+            // carries the derived fields; the write above targeted the write table.
+            append("        val row = ${readObj}.selectAll().where { ${readObj}.${pkFieldName} eq id }.singleOrNull()\n")
             append("        if (row == null) ResponseEntity.status(HttpStatus.NOT_FOUND).body(mapOf(\"error\" to \"not_found\") as Any)\n")
             append("        else ResponseEntity.ok(rowTo${shortName}(row) as Any)\n")
             append("    }\n\n")
