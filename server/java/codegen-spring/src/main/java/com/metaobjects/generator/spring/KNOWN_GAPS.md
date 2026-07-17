@@ -38,6 +38,19 @@ needs either `Optional<T>` arms (verbose) or a builder + nullable
 representation, neither of which is a one-liner. A follow-up can add
 these once the partial-update story is settled cross-port.
 
+**Write-through interaction (FR-024 §7, #214).** A write-through entity
+read-view carries DERIVED (`origin.*`) fields on its read shape. The
+`<Entity>Patch` (update input) EXCLUDES all derived fields
+(`SpringDtoGenerator.minusPk` drops `field.isDerived()`), the read `<Entity>Dto`
+carries them, and — because Java shares one `<Entity>Dto` for read AND create —
+a derived field on a write-through entity carries NO client-validation constraints
+(`validationAnnotations` early-returns for it, like an `@autoSet` field), so a `POST`-create
+that omits the view-computed field is not wrongly `400`'d. The single residual facet:
+that same shared-DTO decision means a guaranteed-non-null `origin.aggregate @agg:any|all|collect`
+field loses its read-side `@NotNull` (its value is still returned, just annotated nullable) —
+a projection keeps it (read-only, no create path). Restoring the read-side non-null annotation
+without re-breaking create needs the derived-free `<Entity>Insert` split folded in above.
+
 ## Output parser is throw-only (no try-style variant)
 
 **Status:** by design, per ADR-0010 §3.

@@ -807,6 +807,24 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
         return getChildren(MetaView.class, true);
     }
 
+    /**
+     * Whether this field is DERIVED — it carries an {@code origin.*} child
+     * ({@code passthrough} / {@code aggregate} / …), meaning its value is computed
+     * from a read source (a view join or aggregate), not stored on the writable table.
+     *
+     * <p>Derived ⇒ read-only wherever the field lives (ADR-0028): excluded from the
+     * write table + create/update inputs, carried only on the read shape (FR-024 §7,
+     * #214). Mirrors the TS reference {@code MetaField.isDerived()}.</p>
+     *
+     * <p>OWN-only (ADR-0029/0039): an {@code origin.*} never inherits via {@code extends},
+     * so this reads own children, not the resolving accessor.</p>
+     *
+     * @return {@code true} if this field declares an {@code origin.*} child
+     */
+    public boolean isDerived() {
+        return !getChildren(MetaOrigin.class, false).isEmpty();
+    }
+
     public MetaView getDefaultView() {
         if (hasMetaAttr(ATTR_DEFAULT_VIEW))
             return getView(getMetaAttr(ATTR_DEFAULT_VIEW).getValueAsString());

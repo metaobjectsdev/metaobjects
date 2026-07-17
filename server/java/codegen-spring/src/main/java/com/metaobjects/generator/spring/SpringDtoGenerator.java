@@ -346,6 +346,11 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         for (MetaField field : pool) {
             if (pkFields.contains(field.getName())) continue;
             if (alsoExclude != null && alsoExclude.equals(field.getName())) continue;
+            // FR-024 §7 (#214): a DERIVED field (origin.*) is view-computed, not stored on the
+            // writable table, so it is excluded from every write-input shape (the <Entity>Patch
+            // and the TPH per-subtype settable set). The read <Entity>Dto still carries it (via
+            // dtoComponentFields) — only the settable/write pools drop it.
+            if (field.isDerived()) continue;
             out.add(field);
         }
         return out;
@@ -799,6 +804,18 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         // `.optional().transform(...)` (a @required @autoSet field would otherwise emit
         // @NotNull and wrongly 400 a POST that omits the server-filled timestamp).
         if (AutoSetSupport.isAutoSet(field)) return "";
+
+        // FR-024 §7 (#214): a DERIVED field (origin.*) on a WRITE-THROUGH entity is view-computed
+        // and read-only — never client-supplied. Java shares one <Entity>Dto for read AND create,
+        // and the generated POST-create validates the whole DTO (SpringControllerGenerator), so a
+        // guaranteed-non-null aggregate's @NotNull (from originGuaranteedNonNull, #195) would wrongly
+        // 400 a create that omits the view-computed field. Emit NO client-validation constraints for
+        // such a field (parity with the @autoSet early-return above). A PROJECTION is read-only
+        // (isWriteThrough()=false), so its derived fields keep @NotNull for read-nullability agreement.
+        if (field.isDerived() && field.getParent() instanceof MetaObject
+                && ((MetaObject) field.getParent()).isWriteThrough()) {
+            return "";
+        }
 
         boolean isArray = field.isArrayType();
         boolean isString = field instanceof StringField;

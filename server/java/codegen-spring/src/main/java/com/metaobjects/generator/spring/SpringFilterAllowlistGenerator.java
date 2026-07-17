@@ -88,7 +88,11 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
         if (com.metaobjects.generator.util.GeneratorUtil.isAbstract(entity)) return false;
         RdbSource sourceRdb = firstRdbSource(entity);
         if (sourceRdb == null) return false;
-        return MetaSource.KIND_TABLE.equals(sourceRdb.getEffectiveKind());
+        // FR-024 §7 (#214): a write-through entity read-view owns BOTH a writable table
+        // source and a read-only replica view source — it is writable and MUST emit its
+        // write surfaces regardless of source declaration order (firstRdbSource is
+        // order-dependent). A vanilla table entity emits; a projection (read-only-only) skips.
+        return entity.isWriteThrough() || MetaSource.KIND_TABLE.equals(sourceRdb.getEffectiveKind());
     }
 
     /**

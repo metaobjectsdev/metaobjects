@@ -1009,6 +1009,29 @@ public abstract class MetaObject extends MetaData {
     }
 
     /**
+     * Whether this object is a WRITE-THROUGH entity read-view (FR-024 §7, #214) — it
+     * declares BOTH an own writable-kind {@code source.rdb} (a {@code @kind: table}) AND
+     * an own read-only-kind {@code source.rdb} (a {@code @kind: view} / materializedView /
+     * …). Writes route to the table; reads route to the (derived-field-carrying) view.
+     *
+     * <p>OWN-only + role-agnostic (mirrors the TS reference {@code isWriteThrough}):
+     * classified by the source {@code @kind} of this object's OWN {@code source.*}
+     * children. A replica view carries {@code @role: replica}, so detection must NOT go
+     * through the primary-role {@link #findPrimaryReadOnlySource()} accessor.</p>
+     *
+     * @return {@code true} if this object owns both a writable-kind and a read-only-kind source
+     */
+    public boolean isWriteThrough() {
+        boolean hasWritable = false;
+        boolean hasReadOnly = false;
+        for (MetaSource src : getSources(false)) {  // own-only (ADR-0039)
+            if (src.isReadOnly()) hasReadOnly = true;
+            else hasWritable = true;
+        }
+        return hasWritable && hasReadOnly;
+    }
+
+    /**
      * Get one-to-one relationships (cardinality = "one")
      */
     public Collection<MetaRelationship> getOneToOneRelationships() {
