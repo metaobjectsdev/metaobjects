@@ -49,6 +49,7 @@ import {
   OBJECT_SUBTYPE_ENTITY,
   OBJECT_SUBTYPE_VALUE,
   OBJECT_SUBTYPE_PROJECTION,
+  OBJECT_PROJECTION_ATTR_FILTER,
 } from "../core/object/object-constants.js";
 import { MetaSource } from "../persistence/source/meta-source.js";
 import {
@@ -1878,6 +1879,136 @@ function checkFilterClauses(
             ),
           );
         }
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// #207 — projection row-scope @filter (view-level WHERE) reference validation
+//
+// A projection's @filter (a portable attr.filter object) scopes which rows the
+// derived view returns. Its field refs must name the projection's OWN declared
+// fields, and each must be ADDRESSABLE in a WHERE:
+//   - a plain (extends-bound / no-origin) or origin.passthrough or origin.computed
+//     field → addressable (a base/joined column, or an inlined row-level expression).
+//   - an aggregate-derived field (origin.aggregate — count/sum/…/any/all/collect —
+//     or origin.first / origin.collection) → NOT addressable: a WHERE runs before
+//     aggregation, so it cannot see an aggregate (post-aggregate filtering is HAVING,
+//     a separate later extension). Fail-closed → ERR_BAD_ATTR_FILTER.
+//   - a ref naming no declared field → dangling → ERR_BAD_ATTR_FILTER.
+//
+// Own-attrs only: the @filter is declared locally, and is registered on
+// object.projection alone — a write-through entity read-view (object.entity,
+// isWriteThrough) can never carry one, so filtered replicas (which would break
+// read-your-writes totality) are excluded by construction (v1 scope).
+// ---------------------------------------------------------------------------
+
+/** A projection field addressable by a @filter: its aggregate-derived-ness + its
+ *  op-band (by declared subType). Mirrors the dataGrid allowlist shape. */
+interface ProjectionFilterField {
+  readonly derived: boolean;
+  readonly ops: readonly string[];
+}
+
+export function validateProjectionFilter(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
+  for (const obj of root
+    .children()
+    .filter((c) => c.type === TYPE_OBJECT && c.subType === OBJECT_SUBTYPE_PROJECTION)) {
+    // ADR-0039: own — the @filter is declared locally on this projection.
+    const filter = obj.ownAttr(OBJECT_PROJECTION_ATTR_FILTER);
+    // Non-object shapes are rejected by the attr schema check (FilterAttr.validateValue).
+    if (typeof filter !== "object" || filter === null || Array.isArray(filter)) continue;
+
+    // Classify the projection's OWN fields (the declared set IS the exposure —
+    // FR-024/ADR-0028): aggregate-derived-ness + the op-band legal for the field's
+    // declared subType. origin.* never inherits (ADR-0029), so the origin reads
+    // below are own (category 4).
+    const fields = new Map<string, ProjectionFilterField>();
+    for (const f of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
+      const origin = f.ownChildren().find((c) => c.type === TYPE_ORIGIN);
+      const derived =
+        origin !== undefined &&
+        origin.subType !== ORIGIN_SUBTYPE_PASSTHROUGH &&
+        origin.subType !== ORIGIN_SUBTYPE_COMPUTED;
+      fields.set(f.name, { derived, ops: opsForSubType(f.subType) });
+    }
+    checkProjectionFilterRefs(filter as Record<string, unknown>, fields, obj.name, obj.source, errors);
+  }
+  return errors;
+}
+
+// Validates a projection @filter fail-closed at load — mirrors the dataGrid sibling
+// checkFilterClauses (which validates both field refs AND ops). A malformation that
+// slips through here lowers to a silently-wrong or no WHERE, or crashes `meta migrate`
+// / emits invalid CREATE VIEW SQL, so every branch that isn't a valid clause errors.
+function checkProjectionFilterRefs(
+  filter: Record<string, unknown>,
+  fields: ReadonlyMap<string, ProjectionFilterField>,
+  projectionName: string,
+  source: ErrorSource,
+  errors: ParseError[],
+): void {
+  const err = (message: string): void => {
+    errors.push(new ParseError(message, { code: "ERR_BAD_ATTR_FILTER", source }));
+  };
+  for (const [key, clause] of Object.entries(filter)) {
+    if (key === FILTER_COMPOSE_OR || key === FILTER_COMPOSE_AND) {
+      // Fail-closed: a compose key MUST hold an ARRAY of sub-clause objects. A non-array
+      // (a common object-vs-array authoring slip, e.g. `and: { … }`) would otherwise
+      // collapse to no WHERE at lowering — a soft-delete filter silently returning every
+      // row. Reject it, and any non-object element, here.
+      if (!Array.isArray(clause)) {
+        err(`projection "${projectionName}" @filter "${key}" must be an array of sub-clauses.`);
+        continue;
+      }
+      for (const sub of clause) {
+        if (typeof sub === "object" && sub !== null && !Array.isArray(sub)) {
+          checkProjectionFilterRefs(sub as Record<string, unknown>, fields, projectionName, source, errors);
+        } else {
+          err(`projection "${projectionName}" @filter "${key}" contains a non-object sub-clause.`);
+        }
+      }
+      continue;
+    }
+    const field = fields.get(key);
+    if (field === undefined) {
+      err(
+        `projection "${projectionName}" @filter references "${key}", which is not a declared field of the ` +
+          `projection. A view-level @filter may only reference the projection's own declared fields.`,
+      );
+      continue;
+    }
+    if (field.derived) {
+      err(
+        `projection "${projectionName}" @filter references "${key}", an aggregate-derived field. A view-level ` +
+          `WHERE runs before aggregation, so it cannot filter on an aggregate (post-aggregate filtering is a ` +
+          `separate HAVING extension). Filter on a passthrough or computed field instead.`,
+      );
+      continue;
+    }
+    // After parse-time desugaring (FilterAttr.desugar) every field clause is a canonical
+    // { op: value } object; a non-object or empty op-set would silently drop the predicate.
+    if (typeof clause !== "object" || clause === null || Array.isArray(clause)) {
+      err(`projection "${projectionName}" @filter on "${key}" must be an { op: value } object.`);
+      continue;
+    }
+    const ops = Object.keys(clause as Record<string, unknown>);
+    if (ops.length === 0) {
+      err(`projection "${projectionName}" @filter on "${key}" declares no operator.`);
+      continue;
+    }
+    // Every op must be legal for the field's subType — an unknown op (e.g. a typo
+    // `contains`) or a subtype-illegal op (e.g. `like` on a boolean) would otherwise
+    // crash the view synthesizer or emit invalid SQL at CREATE VIEW.
+    for (const op of ops) {
+      if (!field.ops.includes(op)) {
+        err(
+          `projection "${projectionName}" @filter on "${key}" uses op "${op}", which is not allowed for its ` +
+            `type. Allowed ops: ${field.ops.join(", ") || "(none)"}.`,
+        );
       }
     }
   }

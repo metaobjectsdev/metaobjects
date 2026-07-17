@@ -18,7 +18,7 @@ import { ParseError } from "../errors.js";
 import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
-import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateIndexLookupFields } from "./validation-passes.js";
+import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateIndexLookupFields, validateProjectionFilter } from "./validation-passes.js";
 import { runRegisteredValidation } from "./validation-registry.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
 import { validateSourcePhysicalNames } from "../persistence/source/validate-source-physical-names.js";
@@ -588,6 +588,11 @@ export class MetaDataLoader {
 
       // Seventh pass: @filter value validation — fields filterable + ops allowed per subtype.
       errors.push(...validateDataGridFilterValues(root));
+
+      // #207 — a projection's row-scope @filter (view-level WHERE) must reference the
+      // projection's own declared, WHERE-addressable fields (passthrough/computed/plain);
+      // an aggregate-derived or dangling ref is fail-closed (ERR_BAD_ATTR_FILTER).
+      errors.push(...validateProjectionFilter(root));
 
       // FR-017 — M:N relationship validation (deferred-resolution): @through names a
       // junction declaring two identity.reference children; @sourceRefField matches one;

@@ -40,6 +40,7 @@ import {
   IDENTITY_SUBTYPE_REFERENCE,
   IDENTITY_REFERENCE_ATTR_REFERENCES,
   FIELD_ATTR_COLUMN,
+  OBJECT_PROJECTION_ATTR_FILTER,
   findReferenceBetween,
   stripPackage,
   type AggregateFunction,
@@ -126,6 +127,67 @@ function resolveAggregateFilter(
       op,
       value: opObj[op],
     });
+  }
+  if (clauses.length === 0) return undefined;
+  return clauses.length === 1 ? clauses[0]! : { kind: "and", clauses };
+}
+
+/**
+ * #207 — resolve a projection's row-scope `@filter` (the desugared canonical
+ * `{ field: { op: value }, and?, or? }`) into a {@link ViewFilterClause} whose
+ * refs are resolved against the projection's OWN declared columns (its SelectSpec),
+ * NOT against a single aggregated entity+alias (that is `resolveAggregateFilter`).
+ * Each field key names a declared projection field; it resolves by SelectColumn kind:
+ *   - passthrough (base OR joined) → `sourceAlias.sourceColumn` — the machinery that
+ *     makes `WHERE joined.status IS NULL OR joined.status = 1` work.
+ *   - computed (origin.computed)   → the inlined resolved expression (`exprCmp`).
+ *   - aggregate-derived (aggregate/predicateAgg/collectAgg/first) → THROW (a WHERE
+ *     cannot see aggregates; HAVING is a separate later extension). The loader already
+ *     fail-closes this (ERR_BAD_ATTR_FILTER) — this throw is a codegen belt-and-suspenders.
+ *   - a ref naming no declared field → THROW (dangling; also loader-rejected).
+ * Multiple fields at one level compose with AND (mirrors resolveAggregateFilter).
+ */
+function resolveViewFilter(
+  filter: unknown,
+  columnsByField: ReadonlyMap<string, SelectColumn>,
+  projectionName: string,
+): ViewFilterClause | undefined {
+  if (typeof filter !== "object" || filter === null || Array.isArray(filter)) return undefined;
+  const clauses: ViewFilterClause[] = [];
+  for (const [key, val] of Object.entries(filter as Record<string, unknown>)) {
+    if (key === FILTER_AND || key === FILTER_OR) {
+      const subs = (Array.isArray(val) ? val : [])
+        .map((s) => resolveViewFilter(s, columnsByField, projectionName))
+        .filter((c): c is ViewFilterClause => c !== undefined);
+      if (subs.length > 0) clauses.push({ kind: key === FILTER_AND ? "and" : "or", clauses: subs });
+      continue;
+    }
+    const col = columnsByField.get(key);
+    if (!col) {
+      // The loader (validateProjectionFilter) already fail-closes a dangling or
+      // aggregate-derived ref, so by codegen time a missing column means a DECLARED,
+      // addressable field that buildSelectSpec could not resolve to a SELECT column
+      // (an internal inconsistency) — report it as such, not as "dangling".
+      throw new Error(
+        `Projection ${projectionName}: view @filter field "${key}" did not resolve to a view column.`,
+      );
+    }
+    // A field clause may carry MULTIPLE ops (a range like { gte: 100, lte: 500 }); each
+    // becomes its own comparison, AND-composed (dropping all-but-the-first would silently
+    // widen the exposed row set). The loader has already validated every op for this
+    // field's subtype.
+    for (const [op, value] of Object.entries(desugarClause(val))) {
+      if (col.kind === "passthrough") {
+        clauses.push({ kind: "cmp", ref: `${col.sourceAlias}.${col.sourceColumn}`, op, value });
+      } else if (col.kind === "computed") {
+        clauses.push({ kind: "exprCmp", expr: col.expr, op, value });
+      } else {
+        throw new Error(
+          `Projection ${projectionName}: view @filter references "${key}", an aggregate-derived ` +
+            `field — a WHERE cannot see aggregates. Filter on a passthrough or computed field instead.`,
+        );
+      }
+    }
   }
   if (clauses.length === 0) return undefined;
   return clauses.length === 1 ? clauses[0]! : { kind: "and", clauses };
@@ -874,7 +936,8 @@ export function extractViewSpec(
   // #213 — a write-through entity (FR-024 §7) IS its own base: stored fields SELECT
   // from the base alias (o.*), derived (origin.*) fields from the joins. A plain
   // projection anchors its base via an extends binding (baseEntityFor).
-  const base = isWriteThrough(projection) ? projection : baseEntityFor(projection, root);
+  const writeThrough = isWriteThrough(projection);
+  const base = writeThrough ? projection : baseEntityFor(projection, root);
   const usedAliases = new Set<string>();
   const baseAlias = shortAliasFor(base.name, usedAliases);
   const joinTree = buildJoinTree(projection, base, root, usedAliases, baseAlias, ctx);
@@ -884,11 +947,29 @@ export function extractViewSpec(
   const view = viewName(projection, ctx);
   warnOnJoinInflation(projection, view, joinTree, selectSpec);
 
+  // #207 — a projection's OWN row-scope @filter lowers to the view's outer WHERE.
+  // Gated to projections only (v1 scope): a write-through entity read-view is
+  // NEVER filtered — a filtered replica breaks read-your-writes totality, and the
+  // @filter attr is registered on object.projection (not object.entity), so a
+  // write-through entity cannot carry one anyway. The stored value is already the
+  // desugared canonical { field: { op: value } } form (FilterAttr.desugar at parse).
+  let where: ViewFilterClause | undefined;
+  if (!writeThrough) {
+    const rawFilter = projection.ownAttr(OBJECT_PROJECTION_ATTR_FILTER);
+    if (rawFilter !== undefined) {
+      const columnsByField = new Map<string, SelectColumn>(
+        selectSpec.columns.map((c) => [c.fieldName, c] as const),
+      );
+      where = resolveViewFilter(rawFilter, columnsByField, projection.name);
+    }
+  }
+
   return {
     viewName: view,
     joinTree,
     selectSpec,
     groupBy,
+    ...(where !== undefined ? { where } : {}),
   };
 }
 

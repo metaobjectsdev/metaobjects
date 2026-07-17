@@ -40,7 +40,7 @@
     "ERR_PARTIAL_UNRESOLVED": "Build-time verify: a template partial ({{> group/source}}) does not resolve in the configured provider.",
     "ERR_REQUIRED_SLOT_UNUSED": "Build-time verify (warning): a template's declared @requiredSlots slot is never referenced by the template text.",
     "ERR_OUTPUT_TAG_MISSING": "Build-time verify: a template declares @requiredTags but its text (including provider-resolved partials) omits a required output tag's opening (<tag) or closing (</tag>) form. path = the tag name.",
-    "ERR_BAD_ATTR_FILTER": "A dataGrid @filter references a non-filterable field or uses an op disallowed for the field's subtype.",
+    "ERR_BAD_ATTR_FILTER": "An attr.filter references a field that is not addressable in that context or uses a disallowed op: a dataGrid @filter over a non-filterable field or an op disallowed for the field's subtype, or a projection row-scope @filter over a non-declared (dangling) or aggregate-derived field (#207).",
     "ERR_STORAGE_FLATTENED_ARRAY": "@storage \"flattened\" cannot be combined with isArray=true.",
     "ERR_STORAGE_WITHOUT_OBJECT_REF": "@storage was set on a field that has no @objectRef.",
     "ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF": "ADR-0013: a field.object declares no @objectRef. A field.object models a typed nested value and REQUIRES @objectRef. For a genuinely open/untyped JSON map, use the physical escape hatch @dbColumnType: jsonb on a field.string instead of a bare object.",

@@ -54,15 +54,18 @@ function renderFilterCond(clause: ViewFilterClause, dialect: EmitOptions["dialec
     const joined = clause.clauses.map((c) => renderFilterCond(c, dialect)).join(clause.kind === "and" ? " AND " : " OR ");
     return `(${joined})`;
   }
-  const ref = quoteRef(clause.ref);
-  if (clause.op === "isNull") return clause.value === false ? `${ref} IS NOT NULL` : `${ref} IS NULL`;
+  // The left-hand side is a bare `alias.column` for a `cmp`, or a parenthesized
+  // inlined computed expression for #207's `exprCmp` (a projection @filter ref to
+  // an origin.computed field). The op handling below is identical for both.
+  const lhs = clause.kind === "exprCmp" ? `(${renderExpr(clause.expr, dialect)})` : quoteRef(clause.ref);
+  if (clause.op === "isNull") return clause.value === false ? `${lhs} IS NOT NULL` : `${lhs} IS NULL`;
   if (clause.op === "in") {
     const vals = (Array.isArray(clause.value) ? clause.value : [clause.value]).map((v) => sqlLiteral(v, dialect));
-    return `${ref} IN (${vals.join(", ")})`;
+    return `${lhs} IN (${vals.join(", ")})`;
   }
   const op = FILTER_OP_SQL[clause.op];
-  if (!op) throw new Error(`view-ddl-emit: unsupported aggregate filter operator "${clause.op}".`);
-  return `${ref} ${op} ${sqlLiteral(clause.value, dialect)}`;
+  if (!op) throw new Error(`view-ddl-emit: unsupported filter operator "${clause.op}".`);
+  return `${lhs} ${op} ${sqlLiteral(clause.value, dialect)}`;
 }
 
 /**

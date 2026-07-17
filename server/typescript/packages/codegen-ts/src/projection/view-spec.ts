@@ -37,12 +37,20 @@ export interface JoinTree {
 }
 
 /**
- * A resolved filter clause scoping an aggregate to a subset of related rows. Column
- * refs are already resolved to `alias.column` (naming-strategy applied), so the
- * emitter is a pure renderer. Mirrors the canonical attr.filter shape.
+ * A resolved filter clause. Column refs are already resolved to `alias.column`
+ * (naming-strategy applied), so the emitter is a pure renderer. Mirrors the
+ * canonical attr.filter shape. Used both for an aggregate's scoping `@filter`
+ * (which only ever produces `cmp`/`and`/`or`) and for #207's projection-level
+ * row `@filter` (which may additionally compare an inlined computed expression —
+ * the `exprCmp` node — when a filter ref names an `origin.computed` field).
  */
 export type ViewFilterClause =
   | { readonly kind: "cmp"; readonly ref: string; readonly op: string; readonly value: unknown }
+  // #207 — a comparison whose left-hand side is an inlined computed expression
+  // (a resolved `origin.computed` field referenced by a projection-level @filter),
+  // rather than a bare `alias.column`. Only the view-level WHERE resolver produces
+  // it; aggregate `@filter` resolution never does.
+  | { readonly kind: "exprCmp"; readonly expr: ViewExprNode; readonly op: string; readonly value: unknown }
   | { readonly kind: "and"; readonly clauses: readonly ViewFilterClause[] }
   | { readonly kind: "or"; readonly clauses: readonly ViewFilterClause[] };
 

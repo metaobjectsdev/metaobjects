@@ -238,6 +238,48 @@ describe("view lifecycle — real Postgres", () => {
     await assertConverged(expected);
   });
 
+  // #207 — a projection row-scope @filter lowers to an outer WHERE. The view must
+  // round-trip on a real engine (emit → apply → introspect → re-diff EMPTY, exactly
+  // like the convergence gate above — Postgres deparses the WHERE, so a text compare
+  // would never converge), AND it must actually FILTER: rows failing the predicate
+  // are absent from the view. literal naming → column names are the field names.
+  test("CONVERGENCE + SUBSET: a projection @filter lowers to a WHERE, converges, and the view returns only matching rows (#207)", async () => {
+    const m = JSON.stringify({ "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Program", children: [
+        { "source.rdb": { "@table": "programs" } },
+        { "field.long": { name: "id" } },
+        { "field.string": { name: "title", "@required": true } },
+        { "field.string": { name: "status", "@required": true } },
+        { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+      ] } },
+      { "object.projection": { name: "ActivePrograms", "@filter": { status: { eq: "active" } }, children: [
+        { "source.rdb": { "@kind": "view", "@table": "v_active_programs" } },
+        { "identity.primary": { name: "id", extends: "Program.id", "@fields": "id" } },
+        { "field.long": { name: "id", extends: "Program.id", children: [
+          { "origin.passthrough": { "@from": "Program.id" } } ] } },
+        { "field.string": { name: "title", children: [
+          { "origin.passthrough": { "@from": "Program.title" } } ] } },
+        { "field.string": { name: "status", children: [
+          { "origin.passthrough": { "@from": "Program.status" } } ] } },
+      ] } },
+    ]}});
+    const { expected, up } = await migrate(m);
+
+    // The view carries the row-scope WHERE (literal strategy → bare column, base alias p).
+    expect(up).toContain(`CREATE VIEW "v_active_programs" AS`);
+    expect(up).toMatch(/WHERE p\.status = 'active'/);
+
+    // THE gate: the filtered view round-trips (a deparsed WHERE would never text-match).
+    await assertConverged(expected);
+
+    // And it actually FILTERS: two matching rows + one non-matching; the view omits the latter.
+    await sql.raw(
+      `INSERT INTO "programs" ("title","status") VALUES ('Keep','active'),('Drop','archived'),('Keep2','active')`,
+    ).execute(k);
+    const rows = await sql.raw(`SELECT "title" FROM "v_active_programs" ORDER BY "title"`).execute(k);
+    expect((rows.rows as { title: string }[]).map((r) => r.title)).toEqual(["Keep", "Keep2"]);
+  });
+
   // -------------------------------------------------------------------------
   // Non-destructive replace — the part that protects downstream applications.
   // -------------------------------------------------------------------------
