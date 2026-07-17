@@ -112,6 +112,7 @@ from ..meta.core.identity.identity_constants import (
 )
 from ..shared.separators import PACKAGE_SEP
 from ..meta.core.object.object_constants import (
+    OBJECT_PROJECTION_ATTR_FILTER,
     OBJECT_SUBTYPE_ENTITY,
     OBJECT_SUBTYPE_PROJECTION,
     OBJECT_SUBTYPE_VALUE,
@@ -167,6 +168,8 @@ def run_validations(
     _validate_db_column_type(root, errors)
     _validate_datagrid_sort_fields(root, errors)
     _validate_datagrid_filter_values(root, errors)
+    # #207 — object.projection view-level @filter reference validation.
+    _validate_projection_filter(root, errors)
     _validate_origin_paths(root, errors)
     # FR-024 B6 — an entity's origin-bearing field needs a read-capable source.
     _validate_derived_field_providability(root, errors)
@@ -1097,6 +1100,113 @@ def _validate_datagrid_filter_values(
                                 envelope=child.source,
                             )
                         )
+
+
+# ---------------------------------------------------------------------------
+# Pass: object.projection view-level @filter reference validation (#207)
+# ---------------------------------------------------------------------------
+# A projection's optional row-scope @filter (a portable attr.filter object,
+# desugared to { field: { op: value }, and?: [...], or?: [...] }) lowers to the
+# view's outer WHERE. Two fail-closed reference checks — the cross-port-gated
+# core, mirroring the TS reference validateProjectionFilter. (The operator-band
+# and malformed-compose-shape checks in the TS reference are TS-only hardening,
+# NOT gated cross-port, and are deliberately NOT mirrored here.)
+#
+#   1. Dangling ref — a field-ref naming no OWN declared field of the projection
+#      → ERR_BAD_ATTR_FILTER (a view-level @filter may only reference the
+#      projection's own declared fields).
+#   2. Aggregate-derived ref — a field-ref naming an OWN field whose origin child
+#      is aggregate-derived (origin subType is anything OTHER than passthrough /
+#      computed) → ERR_BAD_ATTR_FILTER (a WHERE runs before aggregation, so it
+#      cannot filter on an aggregate).
+#
+# Own accessors throughout: the @filter is declared locally on the projection and
+# origin.* never inherits (ADR-0029/0039), mirroring the TS ownAttr/ownChildren.
+
+
+def _validate_projection_filter(
+    root: MetaData,
+    errors: list[MetaError],
+) -> None:
+    # ADR-0039 sanctioned own: root has no super, and every projection is declared
+    # at the root level (mirrors the TS reference's root.children() walk).
+    for obj in root.own_children():
+        if obj.type != TYPE_OBJECT or obj.sub_type != OBJECT_SUBTYPE_PROJECTION:
+            continue
+        # ADR-0039 sanctioned own: the @filter is declared locally on this projection.
+        filter_value = obj.attr(OBJECT_PROJECTION_ATTR_FILTER)
+        # Non-object shapes are rejected by the attr-schema pass (ERR_BAD_ATTR_VALUE).
+        if not isinstance(filter_value, dict):
+            continue
+
+        # Classify the projection's OWN fields (the declared set IS the exposure —
+        # FR-024/ADR-0028): the declared-field name set + the aggregate-derived
+        # subset. origin.* never inherits (ADR-0029), so the origin reads are own.
+        declared: set[str] = set()
+        aggregate_derived: set[str] = set()
+        for f in obj.own_children():
+            if f.type != TYPE_FIELD:
+                continue
+            declared.add(f.name)
+            origin = next(
+                (c for c in f.own_children() if c.type == TYPE_ORIGIN), None
+            )
+            if (
+                origin is not None
+                and origin.sub_type != ORIGIN_SUBTYPE_PASSTHROUGH
+                and origin.sub_type != ORIGIN_SUBTYPE_COMPUTED
+            ):
+                aggregate_derived.add(f.name)
+
+        _check_projection_filter_refs(
+            filter_value, declared, aggregate_derived, obj, errors
+        )
+
+
+def _check_projection_filter_refs(
+    filter_obj: dict,
+    declared: set[str],
+    aggregate_derived: set[str],
+    obj: MetaData,
+    errors: list[MetaError],
+) -> None:
+    """Recursively check each field-ref key of a (possibly composed) @filter."""
+    for key, clause in filter_obj.items():
+        if key == _FILTER_COMPOSE_AND or key == _FILTER_COMPOSE_OR:
+            # Recurse into each OBJECT sub-clause. A non-array clause / non-object
+            # element is malformed-compose-shape — TS-reference-only hardening, NOT
+            # gated cross-port — so skip (do not error) rather than mirror it here.
+            if not isinstance(clause, list):
+                continue
+            for sub in clause:
+                if isinstance(sub, dict):
+                    _check_projection_filter_refs(
+                        sub, declared, aggregate_derived, obj, errors
+                    )
+            continue
+
+        # A field-ref key.
+        if key not in declared:
+            errors.append(
+                MetaError(
+                    f"projection '{obj.name}' @filter references '{key}', which is not "
+                    f"a declared field of the projection. A view-level @filter may only "
+                    f"reference the projection's own declared fields.",
+                    ErrorCode.ERR_BAD_ATTR_FILTER,
+                    envelope=obj.source,
+                )
+            )
+            continue
+        if key in aggregate_derived:
+            errors.append(
+                MetaError(
+                    f"projection '{obj.name}' @filter references '{key}', an "
+                    f"aggregate-derived field. A view-level WHERE runs before "
+                    f"aggregation, so it cannot filter on an aggregate.",
+                    ErrorCode.ERR_BAD_ATTR_FILTER,
+                    envelope=obj.source,
+                )
+            )
 
 
 # ---------------------------------------------------------------------------

@@ -1485,6 +1485,118 @@ public static class ValidationPasses
         }
     }
 
+    // =========================================================================
+    // Pass 7b: ValidateProjectionFilter (#207)
+    //   A view-level @filter on object.projection may only reference the
+    //   projection's OWN declared, addressable fields. Two cross-port-gated
+    //   checks, each fail-closed with ERR_BAD_ATTR_FILTER:
+    //     - dangling ref — a field-ref naming no OWN declared field;
+    //     - aggregate-derived ref — a field-ref naming an OWN field whose origin
+    //       child is aggregate-derived (origin subType OTHER than
+    //       passthrough/computed; a plain field with no origin is addressable).
+    //   A view WHERE runs before aggregation, so it cannot filter an aggregate.
+    //
+    // Operator-band + malformed-compose-shape checks are TS-reference-only
+    // hardening, NOT gated cross-port — intentionally omitted here (the
+    // compose recursion skips non-array/non-object shapes silently).
+    //
+    // Own-attrs / own-children only: the @filter is declared locally on the
+    // projection, and origin.* never inherits (ADR-0029 / ADR-0039).
+    //
+    // Ported from typescript/packages/metadata/src/loader/validation-passes.ts
+    // validateProjectionFilter + checkProjectionFilterRefs.
+    // =========================================================================
+
+    public static IReadOnlyList<MetaError> ValidateProjectionFilter(MetaData root)
+    {
+        var errors = new List<MetaError>();
+
+        foreach (var obj in root.OwnChildren()
+                     .Where(c => c.Type == TYPE_OBJECT && c.SubType == OBJECT_SUBTYPE_PROJECTION))
+        {
+            // ADR-0039: own — the @filter is declared locally on this projection.
+            // Non-object shapes are rejected by the attr-schema check (FilterAttr).
+            if (obj.OwnAttr(OBJECT_PROJECTION_ATTR_FILTER)
+                is not IReadOnlyDictionary<string, object?> filter)
+            {
+                continue;
+            }
+
+            // Classify the projection's OWN fields (the declared set IS the exposure —
+            // FR-024 / ADR-0028): a field is aggregate-derived when it carries an OWN
+            // origin child whose subType is OTHER than passthrough/computed. origin.*
+            // never inherits (ADR-0029), so the origin read is own.
+            var declared = new HashSet<string>(StringComparer.Ordinal);
+            var aggregateDerived = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var f in obj.OwnChildren().Where(c => c.Type == TYPE_FIELD))
+            {
+                declared.Add(f.Name);
+                var origin = f.OwnChildren().FirstOrDefault(c => c.Type == TYPE_ORIGIN);
+                if (origin is not null &&
+                    origin.SubType != ORIGIN_SUBTYPE_PASSTHROUGH &&
+                    origin.SubType != ORIGIN_SUBTYPE_COMPUTED)
+                {
+                    aggregateDerived.Add(f.Name);
+                }
+            }
+
+            CheckProjectionFilterRefs(filter, declared, aggregateDerived, obj.Name, obj.Source, errors);
+        }
+
+        return errors.AsReadOnly();
+    }
+
+    private static void CheckProjectionFilterRefs(
+        IReadOnlyDictionary<string, object?> filter,
+        HashSet<string> declared,
+        HashSet<string> aggregateDerived,
+        string projectionName,
+        ErrorSource source,
+        List<MetaError> errors)
+    {
+        foreach (var (key, clause) in filter)
+        {
+            if (key == FILTER_COMPOSE_OR || key == FILTER_COMPOSE_AND)
+            {
+                // Compose key → recurse into each sub-clause object. A non-array /
+                // non-object element is skipped silently (shape checks are TS-only).
+                if (clause is IReadOnlyList<object?> subList)
+                {
+                    foreach (var sub in subList)
+                    {
+                        if (sub is IReadOnlyDictionary<string, object?> subFilter)
+                        {
+                            CheckProjectionFilterRefs(
+                                subFilter, declared, aggregateDerived, projectionName, source, errors);
+                        }
+                    }
+                }
+                continue;
+            }
+
+            if (!declared.Contains(key))
+            {
+                errors.Add(new MetaError(
+                    $"projection \"{projectionName}\" @filter references \"{key}\", which is not a declared " +
+                    "field of the projection. A view-level @filter may only reference the projection's own " +
+                    "declared fields.",
+                    ErrorCode.ERR_BAD_ATTR_FILTER,
+                    Envelope: source));
+                continue;
+            }
+
+            if (aggregateDerived.Contains(key))
+            {
+                errors.Add(new MetaError(
+                    $"projection \"{projectionName}\" @filter references \"{key}\", an aggregate-derived field. " +
+                    "A view-level WHERE runs before aggregation, so it cannot filter on an aggregate. Filter on " +
+                    "a passthrough or computed field instead.",
+                    ErrorCode.ERR_BAD_ATTR_FILTER,
+                    Envelope: source));
+            }
+        }
+    }
+
     private static void WalkAttrSchema(
         MetaData node,
         TypeRegistry registry,

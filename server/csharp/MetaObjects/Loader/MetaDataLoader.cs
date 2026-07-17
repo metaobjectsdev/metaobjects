@@ -502,6 +502,10 @@ public class MetaDataLoader
             // Pass 7: dataGrid @filter value validation (field filterable + op allowed)
             errors.AddRange(ValidationPasses.ValidateDataGridFilterValues(root));
 
+            // Pass 7b (#207): projection view-level @filter — a dangling or
+            // aggregate-derived field-ref fails closed with ERR_BAD_ATTR_FILTER.
+            errors.AddRange(ValidationPasses.ValidateProjectionFilter(root));
+
             // Pass 8: @storage cross-attribute validation on field.object
             errors.AddRange(ValidationPasses.ValidateFieldObjectStorage(root));
 

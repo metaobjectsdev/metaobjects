@@ -210,6 +210,8 @@ public final class ValidationPhase {
         // FR-024 B3 — projection identity pass-through + key correspondence.
         pass(collected, () -> validateIdentityPassthrough(root));
         pass(collected, () -> validateDataGridLayouts(root));
+        // #207 — projection row-scope @filter field-ref validation (fail-closed).
+        pass(collected, () -> validateProjectionFilter(root));
         pass(collected, () -> validateTemplates(root));
         pass(collected, () -> validateEntityHasPrimaryIdentity(root, loader));
         pass(collected, () -> validateFilterableHasSupportedOps(root));
@@ -2276,6 +2278,101 @@ public final class ValidationPhase {
         // validateFilterableHasSupportedOps) falls through to the string-shape
         // band, preserving the prior default.
         return band.isEmpty() ? com.metaobjects.query.FilterOps.OPS_STRING : band;
+    }
+
+    // =========================================================================
+    // #207 — projection row-scope @filter (view-level WHERE) reference validation
+    //
+    // A projection's @filter (a portable attr.filter object) scopes which rows the
+    // derived view returns. Its field refs must name the projection's OWN declared
+    // fields, and each must be ADDRESSABLE in a WHERE:
+    //   - a plain (extends-bound / no-origin) or origin.passthrough or origin.computed
+    //     field → addressable (a base/joined column, or an inlined row-level expression).
+    //   - an aggregate-derived field (origin.aggregate / origin.first / origin.collection —
+    //     anything OTHER than passthrough/computed) → NOT addressable: a WHERE runs before
+    //     aggregation, so it cannot see an aggregate. Fail-closed → ERR_BAD_ATTR_FILTER.
+    //   - a ref naming no declared field → dangling → ERR_BAD_ATTR_FILTER.
+    //
+    // Cross-port: mirrors TS validation-passes.ts (validateProjectionFilter). Only the two
+    // CORE checks (dangling ref + aggregate-derived ref) are gated cross-port here; the TS
+    // reference's operator-band + malformed-compose-shape checks are TS-only hardening and
+    // are deliberately NOT mirrored (see fixtures/conformance/error-projection-filter-*).
+    //
+    // Own-attrs/own-children only: the @filter is declared locally (registered on
+    // object.projection alone), and origin.* never inherits (ADR-0029).
+    // =========================================================================
+
+    static void validateProjectionFilter(MetaRoot root) {
+        for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
+            if (!(rootChild instanceof MetaObject)) continue;
+            MetaObject obj = (MetaObject) rootChild;
+            if (!MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType())) continue;
+            // ADR-0039: own — the @filter is declared locally on this projection.
+            if (!obj.hasMetaAttr(MetaObject.ATTR_FILTER, false)) continue;
+            Object raw = obj.getMetaAttr(MetaObject.ATTR_FILTER, false).getValue();
+            // A non-object shape is rejected by the attr schema check (FilterAttribute).
+            if (!(raw instanceof java.util.Map)) continue;
+
+            // Classify the projection's OWN fields (the declared set IS the exposure —
+            // FR-024/ADR-0028): aggregate-derived-ness by the field's OWN origin child.
+            // origin.* never inherits (ADR-0029), so both reads are own (category 4).
+            java.util.Set<String> declared = new java.util.HashSet<>();
+            java.util.Set<String> aggregateDerived = new java.util.HashSet<>();
+            for (MetaField<?> f : obj.getChildren(MetaField.class, false)) {
+                String name = f.getShortName();
+                declared.add(name);
+                for (MetaData originChild : f.getChildren(MetaData.class, false)) {
+                    if (!(originChild instanceof MetaOrigin)) continue;
+                    String os = originChild.getSubType();
+                    // Derived (not row-addressable) = any origin OTHER than
+                    // passthrough/computed (aggregate/first/collection).
+                    if (!PassthroughOrigin.SUBTYPE_PASSTHROUGH.equals(os)
+                            && !ComputedOrigin.SUBTYPE_COMPUTED.equals(os)) {
+                        aggregateDerived.add(name);
+                    }
+                }
+            }
+            checkProjectionFilterRefs(obj, (java.util.Map<?, ?>) raw, declared, aggregateDerived);
+        }
+    }
+
+    private static void checkProjectionFilterRefs(MetaObject obj, java.util.Map<?, ?> filter,
+                                                  java.util.Set<String> declared,
+                                                  java.util.Set<String> aggregateDerived) {
+        for (java.util.Map.Entry<?, ?> e : filter.entrySet()) {
+            String key = e.getKey() == null ? "" : e.getKey().toString();
+            // Compose keys — recurse into each sub-clause. Non-list / non-map elements are
+            // skipped silently: malformed-compose-shape is TS-only hardening, not gated here.
+            if ("and".equals(key) || "or".equals(key)) {
+                if (e.getValue() instanceof Iterable) {
+                    for (Object sub : (Iterable<?>) e.getValue()) {
+                        if (sub instanceof java.util.Map) {
+                            checkProjectionFilterRefs(obj, (java.util.Map<?, ?>) sub,
+                                declared, aggregateDerived);
+                        }
+                    }
+                }
+                continue;
+            }
+            if (!declared.contains(key)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_FILTER
+                        + ": projection '" + obj.getShortName()
+                        + "' @filter references '" + key + "', which is not a declared field of"
+                        + " the projection. A view-level @filter may only reference the"
+                        + " projection's own declared fields.",
+                    ErrorCode.ERR_BAD_ATTR_FILTER, obj.getSource());
+            }
+            if (aggregateDerived.contains(key)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_FILTER
+                        + ": projection '" + obj.getShortName()
+                        + "' @filter references '" + key + "', an aggregate-derived field."
+                        + " A view-level WHERE runs before aggregation, so it cannot filter on"
+                        + " an aggregate. Filter on a passthrough or computed field instead.",
+                    ErrorCode.ERR_BAD_ATTR_FILTER, obj.getSource());
+            }
+        }
     }
 
     // =========================================================================

@@ -1,0 +1,43 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            { "source.rdb": { "@table": "orders" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } },
+            { "relationship.association": { "name": "lines", "@objectRef": "Line", "@cardinality": "many" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Line",
+          "children": [
+            { "source.rdb": { "@table": "lines" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "orderId" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } },
+            { "identity.reference": { "name": "ref_order", "@fields": ["orderId"], "@references": "Order" } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "OrderSummary",
+          "@filter": { "lineCount": { "gt": 0 } },
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_order_summary" } },
+            { "field.long": { "name": "id", "extends": "demo::Order.id" } },
+            { "field.int": { "name": "lineCount", "children": [
+              { "origin.aggregate": { "@agg": "count", "@of": "demo::Line.id", "@via": "demo::Order.lines" } } ] } },
+            { "identity.primary": { "name": "id", "extends": "demo::Order.id" } }
+          ]
+        }
+      }
+    ]
+  }
+}
