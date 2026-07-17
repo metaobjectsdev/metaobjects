@@ -238,6 +238,53 @@ describe("view lifecycle — real Postgres", () => {
     await assertConverged(expected);
   });
 
+  // #214 — the READ half runtime data contract. The generated read-half code writes the
+  // TABLE (no derived col) then re-reads the row THROUGH the replica view by PK (create's
+  // re-read, findById, list all SELECT from the view). This exercises exactly that query
+  // shape against real PG — insert stored columns into the table, re-read from the view by
+  // the inserted PK — and asserts the derived customerName is populated from the join. (The
+  // generated code that emits this shape is separately gated to type-check by
+  // issue-214-read-half-compile.test.ts on both dialects.)
+  test("READ HALF: a row written to the table re-reads through the view by PK WITH the derived field (#214)", async () => {
+    const m = JSON.stringify({ "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Customer", children: [
+        { "source.rdb": { "@table": "customers" } },
+        { "field.long": { name: "id" } },
+        { "field.string": { name: "name" } },
+        { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+      ] } },
+      { "object.entity": { name: "Order", children: [
+        { "source.rdb": { "@role": "primary", "@table": "orders" } },
+        { "source.rdb": { "@role": "replica", "@kind": "view", "@table": "v_order_with_customer" } },
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "customerId", "@required": true } },
+        { "field.string": { name: "customerName", children: [
+          { "origin.passthrough": { "@from": "Customer.name", "@via": "Order.customer" } } ] } },
+        { "relationship.association": { name: "customer", "@objectRef": "Customer", "@cardinality": "one" } },
+        { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+        { "identity.reference": { name: "ref_customer", "@fields": "customerId", "@references": "Customer" } },
+      ] } },
+    ]}});
+    await migrate(m);
+
+    // Write ONLY the stored columns to the base table (the derived customerName is
+    // never written — it does not exist on the table, per #213). Capture the inserted PK,
+    // exactly as the generated create does via `.returning()`.
+    await sql.raw(`INSERT INTO "customers" ("name") VALUES ('Acme Corp')`).execute(k);
+    const ins = await sql.raw(
+      `INSERT INTO "orders" ("customerId") VALUES ((SELECT "id" FROM "customers" WHERE "name" = 'Acme Corp')) RETURNING "id"`,
+    ).execute(k);
+    const newId = (ins.rows[0] as { id: number }).id;
+
+    // The generated create/findById RE-READ shape: SELECT from the VIEW WHERE pk = <inserted>.
+    // The derived customerName is populated from the join — read-your-writes returns it.
+    const reread = await sql.raw(
+      `SELECT "id", "customerId", "customerName" FROM "v_order_with_customer" WHERE "id" = ${newId} LIMIT 1`,
+    ).execute(k);
+    expect(reread.rows.length).toBe(1);
+    expect((reread.rows[0] as { customerName: string }).customerName).toBe("Acme Corp");
+  });
+
   // #207 — a projection row-scope @filter lowers to an outer WHERE. The view must
   // round-trip on a real engine (emit → apply → introspect → re-diff EMPTY, exactly
   // like the convergence gate above — Postgres deparses the WHERE, so a text compare

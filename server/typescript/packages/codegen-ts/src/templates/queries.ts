@@ -28,17 +28,28 @@ function subTypeToTsType(subType: string): "number" | "boolean" | "string" {
 /** Get the PK field name and its TS type for a given entity. */
 export function getPkInfo(entity: MetaObject, ctx: RenderContext): { fieldName: string; tsType: string } {
   // Use primaryIdentity() to find the primary identity (may be inherited from extends:/super:).
-  const primary = entity.primaryIdentity();
-  const rawFields = primary?.attr(IDENTITY_ATTR_FIELDS);
-  const fields = Array.isArray(rawFields) ? rawFields : (typeof rawFields === "string" ? [rawFields] : undefined);
-  const pkFieldName = fields?.[0] ?? "id";
+  const pkFieldName = getPkFields(entity)[0] ?? "id";
   const pkInfo = ctx.pkMap.get(entity.name);
   const subType = pkInfo?.fieldSubType ?? "long";
   return { fieldName: pkFieldName, tsType: subTypeToTsType(subType) };
 }
 
-export function renderFindByIdFn(entity: MetaObject, ctx: RenderContext): Code {
-  const varName = ctx.collectionName(entity.name);
+/** All primary-key field names, in order. `getPkInfo` exposes only the first (the
+ *  query layer's single-PK finder/update signatures key on it); #214's write-through
+ *  create re-read keys on ALL of them so a composite PK re-reads the exact written row
+ *  (via the insert's returning() values), not any row sharing the first key component. */
+export function getPkFields(entity: MetaObject): string[] {
+  const rawFields = entity.primaryIdentity()?.attr(IDENTITY_ATTR_FIELDS);
+  if (Array.isArray(rawFields)) return rawFields.filter((f): f is string => typeof f === "string");
+  return typeof rawFields === "string" ? [rawFields] : [];
+}
+
+// #214 — a write-through entity read-view routes READS to its replica view; the read
+// renderers below accept an optional `readVar` (the collection to SELECT from). Absent,
+// they read the entity's own table (the vanilla path, byte-identical). Writes always
+// target the table, so create/update/delete take no such override.
+export function renderFindByIdFn(entity: MetaObject, ctx: RenderContext, readVar?: string): Code {
+  const varName = readVar ?? ctx.collectionName(entity.name);
   const entityName = entity.name;
   const singularVar = entityName.charAt(0).toLowerCase() + entityName.slice(1);
   const { fieldName: pkField, tsType: pkType } = getPkInfo(entity, ctx);
@@ -53,8 +64,8 @@ export async function ${fnName}(db: Db, ${pkField}: ${pkType}): Promise<${entity
 `;
 }
 
-export function renderListFn(entity: MetaObject, ctx: RenderContext): Code {
-  const varName = ctx.collectionName(entity.name);
+export function renderListFn(entity: MetaObject, ctx: RenderContext, readVar?: string): Code {
+  const varName = readVar ?? ctx.collectionName(entity.name);
   const entityName = entity.name;
   // Pluralize the PascalCase entity name, preserving capitalization
   // (e.g., "Category" -> "Categories", not "Categorys").
@@ -183,9 +194,11 @@ export function reverseFksFor(entity: MetaObject): ReverseFk[] {
   return out;
 }
 
-/** Render the single + batched reverse finders for one FK on `entity`. */
-export function renderReverseFinderFns(entity: MetaObject, fk: ReverseFk, ctx: RenderContext): Code {
-  const varName = ctx.collectionName(entity.name);
+/** Render the single + batched reverse finders for one FK on `entity`. `readVar`
+ *  (#214) routes the SELECT to a write-through entity's replica view; absent, it
+ *  reads the entity's own table (vanilla, byte-identical). */
+export function renderReverseFinderFns(entity: MetaObject, fk: ReverseFk, ctx: RenderContext, readVar?: string): Code {
+  const varName = readVar ?? ctx.collectionName(entity.name);
   const entityName = entity.name;
   // The Drizzle table object is keyed by the LOGICAL field name (the DB column
   // name is the argument to integer()/text()), so column access uses fk.fkField.

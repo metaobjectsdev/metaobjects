@@ -51,7 +51,12 @@ import type { RenderContext } from "../render-context.js";
  * to avoid a duplicate `export type <Base>`. Insert/Update keep their names
  * (no collision); they describe the physical TPH table row shape.
  */
-export function renderInferredTypes(entity: MetaObject, tphBase = false, ctx?: RenderContext): Code {
+export function renderInferredTypes(
+  entity: MetaObject,
+  tphBase = false,
+  ctx?: RenderContext,
+  skipRow = false,
+): Code {
   // The inferred Row/Insert types reference the Drizzle table var, so they must
   // resolve to the SAME (possibly overridden) collection name the schema emits.
   // ctx is optional for bare unit-test calls — those fall back to the default
@@ -64,6 +69,18 @@ export function renderInferredTypes(entity: MetaObject, tphBase = false, ctx?: R
   const docs = renderDocsFor(entity);
   const docsPrefix = docs ? `${docs}\n` : "";
   const rowName = tphBase ? `${entity.name}Row` : entity.name;
+  // #214 — a write-through entity read-view routes READS to the replica view, so the
+  // read row type <Entity> is emitted from the VIEW's read schema (z.infer, carrying
+  // the derived fields) by the entity-file composer, NOT here. `skipRow` suppresses
+  // the table-inferred Row so there is no duplicate `export type <Entity>` (selectSym
+  // then goes unreferenced and ts-poet drops its import). Insert/Update always stay
+  // inferred from the write TABLE (derived-free, #213).
+  if (skipRow) {
+    return code`
+export type ${entity.name}Insert = ${insertSym}<typeof ${varName}>;
+export type ${entity.name}Update = Partial<${entity.name}Insert>;
+`;
+  }
   return code`
 ${docsPrefix}export type ${rowName} = ${selectSym}<typeof ${varName}>;
 export type ${entity.name}Insert = ${insertSym}<typeof ${varName}>;

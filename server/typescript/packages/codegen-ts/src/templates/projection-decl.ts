@@ -10,18 +10,17 @@
 import { code, imp, joinCode, type Code } from "ts-poet";
 import {
   MetaField, MetaObject, type MetaRoot,
-  FIELD_SUBTYPE_OBJECT, FIELD_ATTR_OBJECT_REF, stripPackage,
 } from "@metaobjectsdev/metadata";
 import { projectionViewName } from "../projection/extract-view-spec.js";
 import { columnNameFromField, toSnakeCase, pluralize } from "../naming.js";
 import { GENERATED_HEADER } from "../constants.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import type { RenderContext } from "../render-context.js";
-import { mapColumnType } from "../column-mapper.js";
 import { valueObjectModuleSpecifier } from "../import-path.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
-import { inferViewKind, zodTypeFor, currencyMetaFor, labelFor } from "./field-meta.js";
+import { inferViewKind, currencyMetaFor, labelFor } from "./field-meta.js";
+import { renderExistingViewDecl, renderViewReadZodObject } from "./view-decl.js";
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -100,16 +99,7 @@ export function renderProjectionDecl(
     ctx
       ? valueObjectModuleSpecifier(refBase, ctx.packageOf, projection.package, ctx.outputLayout, ctx.extStyle)
       : `./${refBase}.js`;
-  const objectRefOf = (f: MetaField): string | undefined => {
-    if (f.subType !== FIELD_SUBTYPE_OBJECT) return undefined;
-    const ref = f.attr(FIELD_ATTR_OBJECT_REF);
-    return typeof ref === "string" && ref.length > 0 ? stripPackage(ref) : undefined;
-  };
 
-  const viewFn = dialect === "postgres" ? "pgView" : "sqliteView";
-  const viewModule =
-    dialect === "postgres" ? "drizzle-orm/pg-core" : "drizzle-orm/sqlite-core";
-  const viewSym = imp(`${viewFn}@${viewModule}`);
   const z = imp("z@zod");
 
   // Read-model generation needs only the view name — NOT the join/DDL
@@ -136,76 +126,6 @@ export function renderProjectionDecl(
   // inherited fields are not duplicated.
   for (const f of projection.ownFields()) allFields.push(f);
 
-  // A field.object passthrough carries the value-object's Zod schema (so the
-  // view's read schema + inferred type expose the VO shape, not z.unknown()).
-  const zodLines: Code[] = allFields.map((f) => {
-    // The read schema's nullability MUST mirror the view column's: a column that
-    // is not `.notNull()` infers `T | null` in Drizzle's SELECT type, so the Zod
-    // read type (and thus the generated query's return type) must be `.nullable()`
-    // too — otherwise `db.select().from(view)` yields `T | null` into a non-null
-    // `<Name>` field and the generated query fails to compile under strict TS.
-    const nullable =
-      mapColumnType(f, dialect, columnNamingStrategy, timestampMode)
-        .modifiers.includes(".notNull()")
-        ? ""
-        : ".nullable()";
-    const refBase = objectRefOf(f);
-    if (refBase) {
-      const schemaSym = imp(`${refBase}InsertSchema@${voModule(refBase)}`);
-      const base = f.resolvedIsArray()
-        ? code`${z}.array(${schemaSym})`
-        : code`${schemaSym}`;
-      return code`  ${f.name}: ${base}${nullable}`;
-    }
-    // #204 — array-wrap a scalar array passthrough so the read type is `T[]`
-    // (was scalar `T`, diverging from the Drizzle view column above + the Kotlin
-    // port). zodTypeFor returns the ELEMENT type; the array-ness rides here.
-    const inner = code`${z}.${zodTypeFor(f).replace(/^z\./, "")}`;
-    const zbase = f.resolvedIsArray() ? code`${z}.array(${inner})` : inner;
-    return code`  ${f.name}: ${zbase}${nullable}`;
-  });
-
-  // Typed view column map for the Drizzle `.existing()` declaration — keyed by
-  // projection field name, valued by the column builder for the (renamed)
-  // physical view column, so `db.select().from(<view>)` is typed. Honors
-  // `@dbColumnType` (e.g. a passthrough of a jsonb column). `.existing()` views
-  // carry type + physical name only — no PK/default/notNull modifiers.
-  const viewColumnLines: Code[] = allFields.map((f) => {
-    const spec = mapColumnType(f, dialect, columnNamingStrategy, timestampMode);
-    const colSym = imp(`${spec.fnName}@${spec.importModule}`);
-    const optsArg =
-      spec.fnOptions && Object.keys(spec.fnOptions).length > 0
-        ? `, ${JSON.stringify(spec.fnOptions)}`
-        : "";
-    // #204 — of the table modifiers, only `.array()` (postgres native array
-    // element typing) and `.notNull()` (shapes the SELECT type) carry to an
-    // existing view; `.primaryKey()`/`.default()`/`.references()`/`.unique()` are
-    // table-DDL concerns and invalid on a `.existing()` view declaration. Preserve
-    // the canonical order (`.array()` before `.notNull()`). Dropping `.array()`
-    // typed a `text[]` passthrough as scalar `string`, diverging from the Kotlin port.
-    const viewModifiers = spec.modifiers
-      .filter((m) => m === ".array()" || m === ".notNull()")
-      .join("");
-    // Narrow the column to its resolved element/value type — `.$type<…>()` —
-    // mirroring the entity column (drizzle-schema.ts) so the read row is typed
-    // (not `unknown`) and an array column reads as `T[]`, not `T`. #204: the
-    // scalar-array (`.$type<string[]>()`, SQLite's json-array path) and map kinds
-    // were dropped here — only objectRef was carried.
-    let dollarType: Code | string = "";
-    const dtr = spec.dollarTypeRef;
-    if (dtr?.kind === "scalar") {
-      dollarType = `.$type<${dtr.tsType}${dtr.array ? "[]" : ""}>()`;
-    } else if (dtr?.kind === "objectRef") {
-      const voTypeSym = imp(`${dtr.name}@${voModule(dtr.name)}`);
-      dollarType = dtr.array ? code`.$type<${voTypeSym}[]>()` : code`.$type<${voTypeSym}>()`;
-    } else if (dtr?.kind === "map") {
-      dollarType = "scalar" in dtr.value
-        ? `.$type<Record<string, ${dtr.value.scalar}>>()`
-        : code`.$type<Record<string, ${imp(`${dtr.value.objectRef}@${voModule(dtr.value.objectRef)}`)}>>()`;
-    }
-    return code`  ${f.name}: ${colSym}(${JSON.stringify(spec.dbName)}${optsArg})${dollarType}${viewModifiers}`;
-  });
-
   const constFieldLines: string[] = allFields.map((f) => {
     const dbCol = columnNameFromField(f.name, columnNamingStrategy);
     const view = inferViewKind(f);
@@ -224,19 +144,14 @@ export function renderProjectionDecl(
 
   const sections: Code[] = [
     ...(includeViewDecl
-      ? [code`
-// View declaration — Drizzle uses this for typed SELECT queries.
-// The SQL view is created/managed by migrate-ts; .existing() tells Drizzle
-// not to attempt DDL for this declaration.
-export const ${camelName}View = ${viewSym}(${JSON.stringify(viewName)}, {
-${joinCode(viewColumnLines, { on: ",\n" })}
-}).existing();
-`]
+      ? [renderExistingViewDecl(allFields, viewName, `${camelName}View`, {
+          dialect, columnNamingStrategy, timestampMode, voModule,
+        })]
       : []),
     code`
-export const ${projName}Schema = ${z}.object({
-${joinCode(zodLines, { on: ",\n" })}
-});
+export const ${projName}Schema = ${renderViewReadZodObject(allFields, {
+  dialect, columnNamingStrategy, timestampMode, voModule,
+})};
 `,
     code`
 export type ${projName} = ${z}.infer<typeof ${projName}Schema>;

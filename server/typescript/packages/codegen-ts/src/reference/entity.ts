@@ -42,8 +42,11 @@ import {
   SHARED_ENUMS_BASENAME,
   // predicates + helpers:
   isProjection,
+  isWriteThrough,
   isAbstract,
   hasWritableRdbSource,
+  // engine composer — used for the delegated write-through variant:
+  renderEntityFile,
   // engine plumbing:
   formatTs,
   entityOutputPath,
@@ -79,8 +82,15 @@ function renderEntity(entity: MetaObject, ctx: RenderContext, opts?: RenderEntit
   if (!runtime || !hasWritableRdbSource(entity)) {
     return renderValueObjectFile(entity, ctx.apiPrefix, ctx);
   }
+  // #214 — a write-through entity read-view (writable table + a read-only replica view +
+  // derived origin.* fields) needs the hybrid file (table + `.existing()` view decl + a
+  // z.infer read type carrying the derived fields). Delegate to the engine composer rather
+  // than duplicate that branch here (mirrors the projection delegation above).
+  if (isWriteThrough(entity)) {
+    return renderEntityFile(entity, ctx, { allowlists });
+  }
 
-  // Write-through entity → the full Drizzle table file. Reorder/drop sections freely.
+  // Vanilla entity → the full Drizzle table file. Reorder/drop sections freely.
   const enumAliases = renderEnumTypeAliases(entity, ctx);
   const tphBlock = renderTphDiscriminatorUnion(entity, ctx.loadedRoot);
   const tphBase = tphBlock !== null && isTphDiscriminatorBase(entity, ctx.loadedRoot);

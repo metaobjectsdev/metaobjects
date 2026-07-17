@@ -6,7 +6,7 @@
 //   !hasWritableRdbSource(entity)      → renderValueObjectFile (in-memory / transit shape: interface + Zod schema)
 //   vanilla / write-through entity     → Drizzle table path
 
-import { joinCode, type Code } from "ts-poet";
+import { code, imp, joinCode, type Code } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "../render-context.js";
 import { renderDrizzleSchema } from "./drizzle-schema.js";
@@ -17,8 +17,13 @@ import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.j
 import { renderFilterType } from "./filter-type.js";
 import { renderTphDiscriminatorUnion, isTphDiscriminatorBase } from "./tph-discriminator.js";
 import { GENERATED_HEADER } from "../constants.js";
-import { isProjection } from "../projection/projection-detector.js";
+import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import { renderProjectionDecl } from "./projection-decl.js";
+import { projectionViewName } from "../projection/extract-view-spec.js";
+import { renderExistingViewDecl, renderViewReadZodObject } from "./view-decl.js";
+import { renderDocsFor } from "./jsdoc.js";
+import { valueObjectModuleSpecifier } from "../import-path.js";
+import { stripPackage } from "@metaobjectsdev/metadata";
 import { hasWritableRdbSource } from "../source-detect.js";
 import { renderValueObjectFile } from "./value-object-file.js";
 import { isAbstract } from "../instance-artifacts.js";
@@ -108,9 +113,47 @@ export function renderEntityFile(
   // bare `<Base>` type — so the inferred Drizzle row type is emitted as
   // `<Base>Row` to avoid a duplicate `export type <Base>`.
   const tphBase = tphBlock !== null && isTphDiscriminatorBase(entity, ctx.loadedRoot);
+
+  // #214 — a write-through entity read-view (FR-024 §7): reads route to the replica
+  // VIEW, so the entity file additionally declares the `.existing()` view (carrying the
+  // derived fields the write table omits, #213) and a read schema `<Entity>Schema`
+  // whose `z.infer` IS the read type <Entity> (dialect-agnostic — a Drizzle view is not
+  // a Table, so InferSelectModel/`$inferSelect` don't uniformly apply; the Zod schema's
+  // nullability mirrors the view columns exactly like a projection). The write table +
+  // Insert/Update stay derived-free. `.existing()` is a runtime-target Drizzle binding,
+  // and this path only runs in a runtime target (contract-only/non-writable returned above).
+  // A TPH discriminator base owns `export type <Base>` via its discriminated-union block,
+  // so it must NOT also emit the view-schema read type (that would be a duplicate-identifier
+  // compile error). A base+write-through combo keeps the TPH polymorphic read path (reads
+  // the base table); routing its reads through a replica view is a documented non-goal.
+  const writeThrough = isWriteThrough(entity) && !tphBase;
+  const viewSections: Code[] = [];
+  if (writeThrough) {
+    const camel = entity.name.charAt(0).toLowerCase() + entity.name.slice(1);
+    const fields = entity.fields();
+    const voModule = (refBase: string): string =>
+      valueObjectModuleSpecifier(stripPackage(refBase), ctx.packageOf, entity.package, ctx.outputLayout, ctx.extStyle);
+    const viewOpts = {
+      dialect: ctx.dialect, columnNamingStrategy: ctx.columnNamingStrategy, timestampMode: ctx.timestampMode, voModule,
+    };
+    const z = imp("z@zod");
+    const docs = renderDocsFor(entity);
+    const docsPrefix = docs ? `${docs}\n` : "";
+    viewSections.push(
+      renderExistingViewDecl(fields, projectionViewName(entity, ctx.columnNamingStrategy), `${camel}View`, viewOpts),
+      code`
+export const ${entity.name}Schema = ${renderViewReadZodObject(fields, viewOpts)};
+`,
+      code`
+${docsPrefix}export type ${entity.name} = ${z}.infer<typeof ${entity.name}Schema>;
+`,
+    );
+  }
+
   const sections: Code[] = [
     renderDrizzleSchema(entity, ctx),
-    renderInferredTypes(entity, tphBase, ctx),
+    ...viewSections,
+    renderInferredTypes(entity, tphBase, ctx, writeThrough /* skipRow — read type is the view schema */),
     ...(enumAliases !== null ? [enumAliases] : []),
     renderZodValidators(entity, ctx),
     renderEntityConstants(entity, ctx.apiPrefix),

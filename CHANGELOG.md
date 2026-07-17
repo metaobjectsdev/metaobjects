@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### #214 — entity read-view codegen READ half (TypeScript reference)
+
+Completes the read side of the FR-024 §7 entity read-view (#213 shipped the write/schema half — the write table excludes derived `origin.*` fields and the replica view is emitted + migrate-converged). A **write-through entity** (a writable `table` source + a read-only replica `view` source + derived fields) now generates a hybrid read/write surface in TypeScript:
+
+- The entity file declares the `.existing()` replica **view** alongside the write table, plus a Zod read schema whose `z.infer` **is** the read type `<Entity>` — carrying the derived fields the write table omits (`z.infer`, not Drizzle `InferSelectModel`/`$inferSelect`, because a Drizzle view is not a Table and SQLite views don't expose `$inferSelect`; the read schema's nullability mirrors the view columns, exactly like a projection).
+- Generated **reads** (`find<Entity>ById` / `list<Plural>` / reverse finders) SELECT from the view; **writes** (`create` / `update` / `delete`) target the table; a create/update **re-reads** the row through the view by primary key (keyed on the full PK) so the returned `<Entity>` carries the derived fields (read-your-writes). Insert/Update stay derived-free (#213).
+- The scaffold-and-own reference generators (`meta init`) delegate the write-through variant to the engine composer (like the projection/TPH variants), so the default consumer path is not a silent no-op.
+
+Shared `renderExistingViewDecl` + `renderViewReadZodObject` helpers now back both projections and write-through entities (projection output byte-identical). Gated by a `tsc`-compile test of the real generated output on both dialects + a real-Postgres re-read round-trip. **TS-only** (ADR-0015 — schema/codegen is per-port); the other four ports' ORM/DTO generators are the tracked cross-port follow-up.
+
 ### #207 — projection row-scope `@filter` (a view-level WHERE)
 
 A projection (`object.projection`) can now declare a row-scope `@filter` — a portable `attr.filter` object (`eq`/`ne`/`gt`/`gte`/`lt`/`lte`/`like`/`in`/`isNull` with `and`/`or`, desugared to canonical `{ field: { op: value } }` at parse time) selecting which rows the derived view returns. It lowers to an outer SQL `WHERE`, the metadata-managed way to express soft-delete / status / type views instead of a hand-written unmanaged view (which is drift, invisible to `verify --db`). Placement mirrors `origin.aggregate @filter` exactly: a `filter`-subtype attr on `object.projection` (the predicate is a LOGICAL derivation, so it lives on the object, not on `source.rdb` — it survives non-RDB lowerings).

@@ -19,12 +19,34 @@ import {
   renderReverseFinderFns,
   reverseFksFor,
   getPkInfo,
+  getPkFields,
 } from "./queries.js";
-import { pluralize, findByIdFnName, listFnName } from "../naming.js";
+import { pluralize, findByIdFnName, listFnName, createFnName, insertPreservingFnName, updateFnName } from "../naming.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { isTphDiscriminatorBase, tphConcreteSubtypes } from "./tph-discriminator.js";
-import { isProjection } from "../projection/projection-detector.js";
+import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import { hasAutoSetFields } from "./zod-validators.js";
+
+/**
+ * The dialect-correct Drizzle `Db` type alias + its import — parameter-passed into every
+ * generated CRUD helper (ADR-0008), so the signatures `find…(db: Db, …)` typecheck without
+ * the consumer importing anything to construct one. Shared by every queries-file renderer.
+ *   - Postgres: `PgDatabase<…>` is the base every PG driver extends (node-postgres,
+ *     postgres.js, Neon, Vercel, pglite) — accepts whichever driver the consumer chose.
+ *   - SQLite: `BaseSQLiteDatabase<"sync" | "async", …>` accepts BOTH sync (better-sqlite3)
+ *     and async (libsql/Turso/D1) drivers; the generated queries `await` results, valid on either.
+ */
+function dbTypeBlock(dialect: "postgres" | "sqlite"): { import: string; alias: string } {
+  return dialect === "postgres"
+    ? {
+        import: `import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";`,
+        alias: `type Db = PgDatabase<PgQueryResultHKT, Record<string, never>>;`,
+      }
+    : {
+        import: `import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";`,
+        alias: `type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;`,
+      };
+}
 
 export function renderQueriesFile(obj: MetaObject, ctx: RenderContext): string {
   // FR-017 Tier 2 — a TPH discriminator base gets a polymorphic queries file:
@@ -44,6 +66,13 @@ export function renderQueriesFile(obj: MetaObject, ctx: RenderContext): string {
     return renderProjectionQueriesFile(obj, ctx);
   }
 
+  // #214 — a write-through entity read-view (FR-024 §7): READS route to the replica
+  // view (returning the derived fields), WRITES target the table. A hybrid of the
+  // projection read path + the vanilla write path.
+  if (isWriteThrough(obj)) {
+    return renderWriteThroughQueriesFile(obj, ctx);
+  }
+
   const entityName = obj.name;
   // Import the entity's own file. Same target → relative "./Entity"; cross
   // target → importBase-qualified package path.
@@ -60,21 +89,7 @@ export function renderQueriesFile(obj: MetaObject, ctx: RenderContext): string {
   // helper (ADR-0008). Emit the dialect-correct Drizzle type alias so the
   // signatures `findXxx(db: Db, ...)` typecheck without the consumer importing
   // anything to construct one. Consumers pass any compatible Drizzle instance.
-  const dbTypeImport =
-    ctx.dialect === "postgres"
-      ? `import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";`
-      : `import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";`;
-  const dbTypeAlias =
-    ctx.dialect === "postgres"
-      // Postgres: the base class every PG driver extends (node-postgres,
-      // postgres.js, Neon, Vercel, pglite) — not just node-postgres, so any
-      // PG driver the consumer chose is accepted.
-      ? `type Db = PgDatabase<PgQueryResultHKT, Record<string, never>>;`
-      // SQLite: accept BOTH sync (better-sqlite3) and async (libsql/Turso/D1)
-      // drivers. Generated queries `await` their results, which is valid on
-      // either result-kind; pinning `<"async">` wrongly rejected better-sqlite3
-      // (the most common SQLite driver) with "is not assignable".
-      : `type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;`;
+  const { import: dbTypeImport, alias: dbTypeAlias } = dbTypeBlock(ctx.dialect);
 
   // #203 — an @autoSet entity additionally imports its preserving-shape schema
   // and emits the `insertPreserving<Entity>` escape hatch after `create<Entity>`.
@@ -138,21 +153,7 @@ function renderProjectionQueriesFile(obj: MetaObject, ctx: RenderContext): strin
   const { fieldName: pkField, tsType: pkType } = getPkInfo(obj, ctx);
   const eqSym = imp("eq@drizzle-orm");
 
-  const dbTypeImport =
-    ctx.dialect === "postgres"
-      ? `import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";`
-      : `import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";`;
-  const dbTypeAlias =
-    ctx.dialect === "postgres"
-      // Postgres: the base class every PG driver extends (node-postgres,
-      // postgres.js, Neon, Vercel, pglite) — not just node-postgres, so any
-      // PG driver the consumer chose is accepted.
-      ? `type Db = PgDatabase<PgQueryResultHKT, Record<string, never>>;`
-      // SQLite: accept BOTH sync (better-sqlite3) and async (libsql/Turso/D1)
-      // drivers. Generated queries `await` their results, which is valid on
-      // either result-kind; pinning `<"async">` wrongly rejected better-sqlite3
-      // (the most common SQLite driver) with "is not assignable".
-      : `type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;`;
+  const { import: dbTypeImport, alias: dbTypeAlias } = dbTypeBlock(ctx.dialect);
 
   const literalImports = code`
 ${dbTypeImport}
@@ -179,6 +180,96 @@ export async function ${listFnName(entityName)}(db: Db, opts?: { limit?: number;
   const header =
     `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
     `// Source metadata: ${entityName} (${obj.fqn()}) — projection (read-only)\n` +
+    `// Customize via ${entityName}.extra.ts in this directory (additional queries, custom logic).\n`;
+  return header + body;
+}
+
+/**
+ * #214 — the queries file for a write-through entity read-view (FR-024 §7).
+ *
+ * Reads (`find<Name>ById`, `list<Plural>`, reverse finders) SELECT from the replica
+ * `<camel>View` so they return the derived fields; writes (`create`/`update`/`delete`)
+ * target the write TABLE (derived-free, #213). A create/update re-reads the row THROUGH
+ * the view by PK — a derived field is only computable via the view's join, so the
+ * returned `<Entity>` (view shape) is read-your-writes correct.
+ */
+function renderWriteThroughQueriesFile(obj: MetaObject, ctx: RenderContext): string {
+  const entityName = obj.name;
+  const camelName = entityName.charAt(0).toLowerCase() + entityName.slice(1);
+  const viewVar = `${camelName}View`;
+  const tableVar = ctx.collectionName(entityName);
+  const singularVar = camelName;
+  const entityFileName = entityModuleSpecifier(
+    ctx.selfTarget, ctx.entityModuleTarget, obj.package, entityName, ctx.extStyle,
+  );
+  const { fieldName: pkField, tsType: pkType } = getPkInfo(obj, ctx);
+  const pkFields = getPkFields(obj);
+  const eqSym = imp("eq@drizzle-orm");
+  const andSym = imp("and@drizzle-orm");
+  const autoSet = hasAutoSetFields(obj);
+
+  const { import: dbTypeImport, alias: dbTypeAlias } = dbTypeBlock(ctx.dialect);
+
+  const preservingImport = autoSet ? `, ${entityName}InsertPreservingSchema` : "";
+  const literalImports = code`
+${dbTypeImport}
+${dbTypeAlias}
+
+import { ${viewVar}, ${tableVar}, type ${entityName}, type ${entityName}Patch, ${entityName}InsertSchema${preservingImport}, ${entityName}UpdateSchema } from ${JSON.stringify(entityFileName)};
+`;
+
+  // The view re-read predicate keyed on ALL primary-key columns of `source` (the
+  // insert's returning() row), so a composite PK re-reads the EXACT written row rather
+  // than any view row sharing the first key component. `andSym`/`pkFields[i]` are only
+  // referenced when the PK is composite, so a single-PK entity emits a bare `eq(...)`.
+  const viewByAllPk = (source: string): Code =>
+    pkFields.length > 1
+      ? code`${andSym}(${joinCode(pkFields.map((f) => code`${eqSym}(${viewVar}.${f}, ${source}.${f})`), { on: ", " })})`
+      : code`${eqSym}(${viewVar}.${pkField}, ${source}.${pkField})`;
+
+  // A create/insertPreserving writes the table, then reads the persisted row back
+  // through the view so the returned <Entity> carries the derived fields.
+  const insertReturningView = (fnName: string, schemaName: string): Code => code`
+export async function ${fnName}(db: Db, data: unknown): Promise<${entityName}> {
+  const validated = ${schemaName}.parse(data);
+  const [${singularVar}] = await db.insert(${tableVar}).values(validated).returning();
+  const [row] = await db.select().from(${viewVar}).where(${viewByAllPk(`${singularVar}!`)}).limit(1);
+  return row!;
+}
+`;
+
+  const updateFn = code`
+export async function ${updateFnName(entityName)}(db: Db, ${pkField}: ${pkType}, patch: ${entityName}Patch): Promise<${entityName} | null> {
+  const validated = ${entityName}UpdateSchema.parse(patch);
+  // PATCH-5: an empty patch is a no-op — return the current (view) row.
+  if (Object.keys(validated).length === 0) return ${findByIdFnName(entityName)}(db, ${pkField});
+  const updated = await db.update(${tableVar}).set(validated).where(${eqSym}(${tableVar}.${pkField}, ${pkField})).returning();
+  if (updated.length === 0) return null;
+  const [row] = await db.select().from(${viewVar}).where(${eqSym}(${viewVar}.${pkField}, ${pkField})).limit(1);
+  return row ?? null;
+}
+`;
+
+  const sections: Code[] = [
+    literalImports,
+    // Reads route to the replica view.
+    renderFindByIdFn(obj, ctx, viewVar),
+    renderListFn(obj, ctx, viewVar),
+    // Writes target the table (create/update re-read through the view; delete is boolean).
+    insertReturningView(createFnName(entityName), `${entityName}InsertSchema`),
+    ...(autoSet ? [insertReturningView(insertPreservingFnName(entityName), `${entityName}InsertPreservingSchema`)] : []),
+    updateFn,
+    renderDeleteByIdFn(obj, ctx),
+  ];
+  // Reverse finders are reads → route to the view.
+  for (const fk of reverseFksFor(obj)) {
+    sections.push(renderReverseFinderFns(obj, fk, ctx, viewVar));
+  }
+
+  const body = joinCode(sections, { on: "\n" }).toString();
+  const header =
+    `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
+    `// Source metadata: ${entityName} (${obj.fqn()}) — write-through entity read-view (reads → view, writes → table)\n` +
     `// Customize via ${entityName}.extra.ts in this directory (additional queries, custom logic).\n`;
   return header + body;
 }
@@ -211,21 +302,7 @@ function renderTphQueriesFile(base: MetaObject, ctx: RenderContext): string {
   const eqSym = imp("eq@drizzle-orm");
   const andSym = imp("and@drizzle-orm");
 
-  const dbTypeImport =
-    ctx.dialect === "postgres"
-      ? `import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";`
-      : `import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";`;
-  const dbTypeAlias =
-    ctx.dialect === "postgres"
-      // Postgres: the base class every PG driver extends (node-postgres,
-      // postgres.js, Neon, Vercel, pglite) — not just node-postgres, so any
-      // PG driver the consumer chose is accepted.
-      ? `type Db = PgDatabase<PgQueryResultHKT, Record<string, never>>;`
-      // SQLite: accept BOTH sync (better-sqlite3) and async (libsql/Turso/D1)
-      // drivers. Generated queries `await` their results, which is valid on
-      // either result-kind; pinning `<"async">` wrongly rejected better-sqlite3
-      // (the most common SQLite driver) with "is not assignable".
-      : `type Db = BaseSQLiteDatabase<"sync" | "async", unknown>;`;
+  const { import: dbTypeImport, alias: dbTypeAlias } = dbTypeBlock(ctx.dialect);
 
   // --- Polymorphic base reads ---
   const polymorphic = code`

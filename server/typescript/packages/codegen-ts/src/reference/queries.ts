@@ -31,6 +31,7 @@ import {
   reverseFksFor,
   isTphDiscriminatorBase,
   isProjection,
+  isWriteThrough,
   isTphSubtype,
   renderQueriesFile, // engine composer — used for the delegated variants
   formatTs,
@@ -41,7 +42,9 @@ import {
 // --- composition (OWNED for the common case) ---
 function renderQueries(obj: MetaObject, ctx: RenderContext): string {
   // Advanced variants delegate to the engine (byte-identical). Own them by copying their source.
-  if (isTphDiscriminatorBase(obj, ctx.loadedRoot) || isProjection(obj)) {
+  // #214 — a write-through entity read-view (reads → replica view, writes → table) delegates
+  // too; owning it inline would duplicate the hybrid read/write routing.
+  if (isTphDiscriminatorBase(obj, ctx.loadedRoot) || isProjection(obj) || isWriteThrough(obj)) {
     return renderQueriesFile(obj, ctx);
   }
 
