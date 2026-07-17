@@ -81,3 +81,18 @@ value → set). Notes:
   open-bag column untouched. A consumer needing to PATCH an open-bag column overrides
   the generated update handler. Typed value-object jsonb (`field.object`) is
   object-typed and separately out of the CRUD DTO scope.
+
+## Write-through read-view re-read assumes a 1:1 replica (#214)
+
+**Status:** documented limitation (a cross-port audit finding, D1).
+
+A write-through entity's generated repository/controller re-reads a
+create/update through the replica view by primary key using Exposed
+`.single()`, which assumes the view surfaces the just-written row. That holds
+for a plain `@kind:view` replica (a live query over the write table). A
+`@kind:materializedView` (unrefreshed) or a filtered replica that does not
+surface the row makes `.single()` throw → HTTP 500, whereas the data-oriented
+ports (Python `ObjectManager`, C# routes) degrade to returning the write row
+(derived fields absent). A materialized/filtered replica on a write-through
+entity is an unusual shape; the graceful table-row fallback (a second, derived-
+free row mapper) is deferred until a real consumer needs it.

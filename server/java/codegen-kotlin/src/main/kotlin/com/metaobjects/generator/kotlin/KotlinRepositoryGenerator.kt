@@ -168,6 +168,14 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         fun StringBuilder.appendInsertBody(preserve: Boolean) {
             // Writes target the write table; the by-PK read-back routes to the read object
             // (the view for a write-through entity) so the returned entity carries derived fields.
+            // #214 cross-port notes: (D4) the re-read keys on the SINGLE primary key
+            // ($pkFieldName) — a write-through entity with a composite PK is out of scope here
+            // (this repository already skips composite-PK entities), matching the other ports'
+            // single-PK re-read. (D1) the re-read uses `.single()` — it assumes the replica view
+            // surfaces the just-written row, TRUE for a plain `@kind:view` (a live query over the
+            // table). A `@kind:materializedView` (unrefreshed) or a filtered replica that does not
+            // surface the row throws here; that is an unsupported write-through replica shape (the
+            // data-oriented ports degrade to the table row instead) — a documented limitation.
             when {
                 incrementPk -> {
                     append("        val newId = $writeObj.insert {\n")

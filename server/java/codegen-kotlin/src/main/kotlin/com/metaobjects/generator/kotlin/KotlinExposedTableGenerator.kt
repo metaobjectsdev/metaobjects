@@ -410,7 +410,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         // Views never carry a generated default (they inherit the underlying PK).
         val uuidGeneratedPk = primary?.isUuid == true && !isView && singlePrimaryFieldName != null
 
-        val objectColumns = buildObjectColumns(entity, primaryFieldSet, loader)
+        val objectColumns = buildObjectColumns(entity, primaryFieldSet, loader, excludeDerivedFields)
         // A `field.string @dbColumnType=jsonb` open bag now decodes to a kotlinx `JsonElement`
         // (issue #98) via `{ Json.parseToJsonElement(it) }`, so its table file needs the
         // `kotlinx.serialization.json.Json` import too (that open bag is the ONLY column that still
@@ -706,9 +706,16 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         entity: MetaObject,
         primaryFieldNames: Set<String>,
         loader: MetaDataLoader,
+        // #214: on the WRITE table of a write-through entity, a DERIVED (origin.*) field.object /
+        // field.map has no physical column (it is computed by the read view) — exclude it, exactly
+        // as the scalar-column loop does. Without this a derived value-object column becomes a
+        // phantom on the write `<Short>Table` (declared but never written/selected; a @required one
+        // would break Exposed insert). Default false → byte-identical for a vanilla entity + the view.
+        excludeDerived: Boolean = false,
     ): List<ObjectColumnSpec> {
         val result = mutableListOf<ObjectColumnSpec>()
         for (field in entity.metaFields) {
+            if (excludeDerived && KotlinGenUtil.isDerivedField(field)) continue
             // field.map → a single jsonb column (the JSON object). Keys are always strings;
             // never flattened, never a native array. Same JSONB emission as a jsonb-stored
             // field.object.
