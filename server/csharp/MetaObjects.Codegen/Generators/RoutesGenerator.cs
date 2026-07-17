@@ -87,6 +87,13 @@ public class RoutesGenerator : PerEntityGenerator
         bool isProjection = entity.IsReadOnlyProjection();
         bool hasItem = pkType is not null;           // GET by id (readable by key)
         bool writable = hasItem && !isProjection;    // mutations only on writable sources
+        // #214 (FR-024 §7) — a write-through entity: READS route to the replica view read
+        // model (carrying the derived fields), WRITES to the table. readCls/readDbSet are the
+        // view model + its DbSet; for a vanilla entity / projection they collapse to the entity
+        // itself, so the emitted output is byte-identical.
+        bool writeThrough = entity.IsWriteThrough();
+        var readCls = writeThrough ? CSharpNaming.ViewModelClassName(entity) : cls;
+        var readDbSet = writeThrough ? CSharpNaming.ViewDbSetName(entity) : dbSet;
 
         // Program D — value-object jsonb columns (field.object @storage:jsonb, single AND
         // @isArray). These are EF owned-nav properties (not scalar EntityType.Properties), so
@@ -146,7 +153,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("        app.MapGet(prefix + \"/" + route + "\", async (HttpContext http, AppDbContext db) =>");
         sb.AppendLine("        {");
         sb.AppendLine("            var qs = http.Request.Query;");
-        sb.AppendLine($"            IQueryable<{cls}> q = db." + dbSet + ".AsNoTracking();");
+        sb.AppendLine($"            IQueryable<{readCls}> q = db." + readDbSet + ".AsNoTracking();");
         sb.AppendLine();
         sb.AppendLine("            // Filter: ?filter[<field>][<op>]=<value> against the per-entity allowlist.");
         sb.AppendLine($"            var filter = FilterParser.Parse(qs, {cls}FilterAllowlist.Fields, {cls}FilterAllowlist.OpsByField);");
@@ -176,7 +183,7 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("            // withCount=1 → { rows, total } envelope; otherwise bare row array.");
         sb.AppendLine("            var withCount = qs.TryGetValue(\"withCount\", out var wc) && (wc == \"1\" || string.Equals(wc, \"true\", System.StringComparison.OrdinalIgnoreCase));");
         sb.AppendLine("            if (!withCount) return Results.Ok(rows);");
-        sb.AppendLine($"            var totalQ = EfCoreFilterDispatch.ApplyFilter(db.{dbSet}.AsNoTracking(), filter.Predicates);");
+        sb.AppendLine($"            var totalQ = EfCoreFilterDispatch.ApplyFilter(db.{readDbSet}.AsNoTracking(), filter.Predicates);");
         sb.AppendLine("            var total = await totalQ.CountAsync();");
         sb.AppendLine("            return Results.Ok(new { rows, total });");
         sb.AppendLine("        });");
@@ -185,7 +192,7 @@ public class RoutesGenerator : PerEntityGenerator
         {
             sb.AppendLine();
             sb.AppendLine("        app.MapGet(prefix + \"/" + route + "/{id}\", async (" + pkType + " id, AppDbContext db) =>");
-            sb.AppendLine("            await db." + dbSet + ".FindAsync(id) is { } found");
+            sb.AppendLine("            await db." + readDbSet + ".FindAsync(id) is { } found");
             sb.AppendLine("                ? Results.Ok(found)");
             sb.AppendLine("                : Results.NotFound(new { error = \"not_found\" }));");
         }
@@ -198,8 +205,12 @@ public class RoutesGenerator : PerEntityGenerator
             // omitted, invisible to [Required], so the create handler checks raw-JSON presence.
             var requiredKeys = RequiredCreateKeys(entity, f => pkFields.Contains(f.Name));
             sb.AppendLine();
+            // #214 — a write-through create binds the derived-FREE WRITE entity, persists to
+            // the table, then RE-READS the row through the replica view by PK so the returned
+            // body carries the derived (view-computed) fields (read-your-writes).
             AppendCreateHandler(sb, "/" + route, cls, dbSet, requiredKeys,
-                "Results.Created(prefix + \"/" + route + "\", input)", voFields, autoSetFields);
+                "Results.Created(prefix + \"/" + route + "\", input)", voFields, autoSetFields,
+                writeThrough ? (readDbSet, pkProp!, route) : null);
 
             // PATCH + PUT share the same handler — TS reference exposes both verbs, and both
             // return the updated row (HTTP 200), matching the cross-port api-contract.
@@ -234,7 +245,20 @@ public class RoutesGenerator : PerEntityGenerator
             AppendPartialMergeLoop(sb, null, voFields, autoSetNavs);
             sb.AppendLine("            await db.SaveChangesAsync();");
             AppendArrayNullClears(sb, voFields, table, pkColumn);
-            sb.AppendLine("            return Results.Ok(existing);");
+            // #214 — writes target the table; for a write-through entity re-read the row
+            // through the replica view by PK so the returned body carries the derived fields.
+            if (writeThrough)
+            {
+                sb.AppendLine($"            var __view = await db.{readDbSet}.FindAsync(id);");
+                // #214 [2] — a @kind:materializedView (unrefreshed) or filtered replica view may
+                // not surface the just-written row; fall back to the write entity so the body is
+                // never null (degraded — missing only the derived fields; matches the Python port).
+                sb.AppendLine("            return Results.Ok((object?)__view ?? existing);");
+            }
+            else
+            {
+                sb.AppendLine("            return Results.Ok(existing);");
+            }
             sb.AppendLine("        }");
             sb.AppendLine("        app.MapPatch(prefix + \"/" + route + "/{id}\", Update" + cls + ");");
             sb.AppendLine("        app.MapPut(prefix + \"/" + route + "/{id}\", Update" + cls + ");");
@@ -264,7 +288,7 @@ public class RoutesGenerator : PerEntityGenerator
         // Allowlisted property name → IOrderedQueryable dispatch via EF.Property.
         // Reflection-free at runtime; EF Core translates EF.Property(x, "<Name>")
         // into the column reference at SQL generation.
-        sb.AppendLine($"    private static IOrderedQueryable<{cls}> ApplySort{cls}(IQueryable<{cls}> q, string field, bool desc)");
+        sb.AppendLine($"    private static IOrderedQueryable<{readCls}> ApplySort{cls}(IQueryable<{readCls}> q, string field, bool desc)");
         sb.AppendLine("    {");
         sb.AppendLine("        return field switch");
         sb.AppendLine("        {");
@@ -272,7 +296,7 @@ public class RoutesGenerator : PerEntityGenerator
         {
             sb.AppendLine($"            \"{name}\" => desc ? q.OrderByDescending(x => EF.Property<object>(x!, \"{name}\")) : q.OrderBy(x => EF.Property<object>(x!, \"{name}\")),");
         }
-        sb.AppendLine("            _ => (IOrderedQueryable<" + cls + ">)q.OrderBy(x => 0),");
+        sb.AppendLine("            _ => (IOrderedQueryable<" + readCls + ">)q.OrderBy(x => 0),");
         sb.AppendLine("        };");
         sb.AppendLine("    }");
         // Issue #203 — the verbatim-insert escape hatch, only for an entity with @autoSet
@@ -447,7 +471,11 @@ public class RoutesGenerator : PerEntityGenerator
             // correctly optional on POST") + the TS InsertSchema (autoSet fields are
             // present-but-optional). Excluded here so an omitted createdAt/updatedAt is
             // not a 400.
-            .Where(f => f.IsRequired && f.AutoSet is null && !isPkOrDisc(f))
+            // #214 — a derived (origin.*) field is view-computed and absent from the WRITE
+            // entity, so it is never on the create body: exclude it from the required-key set
+            // (else an omitted derived @required field would wrongly 400). Vanilla entities have
+            // no derived fields → byte-identical.
+            .Where(f => f.IsRequired && f.AutoSet is null && !f.IsDerived() && !isPkOrDisc(f))
             .Select(f => f.Name)
             .ToList();
 
@@ -506,6 +534,7 @@ public class RoutesGenerator : PerEntityGenerator
         foreach (var f in entity.Fields())
         {
             if (f.SubType != FIELD_SUBTYPE_OBJECT || f.ObjectRef is not { } oref) continue;
+            if (f.IsDerived()) continue;   // #214 — derived VO fields are view-only, not writable
             var target = root.FindObject(CSharpNaming.StripPkg(oref));
             if (target is null || !target.IsValue()) continue;   // value objects only (jsonb-stored)
             var voType = CSharpNaming.Pascal(target.Name);
@@ -532,7 +561,8 @@ public class RoutesGenerator : PerEntityGenerator
     private static void AppendCreateHandler(
         StringBuilder sb, string mapPath, string cls, string dbSet,
         IReadOnlyList<string> requiredKeys, string createdExpr, IReadOnlyList<VoField> voFields,
-        IReadOnlyList<AutoSetField> autoSetFields)
+        IReadOnlyList<AutoSetField> autoSetFields,
+        (string ReadDbSet, string PkProp, string Route)? reRead = null)
     {
         if (requiredKeys.Count == 0)
         {
@@ -541,9 +571,7 @@ public class RoutesGenerator : PerEntityGenerator
             AppendCreateValidation(sb);
             AppendCreateVoValidation(sb, voFields);
             AppendCreateAutoSet(sb, autoSetFields);
-            sb.AppendLine($"            db.{dbSet}.Add(input);");
-            sb.AppendLine("            await db.SaveChangesAsync();");
-            sb.AppendLine($"            return {createdExpr};");
+            AppendCreatePersist(sb, dbSet, createdExpr, reRead);
             sb.AppendLine("        });");
             return;
         }
@@ -575,10 +603,33 @@ public class RoutesGenerator : PerEntityGenerator
         AppendCreateValidation(sb);
         AppendCreateVoValidation(sb, voFields);
         AppendCreateAutoSet(sb, autoSetFields);
+        AppendCreatePersist(sb, dbSet, createdExpr, reRead);
+        sb.AppendLine("        });");
+    }
+
+    // The persist tail of a generated POST handler: add the bound `input` to the WRITE
+    // DbSet, save, and return. For a plain entity that returns the bound row via
+    // <paramref name="createdExpr"/>. For a write-through entity (#214) <paramref name="reRead"/>
+    // is set: the row is read back THROUGH the replica view by PK so the returned body
+    // carries the derived (view-computed) fields. Assumes `input` + `db` are in scope.
+    private static void AppendCreatePersist(
+        StringBuilder sb, string dbSet, string createdExpr,
+        (string ReadDbSet, string PkProp, string Route)? reRead)
+    {
         sb.AppendLine($"            db.{dbSet}.Add(input);");
         sb.AppendLine("            await db.SaveChangesAsync();");
-        sb.AppendLine($"            return {createdExpr};");
-        sb.AppendLine("        });");
+        if (reRead is { } rr)
+        {
+            sb.AppendLine($"            var __created = await db.{rr.ReadDbSet}.FindAsync(input.{rr.PkProp});");
+            // #214 [2] — a @kind:materializedView (unrefreshed) or filtered replica view may not
+            // surface the just-inserted row; fall back to the bound write `input` so the 201 body
+            // is never null (degraded — missing only the derived fields; matches the Python port).
+            sb.AppendLine($"            return Results.Created(prefix + \"/{rr.Route}/\" + input.{rr.PkProp}, (object?)__created ?? input);");
+        }
+        else
+        {
+            sb.AppendLine($"            return {createdExpr};");
+        }
     }
 
     // Issue #203 — stamp EVERY @autoSet column (onCreate AND onUpdate) with now() on

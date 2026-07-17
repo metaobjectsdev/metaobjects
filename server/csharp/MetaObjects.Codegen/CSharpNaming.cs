@@ -172,6 +172,16 @@ public static class CSharpNaming
     /// <summary>The DbSet property name for an entity: <c>Pluralize(Pascal(name))</c>.</summary>
     public static string DbSetName(MetaObject entity) => Pluralize(Pascal(entity.Name));
 
+    /// <summary>
+    /// #214 — the view read-model class name for a write-through entity: <c>&lt;EntityPascal&gt;View</c>.
+    /// EF Core cannot map one CLR type to both a table and a view, so a write-through entity
+    /// needs a SECOND, view-mapped CLR type carrying the derived fields the write table omits.
+    /// </summary>
+    public static string ViewModelClassName(MetaObject entity) => Pascal(entity.Name) + "View";
+
+    /// <summary>#214 — the read-model DbSet property name for a write-through entity: <c>Pluralize(&lt;Entity&gt;View)</c>.</summary>
+    public static string ViewDbSetName(MetaObject entity) => Pluralize(ViewModelClassName(entity));
+
     /// <summary>The per-entity filter allowlist class name: <c>&lt;EntityPascal&gt;FilterAllowlist</c>.</summary>
     public static string FilterAllowlistName(MetaObject entity) => Pascal(entity.Name) + "FilterAllowlist";
 

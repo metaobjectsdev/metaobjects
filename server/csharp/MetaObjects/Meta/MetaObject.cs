@@ -95,6 +95,34 @@ public class MetaObject(TypeId typeId, string name) : MetaData(typeId, name)
     public bool IsReadOnlyProjection() =>
         OwnSources().Any(s => s.IsReadOnly()) && !OwnSources().Any(s => s.IsWritable());
 
+    /// <summary>
+    /// #214 (FR-024 §7) — true when this object is a WRITE-THROUGH entity read-view: it
+    /// owns BOTH a writable-kind <c>source.rdb</c> (<c>@kind: table</c>) AND a read-only-kind
+    /// <c>source.rdb</c> (<c>@kind: view</c> / materializedView / …). Writes route to the
+    /// table; reads route to the (derived-field-carrying) replica view.
+    /// OWN-only + role-agnostic (mirrors the TS reference <c>isWriteThrough</c>): a replica
+    /// view carries <c>@role: replica</c>, so detection must NOT go through the primary-role
+    /// <see cref="FindPrimaryWritableSource"/> / <see cref="FindPrimaryReadOnlySource"/>
+    /// accessors — it classifies this object's OWN sources by <c>@kind</c>.
+    /// A write-through object is therefore NOT an <see cref="IsReadOnlyProjection"/>.
+    /// </summary>
+    public bool IsWriteThrough() =>
+        OwnSources().Any(s => s.IsWritable()) && OwnSources().Any(s => s.IsReadOnly());
+
+    /// <summary>
+    /// #214 (FR-024 §7) — the physical SQL name of the replica read-only source for a
+    /// write-through entity: the first OWN read-only source's <see cref="MetaSource.PhysicalName"/>
+    /// regardless of <c>@role</c>. Distinct from <see cref="DbView"/>, which requires the
+    /// read-only source to be <c>@role: primary</c> (a projection) and so returns null for a
+    /// <c>@role: replica</c> write-through view. Returns null when there is no own read-only source.
+    /// </summary>
+    public string? ReplicaViewName => Cached("replicaViewName", () =>
+    {
+        var src = OwnSources().FirstOrDefault(s => s.IsReadOnly());
+        var name = src?.PhysicalName;
+        return string.IsNullOrEmpty(name) ? null : name;
+    });
+
     /// <summary>True when the object's subtype is <c>entity</c>.</summary>
     public bool IsEntity() => SubType == OBJECT_SUBTYPE_ENTITY;
 

@@ -160,6 +160,17 @@ public class MetaField(TypeId typeId, string name) : MetaData(typeId, name), IDa
     public string? AutoSet => Attr(FIELD_ATTR_AUTO_SET) as string;
 
     /// <summary>
+    /// #214 (FR-024 §7) — true when this field is DERIVED: it declares an own
+    /// <c>origin.*</c> child (<c>origin.passthrough</c> / <c>aggregate</c> /
+    /// <c>collection</c>). A derived field is read-only wherever it lives; a
+    /// write-through entity's write table omits it (reads route to the replica view).
+    /// OWN-only by deliberate policy (ADR-0029/0039): an <c>origin.*</c> never inherits
+    /// via <c>extends</c>, so this reads own children, not the resolving accessor.
+    /// Mirrors the TS reference <c>MetaField.isDerived()</c>.
+    /// </summary>
+    public bool IsDerived() => OwnChildren().OfType<MetaOrigin>().Any();
+
+    /// <summary>
     /// Own member symbols of an enum-subtype field (the <c>@values</c> attr),
     /// or <see langword="null"/> when not set on this node (e.g. a concrete field
     /// that inherits via <c>extends:</c>). ADR-0039: intentionally OWN-only — the

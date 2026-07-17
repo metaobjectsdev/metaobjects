@@ -7,7 +7,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### #214 — entity read-view codegen READ half (TypeScript reference)
+### #214 — entity read-view codegen READ half (all five ports)
 
 Completes the read side of the FR-024 §7 entity read-view (#213 shipped the write/schema half — the write table excludes derived `origin.*` fields and the replica view is emitted + migrate-converged). A **write-through entity** (a writable `table` source + a read-only replica `view` source + derived fields) now generates a hybrid read/write surface in TypeScript:
 
@@ -15,7 +15,16 @@ Completes the read side of the FR-024 §7 entity read-view (#213 shipped the wri
 - Generated **reads** (`find<Entity>ById` / `list<Plural>` / reverse finders) SELECT from the view; **writes** (`create` / `update` / `delete`) target the table; a create/update **re-reads** the row through the view by primary key (keyed on the full PK) so the returned `<Entity>` carries the derived fields (read-your-writes). Insert/Update stay derived-free (#213).
 - The scaffold-and-own reference generators (`meta init`) delegate the write-through variant to the engine composer (like the projection/TPH variants), so the default consumer path is not a silent no-op.
 
-Shared `renderExistingViewDecl` + `renderViewReadZodObject` helpers now back both projections and write-through entities (projection output byte-identical). Gated by a `tsc`-compile test of the real generated output on both dialects + a real-Postgres re-read round-trip. **TS-only** (ADR-0015 — schema/codegen is per-port); the other four ports' ORM/DTO generators are the tracked cross-port follow-up.
+Shared `renderExistingViewDecl` + `renderViewReadZodObject` helpers now back both projections and write-through entities (projection output byte-identical). Gated by a `tsc`-compile test of the real generated output on both dialects + a real-Postgres re-read round-trip.
+
+**The read half is now complete in all five ports** (schema migration stays TS-owned, ADR-0015; the codegen/runtime is per-port). Each port shares the metadata predicates `MetaField.isDerived()` (a field carrying an `origin.*` child) and `MetaObject.isWriteThrough()` (an object owning both a writable-kind and a read-only-kind `source.rdb`), and each write-through path preserves byte-identical output for vanilla entities and projections:
+
+- **Java** (`codegen-spring`, SQL-free): the read `<Entity>Dto` carries the derived fields, the write `<Entity>Patch` excludes them, and a write-through entity emits its controller / repository / filter-allowlist (order-independent). A derived field on a write-through entity carries no client-validation constraints, so a POST-create can omit the view-computed value.
+- **Kotlin** (`codegen-kotlin`): a write-through entity emits **two** Exposed objects — a derived-free write `<Short>Table` and a derived-carrying read-only `<Short>View` — and the repository/controller route reads to the view, writes to the table, re-reading by primary key. A derived field on a write-through entity is a nullable, default-null data-class property (the shared read/create body must be able to omit the view-computed value). Gated by a real-H2 read-your-writes test.
+- **Python**: `<Name>Create` / `<Name>Patch` exclude the derived fields, and the `ObjectManager` routes reads to the replica view while excluding derived fields from the INSERT/UPDATE column set **and** the `RETURNING` set, re-reading the row through the view by primary key.
+- **C#** (EF Core cannot map one CLR type to both a table and a view): a write-through entity emits a derived-free table-mapped write entity **plus** a second view-mapped read model (`<Entity>View`, sharing the write entity's per-field type converters) carrying the derived fields; reads route to the view `DbSet`, writes to the table `DbSet`, with a by-primary-key re-read after create/update. Gated by an EF-Core-8 compile test over a write-through entity carrying a `field.uri` + a jsonb value-object column.
+
+Each port's fan-out was adversarially reviewed before merge; the review caught a recurring cross-port class of bug (a derived field wrongly forced onto the shared create body) in the JVM ports and EF read-model registration gaps in C#, all fixed before merge. A **flattened `field.object`** on a write-through entity is not yet handled in the entity-host view SELECT (scalars, derived joins, and single-jsonb-column value objects are) — a tracked follow-up.
 
 ### #207 — projection row-scope `@filter` (a view-level WHERE)
 

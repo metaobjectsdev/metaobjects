@@ -95,6 +95,11 @@ public class EntityGenerator : IGenerator
                 continue;
             }
             files.Add(EmitMappedClass(e, ctx));
+            // #214 (FR-024 §7) — a write-through entity additionally emits a view-mapped
+            // read model carrying the derived (origin.*) fields the write table omits.
+            // Reads return this type; the DbContext maps it to the replica view.
+            if (e.IsWriteThrough())
+                files.Add(EmitWriteThroughReadModel(e, ctx));
         }
         foreach (var vo in valueObjects)
             files.Add(EmitValueObjectPoco(vo, ctx));
@@ -110,21 +115,69 @@ public class EntityGenerator : IGenerator
             if (InstanceArtifacts.IsAbstract(e)) continue;
             if (TphPlanBuilder.IsTphSubtype(e, ctx.Root)) continue;
             if (e.IsReadOnlyProjection()) continue;            // projections are read-only views; no FK finders
-            if (ReverseFinderBuilder.Generate(e, ctx) is { } queries)
+            // #214 — reverse finders are READS, so for a write-through entity they return the
+            // view read model over its DbSet (the row carries the derived fields); the finder
+            // NAMES still derive from the entity. Vanilla entities pass null → byte-identical.
+            string? rowOverride = null, dbSetOverride = null;
+            if (e.IsWriteThrough())
+            {
+                rowOverride = CSharpNaming.ViewModelClassName(e);
+                dbSetOverride = CSharpNaming.ViewDbSetName(e);
+            }
+            if (ReverseFinderBuilder.Generate(e, ctx, rowOverride, dbSetOverride) is { } queries)
                 files.Add(queries);
         }
         return files;
     }
 
-    // EF Core entity (table) or projection (view) class.
-    protected virtual EmittedFile EmitMappedClass(MetaObject entity, GenContext ctx)
+    // EF Core entity (table) or projection (view) class. For a write-through entity
+    // (#214) this emits the WRITE half: the table-mapped, derived-FREE entity (the
+    // derived origin.* fields live only on the view read model — EmitWriteThroughReadModel).
+    protected virtual EmittedFile EmitMappedClass(MetaObject entity, GenContext ctx) =>
+        EmitMappedClassImpl(entity, CSharpNaming.Pascal(entity.Name),
+            // Read-only projections map to a view (no [Table]); tables / a write-through
+            // WRITE entity carry [Table].
+            isView: entity.IsReadOnlyProjection(),
+            // #214 — the write entity of a write-through omits the derived (view-only) fields.
+            excludeDerived: entity.IsWriteThrough(),
+            // A plain read-only projection keeps its warn-and-skip on object-typed columns
+            // (collection materialization is a separate concern); the write entity is not a
+            // view so this flag is inert there.
+            includeJsonbObjects: false,
+            ctx);
+
+    // #214 (FR-024 §7) — the READ half of a write-through entity: a SECOND, view-mapped
+    // CLR type (<Entity>View) carrying ALL fields incl. the derived origin.* fields the
+    // write table omits. EF Core cannot map one CLR type to both a table and a view, so
+    // reads return this model (mapped to the replica view in the DbContext via .ToView).
+    // It is keyed (its primary identity), never a [Table] — the same shape as a keyed
+    // projection, only under a distinct class name.
+    protected virtual EmittedFile EmitWriteThroughReadModel(MetaObject entity, GenContext ctx) =>
+        EmitMappedClassImpl(entity, CSharpNaming.ViewModelClassName(entity),
+            isView: true, excludeDerived: false,
+            // #214 [1] — the read model CARRIES the non-derived single-jsonb-column value-object
+            // columns (the replica view exposes them as a jsonb column); reads route here, so
+            // without them the column would be write-only / never-readable. A FLATTENED VO is
+            // out of scope (the entity-host view SELECT doesn't project flattened VOs yet).
+            includeJsonbObjects: true,
+            ctx);
+
+    // Shared body for a mapped entity/projection/read-model class. <paramref name="className"/>
+    // overrides the emitted class + file name (a write-through read model is <Entity>View);
+    // <paramref name="isView"/> suppresses [Table] and the entity-only M:N members (view
+    // semantics); <paramref name="excludeDerived"/> drops derived origin.* fields (the write
+    // half of a write-through). <paramref name="includeJsonbObjects"/> (#214 [1]) makes a view
+    // CARRY its non-derived single-jsonb-column value-object columns (the write-through read
+    // model needs them — reads route to the view); a plain projection passes false and keeps
+    // its warn-and-skip on object-typed columns. The default call from EmitMappedClass
+    // reproduces the pre-#214 output byte-for-byte (excludeDerived / includeJsonbObjects false).
+    private EmittedFile EmitMappedClassImpl(
+        MetaObject entity, string className, bool isView, bool excludeDerived,
+        bool includeJsonbObjects, GenContext ctx)
     {
-        var className = CSharpNaming.Pascal(entity.Name);
         var pk = entity.PrimaryIdentity();
         var pkFields = pk?.Fields ?? [];
-        // Read-only projections map to a view (configured in the DbContext via
-        // .ToView); they carry no [Table]. Tables / write-through carry [Table].
-        var isProjection = entity.IsReadOnlyProjection();
+        var isProjection = isView;
 
         var sb = new StringBuilder();
         sb.AppendLine("// <auto-generated/>");
@@ -173,6 +226,9 @@ public class EntityGenerator : IGenerator
         foreach (var field in entity.Fields())
         {
             if (inheritedNames.Contains(field.Name)) continue; // inherited via the C# base chain
+            // #214 — the write half of a write-through entity omits derived (origin.*) fields:
+            // they are view-computed, so they live only on the read model, never the write table.
+            if (excludeDerived && field.IsDerived()) continue;
             string? member = null;
             if (CSharpNaming.ScalarFor(field.SubType) is not null)
             {
@@ -189,8 +245,17 @@ public class EntityGenerator : IGenerator
                 // origins are materialized elsewhere.
                 if (isProjection)
                 {
-                    ctx.Warn($"{Name}: skipping object-typed field \"{entity.Name}.{field.Name}\" on projection (collection materialization not emitted here).");
-                    continue;
+                    // #214 [1] — a write-through entity's read model (includeJsonbObjects)
+                    // DOES carry its non-derived single-jsonb-column value-object columns:
+                    // reads route to the view, so the column must be present to be readable.
+                    // The DbContext registers the matching owned-VO config (OwnsOne/OwnsMany
+                    // .ToJson). A FLATTENED VO (multi-column spread) is out of scope on the
+                    // view. A plain projection keeps the original warn-and-skip.
+                    if (!includeJsonbObjects || field.Storage == STORAGE_FLATTENED)
+                    {
+                        ctx.Warn($"{Name}: skipping object-typed field \"{entity.Name}.{field.Name}\" on projection (collection materialization not emitted here).");
+                        continue;
+                    }
                 }
                 member = ObjectNavProperty(entity, field, ctx);
             }

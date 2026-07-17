@@ -57,6 +57,18 @@ Update when a gap closes or a new one surfaces.
 
 **Today.** Conformed — the generator emits no `[EnableCors]` attributes.
 
+### G8 — Write-through entity read-view (#214) — extension-seam + M:N notes
+
+**Contract.** A write-through entity (writable table source + read-only replica view source + derived `origin.*` fields, FR-024 §7) generates a hybrid surface: a derived-free, table-mapped WRITE entity (`<Entity>`), plus a SECOND, view-mapped read model (`<Entity>View`) carrying the derived fields (EF Core cannot map one CLR type to both a table and a view). Reads (list / get / reverse finders) route to `db.<Entity>Views`; writes target `db.<Entity>Plural`; a create/update re-reads the row through the view by PK (read-your-writes).
+
+**Today.** Conformed. Two notes:
+
+- **`EmitMappedClass` override reach.** The write entity is still emitted through the `EmitMappedClass` extension seam (an adopter override applies to it), but the `<Entity>View` read model is emitted through the shared private impl directly, so an adopter's `EmitMappedClass`/`EmitClassHeader` override does NOT reach the read model. If read-model customization is needed, override `EmitWriteThroughReadModel`. Acceptable Day-1 limitation.
+
+- **M:N on a write-through entity.** The FR-018 M:N traversal route (`GET /<entity>/{id}/<relation>`) on a write-through entity still addresses the source by the write-entity path and joins through the junction/target DbSets — it is not routed through the replica view (the view carries no junction). Not exercised by the shipped fixtures; revisit if a real consumer models an M:N on a write-through entity.
+
+- **`<Entity>View` / `<Entity>Views` is a RESERVED name.** `CSharpNaming.ViewModelClassName` / `ViewDbSetName` mint the read model as `<Entity>View` (class + file) and `<Entity>Views` (DbSet) unconditionally from the write-through entity's name. A user object literally named `<Entity>View` (e.g. a write-through `Order` alongside a separate object named `OrderView`) collides — codegen would emit two `OrderView.g.cs` files / two `OrderView` types / two `OrderViews` DbSets. No code guard is added: the codegen runner already hard-errors on the duplicate output path, a clear, immediate failure (not silent corruption). Treat `<Entity>View` / `<Entity>Views` as reserved for a write-through entity's generated read model.
+
 ## How to add a new gap
 
 1. Append a numbered `### G<N>` section above.

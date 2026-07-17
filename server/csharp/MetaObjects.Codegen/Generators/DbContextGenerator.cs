@@ -70,94 +70,27 @@ public class DbContextGenerator : IGenerator
         foreach (var e in objects.Where(o => o.IsEntity() && !o.IsReadOnlyProjection()))
         {
             var owner = CSharpNaming.Pascal(e.Name);
-            foreach (var f in e.Fields().Where(f => f.SubType == FIELD_SUBTYPE_OBJECT))
-                if (OwnedTypeConfig(e, f, ctx) is { } cfg) modelLines.Add(cfg);
-            foreach (var f in e.Fields().Where(f => f.SubType == FIELD_SUBTYPE_ENUM))
-            {
-                var prop = CSharpNaming.Pascal(f.Name);
-                if (f.ResolvedIsArray()) // ADR-0039: resolving — array-ness inheritable via extends
-                {
-                    // Array-of-enum: EF Core 8 primitive collection with per-element string conversion
-                    // so enum values persist as string symbols (e.g. ["DRAFT","ARCHIVED"]), consistent
-                    // with the scalar enum path (.HasConversion<string>()). Without .ElementType()
-                    // .HasConversion<string>() elements would persist as int ordinals ([0,2]).
-                    modelLines.Add($"        modelBuilder.Entity<{owner}>().PrimitiveCollection(x => x.{prop}).ElementType().HasConversion<string>();");
-                }
-                else
-                {
-                    modelLines.Add($"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasConversion<string>();");
-                }
-            }
-            // Scalar arrays (scalar subtypes, non-enum): EF Core 8 .PrimitiveCollection() API.
-            // .Property(...).ToJson() does not exist on PropertyBuilder<List<T>> (CS1061).
-            foreach (var f in e.Fields().Where(f => f.ResolvedIsArray() && CSharpNaming.ScalarFor(f.SubType) is not null))
-            {
-                var prop = CSharpNaming.Pascal(f.Name);
-                modelLines.Add($"        modelBuilder.Entity<{owner}>().PrimitiveCollection(x => x.{prop});");
-            }
-            // SP-A — field.decimal precision/scale. The CLR property is System.Decimal;
-            // EF Core .HasPrecision(p, s) maps it onto the NUMERIC(p,s) column so the
-            // model agrees with the TS-owned schema DDL and the value round-trips
-            // precision-exact (vs. EF's default decimal(18,2) coercion).
-            foreach (var f in e.Fields().Where(f =>
-                         !f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_DECIMAL && f.Precision is not null))
-            {
-                var prop = CSharpNaming.Pascal(f.Name);
-                modelLines.Add(f.Scale is long sc
-                    ? $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasPrecision({f.Precision}, {sc});"
-                    : $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasPrecision({f.Precision});");
-            }
-            // ADR-0036 Wave 2 — field.timestamp column type follows @localTime:
-            //   • default (no @localTime) → an absolute instant: CLR DateTimeOffset over a
-            //     `timestamp with time zone` (timestamptz) column. Npgsql maps DateTimeOffset
-            //     to timestamptz natively; the explicit HasColumnType keeps the model and the
-            //     TS-owned schema DDL in lockstep.
-            //   • @localTime:true → a naive wall-clock value: CLR DateTime (Kind=Unspecified)
-            //     over a `timestamp without time zone` column. Npgsql's provider default is
-            //     timestamptz, which rejects a Kind=Unspecified DateTime on WRITE, so this
-            //     explicit mapping is REQUIRED (else DbUpdateException at runtime: "Cannot
-            //     write DateTime with Kind=Unspecified to PostgreSQL type 'timestamp with
-            //     time zone'").
-            foreach (var f in e.Fields().Where(f => !f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_TIMESTAMP))
-            {
-                var prop = CSharpNaming.Pascal(f.Name);
-                var colType = CSharpNaming.IsLocalTime(f)
-                    ? "timestamp without time zone"
-                    : "timestamp with time zone";
-                modelLines.Add($"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasColumnType(\"{colType}\");");
-            }
-            // ADR-0036 Wave 3 — field.uri / field.inet native CLR bindings.
-            //   • field.uri → CLR System.Uri over a `text` column. EF has no built-in
-            //     Uri↔column mapping, so a HasConversion(Uri↔string) + HasColumnType("text")
-            //     stores the absolute URI string and the model agrees with the TS-owned DDL.
-            //   • field.inet → CLR System.Net.IPAddress over the Postgres-native `inet`
-            //     column. Npgsql maps IPAddress↔inet natively; the explicit HasColumnType
-            //     keeps the model and the TS-owned schema DDL in lockstep.
-            foreach (var f in e.Fields().Where(f => !f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_URI))
-            {
-                var prop = CSharpNaming.Pascal(f.Name);
-                modelLines.Add(
-                    $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasColumnType(\"text\").HasConversion(v => v!.ToString(), v => new Uri(v));");
-            }
-            foreach (var f in e.Fields().Where(f => !f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_INET))
-            {
-                var prop = CSharpNaming.Pascal(f.Name);
-                modelLines.Add(
-                    $"        modelBuilder.Entity<{owner}>().Property(x => x.{prop}).HasColumnType(\"inet\");");
-            }
-
-            // R6 Plan 2b — @dbColumnType physical overrides. The logical field stays its
-            // native CLR type (a @dbColumnType:uuid string is still C# string); EF must be
-            // told the provider column type (and, for uuid, a string↔Guid value converter)
-            // so the native uuid / jsonb column round-trips into that property.
-            foreach (var f in e.Fields().Where(f => !f.ResolvedIsArray() && f.DbColumnType is not null))
-                if (DbColumnTypeConfig(owner, f) is { } cfg) modelLines.Add(cfg);
+            // #214 — for a write-through entity these config lines target the WRITE (table)
+            // class, which omits the derived (origin.*) fields; so must the config, or it
+            // would reference properties the write class does not declare (a compile error).
+            // The derived fields' EF mapping lives on the read model (registered below).
+            IEnumerable<MetaField> configFields = e.IsWriteThrough()
+                ? e.Fields().Where(f => !f.IsDerived())
+                : e.Fields();
+            // #214 [0] — the per-field EF TYPE converters (owned-VO / enum / primitive
+            // collection / decimal precision / timestamp column type / field.uri / field.inet /
+            // @dbColumnType) over the write entity's derived-EXCLUDED field set. The SAME helper
+            // configures a write-through entity's <Entity>View read model (all fields) below, so
+            // the read model gets the identical type converters (else EF Core fails model
+            // finalization on a field.uri / @dbColumnType:uuid column). jsonbObjectsOnly:false —
+            // the write entity carries flattened VOs too (its per-column spread is mapped here).
+            EmitFieldTypeConfig(owner, e, configFields, ctx, modelLines, jsonbObjectsOnly: false);
 
             // FR-013 — a @readOnly field is read-after-insert-only. The property carries a
             // private setter (EntityGenerator), and EF must skip the column on writes:
             // SetAfterSaveBehavior(Ignore) excludes it from UPDATE, and ValueGeneratedOnAdd
             // (paired below) lets the DB / trigger / default own the value on INSERT.
-            foreach (var f in e.Fields().Where(f => !f.ResolvedIsArray() && f.ReadOnly))
+            foreach (var f in configFields.Where(f => !f.ResolvedIsArray() && f.ReadOnly))
             {
                 var prop = CSharpNaming.Pascal(f.Name);
                 modelLines.Add(
@@ -183,6 +116,27 @@ public class DbContextGenerator : IGenerator
             // own columns into the base table as nullable.
             if (TphPlanBuilder.For(e, ctx.Root) is { } tph)
                 modelLines.Add(HasDiscriminatorConfig(owner, e, tph));
+        }
+
+        // #214 (FR-024 §7) — register the write-through read model against its replica view.
+        // It is a SECOND CLR type (the write entity maps the table above); reads route here.
+        // Keyed (its primary identity) so a create/update can re-read the row by PK — no
+        // .HasNoKey(). String-backed enum columns need the same HasConversion<string>() the
+        // table side gets, or EF reads the text column as an int ordinal at materialization.
+        foreach (var wt in objects.Where(o => o.IsEntity() && o.IsWriteThrough()))
+        {
+            var view = CSharpNaming.ViewModelClassName(wt);
+            modelLines.Add($"        modelBuilder.Entity<{view}>().ToView(\"{wt.ReplicaViewName}\");");
+            // #214 [0] — the read model exposes ALL fields (incl. the derived origin.* fields),
+            // so it needs the SAME per-field TYPE converters the write entity gets, or EF Core
+            // fails model finalization (a field.uri / @dbColumnType:uuid / decimal-precision /
+            // timestamp / jsonb-VO column on the view → the DbContext can't build → every
+            // endpoint 500s). The WRITE-ONLY configs (@readOnly SetAfterSaveBehavior, M:N
+            // UsingEntity, TPH HasDiscriminator) do NOT apply — a view is never written.
+            // jsonbObjectsOnly:true restricts the owned-VO config to the non-flattened
+            // (single-jsonb-column) VO columns the <Entity>View class actually declares
+            // (a flattened VO is out of scope on the write-through view; #214 note).
+            EmitFieldTypeConfig(view, wt, wt.Fields(), ctx, modelLines, jsonbObjectsOnly: true);
         }
 
         // FR-013 — PropertySaveBehavior (used by the @readOnly SetAfterSaveBehavior config)
@@ -252,6 +206,14 @@ public class DbContextGenerator : IGenerator
             var name = CSharpNaming.Pascal(o.Name);
             XmlDocBuilder.AppendTo(sb, o, indent: "    ");
             sb.AppendLine($"    public DbSet<{name}> {CSharpNaming.Pluralize(name)} {{ get; set; }} = default!;");
+            // #214 — a write-through entity additionally exposes a read-model DbSet mapped to
+            // its replica view (reads route here; the derived fields live on the view row).
+            if (o.IsWriteThrough())
+            {
+                var view = CSharpNaming.ViewModelClassName(o);
+                sb.AppendLine($"    /// <summary>Read-model view for write-through entity {name} (reads route here; carries the derived fields).</summary>");
+                sb.AppendLine($"    public DbSet<{view}> {CSharpNaming.ViewDbSetName(o)} {{ get; set; }} = default!;");
+            }
         }
     }
 
@@ -295,8 +257,11 @@ public class DbContextGenerator : IGenerator
             // `v!` is safe even for a nullable `string?` property: EF Core skips
             // value-converter invocation for null (null↔NULL), so Guid.Parse(null)
             // never runs.
+            // System.Guid FULLY QUALIFIED — the AppDbContext carries no `using System;`
+            // (see the field.uri note above); an unqualified `Guid.Parse` in OnModelCreating
+            // would only compile under a host's ImplicitUsings.
             DbConstants.DB_COLUMN_TYPE_UUID =>
-                lhs + ".HasColumnType(\"uuid\").HasConversion(v => Guid.Parse(v!), g => g.ToString(\"D\"));",
+                lhs + ".HasColumnType(\"uuid\").HasConversion(v => System.Guid.Parse(v!), g => g.ToString(\"D\"));",
             DbConstants.DB_COLUMN_TYPE_JSONB =>
                 lhs + ".HasColumnType(\"jsonb\");",
             _ => null,
@@ -357,17 +322,104 @@ public class DbContextGenerator : IGenerator
             $"r => r.HasOne<{source}>().WithMany().HasForeignKey(nameof({through}.{sourceFkProp})));";
     }
 
+    // #214 [0] — the per-field EF TYPE-converter emission, factored out so the SAME set of
+    // converters configures BOTH the write entity (its derived-EXCLUDED field set) AND a
+    // write-through entity's <Entity>View read model (ALL fields, incl. the derived origin.*
+    // fields the replica view exposes). Emits, over modelBuilder.Entity<<paramref
+    // name="className"/>>(): owned-VO (OwnsOne/OwnsMany.ToJson or flattened per-column names);
+    // enum string-conversion (scalar HasConversion<string> + array PrimitiveCollection element
+    // conversion — else enum arrays persist as int ordinals); scalar PrimitiveCollection (EF
+    // Core 8 API — .ToJson does not exist on PropertyBuilder<List<T>>); field.decimal
+    // .HasPrecision (SP-A, precision-exact NUMERIC vs EF's default decimal(18,2)); field.timestamp
+    // .HasColumnType (ADR-0036 Wave 2 — timestamptz default / `timestamp without time zone` under
+    // @localTime, REQUIRED else Npgsql rejects a Kind=Unspecified DateTime); field.uri (Uri↔text
+    // converter) / field.inet (native `inet`) (ADR-0036 Wave 3); and @dbColumnType uuid/jsonb
+    // physical overrides (R6 Plan 2b). The WRITE-ONLY configs (@readOnly SetAfterSaveBehavior,
+    // M:N UsingEntity, TPH HasDiscriminator) stay on the caller — a read-only view is never
+    // written. <paramref name="jsonbObjectsOnly"/> restricts the owned-VO loop to non-flattened
+    // (single-jsonb-column) VO fields — the read model declares only those (a flattened VO's
+    // per-column spread is out of scope on the view; #214 note), so the emitted config never
+    // references a property the <Entity>View class does not declare.
+    private void EmitFieldTypeConfig(
+        string className, MetaObject entity, IEnumerable<MetaField> fields,
+        GenContext ctx, List<string> modelLines, bool jsonbObjectsOnly)
+    {
+        var fieldList = fields as IReadOnlyList<MetaField> ?? fields.ToList();
+
+        foreach (var f in fieldList.Where(f => f.SubType == FIELD_SUBTYPE_OBJECT
+                     && (!jsonbObjectsOnly || f.Storage != STORAGE_FLATTENED)))
+            if (OwnedTypeConfig(className, entity, f, ctx) is { } cfg) modelLines.Add(cfg);
+
+        foreach (var f in fieldList.Where(f => f.SubType == FIELD_SUBTYPE_ENUM))
+        {
+            var prop = CSharpNaming.Pascal(f.Name);
+            // ADR-0039: resolving — array-ness inheritable via extends. Array-of-enum uses the
+            // EF Core 8 primitive collection with a per-element string conversion so members
+            // persist as symbols (["DRAFT"]), not int ordinals ([0]).
+            if (f.ResolvedIsArray())
+                modelLines.Add($"        modelBuilder.Entity<{className}>().PrimitiveCollection(x => x.{prop}).ElementType().HasConversion<string>();");
+            else
+                modelLines.Add($"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasConversion<string>();");
+        }
+
+        foreach (var f in fieldList.Where(f => f.ResolvedIsArray() && CSharpNaming.ScalarFor(f.SubType) is not null))
+        {
+            var prop = CSharpNaming.Pascal(f.Name);
+            modelLines.Add($"        modelBuilder.Entity<{className}>().PrimitiveCollection(x => x.{prop});");
+        }
+
+        foreach (var f in fieldList.Where(f =>
+                     !f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_DECIMAL && f.Precision is not null))
+        {
+            var prop = CSharpNaming.Pascal(f.Name);
+            modelLines.Add(f.Scale is long sc
+                ? $"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasPrecision({f.Precision}, {sc});"
+                : $"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasPrecision({f.Precision});");
+        }
+
+        foreach (var f in fieldList.Where(f => !f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_TIMESTAMP))
+        {
+            var prop = CSharpNaming.Pascal(f.Name);
+            var colType = CSharpNaming.IsLocalTime(f)
+                ? "timestamp without time zone"
+                : "timestamp with time zone";
+            modelLines.Add($"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasColumnType(\"{colType}\");");
+        }
+
+        foreach (var f in fieldList.Where(f => !f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_URI))
+        {
+            var prop = CSharpNaming.Pascal(f.Name);
+            // System.Uri is FULLY QUALIFIED: the emitted AppDbContext carries no `using System;`
+            // (unlike the entity files), so an unqualified `new Uri(v)` in OnModelCreating fails
+            // to compile except under a host's ImplicitUsings — the generated context must be
+            // self-contained (this is also on the #214 write-through read-model path now).
+            modelLines.Add(
+                $"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasColumnType(\"text\").HasConversion(v => v!.ToString(), v => new System.Uri(v));");
+        }
+
+        foreach (var f in fieldList.Where(f => !f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_INET))
+        {
+            var prop = CSharpNaming.Pascal(f.Name);
+            modelLines.Add(
+                $"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasColumnType(\"inet\");");
+        }
+
+        foreach (var f in fieldList.Where(f => !f.ResolvedIsArray() && f.DbColumnType is not null))
+            if (DbColumnTypeConfig(className, f) is { } cfg) modelLines.Add(cfg);
+    }
+
     // Owned-type config for an object-typed entity field. @storage flattened maps each
     // nested scalar to "{parentCol}_{nestedCol}"; every other storage collapses to one
     // json column (.ToJson) — matching the TS-owned schema DDL. null (with a warning)
-    // when @objectRef can't be resolved.
+    // when @objectRef can't be resolved. <paramref name="owner"/> is the emitted CLR class
+    // name (the write entity, or a write-through entity's <Entity>View read model — #214).
     //
     // KNOWN GAP: a @required non-flattened object field gets a NOT NULL jsonb column in
     // the TS-owned schema DDL, but .ToJson here does not mark the owned navigation
     // required, so EF models it nullable — a gen↔schema nullability mismatch. Deferred
     // until the exact EF Core required-owned-JSON mapping can be validated against a
     // live provider.
-    private string? OwnedTypeConfig(MetaObject entity, MetaField field, GenContext ctx)
+    private string? OwnedTypeConfig(string owner, MetaObject entity, MetaField field, GenContext ctx)
     {
         if (field.ObjectRef is not { } oref || ctx.Root.FindObject(CSharpNaming.StripPkg(oref)) is not { } vo)
         {
@@ -375,7 +427,6 @@ public class DbContextGenerator : IGenerator
             return null;
         }
         var strategy = ctx.Config.ColumnNamingStrategy;
-        var owner = CSharpNaming.Pascal(entity.Name);
         var nav = CSharpNaming.Pascal(field.Name);
         var parentCol = CSharpNaming.Column(field, strategy);
 
