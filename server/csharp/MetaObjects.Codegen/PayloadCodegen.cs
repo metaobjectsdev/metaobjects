@@ -128,6 +128,14 @@ public static class PayloadCodegen
 
     private static void EmitRecord(MetaData root, string voName, HashSet<string> emitted, List<string> output)
     {
+        // A @payloadRef may reach here fully-qualified — ADR-0042 resolves a bare template
+        // attr to the FQN form, and MetaData.Attr() returns that resolved (possibly
+        // package-qualified) value, not the literal string the author typed. FindObject and
+        // the emitted record's own type name both need the bare short name (a C# record
+        // identifier can't contain "::" and isn't package-scoped); nested @objectRef fields
+        // already arrive here pre-stripped via FieldType's CSharpNaming.StripPkg call, so
+        // stripping here is a no-op for them and the fix for the top-level payloadRef case.
+        voName = CSharpNaming.StripPkg(voName);
         if (!emitted.Add(voName)) return;
         var vo = FindObject(root, voName);
         if (vo is null) return;

@@ -95,6 +95,8 @@ public class PayloadGenerator : IGenerator
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
         sb.Append(records);
-        return new EmittedFile($"{payloadRef}.payload.cs", sb.ToString());
+        // payloadRef may be the FQN form (ADR-0042 attr resolution) — the file name is the
+        // bare record name, matching PayloadCodegen.EmitRecord's own stripping.
+        return new EmittedFile($"{CSharpNaming.StripPkg(payloadRef)}.payload.cs", sb.ToString());
     }
 }

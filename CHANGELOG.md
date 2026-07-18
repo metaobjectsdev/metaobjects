@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- **C#** — `PayloadGenerator`/`PayloadCodegen.EmitRecord` failed to emit a payload record at
+  all (silently produced a header-only file) for any `template.output` in a **named package**
+  whose `@payloadRef` was authored bare. `MetaData.Attr()` resolves a bare ref to its
+  fully-qualified form per ADR-0042, but `PayloadCodegen.FindObject`'s bare short-name match
+  never accounted for that — the top-level `voName` needed the same `CSharpNaming.StripPkg`
+  treatment `FieldType` already applies to nested `@objectRef` fields. Adopters outside the
+  default/root package hit this on every `template.output`.
+
 ## [0.17.0] — 2026-07-18
 
 Coordinated additive **minor** across all four registries: **npm `0.17.0`** · **PyPI `0.17.0`** · **NuGet `0.17.0`** · **Maven Central `7.9.0`** (Java/Kotlin). Bundles the accumulated projection/view + read-model + prompt work below, plus a full documentation + agent-context skills refresh (the seven `meta init` skills were accuracy-passed and Fable-reviewed, closing a class of stale-vocabulary and calibration defects; the runtime-ui skill gained its missing Python + C# language references). No breaking changes.
