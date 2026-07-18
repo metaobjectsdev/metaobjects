@@ -52,6 +52,11 @@ child. Three origin subtypes:
 | `origin.aggregate @agg <count\|sum\|avg\|min\|max>` | `count` → `Long`; `avg` → `Double`; others match source field |
 | `origin.collection @via "Parent.rel"` | `List<NestedPayload>` — assembled from a relationship |
 
+These are the payload-assembly origins. **Projection** read models (`object.projection` over an
+entity) carry a fuller origin vocabulary — the `@agg` quantifiers `any` / `all` and the `collect`
+array rollup, plus `origin.computed` (a closed `@expr` grammar) and `origin.first` (#195) — see
+[source-kinds.md](source-kinds.md).
+
 ## Authoring
 
 The named example: a `WelcomePrompt` greets an `Author` by name and includes

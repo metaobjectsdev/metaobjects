@@ -64,16 +64,15 @@ there and are excluded from the write codecs); reads route to the view; the `CRE
 is emitted by `meta migrate` from the **same assembly logic** as a projection view — one
 emitter, two hosts.
 
-> **Status — the schema/write half ([#213](https://github.com/metaobjectsdev/metaobjects/issues/213))
-> has landed; the codegen READ half ([#214](https://github.com/metaobjectsdev/metaobjects/issues/214))
-> is pending.** `meta migrate` now correctly keeps derived fields OFF the write table and emits
-> the replica view (verified by a real-Postgres round-trip), and the TS write codecs (Drizzle
-> table + Insert/Update schemas) exclude them. What remains (#214, cross-port): generated **reads**
-> still route to the write table rather than the replica view, and the entity's generated read
-> **type** doesn't yet carry the derived fields — so today a derived column is migrated + present
-> in the view, but the generated TS read path won't return it. Until #214 lands, read the derived
-> columns from the view directly, or model that read as a separate `object.projection`. The
-> decision table and boundaries below are stable regardless.
+> **Status — shipped in all five ports.** Both halves have landed: the schema/write half
+> ([#213](https://github.com/metaobjectsdev/metaobjects/issues/213)) keeps derived fields OFF
+> the write table and emits the replica view (verified by a real-Postgres round-trip), and the
+> codegen READ half ([#214](https://github.com/metaobjectsdev/metaobjects/issues/214)) routes
+> generated **reads** to the replica view and carries the derived fields on the entity read
+> **type** — a create/update re-reads the row through the view by primary key, so the returned
+> value carries the derived columns (read-your-writes). Writes still target the table and exclude
+> derived fields. (A flattened `field.object` on a write-through entity is a tracked
+> sub-limitation.)
 
 ```json
 {
@@ -106,13 +105,15 @@ derived field on a table-only entity (no read source) is a load error
 | same read trust-domain — a new entity field appearing in the view is correct, not a leak | a subset / **renamed** columns / versioned / external consumers |
 | you can still INSERT the base and it is the record of truth | keyless, multi-base, or proc-backed; all-derived; borrowed / no identity |
 
-Two boundaries still push you to a projection (or a later FR):
+Two boundaries push you to a projection instead of an entity read-view:
 
 - **Renamed base columns.** A field carries one `@column` per paradigm, so renaming a base
   column *in the view* is the projection's whole point — a projection field maps an
   `extends`-bound source column to a new `@column`.
-- **Row-filtered views** (`… WHERE status = 'active'`, soft-delete) have no view-level `WHERE`
-  slot yet — tracked by the view-level `@filter` FR ([#207](https://github.com/metaobjectsdev/metaobjects/issues/207)).
+- **Row-filtered views** (`… WHERE status = 'active'`, soft-delete). An entity read-view
+  exposes the whole entity; a projection can carry a row-scope `@filter`
+  ([#207](https://github.com/metaobjectsdev/metaobjects/issues/207)) that lowers to the view's
+  outer `WHERE` — the metadata-managed alternative to a hand-written soft-delete/status view.
 
 ### View — projection over an existing entity
 
@@ -130,8 +131,10 @@ for every port — ADR-0015). Hand-authoring the view SQL for a shape the origin
 express is a second source of truth that drifts silently — and because an unmodeled DB
 view is *unmanaged*, `meta verify --db` can't even see it. Reach for a hand-written
 view **only** when a construct origins can't express (recursive CTE, window function,
-set operation) blocks projection authoring — then keep that DDL in a hand-edited
-migration file and justify it in review.
+set operation) blocks projection authoring — then carry that body in the `source.rdb`
+**`@sql`** escape ([#208](https://github.com/metaobjectsdev/metaobjects/issues/208), ADR-0043),
+which keeps it tool-managed (registered, fingerprinted, drift-checked) instead of
+accidentally-unmanaged in a hand-edited migration file.
 
 ```json
 {
@@ -153,7 +156,7 @@ migration file and justify it in review.
 
 `origin.*` children declare where each field's value comes from — see
 [templates-and-payloads.md](templates-and-payloads.md) for the full `origin`
-vocabulary (`passthrough`, `aggregate`, `collection`).
+vocabulary (`passthrough`, `aggregate`, `collection`, `computed`, `first`).
 
 A `count`/`sum`/`avg`/`min`/`max` can be **row-scoped** with an optional `@filter` — a
 structured predicate (the same shape as a preset filter) that the view emitter renders
@@ -166,6 +169,35 @@ max over only the active rows — the filtered-scalar shape a plain aggregate ca
     "@via": "Program.weeks", "@filter": { "status": "active" } } }
 ]}}
 ```
+
+**More `origin.aggregate` reductions (#195).** Beyond the scalar reduces, `@agg` also takes
+`any` / `all` (predicate quantifiers over a `@filter` — `@of` forbidden; empty set →
+`any=false`, `all=true`) and `collect` (an array rollup of `@of` into an `isArray` field,
+with optional `@distinct` / `@orderBy`; `[]` on the empty set). Two sibling origin subtypes
+round out the read-model vocabulary: **`origin.computed`** carries a closed `@expr`
+expression grammar (a derived scalar computed from other fields), and **`origin.first`** picks
+one related row's column along a `@via` path (an argmax-style projection; nullable).
+
+**Projection row-scope `@filter` (#207).** Distinct from the *per-aggregate* `@filter` above,
+an **object-level `@filter` on an `object.projection`** scopes the whole view's rows — it
+lowers to the view's outer `WHERE`. This is the metadata-managed way to express a
+soft-delete / status / type view without hand-writing SQL:
+
+```json
+{ "object.projection": { "name": "ActivePrograms",
+  "@filter": { "status": { "eq": "active" } },
+  "children": [
+    { "source.rdb": { "@kind": "view", "@view": "v_active_programs" } },
+    { "field.long":   { "name": "id",   "extends": "Program.id" } },
+    { "field.string": { "name": "name", "children": [ { "origin.passthrough": { "@from": "Program.name" } } ] } },
+    { "identity.primary": { "name": "id", "extends": "Program.id" } }
+]}}
+```
+
+For a genuinely-irreducible view body (recursive CTE, window function) that no `origin.*`
+can express, carry it in the `source.rdb` **`@sql`** escape rather than hand-writing it
+outside the tool — see [migrations-and-drift.md](migrations-and-drift.md) and
+[ADR-0043](../../spec/decisions/ADR-0043-ddl-ownership-escape-valves.md).
 
 ### Stored procedure
 
