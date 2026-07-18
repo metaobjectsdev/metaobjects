@@ -17,6 +17,7 @@ from .validate_source_physical_names import validate_source_physical_names
 from .validate_field_readonly import validate_field_readonly
 from .validate_discriminator import validate_discriminator
 from .validate_source_parameter_ref import validate_source_parameter_ref
+from .validate_source_escapes import validate_source_escapes
 from ..meta.core.field.field_constants import (
     ENUM_MEMBER_PATTERN,
     FIELD_ATTR_COERCE_DEFAULT,
@@ -182,6 +183,10 @@ def run_validations(
         from .registered_validation import run as _run_registered
         errors.extend(_run_registered(root, registry))
     _validate_one_primary_source(root, errors)
+    # #208 — source.rdb @sql / @unmanaged DDL-ownership escape valves (R1-R6).
+    # Wired AFTER the source-roles pass (_validate_one_primary_source), per
+    # the shared cross-port fan-out contract.
+    validate_source_escapes(root, errors, envelope_warnings, warnings)
     # FR-016 / ADR-0018 — per-kind physical-name aliases on source.rdb.
     validate_source_physical_names(root, errors, envelope_warnings, warnings)
     # FR-013 — field-level @readOnly cross-attribute rules.

@@ -15,7 +15,9 @@ from .source_constants import (
     SOURCE_ATTR_KIND,
     SOURCE_ATTR_ROLE,
     SOURCE_ATTR_SCHEMA,
+    SOURCE_ATTR_SQL,
     SOURCE_ATTR_TABLE,
+    SOURCE_ATTR_UNMANAGED,
     SOURCE_READ_ONLY_KINDS,
 )
 
@@ -99,6 +101,24 @@ class MetaSource(MetaData):
         """The value of ``@schema``, or ``None`` if absent."""
         v = self.get_meta_attr(SOURCE_ATTR_SCHEMA)  # ADR-0039: resolving
         return v if isinstance(v, str) and v else None
+
+    def sql_body(self) -> str | None:
+        """FR-024/#208 — the hand-written SQL body for this source's DB object,
+        when declared via ``@sql``, narrowed to a non-empty string (else
+        ``None``). The tool registers + fingerprints + drift-checks this body
+        but never authors or parses it."""
+        v = self.get_meta_attr(SOURCE_ATTR_SQL)  # ADR-0039: resolving — an
+        # inherited source's @sql lives on the super node (follows the
+        # @role/effective_kind precedent).
+        return v if isinstance(v, str) and v else None
+
+    def is_unmanaged(self) -> bool:
+        """FR-024/#208 — true when this source's DB object is managed
+        elsewhere (Flyway / a hand-migration owns its DDL); ``meta migrate``
+        does not create/drop/drift-check it."""
+        # ADR-0039: resolving — an inherited source's @unmanaged lives on the
+        # super node.
+        return self.get_meta_attr(SOURCE_ATTR_UNMANAGED) is True
 
     def physical_name(self) -> str:
         """Resolved physical SQL name for this source (FR-016 / ADR-0018).

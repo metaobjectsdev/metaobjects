@@ -163,6 +163,20 @@ class ErrorCode(str, Enum):
     # the validate()-time structural enforcement is the next sub-step).
     ERR_CHILD_NOT_ALLOWED = "ERR_CHILD_NOT_ALLOWED"
     ERR_INVALID_METAMODEL_CONSTRAINT = "ERR_INVALID_METAMODEL_CONSTRAINT"
+    # #208 — DDL-ownership escape valves (source.rdb @sql / @unmanaged).
+    # ERR_SQL_BODY_WITH_UNMANAGED: @sql AND @unmanaged declared on the SAME
+    # source — the two mutually exclusive non-default DDL-ownership states.
+    # ERR_SQL_BODY_ON_WRITABLE_KIND: @sql set on a writable @kind ("table", the
+    # default) — @sql is legal only on a read-only kind; a writable table is
+    # either fully modeled or @unmanaged, never opaque-bodied.
+    # ERR_ORIGIN_UNDER_SQL_BODY: an origin.*-bearing (derived) own field, or an
+    # object.projection @filter (#207), under an @sql host — two sources of
+    # truth for the same body. (R6's WARN_ORIGIN_UNDER_UNMANAGED sibling — an
+    # origin.*-bearing field under an @unmanaged host — is a warning, not an
+    # error code; it lives in the envelope-warnings channel.)
+    ERR_SQL_BODY_WITH_UNMANAGED = "ERR_SQL_BODY_WITH_UNMANAGED"
+    ERR_SQL_BODY_ON_WRITABLE_KIND = "ERR_SQL_BODY_ON_WRITABLE_KIND"
+    ERR_ORIGIN_UNDER_SQL_BODY = "ERR_ORIGIN_UNDER_SQL_BODY"
     ERR_UNKNOWN = "ERR_UNKNOWN"
 
 
