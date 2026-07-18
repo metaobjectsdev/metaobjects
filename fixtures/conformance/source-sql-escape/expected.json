@@ -1,0 +1,52 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.projection": {
+          "name": "ProgramSummaryEscaped",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@sql": "SELECT id, count(*) AS n FROM program GROUP BY id",
+                "@view": "v_program_summary_escaped"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "LegacyAccount",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "legacy_account",
+                "@unmanaged": true
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

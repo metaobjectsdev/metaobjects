@@ -75,6 +75,28 @@ public static class SourceSchema
             Required: false,
             Description: "Optional database schema name (e.g. 'catalog', 'public'). Postgres defaults to 'public'; SQLite rejects any non-default value."),
 
+        // FR-024/#208 escape valve — registration only, no validation/lowering here.
+        new AttrSchema(
+            Name: SourceConstants.SOURCE_ATTR_SQL,
+            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+            Required: false,
+            Description: "FR-024/#208 escape valve — a hand-written SQL body the tool REGISTERS + " +
+                "fingerprints + drift-checks but never authors or parses. The body goes INSIDE " +
+                "`CREATE <kind> <physicalName> AS …` (never the CREATE wrapper, never the object name). " +
+                "Legal only on a read-only kind (not @kind: table); migrate lowers it on @kind: view " +
+                "(matview/proc/tableFunction: registered but not yet migrate-managed). Mutually " +
+                "exclusive with @unmanaged; forbids origin.* children (two sources of truth)."),
+
+        // FR-024/#208 escape valve — registration only, no validation/lowering here.
+        new AttrSchema(
+            Name: SourceConstants.SOURCE_ATTR_UNMANAGED,
+            ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
+            Required: false,
+            Description: "FR-024/#208 escape valve — this DB object is managed elsewhere (Flyway / " +
+                "a hand-migration owns its DDL). meta migrate does NOT create, drop, or drift-check " +
+                "it; verify --db reports it as external (declared). Legal on any @kind including " +
+                "table (the externally-managed-entity case). Mutually exclusive with @sql."),
+
         // FR-015: typed-input shape for a callable source (storedProc / tableFunction).
         // Symmetric with template.@payloadRef — reuses object.value as the parameter shape.
         new AttrSchema(

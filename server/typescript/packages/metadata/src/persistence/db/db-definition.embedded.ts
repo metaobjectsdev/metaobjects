@@ -184,6 +184,22 @@ export const DB_DEFINITION: ProviderDefinition = {
         {
           "type": "attr",
           "subType": "string",
+          "name": "sql",
+          "min": 0,
+          "max": 1,
+          "description": "FR-024/#208 escape valve — a hand-written SQL body the tool REGISTERS + fingerprints + drift-checks but never authors or parses. The body goes INSIDE `CREATE <kind> <physicalName> AS …` (never the CREATE wrapper, never the object name). Legal only on a read-only kind (not @kind: table); migrate lowers it on @kind: view (matview/proc/tableFunction: registered but not yet migrate-managed). Mutually exclusive with @unmanaged; forbids origin.* children (two sources of truth)."
+        },
+        {
+          "type": "attr",
+          "subType": "boolean",
+          "name": "unmanaged",
+          "min": 0,
+          "max": 1,
+          "description": "FR-024/#208 escape valve — this DB object is managed elsewhere (Flyway / a hand-migration owns its DDL). meta migrate does NOT create, drop, or drift-check it; verify --db reports it as external (declared). Legal on any @kind including table (the externally-managed-entity case). Mutually exclusive with @sql."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
           "name": "parameterRef",
           "min": 0,
           "max": 1,

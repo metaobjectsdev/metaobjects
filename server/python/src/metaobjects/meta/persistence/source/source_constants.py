@@ -39,6 +39,16 @@ SOURCE_ATTR_FUNCTION = "function"
 SOURCE_ATTR_KIND = "kind"
 SOURCE_ATTR_ROLE = "role"
 SOURCE_ATTR_SCHEMA = "schema"
+# @sql — FR-024/#208 escape valve: a hand-written SQL body the tool REGISTERS +
+# fingerprints + drift-checks but never authors or parses. Legal only on a
+# read-only @kind (not "table"). Mutually exclusive with SOURCE_ATTR_UNMANAGED;
+# forbids origin.* children.
+SOURCE_ATTR_SQL = "sql"
+# @unmanaged — FR-024/#208 escape valve: this DB object is managed elsewhere
+# (Flyway / a hand-migration owns its DDL); meta migrate does not
+# create/drop/drift-check it. Legal on any @kind including "table". Mutually
+# exclusive with SOURCE_ATTR_SQL.
+SOURCE_ATTR_UNMANAGED = "unmanaged"
 # @parameterRef — name/FQN of an object.value describing the input shape of a
 # stored-proc / table-function source. Cross-port (FR-015). Mirrors TS
 # SOURCE_ATTR_PARAMETER_REF.

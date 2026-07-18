@@ -1,5 +1,6 @@
 package com.metaobjects.source;
 
+import com.metaobjects.attr.BooleanAttribute;
 import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 
@@ -25,6 +26,22 @@ public class RdbSource extends MetaSource {
      * {@code source.rdb} (NOT the abstract base) to match the cross-port canonical.
      */
     public static final String ATTR_PARAMETER_REF = "parameterRef";
+
+    /**
+     * FR-024/#208 escape valve — a hand-written SQL body the tool REGISTERS +
+     * fingerprints + drift-checks but never authors or parses. Legal only on a
+     * read-only {@code @kind} (not "table"). Mutually exclusive with
+     * {@link #ATTR_UNMANAGED}; forbids {@code origin.*} children.
+     */
+    public static final String ATTR_SQL = "sql";
+
+    /**
+     * FR-024/#208 escape valve — this DB object is managed elsewhere (Flyway /
+     * a hand-migration owns its DDL); {@code meta migrate} does not
+     * create/drop/drift-check it. Legal on any {@code @kind} including
+     * "table". Mutually exclusive with {@link #ATTR_SQL}.
+     */
+    public static final String ATTR_UNMANAGED = "unmanaged";
 
     // -----------------------------------------------------------------------
     // Constructor
@@ -92,6 +109,16 @@ public class RdbSource extends MetaSource {
             // @schema — optional, string, single value.
             def.optionalAttributeWithConstraints(ATTR_SCHEMA)
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+
+            // FR-024/#208 — @sql escape valve (hand-written SQL body); registration
+            // only, no validation/lowering here.
+            def.optionalAttributeWithConstraints(ATTR_SQL)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+
+            // FR-024/#208 — @unmanaged escape valve (externally-managed DB object);
+            // registration only, no validation/lowering here.
+            def.optionalAttributeWithConstraints(ATTR_UNMANAGED)
+               .ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
 
             // FR-015: @parameterRef — call-parameters reference for callable sources.
             def.optionalAttributeWithConstraints(ATTR_PARAMETER_REF)

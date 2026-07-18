@@ -64,6 +64,16 @@ export const SOURCE_ATTR_ROLE = "role";
  *  new parameter.* node type. */
 export const SOURCE_ATTR_PARAMETER_REF = "parameterRef";
 
+/** FR-024/#208 escape valve — a hand-written SQL body the tool REGISTERS +
+ *  fingerprints + drift-checks but never authors or parses. Legal only on a
+ *  read-only @kind (not "table"). Mutually exclusive with @unmanaged; forbids
+ *  origin.* children. */
+export const SOURCE_ATTR_SQL = "sql";
+/** FR-024/#208 escape valve — this DB object is managed elsewhere (Flyway / a
+ *  hand-migration owns its DDL); meta migrate does not create/drop/drift-check
+ *  it. Legal on any @kind including "table". Mutually exclusive with @sql. */
+export const SOURCE_ATTR_UNMANAGED = "unmanaged";
+
 export const SOURCE_KIND_TABLE              = "table";
 export const SOURCE_KIND_VIEW               = "view";
 export const SOURCE_KIND_MATERIALIZED_VIEW  = "materializedView";

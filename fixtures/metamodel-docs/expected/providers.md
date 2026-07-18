@@ -75,7 +75,7 @@ DB-domain attributes — @column / @db.indexed / @dbColumnType on every field, @
 - `identity.reference`: `@constraintName`
 - `identity.secondary`: `@expr`, `@orders`, `@using`, `@where`
 - `index.lookup`: `@expr`, `@orders`, `@using`, `@where`
-- `source.rdb`: `@function`, `@kind`, `@materializedView`, `@parameterRef`, `@proc`, `@role`, `@schema`, `@table`, `@view`
+- `source.rdb`: `@function`, `@kind`, `@materializedView`, `@parameterRef`, `@proc`, `@role`, `@schema`, `@sql`, `@table`, `@unmanaged`, `@view`
 
 ## metaobjects-documentation
 

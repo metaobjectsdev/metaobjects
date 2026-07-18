@@ -79,6 +79,22 @@ public static class SourceConstants
     public const string DEFAULT_DB_SCHEMA_POSTGRES = "public";
 
     /// <summary>
+    /// FR-024/#208 escape valve — a hand-written SQL body the tool REGISTERS +
+    /// fingerprints + drift-checks but never authors or parses. Legal only on a
+    /// read-only @kind (not "table"). Mutually exclusive with
+    /// <see cref="SOURCE_ATTR_UNMANAGED"/>; forbids origin.* children.
+    /// </summary>
+    public const string SOURCE_ATTR_SQL = "sql";
+
+    /// <summary>
+    /// FR-024/#208 escape valve — this DB object is managed elsewhere (Flyway /
+    /// a hand-migration owns its DDL); meta migrate does not
+    /// create/drop/drift-check it. Legal on any @kind including "table".
+    /// Mutually exclusive with <see cref="SOURCE_ATTR_SQL"/>.
+    /// </summary>
+    public const string SOURCE_ATTR_UNMANAGED = "unmanaged";
+
+    /// <summary>
     /// FR-015: name or FQN of an object.value describing the input shape of a
     /// callable source (@kind: "storedProc" / "tableFunction"). Symmetric with
     /// template.@payloadRef. Permitted only on callable kinds.

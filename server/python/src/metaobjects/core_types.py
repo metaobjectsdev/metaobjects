@@ -103,7 +103,9 @@ from .meta.persistence.source.source_constants import (
     SOURCE_ATTR_PROC,
     SOURCE_ATTR_ROLE,
     SOURCE_ATTR_SCHEMA,
+    SOURCE_ATTR_SQL,
     SOURCE_ATTR_TABLE,
+    SOURCE_ATTR_UNMANAGED,
     SOURCE_ATTR_VIEW,
     SOURCE_RDB_KINDS,
     SOURCE_ROLES,
@@ -618,6 +620,9 @@ core_provider.add(
                 allowed_values=SOURCE_ROLES,
             ),
             AttrSchema(name=SOURCE_ATTR_SCHEMA, value_type=ATTR_SUBTYPE_STRING, required=False),
+            # FR-024/#208 escape valves — registration only, no validation/lowering here.
+            AttrSchema(name=SOURCE_ATTR_SQL, value_type=ATTR_SUBTYPE_STRING, required=False),
+            AttrSchema(name=SOURCE_ATTR_UNMANAGED, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
             # FR-015 — @parameterRef: input-shape object.value for proc/table-function sources.
             AttrSchema(
                 name=SOURCE_ATTR_PARAMETER_REF,
