@@ -287,7 +287,7 @@ export function projectionViewName(
  * loader's `_refNamedOwner`: the ref names the anchor, never the physical
  * declaring ancestor of an inherited child.
  */
-function refNamedOwner(node: MetaData, root: MetaRoot): MetaObject | undefined {
+export function refNamedOwner(node: MetaData, root: MetaRoot): MetaObject | undefined {
   const ref = (node as { superRef?: string }).superRef;
   if (ref === undefined) return undefined;
   const lastSep = ref.lastIndexOf("::");

@@ -22,7 +22,7 @@ import {
   resolveTableSchema,
 } from "@metaobjectsdev/metadata";
 import { isProjection, isWriteThrough } from "./projection-detector.js";
-import { extractViewSpec } from "./extract-view-spec.js";
+import { extractViewSpec, refNamedOwner } from "./extract-view-spec.js";
 import { emitViewDdl } from "./view-ddl-emit.js";
 import type { JoinNode, ViewSpec } from "./view-spec.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
@@ -64,8 +64,12 @@ export interface ExpectedView {
    * projection lands last, so the change stays non-destructive. (Re-canonicalizing
    * to, say, alphabetical order would be strictly WORSE — it would scatter an
    * appended field into the middle and force a destructive drop+create.)
+   *
+   * OMITTED for an `@sql` (#208) view: the body is opaque — the tool never parses it,
+   * so its output columns are unknown. migrate-ts reads absent columns as "unknown"
+   * and fails safe to a gated drop+create instead of an illegal CREATE OR REPLACE.
    */
-  columns: ExpectedViewColumn[];
+  columns?: ExpectedViewColumn[];
 }
 
 export interface BuildProjectionViewsOptions {
@@ -117,7 +121,16 @@ export function buildProjectionViews(
     const readOnlySource = projection.ownChildren().find(
       (c): c is MetaSource => c instanceof MetaSource && c.isReadOnly(),
     );
-    if (readOnlySource?.effectiveKind !== SOURCE_KIND_VIEW) continue;
+    if (readOnlySource === undefined) continue;
+    // #208 suppression rule (§6) — classify DDL ownership BEFORE viewIsDerived, so an
+    // escape-valve view carrying extends-bound identity/fields (pure shape / row
+    // identity) is never mis-synthesized into a wrong base-table passthrough SELECT.
+    if (readOnlySource.isUnmanaged) continue;                 // external: Flyway/hand-migration owns it (§7)
+    if (readOnlySource.sqlBody !== undefined) {               // supplied: the author owns the body
+      emitSqlView(projection, readOnlySource, root, joinTables, out);
+      continue;
+    }
+    if (readOnlySource.effectiveKind !== SOURCE_KIND_VIEW) continue;
     if (!viewIsDerived(projection)) continue;
     emitViewFor(projection, root, joinTables, dialect, columnNamingStrategy, out);
   }
@@ -135,7 +148,15 @@ export function buildProjectionViews(
     const readOnlySource = entity.ownChildren().find(
       (c): c is MetaSource => c instanceof MetaSource && c.isReadOnly(),
     );
-    if (readOnlySource?.effectiveKind !== SOURCE_KIND_VIEW) continue;
+    if (readOnlySource === undefined) continue;
+    // #208 suppression rule (§6) — same DDL-ownership classification as the projection
+    // loop above: an @unmanaged replica view is skipped, an @sql one is verbatim.
+    if (readOnlySource.isUnmanaged) continue;
+    if (readOnlySource.sqlBody !== undefined) {
+      emitSqlView(entity, readOnlySource, root, joinTables, out);
+      continue;
+    }
+    if (readOnlySource.effectiveKind !== SOURCE_KIND_VIEW) continue;
     emitViewFor(entity, root, joinTables, dialect, columnNamingStrategy, out);
   }
   return out;
@@ -165,6 +186,72 @@ function emitViewFor(
     columns,
     ...(schema !== undefined ? { schema } : {}),
   });
+}
+
+/**
+ * #208 §7 — an `@sql` read source declares a hand-written view body. Push it VERBATIM
+ * into the exact same `ExpectedView` pipeline the synthesized body rides — almost no
+ * new machinery:
+ *   - buildExpectedSchema Pass 4 fingerprints `v.sql` (hash of the body);
+ *   - emit stamps the COMMENT marker; author re-indentation does not re-stamp;
+ *   - `columns` is OMITTED (the body is opaque — the tool never parses it), so the diff
+ *     fails safe to a gated drop+create instead of a wrong-but-confident OR REPLACE;
+ *   - a pre-existing unstamped view at this name → `replace-view` blocked pending
+ *     `migrate --allow adopt-view` (the one-time adoption ceremony).
+ * `dependsOn` is derived from the host's extends-bound anchor entities (D7) — no
+ * `@dependsOn` attr.
+ */
+function emitSqlView(
+  host: MetaObject,
+  source: MetaSource,
+  root: MetaRoot,
+  joinTables: Record<string, string>,
+  out: ExpectedView[],
+): void {
+  // D4 — v1 migrate lowering accepts @sql only on a plain @kind: view. matview / proc /
+  // tableFunction need genuinely new introspection (pg_matviews, pg_get_functiondef,
+  // COMMENT-on-matview, a REFRESH story) and stay hand-managed for now — an actionable
+  // hard error, same tiering as SQLite's @schema rejection.
+  if (source.effectiveKind !== SOURCE_KIND_VIEW) {
+    throw new Error(
+      `@sql is not yet migrate-managed on @kind: "${source.effectiveKind}" ` +
+        `(source of "${host.name}"). Mark the source @unmanaged, or track the ` +
+        `matview/callable managed path as a follow-up (#208 D4).`,
+    );
+  }
+  const schema = resolveTableSchema(host);
+  const dependsOn = collectSqlDependsOn(host, root, joinTables);
+  out.push({
+    name: source.physicalName, // FR-016 four-step physical name
+    sql: source.sqlBody!, // verbatim — never parsed, never re-wrapped
+    dependsOn,
+    // columns OMITTED → "unknown" → gated drop+create fail-safe.
+    ...(schema !== undefined ? { schema } : {}),
+  });
+}
+
+/**
+ * D7 — the physical tables an `@sql` view depends on, derived from the host's
+ * extends-bound anchor entities (its OWN identity/field `superRef`s). The `extends`
+ * bindings that already anchor the read model's shape ARE the dependency declaration;
+ * no separate `@dependsOn` attr. Deduped, so a view anchored on one base yields one
+ * table. migrate-ts uses this to drop+recreate the view around a column-altering change
+ * on a source table (Postgres blocks ALTER on a column a view depends on).
+ */
+function collectSqlDependsOn(
+  host: MetaObject,
+  root: MetaRoot,
+  joinTables: Readonly<Record<string, string>>,
+): string[] {
+  const tables = new Set<string>();
+  for (const child of host.ownChildren()) {
+    if (child.type !== TYPE_IDENTITY && child.type !== TYPE_FIELD) continue;
+    const owner = refNamedOwner(child, root);
+    if (owner === undefined) continue;
+    const t = joinTables[owner.name];
+    if (t !== undefined) tables.add(t);
+  }
+  return [...tables];
 }
 
 /**

@@ -200,3 +200,56 @@ describe("buildProjectionViews — package-qualified relationship @objectRef", (
     expect(v!.sql).toMatch(/COUNT\(DISTINCT [a-z0-9]+\.id\) AS week_count/);
   });
 });
+
+describe("buildProjectionViews — #208 @sql / @unmanaged DDL-ownership escape valves", () => {
+  // A recursive read-model that origin.* cannot express: the projection carries an
+  // extends-bound identity (row identity for the read model) + an extends-bound field
+  // (pure shape), which historically flips viewIsDerived() true and makes the tool
+  // synthesize a trivial base-table passthrough SELECT — the silent-wrong-synthesis
+  // hole (§1.2). The suppression rule (§6) classifies DDL-ownership BEFORE viewIsDerived.
+  const RECURSIVE_BODY =
+    "WITH RECURSIVE t AS (SELECT id, parent_id FROM nodes WHERE parent_id IS NULL " +
+    "UNION ALL SELECT n.id, n.parent_id FROM nodes n JOIN t ON n.parent_id = t.id) SELECT * FROM t";
+
+  const model = (source: Record<string, unknown>) => [
+    {
+      "object.entity": {
+        name: "Node",
+        children: [
+          { "source.rdb": { "@table": "nodes" } },
+          { "field.int": { name: "id" } },
+          { "field.int": { name: "parentId", "@column": "parent_id" } },
+          { "identity.primary": { name: "pk", "@fields": "id" } },
+        ],
+      },
+    },
+    {
+      "object.projection": {
+        name: "NodeTree",
+        children: [
+          { "source.rdb": source },
+          { "field.int": { name: "id", extends: "Node.id" } },
+          { "identity.primary": { extends: "Node.pk" } },
+        ],
+      },
+    },
+  ];
+
+  test("an @sql projection with extends-bound identity gets its verbatim body, not a synthesized SELECT", async () => {
+    const root = await load(model({ "@kind": "view", "@view": "v_node_tree", "@sql": RECURSIVE_BODY }));
+    const views = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const v = views.find((vv) => vv.name === "v_node_tree");
+    expect(v).toBeDefined();
+    expect(v!.sql).toBe(RECURSIVE_BODY);       // verbatim body, NOT a synthesized "SELECT nodes.id AS id …"
+    expect(v!.sql).toContain("WITH RECURSIVE");
+    expect(v!.columns).toBeUndefined();        // opaque — column list unknown → diff fails safe to drop+create
+    // dependsOn is derived from the extends-bound anchor entity (Node → nodes), D7.
+    expect(v!.dependsOn).toEqual(["nodes"]);
+  });
+
+  test("an @unmanaged projection produces no ExpectedView (skipped entirely)", async () => {
+    const root = await load(model({ "@kind": "view", "@view": "v_node_tree", "@unmanaged": true }));
+    const views = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    expect(views.find((vv) => vv.name === "v_node_tree")).toBeUndefined();
+  });
+});
