@@ -1,0 +1,21 @@
+name: create-returns-derived-field
+description: >
+  #214 read-your-writes over HTTP. POST /api/orders writes ONLY the base table
+  (orders — the derived customerName is not a table column, per #213), then the
+  generated route RE-READS the new row through the replica view
+  v_order_with_customer by PK, so the 201 response body carries the derived
+  customerName joined from Customer. This is the deployed-artifact proof that a
+  write-through entity's create returns the derived field (the bug: the routes
+  used to read the table and omit it).
+requests:
+  - id: r1
+    method: POST
+    path: /api/orders
+    body:
+      customerId: 1
+    expect:
+      status: 201
+      body:
+        hasId: true
+        row:
+          customerName: "Acme"

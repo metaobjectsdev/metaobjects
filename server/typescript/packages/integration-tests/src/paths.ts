@@ -34,5 +34,9 @@ export const API_CONTRACT_TPH_SCENARIOS_DIR = resolve(API_CONTRACT_TPH_DIR, "sce
 export const API_CONTRACT_JSONB_DIR = resolve(API_CONTRACT_DIR, "jsonb");
 export const API_CONTRACT_JSONB_SCENARIOS_DIR = resolve(API_CONTRACT_JSONB_DIR, "scenarios");
 
+// #214 write-through read-your-writes subcorpus.
+export const API_CONTRACT_WRITE_THROUGH_DIR = resolve(API_CONTRACT_DIR, "write-through");
+export const API_CONTRACT_WRITE_THROUGH_SCENARIOS_DIR = resolve(API_CONTRACT_WRITE_THROUGH_DIR, "scenarios");
+
 // fixtures/validation-conformance/ — cross-port generated input-validation corpus.
 export const VALIDATION_DIR = resolve(repoRoot, "fixtures", "validation-conformance");

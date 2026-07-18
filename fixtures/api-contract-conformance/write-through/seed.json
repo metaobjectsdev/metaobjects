@@ -1,0 +1,9 @@
+{
+  "customers": [
+    { "id": 1, "name": "Acme" },
+    { "id": 2, "name": "Globex" }
+  ],
+  "orders": [
+    { "id": 100, "customerId": 2 }
+  ]
+}

@@ -1,0 +1,16 @@
+name: get-reads-through-view
+description: >
+  #214 read path over HTTP. GET /api/orders/:id reads the write-through entity
+  THROUGH the replica view v_order_with_customer, so the response carries the
+  derived customerName joined from Customer — for a seeded order (id 100 →
+  customer 2 "Globex") that was written table-only. Proves the generated get
+  route routes reads through the view, not the base table.
+requests:
+  - id: r1
+    method: GET
+    path: /api/orders/100
+    expect:
+      status: 200
+      body:
+        row:
+          customerName: "Globex"

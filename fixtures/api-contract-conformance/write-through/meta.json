@@ -1,0 +1,30 @@
+{
+  "metadata.root": {
+    "package": "acme::orders",
+    "children": [
+      { "object.entity": {
+        "name": "Customer",
+        "children": [
+          { "source.rdb":       { "@table": "customers" } },
+          { "field.long":       { "name": "id" } },
+          { "field.string":     { "name": "name", "@required": true, "@maxLength": 80 } },
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+        ]
+      }},
+      { "object.entity": {
+        "name": "Order",
+        "children": [
+          { "source.rdb":       { "@role": "primary", "@table": "orders" } },
+          { "source.rdb":       { "@role": "replica", "@kind": "view", "@table": "v_order_with_customer" } },
+          { "field.long":       { "name": "id" } },
+          { "field.long":       { "name": "customerId", "@required": true } },
+          { "field.string":     { "name": "customerName", "children": [
+            { "origin.passthrough": { "@from": "Customer.name", "@via": "Order.customer" } } ] } },
+          { "relationship.association": { "name": "customer", "@objectRef": "Customer", "@cardinality": "one" } },
+          { "identity.primary":   { "name": "id", "@fields": "id", "@generation": "increment" } },
+          { "identity.reference": { "name": "fkCustomer", "@fields": "customerId", "@references": "Customer" } }
+        ]
+      }}
+    ]
+  }
+}
