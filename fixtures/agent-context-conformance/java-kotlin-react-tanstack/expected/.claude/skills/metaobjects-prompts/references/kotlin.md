@@ -10,6 +10,7 @@ the parser and the payload VO can't silently drift.
 ## Contents
 - Wire the generators
 - What it emits
+- The output-format prompt fragment (FR-010)
 - The three-step consumer pattern
 - Consumer dependency
 - Recommended LLM caller (bring-your-own)
@@ -61,6 +62,28 @@ null) and a `extractLenient(loader, text)` overload that delegates to the runtim
 `MetaObjectExtractor` to fully populate nested-object and array-of-object
 components. The lenient mirror type (`<Name>Extracted`) uses nullable fields per
 the Kotlin null-safety port — a missing/malformed component is `null`, not a throw.
+
+## The output-format prompt fragment (FR-010)
+
+For every json/xml-format `template.output`, `codegen-kotlin`'s
+`KotlinOutputPromptGenerator` emits a `<TemplateShortName>OutputPrompt.kt` `object`
+with `renderFormat()` / `renderFormat(overrides: PromptOverrides)`, backed by
+`OutputFormatRenderer` from the `metaobjects-render` module — the "produce your
+answer like this" fragment for the model. Wire it alongside
+`KotlinOutputParserGenerator` in the Maven plugin's `<generators>` list:
+
+```xml
+<generator>
+  <classname>com.metaobjects.generator.kotlin.KotlinOutputPromptGenerator</classname>
+  <args><outputDir>${project.build.directory}/generated-sources/kotlin</outputDir></args>
+</generator>
+```
+
+`@promptStyle` on the `template.output` (`guide` default / `inline` / `exampleOnly`)
+controls the fragment's presentation; guidance is never emitted as comments. Skipped
+for `template.prompt` nodes, non-json/xml `@format`, and unresolved `@payloadRef` —
+the same skip contract as the parser generator. The `SPEC`'s root name is the
+capitalized payload class name, agreeing with the parser's extract-codegen root.
 
 ## The three-step consumer pattern
 
@@ -115,9 +138,16 @@ val npc = NpcResponseParser.parseNpcResponse(response)   // the generated parser
 (`ChatLanguageModel.generate(prompt)`) for non-Spring JVM — both provider-agnostic,
 both a one-call seam Kotlin uses idiomatically.
 
-> The typed-trace recorder + render→call→record convenience loop ship in TypeScript
-> today; the JVM port is planned (ADR-0024). Until then the call is your code and the
-> generated parser is the typed receive side.
+> The typed-trace **recorder** has shipped on the JVM — `codegen-spring`'s
+> `LlmTraceHelperGenerator` emits a Java `record<Entity>(...)` helper (per concrete
+> entity extending `LlmCallBase` with a `@responseRef`-carrying `template.prompt`);
+> Kotlin code calls it directly (same JVM, same classpath) — there is no separate
+> Kotlin-native (`codegen-kotlin`/KotlinPoet) trace-helper emitter yet. What's TS-only
+> is the **`call<Entity>` render→call→record convenience loop** — neither JVM
+> generator emits it, because the `LlmClient` seam it wraps is BYO / vendor-neutral on
+> the JVM (ADR-0024). So you compose render → your LLM call → the generated Java
+> `record<Entity>(...)` yourself; the parser above is the standalone receive side if
+> you don't even want the recorder.
 
 ## Drift gate
 

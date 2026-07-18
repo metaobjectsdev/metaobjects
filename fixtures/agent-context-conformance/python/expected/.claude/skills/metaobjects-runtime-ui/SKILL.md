@@ -76,7 +76,7 @@ a field → HTTP 400.
 | `in`, `like` | yes | `in` only | – |
 | `gt`, `gte`, `lt`, `lte` | – | yes | – |
 
-These eight (`eq` `ne` `gt` `gte` `lt` `lte` `in` `like` `isNull`) are the whole
+These nine (`eq` `ne` `gt` `gte` `lt` `lte` `in` `like` `isNull`) are the whole
 closed set — every port implements these and only these.
 
 ### Sort + pagination

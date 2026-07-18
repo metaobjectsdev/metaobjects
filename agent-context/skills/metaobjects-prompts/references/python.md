@@ -10,6 +10,7 @@ drift.
 ## Contents
 - Wire the generators
 - What it emits
+- The output-format prompt fragment (FR-010)
 - The three-step consumer pattern
 - Recommended LLM caller (bring-your-own)
 - Consumer dependency
@@ -54,6 +55,24 @@ best-effort variant — `extract_lenient_<name>(text) -> ExtractionResult[<Name>
 per-field report rather than a raise. The lenient mirror (`<Name>PayloadExtracted`)
 uses `Optional[...]` fields — a missing/malformed component is `None`, not a raise.
 
+## The output-format prompt fragment (FR-010)
+
+For every json/xml-format `template.output`, the `output-prompt` generator (run via
+`metaobjects gen`) emits one `<template_name>_output_prompt.py` module exposing
+`render_<name>_format(overrides=None) -> str`, backed by the render engine's
+`render_output_format()` — the "produce your answer like this" fragment for the
+model:
+
+```bash
+metaobjects gen ./metadata --out ./generated --generators payload,output-prompt
+```
+
+`@promptStyle` on the `template.output` (`guide` default / `inline` / `exampleOnly`)
+controls the fragment's presentation; guidance is never emitted as comments. Skipped
+for `template.prompt` nodes, non-json/xml `@format`, and unresolved `@payloadRef` —
+the same skip contract as the `output-parser` generator. The baked spec's root name
+is the payload class name, agreeing with the parser's `extract_<name>()` root.
+
 ## The three-step consumer pattern
 
 Render the prompt → call your LLM client (provider-agnostic; nothing is generated
@@ -96,9 +115,16 @@ to enforce the typed shape instead, **Instructor** or **Pydantic-AI** return a
 validated Pydantic model — but that overlaps MetaObjects' own typed `extract`, so pick
 one boundary, not both.
 
-> The typed-trace recorder + render→call→record convenience loop ship in TypeScript
-> today; the Python port is planned (ADR-0024). Until then the call is your code and
-> the generated parser is the typed receive side.
+> The typed-trace **recorder** has shipped on this port too — the `trace-helper`
+> generator emits a `record_<entity>(recorder, input, redact=None)` helper (per
+> concrete entity extending `LlmCallBase` with a `@responseRef`/`@payloadRef`-carrying
+> `template.prompt`) that tolerantly extracts the typed response, builds the base
+> trace row, and persists it once. What's still TS-only is the **`call<Entity>`
+> render→call→record convenience loop** — Python intentionally does not emit it,
+> because the `LlmClient` seam it wraps is BYO / vendor-neutral here (ADR-0024). So
+> you compose render → your LLM call → the generated `record_<entity>(...)` yourself;
+> the parser above is the standalone receive side if you don't even want the
+> recorder.
 
 ## Consumer dependency
 

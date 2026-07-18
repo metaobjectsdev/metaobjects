@@ -97,12 +97,16 @@ cross-port versioning — **do not flag it** (only intra-port skew matters).
   emits the `Table` column definitions; the consumer hand-writes the (typically trivial)
   `transaction(db) { ... }` bodies that query and mutate those tables. This is the expected
   Kotlin runtime pattern — do NOT flag hand-written Exposed transactions as a defect.
-- **Hand-written output parser is expected.** `KotlinOutputParserGenerator` emits a typed
-  parser class, but the deserialization body inside it uses a hand-written kotlinx.serialization
-  call — do NOT flag this. Only flag hand-rolled parsers in non-generated files where a
-  `template.output` node exists.
-- **Filter-operator route codegen deferred.** The generated `<Entity>Controller.kt` supports
-  `?sort`, `?limit`/`?offset`, and `?withCount=1` envelope but defers filter-operator
-  validation. Do NOT flag hand-added Kotlin filter handling as an adopter defect.
+- **Output-parser codegen ships in Kotlin — do NOT treat it as deferred.**
+  `KotlinOutputParserGenerator` generates the typed parser class AND its deserialization body
+  (a kotlinx `Json.decodeFromString` call inside the generated file — kotlinx, not Jackson: the
+  #187 Jackson move was jsonb-codec-only, prompt payloads/parsers stay on kotlinx). Only flag
+  a hand-rolled parser in a NON-generated file where a `template.output` node exists.
+- **Core filter-operator codegen ships in Kotlin — do NOT treat it as deferred.**
+  `KotlinSpringControllerGenerator` generates the `?filter[field][op]=value` grammar (all 9
+  operators `eq/ne/gt/gte/lt/lte/in/like/isNull`) validated against the generated filter allowlist
+  (api-contract corpus, both lanes). **Flag a hand-rolled filter parser as a finding.** Only the
+  richer surface (`?search=`, `filter[or][N]` / `filter[and][N]` combinators, leading-wildcard
+  gating) is TS-only — do NOT flag its absence in Kotlin.
 - **No JVM migrate goal.** Schema migration is Node-`meta`-owned for every port
   (ADR-0015). The Maven plugin has no migrate goal; `meta migrate` is correct.

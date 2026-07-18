@@ -17,8 +17,8 @@ fetch it from GitHub / metaobjects.dev) and let it produce the report below.
 
 # MetaObjects Fit & Migration Assessment
 
-_Assessment prompt v1 (post-Phase-0 refinement). Grounded against MetaObjects npm `0.15.x` /
-Maven `7.7.x` — verify every capability claim against the current release before asserting it._
+_Assessment prompt v1 (post-Phase-0 refinement). Grounded against MetaObjects npm `0.17.x` /
+Maven `7.9.x` — verify every capability claim against the current release before asserting it._
 
 You are an AI assistant running a **pre-adoption fit assessment** for MetaObjects
 (https://github.com/metaobjectsdev/metaobjects — the cross-language metadata standard:
@@ -235,12 +235,27 @@ signature class. Hunt all ten classes:
 8. Hand-written `CREATE VIEW` / read-only SQL mirroring a read model. Run the
    **necessity test**: expressible when every output column is a passthrough
    (`origin.passthrough @from/@via`), a count/sum/avg/min/max (`origin.aggregate
-   @agg/@of/@via`, row-scoped with `@filter`), a child collection (`origin.collection`),
-   or `extends`-borrowed — and joins follow declared relationships/`identity.reference`
-   FKs. Expressible → projection candidate (note: an unmodeled hand view is *unmanaged*
-   — invisible to `verify --db`; modeling it is what makes it gateable). Not
-   expressible → BESPOKE with a NAMED construct (recursive CTE, window fn, set op,
-   `DISTINCT ON`, lateral join). "It's an aggregation" is not a justification.
+   @agg/@of/@via`, row-scoped with `@filter`), a predicate quantifier (`origin.aggregate
+   @agg: any|all`), an array rollup (`origin.aggregate @agg: collect`), a non-aggregate
+   derived scalar (`origin.computed @expr`), an argmax-style "one related row's column"
+   pick (`origin.first @via` — covers the common `DISTINCT ON` / lateral-join shape), a
+   child collection (`origin.collection`), a soft-delete/status/type row-scope (an
+   object-level `@filter` on `object.projection`), or `extends`-borrowed — and joins
+   follow declared relationships/`identity.reference` FKs. Expressible → projection
+   candidate (note: an unmodeled hand view is *unmanaged* — invisible to `verify --db`;
+   modeling it is what makes it gateable). `DISTINCT ON` and lateral join are **not**
+   automatic BESPOKE justifications — check `origin.first` first; they earn BESPOKE only
+   when the pick can't collapse to one argmax over one `@via` path (a multi-column
+   tiebreak, or a lateral doing more than pick-one-row). Not expressible → BESPOKE with a
+   NAMED construct (recursive CTE, window fn, set op, a `DISTINCT ON`/lateral join
+   `origin.first` genuinely can't express). "It's an aggregation" is not a justification.
+   BESPOKE has a better ending than "hand-write it outside the tool": if the body is
+   irreducible but still **yours** to own, carry it in the `source.rdb` **`@sql`** escape
+   (#208, ADR-0043) — a hand-written view/proc body the tool registers, fingerprints, and
+   drift-checks (adopt a pre-existing view with `meta migrate --allow adopt-view`, no
+   rewrite needed); if the object is owned **elsewhere** (Flyway, another team's
+   migration), mark its source `@unmanaged: true` so `verify --db` reports it as an
+   external, declared object instead of silently missing it.
 9. A closed variant-set hand-modeled per instance (N sibling modules on one payload
    shape) → VOCAB CANDIDATE (advisory only; ADR-0037 ordered test).
 10. One prompt's text/payload/parse scattered across services — a renamed field silently
@@ -273,8 +288,14 @@ concrete — lead with it.
 | the metadata itself | strict provenance (ADR-0023): unknown attrs fail load |
 
 State the honest limits in the same section: `verify` cannot catch semantic mismodeling
-(a uuid modeled as string passes `--db`), cannot see unmodeled DB objects, and
-`--templates` coverage depends on CLI version. A gate, not a proof system.
+(a uuid modeled as string passes `--db`), cannot see a genuinely unmodeled DB object
+(nothing ever declared it), and `--templates` coverage depends on CLI version. Name the
+two declared middle states before writing something off as unmodeled: an
+irreducible-but-owned view/proc registered via `source.rdb @sql` (#208) IS fingerprinted
+and drift-checked, and an object owned by another team's tooling can be declared
+`@unmanaged: true` so `verify --db` reports it as external rather than missing it
+silently — "unmodeled" applies only to what was never declared at all. A gate, not a
+proof system.
 
 ### P4 — Fit rubric (worked, not vibes)
 
@@ -293,7 +314,7 @@ this table worked row-by-row is invalid output):
 | DB not Postgres/SQLite/D1 | schema pillar (`migrate`, `verify --db`) OUT — say so plainly; data-access unaffected |
 | Non-entity-shaped domain (no persistent typed records to speak of) | NOT A FIT — structural, and visible in the code |
 | Few entities today (< ~5) | **NOT a flat verdict — this is the M8 trap.** Small-today ≠ small-forever, and git cannot tell you which. Use the trajectory answer (Input 3): *done at this size* → MARGINAL/NOT A FIT (say so plainly — the leverage won't repay the tooling); *expected to grow / add a language / add an LLM surface* → FIT, and note adopting later costs more (you'd retrofit a spine onto more drift). **Unanswered → emit both branches, never guess.** |
-| Schema owned by another team (DBA-gated) | migrate pillar restricted; model read-only ("metadata follows the schema"); flag the org constraint |
+| Schema owned by another team (DBA-gated) | migrate pillar restricted; model read-only ("metadata follows the schema"); objects that stay owned by that team's own tooling can be declared `source.rdb @unmanaged: true` instead of silently excluded; flag the org constraint |
 | Deep hand-tuned ORM investment | churn warning, not a disqualifier: the plan must reproduce those mappings (`@column`/`@table`/`@dbColumnType`) and price it |
 | Team rejects generated code in the repo | flag; regen-every-build works but `verify --codegen` semantics differ — call the tradeoff |
 
@@ -355,9 +376,21 @@ promising it or counting it in benefits:
   from behavior).
 - UUIDs as bare strings → `field.uuid` (never `field.string` + `@dbColumnType: uuid`).
 - hand `COUNT/SUM` subqueries, read-model SQL → `object.projection` + `origin.passthrough`
-  / `origin.aggregate` (+`@filter` for scoped aggregates) / `origin.collection`.
+  / `origin.aggregate` (`count`/`sum`/`avg`/`min`/`max`, +`@filter` for scoped
+  aggregates, +`any`/`all` predicate quantifiers, +`collect` array rollups) /
+  `origin.collection` / `origin.computed` (a non-aggregate derived scalar) /
+  `origin.first` (an argmax-style "one related row's column" pick — the usual
+  `DISTINCT ON`/lateral-join case) — plus a soft-delete/status/type view via the
+  object-level `@filter` on `object.projection` instead of a hand `WHERE`.
   **Calibration: most projection fields in real spines are passthrough/`extends`
   re-exposures; aggregates are the minority — lead with passthrough.**
+- a hand-maintained denormalized/computed column kept in sync by app code (an "update
+  the other row on write" helper mirroring a joined value onto the entity's own row) →
+  an **entity read-view** on the same `object.entity` before reaching for a projection:
+  keep the writable `table` source, add a non-primary read-only `view` source, and
+  declare the extra as a derived `origin.*` field — writes still target the table,
+  reads route through the view and re-read by PK (#214; see `docs/features/source-kinds.md`
+  "entity read-view vs projection" for when to use which).
 - hand junction joins → `relationship @cardinality: many @through` (junction declares
   two `identity.reference` children; FR-018).
 - copy-pasted base-field blocks → abstract base + `extends`.
@@ -491,14 +524,18 @@ Every prose prediction gets a claim. Ceiling statements (P5-b) MUST carry
   access still works; say it plainly.
 - **TS**: full stack — Drizzle/Zod/Fastify codegen, filter-operator routes, TanStack/React
   UI runtime, migrations. The only port with UI codegen + runtime.
-- **Java/Spring**: generated DTO records, controllers, filter allowlists (pagination/sort;
-  filter ops deferred), repository *interfaces* (consumer implements — existing ORM sits
-  behind unchanged), payload records, output parsers hand-write the Jackson one-liner;
-  entities stay hand-written on this lane; Maven `meta:gen` / `meta:verify`
-  (`codegen`/`templates` modes — no live-DB mode).
+- **Java/Spring**: generated DTO records, controllers (parse + validate the full FR-009
+  filter-op grammar via the generated `FilterAllowlist` + the `FilterParser` runtime
+  helper — per-field op allowlist, `in`-list cap, `eq` sugar; api-contract is 20/20 both
+  lanes), filter + sort allowlists (pagination/sort), repository *interfaces* (consumer
+  implements — existing ORM sits behind unchanged; the consumer's repository impl
+  translates the returned predicates to its persistence DSL), payload records, output
+  parsers hand-write the Jackson one-liner; entities stay hand-written on this lane;
+  Maven `mvn metaobjects:generate` / `mvn metaobjects:verify` (`codegen`/`templates`
+  modes — no live-DB mode).
 - **Kotlin/JVM**: `codegen-kotlin` generates entity + Exposed table + Spring controller +
   payload + relations + filter allowlist + validators + output parsers (runs via Maven
-  `meta:gen`).
+  `mvn metaobjects:generate`).
 - **C#**: generated EF Core entities + `AppDbContext` + CRUD minimal-API routes +
   render/payload/verify via `dotnet meta gen`/`verify`; no ObjectManager runtime tier;
   no migrate surface (TS-owned).

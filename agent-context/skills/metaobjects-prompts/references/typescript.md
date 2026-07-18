@@ -9,6 +9,7 @@ call yourself.
 ## Contents
 - Wire the generator
 - What it emits
+- The output-format prompt fragment (FR-010)
 - The three-step consumer pattern
 - Recommended LLM caller (bring-your-own)
 - Drift gate
@@ -66,7 +67,7 @@ The dual API mirrors Zod's idiomatic shape: `parse*` throws a `ZodError`,
 structurally identical to the `promptRender()` payload VO, so you can pass values
 between the render and parse sides interchangeably.
 
-Field-type → Zod mapping: `field.string` → `z.string()`; `field.int`/`long`/`short`/`byte`
+Field-type → Zod mapping: `field.string` → `z.string()`; `field.int`/`long`
 → `z.number().int()`; `field.double`/`float` → `z.number()`; `field.boolean` →
 `z.boolean()`; `field.object` (with `@objectRef`) → a nested `z.object({...})`;
 `isArray: true` → wrapped in `z.array(...)`. Any subtype outside this scalar set —
@@ -74,6 +75,38 @@ including `field.enum` — falls through to `z.unknown()` in the strict
 `parse*`/`safeParse*` schema (the value-constrained `z.enum([...])` form is emitted
 in the entity insert/update schemas, not in this output parser; the lenient extract
 path carries the enum-as-string handling).
+
+## The output-format prompt fragment (FR-010)
+
+For every json/xml-format `template.output`, the `outputPrompt()` generator (same
+import path, `@metaobjectsdev/codegen-ts/generators`) emits a
+`<TemplateName>.prompt.ts` exporting `render<TemplateName>Format(overrides?)` —
+backed by the render engine's `renderOutputFormat()`. This is the "produce your
+answer like this" fragment you splice into the prompt text so the model returns the
+shape the parser above expects:
+
+```ts
+// metaobjects.config.ts
+import { entityFile, queriesFile, barrel, promptRender, outputParser, outputPrompt }
+  from "@metaobjectsdev/codegen-ts/generators";
+
+export default defineConfig({
+  outDir: "src/generated",
+  generators: [
+    entityFile(), queriesFile(), barrel(),
+    promptRender(), outputParser(), outputPrompt(),
+  ],
+});
+```
+
+`@promptStyle` on the `template.output` (`guide` default / `inline` / `exampleOnly`)
+controls the fragment's presentation: `guide` is a prose field list + example
+skeleton, `inline` is one skeleton with inline placeholders/enum choices,
+`exampleOnly` is just the filled skeleton. Guidance is never emitted as comments —
+models ignore them. Skipped for non-json/xml `@format` outputs and for any output
+whose `@payloadRef` doesn't resolve to a value-object — the same skip contract as
+`outputParser()`. The baked spec's root name matches the payload class name, so the
+fragment and the parser's `extract()` agree on the same root.
 
 ## The three-step consumer pattern
 

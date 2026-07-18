@@ -28,6 +28,16 @@ the exact `gen` code path so the two can't diverge). `--templates` is the prompt
 drift gate (see the prompts reference). Schema migration + live-DB drift are **not**
 `metaobjects` — they run through the Node `meta` tool (see the migration reference).
 
+## Docs — `metaobjects docs`
+
+```bash
+metaobjects docs ./metadata --out ./docs   # → ./docs/api/python (AGENT-API.md + per-entity pages)
+```
+
+`metaobjects docs` emits this project's Python SDK api surface (`api/python`), including
+`AGENT-API.md` — the exact imports, signatures, and payload field shapes for the
+generated code. **Before calling any generated code, read `api/python/AGENT-API.md`.**
+
 ## Generators
 
 Wire generators by their stable name (`--generators <names>`), or run the default set.
@@ -40,8 +50,18 @@ a renamed physical column).
 | `entity` | one **Pydantic model** per `object.entity` / projection (the `entity-model` generator): typed fields from the metadata, nullability from `@required`, `@maxLength`/validators, enum fields → a Python `Enum`. This is the typed data model. A TPH concrete subtype (`@discriminatorValue`) pins the inherited `@discriminator` field to a `Literal[...]` so the model rejects a foreign-subtype tag. |
 | `routes` | a **FastAPI `APIRouter`** per writable entity (`source.rdb @kind="table"`) on the cross-port REST contract (`?filter[field][op]=`, `?sort=field:asc`, `?limit`/`?offset`, `?withCount=1` envelope, 400/404 envelopes). The router declares a repository **`Protocol`** you implement and inject. A TPH `@discriminator` base emits ONE polymorphic router: `GET /<base>(+/{id})` plus a per-subtype CRUD set at `/<base>/<discriminatorValue lowercased>` — create injects the discriminator from the URL (never the body); get/update/delete scoped to the subtype (cross-subtype → 404); discriminator immutable. Its repository `Protocol` is subtype-keyed (`subtype=None` for the polymorphic base) so your implementation applies the single-table discriminator scope. |
 | `filter-allowlist` | per-entity filter allowlist (FR-009 — the server-side field+operator allowlist the routes validate against). |
-| `payload` / `output-parser` / `output-prompt` / `extractor` / `render-helper` / `trace-helper` | the `template.output` prompt-pillar artifacts — see the **prompts** reference. |
+| `payload` / `output-parser` / `output-prompt` / `extractor` / `render-helper` / `trace-helper` | the `template.output` prompt-pillar artifacts — the payload VO, the strict parser, the **output-format prompt fragment** (`output-prompt`; presentation via `@promptStyle: guide`/`inline`/`exampleOnly`), the tolerant `extract`, the typed render helper, and the LLM-trace helper. See the **prompts** reference. |
 | `template` | the generic Mustache `template` primitive. |
+
+**Projections + entity read-views.** An `object.projection` (read-only `source.rdb`
+`@kind: view` child) gets a read-only Pydantic model from the `entity` generator; its
+`CREATE VIEW` DDL is emitted by the Node `meta migrate` from the projection's `origin.*`
+children (`passthrough` / `aggregate` / `collection` / `computed` / `first`) — never
+hand-write the view SQL for a shape origins can express. An `object.entity` that adds a
+`@role: replica` `@kind: view` source alongside its writable `table` is a write-through
+**entity read-view** (#214): the generated read model carries the derived `origin.*`
+fields and writes exclude them — reads route to the view, writes to the table (your
+repository implements the split).
 
 ## Discriminator inheritance (TPH)
 
@@ -77,13 +97,17 @@ persistence layer and no runnable server**. Two things you hand-write:
 
 ## Known gaps (current — may require a hand-edit)
 
-- **Single-field, `int` PKs only.** The generated router/repository assume a single
-  `int` primary key (`id: int`). Non-`int` single-field PKs and composite PKs need a
-  hand-edit until specified.
-- **DTO = `dict[str, Any]`.** Request bodies for `POST`/`PATCH`/`PUT` are typed
-  `dto: dict[str, Any]` and responses return `Any`; the repository `Protocol` uses
-  `Any` for the row type. The typed Pydantic model from the `entity` generator exists —
-  you can tighten the router signatures to it by hand.
+- **Composite PKs need a hand-edit.** The generated router/repository key on a single
+  primary key whose Python type is **derived from the PK field's subtype** (`field.uuid`
+  PK → `uuid.UUID`, `field.long` → `int`, `field.string` → `str`) via the same mapper the
+  Pydantic model uses — so a `field.uuid` PK is `uuid.UUID`, not `int`. A **composite** PK
+  falls back to `@fields[0]` and needs a hand-edit until specified.
+- **DTO param is `dict[str, Any]`.** The `POST`/`PATCH`/`PUT` body param is typed
+  `dto: dict[str, Any]` and responses return `Any`; the repository `Protocol` uses `Any`
+  for the row type. This does **not** mean constraints are unenforced — the router
+  validates the body against the generated `<Entity>Create` / `<Entity>Patch` Pydantic
+  models before the repository call (FR-036: field constraints run on POST/PATCH over
+  HTTP). You can further tighten the router signatures to the typed model by hand.
 
 ## Re-scaffold this context
 

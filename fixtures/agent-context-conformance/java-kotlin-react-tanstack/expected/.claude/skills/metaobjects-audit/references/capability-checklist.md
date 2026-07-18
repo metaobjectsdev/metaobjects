@@ -53,8 +53,10 @@ classify it (using the classification scheme in `SKILL.md`) and route the cutove
   assignment), `@required` (hand presence checks), `@unique` (hand uniqueness), `@readOnly`
   (hand write-guards), `@filterable` / `@sortable` (hand filter/sort allowlists),
   `@dbColumnType` (hand native-type override), `@example` / `@instruction` (hand prompt
-  hints), `@xmlText` (hand XML-text mapping). Indexed-without-filter suppression is the
-  `db.indexed` attr (cite without the `@` sigil — it is a dotted attr name).
+  hints), `@xmlText` (hand XML-text mapping). The `@db.indexed` attr suppresses the
+  *`@filterable`-without-index* Loader warning (you assert the column is indexed by other
+  means); it is a dotted attr name but canonical JSON still authors it WITH the sigil:
+  `"@db.indexed": true`.
 - **CALIBRATION — cut subtypes:** `field.byte`, `field.short`, `field.class` are
   non-functional removed stubs. **Do NOT audit for them and never recommend them.**
 
@@ -63,15 +65,29 @@ classify it (using the classification scheme in `SKILL.md`) and route the cutove
 - **`source.rdb`** (`@table`, `@schema`) — hunt hard-coded physical table/schema names that
   diverge from the default naming the source models.
 - **`@kind` = `view` / `materializedView`** — hunt hand-written SQL views where an authored
-  projection source (read-only `@kind`) belongs. Apply the **view-necessity test** (SKILL.md,
-  drift signature 8): a hand-written `CREATE VIEW` (or read-only SQL mirroring a read model) is a
-  CODEGEN CANDIDATE when its shape is expressible via `origin.passthrough` / `origin.aggregate` /
-  `origin.collection` + `extends` — convert it to an `object.projection` so `meta migrate` emits
-  the view DDL. It is BESPOKE-keep only when a NAMED irreducible construct (recursive CTE, window
-  function, set op) blocks projection authoring. `meta verify --db` can't see an unmodeled view,
+  read-only source belongs. Apply the **view-necessity test** (SKILL.md, drift signature 8): a
+  hand-written `CREATE VIEW` (or read-only SQL mirroring a read model) is a CODEGEN CANDIDATE when
+  its shape is expressible via `origin.passthrough` / `origin.aggregate` / `origin.collection` /
+  `origin.computed` / `origin.first` + `extends`. Route by shape: an entity's OWN columns plus an
+  extra (`SELECT o.*, …`) → an **entity read-view** (#214: a `@role: replica` view beside the
+  writable `table`); a subset / renamed / row-filtered exposure → an `object.projection` (row-scope
+  with an object-level `@filter`, #207) — so `meta migrate` emits the view DDL. A genuinely
+  irreducible body (recursive CTE, window function, set op) belongs in the `source.rdb` `@sql`
+  escape (#208), not a hand migration. Only an *undeclared* view is invisible to `meta verify --db`,
   so this is audit-only.
 - **`@kind` = `storedProc` / `tableFunction`** (`@parameterRef`) — hunt hand-called procs /
   table functions that a modeled callable source with `@parameterRef` already describes.
+- **`@sql`** (read-only `@kind` only; mutually exclusive with `@unmanaged`) — a hand-written SQL
+  body the tool REGISTERS, fingerprints, and drift-checks but never authors or parses (#208,
+  ADR-0043). The **escape valve for a genuinely irreducible view** origins can't express (recursive
+  CTE, window function, set op): carry the body here rather than in a hand-edited migration where it
+  goes accidentally unmanaged. Forbids `origin.*` children (two sources of truth); adopt a
+  pre-existing view with `meta migrate --allow adopt-view`. Hunt a hand-written irreducible
+  `CREATE VIEW` in a migration / `.sql` that should be carried in `@sql`.
+- **`@unmanaged`** (any `@kind` incl. `table`; mutually exclusive with `@sql`) — marks a DB object
+  whose DDL is owned entirely elsewhere (Flyway / a hand-migration). `meta migrate` never creates,
+  drops, or drift-checks it; `verify --db` reports it as external (declared). Hunt an
+  externally-owned table/view the metadata silently omits instead of declaring `@unmanaged: true`.
 - **`@role` = `primary`** (multi-source write-through) — hunt manual CQRS / write-through
   wiring; exactly one `primary` source per object models it.
 - **`source.base`** — abstract source base (no audit target of its own).
@@ -107,15 +123,27 @@ classify it (using the classification scheme in `SKILL.md`) and route the cutove
   a NON-unique retrieval index (uniqueness is what distinguishes it from `identity.secondary`);
   hunt hand-created lookup / recency indexes (`CREATE INDEX …`) it models.
 
-## Origin — `origin.*` (projection-field derivation)
+## Origin — `origin.*` (derived fields — on projections AND entity read-views)
 
-- **`origin.aggregate`** (`@agg`, `@of`, `@via`) — hunt hand `COUNT` / `SUM` / `AVG`
+- **`origin.aggregate`** (`@agg`, `@of`, `@via`, `@filter`) — `@agg`: `count`/`sum`/`avg`/`min`/`max`
+  (numeric reduces over `@of`), `any`/`all` (predicate quantifiers over `@filter`; `@of` forbidden),
+  `collect` (array rollup of `@of` into an `isArray` field; `@distinct`/`@orderBy` collect-only).
+  Any aggregate may be row-scoped with `@filter`. Hunt hand `COUNT`/`SUM`/`AVG`/`EXISTS`/`array_agg`
   subqueries or in-app rollups a derived aggregate field models.
-- **`origin.passthrough`** (`@from`, `@via`) — hunt denormalized-by-hand copied fields that a
-  passthrough origin pulls across a relationship.
+- **`origin.passthrough`** (`@from`, `@via`, `@convert`) — hunt denormalized-by-hand copied fields
+  that a passthrough origin pulls across a relationship.
 - **`origin.collection`** (`@via`) — hunt hand-assembled child-collection loading a collection
   origin derives.
+- **`origin.computed`** (`@expr` — a closed `attr.expression` grammar) — hunt a hand-computed derived
+  scalar (a formula over other fields) a computed origin models.
+- **`origin.first`** (`@of`, `@via`, `@orderBy`, `@filter`; `@orderBy` REQUIRED) — hunt a hand
+  argmax-style "one related row's column" projection — a `DISTINCT ON … ORDER BY` or correlated
+  `ORDER BY … LIMIT 1` — a first origin models (nullable).
 - **`origin.base`** — abstract base.
+
+Distinct from the per-aggregate `@filter` above, an **object-level `@filter` on
+`object.projection`** (#207) row-scopes the WHOLE view (outer `WHERE`) — hunt a hand-written
+soft-delete / status / type view it models.
 
 ## Validator — `validator.*`
 
@@ -144,12 +172,14 @@ classify it (using the classification scheme in `SKILL.md`) and route the cutove
 ## Template — `template.*` (prompt pillar)
 
 - **`template.prompt`** (`@payloadRef`, `@textRef`, `@responseRef`, `@requiredSlots`,
-  `@maxTokens`, `@maxChars`, `@format`, `@model`, `@promptStyle`) — hunt prompt strings
+  `@requiredTags`, `@maxTokens`, `@maxChars`, `@format`, `@model`) — hunt prompt strings
   assembled inline in services, payloads built ad-hoc, output parsing without a typed
   `@responseRef`, or token/char budgets enforced by hand.
 - **`template.output`** (`@kind` = `document` | `email`; `@subjectRef`, `@htmlBodyRef`,
-  `@textBodyRef`) — hunt hand-built document/email rendering + hand-written
-  parse-on-receipt the output template + generated render helper/parser cover.
+  `@textBodyRef`, `@promptStyle`, `@requiredTags`) — hunt hand-built document/email rendering +
+  hand-written parse-on-receipt the output template + generated render helper/parser cover.
+  (`@promptStyle` — the FR-010 output-format presentation — is on `template.output` ONLY;
+  authoring it on `template.prompt` fails load with `ERR_UNKNOWN_ATTR`.)
 - **`template.toolcall`** (`@toolName`, `@payloadRef`) — hunt hand-declared LLM tool schemas
   a modeled tool call describes.
 - **`template.base`** — abstract base.
@@ -185,11 +215,15 @@ classify it (using the classification scheme in `SKILL.md`) and route the cutove
   `origin.*` never inherits).
 - **Filter + sort + pagination REST layer** — hunt hand-written query parsing, `LIMIT`/
   `OFFSET` pagination, total-count queries, and filter/sort handling the generated CRUD layer
-  (8 filter operators + sort + `?limit=N&offset=N` + count) already provides.
-  - **CALIBRATION — per-port codegen gaps:** filter-operator route codegen is full only in
-    **TS**; Java / Kotlin / C# / Python generate pagination/sort/count but **defer filter
-    ops** — do NOT flag hand-added filter handling there. Output-parser codegen ships
-    TS/C#/Python/Kotlin; **Java hand-writes** the Jackson parse (acceptable). **Python**
+  (9 filter operators `eq/ne/gt/gte/lt/lte/in/like/isNull` + sort + `?limit=N&offset=N` + count)
+  already provides.
+  - **CALIBRATION — per-port codegen gaps:** the core `?filter[field][op]` filter grammar (all
+    9 operators + the generated allowlist + `invalid-field` / `invalid-op` / `in`-over-cap 400s)
+    is **generated in all five ports** (api-contract corpus, both lanes) — **flag hand-rolled
+    filter parsing anywhere.** Only the richer surface (`?search=`, explicit
+    `filter[or][N]` / `filter[and][N]` combinators, leading-wildcard gating) is TS-only.
+    Output-parser codegen also ships in **all five ports** — Java's `SpringOutputParserGenerator`
+    *generates* the parser (the Jackson `readValue` lives inside that generated file). **Python**
     still hand-wires the FastAPI router around a generated `APIRouter` (relationship /
     non-`table` source-kind / flattened-object codegen is partial). **C#** has no
     ObjectManager runtime tier (EF Core *is* the runtime) — hand services over the generated

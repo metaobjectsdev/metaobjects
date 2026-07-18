@@ -88,16 +88,18 @@ versioning — **do not flag it** (only intra-port skew matters).
 
 ## Calibration gaps (do NOT flag these)
 
-- **Hand-written output parser is expected.** The `SpringOutputParserGenerator` emits
-  a typed `<Name>Parser` class, but the Jackson `readValue` one-liner inside it is
-  hand-written by the generator — it is NOT a defect to see Jackson deserialization in
-  generated `*Parser.java` files. **Do not flag Jackson `readValue` calls in
-  `*Parser.java` files.** Only flag hand-rolled parsers in *non*-generated files where
-  a `template.output` node exists.
-- **Filter-operator route codegen deferred.** The generated `<Entity>Controller.java`
-  supports `?sort`, `?limit`/`?offset`, and `?withCount=1` envelope but defers
-  filter-operator validation (`?filter[field][op]=value`). Do NOT flag hand-added
-  Java filter handling as an adopter defect.
+- **Jackson `readValue` inside a generated parser is expected.** `SpringOutputParserGenerator`
+  *generates* the typed `<Name>Parser` class; the Jackson `readValue` call lives inside that
+  generated file. It is NOT a defect to see Jackson deserialization in a generated `*Parser.java`
+  file. **Do not flag Jackson `readValue` calls in generated `*Parser.java` files.** DO flag a
+  hand-rolled parser in a *non*-generated file where a `template.output` node exists.
+- **Core filter-operator codegen ships in Java — do NOT treat it as deferred.**
+  `SpringControllerGenerator` generates the `?filter[field][op]=value` grammar (all 9 operators
+  `eq/ne/gt/gte/lt/lte/in/like/isNull`): it parses via the runtime `FilterParser`, validates
+  against the generated `<Entity>FilterAllowlist`, and 400s on unknown field / disallowed op /
+  over-cap `in`-list (api-contract corpus, both lanes). **Flag a hand-rolled filter parser as a
+  finding.** Only the *richer* surface is TS-only — `?search=`, `filter[or][N]` / `filter[and][N]`
+  combinators, leading-wildcard gating — do NOT flag the absence of those in Java.
 - **Repository interface is a hand-implemented stub.** `SpringRepositoryGenerator`
   emits `<Entity>Repository.java` as a stub `interface`; the consumer hand-writes the
   implementation against OMDB (or any persistence layer). Hand-written repository

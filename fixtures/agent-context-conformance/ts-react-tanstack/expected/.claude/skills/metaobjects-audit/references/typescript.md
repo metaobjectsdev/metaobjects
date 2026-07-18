@@ -106,7 +106,7 @@ via `metamodelVersion` (see the Phase 0 cross-language consistency item).
 
 TypeScript is the reference implementation — it ships the full feature set:
 
-- Filter-operator codegen: **complete** (`<Entity>FilterAllowlist`, 8 operators, all four CRUD routes validate against it).
+- Filter-operator codegen: **complete** — the core `?filter[field][op]` grammar (all 9 operators `eq/ne/gt/gte/lt/lte/in/like/isNull`, `<Entity>FilterAllowlist`) generates in every port; TS additionally ships the richer surface (`?search=`, `filter[or][N]` / `filter[and][N]` combinators, leading-wildcard gating).
 - Output-parser codegen: **complete** (`outputParser()` generator; `parse*`/`safeParse*`/`extract*` per `template.output`).
 - ObjectManager: **complete** (`@metaobjectsdev/runtime-ts`; `kyselyDriver` / `inMemoryDriver`).
 - Schema migrate / `meta verify --db`: **complete** (TS owns the shared migrate engine — ADR-0015).

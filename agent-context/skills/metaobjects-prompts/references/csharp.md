@@ -9,6 +9,7 @@ the payload generator, so the parser and the payload VO can't silently drift.
 ## Contents
 - Wire the generator
 - What it emits
+- The output-format prompt fragment (FR-010)
 - The three-step consumer pattern
 - Recommended LLM caller (bring-your-own)
 - Consumer dependency
@@ -51,6 +52,26 @@ generator also emits a tolerant `Extract(string[, ExtractOptions])` (self-contai
 `Extract(MetaObject, string, ...)` (runtime-delegating, fully populating nested
 components) returning an `ExtractionResult` with a nullable `<Payload>Extracted` mirror
 — a classified per-field report rather than a throw.
+
+## The output-format prompt fragment (FR-010)
+
+For every json/xml-format `template.output`, `MetaObjects.Codegen`'s
+`OutputPromptGenerator` (stable name `output-prompt-generator`) emits a
+`<TemplateName>.prompt.cs` declaring a static `<TemplateName>Prompt` class with a
+`RenderFormat()` / `RenderFormat(PromptOverrides)` pair, backed by the render
+engine's `OutputFormatRenderer` — the "produce your answer like this" fragment for
+the model. It runs as part of the same `dotnet meta gen` invocation as the payload
+and parser generators:
+
+```bash
+dotnet meta gen ./metadata --out ./Generated --namespace Acme.Blog
+```
+
+`@promptStyle` on the `template.output` (`guide` default / `inline` / `exampleOnly`)
+controls the fragment's presentation; guidance is never emitted as comments. Skipped
+for `template.prompt` nodes, non-json/xml `@format`, and an unresolved
+`@payloadRef` — the same skip contract as the parser generator. The baked spec's
+root name is the payload class name, agreeing with the parser's root.
 
 ## The three-step consumer pattern
 

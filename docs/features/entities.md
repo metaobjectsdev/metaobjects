@@ -260,7 +260,7 @@ The following conformance fixtures gate this feature's behavior across ports:
 - [`fixtures/conformance/extends-multi-level/`](../../fixtures/conformance/extends-multi-level/) — multi-hop ancestor chain
 - [`fixtures/conformance/extends-abstract-base/`](../../fixtures/conformance/extends-abstract-base/) — `abstract: true` parents are not instantiable
 - [`fixtures/conformance/extends-cross-file/`](../../fixtures/conformance/extends-cross-file/) — deferred resolution across files
-- [`fixtures/conformance/error-extends-nonexistent/`](../../fixtures/conformance/error-extends-nonexistent/) — `ERR_UNKNOWN_EXTENDS` when parent missing
+- [`fixtures/conformance/error-extends-nonexistent/`](../../fixtures/conformance/error-extends-nonexistent/) — `ERR_UNRESOLVED_SUPER` when parent missing
 
 **Identity**
 

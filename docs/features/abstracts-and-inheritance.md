@@ -152,7 +152,7 @@ This means:
   name.
 
 If `extends:` references a name that doesn't resolve, the loader emits
-`ERR_UNKNOWN_EXTENDS` with the unresolved reference and the source location.
+`ERR_UNRESOLVED_SUPER` with the unresolved reference and the source location.
 The fixture
 [`extends-nonexistent`](../../fixtures/conformance/error-extends-nonexistent/)
 covers this.
@@ -387,7 +387,7 @@ inheritance chain.
 - [`extends-abstract-base`](../../fixtures/conformance/extends-abstract-base/) —
   abstract entities aren't instantiable; codegen skips them
 - [`error-extends-nonexistent`](../../fixtures/conformance/error-extends-nonexistent/)
-  — `ERR_UNKNOWN_EXTENDS` when the reference doesn't resolve
+  — `ERR_UNRESOLVED_SUPER` when the reference doesn't resolve
 - [`enum-abstract-extends`](../../fixtures/conformance/enum-abstract-extends/) —
   abstracts on enum fields specifically
 

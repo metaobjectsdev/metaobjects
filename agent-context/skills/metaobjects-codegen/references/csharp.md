@@ -45,12 +45,32 @@ or run the default set. Output lands under `--namespace` in `--output-dir`.
 | `routes` | `<Entity>Routes.cs` — ASP.NET **Minimal API** CRUD per writable entity (`source.rdb @kind="table"`) on the cross-port REST contract (`?filter[field][op]=`, `?sort=field:asc`, `?limit`/`?offset`, `?withCount=1` envelope, 400/404 envelopes). A TPH base emits polymorphic `GET /<base>(+/{id})` + a per-subtype CRUD set at `/<base>/<discriminatorValue lowercased>` (create injects the discriminator, cross-subtype get/update/delete → 404). |
 | `filter-allowlist` | per-entity `<Entity>FilterAllowlist` (FR-009 — the server-side field+operator allowlist the routes validate against). |
 | `callable` | `<Entity>.callable.g.cs` — an FR-015 calling method for a `source.rdb @kind="storedProc"|"tableFunction"`, via EF `FromSqlInterpolated` (args from the `@parameterRef` value object in declaration order). |
-| `output-parser` / `extractor` / `output-prompt` / `render-helper` | the `template.output` prompt-pillar artifacts (strict parser, tolerant `extract`, output-format prompt fragment, typed render helper) — see the **prompts** reference. |
+| `payload` | `<Payload>.payload.cs` — the strict typed payload `record` (+ any nested element records) per `template.output` `@payloadRef` (an `object.value`) that the parser/extractor bind to. |
+| `output-parser` / `extractor` / `output-prompt` / `render-helper` | the `template.output` prompt-pillar artifacts — the strict parser, the tolerant `extract`, the **output-format prompt fragment** (`output-prompt`; presentation via `@promptStyle: guide`/`inline`/`exampleOnly`), and the typed render helper. See the **prompts** reference. |
 | `template` | the generic Mustache `templateGenerator()` primitive. |
 
 Metadata lives under `metaobjects/` (or wherever you point `--metadata-dir`) in the
 same canonical JSON every port reads — fused-key form, `source.rdb` + `@table`,
 `@column` for a renamed physical column.
+
+**Entity read-view (write-through).** An `object.entity` that keeps its writable `table`
+primary source and adds a `@role: replica` `@kind: view` source is a write-through
+read-view (#214): the generated EF entity carries the derived `origin.*` fields read-only
+and `db-context` registers that read model against the replica view (`.ToView(...)`);
+reads route to the view, writes to the table (derived fields excluded), and a
+create/update re-reads the row via the view by primary key (read-your-writes). The replica
+view's DDL is emitted by the Node `meta migrate` from the same origin assembly as a
+projection view.
+
+## Docs — `dotnet meta docs`
+
+```bash
+dotnet meta docs metaobjects --out Docs   # → Docs/api/csharp (AGENT-API.md + per-entity pages)
+```
+
+`dotnet meta docs` emits this project's C# SDK api surface (`api/csharp`), including
+`AGENT-API.md` — the exact imports, signatures, and payload field shapes for the
+generated code. **Before calling any generated code, read `api/csharp/AGENT-API.md`.**
 
 ## Persistence + routes are the deployed artifact
 

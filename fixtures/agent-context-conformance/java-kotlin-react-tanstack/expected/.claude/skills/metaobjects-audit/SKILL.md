@@ -291,9 +291,10 @@ Per finding: `file:line` → what → generated-equivalent exists? → recommend
 5. **Runtime schema patching** (`ALTER TABLE … ADD COLUMN IF NOT EXISTS`, `_ensure_schema()`) — N schema owners.
 6. **N declarations of one shape** — same entity as Drizzle table + Zod schema + Pydantic model + hand dataclass; target is 1 + N generated.
 7. **`own*()` accessor read of an effective property** (ADR-0039) — `ownAttr` / `ownFields` / `own_children` / bare Python `attr(` / `getMetaAttr(name, false)` / native `IsArray` used to read a value or iterate members outside the sanctioned subclass-emit / own-serializer / `@dbColumnType` cases → silently drops `extends`-inherited values. A **correctness defect** (axis G2), not advisory.
-8. **Hand-written `CREATE VIEW` / read-only SQL standing in for a projection (view-necessity test).** Grep migrations, checked-in `.sql`, and repository/query code for `CREATE [OR REPLACE] [MATERIALIZED] VIEW`, and for hand-rolled read-only queries that mirror a read model — a pure-`SELECT` repository/service method with joins or `GROUP BY` feeding a DTO, or a raw-SQL escape (`db.execute(sql…)`, `FromSqlRaw`, a JPA @Query with hand-written SQL). For each, run the **necessity test** — can `object.projection` + origins express this shape? It can when every output column is (a) a base-entity or relationship-joined column → `origin.passthrough` (`@from` / `@via`), (b) a count/sum/avg/min/max over related rows → `origin.aggregate` (`@agg` / `@of` / `@via`, optionally row-scoped with `@filter`), (c) a child collection → `origin.collection` (`@via`), or (d) a column borrowed via `extends` — and the joins follow declared relationships / `identity.reference` FKs.
-   - **Expressible → CODEGEN CANDIDATE (high):** convert to an `object.projection` with a read-only `source.rdb` `@kind: view` child, let `meta migrate` emit the `CREATE VIEW`, and consume the generated read-only query — the hand-written view is a second source of truth for a derivable shape. Flag in the finding that **`meta verify --db` cannot catch this**: an unmodeled DB view is *unmanaged*, so this audit is the only gate that sees it. Parity-gate: the generated view returns row-identical results before the hand-written SQL is deleted.
-   - **Not expressible → BESPOKE (keep), with a NAMED justification:** record the construct that makes it irreducible (recursive CTE, window function / `OVER`, `UNION` / `INTERSECT` / `EXCEPT`, `DISTINCT ON`, lateral join, non-aggregate expression column). "It's an aggregation" is NOT a justification — plain count/sum/avg/min/max rollups are `origin.aggregate`.
+8. **Hand-written `CREATE VIEW` / read-only SQL standing in for a projection or entity read-view (view-necessity test).** Grep migrations, checked-in `.sql`, and repository/query code for `CREATE [OR REPLACE] [MATERIALIZED] VIEW`, and for hand-rolled read-only queries that mirror a read model — a pure-`SELECT` repository/service method with joins or `GROUP BY` feeding a DTO, or a raw-SQL escape (`db.execute(sql…)`, `FromSqlRaw`, a JPA @Query with hand-written SQL). For each, run the **necessity test** — can origins express this shape? A column is derivable when it is (a) a base-entity or relationship-joined column → `origin.passthrough` (`@from` / `@via`), (b) a count/sum/avg/min/max over related rows → `origin.aggregate` (`@agg` / `@of` / `@via`), or an `EXISTS` / `array_agg` → `origin.aggregate` `any` / `all` / `collect` — any of them optionally row-scoped with `@filter`, (c) a child collection → `origin.collection` (`@via`), (d) a computed scalar / **non-aggregate expression column** → `origin.computed` (`@expr`, #195), (e) one related row's column picked by an ordering — an **argmax / `DISTINCT ON … ORDER BY` / correlated `ORDER BY … LIMIT 1`** → `origin.first` (`@of` / `@via` / `@orderBy`, #195), or (f) a column borrowed via `extends` — and the joins follow declared relationships / `identity.reference` FKs.
+   - **Entity-shaped (`SELECT own.* + derived`) → an entity read-view, NOT a projection (#214).** The single most common legacy view is an entity's OWN columns plus a joined/derived extra (`SELECT o.*, c.name AS customer_name`). This is the `Order` **entity with a read route**, not an exposure contract — route it to an **entity read-view**: keep the writable `@role: primary` `@kind: table` source and add a **non-primary `@role: replica` `@kind: view`** source, declaring only the *extra* as a derived `origin.*` field on the entity (the own field set already covers `o.*`). Reads route to the replica view, writes to the table. Reach for a **projection** instead only when the view renames base columns or **row-filters** (`WHERE status='active'`, soft-delete) — the latter is a projection with an object-level `@filter` (#207) that lowers to the outer `WHERE`.
+   - **Exposure contract, expressible → CODEGEN CANDIDATE (high):** a subset / renamed / versioned / multi-base read model → convert to an `object.projection` with a read-only `source.rdb` `@kind: view` child, let `meta migrate` emit the `CREATE VIEW`, and consume the generated read-only query — the hand-written view is a second source of truth for a derivable shape. Parity-gate: the generated view returns row-identical results before the hand-written SQL is deleted.
+   - **Not expressible → carry it in `@sql` or `@unmanaged`, never a hand-edited migration (#208, ADR-0043).** When a NAMED irreducible construct blocks origin authoring — recursive CTE, window function / `OVER`, `UNION` / `INTERSECT` / `EXCEPT`, lateral join — the body still belongs in the metadata: carry the hand-written SQL in the `source.rdb` **`@sql`** escape — a read-only-`@kind` body the tool REGISTERS, fingerprints, and drift-checks (adopt a pre-existing view with `meta migrate --allow adopt-view`); `@sql` forbids `origin.*` children (two sources of truth). A DB object whose DDL is owned **entirely elsewhere** (Flyway / a hand-migration) → mark its source **`@unmanaged: true`** (legal on any `@kind` incl. `table`); `meta migrate` never creates/drops/drift-checks it and `verify --db` reports it as external. `@sql` and `@unmanaged` are mutually exclusive. **Only a view left *undeclared*** — neither modeled, nor `@sql`, nor `@unmanaged` — is truly *unmanaged*, invisible to `meta verify --db`, so this audit is the only gate that sees it. "It's an aggregation" is NOT an irreducibility justification (plain count/sum/avg/min/max rollups are `origin.aggregate`); nor is a `DISTINCT ON` pick-one-row (`origin.first`) or a non-aggregate expression column (`origin.computed`).
 9. **A closed variant-set hand-modeled per instance** — N sibling modules / classes / config blocks, one per channel / provider / target, sharing a payload + config shape and diverging only by transport. Grep for sibling-file families and switch-on-a-string dispatch; verify the set is closed and recurring (never a one-off). → axis I "New-vocabulary OPPORTUNITY" (VOCAB CANDIDATE, advisory).
 
 ---
@@ -313,10 +314,12 @@ Per finding: `file:line` → what → generated-equivalent exists? → recommend
   own + customize / author a template-spec / fix upstream / stopgap.
 - **Verify the DB artifact, not just the types** — computed view columns may appear in the
   contract but be dropped from the view DDL; the contract may lie.
-- **A hand-authored DB view is invisible to `meta verify --db`.** An unmodeled view is
-  *unmanaged* (informational only — never actionable drift, never auto-dropped), so a
-  hand-written view standing in for an expressible `object.projection` can never be
-  outsourced to the drift gate; hunt it here (drift signature 8, below).
+- **An *undeclared* hand-authored DB view is invisible to `meta verify --db`.** A view that is
+  neither modeled nor carried in the `source.rdb` `@sql` / `@unmanaged` escapes is *unmanaged*
+  (informational only — never actionable drift, never auto-dropped), so a hand-written view
+  standing in for an expressible `object.projection` / entity read-view can never be outsourced
+  to the drift gate; hunt it here (drift signature 8, below). Once carried in `@sql` (#208) it IS
+  registered, fingerprinted, and drift-checked — no longer audit-only.
 - **Version skew:** check *actually-resolved* package versions, not declared; consuming a fix
   requires a coordinated lockstep bump, not a source-file copy.
 
@@ -329,8 +332,9 @@ Per finding: `file:line` → what → generated-equivalent exists? → recommend
   `object.value` with `origin.*` (`passthrough` / `aggregate` / `collection`) fields.
 - Silent-degradation hack (`try/except KeyError` or `?? ''` around formatting) — flag every instance.
 - Hand-rolled output parsing (regex / XML / ad-hoc JSON) vs declared `template.output` +
-  generated `parse*` / `safeParse*` / `extract*` parser. **Java hand-writes the Jackson
-  one-liner — do NOT flag it** (§ Calibration).
+  generated `parse*` / `safeParse*` / `extract*` parser — **generated in all five ports**
+  (Java's generated `<Name>Parser` owns the Jackson `readValue`); flag a hand-rolled parser
+  in a **non-generated** file where a `template.output` node exists.
 - Engine-side formatting breaking byte-identical render (prompt-cache exact-prefix hits
   depend on byte-stability).
 - `template.toolcall` candidates: LLM tool schemas hand-defined per call vs modeled
@@ -445,9 +449,18 @@ The audit never edits code. Pattern: **dry-run → review the diff → apply**.
 
 ## Calibration — port gaps & non-defects (do NOT flag these as adopter fault)
 
-- **Filter-operator route codegen** is full only in **TS**; Java/Kotlin/C#/Python generate
-  pagination/sort/`withCount` but defer filter ops — do not flag hand-added filter handling.
-- **Output-parser codegen** ships TS/C#/Python/Kotlin; **Java hand-writes the Jackson parse** — not a defect.
+- **Filter-operator route codegen — the CORE grammar ships in all five ports.** The
+  `?filter[field][op]=value` grammar (all 9 operators `eq/ne/gt/gte/lt/lte/in/like/isNull`,
+  implicit-AND across params, the generated `<Entity>FilterAllowlist` + `invalid-field` /
+  `invalid-op` / `in`-over-cap 400s) is **generated in every port** (Java `SpringControllerGenerator`,
+  C# `RoutesGenerator`, Python `router_generator`, Kotlin `KotlinSpringControllerGenerator`, TS) —
+  gated by the api-contract corpus in BOTH lanes. **Flag hand-rolled filter parsing anywhere.**
+  Only the *richer* surface is genuinely **TS-only**: free-text `?search=`, the explicit
+  `filter[or][N]` / `filter[and][N]` nested boolean combinators (+ their nesting-depth cap), and
+  leading-wildcard gating — do NOT flag the absence of those in a non-TS port.
+- **Output-parser codegen** ships in **all five ports** — Java's `SpringOutputParserGenerator`
+  *generates* the `<Name>Parser` (the Jackson `readValue` lives inside that generated file). A
+  hand-rolled parser in a **non-generated** file where a `template.output` node exists IS a finding.
 - **Python** still hand-wires the FastAPI router + repository impl around a generated
   `APIRouter`; relationship / non-`table` source-kind / `field.object flattened` codegen is partial.
 - **C#** has no ObjectManager runtime tier (EF Core is the runtime) — hand services over the generated `DbContext` are expected.

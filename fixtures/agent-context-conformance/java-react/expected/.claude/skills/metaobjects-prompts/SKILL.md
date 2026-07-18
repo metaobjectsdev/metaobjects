@@ -21,17 +21,34 @@ value-object declaring exactly what data the text expects.
 
 | Subtype | Use | Extra attrs |
 |---|---|---|
-| `template.prompt` | LLM-targeted | `@maxTokens`, `@requiredSlots`, `@model` |
-| `template.output` | email / docs / config / export | (generic only) |
+| `template.prompt` | LLM-targeted | `@maxTokens`, `@requiredSlots`, `@requiredTags`, `@model`, `@responseRef` |
+| `template.output` | email / docs / config / export | `@kind: document \| email` (default `document`), `@promptStyle`, `@requiredTags`; `@kind: email` adds `@subjectRef` / `@htmlBodyRef` / `@textBodyRef` |
 
 Both carry the generic attrs:
 
 | Attr | Required | Purpose |
 |---|---|---|
 | `@payloadRef` | yes | the `object.value` declaring the payload shape |
-| `@textRef` | yes | the 2-layer logical text reference `group/source`, resolved by a provider |
+| `@textRef` | yes for `template.prompt` and a `template.output @kind: document` (the default) — a `template.output @kind: email` carries **no** `@textRef`; it uses `@subjectRef` + `@htmlBodyRef` (+ optional `@textBodyRef`) instead | the 2-layer logical text reference `group/source`, resolved by a provider |
 | `@format` | no | `text` (default) / `html` / `xml` / `csv` / `json` / `markdown` / `spreadsheet` — drives the escaper |
 | `@maxChars` | no | build-time size budget |
+
+`template.output @kind: email` renders a structured `EmailDocument` (subject + HTML
+body + optional plain-text body) instead of one string — the TS render helper emits
+an `EmailDocument`-returning function for it (see the `render-example-email`
+conformance fixture). `@promptStyle` (`guide` / `inline` / `exampleOnly`, FR-010)
+selects how the output-format prompt fragment presents the payload shape to an LLM
+(see "the output-format prompt fragment" below); `@requiredTags` names output tags
+the rendered text must contain (`verify` checks it) on both subtypes.
+`template.prompt` additionally carries `@responseRef` — naming the response
+value-object the prompt expects, for typed LLM-call trace derivation.
+
+A third, structurally different subtype is also registered core vocabulary:
+**`template.toolcall`** (`@toolName` + `@payloadRef`, ADR-0011) — a vendor-agnostic
+LLM tool-call envelope with no renderable text body (the body IS the
+`@payloadRef`-typed output schema, so it does not carry the generic `@textRef`/
+`@format` attrs above). The vocabulary exists today; MCP exposure of declared
+prompts/tools is roadmap, not shipped — don't promise it.
 
 ## The payload is an `object.value` projection
 
@@ -43,6 +60,13 @@ an `origin.*` child saying where its value comes from. Three origin subtypes:
 | `origin.passthrough @from "Entity.field"` | payload property matches the source field |
 | `origin.aggregate @agg <count\|sum\|avg\|min\|max>` | `count`→long, `avg`→double, others match source |
 | `origin.collection @via "Parent.rel"` | a list of a nested payload, assembled from a relationship |
+
+These are the **payload-assembly** origins — the vocabulary this skill covers.
+**Projection** read models (`object.projection` over an entity) carry a fuller origin
+vocabulary — the `@agg` predicate quantifiers `any`/`all`, the `collect` array rollup,
+plus `origin.computed` (a closed `@expr` grammar) and `origin.first` (an argmax-style
+pick) — those live in the `metaobjects-authoring` skill and
+`docs/features/source-kinds.md`, not here: don't reach for them on a payload VO.
 
 Declaring the payload as a projection is what makes payload bloat visible: adding a
 field to the prompt is a diff on the `object.value`, and a renamed source field
@@ -184,6 +208,43 @@ file; `verify` catches payload-VO ↔ parser drift at build time too.
 The three-step consumer pattern is identical everywhere: render the prompt → call
 your LLM client → parse the response with the generated parser.
 
+## `template.output` also generates the output-format prompt fragment (FR-010)
+
+For every **json/xml-format** `template.output` whose `@payloadRef` resolves to a
+value-object, codegen additionally emits an `output-prompt` artifact: a
+`render<Name>Format(...)`-shaped function backed by the render engine's
+output-format renderer — the "produce your answer like this" instruction fragment
+you splice into the prompt text so the model returns exactly the shape the parser
+above expects. It's generated only for `json`/`xml` outputs (`text`/`html`/`csv`/
+`markdown`/`spreadsheet` don't get a fragment) and skipped under the same
+unresolved-`@payloadRef` rule as the parser; the fragment and the parser's
+`extract()` codegen agree on the same root name.
+
+`@promptStyle` on the `template.output` controls the fragment's presentation
+(default `guide`):
+
+| `@promptStyle` | Presentation |
+|---|---|
+| `guide` (default) | a prose field list ("Fill in each field…") followed by an example skeleton |
+| `inline` | a single skeleton whose field values are inline placeholders / enum choices |
+| `exampleOnly` | just a filled example skeleton, nothing else |
+
+Guidance is **never** emitted as code comments — models routinely ignore comments,
+so the instruction has to live in the rendered text itself.
+
+The fragment is **baked directly from the payload's field tree at codegen time**
+(not hand-authored Mustache text), so it cannot itself drift out of sync with the
+payload the way a hand-written `@textRef` can — regenerating it after a payload
+change is the gate. The JVM render module (Java, shared by Kotlin) additionally
+exposes a field-presence check, `Verify.checkOutputPrompt(fragment,
+requiredFieldNames)`, for asserting a *rendered instance* of the fragment actually
+names every required field — useful in a test of the renderer output itself,
+distinct from the `{{field}}`-vs-payload drift check `verify` runs on hand-authored
+template text. Check the language reference for whether this project's port ships
+the equivalent.
+
 ---
 
-For this project's server-language parser specifics, read every `references/*.md` file in this skill's directory (one per server language in this project's stack).
+For this project's server-language parser + output-format-fragment specifics, read
+every `references/*.md` file in this skill's directory (one per server language in
+this project's stack).

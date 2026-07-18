@@ -98,10 +98,13 @@ another) matters.
   generated router are typed `dict[str, Any]` and responses return `Any`. Tightening
   to the typed Pydantic model is a hand-edit the adopter may choose — do NOT flag
   the `Any` as an adopter fault.
-- **Filter-operator route codegen deferred.** The generated `APIRouter` supports
-  `?sort`, `?limit`/`?offset`, and `?withCount=1` envelope but defers filter-operator
-  validation (`?filter[field][op]=value`). Do NOT flag hand-added Python filter
-  handling as an adopter defect.
+- **Core filter-operator codegen ships in Python — do NOT treat it as deferred.** The `routes`
+  generator emits an `APIRouter` whose list route parses the `?filter[field][op]=value` grammar
+  (all 9 operators `eq/ne/gt/gte/lt/lte/in/like/isNull`) via the generated `filter_parser` module,
+  validated against the generated filter allowlist (api-contract corpus, both lanes). **Flag a
+  hand-rolled filter parser as a finding.** Only the richer surface (`?search=`,
+  `filter[or][N]` / `filter[and][N]` combinators, leading-wildcard gating) is TS-only — do NOT
+  flag its absence in Python.
 - **Partial relationship + flattened-object codegen.** Relationship navigation,
   non-`table` source kinds, and `field.object @storage: flattened` codegen are
   partially implemented in the Python port. Do NOT flag these gaps as adopter defects.

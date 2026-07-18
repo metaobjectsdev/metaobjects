@@ -8,6 +8,7 @@ provider/LLM-call layer; you compose the call yourself.
 ## Contents
 - Wire the generator
 - What it emits
+- The output-format prompt fragment (FR-010)
 - The three-step consumer pattern
 - Recommended LLM caller (bring-your-own)
 - Drift gate
@@ -52,6 +53,28 @@ rather than a throw. The payload record itself comes from `SpringPayloadGenerato
 — the parser is a companion to it, so the parser and payload VO can't silently
 drift.
 
+## The output-format prompt fragment (FR-010)
+
+For every json/xml-format `template.output`, `codegen-spring`'s
+`SpringOutputPromptGenerator` emits a `<TemplateShortName>OutputPrompt` class with a
+static `renderFormat()` / `renderFormat(PromptOverrides)` pair, backed by
+`OutputFormatRenderer` from the `metaobjects-render` module — the "produce your
+answer like this" fragment for the model. Wire it alongside
+`SpringOutputParserGenerator` in the Maven plugin's `<generators>` list:
+
+```xml
+<generator>
+  <classname>com.metaobjects.generator.spring.SpringOutputPromptGenerator</classname>
+  <args><outputDir>${project.build.directory}/generated-sources/java</outputDir></args>
+</generator>
+```
+
+`@promptStyle` on the `template.output` (`guide` default / `inline` / `exampleOnly`)
+controls the fragment's presentation; guidance is never emitted as comments. Skipped
+for `template.prompt` nodes, non-json/xml `@format`, and unresolved `@payloadRef` —
+the same skip contract as the parser generator. The `SPEC`'s root name is the
+capitalized payload class name, agreeing with the parser's extract-codegen root.
+
 ## The three-step consumer pattern
 
 Render the prompt → call your LLM client (provider-agnostic; nothing is generated
@@ -87,9 +110,15 @@ NpcResponsePayload npc = NpcResponseParser.parse(response);   // the generated p
 Non-Spring JVM apps: **LangChain4j** (`ChatLanguageModel.generate(prompt)`) is the
 equivalent one-call seam.
 
-> The typed-trace recorder + render→call→record convenience loop ship in TypeScript
-> today; the JVM port is planned (ADR-0024). Until then the call is your code and the
-> generated parser is the typed receive side.
+> The typed-trace **recorder** has shipped on this port too — `LlmTraceHelperGenerator`
+> emits a `record<Entity>(...)` helper (per concrete entity extending `LlmCallBase`
+> with a `@responseRef`-carrying `template.prompt`) that extracts the typed response,
+> builds the base trace row, and persists it via the OMDB `LlmCallRecorder` seam. What's
+> still TS-only is the **`call<Entity>` render→call→record convenience loop** — Java
+> intentionally does not emit it, because the `LlmClient` seam it wraps is BYO /
+> vendor-neutral here (ADR-0024). So you compose render → your LLM call → the
+> generated `record<Entity>(...)` yourself; the parser above is the standalone
+> receive side if you don't even want the recorder.
 
 ## Drift gate
 

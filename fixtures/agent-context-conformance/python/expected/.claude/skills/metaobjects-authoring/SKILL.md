@@ -198,18 +198,23 @@ name   package   extends   abstract   overlay   isArray   children   value
 | `field.string` | text | `@maxLength` drives `varchar(N)` |
 | `field.int` | 32-bit integer | |
 | `field.long` | 64-bit integer | |
-| `field.double` | float | |
+| `field.double` | double float | approximate; not for money |
+| `field.float` | single-precision float | native double/number (TS has no distinct float); DB `REAL`; not for money |
 | `field.boolean` | true/false | |
 | `field.date` | calendar date | ISO 8601 `YYYY-MM-DD` on the wire |
+| `field.time` | time-of-day | no calendar date; DB `TIME` |
 | `field.timestamp` | instant (tz-aware) | ISO 8601 with timezone on the wire; `@localTime: true` for a naive wall-clock value |
 | `field.decimal` | exact decimal | `@precision` / `@scale`; lossless money/quantity |
 | `field.currency` | integer minor units | see Currency below |
 | `field.enum` | string member | `@values` required; see Enum below |
 | `field.uuid` | UUID | canonical lowercase hex on the wire |
 | `field.object` | embedded value object | `@objectRef` + `@storage`; see below |
+| `field.map` | open-keyed map | one jsonb column; string keys; `@valueType` (scalar subtype) XOR `@objectRef` (value object); `isArray` does not apply |
 
 Common field attributes: `@required`, `@maxLength`, `@column` (physical column
-name), `@default`, `@filterable`, `@sortable`.
+name), `@default`, `@filterable`, `@sortable`. On temporal fields
+(`field.date`/`field.time`/`field.timestamp`) `@autoSet` stamps the value
+automatically — see the `@autoSet` callout under Timestamps below.
 
 ### Choosing the right shape — the general decision procedure (ADR-0037)
 
@@ -277,7 +282,7 @@ Canonical form for common field needs — reach for these before inventing anyth
 | IDs / unique keys / **any UUID column** | `field.uuid` | native UUID type. **NEVER `field.string` + `@dbColumnType: uuid`** — see the smell callout below |
 | Money | `field.currency` | integer minor units; never a float |
 | Closed set of symbols | `field.enum` | `@values` required |
-| Instant / event time (created/updated) | `field.timestamp` | instant / tz-aware by default (Postgres `timestamptz`; native `Instant`/`DateTimeOffset`/aware `datetime`) |
+| Instant / event time (created/updated) | `field.timestamp` + `@autoSet` | instant / tz-aware by default (Postgres `timestamptz`; native `Instant`/`DateTimeOffset`/aware `datetime`); `@autoSet: onCreate` for `createdAt`, `@autoSet: onUpdate` for `updatedAt` — never hand-stamp |
 | Naive wall-clock value (store-open time, birthday-with-time) | `field.timestamp` + `@localTime: true` | `timestamp without time zone` — opt out of zone-awareness only for a genuine wall-clock value |
 | A list of anything | `isArray: true` | on the base subtype (e.g. `field.string` + `isArray`) — there is **no** array `@dbColumnType` (retired) |
 | Long / unbounded text | bare `field.string` | add `@maxLength` only when you want `varchar(N)` |
@@ -320,6 +325,20 @@ lives in `field.timestamp` (instant by default) + the `@localTime` naive opt-out
 ```json
 { "field.timestamp": { "name": "createdAt", "@required": true } }
 { "field.timestamp": { "name": "opensAt", "@localTime": true } }
+```
+
+**`@autoSet` — let the runtime stamp created/updated times; never hand-set them.**
+`@autoSet` is registered on the temporal subtypes (`field.date` / `field.time` /
+`field.timestamp`) and takes **`onCreate`** (stamp on insert) or **`onUpdate`**
+(stamp on every write). This is the model-first way to express audit timestamps —
+declare it and the generated write path stamps the column, so you never hand-write
+`createdAt = now()` in application code (the exact hand-stamping anti-pattern). A
+`@required` field carrying `@autoSet: onCreate` is correctly *optional* on POST (the
+server supplies it).
+
+```json
+{ "field.timestamp": { "name": "createdAt", "@autoSet": "onCreate", "@required": true } }
+{ "field.timestamp": { "name": "updatedAt", "@autoSet": "onUpdate" } }
 ```
 
 **String-shaped natives & validated strings (ADR-0036 Wave 3).** A URL/URI is its own
@@ -539,30 +558,72 @@ at the same level as fields and identities.
 
 ## Relationships
 
-`relationship.composition` is the "this entity owns / aggregates instances of
-that entity" side; `identity.reference` (above) is the FK-column side. They are
-the two halves of one FK.
+A `relationship.*` child is the navigation / ownership side of a link to another
+entity; `identity.reference` (above) is the FK-column side. They are the two halves
+of one FK. **Choose the subtype by ownership semantics — it decides the default
+referential action**, so modeling every FK as `composition` silently arms unintended
+`CASCADE` deletes:
 
-| Attr | On | Values |
-|---|---|---|
-| `@objectRef` | composition | target entity name |
-| `@cardinality` | composition | `one` / `many` |
-| `@onDelete` / `@onUpdate` | `relationship.*` only | `cascade` / `set-null` / `restrict` / `no-action` |
+| Subtype | Ownership | Default `@onDelete` | Use when |
+|---|---|---|---|
+| `relationship.composition` | owns the target's lifecycle | `cascade` | children are owned and deleted with the parent |
+| `relationship.aggregation` | groups, does NOT own | `set-null` | children outlive the parent; delete nulls the FK |
+| `relationship.association` | plain reference, no ownership | `restrict` | you just point at an independent entity |
+
+Common attrs (on any subtype): `@objectRef` (target entity name / FQN),
+`@cardinality` (`one` / `many`), and `@onDelete` / `@onUpdate`
+(`cascade` / `set-null` / `restrict` / `no-action`). `@onDelete` defaults **per
+subtype** as in the table; `@onUpdate` defaults to `cascade` on every subtype.
 
 ```json
-{ "relationship.composition": {
-    "name": "posts", "@objectRef": "Post",
-    "@cardinality": "many", "@onDelete": "cascade" } }
+{ "relationship.composition": { "name": "posts",   "@objectRef": "Post", "@cardinality": "many" } }
+{ "relationship.aggregation": { "name": "members", "@objectRef": "User", "@cardinality": "many" } }
+{ "relationship.association": { "name": "author",  "@objectRef": "User", "@cardinality": "one" } }
 ```
 
-**Adoption footgun — pin BOTH actions.** `@onDelete` and `@onUpdate` each default to
-`cascade` when omitted, but a plain SQL foreign key is `NO ACTION` on both. If you're
-adopting an existing database (matching metadata to a live schema), omitting these
-makes the metadata declare `CASCADE` where the DB has `NO ACTION` — a perpetual
-`verify --db` drift. Pin **both** explicitly to the DB's real behavior:
+**Many-to-many (FR-018) — `@through` a junction entity.** Model an M:N link with
+`@cardinality: "many"` + `@objectRef` (the target) + **`@through`** (the junction
+entity). The junction MUST declare **two `identity.reference` children**, one per FK
+side; the relationship's FK fields are **derived** from those references — never
+restated. Two optional attrs handle self-joins:
+
+- `@sourceRefField` — names the source-side FK field on the junction, disambiguating a
+  **directed** self-join (e.g. `follows`, where both references point at `User`).
+- `@symmetric: true` — marks an **undirected** self-join (union-on-read). Valid only
+  when `@objectRef` is the declaring entity itself, and **mutually exclusive** with
+  `@sourceRefField`.
+
+(Any relationship subtype carries the M:N attrs; the conformance fixtures author them
+on `relationship.association`.)
 
 ```json
-{ "relationship.composition": { "name": "author", "@objectRef": "User",
+{ "relationship.association": {
+    "name": "tags", "@cardinality": "many",
+    "@objectRef": "Tag", "@through": "PostTag" } }
+```
+
+The `PostTag` junction supplies the FK direction via its two references:
+
+```json
+{ "object.entity": { "name": "PostTag", "children": [
+    { "field.long": { "name": "id" } },
+    { "field.long": { "name": "postId" } },
+    { "field.long": { "name": "tagId" } },
+    { "identity.primary":   { "name": "id", "@fields": "id" } },
+    { "identity.reference": { "name": "postRef", "@fields": "postId", "@references": "Post" } },
+    { "identity.reference": { "name": "tagRef",  "@fields": "tagId",  "@references": "Tag" } }
+] } }
+```
+
+**Adoption footgun — pin BOTH actions.** `@onDelete` defaults *per subtype* (above)
+and `@onUpdate` defaults to `cascade` — but a plain SQL foreign key is `NO ACTION` on
+both. If you're adopting an existing database (matching metadata to a live schema),
+leaving these implicit makes the metadata declare a referential action the DB doesn't
+have — a perpetual `verify --db` drift. Pin **both** explicitly to the DB's real
+behavior:
+
+```json
+{ "relationship.association": { "name": "author", "@objectRef": "User",
     "@cardinality": "one", "@onDelete": "no-action", "@onUpdate": "no-action" } }
 ```
 
@@ -601,13 +662,17 @@ These are children of `object.entity`, alongside its fields and identities.
 | `storedProc` | yes | – |
 | `tableFunction` | yes | – |
 
-The physical name is `@table` (NOT `@name`). The physical column name on a field
-is `@column`. `@schema` namespaces the DB schema (Postgres default `public`;
-SQLite rejects non-default values). Multi-source: multiple `source.rdb` children,
-each with a `@role`, exactly one `primary`.
+The physical name attr is **kind-matched** — never `@name`: `@table` for a table,
+`@view` for a view, `@materializedView`, `@proc` (storedProc), `@function`
+(tableFunction). (`@table` on a non-table kind is a pre-1.0 legacy spelling the
+canonical serializer rewrites to the kind's alias; author the kind-matched attr
+directly.) The physical column name on a field is `@column`. `@schema` namespaces
+the DB schema (Postgres default `public`; SQLite rejects non-default values).
+Multi-source: multiple `source.rdb` children, each with a `@role`, exactly one
+`primary`.
 
 ```json
-{ "source.rdb": { "@kind": "view", "@table": "v_author", "@schema": "blog" } }
+{ "source.rdb": { "@kind": "view", "@view": "v_author", "@schema": "blog" } }
 ```
 
 **An entity's PRIMARY source must be writable** (`table`) — read-only kinds are
@@ -615,18 +680,83 @@ legal only in non-primary roles (e.g. table `primary` + view `replica` for
 read-through). A derived read model over a view/proc is an **`object.projection`**
 (FR-024): its fields `extends` entity fields (`extends: "Author.id"` — dotted
 child traversal, package only on the root segment) and/or carry `origin.*`
-children (`passthrough` / `aggregate` / `collection`) declaring assembly; its
-identity passes through via `extends` (`identity.primary: { name: id, extends:
-"Author.id" }`); it is read-only by construction and the declared field set IS
-the exposure (fail-closed). Give it a read-only `source.rdb` `@kind: view`
-child (`source.rdb: { kind: view, table: v_author }`) — codegen keys projection
-detection + view DDL off that read-only source, so without it `meta gen` emits
-nothing for the projection. **The `CREATE VIEW` body is generated from those
-`origin.*` children by the Node `meta migrate` — never hand-author view SQL for a
-shape origins can express** (an unmodeled view is *unmanaged*, so `meta verify --db`
-can't even catch the drift). Hand-write a view only when a construct origins can't
-express (recursive CTE, window function, set operation) blocks projection authoring,
-and keep that DDL in a hand-edited migration file.
+children (`passthrough` / `aggregate` / `collection` / `computed` / `first`)
+declaring assembly; its identity passes through via `extends` (`identity.primary:
+{ name: id, extends: "Author.id" }`); it is read-only by construction and the
+declared field set IS the exposure (fail-closed). Give it a read-only `source.rdb`
+`@kind: view` child (`source.rdb: { kind: view, view: v_author }`) — codegen keys
+projection detection + view DDL off that read-only source, so without it `meta gen`
+emits nothing for the projection.
+
+**Origin vocabulary (#195).** `origin.aggregate @agg` takes `count`/`sum`/`avg`/`min`/`max`
+(numeric reduces over `@of`), `any`/`all` (predicate quantifiers over a `@filter`; `@of`
+forbidden; empty set → `any=false`, `all=true`), and `collect` (an array rollup of `@of`
+into an `isArray` field, with optional `@distinct` / `@orderBy`). Any aggregate may be
+row-scoped with `@filter`. `origin.computed` carries a closed structured `@expr` tree (a
+derived scalar). `origin.first` picks one related row's column (`@of`) along `@via`,
+ordered by a **required `@orderBy`** (`["field:asc|desc", …]`, with the PK as tie-break) —
+the ordering is what makes `origin.first` express "latest / earliest X"; it may be
+row-scoped with `@filter` and is nullable. A field carrying any `origin.*` is derived ⇒
+read-only.
+
+`@expr` and `@filter` are **structured objects, not SQL strings** — guessing a string
+body fails the load:
+
+- **`@expr`** (on `origin.computed`) is a closed operation tree; a string body is a load
+  error (`ERR_BAD_ATTR_VALUE`):
+  ```json
+  { "origin.computed": { "@expr": { "op": "isNotNull", "arg": { "field": "payloadJson" } } } }
+  ```
+- **`@filter`** (on `origin.aggregate` / `origin.first`, and object-level on a projection)
+  is an `attr.filter` object — a field→predicate map. A bare value is `eq` shorthand; an
+  operator map spells the op:
+  ```json
+  { "origin.aggregate": { "@agg": "any", "@via": "Session.turns", "@filter": { "success": false } } }
+  { "@filter": { "status": { "ne": "archived" } } }
+  ```
+
+**Projection row-scope `@filter` (#207).** An object-level `@filter` on `object.projection`
+(the same `attr.filter` object shown above) scopes the WHOLE view's rows — it lowers to
+the view's outer `WHERE`. This is the metadata-managed way to author a soft-delete /
+status / type view without hand-writing SQL. It may reference **only declared,
+non-aggregate-derived** projection fields: naming an undeclared field fails the load
+(`ERR_BAD_ATTR_FILTER`), and so does naming a field whose value comes from an
+`origin.aggregate`.
+
+```json
+{ "object.projection": { "name": "ActiveOrders",
+    "@filter": { "status": { "ne": "archived" } }, "children": [ … ] } }
+```
+
+**The `CREATE VIEW` body is generated from those `origin.*` children by the Node
+`meta migrate` — never hand-author view SQL for a shape origins can express** (an unmodeled
+view is *unmanaged*, so `meta verify --db` can't even catch the drift). For a genuinely
+irreducible body (recursive CTE, window function, set operation) that origins can't express,
+carry it in the `source.rdb` **`@sql`** escape (#208, ADR-0043) — a hand-written body the
+tool registers, fingerprints, and drift-checks (adopt a pre-existing view with
+`meta migrate --allow adopt-view`) — rather than a hand-edited migration file where it goes
+accidentally unmanaged. For a DB object owned entirely elsewhere (Flyway), mark its source
+**`@unmanaged: true`** (view or table); migrate/verify then never touch it.
+
+**`@sql` fail-closed rules — an `@sql` body is a *second* source of truth, so the loader
+walls it off (#208).** Author an `@sql` source under these constraints or the load fails:
+
+- `@sql` is legal **only on a read-only `@kind`** (view / materializedView / storedProc /
+  tableFunction) — never on a writable `@kind: table` (`ERR_SQL_BODY_ON_WRITABLE_KIND`).
+- **No `origin.*`-bearing field may live under an `@sql` host** — the body already *is*
+  the derivation, so an origin alongside it is a double-declaration
+  (`ERR_ORIGIN_UNDER_SQL_BODY`). If you add an `@sql` body to a projection, **move its
+  derived fields out** (into plain declared fields the body computes) rather than keeping
+  their `origin.*` children.
+- The object-level `@filter` (#207) is **mutually exclusive with `@sql`** (same error) —
+  fold the predicate into the `@sql` body's own `WHERE`.
+- `@sql` and `@unmanaged` are **mutually exclusive** (`ERR_SQL_BODY_WITH_UNMANAGED`); an
+  empty/whitespace `@sql` is rejected (`ERR_BAD_ATTR_VALUE`).
+- Under **`@unmanaged`**, an `origin.*`-bearing field only **warns** (the marker acts on
+  nothing, so a documented-but-unacted-on lineage is benign) — the asymmetry with `@sql`
+  is deliberate.
+- Today `meta migrate` **lowers `@sql` only on `@kind: view`**; on matview / storedProc /
+  tableFunction it is registered but not yet migrate-managed (mark those `@unmanaged`).
 
 **A `passthrough` field must match its `@from` source's type.** A passthrough
 forwards the source value unchanged, so the projection field's `field.<subType>`
@@ -668,10 +798,12 @@ Resolution facts:
 
 - **Deferred.** `extends:` resolves *after all files load* — abstracts can live in
   any file, forward references are fine.
-- **Multi-level chains flatten** (`Author extends BaseEntity extends Auditable`).
+- **Multi-level chains resolve through the whole chain** (`Author extends BaseEntity
+  extends Auditable`) — each `extends` is a super-*reference*, so resolution walks the
+  full chain (it does not flatten inherited members onto the child; see ADR-0039 below).
 - **Cross-package** refs use the fully-qualified name (`extends: "shared::auditable"`);
   same-package refs use the bare name.
-- An unresolved reference fails with `ERR_UNKNOWN_EXTENDS`.
+- An unresolved reference fails with `ERR_UNRESOLVED_SUPER`.
 
 `abstract` and `extends` are **structural keys** (bare, no `@`).
 
