@@ -403,6 +403,96 @@ describe("view lifecycle — real Postgres", () => {
     expect((rows.rows as { title: string }[]).map((r) => r.title)).toEqual(["Keep", "Keep2"]);
   });
 
+  // #195 — the four projection read-model origin kinds (predicateAgg any/all,
+  // collectAgg, computed, first) VALUE-probed on a real engine. The DDL-text tests
+  // (codegen-ts view-ddl-emit.test.ts) pin the emitted COALESCE defaults but never
+  // EXECUTE them; this runs the emitted view against real PG and asserts the
+  // converged values — in particular the empty-related-set pins that only a real
+  // engine can prove: any=false / all=true / collect=[] / first=null over zero rows.
+  test("#195 VALUE PROBE: any/all/collect/computed/first converge on real PG, incl. empty-set pins", async () => {
+    const m = JSON.stringify({ "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Program", children: [
+        { "source.rdb": { "@table": "programs" } },
+        { "field.long": { name: "id" } },
+        { "field.string": { name: "status", "@required": true } },
+        { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+        { "relationship.aggregation": { name: "weeks", "@cardinality": "many", "@objectRef": "Week" } },
+      ] } },
+      { "object.entity": { name: "Week", children: [
+        { "source.rdb": { "@table": "weeks" } },
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "programId", "@required": true } },
+        { "field.string": { name: "label", "@required": true } },
+        { "field.int": { name: "durationMinutes", "@required": true } },
+        { "field.timestamp": { name: "createdAt", "@required": true } },
+        { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+        { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
+      ] } },
+      { "object.projection": { name: "ProgramSummary", children: [
+        { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
+        { "identity.primary": { name: "id", extends: "Program.id", "@fields": "id" } },
+        { "field.long": { name: "id", extends: "Program.id", children: [
+          { "origin.passthrough": { "@from": "Program.id" } } ] } },
+        // predicateAgg — any/all over weeks whose durationMinutes > 60.
+        { "field.boolean": { name: "anyLongWeek", children: [
+          { "origin.aggregate": { "@agg": "any", "@via": "Program.weeks", "@filter": { durationMinutes: { gt: 60 } } } } ] } },
+        { "field.boolean": { name: "allLongWeeks", children: [
+          { "origin.aggregate": { "@agg": "all", "@via": "Program.weeks", "@filter": { durationMinutes: { gt: 60 } } } } ] } },
+        // collectAgg — the week labels as a native array, ordered for determinism.
+        { "field.string": { name: "weekLabels", isArray: true, children: [
+          { "origin.aggregate": { "@agg": "collect", "@of": "Week.label", "@via": "Program.weeks", "@orderBy": ["label:asc"] } } ] } },
+        // first — the most-recent week's label (null over an empty related set).
+        { "field.string": { name: "latestWeekLabel", children: [
+          { "origin.first": { "@of": "Week.label", "@via": "Program.weeks", "@orderBy": ["createdAt:desc"] } } ] } },
+        // computed — a base-row expression (no related rows involved).
+        { "field.boolean": { name: "isPublished", children: [
+          { "origin.computed": { "@expr": { op: "eq", left: { field: "status" }, right: { value: "PUBLISHED" } } } } ] } },
+      ] } },
+    ]}});
+    const { expected, up } = await migrate(m);
+    expect(up).toContain(`CREATE VIEW "v_program_summary" AS`);
+    // The empty-set COALESCE defaults are present in the emitted body...
+    expect(up).toMatch(/COALESCE\(bool_or\([^)]*\) FILTER \(WHERE [^)]*\), FALSE\) AS "anyLongWeek"/);
+    expect(up).toMatch(/COALESCE\(bool_and\([^)]*\) FILTER \(WHERE [^)]*\), TRUE\) AS "allLongWeeks"/);
+    expect(up).toMatch(/COALESCE\(array_agg\([^)]*\) FILTER \(WHERE [^)]*\), '\{\}'\) AS "weekLabels"/);
+    // THE gate: the view (aggregates + correlated-subquery + computed) round-trips.
+    await assertConverged(expected);
+
+    // Seed a POPULATED program and an EMPTY one (zero weeks).
+    await sql.raw(`INSERT INTO "programs" ("id","status") VALUES (1,'PUBLISHED'),(2,'DRAFT')`).execute(k);
+    await sql.raw(
+      `INSERT INTO "weeks" ("id","programId","label","durationMinutes","createdAt") VALUES
+         (1, 1, 'A', 30, '2026-01-01T00:00:00Z'),
+         (2, 1, 'B', 90, '2026-02-01T00:00:00Z')`,
+    ).execute(k);
+
+    const rows = await sql.raw(
+      `SELECT "id","anyLongWeek","allLongWeeks","weekLabels","latestWeekLabel","isPublished"
+         FROM "v_program_summary" ORDER BY "id"`,
+    ).execute(k);
+    type Row = {
+      id: string; anyLongWeek: boolean; allLongWeeks: boolean;
+      weekLabels: string[]; latestWeekLabel: string | null; isPublished: boolean;
+    };
+    const byId = new Map((rows.rows as Row[]).map((r) => [String(r.id), r]));
+
+    // Populated program (id 1): one 30-min + one 90-min week.
+    const full = byId.get("1")!;
+    expect(full.anyLongWeek).toBe(true);        // 90 > 60
+    expect(full.allLongWeeks).toBe(false);      // 30 is NOT > 60
+    expect(full.weekLabels).toEqual(["A", "B"]); // native PG array, ordered by label
+    expect(full.latestWeekLabel).toBe("B");     // most recent by createdAt
+    expect(full.isPublished).toBe(true);        // status = 'PUBLISHED'
+
+    // Empty program (id 2): ZERO weeks — the empty-set pins.
+    const empty = byId.get("2")!;
+    expect(empty.anyLongWeek).toBe(false);      // any over ∅ = false
+    expect(empty.allLongWeeks).toBe(true);      // all over ∅ = true (vacuous)
+    expect(empty.weekLabels).toEqual([]);       // collect over ∅ = [] (NOT null)
+    expect(empty.latestWeekLabel).toBeNull();   // first over ∅ = null
+    expect(empty.isPublished).toBe(false);      // status = 'DRAFT'
+  });
+
   // -------------------------------------------------------------------------
   // Non-destructive replace — the part that protects downstream applications.
   // -------------------------------------------------------------------------
