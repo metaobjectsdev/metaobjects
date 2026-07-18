@@ -7,6 +7,15 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### #208 — DDL-ownership escape valves (`@sql` body + `@unmanaged` marker)
+
+Two mutually-exclusive `source.rdb` attributes express *who owns a DB object's DDL* — the escape from "a projection's view is always synthesized from its `origin.*` children" (ADR-0043):
+
+- **`@sql`** — a hand-written view body the tool **registers, fingerprints, and drift-checks but never authors or parses**. The value is the body inside `CREATE <kind> <name> AS …`. It lets a genuinely-irreducible view (recursive CTE, window function, set operation) carry an `extends`-bound identity/fields for row identity and shape *without* the tool mis-synthesizing a wrong base-table passthrough `SELECT` — the **suppression rule** classifies DDL-ownership *before* the derivation decision, closing a silent-wrong-synthesis hole. The `@sql` view rides the existing emit/fingerprint pipeline; a pre-existing unstamped view at its name is `replace-view`-blocked pending the one-time **`meta migrate --allow adopt-view`** adoption ceremony. `@sql` on a writable kind, combined with `@unmanaged`, empty, or combined with `origin.*`/`@filter` is a load error. v1 migrate lowering is `@kind: view` only (matview/proc → an actionable hard error).
+- **`@unmanaged: true`** — this DB object (a view **or a table**) is managed elsewhere (Flyway / a hand-migration owns its DDL). `meta migrate` never creates, drops, or drift-checks it (excluded from both the expected and the introspected-actual sides across the online, offline, D1, and `verify` paths); `meta verify --db` reports it as *external (declared)*. An inbound FK from a managed table still resolves the external table's physical name.
+
+**Registration + the six fail-closed loader-validation rules (R1–R6) ship in all five ports** (TS / C# / Java / Kotlin / Python), resolving `MetaSource` accessors following the `@role`/`effectiveKind` precedent (ADR-0039), conformance-gated by shared `fixtures/conformance/` error-fixtures — every port emits the same code per rule (`ERR_SQL_BODY_WITH_UNMANAGED` / `ERR_SQL_BODY_ON_WRITABLE_KIND` / `ERR_BAD_ATTR_VALUE` / `ERR_ORIGIN_UNDER_SQL_BODY` / `WARN_ORIGIN_UNDER_UNMANAGED`). All migrate/verify **lowering is TS-only** (ADR-0015). An `xhigh` review before merge caught a real offline-`migrate` DROP-for-external-table bug (the offline `planOffline` path did not thread the unmanaged-name set), fixed + regression-tested. Deferred follow-ups: `@dependsOn` for `@sql` views, the matview managed path, and opaque-body column-name verification. Designed in `docs/superpowers/specs/2026-07-17-issue-208-ddl-ownership-escape-valves-design.md`.
+
 ### #214 — entity read-view codegen READ half (all five ports)
 
 Completes the read side of the FR-024 §7 entity read-view (#213 shipped the write/schema half — the write table excludes derived `origin.*` fields and the replica view is emitted + migrate-converged). A **write-through entity** (a writable `table` source + a read-only replica `view` source + derived fields) now generates a hybrid read/write surface in TypeScript:

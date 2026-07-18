@@ -129,8 +129,10 @@ A non-unique recency index is `index.lookup`:
 
 The `@where` / `@using` / `@expr` / `@orders` attributes are **index** physical
 escapes on `identity.secondary` / `index.lookup` — they are NOT a raw-SQL escape
-hatch for views. There is no attribute that injects hand-written SQL into a
-projection view body (by design — see below).
+hatch for views. For a genuinely-irreducible view body, use the `source.rdb`
+**`@sql`** escape (a tool-managed, opaque hand-written body — see the
+"DDL-ownership escape valves" section below); for a DB object owned entirely by
+Flyway / a hand-migration, use **`@unmanaged`**.
 
 ## Projection views (generated view DDL)
 
@@ -151,10 +153,55 @@ canonical view-SQL emitter shared with drift detection.
   `metaobjects-audit` skill, not here.
 
 **Do not hand-author view SQL for a shape origins can express** — model it as a
-projection so the view DDL is generated and drift-checked. The only case for
-hand-written view DDL is a genuinely irreducible view (recursive CTE, window
-function, set operation) that origins can't express; carry that in a hand-edited
-migration file.
+projection so the view DDL is generated and drift-checked. For a genuinely
+irreducible view (recursive CTE, window function, set operation) that origins
+can't express, use the `@sql` escape below rather than a hand-edited migration
+file — that keeps the view tool-managed (emitted, fingerprinted, drift-checked)
+instead of accidentally unmanaged.
+
+## DDL-ownership escape valves (`@sql` / `@unmanaged`) — #208
+
+Two mutually-exclusive `source.rdb` attributes express *who owns a DB object's
+DDL* (ADR-0043). They are the escape from "a projection's view is always
+synthesized from its `origin.*` children."
+
+**`@sql`** — a hand-written view body the tool **registers, fingerprints, and
+drift-checks but never authors or parses**. The value is the body *inside*
+`CREATE VIEW <name> AS …` (not the `CREATE` wrapper, not the name). Legal only on
+a read-only kind; v1 migrate lowers it on `@kind: view` only (matview/proc → a
+hard error, deferred). Authored sigil-free in YAML as a block scalar:
+
+```yaml
+object.projection:
+  name: OrgTree
+  children:
+    - source.rdb: { kind: view, view: v_org_tree, sql: |
+        WITH RECURSIVE t AS (
+          SELECT id, parent_id FROM org WHERE parent_id IS NULL
+          UNION ALL SELECT o.id, o.parent_id FROM org o JOIN t ON o.parent_id = t.id)
+        SELECT * FROM t }
+    - field.long: { name: id, extends: Org.id }
+    - identity.primary: { extends: Org.pk }
+```
+
+The `extends`-bound identity/fields declare the read model's shape and row
+identity *without* triggering wrong synthesis (the suppression rule). The view is
+emitted verbatim with a fingerprint COMMENT stamp; a second `meta migrate` is a
+no-op. **Adopting a pre-existing hand-written view** at that name: the first diff
+reports `replace-view` **blocked** (an unstamped view is indistinguishable from
+someone else's SQL) — run **`meta migrate --allow adopt-view`** once to stamp it,
+then it converges. `@sql` **forbids** `origin.*` children and a `@filter` on the
+same host (two sources of truth → load error).
+
+**`@unmanaged: true`** — this DB object (a view **or a table**) is managed
+elsewhere (Flyway / a hand-migration owns its DDL). `meta migrate` never creates,
+drops, or drift-checks it; `meta verify --db` reports it as *external (declared)*.
+Legal on any `@kind`, including `table` (the Flyway-owned-entity case). An FK from
+a managed table into an `@unmanaged` table resolves its physical name, but the
+external object must exist before that FK is applied (a documented ordering caveat,
+not enforced).
+
+`@sql` and `@unmanaged` are **mutually exclusive** on one source.
 
 ## Adopting an existing database (non-destructive)
 

@@ -183,6 +183,21 @@ closes the loop on the doctrine in
 sitting where a projection expects one is now **visible to `meta verify --db`** as drift,
 instead of being silently invisible to it.
 
+**Genuinely-irreducible views and externally-owned objects (`@sql` / `@unmanaged`, #208).**
+Some read models cannot be expressed as `origin.*` (a recursive CTE, a window function, a
+set operation). Rather than hand-write such a view *outside* the tool — where it degrades
+to accidentally-unmanaged — carry its body in a `source.rdb` **`@sql`** attribute. The tool
+registers, fingerprints, and drift-checks that verbatim body (never parsing it) exactly like
+a synthesized view: it emits `CREATE VIEW … AS <your body>` with a fingerprint stamp, a
+second migrate is a no-op, and a pre-existing hand-written view at that name is adopted via
+the same `--allow adopt-view` step above. An `@sql` view may carry an `extends`-bound
+`identity.primary` / fields (for row identity and read-model shape) without the tool
+mis-synthesizing a body. For a DB object whose DDL is owned entirely elsewhere (Flyway, a
+hand-migration) — a view **or a table** — mark its source **`@unmanaged: true`**: `meta
+migrate` never creates, drops, or drift-checks it, and `meta verify --db` reports it as
+*external (declared)*. The two are mutually exclusive. See
+[ADR-0043](../../spec/decisions/ADR-0043-ddl-ownership-escape-valves.md).
+
 ## Verified by
 
 The following conformance fixtures gate this feature's behavior across ports:
