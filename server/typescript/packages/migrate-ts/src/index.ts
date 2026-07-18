@@ -11,6 +11,7 @@
 export { buildExpectedSchema } from "./expected-schema.js";
 export { introspect, introspectPostgres, introspectSqlite } from "./introspect/index.js";
 export { diff } from "./diff/index.js";
+export { collectUnmanagedNames } from "./unmanaged.js";
 export { computeDrift, type ComputeDriftOptions } from "./drift/drift.js";
 export { classifyDrift, driftAgainstSnapshot } from "./drift/classify.js";
 export type { DriftClassification } from "./drift/classify.js";

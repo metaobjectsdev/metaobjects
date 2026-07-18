@@ -128,6 +128,12 @@ export function buildExpectedSchema(
   //   - projections (read-only @kind source with no writable peer — handled by
   //     the view-diff pipeline, not the table diff)
   const entities: { entity: MetaObject; tableName: string }[] = [];
+  // #208 §7 — entities whose physical name must still resolve for FK TARGETING even
+  // though we emit NO TableDescriptor for them: an @unmanaged table (Flyway/hand-
+  // migration owns its DDL). An FK from a managed table INTO a Flyway-owned table is
+  // legal and needs the target's physical name; only the table's own create/alter/drop
+  // is suppressed (migration ORDERING vs the external tool is a documented adopter caveat).
+  const fkTargetOnly: { entity: MetaObject; tableName: string }[] = [];
   // ADR-0039: effective children — resolve rather than rely on root being unextended.
   for (const child of root.children()) {
     if (child.type !== TYPE_OBJECT) continue;
@@ -145,9 +151,21 @@ export function buildExpectedSchema(
     );
     // Projection: read-only and not write-through.
     if (hasReadOnlySource && !hasWritableSource) continue;
-    entities.push({ entity: child as MetaObject, tableName: resolveTableName(child) });
+    const tableName = resolveTableName(child);
+    // #208 §7 — an @unmanaged writable (table) source: emit no descriptor, but keep the
+    // entity in entityToTable so an inbound FK resolves the physical name.
+    const writableSource = child.children().find(
+      (c): c is MetaSource => c instanceof MetaSource && c.isWritable(),
+    );
+    if (writableSource?.isUnmanaged) {
+      fkTargetOnly.push({ entity: child as MetaObject, tableName });
+      continue;
+    }
+    entities.push({ entity: child as MetaObject, tableName });
   }
-  const entityToTable = new Map(entities.map((e) => [e.entity.name, e.tableName]));
+  const entityToTable = new Map(
+    [...entities, ...fkTargetOnly].map((e) => [e.entity.name, e.tableName]),
+  );
   // A reference's targetEntity is package-qualified by the loader (e.g.
   // "acme::a::Foo"), but entityToTable is keyed by the bare entity name ("Foo").
   // Fall back to the bare suffix so cross-package FK targets resolve.

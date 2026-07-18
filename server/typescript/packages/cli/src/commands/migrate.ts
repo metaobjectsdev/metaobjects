@@ -16,6 +16,7 @@ import {
   buildExpectedSchema,
   introspect,
   diff,
+  collectUnmanagedNames,
   emit,
   writeMigration,
   baselineFromMetadata,
@@ -324,6 +325,9 @@ export async function migrateCommand(
         actual,
         dialect: kysely.dialect,
         allow: tokensToAllowOptions(config.allow),
+        // #208 §7 — declared-@unmanaged objects are external: exclude them from the
+        // actual side so migrate proposes neither create nor drop for them.
+        unmanagedNames: collectUnmanagedNames(metadata),
         onAmbiguous: async (a) => {
           collectedAmbiguous.push(a);
           return onAmbiguousResolution;
@@ -831,6 +835,8 @@ async function runD1Migrate(
       // @constraintName models churning and enum @values changes silent on D1.
       dialect: "d1",
       allow: tokensToAllowOptions(config.allow),
+      // #208 §7 — declared-@unmanaged objects are external (see the online path above).
+      unmanagedNames: collectUnmanagedNames(metadata),
       onAmbiguous: async (a) => {
         collectedAmbiguous.push(a);
         return onAmbiguousResolution;

@@ -22,7 +22,7 @@
 
 import { describe, test, expect, beforeAll, afterAll, beforeEach } from "bun:test";
 import {
-  buildExpectedSchema, diff, emit, introspectPostgres,
+  buildExpectedSchema, diff, emit, introspectPostgres, collectUnmanagedNames,
   type AllowOptions, type SchemaSnapshot,
 } from "@metaobjectsdev/migrate-ts";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
@@ -100,6 +100,48 @@ function metaSql(): string {
   }`;
 }
 
+// #208 @unmanaged — Flyway / a hand-migration owns the DB object's DDL. meta migrate
+// must never create, drop, or drift-check it.
+function metaUnmanagedView(): string {
+  return `{
+    "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Program", "children": [
+        { "field.long":   { "name": "id" } },
+        { "field.string": { "name": "title", "@required": true } },
+        { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+      ] } },
+      { "object.projection": { "name": "ExtPrograms", "children": [
+        { "source.rdb": { "@kind": "view", "@view": "v_ext_programs", "@unmanaged": true } },
+        { "identity.primary": { "name": "id", "extends": "Program.id", "@fields": "id" } },
+        { "field.long":   { "name": "id",    "extends": "Program.id" } },
+        { "field.string": { "name": "title", "extends": "Program.title" } }
+      ] } }
+    ] }
+  }`;
+}
+
+// An @unmanaged TABLE (the Flyway-owned-entity case) with a MANAGED table holding an FK
+// into it — exercises the entityToTable retention (the FK must resolve the external
+// table's physical name even though we emit no descriptor for it).
+function metaUnmanagedTable(): string {
+  return `{
+    "metadata.root": { "package": "acme", "children": [
+      { "object.entity": { "name": "Legacy", "children": [
+        { "source.rdb": { "@table": "legacy_accounts", "@unmanaged": true } },
+        { "field.long": { "name": "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+      ] } },
+      { "object.entity": { "name": "Order", "children": [
+        { "source.rdb": { "@table": "orders" } },
+        { "field.long": { "name": "id" } },
+        { "field.long": { "name": "legacyId", "@required": true } },
+        { "identity.primary":   { "name": "id", "@fields": "id", "@generation": "increment" } },
+        { "identity.reference": { "name": "ref_legacy", "@fields": "legacyId", "@references": "Legacy" } }
+      ] } }
+    ] }
+  }`;
+}
+
 let pg: RunningPg;
 let k: Kysely<Record<string, unknown>>;
 
@@ -153,21 +195,28 @@ async function expectedFor(metaJson: string): Promise<SchemaSnapshot> {
   });
 }
 
-/** The full production pipeline: build → introspect → diff → emit → apply. */
+/** The full production pipeline: build → introspect → diff → emit → apply. The CLI
+ *  threads collectUnmanagedNames into the diff (#208 §7); mirror that here so an
+ *  @unmanaged object is excluded from the act side. */
 async function migrate(metaJson: string, allow: AllowOptions = {}) {
-  const expected = await expectedFor(metaJson);
-  const result = await diff({ expected, actual: await introspectPostgres(k), dialect: "postgres", allow });
+  const root = (await new MetaDataLoader().load([new InMemoryStringSource(metaJson)])).root;
+  const expected = buildExpectedSchema(root, {
+    columnNamingStrategy: "literal",
+    views: buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "literal" }),
+  });
+  const unmanagedNames = collectUnmanagedNames(root);
+  const result = await diff({ expected, actual: await introspectPostgres(k), dialect: "postgres", allow, unmanagedNames });
   const emittable = result.changes.filter((c) => c.status.state !== "blocked");
   const { up, down } = emittable.length === 0
     ? { up: "", down: "" }
     : emit(emittable, { dialect: "postgres" });
   if (result.blocked.length === 0 && up.trim().length > 0) await applyRaw(up);
-  return { expected, result, up, down };
+  return { expected, unmanagedNames, result, up, down };
 }
 
 /** THE gate: a second `meta migrate` against the just-migrated DB must be a no-op. */
-async function assertConverged(expected: SchemaSnapshot, allow: AllowOptions = {}): Promise<void> {
-  const followup = await diff({ expected, actual: await introspectPostgres(k), dialect: "postgres", allow });
+async function assertConverged(expected: SchemaSnapshot, allow: AllowOptions = {}, unmanagedNames: string[] = []): Promise<void> {
+  const followup = await diff({ expected, actual: await introspectPostgres(k), dialect: "postgres", allow, unmanagedNames });
   if (followup.changes.length > 0) {
     console.error("NOT CONVERGED — a second `meta migrate` would emit:");
     for (const c of followup.changes) console.error("  -", c.kind, JSON.stringify(c).slice(0, 200));
@@ -535,5 +584,54 @@ describe("view lifecycle — real Postgres", () => {
     const { expected: exp2 } = await migrate(m, { adoptView: true });
     expect(await viewComment("v_active_programs")).toMatch(/^metaobjects:v1:sha256:[0-9a-f]{64}$/);
     await assertConverged(exp2);
+  });
+
+  // -------------------------------------------------------------------------
+  // #208 — @unmanaged: someone else (Flyway / a hand-migration) owns the DDL.
+  // -------------------------------------------------------------------------
+
+  test("#208 @unmanaged VIEW: never created; a pre-existing hand view at the name is left ALONE", async () => {
+    const m = metaUnmanagedView();
+
+    // First migrate builds the base table but NOT the @unmanaged view.
+    const first = await migrate(m);
+    expect(first.up).toContain(`CREATE TABLE "programs"`);
+    expect(first.up).not.toContain("v_ext_programs");
+    expect(await relationExists("v_ext_programs")).toBe(false);
+
+    // Flyway creates the view out-of-band.
+    await sql.raw(`CREATE VIEW "v_ext_programs" AS SELECT id, title FROM programs`).execute(k);
+
+    // A second migrate is SILENT for it: declared-external → neither create-view nor
+    // drop-view (contrast a genuinely unmodeled view, which would surface as a drop).
+    const second = await migrate(m);
+    expect(second.result.changes.filter((c) => c.kind === "create-view" || c.kind === "drop-view")).toEqual([]);
+    expect(await relationExists("v_ext_programs")).toBe(true);
+    await assertConverged(second.expected, {}, second.unmanagedNames);
+  });
+
+  test("#208 @unmanaged TABLE: an inbound FK resolves the external name; migrate never creates or drops it", async () => {
+    // Flyway owns legacy_accounts.
+    await sql.raw(`CREATE TABLE "legacy_accounts" ("id" bigint PRIMARY KEY)`).execute(k);
+
+    const { up, result, unmanagedNames, expected } = await migrate(metaUnmanagedTable());
+
+    // The managed table is created with an FK TARGETING the external table's physical
+    // name (entityToTable retention) — but the external table is neither created...
+    expect(up).toContain(`CREATE TABLE "orders"`);
+    expect(up).toContain("legacy_accounts"); // FK target resolved
+    expect(up).not.toMatch(/CREATE TABLE "legacy_accounts"/);
+    // ...nor dropped.
+    expect(result.changes.some((c) => c.kind === "drop-table" && c.table === "legacy_accounts")).toBe(false);
+    expect(await relationExists("legacy_accounts")).toBe(true);
+
+    // The FK is real: an order referencing an existing legacy row inserts; an orphan fails.
+    await sql.raw(`INSERT INTO "legacy_accounts" ("id") VALUES (1)`).execute(k);
+    await sql.raw(`INSERT INTO "orders" ("id","legacyId") VALUES (1, 1)`).execute(k);
+    await expect(
+      sql.raw(`INSERT INTO "orders" ("id","legacyId") VALUES (2, 999)`).execute(k),
+    ).rejects.toThrow();
+
+    await assertConverged(expected, {}, unmanagedNames);
   });
 });

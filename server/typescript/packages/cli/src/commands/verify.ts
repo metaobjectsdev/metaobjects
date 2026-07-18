@@ -20,7 +20,7 @@ import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { buildKyselyFromUrl, type Dialect } from "../lib/kysely.js";
 import { tokensToAllowOptions, describeChange } from "../lib/allow.js";
-import { computeDrift, type Change } from "@metaobjectsdev/migrate-ts";
+import { computeDrift, collectUnmanagedNames, type Change } from "@metaobjectsdev/migrate-ts";
 import { loadMemory } from "@metaobjectsdev/sdk";
 import {
   TYPE_TEMPLATE,
@@ -310,6 +310,16 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
       // drift here. Until Unit 3 ships the ledger, this MUST no-op — do not query
       // a table that doesn't exist. `reconcileLedger` returns no extra drift today.
       const ledgerDrift = await reconcileLedger();
+
+      // #208 §8 — make declared-external objects visible: they are excluded from the
+      // drift comparison (computeDrift threads them out), so annotate them as external
+      // (declared) rather than let them vanish silently.
+      const externalDeclared = collectUnmanagedNames(root);
+      if (externalDeclared.length > 0) {
+        log.info(
+          `meta verify — ${externalDeclared.length} object(s) external (declared @unmanaged, managed elsewhere): ${externalDeclared.join(", ")}`,
+        );
+      }
 
       const changes = driftResult.changes;
       if (changes.length === 0 && ledgerDrift.length === 0) {

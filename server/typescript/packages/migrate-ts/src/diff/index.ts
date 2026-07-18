@@ -45,6 +45,16 @@ export interface DiffArgs {
    * (nothing to manage → prior whole-DB behavior is preserved).
    */
   scopeSchemas?: string[];
+  /**
+   * Qualified physical names (`schema.name`, schema defaulting to Postgres `public`)
+   * of DB objects declared `@unmanaged` (#208 §7). Excluded from the ACTUAL side of the
+   * diff, so a declared-external table/view is never proposed for drop — silence, not a
+   * policy-gated drop. They are already absent from `expected` (skipped in
+   * buildExpectedSchema Pass 1 / buildProjectionViews), so no create is proposed either.
+   * Net: the tool leaves a declared-external object entirely alone. Compute via
+   * `collectUnmanagedNames`; the format matches `tableIdentity`/`viewIdentity`.
+   */
+  unmanagedNames?: string[];
   /** Dialect; CHECK-constraint evolution on existing tables is emitted for postgres only. */
   dialect?: Dialect;
 }
@@ -137,6 +147,11 @@ export async function diff(
   const inScope = (schema: string | undefined): boolean =>
     scopeSchemas === null || scopeSchemas.has(schema ?? DEFAULT_DB_SCHEMA_POSTGRES);
 
+  // #208 §7 — declared-@unmanaged qualified names. Excluded from the ACTUAL side only:
+  // an @unmanaged object is already absent from `expected`, so dropping it from actual
+  // too means the diff never proposes create OR drop for it — silence, not a gated drop.
+  const unmanaged = new Set(args.unmanagedNames ?? []);
+
   // Key tables on (schema, name) identity — same table name in different schemas
   // are distinct entities. tableIdentity normalizes undefined → "public".
   const expectedTables = new Map(
@@ -146,7 +161,12 @@ export async function diff(
   );
   const actualTables = new Map(
     args.actual.tables
-      .filter((t) => !shouldIgnoreTable(t.name, ignorePatterns) && inScope(t.schema))
+      .filter(
+        (t) =>
+          !shouldIgnoreTable(t.name, ignorePatterns) &&
+          inScope(t.schema) &&
+          !unmanaged.has(tableIdentity(t)),
+      )
       .map((t) => [tableIdentity(t), t] as const),
   );
 
@@ -209,7 +229,11 @@ export async function diff(
   // Pass 2b: views. Identity is (schema, name). How "changed" is decided is
   // DIALECT-DEPENDENT — see diffViews.
   const expectedViewsInScope = args.expected.views.filter((v) => inScope(v.schema));
-  const actualViewsInScope = args.actual.views.filter((v) => inScope(v.schema));
+  // #208 §7 — a declared-@unmanaged view is dropped from the actual side so it produces
+  // no drop-view (it's absent from expected, so no create-view either): full silence.
+  const actualViewsInScope = args.actual.views.filter(
+    (v) => inScope(v.schema) && !unmanaged.has(viewIdentity(v)),
+  );
   diffViews(expectedViewsInScope, actualViewsInScope, changes, args.dialect);
 
   // Pass 2c: a column-altering change to a table a view reads forces the view to be

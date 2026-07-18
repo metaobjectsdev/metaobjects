@@ -14,6 +14,7 @@ import type { ColumnNamingStrategy } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../expected-schema.js";
 import { introspect } from "../introspect/index.js";
 import { diff } from "../diff/index.js";
+import { collectUnmanagedNames } from "../unmanaged.js";
 import type { AllowOptions, Dialect, DiffResult } from "../types.js";
 
 export interface ComputeDriftOptions {
@@ -68,6 +69,9 @@ export async function computeDrift(
     actual,
     dialect,
     allow: opts?.allow ?? {},
+    // #208 §7 — a declared-@unmanaged object is external, so it is not drift: exclude it
+    // from the actual side (same as `meta migrate`) rather than surface a false drop-*.
+    unmanagedNames: collectUnmanagedNames(metadata),
     ...(opts?.ignoreTables !== undefined ? { ignoreTables: opts.ignoreTables } : {}),
   });
 }
