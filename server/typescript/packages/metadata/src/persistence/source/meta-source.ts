@@ -15,6 +15,8 @@ import {
   SOURCE_ATTR_FUNCTION,
   SOURCE_ATTR_KIND,
   SOURCE_ATTR_ROLE,
+  SOURCE_ATTR_SQL,
+  SOURCE_ATTR_UNMANAGED,
   SOURCE_READ_ONLY_KINDS,
   DEFAULT_SOURCE_KIND,
   DEFAULT_SOURCE_ROLE,
@@ -57,6 +59,27 @@ export class MetaSource extends MetaData {
     // ADR-0039: resolving — an inherited source's @role lives on the super node.
     const v = this.attr(SOURCE_ATTR_ROLE);
     return typeof v === "string" && v !== "" ? v : DEFAULT_SOURCE_ROLE;
+  }
+
+  /**
+   * FR-024/#208 — the hand-written SQL body for this source's DB object, when
+   * declared via `@sql`. The tool registers + fingerprints + drift-checks this
+   * body but never authors or parses it.
+   */
+  get sqlBody(): string | undefined {
+    // ADR-0039: resolving — an inherited source's @sql lives on the super node.
+    const v = this.attr(SOURCE_ATTR_SQL);
+    return typeof v === "string" && v !== "" ? v : undefined;
+  }
+
+  /**
+   * FR-024/#208 — true when this source's DB object is managed elsewhere
+   * (Flyway / a hand-migration owns its DDL); `meta migrate` does not
+   * create/drop/drift-check it.
+   */
+  get isUnmanaged(): boolean {
+    // ADR-0039: resolving — an inherited source's @unmanaged lives on the super node.
+    return this.attr(SOURCE_ATTR_UNMANAGED) === true;
   }
 
   /**
