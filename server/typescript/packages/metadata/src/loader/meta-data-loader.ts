@@ -21,6 +21,7 @@ import { parseJson } from "../parser-json.js";
 import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateIndexLookupFields, validateProjectionFilter } from "./validation-passes.js";
 import { runRegisteredValidation } from "./validation-registry.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
+import { validateSourceEscapes } from "../persistence/source/validate-source-escapes.js";
 import { validateSourcePhysicalNames } from "../persistence/source/validate-source-physical-names.js";
 import { validateSourceParameterRef } from "../persistence/source/validate-source-parameter-ref.js";
 import { validateFieldReadOnly } from "../core/field/validate-field-readonly.js";
@@ -634,6 +635,13 @@ export class MetaDataLoader {
       // exactly one must carry role "primary" (ERR_SOURCE_NO_PRIMARY /
       // ERR_SOURCE_MULTIPLE_PRIMARY).
       errors.push(...validateSourceRoles(root));
+
+      // #208 — DDL-ownership escape valves: source.rdb @sql / @unmanaged
+      // fail-closed rules (ERR_SQL_BODY_WITH_UNMANAGED / ERR_SQL_BODY_ON_WRITABLE_KIND /
+      // ERR_BAD_ATTR_VALUE / ERR_ORIGIN_UNDER_SQL_BODY / WARN_ORIGIN_UNDER_UNMANAGED).
+      const sourceEscapeResult = validateSourceEscapes(root);
+      errors.push(...sourceEscapeResult.errors);
+      envelopeWarnings.push(...sourceEscapeResult.warnings);
 
       // FR-016 / ADR-0018 — per-kind physical-name alias validation on
       // source.rdb (kind-matching alias, no multiples, legacy @table warning).

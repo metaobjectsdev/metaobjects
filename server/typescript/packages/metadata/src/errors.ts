@@ -178,6 +178,19 @@ export const ERROR_CODES = [
   // #195 — origin.computed @expr contains a node whose kind/op/fn is not in the
   // closed expression grammar (ADR-0023 fail-closed). Detail names the bad token.
   "ERR_UNKNOWN_EXPR_NODE",
+  // #208 — a source.rdb declares BOTH @sql (author-supplied body) and
+  // @unmanaged (DDL owned elsewhere). The two markers are the mutually
+  // exclusive non-default states of one "who owns this DDL" axis.
+  "ERR_SQL_BODY_WITH_UNMANAGED",
+  // #208 — a source.rdb declares @sql with a writable @kind ("table", the
+  // default). A hand-written CREATE TABLE would bypass the column-diff
+  // machinery; tables are fully modeled or @unmanaged, never opaque-bodied.
+  "ERR_SQL_BODY_ON_WRITABLE_KIND",
+  // #208 — a host object whose read source carries @sql also declares an
+  // origin.*-bearing (derived) field, or (on object.projection) an @filter —
+  // two sources of truth for the same body (the synthesized derivation/WHERE
+  // vs. the author's verbatim SQL). Fail-closed.
+  "ERR_ORIGIN_UNDER_SQL_BODY",
   "ERR_UNKNOWN",
 ] as const;
 
@@ -197,6 +210,13 @@ export const WARNING_CODES = [
   // implication does not apply to value-objects; the attr is retained for
   // language-specific record/struct treatment (e.g. Kotlin `val` vs `var`).
   "WARN_READONLY_VALUE_OBJECT",
+  // #208 — a host object whose source carries @unmanaged also declares an
+  // origin.*-bearing (derived) field. Deliberate asymmetry with
+  // ERR_ORIGIN_UNDER_SQL_BODY: @unmanaged acts on nothing (the tool never
+  // touches the object's DDL), so a documented-but-unacted-on lineage is
+  // benign — a WARN preserves the matview symmetry and lets an author
+  // document lineage for future in-process evaluation (#211).
+  "WARN_ORIGIN_UNDER_UNMANAGED",
 ] as const;
 export type WarningCode = (typeof WARNING_CODES)[number];
 
