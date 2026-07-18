@@ -7,6 +7,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.17.1] — 2026-07-18
+
+npm-only **patch** (`0.17.0` → `0.17.1`; PyPI / NuGet / Maven Central unchanged — a TypeScript-only fix). Fixes a real correctness bug in the generated REST surface for **write-through entities** (FR-024 §7 / #214): a write-through entity (writable table + `@role:replica @kind:view` replica + a derived `origin.passthrough` field) had its generated routes read/write only the base table, so `GET` / `POST` HTTP responses OMITTED the derived field. The #214 read-half had shipped in the query layer + the replica view, but the routes layer was left mounting vanilla table CRUD — and no write-through routes test existed, so nothing caught it.
+
+### Fixed
+
+- **`runtime-ts` `mountCrudRoutes` — write-through read-routing.** A new optional `readView` routes the list/get reads AND the post-write re-read on create/update through the replica view, so read-your-writes returns the derived (`origin.passthrough`) columns the base table excludes (#213); writes still target the base table. Absent → byte-identical behaviour for vanilla / TPH entities (no regression).
+- **`codegen-ts` `renderRoutesFile` — pass `readView` for write-through entities.** The generated `<Entity>.routes.ts` now imports the entity file's `.existing()` replica-view const and passes it as `readView` to `mountCrudRoutes`. `reference/routes.ts` (scaffold-and-own) delegates to `renderRoutesFile`, so it inherits the fix.
+
+Gated by a new cross-port `fixtures/api-contract-conformance/write-through/` corpus (POST create returns the derived field, GET reads it through the replica view) running on **TS / C# / Kotlin** — the ports whose generated artifact re-reads through the view — plus `runtime-ts` (`mount-write-through`) + `codegen-ts` (`routes-file`) unit tests.
+
 ## [0.17.0] — 2026-07-18
 
 Coordinated additive **minor** across all four registries: **npm `0.17.0`** · **PyPI `0.17.0`** · **NuGet `0.17.0`** · **Maven Central `7.9.0`** (Java/Kotlin). Bundles the accumulated projection/view + read-model + prompt work below, plus a full documentation + agent-context skills refresh (the seven `meta init` skills were accuracy-passed and Fable-reviewed, closing a class of stale-vocabulary and calibration defects; the runtime-ui skill gained its missing Python + C# language references). No breaking changes.
