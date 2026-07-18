@@ -1,0 +1,53 @@
+{
+  "metadata.root": {
+    "package": "acme::commerce",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            { "source.rdb": { "@table": "orders" } },
+            { "field.long": { "name": "id" } },
+            { "relationship.association": { "name": "items", "@objectRef": "acme::commerce::Item", "@cardinality": "many" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Item",
+          "children": [
+            { "source.rdb": { "@table": "items" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "category" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "OrderSummary",
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_order_summary" } },
+            { "field.long": { "name": "id", "extends": "acme::commerce::Order.id" } },
+            {
+              "field.string": {
+                "name": "categories",
+                "children": [
+                  {
+                    "origin.aggregate": {
+                      "@agg": "collect",
+                      "@of": "acme::commerce::Item.category",
+                      "@via": "acme::commerce::Order.items"
+                    }
+                  }
+                ]
+              }
+            },
+            { "identity.primary": { "name": "id", "extends": "acme::commerce::Order.id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

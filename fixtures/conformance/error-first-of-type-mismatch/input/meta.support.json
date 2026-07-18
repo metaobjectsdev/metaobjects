@@ -1,0 +1,56 @@
+{
+  "metadata.root": {
+    "package": "acme::support",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Ticket",
+          "children": [
+            { "source.rdb": { "@table": "tickets" } },
+            { "field.long": { "name": "id" } },
+            { "relationship.association": { "name": "comments", "@objectRef": "acme::support::Comment", "@cardinality": "many" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Comment",
+          "children": [
+            { "source.rdb": { "@table": "comments" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "body" } },
+            { "field.boolean": { "name": "isPublic" } },
+            { "field.timestamp": { "name": "createdAt" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "TicketSummary",
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_ticket_summary" } },
+            { "field.long": { "name": "id", "extends": "acme::support::Ticket.id" } },
+            {
+              "field.long": {
+                "name": "latestCommentBody",
+                "children": [
+                  {
+                    "origin.first": {
+                      "@of": "acme::support::Comment.body",
+                      "@via": "acme::support::Ticket.comments",
+                      "@orderBy": ["createdAt:desc"],
+                      "@filter": { "isPublic": true }
+                    }
+                  }
+                ]
+              }
+            },
+            { "identity.primary": { "name": "id", "extends": "acme::support::Ticket.id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

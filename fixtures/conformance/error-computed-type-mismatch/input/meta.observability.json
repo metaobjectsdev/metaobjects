@@ -1,0 +1,40 @@
+{
+  "metadata.root": {
+    "package": "acme::observability",
+    "children": [
+      {
+        "object.entity": {
+          "name": "LlmCall",
+          "children": [
+            { "source.rdb": { "@table": "llm_calls" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "payloadJson" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "LlmCallSummary",
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_llm_call_summary" } },
+            { "field.long": { "name": "id", "extends": "acme::observability::LlmCall.id" } },
+            {
+              "field.string": {
+                "name": "hasPayload",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": { "op": "isNotNull", "arg": { "field": "payloadJson" } }
+                    }
+                  }
+                ]
+              }
+            },
+            { "identity.primary": { "name": "id", "extends": "acme::observability::LlmCall.id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

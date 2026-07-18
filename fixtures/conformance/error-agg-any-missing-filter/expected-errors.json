@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_INVALID_ORIGIN",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.sessions.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[2]['object.projection'].children[2]['field.boolean'].children[0]['origin.aggregate']"
+      }
+    }
+  ],
+  "warnings": []
+}
