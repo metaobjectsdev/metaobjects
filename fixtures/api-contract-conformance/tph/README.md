@@ -88,3 +88,26 @@ The runtime persistence half (single-table insert/find/update semantics, decimal
 normalization, no-cross-subtype-update) is pinned by the `persistence-conformance`
 `tph-*` query scenarios. A port can land routes-only or runtime-only first, so the
 two corpora gate independently.
+
+## Lane coverage — TPH is generated-lane-only on the seam ports (ACCEPTED design)
+
+The base / m2m / jsonb api-contract corpora run **both** lanes (hand-rolled
+reference server + generated artifact) on all five ports. **TPH deliberately does
+NOT**: it runs both lanes on **TS and C#** (`api-contract-tph.test.ts`,
+`TphReferenceServer.cs`) — the full-stack ports whose generated output includes
+persistence, so a hand-rolled reference server is a genuinely independent
+implementation worth cross-checking — but the **generated lane ONLY** on the seam
+ports **Java / Kotlin / Python** (`TphGeneratedApiContractConformanceTest` /
+`test_api_contract_tph_generated.py`; no hand-rolled reference TPH server).
+
+This asymmetry is intentional, not a coverage gap. Those three ports generate only
+the **controller/router** behind a consumer-supplied persistence seam, so the
+generated lane already boots the EMITTED polymorphic controller over HTTP — the
+artifact under test. A hand-rolled reference TPH server for a seam port would
+merely re-implement the discriminator routing + per-subtype filtering the
+generated controller already provides, yielding no independent contract signal
+beyond what the generated lane verifies. (For the base/m2m/jsonb corpora the seam
+ports DO keep a reference lane because its single-entity / traversal semantics are
+distinct enough from the generated code to be worth pinning independently.) The
+polymorphic-CRUD contract itself is still gated byte-identically across all five
+ports; only the redundant second lane is dropped where it would add nothing.

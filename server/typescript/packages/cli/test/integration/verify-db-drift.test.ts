@@ -129,4 +129,52 @@ describe("meta verify --db — schema-drift gate", () => {
       rmSync(repo, { recursive: true, force: true });
     }
   });
+
+  // #208 — an @unmanaged DB object (Flyway / a hand-migration owns its DDL) must be
+  // INVISIBLE to `verify --db`: its out-of-band presence in the DB is NOT drift (it is
+  // threaded out of computeDrift via collectUnmanagedNames), and verify annotates it as
+  // external. Without the exclusion the extra table surfaces as a spurious drop-table
+  // drift → exit 1. Uses an @unmanaged TABLE (the Flyway-owned-entity case).
+  test("@unmanaged DB object present out-of-band → NOT drift; exit 0 + annotated external", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "metaobjects-verify-db-unmanaged-"));
+    const dbUrl = `file:${join(repo, "local.db")}`;
+    // Widget is managed; Legacy is an @unmanaged table (Flyway / a hand-migration owns it).
+    const meta = JSON.stringify({
+      "metadata.root": {
+        package: "acme::drift",
+        children: [
+          { "object.entity": { name: "Widget", children: [
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "name", "@column": "name" } },
+            { "identity.primary": { name: "pk", "@fields": ["id"] } },
+          ] } },
+          { "object.entity": { name: "Legacy", children: [
+            { "source.rdb": { "@table": "legacy_accounts", "@unmanaged": true } },
+            { "field.long": { name: "id" } },
+            { "identity.primary": { name: "pk", "@fields": ["id"] } },
+          ] } },
+        ],
+      },
+    });
+    try {
+      mkdirSync(join(repo, "metaobjects"), { recursive: true });
+      writeFileSync(join(repo, "metaobjects", "meta.drift.json"), meta, "utf8");
+      // Materialize: creates `widgets`, and NEVER the @unmanaged legacy_accounts.
+      await materialize(repo, dbUrl);
+      // Flyway creates the table out-of-band — it now EXISTS in the DB but is unmodeled-as-managed.
+      const client = createClient({ url: dbUrl });
+      await client.execute(`CREATE TABLE legacy_accounts ("id" integer PRIMARY KEY)`);
+      client.close();
+
+      const exit = await run(["verify", "--cwd", repo, "--db", dbUrl, "--dialect", "sqlite"]);
+      // The @unmanaged table is excluded from the drift comparison → in sync → exit 0.
+      expect(exit).toBe(0);
+      // ...and it is annotated as external rather than vanishing silently.
+      const all = [...out, ...err].join("\n");
+      expect(all).toContain("legacy_accounts");
+      expect(all).toContain("external");
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
 });
