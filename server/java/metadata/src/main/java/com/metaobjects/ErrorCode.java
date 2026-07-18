@@ -382,6 +382,32 @@ public enum ErrorCode {
      */
     ERR_COMPUTED_TYPE_MISMATCH,
 
+    /**
+     * #208 (DDL-ownership escape valves, design doc §5 R1): a {@code source.rdb}
+     * declares both {@code @sql} and {@code @unmanaged} — the two mutually
+     * exclusive non-default states of one DDL-ownership axis (an author-supplied
+     * body contradicts "someone else owns this DDL").
+     */
+    ERR_SQL_BODY_WITH_UNMANAGED,
+
+    /**
+     * #208 (design doc §5 R2): a {@code source.rdb} declares {@code @sql} with a
+     * writable {@code @kind} ("table", the default) — {@code @sql} is legal only
+     * on a read-only kind (view/materializedView/storedProc/tableFunction); a
+     * writable table is either fully modeled or marked {@code @unmanaged}, never
+     * opaque-bodied.
+     */
+    ERR_SQL_BODY_ON_WRITABLE_KIND,
+
+    /**
+     * #208 (design doc §5 R4/R5): a field carrying an {@code origin.*} (derived)
+     * child — or, for an {@code object.projection}, a row-scope {@code @filter}
+     * (#207) — lives under a host object that declares an {@code @sql} read
+     * source. The synthesized derivation/filter and the author's verbatim SQL
+     * body are two sources of truth for the same data.
+     */
+    ERR_ORIGIN_UNDER_SQL_BODY,
+
     /** An internal loader error with no stable error code. */
     ERR_UNKNOWN,
 }

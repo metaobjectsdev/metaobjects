@@ -223,6 +223,38 @@ public final class ErrorMessageConstants {
      */
     public static final String ERR_INVALID_INDEX = "ERR_INVALID_INDEX";
 
+    /**
+     * #208 (DDL-ownership escape valves, design doc §5 R1): a {@code source.rdb}
+     * declares both {@code @sql} and {@code @unmanaged} on the same source.
+     * Cross-language contract: {@code ERR_SQL_BODY_WITH_UNMANAGED}.
+     */
+    public static final String ERR_SQL_BODY_WITH_UNMANAGED = "ERR_SQL_BODY_WITH_UNMANAGED";
+
+    /**
+     * #208 (design doc §5 R2): a {@code source.rdb} declares {@code @sql} with a
+     * writable {@code @kind} ("table", the default) — {@code @sql} is legal only
+     * on a read-only kind.
+     * Cross-language contract: {@code ERR_SQL_BODY_ON_WRITABLE_KIND}.
+     */
+    public static final String ERR_SQL_BODY_ON_WRITABLE_KIND = "ERR_SQL_BODY_ON_WRITABLE_KIND";
+
+    /**
+     * #208 (design doc §5 R4/R5): an {@code origin.*}-bearing (derived) own field,
+     * or an {@code object.projection}'s row-scope {@code @filter} (#207), lives
+     * under a host object that declares an {@code @sql} read source.
+     * Cross-language contract: {@code ERR_ORIGIN_UNDER_SQL_BODY}.
+     */
+    public static final String ERR_ORIGIN_UNDER_SQL_BODY = "ERR_ORIGIN_UNDER_SQL_BODY";
+
+    /**
+     * #208 (design doc §5 R6) warning: an {@code origin.*}-bearing (derived) own
+     * field lives under a host object that declares an {@code @unmanaged} source.
+     * {@code @unmanaged} acts on nothing, so documented-but-unacted-on lineage is
+     * benign — informational only, never an error.
+     * Cross-language contract: {@code WARN_ORIGIN_UNDER_UNMANAGED}.
+     */
+    public static final String WARN_ORIGIN_UNDER_UNMANAGED = "WARN_ORIGIN_UNDER_UNMANAGED";
+
     // === ERROR MESSAGE FORMATS ===
 
     /** Format template for not found errors */

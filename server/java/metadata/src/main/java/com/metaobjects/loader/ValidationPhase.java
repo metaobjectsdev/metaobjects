@@ -179,6 +179,9 @@ public final class ValidationPhase {
         // FR-015 — source.rdb @parameterRef typed-input rules.
         pass(collected, () -> validateSourceParameterRef(root));
         pass(collected, () -> validateOnePrimarySource(root));
+        // #208 — DDL-ownership escape valves (@sql/@unmanaged on source.rdb).
+        // Sibling of the source-role pass above; must run after it.
+        pass(collected, () -> validateSourceEscapes(root, loader));
         pass(collected, () -> validateRelationshipReferentialActions(root));
         pass(collected, () -> validateRelationshipsM2M(root));
         // ADR-0042 — the cross-package ambiguity pass (ERR_AMBIGUOUS_REF) is RETIRED. A bare
@@ -1059,6 +1062,142 @@ public final class ValidationPhase {
                             + "(FR-024, ADR-0028)",
                         ErrorCode.ERR_ENTITY_PRIMARY_SOURCE_READONLY, s.getSource());
                 }
+            }
+        }
+    }
+
+    // =========================================================================
+    // #208 — DDL-ownership escape valves (@sql / @unmanaged on source.rdb).
+    //
+    // source.rdb has two mutually exclusive, non-default DDL-ownership markers:
+    // @sql (a hand-written body the tool registers/fingerprints/drift-checks but
+    // never authors or parses) and @unmanaged (this object's DDL is owned
+    // elsewhere — the tool never touches it). Six fail-closed rules (design doc §5):
+    //
+    //   R1  @sql AND @unmanaged on the SAME source           → ERR_SQL_BODY_WITH_UNMANAGED
+    //   R2  @sql on a writable @kind ("table", the default)  → ERR_SQL_BODY_ON_WRITABLE_KIND
+    //   R3  @sql present but empty / whitespace-only         → ERR_BAD_ATTR_VALUE
+    //   R4  origin.*-bearing own field under an @sql host    → ERR_ORIGIN_UNDER_SQL_BODY
+    //   R5  object.projection @filter (#207) + @sql host     → ERR_ORIGIN_UNDER_SQL_BODY
+    //   R6  origin.*-bearing own field under an @unmanaged host → WARN_ORIGIN_UNDER_UNMANAGED
+    //
+    // R1–R3 are per-source (declaration-layer, own-only). R4–R6 are per-host-object:
+    // a host with ANY own source.rdb carrying @sql/@unmanaged is judged against its
+    // own fields (and, for R5, its own @filter). @sql (R4, hard error) takes priority
+    // over @unmanaged (R6, warn) when a host declares both markers across different
+    // sources. Mirrors TS validate-source-escapes.ts.
+    // =========================================================================
+
+    static void validateSourceEscapes(MetaRoot root, MetaDataLoader loader) {
+        for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
+            if (!(rootChild instanceof MetaObject)) continue;
+            validateObjectSourceEscapes((MetaObject) rootChild, loader);
+        }
+    }
+
+    private static void validateObjectSourceEscapes(MetaObject obj, MetaDataLoader loader) {
+        // ADR-0039: own — declaration-layer source iteration (mirrors
+        // validateObjectSourcePhysicalNames / validateObjectPrimarySource): R1–R3
+        // judge markers DECLARED on this object's own sources.
+        List<RdbSource> sources = obj.getChildren(RdbSource.class, false);
+
+        boolean hasSqlHost = false;
+        boolean hasUnmanagedHost = false;
+
+        for (RdbSource source : sources) {
+            // ADR-0039: resolving — @sql/@unmanaged are inheritable (follow the
+            // @role/effectiveKind precedent — sources are inheritable, NOT the
+            // @dbColumnType own-only exception).
+            boolean sqlSet = source.getSqlBody() != null;
+            boolean unmanagedSet = source.isUnmanaged();
+
+            // R1 — contradictory DDL owners on the same source.
+            if (sqlSet && unmanagedSet) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_SQL_BODY_WITH_UNMANAGED
+                        + ": source.rdb on object \"" + obj.getName()
+                        + "\" declares both @sql and @unmanaged — these are the mutually "
+                        + "exclusive non-default states of one DDL-ownership axis (an "
+                        + "author-supplied body contradicts \"someone else owns this DDL\")",
+                    ErrorCode.ERR_SQL_BODY_WITH_UNMANAGED, source.getSource());
+            }
+
+            // R2 — @sql on a writable kind would bypass the column-diff machinery;
+            // tables are fully modeled or @unmanaged, never opaque-bodied.
+            if (sqlSet && source.isWritable()) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_SQL_BODY_ON_WRITABLE_KIND
+                        + ": source.rdb on object \"" + obj.getName()
+                        + "\" declares @sql with a writable @kind (\"" + source.getEffectiveKind()
+                        + "\") — @sql is legal only on a read-only kind "
+                        + "(view/materializedView/storedProc/tableFunction); a writable table is "
+                        + "either fully modeled or marked @unmanaged, never opaque-bodied",
+                    ErrorCode.ERR_SQL_BODY_ON_WRITABLE_KIND, source.getSource());
+            }
+
+            // R3 — @sql present but empty/whitespace. MUST read the raw attr, not
+            // getSqlBody(): getSqlBody() already narrows an empty string to null,
+            // which would make a present-but-empty @sql indistinguishable from an
+            // absent one.
+            if (source.hasMetaAttr(RdbSource.ATTR_SQL)) {
+                String rawSql = source.getMetaAttr(RdbSource.ATTR_SQL).getValueAsString();
+                if (rawSql == null || rawSql.trim().isEmpty()) {
+                    throw new MetaDataException(
+                        ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                            + ": source.rdb on object \"" + obj.getName()
+                            + "\" sets @sql to an empty/whitespace-only value; @sql requires a "
+                            + "non-empty SQL body",
+                        ErrorCode.ERR_BAD_ATTR_VALUE, source.getSource());
+                }
+            }
+
+            if (sqlSet) hasSqlHost = true;
+            if (unmanagedSet) hasUnmanagedHost = true;
+        }
+
+        if (!hasSqlHost && !hasUnmanagedHost) return;
+
+        // R4 / R6 — origin.*-bearing (derived) own fields under an @sql / @unmanaged
+        // host. ADR-0039: own — origin.* never inherits (ADR-0029), so isDerived()
+        // is own-only by policy (mirrors validateDerivedFieldProvidability). @sql
+        // (hard error) takes priority over @unmanaged (warn) when a host happens to
+        // declare both markers across different sources.
+        for (MetaField<?> field : obj.getChildren(MetaField.class, false)) {
+            if (!field.isDerived()) continue;
+            if (hasSqlHost) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_ORIGIN_UNDER_SQL_BODY
+                        + ": field \"" + obj.getName() + "." + field.getName()
+                        + "\" carries an origin.* (derived) child, but \"" + obj.getName()
+                        + "\" has a read source carrying @sql — the synthesized derivation and "
+                        + "the author's verbatim SQL are two sources of truth for the same body",
+                    ErrorCode.ERR_ORIGIN_UNDER_SQL_BODY, field.getSource());
+            } else if (loader != null) {
+                loader.addEnvelopeWarning(new LoaderWarning(
+                    ErrorMessageConstants.WARN_ORIGIN_UNDER_UNMANAGED,
+                    "field \"" + obj.getName() + "." + field.getName()
+                        + "\" carries an origin.* (derived) child, but \"" + obj.getName()
+                        + "\" has a source marked @unmanaged — the tool never touches this "
+                        + "object's DDL, so the derivation is documented lineage only (not "
+                        + "acted on); this is informational, not an error",
+                    field.getSource()));
+            }
+        }
+
+        // R5 — a projection's row-scope @filter (#207) lowers to the outer WHERE of
+        // a TOOL-SYNTHESIZED body; with @sql the author owns the body (and its
+        // WHERE), so wrapping it is deferred cleverness (design doc D5) — reject.
+        if (hasSqlHost && MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType())) {
+            // ADR-0039: own — the @filter is declared locally on this projection
+            // (mirrors validateProjectionFilter).
+            if (obj.hasMetaAttr(MetaObject.ATTR_FILTER, false)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_ORIGIN_UNDER_SQL_BODY
+                        + ": projection \"" + obj.getName()
+                        + "\" declares both @filter and an @sql read source — a view-level "
+                        + "@filter lowers to the outer WHERE of a synthesized body; with @sql "
+                        + "the author owns the body (and its WHERE), so the two cannot be combined",
+                    ErrorCode.ERR_ORIGIN_UNDER_SQL_BODY, obj.getSource());
             }
         }
     }

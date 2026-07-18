@@ -232,6 +232,37 @@ public abstract class MetaSource extends MetaData {
     }
 
     /**
+     * FR-024/#208 — the hand-written SQL body for this source's DB object, when
+     * declared via {@code @sql}, narrowed to a non-empty string (empty string →
+     * {@code null}, treated as absent; a whitespace-only value is still "set" —
+     * loader validation independently rejects it via {@code ERR_BAD_ATTR_VALUE}).
+     * The tool registers + fingerprints + drift-checks this body but never
+     * authors or parses it. {@code @sql} is registered on the concrete
+     * {@code source.rdb} subtype ({@link RdbSource#ATTR_SQL}).
+     */
+    public String getSqlBody() {
+        // ADR-0039: resolving — an inherited source's @sql lives on the super node
+        // (matches getEffectiveKind()/getRole()/getTableName() above).
+        if (!hasMetaAttr(RdbSource.ATTR_SQL)) return null;
+        String v = getMetaAttr(RdbSource.ATTR_SQL).getValueAsString();
+        return (v != null && !v.isEmpty()) ? v : null;
+    }
+
+    /**
+     * FR-024/#208 — {@code true} when this source's DB object is managed
+     * elsewhere (Flyway / a hand-migration owns its DDL); {@code meta migrate}
+     * does not create/drop/drift-check it. {@code @unmanaged} is registered on
+     * the concrete {@code source.rdb} subtype ({@link RdbSource#ATTR_UNMANAGED}).
+     */
+    public boolean isUnmanaged() {
+        // ADR-0039: resolving — an inherited source's @unmanaged lives on the
+        // super node (matches getEffectiveKind()/getRole()/getTableName() above).
+        if (!hasMetaAttr(RdbSource.ATTR_UNMANAGED)) return false;
+        Object v = getMetaAttr(RdbSource.ATTR_UNMANAGED).getValue();
+        return Boolean.TRUE.equals(v);
+    }
+
+    /**
      * FR-016 / ADR-0018: resolved physical SQL name for this source, following
      * the four-step rule:
      * <ol>
