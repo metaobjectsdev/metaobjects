@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.17.0] — 2026-07-18
+
+Coordinated additive **minor** across all four registries: **npm `0.17.0`** · **PyPI `0.17.0`** · **NuGet `0.17.0`** · **Maven Central `7.9.0`** (Java/Kotlin). Bundles the accumulated projection/view + read-model + prompt work below, plus a full documentation + agent-context skills refresh (the seven `meta init` skills were accuracy-passed and Fable-reviewed, closing a class of stale-vocabulary and calibration defects; the runtime-ui skill gained its missing Python + C# language references). No breaking changes.
+
 ### #208 — DDL-ownership escape valves (`@sql` body + `@unmanaged` marker)
 
 Two mutually-exclusive `source.rdb` attributes express *who owns a DB object's DDL* — the escape from "a projection's view is always synthesized from its `origin.*` children" (ADR-0043):
