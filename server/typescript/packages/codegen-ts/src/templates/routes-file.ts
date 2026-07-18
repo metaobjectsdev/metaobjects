@@ -25,7 +25,7 @@ import { type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier, entityModuleSpecifier, relativeModuleSpecifier } from "../import-path.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { routesHandlerName } from "../naming.js";
-import { isProjection } from "../projection/projection-detector.js";
+import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 import type { RelationEntry } from "../relation-resolver.js";
 import { isTphDiscriminatorBase, tphPlan } from "./tph-discriminator.js";
 
@@ -124,6 +124,17 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
   // --- Vanilla / write-through entity path: full CRUD routes ---
   const tableVar = ctx.collectionName(entityName);
 
+  // #214 — a write-through entity (writable table + replica @kind:view + derived
+  // origin.passthrough fields) keeps FULL CRUD (writes → table) but its READS must
+  // route through the replica view so the HTTP responses carry the derived field.
+  // The entity file already exports `<camel>View` as an `.existing()` Drizzle view;
+  // import it and pass it as `readView` to mountCrudRoutes. A vanilla entity omits both.
+  const writeThrough = isWriteThrough(entity);
+  const camelName = entityName.charAt(0).toLowerCase() + entityName.slice(1);
+  const viewImportLine = writeThrough ? `\n  ${camelName}View,` : "";
+  const readViewLinePrefixed = writeThrough ? `\n      readView: ${camelName}View,` : "";
+  const readViewLineFlat = writeThrough ? `\n    readView: ${camelName}View,` : "";
+
   const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
   const mountCrudRoutesSym = imp("mountCrudRoutes@@metaobjectsdev/runtime-ts/drizzle-fastify");
 
@@ -144,7 +155,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
 import { db } from ${JSON.stringify(dbImportSpec)};
 import {
   ${entityName},
-  ${tableVar},
+  ${tableVar},${viewImportLine}
   ${entityName}InsertSchema,
   ${entityName}UpdateSchema,
   ${entityName}FilterAllowlist,
@@ -168,7 +179,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
       fastify: instance,
       path: ${entityName}.$path,
       db,
-      table: ${tableVar},
+      table: ${tableVar},${readViewLinePrefixed}
       insertSchema: ${entityName}InsertSchema,
       updateSchema: ${entityName}UpdateSchema,
       filterAllowlist: ${entityName}FilterAllowlist,
@@ -192,7 +203,7 @@ export async function ${handlerName}(fastify: ${FastifyInstanceSym}) {
     fastify,
     path: ${entityName}.$path,
     db,
-    table: ${tableVar},
+    table: ${tableVar},${readViewLineFlat}
     insertSchema: ${entityName}InsertSchema,
     updateSchema: ${entityName}UpdateSchema,
     filterAllowlist: ${entityName}FilterAllowlist,

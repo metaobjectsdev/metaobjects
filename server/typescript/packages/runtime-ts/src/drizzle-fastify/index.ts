@@ -44,6 +44,15 @@ export interface CrudRoutesOptions {
   db: AnyDrizzle;
   /** Drizzle table const. The helper requires this to have an `id` column. */
   table: AnyTable;
+  /**
+   * #214 write-through entity — the Drizzle VIEW const to READ through (a
+   * `@role:replica @kind:view` replica carrying derived `origin.passthrough`
+   * columns the base table excludes, per #213). When set, list/get and the
+   * post-write re-read on create/update SELECT from this view (read-your-writes
+   * returns the derived fields), while every WRITE still targets `table`. The
+   * view must expose the same `id` column. Absent → ordinary single-table CRUD.
+   */
+  readView?: AnyTable;
   /** Zod schema for create payloads (typically `<Entity>InsertSchema`). */
   insertSchema: ZodTypeAny;
   /** Zod schema for update payloads (typically `<Entity>UpdateSchema`). */
@@ -87,6 +96,33 @@ function discriminatorCond(opts: VerbOptions) {
   return d ? eq(opts.table[d.column], d.value) : undefined;
 }
 
+/** #214 — the source READS select from: the replica view when this is a
+ *  write-through entity, else the base table. Writes always target `opts.table`.
+ *  For a vanilla/TPH entity (no `readView`) this is `opts.table`, so behaviour is
+ *  byte-identical. */
+function readSource(opts: VerbOptions): AnyTable {
+  return opts.readView ?? opts.table;
+}
+
+/** #214 — after a write to the base table, re-read the row THROUGH the replica
+ *  view by PK so the response carries derived (origin.passthrough) columns. When
+ *  there is no `readView`, return the write row unchanged (current behaviour). */
+async function reReadThroughView(
+  opts: VerbOptions,
+  writeRow: unknown,
+): Promise<unknown> {
+  if (opts.readView === undefined || writeRow == null) return writeRow;
+  const pk = (writeRow as Record<string, unknown>).id;
+  const rows = await opts.db
+    .select()
+    .from(opts.readView)
+    .where(eq(opts.readView.id, pk))
+    .limit(1);
+  // Fall back to the write row if the view somehow has no matching row (should
+  // not happen for a just-written PK, but never 500 on a successful write).
+  return (rows as unknown[])[0] ?? writeRow;
+}
+
 export function mountCrudRoutes(opts: CrudRoutesOptions): void {
   const verbs = new Set<CrudVerb>(opts.expose ?? ALL_VERBS);
   if (verbs.has("list")) mountListRoute(opts);
@@ -105,7 +141,9 @@ function routeOpts(opts: VerbOptions): RouteShorthandOptions {
 export function mountListRoute(opts: VerbOptions): void {
   opts.fastify.get(opts.path, routeOpts(opts), async (req, reply) => {
     try {
-      let q = opts.db.select().from(opts.table).$dynamic();
+      // #214 — a write-through entity reads through its replica view.
+      const src = readSource(opts);
+      let q = opts.db.select().from(src).$dynamic();
       // Re-parse the raw URL with qs so bracketed filter notation and the
       // top-level withCount flag are available.
       const rawSearch = req.raw.url?.includes("?")
@@ -122,7 +160,7 @@ export function mountListRoute(opts: VerbOptions): void {
       if (opts.filterAllowlist && opts.sortAllowlist) {
         const parsed = parseFilterParams({
           query: qsParsed,
-          table: opts.table,
+          table: src,
           allowlist: opts.filterAllowlist,
           sortAllowlist: opts.sortAllowlist,
           dialect: opts.dialect ?? "sqlite",
@@ -139,7 +177,7 @@ export function mountListRoute(opts: VerbOptions): void {
         // pagination + filter scenarios (Postgres otherwise returns rows in an
         // unspecified order).
         if (parsed.orderBy) q = q.orderBy(...parsed.orderBy);
-        else if (opts.table.id !== undefined) q = q.orderBy(asc(opts.table.id));
+        else if (src.id !== undefined) q = q.orderBy(asc(src.id));
         if (parsed.limit  !== undefined) q = q.limit(parsed.limit);
         if (parsed.offset !== undefined) q = q.offset(parsed.offset);
       } else {
@@ -147,7 +185,7 @@ export function mountListRoute(opts: VerbOptions): void {
         // discriminator predicate when subtype-scoped).
         const { limit, offset } = req.query as { limit?: string; offset?: string };
         if (discCond) { q = q.where(discCond); where = discCond; }
-        if (opts.table.id !== undefined) q = q.orderBy(asc(opts.table.id));
+        if (src.id !== undefined) q = q.orderBy(asc(src.id));
         if (limit  !== undefined) q = q.limit(Number(limit));
         if (offset !== undefined) q = q.offset(Number(offset));
       }
@@ -161,7 +199,7 @@ export function mountListRoute(opts: VerbOptions): void {
       if (!withCount) return rows;
 
       // Count query: same WHERE, no limit/offset/orderBy.
-      let cq = opts.db.select({ c: count() }).from(opts.table).$dynamic();
+      let cq = opts.db.select({ c: count() }).from(src).$dynamic();
       if (where) cq = cq.where(where);
       const countRow = (await cq)[0] as { c: number } | undefined;
       const total = countRow?.c ?? 0;
@@ -179,19 +217,21 @@ export function mountGetRoute(opts: VerbOptions): void {
   opts.fastify.get(`${opts.path}/:id`, routeOpts(opts), async (req, reply) => {
     const { id } = req.params as { id: string };
     const discCond = discriminatorCond(opts);
+    // #214 — a write-through entity reads through its replica view.
+    const src = readSource(opts);
     // Compare against the PK's real type — a numeric-LOOKING id on a TEXT pk
     // must stay a string ('0123' ≠ '123'), or affinity matches the WRONG row.
-    const idValue = coerceIdForColumn(opts.table.id, id);
+    const idValue = coerceIdForColumn(src.id, id);
     if (idValue === undefined) {
       return reply.code(400).send({ error: "invalid_id" });
     }
-    const idCond = eq(opts.table.id, idValue);
+    const idCond = eq(src.id, idValue);
     // Await + take the first row rather than `.get()` — `.get()` is a
     // libsql/better-sqlite3-only method; the node-postgres builder is thenable
     // but has no `.get()`. Awaiting works on both dialects.
     const rows = await opts.db
       .select()
-      .from(opts.table)
+      .from(src)
       .where(discCond ? and(idCond, discCond) : idCond)
       .limit(1);
     const row = (rows as unknown[])[0];
@@ -212,7 +252,9 @@ export function mountCreateRoute(opts: VerbOptions): void {
       : parsed.data;
     const result = await opts.db.insert(opts.table).values(values).returning();
     const row = (result as unknown[])[0];
-    return reply.code(201).send(row);
+    // #214 — read-your-writes: re-read through the replica view so the response
+    // carries derived (origin.passthrough) columns the base table excludes.
+    return reply.code(201).send(await reReadThroughView(opts, row));
   });
 }
 
@@ -247,7 +289,9 @@ export function mountUpdateRoute(opts: VerbOptions): void {
       .where(discCond ? and(idCond, discCond) : idCond)
       .returning();
     const row = (result as unknown[])[0];
-    return row ?? reply.code(404).send({ error: "not_found" });
+    if (row == null) return reply.code(404).send({ error: "not_found" });
+    // #214 — re-read through the replica view so the response carries derived columns.
+    return await reReadThroughView(opts, row);
   };
   const path = `${opts.path}/:id`;
   const ro = routeOpts(opts);

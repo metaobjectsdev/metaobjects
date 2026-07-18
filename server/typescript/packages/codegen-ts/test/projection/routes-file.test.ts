@@ -136,6 +136,60 @@ async function loadVanillaFixture() {
 }
 
 // ---------------------------------------------------------------------------
+// Fixture: write-through Order entity (writable table + replica view + derived field)
+// ---------------------------------------------------------------------------
+
+async function loadWriteThroughFixture() {
+  const root = await loadMetadata([
+    {
+      "object.entity": {
+        name: "Customer",
+        children: [
+          { "source.rdb": { "@table": "customers" } },
+          { "field.long": { name: "id" } },
+          { "field.string": { name: "name" } },
+          { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+        ],
+      },
+    },
+    {
+      "object.entity": {
+        name: "Order",
+        children: [
+          { "source.rdb": { "@role": "primary", "@table": "orders" } },
+          { "source.rdb": { "@role": "replica", "@kind": "view", "@table": "v_order_with_customer" } },
+          { "field.long": { name: "id" } },
+          { "field.long": { name: "customerId", "@required": true } },
+          {
+            "field.string": {
+              name: "customerName",
+              children: [{ "origin.passthrough": { "@from": "Customer.name", "@via": "Order.customer" } }],
+            },
+          },
+          { "relationship.association": { name: "customer", "@objectRef": "Customer", "@cardinality": "one" } },
+          { "identity.primary": { name: "pk", "@fields": "id", "@generation": "increment" } },
+          { "identity.reference": { name: "ref_customer", "@fields": "customerId", "@references": "Customer" } },
+        ],
+      },
+    },
+  ]);
+
+  const entity = root.objects().find((o) => o.name === "Order");
+  if (!entity) throw new Error("Order not found");
+
+  const ctx = makeRenderContext({
+    dialect: "sqlite",
+    loadedRoot: root,
+    outDir: "/x",
+    dbImport: "~/db",
+    pkMap: buildPkMap(root),
+    relationMap: buildRelationMap(root),
+  });
+
+  return { root, entity, ctx };
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -235,6 +289,34 @@ describe("renderRoutesFile — source-aware dispatch", () => {
       const { entity, ctx } = await loadVanillaFixture();
       const out = renderRoutesFile(entity, ctx);
       expect(out).toContain("postRoutes");
+    });
+  });
+
+  // #214 — a write-through entity has FULL CRUD (writes → table) but its READS
+  // must route through the replica view so the HTTP responses carry the derived
+  // origin.passthrough field. The routes file must pass `readView` to mountCrudRoutes.
+  describe("write-through entity path (isWriteThrough = true)", () => {
+    test("emits mountCrudRoutes (full CRUD, not read-only)", async () => {
+      const { entity, ctx } = await loadWriteThroughFixture();
+      const out = renderRoutesFile(entity, ctx);
+      expect(out).toContain("mountCrudRoutes");
+      expect(out).not.toContain("mountReadOnlyCrudRoutes");
+    });
+
+    test("passes readView (the replica view) to mountCrudRoutes", async () => {
+      const { entity, ctx } = await loadWriteThroughFixture();
+      const out = renderRoutesFile(entity, ctx);
+      // camelName = "order" → the entity file exports "orderView"
+      expect(out).toContain("readView:");
+      expect(out).toContain("orderView");
+    });
+
+    test("still writes to the table + imports the write schemas", async () => {
+      const { entity, ctx } = await loadWriteThroughFixture();
+      const out = renderRoutesFile(entity, ctx);
+      expect(out).toContain("table:");
+      expect(out).toContain("OrderInsertSchema");
+      expect(out).toContain("OrderUpdateSchema");
     });
   });
 });
