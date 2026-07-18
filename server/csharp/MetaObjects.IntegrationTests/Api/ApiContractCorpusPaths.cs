@@ -41,4 +41,10 @@ internal static class ApiContractCorpusPaths
     public static readonly string JsonbScenariosDir = Path.Combine(JsonbDir, "scenarios");
     public static readonly string JsonbSeedFile = Path.Combine(JsonbDir, "seed.json");
     public static readonly string JsonbMetaJson = Path.Combine(JsonbDir, "meta.json");
+
+    // #214 write-through read-your-writes subcorpus.
+    public static readonly string WriteThroughDir = Path.Combine(Corpus, "write-through");
+    public static readonly string WriteThroughScenariosDir = Path.Combine(WriteThroughDir, "scenarios");
+    public static readonly string WriteThroughSeedFile = Path.Combine(WriteThroughDir, "seed.json");
+    public static readonly string WriteThroughMetaJson = Path.Combine(WriteThroughDir, "meta.json");
 }
