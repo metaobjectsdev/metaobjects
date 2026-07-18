@@ -514,11 +514,11 @@ ADR-0015).
 
 ## Running tests
 
-The Bun workspace root is the **repository root** (`/package.json`), which globs `server/typescript/packages/*` and `client/web/packages/*`. Java/Python/C# live outside the JS workspace (not globbed). Run `bun install` **once at the repo root**. Run `bun test` **scoped** — `cd server/typescript && bun test` for the server suite (this also picks up `server/typescript/bunfig.toml`'s test preload), and per-package for `client/web`. **Never run a bare `bun test` at the repo root**: it walks `java/`, `python/`, `csharp/`, and `fixtures/` looking for test files, turning a ~3-second run into minutes.
+The Bun workspace root is the **repository root** (`/package.json`), which globs `server/typescript/packages/*` and `client/web/packages/*`. Java/Python/C# live outside the JS workspace (not globbed). Run `bun install` **once at the repo root**. Run `bun test` **scoped** — `cd server/typescript && bun test` for the server suite (this also picks up `server/typescript/bunfig.toml`'s test preload), and per-package for `client/web`. **Never run a bare `bun test` at the repo root**: it walks `java/`, `python/`, `csharp/`, and `fixtures/` looking for test files, turning a fast per-package run into many minutes.
 
 ```
 bun install                                        # once, at the repo root
-cd server/typescript && bun test                   # server suite (~3s, 2123 tests)
+cd server/typescript && bun test                   # server suite (per-package; a bare run over the whole server suite now exceeds 5 min — scope it)
 cd client/web/packages/<pkg> && bun test           # a single client package
 bun run --filter '*' typecheck                     # whole workspace, from repo root
 bun run --filter '*' build                         # whole workspace, from repo root
