@@ -207,8 +207,8 @@ function emitViewFor(
  *     fails safe to a gated drop+create instead of a wrong-but-confident OR REPLACE;
  *   - a pre-existing unstamped view at this name → `replace-view` blocked pending
  *     `migrate --allow adopt-view` (the one-time adoption ceremony).
- * `dependsOn` is derived from the host's extends-bound anchor entities (D7) — no
- * `@dependsOn` attr.
+ * `dependsOn` is derived from the host's own writable table (a write-through host) plus
+ * its extends-bound anchor entities (a projection, D7) — no `@dependsOn` attr.
  */
 function emitSqlView(
   host: MetaObject,
@@ -240,12 +240,20 @@ function emitSqlView(
 }
 
 /**
- * D7 — the physical tables an `@sql` view depends on, derived from the host's
- * extends-bound anchor entities (its OWN identity/field `superRef`s). The `extends`
- * bindings that already anchor the read model's shape ARE the dependency declaration;
- * no separate `@dependsOn` attr. Deduped, so a view anchored on one base yields one
- * table. migrate-ts uses this to drop+recreate the view around a column-altering change
- * on a source table (Postgres blocks ALTER on a column a view depends on).
+ * The physical tables an `@sql` view depends on. migrate-ts uses this to drop+recreate
+ * the view around a column-altering change on a source table (Postgres blocks ALTER on a
+ * column a view depends on). Two sources, no `@dependsOn` attr:
+ *
+ *   - A **write-through host** (a writable table source + an `@sql` read-view source)
+ *     reads from its OWN table — its one certain dependency. It has NO extends anchors
+ *     (an entity declares its own identity/fields), so without this its `@sql` view's
+ *     dependsOn would be empty and a column ALTER on the host table would fail at apply.
+ *   - A **projection** `@sql` view's dependencies are its extends-bound anchor tables
+ *     (D7 — the `extends` bindings that anchor the read model's shape ARE the dependency
+ *     declaration).
+ *
+ * Deduped. (A table the opaque body JOINs but neither hosts nor anchors is NOT tracked —
+ * the deferred `@dependsOn` escape, ADR-0043.)
  */
 function collectSqlDependsOn(
   host: MetaObject,
@@ -253,6 +261,15 @@ function collectSqlDependsOn(
   joinTables: Readonly<Record<string, string>>,
 ): string[] {
   const tables = new Set<string>();
+  // The write-through host's own writable table (keyed the way the diff keys descriptors).
+  const hasWritableSource = host.ownChildren().some(
+    (c) => c instanceof MetaSource && c.isWritable(),
+  );
+  if (hasWritableSource) {
+    const t = joinTables[host.name];
+    if (t !== undefined) tables.add(t);
+  }
+  // Extends-bound anchor tables (a projection's read-model base).
   for (const child of host.ownChildren()) {
     if (child.type !== TYPE_IDENTITY && child.type !== TYPE_FIELD) continue;
     const owner = refNamedOwner(child, root);

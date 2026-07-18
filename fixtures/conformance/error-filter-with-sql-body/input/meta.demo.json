@@ -1,0 +1,36 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Base",
+          "children": [
+            { "source.rdb": { "@table": "base" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "status" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "Bad",
+          "@filter": { "status": { "eq": "active" } },
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_bad",
+                "@sql": "SELECT id, status FROM base WHERE status = 'active'"
+              }
+            },
+            { "field.long": { "name": "id", "extends": "demo::Base.id" } },
+            { "field.string": { "name": "status", "extends": "demo::Base.status" } },
+            { "identity.primary": { "name": "id", "extends": "demo::Base.id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

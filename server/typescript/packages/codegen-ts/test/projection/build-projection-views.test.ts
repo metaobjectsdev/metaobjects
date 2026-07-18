@@ -253,6 +253,40 @@ describe("buildProjectionViews — #208 @sql / @unmanaged DDL-ownership escape v
     expect(views.find((vv) => vv.name === "v_node_tree")).toBeUndefined();
   });
 
+  test("a write-through entity's @sql replica view depends on the host's OWN table", async () => {
+    // A write-through host (writable table + an @sql read-view, no derived fields) has NO
+    // extends anchors, so collectSqlDependsOn would otherwise return [] — omitting the
+    // view's one certain dependency (the host table), which makes a later column ALTER on
+    // that table fail at apply (Pass 2c never drop+recreates the view around it).
+    const root = await load([
+      {
+        "object.entity": {
+          name: "Program",
+          children: [
+            { "source.rdb": { "@role": "primary", "@table": "programs" } },
+            {
+              "source.rdb": {
+                "@role": "replica",
+                "@kind": "view",
+                "@view": "v_programs_ranked",
+                "@sql": "SELECT id, name, rank() OVER (ORDER BY id) AS r FROM programs",
+              },
+            },
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "name" } },
+            { "identity.primary": { name: "pk", "@fields": "id" } },
+          ],
+        },
+      },
+    ]);
+    const views = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
+    const v = views.find((vv) => vv.name === "v_programs_ranked");
+    expect(v).toBeDefined();
+    expect(v!.sql).toContain("rank() OVER"); // verbatim @sql body
+    expect(v!.dependsOn).toEqual(["programs"]); // the host's own table, not []
+    expect(v!.columns).toBeUndefined();
+  });
+
   test("@sql on a non-view kind (materializedView) hard-errors at migrate lowering (D4)", async () => {
     // @sql is legal-in-vocabulary on any read-only kind (5-port registration is stable),
     // but v1 TS migrate lowering accepts it only on @kind: view — matview needs genuinely

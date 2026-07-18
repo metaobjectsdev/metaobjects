@@ -1,0 +1,16 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.projection": {
+          "name": "Bad",
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_bad", "@sql": "" } },
+            { "field.long": { "name": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

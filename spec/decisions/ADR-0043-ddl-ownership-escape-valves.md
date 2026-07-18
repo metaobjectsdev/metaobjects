@@ -36,7 +36,7 @@ An `@sql`- or `@unmanaged`-marked read source **suppresses derivation-classifica
 
 ### 4. Cross-port scope split
 
-- **All five ports** (TS / C# / Java / Kotlin / Python): register the two attrs on `source.rdb`; resolving `MetaSource` accessors (`sqlBody`/`isUnmanaged` etc., following the `@role`/`effectiveKind` *resolving* precedent — **not** the `@dbColumnType` own-only exception, ADR-0039); and the six fail-closed loader-validation rules (§5), conformance-gated by shared `fixtures/conformance/` error-fixtures.
+- **All five ports** (TS / C# / Java / Kotlin / Python): register the two attrs on `source.rdb`; resolving `MetaSource` accessors (`sqlBody`/`isUnmanaged` etc., following the `@role`/`effectiveKind` *resolving* precedent — **not** the `@dbColumnType` own-only exception, ADR-0039); and the six fail-closed loader-validation rules (§5). The five **error** rules (R1–R5) are conformance-gated by shared `fixtures/conformance/` error-fixtures (every port emits the same code per rule); the R6 **WARN** is per-port unit-tested (the conformance corpus has no warn-fixture mechanism). Java's loader is fail-fast-per-pass (throws on the first violation) versus TS/C#/Python's collect-all — a pre-existing loader-architecture difference, invisible to the single-violation conformance fixtures.
 - **TS-only** (ADR-0015 — schema is TS-owned): all migrate/verify *lowering* — the `@sql` verbatim-emit + fingerprint + adopt-view ceremony, and the `@unmanaged` skip + act-side silencing.
 
 ### 5. Loader validation — six fail-closed rules (cross-port)
@@ -64,6 +64,7 @@ The R4-error / R6-warn asymmetry is deliberate: `@sql` is a second body (two sou
 - **Documented adopter caveats (not errors):**
   - An FK *from a managed table into an `@unmanaged` table* has no migration-**ordering** guarantee versus the external tool — the external object must exist before the managed FK is applied.
   - An `@unmanaged` view is **not** drop/recreated around a managed dependency's column-altering `ALTER` — the tool has no body for an external view and cannot recreate it; Postgres blocking the `ALTER` is the adopter's signal to coordinate.
+  - `@unmanaged` is effectively **non-inheritable** in the migrate lowering: both the expected-side skip and the act-side name-set use own-source detection (so the two halves agree — no split-brain where a table is not created yet is still proposed for drop). Declare `@unmanaged` on the concrete entity's *own* `source.rdb`, not on an `extends` parent's.
 - **Deferred follow-ups (filed on the roadmap):**
   - **`@dependsOn` for `@sql` views** — a `@sql` view's `dependsOn` is derived from `extends`-bound anchors only, so a table the opaque body JOINs but does not surface as a bound column is not tracked for auto-recreate around a column `ALTER` (§11 YAGNI — defer the explicit `@dependsOn` attr until an adopter hits it).
   - **The matview managed path** — `@sql` on `@kind: materializedView` needs `pg_matviews` introspection + COMMENT-on-matview plumbing + a REFRESH story.
