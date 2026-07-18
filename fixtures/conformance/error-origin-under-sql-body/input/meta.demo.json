@@ -1,0 +1,42 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Base",
+          "children": [
+            { "source.rdb": { "@table": "base" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "title" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "Bad",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_bad",
+                "@sql": "SELECT id, title FROM base"
+              }
+            },
+            { "field.long": { "name": "id", "extends": "demo::Base.id" } },
+            {
+              "field.string": {
+                "name": "title",
+                "children": [
+                  { "origin.passthrough": { "@from": "demo::Base.title" } }
+                ]
+              }
+            },
+            { "identity.primary": { "name": "id", "extends": "demo::Base.id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

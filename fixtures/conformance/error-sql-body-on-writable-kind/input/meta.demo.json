@@ -1,0 +1,22 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Bad",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "bad",
+                "@sql": "SELECT id FROM bad"
+              }
+            },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}
