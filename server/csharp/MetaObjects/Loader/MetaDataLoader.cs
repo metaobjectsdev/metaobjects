@@ -527,6 +527,19 @@ public class MetaDataLoader
             // have exactly one with role "primary" (own-only).
             errors.AddRange(ValidationPasses.ValidateOnePrimarySource(root));
 
+            // Pass 11b (#208): DDL-ownership escape valves on source.rdb — @sql /
+            // @unmanaged fail-closed rules (R1–R6). Wired AFTER the source-roles pass.
+            var escapeResult = ValidationPasses.ValidateSourceEscapes(root);
+            errors.AddRange(escapeResult.Errors);
+            if (escapeResult.Warnings.Count > 0)
+            {
+                envelopeWarnings.AddRange(escapeResult.Warnings);
+                foreach (var w in escapeResult.Warnings)
+                {
+                    warnings.Add(w.Message);
+                }
+            }
+
             // Pass 12: @dbColumnType physical column-type validation (R6 Plan 2b) —
             // own-only closed-value + (subtype × value) pairing check.
             errors.AddRange(ValidationPasses.ValidateDbColumnType(root));

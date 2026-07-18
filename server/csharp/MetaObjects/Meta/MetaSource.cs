@@ -80,6 +80,31 @@ public class MetaSource(TypeId typeId, string name) : MetaData(typeId, name)
     }
 
     /// <summary>
+    /// FR-024/#208 — the hand-written SQL body for this source's DB object, when
+    /// declared via <c>@sql</c>. The tool registers + fingerprints + drift-checks this
+    /// body but never authors or parses it.
+    /// ADR-0039: resolving — an inherited source's @sql lives on the super node
+    /// (follows the @role/EffectiveKind precedent, not the @dbColumnType own-only
+    /// exception).
+    /// </summary>
+    public string? SqlBody
+    {
+        get
+        {
+            var v = Attr(SOURCE_ATTR_SQL);
+            return v is string s && s != "" ? s : null;
+        }
+    }
+
+    /// <summary>
+    /// FR-024/#208 — true when this source's DB object is managed elsewhere
+    /// (Flyway / a hand-migration owns its DDL); <c>meta migrate</c> does not
+    /// create/drop/drift-check it.
+    /// ADR-0039: resolving — inheritable via extends.
+    /// </summary>
+    public bool IsUnmanaged => Attr(SOURCE_ATTR_UNMANAGED) is true;
+
+    /// <summary>
     /// FR-015 — name (or FQN) of the <c>object.value</c> describing this callable
     /// source's input shape (the <c>@parameterRef</c> attr). Null when absent
     /// (a zero-argument callable, or a non-callable source). The referenced

@@ -2081,6 +2081,158 @@ public static class ValidationPasses
     }
 
     // =========================================================================
+    // Pass: ValidateSourceEscapes (#208 DDL-ownership escape valves)
+    //   source.rdb's @sql / @unmanaged fail-closed rules (design doc §5):
+    //     R1  @sql AND @unmanaged on the SAME source          → ERR_SQL_BODY_WITH_UNMANAGED
+    //     R2  @sql on a writable @kind ("table", the default) → ERR_SQL_BODY_ON_WRITABLE_KIND
+    //     R3  @sql present but empty / whitespace-only        → ERR_BAD_ATTR_VALUE
+    //     R4  origin.*-bearing own field under an @sql host    → ERR_ORIGIN_UNDER_SQL_BODY
+    //     R5  object.projection @filter (#207) + @sql host     → ERR_ORIGIN_UNDER_SQL_BODY
+    //     R6  origin.*-bearing own field under an @unmanaged host → WARN_ORIGIN_UNDER_UNMANAGED
+    //
+    //   R1–R3 are per-source (declaration-layer). R4–R6 are per-host-object: a host
+    //   with ANY own source.rdb carrying @sql/@unmanaged is judged against its own
+    //   fields (and, for R5, its own @filter). The asymmetry between R4 (hard error)
+    //   and R6 (warn) is deliberate (design doc §5.6): @sql is a second body (two
+    //   sources of truth for the SAME data); @unmanaged acts on nothing, so a
+    //   documented-but-unacted-on lineage is benign. @sql takes PRIORITY over
+    //   @unmanaged when a host declares both markers across different sources.
+    //
+    //   Ported from typescript/packages/metadata/src/persistence/source/
+    //   validate-source-escapes.ts. Wired AFTER Pass 11 (ValidateOnePrimarySource) —
+    //   the source-roles pass.
+    // =========================================================================
+
+    /// <summary>Result of the #208 source-escapes validation pass.</summary>
+    public sealed record SourceEscapeValidationResult(
+        IReadOnlyList<MetaError> Errors,
+        IReadOnlyList<LoaderWarning> Warnings);
+
+    public static SourceEscapeValidationResult ValidateSourceEscapes(MetaData root)
+    {
+        var errors = new List<MetaError>();
+        var warnings = new List<LoaderWarning>();
+
+        // ADR-0039: root has no super; OwnChildren()==Children() but resolving is the
+        // default policy everywhere else in this pass.
+        foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT))
+        {
+            // ADR-0039: own — declaration-layer source iteration (mirrors
+            // ValidateObjectPrimarySource / ValidateSourcePhysicalNames): R1–R3 judge
+            // markers DECLARED on this object's own sources.
+            var sources = obj.OwnChildren()
+                .Where(c => c.Type == TYPE_SOURCE && c.SubType == SourceConstants.SOURCE_SUBTYPE_RDB && c is MetaSource)
+                .Cast<MetaSource>();
+
+            bool hasSqlHost = false;
+            bool hasUnmanagedHost = false;
+
+            foreach (var source in sources)
+            {
+                // ADR-0039: resolving — @sql/@unmanaged are inheritable (follow the
+                // @role/EffectiveKind precedent — sources are inheritable, NOT the
+                // @dbColumnType own-only exception).
+                bool sqlSet = source.SqlBody is not null;
+                bool unmanagedSet = source.IsUnmanaged;
+
+                // R1 — contradictory DDL owners on the same source.
+                if (sqlSet && unmanagedSet)
+                {
+                    errors.Add(new MetaError(
+                        $"source.rdb on object \"{obj.Name}\" declares both @sql and @unmanaged — these are the " +
+                        "mutually exclusive non-default states of one DDL-ownership axis (an author-supplied body " +
+                        "contradicts \"someone else owns this DDL\")",
+                        ErrorCode.ERR_SQL_BODY_WITH_UNMANAGED,
+                        Envelope: source.Source));
+                }
+
+                // R2 — @sql on a writable kind would bypass the column-diff machinery;
+                // tables are fully modeled or @unmanaged, never opaque-bodied.
+                if (sqlSet && source.IsWritable())
+                {
+                    errors.Add(new MetaError(
+                        $"source.rdb on object \"{obj.Name}\" declares @sql with a writable @kind (\"{source.EffectiveKind}\") — " +
+                        "@sql is legal only on a read-only kind (view/materializedView/storedProc/tableFunction); " +
+                        "a writable table is either fully modeled or marked @unmanaged, never opaque-bodied",
+                        ErrorCode.ERR_SQL_BODY_ON_WRITABLE_KIND,
+                        Envelope: source.Source));
+                }
+
+                // R3 — @sql present but empty/whitespace. MUST read the RAW attr, not
+                // the SqlBody accessor: SqlBody already narrows an empty string to
+                // null, which would make a present-but-empty @sql indistinguishable
+                // from an absent one.
+                var rawSql = source.Attr(SourceConstants.SOURCE_ATTR_SQL);
+                if (rawSql is not null && (rawSql is not string rawSqlStr || rawSqlStr.Trim() == ""))
+                {
+                    errors.Add(new MetaError(
+                        $"source.rdb on object \"{obj.Name}\" sets @sql to an empty/whitespace-only value; " +
+                        "@sql requires a non-empty SQL body",
+                        ErrorCode.ERR_BAD_ATTR_VALUE,
+                        Envelope: source.Source));
+                }
+
+                if (sqlSet) hasSqlHost = true;
+                if (unmanagedSet) hasUnmanagedHost = true;
+            }
+
+            if (!hasSqlHost && !hasUnmanagedHost) continue;
+
+            // R4 / R6 — origin.*-bearing (derived) own fields under an @sql / @unmanaged
+            // host. ADR-0039: own — origin.* never inherits (ADR-0029), so IsDerived()
+            // is own-only by policy (mirrors ValidateDerivedFieldProvidability). @sql
+            // (hard error) takes priority over @unmanaged (warn) when a host happens
+            // to declare both markers across different sources.
+            foreach (var field in obj.OwnChildren()
+                         .Where(c => c.Type == TYPE_FIELD && c is MetaField)
+                         .Cast<MetaField>())
+            {
+                if (!field.IsDerived()) continue;
+                if (hasSqlHost)
+                {
+                    errors.Add(new MetaError(
+                        $"field \"{obj.Name}.{field.Name}\" carries an origin.* (derived) child, but \"{obj.Name}\" has a " +
+                        "read source carrying @sql — the synthesized derivation and the author's verbatim SQL are two " +
+                        "sources of truth for the same body",
+                        ErrorCode.ERR_ORIGIN_UNDER_SQL_BODY,
+                        Envelope: field.Source));
+                }
+                else
+                {
+                    warnings.Add(new LoaderWarning(
+                        Code: WarningCodes.WARN_ORIGIN_UNDER_UNMANAGED,
+                        Message:
+                            $"field \"{obj.Name}.{field.Name}\" carries an origin.* (derived) child, but \"{obj.Name}\" has a " +
+                            "source marked @unmanaged — the tool never touches this object's DDL, so the derivation is " +
+                            "documented lineage only (not acted on); this is informational, not an error",
+                        Source: field.Source));
+                }
+            }
+
+            // R5 — a projection's row-scope @filter (#207) lowers to the outer WHERE
+            // of a TOOL-SYNTHESIZED body; with @sql the author owns the body (and its
+            // WHERE), so wrapping it is deferred cleverness (design doc D5) — reject.
+            if (hasSqlHost && obj.SubType == OBJECT_SUBTYPE_PROJECTION)
+            {
+                // ADR-0039: own — the @filter is declared locally on this projection
+                // (mirrors ValidateProjectionFilter).
+                var filter = obj.OwnAttr(OBJECT_PROJECTION_ATTR_FILTER);
+                if (filter is not null)
+                {
+                    errors.Add(new MetaError(
+                        $"projection \"{obj.Name}\" declares both @filter and an @sql read source — a view-level @filter " +
+                        "lowers to the outer WHERE of a synthesized body; with @sql the author owns the body (and its " +
+                        "WHERE), so the two cannot be combined",
+                        ErrorCode.ERR_ORIGIN_UNDER_SQL_BODY,
+                        Envelope: obj.Source));
+                }
+            }
+        }
+
+        return new SourceEscapeValidationResult(errors.AsReadOnly(), warnings.AsReadOnly());
+    }
+
+    // =========================================================================
     // Pass 10: ValidateEnumValues
     //   Enforces the three cross-language @values rules on every field.enum node:
     //     1. @values must be non-empty.

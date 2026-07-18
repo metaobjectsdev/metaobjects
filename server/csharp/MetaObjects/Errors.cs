@@ -161,6 +161,18 @@ public enum ErrorCode
     // ADR-0023 — a registration was attempted against a registry sealed after its
     // agreed metamodel-provider bootstrap. Codegen cannot invent metamodel attrs.
     ERR_REGISTRY_SEALED,
+    // #208 — DDL-ownership escape valves (@sql / @unmanaged on source.rdb).
+    // ERR_SQL_BODY_WITH_UNMANAGED — @sql AND @unmanaged declared on the SAME source
+    // (R1): mutually exclusive non-default states of one DDL-ownership axis.
+    // ERR_SQL_BODY_ON_WRITABLE_KIND — @sql declared on a writable @kind ("table",
+    // the default) (R2): @sql is legal only on a read-only kind.
+    // ERR_ORIGIN_UNDER_SQL_BODY — an origin.*-bearing (derived) own field under an
+    // @sql host (R4), or an object.projection @filter (#207) combined with an @sql
+    // host (R5): the synthesized derivation/filter and the author's verbatim SQL
+    // are two sources of truth for the same body.
+    ERR_SQL_BODY_WITH_UNMANAGED,
+    ERR_SQL_BODY_ON_WRITABLE_KIND,
+    ERR_ORIGIN_UNDER_SQL_BODY,
     ERR_UNKNOWN,
 }
 
@@ -197,6 +209,16 @@ public static class WarningCodes
     /// advisory (codegen may use it for record/struct treatment).
     /// </summary>
     public const string WARN_READONLY_VALUE_OBJECT = "WARN_READONLY_VALUE_OBJECT";
+
+    /// <summary>
+    /// #208 (R6) — an origin.*-bearing (derived) own field sits under a host object
+    /// whose source.rdb is marked <c>@unmanaged</c>. <c>@unmanaged</c> acts on nothing
+    /// (the tool never touches this object's DDL), so a documented-but-unacted-on
+    /// derivation is benign — informational, not an error. <c>@sql</c> (R4, hard
+    /// error) takes priority over this warning when a host declares both markers
+    /// across different sources.
+    /// </summary>
+    public const string WARN_ORIGIN_UNDER_UNMANAGED = "WARN_ORIGIN_UNDER_UNMANAGED";
 }
 
 /// <summary>
