@@ -252,4 +252,16 @@ describe("buildProjectionViews — #208 @sql / @unmanaged DDL-ownership escape v
     const views = buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" });
     expect(views.find((vv) => vv.name === "v_node_tree")).toBeUndefined();
   });
+
+  test("@sql on a non-view kind (materializedView) hard-errors at migrate lowering (D4)", async () => {
+    // @sql is legal-in-vocabulary on any read-only kind (5-port registration is stable),
+    // but v1 TS migrate lowering accepts it only on @kind: view — matview needs genuinely
+    // new introspection (pg_matviews). Actionable hard error, not a silent skip.
+    const root = await load(
+      model({ "@kind": "materializedView", "@materializedView": "mv_node_tree", "@sql": RECURSIVE_BODY }),
+    );
+    expect(() => buildProjectionViews(root, { dialect: "postgres", columnNamingStrategy: "snake_case" })).toThrow(
+      /not yet migrate-managed on @kind: "materializedView"/,
+    );
+  });
 });

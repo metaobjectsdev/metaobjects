@@ -73,6 +73,33 @@ const PASSTHROUGH_STATUS = `{ "field.string": { "name": "status", "children": [
 const AGG_WEEK_COUNT = `{ "field.long": { "name": "weekCount", "children": [
             { "origin.aggregate": { "@agg": "count", "@of": "Week.id", "@via": "Program.weeks" } } ] } }`;
 
+// #208 — an @sql projection view: a hand-written body the tool REGISTERS + fingerprints
+// + drift-checks but never parses. The body is verbatim SQL over `programs`; the fields
+// are pure extends-bound shape (no origin.* — that would be two sources of truth). This
+// rides the exact fingerprint/adopt-view pipeline the synthesized body already uses.
+const SQL_VIEW_BODY = `SELECT id AS id, title AS title FROM programs WHERE status = 'active'`;
+function metaSql(): string {
+  return `{
+    "metadata.root": {
+      "package": "acme",
+      "children": [
+        { "object.entity": { "name": "Program", "children": [
+          { "field.long":   { "name": "id" } },
+          { "field.string": { "name": "title",  "@required": true } },
+          { "field.string": { "name": "status", "@required": true } },
+          { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+        ] } },
+        { "object.projection": { "name": "ActivePrograms", "children": [
+          { "source.rdb": { "@kind": "view", "@view": "v_active_programs", "@sql": ${JSON.stringify(SQL_VIEW_BODY)} } },
+          { "identity.primary": { "name": "id", "extends": "Program.id", "@fields": "id" } },
+          { "field.long":   { "name": "id",    "extends": "Program.id" } },
+          { "field.string": { "name": "title", "extends": "Program.title" } }
+        ] } }
+      ]
+    }
+  }`;
+}
+
 let pg: RunningPg;
 let k: Kysely<Record<string, unknown>>;
 
@@ -467,5 +494,46 @@ describe("view lifecycle — real Postgres", () => {
     expect(down).not.toContain("cannot restore the original view definition");
     await applyRaw(down);
     expect(await viewCols("v_program_summary")).toEqual(["id", "title", "weekCount"]);
+  });
+
+  // -------------------------------------------------------------------------
+  // #208 — @sql DDL-ownership escape valve: a hand-written body, tool-managed lifecycle.
+  // -------------------------------------------------------------------------
+
+  test("#208 @sql: a hand-written body emits VERBATIM + a fingerprint stamp, then a second migrate is a NO-OP", async () => {
+    const { expected, up } = await migrate(metaSql());
+
+    // The body is the author's verbatim SQL, wrapped in CREATE VIEW — NOT a synthesized
+    // base-table passthrough SELECT — and stamped so drift-check has something to compare.
+    expect(up).toContain(`CREATE VIEW "v_active_programs" AS`);
+    expect(up).toContain(SQL_VIEW_BODY);
+    expect(up).toMatch(/COMMENT ON VIEW "v_active_programs" IS 'metaobjects:v1:sha256:[0-9a-f]{64}'/);
+    expect(await viewComment("v_active_programs")).toMatch(/^metaobjects:v1:sha256:[0-9a-f]{64}$/);
+
+    // The hand body actually runs: a seeded active/inactive pair filters to the active one.
+    await sql.raw(`INSERT INTO "programs" ("id","title","status") VALUES (1,'Live','active'),(2,'Old','archived')`).execute(k);
+    const rows = await sql.raw(`SELECT id, title FROM "v_active_programs" ORDER BY id`).execute(k);
+    expect(rows.rows).toEqual([{ id: "1", title: "Live" }]);
+
+    // THE gate: opaque body (columns unknown) still converges — the fingerprint matches.
+    await assertConverged(expected);
+  });
+
+  test("#208 @sql: a pre-existing UNSTAMPED view at the name is BLOCKED pending adopt-view, then adopts + converges", async () => {
+    const m = metaSql();
+    await migrate(m);
+    // Strip the stamp: now indistinguishable from a hand-written view Postgres deparsed.
+    await sql.raw(`COMMENT ON VIEW "v_active_programs" IS NULL`).execute(k);
+
+    const expected = await expectedFor(m);
+    const result = await diff({ expected, actual: await introspectPostgres(k), dialect: "postgres" });
+    const blocked = result.blocked.find((c) => c.kind === "replace-view");
+    expect(blocked).toBeDefined();
+    expect(blocked!.status.blockedReason).toContain("allow.adoptView");
+
+    // The one-time adoption ceremony: `migrate --allow adopt-view` stamps it, then silent.
+    const { expected: exp2 } = await migrate(m, { adoptView: true });
+    expect(await viewComment("v_active_programs")).toMatch(/^metaobjects:v1:sha256:[0-9a-f]{64}$/);
+    await assertConverged(exp2);
   });
 });
