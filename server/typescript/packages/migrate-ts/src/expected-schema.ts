@@ -153,8 +153,11 @@ export function buildExpectedSchema(
     if (hasReadOnlySource && !hasWritableSource) continue;
     const tableName = resolveTableName(child);
     // #208 §7 — an @unmanaged writable (table) source: emit no descriptor, but keep the
-    // entity in entityToTable so an inbound FK resolves the physical name.
-    const writableSource = child.children().find(
+    // entity in entityToTable so an inbound FK resolves the physical name. OWN-source
+    // detection (not resolving) to match collectUnmanagedNames, so the skip here and the
+    // act-side drop-suppression there agree exactly — no split-brain where a table is not
+    // created yet is still proposed for drop.
+    const writableSource = child.ownChildren().find(
       (c): c is MetaSource => c instanceof MetaSource && c.isWritable(),
     );
     if (writableSource?.isUnmanaged) {

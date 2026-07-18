@@ -46,6 +46,45 @@ describe("planOffline", () => {
   });
 });
 
+describe("planOffline — #208 @unmanaged (offline DROP suppression)", () => {
+  const legacyMeta = (unmanaged: boolean) =>
+    JSON.stringify({
+      "metadata.root": {
+        children: [
+          {
+            "object.entity": {
+              name: "Legacy",
+              children: [
+                { "field.long": { name: "id" } },
+                {
+                  "source.rdb": {
+                    name: "src",
+                    "@table": "legacy_accounts",
+                    ...(unmanaged ? { "@unmanaged": true } : {}),
+                  },
+                },
+                { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+  test("does NOT propose drop-table for an @unmanaged table captured in the snapshot (a from-db baseline)", async () => {
+    // A `baseline --from-db` captured the Flyway-owned table into the committed snapshot...
+    const snapshot = baselineFromMetadata(await loadJson(legacyMeta(false)), "postgres");
+    expect(snapshot.tables.map((t) => t.name)).toContain("legacy_accounts");
+
+    // ...and the metadata now declares that table @unmanaged. The offline generate path
+    // must stay silent for it — not propose DROP for an externally-owned table.
+    const metadata = await loadJson(legacyMeta(true));
+    const { diff } = await planOffline({ metadata, dialect: "postgres", snapshot });
+    expect(diff.changes.some((c) => c.kind === "drop-table" && c.table === "legacy_accounts")).toBe(false);
+    expect(diff.changes).toHaveLength(0);
+  });
+});
+
 describe("baselineFromMetadata", () => {
   test("equals buildExpectedSchema for the dialect", async () => {
     const metadata = await loadJson(META);

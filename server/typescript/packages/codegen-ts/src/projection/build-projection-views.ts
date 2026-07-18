@@ -93,44 +93,21 @@ export function buildProjectionViews(
 
   const out: ExpectedView[] = [];
   for (const projection of root.objects().filter(isProjection)) {
-    // Only PLAIN-VIEW projections produce managed CREATE VIEW DDL. The other
-    // read-only kinds must be skipped, not fed to extractViewSpec:
-    //   - storedProc / tableFunction (FR-015) are CALLABLES, not views. They are
-    //     base-less (no extends-bound identity), so extractViewSpec THROWS for
-    //     them — and the CLI calls this function unconditionally, so one proc
-    //     projection used to crash `meta migrate` outright.
-    //   - materializedView cannot be managed by the migrate pipeline today:
-    //     there is no CREATE MATERIALIZED VIEW emit, and PG introspection cannot
-    //     even see matviews (information_schema.views excludes them), so a
-    //     "managed" matview would re-propose create-view on every run and the
-    //     apply would collide with the existing object. Worse, feeding it
-    //     through here silently created a PLAIN view under the matview's name.
-    //     Matviews are hand-managed, like the documented custom-SQL-view
-    //     exception: migrate neither creates nor drops them.
-    //   - a STANDALONE read-model — a plain view projection declaring its own
-    //     columns, with no origin.* children — is hand-authored SQL too. Codegen
-    //     already treats it that way on purpose (see projection-decl.ts: "lets a
-    //     standalone read-only view-entity — explicit columns, no `extends` —
-    //     generate its read model … standalone views hand-author their SQL").
-    //     The SCHEMA path never got that memo: extractViewSpec THREW on it
-    //     ("cannot derive the base entity"), and because the CLI calls this
-    //     function unconditionally, ONE such projection aborted `meta migrate`
-    //     for the ENTIRE model — every other entity included. Same crash class as
-    //     the proc projections above. Skip it instead.
-    // ADR-0039: own — mirrors isProjection/viewName's own-source classification.
-    const readOnlySource = projection.ownChildren().find(
-      (c): c is MetaSource => c instanceof MetaSource && c.isReadOnly(),
-    );
-    if (readOnlySource === undefined) continue;
-    // #208 suppression rule (§6) — classify DDL ownership BEFORE viewIsDerived, so an
-    // escape-valve view carrying extends-bound identity/fields (pure shape / row
+    // #208 §6 — classify DDL ownership BEFORE viewIsDerived (see classifyReadOnlySource),
+    // so an escape-valve view carrying extends-bound identity/fields (pure shape / row
     // identity) is never mis-synthesized into a wrong base-table passthrough SELECT.
-    if (readOnlySource.isUnmanaged) continue;                 // external: Flyway/hand-migration owns it (§7)
-    if (readOnlySource.sqlBody !== undefined) {               // supplied: the author owns the body
-      emitSqlView(projection, readOnlySource, root, joinTables, out);
+    const cls = classifyReadOnlySource(projection);
+    if (cls.kind === "skip") continue;
+    if (cls.kind === "sql") {
+      emitSqlView(projection, cls.source, root, joinTables, out);
       continue;
     }
-    if (readOnlySource.effectiveKind !== SOURCE_KIND_VIEW) continue;
+    // A plain-view projection with no extends anchor and no origin.* is a STANDALONE
+    // read-model that hand-authors its own SQL — viewIsDerived returns false and we skip
+    // it (feeding it to extractViewSpec throws "cannot derive the base entity", and the
+    // CLI calls this unconditionally, so ONE such projection would abort `meta migrate`
+    // for the whole model). Codegen already treats this shape as intended in
+    // projection-decl.ts ("standalone views hand-author their SQL").
     if (!viewIsDerived(projection)) continue;
     emitViewFor(projection, root, joinTables, dialect, columnNamingStrategy, out);
   }
@@ -145,21 +122,53 @@ export function buildProjectionViews(
   // `view` read source synthesizes CREATE VIEW DDL — a matview/proc/tableFunction
   // read source is hand-managed, exactly as for projections above.
   for (const entity of root.objects().filter(isWriteThrough)) {
-    const readOnlySource = entity.ownChildren().find(
-      (c): c is MetaSource => c instanceof MetaSource && c.isReadOnly(),
-    );
-    if (readOnlySource === undefined) continue;
-    // #208 suppression rule (§6) — same DDL-ownership classification as the projection
-    // loop above: an @unmanaged replica view is skipped, an @sql one is verbatim.
-    if (readOnlySource.isUnmanaged) continue;
-    if (readOnlySource.sqlBody !== undefined) {
-      emitSqlView(entity, readOnlySource, root, joinTables, out);
+    // #208 §6 — same DDL-ownership classification as the projection loop. Unlike a
+    // projection there is no viewIsDerived gate: a write-through entity IS the base and
+    // always has a derived view to emit (extractViewSpec detects the write-through host).
+    const cls = classifyReadOnlySource(entity);
+    if (cls.kind === "skip") continue;
+    if (cls.kind === "sql") {
+      emitSqlView(entity, cls.source, root, joinTables, out);
       continue;
     }
-    if (readOnlySource.effectiveKind !== SOURCE_KIND_VIEW) continue;
     emitViewFor(entity, root, joinTables, dialect, columnNamingStrategy, out);
   }
   return out;
+}
+
+/**
+ * #208 §6 — classify a host's read-only source by DDL OWNERSHIP, BEFORE any derivation
+ * decision. Shared by the projection and write-through loops so the ownership rules can
+ * never diverge between the two host kinds (the emit TAIL is already shared via emitViewFor).
+ *
+ *   - no read-only source, OR @unmanaged (external), OR a non-`view` read-only kind →
+ *     "skip". The non-view read-only kinds are hand-managed and MUST NOT reach
+ *     extractViewSpec:
+ *       · storedProc / tableFunction (FR-015) are CALLABLES, base-less → extractViewSpec
+ *         throws (and the CLI calls this unconditionally, so one proc crashed migrate);
+ *       · materializedView has no CREATE-MATVIEW emit and is invisible to
+ *         information_schema.views, so a "managed" matview re-proposes create every run;
+ *       · @unmanaged: Flyway / a hand-migration owns the DDL (§7).
+ *   - @sql read source → "sql": the author owns a verbatim body (emitSqlView).
+ *   - a plain `view` read source → "derive": a tool-synthesized body (the caller applies
+ *     its own viewIsDerived / standalone-read-model gate).
+ *
+ * ADR-0039: own — mirrors isProjection/viewName's own-source classification.
+ */
+type ReadOnlySourceClass =
+  | { kind: "skip" }
+  | { kind: "sql"; source: MetaSource }
+  | { kind: "derive"; source: MetaSource };
+
+function classifyReadOnlySource(host: MetaObject): ReadOnlySourceClass {
+  const source = host.ownChildren().find(
+    (c): c is MetaSource => c instanceof MetaSource && c.isReadOnly(),
+  );
+  if (source === undefined) return { kind: "skip" };
+  if (source.isUnmanaged) return { kind: "skip" }; // external — Flyway/hand-migration owns it
+  if (source.sqlBody !== undefined) return { kind: "sql", source }; // author-supplied body
+  if (source.effectiveKind !== SOURCE_KIND_VIEW) return { kind: "skip" }; // matview/proc/tableFunction
+  return { kind: "derive", source };
 }
 
 /** Extract + emit one host's (projection or write-through entity) view body and

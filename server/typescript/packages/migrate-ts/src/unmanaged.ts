@@ -11,7 +11,8 @@ import {
   MetaSource,
   resolveTableSchema,
   DEFAULT_DB_SCHEMA_POSTGRES,
-  type MetaRoot,
+  TYPE_OBJECT,
+  type MetaData,
 } from "@metaobjectsdev/metadata";
 
 /**
@@ -19,15 +20,19 @@ import {
  * of every DB object declared `@unmanaged`. The format matches `tableIdentity` /
  * `viewIdentity` in the diff, so one set silences both drop-table and drop-view.
  *
- * Walks each object's OWN sources: `@unmanaged` is per-source (ADR-0007 — physical
- * concerns live on the source child), so a write-through entity can mark only its
- * read-view source `@unmanaged` while its table stays managed. Own-source iteration
- * also keeps `source.physicalName`'s owner-fallback resolving against the declaring
- * object rather than an `extends` super.
+ * Walks each object's OWN sources — the SAME own-source basis buildExpectedSchema Pass 1
+ * uses to skip an `@unmanaged` table's descriptor, so the two halves of the diff agree
+ * (an object skipped from `expected` is also excluded from `actual`): no split-brain
+ * where a table is not created yet is still proposed for drop. `@unmanaged` is
+ * per-source (ADR-0007 — physical concerns live on the source child), so a write-through
+ * entity can mark only its read-view source `@unmanaged` while its table stays managed.
+ * Own-source iteration also keeps `source.physicalName`'s owner-fallback resolving
+ * against the declaring object rather than an `extends` super.
  */
-export function collectUnmanagedNames(root: MetaRoot): string[] {
+export function collectUnmanagedNames(root: MetaData): string[] {
   const out: string[] = [];
-  for (const obj of root.objects()) {
+  for (const obj of root.children()) {
+    if (obj.type !== TYPE_OBJECT) continue;
     for (const src of obj.ownChildren()) {
       if (!(src instanceof MetaSource) || !src.isUnmanaged) continue;
       const schema = resolveTableSchema(obj) ?? DEFAULT_DB_SCHEMA_POSTGRES;

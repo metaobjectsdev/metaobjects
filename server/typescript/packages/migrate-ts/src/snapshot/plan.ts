@@ -2,6 +2,7 @@
 import type { ColumnNamingStrategy, MetaData } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../expected-schema.js";
 import { diff, type DiffArgs } from "../diff/index.js";
+import { collectUnmanagedNames } from "../unmanaged.js";
 import type { Dialect, DiffResult, SchemaSnapshot } from "../types.js";
 import type { ExpectedViewInput } from "../expected-schema.js";
 
@@ -37,6 +38,10 @@ export async function planOffline(args: PlanOfflineArgs): Promise<PlanOfflineRes
     expected: nextSnapshot,
     actual: args.snapshot,
     dialect: args.dialect,
+    // #208 §7 — exclude declared-@unmanaged objects from the actual (snapshot) side too,
+    // so the OFFLINE generate path never proposes DROP for an external table that a
+    // `baseline --from-db` captured into the snapshot (parity with the online/verify paths).
+    unmanagedNames: collectUnmanagedNames(args.metadata),
     ...(args.allow ? { allow: args.allow } : {}),
     ...(args.onAmbiguous ? { onAmbiguous: args.onAmbiguous } : {}),
     ...(args.ignoreTables ? { ignoreTables: args.ignoreTables } : {}),
