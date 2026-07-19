@@ -71,6 +71,7 @@ const UNIVERSAL: Record<string, AttrExp> = {
   filterable: { valueType: "boolean", required: false },
   sortable: { valueType: "boolean", required: false },
   sortableDefaultOrder: { valueType: "string", required: false },
+  formExclude: { valueType: "boolean", required: false },
   // metaobjects-prompt — AI + serialization (legitimately any field)
   xmlText: { valueType: "boolean", required: false },
   example: { valueType: "string", required: false },
