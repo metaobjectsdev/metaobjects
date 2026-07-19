@@ -277,6 +277,11 @@ function viewKindFor(field: MetaField): string | null {
   return null;
 }
 
+/** The field's declared @values (enum member symbols), or [] when absent. */
+function enumValues(field: MetaField): string[] {
+  return (field.attr(FIELD_ATTR_VALUES) as string[] | undefined) ?? [];
+}
+
 export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
   const entityName = entity.name;
   // Import the entity's own file. Same target → relative "./Entity"; cross
@@ -342,7 +347,7 @@ ${control}
     // Enum member symbols are validated to /^[A-Za-z_][A-Za-z0-9_]*$/, so raw
     // interpolation into JSX attribute/text positions is safe (no escaping).
     if (kind === VIEW_SUBTYPE_DROPDOWN) {
-      const values = (field.attr(FIELD_ATTR_VALUES) as string[] | undefined) ?? [];
+      const values = enumValues(field);
       const required = field.attr(FIELD_ATTR_REQUIRED) === true;
       const empty = required ? "" : `            <option value="">Select…</option>\n`;
       const options = values.map((v) => `            <option value="${v}">${v}</option>`).join("\n");
@@ -365,7 +370,7 @@ ${control}
       );
     }
     if (kind === VIEW_SUBTYPE_RADIO) {
-      const values = (field.attr(FIELD_ATTR_VALUES) as string[] | undefined) ?? [];
+      const values = enumValues(field);
       const radios = values
         .map(
           (v) =>
