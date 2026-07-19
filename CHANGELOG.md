@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.18.0] — 2026-07-19
+
+Coordinated additive **minor** across all registries: npm `0.18.0` · NuGet `0.18.0` · PyPI `0.18.0` · Maven Central `7.10.0`. No breaking changes.
+
+**Form controls — view-kind dispatch (TypeScript codegen).** The generated `<Entity>Form` (`@metaobjectsdev/codegen-ts-react` `formFile`) now renders the **right control for each field's declared view** instead of a bare `<input>` for every scalar: a `field.enum` with no explicit view renders a `<select>` (dropdown), `view.textarea` renders a `<textarea>`, `view.checkbox` a checkbox, `view.radio` a radio fieldset; everything else keeps the existing typed `<input>`. Dispatched controls carry an `aria-label` (accessible name parity with the scalar path), and the submit button is wrapped in a styled `metaobjects-form-actions` / `metaobjects-form-submit` container. This is a **generated-output change** delivered default-on — regenerate to pick it up; three-way merge preserves hand-edits.
+
+**`@formExclude` registered as first-class vocabulary (cross-port).** The form template already read `@formExclude` (to omit a field from a generated form), but core never registered it — so strict `meta verify` (ADR-0023 sealed registry) rejected it as `ERR_UNKNOWN_ATTR`. It is now registered as a boolean attribute on the `field.*` wildcard in `spec/metamodel/ui.json` (mirroring `@filterable`/`@sortable`) and flows to every port (TS / C# / Java / Kotlin / Python) via the data-driven UI provider — no per-port code. Cross-port registry conformance gates it.
+
+**Deferred (documented):** configurable `@rows` on `view.textarea` — there is no clean cross-port home for an attribute on a TS-only view subtype today (`ui.json`'s `extends` throws where `view.textarea` is deregistered; core `view.json` breaks the FR-033 "core owns zero view attrs" invariant); textareas render a fixed `rows={4}` until a proper design lands. The blank-optional-scalar submit fix is deferred as tristate-aware work (tracked in #223).
+
 ## [0.17.1] — 2026-07-18
 
 npm-only **patch** (`0.17.0` → `0.17.1`; PyPI / NuGet / Maven Central unchanged — a TypeScript-only fix). Fixes a real correctness bug in the generated REST surface for **write-through entities** (FR-024 §7 / #214): a write-through entity (writable table + `@role:replica @kind:view` replica + a derived `origin.passthrough` field) had its generated routes read/write only the base table, so `GET` / `POST` HTTP responses OMITTED the derived field. The #214 read-half had shipped in the query layer + the replica view, but the routes layer was left mounting vanilla table CRUD — and no write-through routes test existed, so nothing caught it.
