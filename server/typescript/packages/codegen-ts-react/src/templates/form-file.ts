@@ -46,7 +46,13 @@ import {
   VIEW_SUBTYPE_DROPDOWN,
   VIEW_SUBTYPE_CHECKBOX,
   VIEW_SUBTYPE_RADIO,
+  VIEW_SUBTYPE_IMAGE,
   VIEW_TEXTAREA_ATTR_ROWS,
+  VIEW_IMAGE_ATTR_ASPECT_RATIO,
+  VIEW_IMAGE_ATTR_MAX_EDGE,
+  VIEW_IMAGE_ATTR_STORE,
+  VIEW_IMAGE_ATTR_ACCEPT,
+  VIEW_IMAGE_ATTR_MAX_BYTES,
 } from "@metaobjectsdev/metadata";
 import { type RenderContext, entityModuleSpecifier, GENERATED_HEADER, tphDiscriminatorPin } from "@metaobjectsdev/codegen-ts";
 
@@ -386,6 +392,21 @@ ${control}
         `          <fieldset aria-label={${entityName}.${name}.label} className="metaobjects-field-radios">\n${radios}\n          </fieldset>`,
       );
     }
+    if (kind === VIEW_SUBTYPE_IMAGE) {
+      const num = (a: string) => {
+        const v = view?.attr(a);
+        return typeof v === "number" ? String(v) : "undefined";
+      };
+      const accept = view?.attr(VIEW_IMAGE_ATTR_ACCEPT) as string[] | undefined;
+      const acceptLit = accept ? JSON.stringify(accept) : "undefined";
+      const store = view?.attr(VIEW_IMAGE_ATTR_STORE);
+      const storeLit = typeof store === "string" ? JSON.stringify(store) : "undefined";
+      const meta = `{ aspectRatio: ${num(VIEW_IMAGE_ATTR_ASPECT_RATIO)}, maxEdge: ${num(VIEW_IMAGE_ATTR_MAX_EDGE)}, store: ${storeLit}, accept: ${acceptLit}, maxBytes: ${num(VIEW_IMAGE_ATTR_MAX_BYTES)} }`;
+      const control = `          <Controller name=${JSON.stringify(name)} control={form.control} render={({ field: f }) => (
+            <ImageUpload value={f.value as string | null} onChange={f.onChange} meta={${meta}} />
+          )} />`;
+      return labelAndError(name, control);
+    }
     return scalarBlock(name);
   };
 
@@ -412,13 +433,21 @@ ${control}
   const useFieldArrayImport =
     fieldArrayHooks.length > 0 ? `import { useFieldArray } from "react-hook-form";\n` : "";
 
+  // Only pull in Controller + ImageUpload when a view.image field needs them —
+  // a native <input> can't drive a file-upload control's value/onChange
+  // contract, so image fields are wrapped in react-hook-form's <Controller>.
+  const hasImage = fields.some((f) => f.views()[0]?.subType === VIEW_SUBTYPE_IMAGE);
+  const imageImports = hasImage
+    ? `import { Controller } from "react-hook-form";\nimport { ImageUpload } from "@metaobjectsdev/react";\n`
+    : "";
+
   const literalImports = code`
 import {
   ${entityName},
   ${entityName}InsertSchema,
 } from ${JSON.stringify(entityFileSpec)};
 import type { ${entityName} as ${entityName}Row } from ${JSON.stringify(entityFileSpec)};
-${useFieldArrayImport}`;
+${useFieldArrayImport}${imageImports}`;
 
   const body = code`
 export interface ${entityName}FormProps {
