@@ -23,6 +23,7 @@ import { DB_DEFINITION } from "../persistence/db/db-definition.embedded.js";
 import { VIEW_DEFINITION } from "../presentation/view/view-definition.embedded.js";
 import { LAYOUT_DEFINITION } from "../presentation/layout/layout-definition.embedded.js";
 import { UI_DEFINITION } from "../presentation/ui/ui-definition.embedded.js";
+import { UI_WEB_DEFINITION } from "../presentation/ui-web/ui-web-definition.embedded.js";
 import { TEMPLATE_DEFINITION } from "../template/template-definition.embedded.js";
 import { PROMPT_DEFINITION } from "../template/prompt-definition.embedded.js";
 
@@ -45,6 +46,7 @@ export const ALL_PROVIDER_DEFINITIONS: readonly ProviderDefinition[] = [
   VIEW_DEFINITION,
   LAYOUT_DEFINITION,
   UI_DEFINITION,
+  UI_WEB_DEFINITION,
   TEMPLATE_DEFINITION,
   PROMPT_DEFINITION,
 ];

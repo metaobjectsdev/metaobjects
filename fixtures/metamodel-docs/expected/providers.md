@@ -139,3 +139,12 @@ UI/query-surface domain — @filterable / @sortable / @sortableDefaultOrder fiel
 - `layout.dataGrid`: `@columns`, `@defaultSortField`, `@defaultSortOrder`, `@filter`, `@filterable`, `@pageSize`
 - `view.currency`: `@locale`
 
+## metaobjects-ui-web
+
+TS-web presentation view attrs — @rows (view.textarea) and the view.image control attrs. Applied only in TypeScript; the non-TS ports mirror the spec file but never apply this provider (the view subtypes are TS-web presentation-only).
+
+**Contributes attributes:**
+
+- `view.image`: `@accept`, `@aspectRatio`, `@maxBytes`, `@maxEdge`, `@store`
+- `view.textarea`: `@rows`
+

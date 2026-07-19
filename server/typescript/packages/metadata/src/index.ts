@@ -173,6 +173,7 @@ export { dbProvider } from "./persistence/db/db-provider.js";
 export { docProvider } from "./core/documentation/doc-provider.js";
 export { promptProvider } from "./template/prompt-provider.js";
 export { uiProvider } from "./presentation/ui/ui-provider.js";
+export { uiWebProvider } from "./presentation/ui-web/ui-web-provider.js";
 export { FIELD_ATTR_XML_TEXT } from "./template/template-constants.js";
 
 // Type provider model

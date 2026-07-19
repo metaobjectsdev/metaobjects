@@ -21,7 +21,7 @@
 // object metadata. Default off. Most projects don't need stock forms.
 
 import { code, imp } from "ts-poet";
-import { MetaField, MetaObject, stripPackage } from "@metaobjectsdev/metadata";
+import { MetaField, MetaObject, MetaView, stripPackage } from "@metaobjectsdev/metadata";
 import {
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_ATTR_FIELDS,
@@ -270,9 +270,11 @@ ${inner.join("\n")}
 }
 
 /** The view kind that drives control selection: an explicit view child wins;
- *  an enum with no view defaults to a dropdown; otherwise null (typed <input>). */
-function viewKindFor(field: MetaField): string | null {
-  const view = field.views()[0]; // resolving accessor (ADR-0039)
+ *  an enum with no view defaults to a dropdown; otherwise null (typed <input>).
+ *  Takes the already-resolved view (callers that also need view attrs, like
+ *  the textarea `@rows` lookup, fetch it once via `field.views()[0]` and
+ *  pass it through rather than re-deriving it here). */
+function viewKindFor(field: MetaField, view: MetaView | undefined): string | null {
   if (view !== undefined) return view.subType;
   if (field.subType === FIELD_SUBTYPE_ENUM) return VIEW_SUBTYPE_DROPDOWN;
   return null;
@@ -344,7 +346,8 @@ ${control}
   // scalarBlock's typed <input> bound via `form.input.<field>`.
   const fieldControlFor = (field: MetaField): string => {
     const name = field.name;
-    const kind = viewKindFor(field);
+    const view = field.views()[0]; // resolving accessor (ADR-0039)
+    const kind = viewKindFor(field, view);
     // Enum member symbols are validated to /^[A-Za-z_][A-Za-z0-9_]*$/, so raw
     // interpolation into JSX attribute/text positions is safe (no escaping).
     if (kind === VIEW_SUBTYPE_DROPDOWN) {
@@ -358,7 +361,7 @@ ${control}
       );
     }
     if (kind === VIEW_SUBTYPE_TEXTAREA) {
-      const rows = (field.views()[0]?.attr(VIEW_TEXTAREA_ATTR_ROWS) as number | undefined) ?? 4;
+      const rows = (view?.attr(VIEW_TEXTAREA_ATTR_ROWS) as number | undefined) ?? 4;
       return labelAndError(
         name,
         `          <textarea aria-label={${entityName}.${name}.label} className="metaobjects-field-input" rows={${rows}} {...form.register("${name}")} />`,

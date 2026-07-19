@@ -118,7 +118,7 @@ test("documentation common attrs are mentioned once, not repeated per type", () 
   expect(providers).toContain("@description");
 });
 
-test("providers.md indexes all five concern providers with descriptions", () => {
+test("providers.md indexes all six concern providers with descriptions", () => {
   const out = docs();
   const providers = out.get("providers.md")!;
   for (const id of [
@@ -127,6 +127,7 @@ test("providers.md indexes all five concern providers with descriptions", () => 
     "metaobjects-documentation",
     "metaobjects-prompt",
     "metaobjects-ui",
+    "metaobjects-ui-web",
   ]) {
     expect(providers).toContain(id);
   }
@@ -136,7 +137,15 @@ test("providers.md 'Owns' honors the same exclusions as INDEX/type pages (no gen
   const out = docs();
   const providers = out.get("providers.md")!;
   // The "Owns (registers)" core list must NOT advertise the 11 manifest-
-  // excluded TS-web-presentation controls (absent from INDEX/type pages) ...
+  // excluded TS-web-presentation controls (absent from INDEX/type pages) — a
+  // provider that CONTRIBUTES attrs to one of these controls (e.g.
+  // metaobjects-ui-web extending view.textarea/view.image with @rows / the
+  // image attrs) may still legitimately name it under its own "Contributes
+  // attributes" section, so scope this assertion to the "Owns (registers)"
+  // line specifically rather than the whole page.
+  const ownsMatch = providers.match(/\*\*Owns \(registers\):\*\* (.+)/);
+  expect(ownsMatch).not.toBeNull();
+  const owns = ownsMatch![1];
   for (const excluded of [
     "view.checkbox",
     "view.date",
@@ -151,11 +160,11 @@ test("providers.md 'Owns' honors the same exclusions as INDEX/type pages (no gen
     "view.textarea",
     "view.web",
   ]) {
-    expect(providers).not.toContain(`\`${excluded}\``);
+    expect(owns).not.toContain(`\`${excluded}\``);
   }
   // ... but DOES keep the agreed view subtypes (`view.base`, `view.currency`).
-  expect(providers).toContain("`view.base`");
-  expect(providers).toContain("`view.currency`");
+  expect(owns).toContain("`view.base`");
+  expect(owns).toContain("`view.currency`");
 
   // The same vocabulary INDEX covers: no excluded control leaks into INDEX either.
   const index = out.get("INDEX.md")!;
