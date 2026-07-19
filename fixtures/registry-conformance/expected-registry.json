@@ -123,6 +123,13 @@
           "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
         },
         {
+          "name": "formExclude",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)."
+        },
+        {
           "name": "instruction",
           "valueType": "string",
           "isArray": false,
@@ -251,6 +258,13 @@
           "isArray": false,
           "required": false,
           "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
+        },
+        {
+          "name": "formExclude",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)."
         },
         {
           "name": "instruction",
@@ -389,6 +403,13 @@
           "isArray": false,
           "required": false,
           "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
+        },
+        {
+          "name": "formExclude",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)."
         },
         {
           "name": "instruction",
@@ -532,6 +553,13 @@
           "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
         },
         {
+          "name": "formExclude",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)."
+        },
+        {
           "name": "instruction",
           "valueType": "string",
           "isArray": false,
@@ -661,6 +689,13 @@
           "isArray": false,
           "required": false,
           "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
+        },
+        {
+          "name": "formExclude",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)."
         },
         {
           "name": "instruction",
@@ -805,6 +840,13 @@
           "isArray": false,
           "required": false,
           "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
+        },
+        {
+          "name": "formExclude",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)."
         },
         {
           "name": "instruction",
@@ -957,6 +999,13 @@
           "isArray": false,
           "required": false,
           "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
+        },
+        {
+          "name": "formExclude",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)."
         },
         {
           "name": "instruction",
@@ -1114,6 +1163,13 @@
           "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
         },
         {
+          "name": "formExclude",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)."
+        },
+        {
           "name": "instruction",
           "valueType": "string",
           "isArray": false,
@@ -1242,6 +1298,13 @@
           "isArray": false,
           "required": false,
           "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
+        },
+        {
+          "name": "formExclude",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)."
         },
         {
           "name": "instruction",
@@ -1374,6 +1437,13 @@
           "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
         },
         {
+          "name": "formExclude",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)."
+        },
+        {
           "name": "instruction",
           "valueType": "string",
           "isArray": false,
@@ -1502,6 +1572,13 @@
           "isArray": false,
           "required": false,
           "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
+        },
+        {
+          "name": "formExclude",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)."
         },
         {
           "name": "instruction",
@@ -1633,6 +1710,13 @@
           "isArray": false,
           "required": false,
           "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
+        },
+        {
+          "name": "formExclude",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)."
         },
         {
           "name": "instruction",
@@ -1778,6 +1862,13 @@
           "isArray": false,
           "required": false,
           "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
+        },
+        {
+          "name": "formExclude",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)."
         },
         {
           "name": "instruction",
@@ -1927,6 +2018,13 @@
           "isArray": false,
           "required": false,
           "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
+        },
+        {
+          "name": "formExclude",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)."
         },
         {
           "name": "instruction",
@@ -2087,6 +2185,13 @@
           "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
         },
         {
+          "name": "formExclude",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)."
+        },
+        {
           "name": "instruction",
           "valueType": "string",
           "isArray": false,
@@ -2228,6 +2333,13 @@
           "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
         },
         {
+          "name": "formExclude",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)."
+        },
+        {
           "name": "instruction",
           "valueType": "string",
           "isArray": false,
@@ -2365,6 +2477,13 @@
           "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
         },
         {
+          "name": "formExclude",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)."
+        },
+        {
           "name": "instruction",
           "valueType": "string",
           "isArray": false,
@@ -2493,6 +2612,13 @@
           "isArray": false,
           "required": false,
           "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)."
+        },
+        {
+          "name": "formExclude",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)."
         },
         {
           "name": "instruction",

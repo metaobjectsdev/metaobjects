@@ -99,6 +99,9 @@ export const FIELD_ATTR_FILTERABLE = "filterable";
 export const FIELD_ATTR_SORTABLE = "sortable";
 export const FIELD_ATTR_SORTABLE_DEFAULT_ORDER = "sortableDefaultOrder";
 
+/** When true, the field is omitted from generated forms. */
+export const FIELD_ATTR_FORM_EXCLUDE = "formExclude";
+
 /** Auto-set semantics on a timestamp field. Values: "onCreate" | "onUpdate". */
 export const FIELD_ATTR_AUTO_SET = "autoSet";
 

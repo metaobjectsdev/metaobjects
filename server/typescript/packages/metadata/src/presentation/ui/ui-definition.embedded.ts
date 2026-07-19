@@ -40,6 +40,14 @@ export const UI_DEFINITION: ProviderDefinition = {
             "desc"
           ],
           "description": "Default sort direction applied when this field is the default sort field."
+        },
+        {
+          "type": "attr",
+          "subType": "boolean",
+          "name": "formExclude",
+          "min": 0,
+          "max": 1,
+          "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)."
         }
       ]
     },

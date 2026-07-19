@@ -7,7 +7,8 @@
       "children": [
         { "type": "attr", "subType": "boolean", "name": "filterable", "min": 0, "max": 1, "description": "When true, the field is exposed in generated CRUD filter allowlists (Project D filter layer)." },
         { "type": "attr", "subType": "boolean", "name": "sortable", "min": 0, "max": 1, "description": "When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out." },
-        { "type": "attr", "subType": "string", "name": "sortableDefaultOrder", "min": 0, "max": 1, "allowedValues": ["asc", "desc"], "description": "Default sort direction applied when this field is the default sort field." }
+        { "type": "attr", "subType": "string", "name": "sortableDefaultOrder", "min": 0, "max": 1, "allowedValues": ["asc", "desc"], "description": "Default sort direction applied when this field is the default sort field." },
+        { "type": "attr", "subType": "boolean", "name": "formExclude", "min": 0, "max": 1, "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)." }
       ]
     },
     {
