@@ -1,6 +1,6 @@
 {
   "name": "@metaobjectsdev/sdk",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "description": "Workspace helpers and agent-docs utilities for MetaObjects projects.",
   "type": "module",
   "main": "./dist/index.js",

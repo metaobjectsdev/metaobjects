@@ -7,6 +7,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.19.0] — 2026-07-19
+
+Coordinated additive **minor** across all registries: npm `0.19.0` · NuGet `0.19.0` · PyPI `0.19.0` · Maven Central `7.11.0`. No breaking changes.
+
+**Image support — a metadata-driven `view.image` form control (TypeScript web).** A `field.string` can now carry a `view.image` child, and the generated `<Entity>Form` (`@metaobjectsdev/codegen-ts-react` `formFile`) renders an upload/crop `<ImageUpload>` widget for it (via a react-hook-form `<Controller>`) instead of a bare `<input>`. The field stores an **opaque storage key** — no image bytes ever cross the MetaObjects wire; the app supplies an `ImageUploadAdapter` (`upload(blob, { store }) → { key }`, `imageUrl(key) → url`) via React context. `view.image` declares up to five presentation attrs — `@aspectRatio`, `@maxEdge`, `@store` (an opaque storage-namespace hint, not infrastructure), `@accept`, `@maxBytes` — all optional. See [`docs/features/image-upload.md`](docs/features/image-upload.md) for the adapter contract, the expected backend (POST → `{ key }`, GET key → bytes with immutable cache, **server-side EXIF re-check**), and the `img-src blob:` CSP requirement.
+
+**New `metaobjects-ui-web` concern provider — a durable cross-port home for presentation-only view attrs.** `view.image`'s attrs and `@rows` (on `view.textarea`) live on a new TypeScript-applied provider (`spec/metamodel/ui-web.json`); the non-TS ports mirror the spec file but never apply it (these are TS-web presentation-only). Core `view.json` still registers **zero** view attrs (FR-033 invariant holds), and the cross-port registry manifest is unchanged (no forced 5-port registration).
+
+**`@rows` un-deferred.** `view.textarea` now honours a configurable `@rows` (the generated `<textarea>` reads it, defaulting to `4`) — previously a fixed `rows={4}`.
+
+**New runtime + client surface (npm):**
+- `@metaobjectsdev/runtime-web` — `canvasToJpegBlob`, `reencodeJpeg` (client-side canvas re-encode / EXIF-strip / down-scale) + the `ImageUploadAdapter` / `ImageMeta` types.
+- `@metaobjectsdev/react` — `<ImageUpload>`, `<ImageUploadAdapterProvider>` / `useImageUploadAdapter()`, `cropToBlob`, and an optional `./form.css` subpath export (generic `--mo-*` custom properties with fallbacks). `react-easy-crop` is an **optional, lazy-loaded peer** — non-image consumers pay nothing.
+
+Also folds in a `0.18.0` **test-only** fixup: the `@formExclude` registration left two full-metadata-suite tests (field-completeness EXPECTED + metamodel-docs fixtures) red on `main` (the CI fast lane didn't exercise them); regenerated — published `0.18.0` product code was correct, no re-release.
+
 ## [0.18.0] — 2026-07-19
 
 Coordinated additive **minor** across all registries: npm `0.18.0` · NuGet `0.18.0` · PyPI `0.18.0` · Maven Central `7.10.0`. No breaking changes.
