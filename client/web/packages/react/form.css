@@ -1,0 +1,58 @@
+/* Default styling for the metadata-driven form controls emitted by
+   @metaobjectsdev/codegen-ts-react's formFile generator, plus the
+   <ImageUpload> component. Single-class specificity so a host app's own
+   reset/preflight styles don't win. Colors resolve through CSS custom
+   properties with a fallback hex, so this file is themable and works with
+   zero configuration out of the box. */
+.metaobjects-form { display: grid; gap: 1.25rem; }
+
+.metaobjects-field { display: grid; gap: 0.5rem; }
+
+.metaobjects-field-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--mo-fg, #eae3d3);
+  opacity: 0.62;
+}
+
+.metaobjects-field-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: color-mix(in srgb, var(--mo-field-bg, #142a33) 40%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mo-accent, #c9a467) 28%, transparent);
+  color: var(--mo-fg, #eae3d3);
+  font: inherit;
+  outline: none;
+}
+.metaobjects-field-input:focus-visible { border-color: var(--mo-accent, #c9a467); }
+textarea.metaobjects-field-input { resize: vertical; min-height: 6rem; }
+
+.metaobjects-field-checkbox { width: 1rem; height: 1rem; accent-color: var(--mo-accent, #c9a467); }
+.metaobjects-field-radios { display: grid; gap: 0.5rem; border: 0; padding: 0; }
+.metaobjects-field-radio { display: flex; gap: 0.5rem; align-items: center; color: var(--mo-fg, #eae3d3); }
+
+.metaobjects-field-error { font-size: 0.8rem; color: var(--mo-accent-soft, #e3cd9f); }
+
+.metaobjects-image-upload { display: grid; gap: 0.75rem; }
+.metaobjects-image-preview { max-width: 100%; height: auto; }
+.metaobjects-image-actions { display: grid; grid-auto-flow: column; justify-content: start; gap: 0.75rem; }
+/* react-easy-crop requires a positioned, sized ancestor or its internal
+   absolutely-positioned layers collapse to 0x0. This is a functional
+   minimum, not decoration — override freely (e.g. a taller crop area). */
+.metaobjects-image-cropper { position: relative; width: 100%; height: 300px; }
+
+.metaobjects-form-actions { margin-top: 0.5rem; }
+.metaobjects-form-submit {
+  padding: 0.6rem 1.5rem;
+  background: var(--mo-accent, #c9a467);
+  border: 1px solid var(--mo-accent, #c9a467);
+  color: var(--mo-accent-fg, #0f1d24);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+.metaobjects-form-submit:hover { background: var(--mo-accent-soft, #e3cd9f); }
+.metaobjects-form-submit:disabled { opacity: 0.6; cursor: not-allowed; }
