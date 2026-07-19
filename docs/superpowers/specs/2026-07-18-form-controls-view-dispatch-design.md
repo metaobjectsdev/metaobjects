@@ -34,8 +34,8 @@ separate, later cycle and is out of scope here.
 
 **In scope (this cycle):**
 
-- **Unit A** — register `@rows` on `view.textarea` (TypeScript-only; see conformance note).
-- **Unit B** — register `@formExclude` on the `field.*` wildcard (cross-port, all five ports).
+- **Unit A** — register `@rows` on `view.textarea` via `spec/metamodel/view.json` (TS-registration-only; a `cp` re-sync of the committed C#/Python `view.json` copies keeps the drift gate green — no non-TS code).
+- **Unit B** — register `@formExclude` on the `field.*` wildcard via `spec/metamodel/ui.json` (cross-port; a data-only JSON edit synced to the C#/Python copies + regen — no non-TS code edits; Java auto-copies, Kotlin rides Java).
 - **Unit C** — `formFile` view-dispatch codegen (TypeScript-only), plus a styled submit wrapper
   and the semantic class names its new controls require.
 
@@ -61,59 +61,84 @@ separate, later cycle and is out of scope here.
 
 ## Design
 
-### Unit A — `@rows` on `view.textarea`
+### Registration mechanics (both Units A and B)
 
-Add a `view.textarea` block to the `metaobjects-ui` provider's `extends[]` in
-`spec/metamodel/ui.json`, mirroring the existing `view.currency` / `@locale` entry:
+The metamodel spec JSON under `spec/metamodel/` is the canonical source. Each non-TS port is
+**data-driven** — it loads the spec JSON rather than hand-registering attrs in provider code — so
+adding an attr is a JSON edit plus regeneration, **not** per-port provider code:
+
+- **TS** lowers the spec JSON into the embedded metamodel via
+  `bun run scripts/generate-embedded-metamodel.ts` (regenerates every `*-definition.embedded.ts`
+  from every `spec/metamodel/*.json` in one command; the embedded files are auto-generated, never
+  hand-edited, and drift-gated by `test/*-definition-embed.test.ts`).
+- **Java** copies `spec/metamodel/*.json` onto its classpath at build (`maven-resources-plugin`)
+  and reads it via `SpecMetamodelReader` — so it **auto-refreshes from canonical; no committed copy
+  to sync, no code edit**. **Kotlin rides Java's registration** (shared JVM `metadata` module) — no
+  separate work.
+- **C#** and **Python** carry **committed byte-identical copies** of the spec JSON
+  (`server/csharp/MetaObjects/SpecMetamodel/*.json`, `server/python/src/metaobjects/spec_metamodel/*.json`),
+  drift-gated to canonical. They must be re-synced (`cp`) whenever canonical changes — again, **no
+  code edit**, just the file copy.
+
+### Unit A — `@rows` on `view.textarea` (via `view.json`, TS-registration-only)
+
+`@rows` goes in **`spec/metamodel/view.json`** (the view type-definition file, provider
+`metaobjects-core-types`) as an inline `children` attr on the `view.textarea` entry — **not** in
+`ui.json`:
 
 ```jsonc
-{
-  "type": "view",
-  "subType": "textarea",
-  "children": [
-    { "type": "attr", "subType": "int", "name": "rows", "min": 0, "max": 1,
-      "description": "Visible row count for the generated <textarea>. Read by the form generator; defaults to 4 when absent." }
-  ]
-}
+// on the view.textarea entry in spec/metamodel/view.json
+{ "type": "attr", "subType": "int", "name": "rows", "min": 0, "max": 1,
+  "description": "Visible row count for the generated <textarea>. Read by the form generator; defaults to 4 when absent." }
 ```
 
-Regenerate the embedded metamodel (`scripts/generate-embedded-metamodel.ts` →
-`server/typescript/packages/metadata/src/presentation/ui/ui-definition.embedded.ts`); the
-embedded `.embedded.ts` file is auto-generated and must not be hand-edited.
+**Why not `ui.json`:** `ui.json` registers attrs through the `extends` mechanism
+(`applyProviderExtends`), which **throws when the target subtype is not registered**.
+`view.textarea` is deregistered in C#/Python/Java (only `view.base` + `view.currency` are
+registered cross-port); because the committed port copies of `ui.json` are drift-gated
+byte-identical to canonical, a `view.textarea` block in canonical `ui.json` would force those
+copies to carry it and the three ports would throw at registry-compose time. `view.json` is
+consumed differently: TS's `defineProviderFromData` registers every view subtype **and** its
+inline attrs (so `@rows` registers cleanly in TS), while C#/Python/Java build view registration by
+hand (`base` + `currency` only) and read `view.json` only for *descriptions of registered
+subtypes* — an unregistered `view.textarea`'s `@rows` is simply never looked up, so **no throw**.
 
-**Conformance note (TypeScript-only):** `view.textarea` is a presentation-only **excluded** row
-in the registry manifest — the manifest emitter drops every `view.*` row except `base` and
-`currency`, including all its attrs. So `@rows` is invisible to the `registry-conformance` gate:
-**no `expected-registry.json` change, no other-port work.** Registering it in the TS provider is
-sufficient. (It still must be registered so strict `meta verify` accepts `view.textarea @rows`.)
+**Conformance:** `view.textarea` is a presentation-only **excluded** manifest row (the emitter
+drops every `view.*` except `base`/`currency`), so `@rows` never enters `expected-registry.json`
+— invisible to `registry-conformance`. The only cross-port touch is re-syncing the committed
+C#/Python `view.json` copies for the drift gate (`cp`; the added attr is inert in those ports).
 
-### Unit B — `@formExclude` on the `field.*` wildcard (cross-port)
+Steps: edit canonical `view.json` → `cp` to the C# + Python `view.json` copies →
+`bun run scripts/generate-embedded-metamodel.ts` → add the `VIEW_TEXTAREA_ATTR_ROWS` constant.
 
-Add a boolean `formExclude` attr to the existing `field.*` wildcard `children[]` in
-`spec/metamodel/ui.json`, peer to `@filterable`/`@sortable`:
+### Unit B — `@formExclude` on the `field.*` wildcard (`ui.json`, cross-port)
+
+`@formExclude` goes in **`spec/metamodel/ui.json`** on the existing `field.*` wildcard
+`children[]`, peer to `@filterable`/`@sortable` (which are registered the identical way):
 
 ```jsonc
+// appended to the field.* children in spec/metamodel/ui.json
 { "type": "attr", "subType": "boolean", "name": "formExclude", "min": 0, "max": 1,
   "description": "When true, the field is omitted from generated forms. Inert on fields for which no form is generated (e.g. projection/derived fields)." }
 ```
 
-Because a field-level attr on the `field.*` wildcard appears **once per concrete field subtype**
-in `expected-registry.json`, and the `registry-conformance` gate byte-matches that manifest in
-all five ports, this attr is **cross-port**. It must land atomically across:
+This one **is** cross-port: a field-level attr on the `field.*` wildcard appears **once per
+concrete field subtype** in `expected-registry.json`, which the `registry-conformance` gate
+byte-matches in all five ports. `ui.json` works here (unlike for `@rows`) because `field.*` is a
+registered target in every port. The change is data-only and must land atomically:
 
-- `spec/metamodel/ui.json` + regenerate the TS embedded metamodel.
-- Java: `server/java/metadata/src/main/java/com/metaobjects/presentation/ui/UiTypesMetaDataProvider.java`
-  (Java refreshes from `spec/`; Kotlin shares the JVM `metadata` module — no separate registration).
-- Python: `server/python/src/metaobjects/meta/presentation/ui/ui_provider.py` and the committed
-  Python spec copy.
-- C#: `server/csharp/MetaObjects/Presentation/Ui/UiMetaDataProvider.cs` and the committed
-  `server/csharp/MetaObjects/SpecMetamodel/ui.json`.
-- Regenerate `fixtures/registry-conformance/expected-registry.json` (adds `@formExclude` under
-  every concrete field subtype).
+1. Add the attr to canonical `spec/metamodel/ui.json`.
+2. `cp spec/metamodel/ui.json server/csharp/MetaObjects/SpecMetamodel/ui.json`
+3. `cp spec/metamodel/ui.json server/python/src/metaobjects/spec_metamodel/ui.json`
+4. `bun run scripts/generate-embedded-metamodel.ts` (regenerates `ui-definition.embedded.ts`).
+5. `bun run scripts/regen-expected-registry.ts` (canonical manifest gains `formExclude` per field
+   subtype).
+6. Add the `FIELD_ATTR_FORM_EXCLUDE` constant and use it at the existing `formExclude` read in
+   the form template (replacing the bare string literal).
 
-The port work is mechanical — it mirrors the `@filterable`/`@sortable` registration already
-present in each port — and is driven with the `cross-language-porting` discipline. Landing all
-five ports plus the fixture in one change keeps `main` green.
+Java auto-copies from `spec/` at build and Kotlin rides Java — **no code edit in any non-TS
+port.** Landing all copies + the regenerated fixture in one change keeps `main` green. Driven with
+the `cross-language-porting` discipline.
 
 ### Unit C — `formFile` view-dispatch codegen (TypeScript-only)
 
