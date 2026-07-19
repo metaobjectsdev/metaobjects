@@ -1,15 +1,16 @@
-# Form-controls: view-dispatch codegen + `@rows` / `@formExclude` registration
+# Form-controls: view-dispatch codegen + `@formExclude` registration
 
-_Design — 2026-07-18_
+_Design — 2026-07-18 (updated 2026-07-19: `@rows` deferred — see Unit A)_
 
 ## Summary
 
 Upgrade the generated `<Entity>Form` (TypeScript React codegen) so each field renders the
 **right control for its declared view kind** — a `<select>` for an enum, a `<textarea>` for
 multi-line text, a checkbox, a radio group — instead of the current bare `<input>` for every
-scalar. Two supporting metamodel attributes the codegen already _reads_ but core never
-_registers_ are promoted to first-class, registered vocabulary: `@rows` (on `view.textarea`)
-and `@formExclude` (on fields).
+scalar. One supporting metamodel attribute the codegen already _reads_ but core never
+_registers_ is promoted to first-class, registered vocabulary: `@formExclude` (on fields).
+(`@rows` on `view.textarea` was scoped in but **deferred** during implementation — no clean
+cross-port home; see Unit A. Textareas render a fixed `rows={4}`.)
 
 This is the first of two cycles that promote a proven, test-gated forms implementation from a
 downstream consumer into the shared library. This cycle is **form controls only**. Image
@@ -28,13 +29,14 @@ separate, later cycle and is out of scope here.
   but is **not registered by any core provider**. Under lax `meta gen` this is accepted; under
   strict `meta verify` (ADR-0023 sealed registry) it is rejected as `ERR_UNKNOWN_ATTR`. That is a
   latent library bug: a directive the library's own codegen honors will fail the library's own
-  strict verify. `@rows` (needed for `<textarea>` sizing) has the same read-but-unregistered gap.
+  strict verify. (`@rows` for `<textarea>` sizing has the same read-but-unregistered gap, but
+  registering it has no clean cross-port home — it is deferred; see Unit A.)
 
 ## Scope
 
 **In scope (this cycle):**
 
-- **Unit A** — register `@rows` on `view.textarea` via `spec/metamodel/view.json` (TS-registration-only; a `cp` re-sync of the committed C#/Python `view.json` copies keeps the drift gate green — no non-TS code).
+- ~~**Unit A** — register `@rows` on `view.textarea`~~ — **DEFERRED** (no clean cross-port home; see Unit A below). Textarea renders a fixed `rows={4}`.
 - **Unit B** — register `@formExclude` on the `field.*` wildcard via `spec/metamodel/ui.json` (cross-port; a data-only JSON edit synced to the C#/Python copies + regen — no non-TS code edits; Java auto-copies, Kotlin rides Java).
 - **Unit C** — `formFile` view-dispatch codegen (TypeScript-only), plus a styled submit wrapper
   and the semantic class names its new controls require.
@@ -56,12 +58,13 @@ separate, later cycle and is out of scope here.
 | Cycle scope | Form controls first; images later | Self-contained; images carry the thorny cross-port/CSS/dep questions. |
 | Dispatch delivery | **Default-on, minor release** | Generated-output-only change; project ethos: "generated code is the disposable artifact", "no backwards-compat hacks"; three-way merge preserves hand-edits. No opt-in flag. |
 | `@formExclude` registration | **Cross-port, `field.*` wildcard** | Honest fix under strict provenance; shared metadata carrying `@formExclude` must load in every port. "Exclude from a form" is orthogonal to field type; a curated subtype subset would create `ERR_UNKNOWN_ATTR` landmines. Mirrors the existing `@filterable`/`@sortable` wildcard. |
+| `@rows` registration | **Deferred (updated 2026-07-19)** | No clean cross-port home for an attr on a TS-only view subtype: `ui.json`'s `extends` throws where `view.textarea` is deregistered, and core `view.json` breaks the FR-033 "core owns zero view attrs" invariant. Textarea uses a fixed `rows={4}`; configurable `@rows` needs its own design. See Unit A. |
 | Styled submit + new class names | **Include now** | The new checkbox/radio controls need class names regardless; emitting them unnamed and renaming later would churn every adopter's three-way merge twice. Inert hooks without CSS is already the template's contract. |
 | Blank-optional submit fix | **Defer + file tracking issue** | Porting as-is ships a silent data bug under FR-035 tristate (deleting a cleared key = "untouched" ⇒ the clear silently fails on edit). The correct fix is tristate-aware; its own cycle. |
 
 ## Design
 
-### Registration mechanics (both Units A and B)
+### Registration mechanics (Unit B)
 
 The metamodel spec JSON under `spec/metamodel/` is the canonical source. Each non-TS port is
 **data-driven** — it loads the spec JSON rather than hand-registering attrs in provider code — so
@@ -80,36 +83,29 @@ adding an attr is a JSON edit plus regeneration, **not** per-port provider code:
   drift-gated to canonical. They must be re-synced (`cp`) whenever canonical changes — again, **no
   code edit**, just the file copy.
 
-### Unit A — `@rows` on `view.textarea` (via `view.json`, TS-registration-only)
+### Unit A — `@rows` on `view.textarea` — **DEFERRED** (no clean cross-port home)
 
-`@rows` goes in **`spec/metamodel/view.json`** (the view type-definition file, provider
-`metaobjects-core-types`) as an inline `children` attr on the `view.textarea` entry — **not** in
-`ui.json`:
+`@rows` is **not registered this cycle.** During implementation both candidate homes proved
+unworkable, and attaching an attr to a TS-only view subtype turns out to need its own cross-port
+design — out of scope for form controls.
 
-```jsonc
-// on the view.textarea entry in spec/metamodel/view.json
-{ "type": "attr", "subType": "int", "name": "rows", "min": 0, "max": 1,
-  "description": "Visible row count for the generated <textarea>. Read by the form generator; defaults to 4 when absent." }
-```
+- **`ui.json`** (the correct provider per the invariant below) registers attrs through the
+  `extends` mechanism, which **throws when the target subtype is not registered**. `view.textarea`
+  is deregistered in C#/Python/Java (only `view.base` + `view.currency` are registered
+  cross-port), and the committed port copies of `ui.json` are drift-gated byte-identical to
+  canonical — so a `view.textarea` `extends` block would force those copies to carry it and the
+  three ports would throw at registry-compose time.
+- **`view.json`** (core, `metaobjects-core-types`) **violates a deliberate FR-033 invariant**:
+  core registers **zero own attrs on any view subtype** — every view attr (e.g. `view.currency`'s
+  `@locale`) is re-homed to the `ui` provider. This is enforced by
+  `view-definition-completeness.test.ts` ("core registers NO own attrs — re-homed to ui") plus the
+  `metamodel-docs*` golden tests. An `@rows` attr in core `view.json` breaks all three.
 
-**Why not `ui.json`:** `ui.json` registers attrs through the `extends` mechanism
-(`applyProviderExtends`), which **throws when the target subtype is not registered**.
-`view.textarea` is deregistered in C#/Python/Java (only `view.base` + `view.currency` are
-registered cross-port); because the committed port copies of `ui.json` are drift-gated
-byte-identical to canonical, a `view.textarea` block in canonical `ui.json` would force those
-copies to carry it and the three ports would throw at registry-compose time. `view.json` is
-consumed differently: TS's `defineProviderFromData` registers every view subtype **and** its
-inline attrs (so `@rows` registers cleanly in TS), while C#/Python/Java build view registration by
-hand (`base` + `currency` only) and read `view.json` only for *descriptions of registered
-subtypes* — an unregistered `view.textarea`'s `@rows` is simply never looked up, so **no throw**.
-
-**Conformance:** `view.textarea` is a presentation-only **excluded** manifest row (the emitter
-drops every `view.*` except `base`/`currency`), so `@rows` never enters `expected-registry.json`
-— invisible to `registry-conformance`. The only cross-port touch is re-syncing the committed
-C#/Python `view.json` copies for the drift gate (`cp`; the added attr is inert in those ports).
-
-Steps: edit canonical `view.json` → `cp` to the C# + Python `view.json` copies →
-`bun run scripts/generate-embedded-metamodel.ts` → add the `VIEW_TEXTAREA_ATTR_ROWS` constant.
+**Consequence for this cycle:** the textarea dispatch (Unit C) renders `<textarea rows={4}>` with a
+**fixed** default. Configurable `@rows` is a documented future item (see [Deferred work](#deferred-work-tracking))
+that needs a real design for attaching attributes to TS-only view subtypes (either re-register the
+generic view subtypes cross-port, or a TS-only view-attr provider) — deliberately not undertaken
+here.
 
 ### Unit B — `@formExclude` on the `field.*` wildcard (`ui.json`, cross-port)
 
@@ -162,8 +158,8 @@ Add three helpers, ported faithfully from the proven downstream generator (image
   - `dropdown` → `<select className="metaobjects-field-input" {...form.register(name)}>` with an
     `<option>` per `@values`; an empty `<option value="">` is prepended unless the field is
     `@required`.
-  - `textarea` → `<textarea className="metaobjects-field-input" rows={<rows>} {...form.register(name)} />`,
-    where `<rows>` reads `@rows` off the **view child** (`field.views()[0].attr(rows)`), default 4.
+  - `textarea` → `<textarea className="metaobjects-field-input" rows={4} {...form.register(name)} />`
+    (fixed `rows={4}`; configurable `@rows` is deferred — see Unit A).
   - `checkbox` → `<input type="checkbox" className="metaobjects-field-checkbox" {...form.register(name)} />`.
   - `radio` → `<fieldset className="metaobjects-field-radios">` of
     `<label className="metaobjects-field-radio"><input type="radio" value=... {...form.register(name)} /> ...</label>`
@@ -200,12 +196,12 @@ generated-code content, not metamodel concepts), matching the existing template.
 
 Failing test first, watch it fail, minimal green.
 
-- **Unit A/B loader tests:** a strict-mode load of `view.textarea @rows` and
-  `field.string @formExclude` succeeds (no `ERR_UNKNOWN_ATTR`). For Unit B, the regenerated
-  `registry-conformance` fixture is the cross-port gate — every port re-runs it.
-- **Unit C render tests:** a metadata fixture exercising an enum field, a `view.textarea @rows`,
+- **Unit B loader/registration gate:** the regenerated `registry-conformance` fixture is the
+  cross-port gate — every port re-runs it. A strict-mode load of `field.string @formExclude`
+  succeeds (no `ERR_UNKNOWN_ATTR`).
+- **Unit C render tests:** a metadata fixture exercising an enum field, a `view.textarea`,
   a `view.checkbox`, and a `view.radio` field. Call `renderFormFile` and assert the output
-  contains `<select>` + its `<option>`s, `<textarea ... rows={N}>`, `<input type="checkbox">`,
+  contains `<select>` + its `<option>`s, `<textarea ... rows={4}>`, `<input type="checkbox">`,
   the radio `<fieldset>`, and `className="metaobjects-form-submit"` — and that the enum is **no
   longer** a bare `form.input.<field>` bound input. Also assert a `@formExclude` field is absent
   from the rendered form.
@@ -222,6 +218,12 @@ Failing test first, watch it fail, minimal green.
   a tracking issue** so this deferral is a recorded decision. Note the promoted template inherits
   the pre-existing `""`-vs-`NULL`-on-CREATE wart for blank optional date/timestamp inputs until
   that issue lands.
+- **Configurable `@rows` on `view.textarea`.** Deferred (see Unit A). There is no clean
+  cross-port home today for an attribute on a TS-only view subtype: `ui.json`'s `extends` throws
+  in the non-TS ports (where `view.textarea` is deregistered), and core `view.json` violates the
+  FR-033 "core owns zero view attrs" invariant. A future cycle can address it by either
+  re-registering the generic view subtypes cross-port or introducing a TS-only view-attr provider.
+  Until then, generated textareas render a fixed `rows={4}`.
 - **Image cycle.** `view.image` subtype (cross-port vocab decision), `<ImageUpload>` runtime
   component + adapter contract, `canvasToJpegBlob`/`reencodeJpeg` utilities, and the `form.css`
   packaging question — the next cycle.

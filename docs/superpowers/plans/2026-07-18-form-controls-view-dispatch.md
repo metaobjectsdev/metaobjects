@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make the generated `<Entity>Form` render the right control for each field's declared view kind (enum→`<select>`, `view.textarea`→`<textarea>`, `view.checkbox`, `view.radio`) instead of a bare `<input>` per scalar, and register the two attributes the codegen already reads — `@rows` and `@formExclude`.
+**Goal:** Make the generated `<Entity>Form` render the right control for each field's declared view kind (enum→`<select>`, `view.textarea`→`<textarea>`, `view.checkbox`, `view.radio`) instead of a bare `<input>` per scalar, and register `@formExclude` (which the codegen already reads).
 
-**Architecture:** Three units. Unit A registers `@rows` on `view.textarea` via `spec/metamodel/view.json` (TS-registration-only). Unit B registers `@formExclude` on the `field.*` wildcard via `spec/metamodel/ui.json` (cross-port, data-driven — JSON sync + regen, no non-TS code). Unit C upgrades the `renderFormFile` template with a view-kind dispatch. Cross-port ports are data-driven: they load the spec JSON, so Units A/B are JSON edits + regeneration, not per-port code.
+**Architecture:** Two implemented units (Unit A / `@rows` is deferred — see Task 1). Unit B registers `@formExclude` on the `field.*` wildcard via `spec/metamodel/ui.json` (cross-port, data-driven — JSON sync + regen, no non-TS code). Unit C upgrades the `renderFormFile` template with a view-kind dispatch (textarea uses a fixed `rows={4}`). Cross-port ports are data-driven: they load the spec JSON, so Unit B is JSON edits + regeneration, not per-port code.
 
 **Tech Stack:** TypeScript (Bun test runner, ts-poet templates), the `@metaobjectsdev/metadata` loader + registry, the `metaobjects-ui` / `metaobjects-core-types` metamodel providers, `fixtures/registry-conformance` cross-port gate. Design spec: `docs/superpowers/specs/2026-07-18-form-controls-view-dispatch-design.md`.
 
@@ -24,8 +24,8 @@
 
 ## File Structure
 
-**Unit A — `@rows` (view.json):**
-- Modify: `spec/metamodel/view.json` — add `rows` int attr to the `view.textarea` entry.
+**Unit A — `@rows` (view.json): DEFERRED — not implemented this cycle (see Task 1).**
+- ~~Modify: `spec/metamodel/view.json` — add `rows` int attr to the `view.textarea` entry.~~
 - Modify (sync copy): `server/csharp/MetaObjects/SpecMetamodel/view.json`
 - Modify (sync copy): `server/python/src/metaobjects/spec_metamodel/view.json`
 - Regenerate: `server/typescript/packages/metadata/src/presentation/view/view-definition.embedded.ts`
@@ -48,7 +48,16 @@
 
 ---
 
-## Task 1: Register `@rows` on `view.textarea` (view.json, TS-registration-only)
+## Task 1: Register `@rows` on `view.textarea` — **DEFERRED (do not implement)**
+
+> **Deferred during execution.** Neither candidate home works: `ui.json`'s `extends`
+> throws in C#/Python/Java (where `view.textarea` is deregistered), and `view.json`
+> (core) violates the deliberate FR-033 invariant that core registers zero own attrs
+> on any view subtype (enforced by `view-definition-completeness.test.ts` +
+> `metamodel-docs*.test.ts`). Attaching an attr to a TS-only view subtype needs its own
+> cross-port design (out of scope for form controls). This cycle ships the textarea
+> dispatch with a fixed `rows={4}` default (Task 3); configurable `@rows` is a documented
+> future item. **Skip this task entirely.** The section below is retained for the record.
 
 **Files:**
 - Modify: `spec/metamodel/view.json:14-18` (the `view.textarea` entry)
@@ -242,7 +251,7 @@ git commit -m "feat(metadata): register @formExclude on field.* wildcard (cross-
 - Test: `server/typescript/packages/codegen-ts-react/test/form-view-dispatch.test.ts` (new)
 
 **Interfaces:**
-- Consumes: `VIEW_TEXTAREA_ATTR_ROWS` (Task 1), `FIELD_ATTR_FORM_EXCLUDE` (Task 2), and the existing `VIEW_SUBTYPE_{TEXTAREA,DROPDOWN,CHECKBOX,RADIO}`, `FIELD_SUBTYPE_ENUM`, `FIELD_ATTR_{VALUES,REQUIRED}` constants — all from `@metaobjectsdev/metadata`.
+- Consumes: `FIELD_ATTR_FORM_EXCLUDE` (Task 2) and the existing `VIEW_SUBTYPE_{TEXTAREA,DROPDOWN,CHECKBOX,RADIO}`, `FIELD_SUBTYPE_ENUM`, `FIELD_ATTR_{VALUES,REQUIRED}` constants — all from `@metaobjectsdev/metadata`. (`@rows`/`VIEW_TEXTAREA_ATTR_ROWS` is deferred — Task 1; textarea uses a fixed `rows={4}`.)
 - Produces: the upgraded generated form output (final task; nothing downstream depends on it).
 
 - [ ] **Step 1: Write the failing test**
@@ -279,8 +288,8 @@ async function loadModel(): Promise<{ root: MetaRoot; report: MetaObject }> {
                   { "field.string": { name: "name", "@required": true } },
                   // enum with no explicit view -> dropdown default
                   { "field.enum": { name: "status", "@required": true, "@values": ["draft", "active", "closed"] } },
-                  // view.textarea @rows -> <textarea rows={8}>
-                  { "field.string": { name: "notes", children: [{ "view.textarea": { "@rows": 8 } }] } },
+                  // view.textarea -> <textarea rows={4}> (configurable @rows deferred)
+                  { "field.string": { name: "notes", children: [{ "view.textarea": {} }] } },
                   // view.checkbox -> checkbox
                   { "field.boolean": { name: "archived", children: [{ "view.checkbox": {} }] } },
                   // view.radio over enum values -> radio fieldset
@@ -325,11 +334,11 @@ describe("form controls — view-kind dispatch", () => {
     expect(out).not.toMatch(/form\.input\.status/);
   });
 
-  test("view.textarea renders a <textarea> with the @rows count", async () => {
+  test("view.textarea renders a <textarea> with the default row count", async () => {
     const { root, report } = await loadModel();
     const out = renderFormFile(report, ctxFor(root));
     expect(out).toContain("<textarea");
-    expect(out).toContain("rows={8}");
+    expect(out).toContain("rows={4}");
     expect(out).toContain('form.register("notes")');
   });
 
@@ -390,7 +399,6 @@ import {
   VIEW_SUBTYPE_DROPDOWN,
   VIEW_SUBTYPE_CHECKBOX,
   VIEW_SUBTYPE_RADIO,
-  VIEW_TEXTAREA_ATTR_ROWS,
 } from "@metaobjectsdev/metadata";
 ```
 
@@ -457,10 +465,10 @@ Inside `renderFormFile`, next to the existing `scalarBlock` (so it can fall back
       );
     }
     if (kind === VIEW_SUBTYPE_TEXTAREA) {
-      const rows = (field.views()[0]?.attr(VIEW_TEXTAREA_ATTR_ROWS) as number | undefined) ?? 4;
+      // Configurable @rows is deferred (see the spec's Deferred work); default to 4.
       return labelAndError(
         name,
-        `          <textarea className="metaobjects-field-input" rows={${rows}} {...form.register("${name}")} />`,
+        `          <textarea className="metaobjects-field-input" rows={4} {...form.register("${name}")} />`,
       );
     }
     if (kind === VIEW_SUBTYPE_CHECKBOX) {
@@ -584,10 +592,10 @@ Note the issue URL/number in the commit that closes out the cycle (or reply to t
 ## Self-Review
 
 **1. Spec coverage:**
-- Unit A (`@rows` via `view.json`, TS-registration-only, drift-gate sync) → Task 1. ✓
+- Unit A (`@rows`) → **DEFERRED** during execution (no clean cross-port home; FR-033 invariant). Task 1 skipped; textarea uses `rows={4}`.
 - Unit B (`@formExclude` via `ui.json`, cross-port, data-driven, atomic) → Task 2. ✓
 - Unit C (`viewKindFor` / `labelAndError` / `fieldControlFor` dispatch, enum→dropdown default, styled submit + semantic class names, constant usage) → Task 3. ✓
-- Named constants (`VIEW_TEXTAREA_ATTR_ROWS`, `FIELD_ATTR_FORM_EXCLUDE`) defined (Tasks 1/2) + used (Task 3). ✓
+- Named constant (`FIELD_ATTR_FORM_EXCLUDE`) defined (Task 2) + used (Task 3). ✓
 - Testing (loader/registration gated by embed + conformance; render tests) → Tasks 1/2 gates + Task 3 render tests. ✓
 - Deferred blank-optional fix + tracking issue → Task 4. ✓
 - Out-of-scope (image branch, `form.css` file) → not implemented, correctly absent. ✓
@@ -596,4 +604,4 @@ Note the issue URL/number in the commit that closes out the cycle (or reply to t
 
 **3. Type consistency:** `viewKindFor(field: MetaField): string | null`; `fieldControlFor(field: MetaField): string`; `labelAndError(f: string, control: string)`; `scalarBlock(f: string)` (existing, name-string arg — matched). `field.views()[0]?.attr(...)`, `field.attr(...)` return `unknown`, narrowed with `as` to the expected shapes. Constant names match their definitions in Tasks 1/2. ✓
 
-**Dependency note:** Task 3's render test loads a fixture using `view.textarea @rows` and `field.string @formExclude`; under the strict loader those must be registered first, so Tasks 1 and 2 must complete before Task 3. Task 4 is independent.
+**Dependency note:** Task 1 (`@rows`) is DEFERRED. Task 3's render test loads a fixture using `field.string @formExclude`; under the strict loader that must be registered first, so Task 2 must complete before Task 3. Task 4 is independent.
