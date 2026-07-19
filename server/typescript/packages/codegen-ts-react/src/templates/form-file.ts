@@ -1,11 +1,15 @@
 // React form template — emits a per-entity Form component that delegates
-// to useEntityForm from @metaobjectsdev/react. The generated file
-// is ~25 lines: wire up the form, render each field's pre-bound input,
-// let the helper carry all metadata-derived attrs.
+// to useEntityForm from @metaobjectsdev/react. Each visible field is
+// dispatched to a control by its declared view kind.
 //
 // What gets emitted:
-//   - A `<EntityName>Form` component that calls useEntityForm and spreads
-//     form.input.<field> onto <input> elements.
+//   - A `<EntityName>Form` component. A plain scalar field (no view kind)
+//     spreads form.input.<field> onto a typed <input> (carries aria-label
+//     via useEntityForm's `.input` accessor). A field with a view kind
+//     (view.textarea/checkbox/radio, or an enum defaulting to a dropdown)
+//     is dispatched by fieldControlFor to a <select>/<textarea>/checkbox
+//     <input>/radio <fieldset>, bound via `{...form.register("<name>")}`
+//     and given a matching explicit `aria-label`.
 //   - Per-entity onSubmit/defaultValues typed against the Row type.
 //
 // Fields excluded from the form by default:
@@ -344,20 +348,20 @@ ${control}
       const options = values.map((v) => `            <option value="${v}">${v}</option>`).join("\n");
       return labelAndError(
         name,
-        `          <select className="metaobjects-field-input" {...form.register("${name}")}>\n${empty}${options}\n          </select>`,
+        `          <select aria-label={${entityName}.${name}.label} className="metaobjects-field-input" {...form.register("${name}")}>\n${empty}${options}\n          </select>`,
       );
     }
     if (kind === VIEW_SUBTYPE_TEXTAREA) {
       // Configurable @rows is deferred (see the spec's Deferred work); default to 4.
       return labelAndError(
         name,
-        `          <textarea className="metaobjects-field-input" rows={4} {...form.register("${name}")} />`,
+        `          <textarea aria-label={${entityName}.${name}.label} className="metaobjects-field-input" rows={4} {...form.register("${name}")} />`,
       );
     }
     if (kind === VIEW_SUBTYPE_CHECKBOX) {
       return labelAndError(
         name,
-        `          <input type="checkbox" className="metaobjects-field-checkbox" {...form.register("${name}")} />`,
+        `          <input aria-label={${entityName}.${name}.label} type="checkbox" className="metaobjects-field-checkbox" {...form.register("${name}")} />`,
       );
     }
     if (kind === VIEW_SUBTYPE_RADIO) {
@@ -368,7 +372,10 @@ ${control}
             `            <label className="metaobjects-field-radio"><input type="radio" value="${v}" {...form.register("${name}")} /> ${v}</label>`,
         )
         .join("\n");
-      return labelAndError(name, `          <fieldset className="metaobjects-field-radios">\n${radios}\n          </fieldset>`);
+      return labelAndError(
+        name,
+        `          <fieldset aria-label={${entityName}.${name}.label} className="metaobjects-field-radios">\n${radios}\n          </fieldset>`,
+      );
     }
     return scalarBlock(name);
   };

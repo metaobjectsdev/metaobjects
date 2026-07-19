@@ -33,6 +33,8 @@ async function loadModel(): Promise<{ root: MetaRoot; report: MetaObject }> {
                   { "field.boolean": { name: "archived", children: [{ "view.checkbox": {} }] } },
                   // view.radio over enum values -> radio fieldset
                   { "field.enum": { name: "tier", "@values": ["free", "pro"], children: [{ "view.radio": {} }] } },
+                  // non-required enum with an explicit dropdown -> empty option IS emitted
+                  { "field.enum": { name: "priority", "@values": ["low", "high"], children: [{ "view.dropdown": {} }] } },
                   // @formExclude -> absent from the form
                   { "field.string": { name: "internalNote", "@formExclude": true } },
                 ],
@@ -71,6 +73,7 @@ describe("form controls — view-kind dispatch", () => {
     expect(out).toContain('<option value="active">');
     expect(out).toContain('form.register("status")');
     expect(out).not.toMatch(/form\.input\.status/);
+    expect(out).toContain("aria-label={Report.status.label}");
   });
 
   test("view.textarea renders a <textarea> with the default row count", async () => {
@@ -79,6 +82,7 @@ describe("form controls — view-kind dispatch", () => {
     expect(out).toContain("<textarea");
     expect(out).toContain("rows={4}");
     expect(out).toContain('form.register("notes")');
+    expect(out).toContain("aria-label={Report.notes.label}");
   });
 
   test("view.checkbox renders a checkbox input", async () => {
@@ -86,6 +90,7 @@ describe("form controls — view-kind dispatch", () => {
     const out = renderFormFile(report, ctxFor(root));
     expect(out).toContain('type="checkbox"');
     expect(out).toContain('form.register("archived")');
+    expect(out).toContain("aria-label={Report.archived.label}");
   });
 
   test("view.radio renders a radio fieldset over the enum values", async () => {
@@ -95,6 +100,14 @@ describe("form controls — view-kind dispatch", () => {
     expect(out).toContain('type="radio"');
     expect(out).toContain('value="free"');
     expect(out).toContain('value="pro"');
+    expect(out).toContain("aria-label={Report.tier.label}");
+  });
+
+  test("a non-required dropdown emits the empty option", async () => {
+    const { root, report } = await loadModel();
+    const out = renderFormFile(report, ctxFor(root));
+    expect(out).toContain('<option value="">');
+    expect(out).toContain("aria-label={Report.priority.label}");
   });
 
   test("a scalar string with no view keeps the existing bound <input>", async () => {
