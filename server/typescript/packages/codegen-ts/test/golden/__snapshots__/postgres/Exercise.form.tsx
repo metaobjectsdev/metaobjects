@@ -81,7 +81,11 @@ export function ExerciseForm(props: ExerciseFormProps): ReactElement {
           </span>
         )}
       </div>
-      <button type="submit" disabled={form.formState.isSubmitting}>{props.submitLabel ?? "Submit"}</button>
+      <div className="metaobjects-form-actions">
+        <button className="metaobjects-form-submit" type="submit" disabled={form.formState.isSubmitting}>
+          {props.submitLabel ?? "Submit"}
+        </button>
+      </div>
     </form>
   );
 }
