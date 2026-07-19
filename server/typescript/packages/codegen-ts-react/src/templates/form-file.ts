@@ -34,6 +34,14 @@ import {
   FIELD_SUBTYPE_DATE,
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
+  FIELD_ATTR_FORM_EXCLUDE,
+  FIELD_ATTR_VALUES,
+  FIELD_ATTR_REQUIRED,
+  FIELD_SUBTYPE_ENUM,
+  VIEW_SUBTYPE_TEXTAREA,
+  VIEW_SUBTYPE_DROPDOWN,
+  VIEW_SUBTYPE_CHECKBOX,
+  VIEW_SUBTYPE_RADIO,
 } from "@metaobjectsdev/metadata";
 import { type RenderContext, entityModuleSpecifier, GENERATED_HEADER, tphDiscriminatorPin } from "@metaobjectsdev/codegen-ts";
 
@@ -69,7 +77,7 @@ function visibleFields(entity: MetaObject, discField?: string): MetaField[] {
   // fields() returns effective fields, so inherited fields (from extends:/super:) are included in forms.
   for (const child of entity.fields()) {
     // ADR-0039: resolving — a field may inherit @formExclude via extends.
-    if (child.attr("formExclude") === true) continue;
+    if (child.attr(FIELD_ATTR_FORM_EXCLUDE) === true) continue;
     if (pkNames.has(child.name)) continue;
     if (isAutoManaged(child)) continue;
     if (discField !== undefined && child.name === discField) continue;
@@ -256,6 +264,15 @@ ${inner.join("\n")}
   };
 }
 
+/** The view kind that drives control selection: an explicit view child wins;
+ *  an enum with no view defaults to a dropdown; otherwise null (typed <input>). */
+function viewKindFor(field: MetaField): string | null {
+  const view = field.views()[0]; // resolving accessor (ADR-0039)
+  if (view !== undefined) return view.subType;
+  if (field.subType === FIELD_SUBTYPE_ENUM) return VIEW_SUBTYPE_DROPDOWN;
+  return null;
+}
+
 export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
   const entityName = entity.name;
   // Import the entity's own file. Same target → relative "./Entity"; cross
@@ -295,6 +312,67 @@ export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
           )}
         </div>`;
 
+  // Shared label + control + error wrapper used by the view-kind dispatch
+  // branches below (select / textarea / checkbox / radio). `scalarBlock`
+  // stays untouched as the plain-<input> fallback (bound via `form.input.*`).
+  const labelAndError = (f: string, control: string) =>
+    `        <div className="metaobjects-field" key=${JSON.stringify(f)}>
+          <label className="metaobjects-field-label" htmlFor={${entityName}.${f}.name}>
+            {${entityName}.${f}.label}
+          </label>
+${control}
+          {form.formState.errors.${f} !== undefined && (
+            <span className="metaobjects-field-error" role="alert">
+              {String(form.formState.errors.${f}?.message ?? '')}
+            </span>
+          )}
+        </div>`;
+
+  // Dispatch a visible scalar field to its control by declared view kind: an
+  // explicit view.textarea/checkbox/radio child, or an enum defaulting to a
+  // dropdown when it carries no explicit view. Everything else falls back to
+  // scalarBlock's typed <input> bound via `form.input.<field>`.
+  const fieldControlFor = (field: MetaField): string => {
+    const name = field.name;
+    const kind = viewKindFor(field);
+    // Enum member symbols are validated to /^[A-Za-z_][A-Za-z0-9_]*$/, so raw
+    // interpolation into JSX attribute/text positions is safe (no escaping).
+    if (kind === VIEW_SUBTYPE_DROPDOWN) {
+      const values = (field.attr(FIELD_ATTR_VALUES) as string[] | undefined) ?? [];
+      const required = field.attr(FIELD_ATTR_REQUIRED) === true;
+      const empty = required ? "" : `            <option value="">Select…</option>\n`;
+      const options = values.map((v) => `            <option value="${v}">${v}</option>`).join("\n");
+      return labelAndError(
+        name,
+        `          <select className="metaobjects-field-input" {...form.register("${name}")}>\n${empty}${options}\n          </select>`,
+      );
+    }
+    if (kind === VIEW_SUBTYPE_TEXTAREA) {
+      // Configurable @rows is deferred (see the spec's Deferred work); default to 4.
+      return labelAndError(
+        name,
+        `          <textarea className="metaobjects-field-input" rows={4} {...form.register("${name}")} />`,
+      );
+    }
+    if (kind === VIEW_SUBTYPE_CHECKBOX) {
+      return labelAndError(
+        name,
+        `          <input type="checkbox" className="metaobjects-field-checkbox" {...form.register("${name}")} />`,
+      );
+    }
+    if (kind === VIEW_SUBTYPE_RADIO) {
+      const values = (field.attr(FIELD_ATTR_VALUES) as string[] | undefined) ?? [];
+      const radios = values
+        .map(
+          (v) =>
+            `            <label className="metaobjects-field-radio"><input type="radio" value="${v}" {...form.register("${name}")} /> ${v}</label>`,
+        )
+        .join("\n");
+      return labelAndError(name, `          <fieldset className="metaobjects-field-radios">\n${radios}\n          </fieldset>`);
+    }
+    return scalarBlock(name);
+  };
+
   // For each visible field: scalars keep the flat `form.input.<field>` block; a
   // `field.object` with a resolvable `@objectRef` recurses into the referenced
   // value object as a nested <fieldset> sub-form (issue #95). useFieldArray
@@ -303,7 +381,7 @@ export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
   const fieldArrayHooks: string[] = [];
   for (const f of fields) {
     if (resolveValueObject(f, ctx) === undefined) {
-      blocks.push(scalarBlock(f.name));
+      blocks.push(fieldControlFor(f));
       continue;
     }
     const r = renderNestedField(f, f.name, false, ctx, new Set<string>(), 0);
@@ -357,9 +435,11 @@ export function ${entityName}Form(props: ${entityName}FormProps): ${ReactElement
       onSubmit={form.handleSubmit(props.onSubmit as never)}
     >
 ${fieldBlocks}
-      <button type="submit" disabled={form.formState.isSubmitting}>
-        {props.submitLabel ?? 'Submit'}
-      </button>
+      <div className="metaobjects-form-actions">
+        <button className="metaobjects-form-submit" type="submit" disabled={form.formState.isSubmitting}>
+          {props.submitLabel ?? 'Submit'}
+        </button>
+      </div>
     </form>
   );
 }
