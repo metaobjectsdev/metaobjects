@@ -27,8 +27,10 @@ async function loadModel(): Promise<{ root: MetaRoot; report: MetaObject }> {
                   { "field.string": { name: "name", "@required": true } },
                   // enum with no explicit view -> dropdown default
                   { "field.enum": { name: "status", "@required": true, "@values": ["draft", "active", "closed"] } },
-                  // view.textarea -> <textarea rows={4}> (configurable @rows deferred)
+                  // bare view.textarea -> <textarea rows={4}> (the default)
                   { "field.string": { name: "notes", children: [{ "view.textarea": {} }] } },
+                  // view.textarea with an explicit @rows -> <textarea rows={8}>
+                  { "field.string": { name: "bio", children: [{ "view.textarea": { "@rows": 8 } }] } },
                   // view.checkbox -> checkbox
                   { "field.boolean": { name: "archived", children: [{ "view.checkbox": {} }] } },
                   // view.radio over enum values -> radio fieldset
@@ -76,13 +78,21 @@ describe("form controls — view-kind dispatch", () => {
     expect(out).toContain("aria-label={Report.status.label}");
   });
 
-  test("view.textarea renders a <textarea> with the default row count", async () => {
+  test("a bare view.textarea renders a <textarea> with the default row count", async () => {
     const { root, report } = await loadModel();
     const out = renderFormFile(report, ctxFor(root));
     expect(out).toContain("<textarea");
     expect(out).toContain("rows={4}");
     expect(out).toContain('form.register("notes")');
     expect(out).toContain("aria-label={Report.notes.label}");
+  });
+
+  test("a view.textarea with @rows renders the custom row count", async () => {
+    const { root, report } = await loadModel();
+    const out = renderFormFile(report, ctxFor(root));
+    expect(out).toContain("rows={8}");
+    expect(out).toContain('form.register("bio")');
+    expect(out).toContain("aria-label={Report.bio.label}");
   });
 
   test("view.checkbox renders a checkbox input", async () => {

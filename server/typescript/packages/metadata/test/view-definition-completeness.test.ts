@@ -10,8 +10,11 @@
 // presentation/view/view-schema.ts (currencyViewAttrs) and the old
 // `[wildcard(TYPE_ATTR)]` childRules. It is the safety net the plan asks for.
 //
-// CRITICAL assertions: only view.currency carries an attr (@locale: string,
-// optional, default "en-US"); all OTHER 12 subtypes carry NO attrs; every
+// CRITICAL assertions: view.currency carries an attr (@locale: string,
+// optional, default "en-US"); view.textarea carries @rows (int, optional) and
+// view.image carries its five attrs (@aspectRatio/@maxEdge/@store/@accept/
+// @maxBytes) — both re-homed from the TS-only metaobjects-ui-web provider
+// (spec/metamodel/ui-web.json); all OTHER subtypes carry NO attrs; every
 // subtype's childRules == [wildcard(attr)]; views carry no dataType.
 
 import { describe, test, expect } from "bun:test";
@@ -55,7 +58,7 @@ type ExpectedAttr = {
 const EXPECTED: Record<string, Record<string, ExpectedAttr>> = {
   base: {},
   text: {},
-  textarea: {},
+  textarea: { rows: { valueType: "int", required: false } },
   date: {},
   month: {},
   hotlink: {},
@@ -69,10 +72,17 @@ const EXPECTED: Record<string, Record<string, ExpectedAttr>> = {
   currency: {
     locale: { valueType: "string", required: false, default: "en-US" },
   },
+  image: {
+    aspectRatio: { valueType: "double", required: false },
+    maxEdge: { valueType: "int", required: false },
+    store: { valueType: "string", required: false },
+    accept: { valueType: "string", required: false },   // string[] — the test compares the element valueType; match the existing convention for array attrs
+    maxBytes: { valueType: "int", required: false },
+  },
 };
 
 describe("view provider externalization — completeness", () => {
-  test("registers all 13 view subtypes", () => {
+  test("registers all 14 view subtypes", () => {
     const registered = registry.allSubTypesOf(TYPE_VIEW).sort();
     expect(registered).toEqual([...VIEW_SUBTYPES].sort());
   });

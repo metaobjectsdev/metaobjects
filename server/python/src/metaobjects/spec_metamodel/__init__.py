@@ -55,6 +55,7 @@ SPEC_FILES: tuple[str, ...] = (
     "source.json",
     "template.json",
     "ui.json",
+    "ui-web.json",
     "validator.json",
     "view.json",
 )

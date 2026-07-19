@@ -5,6 +5,7 @@ import { dbProvider } from "./persistence/db/db-provider.js";
 import { docProvider } from "./core/documentation/doc-provider.js";
 import { promptProvider } from "./template/prompt-provider.js";
 import { uiProvider } from "./presentation/ui/ui-provider.js";
+import { uiWebProvider } from "./presentation/ui-web/ui-web-provider.js";
 import { type DataType } from "./data-type.js";
 import type { MetaData } from "./shared/meta-data.js";
 import { MetaRoot } from "./shared/meta-root.js";
@@ -545,17 +546,21 @@ export const coreTypesProvider: MetaDataTypeProvider = {
   },
 };
 
-/** The default provider bundle — core metamodel types plus the four concern
- *  providers (DB-domain attrs, documentation common-attrs, prompt/AI + the
- *  UI/query-surface markers). FR-033 S1-field-A re-homed the field's
- *  filter/sort/teaching/extract/storage attrs out of core into db/ui/prompt;
- *  the composed set is unchanged. Spread it to add more: `[...coreProviders, mine]`. */
+/** The default provider bundle — core metamodel types plus the five concern
+ *  providers (DB-domain attrs, documentation common-attrs, prompt/AI, the
+ *  UI/query-surface markers, and the TS-web presentation view attrs).
+ *  FR-033 S1-field-A re-homed the field's filter/sort/teaching/extract/storage
+ *  attrs out of core into db/ui/prompt; the composed set is unchanged. uiWebProvider
+ *  is TS-only (the non-TS ports mirror its spec file but never apply it — see
+ *  presentation/ui-web/ui-web-provider.ts). Spread it to add more:
+ *  `[...coreProviders, mine]`. */
 export const coreProviders: readonly MetaDataTypeProvider[] = [
   coreTypesProvider,
   dbProvider,
   docProvider,
   promptProvider,
   uiProvider,
+  uiWebProvider,
 ];
 
 /**

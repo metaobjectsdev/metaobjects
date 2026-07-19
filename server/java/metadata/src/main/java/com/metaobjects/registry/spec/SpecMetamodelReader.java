@@ -66,12 +66,12 @@ public final class SpecMetamodelReader {
     /** Classpath directory the metadata jar embeds the spec files under. */
     public static final String EMBED_DIR = "spec/metamodel";
 
-    /** The 16 shared provider-definition file names (keep in lockstep with {@code spec/metamodel/}). */
+    /** The 17 shared provider-definition file names (keep in lockstep with {@code spec/metamodel/}). */
     public static final List<String> SPEC_FILES = List.of(
             "attr.json", "db.json", "documentation.json", "field.json", "identity.json",
             "index.json", "layout.json", "object.json", "origin.json", "prompt.json",
-            "relationship.json", "source.json", "template.json", "ui.json", "validator.json",
-            "view.json");
+            "relationship.json", "source.json", "template.json", "ui.json", "ui-web.json",
+            "validator.json", "view.json");
 
     /** Wildcard token used in the JSON for "any type / any subType". */
     private static final String WILDCARD = "*";

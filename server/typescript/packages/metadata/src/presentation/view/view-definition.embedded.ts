@@ -78,6 +78,11 @@ export const VIEW_DEFINITION: ProviderDefinition = {
       "type": "view",
       "subType": "currency",
       "description": "Currency display formatting (locale-aware via @locale)."
+    },
+    {
+      "type": "view",
+      "subType": "image",
+      "description": "Image upload/display control; the field stores an opaque storage key (field.string)."
     }
   ]
 };

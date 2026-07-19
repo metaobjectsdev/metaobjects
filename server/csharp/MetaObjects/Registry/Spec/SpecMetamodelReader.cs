@@ -112,13 +112,13 @@ public sealed record SpecExtendsDirective(
 /// </summary>
 public sealed class SpecMetamodelReader
 {
-    /// <summary>The 16 shared provider-definition file names (keep in lockstep with <c>spec/metamodel/</c>).</summary>
+    /// <summary>The 17 shared provider-definition file names (keep in lockstep with <c>spec/metamodel/</c>).</summary>
     public static readonly IReadOnlyList<string> SpecFiles = new[]
     {
         "attr.json", "db.json", "documentation.json", "field.json", "identity.json",
         "index.json", "layout.json", "object.json", "origin.json", "prompt.json",
-        "relationship.json", "source.json", "template.json", "ui.json", "validator.json",
-        "view.json",
+        "relationship.json", "source.json", "template.json", "ui.json", "ui-web.json",
+        "validator.json", "view.json",
     };
 
     /// <summary>The embedded-resource logical-name prefix (RootNamespace + folder).</summary>

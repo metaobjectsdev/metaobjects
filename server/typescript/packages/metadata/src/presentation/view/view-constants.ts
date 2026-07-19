@@ -3,7 +3,7 @@
 import { SUBTYPE_BASE } from "../../shared/base-types.js";
 
 // ---------------------------------------------------------------------------
-// View subtypes (13)
+// View subtypes (14)
 //
 // The view's subType IS the UI control type. Each control kind has its own
 // expected attrs (placeholder, maxLength, options, etc.) — runtime-ts
@@ -24,6 +24,7 @@ export const VIEW_SUBTYPE_PASSWORD = "password";
 export const VIEW_SUBTYPE_HIDDEN = "hidden";
 export const VIEW_SUBTYPE_WEB = "web";          // abstract base for web-rendered views
 export const VIEW_SUBTYPE_CURRENCY = "currency";
+export const VIEW_SUBTYPE_IMAGE = "image";
 
 export const VIEW_SUBTYPES = [
   SUBTYPE_BASE,
@@ -40,6 +41,7 @@ export const VIEW_SUBTYPES = [
   VIEW_SUBTYPE_HIDDEN,
   VIEW_SUBTYPE_WEB,
   VIEW_SUBTYPE_CURRENCY,
+  VIEW_SUBTYPE_IMAGE,
 ] as const;
 export type ViewSubType = (typeof VIEW_SUBTYPES)[number];
 
@@ -51,3 +53,16 @@ export type ViewSubType = (typeof VIEW_SUBTYPES)[number];
 export const VIEW_CURRENCY_ATTR_LOCALE = "locale";
 /** Default BCP 47 locale code when @locale is omitted on a view[currency]. */
 export const VIEW_CURRENCY_ATTR_LOCALE_DEFAULT = "en-US";
+
+// ---------------------------------------------------------------------------
+// View attrs (registered by metaobjects-ui-web — TS-web presentation only)
+// ---------------------------------------------------------------------------
+
+/** Visible row count on a view[textarea]. Defaults to 4 when omitted. */
+export const VIEW_TEXTAREA_ATTR_ROWS = "rows";
+/** view[image] attrs (registered by metaobjects-ui-web). */
+export const VIEW_IMAGE_ATTR_ASPECT_RATIO = "aspectRatio";
+export const VIEW_IMAGE_ATTR_MAX_EDGE = "maxEdge";
+export const VIEW_IMAGE_ATTR_STORE = "store";
+export const VIEW_IMAGE_ATTR_ACCEPT = "accept";
+export const VIEW_IMAGE_ATTR_MAX_BYTES = "maxBytes";

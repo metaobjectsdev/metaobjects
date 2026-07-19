@@ -82,6 +82,7 @@ const CONCEPT_DIRS: Record<string, string> = {
   layout: "presentation/layout",
   view: "presentation/view",
   ui: "presentation/ui",
+  "ui-web": "presentation/ui-web",
   // depth-1
   template: "template",
   // FR-033 S1.5: the prompt concern provider lives in template/ (templateProvider
@@ -104,7 +105,7 @@ function targetFor(name: string): {
       `no source-dir mapping for metamodel concept "${name}" — add it to CONCEPT_DIRS in scripts/generate-embedded-metamodel.ts`,
     );
   }
-  const constName = `${name.toUpperCase()}_DEFINITION`;
+  const constName = `${name.replace(/[^A-Za-z0-9]/g, "_").toUpperCase()}_DEFINITION`;
   const outFile = join(metadataSrc, ...dir.split("/"), `${name}-definition.embedded.ts`);
   // Compute the import to provider-data.js RELATIVELY from the embed file's dir,
   // as a POSIX path with a guaranteed leading "./". core/field/ → ../../provider-data.js;

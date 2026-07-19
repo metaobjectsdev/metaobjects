@@ -46,6 +46,7 @@ import {
   VIEW_SUBTYPE_DROPDOWN,
   VIEW_SUBTYPE_CHECKBOX,
   VIEW_SUBTYPE_RADIO,
+  VIEW_TEXTAREA_ATTR_ROWS,
 } from "@metaobjectsdev/metadata";
 import { type RenderContext, entityModuleSpecifier, GENERATED_HEADER, tphDiscriminatorPin } from "@metaobjectsdev/codegen-ts";
 
@@ -357,10 +358,10 @@ ${control}
       );
     }
     if (kind === VIEW_SUBTYPE_TEXTAREA) {
-      // Configurable @rows is deferred (see the spec's Deferred work); default to 4.
+      const rows = (field.views()[0]?.attr(VIEW_TEXTAREA_ATTR_ROWS) as number | undefined) ?? 4;
       return labelAndError(
         name,
-        `          <textarea aria-label={${entityName}.${name}.label} className="metaobjects-field-input" rows={4} {...form.register("${name}")} />`,
+        `          <textarea aria-label={${entityName}.${name}.label} className="metaobjects-field-input" rows={${rows}} {...form.register("${name}")} />`,
       );
     }
     if (kind === VIEW_SUBTYPE_CHECKBOX) {
