@@ -60,3 +60,6 @@ server/java/.claude/
 
 # Transient Claude runtime artifacts (the porting skill under .claude/ stays tracked)
 .claude/scheduled_tasks.lock
+
+# Lavish review-surface scratch artifacts (local HTML review pages)
+.lavish/
