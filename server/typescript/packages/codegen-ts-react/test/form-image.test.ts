@@ -12,7 +12,12 @@ import {
 import { renderFormFile } from "../src/templates/form-file.js";
 import { makeRenderContext, buildPkMap, buildRelationMap } from "@metaobjectsdev/codegen-ts";
 
-async function loadModel(): Promise<{ root: MetaRoot; doc: MetaObject; plain: MetaObject }> {
+async function loadModel(): Promise<{
+  root: MetaRoot;
+  doc: MetaObject;
+  plain: MetaObject;
+  partialDoc: MetaObject;
+}> {
   const loader = new MetaDataLoader();
   const { root, errors } = await loader.load([
     new InMemoryStringSource(
@@ -58,6 +63,32 @@ async function loadModel(): Promise<{ root: MetaRoot; doc: MetaObject; plain: Me
                 ],
               },
             },
+            {
+              "object.entity": {
+                name: "PartialDoc",
+                children: [
+                  { "source.rdb": { "@table": "partial_docs" } },
+                  { "field.long": { name: "id" } },
+                  { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
+                  {
+                    "field.string": {
+                      name: "coverKey",
+                      "@maxLength": 80,
+                      children: [
+                        {
+                          // Only two of the five view.image attrs present —
+                          // exercises the omit-absent-keys path.
+                          "view.image": {
+                            "@store": "photos",
+                            "@aspectRatio": 1.777,
+                          },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+            },
           ],
         },
       }),
@@ -67,7 +98,8 @@ async function loadModel(): Promise<{ root: MetaRoot; doc: MetaObject; plain: Me
   if (errors.length > 0) throw new Error(errors.map((e) => e.message).join("; "));
   const doc = root.objects().find((o) => o.name === "Doc")! as MetaObject;
   const plain = root.objects().find((o) => o.name === "Plain")! as MetaObject;
-  return { root, doc, plain };
+  const partialDoc = root.objects().find((o) => o.name === "PartialDoc")! as MetaObject;
+  return { root, doc, plain, partialDoc };
 }
 
 function ctxFor(root: MetaRoot) {
@@ -112,6 +144,23 @@ describe("form controls — view.image dispatch", () => {
     // content (e.g. adds a space after the array-literal comma).
     expect(out).toMatch(/accept:\s*\[\s*"image\/jpeg",\s*"image\/png"\s*\]/);
     expect(out).toContain("maxBytes: 10485760");
+  });
+
+  test("a view.image with only SOME attrs present omits the absent keys (exactOptionalPropertyTypes-safe)", async () => {
+    const { root, partialDoc } = await loadModel();
+    const out = renderFormFile(partialDoc, ctxFor(root));
+    // Present attrs still emit their values.
+    expect(out).toContain('store: "photos"');
+    expect(out).toContain("aspectRatio: 1.777");
+    // Absent attrs contribute NOTHING — no explicit `: undefined` literal
+    // anywhere in the generated form (ImageMeta's fields are optional, not
+    // `T | undefined`, so an explicit undefined is a TS2375 error under
+    // exactOptionalPropertyTypes).
+    expect(out).not.toMatch(/:\s*undefined/);
+    // Absent keys don't appear as keys at all.
+    expect(out).not.toMatch(/\bmaxEdge:/);
+    expect(out).not.toMatch(/\baccept:/);
+    expect(out).not.toMatch(/\bmaxBytes:/);
   });
 
   test("a non-image entity emits neither the ImageUpload import nor a Controller import (gated)", async () => {

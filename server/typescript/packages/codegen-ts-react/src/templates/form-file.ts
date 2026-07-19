@@ -393,15 +393,26 @@ ${control}
       );
     }
     if (kind === VIEW_SUBTYPE_IMAGE) {
-      const num = (a: string) => {
-        const v = view?.attr(a);
-        return typeof v === "number" ? String(v) : "undefined";
+      // ImageMeta declares every field optional (not `| undefined`), so under
+      // exactOptionalPropertyTypes an explicit `key: undefined` literal is a
+      // TS2375 error for a consumer's tsconfig. Emit a fragment ONLY for an
+      // attr that is actually present; an absent attr contributes nothing.
+      const numFragment = (attrName: string, key: string): string | undefined => {
+        const v = view?.attr(attrName);
+        return typeof v === "number" ? `${key}: ${v}` : undefined;
       };
-      const accept = view?.attr(VIEW_IMAGE_ATTR_ACCEPT) as string[] | undefined;
-      const acceptLit = accept ? JSON.stringify(accept) : "undefined";
       const store = view?.attr(VIEW_IMAGE_ATTR_STORE);
-      const storeLit = typeof store === "string" ? JSON.stringify(store) : "undefined";
-      const meta = `{ aspectRatio: ${num(VIEW_IMAGE_ATTR_ASPECT_RATIO)}, maxEdge: ${num(VIEW_IMAGE_ATTR_MAX_EDGE)}, store: ${storeLit}, accept: ${acceptLit}, maxBytes: ${num(VIEW_IMAGE_ATTR_MAX_BYTES)} }`;
+      const storeFragment = typeof store === "string" ? `store: ${JSON.stringify(store)}` : undefined;
+      const accept = view?.attr(VIEW_IMAGE_ATTR_ACCEPT);
+      const acceptFragment = Array.isArray(accept) ? `accept: ${JSON.stringify(accept)}` : undefined;
+      const fragments = [
+        numFragment(VIEW_IMAGE_ATTR_ASPECT_RATIO, "aspectRatio"),
+        numFragment(VIEW_IMAGE_ATTR_MAX_EDGE, "maxEdge"),
+        storeFragment,
+        acceptFragment,
+        numFragment(VIEW_IMAGE_ATTR_MAX_BYTES, "maxBytes"),
+      ].filter((f): f is string => f !== undefined);
+      const meta = fragments.length > 0 ? `{ ${fragments.join(", ")} }` : "{}";
       const control = `          <Controller name=${JSON.stringify(name)} control={form.control} render={({ field: f }) => (
             <ImageUpload value={f.value as string | null} onChange={f.onChange} meta={${meta}} />
           )} />`;
