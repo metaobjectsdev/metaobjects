@@ -7,6 +7,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.19.1] — 2026-07-20
+
+Coordinated **patch** across all registries: npm `0.19.1` · NuGet `0.19.1` · PyPI `0.19.2` (the Python line is one ahead after its `0.19.1` hotfix) · Maven Central `7.11.1`. No breaking changes, no new vocabulary.
+
+**An explicitly authored `validator.length @min` is now authoritative over the FR-036 Pin 1 implicit floor ([#224](https://github.com/metaobjectsdev/metaobjects/issues/224)).** Pin 1 — *a `@required` non-array string is non-empty* — remains the default, but every port previously clamped the floor with `max(@min, 1)`, so an explicitly authored `validator.length @min: 0` was **silently discarded**: the loader accepted it and the emitter dropped it, leaving *"must be provided, but may be empty"* inexpressible. The clamp, not the opt-out, was the defect — discarding authored metadata is precisely what a metadata-is-the-spine model exists to prevent. Now `@min: 0` on a `@required` string restores presence-only, an explicit `@min: N` always wins, and the implicit floor applies only when no `@min` is authored at all. NOT NULL semantics are untouched.
+
+Fixed in all five ports, each of which must distinguish *"no `@min` authored"* from *"`@min: 0` authored"*. Locked by two new `validation-conformance` cases (`note-empty-allowed`, `note-missing`) running on all five ports, alongside the existing `name-empty` case which proves the default still rejects `""` when nothing is authored. This is additive — no `@min: 0` fixture existed, so it flips zero previously locked verdicts.
+
+**FR-036 §A5 executed — the `@required` vocabulary now matches the shipped behavior ([#224](https://github.com/metaobjectsdev/metaobjects/issues/224)).** §A5 was ordered in `0.16.0` and never carried out, so the registry still described `@required` as plain "NOT NULL" while the emitters rejected empty strings, and `validator.required` contradicted itself ("null/empty" in its description, "present" in its `whenToUse`). An adopter reading the vocabulary would author `@required` meaning presence — which is exactly what happened. Both now state the same semantic: `@required` is NOT NULL; on a non-array string, generated **wire-tier** input validation additionally rejects `""` by default (whitespace accepted) unless an explicit `validator.length @min: 0` opts back to presence-only; in-process read models never enforce at construction. The `metaobjects-authoring` skill, which never defined the semantic at all, now documents it with the opt-out.
+
+**`meta verify` can target Cloudflare D1 ([#225](https://github.com/metaobjectsdev/metaobjects/issues/225)).** `verify --dialect d1 --d1 <binding> [--remote]` resolves the binding from `wrangler.toml` and introspects through the same wrangler transport `meta migrate` already uses, feeding the existing drift reporting and exit codes. Previously D1 had no drift gate at all, and the obvious workaround — pointing `--db file:` at wrangler's local SQLite state — verified the **local** database while printing `schema in sync`, turning an unverified deploy into a verified-looking one. `--db file:` into a `.wrangler/state/**/d1/**` path now warns that it is checking the local database and points at the D1 flags; it never redirects, so the local file does not become a convenient default. Going through the native D1 path also inherits the correct filtering of wrangler-owned tables (`_cf_METADATA`, `d1_migrations`), which the `file:` mirror workaround reported as permanent false drift.
+
 ## PyPI [0.19.1] — 2026-07-20 (Python port only)
 
 **Python-only patch.** npm / NuGet stay at `0.19.0`; Maven Central stays at `7.11.0`.
