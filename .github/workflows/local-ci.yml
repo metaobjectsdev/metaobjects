@@ -92,6 +92,25 @@ jobs:
           persist-credentials: false
       - run: scripts/ci-local.sh --only ts-fast --strict-toolchains
 
+  # TS UNIT lane — the per-package suites (metadata, render, runtime-ts + the
+  # client/web packages) that NO lane gated until 2026-07-19: ts-fast's conformance
+  # gate runs only named conformance FILES, so the rest of those suites ran nowhere
+  # and a regression could sit red on `main` under a green ts lane.
+  # Deliberately separate from ts-fast rather than folded into it: ts-fast carries
+  # the 30-min mutation gate, which flakes under runner contention, and a mutation
+  # flake must not mask a unit-test failure. The suites total ~5s, so this lane is
+  # nearly free and gives an independent, fast signal.
+  ts-unit:
+    needs: detect
+    if: contains(needs.detect.outputs.ports, 'ts')
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: scripts/ci-local.sh --only ts-unit --strict-toolchains
+
   # TS SLOW lane — build + docker/sidecar integration tests. Uses the shared
   # Postgres sidecar (dynamic host port; see the note above the integration jobs).
   ts-slow:

@@ -25,11 +25,16 @@
 #                                    #   gates  → leak-scan, pom parity, fixture-lint,
 #                                    #            doc-template drift, embedded-library drift
 #                                    #   ts     → ts build+typecheck, ts conformance,
-#                                    #            completeness-gate, integration-tests ts
+#                                    #            completeness-gate, full unit suites
+#                                    #            (ts-unit), integration-tests ts
 #                                    #   ts-fast → build+typecheck, conformance,
 #                                    #            completeness (the pure-code signal)
+#                                    #   ts-unit → full per-package unit suites for
+#                                    #            metadata/render/runtime-ts + the
+#                                    #            client/web packages — runs in
+#                                    #            parallel with ts-fast in CI
 #                                    #   ts-slow → build + integration-tests ts
-#                                    #            (docker); CI runs the two lanes as
+#                                    #            (docker); CI runs the three lanes as
 #                                    #            separate parallel jobs
 #                                    #   java   → java+kotlin conformance, reactor,
 #                                    #            integration-tests java+kotlin
@@ -38,8 +43,9 @@
 #                                    #   java-slow → reactor + integration-tests
 #                                    #            (java+kotlin); CI runs the two
 #                                    #            lanes as separate parallel jobs
-#                                    #   python → python conformance + integration-tests
-#                                    #   csharp → csharp conformance + integration-tests
+#                                    #   python → full python test suite + integration-tests
+#                                    #   csharp → full csharp codegen suite + conformance
+#                                    #            + integration-tests
 #   scripts/ci-local.sh --strict-toolchains
 #                                    # Promote missing-toolchain and docker-down SKIPs
 #                                    #   to FAILs; useful in CI or a full-toolchain
@@ -69,8 +75,8 @@ while [ $# -gt 0 ]; do
     --quick) QUICK=1 ;;
     --strict-toolchains) STRICT=1 ;;
     --only) shift; case "${1:-}" in
-        gates|ts|ts-fast|ts-slow|java|java-fast|java-slow|python|csharp) ONLY="$ONLY ${1}" ;;
-        *) echo "--only expects gates|ts|ts-fast|ts-slow|java|java-fast|java-slow|python|csharp, got '${1:-}'" >&2; exit 2 ;;
+        gates|ts|ts-fast|ts-unit|ts-slow|java|java-fast|java-slow|python|csharp) ONLY="$ONLY ${1}" ;;
+        *) echo "--only expects gates|ts|ts-fast|ts-unit|ts-slow|java|java-fast|java-slow|python|csharp, got '${1:-}'" >&2; exit 2 ;;
       esac ;;
     -h|--help) awk 'NR==1{next} /^set -uo/{exit} {sub(/^# ?/,""); print}' "$0"; exit 0 ;;
     *) echo "unknown arg: $1 (see --help)" >&2; exit 2 ;;
@@ -151,12 +157,29 @@ gate_conf_ts() {
   # be the CLI flag). 30s keeps a real hang loud while removing the timing flake.
   ( cd server/typescript/packages/cli && bun test --timeout 30000 ) || return 1
 }
+# The per-package TS unit suites that no lane gated until 2026-07-19: the ts-fast
+# conformance gate runs only NAMED conformance files in metadata/render, so the rest
+# of those suites (and runtime-ts + the client/web packages) ran nowhere — which is
+# how a @formExclude regression sat red on `main`. Deliberately its OWN lane rather
+# than folded into ts-fast: ts-fast carries the 30-min mutation gate, which flakes
+# under runner contention, and a mutation flake must not mask a unit-test failure.
+# Measured ~5s total, so the independent signal is nearly free.
+# NOTE: per-package `bun test` only — a bare root `bun test` walks java/python/
+# csharp/fixtures and takes many minutes.
+gate_ts_unit() {
+  bun_install || return 1
+  for p in metadata render runtime-ts; do
+    ( cd "server/typescript/packages/$p" && bun test ) || return 1
+  done
+  for p in runtime-web react tanstack; do
+    ( cd "client/web/packages/$p" && bun test ) || return 1
+  done
+}
 gate_conf_csharp() {
   ( cd server/csharp \
       && dotnet test MetaObjects.Conformance.Tests/MetaObjects.Conformance.Tests.csproj --nologo --verbosity quiet \
       && dotnet test MetaObjects.Render.Tests/MetaObjects.Render.Tests.csproj --nologo --verbosity quiet \
-      && dotnet test MetaObjects.Codegen.Tests/MetaObjects.Codegen.Tests.csproj --filter "FullyQualifiedName~ValidationConformance" --nologo --verbosity quiet \
-      && dotnet test MetaObjects.Codegen.Tests/MetaObjects.Codegen.Tests.csproj --filter "FullyQualifiedName~GeneratorRegistryConformance" --nologo --verbosity quiet \
+      && dotnet test MetaObjects.Codegen.Tests/MetaObjects.Codegen.Tests.csproj --nologo --verbosity quiet \
       && dotnet test MetaObjects.Cli.Tests/MetaObjects.Cli.Tests.csproj --nologo --verbosity quiet )
 }
 gate_conf_java() {
@@ -167,11 +190,12 @@ gate_conf_java() {
       && mvn -pl codegen-spring test -Dtest='ValidationConformanceTest,GeneratorRegistryConformanceTest' -q )
 }
 gate_conf_python() {
-  ( cd server/python \
-      && uv run pytest tests/conformance -q \
-      && uv run pytest tests/render -q \
-      && uv run pytest tests/codegen/test_validation_conformance.py -q \
-      && uv run pytest tests/codegen/test_cli_registry.py -q )
+  # FULL suite, not cherry-picked paths. Until 2026-07-19 this ran only
+  # tests/conformance, tests/render and two named codegen files — ~1400 tests
+  # (tests/codegen/*, tests/integration/, tests/unit/, …) ran in NO lane, not even
+  # nightly, so a red test could sit on `main` under a green `python` lane. Measured
+  # cost of the full suite is ~5 min, which buys the port a real gate.
+  ( cd server/python && uv run pytest tests/ -q )
 }
 gate_conf_kotlin() {
   ( cd server/java \
@@ -248,6 +272,7 @@ if want gates; then step_if bun "fixture-lint"                 gate_fixture_lint
 # local run) still runs both lanes, so it stays byte-equivalent to before.
 if want_any ts ts-fast; then step_if bun "ts build + typecheck"         gate_ts_build_typecheck;     fi
 if want_any ts ts-fast; then step_if bun "conformance: typescript"      gate_conf_ts;                fi
+if want_any ts ts-unit; then step_if bun "ts unit suites"               gate_ts_unit;                fi
 if want_any ts ts-fast; then step_if bun "completeness-gate (mutation)" gate_completeness;           fi
 if want gates; then step_if bun "doc-template drift"           gate_doc_template_drift;     fi
 if want gates; then step_if bun "embedded-library drift"       gate_embedded_library_drift; fi
