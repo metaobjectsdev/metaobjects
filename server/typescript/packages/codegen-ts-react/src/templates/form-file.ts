@@ -308,9 +308,21 @@ export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
   // doesn't require a field the user never fills.
   const tphPin = tphDiscriminatorPin(entity);
   const fields = visibleFields(entity, tphPin?.fieldName);
-  const formSchema = tphPin !== undefined
-    ? `${entityName}InsertSchema.omit({ ${tphPin.fieldName}: true })`
-    : `${entityName}InsertSchema`;
+  // #227: the resolver must match the MODE. `defaultValues` is what distinguishes
+  // edit from create everywhere else in this template, so it selects the schema too.
+  // InsertSchema's optionals are `.optional()` (absent ok, null REJECTED); an edit is
+  // seeded from a real row where every unset optional column is `null`, so validating
+  // an edit against InsertSchema fails on untouched fields and handleSubmit never
+  // fires — the save silently does nothing. UpdateSchema is `.optional().nullable()`,
+  // and is the semantically right pairing anyway: an edit submits a PATCH, so it
+  // validates against the PATCH schema (still enforcing min/max/enum on present keys,
+  // just not demanding required keys the PATCH isn't sending — FR-035 present-key).
+  const omitTph = (schema: string) => tphPin !== undefined
+    ? `${schema}.omit({ ${tphPin.fieldName}: true })`
+    : schema;
+  const insertSchema = omitTph(`${entityName}InsertSchema`);
+  const updateSchema = omitTph(`${entityName}UpdateSchema`);
+  const formSchema = `props.defaultValues !== undefined ? ${updateSchema} : ${insertSchema}`;
 
   const ReactElementSym = imp("t:ReactElement@react");
   const SubmitHandlerSym = imp("t:SubmitHandler@react-hook-form");
@@ -456,6 +468,7 @@ ${control}
 import {
   ${entityName},
   ${entityName}InsertSchema,
+  ${entityName}UpdateSchema,
 } from ${JSON.stringify(entityFileSpec)};
 import type { ${entityName} as ${entityName}Row } from ${JSON.stringify(entityFileSpec)};
 ${useFieldArrayImport}${imageImports}`;

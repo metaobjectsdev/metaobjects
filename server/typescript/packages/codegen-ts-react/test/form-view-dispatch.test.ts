@@ -139,3 +139,23 @@ describe("form controls — view-kind dispatch", () => {
     expect(out).toContain('className="metaobjects-form-submit"');
   });
 });
+
+// #227 — the resolver must match the MODE. A generated form takes `defaultValues`
+// (edit mode is first-class), but every submit used to resolve against InsertSchema.
+// InsertSchema optionals are `.optional()` — absent ok, null REJECTED — while an edit
+// is seeded from a real row whose unset optional columns are all `null`. So editing any
+// row with a NULL optional was blocked outright: errors appeared on untouched fields,
+// handleSubmit never fired, and the save silently did nothing.
+describe("form schema is mode-aware (#227)", () => {
+  test("selects UpdateSchema when defaultValues is present, InsertSchema otherwise", async () => {
+    const { root, report } = await loadModel();
+    const out = renderFormFile(report, ctxFor(root));
+
+    // The mode signal is the same `defaultValues` presence used for seeding.
+    expect(out).toContain("props.defaultValues !== undefined ? ReportUpdateSchema : ReportInsertSchema");
+    // ...and the update schema must actually be imported, or the emitted file won't compile.
+    expect(out).toContain("ReportUpdateSchema");
+    // Regression guard: an unconditional InsertSchema resolver is the bug.
+    expect(out).not.toMatch(/useEntityForm\(\s*Report,\s*ReportInsertSchema\s*,/);
+  });
+});

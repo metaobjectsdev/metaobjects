@@ -4,7 +4,7 @@
 import { ImageUpload } from "@metaobjectsdev/react";
 import { useFieldArray } from "react-hook-form";
 import { Controller } from "react-hook-form";
-import { Program, ProgramInsertSchema } from "./Program";
+import { Program, ProgramInsertSchema, ProgramUpdateSchema } from "./Program";
 import type { Program as ProgramRow } from "./Program";
 import { useEntityForm } from "@metaobjectsdev/react";
 import type { ReactElement } from "react";
@@ -30,7 +30,7 @@ export interface ProgramFormProps {
 export function ProgramForm(props: ProgramFormProps): ReactElement {
   const form = useEntityForm(
     Program,
-    ProgramInsertSchema,
+    props.defaultValues !== undefined ? ProgramUpdateSchema : ProgramInsertSchema,
     props.defaultValues !== undefined ? { defaultValues: props.defaultValues } : {},
   );
   const syllabusArray = useFieldArray({ control: form.control, name: "syllabus" as never });
