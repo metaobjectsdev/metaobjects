@@ -7,6 +7,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## PyPI [0.19.1] — 2026-07-20 (Python port only)
+
+**Python-only patch.** npm / NuGet stay at `0.19.0`; Maven Central stays at `7.11.0`.
+
+**FR-036 Pin 1 is now scoped to the wire tier ([#224](https://github.com/metaobjectsdev/metaobjects/issues/224)).** Pin 1 — *"a `@required` non-array string is non-empty"* — was applied to **every** generated Python model, including the in-process models for `object.value`. Value objects used as in-process carriers (prompt payload / template slots — never an HTTP input, never persisted) therefore raised `ValidationError` on a legitimately-empty required string. Pin 1 is a **wire-tier** rule by design (it governs POST/PATCH request bodies), so it is now emitted only on the wire models (`<Name>Create` / `<Name>Patch`) and never on the in-process read model. This also closes the same over-application one tier down, where reading an existing row containing `""` could throw at model construction.
+
+So the wire tier keeps validating unchanged, an `object.value` now also emits its own `<Name>Create` wire model (keyed by wire name), and create/patch models reference `<Ref>Create` for value-object-typed fields. Value-object jsonb PATCH validation is unaffected — a nested empty `@required` string still returns `400` (api-contract `jsonb-value-object-patch` r10, all five ports, both lanes).
+
+Behavior change for Python adopters: generated in-process models no longer carry an implicit `min_length=1` for `@required` strings, and value objects gain an additive `<Name>Create` class. Regenerate to pick this up. Other ports are unaffected — their value-object constraints are declarative annotations evaluated only by explicit controller validation, which is already wire-tier.
+
+Known follow-ups (tracked on #224, not in this patch): the `validator.length @min: 0` opt-out is still clamped shut, and it is clamped in **all five** ports — restoring it is a coordinated cross-port change, not a Python fix. FR-036 §A5 (reconciling the `@required` wording in `spec/metamodel/field.json`, the embedded definitions, `validator-definition`, and the authoring skill) is also still outstanding, and is why `@required` still reads as plain "NOT NULL" in the vocabulary today.
+
 ## [0.19.0] — 2026-07-19
 
 Coordinated additive **minor** across all registries: npm `0.19.0` · NuGet `0.19.0` · PyPI `0.19.0` · Maven Central `7.11.0`. No breaking changes.
