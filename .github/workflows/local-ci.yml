@@ -8,13 +8,15 @@
 #   push to main        -> affected ports only (scripts/ci-affected-ports.sh)
 #   nightly + dispatch  -> full matrix
 #
-# The ts and java ports are each split into two parallel jobs — a FAST lane (the
+# The ts and java ports are each split into parallel jobs — a FAST lane (the
 # quick pure-code correctness signal: ts-fast = build+typecheck/conformance/
-# completeness, java-fast = java+kotlin conformance) and a SLOW lane (docker
+# completeness, java-fast = java+kotlin conformance), a UNIT lane for ts (ts-unit =
+# the full per-package suites — metadata/render/runtime-ts + client/web — that
+# ts-fast's named-file conformance gate leaves ungated), and a SLOW lane (docker
 # integration + heavy build: ts-slow, java-slow = reactor + integration). The
 # split surfaces the verdict fast and means a cancel/OOM/flake mid-integration no
 # longer kills the fast signal. `detect` emits the umbrella token (`ts` / `java`);
-# both of that port's jobs gate on it.
+# all of that port's jobs gate on it.
 #
 # Integration-running jobs (ts-slow, python, csharp, java-slow) share a Postgres
 # SIDECAR instead of each test booting its own Testcontainers Postgres per
@@ -237,7 +239,7 @@ jobs:
         run: scripts/ci-local.sh --only csharp --strict-toolchains
 
   notify:
-    needs: [detect, gates, ts-fast, ts-slow, java-fast, java-slow, python, csharp]
+    needs: [detect, gates, ts-fast, ts-unit, ts-slow, java-fast, java-slow, python, csharp]
     if: always() && contains(needs.*.result, 'failure')
     runs-on: [self-hosted, linux]
     steps:
