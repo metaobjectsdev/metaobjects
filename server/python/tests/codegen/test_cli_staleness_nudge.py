@@ -47,7 +47,7 @@ def test_gen_nudges_on_stale_manifest(tmp_path, capsys, monkeypatch) -> None:
     assert rc == 0  # advisory: never changes the exit code
     err = capsys.readouterr().err
     assert "0.0.1-old" in err
-    assert "metaobjects agent-docs" in err
+    assert "npx meta agent-docs" in err
 
 
 def test_verify_nudges_on_stale_manifest(tmp_path, capsys, monkeypatch) -> None:
@@ -65,7 +65,7 @@ def test_verify_nudges_on_stale_manifest(tmp_path, capsys, monkeypatch) -> None:
     assert rc == 0
     err = capsys.readouterr().err
     assert "0.0.1-old" in err
-    assert "metaobjects agent-docs" in err
+    assert "npx meta agent-docs" in err
 
 
 def test_gen_silent_when_no_manifest(tmp_path, capsys, monkeypatch) -> None:
@@ -76,7 +76,7 @@ def test_gen_silent_when_no_manifest(tmp_path, capsys, monkeypatch) -> None:
     rc = main(["gen", meta_dir, "--out", str(out)])
     assert rc == 0
     err = capsys.readouterr().err
-    assert "metaobjects agent-docs" not in err
+    assert "npx meta agent-docs" not in err
 
 
 def test_gen_silent_on_corrupt_manifest(tmp_path, capsys, monkeypatch) -> None:
@@ -90,4 +90,4 @@ def test_gen_silent_on_corrupt_manifest(tmp_path, capsys, monkeypatch) -> None:
     rc = main(["gen", meta_dir, "--out", str(out)])
     assert rc == 0
     err = capsys.readouterr().err
-    assert "metaobjects agent-docs" not in err
+    assert "npx meta agent-docs" not in err
