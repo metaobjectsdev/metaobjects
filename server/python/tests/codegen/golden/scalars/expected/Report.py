@@ -9,7 +9,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel
 
-from .Metric import Metric
+from .Metric import Metric, MetricCreate
 
 
 class Report(BaseModel):
@@ -17,3 +17,12 @@ class Report(BaseModel):
     total: Decimal
     revenue: int
     metrics: list[Metric] | None = None
+
+
+class ReportCreate(BaseModel):
+    """GENERATED — CREATE input: auto-gen PK / @readOnly omitted; @default/@autoSet optional; present values validated (FR-036)."""
+
+    generatedAt: datetime.datetime
+    total: Decimal
+    revenue: int
+    metrics: list[MetricCreate] | None = None

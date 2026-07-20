@@ -5,7 +5,10 @@ import re
 
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
-from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY
+from metaobjects.meta.core.object.object_constants import (
+    OBJECT_SUBTYPE_ENTITY,
+    OBJECT_SUBTYPE_VALUE,
+)
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.identity.identity_constants import (
     GENERATION_INCREMENT,
@@ -96,7 +99,7 @@ def _first_attr(field: MetaField, sub_type: str, attr_name: str) -> object | Non
     return None
 
 
-def _validator_constraints(field: MetaField) -> dict[str, object]:
+def _validator_constraints(field: MetaField, wire: bool = False) -> dict[str, object]:
     """Map the field's ``validator.*`` children + field attrs to Pydantic ``Field``
     kwargs. Cross-port-canonical semantics (TS is the reference):
 
@@ -104,6 +107,15 @@ def _validator_constraints(field: MetaField) -> dict[str, object]:
     - ``validator.numeric @min/@max`` -> ``ge=``/``le=`` (numeric value bounds)
     - ``validator.length @min`` + field ``@maxLength`` -> ``min_length=``/``max_length=``
     - ``validator.array @min/@max`` -> list ``min_length=``/``max_length=`` (element count)
+
+    *wire* gates FR-036 Pin 1 (#224): Pin 1 is a WIRE-TIER rule (it governs the
+    generated Create/Patch input-validation models a router binds against), never
+    an in-process one — an ``object.entity``/``object.value`` READ model applies
+    every OTHER constraint above unconditionally but must not self-validate Pin 1
+    at construction (that broke a downstream adopter's in-process prompt-payload
+    ``object.value`` models on legitimately-empty slots). Callers building a read
+    model (``_field_line``) pass the default ``False``; callers building a wire
+    model (``_create_field_line``/``_patch_field_line``) pass ``True``.
     """
     kwargs: dict[str, object] = {}
 
@@ -158,11 +170,13 @@ def _validator_constraints(field: MetaField) -> dict[str, object]:
     if field.attrs().get(fc.FIELD_ATTR_STRING_FORMAT) == fc.STRING_FORMAT_HOSTNAME:
         kwargs["pattern"] = _HOSTNAME_REGEX
 
-    # FR-036 Pin 1 — a @required non-array string is non-empty: reject null / "" but
-    # ACCEPT whitespace-only. Emit an implicit min_length of 1, keeping the stricter
-    # floor if a validator.length @min already set one.
+    # FR-036 Pin 1 (#224 — WIRE TIER ONLY) — a @required non-array string is
+    # non-empty: reject null / "" but ACCEPT whitespace-only. Emit an implicit
+    # min_length of 1, keeping the stricter floor if a validator.length @min
+    # already set one. Never applied to the in-process read model (wire=False).
     if (
-        field.sub_type == fc.FIELD_SUBTYPE_STRING
+        wire
+        and field.sub_type == fc.FIELD_SUBTYPE_STRING
         and not field_is_array(field)
         and field.attrs().get(fc.FIELD_ATTR_REQUIRED) is True
     ):
@@ -182,7 +196,7 @@ def _constraint_parts(constraints: dict[str, object]) -> list[str]:
 
 
 def _type_expr_for_field(
-    field: MetaField, imports: set[str], config: GenConfig
+    field: MetaField, imports: set[str], config: GenConfig, wire: bool = False
 ) -> tuple[str, str | None]:
     """The Python annotation text for *field* (arrays wrapped in ``list[...]``) plus the
     shared-enum class name when the field resolves to one (used to render an enum
@@ -191,7 +205,13 @@ def _type_expr_for_field(
 
     FR-019: a field resolving to a package-level shared enum is typed by the materialized
     standalone class (imported from the shared ``enums`` module) or — when @provided — an
-    external module; inline enums keep their ``Literal[...]`` (py_type_for)."""
+    external module; inline enums keep their ``Literal[...]`` (py_type_for).
+
+    *wire* (#224): in a wire context (create/patch), a ``field.object``/``field.map``
+    ``@objectRef`` annotates with the referenced VO's own WIRE model (``<Ref>Create``)
+    rather than its read model, so a required-string Pin 1 violation nested inside the
+    VO still validates on the wire (api-contract jsonb r10). A VO's own Create lines
+    are emitted through this same wire path, so nested-VO-in-VO recurses naturally."""
     shared = (
         fr019.shared_enum_for_field(field)
         if field.sub_type == fc.FIELD_SUBTYPE_ENUM
@@ -220,11 +240,20 @@ def _type_expr_for_field(
         # A field.object (-> VO) and a field.map with @objectRef (-> dict[str, VO]) both
         # reference a value-object by name; import it so the emitted annotation resolves.
         # @objectRef is FQN-expanded at load; the generated VOs live flat in one package,
-        # so import by the bare class name.
+        # so import by the bare class name. #224 — a WIRE context binds the referenced
+        # VO's <Ref>Create instead (see docstring above).
         ref = field.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
         if ref:
             ref_name = str(ref).split("::")[-1]
-            imports.add(f"from .{ref_name} import {ref_name}")
+            bound_name = f"{ref_name}Create" if wire else ref_name
+            imports.add(f"from .{ref_name} import {bound_name}")
+            if wire:
+                if field.sub_type == fc.FIELD_SUBTYPE_MAP:
+                    type_expr = f"dict[str, {bound_name}]"
+                elif field_is_array(field):
+                    type_expr = f"list[{bound_name}]"
+                else:
+                    type_expr = bound_name
     return type_expr, enum_type_name
 
 
@@ -330,14 +359,18 @@ def _create_field_line(
     field: MetaField, imports: set[str], config: GenConfig
 ) -> tuple[str, bool]:
     """A CREATE-model field line (FR-036): keyed by the WIRE name (``field.name``) and
-    carrying the same per-field constraints as the read model. A ``@required`` field
+    carrying the WIRE-TIER per-field constraints (#224 — includes FR-036 Pin 1
+    non-empty-string; the read model does NOT carry Pin 1). A ``@required`` field
     that is SERVER-FILLED — it has ANY ``@default`` (a literal OR a SQL expression such
     as ``now()`` / ``gen_random_uuid()`` / ``CURRENT_TIMESTAMP``) or an ``@autoSet`` — is
     emitted OPTIONAL, because the DB / trigger provides it and a POST that omits it must
     not 400 (mirrors the TS InsertSchema ``fieldWillBeOptional``). A literal ``@default``
     is preserved as the Python default; a SQL-expression default / ``@autoSet`` carries
-    no Python default (the server fills it). Returns (source line, uses_field)."""
-    type_expr, enum_type_name = _type_expr_for_field(field, imports, config)
+    no Python default (the server fills it). Also used, unchanged, to emit an
+    ``object.value``'s own ``<Name>Create`` wire model (#224) — the PK/TPH/derived-field
+    guards in the caller no-op for a VO carrying none of those. Returns (source line,
+    uses_field)."""
+    type_expr, enum_type_name = _type_expr_for_field(field, imports, config, wire=True)
     required = field.attrs().get(fc.FIELD_ATTR_REQUIRED) is True
     default_raw = field.attrs().get(fc.FIELD_ATTR_DEFAULT)
     literal_default = default_raw is not None and not _is_sql_expr_default(default_raw)
@@ -349,7 +382,7 @@ def _create_field_line(
     server_filled = default_raw is not None or is_auto_set
     create_required = required and not server_filled
 
-    parts = _constraint_parts(_validator_constraints(field))
+    parts = _constraint_parts(_validator_constraints(field, wire=True))
     uses_field = bool(parts)
 
     py_name = field.name  # FR-036 #3 — validation models key by the WIRE name (field.name)
@@ -383,12 +416,12 @@ def _patch_field_line(
     field: MetaField, imports: set[str], config: GenConfig
 ) -> tuple[str, bool]:
     """A PATCH-model field line: the field is made Optional (default ``None``) yet
-    carries the SAME per-field constraints as the create model, so a present, non-null
-    value is validated with the create rules (FR-036) while an absent field is left
-    untouched. A ``@default`` is never emitted (a patch does not default a column).
-    Returns (source line, uses_field)."""
-    type_expr, _enum = _type_expr_for_field(field, imports, config)
-    parts = _constraint_parts(_validator_constraints(field))
+    carries the SAME wire-tier per-field constraints as the create model (#224), so a
+    present, non-null value is validated with the create rules (FR-036) while an
+    absent field is left untouched. A ``@default`` is never emitted (a patch does not
+    default a column). Returns (source line, uses_field)."""
+    type_expr, _enum = _type_expr_for_field(field, imports, config, wire=True)
+    parts = _constraint_parts(_validator_constraints(field, wire=True))
     py_name = field.name  # FR-036 #3 — validation models key by the WIRE name (field.name)
     if parts:
         return f"    {py_name}: {type_expr} | None = Field(default=None, {', '.join(parts)})", True
@@ -478,8 +511,10 @@ class EntityModelGenerator:
         ``@autoSet``; FR-036 #1) is made optional. Keyed by the wire name; a TPH
         subtype's discriminator is pinned to its ``Literal`` value (the route injects it
         from the URL, so it stays optional with a default). M:N navigations are omitted
-        (a create body targets columns, not relations). Returns ``(lines, uses_field)``.
-        Override to add/transform create-model lines."""
+        (a create body targets columns, not relations). Also used, unchanged, to emit an
+        ``object.value``'s own wire model (#224) — a VO has no PK/TPH/derived fields, so
+        those guards simply no-op. Returns ``(lines, uses_field)``. Override to
+        add/transform create-model lines."""
         cfg = config if config is not None else GenConfig(out_dir="")
         auto_gen_pk = _auto_gen_pk_field_names(entity)
         binding = tph_subtype_binding(entity)
@@ -576,27 +611,37 @@ class EntityModelGenerator:
             imports.add("from typing import Literal")
         body = lines if lines else ["    pass"]
 
-        # FR-036 — an object.entity also emits two flat validation models the generated
+        # FR-036 — an object.entity emits two flat WIRE-validation models the generated
         # router binds: a ``<Name>Create`` (POST-body shape: auto-gen PK / @readOnly
         # omitted, @default/@autoSet optional, other @required required) and an
         # all-optional ``<Name>Patch`` (PATCH-body shape: PK excluded). Both key by the
-        # WIRE name and carry the field constraints, so present values are validated with
-        # the create rules. Value objects / projections are never routed, so they emit
-        # neither (only the read model). See findings #1–#4.
-        emit_validation_models = entity.sub_type == OBJECT_SUBTYPE_ENTITY
+        # WIRE name and carry the wire-tier field constraints (#224 — includes FR-036
+        # Pin 1), so present values are validated with the create rules.
+        #
+        # #224 — an object.value is reached OVER THE WIRE too: it nests into an entity's
+        # Create/Patch body via a field.object/field.map ``@objectRef`` (see
+        # ``_type_expr_for_field``'s wire mode), so it also emits its own ``<Name>Create``
+        # wire model — Create only, since a nested VO is whole-value replace on both POST
+        # and PATCH (the same reason TS embeds one ``<Ref>InsertSchema`` in both Insert
+        # and Update schemas; no separate VO ``Patch`` shape exists). A ``<Name>Patch`` is
+        # entity-only (PK exclusion + partial-update semantics are entity-specific).
+        # object.projection is read-only and never routed — it emits neither.
+        emit_create = entity.sub_type in (OBJECT_SUBTYPE_ENTITY, OBJECT_SUBTYPE_VALUE)
+        emit_patch = entity.sub_type == OBJECT_SUBTYPE_ENTITY
         create_lines: list[str] = []
         create_uses_field = False
         patch_lines: list[str] = []
         patch_uses_field = False
-        if emit_validation_models:
+        if emit_create:
             create_lines, create_uses_field = self._emit_create_lines(entity, imports, config)
+        if emit_patch:
             patch_lines, patch_uses_field = self._emit_patch_lines(entity, imports, config)
 
         # Import only the pydantic names actually referenced. The main model imports
         # BaseModel only when it has no super, but the flat Create/Patch models always
         # subclass BaseModel, so their presence forces the import regardless.
         pyd_names: list[str] = []
-        if entity.super_data is None or emit_validation_models:
+        if entity.super_data is None or emit_create or emit_patch:
             pyd_names.append("BaseModel")
         if uses_field or create_uses_field or patch_uses_field:
             pyd_names.append("Field")
@@ -612,7 +657,7 @@ class EntityModelGenerator:
         if pyd_names:
             parts += [f"from pydantic import {', '.join(pyd_names)}", ""]
         parts += ["", self._emit_class_header(entity, base_class), *body]
-        if emit_validation_models:
+        if emit_create:
             parts += [
                 "",
                 "",
@@ -620,6 +665,9 @@ class EntityModelGenerator:
                 '    """GENERATED — CREATE input: auto-gen PK / @readOnly omitted; '
                 '@default/@autoSet optional; present values validated (FR-036)."""',
                 *create_lines,
+            ]
+        if emit_patch:
+            parts += [
                 "",
                 "",
                 f"class {entity.name}Patch(BaseModel):",

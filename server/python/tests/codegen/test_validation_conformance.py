@@ -1,10 +1,17 @@
 """SP-C validation-conformance runner (Python port).
 
-Loads the shared corpus, generates the ``Account`` Pydantic model via the
-entity-model generator, execs the generated source into a live module, then
-constructs the model from each corpus payload. Construct OK -> valid; a
+Loads the shared corpus, generates the ``AccountCreate`` Pydantic model (the
+generated input-validation artifact — mirrors the TS runner, which asserts
+against ``AccountInsertSchema``, not the plain read model) via the entity-model
+generator, execs the generated source into a live module, then constructs the
+model from each corpus payload. Construct OK -> valid; a
 ``pydantic.ValidationError`` -> invalid. Asserts the single-source ``expectValid``
 boolean verdicts (canonical across all 5 ports).
+
+#224 — the runner builds ``AccountCreate``, not the plain ``Account`` read model:
+FR-036 Pin 1 (required non-array string ⇒ non-empty) is scoped to the WIRE tier
+(the input-validation artifact a router binds against), not the in-process read
+model, so asserting against the read model would no longer exercise Pin 1 at all.
 """
 from __future__ import annotations
 
@@ -40,11 +47,14 @@ def _load_account_entity() -> MetaObject:
 
 
 def _build_generated_model() -> type[BaseModel]:
-    """Generate the Account Pydantic model source and exec it into a module namespace."""
+    """Generate the Account Pydantic wire-validation model source and exec it into a
+    module namespace. #224 — ``AccountCreate`` (the generated input-validation
+    artifact), not the plain ``Account`` read model: FR-036 Pin 1 lives on the wire
+    tier only."""
     source = render_entity_model(_load_account_entity())
     namespace: dict[str, object] = {}
     exec(compile(source, "<generated Account.py>", "exec"), namespace)  # noqa: S102
-    model = namespace["Account"]
+    model = namespace["AccountCreate"]
     assert isinstance(model, type) and issubclass(model, BaseModel)
     return model
 

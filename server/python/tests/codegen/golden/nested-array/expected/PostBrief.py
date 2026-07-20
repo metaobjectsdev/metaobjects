@@ -9,3 +9,9 @@ from pydantic import BaseModel
 
 class PostBrief(BaseModel):
     title: str | None = None
+
+
+class PostBriefCreate(BaseModel):
+    """GENERATED — CREATE input: auto-gen PK / @readOnly omitted; @default/@autoSet optional; present values validated (FR-036)."""
+
+    title: str | None = None

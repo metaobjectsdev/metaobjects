@@ -6,9 +6,16 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from .PostBrief import PostBrief
+from .PostBrief import PostBrief, PostBriefCreate
 
 
 class AuthorBrief(BaseModel):
-    displayName: str = Field(min_length=1)
+    displayName: str
     posts: list[PostBrief] | None = None
+
+
+class AuthorBriefCreate(BaseModel):
+    """GENERATED — CREATE input: auto-gen PK / @readOnly omitted; @default/@autoSet optional; present values validated (FR-036)."""
+
+    displayName: str = Field(min_length=1)
+    posts: list[PostBriefCreate] | None = None

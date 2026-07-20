@@ -9,3 +9,9 @@ from pydantic import BaseModel
 
 class Metric(BaseModel):
     label: str | None = None
+
+
+class MetricCreate(BaseModel):
+    """GENERATED — CREATE input: auto-gen PK / @readOnly omitted; @default/@autoSet optional; present values validated (FR-036)."""
+
+    label: str | None = None

@@ -10,7 +10,7 @@ from .BaseEntity import BaseEntity
 
 
 class Program(BaseEntity):
-    name: str = Field(min_length=1)
+    name: str
 
 
 class ProgramCreate(BaseModel):
