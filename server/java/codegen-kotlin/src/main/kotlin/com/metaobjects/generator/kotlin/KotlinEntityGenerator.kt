@@ -362,9 +362,12 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * port's `SpringDtoGenerator`):
      * <ul>
      *   <li>required (field `@required` or `validator.required`) → `@NotNull`. FR-036 Pin 1:
-     *       NO `@NotBlank` — a `@required` string is NON-EMPTY (rejects null / "") but
-     *       WHITESPACE-ONLY is ACCEPTED, so the non-empty floor is a `@Size(min >= 1)` on the
-     *       string-length annotation (which `@NotBlank`'s trim-based check would over-reject).</li>
+     *       NO `@NotBlank` — a `@required` string is NON-EMPTY BY DEFAULT (rejects null / "")
+     *       but WHITESPACE-ONLY is ACCEPTED, so the implicit non-empty floor is a
+     *       `@Size(min >= 1)` on the string-length annotation (which `@NotBlank`'s trim-based
+     *       check would over-reject). An explicitly authored `validator.length @min` is always
+     *       authoritative over that implicit floor (#224); `@min: 0` opts back to
+     *       presence-only and emits no `@Size` minimum at all.</li>
      *   <li>`validator.length @min/@max` folded with field `@maxLength` (strictest-wins on max)
      *       into ONE `@Size(min=…, max=…)` — non-array strings only.</li>
      *   <li>`validator.regex @pattern` → `@Pattern(regexp=…)`.</li>
@@ -401,10 +404,19 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             attrInt(field, StringField.ATTR_MAX_LENGTH)?.let { cap ->
                 lengthMax = lengthMax?.let { minOf(it, cap) } ?: cap
             }
-            // FR-036 Pin 1: a required string is non-empty → fold in a min of at least 1,
-            // combined with any explicit validator.length @min by taking the max.
+            // FR-036 Pin 1: a required string is non-empty by default → fold in an
+            // implicit min of 1, but ONLY when no validator.length @min was
+            // authored. An explicitly authored @min is always AUTHORITATIVE over
+            // that implicit floor (#224 / ADR-0044): @min: 0 opts back to
+            // presence-only and, per the cross-port emission pin, emits NO minimum
+            // constraint at all (no @Size(min=0)) — cleanest, deterministic output
+            // across ports.
             if (required) {
-                lengthMin = maxOf(lengthMin ?: 0, 1)
+                lengthMin = when (lengthMin) {
+                    null -> 1
+                    0 -> null
+                    else -> lengthMin
+                }
             }
             if (lengthMin != null || lengthMax != null) {
                 out.add(sizeAnnotation(lengthMin, lengthMax))

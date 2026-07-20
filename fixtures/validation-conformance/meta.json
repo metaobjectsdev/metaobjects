@@ -21,6 +21,9 @@
           { "field.string":     { "name": "label", "@maxLength": 8, "children": [
             { "validator.length": { "@max": 4 } }
           ] } },
+          { "field.string":     { "name": "note", "@required": true, "children": [
+            { "validator.length": { "@min": 0 } }
+          ] } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
         ]
       }}

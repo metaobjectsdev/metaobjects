@@ -26,6 +26,7 @@ README.md
 | `score` | `field.int` + `validator.numeric @min=0 @max=100`       |
 | `tags`  | `field.string isArray` + `validator.array @min=1 @max=3` |
 | `label` | `field.string` + `@maxLength: 8` + `validator.length @max=4` (both length bounds on one field — see the strictest-wins pin below) |
+| `note`  | `field.string` `@required` + `validator.length @min=0` (an explicit opt-out of the FR-036 Pin 1 implicit floor — see the authority pin below) |
 
 ## Behavioral contract — payload → boolean verdict
 
@@ -46,7 +47,10 @@ that case fails — pointing straight at the unenforced constraint.
 
 Cases: `valid-baseline` (true), then `name-missing`, `name-too-long`,
 `code-too-short`, `code-pattern-mismatch`, `score-below-min`, `score-above-max`,
-`tags-empty`, `tags-too-many` (all false).
+`tags-empty`, `tags-too-many` (all false). Every payload also carries a valid
+`note` (`"ok"`) so these cases keep violating exactly one constraint (single-
+violation design, below) — `note`'s own constraint is exercised by the
+`note-*` pin cases.
 
 FR-036 pin cases (the two semantic pins + the length-precedence pin):
 
@@ -64,6 +68,14 @@ FR-036 pin cases (the two semantic pins + the length-precedence pin):
   precedence = strictest-wins**: effective max = `min(@maxLength, validator.max)`
   (here `min(8, 4) = 4`), so a 5-char value is rejected even though `@maxLength`
   alone (8) would admit it.
+- `note-empty-allowed` (`note=""` → **true**) and `note-missing` (`note`
+  absent → **false**) pin **an explicitly authored `validator.length @min` is
+  AUTHORITATIVE over the FR-036 Pin 1 implicit non-empty floor** (#224 /
+  ADR-0044): `note` is `@required` with an explicit `validator.length @min: 0`,
+  so the empty string is accepted (the opt-out) while the field must still be
+  *provided* — `@required`'s NOT NULL half is untouched by the opt-out, so an
+  absent `note` is still rejected. No port may apply the Pin 1 floor (min 1)
+  when an author has explicitly said `@min: 0`.
 
 ## CI gate
 

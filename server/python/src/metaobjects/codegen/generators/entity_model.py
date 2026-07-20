@@ -99,7 +99,7 @@ def _first_attr(field: MetaField, sub_type: str, attr_name: str) -> object | Non
     return None
 
 
-def _validator_constraints(field: MetaField, wire: bool = False) -> dict[str, object]:
+def _validator_constraints(field: MetaField, *, wire: bool) -> dict[str, object]:
     """Map the field's ``validator.*`` children + field attrs to Pydantic ``Field``
     kwargs. Cross-port-canonical semantics (TS is the reference):
 
@@ -114,8 +114,13 @@ def _validator_constraints(field: MetaField, wire: bool = False) -> dict[str, ob
     every OTHER constraint above unconditionally but must not self-validate Pin 1
     at construction (that broke a downstream adopter's in-process prompt-payload
     ``object.value`` models on legitimately-empty slots). Callers building a read
-    model (``_field_line``) pass the default ``False``; callers building a wire
-    model (``_create_field_line``/``_patch_field_line``) pass ``True``.
+    model (``_field_line``) pass ``wire=False``; callers building a wire model
+    (``_create_field_line``/``_patch_field_line``) pass ``wire=True``.
+
+    *wire* is keyword-only and REQUIRED (no default, item 5 of the #224
+    cleanup): a forgotten flag at a future wire call site must fail loudly
+    (``TypeError``) at generation time rather than silently falling back to a
+    permissive read-model tier.
     """
     kwargs: dict[str, object] = {}
 
@@ -171,17 +176,26 @@ def _validator_constraints(field: MetaField, wire: bool = False) -> dict[str, ob
         kwargs["pattern"] = _HOSTNAME_REGEX
 
     # FR-036 Pin 1 (#224 — WIRE TIER ONLY) — a @required non-array string is
-    # non-empty: reject null / "" but ACCEPT whitespace-only. Emit an implicit
-    # min_length of 1, keeping the stricter floor if a validator.length @min
-    # already set one. Never applied to the in-process read model (wire=False).
+    # non-empty by default: reject null / "" but ACCEPT whitespace-only. Emit an
+    # implicit min_length of 1 ONLY when no validator.length @min was authored.
+    # Never applied to the in-process read model (wire=False).
+    #
+    # An explicitly authored @min is always AUTHORITATIVE over the implicit floor
+    # (ADR-0044 ruling on #224) — @min: 0 restores "must be provided, may be
+    # empty" by opting out of the non-empty floor entirely. Per the cross-port
+    # emission pin, an authored @min: 0 emits NO minimum constraint at all
+    # (cleanest, deterministic output across ports), so it is popped rather than
+    # kept as min_length=0.
     if (
         wire
         and field.sub_type == fc.FIELD_SUBTYPE_STRING
         and not field_is_array(field)
         and field.attrs().get(fc.FIELD_ATTR_REQUIRED) is True
     ):
-        existing_min = kwargs.get("min_length")
-        kwargs["min_length"] = max(1, existing_min) if isinstance(existing_min, int) else 1
+        if min_len is None:
+            kwargs["min_length"] = 1
+        elif min_len == 0:
+            kwargs.pop("min_length", None)
 
     return kwargs
 
@@ -196,7 +210,7 @@ def _constraint_parts(constraints: dict[str, object]) -> list[str]:
 
 
 def _type_expr_for_field(
-    field: MetaField, imports: set[str], config: GenConfig, wire: bool = False
+    field: MetaField, imports: set[str], config: GenConfig, *, wire: bool
 ) -> tuple[str, str | None]:
     """The Python annotation text for *field* (arrays wrapped in ``list[...]``) plus the
     shared-enum class name when the field resolves to one (used to render an enum
@@ -211,7 +225,10 @@ def _type_expr_for_field(
     ``@objectRef`` annotates with the referenced VO's own WIRE model (``<Ref>Create``)
     rather than its read model, so a required-string Pin 1 violation nested inside the
     VO still validates on the wire (api-contract jsonb r10). A VO's own Create lines
-    are emitted through this same wire path, so nested-VO-in-VO recurses naturally."""
+    are emitted through this same wire path, so nested-VO-in-VO recurses naturally.
+
+    *wire* is keyword-only and REQUIRED (no default, item 5 of the #224 cleanup)
+    — see ``_validator_constraints`` for the rationale."""
     shared = (
         fr019.shared_enum_for_field(field)
         if field.sub_type == fc.FIELD_SUBTYPE_ENUM
@@ -275,7 +292,7 @@ def origin_guaranteed_non_null(field: MetaField) -> bool:
 
 def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple[str, bool]:
     """Return (source line, uses_field). Collects required imports into *imports*."""
-    type_expr, enum_type_name = _type_expr_for_field(field, imports, config)
+    type_expr, enum_type_name = _type_expr_for_field(field, imports, config, wire=False)
     required = field.attrs().get(fc.FIELD_ATTR_REQUIRED) is True
     default_raw = field.attrs().get(fc.FIELD_ATTR_DEFAULT)
     # A server-side expression default (now(), gen_random_uuid(), CURRENT_TIMESTAMP)
@@ -283,7 +300,7 @@ def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple
     # its required/optional shape). Only literal defaults become Pydantic defaults.
     has_default = default_raw is not None and not _is_sql_expr_default(default_raw)
 
-    parts = _constraint_parts(_validator_constraints(field))
+    parts = _constraint_parts(_validator_constraints(field, wire=False))
     uses_field = bool(parts)
 
     # @default — render an enum member (Type.MEMBER, UPPER_CASE) or a Python literal.

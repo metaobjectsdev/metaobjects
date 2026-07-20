@@ -946,10 +946,13 @@ public class EntityGenerator : IGenerator
     // FR-036 A3 — when @maxLength AND validator.length @max both apply, the effective max is
     // the STRICTEST (min of the two), not one-wins.
     //
-    // FR-036 A1 — <paramref name="requiredMinFloor"/> is the non-empty floor for a @required
-    // string (1). It combines with any validator.length @min as max(floor, @min): when a
-    // validator @min is present the floor folds into it; when it is not, the floor becomes a
-    // standalone [MinLength] alongside the [MaxLength] (so the max attribute is undisturbed).
+    // FR-036 A1 — <paramref name="requiredMinFloor"/> is the implicit non-empty floor for a
+    // @required string (1), applied ONLY when no validator.length @min was authored at all.
+    // An explicitly authored @min is always AUTHORITATIVE over the floor (#224 / ADR-0044):
+    // when present it is used as-is (never raised to the floor), and an authored @min: 0
+    // opts back to presence-only, emitting no minimum constraint whatsoever. When the floor
+    // does apply (no @min authored), it becomes a standalone [MinLength] alongside the
+    // [MaxLength] (so the max attribute is undisturbed).
     protected static void AppendStringValidatorAttributes(
         StringBuilder sb, MetaField field, long requiredMinFloor = 0)
     {
@@ -995,10 +998,24 @@ public class EntityGenerator : IGenerator
             }
         }
 
-        // FR-036 A1 — fold the @required non-empty floor into the min (max(floor, @min)).
         long? min = validatorMin;
         if (requiredMinFloor > 0)
-            min = min is long m ? System.Math.Max(m, requiredMinFloor) : requiredMinFloor;
+        {
+            // FR-036 A1 — the @required non-empty floor applies ONLY when no
+            // validator.length @min was authored at all. An explicitly authored
+            // @min is always AUTHORITATIVE over the implicit floor (#224 /
+            // ADR-0044): @min: 0 opts back to presence-only and, per the
+            // cross-port emission pin, emits NO minimum constraint at all (no
+            // [MinLength(0)] / MinimumLength = 0) — cleanest, deterministic
+            // output across ports. An authored @min > 0 already satisfies
+            // (exceeds) the floor and needs no further clamping.
+            min = validatorMin switch
+            {
+                null => requiredMinFloor,
+                0 => null,
+                _ => validatorMin,
+            };
+        }
 
         if (min is long mn && max is long mx)
         {

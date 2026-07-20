@@ -89,19 +89,33 @@ describe("renderZodValidators", () => {
     expect(out).not.toMatch(/\.regex\("[^"]*"\)/); // no bare-string regex argument
   });
 
-  test("FR-036 Pin 1: a @required string's non-empty floor survives an explicit validator.length @min:0 (.min(1), never .min(0))", () => {
+  test("FR-036 Pin 1: an explicit validator.length @min:0 is AUTHORITATIVE over the implicit non-empty floor (#224)", () => {
     const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
     const title = metaField(FIELD_SUBTYPE_STRING, "title");
     title.setAttr("required", true);
-    // An explicit @min:0 must NOT suppress the required-string non-empty floor.
+    // An explicitly authored @min:0 says "empty allowed" — the emitter must honor
+    // it rather than silently discarding it behind the implicit floor. Until #224
+    // every port clamped this to max(@min, 1); the clamp, not the opt-out, was the
+    // anomaly: the loader accepts @min:0 and the emitter then dropped it.
     const len = meta(new TypeId(TYPE_VALIDATOR, VALIDATOR_SUBTYPE_LENGTH), "titleLen");
     len.setAttr("min", 0);
     title.addChild(len);
     post.addChild(title);
 
     const out = renderZodValidators(post).toString();
+    expect(out).not.toContain(".min(1)"); // the floor must NOT be re-imposed
+  });
+
+  test("FR-036 Pin 1 default is unchanged: a @required string with NO authored @min still gets the non-empty floor", () => {
+    // The regression guard for the change above — opting out must require an
+    // explicit @min:0, so the default (nothing authored) still rejects "".
+    const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
+    const title = metaField(FIELD_SUBTYPE_STRING, "title");
+    title.setAttr("required", true);
+    post.addChild(title);
+
+    const out = renderZodValidators(post).toString();
     expect(out).toContain(".min(1)");
-    expect(out).not.toContain(".min(0)");
   });
 
   test("emits JSDoc above InsertSchema + UpdateSchema from entity @description", async () => {

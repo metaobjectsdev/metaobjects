@@ -784,10 +784,13 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      * <p>Cross-port semantics (see the SP-C validator-parity contract):</p>
      * <ul>
      *   <li>required (field {@code @required} or {@code validator.required}) →
-     *       {@code @NotNull}; a required non-array string additionally gets
-     *       {@code @Size(min = 1)} (FR-036 Ruling 1: reject {@code null} + {@code ""},
-     *       ACCEPT whitespace-only) — never {@code @NotBlank}, which trims and would
-     *       wrongly reject a whitespace value.</li>
+     *       {@code @NotNull}; a required non-array string additionally gets an
+     *       implicit {@code @Size(min = 1)} (FR-036 Ruling 1: reject {@code null} +
+     *       {@code ""}, ACCEPT whitespace-only) — never {@code @NotBlank}, which
+     *       trims and would wrongly reject a whitespace value. An explicitly
+     *       authored {@code validator.length @min} is always authoritative over
+     *       that implicit floor (#224); {@code @min: 0} opts back to
+     *       presence-only and emits no {@code @Size} minimum at all.</li>
      *   <li>{@code validator.length} + field {@code @maxLength} →
      *       {@code @Size(min=…, max=…)} on a NON-array string; the effective max is
      *       {@code min(validator.max, @maxLength)} (FR-036 A3 strictest-wins).</li>
@@ -852,8 +855,17 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
                 lengthMax = (lengthMax == null) ? fieldMaxLength : Math.min(lengthMax, fieldMaxLength);
             }
             if (required) {
-                // FR-036 Ruling 1 non-empty floor; keep a stricter authored @min.
-                lengthMin = (lengthMin == null) ? 1 : Math.max(lengthMin, 1);
+                // FR-036 Ruling 1 non-empty floor — applies ONLY when no
+                // validator.length @min was authored. An explicitly authored @min
+                // is always AUTHORITATIVE over the implicit floor (#224 / ADR-0044):
+                // @min: 0 opts back to presence-only and, per the cross-port
+                // emission pin, emits NO minimum constraint at all (no
+                // @Size(min=0)) — cleanest, deterministic output across ports.
+                if (lengthMin == null) {
+                    lengthMin = 1;
+                } else if (lengthMin == 0) {
+                    lengthMin = null;
+                }
             }
             if (lengthMin != null || lengthMax != null) {
                 out.add(sizeAnnotation(lengthMin, lengthMax));
