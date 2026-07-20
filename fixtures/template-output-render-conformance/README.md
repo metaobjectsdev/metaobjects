@@ -28,7 +28,8 @@ resolves to `templates/emails/welcome.subject.mustache`, and so on.
   below. It shares the same `templates/` dir.
 - `xpkg-collision/` — a **multi-package** sub-corpus (`meta.alpha.json` +
   `meta.beta.json` + `meta.app.json`) gating **FQN-exact** nested `@objectRef`
-  resolution across a cross-package short-name collision (ADR-0041); see
+  resolution across a cross-package short-name collision (ADR-0041) AND the
+  collision-aware payload-record naming contract (ADR-0044); see
   "Cross-package short-name collision" below. It also shares `templates/`.
 - `templates/emails/order.subject.mustache` = `Order for {{customer.name}}`
 - `templates/emails/order.html.mustache` =
@@ -128,10 +129,42 @@ Rendered with `{ fromAlpha: { alphaText: "AA" }, fromBeta: { betaText: "BB" } }`
 
 - `renderDigestDoc(...)` = `"Alpha=AA Beta=BB"`
 
-(The two colliding VOs share the BARE payload-record type name `Note`; each port's
-runner hand-authors — or otherwise reconciles — the payload record for that reason.
-The record-name collision is an orthogonal concern; this sub-corpus gates the
-`@objectRef` **resolver**, not payload-record naming.)
+### Payload-record naming contract (ADR-0044)
+
+The two colliding VOs share the BARE short name `Note`. [ADR-0044](../../spec/decisions/ADR-0044-payload-record-naming-cross-package-collision.md)
+is the binding contract for what each port's payload emitter must do about that —
+this sub-corpus is the executable oracle for it, in addition to gating the
+`@objectRef` **resolver** above:
+
+1. **Payload records/types/interfaces used by a port's conformance runner MUST be
+   GENERATOR-emitted — hand-authoring (or any other manual reconciliation) is
+   PROHIBITED.** A hand-written merged record (`{ alphaText?; betaText? }`, both
+   optional, both shapes folded into one) is exactly the silently-wrong-adjacent
+   shape ADR-0044 rejects: it erases `@required` and lets a typo against either
+   real shape type-check. Construct the render-time payload instance from the
+   port's REAL generated payload type(s) for this fixture.
+2. **Naming rule:** a value-object whose bare short name is unique within the
+   emitted artifact's `@objectRef` closure emits bare, in the port's existing
+   convention; a value-object whose bare short name COLLIDES with another
+   closure member emits under its package-qualified derived name — PascalCase
+   each `::`-segment of its package, concatenate, append the bare short name,
+   then apply the port's suffix convention. A still-colliding derived name is a
+   hard generator error, `ERR_PAYLOAD_NAME_COLLISION`.
+3. **Expected emitted names for this fixture, per port** (`Digest` itself does
+   not collide and stays bare in every port):
+
+   | Port | `acme::alpha::Note` | `acme::beta::Note` |
+   |---|---|---|
+   | TypeScript (`interface`) | `AcmeAlphaNote` | `AcmeBetaNote` |
+   | C# (`record`) | `AcmeAlphaNote` | `AcmeBetaNote` |
+   | Java / Kotlin (`record`/data class) | `AcmeAlphaNotePayload` | `AcmeBetaNotePayload` |
+   | Python (`class`) | `AcmeAlphaNotePayload` | `AcmeBetaNotePayload` |
+
+The render-output pins above (`"Alpha=AA Beta=BB"`) are UNCHANGED by this contract
+— the render engine and the build-time verify field-tree resolve against
+**metadata**, never against record names. Payload-record *source* stays per-port
+idiomatic (Tier-1 codegen); this sub-corpus gates it by compile + construct +
+render + name assertions, strengthening the gate rather than weakening it.
 
 ## Expected build-time drift FAILURE — `drift/`
 
