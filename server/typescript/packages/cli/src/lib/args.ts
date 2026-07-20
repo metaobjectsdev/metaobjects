@@ -197,6 +197,15 @@ export interface VerifyFlags {
   allow: AllowToken[];
   /** Skip the schema-drift gate even when --db is present. */
   skipSchema: boolean;
+  /**
+   * #225 — D1 binding name from wrangler.toml, spelled/documented the same way
+   * `meta migrate --d1 <binding>` does. Gated on `--dialect d1` (D1 has no URL
+   * connection, so it can't go through --db); optional disambiguator when
+   * wrangler.toml declares more than one D1 binding.
+   */
+  d1: string | undefined;
+  /** Target remote D1 instead of local (only meaningful with --dialect d1). */
+  remote: boolean;
   // ADR-0021 D2 — explicit verify subverbs. Each selects one drift mode; any
   // combination may be passed and the exit code aggregates (non-zero on any
   // drift). The boolean flags record which modes were explicitly requested; the
@@ -230,6 +239,8 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
       codegen: { type: "boolean", default: false },
       "no-antipatterns": { type: "boolean", default: false },
       lax: { type: "boolean", default: false },
+      "d1": { type: "string" },
+      "remote": { type: "boolean", default: false },
     },
     strict: true,
     allowPositionals: false,
@@ -255,8 +266,10 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
   const templates = !!values.templates;
   const codegen = !!values.codegen;
   // --db is itself an explicit subverb selector: passing a connection URL means
-  // "run the schema-drift mode". So "any explicit subverb" is templates|codegen|db.
-  const anyExplicit = templates || codegen || values.db !== undefined;
+  // "run the schema-drift mode". So is `--dialect d1` (D1 has no --db connection
+  // URL — see the `d1` field doc above). So "any explicit subverb" is
+  // templates|codegen|db|dialect==d1.
+  const anyExplicit = templates || codegen || values.db !== undefined || dialect === "d1";
 
   return {
     prompts: values.prompts,
@@ -269,6 +282,8 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
     anyExplicit,
     noAntipatterns: !!values["no-antipatterns"],
     lax: !!values.lax,
+    d1: values.d1 as string | undefined,
+    remote: !!values.remote,
   };
 }
 

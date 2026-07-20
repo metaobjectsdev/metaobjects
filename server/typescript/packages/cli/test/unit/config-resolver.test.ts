@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveGenConfig, resolveMigrateConfig } from "../../src/lib/config.js";
+import { resolveGenConfig, resolveMigrateConfig, resolveD1Config } from "../../src/lib/config.js";
 
 function makeRoot(configBody?: object): string {
   const root = mkdtempSync(join(tmpdir(), "config-resolver-"));
@@ -189,5 +189,74 @@ describe("resolveMigrateConfig", () => {
       baseline: false,
     }, root);
     expect(resolved.d1?.remote).toBe(true);
+  });
+});
+
+// #225 — resolveD1Config is the D1-block resolution factored out of
+// resolveMigrateConfig so `meta verify --dialect d1` honors the SAME
+// local-vs-remote / binding / wranglerConfigPath precedence `meta migrate
+// --dialect d1` does, without a second divergent implementation.
+describe("resolveD1Config", () => {
+  let root: string;
+  afterEach(() => {
+    if (root) rmSync(root, { recursive: true, force: true });
+  });
+
+  test("no config file: flags pass straight through, autoApply defaults false", async () => {
+    root = makeRoot();
+    const resolved = await resolveD1Config({ d1Binding: "DB", remote: false }, root);
+    expect(resolved).toEqual({
+      binding: "DB",
+      remote: false,
+      autoApply: false,
+      wranglerConfigPath: undefined,
+    });
+  });
+
+  test("flag wins for binding; config wins for remote when flag is false", async () => {
+    root = makeRoot({
+      migrate: { d1: { remote: true, autoApply: false, wranglerConfigPath: "./wrangler.toml" } },
+    });
+    const resolved = await resolveD1Config({ d1Binding: "MYDB", remote: false }, root);
+    expect(resolved.binding).toBe("MYDB");
+    expect(resolved.remote).toBe(true);
+    expect(resolved.autoApply).toBe(false);
+    expect(resolved.wranglerConfigPath).toBe("./wrangler.toml");
+  });
+
+  test("flag remote=true beats config remote=false", async () => {
+    root = makeRoot({ migrate: { d1: { remote: false } } });
+    const resolved = await resolveD1Config({ d1Binding: undefined, remote: true }, root);
+    expect(resolved.remote).toBe(true);
+  });
+
+  test("binding falls back to the config block when no flag is given", async () => {
+    root = makeRoot({ migrate: { d1: { binding: "FROM_CONFIG" } } });
+    const resolved = await resolveD1Config({ d1Binding: undefined, remote: false }, root);
+    expect(resolved.binding).toBe("FROM_CONFIG");
+  });
+
+  test("matches resolveMigrateConfig's d1 block for the same inputs", async () => {
+    root = makeRoot({
+      migrate: { d1: { remote: true, autoApply: true, wranglerConfigPath: "./wrangler.toml" } },
+    });
+    const viaMigrate = await resolveMigrateConfig({
+      db: undefined,
+      dialect: "d1",
+      outDir: undefined,
+      slug: undefined,
+      allow: [],
+      onAmbiguous: undefined,
+      dryRun: false,
+      d1Binding: "DB",
+      remote: false,
+      apply: false,
+      rollback: undefined,
+      yes: false,
+      fromDb: false,
+      baseline: false,
+    }, root);
+    const viaVerify = await resolveD1Config({ d1Binding: "DB", remote: false }, root);
+    expect(viaVerify).toEqual(viaMigrate.d1);
   });
 });

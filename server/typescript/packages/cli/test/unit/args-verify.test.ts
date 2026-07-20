@@ -6,19 +6,35 @@ describe("parseVerifyArgs", () => {
     expect(parseVerifyArgs([])).toEqual({
       prompts: undefined, db: undefined, dialect: undefined, allow: [], skipSchema: false,
       templates: false, codegen: false, anyExplicit: false, noAntipatterns: false, lax: false,
+      d1: undefined, remote: false,
     });
   });
   test("--prompts <dir> is captured", () => {
     expect(parseVerifyArgs(["--prompts", "templates"])).toEqual({
       prompts: "templates", db: undefined, dialect: undefined, allow: [], skipSchema: false,
       templates: false, codegen: false, anyExplicit: false, noAntipatterns: false, lax: false,
+      d1: undefined, remote: false,
     });
   });
   test("--db / --dialect / --skip-schema are captured", () => {
     expect(parseVerifyArgs(["--db", "file:x.db", "--dialect", "sqlite", "--skip-schema"])).toEqual({
       prompts: undefined, db: "file:x.db", dialect: "sqlite", allow: [], skipSchema: true,
       templates: false, codegen: false, anyExplicit: true, noAntipatterns: false, lax: false,
+      d1: undefined, remote: false,
     });
+  });
+  // #225 — --d1 <binding> and --remote, mirroring `meta migrate`'s spelling.
+  // --dialect d1 alone is already an explicit subverb selector (D1 has no --db URL).
+  test("--dialect d1 --d1 <binding> --remote are captured; --dialect d1 alone is an explicit subverb", () => {
+    expect(parseVerifyArgs(["--dialect", "d1", "--d1", "DB", "--remote"])).toEqual({
+      prompts: undefined, db: undefined, dialect: "d1", allow: [], skipSchema: false,
+      templates: false, codegen: false, anyExplicit: true, noAntipatterns: false, lax: false,
+      d1: "DB", remote: true,
+    });
+    const bare = parseVerifyArgs(["--dialect", "d1"]);
+    expect(bare.anyExplicit).toBe(true);
+    expect(bare.d1).toBeUndefined();
+    expect(bare.remote).toBe(false);
   });
   test("--no-antipatterns is captured", () => {
     expect(parseVerifyArgs(["--no-antipatterns"]).noAntipatterns).toBe(true);
@@ -36,6 +52,7 @@ describe("parseVerifyArgs", () => {
       prompts: undefined, db: undefined, dialect: undefined,
       allow: ["drop-column", "drop-table"], skipSchema: false,
       templates: false, codegen: false, anyExplicit: false, noAntipatterns: false, lax: false,
+      d1: undefined, remote: false,
     });
   });
 

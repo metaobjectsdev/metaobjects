@@ -78,6 +78,28 @@ export function resolveGenConfig(flags: GenFlags): ResolvedGenConfig {
   return { dryRun: flags.dryRun, entities: flags.entities };
 }
 
+/**
+ * Resolve the D1 connection config (binding / remote / wranglerConfigPath) from
+ * CLI flags + `.metaobjects/config.json`'s `migrate.d1` block, flags-win-except-
+ * remote-is-OR'd — the same precedence `resolveMigrateConfig` applies inline
+ * for `meta migrate --dialect d1`. Factored out (#225) so `meta verify --d1`
+ * honors the identical local-vs-remote notion without a second, divergent
+ * implementation of the same defaulting rule.
+ */
+export async function resolveD1Config(
+  flags: { d1Binding: string | undefined; remote: boolean; apply?: boolean },
+  metaRoot: string,
+): Promise<ResolvedD1Config> {
+  const config = await tryLoadConfig(metaRoot);
+  const d1Block = config?.migrate?.d1 ?? {};
+  return {
+    binding: flags.d1Binding ?? d1Block.binding,
+    remote: flags.remote || (d1Block.remote ?? false),
+    autoApply: (flags.apply ?? false) || (d1Block.autoApply ?? false),
+    wranglerConfigPath: d1Block.wranglerConfigPath,
+  };
+}
+
 export async function resolveMigrateConfig(
   flags: MigrateFlags,
   metaRoot: string,

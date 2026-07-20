@@ -49,11 +49,15 @@ VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drif
                         output (config outDir/targets). Needs metaobjects.config.ts; exit 2 if absent.
   --db <url>            Schema drift — live DB URL enables the schema-drift gate.
                         Supports: file:, libsql:, postgres:, postgresql:. Omit to skip.
+                        D1 has no URL — use --dialect d1 / --d1 <binding> instead.
   --prompts <dir>       Directory of provider-resolved template text (default: prompts)
-  --dialect sqlite|postgres   Optional override (auto-detected from --db URL scheme)
+  --dialect sqlite|postgres|d1   Optional override (auto-detected from --db URL scheme)
   --allow <csv>         Accepted for parity with 'migrate'; does NOT affect the
                         verify drift gate (the gate fails on ANY detected change)
   --skip-schema         Skip the schema-drift gate even when --db is present
+  --d1 <binding>        D1 binding name from wrangler.toml (only with --dialect d1)
+  --remote              Target remote D1 instead of local (only with --dialect d1) —
+                        the ONLY way to verify the actual deployed D1 database
   --no-antipatterns     Suppress the advisory "you hand-rolled what MetaObjects can
                         model" pass (aggregate/currency/enum hints; warnings only)
 
@@ -64,6 +68,7 @@ PROMPT-SNAPSHOT FLAGS:
 MIGRATE FLAGS:
   --db <url>            DB connection URL (required, or set DATABASE_URL or config)
                         Supports: file:, libsql:, postgres:, postgresql:
+                        D1 has no URL — use --dialect d1 / --d1 <binding> instead.
   --dialect sqlite|postgres|d1   Optional override (auto-detected from URL scheme)
   --out-dir <path>      Migration directory (default: ./.metaobjects/migrations)
   --slug <name>         Required when changes are present (e.g., add-user-shipping)
@@ -114,10 +119,14 @@ FLAGS:
                         Needs metaobjects.config.ts; exit 2 if absent.
   --db <url>            Schema drift — live DB URL enables the schema-drift gate.
                         Supports: file:, libsql:, postgres:, postgresql:
+                        D1 has no URL — use --dialect d1 / --d1 <binding> instead.
   --prompts <dir>       Directory of provider-resolved template text (default: prompts)
-  --dialect sqlite|postgres   Optional override (auto-detected from --db URL scheme)
+  --dialect sqlite|postgres|d1   Optional override (auto-detected from --db URL scheme)
   --allow <csv>         Accepted for parity with 'migrate'; does NOT affect the drift gate
   --skip-schema         Skip the schema-drift gate even when --db is present
+  --d1 <binding>        D1 binding name from wrangler.toml (only with --dialect d1)
+  --remote              Target remote D1 instead of local (only with --dialect d1) —
+                        the ONLY way to verify the actual deployed D1 database
   --no-antipatterns     Suppress the advisory "hand-rolled what MetaObjects can model" pass
   --help, -h            Print this help
 

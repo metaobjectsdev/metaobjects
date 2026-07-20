@@ -7,7 +7,7 @@
 // silently break a prompt" guarantee, enforced at the last fixed point before
 // the text ships. Required-slot misses are warnings (don't fail the build).
 
-import { join } from "node:path";
+import { join, resolve as resolvePath } from "node:path";
 import { parseVerifyArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
@@ -16,11 +16,30 @@ import { FileProvider } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
 import { computeCodegenDrift } from "../lib/codegen-drift.js";
+import { resolveD1Config } from "../lib/config.js";
+import {
+  buildWranglerExecuteArgs,
+  defaultWranglerRunner,
+  isWranglerLocalD1StatePath,
+  type WranglerRunner,
+} from "../lib/wrangler.js";
 import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { buildKyselyFromUrl, type Dialect } from "../lib/kysely.js";
 import { tokensToAllowOptions, describeChange } from "../lib/allow.js";
-import { computeDrift, collectUnmanagedNames, type Change } from "@metaobjectsdev/migrate-ts";
+import {
+  computeDrift,
+  computeDriftFromActual,
+  collectUnmanagedNames,
+  introspectD1,
+  findWranglerConfig,
+  parseWranglerConfig,
+  resolveD1Binding,
+  type Change,
+  type D1Binding,
+  type D1Runner,
+  type DiffResult,
+} from "@metaobjectsdev/migrate-ts";
 import { loadMemory } from "@metaobjectsdev/sdk";
 import {
   TYPE_TEMPLATE,
@@ -53,7 +72,13 @@ function attrAsStringArray(attr: unknown): string[] {
   return [];
 }
 
-export async function verifyCommand(args: string[], cwd: string): Promise<number> {
+export async function verifyCommand(
+  args: string[],
+  cwd: string,
+  /** Injectable wrangler runner (D1 path only) — tests pass a mock; production uses the default. */
+  wranglerRunner?: WranglerRunner,
+): Promise<number> {
+  const activeWranglerRunner = wranglerRunner ?? defaultWranglerRunner;
   let flags: ReturnType<typeof parseVerifyArgs>;
   try {
     flags = parseVerifyArgs(args);
@@ -71,13 +96,13 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
   // back-compat default: the template/prompt drift gate — plus a one-line note
   // advertising the explicit subverbs.
   const runTemplates = flags.templates || !flags.anyExplicit;
-  // The schema (--db) gate is selected by the presence of --db; that check lives
-  // inside runSchemaVerify (where `flags.db === undefined` also narrows the type).
+  // The schema gate is selected by the presence of --db, or --dialect d1 (#225 —
+  // D1 has no URL connection); that check lives inside runSchemaVerify.
   const runCodegen = flags.codegen;
   if (!flags.anyExplicit) {
     log.info(
       "meta verify — running --templates (default). Explicit subverbs: " +
-        "--templates (prompt drift), --db (schema drift), --codegen (codegen drift).",
+        "--templates (prompt drift), --db/--dialect d1 (schema drift), --codegen (codegen drift).",
     );
   }
 
@@ -272,20 +297,45 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
   }
 
   // -- schema drift (live DB) ------------------------------------------------
-  // Gated on --db. With no --db (or --skip-schema), this is a no-op returning 0
-  // — the DB-free default behavior is unchanged.
+  // Gated on --db OR --dialect d1 (D1 has no URL connection — see the `d1` field
+  // doc on VerifyFlags). With neither (or --skip-schema), this is a no-op
+  // returning 0 — the DB-free default behavior is unchanged.
   async function runSchemaVerify(): Promise<number> {
-    // `flags.db === undefined` is exactly `!runDb`; written this way so TS
-    // narrows flags.db to `string` for buildKyselyFromUrl below.
-    if (flags.db === undefined || flags.skipSchema) return 0;
+    const usingD1 = flags.dialect === "d1";
+    if ((flags.db === undefined && !usingD1) || flags.skipSchema) return 0;
 
-    // d1 has no Kysely-driver introspection path, so the schema-drift gate
-    // can't support it. `buildKyselyFromUrl` already throws for the d1 dialect
-    // ("does not use a URL connection") — the catch below surfaces that as a
-    // clear exit 1, so no separate d1 guard is needed here.
+    if (usingD1 && flags.db !== undefined) {
+      log.error(`verify: --db is not used for dialect 'd1' — wrangler.toml owns the connection; pass --d1 <binding> instead`);
+      return 2;
+    }
+
+    // #225 — the reported footgun: `--db file:` pointed inside wrangler's LOCAL D1
+    // state directory RUNS (it's an ordinary sqlite file) and reports "schema in
+    // sync", but it verified the LOCAL shadow database, not the deployed one — a
+    // false green on exactly the failure mode a D1 adopter most needs the gate to
+    // catch. Warn only; never auto-redirect (the local file becoming a convenient
+    // default is exactly the confusion this issue rejected).
+    if (flags.db !== undefined && isWranglerLocalD1StatePath(flags.db)) {
+      log.warn(
+        `verify: --db '${flags.db}' points inside a wrangler local D1 state directory — this ` +
+          `verifies the LOCAL database, not the deployed one. Use 'verify --dialect d1 --d1 <binding>' ` +
+          `(add --remote to target the deployed database) to check the real D1 schema.`,
+      );
+    }
+
+    // TODO(Unit 3 — migration-history ledger): when the ledger table exists,
+    // a migration that is recorded-as-pending-but-unapplied must also count as
+    // drift here. Until Unit 3 ships the ledger, this MUST no-op — do not query
+    // a table that doesn't exist. `reconcileLedger` returns no extra drift today.
+    const ledgerDrift = await reconcileLedger();
+
+    if (usingD1) return await runD1SchemaVerify(ledgerDrift);
+
+    // `flags.db` is guaranteed defined here: the only way to reach this point
+    // with it undefined is `usingD1`, which just returned above.
     let kysely;
     try {
-      kysely = await buildKyselyFromUrl(flags.db, flags.dialect as Dialect | undefined);
+      kysely = await buildKyselyFromUrl(flags.db as string, flags.dialect as Dialect | undefined);
     } catch (err) {
       log.error(`verify: ${(err as Error).message}`);
       return 1;
@@ -305,32 +355,7 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
         return 1;
       }
 
-      // TODO(Unit 3 — migration-history ledger): when the ledger table exists,
-      // a migration that is recorded-as-pending-but-unapplied must also count as
-      // drift here. Until Unit 3 ships the ledger, this MUST no-op — do not query
-      // a table that doesn't exist. `reconcileLedger` returns no extra drift today.
-      const ledgerDrift = await reconcileLedger();
-
-      // #208 §8 — make declared-external objects visible: they are excluded from the
-      // drift comparison (computeDrift threads them out), so annotate them as external
-      // (declared) rather than let them vanish silently.
-      const externalDeclared = collectUnmanagedNames(root);
-      if (externalDeclared.length > 0) {
-        log.info(
-          `meta verify — ${externalDeclared.length} object(s) external (declared @unmanaged, managed elsewhere): ${externalDeclared.join(", ")}`,
-        );
-      }
-
-      const changes = driftResult.changes;
-      if (changes.length === 0 && ledgerDrift.length === 0) {
-        log.info(`meta verify — schema in sync with ${kysely.displayUrl}.`);
-        return 0;
-      }
-
-      log.error(`meta verify — schema drift vs ${kysely.displayUrl} (${changes.length} change(s)):`);
-      for (const line of summarizeDrift(changes)) log.error(`  ${line}`);
-      for (const line of ledgerDrift) log.error(`  ${line}`);
-      return 1;
+      return reportSchemaDrift(driftResult, ledgerDrift, kysely.displayUrl);
     } finally {
       try {
         await kysely.close();
@@ -338,6 +363,103 @@ export async function verifyCommand(args: string[], cwd: string): Promise<number
         log.warn(`verify: failed to close DB cleanly: ${(err as Error).message}`);
       }
     }
+  }
+
+  // -- schema drift (D1, via wrangler) ---------------------------------------
+  // #225 — D1 has no client wire protocol, so it can't go through
+  // buildKyselyFromUrl/computeDrift's Kysely-driver introspection path. Mirrors
+  // `meta migrate`'s D1 wiring (migrate.ts's runD1Migrate): resolve the wrangler
+  // binding, shell out via the SAME wrangler runner migrate uses, introspect with
+  // introspectD1 (which already excludes wrangler/D1's own bookkeeping tables —
+  // `_cf_METADATA`, `d1_migrations`, `sqlite_sequence` — so there is no second
+  // exclusion mechanism to maintain), then feed the snapshot into
+  // computeDriftFromActual and the SAME reportSchemaDrift the sqlite/postgres
+  // path uses — no forked reporting/exit-code logic.
+  async function runD1SchemaVerify(ledgerDrift: string[]): Promise<number> {
+    const d1Config = await resolveD1Config({ d1Binding: flags.d1, remote: flags.remote }, cwd);
+
+    const wranglerConfigPath = d1Config.wranglerConfigPath
+      ? resolvePath(cwd, d1Config.wranglerConfigPath)
+      : findWranglerConfig(cwd);
+
+    if (wranglerConfigPath === undefined && d1Config.binding === undefined) {
+      log.error(`verify: no wrangler.toml found in ${cwd} or parents; pass --d1 <binding> to bypass`);
+      return 2;
+    }
+
+    let binding: D1Binding;
+    if (wranglerConfigPath !== undefined) {
+      const parsed = parseWranglerConfig(wranglerConfigPath);
+      try {
+        binding = resolveD1Binding(parsed.d1Bindings, d1Config.binding);
+      } catch (err) {
+        log.error(`verify: ${(err as Error).message}`);
+        return 2;
+      }
+    } else {
+      // No wrangler config but explicit binding — let wrangler discover the DB itself.
+      binding = { binding: d1Config.binding as string, database_name: "", database_id: "", migrations_dir: undefined };
+    }
+
+    const remote = d1Config.remote;
+    const d1Runner: D1Runner = async (sql) => {
+      const wranglerArgs = buildWranglerExecuteArgs({
+        binding: binding.binding,
+        remote,
+        command: sql,
+        configPath: wranglerConfigPath,
+      });
+      const { stdout } = await activeWranglerRunner(wranglerArgs, cwd);
+      return stdout;
+    };
+
+    let actual;
+    try {
+      actual = await introspectD1({ runner: d1Runner, binding: binding.binding, remote, configPath: wranglerConfigPath });
+    } catch (err) {
+      log.error(`verify: failed to introspect D1 binding '${binding.binding}': ${(err as Error).message}`);
+      return 1;
+    }
+
+    const allow = tokensToAllowOptions(flags.allow);
+    const viewStrategy = forgeConfig?.columnNamingStrategy ?? "snake_case";
+    const expectedViews = buildProjectionViews(root, { dialect: "d1", columnNamingStrategy: viewStrategy });
+    let driftResult;
+    try {
+      driftResult = await computeDriftFromActual(actual, "d1", root, { allow, views: expectedViews });
+    } catch (err) {
+      log.error(`verify: ${(err as Error).message}`);
+      return 1;
+    }
+
+    const displayUrl = `d1:${binding.binding}${remote ? " (--remote)" : " (local)"}`;
+    return reportSchemaDrift(driftResult, ledgerDrift, displayUrl);
+  }
+
+  // Shared drift-reporting + exit-code logic for BOTH schema-drift paths (sqlite/
+  // postgres via computeDrift, D1 via computeDriftFromActual) — #225 requires the
+  // D1 path to feed the SAME reporting, not a forked copy.
+  function reportSchemaDrift(driftResult: DiffResult, ledgerDrift: string[], displayUrl: string): number {
+    // #208 §8 — make declared-external objects visible: they are excluded from the
+    // drift comparison (computeDrift/computeDriftFromActual thread them out), so
+    // annotate them as external (declared) rather than let them vanish silently.
+    const externalDeclared = collectUnmanagedNames(root);
+    if (externalDeclared.length > 0) {
+      log.info(
+        `meta verify — ${externalDeclared.length} object(s) external (declared @unmanaged, managed elsewhere): ${externalDeclared.join(", ")}`,
+      );
+    }
+
+    const changes = driftResult.changes;
+    if (changes.length === 0 && ledgerDrift.length === 0) {
+      log.info(`meta verify — schema in sync with ${displayUrl}.`);
+      return 0;
+    }
+
+    log.error(`meta verify — schema drift vs ${displayUrl} (${changes.length} change(s)):`);
+    for (const line of summarizeDrift(changes)) log.error(`  ${line}`);
+    for (const line of ledgerDrift) log.error(`  ${line}`);
+    return 1;
   }
 
   // -- codegen drift (ADR-0021 D2) -------------------------------------------
