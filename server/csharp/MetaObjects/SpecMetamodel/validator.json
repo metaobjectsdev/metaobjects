@@ -13,8 +13,8 @@
     {
       "type": "validator",
       "subType": "required",
-      "description": "Fails when the value is null/empty (NOT NULL). Equivalent to @required on the owning field.",
-      "whenToUse": "A field must be present (NOT NULL). Declare it instead of hand-writing a null/empty check."
+      "description": "Fails when the value is null (NOT NULL). Equivalent to @required on the owning field: on a non-array string, generated wire-tier input validation also rejects the empty string by default unless an explicit validator.length @min: 0 opts back to presence-only.",
+      "whenToUse": "A field must be present (NOT NULL). Declare it instead of hand-writing a presence check."
     },
     {
       "type": "validator",

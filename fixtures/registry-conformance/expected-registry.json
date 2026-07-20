@@ -148,7 +148,7 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction."
         },
         {
           "name": "sortable",
@@ -285,7 +285,7 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction."
         },
         {
           "name": "sortable",
@@ -430,7 +430,7 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction."
         },
         {
           "name": "sortable",
@@ -578,7 +578,7 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction."
         },
         {
           "name": "sortable",
@@ -723,7 +723,7 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction."
         },
         {
           "name": "scale",
@@ -867,7 +867,7 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction."
         },
         {
           "name": "sortable",
@@ -1045,7 +1045,7 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction."
         },
         {
           "name": "sortable",
@@ -1188,7 +1188,7 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction."
         },
         {
           "name": "sortable",
@@ -1325,7 +1325,7 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction."
         },
         {
           "name": "sortable",
@@ -1462,7 +1462,7 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction."
         },
         {
           "name": "sortable",
@@ -1599,7 +1599,7 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction."
         },
         {
           "name": "sortable",
@@ -1744,7 +1744,7 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction."
         },
         {
           "name": "sortable",
@@ -1896,7 +1896,7 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction."
         },
         {
           "name": "sortable",
@@ -2052,7 +2052,7 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction."
         },
         {
           "name": "sortable",
@@ -2210,7 +2210,7 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction."
         },
         {
           "name": "sortable",
@@ -2365,7 +2365,7 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction."
         },
         {
           "name": "sortable",
@@ -2502,7 +2502,7 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction."
         },
         {
           "name": "sortable",
@@ -2639,7 +2639,7 @@
           "valueType": "boolean",
           "isArray": false,
           "required": false,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction."
         },
         {
           "name": "sortable",
@@ -4236,8 +4236,8 @@
     {
       "type": "validator",
       "subType": "required",
-      "description": "Fails when the value is null/empty (NOT NULL). Equivalent to @required on the owning field.",
-      "whenToUse": "A field must be present (NOT NULL). Declare it instead of hand-writing a null/empty check.",
+      "description": "Fails when the value is null (NOT NULL). Equivalent to @required on the owning field: on a non-array string, generated wire-tier input validation also rejects the empty string by default unless an explicit validator.length @min: 0 opts back to presence-only.",
+      "whenToUse": "A field must be present (NOT NULL). Declare it instead of hand-writing a presence check.",
       "attrs": [],
       "children": []
     },

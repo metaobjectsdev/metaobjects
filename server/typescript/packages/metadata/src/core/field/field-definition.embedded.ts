@@ -42,7 +42,7 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "name": "required",
           "min": 0,
           "max": 1,
-          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child."
+          "description": "When true, the field is NOT NULL. Equivalent to attaching a validator.required child. On a non-array string, generated wire-tier input validation (create/patch) additionally rejects the empty string by default — whitespace is accepted — unless an explicit validator.length @min: 0 opts back to presence-only. In-process read models never enforce this at construction."
         },
         {
           "type": "attr",

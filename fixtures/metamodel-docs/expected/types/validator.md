@@ -170,11 +170,11 @@ _No structural children._
 
 ### validator.required
 
-Fails when the value is null/empty (NOT NULL). Equivalent to @required on the owning field.
+Fails when the value is null (NOT NULL). Equivalent to @required on the owning field: on a non-array string, generated wire-tier input validation also rejects the empty string by default unless an explicit validator.length @min: 0 opts back to presence-only.
 
 **Owning provider:** metaobjects-core-types
 
-**When to use:** A field must be present (NOT NULL). Declare it instead of hand-writing a null/empty check.
+**When to use:** A field must be present (NOT NULL). Declare it instead of hand-writing a presence check.
 
 **Attributes**
 
