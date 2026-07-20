@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.19.2] — 2026-07-20
+
+**npm `0.19.2` · NuGet `0.19.2`.** PyPI stays at `0.19.2` and Maven Central at `7.11.1` — neither port has a changed file in this release. No breaking changes, no new vocabulary.
+
+**Generated forms validated edits against the wrong schema, blocking most saves ([#227](https://github.com/metaobjectsdev/metaobjects/issues/227)).** The generated `<Entity>Form` takes `defaultValues` — edit is a first-class mode — but resolved **every** submit against `InsertSchema`. `InsertSchema` optionals are `.optional()`: absent is fine, `null` is rejected. An edit, though, is seeded from a real row whose unset optional columns are all `null`. So editing any row holding a NULL optional was blocked outright: *"Invalid input"* appeared on fields the user never touched, `handleSubmit` never fired, and the save silently did nothing. Since most rows carry at least one unset optional, this broke most edits.
+
+The resolver now switches on the same `defaultValues` presence that already distinguishes create from edit everywhere else in the template. That is the semantically correct pairing regardless of the bug: an edit submits a PATCH, so it validates against the PATCH schema — `UpdateSchema` (`.optional().nullable()`) still enforces min/max/enum on present keys, it just doesn't demand required keys the PATCH isn't sending (FR-035 present-key). TPH forms get the same `.omit(discriminator)` treatment on both schemas. Rejected: normalizing `null → ""` in `defaultValues` (destroys the was-null vs was-empty distinction [#223](https://github.com/metaobjectsdev/metaobjects/issues/223)'s tristate needs, and feeds `""` to controls like `view.image` that expect `string | null`), and loosening `InsertSchema` optionals to `.nullable()` (weakens create-path validation for every consumer, including the server route, to paper over a client-side mode-selection bug). Generated-output change — regenerate to pick it up; three-way merge preserves hand-edits. TS-only; no other port generates forms.
+
+**Three CLI/codegen fixes surfaced by building the canonical advanced-modeling example.** Each was narrowly scoped and independently adopter-visible:
+
+- **`verify --codegen` failed spuriously for any project using template-output generators.** Its throwaway regen root didn't carry the project's `templates/` directory forward, so `render-helper()` had nothing to resolve against and the drift check reported failure on a project with no drift.
+- **A relative `outDir` resolved against the ambient `process.cwd()` instead of the resolved `--cwd`** — in both `meta gen`'s write path (`runner.ts`) and `verify --codegen`'s read path (`codegen-drift.ts`). Invoking the CLI from anywhere other than the project root wrote generated code to the wrong place.
+- **`render-helper.ts` didn't `stripPackage()` a resolved `@payloadRef`** before emitting it as a TypeScript identifier, producing invalid syntax for any payload declared in a named package.
+
+**Payload record emission is FQN-keyed with collision-scoped naming — TypeScript and C# ([ADR-0044](spec/decisions/ADR-0044-payload-record-naming-cross-package-collision.md), [#219](https://github.com/metaobjectsdev/metaobjects/issues/219)).** Two `object.value`s sharing a short name across packages could not both be emitted. TypeScript resolved `@objectRef` correctly (ADR-0042) but then deduped already-emitted interfaces by **bare** name, silently dropping the second (first-wins). C# was worse: it stripped the package *before* resolution and looked the name up in a bare-name-only scan, so the two collapsed onto whichever the scan enumerated first — the wrong shape, silently.
+
+Both ports now run the ADR-0044 three-pass pipeline: an FQN-keyed reference-closure walk, then name assignment (bare short name when unique in the closure; a package-derived name such as `AcmeAlphaNote` for **every** colliding member — declaration, file name and all references; hard failure if a derived name still collides), then emission through the resulting name map. Resolution is always FQN-exact, dedupe always FQN-keyed, and naming a pure function of the closure, so output no longer depends on enumeration order. **Not breaking** — names change only where output is silently wrong today; non-colliding output is byte-identical, pinned by exact-string no-churn tests on both ports. The corpus contract now prohibits hand-authored payload records (it had been papering over exactly this gap), and the TS and C# runners were switched to real generated types with the render pins kept byte-exact.
+
+This lands the TypeScript and C# half. **Python, Java and Kotlin are still affected** by the same class of bug through different mechanisms — Python shadows both classes in one module, Java and Kotlin silently clobber one file — and are tracked as the remaining stages on [#219](https://github.com/metaobjectsdev/metaobjects/issues/219).
+
 ## [0.19.1] — 2026-07-20
 
 Coordinated **patch** across all registries: npm `0.19.1` · NuGet `0.19.1` · PyPI `0.19.2` (the Python line is one ahead after its `0.19.1` hotfix) · Maven Central `7.11.1`. No breaking changes, no new vocabulary.

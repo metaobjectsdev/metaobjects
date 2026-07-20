@@ -1,6 +1,6 @@
 {
   "name": "@metaobjectsdev/migrate-ts",
-  "version": "0.19.1",
+  "version": "0.19.2",
   "description": "Schema migration tooling for MetaObjects: diff metadata vs DB and emit SQL for Postgres and SQLite.",
   "type": "module",
   "main": "./dist/index.js",
