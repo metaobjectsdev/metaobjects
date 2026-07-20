@@ -205,16 +205,22 @@ public sealed class RenderHelperConformanceTests
     }
 
     // ---------------------------------------------------------------------
-    // xpkg-collision/ — cross-package short-name collision (ADR-0041). Two packages
-    // each declare an object.value `Note` (alpha: alphaText, beta: betaText); the
-    // payload `Digest` references BOTH by FULLY-QUALIFIED @objectRef. A bare-tail
-    // resolver binds both refs to whichever Note loads first → one of
-    // {{fromAlpha.alphaText}}/{{fromBeta.betaText}} lands on the wrong element type and
-    // the build-time drift gate throws ERR_VAR_NOT_ON_PAYLOAD. FQN-exact resolution binds
-    // each ref to its own package. The two colliding VOs share the BARE record type name
-    // `Note`, so (like the TS payloads.ts) the payload record is hand-authored with both
-    // fields — the record-name collision is an orthogonal concern; this test gates the
-    // render-helper's FQN-exact @objectRef resolver.
+    // xpkg-collision/ — cross-package short-name collision (ADR-0041 resolver +
+    // ADR-0044 naming). Two packages each declare an object.value `Note` (alpha:
+    // alphaText, beta: betaText); the payload `Digest` references BOTH by
+    // FULLY-QUALIFIED @objectRef. A bare-tail resolver binds both refs to whichever
+    // Note loads first → one of {{fromAlpha.alphaText}}/{{fromBeta.betaText}} lands
+    // on the wrong element type and the build-time drift gate throws
+    // ERR_VAR_NOT_ON_PAYLOAD. FQN-exact resolution binds each ref to its own package.
+    //
+    // ADR-0044 / #219 / #220: the payload RECORD for this fixture must be
+    // GENERATOR-emitted (fixtures/template-output-render-conformance/README.md,
+    // xpkg-collision section) — never hand-authored by the port runner. A hand-
+    // authored merged `record Note { alphaText; betaText }` (a single shape with
+    // BOTH fields) is exactly the "silently-wrong-adjacent" shape ADR-0044 rejected.
+    // PayloadCodegen.GeneratePayloadRecords resolves the SAME FQN-exact @objectRef
+    // pair, so this proves the fix end-to-end: two DISTINCT emitted records
+    // (AcmeAlphaNote / AcmeBetaNote), not one merged/first-wins shape.
     // ---------------------------------------------------------------------
 
     [Fact]
@@ -231,17 +237,31 @@ public sealed class RenderHelperConformanceTests
         // Must NOT throw: the FQN refs resolve to their own package's Note.
         var file = Assert.Single(new RenderHelperGenerator(templates).Generate(Ctx(root)), f => f.Path == "DigestDoc.render.cs");
 
-        var payloadSrc = "namespace Acme.Generated;\n"
-            + "public sealed record Note { public string? alphaText { get; init; } public string? betaText { get; init; } }\n"
-            + "public sealed record Digest { public Note fromAlpha { get; init; } public Note fromBeta { get; init; } }\n";
+        // GENERATOR-emitted payload records (not hand-authored) — the corpus contract.
+        var records = PayloadCodegen.GeneratePayloadRecords(root, "acme::app::Digest");
+
+        // Proof of fix: two DISTINCT emitted types under their ADR-0044 package-
+        // qualified derived names, each carrying only its OWN VO's field — not a
+        // merged `{ alphaText; betaText }` shape.
+        Assert.Contains("public sealed record AcmeAlphaNote", records);
+        Assert.Contains("public sealed record AcmeBetaNote", records);
+        Assert.Contains("public required string alphaText { get; init; }", records);
+        Assert.Contains("public required string betaText { get; init; }", records);
+        Assert.DoesNotContain("public sealed record Note", records);
+        // Digest's own fields point at the qualified names, not at each other's field.
+        Assert.Contains("public required AcmeAlphaNote fromAlpha { get; init; }", records);
+        Assert.Contains("public required AcmeBetaNote fromBeta { get; init; }", records);
+
+        var payloadSrc = "namespace Acme.Generated;\n" + records;
         var asm = CompileToAssembly(file.Content, payloadSrc);
 
-        var noteType = asm.GetType("Acme.Generated.Note")!;
+        var alphaNoteType = asm.GetType("Acme.Generated.AcmeAlphaNote")!;
+        var betaNoteType = asm.GetType("Acme.Generated.AcmeBetaNote")!;
         var digestType = asm.GetType("Acme.Generated.Digest")!;
-        var fromAlpha = Activator.CreateInstance(noteType)!;
-        noteType.GetProperty("alphaText")!.SetValue(fromAlpha, "AA");
-        var fromBeta = Activator.CreateInstance(noteType)!;
-        noteType.GetProperty("betaText")!.SetValue(fromBeta, "BB");
+        var fromAlpha = Activator.CreateInstance(alphaNoteType)!;
+        alphaNoteType.GetProperty("alphaText")!.SetValue(fromAlpha, "AA");
+        var fromBeta = Activator.CreateInstance(betaNoteType)!;
+        betaNoteType.GetProperty("betaText")!.SetValue(fromBeta, "BB");
         var digest = Activator.CreateInstance(digestType)!;
         digestType.GetProperty("fromAlpha")!.SetValue(digest, fromAlpha);
         digestType.GetProperty("fromBeta")!.SetValue(digest, fromBeta);

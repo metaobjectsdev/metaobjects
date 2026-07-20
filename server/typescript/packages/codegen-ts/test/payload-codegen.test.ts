@@ -11,6 +11,18 @@ async function loadRoot(children: unknown[]) {
   return res.root;
 }
 
+/** Multi-file (multi-package) load — one source per (package, children) pair,
+ *  merged into a single root. Mirrors fixtures/conformance/loader-same-name-distinct-packages
+ *  and the render-helper-conformance xpkg-collision loader, for ADR-0044 collision tests. */
+async function loadMultiPackageRoot(files: { package: string; children: unknown[] }[]) {
+  const sources = files.map(
+    (f) => new InMemoryStringSource(JSON.stringify({ "metadata.root": { package: f.package, children: f.children } })),
+  );
+  const res = await new MetaDataLoader().load(sources);
+  expect(res.errors).toEqual([]);
+  return res.root;
+}
+
 const model = [
   { "object.value": { name: "PostBrief", children: [{ "field.string": { name: "title", "@required": true } }] } },
   {
@@ -160,6 +172,213 @@ describe("payload-codegen — FQN @objectRef (FR-032/ADR-0041) emits bare TS nam
     expect(out).toContain("notes: Note[];");
     expect(out).toContain("export interface Note {");
     expect(out).toContain("text: string;");
+  });
+});
+
+describe("payload-codegen — ADR-0044 no-churn (non-colliding output is byte-identical)", () => {
+  // ADR-0044's central claim: a payload closure with NO short-name collision emits
+  // BYTE-IDENTICAL output to before the FQN-keyed dedupe + collision-naming fix —
+  // bare names, unchanged file layout. Full-string (toBe, not toContain) pins so any
+  // stray whitespace/ordering churn from the pass 1/2/3 refactor would fail this.
+  test("a non-colliding closure (root + nested ref) emits the exact pre-fix bare-name output", async () => {
+    const root = await loadRoot([
+      { "object.value": { name: "PostBrief", children: [{ "field.string": { name: "title", "@required": true } }] } },
+      {
+        "object.value": {
+          name: "AuthorBrief",
+          children: [
+            { "field.string": { name: "displayName", "@required": true } },
+            { "field.object": { name: "post", "@objectRef": "PostBrief", "@required": true } },
+          ],
+        },
+      },
+    ]);
+    const out = generatePayloadInterfaces(root, "AuthorBrief", "acme::ai");
+    expect(out).toBe(
+      "export interface AuthorBrief {\n" +
+        "  displayName: string;\n" +
+        "  post: PostBrief;\n" +
+        "}\n\n" +
+        "export interface PostBrief {\n" +
+        "  title: string;\n" +
+        "}\n",
+    );
+  });
+
+  // Same claim through the batch entry point (generatePayloadInterfacesBatch),
+  // which now shares ONE closure across all roots (ADR-0044) but must still emit
+  // byte-identical output when nothing in that shared closure collides.
+  test("a non-colliding batch (two roots sharing a nested ref) emits the exact pre-fix bare-name output", async () => {
+    const root = await loadRoot([
+      { "object.value": { name: "Lens", children: [{ "field.string": { name: "id", "@required": true } }] } },
+      {
+        "object.value": {
+          name: "A",
+          children: [{ "field.object": { name: "items", "@objectRef": "Lens", isArray: true, "@required": true } }],
+        },
+      },
+      {
+        "object.value": {
+          name: "B",
+          children: [{ "field.object": { name: "items", "@objectRef": "Lens", isArray: true, "@required": true } }],
+        },
+      },
+    ]);
+    const out = generatePayloadInterfacesBatch(root, ["A", "B"], "acme::ai");
+    expect(out).toBe(
+      "export interface A {\n" +
+        "  items: Lens[];\n" +
+        "}\n\n" +
+        "export interface Lens {\n" +
+        "  id: string;\n" +
+        "}\n\n" +
+        "export interface B {\n" +
+        "  items: Lens[];\n" +
+        "}\n",
+    );
+  });
+});
+
+describe("payload-codegen — ADR-0044 cross-package short-name collision naming (#219/#220)", () => {
+  // #219/#220: two packages each declare an object.value `Note` with DIFFERENT
+  // fields; a third package's `Digest` references both by FULLY-QUALIFIED
+  // @objectRef. Pre-ADR-0044 this dedup'd on the BARE name and silently dropped
+  // betaText (first-wins). The fix must emit two DISTINCT types.
+  async function loadCollidingNotes() {
+    return loadMultiPackageRoot([
+      {
+        package: "acme::alpha",
+        children: [
+          { "object.value": { name: "Note", children: [{ "field.string": { name: "alphaText", "@required": true } }] } },
+        ],
+      },
+      {
+        package: "acme::beta",
+        children: [
+          { "object.value": { name: "Note", children: [{ "field.string": { name: "betaText", "@required": true } }] } },
+        ],
+      },
+      {
+        package: "acme::app",
+        children: [
+          {
+            "object.value": {
+              name: "Digest",
+              children: [
+                { "field.object": { name: "fromAlpha", "@objectRef": "acme::alpha::Note", "@required": true } },
+                { "field.object": { name: "fromBeta", "@objectRef": "acme::beta::Note", "@required": true } },
+              ],
+            },
+          },
+        ],
+      },
+    ]);
+  }
+
+  test("emits TWO DISTINCT package-qualified types — not one merged/first-wins shape", async () => {
+    const root = await loadCollidingNotes();
+    const out = generatePayloadInterfaces(root, "acme::app::Digest");
+    // Exact byte pin (not just toContain): proves ordering, field sets, and
+    // both @required scalars survive untouched — Digest first (closure root),
+    // then each colliding member under its PascalCase package-qualified name.
+    expect(out).toBe(
+      "export interface Digest {\n" +
+        "  fromAlpha: AcmeAlphaNote;\n" +
+        "  fromBeta: AcmeBetaNote;\n" +
+        "}\n\n" +
+        "export interface AcmeAlphaNote {\n" +
+        "  alphaText: string;\n" +
+        "}\n\n" +
+        "export interface AcmeBetaNote {\n" +
+        "  betaText: string;\n" +
+        "}\n",
+    );
+    // Neither collision member survives as the bare, collision-losing "Note".
+    expect(out).not.toContain("export interface Note {");
+    // Exactly one declaration per emitted type — no clobbered/duplicate file-equivalent block.
+    expect(out.match(/export interface AcmeAlphaNote \{/g)).toHaveLength(1);
+    expect(out.match(/export interface AcmeBetaNote \{/g)).toHaveLength(1);
+  });
+
+  test("generateRenderHandle types the payload param under the SAME collision-aware name as the interfaces emitter", async () => {
+    // A minimal template.output whose @payloadRef is the (non-colliding) Digest —
+    // Digest's OWN closure collides on Note, but Digest itself is unique, so its
+    // render-handle payload param stays bare "Digest" while the nested Notes
+    // qualify. Uses acme::app so the bare @payloadRef resolves package-locally.
+    const rootWithTemplate = await loadMultiPackageRoot([
+      {
+        package: "acme::alpha",
+        children: [
+          { "object.value": { name: "Note", children: [{ "field.string": { name: "alphaText", "@required": true } }] } },
+        ],
+      },
+      {
+        package: "acme::beta",
+        children: [
+          { "object.value": { name: "Note", children: [{ "field.string": { name: "betaText", "@required": true } }] } },
+        ],
+      },
+      {
+        package: "acme::app",
+        children: [
+          {
+            "object.value": {
+              name: "Digest",
+              children: [
+                { "field.object": { name: "fromAlpha", "@objectRef": "acme::alpha::Note", "@required": true } },
+                { "field.object": { name: "fromBeta", "@objectRef": "acme::beta::Note", "@required": true } },
+              ],
+            },
+          },
+          {
+            "template.output": {
+              name: "DigestDoc",
+              "@payloadRef": "acme::app::Digest",
+              "@textRef": "xpkg/digest",
+              "@format": "html",
+            },
+          },
+        ],
+      },
+    ]);
+    const handle = generateRenderHandle(rootWithTemplate, "DigestDoc");
+    expect(handle).toContain("export function renderDigestDoc(payload: Digest, provider: Provider): string");
+  });
+
+  test("a still-colliding derived name FAILS LOUD with ERR_PAYLOAD_NAME_COLLISION (backstop)", async () => {
+    // Pathological: "acme::alpha::Note" and "acmeAlpha::Note" both PascalCase-fold
+    // to the SAME derived name "AcmeAlphaNote" — qualification cannot disambiguate.
+    const root = await loadMultiPackageRoot([
+      {
+        package: "acme::alpha",
+        children: [
+          { "object.value": { name: "Note", children: [{ "field.string": { name: "a", "@required": true } }] } },
+        ],
+      },
+      {
+        package: "acmeAlpha",
+        children: [
+          { "object.value": { name: "Note", children: [{ "field.string": { name: "b", "@required": true } }] } },
+        ],
+      },
+      {
+        package: "acme::app",
+        children: [
+          {
+            "object.value": {
+              name: "Digest",
+              children: [
+                { "field.object": { name: "x", "@objectRef": "acme::alpha::Note", "@required": true } },
+                { "field.object": { name: "y", "@objectRef": "acmeAlpha::Note", "@required": true } },
+              ],
+            },
+          },
+        ],
+      },
+    ]);
+    expect(() => generatePayloadInterfaces(root, "acme::app::Digest")).toThrow(
+      /ERR_PAYLOAD_NAME_COLLISION.*"AcmeAlphaNote".*derives from both.*"acme::alpha::Note".*"acmeAlpha::Note"/,
+    );
   });
 });
 

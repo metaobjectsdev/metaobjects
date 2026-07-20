@@ -18,6 +18,7 @@ import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { type EmailDocument } from "@metaobjectsdev/render";
 import { FileSystemProvider } from "../src/render-engine/framework-provider.js";
 import { renderRenderHelper } from "../src/templates/render-helper.js";
+import { generatePayloadInterfaces } from "../src/payload-codegen.js";
 
 // test → codegen-ts → packages → typescript → server → repo-root/fixtures
 const CORPUS = resolve(import.meta.dir, "../../../../../fixtures/template-output-render-conformance");
@@ -140,15 +141,26 @@ describe("render-helper conformance — shared cross-port corpus", () => {
     expect(email.htmlBody).toContain("<hr/>Sent by Acme");
   });
 
-  // Cross-package short-name collision (ADR-0041): xpkg-collision/ declares an
-  // object.value `Note` in BOTH acme::alpha (field alphaText) and acme::beta (field
-  // betaText), and a payload `Digest` whose two field.object children reference them
-  // by FULLY-QUALIFIED @objectRef (acme::alpha::Note / acme::beta::Note). A bare-tail
-  // resolver strips both refs to `Note` and binds BOTH to whichever package's Note
-  // loads first, so exactly one of {{fromAlpha.alphaText}}/{{fromBeta.betaText}} lands
-  // on the wrong element type and the build-time drift gate throws ERR_VAR_NOT_ON_PAYLOAD.
-  // FQN-exact resolution binds each ref to its own package, so the clean template passes
+  // Cross-package short-name collision (ADR-0041 resolver + ADR-0044 naming):
+  // xpkg-collision/ declares an object.value `Note` in BOTH acme::alpha (field
+  // alphaText) and acme::beta (field betaText), and a payload `Digest` whose two
+  // field.object children reference them by FULLY-QUALIFIED @objectRef
+  // (acme::alpha::Note / acme::beta::Note). A bare-tail resolver strips both refs
+  // to `Note` and binds BOTH to whichever package's Note loads first, so exactly
+  // one of {{fromAlpha.alphaText}}/{{fromBeta.betaText}} lands on the wrong element
+  // type and the build-time drift gate throws ERR_VAR_NOT_ON_PAYLOAD. FQN-exact
+  // resolution binds each ref to its own package, so the clean template passes
   // and renders both fields. Render-tier analogue of loader-same-name-distinct-packages.
+  //
+  // ADR-0044 / #219 / #220: the payload RECORD for this fixture must be
+  // GENERATOR-emitted (fixtures/template-output-render-conformance/README.md,
+  // xpkg-collision section) — never hand-authored by the port runner. A hand-
+  // authored merged `interface Note { alphaText?: string; betaText?: string; }`
+  // (both fields optional) is exactly the "silently-wrong-adjacent" shape ADR-0044
+  // rejected: it erases @required and lets a typo against either real shape
+  // type-check. `generatePayloadInterfaces` resolves the SAME FQN-exact @objectRef
+  // pair, so this proves the fix end-to-end: two DISTINCT emitted types
+  // (`AcmeAlphaNote` / `AcmeBetaNote`), not one merged/first-wins shape.
   test("document DigestDoc resolves FQN nested @objectRef across a cross-package short-name collision", async () => {
     const dirRoot = join(CORPUS, "xpkg-collision");
     const root = await loadRootFromFiles(
@@ -160,13 +172,26 @@ describe("render-helper conformance — shared cross-port corpus", () => {
     // Must NOT throw: the FQN refs resolve to their own package's Note.
     const src = renderRenderHelper(root, "DigestDoc", provider);
 
+    // GENERATOR-emitted payload records (not hand-authored) — the corpus contract.
+    const payloadsSrc = generatePayloadInterfaces(root, "acme::app::Digest");
+
+    // Proof of fix: two DISTINCT emitted types under their ADR-0044 package-
+    // qualified derived names, each carrying only its OWN VO's required field —
+    // not a merged `{ alphaText?; betaText? }` shape.
+    expect(payloadsSrc).toContain("export interface AcmeAlphaNote {");
+    expect(payloadsSrc).toContain("export interface AcmeBetaNote {");
+    expect(payloadsSrc).toContain("alphaText: string;");
+    expect(payloadsSrc).toContain("betaText: string;");
+    // Neither collision member is emitted under the bare, collision-losing name.
+    expect(payloadsSrc).not.toContain("export interface Note {");
+    // Digest's own fields point at the qualified names, not at each other's field
+    // (fromAlpha/fromBeta carry no @required in the fixture, hence `?: T | null`).
+    expect(payloadsSrc).toContain("fromAlpha?: AcmeAlphaNote | null;");
+    expect(payloadsSrc).toContain("fromBeta?: AcmeBetaNote | null;");
+
     const dir = mkdtempSync(join(import.meta.dir, "rh-conf-xpkg-"));
     TEMP_DIRS.push(dir);
-    writeFileSync(
-      join(dir, "payloads.ts"),
-      "export interface Note { alphaText?: string; betaText?: string; }\n" +
-        "export interface Digest { fromAlpha: Note; fromBeta: Note; }\n",
-    );
+    writeFileSync(join(dir, "payloads.ts"), payloadsSrc);
     writeFileSync(join(dir, "DigestDoc.render.ts"), src);
 
     const mod = await import(join(dir, "DigestDoc.render.ts"));

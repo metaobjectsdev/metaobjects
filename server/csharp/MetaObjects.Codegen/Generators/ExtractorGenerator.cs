@@ -235,5 +235,5 @@ public class ExtractorGenerator : IGenerator
     /// class) must qualify it as <c>&lt;Owner&gt;.&lt;EnumType&gt;</c>.
     /// </summary>
     private static string EnumTypeRef(MetaData owner, MetaData field) =>
-        $"{owner.Name}.{PayloadCodegen.EnumTypeName(owner, field)}";
+        $"{owner.Name}.{PayloadCodegen.EnumTypeName(owner.Name, field)}";
 }

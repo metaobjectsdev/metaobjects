@@ -9,6 +9,19 @@
 // should reuse codegen-ts's canonical field mapping + ts-poet emit + the
 // Generator/runner integration. Assembler (RDB materialization + host overlay)
 // is out of scope — this only emits the contract.
+//
+// ADR-0044 — collision-aware naming: emission is a THREE-PASS pipeline.
+//   1. collectClosure    — walk the reference closure (FQN-exact resolution),
+//                           collecting resolved VOs keyed by resolutionKey()
+//                           (never bare name — bare-keyed dedupe silently drops
+//                           the second same-short-name VO; #219/#220).
+//   2. assignEmittedNames — a PURE function of the closure: a bare short name
+//                           unique in the closure emits bare; a collision emits
+//                           EVERY member under its package-qualified derived
+//                           name (PascalCase each package segment + short name).
+//                           A still-colliding derived name fails loud.
+//   3. emitClosureDeclarations — emit each declaration + every reference through
+//                           the name map.
 
 import {
   type MetaData,
@@ -22,6 +35,7 @@ import {
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_TEXT_REF,
   TEMPLATE_ATTR_FORMAT,
+  PACKAGE_SEPARATOR,
   resolveObjectRef,
   stripPackage,
 } from "@metaobjectsdev/metadata";
@@ -45,6 +59,16 @@ const SCALAR_TS: Record<string, string> = {
   timestamp: "string",
 };
 
+// ADR-0044 backstop error code — a codegen-time (not loader) error, peer of
+// @metaobjectsdev/render's ERR_VAR_NOT_ON_PAYLOAD. Declared LOCALLY rather than
+// added to packages/metadata/src/errors.ts's ERROR_CODES ledger: that ledger is
+// checked for FULL cross-port agreement against fixtures/conformance/ERROR-CODES.json
+// (packages/metadata/test/errors.test.ts) and, on the Python side, for corpus-code
+// coverage — registering it there before every port implements the ADR-0044 fix
+// would turn those OTHER ports' tests red. It moves into the shared ledger once the
+// Java/Kotlin/Python follow-up (ADR-0044 §4, items 3-4) lands alongside this code.
+const ERR_PAYLOAD_NAME_COLLISION = "ERR_PAYLOAD_NAME_COLLISION";
+
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 // ADR-0042: resolveObjectRef gives package-local-before-root-level precedence for a bare ref, FQN-exact otherwise.
 function findObject(root: MetaData, name: string, referrerPkg = ""): MetaData | undefined {
@@ -52,31 +76,131 @@ function findObject(root: MetaData, name: string, referrerPkg = ""): MetaData | 
 }
 
 /**
- * Map a payload field to its strict TS type.
- *  - `refVo`: the nested @objectRef VO to recurse into (object fields only).
+ * ADR-0044 pass 1 — walk `voRef`'s transitive `@objectRef` closure with FQN-exact
+ * resolution, collecting resolved VOs keyed by `resolutionKey()` (never bare name
+ * — the #219/#220 defect). `visited` accumulates across multiple root calls so a
+ * batch emission (`generatePayloadInterfacesBatch`) shares ONE collision domain,
+ * per the ADR-0044 "closure of the payload root(s) emitted into one artifact"
+ * definition. A VO already in `visited` is not re-walked (cycle/dedupe guard).
+ */
+function collectClosure(
+  root: MetaData,
+  voRef: string,
+  referrerPkg: string,
+  visited: Map<string, MetaData>,
+): void {
+  const vo = findObject(root, voRef, referrerPkg);
+  if (!vo) return;
+  const fqn = vo.resolutionKey();
+  if (visited.has(fqn)) return;
+  visited.set(fqn, vo);
+  // ADR-0042: a nested @objectRef resolves in the FIELD's OWN declaring package —
+  // which may differ from this resolved VO's package when the field is inherited
+  // via extends from an abstract VO in another package (the bare ref was authored
+  // there). Fall back to this VO's package when a field has no parent package.
+  const voPkg = vo.package ?? vo.fileDefaultPackage ?? "";
+  for (const f of vo.children().filter((c) => c.type === TYPE_FIELD)) {
+    if (f.subType !== FIELD_SUBTYPE_OBJECT) continue;
+    const ref = f.attr(FIELD_ATTR_OBJECT_REF);
+    if (typeof ref !== "string") continue;
+    const fieldPkg = f.parent?.package ?? f.parent?.fileDefaultPackage ?? voPkg;
+    collectClosure(root, ref, fieldPkg, visited);
+  }
+}
+
+function pascalSegment(s: string): string {
+  return s.length > 0 ? s[0]!.toUpperCase() + s.slice(1) : s;
+}
+
+/** ADR-0044 — package-qualified derived name for a collision member: PascalCase
+ *  each `::`-segment of the node's effective package, concatenated, then the
+ *  bare short name (`acme::alpha::Note` -> `AcmeAlphaNote`). A root-level
+ *  (no-package) node has nothing to qualify with and keeps its bare name — two
+ *  root-level VOs can never share a name (the loader's own-package uniqueness
+ *  already rejects that), so this can't silently under-qualify. */
+function packageQualifiedName(pkg: string, shortName: string): string {
+  if (pkg === "") return shortName;
+  return (
+    pkg
+      .split(PACKAGE_SEPARATOR)
+      .map(pascalSegment)
+      .join("") + shortName
+  );
+}
+
+/**
+ * ADR-0044 pass 2 — assign the emitted TS name for every VO in the closure. A
+ * PURE function of the closure's (fqn, bareName, package) triples — never of
+ * traversal order: bare short name unique in the closure -> bare name; a
+ * collision -> EVERY member gets its package-qualified derived name. If two
+ * DISTINCT fqns still derive the same name after qualification, throws
+ * (ERR_PAYLOAD_NAME_COLLISION) — never silently wrong.
+ */
+function assignEmittedNames(closure: ReadonlyMap<string, MetaData>): Map<string, string> {
+  const byShortName = new Map<string, string[]>();
+  for (const [fqn, node] of closure) {
+    const bucket = byShortName.get(node.name);
+    if (bucket) bucket.push(fqn);
+    else byShortName.set(node.name, [fqn]);
+  }
+
+  const nameMap = new Map<string, string>();
+  for (const [shortName, fqns] of byShortName) {
+    if (fqns.length === 1) {
+      nameMap.set(fqns[0]!, shortName);
+      continue;
+    }
+    for (const fqn of fqns) {
+      const node = closure.get(fqn)!;
+      const pkg = node.package ?? node.fileDefaultPackage ?? "";
+      nameMap.set(fqn, packageQualifiedName(pkg, shortName));
+    }
+  }
+
+  // Backstop — sorted by fqn so which pair the message names (and whether the
+  // set of colliding names is non-empty) is a pure function of the closure, not
+  // of Map insertion/traversal order.
+  const ownerOf = new Map<string, string>();
+  for (const fqn of [...nameMap.keys()].sort()) {
+    const emitted = nameMap.get(fqn)!;
+    const existing = ownerOf.get(emitted);
+    if (existing !== undefined && existing !== fqn) {
+      throw new Error(
+        `${ERR_PAYLOAD_NAME_COLLISION}: payload record name collision: "${emitted}" derives from both "${existing}" and "${fqn}" — rename one value-object or move it to a package that derives a distinct name`,
+      );
+    }
+    ownerOf.set(emitted, fqn);
+  }
+
+  return nameMap;
+}
+
+/** Resolve `ref`'s emitted TS interface name under the ADR-0044 naming rule,
+ *  scoped to `ref`'s OWN reference closure (the same closure
+ *  `generatePayloadInterfaces(root, ref, referrerPkg)` would emit). Returns
+ *  undefined when `ref` does not resolve to an object.value. */
+function resolveEmittedName(root: MetaData, ref: string, referrerPkg: string): string | undefined {
+  const vo = findObject(root, ref, referrerPkg);
+  if (!vo) return undefined;
+  const closure = new Map<string, MetaData>();
+  collectClosure(root, ref, referrerPkg, closure);
+  return assignEmittedNames(closure).get(vo.resolutionKey());
+}
+
+/**
+ * Map a non-object payload field to its strict TS type.
  *  - `enumAlias`: a `{ name, decl }` for a `field.enum` — `name` is the union-alias
  *    type referenced inline; `decl` is the `export type <name> = "A" | "B";` line the
  *    caller hoists above the interface (deduped). Reuses the SAME naming + union
  *    logic as the entity inferred-types emitter (single source of truth).
+ *  Object (`field.object`) fields are NOT handled here — their type comes from the
+ *  ADR-0044 closure name map, resolved by the caller (the ref may need
+ *  package-qualification the field alone can't determine).
  */
 function fieldTsType(
   field: MetaData,
   ownerName: string,
-): { type: string; refVo?: string; enumAlias?: { name: string; decl: string } } {
-  if (field.subType === FIELD_SUBTYPE_OBJECT) {
-    const ref = field.attr(FIELD_ATTR_OBJECT_REF);
-    // FR-032/ADR-0041 — @objectRef canonicalizes to an FQN (`pkg::Name`), which is not
-    // a valid TS identifier. The emitted TYPE is the bare name; the FQN is retained as
-    // refVo for resolution/recursion (findObject matches FQN or bare).
-    const refName = typeof ref === "string" ? stripPackage(ref) : "unknown";
-    // isArray is a structural property on MetaData, not an attr.
-    const isArray = field.resolvedIsArray();
-    const result: { type: string; refVo?: string } = {
-      type: isArray ? `${refName}[]` : refName,
-    };
-    if (typeof ref === "string") result.refVo = ref;
-    return result;
-  }
+): { type: string; enumAlias?: { name: string; decl: string } } {
   // field.enum: a value-constrained string-literal union alias (NOT `unknown`).
   // Field nodes are MetaField instances at runtime (MetaField extends MetaData),
   // so the enum helpers (effective @values + super-resolving name) apply.
@@ -101,69 +225,89 @@ function isFieldRequired(field: MetaData): boolean {
   return field.attr(FIELD_ATTR_REQUIRED) === true;
 }
 
-function emitInterface(
+/**
+ * ADR-0044 pass 3 — emit `export interface <emittedName> { ... }` for every VO in
+ * the closure, in closure-visitation order, using `nameMap` for both the
+ * declaration name and every nested `field.object` reference's type.
+ */
+function emitClosureDeclarations(
   root: MetaData,
-  voRef: string,
-  referrerPkg: string,
-  emitted: Set<string>,
+  closure: ReadonlyMap<string, MetaData>,
+  nameMap: ReadonlyMap<string, string>,
   out: string[],
   enumAliases: Set<string>,
 ): void {
-  const vo = findObject(root, voRef, referrerPkg);
-  if (!vo) return;
-  // ADR-0042: a nested @objectRef resolves in the FIELD's OWN declaring package —
-  // which may differ from this resolved VO's package when the field is inherited
-  // via extends from an abstract VO in another package (the bare ref was authored
-  // there). Fall back to this VO's package when a field has no parent package.
-  const voPkg = vo.package ?? vo.fileDefaultPackage ?? "";
-  // FR-032/ADR-0041 — voRef may arrive as an FQN (a nested @objectRef); the emitted
-  // interface NAME must be the bare, TS-valid name. Dedupe on the bare name too, so a
-  // VO reached once by bare name and once by FQN still emits exactly once.
-  const voName = vo.name;
-  if (emitted.has(voName)) return;
-  emitted.add(voName);
-  const aliasLines: string[] = [];
-  const lines: string[] = [`export interface ${voName} {`];
-  const refs: { ref: string; pkg: string }[] = [];
-  for (const f of vo.children().filter((c) => c.type === TYPE_FIELD)) {
-    const { type, refVo, enumAlias } = fieldTsType(f, voName);
-    // Hoist the enum union alias above the interface, deduped across the whole
-    // batch (multiple fields/objects can share one abstract enum's alias).
-    if (enumAlias && !enumAliases.has(enumAlias.name)) {
-      enumAliases.add(enumAlias.name);
-      aliasLines.push(enumAlias.decl);
+  for (const [, vo] of closure) {
+    const voName = nameMap.get(vo.resolutionKey())!;
+    const voPkg = vo.package ?? vo.fileDefaultPackage ?? "";
+    const aliasLines: string[] = [];
+    const lines: string[] = [`export interface ${voName} {`];
+    for (const f of vo.children().filter((c) => c.type === TYPE_FIELD)) {
+      let type: string;
+      let enumAlias: { name: string; decl: string } | undefined;
+      if (f.subType === FIELD_SUBTYPE_OBJECT) {
+        const ref = f.attr(FIELD_ATTR_OBJECT_REF);
+        if (typeof ref === "string") {
+          // The nested ref resolves in the FIELD's declaring package (ADR-0042),
+          // not the resolved VO's — they differ when `f` is inherited from an
+          // abstract VO elsewhere.
+          const fieldPkg = f.parent?.package ?? f.parent?.fileDefaultPackage ?? voPkg;
+          const refNode = findObject(root, ref, fieldPkg);
+          // refNode was walked into the closure by collectClosure — the name map
+          // always has it. The stripPackage fallback only guards a defensive gap
+          // (e.g. a caller-constructed closure that skipped pass 1).
+          const refName = (refNode && nameMap.get(refNode.resolutionKey())) ?? stripPackage(ref);
+          type = f.resolvedIsArray() ? `${refName}[]` : refName;
+        } else {
+          type = "unknown";
+        }
+      } else {
+        const r = fieldTsType(f, voName);
+        type = r.type;
+        enumAlias = r.enumAlias;
+      }
+      // Hoist the enum union alias above the interface, deduped across the whole
+      // batch (multiple fields/objects can share one abstract enum's alias).
+      if (enumAlias && !enumAliases.has(enumAlias.name)) {
+        enumAliases.add(enumAlias.name);
+        aliasLines.push(enumAlias.decl);
+      }
+      // Required fields: `name: T;`
+      // Optional fields: `name?: T | null;` — the `| null` lets values from
+      // Drizzle entity rows (which return `null` for nullable columns) flow
+      // straight in. Without it, TS treats undefined-vs-null as a hard error
+      // at the entity → payload boundary.
+      const isRequired = isFieldRequired(f);
+      const tsType = isRequired ? type : `${type} | null`;
+      const optional = isRequired ? "" : "?";
+      lines.push(`  ${f.name}${optional}: ${tsType};`);
     }
-    // Required fields: `name: T;`
-    // Optional fields: `name?: T | null;` — the `| null` lets values from
-    // Drizzle entity rows (which return `null` for nullable columns) flow
-    // straight in. Without it, TS treats undefined-vs-null as a hard error
-    // at the entity → payload boundary.
-    const isRequired = isFieldRequired(f);
-    const tsType = isRequired ? type : `${type} | null`;
-    const optional = isRequired ? "" : "?";
-    lines.push(`  ${f.name}${optional}: ${tsType};`);
-    // The nested ref resolves in the FIELD's declaring package (ADR-0042), not the
-    // resolved VO's — they differ when `f` is inherited from an abstract VO elsewhere.
-    if (refVo) refs.push({ ref: refVo, pkg: f.parent?.package ?? f.parent?.fileDefaultPackage ?? voPkg });
+    lines.push("}");
+    const block = aliasLines.length > 0 ? `${aliasLines.join("\n")}\n${lines.join("\n")}` : lines.join("\n");
+    out.push(block);
   }
-  lines.push("}");
-  const block = aliasLines.length > 0 ? `${aliasLines.join("\n")}\n${lines.join("\n")}` : lines.join("\n");
-  out.push(block);
-  for (const r of refs) emitInterface(root, r.ref, r.pkg, emitted, out, enumAliases);
 }
 
 /** Emit the payload `interface` (+ nested element interfaces) for an object.value view-object.
- *  `referrerPkg` (ADR-0042) is the package a bare `voName` resolves in; pass an FQN and it is ignored. */
+ *  `referrerPkg` (ADR-0042) is the package a bare `voName` resolves in; pass an FQN and it is ignored.
+ *  ADR-0044: a short-name collision within `voName`'s reference closure emits EVERY colliding
+ *  member under its package-qualified derived name; a non-colliding closure emits byte-identical
+ *  bare names (unchanged from pre-ADR-0044 output). */
 export function generatePayloadInterfaces(root: MetaData, voName: string, referrerPkg = ""): string {
+  const closure = new Map<string, MetaData>();
+  collectClosure(root, voName, referrerPkg, closure);
+  const nameMap = assignEmittedNames(closure);
   const out: string[] = [];
-  emitInterface(root, voName, referrerPkg, new Set<string>(), out, new Set<string>());
+  emitClosureDeclarations(root, closure, nameMap, out, new Set<string>());
   return out.join("\n\n") + "\n";
 }
 
 /**
- * Emit interfaces for several payloads at once, using a single shared dedupe
- * set so nested types (e.g. lens projections referenced by multiple payloads)
- * appear exactly once in the combined output.
+ * Emit interfaces for several payloads at once, using a SINGLE shared reference
+ * closure (ADR-0044: the closure of ALL the given roots together is the collision
+ * domain for this call) so nested types (e.g. lens projections referenced by
+ * multiple payloads) appear exactly once, and a short-name collision anywhere
+ * across the whole batch is caught and qualified consistently.
  *
  * Returns the empty string when `voNames` is empty.
  */
@@ -173,12 +317,14 @@ export function generatePayloadInterfacesBatch(
   referrerPkg = "",
 ): string {
   if (voNames.length === 0) return "";
-  const out: string[] = [];
-  const emitted = new Set<string>();
-  const enumAliases = new Set<string>();
+  const closure = new Map<string, MetaData>();
   for (const name of voNames) {
-    emitInterface(root, name, referrerPkg, emitted, out, enumAliases);
+    collectClosure(root, name, referrerPkg, closure);
   }
+  if (closure.size === 0) return "";
+  const nameMap = assignEmittedNames(closure);
+  const out: string[] = [];
+  emitClosureDeclarations(root, closure, nameMap, out, new Set<string>());
   return out.length === 0 ? "" : out.join("\n\n") + "\n";
 }
 
@@ -193,11 +339,11 @@ export function generateRenderHandle(root: MetaData, templateName: string): stri
   // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
   const payloadRef = tmpl.attr(TEMPLATE_ATTR_PAYLOAD_REF);
   // FR-032 — @payloadRef is an FQN after the desugar/sweep; the generated TS
-  // TYPE NAME is the resolved value-object's bare name (an FQN like
-  // `acme::ai::Payload` is not a valid TS identifier). Fall back to the last
-  // `::`-segment when the VO is not in this root (defensive).
+  // TYPE NAME is the resolved value-object's ADR-0044 emitted name (bare when
+  // unique in its closure, package-qualified on a short-name collision). Fall
+  // back to the last `::`-segment when the VO is not in this root (defensive).
   const payloadType =
-    (typeof payloadRef === "string" ? findObject(root, payloadRef)?.name : undefined) ??
+    (typeof payloadRef === "string" ? resolveEmittedName(root, payloadRef, "") : undefined) ??
     (typeof payloadRef === "string" ? stripPackage(payloadRef) : String(payloadRef));
   // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
   const textRef = tmpl.attr(TEMPLATE_ATTR_TEXT_REF);

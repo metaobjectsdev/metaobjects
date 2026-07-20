@@ -9,6 +9,21 @@
 // Ported from typescript/packages/codegen-ts/src/payload-codegen.ts. The
 // assembler (RDB materialization + host overlay) is out of scope — this only
 // emits the contract.
+//
+// ADR-0044 (#219) — collision-aware naming: record emission is a THREE-PASS
+// pipeline, mirroring payload-codegen.ts:
+//   1. CollectClosure    — walk the reference closure via the shared ADR-0042
+//                           FQN-exact/package-local matcher (NamingRefs.ResolveObjectRef),
+//                           collecting resolved VOs keyed by ResolutionKey() (never
+//                           bare name — bare-keyed dedupe is the #219 defect: it
+//                           silently drops the second same-short-name VO).
+//   2. AssignEmittedNames — a PURE function of the closure: a bare short name
+//                           unique in the closure emits bare; a collision emits
+//                           EVERY member under its package-qualified derived
+//                           name (PascalCase each package segment + short name).
+//                           A still-colliding derived name fails loud
+//                           (ERR_PAYLOAD_NAME_COLLISION).
+//   3. EmitClosureRecords — emit each record + every reference through the name map.
 
 using System.Text;
 using MetaObjects.Meta;
@@ -23,6 +38,15 @@ namespace MetaObjects.Codegen;
 /// <summary>Emits typed payload records + render handles from view-object / template metadata.</summary>
 public static class PayloadCodegen
 {
+    // ADR-0044 backstop error code — a codegen-time (not loader) error, peer of
+    // MetaObjects.Render.Verify.ERR_VAR_NOT_ON_PAYLOAD. Declared LOCALLY rather than
+    // added to the shared MetaObjects.ErrorCode enum / fixtures/conformance/ERROR-CODES.json
+    // ledger: that ledger is checked for cross-port coverage (e.g. the Python
+    // ErrorCode-enum-covers-corpus test), and registering it there before every port
+    // implements the ADR-0044 fix would turn those OTHER ports' tests red. It moves
+    // into the shared ledger once the Java/Kotlin/Python follow-up lands alongside this code.
+    private const string ERR_PAYLOAD_NAME_COLLISION = "ERR_PAYLOAD_NAME_COLLISION";
+
     // Field subtype -> idiomatic C# scalar type. Mirrors the TS SCALAR map
     // (number split into int/long/double; dates are ISO strings on the wire).
     private static readonly IReadOnlyDictionary<string, string> ScalarType =
@@ -41,18 +65,14 @@ public static class PayloadCodegen
             [FIELD_SUBTYPE_TIMESTAMP] = "string",
         };
 
-    private static MetaData? FindObject(MetaData root, string name) =>
-        // ADR-0039: Children() — resolving root scan (behavior-identical; root has no super).
-        // Record emission resolves the payload VO by BARE short name (a C# record identifier
-        // is always bare, and EmitRecord derives the record name from this same voName).
-        root.Children().FirstOrDefault(c => c.Type == TYPE_OBJECT && c.Name == name);
-
     // ADR-0041: the verify field-tree resolver — a FULLY-QUALIFIED ref (contains ::) resolves
     // EXACTLY on the package-qualified name (ResolutionKey()/Fqn()), never a bare-tail fallback
     // that would bind a same-named object.value in the WRONG package on a cross-package
-    // short-name collision. A bare ref matches by short name (first-wins). Kept SEPARATE from
-    // FindObject so record emission (bare identifiers) is unaffected. Mirrors the render-helper
-    // ResolveNestedObjectRef + Java/Kotlin + TS refMatchesObject.
+    // short-name collision. A bare ref matches by short name (first-wins). Used ONLY by the
+    // verify field-tree walk (BuildTree) below — record emission resolves through the shared
+    // NamingRefs.ResolveObjectRef matcher instead (ADR-0044; see CollectClosure). The render
+    // engine + verify field-tree resolve against METADATA, not record names, and are UNCHANGED
+    // by the ADR-0044 naming rule.
     private static MetaData? ResolveObjectRef(MetaData root, string reference)
     {
         bool fqn = reference.Contains("::");
@@ -64,46 +84,161 @@ public static class PayloadCodegen
     // property, not an attr; the former OwnAttr("isArray") clause was dead code).
     private static bool IsArrayField(MetaData field) => field.ResolvedIsArray();
 
-    private static (string Type, string? RefVo) FieldType(MetaData owner, MetaData field)
+    /// <summary>
+    /// Resolve a payload-emission object reference: FQN-exact when qualified (ADR-0041/0042 —
+    /// exact on <see cref="MetaData.ResolutionKey"/>, irrespective of <paramref name="referrerPkg"/>);
+    /// package-local when bare (referrer's own package, else root-level) — falling back to a
+    /// GLOBAL short-name scan (the pre-ADR-0044 record-emission convention: a C# record
+    /// identifier is always bare, so record emission has always matched by bare short name
+    /// regardless of package) when the package-local match fails. This keeps every existing
+    /// implicit-package top-level <c>voName</c> call (no <paramref name="referrerPkg"/> supplied)
+    /// resolving exactly as it did before this fix, while fixing the actual #219 defect: a
+    /// FULLY-QUALIFIED nested ref now resolves EXACTLY (never the bare-scan fallback), so two
+    /// same-short-name FQN refs in different packages resolve to their OWN distinct nodes
+    /// instead of collapsing onto whichever one the old bare scan enumerated first. A
+    /// well-formed cross-package BARE ref cannot reach the fallback in practice — ADR-0042
+    /// requires every cross-package reference be authored FQN, so the loader itself already
+    /// rejects a bare ref intended to cross a package boundary.
+    /// </summary>
+    private static MetaData? ResolveForEmission(MetaData root, string reference, string referrerPkg)
     {
-        if (field.SubType == FIELD_SUBTYPE_OBJECT)
+        var resolved = global::MetaObjects.NamingRefs.ResolveObjectRef(root, reference, referrerPkg);
+        if (resolved is not null) return resolved;
+        if (reference.Contains(PACKAGE_SEPARATOR, StringComparison.Ordinal)) return null; // FQN already resolved exactly above
+        return root.Children().FirstOrDefault(c => c.Type == TYPE_OBJECT && c.Name == reference);
+    }
+
+    // -------------------------------------------------------------------------
+    // ADR-0044 pass 1 — reference closure (FQN-exact / package-local resolution)
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// ADR-0044 pass 1 — walk <paramref name="voRef"/>'s transitive <c>@objectRef</c>
+    /// closure through the shared ADR-0042 matcher (<see cref="NamingRefs.ResolveObjectRef"/>),
+    /// collecting resolved VOs keyed by <see cref="MetaData.ResolutionKey"/> (never bare
+    /// name — the #219 defect). <paramref name="order"/>/<paramref name="byFqn"/> accumulate
+    /// across multiple root calls so a batch emission shares ONE collision domain. A VO
+    /// already visited is not re-walked (cycle/dedupe guard).
+    /// </summary>
+    private static void CollectClosure(
+        MetaData root, string voRef, string referrerPkg,
+        List<string> order, Dictionary<string, MetaData> byFqn)
+    {
+        var vo = ResolveForEmission(root, voRef, referrerPkg);
+        if (vo is null) return;
+        var fqn = vo.ResolutionKey();
+        if (byFqn.ContainsKey(fqn)) return;
+        byFqn[fqn] = vo;
+        order.Add(fqn);
+        // ADR-0042: a nested @objectRef resolves in the FIELD's OWN declaring package —
+        // which may differ from this resolved VO's package when the field is inherited
+        // via extends from an abstract VO in another package. Fall back to this VO's
+        // package when a field has no parent (mirrors RenderHelperGenerator.DerivePayloadFieldTree).
+        var voPkg = global::MetaObjects.NamingRefs.EffectivePackage(vo);
+        foreach (var f in vo.Children().Where(c => c.Type == TYPE_FIELD))
         {
-            // ADR-0039: resolving — @objectRef may be inherited via extends.
-            var refAttr = field.Attr(FIELD_ATTR_OBJECT_REF);
-            // @objectRef may be authored fully-qualified (acme::sales::Brief) or bare; the
-            // generated record TYPE name is the BARE short name (StripPkg). (The verify
-            // field-tree path — BuildTree — resolves the FULL ref FQN-exact via ResolveObjectRef
-            // per ADR-0041; record emission here stays bare: one C# type per short name.)
-            string refName = refAttr is string s ? CSharpNaming.StripPkg(s) : "object";
-            string? refVo = refAttr is string r ? CSharpNaming.StripPkg(r) : null;
-            return (IsArrayField(field) ? $"IReadOnlyList<{refName}>" : refName, refVo);
+            if (f.SubType != FIELD_SUBTYPE_OBJECT) continue;
+            if (f.Attr(FIELD_ATTR_OBJECT_REF) is not string refAttr) continue;
+            var fieldPkg = f.Parent is not null
+                ? global::MetaObjects.NamingRefs.EffectivePackage(f.Parent)
+                : voPkg;
+            CollectClosure(root, refAttr, fieldPkg, order, byFqn);
         }
-        // Enum payload field -> the generated nested C# enum type (same scheme entity codegen uses
-        // via CSharpNaming.EnumTypeName), NOT the `object` fallback. An enum array becomes
-        // IReadOnlyList<<EnumType>>; the extract mapper coerces the string mirror via Enum.Parse.
-        if (field.SubType == FIELD_SUBTYPE_ENUM)
+    }
+
+    // -------------------------------------------------------------------------
+    // ADR-0044 pass 2 — collision-aware naming
+    // -------------------------------------------------------------------------
+
+    private static string PascalSegment(string s) =>
+        s.Length > 0 ? char.ToUpperInvariant(s[0]) + s[1..] : s;
+
+    /// <summary>ADR-0044 — package-qualified derived name for a collision member: PascalCase
+    /// each <c>::</c>-segment of the node's effective package, concatenated, then the bare
+    /// short name (<c>acme::alpha::Note</c> -&gt; <c>AcmeAlphaNote</c>). A root-level
+    /// (no-package) node has nothing to qualify with and keeps its bare name — two root-level
+    /// VOs can never share a name (the loader's own-package uniqueness already rejects that).</summary>
+    private static string PackageQualifiedName(string pkg, string shortName) =>
+        pkg.Length == 0 ? shortName : string.Concat(pkg.Split(PACKAGE_SEPARATOR).Select(PascalSegment)) + shortName;
+
+    /// <summary>
+    /// ADR-0044 pass 2 — assign the emitted C# record name for every VO in the closure. A
+    /// PURE function of the closure's (fqn, bareName, package) triples — never of traversal
+    /// order: a bare short name unique in the closure emits bare; a collision emits EVERY
+    /// member under its package-qualified derived name. If two DISTINCT fqns still derive the
+    /// same name after qualification, throws (ERR_PAYLOAD_NAME_COLLISION) — never silently wrong.
+    /// </summary>
+    private static Dictionary<string, string> AssignEmittedNames(IReadOnlyDictionary<string, MetaData> byFqn)
+    {
+        var byShortName = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var (fqn, node) in byFqn)
         {
-            string enumType = EnumTypeName(owner, field);
-            return (IsArrayField(field) ? $"IReadOnlyList<{enumType}>" : enumType, null);
+            if (!byShortName.TryGetValue(node.Name, out var bucket))
+                byShortName[node.Name] = bucket = new List<string>();
+            bucket.Add(fqn);
         }
-        var scalar = ScalarType.GetValueOrDefault(field.SubType, "object");
-        // Scalar array (e.g. `field.string` with isArray) -> a list of the scalar, mirroring the
-        // object-array branch above and the TS payload-codegen reference. Without this a scalar
-        // array would collapse to a single scalar (lossy).
-        return (IsArrayField(field) ? $"IReadOnlyList<{scalar}>" : scalar, null);
+
+        var nameMap = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (shortName, fqns) in byShortName)
+        {
+            if (fqns.Count == 1)
+            {
+                nameMap[fqns[0]] = shortName;
+                continue;
+            }
+            foreach (var fqn in fqns)
+            {
+                var pkg = global::MetaObjects.NamingRefs.EffectivePackage(byFqn[fqn]);
+                nameMap[fqn] = PackageQualifiedName(pkg, shortName);
+            }
+        }
+
+        // Backstop — sorted by fqn so which pair the message names (and whether the set of
+        // colliding names is non-empty) is a pure function of the closure, not of Dictionary
+        // enumeration order.
+        var ownerOf = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var fqn in nameMap.Keys.OrderBy(k => k, StringComparer.Ordinal))
+        {
+            var emitted = nameMap[fqn];
+            if (ownerOf.TryGetValue(emitted, out var existing) && existing != fqn)
+            {
+                throw new InvalidOperationException(
+                    $"{ERR_PAYLOAD_NAME_COLLISION}: payload record name collision: \"{emitted}\" derives from both \"{existing}\" and \"{fqn}\" — rename one value-object or move it to a package that derives a distinct name");
+            }
+            ownerOf[emitted] = fqn;
+        }
+
+        return nameMap;
+    }
+
+    /// <summary>Resolve <paramref name="reference"/>'s emitted C# record name under the
+    /// ADR-0044 naming rule, scoped to its OWN reference closure (the same closure
+    /// <see cref="GeneratePayloadRecords"/> would emit). Returns null when <paramref name="reference"/>
+    /// does not resolve to an object.value.</summary>
+    internal static string? ResolveEmittedName(MetaData root, string reference, string referrerPkg)
+    {
+        var vo = ResolveForEmission(root, reference, referrerPkg);
+        if (vo is null) return null;
+        var order = new List<string>();
+        var byFqn = new Dictionary<string, MetaData>(StringComparer.Ordinal);
+        CollectClosure(root, reference, referrerPkg, order, byFqn);
+        return AssignEmittedNames(byFqn).GetValueOrDefault(vo.ResolutionKey());
     }
 
     /// <summary>
     /// The nested C# enum type name for an enum-subtype payload field — the SAME scheme as
     /// <see cref="CSharpNaming.EnumTypeName"/> (the super name when the field <c>extends:</c> an
     /// abstract enum so all extenders share one type, else <c>&lt;OwnerPascal&gt;&lt;FieldPascal&gt;</c>).
-    /// PayloadCodegen walks <see cref="MetaData"/>, so the super is resolved off the field node directly.
+    /// <paramref name="ownerName"/> is the ADR-0044 EMITTED (possibly package-qualified) record
+    /// name — NOT the bare metadata name — so an enum field on a collision member never collides
+    /// with the same-named field on its sibling (e.g. both alpha's and beta's Note declaring a
+    /// `status` enum field would otherwise both derive "NoteStatus").
     /// </summary>
-    public static string EnumTypeName(MetaData owner, MetaData field)
+    public static string EnumTypeName(string ownerName, MetaData field)
     {
         if (field is MetaField mf && mf.ResolveSuper() is { } super)
             return Pascal(super.Name);
-        return Pascal(owner.Name) + Pascal(field.Name);
+        return Pascal(ownerName) + Pascal(field.Name);
     }
 
     /// <summary>
@@ -111,7 +246,7 @@ public static class PayloadCodegen
     /// fields of <paramref name="vo"/>, deduped by type name (two fields extending one abstract enum
     /// emit ONE declaration). Mirrors EntityGenerator.CollectEnumDecls; members verbatim.
     /// </summary>
-    private static List<string> CollectEnumDecls(MetaData vo)
+    private static List<string> CollectEnumDecls(MetaData vo, string voName)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var decls = new List<string>();
@@ -119,44 +254,97 @@ public static class PayloadCodegen
         {
             var values = f is MetaField mf ? mf.EffectiveEnumValues : null;
             if (values is null || values.Count == 0) continue;
-            var typeName = EnumTypeName(vo, f);
+            var typeName = EnumTypeName(voName, f);
             if (!seen.Add(typeName)) continue;   // dedup shared abstract-enum types
             decls.Add($"    public enum {typeName} {{ {string.Join(", ", values)} }}");
         }
         return decls;
     }
 
-    private static void EmitRecord(MetaData root, string voName, HashSet<string> emitted, List<string> output)
+    // -------------------------------------------------------------------------
+    // ADR-0044 pass 3 — emit records through the name map
+    // -------------------------------------------------------------------------
+
+    private static void EmitClosureRecords(
+        MetaData root, List<string> order, Dictionary<string, MetaData> byFqn,
+        Dictionary<string, string> nameMap, List<string> output)
     {
-        if (!emitted.Add(voName)) return;
-        var vo = FindObject(root, voName);
-        if (vo is null) return;
-
-        var lines = new List<string> { $"public sealed record {voName}", "{" };
-        // Nested enum declarations first — C# requires an enum type be declared before a
-        // property references it (deduped so shared abstract-enum extenders emit one decl).
-        lines.AddRange(CollectEnumDecls(vo));
-        var refs = new List<string>();
-        // Use Children() (effective) so inherited projection fields are included.
-        foreach (var f in vo.Children().Where(c => c.Type == TYPE_FIELD))
+        foreach (var fqn in order)
         {
-            var (type, refVo) = FieldType(vo, f);
-            lines.Add($"    public required {type} {f.Name} {{ get; init; }}");
-            if (refVo is not null) refs.Add(refVo);
-        }
-        lines.Add("}");
-        output.Add(string.Join("\n", lines));
+            var vo = byFqn[fqn];
+            var voName = nameMap[fqn];
+            var voPkg = global::MetaObjects.NamingRefs.EffectivePackage(vo);
 
-        foreach (var r in refs) EmitRecord(root, r, emitted, output);
+            var lines = new List<string> { $"public sealed record {voName}", "{" };
+            // Nested enum declarations first — C# requires an enum type be declared before a
+            // property references it (deduped so shared abstract-enum extenders emit one decl).
+            lines.AddRange(CollectEnumDecls(vo, voName));
+            // Use Children() (effective) so inherited projection fields are included.
+            foreach (var f in vo.Children().Where(c => c.Type == TYPE_FIELD))
+            {
+                string type;
+                if (f.SubType == FIELD_SUBTYPE_OBJECT)
+                {
+                    // ADR-0039: resolving — @objectRef may be inherited via extends.
+                    var refAttr = f.Attr(FIELD_ATTR_OBJECT_REF) as string;
+                    if (refAttr is not null)
+                    {
+                        // The nested ref resolves in the FIELD's declaring package (ADR-0042),
+                        // not the resolved VO's — they differ when `f` is inherited from an
+                        // abstract VO elsewhere.
+                        var fieldPkg = f.Parent is not null
+                            ? global::MetaObjects.NamingRefs.EffectivePackage(f.Parent)
+                            : voPkg;
+                        var refNode = ResolveForEmission(root, refAttr, fieldPkg);
+                        // refNode was walked into the closure by CollectClosure — the name map
+                        // always has it. The StripPkg fallback only guards a defensive gap (e.g. a
+                        // caller-constructed closure that skipped pass 1).
+                        var refName = refNode is not null && nameMap.TryGetValue(refNode.ResolutionKey(), out var mapped)
+                            ? mapped
+                            : CSharpNaming.StripPkg(refAttr);
+                        type = IsArrayField(f) ? $"IReadOnlyList<{refName}>" : refName;
+                    }
+                    else
+                    {
+                        type = "object";
+                    }
+                }
+                else if (f.SubType == FIELD_SUBTYPE_ENUM)
+                {
+                    // Enum payload field -> the generated nested C# enum type (same scheme entity
+                    // codegen uses via CSharpNaming.EnumTypeName), NOT the `object` fallback.
+                    string enumType = EnumTypeName(voName, f);
+                    type = IsArrayField(f) ? $"IReadOnlyList<{enumType}>" : enumType;
+                }
+                else
+                {
+                    var scalar = ScalarType.GetValueOrDefault(f.SubType, "object");
+                    // Scalar array (e.g. field.string with isArray) -> a list of the scalar.
+                    type = IsArrayField(f) ? $"IReadOnlyList<{scalar}>" : scalar;
+                }
+                lines.Add($"    public required {type} {f.Name} {{ get; init; }}");
+            }
+            lines.Add("}");
+            output.Add(string.Join("\n", lines));
+        }
     }
 
     /// <summary>
     /// Emit the payload record (+ nested element records) for an object.value view-object.
+    /// <paramref name="referrerPkg"/> (ADR-0042) is the package a bare <paramref name="voName"/>
+    /// resolves in; pass an FQN and it is ignored. ADR-0044: a short-name collision within
+    /// <paramref name="voName"/>'s reference closure emits EVERY colliding member under its
+    /// package-qualified derived name; a non-colliding closure emits byte-identical bare names
+    /// (unchanged from pre-ADR-0044 output).
     /// </summary>
-    public static string GeneratePayloadRecords(MetaData root, string voName)
+    public static string GeneratePayloadRecords(MetaData root, string voName, string referrerPkg = "")
     {
+        var order = new List<string>();
+        var byFqn = new Dictionary<string, MetaData>(StringComparer.Ordinal);
+        CollectClosure(root, voName, referrerPkg, order, byFqn);
+        var nameMap = AssignEmittedNames(byFqn);
         var output = new List<string>();
-        EmitRecord(root, voName, new HashSet<string>(StringComparer.Ordinal), output);
+        EmitClosureRecords(root, order, byFqn, nameMap, output);
         return string.Join("\n\n", output) + "\n";
     }
 
@@ -171,8 +359,9 @@ public static class PayloadCodegen
 
     private static IReadOnlyList<PayloadField> BuildTree(MetaData root, string voName, HashSet<string> visiting)
     {
-        // ADR-0041: FQN-exact resolution for the verify field-tree (NOT the bare FindObject
-        // used by record emission) so a fully-qualified nested @objectRef binds its own package.
+        // ADR-0041: FQN-exact resolution for the verify field-tree (a SEPARATE resolver from
+        // record emission's CollectClosure — see the ResolveObjectRef doc comment above) so a
+        // fully-qualified nested @objectRef binds its own package.
         var vo = ResolveObjectRef(root, voName);
         if (vo is null || !visiting.Add(voName)) return [];
         var fields = new List<PayloadField>();
@@ -208,6 +397,10 @@ public static class PayloadCodegen
         // ADR-0039: resolving — template refs may be inherited via an abstract template base.
         var payloadRef = tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) as string
             ?? throw new InvalidOperationException($"template \"{templateName}\" has no @payloadRef");
+        // ADR-0044: the parameter TYPE is the resolved root VO's ADR-0044 emitted name (bare
+        // when unique in its closure, package-qualified on a short-name collision) — NOT the
+        // raw (possibly FQN) payloadRef, which is not a valid C# type name when qualified.
+        var payloadType = ResolveEmittedName(root, payloadRef, "") ?? CSharpNaming.StripPkg(payloadRef);
         var textRef = tmpl.Attr(TEMPLATE_ATTR_TEXT_REF) as string ?? "";
         var format = tmpl.Attr(TEMPLATE_ATTR_FORMAT) as string ?? "text";
         var fn = $"Render{Pascal(templateName)}";
@@ -217,7 +410,7 @@ public static class PayloadCodegen
         sb.AppendLine();
         sb.AppendLine("public static class RenderHandles");
         sb.AppendLine("{");
-        sb.AppendLine($"    public static string {fn}({payloadRef} payload, IProvider provider) =>");
+        sb.AppendLine($"    public static string {fn}({payloadType} payload, IProvider provider) =>");
         sb.AppendLine("        Renderer.Render(new RenderRequest");
         sb.AppendLine("        {");
         sb.AppendLine($"            Ref = {Quote(textRef)},");

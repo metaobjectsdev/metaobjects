@@ -135,4 +135,154 @@ public class PayloadCodegenTests
         Assert.Contains("Format = \"xml\"", src);
         Assert.Contains("using MetaObjects.Render;", src);
     }
+
+    // ADR-0044 no-churn: a non-colliding closure emits BYTE-IDENTICAL output to before the
+    // FQN-keyed dedupe + collision-naming fix — bare names, unchanged layout. Full-string
+    // (Equal, not Contains) pin so any stray whitespace/ordering churn from the pass 1/2/3
+    // refactor fails this.
+    [Fact]
+    public void No_churn_a_non_colliding_closure_emits_the_exact_pre_fix_bare_name_output()
+    {
+        var src = PayloadCodegen.GeneratePayloadRecords(Load(), "AuthorBrief", "acme::ai");
+        Assert.Equal(
+            "public sealed record AuthorBrief\n" +
+            "{\n" +
+            "    public required string displayName { get; init; }\n" +
+            "    public required int postCount { get; init; }\n" +
+            "    public required IReadOnlyList<PostBrief> posts { get; init; }\n" +
+            "}\n\n" +
+            "public sealed record PostBrief\n" +
+            "{\n" +
+            "    public required string title { get; init; }\n" +
+            "}\n",
+            src);
+    }
+}
+
+/// <summary>
+/// ADR-0044 (#219/#220) cross-package short-name collision naming: two packages each declare
+/// an object.value `Note` with DIFFERENT fields; a third package's `Digest` references both by
+/// FULLY-QUALIFIED @objectRef. Pre-ADR-0044 this dedup'd on the BARE name and emitted exactly
+/// ONE `record Note` (alpha's shape), typing both fields with it (first-wins). The fix must
+/// emit two DISTINCT records.
+/// </summary>
+public class PayloadCodegenCollisionNamingTests
+{
+    private static MetaRoot LoadCollidingNotes()
+    {
+        const string alpha = """
+        { "metadata.root": { "package": "acme::alpha", "children": [
+          { "object.value": { "name": "Note", "children": [ { "field.string": { "name": "alphaText" } } ] } } ] } }
+        """;
+        const string beta = """
+        { "metadata.root": { "package": "acme::beta", "children": [
+          { "object.value": { "name": "Note", "children": [ { "field.string": { "name": "betaText" } } ] } } ] } }
+        """;
+        const string app = """
+        { "metadata.root": { "package": "acme::app", "children": [
+          { "object.value": { "name": "Digest", "children": [
+            { "field.object": { "name": "fromAlpha", "@objectRef": "acme::alpha::Note" } },
+            { "field.object": { "name": "fromBeta",  "@objectRef": "acme::beta::Note" } } ] } } ] } }
+        """;
+        var r = new MetaDataLoader().Load([
+            new InMemoryStringSource(alpha, id: "a.json"),
+            new InMemoryStringSource(beta,  id: "b.json"),
+            new InMemoryStringSource(app,   id: "c.json"),
+        ]);
+        Assert.Empty(r.Errors);
+        return r.Root;
+    }
+
+    [Fact]
+    public void Emits_two_distinct_package_qualified_records_not_one_merged_first_wins_shape()
+    {
+        var root = LoadCollidingNotes();
+        var src = PayloadCodegen.GeneratePayloadRecords(root, "acme::app::Digest");
+        // Exact byte pin (not just Contains): proves ordering, field sets, and both scalars
+        // survive untouched — Digest first (closure root), then each collision member under
+        // its PascalCase package-qualified name.
+        Assert.Equal(
+            "public sealed record Digest\n" +
+            "{\n" +
+            "    public required AcmeAlphaNote fromAlpha { get; init; }\n" +
+            "    public required AcmeBetaNote fromBeta { get; init; }\n" +
+            "}\n\n" +
+            "public sealed record AcmeAlphaNote\n" +
+            "{\n" +
+            "    public required string alphaText { get; init; }\n" +
+            "}\n\n" +
+            "public sealed record AcmeBetaNote\n" +
+            "{\n" +
+            "    public required string betaText { get; init; }\n" +
+            "}\n",
+            src);
+        Assert.DoesNotContain("record Note", src);
+    }
+
+    [Fact]
+    public void GenerateRenderHandle_types_the_payload_param_under_the_same_collision_aware_name()
+    {
+        const string appWithTemplate = """
+        { "metadata.root": { "package": "acme::app", "children": [
+          { "object.value": { "name": "Digest", "children": [
+            { "field.object": { "name": "fromAlpha", "@objectRef": "acme::alpha::Note" } },
+            { "field.object": { "name": "fromBeta",  "@objectRef": "acme::beta::Note" } } ] } },
+          { "template.output": { "name": "DigestDoc",
+            "@payloadRef": "acme::app::Digest", "@textRef": "xpkg/digest", "@format": "html" } }
+        ]}}
+        """;
+        const string alpha = """
+        { "metadata.root": { "package": "acme::alpha", "children": [
+          { "object.value": { "name": "Note", "children": [ { "field.string": { "name": "alphaText" } } ] } } ] } }
+        """;
+        const string beta = """
+        { "metadata.root": { "package": "acme::beta", "children": [
+          { "object.value": { "name": "Note", "children": [ { "field.string": { "name": "betaText" } } ] } } ] } }
+        """;
+        var r = new MetaDataLoader().Load([
+            new InMemoryStringSource(alpha, id: "a.json"),
+            new InMemoryStringSource(beta,  id: "b.json"),
+            new InMemoryStringSource(appWithTemplate, id: "c.json"),
+        ]);
+        Assert.Empty(r.Errors);
+
+        // Digest's OWN closure collides on Note, but Digest itself is unique, so its
+        // render-handle payload param stays bare "Digest" while the nested Notes qualify.
+        var handle = PayloadCodegen.GenerateRenderHandle(r.Root, "DigestDoc");
+        Assert.Contains("public static string RenderDigestDoc(Digest payload, IProvider provider) =>", handle);
+    }
+
+    // Pathological backstop: "acme::alpha::Note" and "acmeAlpha::Note" both PascalCase-fold to
+    // the SAME derived name "AcmeAlphaNote" — qualification cannot disambiguate. Must fail loud.
+    [Fact]
+    public void Still_colliding_derived_name_fails_loud_with_ERR_PAYLOAD_NAME_COLLISION()
+    {
+        const string alpha = """
+        { "metadata.root": { "package": "acme::alpha", "children": [
+          { "object.value": { "name": "Note", "children": [ { "field.string": { "name": "a" } } ] } } ] } }
+        """;
+        const string acmeAlpha = """
+        { "metadata.root": { "package": "acmeAlpha", "children": [
+          { "object.value": { "name": "Note", "children": [ { "field.string": { "name": "b" } } ] } } ] } }
+        """;
+        const string app = """
+        { "metadata.root": { "package": "acme::app", "children": [
+          { "object.value": { "name": "Digest", "children": [
+            { "field.object": { "name": "x", "@objectRef": "acme::alpha::Note" } },
+            { "field.object": { "name": "y", "@objectRef": "acmeAlpha::Note" } } ] } } ] } }
+        """;
+        var r = new MetaDataLoader().Load([
+            new InMemoryStringSource(alpha, id: "a.json"),
+            new InMemoryStringSource(acmeAlpha, id: "b.json"),
+            new InMemoryStringSource(app, id: "c.json"),
+        ]);
+        Assert.Empty(r.Errors);
+
+        var ex = Assert.Throws<InvalidOperationException>(
+            () => PayloadCodegen.GeneratePayloadRecords(r.Root, "acme::app::Digest"));
+        Assert.Contains("ERR_PAYLOAD_NAME_COLLISION", ex.Message);
+        Assert.Contains("\"AcmeAlphaNote\"", ex.Message);
+        Assert.Contains("\"acme::alpha::Note\"", ex.Message);
+        Assert.Contains("\"acmeAlpha::Note\"", ex.Message);
+    }
 }
