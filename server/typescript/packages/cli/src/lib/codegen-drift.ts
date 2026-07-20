@@ -20,6 +20,7 @@ import {
   readFileSync,
   readdirSync,
   statSync,
+  cpSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve, isAbsolute } from "node:path";
@@ -42,14 +43,19 @@ export interface CodegenDriftResult {
   error?: string;
 }
 
-/** Collect the committed outDirs declared by the config (default + per-target). */
-function committedOutDirs(config: MetaobjectsGenConfig): string[] {
+/** Collect the committed outDirs declared by the config (default + per-target),
+ *  resolved against `projectRoot` — a relative outDir (the common, portable,
+ *  `meta init`-scaffolded shape) must resolve against the project the CLI's
+ *  `--cwd` flag says to run as, not the ambient process.cwd() (which differs
+ *  whenever `verify --codegen` runs from outside the target project, e.g. a
+ *  test suite or a CI job invoking the CLI against another directory). */
+function committedOutDirs(config: MetaobjectsGenConfig, projectRoot: string): string[] {
   const dirs = new Set<string>();
   if (typeof config.outDir === "string" && config.outDir.length > 0) {
-    dirs.add(resolve(config.outDir));
+    dirs.add(resolve(projectRoot, config.outDir));
   }
   for (const t of Object.values(config.targets ?? {})) {
-    if (t.outDir && t.outDir.length > 0) dirs.add(resolve(t.outDir));
+    if (t.outDir && t.outDir.length > 0) dirs.add(resolve(projectRoot, t.outDir));
   }
   return [...dirs];
 }
@@ -83,7 +89,7 @@ export async function computeCodegenDrift(
 ): Promise<CodegenDriftResult> {
   const root = isAbsolute(projectRoot) ? projectRoot : resolve(projectRoot);
 
-  const committedDirs = committedOutDirs(config);
+  const committedDirs = committedOutDirs(config, root);
   if (committedDirs.length === 0) {
     return {
       clean: false,
@@ -113,16 +119,33 @@ export async function computeCodegenDrift(
     };
 
     // Remap the config so runGen writes into the temp mirror instead of the
-    // committed output. Default outDir + each named target's outDir are rewritten.
+    // committed output. Default outDir + each named target's outDir are
+    // rewritten — resolved against `root` (see committedOutDirs above), not
+    // the ambient process.cwd(), so this stays correct under `--cwd`.
     const remappedTargets: Record<string, TargetConfig> = {};
     for (const [name, t] of Object.entries(config.targets ?? {})) {
-      remappedTargets[name] = { ...t, outDir: tempFor(resolve(t.outDir)) };
+      remappedTargets[name] = { ...t, outDir: tempFor(resolve(root, t.outDir)) };
     }
     const tempConfig: MetaobjectsGenConfig = {
       ...config,
-      outDir: tempFor(resolve(config.outDir)),
+      outDir: tempFor(resolve(root, config.outDir)),
       ...(config.targets !== undefined ? { targets: remappedTargets } : {}),
     };
+
+    // runGen is called with `projectRoot: tempRoot` below (so relative outDir
+    // remapping stays correct — see the module doc). Some generators resolve
+    // ancillary project-relative input at generation time rather than through
+    // `config` — namely the template-output codegen family (e.g. render-helper,
+    // via codegen-ts's `projectProvider(ctx.projectRoot)`), which reads a
+    // `<projectRoot>/templates/` dir to build-time-verify each referenced
+    // mustache. Mirror it into the temp root so that lookup succeeds the same
+    // way it does for `meta gen` against the real project root — otherwise
+    // every project using those generators would spuriously fail `--codegen`
+    // with an "unresolved" template error that has nothing to do with drift.
+    const projectTemplatesDir = join(root, "templates");
+    if (existsSync(projectTemplatesDir)) {
+      cpSync(projectTemplatesDir, join(tempRoot, "templates"), { recursive: true });
+    }
 
     // Generate fresh into the temp tree. "overwrite" + "fresh" + a temp
     // gen-state dir guarantees every file is written (no merge/skip), so the

@@ -166,6 +166,16 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       continue;
     }
     const selfTarget = targetOf(generator);
+    // Resolve the WRITE-time location against projectRoot when outDir is
+    // relative and projectRoot is known — otherwise a relative outDir (the
+    // common, portable, `meta init`-scaffolded shape) silently resolves
+    // against the ambient process.cwd() instead of the project the CLI's
+    // `--cwd` flag says to run as. Import-path math below intentionally keeps
+    // using selfTarget.outDir as configured (relative paths between targets
+    // are compared to each other, not to projectRoot).
+    const writeOutDir = projectRoot !== undefined && !isAbsolute(selfTarget.outDir)
+      ? resolve(projectRoot, selfTarget.outDir)
+      : selfTarget.outDir;
     const renderContext = makeRenderContext({
       dialect: config.dialect,
       loadedRoot: root,
@@ -212,7 +222,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     }
 
     for (const file of files) {
-      const fullPath = join(selfTarget.outDir, file.path);
+      const fullPath = join(writeOutDir, file.path);
       const collision = emitted.find((prev) => prev.fullPath === fullPath);
       if (collision) {
         throw new Error(

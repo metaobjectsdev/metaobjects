@@ -1,0 +1,47 @@
+# acme::learn — content: the owned-and-cascaded Lesson entity, plus the two
+# value objects Program stores as jsonb (PATTERN 3 — value objects as jsonb
+# columns; ADR-0028 purity: object.value has NO identity and NO source, ever).
+metadata:
+  package: acme::learn
+  children:
+    # -- Lesson — structurally part of Program (relationship.composition on
+    #    the Program side, cascade-deleted with it). --
+    - object.entity:
+        name: Lesson
+        children:
+          - source.rdb: { table: lessons }
+          - field.uuid: { name: id }
+          - field.uuid: { name: programId, required: true }
+          - field.string: { name: title, required: true, maxLength: 200 }
+          - field.int: { name: position, required: true }
+          # The cascade referential action lives on the OWNING side
+          # (Program.lessons, relationship.composition) — identity.reference
+          # does not register @onDelete/@onUpdate itself (only relationship.*
+          # does, with per-subtype defaults: composition->cascade).
+          - identity.reference:
+              name: refProgram
+              fields: programId
+              references: Program
+          - identity.primary: { name: id, fields: id, generation: uuid }
+
+    # -- SyllabusSection — a pure value object (no identity, no source; ADR-0028).
+    #    Referenced from Program.syllabus as an ARRAY-of-VO jsonb column — see
+    #    meta.catalog.yaml `Program.syllabus` and
+    #    fixtures/conformance/field-object-storage-jsonb-array/. --
+    - object.value:
+        name: SyllabusSection
+        children:
+          - field.string: { name: heading, required: true, maxLength: 120 }
+          - field.string: { name: summary, maxLength: 500 }
+          - field.int: { name: orderIndex, required: true }
+
+    # -- InstructorProfile — a pure value object referenced from Program as a
+    #    SINGLE (non-array) jsonb column — see meta.catalog.yaml
+    #    `Program.instructorProfile` and
+    #    fixtures/conformance/field-object-storage-jsonb-single/. --
+    - object.value:
+        name: InstructorProfile
+        children:
+          - field.string: { name: displayName, required: true, maxLength: 120 }
+          - field.string: { name: bio, maxLength: 2000 }
+          - field.string: { name: credentialsSummary, maxLength: 300 }

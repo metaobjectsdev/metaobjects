@@ -1,0 +1,48 @@
+# acme::learn — prompts: PATTERN 4 (value objects as LLM/document payloads).
+# A payload projecting exactly the subset of Program a description generator
+# needs, plus a template.output declaring the render. See
+# docs/features/templates-and-payloads.md and (Unit 2)
+# docs/features/advanced/llm-payloads.md.
+#
+# template.output (not template.prompt) is deliberate: this renders a
+# document/export (a marketing description) from known facts, the
+# "Email / docs / config / export" row in templates-and-payloads.md's subtype
+# table — not a chat prompt. Every declared template.output still gets the
+# FR-006 output-parser/extractor/output-prompt codegen fan-out regardless of
+# which direction a given consumer actually exercises.
+metadata:
+  package: acme::learn
+  children:
+    # object.value — NO identity, NO source (ADR-0028 purity). Every field
+    # declares an origin.* child; adding a field to Program does NOT bloat this
+    # payload — only an explicit origin.passthrough/aggregate here would. That
+    # is the "payload-bloat-is-a-diff" property: growing this payload is always
+    # a visible, reviewable diff to THIS file.
+    - object.value:
+        name: ProgramDescriptionPayload
+        children:
+          - field.string:
+              name: title
+              children:
+                - origin.passthrough: { from: Program.title }
+          - field.string:
+              name: summary
+              children:
+                - origin.passthrough: { from: Program.summary }
+          - field.string:
+              name: authorName
+              children:
+                - origin.passthrough: { from: Author.name, via: Program.refAuthor }
+          - field.long:
+              name: lessonCount
+              children:
+                - origin.aggregate:
+                    agg: count
+                    of: Lesson.id
+                    via: Program.lessons
+
+    - template.output:
+        name: ProgramDescriptionOutput
+        payloadRef: ProgramDescriptionPayload
+        textRef: learn/program-description
+        format: markdown

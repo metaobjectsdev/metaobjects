@@ -1,0 +1,165 @@
+# acme::learn — catalog: the entities a course/program publishing platform
+# sells and publishes, plus the ProgramSummary read-model projected over them.
+#
+# Pattern demonstrated here: PATTERN 1 (projections) — see ProgramSummary below
+#   — and half of PATTERN 2 (entity views) — see Program's view.* children.
+# Authoring format: sigil-free YAML (ADR-0006). Bare keys below lower to
+# @-prefixed attrs in canonical JSON; `name`/`extends`/`isArray`/`children` stay
+# bare in both surfaces (reserved structural keywords).
+metadata:
+  package: acme::learn
+  children:
+    # -- Author — minimal identity entity; exists so ProgramSummary has a real
+    #    cross-entity edge to demonstrate `origin.passthrough` over a join. --
+    - object.entity:
+        name: Author
+        children:
+          - source.rdb: { table: authors }
+          - field.uuid: { name: id }
+          - field.string: { name: name, required: true, maxLength: 120 }
+          - identity.primary: { name: id, fields: id, generation: uuid }
+
+    # -- Program — the sellable/published unit. Exercises every view.* control
+    #    family the series teaches: enum->select, textarea+rows, currency,
+    #    and view.image (all five metaobjects-ui-web attrs). --
+    - object.entity:
+        name: Program
+        children:
+          - source.rdb: { table: programs }
+          - field.uuid: { name: id }
+          - field.string: { name: title, required: true, maxLength: 200 }
+          - field.enum:
+              name: status
+              values: [draft, published, archived]
+          - field.string:
+              name: summary
+              maxLength: 2000
+              children:
+                # view.textarea @rows — metaobjects-ui-web (0.19.0 home; core
+                # owns zero view attrs, FR-033).
+                - view.textarea: { rows: 6 }
+          - field.currency:
+              name: priceCents
+              currency: USD
+              children:
+                - view.currency: { name: display, locale: en-US }
+          - field.string:
+              name: coverKey
+              maxLength: 80
+              children:
+                # view.image — all five metaobjects-ui-web attrs. Storage is an
+                # opaque key; no image bytes cross the wire (see
+                # docs/features/image-upload.md).
+                - view.image:
+                    aspectRatio: 1.777
+                    maxEdge: 2000
+                    store: covers
+                    accept: [image/jpeg, image/png]
+                    maxBytes: 10485760
+          - field.uuid: { name: authorId, required: true }
+          - identity.reference:
+              name: refAuthor
+              fields: authorId
+              references: Author
+          # Lessons are structurally PART OF the program (cascade with it) —
+          # relationship.composition. Purchases reference the program but are
+          # independent transactional records — relationship.association.
+          # (Lesson itself lives in meta.content.yaml, same package.)
+          - relationship.composition:
+              name: lessons
+              objectRef: Lesson
+              cardinality: many
+              onDelete: cascade
+          - relationship.association:
+              name: purchases
+              objectRef: Purchase
+              cardinality: many
+          # PATTERN 3 (value objects as jsonb columns) — see docs/features/advanced/value-objects-jsonb.md.
+          # Array-of-VO jsonb: an ordered syllabus outline (SyllabusSection lives
+          # in meta.content.yaml, same package — bare objectRef resolves ADR-0042).
+          - field.object:
+              name: syllabus
+              objectRef: SyllabusSection
+              isArray: true
+              storage: jsonb
+          # Single (non-array) VO jsonb: a per-listing instructor bio. Deliberately
+          # distinct from Author (Author is the relational identity/FK join target;
+          # instructorProfile is unstructured presentation content that can vary
+          # per program listing without needing its own table/row).
+          - field.object:
+              name: instructorProfile
+              objectRef: InstructorProfile
+              storage: jsonb
+          - identity.primary: { name: id, fields: id, generation: uuid }
+
+    # -- Purchase — a transactional record referencing Program. Independent
+    #    lifecycle (restrict, not cascade) — a purchase must outlive an
+    #    accidental program delete. --
+    - object.entity:
+        name: Purchase
+        children:
+          - source.rdb: { table: purchases }
+          - field.uuid: { name: id }
+          - field.uuid: { name: programId, required: true }
+          - field.currency:
+              name: amountCents
+              currency: USD
+              children:
+                - view.currency: { name: display, locale: en-US }
+          - field.enum:
+              name: status
+              values: [pending, completed, refunded]
+          - field.timestamp: { name: purchasedAt }
+          # relationship.association (Program.purchases, below) defaults
+          # @onDelete to "restrict" already — a purchase outlives an
+          # accidental program delete. identity.reference does not register
+          # @onDelete/@onUpdate itself (only relationship.* does).
+          - identity.reference:
+              name: refProgram
+              fields: programId
+              references: Program
+          - identity.primary: { name: id, fields: id, generation: uuid }
+
+    # -- ProgramSummary — PATTERN 1 (projections). A read-only view over
+    #    Program demonstrating every origin.* kind the series teaches:
+    #    passthrough (a join to Author), aggregate count, aggregate sum+filter,
+    #    and computed. See docs/features/advanced/projections.md (Unit 2). --
+    - object.projection:
+        name: ProgramSummary
+        children:
+          - source.rdb: { kind: view, view: v_program_summary }
+          - field.uuid: { name: id, extends: Program.id }
+          - field.string: { name: title, extends: Program.title }
+          # origin.passthrough across a join: Author is not Program itself, so
+          # `via` names the identity.reference hop (Program.refAuthor) explicitly.
+          - field.string:
+              name: authorName
+              children:
+                - origin.passthrough: { from: Author.name, via: Program.refAuthor }
+          # origin.aggregate @agg: count — via the composition relationship.
+          - field.long:
+              name: lessonCount
+              children:
+                - origin.aggregate:
+                    agg: count
+                    of: Lesson.id
+                    via: Program.lessons
+          # origin.aggregate @agg: sum + @filter — revenue from COMPLETED
+          # purchases only (the scoping filter, not a join-level restriction).
+          - field.currency:
+              name: completedRevenueCents
+              currency: USD
+              children:
+                - origin.aggregate:
+                    agg: sum
+                    of: Purchase.amountCents
+                    via: Program.purchases
+                    filter: { status: completed }
+          # origin.computed @expr — a closed expression grammar over the
+          # projection's own base-entity field (no join needed).
+          - field.boolean:
+              name: hasCoverArt
+              children:
+                - origin.computed:
+                    expr: { op: isNotNull, arg: { field: coverKey } }
+          - identity.primary: { name: id, extends: Program.id }

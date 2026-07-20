@@ -43,6 +43,7 @@ import {
   TEMPLATE_ATTR_HTML_BODY_REF,
   TEMPLATE_ATTR_TEXT_BODY_REF,
   resolveObjectRef,
+  stripPackage,
 } from "@metaobjectsdev/metadata";
 import {
   verify,
@@ -175,6 +176,14 @@ export function renderRenderHelper(
   const fields = derivePayloadFieldTree(root, payloadRef, tmplPkg);
   const ft = fieldTreeLiteral(fields);
   const fnName = `render${templateName}`;
+  // @payloadRef may arrive package-qualified (FQN) once resolved — a bare
+  // `::`-free name is required everywhere it's emitted as a TS identifier /
+  // import specifier below (mirrors the same stripPackage() call every other
+  // TS-identifier-emitting generator makes on a resolved ref, e.g.
+  // payload-codegen.ts / entity-file.ts / drizzle-schema.ts). Package-scoped
+  // resolution above (findObject/derivePayloadFieldTree) intentionally keeps
+  // using the raw `payloadRef`.
+  const payloadTypeName = stripPackage(payloadRef);
 
   // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
   const kind = ((tmpl.attr(TEMPLATE_ATTR_KIND) as string | undefined) ?? TEMPLATE_KIND_DEFAULT)
@@ -206,14 +215,14 @@ export function renderRenderHelper(
 
     return `import { render } from "@metaobjectsdev/render";
 import type { Provider, EmailDocument } from "@metaobjectsdev/render";
-import type { ${payloadRef} } from "./${payloadRef}.js";
+import type { ${payloadTypeName} } from "./${payloadTypeName}.js";
 
 /**
  * Render the ${templateName} email (subject + html body${typeof textBodyRef === "string" ? " + text body" : ""}) from a
- * typed ${payloadRef} payload. Wraps the render() engine; the payload field tree is
+ * typed ${payloadTypeName} payload. Wraps the render() engine; the payload field tree is
  * baked in so render()'s runtime drift check matches the build-time gate.
  */
-export function ${fnName}(payload: ${payloadRef}, provider: Provider): EmailDocument {
+export function ${fnName}(payload: ${payloadTypeName}, provider: Provider): EmailDocument {
   return {
     subject: render({ ref: ${JSON.stringify(subjectRef)}, payload, format: "text", provider, verify: ${ft} }),
     htmlBody: render({ ref: ${JSON.stringify(htmlBodyRef)}, payload, format: "html", provider, verify: ${ft} }),${textBodyLine}
@@ -246,14 +255,14 @@ export function ${fnName}(payload: ${payloadRef}, provider: Provider): EmailDocu
 
   return `import { render } from "@metaobjectsdev/render";
 import type { Provider } from "@metaobjectsdev/render";
-import type { ${payloadRef} } from "./${payloadRef}.js";
+import type { ${payloadTypeName} } from "./${payloadTypeName}.js";
 
 /**
- * Render the ${templateName} document from a typed ${payloadRef} payload. Wraps the
+ * Render the ${templateName} document from a typed ${payloadTypeName} payload. Wraps the
  * render() engine; the payload field tree is baked in so render()'s runtime drift
  * check matches the build-time gate enforced when this file was generated.
  */
-export function ${fnName}(payload: ${payloadRef}, provider: Provider): string {
+export function ${fnName}(payload: ${payloadTypeName}, provider: Provider): string {
   return render({ ref: ${JSON.stringify(textRef)}, payload, format: ${JSON.stringify(format)}, provider, verify: ${ft}${maxCharsArg} });
 }
 `;

@@ -5,9 +5,10 @@
 
 **Design spec:** `docs/superpowers/specs/2026-07-19-advanced-modeling-series-design.md`
 
-## STATUS — how to resume (updated 2026-07-19)
+## STATUS — how to resume (updated 2026-07-20)
 
-**Nothing is built yet.** Design + plan are approved and committed; Unit 1 has not started.
+**Unit 1 (the canonical spine) is DONE.** Design + plan are approved and committed. Full detail:
+`.superpowers/sdd/unit1-report.md`.
 
 - ✅ Design spec written, reviewed, and **reconciled against the adjacent artifacts** (conformance
   corpora, the public reference application) — see the design's "four tiers" section. The reconciliation
@@ -16,9 +17,15 @@
   jsonb + prompt payloads, but **zero** projections and **zero** view/form/currency vocabulary).
 - ✅ Maintainer decisions locked: `examples/` top-level · fast-lane drift gate inside a package suite ·
   **YAML** authoring · the public reference app may be named/linked.
-- ⬜ **NEXT: Unit 1** (the canonical spine) — start at "Unit 1, Step 1: Recon the authoring surface".
-  Step 1 is not optional: the 0.19.0 line moved the view-attr home to the `metaobjects-ui-web`
-  provider, so authoring `view.*` from memory will be wrong.
+- ✅ **Unit 1 built** — `examples/advanced-modeling/` (metadata + committed `src/generated/**` + README
+  pattern index) + the drift gate (`server/typescript/packages/cli/test/integration/advanced-modeling-drift.test.ts`,
+  joins the `cli` package's existing `bun test` suite → `ci-local.sh`'s `gate_conf_ts` / `ts-fast` lane).
+  Recon (Step 1) surfaced 5 real gaps only once the full `meta gen` → `meta verify` pipeline actually ran
+  (a stale doc claim + 4 codegen/CLI bugs, all fixed narrowly with existing-suite coverage staying green) —
+  see the report's "What did not match reality" section and the example's own README "Gotchas".
+- ⬜ **NEXT: Unit 2** (four developer deep-dives under `docs/features/advanced/`) — depends on Unit 1
+  (done). See the "Unit 2 — developer deep-dives (SKETCH)" section below; every code block must quote
+  the Unit 1 spine, never a hand-written parallel snippet.
 
 **Context a fresh session needs:** the four patterns and the domain rationale are in the design spec;
 the tier discipline + anti-drift rule are binding on every unit; the drift gate is a freshness /
@@ -75,38 +82,38 @@ four patterns, with committed generated output and a CI gate proving `meta gen` 
 - Create `examples/advanced-modeling/src/generated/**` — committed output.
 - Wire the drift gate (see Step 6).
 
-- [ ] **Step 1: Recon the authoring surface before writing metadata.**
+- [x] **Step 1: Recon the authoring surface before writing metadata.**
   Read `fixtures/conformance/` entries for the four patterns plus `docs/features/source-kinds.md`
   and `docs/features/templates-and-payloads.md` to confirm exact current syntax (`origin.*` attrs,
   `@storage: jsonb`, `template.output` attrs, `view.*` names). Do NOT write metadata from memory —
   the 0.19.0 line changed the view-attr home (`metaobjects-ui-web`). Record the confirmed syntax in
   the task report.
 
-- [ ] **Step 2: Author the catalog model (`meta.catalog.json`).**
+- [x] **Step 2: Author the catalog model (`meta.catalog.json`).**
   `Program` (entity): `id`, `title` (`view.textarea @rows`), `status` (`field.enum` → select),
   `priceCents` (`field.currency` + `view.currency`), `coverKey` (`field.string` + `view.image` with
   `@aspectRatio`/`@maxEdge`/`@store`/`@accept`/`@maxBytes`), `authorId`. `Purchase` (entity) with a
   relationship to `Program`. This covers **pattern 2 (entity views)** end to end.
 
-- [ ] **Step 3: Author the projection (`ProgramSummary` in `meta.catalog.json`).**
+- [x] **Step 3: Author the projection (`ProgramSummary` in `meta.catalog.json`).**
   `object.projection` over `Program` with `source.rdb @kind: view`, demonstrating **all** the
   origin kinds the series teaches: `origin.passthrough` (author name from a related entity),
   `origin.aggregate @agg: count` (lesson count), `origin.aggregate @agg: sum` + `@filter` (revenue
   from completed purchases only), and one `origin.computed @expr`. Include `identity.primary`
   extending the base entity identity. This covers **pattern 1**.
 
-- [ ] **Step 4: Author the jsonb value-objects (`meta.content.json`).**
+- [x] **Step 4: Author the jsonb value-objects (`meta.content.json`).**
   A `SyllabusSection` `object.value` (no identity, no source — purity per ADR-0028) referenced from
   `Program.syllabus` as `field.object @objectRef @storage: jsonb @isArray: true`, plus a single
   (non-array) `Instructor` profile VO on `Program`. This covers **pattern 3**, including the
   array-of-VO codec.
 
-- [ ] **Step 5: Author the LLM payload (`meta.prompts.json`).**
+- [x] **Step 5: Author the LLM payload (`meta.prompts.json`).**
   A payload `object.value` projecting the subset of `Program` a description prompt actually needs,
   plus a `template.output` declaring the prompt (kind/payloadRef/textRef/format and the output
   contract). This covers **pattern 4** and demonstrates the payload-bloat-is-a-diff property.
 
-- [ ] **Step 6: Generate, commit output, and add the drift gate.**
+- [x] **Step 6: Generate, commit output, and add the drift gate.**
   Run the CLI against the example (`meta gen`) and commit `src/generated/**`. Then wire a gate that
   regenerates and fails on any diff. **Follow the existing pattern** — inspect how the repo's current
   golden/drift gates are wired (`server/typescript/packages/codegen-ts/test/golden/`,
@@ -114,12 +121,12 @@ four patterns, with committed generated output and a CI gate proving `meta gen` 
   mechanism. Ensure the example is EXCLUDED from the Bun workspace globs if inclusion would pull it
   into package test runs.
 
-- [ ] **Step 7: Verify.**
+- [x] **Step 7: Verify.**
   `meta gen` is idempotent (second run → no diff); `meta verify` passes; the generated form renders
   the expected controls (select / textarea with rows / currency / `<ImageUpload>`); the projection
   emits a view; the jsonb VO columns and the payload VO appear in output. Record evidence.
 
-- [ ] **Step 8: README + commit.**
+- [x] **Step 8: README + commit.**
   `README.md` maps each pattern → the file and lines that demonstrate it (this is the index the
   deep-dives, agent-context, and video scripts all cite). Commit.
 
