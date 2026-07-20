@@ -5,6 +5,25 @@
 
 **Design spec:** `docs/superpowers/specs/2026-07-19-advanced-modeling-series-design.md`
 
+## STATUS — how to resume (updated 2026-07-19)
+
+**Nothing is built yet.** Design + plan are approved and committed; Unit 1 has not started.
+
+- ✅ Design spec written, reviewed, and **reconciled against the adjacent artifacts** (conformance
+  corpora, the public reference application) — see the design's "four tiers" section. The reconciliation
+  concluded the spine is justified and must be authored fresh, NOT derived: the corpora refuse the
+  teaching job by contract, and the reference app covers only 2 of the 4 patterns (it has array-of-VO
+  jsonb + prompt payloads, but **zero** projections and **zero** view/form/currency vocabulary).
+- ✅ Maintainer decisions locked: `examples/` top-level · fast-lane drift gate inside a package suite ·
+  **YAML** authoring · the public reference app may be named/linked.
+- ⬜ **NEXT: Unit 1** (the canonical spine) — start at "Unit 1, Step 1: Recon the authoring surface".
+  Step 1 is not optional: the 0.19.0 line moved the view-attr home to the `metaobjects-ui-web`
+  provider, so authoring `view.*` from memory will be wrong.
+
+**Context a fresh session needs:** the four patterns and the domain rationale are in the design spec;
+the tier discipline + anti-drift rule are binding on every unit; the drift gate is a freshness /
+CLI-composition smoke check and must never be described as a correctness gate.
+
 **Goal:** Teach the four advanced modeling patterns (projections, entity views, value-objects-as-jsonb,
 value-objects-as-LLM-payloads) from a single canonical worked example, and derive the developer
 deep-dives, agent-context decision rules, and technical video scripts from that one spine.
@@ -15,8 +34,13 @@ gate — **not** a runnable app.
 
 ## Global constraints
 
-- **PUBLIC repo** — no private/consumer/other-project names, no absolute home paths, in any
-  committed file. The domain is generic (`acme::learn`).
+- **PUBLIC repo** — no **private** project/consumer names and no absolute home paths in any committed
+  file. Note: the public reference application
+  ([Draagon/wizardsofodd](https://github.com/Draagon/wizardsofodd), verified `isPrivate: false`) **may
+  be named and linked** — it is already cited in committed `spec/roadmap.md`. Private adopters and
+  internal project names remain forbidden. The example domain is generic (`acme::learn`).
+- **Authoring format is YAML** (ADR-0006 sigil-free authoring surface), not canonical JSON — a
+  teaching artifact must show what a human/agent actually authors.
 - **Document what ships.** If the series needs vocabulary that does not exist, STOP and log an issue —
   do not invent metamodel attributes (ADR-0023).
 - **Named constants / real syntax.** Every metadata snippet must actually load; the drift gate proves it.
@@ -41,10 +65,10 @@ Units 3 and 4 may run in parallel once 2 lands.
 **Outcome:** `examples/advanced-modeling/` holds a course/program publishing model that exercises all
 four patterns, with committed generated output and a CI gate proving `meta gen` reproduces it.
 
-**Files:**
-- Create `examples/advanced-modeling/metaobjects/meta.catalog.json` — `Program`, `Purchase`, `ProgramSummary`.
-- Create `examples/advanced-modeling/metaobjects/meta.content.json` — `Lesson`, syllabus value-objects.
-- Create `examples/advanced-modeling/metaobjects/meta.prompts.json` — the payload VO + `template.output`.
+**Files:** (YAML authoring per the global constraint above)
+- Create `examples/advanced-modeling/metaobjects/meta.catalog.yaml` — `Program`, `Purchase`, `ProgramSummary`.
+- Create `examples/advanced-modeling/metaobjects/meta.content.yaml` — `Lesson`, syllabus value-objects.
+- Create `examples/advanced-modeling/metaobjects/meta.prompts.yaml` — the payload VO + `template.output`.
 - Create `examples/advanced-modeling/metaobjects.config.ts` — generator wiring (entity/queries/routes/form/barrel).
 - Create `examples/advanced-modeling/.metaobjects/config.json`.
 - Create `examples/advanced-modeling/README.md` — what each file demonstrates + how to regenerate.
@@ -134,8 +158,20 @@ production is out of scope. Delivered as markdown alongside the deep-dives.
 
 ---
 
-## Open items to confirm with the maintainer
+## Resolved decisions (previously open)
 
-- `examples/` as a new top-level directory (vs. nesting under an existing tree) — Unit 1 Step 6 must
-  confirm the example does not disturb the Bun workspace globs or the port CI lanes.
-- Whether the drift gate joins the fast CI lane (cheap, catches breakage early) or a slower lane.
+- **`examples/` IS a new top-level directory.** Confirmed with the maintainer. Unit 1 Step 6 must
+  still verify the example does not get pulled into the Bun workspace globs or the port CI lanes.
+- **The drift gate joins the FAST lane, wired inside an existing package suite** (rather than as a
+  standalone CI job) — cheap, catches breakage early, and reuses the established gate mechanism
+  instead of inventing a new one.
+
+## Tier discipline (from the design spec — enforce while building)
+
+This series is the **pedagogical** tier. When a task here uncovers something:
+- a **behavior** gap → it becomes a `fixtures/*-conformance/` entry, NOT an assertion in the example;
+- a **teaching** gap → answer it in the example/deep-dive;
+- a **missing pattern** → never add it to the frozen reference application for doc convenience.
+
+The drift gate is a freshness + CLI-composition smoke check, **not** a correctness gate — the corpora
+and golden tests own correctness. Do not describe it otherwise in any artifact this plan produces.

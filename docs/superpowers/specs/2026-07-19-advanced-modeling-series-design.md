@@ -71,10 +71,56 @@ verified by a `meta gen` → *no diff* drift gate. It is **not** a runnable appl
 
 Rationale: a live app buys demo polish at the cost of a permanent maintenance tax (dependencies, a
 server, its own CI lane) and would rot between releases. Metadata + committed output still delivers
-the two things that matter — it **proves the patterns generate correctly** (CI fails if a release
-breaks them) and gives docs/agent-context/videos a real artifact to cite — at a fraction of the
-upkeep. This also makes the spine a genuine regression gate for the four patterns, which the repo
-does not currently have in one place.
+what matters — it gives docs/agent-context/videos a real, current artifact to cite — at a fraction
+of the upkeep.
+
+**What the drift gate is and is not.** It is NOT a correctness gate for the four patterns: the
+persistence/render conformance corpora and the codegen golden tests already gate that behavior, and
+duplicating it here would violate the anti-drift rule below. Its honest value is narrower and still
+worth having:
+
+1. **Teaching-artifact freshness** — the committed output stops the docs from quoting a model that
+   no longer generates, which is the failure mode that kills example-based documentation.
+2. **CLI-path composition smoke** — it exercises the four patterns *together* through the real
+   `meta gen` CLI path, which no existing gate does (the corpora are atomized by contract).
+
+Claim it as exactly that. Do not market it as a regression gate.
+
+## Decision 4 — authoring format: YAML
+
+The spine's metadata is authored in **YAML**, not canonical JSON. Per ADR-0006, YAML is the
+sigil-free authoring front-end and canonical JSON is the on-disk interchange format — a teaching
+artifact must show the surface a human (or an agent) actually authors. This also matches the public
+reference application's authoring style, so a reader moving between them sees one idiom.
+
+## Where this sits — four tiers, and the rule that keeps them apart
+
+The repo already has artifacts that look adjacent to this series. They are not interchangeable; each
+tier refuses the others' jobs, and that refusal is load-bearing.
+
+| Tier | Artifact | Job |
+|---|---|---|
+| **Normative** | `fixtures/*-conformance/` | Define behavior. Minimal, atomized, adversarial, cross-port byte-exact. |
+| **Pedagogical** | `examples/advanced-modeling/` (this series) | Show the four patterns *composing* in one consumer-shaped model. |
+| **Existential** | [wizardsofodd](https://github.com/Draagon/wizardsofodd) ([wizardsofodd.com](https://wizardsofodd.com)) | Live, deployed adopter proof that the model survives production. |
+| **Machine-teaching** | `agent-context/` | Give coding agents the decision rules for reaching for a pattern. |
+
+**Why the spine is not redundant with the other two** (checked, not assumed):
+
+- **The corpora cannot teach.** Atomization is their contract — each fixture isolates one behavior on
+  purpose, roughly half are `error-*` cases, they carry canonical JSON rather than the authoring
+  surface, and none pairs a config with generated output. `codegen-conformance/README.md` even
+  preserves a *rejected* corpus specifically to stop this kind of scope creep.
+- **The reference application cannot be the spine.** Its metadata covers two of the four patterns
+  (array-of-VO jsonb, prompt payloads) and carries **no projections and no view/form/currency
+  vocabulary** — an exact half of the curriculum is absent. It is also feature-frozen and lives in
+  another repo, so quoting it in docs invites quote-rot.
+
+**Anti-drift rule — content doing another tier's job MOVES, it never duplicates:**
+
+- A *behavior* gap the spine uncovers becomes a **fixture**, not an assertion in the example.
+- A *teaching* gap is answered in the **example**, not by expanding a fixture's scope.
+- A *missing pattern* is never added to the frozen reference application to make a doc convenient.
 
 ## Derivation model — one spine, four surfaces
 
@@ -94,7 +140,11 @@ one model and the drift gate catches every doc that drifted from it.
 
 - **Adopting developers** — deep-dives are *decision-first*: each opens with the problem and the
   choice ("when is this a projection instead of a query?"), then shows the spine's model, then the
-  generated result.
+  generated result. The **jsonb** and **LLM-payload** deep-dives additionally link
+  [wizardsofodd](https://github.com/Draagon/wizardsofodd) as *production proof* — those are the two
+  patterns it actually runs in production (array-of-VO jsonb, deep prompt payloads), so the reader
+  gets "here is the pattern, and here it is surviving in a live app." The projection and view
+  deep-dives have no such link, because that app does not use those patterns — do not manufacture one.
 - **Coding agents** — the agent-context contribution is **decision rules, not more prose**. Agents
   under-use these patterns because they don't recognise the trigger conditions, so the guidance is
   phrased as recognisable situations → the pattern to reach for → the spine slice to imitate.
