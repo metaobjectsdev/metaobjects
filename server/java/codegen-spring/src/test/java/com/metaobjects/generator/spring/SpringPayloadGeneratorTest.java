@@ -1,14 +1,20 @@
 package com.metaobjects.generator.spring;
 
+import com.metaobjects.loader.LoaderOptions;
 import com.metaobjects.loader.MetaDataLoader;
+import com.metaobjects.loader.uri.URIHelper;
 import com.metaobjects.registry.SharedRegistryTestBase;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
@@ -788,5 +794,78 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
         assertTrue("nested record String field gets hasLabel(); saw:\n" + nestedSrc,
             nestedSrc.contains("public boolean hasLabel()")
                 && nestedSrc.contains("return label != null && !label.isBlank();"));
+    }
+
+    /**
+     * ADR-0044 (#219 stage 3) — two {@code object.value} {@code Note}s in different
+     * packages ({@code acme::alpha} / {@code acme::beta}), both reachable from one
+     * payload by FQN {@code @objectRef}, must emit as TWO distinct package-qualified
+     * records ({@code AcmeAlphaNotePayload} / {@code AcmeBetaNotePayload}) into the
+     * output package — never one clobbered {@code NotePayload.java} (the pre-fix bug
+     * wrote both records to the same path, last-wins, dropping the alpha shape).
+     * Loads the SHARED cross-port corpus so this is the same oracle every port runs.
+     */
+    @Test
+    public void crossPackageCollisionEmitsDistinctPackageQualifiedRecords() throws Exception {
+        Path corpus = findCorpus();
+        assertTrue("shared corpus fixtures/template-output-render-conformance must be reachable",
+            corpus != null && Files.exists(corpus.resolve("xpkg-collision/meta.app.json")));
+        Path xpkg = corpus.resolve("xpkg-collision");
+
+        Path outDir = tempFolder.newFolder("payload-xpkg").toPath();
+        MetaDataLoader loader = loadMultiFile("xpkg",
+            xpkg.resolve("meta.alpha.json"),
+            xpkg.resolve("meta.beta.json"),
+            xpkg.resolve("meta.app.json"));
+
+        SpringPayloadGenerator gen = new SpringPayloadGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
+        gen.setArgs(args);
+        gen.execute(loader);
+
+        Path prompts = outDir.resolve("acme/app/prompts");
+        Path alpha = prompts.resolve("AcmeAlphaNotePayload.java");
+        Path beta = prompts.resolve("AcmeBetaNotePayload.java");
+        // Two DISTINCT records — never the shadowed bare name.
+        assertTrue("expected AcmeAlphaNotePayload.java at " + alpha, Files.exists(alpha));
+        assertTrue("expected AcmeBetaNotePayload.java at " + beta, Files.exists(beta));
+        assertFalse("must NOT emit a clobbered bare NotePayload.java",
+            Files.exists(prompts.resolve("NotePayload.java")));
+        // Each record carries its OWN package's shape.
+        assertTrue("AcmeAlphaNotePayload must carry alphaText",
+            Files.readString(alpha).contains("String alphaText"));
+        assertTrue("AcmeBetaNotePayload must carry betaText",
+            Files.readString(beta).contains("String betaText"));
+        // The primary payload references the two distinct qualified records.
+        String digest = Files.readString(prompts.resolve("DigestDocPayload.java"));
+        assertTrue("DigestDocPayload.fromAlpha must type AcmeAlphaNotePayload; saw:\n" + digest,
+            digest.contains("AcmeAlphaNotePayload fromAlpha"));
+        assertTrue("DigestDocPayload.fromBeta must type AcmeBetaNotePayload; saw:\n" + digest,
+            digest.contains("AcmeBetaNotePayload fromBeta"));
+    }
+
+    /** Walk up from {@code user.dir} to the repo-root shared corpus, or {@code null}. */
+    private static Path findCorpus() {
+        Path p = Paths.get(System.getProperty("user.dir")).toAbsolutePath();
+        while (p != null && !Files.exists(p.resolve("fixtures/template-output-render-conformance"))) {
+            p = p.getParent();
+        }
+        return p != null ? p.resolve("fixtures/template-output-render-conformance") : null;
+    }
+
+    /** Load several metadata files into one merged loader (multi-package fixtures). */
+    private MetaDataLoader loadMultiFile(String baseName, Path... files) throws Exception {
+        List<URI> uris = new ArrayList<>();
+        for (Path f : files) {
+            uris.add(URIHelper.toURI("model:file:" + f.toAbsolutePath().toString().replace('\\', '/')));
+        }
+        MetaDataLoader loader = new MetaDataLoader(
+            LoaderOptions.create(false, false, true),
+            MetaDataLoader.SUBTYPE_MANUAL,
+            "spring-test-" + baseName);
+        loader.setSourceURIs(uris);
+        loader.init();
+        return loader;
     }
 }

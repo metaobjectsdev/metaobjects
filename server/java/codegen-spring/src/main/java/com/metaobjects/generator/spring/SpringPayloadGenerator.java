@@ -24,10 +24,14 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -101,6 +105,12 @@ import java.util.Set;
  */
 public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObject> {
 
+    // ADR-0044 backstop error code — a codegen-time (not loader) error, peer of the
+    // render tier's ERR_VAR_NOT_ON_PAYLOAD. Declared LOCALLY (as in the TS/C#/Python
+    // ports) rather than in the shared cross-port ledger; promoted to the ledger once
+    // the coordinated follow-up lands, so no port reddens on a code it doesn't emit.
+    public static final String ERR_PAYLOAD_NAME_COLLISION = "ERR_PAYLOAD_NAME_COLLISION";
+
     @Override
     protected Class<MetaObject> getFilterClass() {
         return MetaObject.class;
@@ -124,9 +134,153 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
             new ArrayList<>(loader.getRoot().getChildren(MetaTemplate.class, true));
         templates.sort(Comparator.comparing(MetaTemplate::getName));
 
+        // ADR-0044 — collision-scoped nested-payload record names, computed once as a
+        // pure function of the loaded templates (order-independent). Keyed by VO FQN.
+        Map<String, String> nameMap = computePayloadNameMap(templates, loader);
+
         for (MetaTemplate tmpl : templates) {
-            emit(tmpl, loader, outRoot, emittedNestedFqns);
+            emit(tmpl, loader, outRoot, emittedNestedFqns, nameMap);
         }
+    }
+
+    /**
+     * ADR-0044 pass 1/2 — the run's nested-payload name map, keyed by value-object
+     * FQN ({@link MetaObject#getName()}), scoped per OUTPUT PACKAGE. Java is a
+     * one-record-per-file emitter, so its collision domain is the output (prompts)
+     * package: two value-objects sharing a bare short name written into the same
+     * package would clobber one {@code NotePayload.java}. A nested VO whose bare
+     * short name is UNIQUE in its output package emits {@code <Short>Payload}
+     * (byte-identical to pre-ADR-0044 output); a COLLISION emits every member under
+     * its package-qualified derived name ({@code acme::alpha::Note} ->
+     * {@code AcmeAlphaNotePayload}). A still-colliding derived name fails loud with
+     * {@link #ERR_PAYLOAD_NAME_COLLISION}. Pure function of the templates — never of
+     * emission order.
+     */
+    protected Map<String, String> computePayloadNameMap(List<MetaTemplate> templates, MetaDataLoader loader) {
+        // FQN -> output package (first reaching template in sorted order wins, matching
+        // the run-wide dedupe below). The primary VO is template-named, so excluded.
+        Map<String, String> voOutPkg = new LinkedHashMap<>();
+        List<String> orderedFqns = new ArrayList<>();
+        for (MetaTemplate tmpl : templates) {
+            MetaObject vo = resolveValueObject(loader, tmpl.getPayloadRef());
+            if (vo == null) continue;
+            String nestedPkg = SpringNaming.promptsPackage(SpringNaming.splitFqn(tmpl.getName())[0]);
+            Set<String> seen = new HashSet<>();
+            seen.add(vo.getName()); // primary is template-named — outside the VO-name collision domain
+            collectNestedClosure(vo, loader, nestedPkg, voOutPkg, orderedFqns, seen);
+        }
+        // Group by (output package, bare short name).
+        Map<String, List<String>> byPkgShort = new LinkedHashMap<>();
+        for (String fqn : orderedFqns) {
+            String key = voOutPkg.get(fqn) + " " + SpringNaming.splitFqn(fqn)[1];
+            byPkgShort.computeIfAbsent(key, k -> new ArrayList<>()).add(fqn);
+        }
+        Map<String, String> nameMap = new LinkedHashMap<>();
+        for (List<String> fqns : byPkgShort.values()) {
+            if (fqns.size() == 1) {
+                String fqn = fqns.get(0);
+                nameMap.put(fqn, SpringNaming.payloadName(SpringNaming.splitFqn(fqn)[1]));
+            } else {
+                for (String fqn : fqns) {
+                    String[] sp = SpringNaming.splitFqn(fqn);
+                    nameMap.put(fqn, SpringNaming.payloadName(packageQualifiedName(sp[0], sp[1])));
+                }
+            }
+        }
+        // Backstop — per output package, two DISTINCT FQNs deriving the same record
+        // name (e.g. acme::alpha and acmeAlpha both fold to AcmeAlpha). Sorted so the
+        // named pair (and whether any collision fires) is order-independent.
+        Map<String, String> ownerByPkgName = new HashMap<>();
+        List<String> sortedFqns = new ArrayList<>(nameMap.keySet());
+        Collections.sort(sortedFqns);
+        for (String fqn : sortedFqns) {
+            String pkgName = voOutPkg.get(fqn) + " " + nameMap.get(fqn);
+            String prev = ownerByPkgName.putIfAbsent(pkgName, fqn);
+            if (prev != null && !prev.equals(fqn)) {
+                throw new GeneratorException(ERR_PAYLOAD_NAME_COLLISION
+                    + ": payload record name collision: \"" + nameMap.get(fqn)
+                    + "\" derives from both \"" + prev + "\" and \"" + fqn
+                    + "\" — rename one value-object or move it to a package that derives a distinct name");
+            }
+        }
+        return nameMap;
+    }
+
+    /**
+     * ADR-0044 pass 1 — walk {@code vo}'s transitive nested-payload closure (plain
+     * {@code field.object @objectRef} + {@code origin.collection @via} edges),
+     * assigning each not-yet-seen target VO to {@code outPkg} (first reaching
+     * template wins) and recording it in {@code orderedFqns}. {@code seen} is seeded
+     * with the primary VO's FQN and doubles as the cycle guard.
+     */
+    protected void collectNestedClosure(MetaObject vo,
+                                        MetaDataLoader loader,
+                                        String outPkg,
+                                        Map<String, String> voOutPkg,
+                                        List<String> orderedFqns,
+                                        Set<String> seen) {
+        for (MetaField<?> field : vo.getMetaFields()) {
+            MetaObject target = nestedTargetOf(field, loader);
+            if (target == null) continue;
+            String fqn = target.getName();
+            if (!seen.add(fqn)) continue;
+            if (!voOutPkg.containsKey(fqn)) {
+                voOutPkg.put(fqn, outPkg);
+                orderedFqns.add(fqn);
+            }
+            collectNestedClosure(target, loader, outPkg, voOutPkg, orderedFqns, seen);
+        }
+    }
+
+    /**
+     * The nested-payload target VO a {@code field} contributes to the closure, or
+     * {@code null} when it contributes no nested record. Mirrors the resolution in
+     * {@link #resolveObjectFieldType} (plain {@code field.object @objectRef}) and
+     * {@link #resolveCollectionType} ({@code origin.collection @via}) EXACTLY, so the
+     * closure walk and the emission walk agree on the target set. Passthrough /
+     * aggregate origins yield scalar types (no nested record).
+     */
+    protected MetaObject nestedTargetOf(MetaField<?> field, MetaDataLoader loader) {
+        MetaOrigin origin = firstOriginChild(field);
+        if (origin instanceof CollectionOrigin co) {
+            String via = co.getVia();
+            if (via == null) return null;
+            String[] split = splitDottedRef(via);
+            if (split == null) return null;
+            MetaObject parent = resolveObjectByShortOrFqn(loader, split[0]);
+            if (parent == null) return null;
+            for (MetaData child : parent.getChildren()) {
+                if (!(child instanceof MetaRelationship rel)) continue;
+                if (rel.getName().equals(split[1]) || shortName(rel.getName()).equals(split[1])) {
+                    String targetRef = rel.getObjectRef();
+                    if (targetRef == null) return null;
+                    return resolveObjectByShortOrFqn(loader, targetRef);
+                }
+            }
+            return null;
+        }
+        if (origin != null) return null; // passthrough / aggregate -> scalar
+        if (field instanceof ObjectField of) {
+            MetaObject target = of.getObjectRef();
+            if (target == null || !MetaObject.SUBTYPE_VALUE.equals(target.getSubType())) return null;
+            return target;
+        }
+        return null;
+    }
+
+    /**
+     * ADR-0044 — PascalCase each dotted segment of {@code javaPkg} (already
+     * {@code ::}->{@code .} converted by {@link SpringNaming#splitFqn}), concatenate,
+     * append the bare {@code shortName} ({@code "acme.alpha"} + {@code "Note"} ->
+     * {@code "AcmeAlphaNote"}). A root-level (empty-package) node keeps its bare name.
+     */
+    protected static String packageQualifiedName(String javaPkg, String shortName) {
+        if (javaPkg == null || javaPkg.isEmpty()) return shortName;
+        StringBuilder sb = new StringBuilder();
+        for (String seg : javaPkg.split("\\.")) {
+            if (!seg.isEmpty()) sb.append(Character.toUpperCase(seg.charAt(0))).append(seg.substring(1));
+        }
+        return sb.append(shortName).toString();
     }
 
     /**
@@ -145,7 +299,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
     }
 
     protected void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot,
-                      Set<String> emittedNestedFqns) {
+                      Set<String> emittedNestedFqns, Map<String, String> nameMap) {
         if (!appliesTo(template, loader)) {
             return; // missing @payloadRef, or not a VO — same contract as Kotlin / C# / Python
         }
@@ -165,7 +319,8 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
             payloadVo,
             loader,
             outRoot,
-            emittedNestedFqns);
+            emittedNestedFqns,
+            nameMap);
     }
 
     /**
@@ -181,7 +336,8 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
                                    MetaObject voObject,
                                    MetaDataLoader loader,
                                    Path outRoot,
-                                   Set<String> emittedNestedFqns) {
+                                   Set<String> emittedNestedFqns,
+                                   Map<String, String> nameMap) {
         StringBuilder src = new StringBuilder();
         src.append("package ").append(outPkg).append(";\n\n");
         src.append("/** ").append(banner).append(" */\n");
@@ -208,7 +364,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         Iterator<MetaField> it = voObject.getMetaFields().iterator();
         while (it.hasNext()) {
             MetaField field = it.next();
-            String type = resolveFieldType(field, voObject, loader, outPkg, outRoot, emittedNestedFqns);
+            String type = resolveFieldType(field, voObject, loader, outPkg, outRoot, emittedNestedFqns, nameMap);
             src.append("    ").append(type).append(' ').append(field.getName());
             if (it.hasNext()) src.append(',');
             src.append('\n');
@@ -275,7 +431,8 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
                                     MetaDataLoader loader,
                                     String nestedPkg,
                                     Path outRoot,
-                                    Set<String> emittedNestedFqns) {
+                                    Set<String> emittedNestedFqns,
+                                    Map<String, String> nameMap) {
         MetaOrigin origin = firstOriginChild(field);
         if (origin instanceof PassthroughOrigin pt) {
             return resolvePassthroughType(pt, loader, field);
@@ -284,7 +441,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
             return resolveAggregateType(ag, loader, field);
         }
         if (origin instanceof CollectionOrigin co) {
-            return resolveCollectionType(co, loader, nestedPkg, outRoot, emittedNestedFqns, field);
+            return resolveCollectionType(co, loader, nestedPkg, outRoot, emittedNestedFqns, field, nameMap);
         }
         // field.enum (scalar or array): type the STRICT payload component as the generated
         // Java enum nested in this record. The enum name is unqualified here because the record
@@ -296,7 +453,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
             return SpringTypeMapper.payloadJavaTypeName(field, owner, "");
         }
         if (field instanceof ObjectField of) {
-            return resolveObjectFieldType(of, loader, nestedPkg, outRoot, emittedNestedFqns);
+            return resolveObjectFieldType(of, loader, nestedPkg, outRoot, emittedNestedFqns, nameMap);
         }
         return SpringTypeMapper.javaTypeName(field);
     }
@@ -312,7 +469,8 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
                                           MetaDataLoader loader,
                                           String nestedPkg,
                                           Path outRoot,
-                                          Set<String> emittedNestedFqns) {
+                                          Set<String> emittedNestedFqns,
+                                          Map<String, String> nameMap) {
         MetaObject target = field.getObjectRef();
         if (target == null) return SpringTypeMapper.javaTypeName(field);
         if (!MetaObject.SUBTYPE_VALUE.equals(target.getSubType())) {
@@ -322,7 +480,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
             return SpringTypeMapper.javaTypeName(field);
         }
         // ADR-0039: resolving array-ness (isArray() is the own-only native flag).
-        return emitNestedAndReturnType(target, loader, nestedPkg, outRoot, emittedNestedFqns, field.isArrayType());
+        return emitNestedAndReturnType(target, loader, nestedPkg, outRoot, emittedNestedFqns, field.isArrayType(), nameMap);
     }
 
     /**
@@ -379,7 +537,8 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
                                          String nestedPkg,
                                          Path outRoot,
                                          Set<String> emittedNestedFqns,
-                                         MetaField<?> fallbackField) {
+                                         MetaField<?> fallbackField,
+                                         Map<String, String> nameMap) {
         String via = origin.getVia();
         if (via == null) return SpringTypeMapper.javaTypeName(fallbackField);
         String[] split = splitDottedRef(via);
@@ -406,7 +565,7 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
 
         MetaObject target = resolveObjectByShortOrFqn(loader, targetRef);
         if (target == null) return SpringTypeMapper.javaTypeName(fallbackField);
-        return emitNestedAndReturnType(target, loader, nestedPkg, outRoot, emittedNestedFqns, true);
+        return emitNestedAndReturnType(target, loader, nestedPkg, outRoot, emittedNestedFqns, true, nameMap);
     }
 
     /**
@@ -424,8 +583,14 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
                                            String nestedPkg,
                                            Path outRoot,
                                            Set<String> emittedNestedFqns,
-                                           boolean asList) {
-        String nestedRecord = SpringNaming.payloadName(SpringNaming.splitFqn(target.getName())[1]);
+                                           boolean asList,
+                                           Map<String, String> nameMap) {
+        // ADR-0044 — the record name (declaration, file name, and this reference)
+        // comes from the collision-scoped name map (bare when unique in the output
+        // package, package-qualified on a cross-package short-name collision). The
+        // bare fallback guards callers that emit without a precomputed map (api-docs).
+        String nestedRecord = nameMap.getOrDefault(
+            target.getName(), SpringNaming.payloadName(SpringNaming.splitFqn(target.getName())[1]));
         if (emittedNestedFqns.add(target.getName())) {
             emitPayloadRecord(
                 nestedPkg,
@@ -435,7 +600,8 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
                 target,
                 loader,
                 outRoot,
-                emittedNestedFqns);
+                emittedNestedFqns,
+                nameMap);
         }
         return asList ? "java.util.List<" + nestedRecord + ">" : nestedRecord;
     }

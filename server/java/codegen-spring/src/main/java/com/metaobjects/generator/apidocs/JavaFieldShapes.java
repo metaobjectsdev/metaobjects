@@ -104,8 +104,11 @@ public final class JavaFieldShapes {
         String nestedPkg = SpringNaming.promptsPackage(split[0]);
 
         List<FieldShape> out = new ArrayList<>();
+        // api-docs documents field shapes only (bare nested names are fine here); pass
+        // an empty ADR-0044 name map so emitNestedAndReturnType uses its bare fallback.
+        java.util.Map<String, String> nameMap = java.util.Map.of();
         for (MetaField field : vo.getMetaFields()) {
-            String type = gen.resolveFieldType(field, vo, loader, nestedPkg, scratch, emittedNestedFqns);
+            String type = gen.resolveFieldType(field, vo, loader, nestedPkg, scratch, emittedNestedFqns, nameMap);
             // Optional iff the payload generator would emit a hasXxx() helper for
             // this component (String / List / reference → optional; bare scalar
             // primitive → not). Mirror that determination exactly.
