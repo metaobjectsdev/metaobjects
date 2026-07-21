@@ -167,7 +167,7 @@ How to publish the `MetaObjects*` C# packages to nuget.org. We use **Trusted Pub
 
 ## What gets published
 
-Four packages, version-locked at the C# port version (currently `0.19.2`):
+Four packages, version-locked at the C# port version (currently `0.19.3`):
 
 | Package | Contents |
 |---|---|
