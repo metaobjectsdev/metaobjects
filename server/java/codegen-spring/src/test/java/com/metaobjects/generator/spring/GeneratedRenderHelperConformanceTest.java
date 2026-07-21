@@ -332,6 +332,71 @@ public class GeneratedRenderHelperConformanceTest extends SharedRegistryTestBase
         return classes;
     }
 
+    // -------------------------------------------------------------------------
+    // xpkg-collision/ → ADR-0041 FQN-exact nested @objectRef resolution across a
+    // cross-package short-name collision, end-to-end for the Java/Spring port
+    // (#220 — the parity gap the other four ports already cover). Two packages
+    // each declare object.value Note (alpha: alphaText, beta: betaText); payload
+    // Digest references BOTH by FULLY-QUALIFIED @objectRef; DigestDoc renders
+    // "Alpha={{fromAlpha.alphaText}} Beta={{fromBeta.betaText}}". Post-ADR-0044 the
+    // two Notes emit as DISTINCT package-qualified records
+    // (AcmeAlphaNotePayload / AcmeBetaNotePayload), so the generated code compiles
+    // and renders — this gate exercises the FQN-exact resolver AND the collision
+    // naming together (a bare-tail resolver would bind both refs to one Note and
+    // render the wrong text; the pre-ADR-0044 clobber would not compile).
+    // -------------------------------------------------------------------------
+    @Test
+    public void xpkgCollisionRenderHelperMatchesCorpusOracle() throws Exception {
+        assertNotNull("corpus must be reachable", CORPUS);
+        Path xpkg = CORPUS.resolve("xpkg-collision");
+        Path templates = CORPUS.resolve("templates");
+        MetaDataLoader loader = loadMultiFile("xpkg",
+            xpkg.resolve("meta.alpha.json"),
+            xpkg.resolve("meta.beta.json"),
+            xpkg.resolve("meta.app.json"));
+
+        Path gen = tmp.newFolder("xpkg-gen").toPath();
+        generate(loader, gen, templates);
+
+        Path classes = compile(collectSources(gen));
+        try (URLClassLoader cl = new URLClassLoader(
+                new URL[]{ classes.toUri().toURL() }, getClass().getClassLoader())) {
+
+            // The two colliding Notes emit as DISTINCT package-qualified records.
+            Class<?> alphaClass = cl.loadClass("acme.app.prompts.AcmeAlphaNotePayload");
+            Class<?> betaClass = cl.loadClass("acme.app.prompts.AcmeBetaNotePayload");
+            Object alpha = alphaClass.getConstructor(String.class).newInstance("AA");
+            Object beta = betaClass.getConstructor(String.class).newInstance("BB");
+
+            Class<?> payloadClass = cl.loadClass("acme.app.prompts.DigestDocPayload");
+            Object payload = payloadClass.getConstructor(alphaClass, betaClass).newInstance(alpha, beta);
+
+            Class<?> helperClass = cl.loadClass("acme.app.prompts.DigestDocRenderHelper");
+            Class<?> providerClass = Class.forName("com.metaobjects.render.Provider");
+            Object provider = newFilesystemProvider(templates);
+
+            Method render = helperClass.getMethod("render", payloadClass, providerClass);
+            assertEquals(String.class, render.getReturnType());
+            // FQN-exact resolution binds each ref to its own package's Note.
+            assertEquals("Alpha=AA Beta=BB", render.invoke(null, payload, provider));
+        }
+    }
+
+    /** Load several metadata files into one merged loader (multi-package fixtures). */
+    private MetaDataLoader loadMultiFile(String baseName, Path... files) throws Exception {
+        java.util.List<java.net.URI> uris = new java.util.ArrayList<>();
+        for (Path f : files) {
+            uris.add(com.metaobjects.loader.uri.URIHelper.toURI(
+                "model:file:" + f.toAbsolutePath().toString().replace('\\', '/')));
+        }
+        MetaDataLoader loader = new MetaDataLoader(
+            com.metaobjects.loader.LoaderOptions.create(false, false, true),
+            MetaDataLoader.SUBTYPE_MANUAL, "rh-conf-" + baseName);
+        loader.setSourceURIs(uris);
+        loader.init();
+        return loader;
+    }
+
     /** Construct a FilesystemProvider(Path) against the test classpath (render module). */
     private static Object newFilesystemProvider(Path root) throws Exception {
         Class<?> fsProvider = Class.forName("com.metaobjects.render.FilesystemProvider");
