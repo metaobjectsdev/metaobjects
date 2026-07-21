@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.19.3] — 2026-07-21
+
+**Coordinated across all four registries:** npm `0.19.3` · NuGet `0.19.3` · PyPI `0.19.3` · Maven Central `7.11.2`. No breaking changes, no new vocabulary. Completes the [ADR-0044](spec/decisions/ADR-0044-payload-record-naming-cross-package-collision.md) payload-record collision-naming rollout ([#219](https://github.com/metaobjectsdev/metaobjects/issues/219)) across the remaining ports — the TypeScript and C# half shipped in `0.19.2`.
+
+**Payload record naming is collision-scoped in Python, Java and Kotlin ([#219](https://github.com/metaobjectsdev/metaobjects/issues/219) stages 2–3, [#220](https://github.com/metaobjectsdev/metaobjects/issues/220)).** When two `object.value`s share a bare short name across packages (`acme::alpha::Note` + `acme::beta::Note`, both reachable from one payload by fully-qualified `@objectRef` — valid metadata since ADR-0041/0042), each port's payload generator silently produced the wrong output: **Python** deduped nested classes by `fqn()`, which returns the bare name when a loaded object's own `package` is unset, collapsing the two `Note`s into one `NotePayload` and dropping the second shape; **Java** and **Kotlin** are one-file-per-record emitters, so both records were named `NotePayload` and written to the same path — the second silently **clobbered** the first, last-wins. All three now run ADR-0044's three-pass pipeline: an FQN-keyed reference-closure walk, then name assignment (bare `<Short>Payload` when unique in the artifact's collision domain — the module for Python, the output package for Java/Kotlin; a package-derived name such as `AcmeAlphaNotePayload` for **every** colliding member; hard failure with `ERR_PAYLOAD_NAME_COLLISION` if a derived name still collides), then emission through the name map. **Not breaking** — names change only where output was silently wrong; non-colliding output is byte-identical, pinned per port. The Kotlin xpkg-collision conformance test (#220) is upgraded from asserting a file exists to running the payload generator, asserting two distinct classes, and compiling the output.
+
+**`ERR_PAYLOAD_NAME_COLLISION` promoted to the shared error-code ledger (ADR-0044).** Declared per-port locally through stages 1–3 so registering it before every port implemented the check couldn't redden a port on a code it didn't emit, the backstop code now joins `fixtures/conformance/ERROR-CODES.json` and the central registries that gate against it — TypeScript `errors.ts` (exact bidirectional agreement), Python `errors.py` (superset), Java `ErrorCode.java` (peer of `ERR_VAR_NOT_ON_PAYLOAD`).
+
+Per-registry scope: **PyPI** carries the Python payload fix; **Maven Central** carries the Java + Kotlin payload fixes; **npm** carries the additive `errors.ts` ledger entry only (the TypeScript payload fix itself shipped in `0.19.2`); **NuGet** is a version-parity bump — the C# payload fix and its local `ERR_PAYLOAD_NAME_COLLISION` shipped in `0.19.2` and the C# code is unchanged here.
+
 ## [0.19.2] — 2026-07-20
 
 **npm `0.19.2` · NuGet `0.19.2`.** PyPI stays at `0.19.2` and Maven Central at `7.11.1` — neither port has a changed file in this release. No breaking changes, no new vocabulary.
