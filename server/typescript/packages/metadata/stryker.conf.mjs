@@ -21,6 +21,11 @@ export default {
     "src/overlay.ts",
     "src/provider.ts",
   ],
+  // Cap parallelism. Stryker defaults to (cpuCount - 1) test-runner workers — 23
+  // on the 24-thread self-hosted host — which, co-scheduled with the other heavy
+  // CI lanes (java-slow, csharp, ...), starved the box into OOM. 6 leaves ~18
+  // threads for the sibling jobs while keeping the mutation gate reasonably fast.
+  concurrency: 6,
   thresholds: { high: 60, low: 40, break: 35 },
   reporters: ["clear-text", "html"],
 };
