@@ -8,10 +8,13 @@ same target).
 """
 from __future__ import annotations
 
+import pytest
+
 import metaobjects.core_types  # noqa: F401 — side-effect: registers attr classes
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.generator import GenContext
 from metaobjects.codegen.generators.payload_vo_generator import (
+    ERR_PAYLOAD_NAME_COLLISION,
     PayloadVoGenerator,
     payload_class_name,
     payload_module_name,
@@ -426,6 +429,92 @@ def test_plain_object_field_strips_fqn_to_bare_nested_payload() -> None:
     # so the ``::``-free check is scoped to non-comment lines.)
     code = "\n".join(ln for ln in out.splitlines() if not ln.lstrip().startswith("#"))
     assert "::" not in code
+
+
+def test_cross_package_short_name_collision_qualifies_both_nested_classes() -> None:
+    """ADR-0044 — two ``object.value`` ``Note``s in different packages, both reachable
+    from one payload by FQN ``@objectRef``, emit as TWO distinct package-qualified
+    classes (``AcmeAlphaNotePayload`` / ``AcmeBetaNotePayload``) — never one shadowed
+    ``NotePayload`` that drops the second shape. The un-colliding ``Digest`` primary
+    stays bare (template-named)."""
+    alpha = _value_object("Note", [_field("alphaText", fc.FIELD_SUBTYPE_STRING)], package="acme::alpha")
+    beta = _value_object("Note", [_field("betaText", fc.FIELD_SUBTYPE_STRING)], package="acme::beta")
+    digest = _value_object(
+        "Digest",
+        [
+            _object_field("fromAlpha", "acme::alpha::Note"),
+            _object_field("fromBeta", "acme::beta::Note"),
+        ],
+        package="acme::app",
+    )
+    tmpl = _template("DigestOut", "Digest")
+    root = _root([alpha, beta, digest, tmpl])
+    out = render_payload_vo(tmpl, root)
+    assert out is not None
+    assert "class AcmeAlphaNotePayload(BaseModel):" in out
+    assert "class AcmeBetaNotePayload(BaseModel):" in out
+    assert "class NotePayload(BaseModel):" not in out
+    assert "fromAlpha: AcmeAlphaNotePayload | None = None" in out
+    assert "fromBeta: AcmeBetaNotePayload | None = None" in out
+    assert '__all__ = ["DigestOutPayload", "AcmeAlphaNotePayload", "AcmeBetaNotePayload"]' in out
+
+
+def test_nested_of_nested_collision_qualifies_across_depths() -> None:
+    """ADR-0044 — the collision domain is the WHOLE transitive closure, not one
+    depth. A ``Note`` reached at depth 2 (via ``Outer.inner``) collides with a
+    ``Note`` reached at depth 1; both qualify (``AcmeBetaNotePayload`` /
+    ``AcmeGammaNotePayload``) while the un-colliding intermediate ``Outer`` stays
+    bare. Guards the recursive `_collect_nested_closure` walk."""
+    beta_note = _value_object("Note", [_field("betaText", fc.FIELD_SUBTYPE_STRING)], package="acme::beta")
+    gamma_note = _value_object("Note", [_field("gammaText", fc.FIELD_SUBTYPE_STRING)], package="acme::gamma")
+    outer = _value_object(
+        "Outer", [_object_field("inner", "acme::beta::Note")], package="acme::alpha"
+    )
+    digest = _value_object(
+        "Digest",
+        [
+            _object_field("fromOuter", "acme::alpha::Outer"),
+            _object_field("fromGamma", "acme::gamma::Note"),
+        ],
+        package="acme::app",
+    )
+    tmpl = _template("DigestOut", "Digest")
+    root = _root([beta_note, gamma_note, outer, digest, tmpl])
+    out = render_payload_vo(tmpl, root)
+    assert out is not None
+    assert "class OuterPayload(BaseModel):" in out  # unique → bare
+    assert "class AcmeBetaNotePayload(BaseModel):" in out  # depth-2 collision member
+    assert "class AcmeGammaNotePayload(BaseModel):" in out  # depth-1 collision member
+    assert "class NotePayload(BaseModel):" not in out
+    assert "inner: AcmeBetaNotePayload | None = None" in out
+    assert "fromGamma: AcmeGammaNotePayload | None = None" in out
+
+
+def test_derived_name_still_colliding_fails_loud() -> None:
+    """ADR-0044 §4 backstop — two DISTINCT package FQNs whose package-qualified derived
+    names still collide (``acme::alpha`` and ``acmeAlpha`` both PascalCase-fold to
+    ``AcmeAlpha``) must fail loud with ``ERR_PAYLOAD_NAME_COLLISION``, never silently
+    emit one class twice."""
+    a = _value_object("Note", [_field("a", fc.FIELD_SUBTYPE_STRING)], package="acme::alpha")
+    b = _value_object("Note", [_field("b", fc.FIELD_SUBTYPE_STRING)], package="acmeAlpha")
+    digest = _value_object(
+        "Digest",
+        [
+            _object_field("fromA", "acme::alpha::Note"),
+            _object_field("fromB", "acmeAlpha::Note"),
+        ],
+        package="acme::app",
+    )
+    tmpl = _template("DigestOut", "Digest")
+    root = _root([a, b, digest, tmpl])
+    with pytest.raises(ValueError) as ei:
+        render_payload_vo(tmpl, root)
+    msg = str(ei.value)
+    assert ERR_PAYLOAD_NAME_COLLISION in msg
+    assert "AcmeAlphaNotePayload" in msg
+    # Both source FQNs are named so the author can find and rename one.
+    assert "acme::alpha::Note" in msg
+    assert "acmeAlpha::Note" in msg
 
 
 # ---------------------------------------------------------------------------

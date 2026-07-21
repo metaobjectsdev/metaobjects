@@ -30,8 +30,8 @@ import metaobjects.core_types  # noqa: F401  — side-effect: registers attr cla
 from metaobjects import InMemoryStringSource, MetaDataLoader
 from metaobjects.codegen.config import GenConfig
 from metaobjects.codegen.generator import GenContext
+from metaobjects.codegen.generators.payload_vo_generator import PayloadVoGenerator
 from metaobjects.codegen.generators.render_helper_generator import RenderHelperGenerator
-from metaobjects.meta.template import template_constants as tc
 from metaobjects.render.email_document import EmailDocument
 from metaobjects.render.filesystem_provider import FilesystemProvider
 
@@ -192,6 +192,48 @@ def test_document_digest_doc_resolves_fqn_nested_object_ref_across_collision(tmp
     payload = {"fromAlpha": {"alphaText": "AA"}, "fromBeta": {"betaText": "BB"}}
     out = helper.render_digest_doc(payload, FilesystemProvider(templates))
     assert out == "Alpha=AA Beta=BB"
+
+
+def test_payload_vo_collision_emits_distinct_package_qualified_classes(tmp_path) -> None:
+    """ADR-0044 — the two colliding ``Note`` VOs (``acme::alpha`` / ``acme::beta``)
+    reachable from one payload module MUST emit as TWO distinct classes under their
+    package-qualified derived names (``AcmeAlphaNotePayload`` / ``AcmeBetaNotePayload``),
+    never one shadowed ``NotePayload`` (which dropped ``betaText`` and typed BOTH
+    fields against the alpha shape). The payload record is GENERATOR-emitted and
+    exercised by construction — the corpus README prohibits hand-authoring it."""
+    dir_root = CORPUS / "xpkg-collision"
+    root = _load_root_from_files(
+        dir_root / "meta.alpha.json",
+        dir_root / "meta.beta.json",
+        dir_root / "meta.app.json",
+    )
+    files = [f for f in PayloadVoGenerator().generate(_ctx(root))
+             if f.path == "digest_doc_payload.py"]
+    assert len(files) == 1
+    src = files[0].content
+    # Two DISTINCT package-qualified classes — and never the shadowed bare name.
+    assert "class AcmeAlphaNotePayload(BaseModel):" in src
+    assert "class AcmeBetaNotePayload(BaseModel):" in src
+    assert "class NotePayload(BaseModel):" not in src
+    # Each field binds to its OWN package's shape.
+    assert "fromAlpha: AcmeAlphaNotePayload | None = None" in src
+    assert "fromBeta: AcmeBetaNotePayload | None = None" in src
+
+    _materialize_and_import(files, tmp_path)
+    mod = import_module("_rh_conf_pkg.digest_doc_payload")
+    # The classes are real and DISTINCT: alpha carries alphaText, beta betaText.
+    alpha = mod.AcmeAlphaNotePayload(alphaText="AA")
+    beta = mod.AcmeBetaNotePayload(betaText="BB")
+    assert "alphaText" in mod.AcmeAlphaNotePayload.model_fields
+    assert "betaText" not in mod.AcmeAlphaNotePayload.model_fields
+    assert "betaText" in mod.AcmeBetaNotePayload.model_fields
+    assert "alphaText" not in mod.AcmeBetaNotePayload.model_fields
+    # No shadowed bare class leaked into the module namespace.
+    assert not hasattr(mod, "NotePayload")
+    # The primary payload composes the two distinct shapes.
+    digest = mod.DigestDocPayload(fromAlpha=alpha, fromBeta=beta)
+    assert digest.fromAlpha.alphaText == "AA"
+    assert digest.fromBeta.betaText == "BB"
 
 
 # ---------------------------------------------------------------------------
