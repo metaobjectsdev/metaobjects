@@ -3,6 +3,7 @@ package com.metaobjects.generator.kotlin
 import com.metaobjects.field.EnumField
 import com.metaobjects.field.MetaField
 import com.metaobjects.field.ObjectField
+import com.metaobjects.generator.GeneratorException
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.loader.MetaDataLoader
@@ -59,6 +60,14 @@ import java.nio.file.Paths
  */
 open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
+    companion object {
+        // ADR-0044 backstop error code — a codegen-time (not loader) error, peer of the
+        // render tier's ERR_VAR_NOT_ON_PAYLOAD. Declared LOCALLY (as in the TS/C#/Python/
+        // Java ports) rather than in the shared cross-port ledger; promoted to the ledger
+        // once the coordinated follow-up lands, so no port reddens on a code it doesn't emit.
+        const val ERR_PAYLOAD_NAME_COLLISION = "ERR_PAYLOAD_NAME_COLLISION"
+    }
+
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
     override fun execute(loader: MetaDataLoader) {
@@ -73,9 +82,142 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // abstract enum super collapse onto ONE emitted file.
         val emittedEnumFqns = mutableSetOf<String>()
         // ADR-0039: root-scan discipline — resolving children accessor.
-        for (md in loader.root.getChildren(MetaTemplate::class.java, true)) {
-            emit(md, loader, outRoot, emittedNestedFqns, emittedEnumFqns)
+        val templates = loader.root.getChildren(MetaTemplate::class.java, true)
+            .sortedBy { it.name }
+        // ADR-0044 — collision-scoped nested-payload class names, a pure function of the
+        // loaded templates (order-independent). Keyed by VO FQN.
+        val nameMap = computePayloadNameMap(templates, loader)
+        for (md in templates) {
+            emit(md, loader, outRoot, emittedNestedFqns, emittedEnumFqns, nameMap)
         }
+    }
+
+    /**
+     * ADR-0044 pass 1/2 — the run's nested-payload name map, keyed by value-object FQN
+     * (`MetaObject.name`), scoped per OUTPUT PACKAGE. Kotlin is a one-class-per-file
+     * emitter (KotlinPoet `FileSpec(outPkg, className)`), so its collision domain is the
+     * output prompts package: two value-objects sharing a bare short name written into
+     * the same package would clobber one `NotePayload.kt`. A nested VO whose bare short
+     * name is UNIQUE in its output package emits `<Short>Payload` (byte-identical to
+     * pre-ADR-0044 output); a COLLISION emits every member under its package-qualified
+     * derived name (`acme::alpha::Note` -> `AcmeAlphaNotePayload`). A still-colliding
+     * derived name fails loud with [ERR_PAYLOAD_NAME_COLLISION]. Pure function of the
+     * templates — never of emission order.
+     */
+    protected open fun computePayloadNameMap(
+        templates: List<MetaTemplate>,
+        loader: MetaDataLoader,
+    ): Map<String, String> {
+        // FQN -> output package (first reaching template in sorted order wins, matching
+        // the run-wide dedupe). The primary VO is template-named, so excluded.
+        val voOutPkg = LinkedHashMap<String, String>()
+        val orderedFqns = ArrayList<String>()
+        for (tmpl in templates) {
+            val payloadRef = tmpl.payloadRef ?: continue
+            val vo = resolveViewObject(loader, payloadRef) ?: continue
+            val nestedPkg = KotlinNaming.promptsPackage(PackageMapping.splitFqn(tmpl.name).first)
+            collectNestedClosure(vo, loader, nestedPkg, voOutPkg, orderedFqns, mutableSetOf(vo.name))
+        }
+        // Group by (output package, bare short name).
+        val byPkgShort = LinkedHashMap<String, MutableList<String>>()
+        for (fqn in orderedFqns) {
+            val key = voOutPkg[fqn] + " " + PackageMapping.splitFqn(fqn).second
+            byPkgShort.getOrPut(key) { ArrayList() }.add(fqn)
+        }
+        val nameMap = LinkedHashMap<String, String>()
+        for (fqns in byPkgShort.values) {
+            if (fqns.size == 1) {
+                val fqn = fqns[0]
+                nameMap[fqn] = KotlinNaming.payloadName(PackageMapping.splitFqn(fqn).second)
+            } else {
+                for (fqn in fqns) {
+                    val (pkg, short) = PackageMapping.splitFqn(fqn)
+                    nameMap[fqn] = KotlinNaming.payloadName(packageQualifiedName(pkg, short))
+                }
+            }
+        }
+        // Backstop — per output package, two DISTINCT FQNs deriving the same class name.
+        // Sorted so the named pair (and whether any collision fires) is order-independent.
+        val ownerByPkgName = HashMap<String, String>()
+        for (fqn in nameMap.keys.sorted()) {
+            val pkgName = voOutPkg[fqn] + " " + nameMap[fqn]
+            val prev = ownerByPkgName.putIfAbsent(pkgName, fqn)
+            if (prev != null && prev != fqn) {
+                throw GeneratorException(
+                    "$ERR_PAYLOAD_NAME_COLLISION: payload record name collision: \"${nameMap[fqn]}\" " +
+                        "derives from both \"$prev\" and \"$fqn\" — rename one value-object or move " +
+                        "it to a package that derives a distinct name"
+                )
+            }
+        }
+        return nameMap
+    }
+
+    /**
+     * ADR-0044 pass 1 — walk [vo]'s transitive nested-payload closure (plain
+     * `field.object @objectRef` + `origin.collection @via` edges), assigning each
+     * not-yet-seen target VO to [outPkg] (first reaching template wins) and recording it
+     * in [orderedFqns]. [seen] is seeded with the primary VO's FQN and is the cycle guard.
+     */
+    protected fun collectNestedClosure(
+        vo: MetaObject,
+        loader: MetaDataLoader,
+        outPkg: String,
+        voOutPkg: MutableMap<String, String>,
+        orderedFqns: MutableList<String>,
+        seen: MutableSet<String>,
+    ) {
+        for (field in vo.metaFields) {
+            val target = nestedTargetOf(field, loader) ?: continue
+            val fqn = target.name
+            if (!seen.add(fqn)) continue
+            if (!voOutPkg.containsKey(fqn)) {
+                voOutPkg[fqn] = outPkg
+                orderedFqns.add(fqn)
+            }
+            collectNestedClosure(target, loader, outPkg, voOutPkg, orderedFqns, seen)
+        }
+    }
+
+    /**
+     * The nested-payload target VO a [field] contributes to the closure, or `null` when
+     * it contributes no nested class. Mirrors the resolution in [resolveObjectFieldType]
+     * (plain `field.object @objectRef`) and [resolveCollectionType] (`origin.collection
+     * @via`) EXACTLY, so the closure walk and the emission walk agree. Passthrough /
+     * aggregate / computed / first origins yield scalar types (no nested class).
+     */
+    protected fun nestedTargetOf(field: MetaField<*>, loader: MetaDataLoader): MetaObject? {
+        val origin = field.children.filterIsInstance<MetaOrigin>().firstOrNull()
+        if (origin is CollectionOrigin) {
+            val via = origin.via ?: return null
+            val (parentName, relName) = KotlinGenUtil.splitDottedRef(via) ?: return null
+            val parent = KotlinGenUtil.resolveObjectByShortOrFqn(loader, parentName) ?: return null
+            val rel = parent.relationships
+                .firstOrNull { it.name == relName || it.name.substringAfterLast("::") == relName }
+                ?: return null
+            val targetRef = rel.objectRef ?: return null
+            return KotlinGenUtil.resolveObjectByShortOrFqn(loader, targetRef)
+        }
+        if (origin != null) return null // passthrough / aggregate / computed / first -> scalar
+        if (field is ObjectField) {
+            val target = try { field.objectRef } catch (e: RuntimeException) { null } ?: return null
+            if (target.subType != MetaObject.SUBTYPE_VALUE) return null
+            return target
+        }
+        return null
+    }
+
+    /**
+     * ADR-0044 — PascalCase each dotted segment of [kotlinPkg] (already `::`->`.`
+     * converted by [PackageMapping.splitFqn]), concatenate, append the bare [shortName]
+     * (`"acme.alpha"` + `"Note"` -> `"AcmeAlphaNote"`). A root-level (empty-package) node
+     * keeps its bare short name.
+     */
+    protected fun packageQualifiedName(kotlinPkg: String, shortName: String): String {
+        if (kotlinPkg.isEmpty()) return shortName
+        return kotlinPkg.split(".")
+            .filter { it.isNotEmpty() }
+            .joinToString("") { it.replaceFirstChar { c -> c.uppercaseChar() } } + shortName
     }
 
     protected open fun emit(
@@ -84,6 +226,7 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         outRoot: Path,
         emittedNestedFqns: MutableSet<String>,
         emittedEnumFqns: MutableSet<String>,
+        nameMap: Map<String, String>,
     ) {
         val payloadRef = template.payloadRef ?: return
         val payloadVo = resolveViewObject(loader, payloadRef) ?: return
@@ -101,6 +244,7 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             outRoot = outRoot,
             emittedNestedFqns = emittedNestedFqns,
             emittedEnumFqns = emittedEnumFqns,
+            nameMap = nameMap,
         )
     }
 
@@ -119,6 +263,7 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         outRoot: Path,
         emittedNestedFqns: MutableSet<String>,
         emittedEnumFqns: MutableSet<String>,
+        nameMap: Map<String, String>,
     ) {
         val serializable = ClassName("kotlinx.serialization", "Serializable")
 
@@ -129,7 +274,7 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
         val ctorBuilder = FunSpec.constructorBuilder()
         for (field in voObject.metaFields) {
-            val type = resolveFieldType(field, voObject, loader, outPkg, outRoot, emittedNestedFqns, emittedEnumFqns)
+            val type = resolveFieldType(field, voObject, loader, outPkg, outRoot, emittedNestedFqns, emittedEnumFqns, nameMap)
             ctorBuilder.addParameter(ParameterSpec.builder(field.name, type).build())
             typeBuilder.addProperty(
                 PropertySpec.builder(field.name, type).initializer(field.name).build()
@@ -156,6 +301,7 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         outRoot: Path,
         emittedNestedFqns: MutableSet<String>,
         emittedEnumFqns: MutableSet<String>,
+        nameMap: Map<String, String>,
     ): TypeName {
         // ADR-0039/ADR-0029: origin.* NEVER inherits — a derived field's origin is
         // declared-here, so read OWN children (field.children), not resolving.
@@ -166,7 +312,7 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 is PassthroughOrigin -> resolvePassthroughType(origin, loader, field)
                 is AggregateOrigin -> resolveAggregateType(origin, loader, field)
                 is CollectionOrigin -> resolveCollectionType(
-                    origin, loader, nestedPkg, outRoot, emittedNestedFqns, emittedEnumFqns, field
+                    origin, loader, nestedPkg, outRoot, emittedNestedFqns, emittedEnumFqns, field, nameMap
                 )
                 // #195 origin.computed: a row-level value; its type is the field's own declared
                 // subType (validation pins the inferred root type == field subType). Conservative
@@ -200,7 +346,7 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         // and return its type (single, or List<TargetPayload> when isArray). Mirrors the
         // Spring port's resolveObjectFieldType — needed so a nested-object payload compiles.
         if (field is ObjectField) {
-            return resolveObjectFieldType(field, loader, nestedPkg, outRoot, emittedNestedFqns, emittedEnumFqns)
+            return resolveObjectFieldType(field, loader, nestedPkg, outRoot, emittedNestedFqns, emittedEnumFqns, nameMap)
         }
 
         // Scalar array (`isArray: true` on a non-object field): model as List<ElementType> in the
@@ -227,6 +373,7 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         outRoot: Path,
         emittedNestedFqns: MutableSet<String>,
         emittedEnumFqns: MutableSet<String>,
+        nameMap: Map<String, String>,
     ): TypeName {
         val fallbackType = { KotlinTypeMapper.payloadTypeName(field) }
         val target = try {
@@ -236,7 +383,10 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         } ?: return fallbackType()
         if (target.subType != MetaObject.SUBTYPE_VALUE) return fallbackType()
 
-        val nestedClassName = PackageMapping.splitFqn(target.name).second + "Payload"
+        // ADR-0044 — class name (declaration, file, reference) from the collision-scoped
+        // name map (bare when unique in the output package, package-qualified on collision).
+        val nestedClassName = nameMap[target.name]
+            ?: (PackageMapping.splitFqn(target.name).second + "Payload")
         if (emittedNestedFqns.add(target.name)) {
             emitPayloadClass(
                 outPkg = nestedPkg,
@@ -247,6 +397,7 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 outRoot = outRoot,
                 emittedNestedFqns = emittedNestedFqns,
                 emittedEnumFqns = emittedEnumFqns,
+                nameMap = nameMap,
             )
         }
 
@@ -344,6 +495,7 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         emittedNestedFqns: MutableSet<String>,
         emittedEnumFqns: MutableSet<String>,
         fallbackField: MetaField<*>,
+        nameMap: Map<String, String>,
     ): TypeName {
         val fallbackType = { KotlinTypeMapper.payloadTypeName(fallbackField) }
         val via = origin.via ?: return fallbackType()
@@ -356,7 +508,9 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             ?: return fallbackType()
         val targetRef = relationship.objectRef ?: return fallbackType()
         val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, targetRef) ?: return fallbackType()
-        val nestedClassName = PackageMapping.splitFqn(target.name).second + "Payload"
+        // ADR-0044 — collision-scoped class name (see resolveObjectFieldType).
+        val nestedClassName = nameMap[target.name]
+            ?: (PackageMapping.splitFqn(target.name).second + "Payload")
 
         if (emittedNestedFqns.add(target.name)) {
             emitPayloadClass(
@@ -368,6 +522,7 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 outRoot = outRoot,
                 emittedNestedFqns = emittedNestedFqns,
                 emittedEnumFqns = emittedEnumFqns,
+                nameMap = nameMap,
             )
         }
 

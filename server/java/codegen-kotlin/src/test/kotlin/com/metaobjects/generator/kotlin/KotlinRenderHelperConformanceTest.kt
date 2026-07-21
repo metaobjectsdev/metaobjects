@@ -225,14 +225,35 @@ class KotlinRenderHelperConformanceTest {
             ))
             loader.register()
             // Must NOT throw: the FQN refs resolve to their own package's Note.
+            KotlinPayloadGenerator().apply { setArgs(mapOf("outputDir" to outDir.toString())) }.execute(loader)
             KotlinRenderHelperGenerator().apply {
                 setArgs(mapOf("outputDir" to outDir.toString(), "templateRoot" to templates.toString()))
             }.execute(loader)
+
             val produced = Files.walk(outDir).filter { it.isRegularFile() }.toList()
-            assertTrue(
-                produced.any { it.fileName.toString() == "DigestDocRenderHelper.kt" },
-                "DigestDocRenderHelper.kt must be generated; files=$produced",
-            )
+            val names = produced.map { it.fileName.toString() }.toSet()
+            assertTrue("DigestDocRenderHelper.kt" in names,
+                "DigestDocRenderHelper.kt must be generated; files=$produced")
+            // ADR-0044 — the two colliding Notes emit as DISTINCT package-qualified data
+            // classes, never one clobbered NotePayload.kt (the pre-fix bug wrote both to
+            // the same path via KotlinPoet, last-wins, dropping the alpha shape).
+            assertTrue("AcmeAlphaNotePayload.kt" in names, "expected AcmeAlphaNotePayload.kt; files=$names")
+            assertTrue("AcmeBetaNotePayload.kt" in names, "expected AcmeBetaNotePayload.kt; files=$names")
+            assertTrue("NotePayload.kt" !in names,
+                "must NOT emit a clobbered bare NotePayload.kt; files=$names")
+            val alphaSrc = produced.first { it.fileName.toString() == "AcmeAlphaNotePayload.kt" }.readText()
+            val betaSrc = produced.first { it.fileName.toString() == "AcmeBetaNotePayload.kt" }.readText()
+            assertTrue("alphaText" in alphaSrc, "AcmeAlphaNotePayload must carry alphaText")
+            assertTrue("betaText" in betaSrc, "AcmeBetaNotePayload must carry betaText")
+            val digestSrc = produced.first { it.fileName.toString() == "DigestDocPayload.kt" }.readText()
+            assertTrue("AcmeAlphaNotePayload" in digestSrc,
+                "DigestDocPayload.fromAlpha must type AcmeAlphaNotePayload; saw:\n$digestSrc")
+            assertTrue("AcmeBetaNotePayload" in digestSrc,
+                "DigestDocPayload.fromBeta must type AcmeBetaNotePayload; saw:\n$digestSrc")
+            // The generated output COMPILES — proves the two distinct classes are real,
+            // valid Kotlin (the prior test could only assert a file existed).
+            val result = compile(outDir)
+            assertEquals(KotlinCompilation.ExitCode.OK, result.exitCode, result.messages)
         } finally {
             outDir.toFile().deleteRecursively()
         }
