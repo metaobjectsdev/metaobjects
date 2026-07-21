@@ -133,6 +133,9 @@ class ErrorCode(str, Enum):
     ERR_PARTIAL_UNRESOLVED = "ERR_PARTIAL_UNRESOLVED"
     ERR_REQUIRED_SLOT_UNUSED = "ERR_REQUIRED_SLOT_UNUSED"
     ERR_VAR_NOT_ON_PAYLOAD = "ERR_VAR_NOT_ON_PAYLOAD"
+    # Codegen (ADR-0044): two value-object FQNs in one payload artifact derive the same
+    # emitted record name even after package-qualification. Peer of ERR_VAR_NOT_ON_PAYLOAD.
+    ERR_PAYLOAD_NAME_COLLISION = "ERR_PAYLOAD_NAME_COLLISION"
     ERR_OUTPUT_TAG_MISSING = "ERR_OUTPUT_TAG_MISSING"
     # SP-H Unit9 — @filterable: true on a field subtype with no filter-operator
     # band (e.g. field.object). Would silently generate an empty-ops filter.

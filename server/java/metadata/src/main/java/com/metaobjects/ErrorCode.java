@@ -230,6 +230,10 @@ public enum ErrorCode {
     /** Build-time verify: a template variable references a field the payload does not declare. */
     ERR_VAR_NOT_ON_PAYLOAD,
 
+    /** Codegen (ADR-0044): two value-object FQNs in one payload artifact derive the same emitted
+     *  record name even after package-qualification. Peer of ERR_VAR_NOT_ON_PAYLOAD. */
+    ERR_PAYLOAD_NAME_COLLISION,
+
     /** Build-time verify: a template partial does not resolve in the configured provider. */
     ERR_PARTIAL_UNRESOLVED,
 

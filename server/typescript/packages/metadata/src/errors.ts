@@ -110,6 +110,10 @@ export const ERROR_CODES = [
   // object in the loaded tree (a dangling cross-reference between metadata).
   "ERR_INVALID_REFERENCE",
   "ERR_VAR_NOT_ON_PAYLOAD",
+  // Codegen (ADR-0044): two value-object FQNs in one payload artifact derive the
+  // same emitted record name even after package-qualification. Peer of
+  // ERR_VAR_NOT_ON_PAYLOAD — a codegen-time (not loader) error.
+  "ERR_PAYLOAD_NAME_COLLISION",
   "ERR_PARTIAL_UNRESOLVED",
   "ERR_REQUIRED_SLOT_UNUSED",
   "ERR_OUTPUT_TAG_MISSING",
