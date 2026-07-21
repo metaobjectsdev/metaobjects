@@ -195,7 +195,17 @@ gate_conf_python() {
   # (tests/codegen/*, tests/integration/, tests/unit/, …) ran in NO lane, not even
   # nightly, so a red test could sit on `main` under a green `python` lane. Measured
   # cost of the full suite is ~5 min, which buys the port a real gate.
-  ( cd server/python && uv run pytest tests/ -q )
+  #
+  # --extra integration is REQUIRED: tests/integration/*.py import fastapi/pg8000/
+  # httpx at module top-level, which live in [project.optional-dependencies]
+  # integration — NOT the default [dependency-groups] dev that `uv run` installs.
+  # Without it a fresh-venv `uv run pytest tests/` fails collection with
+  # ModuleNotFoundError on 9 modules (it only passed locally where the venv had
+  # been synced with the extra by a prior run). This matches every other
+  # tests/integration invocation in the repo (scripts/integration-test.sh,
+  # docs/CONFORMANCE.md). The PG-backed scenarios connect to the lane's Postgres
+  # sidecar via METAOBJECTS_TEST_PG_URL (set in local-ci.yml).
+  ( cd server/python && uv run --extra integration pytest tests/ -q )
 }
 gate_conf_kotlin() {
   ( cd server/java \
