@@ -114,6 +114,102 @@ public class TemplateVerifyTest {
         assertTrue(out.unresolvedText().get(0).contains("ai/greeting"));
     }
 
+    // === #193 — template.output bodies must be drift-checked against @payloadRef,
+    // === parity with template.prompt. A document output's @textRef and an email
+    // === output's @subjectRef/@htmlBodyRef/@textBodyRef were previously skipped
+    // === (output = payload-resolution-only), so a {{field}} that drifted from the
+    // === payload passed verify and only failed later at gen time.
+
+    /** A {@code template.output @kind=email} referencing the payload VO by subject + html body. */
+    private static final String EMAIL_FIXTURE = """
+        {
+          "metadata.root": { "package": "acme::ai", "children": [
+            { "object.value": { "name": "MessagePayload", "children": [
+                { "field.string": { "name": "title", "@required": true } },
+                { "field.string": { "name": "body" } }
+            ] } },
+            { "template.output": {
+                "name": "Welcome",
+                "@kind": "email",
+                "@payloadRef": "MessagePayload",
+                "@subjectRef": "ai/subj",
+                "@htmlBodyRef": "ai/html"
+            } }
+          ] }
+        }
+        """;
+
+    /** A document {@code template.output} (no @kind → document) with a mustache body via @textRef. */
+    private static final String DOCUMENT_OUTPUT_FIXTURE = """
+        {
+          "metadata.root": { "package": "acme::ai", "children": [
+            { "object.value": { "name": "MessagePayload", "children": [
+                { "field.string": { "name": "title", "@required": true } },
+                { "field.string": { "name": "body" } }
+            ] } },
+            { "template.output": {
+                "name": "Doc",
+                "@payloadRef": "MessagePayload",
+                "@textRef": "ai/doc",
+                "@format": "json"
+            } }
+          ] }
+        }
+        """;
+
+    @Test
+    public void emailOutputCleanPasses() throws Exception {
+        Path templateRoot = Files.createTempDirectory("tv-email-clean-templates");
+        writeTemplate(templateRoot, "ai/subj", "Hello {{title}}");
+        writeTemplate(templateRoot, "ai/html", "<p>Hi — {{body}}</p>");
+
+        MetaDataLoader loader = loadFixture("email-clean", EMAIL_FIXTURE);
+
+        TemplateVerify.Outcome out = TemplateVerify.run(loader, templateRoot);
+
+        assertTrue("a clean email output must pass, got: " + out, out.ok());
+        assertTrue("expected no drift errors", out.errors().isEmpty());
+    }
+
+    @Test
+    public void emailOutputDriftIsCaught() throws Exception {
+        Path templateRoot = Files.createTempDirectory("tv-email-drift-templates");
+        writeTemplate(templateRoot, "ai/subj", "Hello {{title}}");
+        // {{subject}} is NOT on MessagePayload — a drift in the HTML body part.
+        writeTemplate(templateRoot, "ai/html", "<p>Hi — {{subject}}</p>");
+
+        MetaDataLoader loader = loadFixture("email-drift", EMAIL_FIXTURE);
+
+        TemplateVerify.Outcome out = TemplateVerify.run(loader, templateRoot);
+
+        assertFalse("email-body drift must be reported (#193)", out.ok());
+        assertEquals(1, out.errors().size());
+        TemplateVerify.Drift d = out.errors().get(0);
+        assertEquals("acme::ai::Welcome", d.template());
+        assertEquals(TemplateVerify.KIND_OUTPUT, d.kind());
+        assertEquals("ERR_VAR_NOT_ON_PAYLOAD", d.code());
+        assertEquals("subject", d.path());
+    }
+
+    @Test
+    public void documentOutputBodyDriftIsCaught() throws Exception {
+        Path templateRoot = Files.createTempDirectory("tv-doc-drift-templates");
+        // {{subject}} is NOT on MessagePayload — a drift in the document body.
+        writeTemplate(templateRoot, "ai/doc", "spec for {{title}} and {{subject}}");
+
+        MetaDataLoader loader = loadFixture("doc-drift", DOCUMENT_OUTPUT_FIXTURE);
+
+        TemplateVerify.Outcome out = TemplateVerify.run(loader, templateRoot);
+
+        assertFalse("document-output body drift must be reported (#193)", out.ok());
+        assertEquals(1, out.errors().size());
+        TemplateVerify.Drift d = out.errors().get(0);
+        assertEquals("acme::ai::Doc", d.template());
+        assertEquals(TemplateVerify.KIND_OUTPUT, d.kind());
+        assertEquals("ERR_VAR_NOT_ON_PAYLOAD", d.code());
+        assertEquals("subject", d.path());
+    }
+
     // === Nested @objectRef FQN resolution across a cross-package short-name
     // === collision (ADR-0041). Two prompt trees each declare their OWN value
     // === object with the SAME short name `Row`, in different packages. The

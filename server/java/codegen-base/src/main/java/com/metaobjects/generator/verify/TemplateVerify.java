@@ -31,14 +31,16 @@ import java.util.Set;
  *   <li>derives the {@code @payloadRef} value-object's {@link PayloadField} field
  *       tree (the SAME walk {@code SpringRenderHelperGenerator} uses — object-ref
  *       fields recurse, cycle-guarded — so the build-time gate and this check agree),</li>
- *   <li>for {@code template.output}: a payload-resolution-only check (the parser
- *       schema is derived from the same VO; field-tree drift surfaces here AND at
- *       gen time),</li>
- *   <li>for {@code template.prompt}: resolves {@code @textRef} through a
- *       {@link FilesystemProvider} rooted at the on-disk template dir and runs the
- *       render {@link Verify} engine — reporting {@code {{field}}}↔payload drift,
- *       unresolved partials, and missing required output tags. {@code @requiredSlots}
- *       that are never referenced are warnings (not failures).</li>
+ *   <li>resolves every renderable body ref through a {@link FilesystemProvider}
+ *       rooted at the on-disk template dir and runs the render {@link Verify} engine
+ *       against each — reporting {@code {{field}}}↔payload drift, unresolved partials,
+ *       and (prompts only) missing required output tags. The body refs are
+ *       subtype-/kind-aware, mirroring the gen-time render-helper (#193):
+ *       {@code template.prompt} → {@code @textRef} (with {@code @requiredSlots}/
+ *       {@code @requiredTags}); {@code template.output} document → {@code @textRef};
+ *       {@code template.output @kind=email} → {@code @subjectRef} + {@code @htmlBodyRef}
+ *       + optional {@code @textBodyRef}. {@code @requiredSlots} never referenced are
+ *       warnings (not failures).</li>
  * </ol>
  *
  * <p><b>Reuse, not reimplementation</b>: the actual drift logic is the render
@@ -114,33 +116,52 @@ public final class TemplateVerify {
                 continue;
             }
 
+            // Collect every renderable body ref for this template, mirroring the
+            // gen-time render-helper drift gate so `verify` and `gen` agree (#193):
+            //   template.prompt                    → @textRef (WITH required slots/tags).
+            //   template.output document (default) → @textRef.
+            //   template.output @kind=email        → @subjectRef + @htmlBodyRef + optional @textBodyRef.
+            List<String> refs = new ArrayList<>();
+            List<String> requiredSlots = null;
+            List<String> requiredTags = null;
             if (isOutput) {
-                // Output's parser schema is derived from the same VO that drives prompt
-                // rendering — payload-VO resolution above covers the drift contract.
-                // No @textRef walk: output templates may not carry one (the parser is
-                // schema-driven), and the generator surfaces gen-time issues directly.
-                continue;
+                String outKind = attrString(tmpl, TemplateConstants.ATTR_KIND);
+                outKind = (outKind == null ? TemplateConstants.KIND_DEFAULT : outKind)
+                        .toLowerCase(java.util.Locale.ROOT);
+                if (TemplateConstants.KIND_EMAIL.equals(outKind)) {
+                    addIfPresent(refs, attrString(tmpl, TemplateConstants.ATTR_SUBJECT_REF));
+                    addIfPresent(refs, attrString(tmpl, TemplateConstants.ATTR_HTML_BODY_REF));
+                    addIfPresent(refs, attrString(tmpl, TemplateConstants.ATTR_TEXT_BODY_REF));
+                } else {
+                    addIfPresent(refs, tmpl.getTextRef());
+                }
+            } else {
+                addIfPresent(refs, tmpl.getTextRef());
+                // Slot/tag requirements are a template.prompt concept; the email/document
+                // gate does NOT apply them per part (they would false-flag a slot as
+                // unused in each part). So only the prompt path carries them.
+                requiredSlots = tmpl instanceof PromptTemplate p ? p.getRequiredSlots() : null;
+                requiredTags = tmpl.getRequiredTags();
             }
 
-            // template.prompt branch — Mustache + tag/slot checks via the render engine.
-            String textRef = tmpl.getTextRef();
-            if (textRef == null || textRef.isEmpty()) continue;
-
-            String text = provider.resolve(textRef);
-            if (text == null) {
-                unresolved.add("template \"" + tmpl.getName() + "\": @textRef \"" + textRef
-                        + "\" did not resolve under " + templateRoot);
-                continue;
-            }
-
-            List<String> requiredSlots = tmpl instanceof PromptTemplate p ? p.getRequiredSlots() : null;
-            List<String> requiredTags = tmpl.getRequiredTags();
+            // No renderable body ref present — a loader-schema concern, not verify's
+            // (a well-formed output always carries one; document→@textRef, email→subject+html).
+            if (refs.isEmpty()) continue;
 
             VerifyOptions opts = new VerifyOptions(provider, requiredSlots, requiredTags);
-            for (VerifyError e : Verify.check(text, fields, opts)) {
-                Drift drift = new Drift(tmpl.getName(), kind, e.code(), e.path());
-                if (Verify.ERR_REQUIRED_SLOT_UNUSED.equals(e.code())) warnings.add(drift);
-                else errors.add(drift);
+            for (String ref : refs) {
+                // Render-engine drift check: mustache variables ↔ payload field names.
+                String text = provider.resolve(ref);
+                if (text == null) {
+                    unresolved.add("template \"" + tmpl.getName() + "\": ref \"" + ref
+                            + "\" did not resolve under " + templateRoot);
+                    continue;
+                }
+                for (VerifyError e : Verify.check(text, fields, opts)) {
+                    Drift drift = new Drift(tmpl.getName(), kind, e.code(), e.path());
+                    if (Verify.ERR_REQUIRED_SLOT_UNUSED.equals(e.code())) warnings.add(drift);
+                    else errors.add(drift);
+                }
             }
         }
 
@@ -200,6 +221,20 @@ public final class TemplateVerify {
             if (matches) return obj;
         }
         return null;
+    }
+
+    /**
+     * Resolving read of a string attr (ADR-0039: template attrs may be inherited via
+     * {@code extends} — templates CAN extend). Returns null when absent or blank.
+     */
+    private static String attrString(com.metaobjects.MetaData md, String name) {
+        // Raw resolving read (blank-guarding lives in addIfPresent, matching the C# port).
+        return md.hasMetaAttr(name) ? md.getMetaAttr(name).getValueAsString() : null;
+    }
+
+    /** Append a non-blank ref to the list. */
+    private static void addIfPresent(List<String> refs, String ref) {
+        if (ref != null && !ref.isEmpty()) refs.add(ref);
     }
 
     /** Resolve {@code @payloadRef} to its {@code object.value} target (rejects entities). */

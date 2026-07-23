@@ -2,14 +2,15 @@
 // extended to template.output by FR6, ADR-0010).
 //
 // Loads metadata from a directory; for each template node derives the
-// @payloadRef view-object's field tree and dispatches on subtype:
+// @payloadRef view-object's field tree, resolves every renderable body ref via a
+// filesystem provider, and runs the engine's Verify on each (template variable ↔
+// payload field drift, unresolved partials, and — prompts only — missing output
+// tags). The body refs are subtype-/kind-aware, mirroring the gen-time
+// render-helper so verify and gen agree (#193):
 //
-//   template.prompt — resolves @textRef via a filesystem provider and runs the
-//                     engine's Verify (template variable ↔ payload field drift,
-//                     unresolved partials, missing output tags).
-//   template.output — payload-VO resolution check only (the generator derives
-//                     the parser schema from the same VO, so any field-tree
-//                     drift surfaces here as well as at gen time).
+//   template.prompt                    — @textRef (WITH @requiredSlots/@requiredTags).
+//   template.output document (default) — @textRef.
+//   template.output @kind=email        — @subjectRef + @htmlBodyRef + optional @textBodyRef.
 //
 // Runs at the last fixed point before serve, never on the request path.
 
@@ -244,6 +245,12 @@ public static class VerifyCommand
         _ => [],
     };
 
+    /// <summary>Append a non-blank string attr value to a ref list.</summary>
+    private static void AddIfPresent(List<string> refs, object? attr)
+    {
+        if (attr is string s && s.Length > 0) refs.Add(s);
+    }
+
     public static Outcome Run(string metadataDir, string templatesRoot, bool strict = true)
     {
         var load = MetaDataLoader.FromDirectory(metadataDir, strict: strict);
@@ -256,11 +263,13 @@ public static class VerifyCommand
 
         foreach (var tmpl in load.Root.OwnChildren().Where(c => c.Type == TYPE_TEMPLATE))
         {
-            // Missing @payloadRef is already a load error (template schema requires it).
-            if (tmpl.OwnAttr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef)
+            // ADR-0039: @payloadRef may be inherited via an abstract template (templates
+            // CAN extend) → resolving Attr, not OwnAttr. Missing is a load error already.
+            if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef)
                 continue;
 
-            var kind = tmpl.SubType == TEMPLATE_SUBTYPE_OUTPUT ? KIND_OUTPUT : KIND_PROMPT;
+            var isOutput = tmpl.SubType == TEMPLATE_SUBTYPE_OUTPUT;
+            var kind = isOutput ? KIND_OUTPUT : KIND_PROMPT;
 
             // Both subtypes: @payloadRef must resolve to a loaded object.value (=>
             // non-empty derived field tree). Catches a renamed VO before codegen.
@@ -271,28 +280,41 @@ public static class VerifyCommand
                 continue;
             }
 
-            if (tmpl.SubType == TEMPLATE_SUBTYPE_OUTPUT)
+            // Collect every renderable body ref, mirroring the gen-time render-helper
+            // gate so verify and gen agree (#193):
+            //   template.prompt                    → @textRef (WITH required slots/tags).
+            //   template.output document (default) → @textRef.
+            //   template.output @kind=email        → @subjectRef + @htmlBodyRef + optional @textBodyRef.
+            var refs = new List<string>();
+            IReadOnlyList<string> requiredSlots = [];
+            IReadOnlyList<string> requiredTags = [];
+            if (isOutput)
             {
-                // Output's parser schema is derived from the same VO that drives prompt
-                // rendering — payload-VO resolution above covers FR6's drift contract.
-                // No @textRef walk: output templates may not carry one (the parser is
-                // schema-driven), and the generator surfaces gen-time issues directly.
-                continue;
+                var outKind = ((tmpl.Attr(TEMPLATE_ATTR_KIND) as string) ?? TEMPLATE_KIND_DEFAULT).ToLowerInvariant();
+                if (outKind == TEMPLATE_KIND_EMAIL)
+                {
+                    AddIfPresent(refs, tmpl.Attr(TEMPLATE_ATTR_SUBJECT_REF));
+                    AddIfPresent(refs, tmpl.Attr(TEMPLATE_ATTR_HTML_BODY_REF));
+                    AddIfPresent(refs, tmpl.Attr(TEMPLATE_ATTR_TEXT_BODY_REF));
+                }
+                else
+                {
+                    AddIfPresent(refs, tmpl.Attr(TEMPLATE_ATTR_TEXT_REF));
+                }
+            }
+            else
+            {
+                AddIfPresent(refs, tmpl.Attr(TEMPLATE_ATTR_TEXT_REF));
+                // Slot/tag requirements are a template.prompt concept; the email/document
+                // gate does NOT apply them per part (they would false-flag a slot as
+                // unused in each part). So only the prompt path carries them.
+                requiredSlots = AsStringList(tmpl.Attr(TEMPLATE_ATTR_REQUIRED_SLOTS));
+                requiredTags = AsStringList(tmpl.Attr(TEMPLATE_ATTR_REQUIRED_TAGS));
             }
 
-            // template.prompt branch — existing Mustache + tag/slot checks.
-            if (tmpl.OwnAttr(TEMPLATE_ATTR_TEXT_REF) is not string textRef)
-                continue;
-
-            var text = provider.Resolve(textRef);
-            if (text is null)
-            {
-                unresolved.Add($"template \"{tmpl.Name}\": @textRef \"{textRef}\" did not resolve under {templatesRoot}");
-                continue;
-            }
-
-            var requiredSlots = AsStringList(tmpl.OwnAttr(TEMPLATE_ATTR_REQUIRED_SLOTS));
-            var requiredTags = AsStringList(tmpl.OwnAttr(TEMPLATE_ATTR_REQUIRED_TAGS));
+            // No renderable body ref present — a loader-schema concern, not verify's
+            // (a well-formed output always carries one; document→@textRef, email→subject+html).
+            if (refs.Count == 0) continue;
 
             var verifyOptions = new VerifyOptions
             {
@@ -300,11 +322,20 @@ public static class VerifyCommand
                 RequiredSlots = requiredSlots,
                 RequiredTags = requiredTags,
             };
-            foreach (var e in Verify.Check(text, fields, verifyOptions))
+            foreach (var reference in refs)
             {
-                var drift = new Drift(tmpl.Name, kind, e.Code, e.Path);
-                if (e.Code == Verify.ERR_REQUIRED_SLOT_UNUSED) warnings.Add(drift);
-                else errors.Add(drift);
+                var text = provider.Resolve(reference);
+                if (text is null)
+                {
+                    unresolved.Add($"template \"{tmpl.Name}\": ref \"{reference}\" did not resolve under {templatesRoot}");
+                    continue;
+                }
+                foreach (var e in Verify.Check(text, fields, verifyOptions))
+                {
+                    var drift = new Drift(tmpl.Name, kind, e.Code, e.Path);
+                    if (e.Code == Verify.ERR_REQUIRED_SLOT_UNUSED) warnings.Add(drift);
+                    else errors.Add(drift);
+                }
             }
         }
 

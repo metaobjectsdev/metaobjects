@@ -41,6 +41,15 @@ public sealed class VerifyCommandTests : IDisposable
         File.WriteAllText(Path.Combine(dir, "main.mustache"), body);
     }
 
+    // Write a template body at an arbitrary 2-layer ref (group/source) → <ref>.mustache.
+    private void WriteAt(string reference, string body)
+    {
+        var full = Path.Combine(TplDir,
+            reference.Replace('/', Path.DirectorySeparatorChar) + ".mustache");
+        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+        File.WriteAllText(full, body);
+    }
+
     [Fact]
     public void Clean_template_passes()
     {
@@ -98,11 +107,10 @@ public sealed class VerifyCommandTests : IDisposable
     // -------------------- template.output (FR6, ADR-0010) --------------------
 
     [Fact]
-    public void Output_with_resolved_payload_ref_passes_without_a_template_file()
+    public void Output_document_body_passes_when_clean()
     {
-        // template.output's parser is schema-derived from the payload VO; it does
-        // not require a @textRef-resolved template body. A clean payload-VO should
-        // pass even when no template file is on disk.
+        // A document template.output's @textRef body is drift-checked (parity with
+        // prompt, #193): a clean body referencing only payload fields passes.
         const string outputModel = """
         { "metadata.root": { "package": "acme::ai", "children": [
           { "object.value": { "name": "NpcResponsePayload", "children": [
@@ -114,9 +122,64 @@ public sealed class VerifyCommandTests : IDisposable
         ]}}
         """;
         File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), outputModel);
+        WriteAt("npc/output", "{{name}} is {{age}}");
         var o = VerifyCommand.Run(MetaDir, TplDir);
         Assert.True(o.Ok, string.Join("; ",
             o.LoadErrors.Concat(o.UnresolvedText).Concat(o.Errors.Select(e => $"{e.Kind}/{e.Code}({e.Path})"))));
+    }
+
+    // ---------- #193: template.output bodies are drift-checked (parity with prompt) ----------
+
+    private const string EmailModel = """
+    { "metadata.root": { "package": "acme::ai", "children": [
+      { "object.value": { "name": "P", "children": [ { "field.string": { "name": "name" } } ] } },
+      { "template.output": { "name": "Welcome", "@kind": "email",
+        "@payloadRef": "P", "@subjectRef": "e/subj", "@htmlBodyRef": "e/html" } }
+    ]}}
+    """;
+
+    [Fact]
+    public void Output_email_clean_passes()
+    {
+        File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EmailModel);
+        WriteAt("e/subj", "Hello {{name}}");
+        WriteAt("e/html", "<p>Hi {{name}}</p>");
+        var o = VerifyCommand.Run(MetaDir, TplDir);
+        Assert.True(o.Ok, string.Join("; ",
+            o.LoadErrors.Concat(o.UnresolvedText).Concat(o.Errors.Select(e => $"{e.Kind}/{e.Code}({e.Path})"))));
+    }
+
+    [Fact]
+    public void Output_email_body_drift_is_caught()
+    {
+        File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), EmailModel);
+        WriteAt("e/subj", "Hello {{name}}");
+        WriteAt("e/html", "<p>Hi {{nope}}</p>"); // {{nope}} is not on payload P
+        var o = VerifyCommand.Run(MetaDir, TplDir);
+        Assert.False(o.Ok);
+        Assert.Contains(o.Errors, d =>
+            d.Kind == VerifyCommand.KIND_OUTPUT &&
+            d.Code == Render.Verify.ERR_VAR_NOT_ON_PAYLOAD &&
+            d.Path == "nope");
+    }
+
+    [Fact]
+    public void Output_document_body_drift_is_caught()
+    {
+        const string docModel = """
+        { "metadata.root": { "package": "acme::ai", "children": [
+          { "object.value": { "name": "P", "children": [ { "field.string": { "name": "name" } } ] } },
+          { "template.output": { "name": "Doc", "@format": "json", "@payloadRef": "P", "@textRef": "t/main" } }
+        ]}}
+        """;
+        File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), docModel);
+        WriteTemplate("spec for {{nope}}"); // {{nope}} is not on payload P → document-body drift
+        var o = VerifyCommand.Run(MetaDir, TplDir);
+        Assert.False(o.Ok);
+        Assert.Contains(o.Errors, d =>
+            d.Kind == VerifyCommand.KIND_OUTPUT &&
+            d.Code == Render.Verify.ERR_VAR_NOT_ON_PAYLOAD &&
+            d.Path == "nope");
     }
 
     [Fact]

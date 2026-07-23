@@ -79,6 +79,46 @@ def _templates_dir(tmp_path: Path, body: str) -> str:
     return str(root)
 
 
+# An email `template.output` (@kind=email) carries subject + html body part-refs
+# (NO @textRef). Each part's mustache must be drift-checked against the payload VO,
+# parity with a document output and template.prompt (#193).
+_META_EMAIL = """\
+{
+  "metadata.root": {
+    "package": "acme::ai",
+    "children": [
+      {
+        "object.value": {
+          "name": "Welcome",
+          "children": [
+            { "field.string": { "name": "name", "@required": true } }
+          ]
+        }
+      },
+      {
+        "template.output": {
+          "name": "WelcomeEmail",
+          "@kind": "email",
+          "@payloadRef": "Welcome",
+          "@subjectRef": "emails/subject",
+          "@htmlBodyRef": "emails/html"
+        }
+      }
+    ]
+  }
+}
+"""
+
+
+def _email_templates_dir(tmp_path: Path, subject: str, html: str) -> str:
+    """Write a templates root with the email subject + html body parts."""
+    root = tmp_path / "email_templates"
+    (root / "emails").mkdir(parents=True)
+    (root / "emails" / "subject.mustache").write_text(subject)
+    (root / "emails" / "html.mustache").write_text(html)
+    return str(root)
+
+
 def _meta_dir_with(tmp_path: Path, meta_json: str) -> str:
     d = tmp_path / "tmeta"
     d.mkdir()
@@ -133,6 +173,27 @@ def test_templates_unresolvable_ref_is_drift(tmp_path: Path) -> None:
     troot.mkdir()
     rc = main(["verify", "--templates", meta_dir, "--templates-root", str(troot)])
     assert rc != 0
+
+
+def test_templates_email_clean_returns_zero(tmp_path: Path) -> None:
+    # An @kind=email output whose subject + html parts reference only payload
+    # fields is clean (#193 — email parts drift-checked like a document body).
+    meta_dir = _meta_dir_with(tmp_path, _META_EMAIL)
+    troot = _email_templates_dir(tmp_path, "Hello {{name}}", "<p>Hi {{name}}</p>")
+    rc = main(["verify", "--templates", meta_dir, "--templates-root", troot])
+    assert rc == 0
+
+
+def test_templates_email_body_drift_is_caught(tmp_path: Path, capsys) -> None:
+    # A {{missing}} in the email HTML body part must be reported (#193): the
+    # per-port bug was skipping @kind=email templates entirely.
+    meta_dir = _meta_dir_with(tmp_path, _META_EMAIL)
+    troot = _email_templates_dir(tmp_path, "Hello {{name}}", "<p>Hi {{missing}}</p>")
+    rc = main(["verify", "--templates", meta_dir, "--templates-root", troot])
+    assert rc != 0
+    err = capsys.readouterr().err
+    assert "missing" in err
+    assert "WelcomeEmail" in err
 
 
 # --- 3. bare verify = codegen (back-compat) + the subverb note --------------
