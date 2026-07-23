@@ -52,6 +52,7 @@ from metaobjects.codegen.instance_artifacts import emits_instance_artifacts
 from metaobjects.codegen.type_map import PyType, py_type_for
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
+from metaobjects.meta.persistence.db import db_constants as dbc
 from metaobjects.meta.core.identity.identity_constants import (
     IDENTITY_ATTR_FIELDS,
     IDENTITY_REFERENCE_ATTR_REFERENCES,
@@ -96,6 +97,60 @@ def _required_field_names(entity: MetaObject) -> list[str]:
     PATCH-2 guards present-null on any of these, and a @required jsonb column can
     be nulled just like a scalar one."""
     return [f.name for f in entity.fields() if is_required(f)]
+
+
+# --- #203 / ADR-0045: @autoSet stamping in the generated router (above the repo seam) ----------
+
+_AUTO_SET_TEMPORAL_SUBTYPES = (
+    fc.FIELD_SUBTYPE_DATE,
+    fc.FIELD_SUBTYPE_TIME,
+    fc.FIELD_SUBTYPE_TIMESTAMP,
+)
+
+
+def _auto_set_split(entity: MetaObject) -> tuple[list[MetaField], list[MetaField]]:
+    """The entity's ``@autoSet`` temporal fields split into ``(onCreate, onUpdate)``.
+
+    Reads the RESOLVING ``@autoSet`` (ADR-0039) so an inherited
+    ``BaseEntity.createdAt/updatedAt`` is honored; a non-temporal field is skipped.
+    Both lists are empty for an entity that declares none, keeping its router
+    byte-identical to the pre-#203 output."""
+    on_create: list[MetaField] = []
+    on_update: list[MetaField] = []
+    for f in entity.fields():
+        if f.sub_type not in _AUTO_SET_TEMPORAL_SUBTYPES:
+            continue
+        mode = f.get_meta_attr(fc.FIELD_ATTR_AUTO_SET)  # ADR-0039 resolving: may be inherited via extends
+        if mode == fc.AUTO_SET_ON_CREATE:
+            on_create.append(f)
+        elif mode == fc.AUTO_SET_ON_UPDATE:
+            on_update.append(f)
+    return on_create, on_update
+
+
+def _auto_set_stamp_expr(field: MetaField, base_var: str) -> str:
+    """The inline now()-expression for an ``@autoSet`` *field*, derived from one shared
+    tz-aware *base_var* datetime so every column stamped in one op is equal (a fresh
+    row's created == updated). Keyed off the COLUMN's temporal type: ``field.date`` →
+    ``.date()``; ``field.time`` → ``.time()``; ``field.timestamp`` → the tz-aware base
+    (``@localTime`` → a naive wall-clock value). Mirrors ObjectManager._auto_set_stamp."""
+    sub = field.sub_type
+    if sub == fc.FIELD_SUBTYPE_DATE:
+        return f"{base_var}.date()"
+    if sub == fc.FIELD_SUBTYPE_TIME:
+        return f"{base_var}.time()"
+    is_tz = field.get_meta_attr(dbc.FIELD_ATTR_LOCAL_TIME) is not True  # ADR-0039 resolving
+    return base_var if is_tz else f"{base_var}.replace(tzinfo=None)"
+
+
+def _auto_set_stamp_lines(fields: list[MetaField]) -> list[str]:
+    """Router-handler body lines stamping *fields* into ``dto`` from ONE captured base
+    instant (so all same-op columns are equal). Empty list for no fields."""
+    if not fields:
+        return []
+    lines = ["    _asnow = _dt.datetime.now(_dt.timezone.utc)"]
+    lines += [f'    dto["{f.name}"] = {_auto_set_stamp_expr(f, "_asnow")}' for f in fields]
+    return lines
 
 
 def _py_set_literal(names: list[str], *, frozen: bool = False) -> str:
@@ -259,6 +314,8 @@ class RouterGenerator:
         ops_const: str,
         model_name: str,
         patch_model: str,
+        create_autoset: list[str] = (),
+        update_autoset: list[str] = (),
     ) -> list[str]:
         """One CRUD route handler block, dispatched by *name*
         (``list`` / ``get`` / ``create`` / ``update`` / ``delete``). Override to
@@ -318,6 +375,11 @@ class RouterGenerator:
                 f"        {model_name}(**dto)",
                 "    except ValidationError:",
                 '        return JSONResponse(status_code=400, content={"error": "validation"})',
+                # #203/ADR-0045: the generated router (the API surface) stamps @autoSet columns
+                # ABOVE the consumer repo seam — onCreate + onUpdate both stamped from one instant
+                # (a fresh row's createdAt == updatedAt), ignoring any caller-supplied value.
+                *(["    # #203/ADR-0045: stamp @autoSet columns (server-owned; caller ignored)."]
+                  + list(create_autoset) if create_autoset else []),
                 "    return repo.create(dto)",
             ]
         if name == "update":
@@ -341,6 +403,11 @@ class RouterGenerator:
                 f"        {patch_model}(**dto)",
                 "    except ValidationError:",
                 '        return JSONResponse(status_code=400, content={"error": "validation"})',
+                # #203/ADR-0045: bump onUpdate @autoSet columns (server-owned) on EVERY patch,
+                # above the repo seam — a server-inserted present key (compatible with the PATCH
+                # present-key tristate); onCreate columns are never touched here.
+                *(["    # #203/ADR-0045: bump onUpdate @autoSet column(s) (server-owned)."]
+                  + list(update_autoset) if update_autoset else []),
                 f"    saved = repo.update({pk_param}, dto)",
                 "    if saved is None:",
                 '        return JSONResponse(status_code=404, content={"error": "not_found"})',
@@ -684,6 +751,14 @@ class RouterGenerator:
         # is a 400 — the update handler guards these before the repo call.
         required_set_body = _py_set_literal(_required_field_names(entity), frozen=True)
 
+        # #203/ADR-0045: @autoSet stamp lines for the create/update handlers (empty for a
+        # non-@autoSet entity → byte-identical output). insert stamps onCreate+onUpdate from one
+        # instant; a patch bumps onUpdate only (createdAt stays immutable).
+        _on_create_auto, _on_update_auto = _auto_set_split(entity)
+        create_autoset = _auto_set_stamp_lines(_on_create_auto + _on_update_auto)
+        update_autoset = _auto_set_stamp_lines(_on_update_auto)
+        has_autoset = bool(_on_create_auto or _on_update_auto)
+
         parts: list[str] = []
         parts.append(
             generated_header(short_name, _effective_fqn(entity)).rstrip() + "\n"
@@ -691,6 +766,10 @@ class RouterGenerator:
         )
         parts.append("from __future__ import annotations")
         parts.append("")
+        if has_autoset:
+            # #203/ADR-0045: the router stamps @autoSet columns inline (no runtime dependency).
+            parts.append("import datetime as _dt")
+            parts.append("")
         for import_line in sorted(pk.imports):
             parts.append(import_line)
         if pk.imports:
@@ -762,6 +841,8 @@ class RouterGenerator:
             ops_const=ops_const,
             model_name=f"{short_name}Create",
             patch_model=f"{short_name}Patch",
+            create_autoset=create_autoset,
+            update_autoset=update_autoset,
         )
         for i, hname in enumerate(("list", "get", "create", "update", "delete")):
             if i > 0:
