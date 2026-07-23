@@ -148,6 +148,48 @@ def assert_response(
                     f"{scenario_name} / {request_id}: expected row.{k}={v!r}, got {actual!r}"
                 )
 
+    if "fieldsEqual" in expect_body:
+        # #203 / ADR-0045: all listed RESPONSE fields must equal EACH OTHER
+        # (never a literal) — e.g. a freshly-created row's @autoSet onCreate ==
+        # onUpdate (both stamped from one instant). Format-agnostic.
+        want_fields = expect_body["fieldsEqual"]
+        if not isinstance(body, dict):
+            raise AssertionError(
+                f"{scenario_name} / {request_id}: expected object, got: {body!r}"
+            )
+        values = [(f, body.get(f)) for f in want_fields]
+        if values:
+            _first_name, first_value = values[0]
+            for name, value in values[1:]:
+                if not _structural_equals(first_value, value):
+                    raise AssertionError(
+                        f"{scenario_name} / {request_id}: expected fields "
+                        f"{want_fields} to be equal, but {values[0][0]}={first_value!r} "
+                        f"!= {name}={value!r}"
+                    )
+
+    if "fieldsNotEqual" in expect_body:
+        # #203 / ADR-0045: the two listed RESPONSE fields must DIFFER from each
+        # other (never a literal) — e.g. after a PATCH, @autoSet onUpdate has been
+        # bumped to now() while onCreate is preserved, so they diverge.
+        want_fields = expect_body["fieldsNotEqual"]
+        if not isinstance(body, dict):
+            raise AssertionError(
+                f"{scenario_name} / {request_id}: expected object, got: {body!r}"
+            )
+        if len(want_fields) != 2:
+            raise AssertionError(
+                f"{scenario_name} / {request_id}: fieldsNotEqual expects exactly "
+                f"two field names, got {want_fields!r}"
+            )
+        a_name, b_name = want_fields[0], want_fields[1]
+        a_value, b_value = body.get(a_name), body.get(b_name)
+        if _structural_equals(a_value, b_value):
+            raise AssertionError(
+                f"{scenario_name} / {request_id}: expected {a_name} != {b_name}, "
+                f"but both = {a_value!r}"
+            )
+
     if expect_body.get("hasId") is True:
         if not isinstance(body, dict):
             raise AssertionError(

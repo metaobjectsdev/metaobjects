@@ -85,7 +85,12 @@ internal sealed class GeneratedAuthorServerFactory : IAsyncDisposable
                     -- ADR-0036 Wave 2: a default field.timestamp is an absolute instant →
                     -- the generated EF model binds CreatedAt to DateTimeOffset, which Npgsql
                     -- reads from a `timestamp with time zone` (timestamptz) column.
-                    ""createdAt"" TIMESTAMPTZ NOT NULL
+                    ""createdAt"" TIMESTAMPTZ NOT NULL,
+                    -- Issue #203 / ADR-0045: the @autoSet timestamp columns (onCreate / onUpdate).
+                    -- Not @required → nullable DateTimeOffset? in the generated EF model; the
+                    -- generated CRUD stamps them (insert stamps both, update bumps autoUpdatedAt).
+                    ""autoCreatedAt"" TIMESTAMPTZ,
+                    ""autoUpdatedAt"" TIMESTAMPTZ
                 )";
             await cmd.ExecuteNonQueryAsync();
         }
@@ -285,11 +290,19 @@ internal sealed class GeneratedAuthorServerFactory : IAsyncDisposable
         {
             await using var ins = c.CreateCommand();
             ins.CommandText =
-                "INSERT INTO \"authors\" (id, name, bio, \"createdAt\") VALUES (@id, @name, @bio, @ct)";
+                "INSERT INTO \"authors\" (id, name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\") "
+                + "VALUES (@id, @name, @bio, @ct, @ac, @au)";
             ins.Parameters.AddWithValue("@id", Convert.ToInt64(r["id"]));
             ins.Parameters.AddWithValue("@name", (string)r["name"]!);
             ins.Parameters.AddWithValue("@bio", r["bio"] is string b ? b : (object)DBNull.Value);
             ins.Parameters.AddWithValue("@ct", ParseTimestamp((string)r["createdAt"]!));
+            // Issue #203 / ADR-0045 — seed the OLD @autoSet sentinel via a DIRECT insert (NOT the
+            // stamping generated POST) so the seeded row keeps the old value; the generated PATCH
+            // then bumps autoUpdatedAt while autoCreatedAt stays old → the asserted divergence.
+            ins.Parameters.AddWithValue("@ac",
+                r.GetValueOrDefault("autoCreatedAt") is string ac ? ParseTimestamp(ac) : (object)DBNull.Value);
+            ins.Parameters.AddWithValue("@au",
+                r.GetValueOrDefault("autoUpdatedAt") is string au ? ParseTimestamp(au) : (object)DBNull.Value);
             await ins.ExecuteNonQueryAsync();
         }
         await using var bump = c.CreateCommand();

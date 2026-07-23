@@ -97,7 +97,11 @@ final class InMemoryAuthorRepositorySource {
 
             @Override
             public AuthorDto create(AuthorDto dto) {
-                AuthorDto saved = new AuthorDto(nextId.getAndIncrement(), dto.name(), dto.bio(), dto.createdAt());
+                // Issue #203 / ADR-0045: the generated controller already stamped @autoSet via
+                // AuthorDto.stampForInsert(dto) before calling create — the repo just persists
+                // the incoming (already-stamped) values verbatim.
+                AuthorDto saved = new AuthorDto(nextId.getAndIncrement(), dto.name(), dto.bio(),
+                    dto.createdAt(), dto.autoCreatedAt(), dto.autoUpdatedAt());
                 rows.add(saved);
                 return saved;
             }
@@ -111,7 +115,9 @@ final class InMemoryAuthorRepositorySource {
                             id,
                             dto.name() != null ? dto.name() : cur.name(),
                             dto.bio()  != null ? dto.bio()  : cur.bio(),
-                            dto.createdAt() != null ? dto.createdAt() : cur.createdAt());
+                            dto.createdAt() != null ? dto.createdAt() : cur.createdAt(),
+                            dto.autoCreatedAt() != null ? dto.autoCreatedAt() : cur.autoCreatedAt(),
+                            dto.autoUpdatedAt() != null ? dto.autoUpdatedAt() : cur.autoUpdatedAt());
                         rows.set(i, merged);
                         return Optional.of(merged);
                     }
@@ -126,11 +132,16 @@ final class InMemoryAuthorRepositorySource {
                 for (int i = 0; i < rows.size(); i++) {
                     AuthorDto cur = rows.get(i);
                     if (id.equals(cur.id())) {
+                        // Issue #203 / ADR-0045: the generated controller called patch.stampAutoSetOnUpdate()
+                        // before delegating, so hasAutoUpdatedAt() is true (→ now()) while autoCreatedAt is
+                        // absent from the patch (→ keeps the OLD seed value) — the two diverge.
                         AuthorDto merged = new AuthorDto(
                             id,
-                            patch.hasName()      ? patch.name()      : cur.name(),
-                            patch.hasBio()       ? patch.bio()       : cur.bio(),
-                            patch.hasCreatedAt() ? patch.createdAt() : cur.createdAt());
+                            patch.hasName()          ? patch.name()          : cur.name(),
+                            patch.hasBio()           ? patch.bio()           : cur.bio(),
+                            patch.hasCreatedAt()     ? patch.createdAt()     : cur.createdAt(),
+                            patch.hasAutoCreatedAt() ? patch.autoCreatedAt() : cur.autoCreatedAt(),
+                            patch.hasAutoUpdatedAt() ? patch.autoUpdatedAt() : cur.autoUpdatedAt());
                         rows.set(i, merged);
                         return Optional.of(merged);
                     }

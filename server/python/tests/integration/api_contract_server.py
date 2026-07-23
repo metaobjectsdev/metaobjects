@@ -24,7 +24,7 @@ this test asserts the API surface, not the migrate pipeline.
 from __future__ import annotations
 
 from contextlib import closing
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import pg8000.dbapi as pg8000
@@ -192,7 +192,10 @@ class AuthorRepository:
             '    id BIGSERIAL PRIMARY KEY,'
             '    name VARCHAR(100) NOT NULL,'
             '    bio VARCHAR(1000),'
-            '    "createdAt" TIMESTAMP NOT NULL'
+            '    "createdAt" TIMESTAMP NOT NULL,'
+            # #203/ADR-0045: @autoSet timestamp columns (nullable — no @required).
+            '    "autoCreatedAt" TIMESTAMP,'
+            '    "autoUpdatedAt" TIMESTAMP'
             ')'
         )
 
@@ -211,10 +214,22 @@ class AuthorRepository:
             cur = conn.cursor()
             try:
                 for r in rows:
+                    # #203/ADR-0045: apply_seed writes the seed's OLD autoCreatedAt /
+                    # autoUpdatedAt VERBATIM (direct insert — NOT stamped), so the
+                    # autoset-patch scenario starts from the sentinel and a later PATCH
+                    # must be observed to bump autoUpdatedAt away from it.
                     cur.execute(
-                        'INSERT INTO "authors" (id, name, bio, "createdAt") '
-                        'VALUES (%s, %s, %s, %s)',
-                        (int(r["id"]), r["name"], r.get("bio"), _parse_timestamp(r["createdAt"])),
+                        'INSERT INTO "authors" '
+                        '(id, name, bio, "createdAt", "autoCreatedAt", "autoUpdatedAt") '
+                        'VALUES (%s, %s, %s, %s, %s, %s)',
+                        (
+                            int(r["id"]),
+                            r["name"],
+                            r.get("bio"),
+                            _parse_timestamp(r["createdAt"]),
+                            _seed_timestamp(r.get("autoCreatedAt")),
+                            _seed_timestamp(r.get("autoUpdatedAt")),
+                        ),
                     )
                 cur.execute(
                     "SELECT setval(pg_get_serial_sequence('authors', 'id'), "
@@ -235,7 +250,10 @@ class AuthorRepository:
         where_clause: str = "",
         where_params: list[Any] | None = None,
     ) -> list[dict[str, Any]]:
-        sql = 'SELECT id, name, bio, "createdAt" FROM "authors"'
+        sql = (
+            'SELECT id, name, bio, "createdAt", "autoCreatedAt", "autoUpdatedAt" '
+            'FROM "authors"'
+        )
         sql += where_clause
         sql += f' ORDER BY "{sort_field}" {sort_dir}'
         if limit is not None:
@@ -276,7 +294,8 @@ class AuthorRepository:
             cur = conn.cursor()
             try:
                 cur.execute(
-                    'SELECT id, name, bio, "createdAt" FROM "authors" WHERE id = %s',
+                    'SELECT id, name, bio, "createdAt", "autoCreatedAt", "autoUpdatedAt" '
+                    'FROM "authors" WHERE id = %s',
                     (int(ident),),
                 )
                 row = cur.fetchone()
@@ -285,13 +304,24 @@ class AuthorRepository:
                 cur.close()
 
     def create(self, dto: dict[str, Any]) -> dict[str, Any]:
+        # #203/ADR-0045: the server OWNS the @autoSet columns — stamp BOTH the
+        # onCreate (autoCreatedAt) and onUpdate (autoUpdatedAt) columns from ONE
+        # instant (a fresh row's created == updated), ignoring any caller value.
+        now = datetime.now(timezone.utc)
         with closing(self._connect()) as conn:
             cur = conn.cursor()
             try:
                 cur.execute(
-                    'INSERT INTO "authors" (name, bio, "createdAt") '
-                    'VALUES (%s, %s, %s) RETURNING id',
-                    (dto.get("name"), dto.get("bio"), _parse_timestamp(dto.get("createdAt"))),
+                    'INSERT INTO "authors" '
+                    '(name, bio, "createdAt", "autoCreatedAt", "autoUpdatedAt") '
+                    'VALUES (%s, %s, %s, %s, %s) RETURNING id',
+                    (
+                        dto.get("name"),
+                        dto.get("bio"),
+                        _parse_timestamp(dto.get("createdAt")),
+                        now,
+                        now,
+                    ),
                 )
                 new_id = int(cur.fetchone()[0])
                 conn.commit()
@@ -315,8 +345,12 @@ class AuthorRepository:
         if "createdAt" in dto:
             set_clauses.append('"createdAt" = %s')
             values.append(_parse_timestamp(dto["createdAt"]))
-        if not set_clauses:
-            return None  # nothing to update — runner maps this to 400 elsewhere if needed
+        # #203/ADR-0045: bump the onUpdate @autoSet column (autoUpdatedAt) to now()
+        # on EVERY update (server-owned; any caller value is ignored), and NEVER
+        # write autoCreatedAt (onCreate is immutable — the lost-update guard). This
+        # is always appended, so an update is never a no-op SET.
+        set_clauses.append('"autoUpdatedAt" = %s')
+        values.append(datetime.now(timezone.utc))
         sql = 'UPDATE "authors" SET ' + ", ".join(set_clauses) + " WHERE id = %s"
         values.append(int(ident))
         with closing(self._connect()) as conn:
@@ -473,15 +507,36 @@ def _parse_timestamp(s: Any) -> datetime:
     return datetime.strptime(str(s), _TIMESTAMP_FMT)
 
 
-def _row_to_dict(row: Any) -> dict[str, Any]:
-    """Normalize a (id, name, bio, createdAt) tuple to the wire shape.
+def _seed_timestamp(s: Any) -> datetime | None:
+    """#203/ADR-0045 — parse a seed @autoSet value, tolerating an absent / null
+    column (the columns are nullable). None passes straight through."""
+    if s is None:
+        return None
+    return _parse_timestamp(s)
 
-    ``createdAt`` is normalized to ISO-8601-without-zone matching the seed.
+
+def _fmt_ts(value: Any) -> str | None:
+    """Serialize a DB timestamp to ISO-8601-without-zone matching the seed. A
+    tz-aware value (a server-stamped @autoSet now()) is rendered wall-clock; the
+    autoset-patch scenario asserts field-vs-field inequality, not an exact format."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.strftime(_TIMESTAMP_FMT)
+    return str(value)
+
+
+def _row_to_dict(row: Any) -> dict[str, Any]:
+    """Normalize an
+    ``(id, name, bio, createdAt, autoCreatedAt, autoUpdatedAt)`` tuple to the wire
+    shape. Timestamps are normalized to ISO-8601-without-zone matching the seed.
     """
-    ident, name, bio, created = row
+    ident, name, bio, created, auto_created, auto_updated = row
     return {
         "id": int(ident),
         "name": name,
         "bio": bio,
-        "createdAt": created.strftime(_TIMESTAMP_FMT) if created is not None else None,
+        "createdAt": _fmt_ts(created),
+        "autoCreatedAt": _fmt_ts(auto_created),
+        "autoUpdatedAt": _fmt_ts(auto_updated),
     }

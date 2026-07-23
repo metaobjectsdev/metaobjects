@@ -120,7 +120,9 @@ export const db = drizzle(pool);
        "id" bigserial PRIMARY KEY,
        "name" varchar(100) NOT NULL,
        "bio" varchar(1000),
-       "created_at" timestamp NOT NULL
+       "created_at" timestamp NOT NULL,
+       "auto_created_at" timestamp,
+       "auto_updated_at" timestamp
      )`,
   );
 
@@ -144,11 +146,18 @@ export const db = drizzle(pool);
       await executeSql(connectionUri, 'TRUNCATE TABLE "authors" RESTART IDENTITY');
       for (const r of rows) {
         // Explicit-id inserts so seed ids match the corpus expectations.
+        // #203 / ADR-0045 — the seed writes auto_created_at/auto_updated_at
+        // VERBATIM via direct SQL (the OLD sentinel), deliberately BYPASSING the
+        // generated Zod InsertSchema (whose @autoSet transform would stamp now()).
+        // A PATCH then flows through the generated UpdateSchema, which bumps
+        // autoUpdatedAt and leaves autoCreatedAt — so the two diverge.
         await executeSql(
           connectionUri,
-          `INSERT INTO "authors" ("id", "name", "bio", "created_at") VALUES (${
+          `INSERT INTO "authors" ("id", "name", "bio", "created_at", "auto_created_at", "auto_updated_at") VALUES (${
             r.id ?? "DEFAULT"
-          }, ${sqlStr(r.name)}, ${r.bio == null ? "NULL" : sqlStr(r.bio)}, ${sqlStr(r.createdAt)})`,
+          }, ${sqlStr(r.name)}, ${r.bio == null ? "NULL" : sqlStr(r.bio)}, ${sqlStr(r.createdAt)}, ${
+            r.autoCreatedAt == null ? "NULL" : sqlStr(r.autoCreatedAt)
+          }, ${r.autoUpdatedAt == null ? "NULL" : sqlStr(r.autoUpdatedAt)})`,
         );
       }
       // Advance the bigserial sequence past the max seeded id so the next

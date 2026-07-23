@@ -9,9 +9,9 @@ import java.util.Map;
  * Assertion engine for api-contract-conformance scenarios. The vocabulary
  * ({@code equals} / {@code length} / {@code ids} / {@code names} /
  * {@code row} / {@code hasId} / {@code envelope} / {@code error} /
- * {@code empty}) is the cross-port contract — every per-port runner must
- * implement these keys identically. See
- * {@code fixtures/api-contract-conformance/README.md}.
+ * {@code empty} / {@code fieldsEqual} / {@code fieldsNotEqual}) is the
+ * cross-port contract — every per-port runner must implement these keys
+ * identically. See {@code fixtures/api-contract-conformance/README.md}.
  *
  * <p>{@code body} here is the parsed JSON response (Map / List / scalar /
  * null). Mirror of {@code ApiContractAssertions.kt} in
@@ -131,6 +131,39 @@ final class ApiContractAssertions {
             if (!(id instanceof Number))
                 throw new AssertionError(scenarioName + " / " + request.id()
                     + ": expected numeric id in body, got: " + body);
+        }
+        // @autoSet gate (#203 / ADR-0045). Both keys compare RAW response-object fields to
+        // EACH OTHER (never to a literal), so timestamp non-determinism is a non-issue.
+        Object fieldsEqObj = want.get("fieldsEqual");
+        if (fieldsEqObj instanceof List<?> fields) {
+            if (!(body instanceof Map<?, ?> row))
+                throw new AssertionError(scenarioName + " / " + request.id()
+                    + ": expected object for fieldsEqual, got: " + body);
+            if (!fields.isEmpty()) {
+                Object head = row.get(fields.get(0));
+                for (Object f : fields) {
+                    Object v = row.get(f);
+                    if (!structuralEquals(head, v))
+                        throw new AssertionError(scenarioName + " / " + request.id()
+                            + ": expected fields " + fields + " all equal, but " + fields.get(0)
+                            + "=" + head + " != " + f + "=" + v + "; body: " + body);
+                }
+            }
+        }
+        Object fieldsNeObj = want.get("fieldsNotEqual");
+        if (fieldsNeObj instanceof List<?> fields) {
+            if (!(body instanceof Map<?, ?> row))
+                throw new AssertionError(scenarioName + " / " + request.id()
+                    + ": expected object for fieldsNotEqual, got: " + body);
+            if (fields.size() != 2)
+                throw new AssertionError(scenarioName + " / " + request.id()
+                    + ": fieldsNotEqual expects exactly 2 field names, got: " + fields);
+            Object a = row.get(fields.get(0));
+            Object b = row.get(fields.get(1));
+            if (structuralEquals(a, b))
+                throw new AssertionError(scenarioName + " / " + request.id()
+                    + ": expected fields " + fields.get(0) + " and " + fields.get(1)
+                    + " to differ, but both = " + a + "; body: " + body);
         }
     }
 

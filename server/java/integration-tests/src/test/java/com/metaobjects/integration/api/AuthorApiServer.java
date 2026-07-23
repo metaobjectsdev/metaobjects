@@ -88,7 +88,9 @@ final class AuthorApiServer implements AutoCloseable {
                         id BIGSERIAL PRIMARY KEY,
                         name VARCHAR(100) NOT NULL,
                         bio VARCHAR(1000),
-                        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL
+                        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+                        "autoCreatedAt" TIMESTAMP WITH TIME ZONE,
+                        "autoUpdatedAt" TIMESTAMP WITH TIME ZONE
                     )""");
             }
             this.httpServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -122,12 +124,19 @@ final class AuthorApiServer implements AutoCloseable {
         truncate();
         try (Connection c = connect()) {
             try (PreparedStatement ps = c.prepareStatement(
-                "INSERT INTO \"authors\" (id, name, bio, \"createdAt\") VALUES (?, ?, ?, ?)")) {
+                "INSERT INTO \"authors\" (id, name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\") "
+                    + "VALUES (?, ?, ?, ?, ?, ?)")) {
                 for (Map<String, Object> r : rows) {
                     ps.setLong(1, ((Number) r.get("id")).longValue());
                     ps.setString(2, (String) r.get("name"));
                     ps.setString(3, (String) r.get("bio"));
                     ps.setObject(4, parseInstant((String) r.get("createdAt")));
+                    // Issue #203 / ADR-0045: the SEED writes the @autoSet columns VERBATIM (a direct
+                    // insert, NOT a stamping create) so a seeded row keeps its OLD sentinel — that is
+                    // what lets a later PATCH's bumped autoUpdatedAt diverge from the preserved
+                    // autoCreatedAt (the fieldsNotEqual gate).
+                    ps.setObject(5, seedInstantOrNull(r.get("autoCreatedAt")));
+                    ps.setObject(6, seedInstantOrNull(r.get("autoUpdatedAt")));
                     ps.executeUpdate();
                 }
             }
@@ -221,7 +230,7 @@ final class AuthorApiServer implements AutoCloseable {
         List<Object> bindParams = new ArrayList<>();
         String whereClause = buildWhere(filter.predicates(), bindParams);
 
-        StringBuilder sql = new StringBuilder("SELECT id, name, bio, \"createdAt\" FROM \"authors\"");
+        StringBuilder sql = new StringBuilder("SELECT id, name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\"");
         sql.append(whereClause);
         sql.append(" ORDER BY \"").append(sortField).append("\" ").append(sortDir);
         if (limit != null) sql.append(" LIMIT ").append(limit);
@@ -399,7 +408,7 @@ final class AuthorApiServer implements AutoCloseable {
         if (id == null) { sendJson(exchange, 400, Map.of("error", "invalid_id")); return; }
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement(
-                 "SELECT id, name, bio, \"createdAt\" FROM \"authors\" WHERE id = ?")) {
+                 "SELECT id, name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\" WHERE id = ?")) {
             ps.setLong(1, id);
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) { sendJson(exchange, 404, Map.of("error", "not_found")); return; }
@@ -420,13 +429,20 @@ final class AuthorApiServer implements AutoCloseable {
         // cross-port {"error":"validation"} envelope BEFORE persisting (mirrors the generated
         // controller's @Size(max=…) rules).
         if (violatesLength(body)) { sendJson(exchange, 400, Map.of("error", "validation")); return; }
+        // Issue #203 / ADR-0045: honor @autoSet on create — stamp BOTH the onCreate and onUpdate
+        // columns from ONE now() (the caller's values are ignored; a fresh row's autoUpdatedAt
+        // equals its autoCreatedAt).
+        OffsetDateTime nowStamp = OffsetDateTime.now(ZoneOffset.UTC);
         long newId;
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement(
-                 "INSERT INTO \"authors\" (name, bio, \"createdAt\") VALUES (?, ?, ?) RETURNING id")) {
+                 "INSERT INTO \"authors\" (name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\") "
+                     + "VALUES (?, ?, ?, ?, ?) RETURNING id")) {
             ps.setString(1, (String) body.get("name"));
             ps.setString(2, (String) body.get("bio"));
             ps.setObject(3, parseInstant((String) body.get("createdAt")));
+            ps.setObject(4, nowStamp);
+            ps.setObject(5, nowStamp);
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 newId = rs.getLong(1);
@@ -435,7 +451,7 @@ final class AuthorApiServer implements AutoCloseable {
         Map<String, Object> row;
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement(
-                 "SELECT id, name, bio, \"createdAt\" FROM \"authors\" WHERE id = ?")) {
+                 "SELECT id, name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\" WHERE id = ?")) {
             ps.setLong(1, newId);
             try (ResultSet rs = ps.executeQuery()) { rs.next(); row = rowToMap(rs); }
         }
@@ -475,6 +491,13 @@ final class AuthorApiServer implements AutoCloseable {
         }
         if (setClauses.isEmpty()) { sendJson(exchange, 400, Map.of("error", "validation")); return; }
 
+        // Issue #203 / ADR-0045: honor @autoSet onUpdate — bump autoUpdatedAt to now() on EVERY
+        // update, and NEVER write autoCreatedAt (created-at is immutable; rewriting it is the
+        // lost-update bug the gate catches). Appended after the caller-field empty-check so the
+        // empty-body → 400 semantics stay keyed on the caller's fields only.
+        setClauses.add("\"autoUpdatedAt\" = ?");
+        values.add(OffsetDateTime.now(ZoneOffset.UTC));
+
         int updated;
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement(
@@ -492,7 +515,7 @@ final class AuthorApiServer implements AutoCloseable {
         Map<String, Object> row;
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement(
-                 "SELECT id, name, bio, \"createdAt\" FROM \"authors\" WHERE id = ?")) {
+                 "SELECT id, name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\" WHERE id = ?")) {
             ps.setLong(1, id);
             try (ResultSet rs = ps.executeQuery()) { rs.next(); row = rowToMap(rs); }
         }
@@ -542,6 +565,11 @@ final class AuthorApiServer implements AutoCloseable {
         OffsetDateTime ts = rs.getObject("createdAt", OffsetDateTime.class);
         // Normalize to a UTC instant on the wire: yyyy-MM-ddTHH:mm:ssZ (instant contract).
         row.put("createdAt", ts == null ? null : formatInstant(ts.toInstant()));
+        // Issue #203 / ADR-0045 @autoSet timestamp columns — same instant wire form as createdAt.
+        OffsetDateTime autoCreated = rs.getObject("autoCreatedAt", OffsetDateTime.class);
+        row.put("autoCreatedAt", autoCreated == null ? null : formatInstant(autoCreated.toInstant()));
+        OffsetDateTime autoUpdated = rs.getObject("autoUpdatedAt", OffsetDateTime.class);
+        row.put("autoUpdatedAt", autoUpdated == null ? null : formatInstant(autoUpdated.toInstant()));
         return row;
     }
 
@@ -589,6 +617,11 @@ final class AuthorApiServer implements AutoCloseable {
             return OffsetDateTime.parse(s).withOffsetSameInstant(ZoneOffset.UTC);
         }
         return OffsetDateTime.parse(s + "Z");
+    }
+
+    /** Parse a nullable seed @autoSet value (written verbatim), or {@code null} when absent. */
+    private static OffsetDateTime seedInstantOrNull(Object raw) {
+        return raw == null ? null : parseInstant(String.valueOf(raw));
     }
 
     /** Format an instant as the UTC wire form yyyy-MM-ddTHH:mm:ssZ. */

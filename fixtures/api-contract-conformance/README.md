@@ -93,6 +93,8 @@ requests:
 | `envelope`   | the response body is `{ rows, total }` (set `rowsLength` + `total`)    |
 | `error`      | the response body has `error: "<value>"`                               |
 | `empty`      | the response body is empty / null (204 No Content)                     |
+| `fieldsEqual`| the response body is an object; assert the listed field names are all equal to **each other** (raw, field-vs-field — no literal, so timestamp non-determinism is a non-issue). Used by the `@autoSet` gate (#203/ADR-0045). |
+| `fieldsNotEqual`| the response body is an object; assert the two listed fields **differ** from each other. Used by the `@autoSet` gate (e.g. after a PATCH, `autoCreatedAt` (onCreate, preserved) != `autoUpdatedAt` (onUpdate, bumped)). |
 
 Runners are responsible for normalizing `createdAt` (and any other
 non-deterministic fields) before comparison. The keys listed above are

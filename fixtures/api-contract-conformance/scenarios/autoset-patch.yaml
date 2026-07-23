@@ -1,0 +1,21 @@
+name: autoset-patch
+description: >
+  #203 / ADR-0045 — @autoSet timestamp stamping is honored by the deployed API
+  surface (generated controller/routes AND the reference server). The seeded row
+  starts with autoCreatedAt == autoUpdatedAt (both an old sentinel). A PATCH must
+  bump the onUpdate column (autoUpdatedAt) to now() while leaving the onCreate
+  column (autoCreatedAt) untouched — so the two diverge. Asserted as a field-vs-field
+  inequality (format- and timing-agnostic: old sentinel vs a 2026 now()), which
+  catches BOTH failure modes: not bumping updatedAt, and the lost-update bug of
+  rewriting createdAt on update.
+requests:
+  - id: r1
+    method: PATCH
+    path: /api/authors/1
+    body:
+      name: "Ada L."
+    expect:
+      status: 200
+      body:
+        # autoUpdatedAt bumped to now() (2026); autoCreatedAt preserved (2000 sentinel).
+        fieldsNotEqual: [autoCreatedAt, autoUpdatedAt]

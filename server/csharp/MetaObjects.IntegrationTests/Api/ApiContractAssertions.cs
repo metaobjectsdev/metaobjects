@@ -1,8 +1,13 @@
 // ApiContractAssertions — assertion vocabulary for api-contract-conformance.
 // The recognized keys (equals / length / ids / names / row / hasId / envelope /
-// error / empty) are the cross-port contract — every per-port runner must
-// implement them identically. See
+// error / empty / fieldsEqual / fieldsNotEqual) are the cross-port contract —
+// every per-port runner must implement them identically. See
 // fixtures/api-contract-conformance/README.md.
+//
+// fieldsEqual / fieldsNotEqual (#203 / ADR-0045, the @autoSet gate) compare RAW
+// response-object fields to EACH OTHER (never a literal): fieldsEqual asserts all
+// listed fields equal one another; fieldsNotEqual asserts the two listed fields
+// differ. Field-vs-field so timestamp non-determinism is a non-issue.
 
 namespace MetaObjects.IntegrationTests.Api;
 
@@ -143,6 +148,44 @@ internal static class ApiContractAssertions
                 || (id is not int && id is not long && id is not double && id is not decimal))
                 throw new Xunit.Sdk.XunitException(
                     $"{scenarioName} / {request.Id}: expected numeric id in body, got: {Render(body)}");
+        }
+        // #203 / ADR-0045 @autoSet gate — every listed response field must equal EACH OTHER
+        // (raw field-vs-field, no literal). Missing keys compare as null.
+        if (want.TryGetValue("fieldsEqual", out var feObj) && feObj is List<object?> feFields)
+        {
+            if (body is not Dictionary<string, object?> row)
+                throw new Xunit.Sdk.XunitException(
+                    $"{scenarioName} / {request.Id}: expected object for fieldsEqual, got: {Render(body)}");
+            var names = feFields.Select(f => f?.ToString() ?? "").ToList();
+            for (int i = 1; i < names.Count; i++)
+            {
+                row.TryGetValue(names[0], out var v0);
+                row.TryGetValue(names[i], out var vi);
+                if (!StructuralEquals(v0, vi))
+                    throw new Xunit.Sdk.XunitException(
+                        $"{scenarioName} / {request.Id}: expected fields [{string.Join(", ", names)}] all equal, "
+                        + $"but {names[0]}={Render(v0)} != {names[i]}={Render(vi)}");
+            }
+        }
+        // #203 / ADR-0045 @autoSet gate — the two listed response fields must DIFFER from each
+        // other (e.g. after a PATCH, autoCreatedAt (onCreate, preserved) != autoUpdatedAt
+        // (onUpdate, bumped)). Missing keys compare as null.
+        if (want.TryGetValue("fieldsNotEqual", out var fneObj) && fneObj is List<object?> fneFields)
+        {
+            if (body is not Dictionary<string, object?> row)
+                throw new Xunit.Sdk.XunitException(
+                    $"{scenarioName} / {request.Id}: expected object for fieldsNotEqual, got: {Render(body)}");
+            var names = fneFields.Select(f => f?.ToString() ?? "").ToList();
+            if (names.Count != 2)
+                throw new Xunit.Sdk.XunitException(
+                    $"{scenarioName} / {request.Id}: fieldsNotEqual expects exactly two field names, "
+                    + $"got [{string.Join(", ", names)}]");
+            row.TryGetValue(names[0], out var v0);
+            row.TryGetValue(names[1], out var v1);
+            if (StructuralEquals(v0, v1))
+                throw new Xunit.Sdk.XunitException(
+                    $"{scenarioName} / {request.Id}: expected fields {names[0]} and {names[1]} to DIFFER, "
+                    + $"but both = {Render(v0)}");
         }
     }
 

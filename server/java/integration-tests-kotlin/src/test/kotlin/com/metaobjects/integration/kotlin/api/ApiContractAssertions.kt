@@ -5,8 +5,9 @@ import com.metaobjects.integration.kotlin.api.ApiContractScenarios.ApiRequest
 /**
  * Assertion engine for api-contract-conformance scenarios. The vocabulary
  * (`equals` / `length` / `ids` / `names` / `row` / `hasId` / `envelope` /
- * `error` / `empty`) is the cross-port contract — every per-port runner
- * must implement these keys identically. See `fixtures/api-contract-conformance/README.md`.
+ * `error` / `empty` / `fieldsEqual` / `fieldsNotEqual`) is the cross-port
+ * contract — every per-port runner must implement these keys identically.
+ * See `fixtures/api-contract-conformance/README.md`.
  *
  * `body` here is the parsed JSON response (Map / List / scalar / null).
  */
@@ -92,6 +93,49 @@ object ApiContractAssertions {
             if (id !is Number)
                 throw AssertionError("$scenarioName / ${request.id}: expected numeric id in body, got: $body")
         }
+        // #203/ADR-0045 — @autoSet gate. `fieldsEqual`/`fieldsNotEqual` compare RAW response
+        // fields to EACH OTHER (field-vs-field, never a literal) so timestamp non-determinism is a
+        // non-issue: an old sentinel vs a bumped now() differ regardless of format or clock skew.
+        (want["fieldsEqual"] as? List<*>)?.let { fields ->
+            val row = requireObject(body, scenarioName, request, "fieldsEqual")
+            require2(fields, scenarioName, request, "fieldsEqual")
+            val ref = fieldValue(row, fields[0], scenarioName, request)
+            for (f in fields.drop(1)) {
+                val v = fieldValue(row, f, scenarioName, request)
+                if (!structuralEquals(ref, v))
+                    throw AssertionError(
+                        "$scenarioName / ${request.id}: expected fields $fields all equal, but $f=$v != ${fields[0]}=$ref")
+            }
+        }
+        (want["fieldsNotEqual"] as? List<*>)?.let { fields ->
+            val row = requireObject(body, scenarioName, request, "fieldsNotEqual")
+            require2(fields, scenarioName, request, "fieldsNotEqual")
+            for (i in fields.indices) for (j in i + 1 until fields.size) {
+                val a = fieldValue(row, fields[i], scenarioName, request)
+                val b = fieldValue(row, fields[j], scenarioName, request)
+                if (structuralEquals(a, b))
+                    throw AssertionError(
+                        "$scenarioName / ${request.id}: expected fields ${fields[i]} and ${fields[j]} to differ, but both = $a")
+            }
+        }
+    }
+
+    /** Body must be a JSON object for a field-vs-field assertion. */
+    private fun requireObject(body: Any?, scenarioName: String, request: ApiRequest, key: String): Map<*, *> =
+        body as? Map<*, *>
+            ?: throw AssertionError("$scenarioName / ${request.id}: expected object for $key, got: $body")
+
+    /** A field-vs-field assertion needs at least two field names to compare. */
+    private fun require2(fields: List<*>, scenarioName: String, request: ApiRequest, key: String) {
+        if (fields.size < 2)
+            throw AssertionError("$scenarioName / ${request.id}: $key needs >= 2 fields, got: $fields")
+    }
+
+    /** Look up a field that MUST be present in the response object (absence is a real failure). */
+    private fun fieldValue(row: Map<*, *>, field: Any?, scenarioName: String, request: ApiRequest): Any? {
+        if (!row.containsKey(field))
+            throw AssertionError("$scenarioName / ${request.id}: field '$field' missing from response: $row")
+        return row[field]
     }
 
     /**

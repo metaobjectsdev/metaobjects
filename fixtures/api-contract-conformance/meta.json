@@ -10,6 +10,8 @@
           { "field.string":     { "name": "name", "@required": true, "@maxLength": 100, "@filterable": true, "@sortable": true } },
           { "field.string":     { "name": "bio",  "@maxLength": 1000, "@filterable": true, "@sortable": false } },
           { "field.timestamp":  { "name": "createdAt", "@required": true, "@filterable": true, "@sortable": true } },
+          { "field.timestamp":  { "name": "autoCreatedAt", "@autoSet": "onCreate" } },
+          { "field.timestamp":  { "name": "autoUpdatedAt", "@autoSet": "onUpdate" } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
         ]
       }}

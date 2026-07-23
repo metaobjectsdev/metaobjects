@@ -16,9 +16,11 @@ import com.metaobjects.loader.uri.URIHelper
 import com.metaobjects.metadata.ktx.loadUris
 import com.tschuchort.compiletesting.KotlinCompilation
 import com.tschuchort.compiletesting.SourceFile
+import org.jetbrains.exposed.sql.Column
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.Table
+import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
@@ -188,26 +190,52 @@ class GeneratedAuthorControllerHarness(
         mockMvc = mvc
 
         if (seed) {
-            // Seed through the GENERATED controller's OWN create path (POST /api/authors),
-            // not a hand-written INSERT. This (a) sidesteps dialect identifier-quoting drift
-            // between a hand-rolled seed and the Exposed-generated schema/queries, and (b)
-            // keeps the in-memory bootstrap minimal — the controller's insert is the single
-            // source of truth for how rows land. The corpus seed ids are 1..5 in order, which
-            // the table's auto-increment PK reproduces exactly (empty table → 1,2,3,4,5), so
-            // the next implicit-id insert (create-201) deterministically lands at 6. The
-            // seed POST omits `id` (server-assigned), matching the create contract.
-            for (r in seedRows) {
-                val body = linkedMapOf<String, Any?>(
-                    "name" to r["name"],
-                    "bio" to r["bio"],
-                    "createdAt" to r["createdAt"],
-                )
-                val res = exchange("POST", "/api/authors", body)
-                check(res.status == 201) {
-                    "seed POST failed (status ${res.status}); body: ${res.body}"
+            // #203/ADR-0045: seed via a DIRECT Exposed insert against the GENERATED AuthorTable —
+            // NOT the controller's POST. The generated controller now STAMPS @autoSet columns on
+            // create (autoCreatedAt/autoUpdatedAt := now()), so a POST-seeded row would carry a
+            // 2026 now() instead of the seed's OLD sentinel — making the autoset-patch
+            // `fieldsNotEqual` assertion timing-fragile (the PATCH-bumped autoUpdatedAt could
+            // coincide with a POST-stamped autoCreatedAt from the same second). A direct insert
+            // writes the seed's OLD autoCreatedAt/autoUpdatedAt verbatim, so the later PATCH bumps
+            // autoUpdatedAt to now() while autoCreatedAt stays OLD — the two diverge robustly.
+            //
+            // `id` is OMITTED so the auto-increment PK assigns 1..5 in order (empty table), exactly
+            // as the prior POST-seed did — the next implicit-id insert (create-201) still lands at 6.
+            // Columns are matched by NAME normalized (lowercase, underscores stripped) so the field
+            // camelCase (autoCreatedAt) resolves to the generated snake_case physical column
+            // (auto_created_at) regardless of naming strategy; typed inserts (not raw SQL) let Exposed
+            // handle all dialect identifier quoting.
+            val colsByNorm = authorTable.columns.associateBy { normalizeColName(it.name) }
+            fun columnFor(field: String): Column<Any?> {
+                @Suppress("UNCHECKED_CAST")
+                return (colsByNorm[normalizeColName(field)]
+                    ?: error("generated AuthorTable has no column for field '$field'")) as Column<Any?>
+            }
+            transaction(db) {
+                for (r in seedRows) {
+                    authorTable.insert { stmt ->
+                        stmt[columnFor("name")] = r["name"] as String?
+                        stmt[columnFor("bio")] = r["bio"] as String?
+                        stmt[columnFor("createdAt")] = parseSeedInstant(r["createdAt"] as String)
+                        stmt[columnFor("autoCreatedAt")] = parseSeedInstant(r["autoCreatedAt"] as String)
+                        stmt[columnFor("autoUpdatedAt")] = parseSeedInstant(r["autoUpdatedAt"] as String)
+                    }
                 }
             }
         }
+    }
+
+    /** Normalize a column/field name for camelCase↔snake_case-insensitive matching. */
+    private fun normalizeColName(s: String): String = s.lowercase().replace("_", "")
+
+    /**
+     * Parse a corpus offset-less wall-clock timestamp (yyyy-MM-ddTHH:mm:ss) as a UTC [Instant]
+     * (the instant wire contract — mirrors this harness's Jackson Instant deserializer). Used by
+     * the direct-insert seed to write the @autoSet sentinel values verbatim.
+     */
+    private fun parseSeedInstant(raw: String): Instant {
+        val s = if (raw.endsWith("Z") || raw.contains("+")) raw else raw + "Z"
+        return Instant.parse(s)
     }
 
     /** Issue a scenario request and return the (status, body-string) pair. */

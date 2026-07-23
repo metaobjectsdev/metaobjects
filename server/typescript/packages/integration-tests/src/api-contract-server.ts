@@ -66,6 +66,11 @@ export interface AuthorRow {
   name: string;
   bio?: string | null;
   createdAt: string;
+  // #203 / ADR-0045 — @autoSet timestamps. Present verbatim in the seed (an OLD
+  // sentinel) so a PATCH can prove it bumps autoUpdatedAt (onUpdate) while
+  // leaving autoCreatedAt (onCreate) untouched.
+  autoCreatedAt?: string;
+  autoUpdatedAt?: string;
 }
 
 /**
@@ -94,6 +99,11 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
     .addColumn("name", "varchar(100)", (c) => c.notNull())
     .addColumn("bio", "varchar(1000)")
     .addColumn("createdAt", "timestamp", (c) => c.notNull())
+    // #203 / ADR-0045 — @autoSet timestamp columns (literal naming = field name).
+    // Nullable at the DDL tier; the seed / POST / PATCH paths always supply a
+    // value, so the reference server owns the @autoSet stamping explicitly.
+    .addColumn("autoCreatedAt", "timestamp")
+    .addColumn("autoUpdatedAt", "timestamp")
     .execute();
 
   const driver = kyselyDriver({ db: kysely as never, dialect: "postgres" });
@@ -166,7 +176,13 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
 
   // POST /api/authors
   fastify.post(ROUTE_BASE, async (req, reply) => {
-    const row = await om.create(ENTITY, req.body as Record<string, unknown>);
+    // #203 / ADR-0045 — the TS runtime ObjectManager does NOT stamp @autoSet
+    // (that is codegen-only), so the reference server stamps explicitly to match
+    // the generated lane's InsertSchema. Both onCreate + onUpdate columns get the
+    // SAME captured now() on create; any caller-supplied value is ignored.
+    const now = new Date().toISOString();
+    const body = { ...(req.body as Record<string, unknown>), autoCreatedAt: now, autoUpdatedAt: now };
+    const row = await om.create(ENTITY, body);
     reply.code(201).send(row);
     return reply;
   });
@@ -174,9 +190,15 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
   // PATCH + PUT /api/authors/:id — same body shape per the cross-port contract.
   const updateHandler: RouteHandlerMethod = async (req, reply) => {
     const { id } = req.params as { id: string };
+    // #203 / ADR-0045 — @autoSet onUpdate: bump autoUpdatedAt to now() on EVERY
+    // update; NEVER write autoCreatedAt (onCreate is immutable — dropping it here
+    // guards the lost-update bug of rewriting the creation stamp). The runtime OM
+    // does not stamp @autoSet, so the reference server does it explicitly.
+    const { autoCreatedAt: _dropOnCreate, ...rest } = (req.body as Record<string, unknown>) ?? {};
+    const body = { ...rest, autoUpdatedAt: new Date().toISOString() };
     // A ValidationError (e.g. FR-035 present-null on a @required field) propagates
     // to the shared setErrorHandler above → 400 {error:"validation"}.
-    const row = await om.update(ENTITY, Number(id), req.body as Record<string, unknown>, { ifMissing: "ignore" });
+    const row = await om.update(ENTITY, Number(id), body, { ifMissing: "ignore" });
     if (row) return row;
     reply.code(404).send({ error: "not_found" });
     return reply;
@@ -210,6 +232,10 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
     applySeed: async (rows: AuthorRow[]) => {
       await executeSql(connectionUri, 'TRUNCATE TABLE "authors" RESTART IDENTITY');
       for (const r of rows) {
+        // #203 / ADR-0045 — seed writes autoCreatedAt/autoUpdatedAt VERBATIM (the
+        // OLD sentinel). om.create does NOT stamp @autoSet (only the POST route
+        // handler above does), so the seed row keeps its original timestamps —
+        // exactly what the autoset-patch scenario needs to observe a bump.
         await om.create(ENTITY, r as unknown as Record<string, unknown>);
       }
       // After explicit-id inserts, bump the bigserial sequence past the max id

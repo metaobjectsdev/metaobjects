@@ -25,6 +25,14 @@ export interface ExpectBody {
   namesUnordered?: string[];
   row?: Record<string, unknown>;
   hasId?: boolean;
+  /** Assert the listed RESPONSE fields all equal EACH OTHER (never a literal) —
+   *  format-agnostic. Used by @autoSet scenarios to prove two stamped columns
+   *  hold the same value without pinning the exact timestamp. */
+  fieldsEqual?: string[];
+  /** Assert the two listed RESPONSE fields differ from EACH OTHER (never a
+   *  literal) — format-agnostic. Used by autoset-patch to prove a PATCH bumped
+   *  autoUpdatedAt (onUpdate) while leaving autoCreatedAt (onCreate) untouched. */
+  fieldsNotEqual?: string[];
   envelope?: boolean;
   rowsLength?: number;
   total?: number;
@@ -158,6 +166,31 @@ export function assertResponse(
     const row = body as Record<string, unknown>;
     if (typeof row["id"] !== "number")
       throw new Error(`${scenarioName} / ${request.id}: expected numeric id in body, got: ${stringify(body)}`);
+  }
+  if (want.fieldsEqual) {
+    const row = body as Record<string, unknown>;
+    // Compare the raw response fields to EACH OTHER (format-agnostic) — every
+    // listed field must serialize identically to the first one.
+    const first = stringify(row[want.fieldsEqual[0]!]);
+    for (const f of want.fieldsEqual) {
+      if (stringify(row[f]) !== first)
+        throw new Error(
+          `${scenarioName} / ${request.id}: expected fields [${want.fieldsEqual.join(", ")}] to be equal, got ${stringify(
+            Object.fromEntries(want.fieldsEqual.map((k) => [k, row[k]])),
+          )}`,
+        );
+    }
+  }
+  if (want.fieldsNotEqual) {
+    if (want.fieldsNotEqual.length !== 2)
+      throw new Error(`${scenarioName} / ${request.id}: fieldsNotEqual must list exactly two field names`);
+    const row = body as Record<string, unknown>;
+    const [a, b] = want.fieldsNotEqual as [string, string];
+    // Compare the two raw response fields to EACH OTHER (never a literal).
+    if (stringify(row[a]) === stringify(row[b]))
+      throw new Error(
+        `${scenarioName} / ${request.id}: expected fields ${a} and ${b} to differ, but both = ${stringify(row[a])}`,
+      );
   }
 }
 

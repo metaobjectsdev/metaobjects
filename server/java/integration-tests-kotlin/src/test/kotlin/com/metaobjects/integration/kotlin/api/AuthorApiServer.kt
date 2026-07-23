@@ -81,6 +81,10 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
                     it[name] = r["name"] as String
                     it[bio] = r["bio"] as String?
                     it[createdAt] = parseTimestamp(r["createdAt"] as String)
+                    // #203/ADR-0045: write the seed's @autoSet values VERBATIM (the old sentinel) —
+                    // NOT stamped — so a later PATCH bumping autoUpdatedAt makes the two diverge.
+                    it[autoCreatedAt] = parseTimestamp(r["autoCreatedAt"] as String)
+                    it[autoUpdatedAt] = parseTimestamp(r["autoUpdatedAt"] as String)
                 }
             }
         }
@@ -182,11 +186,16 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
         // present value is a 400 {error:"validation"} BEFORE the insert (mirrors the generated
         // controller's validator.validate on POST).
         if (violatesMaxLength(body)) return sendJson(exchange, 400, mapOf("error" to "validation"))
+        // #203/ADR-0045: @autoSet columns are server-owned — stamp BOTH onCreate + onUpdate from ONE
+        // now() (a fresh row's autoUpdatedAt == autoCreatedAt exactly) and IGNORE any caller value.
+        val now = Instant.now()
         val newId = transaction(db) {
             AuthorTable.insert {
                 it[name] = body["name"] as String
                 it[bio] = body["bio"] as String?
                 it[createdAt] = parseTimestamp(body["createdAt"] as String)
+                it[autoCreatedAt] = now
+                it[autoUpdatedAt] = now
             }[AuthorTable.id]
         }
         val row = transaction(db) {
@@ -215,6 +224,10 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
                 (body["name"] as? String)?.let { v -> it[name] = v }
                 if (body.containsKey("bio")) it[bio] = body["bio"] as String?
                 (body["createdAt"] as? String)?.let { v -> it[createdAt] = parseTimestamp(v) }
+                // #203/ADR-0045: bump the onUpdate @autoSet column on EVERY write (even an empty
+                // body) and NEVER rewrite the onCreate column — so autoCreatedAt (old sentinel) and
+                // autoUpdatedAt (now()) diverge after a PATCH.
+                it[autoUpdatedAt] = Instant.now()
             }
         }
         if (updated == 0) {
@@ -263,6 +276,10 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
             // ADR-0036 Wave 2: createdAt is an absolute instant — normalize to the UTC wire
             // form yyyy-MM-ddTHH:mm:ssZ.
             "createdAt" to formatInstant(ts),
+            // #203/ADR-0045: the @autoSet columns are part of the response shape (same instant
+            // wire form as createdAt) so the fieldsNotEqual gate can compare them field-vs-field.
+            "autoCreatedAt" to formatInstant(row[AuthorTable.autoCreatedAt]),
+            "autoUpdatedAt" to formatInstant(row[AuthorTable.autoUpdatedAt]),
         )
     }
 
@@ -518,6 +535,11 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
         val name = varchar("name", 100)
         val bio = varchar("bio", 1000).nullable()
         val createdAt = timestamp("createdAt")
+        // #203/ADR-0045 @autoSet columns — server-owned timestamps. onCreate is stamped once at
+        // insert and never rewritten; onUpdate is re-stamped on every write. Both are seeded
+        // verbatim in applySeed (so a PATCH can diverge them from the old sentinel).
+        val autoCreatedAt = timestamp("autoCreatedAt")
+        val autoUpdatedAt = timestamp("autoUpdatedAt")
 
         override val primaryKey = PrimaryKey(id)
     }

@@ -90,7 +90,12 @@ internal sealed class AuthorApiServer : IAsyncDisposable
                     id BIGSERIAL PRIMARY KEY,
                     name VARCHAR(100) NOT NULL,
                     bio VARCHAR(1000),
-                    ""createdAt"" TIMESTAMP NOT NULL
+                    ""createdAt"" TIMESTAMP NOT NULL,
+                    -- Issue #203 / ADR-0045: the @autoSet timestamp columns (onCreate / onUpdate).
+                    -- Nullable (not @required); the seed writes them verbatim, create stamps both,
+                    -- update bumps only autoUpdatedAt.
+                    ""autoCreatedAt"" TIMESTAMP,
+                    ""autoUpdatedAt"" TIMESTAMP
                 )";
             await cmd.ExecuteNonQueryAsync();
         }
@@ -135,11 +140,19 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         {
             await using var ins = c.CreateCommand();
             ins.CommandText =
-                "INSERT INTO \"authors\" (id, name, bio, \"createdAt\") VALUES (@id, @name, @bio, @ct)";
+                "INSERT INTO \"authors\" (id, name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\") "
+                + "VALUES (@id, @name, @bio, @ct, @ac, @au)";
             ins.Parameters.AddWithValue("@id", Convert.ToInt64(r["id"]));
             ins.Parameters.AddWithValue("@name", (string)r["name"]!);
             ins.Parameters.AddWithValue("@bio", r["bio"] is string b ? b : (object)DBNull.Value);
             ins.Parameters.AddWithValue("@ct", ParseTimestamp((string)r["createdAt"]!));
+            // Issue #203 / ADR-0045 — the seed writes the OLD @autoSet sentinel VERBATIM (a direct
+            // insert, NOT a stamping create) so the seeded row keeps the old value; the PATCH then
+            // bumps autoUpdatedAt while autoCreatedAt stays old → a robust field-vs-field divergence.
+            ins.Parameters.AddWithValue("@ac",
+                r.GetValueOrDefault("autoCreatedAt") is string ac ? ParseTimestamp(ac) : (object)DBNull.Value);
+            ins.Parameters.AddWithValue("@au",
+                r.GetValueOrDefault("autoUpdatedAt") is string au ? ParseTimestamp(au) : (object)DBNull.Value);
             await ins.ExecuteNonQueryAsync();
         }
         await using var bump = c.CreateCommand();
@@ -261,7 +274,8 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         var bindParams = new List<object?>();
         string whereClause = BuildWhere(filter.Predicates, bindParams);
 
-        var sql = new StringBuilder("SELECT id, name, bio, \"createdAt\" FROM \"authors\"");
+        var sql = new StringBuilder(
+            "SELECT id, name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\"");
         sql.Append(whereClause);
         sql.Append(" ORDER BY \"").Append(sortField).Append("\" ").Append(sortDir);
         if (limit is int lim) sql.Append(" LIMIT ").Append(lim);
@@ -473,7 +487,7 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         await using var c = new NpgsqlConnection(_pg.ConnectionString);
         await c.OpenAsync();
         await using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT id, name, bio, \"createdAt\" FROM \"authors\" WHERE id = @id";
+        cmd.CommandText = "SELECT id, name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\" WHERE id = @id";
         cmd.Parameters.AddWithValue("@id", id.Value);
         await using var rdr = await cmd.ExecuteReaderAsync();
         if (!await rdr.ReadAsync())
@@ -508,21 +522,28 @@ internal sealed class AuthorApiServer : IAsyncDisposable
             return;
         }
         long newId;
+        // Issue #203 / ADR-0045 — stamp BOTH @autoSet columns from ONE now(), ignoring any
+        // caller-supplied value (a fresh row's autoUpdatedAt == its autoCreatedAt). Unspecified
+        // kind to match the plain-TIMESTAMP columns (the seed's ParseTimestamp yields the same).
+        var autoNow = DateTime.SpecifyKind(DateTimeOffset.UtcNow.UtcDateTime, DateTimeKind.Unspecified);
         await using var c = new NpgsqlConnection(_pg.ConnectionString);
         await c.OpenAsync();
         await using (var ins = c.CreateCommand())
         {
             ins.CommandText =
-                "INSERT INTO \"authors\" (name, bio, \"createdAt\") VALUES (@name, @bio, @ct) RETURNING id";
+                "INSERT INTO \"authors\" (name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\") "
+                + "VALUES (@name, @bio, @ct, @ac, @au) RETURNING id";
             ins.Parameters.AddWithValue("@name", body.GetValueOrDefault("name") as string ?? "");
             ins.Parameters.AddWithValue("@bio", body.GetValueOrDefault("bio") is string b ? b : (object)DBNull.Value);
             ins.Parameters.AddWithValue("@ct", ParseTimestamp((string)body["createdAt"]!));
+            ins.Parameters.AddWithValue("@ac", autoNow);
+            ins.Parameters.AddWithValue("@au", autoNow);
             newId = Convert.ToInt64(await ins.ExecuteScalarAsync());
         }
         Dictionary<string, object?> row;
         await using (var sel = c.CreateCommand())
         {
-            sel.CommandText = "SELECT id, name, bio, \"createdAt\" FROM \"authors\" WHERE id = @id";
+            sel.CommandText = "SELECT id, name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\" WHERE id = @id";
             sel.Parameters.AddWithValue("@id", newId);
             await using var rdr = await sel.ExecuteReaderAsync();
             await rdr.ReadAsync();
@@ -572,6 +593,12 @@ internal sealed class AuthorApiServer : IAsyncDisposable
             await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
             return;
         }
+        // Issue #203 / ADR-0045 — bump the onUpdate @autoSet column (autoUpdatedAt) to now();
+        // autoCreatedAt (onCreate) is NEVER written on update (the write-once created-at contract),
+        // so after a PATCH the two diverge. Appended AFTER the empty-body guard so a no-op PATCH
+        // still 400s per FR-035. Unspecified kind to match the plain-TIMESTAMP column.
+        sets.Add("\"autoUpdatedAt\" = @p" + vals.Count);
+        vals.Add(DateTime.SpecifyKind(DateTimeOffset.UtcNow.UtcDateTime, DateTimeKind.Unspecified));
         int updated;
         await using var c = new NpgsqlConnection(_pg.ConnectionString);
         await c.OpenAsync();
@@ -592,7 +619,7 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         Dictionary<string, object?> row;
         await using (var sel = c.CreateCommand())
         {
-            sel.CommandText = "SELECT id, name, bio, \"createdAt\" FROM \"authors\" WHERE id = @id";
+            sel.CommandText = "SELECT id, name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\" WHERE id = @id";
             sel.Parameters.AddWithValue("@id", id.Value);
             await using var rdr = await sel.ExecuteReaderAsync();
             await rdr.ReadAsync();
@@ -621,23 +648,25 @@ internal sealed class AuthorApiServer : IAsyncDisposable
 
     private static Dictionary<string, object?> RowToMap(NpgsqlDataReader rdr)
     {
-        var row = new Dictionary<string, object?>(StringComparer.Ordinal)
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
         {
             ["id"] = rdr.GetInt64(rdr.GetOrdinal("id")),
             ["name"] = rdr.GetString(rdr.GetOrdinal("name")),
             ["bio"] = rdr.IsDBNull(rdr.GetOrdinal("bio")) ? null : rdr.GetString(rdr.GetOrdinal("bio")),
+            ["createdAt"] = ReadTimestamp(rdr, "createdAt"),
+            // Issue #203 / ADR-0045 — the @autoSet columns surface on the wire so the
+            // autoset-patch scenario can assert autoCreatedAt (onCreate, preserved) !=
+            // autoUpdatedAt (onUpdate, bumped) after a PATCH.
+            ["autoCreatedAt"] = ReadTimestamp(rdr, "autoCreatedAt"),
+            ["autoUpdatedAt"] = ReadTimestamp(rdr, "autoUpdatedAt"),
         };
-        int ctOrd = rdr.GetOrdinal("createdAt");
-        if (rdr.IsDBNull(ctOrd))
-        {
-            row["createdAt"] = null;
-        }
-        else
-        {
-            var dt = rdr.GetDateTime(ctOrd);
-            row["createdAt"] = dt.ToString(TimestampFmt, CultureInfo.InvariantCulture);
-        }
-        return row;
+    }
+
+    /// <summary>Read a nullable TIMESTAMP column, formatted in the wire form (no zone), or null.</summary>
+    private static object? ReadTimestamp(NpgsqlDataReader rdr, string column)
+    {
+        int ord = rdr.GetOrdinal(column);
+        return rdr.IsDBNull(ord) ? null : rdr.GetDateTime(ord).ToString(TimestampFmt, CultureInfo.InvariantCulture);
     }
 
     private static async Task<object?> ReadJsonBodyAsync(HttpListenerContext ctx)
