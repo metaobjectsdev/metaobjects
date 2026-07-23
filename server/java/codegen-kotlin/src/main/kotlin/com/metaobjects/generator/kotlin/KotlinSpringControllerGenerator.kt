@@ -179,9 +179,32 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 (it !is ObjectField || isJsonbObjectColumn(it)) &&
                 // #214: a DERIVED (origin.*) field on a write-through entity has no column on the
                 // write table — it is computed by the read view — so it is never a write/patch target.
-                !(writeThrough && KotlinGenUtil.isDerivedField(it))
+                !(writeThrough && KotlinGenUtil.isDerivedField(it)) &&
+                // #203/ADR-0045: an @autoSet column is server-owned — the generated controller
+                // stamps it (the API surface owns the write semantic); a caller cannot set it via PATCH.
+                !KotlinGenUtil.isAutoSetField(it)
         }
         val hasPatchFields = patchSettableFields.isNotEmpty()
+
+        // #203/ADR-0045: @autoSet columns are stamped by the generated controller, not bound from
+        // the caller. insert stamps BOTH onCreate+onUpdate (a fresh row's updatedAt == createdAt —
+        // captured from ONE now() per temporal type so they are exactly equal); a patch re-stamps
+        // onUpdate on EVERY write (even an empty body) and never rewrites onCreate. An @autoSet
+        // field is a real write-table column (never derived), so only the PK / write-through-derived
+        // guards apply.
+        val insertAutoSetFields = entity.metaFields.filter {
+            KotlinGenUtil.isAutoSetField(it) && it.name != pkFieldName &&
+                !(writeThrough && KotlinGenUtil.isDerivedField(it))
+        }
+        val onUpdateAutoSetFields = insertAutoSetFields.filter {
+            KotlinGenUtil.autoSetPolicy(it) == KotlinGenUtil.AUTO_SET_ON_UPDATE
+        }
+        // One captured now()-val per distinct temporal type, so all same-type @autoSet columns in a
+        // single insert receive the identical value (createdAt == updatedAt exactly).
+        val insertNowVal = LinkedHashMap<String, String>() // nowExpr → local val name
+        insertAutoSetFields.forEach { f ->
+            insertNowVal.getOrPut(KotlinTypeMapper.nowExpr(f)) { "autoSetNow${insertNowVal.size}" }
+        }
 
         // Sort allowlist: every scalar field is sortable. Skip ObjectField (no SQL column
         // surface on the Exposed Table; @storage controls a separate column shape) and the
@@ -398,6 +421,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             append("    @PostMapping\n")
             append("    fun create(@RequestBody dto: ${shortName}): ResponseEntity<Any> = transaction {\n")
             append("        if (validator.validate(dto).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
+            // #203/ADR-0045: capture one now() per temporal type so createdAt == updatedAt exactly.
+            for ((expr, valName) in insertNowVal) append("        val $valName = $expr\n")
             append("        val newId = ${tableObjectName}.insert {\n")
             for (field in entity.metaFields) {
                 // Program D: a field.object value-object jsonb column IS written on create — the
@@ -412,6 +437,12 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 // #214: a DERIVED (origin.*) field on a write-through entity has no column on the
                 // write table (computed by the view), so it is never written on create.
                 if (writeThrough && KotlinGenUtil.isDerivedField(field)) continue
+                // #203/ADR-0045: insert stamps onCreate+onUpdate @autoSet columns from the captured
+                // now() (the caller's value is ignored — never bound from the dto).
+                if (KotlinGenUtil.isAutoSetField(field)) {
+                    append("            it[${field.name}] = ${insertNowVal[KotlinTypeMapper.nowExpr(field)]}\n")
+                    continue
+                }
                 // NOTE: a `field.string @dbColumnType=jsonb` open bag IS written here (create
                 // binds it from the @Valid DTO's kotlinx JsonElement property, gated by the
                 // jsonb-open-bag-roundtrip corpus). PATCH cannot (the raw-JsonNode path can't bind
@@ -449,9 +480,13 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                     append("        if (body.has(\"${field.name}\") && body.get(\"${field.name}\").isNull) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
                 }
             }
+            val mustStampOnUpdate = onUpdateAutoSetFields.isNotEmpty()
             if (hasPatchFields) {
                 val settableNamesList = patchSettableFields.joinToString(", ") { "\"${it.name}\"" }
-                append("        if (listOf($settableNamesList).any { body.has(it) }) {\n")
+                // #203/ADR-0045: with onUpdate @autoSet columns the update must run on EVERY patch
+                // (to bump them) — no "any present" guard; otherwise the guard keeps the update out
+                // when the caller sent no settable field (byte-identical to the pre-#203 output).
+                if (!mustStampOnUpdate) append("        if (listOf($settableNamesList).any { body.has(it) }) {\n")
                 // A present value that cannot bind to its column's Kotlin type (e.g. a JSON object
                 // for a String column) throws from treeToValue — map that to 400, not a 500. Catch
                 // the specific Jackson JsonMappingException so no unrelated exception is swallowed.
@@ -502,6 +537,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 // Apply the already-bound + validated values. Columns are qualified (`Table.col`)
                 // so a field named like the `body`/`id` params can't shadow them.
                 append("                ${tableObjectName}.update({ ${tableObjectName}.${pkFieldName} eq id }) {\n")
+                // #203/ADR-0045: bump every onUpdate @autoSet column first (server-owned); onCreate
+                // columns are never touched on update (createdAt is immutable).
+                for (field in onUpdateAutoSetFields) {
+                    append("                    it[${tableObjectName}.${field.name}] = ${KotlinTypeMapper.nowExpr(field)}\n")
+                }
                 for (field in patchSettableFields) {
                     val fn = field.name
                     val cap = capitalizeFirst(fn)
@@ -516,6 +556,14 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 append("            } catch (e: com.fasterxml.jackson.databind.JsonMappingException) {\n")
                 append("                return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
                 append("            }\n")
+                // Close the "any present" guard only when it was opened (see mustStampOnUpdate above).
+                if (!mustStampOnUpdate) append("        }\n")
+            } else if (mustStampOnUpdate) {
+                // No caller-settable columns, but onUpdate @autoSet must still bump on every patch.
+                append("        ${tableObjectName}.update({ ${tableObjectName}.${pkFieldName} eq id }) {\n")
+                for (field in onUpdateAutoSetFields) {
+                    append("            it[${tableObjectName}.${field.name}] = ${KotlinTypeMapper.nowExpr(field)}\n")
+                }
                 append("        }\n")
             }
             // #214: read the (possibly-updated) row back through the READ object so the response

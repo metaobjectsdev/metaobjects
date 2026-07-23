@@ -170,6 +170,56 @@ class KotlinAutoSetStampingTest {
             "a date-only @autoSet must not emit Instant.now(); saw:\n$src")
     }
 
+    // === #203 / ADR-0045 — the generated Spring CONTROLLER (the deployed API surface) must ALSO
+    // === stamp @autoSet, not just the repository: the controller does its own inline Exposed writes
+    // === and never delegates to the repository, so an adopter deploying it must still get stamping.
+
+    private fun generateController(name: String, fixture: String, relPath: String): String {
+        val outDir = Files.createTempDirectory("kautoset-ctl-")
+        try {
+            KotlinSpringControllerGenerator().apply { setArgs(mapOf("outputDir" to outDir.toString())) }
+                .execute(loadString(name, fixture))
+            val f = outDir.resolve(relPath)
+            assertTrue(Files.exists(f), "expected generated file $f; files=${Files.walk(outDir).toList()}")
+            return Files.readString(f)
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test fun `controller insert stamps both @autoSet columns from one captured now (createdAt == updatedAt)`() {
+        val src = generateController("autoset-event-ctl", autoSetFixture, "acme/events/EventController.kt")
+        // ONE captured now() val, assigned to BOTH columns → a fresh row's createdAt == updatedAt exactly.
+        assertTrue("val autoSetNow0 = java.time.Instant.now()" in src,
+            "insert must capture one now() val per temporal type; saw:\n$src")
+        assertTrue("it[createdAt] = autoSetNow0" in src && "it[updatedAt] = autoSetNow0" in src,
+            "insert must stamp BOTH @autoSet columns from the captured val; saw:\n$src")
+        assertTrue("dto.createdAt" !in src && "dto.updatedAt" !in src,
+            "an @autoSet column must never be bound from the caller dto; saw:\n$src")
+    }
+
+    @Test fun `controller patch bumps onUpdate on every patch and never rewrites onCreate`() {
+        val src = generateController("autoset-event-ctl2", autoSetFixture, "acme/events/EventController.kt")
+        assertTrue("it[EventTable.updatedAt] = java.time.Instant.now()" in src,
+            "patch must bump the onUpdate column; saw:\n$src")
+        assertTrue("it[EventTable.createdAt]" !in src,
+            "patch/update must never touch the onCreate column createdAt; saw:\n$src")
+        // onUpdate present ⇒ the update runs on EVERY patch (no "any present" guard).
+        assertTrue(".any { body.has(it) }" !in src,
+            "an onUpdate @autoSet controller must not gate the update behind an any-present check; saw:\n$src")
+        // @autoSet columns are not caller-settable in PATCH (never bound from the body).
+        assertTrue("body.get(\"updatedAt\")" !in src && "body.get(\"createdAt\")" !in src,
+            "an @autoSet column must not be a PATCH-bindable field; saw:\n$src")
+    }
+
+    @Test fun `a non-@autoSet controller stays byte-identical - no stamping, keeps the patch guard`() {
+        val src = generateController("autoset-note-ctl", autoSetFixture, "acme/events/NoteController.kt")
+        assertTrue("autoSetNow" !in src, "a non-@autoSet controller must not capture a now() val; saw:\n$src")
+        assertTrue(".now()" !in src, "a non-@autoSet controller must not stamp now(); saw:\n$src")
+        assertTrue(".any { body.has(it) }" in src,
+            "a non-@autoSet controller keeps the any-present patch guard; saw:\n$src")
+    }
+
     @Test fun `the generated repository (with entity + table) compiles against Exposed`() {
         val outDir = Files.createTempDirectory("kautoset-cr-")
         try {

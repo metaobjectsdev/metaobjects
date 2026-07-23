@@ -654,4 +654,18 @@ object KotlinTypeMapper {
             else -> null
         }
     }
+
+    /**
+     * The `now()` expression for [field]'s temporal COLUMN type (issue #203 / ADR-0045) — keyed
+     * off the column type so it generalizes across every temporal subtype: `field.timestamp`
+     * (default) → `java.time.Instant.now()`, `@localTime` → `java.time.LocalDateTime.now()`,
+     * `field.date` → `java.time.LocalDate.now()`, `field.time` → `java.time.LocalTime.now()`. Each
+     * of those `java.time` types exposes a static `now()`. Fully-qualified so no import bookkeeping
+     * is needed (the four types would otherwise collide on simple names across generated files).
+     */
+    fun nowExpr(field: com.metaobjects.field.MetaField<*>): String {
+        val tn = kotlinTypeName(field)
+        val fqn = (tn as? ClassName)?.canonicalName ?: tn.toString()
+        return "$fqn.now()"
+    }
 }
