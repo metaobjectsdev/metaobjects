@@ -1,0 +1,42 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "status",
+                "@intValueMap": {
+                  "ARCHIVED": 9,
+                  "DRAFT": 0,
+                  "PUBLISHED": 5
+                },
+                "@values": [
+                  "DRAFT",
+                  "PUBLISHED",
+                  "ARCHIVED"
+                ]
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

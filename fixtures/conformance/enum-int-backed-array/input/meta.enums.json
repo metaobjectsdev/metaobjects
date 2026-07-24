@@ -1,0 +1,24 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Ticket",
+          "children": [
+            { "field.long": { "name": "id" } },
+            {
+              "field.enum": {
+                "name": "labels",
+                "isArray": true,
+                "@values": ["LOW", "MEDIUM", "HIGH"],
+                "@intValueMap": { "LOW": 1, "MEDIUM": 2, "HIGH": 3 }
+              }
+            },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}
