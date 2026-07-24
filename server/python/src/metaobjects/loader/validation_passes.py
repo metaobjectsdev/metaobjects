@@ -14,7 +14,6 @@ from typing import Callable, NamedTuple
 from ..errors import ErrorCode, MetaError
 from ..source.error_source import LoaderWarning
 from .validate_source_physical_names import validate_source_physical_names
-from .validate_enum_normalize_ambiguity import validate_enum_normalize_ambiguity
 from .validate_field_readonly import validate_field_readonly
 from .validate_discriminator import validate_discriminator
 from .validate_source_parameter_ref import validate_source_parameter_ref
@@ -71,7 +70,6 @@ from ..shared.base_types import (
     TYPE_IDENTITY,
     TYPE_INDEX,
     TYPE_LAYOUT,
-    TYPE_METADATA,
     TYPE_OBJECT,
     TYPE_ORIGIN,
     TYPE_RELATIONSHIP,
@@ -88,7 +86,6 @@ from ..meta.persistence.origin.origin_constants import (
     AGG_ALL,
     AGG_ANY,
     AGG_COLLECT,
-    ASSEMBLY_ORIGIN_SUBTYPES,
     ORIGIN_ATTR_AGG,
     ORIGIN_ATTR_CONVERT,
     ORIGIN_ATTR_DISTINCT,
@@ -115,7 +112,6 @@ from ..meta.core.relationship.relationship_constants import (
 from ..meta.core.identity.identity_constants import (
     IDENTITY_SUBTYPE_REFERENCE,
     IDENTITY_REFERENCE_ATTR_REFERENCES,
-    IDENTITY_REFERENCE_ATTR_ENFORCE,
 )
 from ..shared.separators import PACKAGE_SEP
 from ..meta.core.object.object_constants import (
@@ -129,23 +125,21 @@ from ..meta.core.index.index_constants import INDEX_ATTR_FIELDS, INDEX_SUBTYPE_L
 from ..source import resolved_source
 from ..naming_refs import did_you_mean_hint, resolve_object_ref
 
-# A subtype-specific template attr is valid ONLY on the subtype(s) it is registered
+# A subtype-specific template attr is valid ONLY on the subtype it is registered
 # for. The metamodel registers these per-subtype (see the core_types template block),
 # but the lenient loader does not reject a misplaced one — _validate_templates does.
 # Mirrors the per-subtype TEMPLATE_ATTRS_MAP split across the other ports.
-# #237: @maxTokens is registered on BOTH prompt AND toolcall (a vendor-agnostic token
-# budget), so the value is a SET of allowed subtypes, not a single one.
-_TEMPLATE_SUBTYPE_ONLY_ATTRS: dict[str, frozenset[str]] = {
-    tc.TEMPLATE_ATTR_MAX_TOKENS: frozenset({tc.TEMPLATE_SUBTYPE_PROMPT, tc.TEMPLATE_SUBTYPE_TOOLCALL}),
-    tc.TEMPLATE_ATTR_REQUIRED_SLOTS: frozenset({tc.TEMPLATE_SUBTYPE_PROMPT}),
-    tc.TEMPLATE_ATTR_MODEL: frozenset({tc.TEMPLATE_SUBTYPE_PROMPT}),
-    tc.TEMPLATE_ATTR_RESPONSE_REF: frozenset({tc.TEMPLATE_SUBTYPE_PROMPT}),
-    tc.TEMPLATE_ATTR_PROMPT_STYLE: frozenset({tc.TEMPLATE_SUBTYPE_OUTPUT}),
-    tc.TEMPLATE_ATTR_KIND: frozenset({tc.TEMPLATE_SUBTYPE_OUTPUT}),
-    tc.TEMPLATE_ATTR_SUBJECT_REF: frozenset({tc.TEMPLATE_SUBTYPE_OUTPUT}),
-    tc.TEMPLATE_ATTR_HTML_BODY_REF: frozenset({tc.TEMPLATE_SUBTYPE_OUTPUT}),
-    tc.TEMPLATE_ATTR_TEXT_BODY_REF: frozenset({tc.TEMPLATE_SUBTYPE_OUTPUT}),
-    tc.TEMPLATE_ATTR_TOOL_NAME: frozenset({tc.TEMPLATE_SUBTYPE_TOOLCALL}),
+_TEMPLATE_SUBTYPE_ONLY_ATTRS: dict[str, str] = {
+    tc.TEMPLATE_ATTR_MAX_TOKENS: tc.TEMPLATE_SUBTYPE_PROMPT,
+    tc.TEMPLATE_ATTR_REQUIRED_SLOTS: tc.TEMPLATE_SUBTYPE_PROMPT,
+    tc.TEMPLATE_ATTR_MODEL: tc.TEMPLATE_SUBTYPE_PROMPT,
+    tc.TEMPLATE_ATTR_RESPONSE_REF: tc.TEMPLATE_SUBTYPE_PROMPT,
+    tc.TEMPLATE_ATTR_PROMPT_STYLE: tc.TEMPLATE_SUBTYPE_OUTPUT,
+    tc.TEMPLATE_ATTR_KIND: tc.TEMPLATE_SUBTYPE_OUTPUT,
+    tc.TEMPLATE_ATTR_SUBJECT_REF: tc.TEMPLATE_SUBTYPE_OUTPUT,
+    tc.TEMPLATE_ATTR_HTML_BODY_REF: tc.TEMPLATE_SUBTYPE_OUTPUT,
+    tc.TEMPLATE_ATTR_TEXT_BODY_REF: tc.TEMPLATE_SUBTYPE_OUTPUT,
+    tc.TEMPLATE_ATTR_TOOL_NAME: tc.TEMPLATE_SUBTYPE_TOOLCALL,
 }
 
 # ---------------------------------------------------------------------------
@@ -199,9 +193,6 @@ def run_validations(
     validate_source_physical_names(root, errors, envelope_warnings, warnings)
     # FR-013 — field-level @readOnly cross-attribute rules.
     validate_field_readonly(root, errors, envelope_warnings, warnings)
-    # Authoring guard — a field.enum vocabulary ambiguous under the default
-    # @normalize: strip. WARN_ENUM_NORMALIZE_AMBIGUOUS.
-    validate_enum_normalize_ambiguity(root, envelope_warnings, warnings)
     # FR-014 — TPH discriminator cross-attribute rules.
     validate_discriminator(root, errors)
     # FR-015 — source.rdb @parameterRef typed-input rules.
@@ -458,22 +449,18 @@ def _validate_attr_schema(
 
         # --- Check 1: required attrs must be present (uses node.attrs() = effective,
         #     so an inherited attr from the super chain satisfies the requirement) ---
-        # #236: an ABSTRACT node is a template, not instantiated — it may omit a required
-        # attr for concrete subtypes / `extends` to supply. Enforcement stays at the
-        # concrete level (a concrete's resolving attrs() must satisfy it). ADR-0039.
-        if not node.is_abstract:
-            present_attrs = node.attrs()
-            for schema in schemas:
-                if not schema.required:
-                    continue
-                if schema.name not in present_attrs:
-                    errors.append(
-                        MetaError(
-                            f"{_node_label(node)} is missing required attribute '@{schema.name}'",
-                            ErrorCode.ERR_MISSING_REQUIRED_ATTR,
-                            envelope=node.source,
-                        )
+        present_attrs = node.attrs()
+        for schema in schemas:
+            if not schema.required:
+                continue
+            if schema.name not in present_attrs:
+                errors.append(
+                    MetaError(
+                        f"{_node_label(node)} is missing required attribute '@{schema.name}'",
+                        ErrorCode.ERR_MISSING_REQUIRED_ATTR,
+                        envelope=node.source,
                     )
+                )
 
         # --- Checks 2 + 3: own attrs only (inherited attrs were already checked on
         #     the node that declared them; re-checking would double-report) ---
@@ -569,6 +556,16 @@ def _validate_enum_values(
         # @coerceDefault / @default / @normalize while inheriting @values).
         _validate_enum_fr011_attrs(node, errors)
 
+        # Rule 4 (@intValueMap content rules) is independent of whether @values is
+        # own or inherited on THIS node — it must run whenever this node owns
+        # @intValueMap, using the EFFECTIVE @values (own-or-inherited) as the
+        # membership set. Mirrors TS/C#/Java, which all check this unconditionally
+        # (Java's `validateEnumIntValueMap` is a standalone call at the top of
+        # `validateEnumNode`). Deliberately called BEFORE the `own_values is None:
+        # continue` gate below so a concrete field.enum that inherits @values via
+        # `extends` but declares its own @intValueMap is still validated.
+        _validate_enum_int_value_map(node, errors)
+
         # ADR-0039 sanctioned own: validates the AUTHORED @values membership on THIS
         # node (mirrors the TS attr-schema-validate `node.ownAttrs()`); an inherited
         # @values yields None here and is validated on its declaring node.
@@ -618,75 +615,60 @@ def _validate_enum_values(
                 )
             )
 
-        # #246: own @values AND extends a shared package-level abstract enum —
-        # one shared enum type has one member set, so the own @values would be
-        # silently dropped by the shared-enum codegen collapse. "Shared" means
-        # the resolved super is abstract AND declared at metadata-root (its
-        # parent is the metadata.root node, not nested inside an object) — a
-        # concrete super, or a non-root abstract super (e.g. nested inside an
-        # object), is legal and not flagged. Mirrors the TS reference
-        # (attr-schema-validate.ts).
-        sup = node.super_data
-        if (
-            sup is not None
-            and sup.is_abstract
-            and sup.parent is not None
-            and sup.parent.type == TYPE_METADATA
-        ):
+
+def _validate_enum_int_value_map(node: MetaData, errors: list[MetaError]) -> None:
+    """``@intValueMap`` content rules (optional), independent of whether ``@values``
+    is own or inherited on this node. Mirrors TS/C#/Java, which all run this check
+    unconditionally against the node's EFFECTIVE ``@values`` — a concrete
+    ``field.enum`` that inherits ``@values`` via ``extends`` but declares its own
+    ``@intValueMap`` locally must still have that map validated.
+
+      a. Key set must exactly match the EFFECTIVE ``@values`` (own or inherited).
+      b. No two members may share the same int (protobuf's stance — no alias
+         opt-in). Every-value-is-an-integer is already enforced by ``_type_ok``'s
+         ATTR_SUBTYPE_INT_MAP case at parse time.
+    """
+    int_value_map = node.attr(FIELD_ATTR_INT_VALUE_MAP)
+    if not isinstance(int_value_map, dict):
+        return
+
+    label = _node_label(node)
+    effective_values = _effective_enum_values(node)
+    member_set = set(effective_values)
+    key_set = set(int_value_map.keys())
+    missing = [m for m in effective_values if m not in key_set]
+    extra = [k for k in int_value_map if k not in member_set]
+    if missing or extra:
+        parts = []
+        if missing:
+            parts.append(f"missing: {', '.join(missing)}")
+        if extra:
+            parts.append(f"unknown: {', '.join(extra)}")
+        errors.append(
+            MetaError(
+                f"{label} attribute '@{FIELD_ATTR_INT_VALUE_MAP}' keys must exactly match "
+                f"'@{FIELD_ATTR_VALUES}' members ({'; '.join(parts)}).",
+                ErrorCode.ERR_BAD_ATTR_VALUE,
+                envelope=node.source,
+            )
+        )
+
+    seen_values: dict[int, str] = {}
+    for member, value in int_value_map.items():
+        if not isinstance(value, int) or isinstance(value, bool):
+            continue  # _type_ok already reported this
+        owner = seen_values.get(value)
+        if owner is not None:
             errors.append(
                 MetaError(
-                    f"{label} declares its own '@{FIELD_ATTR_VALUES}' but extends "
-                    f"a shared package-level abstract enum — one shared enum type "
-                    f"has one member set. Remove the own '@{FIELD_ATTR_VALUES}' to "
-                    f"inherit the shared set, or extend a concrete (non-shared) "
-                    f"enum instead",
-                    ErrorCode.ERR_ENUM_EXTENDS_VALUES_CONFLICT,
+                    f"{label} attribute '@{FIELD_ATTR_INT_VALUE_MAP}' members {owner!r} and {member!r} "
+                    f"share the same value {value}; every member must have a unique int.",
+                    ErrorCode.ERR_BAD_ATTR_VALUE,
                     envelope=node.source,
                 )
             )
-
-        # Rule 4: @intValueMap content rules (optional).
-        #   a. Key set must exactly match @values.
-        #   b. No two members may share the same int (protobuf's stance — no
-        #      alias opt-in). Every-value-is-an-integer is already enforced
-        #      by `_type_ok`'s ATTR_SUBTYPE_INT_MAP case at parse time.
-        int_value_map = node.attr(FIELD_ATTR_INT_VALUE_MAP)
-        if isinstance(int_value_map, dict):
-            member_set = set(own_values)
-            key_set = set(int_value_map.keys())
-            missing = [m for m in own_values if m not in key_set]
-            extra = [k for k in int_value_map if k not in member_set]
-            if missing or extra:
-                parts = []
-                if missing:
-                    parts.append(f"missing: {', '.join(missing)}")
-                if extra:
-                    parts.append(f"unknown: {', '.join(extra)}")
-                errors.append(
-                    MetaError(
-                        f"{label} attribute '@{FIELD_ATTR_INT_VALUE_MAP}' keys must exactly match "
-                        f"'@{FIELD_ATTR_VALUES}' members ({'; '.join(parts)}).",
-                        ErrorCode.ERR_BAD_ATTR_VALUE,
-                        envelope=node.source,
-                    )
-                )
-
-            seen_values: dict[int, str] = {}
-            for member, value in int_value_map.items():
-                if not isinstance(value, int) or isinstance(value, bool):
-                    continue  # _type_ok already reported this
-                owner = seen_values.get(value)
-                if owner is not None:
-                    errors.append(
-                        MetaError(
-                            f"{label} attribute '@{FIELD_ATTR_INT_VALUE_MAP}' members {owner!r} and {member!r} "
-                            f"share the same value {value}; every member must have a unique int.",
-                            ErrorCode.ERR_BAD_ATTR_VALUE,
-                            envelope=node.source,
-                        )
-                    )
-                else:
-                    seen_values[value] = member
+        else:
+            seen_values[value] = member
 
 
 def _effective_enum_values(node: MetaData) -> list[str]:
@@ -1934,28 +1916,6 @@ def _validate_origin_paths(
                 else (node.fqn() if hasattr(node, "fqn") else node.name)
             )
 
-            # #210 — assembly origins live on projections. A value-hosted field
-            # may not carry origin.aggregate / origin.computed / origin.collection
-            # / origin.first: a value is constructed — by a caller or by embedding
-            # — never assembled from a backing store. origin.passthrough STAYS
-            # legal on a value (FR-015 parameter lineage; the B5 exemption).
-            if is_value_host and origin.sub_type in ASSEMBLY_ORIGIN_SUBTYPES:
-                errors.append(
-                    MetaError(
-                        f"value object '{obj.fqn()}' field '{node.name}' hosts "
-                        f"origin.{origin.sub_type} — assembly origins "
-                        f"({', '.join(ASSEMBLY_ORIGIN_SUBTYPES)}) live on "
-                        f"object.projection; a value is constructed by a caller or by "
-                        f"embedding, never assembled from a backing store. Re-host this "
-                        f"field on a sourceless object.projection; origin.passthrough "
-                        f"(FR-015 parameter lineage) remains legal on a value "
-                        f"(#210, ADR-0028)",
-                        ErrorCode.ERR_SUBTYPE_RULE_VIOLATION,
-                        envelope=origin.source,
-                    )
-                )
-                continue
-
             if origin.sub_type == ORIGIN_SUBTYPE_PASSTHROUGH:
                 from_ref = origin.attr(ORIGIN_ATTR_FROM)
                 if not isinstance(from_ref, str) or not from_ref:
@@ -2118,11 +2078,19 @@ def _validate_origin_paths(
                     if hops is not None:
                         _check_aggregate_cardinality(hops, node.name, src, errors)
                     continue
-                # FR-024 §6 — no @via on an aggregate: inference applies only
-                # when @of targets a non-base entity. (A value host never
-                # reaches here — the #210 assembly-origin check above already
-                # rejected it.)
+                # FR-024 §6 — no @via on an aggregate: inference applies only when
+                # @of targets a non-base entity from a non-value host.
                 if of_target is None:
+                    continue
+                if is_value_host:
+                    errors.append(
+                        MetaError(
+                            f"{ctx} is missing required attribute '@{ORIGIN_ATTR_VIA}' "
+                            f"(aggregates require a relationship path)",
+                            ErrorCode.ERR_INVALID_ORIGIN,
+                            envelope=src,
+                        )
+                    )
                     continue
                 base = _derive_base_entity(
                     obj, root, host_pkg, node.name, src, errors
@@ -2228,9 +2196,7 @@ def _validate_origin_paths(
                     hops = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
                     if hops is not None:
                         _check_aggregate_cardinality(hops, node.name, src, errors)
-                elif of_target is not None:
-                    # (A value host never reaches here — the #210 assembly-origin
-                    # check above already rejected origin.first on a value.)
+                elif of_target is not None and not is_value_host:
                     base = _derive_base_entity(obj, root, host_pkg, node.name, src, errors)
                     if base is not None and not _is_base_relation_target(of_target[0], base, obj):
                         hops = _infer_via_single_hop(
@@ -2400,20 +2366,6 @@ def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
                     envelope=resolved_source(
                         rel.source, f"{obj.fqn()}::{rel.name}", str(through)
                     ),
-                ))
-                continue
-            # A junction is a physical join table — it MUST be an object.entity.
-            # ADR-0046 lets a value carry navigation-only references, so value-purity
-            # no longer implicitly guarantees a two-reference junction is an entity;
-            # assert it here. (A value/projection has no table to join through.)
-            if junction.sub_type != OBJECT_SUBTYPE_ENTITY:
-                errors.append(MetaError(
-                    f'relationship "{obj.name}.{rel.name}" '
-                    f'@{RELATIONSHIP_ATTR_THROUGH} "{through}" resolves to '
-                    f"{junction.type}.{junction.sub_type}, not an entity — a junction is a "
-                    f"persisted join table and must be object.entity.",
-                    ErrorCode.ERR_INVALID_RELATIONSHIP,
-                    envelope=rel.source,
                 ))
                 continue
             ref_count = _count_junction_references(junction)
@@ -2745,31 +2697,12 @@ def _validate_max_occurs(
                 )
 
 
-# FR-024 value purity (ADR-0028): a value object owns NO identity and NO source.
-# ADR-0046 admits ONE exception: a navigation-only identity.reference with explicit
-# @enforce: false — an outbound pointer to an entity (a DTO/message referencing X by
-# id) is not persistence. Its target still resolves (dangling → ERR_INVALID_REFERENCE
-# via the registry-derived pass) and codegen emits no FK/DDL. The value's OWN identity
-# (primary/secondary) and any enforced reference (a physical FK it has no table to
-# hold) stay banned. Mirrors TS subtype-rules.ts validateValuePurity.
+# FR-024 value purity (ADR-0028): a value object is a pure data shape — it
+# carries NO identity of any subtype and NO source. Mirrors TS subtype-rules.ts
+# validateValuePurity (effective children; envelope = the offending child).
 def _validate_value_purity(node: MetaObject, errors: list[MetaError]) -> None:
     for child in node.children():
         if child.type == TYPE_IDENTITY:
-            if child.sub_type == IDENTITY_SUBTYPE_REFERENCE:
-                # ADR-0046: navigation-only reference is the sanctioned exception.
-                if child.get_meta_attr(IDENTITY_REFERENCE_ATTR_ENFORCE) is False:
-                    continue
-                errors.append(
-                    MetaError(
-                        f"value object '{node.fqn()}' has an enforced reference "
-                        f"({TYPE_IDENTITY}.{child.sub_type} '{child.name}') — a value is not "
-                        f"persisted and has no table to hold a physical FK; declare a "
-                        f"navigation-only reference with @enforce: false (FR-024, ADR-0028, ADR-0046)",
-                        ErrorCode.ERR_SUBTYPE_RULE_VIOLATION,
-                        envelope=child.source,
-                    )
-                )
-                continue
             errors.append(
                 MetaError(
                     f"value object '{node.fqn()}' must not have an identity "
@@ -2811,38 +2744,6 @@ def _validate_projection_licensing(node: MetaObject, errors: list[MetaError]) ->
                 envelope=node.source,
             )
         )
-
-    # A projection's extends is SHAPE lineage, not a shared-storage hierarchy, so a
-    # CONCRETE projection must declare its own source rather than inherit one. extends
-    # only ADDS members, so the child's extra fields have no provider in the parent's
-    # view, and both objects would claim one physical view while declaring different
-    # exposures (the declared field set IS the exposure, fail-closed). Prior art splits
-    # the same way: shared-storage inheritance (JPA @Inheritance, EF Core TPH) inherits
-    # binding AND writability together; shape-reuse inheritance (@MappedSuperclass,
-    # Django abstract bases) does not inherit the binding at all.
-    #
-    # Enforced at the CONCRETE level (mirrors #236) — an abstract base carries shape
-    # only, and a source on one is inert until a concrete child extends it. Skipped
-    # when the super is not a legal projection: that trips the rule above and inherits
-    # its source too, and one defect should yield one error.
-    _super_is_legal_projection = sup is None or (
-        sup.type == TYPE_OBJECT and sup.sub_type == OBJECT_SUBTYPE_PROJECTION
-    )
-    if not node.is_abstract and _super_is_legal_projection:
-        _own = sum(1 for c in node.own_children() if c.type == TYPE_SOURCE)
-        _resolved = sum(1 for c in node.children() if c.type == TYPE_SOURCE)
-        if _resolved > _own:
-            errors.append(
-                MetaError(
-                    f"projection '{node.fqn()}' inherits a source through extends "
-                    f"instead of declaring its own — a projection's extends is shape "
-                    f"lineage, not a shared-storage hierarchy. Declare the source on "
-                    f"this projection; an abstract projection base carries shape only "
-                    f"(FR-024, ADR-0028)",
-                    ErrorCode.ERR_PROJECTION_INHERITED_SOURCE,
-                    envelope=node.source,
-                )
-            )
 
     # ADR-0039 sanctioned own: OWN sources only — an inherited source is validated
     # on the projection that declares it; an inherited source from a non-projection
@@ -3113,76 +3014,10 @@ def _validate_field_map(root: MetaData, errors: list[MetaError]) -> None:
 # ---------------------------------------------------------------------------
 # Four cross-port rules:
 #   R1 — template.prompt requires @payloadRef     → ERR_MISSING_REQUIRED_ATTR
-#   R2 — @payloadRef resolves to a root-level object.value or sourceless
-#        object.projection (#210) → ERR_INVALID_TEMPLATE
+#   R2 — @payloadRef resolves to a root-level object.value → ERR_INVALID_TEMPLATE
 #   R3 — @requiredSlots entries are fields on the payload → ERR_INVALID_TEMPLATE
 #   R4 — @format (if set) is in the closed enum set → ERR_BAD_ATTR_VALUE
 #        (handled by AttrSchema.allowed_values already; included for parity).
-
-
-def _is_legal_payload_target(obj: MetaData) -> bool:
-    """#210 — a template-level payload target (@payloadRef / @responseRef) is an
-    object.value OR a SOURCELESS object.projection. "Sourceless" is the #248
-    persistability contract: no declared/inherited ``source.*`` child (a concrete
-    projection cannot inherit one — ERR_PROJECTION_INHERITED_SOURCE — so for a
-    concrete projection this is simply "no own source"). Mirrors the TS
-    ``_isLegalPayloadTarget``."""
-    if obj.sub_type == OBJECT_SUBTYPE_VALUE:
-        return True
-    if obj.sub_type != OBJECT_SUBTYPE_PROJECTION:
-        return False
-    # ADR-0039: resolving — a source anywhere in the extends chain binds the
-    # projection to a backing store, which disqualifies it as a payload shape.
-    return not any(c.type == TYPE_SOURCE for c in obj.children())
-
-
-def _check_nested_payload_refs_value_only(
-    payload: MetaData,
-    root: MetaData,
-    errors: list[MetaError],
-    visited: set[int],
-) -> None:
-    """#210 (carried forward from the #219/ADR-0044 adjudication) — NESTED
-    payload targets stay value-only: every ``field.object @objectRef`` reachable
-    from a template-level payload target must resolve to an object.value. The
-    template-level widen (sourceless projections) deliberately does NOT extend
-    to nested targets. Dangling refs are NOT reported here — the registry-derived
-    @objectRef resolution check already owns that failure. Mirrors the TS
-    ``_checkNestedPayloadRefsValueOnly``. ``visited`` is shared across the WHOLE
-    pass (all templates), so a bad nested target reachable from two templates
-    reports ONCE — matching Java's throw-on-first single-error behavior."""
-    if id(payload) in visited:
-        return
-    visited.add(id(payload))
-    # ADR-0039: resolving — a payload shape may inherit fields via extends.
-    for field in (c for c in payload.children() if c.type == TYPE_FIELD):
-        if field.sub_type != FIELD_SUBTYPE_OBJECT:
-            continue
-        # ADR-0039: resolving — @objectRef may be inherited via extends.
-        ref = field.get_meta_attr(FIELD_ATTR_OBJECT_REF)
-        if not isinstance(ref, str) or not ref:
-            continue
-        # ADR-0042: a bare ref resolves in the DECLARING owner's package (an
-        # inherited field resolves in the package that declared it).
-        owner = getattr(field, "parent", None) or payload
-        owner_pkg = owner.package or owner.file_default_package or ""
-        target = resolve_object_ref(root, ref, owner_pkg)
-        if target is None:
-            continue  # dangling — reported by the @objectRef resolution check
-        if target.sub_type != OBJECT_SUBTYPE_VALUE:
-            errors.append(MetaError(
-                code=ErrorCode.ERR_SUBTYPE_RULE_VIOLATION,
-                message=(
-                    f"payload '{payload.fqn()}' field '{field.name}' @objectRef "
-                    f"'{ref}' resolves to {TYPE_OBJECT}.{target.sub_type} — a nested "
-                    f"payload target must be an object.value (template-level refs may "
-                    f"also target a sourceless object.projection, nested refs may not) "
-                    f"(#210, ADR-0028, ADR-0044)"
-                ),
-                envelope=field.source,
-            ))
-            continue
-        _check_nested_payload_refs_value_only(target, root, errors, visited)
 
 
 def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
@@ -3198,10 +3033,6 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
     # own package first, else a root-level object.value; an FQN resolves exactly.
     # No bare-name-anywhere fallback that would bind a same-named VO in another
     # package. Shares the single resolve_object_ref matcher.
-    #
-    # #210 — one visited set for the whole pass: a payload shared by N templates
-    # is walked (and any bad nested target reported) exactly once.
-    nested_visited: set[int] = set()
     for tpl in root.children():
         if tpl.type != TYPE_TEMPLATE:
             continue
@@ -3215,14 +3046,13 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
         # e.g. @maxTokens (prompt-only) on a template.output, or @promptStyle
         # (output-only) on a template.prompt. ADR-0039: resolving — a subtype-only
         # attr may be inherited via extends, so read the effective value.
-        for attr_name, allowed_subs in _TEMPLATE_SUBTYPE_ONLY_ATTRS.items():
-            if tpl.get_meta_attr(attr_name) is not None and tpl.sub_type not in allowed_subs:
-                valid_on = " / ".join(f"template.{s}" for s in sorted(allowed_subs))
+        for attr_name, allowed_sub in _TEMPLATE_SUBTYPE_ONLY_ATTRS.items():
+            if tpl.get_meta_attr(attr_name) is not None and tpl.sub_type != allowed_sub:
                 errors.append(MetaError(
                     code=ErrorCode.ERR_INVALID_TEMPLATE,
                     message=(
                         f'template.{tpl.sub_type} "{tpl.name}" carries @{attr_name}, '
-                        f"which is only valid on {valid_on}"
+                        f"which is only valid on template.{allowed_sub}"
                     ),
                     envelope=tpl.source,
                 ))
@@ -3276,25 +3106,20 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
         if not has_payload_ref:
             continue
 
-        # R2 — @payloadRef must resolve to a root-level object.value or
-        # sourceless object.projection (#210 — a SOURCED projection stays illegal).
+        # R2 — @payloadRef must resolve to a root-level object.value
         # FR5d — @payloadRef is a reference; emit format=resolved with
         # referrer=template FQN, target=the unresolved payloadRef string.
         payload = resolve_object_ref(root, payload_ref, referrer_pkg)
-        if payload is None or not _is_legal_payload_target(payload):
+        if payload is None or payload.sub_type != OBJECT_SUBTYPE_VALUE:
             errors.append(MetaError(
                 code=ErrorCode.ERR_INVALID_TEMPLATE,
                 message=(
                     f"template '{tpl.name}' @payloadRef '{payload_ref}' "
-                    f"does not resolve to an object.value or sourceless "
-                    f"object.projection at root"
+                    f"does not resolve to an object.value at root"
                 ),
                 envelope=resolved_source(tpl.source, tpl.fqn(), payload_ref),
             ))
             continue
-
-        # #210 — nested payload targets stay value-only (see the helper's doctrine).
-        _check_nested_payload_refs_value_only(payload, root, errors, nested_visited)
 
         # R3 — required-slots membership
         if is_prompt:
