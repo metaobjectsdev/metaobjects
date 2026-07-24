@@ -174,6 +174,7 @@ public static class CoreTypes
         [ATTR_SUBTYPE_PROPERTIES]    = DataType.Object,
         [ATTR_SUBTYPE_FILTER]        = DataType.Object,
         [ATTR_SUBTYPE_EXPRESSION]    = DataType.Object,
+        [ATTR_SUBTYPE_INT_MAP]       = DataType.Object,
     };
 
     // -------------------------------------------------------------------------
@@ -347,7 +348,7 @@ public static class CoreTypes
                 // tolerant-extract overlays (@enumAlias / @enumDoc / @coerceDefault /
                 // @normalize) are re-homed to the metaobjects-prompt concern provider
                 // (reads prompt.json's field.enum extends).
-                FIELD_SUBTYPE_ENUM     => [.. FieldSchema.CommonFieldAttrs, FieldSchema.EnumValuesAttr, FieldSchema.ProvidedAttr],
+                FIELD_SUBTYPE_ENUM     => [.. FieldSchema.CommonFieldAttrs, FieldSchema.EnumValuesAttr, FieldSchema.ProvidedAttr, FieldSchema.IntValueMapAttr],
                 _                      => FieldSchema.CommonFieldAttrs.ToList(),
             };
 
@@ -362,7 +363,7 @@ public static class CoreTypes
                     DataTypeFor(FieldDataType, subType, "field")));
         }
 
-        // attr — 9 subtypes (base + 8), no children allowed
+        // attr — 10 subtypes (base + 9), no children allowed
         foreach (string subType in ATTR_SUBTYPES)
         {
             registry.Register(
