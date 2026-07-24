@@ -573,6 +573,16 @@ _TEMPLATE_TEXT_REF_ATTRS = (
 )
 
 
+def _attr_str_list(raw: object) -> list[str] | None:
+    """Coerce a string-array attr (a list, or a single string) to ``list[str]``; ``None``
+    when absent — the shape :func:`render.verify` expects for required_slots/required_tags."""
+    if isinstance(raw, str):
+        return [raw]
+    if isinstance(raw, (list, tuple)):
+        return [str(x) for x in raw]
+    return None
+
+
 def _verify_templates(args: argparse.Namespace) -> int:
     """``verify --templates`` — the template/prompt ``{{field}}`` ↔ payload drift gate.
 
@@ -659,6 +669,16 @@ def _verify_templates(args: argparse.Namespace) -> int:
             error_count += 1
             continue
 
+        # #193/#230: @requiredSlots/@requiredTags are a template.prompt concept — enforced ONLY on
+        # the prompt path (the email/document output gate does not apply them per-part; the #193
+        # cross-port consensus). A prompt whose body omits a required output tag →
+        # ERR_OUTPUT_TAG_MISSING (drift, fails); an unused required slot → ERR_REQUIRED_SLOT_UNUSED
+        # (warning). This brings Python to parity with TS/Java/C# (previously it enforced neither).
+        is_prompt = tmpl.sub_type == tc.TEMPLATE_SUBTYPE_PROMPT
+        # ADR-0039: resolving read — an inherited @requiredSlots/@requiredTags is honored.
+        req_slots = _attr_str_list(tmpl.get_meta_attr(tc.TEMPLATE_ATTR_REQUIRED_SLOTS)) if is_prompt else None
+        req_tags = _attr_str_list(tmpl.get_meta_attr(tc.TEMPLATE_ATTR_REQUIRED_TAGS)) if is_prompt else None
+
         for ref in refs:
             text = provider.resolve(ref)
             if text is None:
@@ -670,12 +690,14 @@ def _verify_templates(args: argparse.Namespace) -> int:
                 error_count += 1
                 continue
             checked += 1
-            for e in render_verify(text, fields, provider=provider):
+            for e in render_verify(
+                text, fields, provider=provider,
+                required_slots=req_slots, required_tags=req_tags,
+            ):
                 if e.code == ERR_REQUIRED_SLOT_UNUSED:
-                    continue  # warning, not drift
+                    continue  # an unused required slot is a warning, not drift
                 print(
-                    f"error: [{tmpl.name}] ref '{ref}' — {e.code}: "
-                    f"{{{{{e.path}}}}} not on payload VO '{payload_ref}'.",
+                    f"error: [{tmpl.name}] ref '{ref}' — {e.code}: {e.path}",
                     file=sys.stderr,
                 )
                 error_count += 1

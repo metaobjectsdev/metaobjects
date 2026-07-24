@@ -196,6 +196,55 @@ def test_templates_email_body_drift_is_caught(tmp_path: Path, capsys) -> None:
     assert "WelcomeEmail" in err
 
 
+# --- #230: template.prompt @requiredTags / @requiredSlots enforcement (parity w/ TS/Java/C#) ---
+
+_META_PROMPT_TAGS = """\
+{
+  "metadata.root": {
+    "package": "acme::ai",
+    "children": [
+      {
+        "object.value": {
+          "name": "Welcome",
+          "children": [
+            { "field.string": { "name": "name", "@required": true } }
+          ]
+        }
+      },
+      {
+        "template.prompt": {
+          "name": "TaggedPrompt",
+          "@payloadRef": "Welcome",
+          "@textRef": "pages/welcome",
+          "@requiredTags": ["answer"]
+        }
+      }
+    ]
+  }
+}
+"""
+
+
+def test_templates_prompt_required_tag_missing_is_drift(tmp_path: Path, capsys) -> None:
+    # #230: a template.prompt @requiredTags whose rendered body omits the <answer> tag must FAIL
+    # verify. Python previously passed required_slots/required_tags to render_verify NOWHERE, so it
+    # enforced neither — a divergence from TS/Java/C#.
+    meta_dir = _meta_dir_with(tmp_path, _META_PROMPT_TAGS)
+    troot = _templates_dir(tmp_path, "Hello {{name}}")  # no <answer>…</answer> tag
+    rc = main(["verify", "--templates", meta_dir, "--templates-root", troot])
+    assert rc != 0
+    err = capsys.readouterr().err
+    assert "ERR_OUTPUT_TAG_MISSING" in err
+    assert "answer" in err
+
+
+def test_templates_prompt_required_tag_present_passes(tmp_path: Path) -> None:
+    meta_dir = _meta_dir_with(tmp_path, _META_PROMPT_TAGS)
+    troot = _templates_dir(tmp_path, "Hello {{name}} <answer>{{name}}</answer>")
+    rc = main(["verify", "--templates", meta_dir, "--templates-root", troot])
+    assert rc == 0
+
+
 # --- 3. bare verify = codegen (back-compat) + the subverb note --------------
 
 
