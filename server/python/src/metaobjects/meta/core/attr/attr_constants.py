@@ -14,6 +14,13 @@ ATTR_SUBTYPE_CLASS = "class"
 # ATTR_SUBTYPE_EXPRESSION / meta-attr-expression.ts.
 ATTR_SUBTYPE_EXPRESSION = "expression"
 
+# attr.intMap (int-backed-enum-values plan) — an object-shaped attribute whose
+# values are all integers (e.g. field.enum's @intValueMap: {memberSymbol: int}).
+# Generic shape check only; field.enum layers its own semantic rules (key-set
+# membership, uniqueness) in its own content-rule validation pass. Mirrors TS
+# ATTR_SUBTYPE_INT_MAP / C# AttrConstants.ATTR_SUBTYPE_INT_MAP.
+ATTR_SUBTYPE_INT_MAP = "intMap"
+
 # The retired "stringarray" array attr subtype. It is NO LONGER a registered
 # (attr, sub_type) (not in ATTR_SUBTYPES) — array-ness is modeled as a "string"
 # attr with the orthogonal AttrSchema.is_array flag (matching Java's
@@ -33,4 +40,5 @@ ATTR_SUBTYPES = (
     ATTR_SUBTYPE_PROPERTIES,
     ATTR_SUBTYPE_CLASS,
     ATTR_SUBTYPE_EXPRESSION,
+    ATTR_SUBTYPE_INT_MAP,
 )

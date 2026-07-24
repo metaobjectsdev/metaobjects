@@ -12,6 +12,7 @@ from .attr_constants import (
     ATTR_SUBTYPE_EXPRESSION,
     ATTR_SUBTYPE_FILTER,
     ATTR_SUBTYPE_INT,
+    ATTR_SUBTYPE_INT_MAP,
     ATTR_SUBTYPE_LONG,
     ATTR_SUBTYPE_PROPERTIES,
     ATTR_SUBTYPE_STRING,
@@ -134,6 +135,21 @@ class PropertiesAttr(MetaAttr):
         return DataType.OBJECT
 
 
+class IntMapAttr(MetaAttr):
+    """attr.intMap (int-backed-enum-values plan) — an object-shaped attribute
+    whose values are all integers (e.g. field.enum's @intValueMap). Generic
+    shape check only; the deeper "every value is an int" check is enforced by
+    `_type_ok`'s ATTR_SUBTYPE_INT_MAP case in validation_passes.py (this port
+    has no per-attr-class validate_value dispatch — TS's is the one port that
+    does; C# mirrors the same "static type-check function" architecture this
+    port uses). field.enum's own key-set/uniqueness content rules run in a
+    separate pass. Mirrors TS IntMapAttr / C# ATTR_SUBTYPE_INT_MAP shape."""
+
+    @property
+    def data_type(self) -> DataType:
+        return DataType.OBJECT
+
+
 class ClassAttr(MetaAttr):
     @property
     def data_type(self) -> DataType:
@@ -145,4 +161,5 @@ register_attr_class(ATTR_SUBTYPE_STRINGARRAY, StringArrayAttr)
 register_attr_class(ATTR_SUBTYPE_FILTER, FilterAttr)
 register_attr_class(ATTR_SUBTYPE_PROPERTIES, PropertiesAttr)
 register_attr_class(ATTR_SUBTYPE_EXPRESSION, ExpressionAttr)
+register_attr_class(ATTR_SUBTYPE_INT_MAP, IntMapAttr)
 register_attr_class(ATTR_SUBTYPE_CLASS, ClassAttr)

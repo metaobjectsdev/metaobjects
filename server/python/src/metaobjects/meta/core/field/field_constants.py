@@ -150,3 +150,10 @@ SORT_ORDER_VALUES = (SORT_ORDER_ASC, SORT_ORDER_DESC)
 # Regex pattern for enum member symbols — must be identifier-safe.
 # Cross-language contract: every port enforces this pattern.
 ENUM_MEMBER_PATTERN = r"^[A-Za-z_][A-Za-z0-9_]*$"
+
+# int-backed-enum-values plan — @intValueMap (field.enum only): optional
+# per-member int values ({member: int}) switching this enum field's DB
+# persistence from string+CHECK to integer+CHECK. Keys must exactly match
+# @values; values must be unique integers. The generated native type and wire
+# format are unchanged in every language. Mirrors TS FIELD_ATTR_INT_VALUE_MAP.
+FIELD_ATTR_INT_VALUE_MAP = "intValueMap"

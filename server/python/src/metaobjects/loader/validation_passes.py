@@ -23,6 +23,7 @@ from ..meta.core.field.field_constants import (
     ENUM_MEMBER_PATTERN,
     FIELD_ATTR_COERCE_DEFAULT,
     FIELD_ATTR_DEFAULT,
+    FIELD_ATTR_INT_VALUE_MAP,
     FIELD_ATTR_OBJECT_REF,
     FIELD_ATTR_REQUIRED,
     FIELD_ATTR_STORAGE,
@@ -60,6 +61,7 @@ from ..meta.persistence.source.source_constants import (
     SOURCE_ROLE_PRIMARY,
 )
 from ..meta.core.attr.attr_constants import (
+    ATTR_SUBTYPE_INT_MAP,
     ATTR_SUBTYPE_PROPERTIES,
     ATTR_SUBTYPE_STRINGARRAY,
 )
@@ -281,6 +283,17 @@ def _type_ok(value: object, value_type: str) -> bool:
         # fails here → ERR_BAD_ATTR_VALUE, matching TS + Java (fail-closed); an object
         # @expr then flows to the closed-grammar check in the origin pass.
         return isinstance(value, dict)
+    if value_type == ATTR_SUBTYPE_INT_MAP:
+        # attr.intMap (int-backed-enum-values plan): an object whose every member
+        # value is an integer (e.g. field.enum's @intValueMap). This port has no
+        # per-attr-class validateValue dispatch (that's TS's architecture); the
+        # generic shape check lives here, mirroring C#'s ValueMatchesType
+        # ATTR_SUBTYPE_INT_MAP case. field.enum's own key-set/uniqueness content
+        # rules run separately in _validate_enum_values (Rule 4), which skips
+        # re-reporting a non-integer member already caught here.
+        return isinstance(value, dict) and all(
+            isinstance(v, int) and not isinstance(v, bool) for v in value.values()
+        )
     # Unknown value types (e.g. "class") — allow anything.
     return True
 
@@ -631,6 +644,49 @@ def _validate_enum_values(
                     envelope=node.source,
                 )
             )
+
+        # Rule 4: @intValueMap content rules (optional).
+        #   a. Key set must exactly match @values.
+        #   b. No two members may share the same int (protobuf's stance — no
+        #      alias opt-in). Every-value-is-an-integer is already enforced
+        #      by `_type_ok`'s ATTR_SUBTYPE_INT_MAP case at parse time.
+        int_value_map = node.attr(FIELD_ATTR_INT_VALUE_MAP)
+        if isinstance(int_value_map, dict):
+            member_set = set(own_values)
+            key_set = set(int_value_map.keys())
+            missing = [m for m in own_values if m not in key_set]
+            extra = [k for k in int_value_map if k not in member_set]
+            if missing or extra:
+                parts = []
+                if missing:
+                    parts.append(f"missing: {', '.join(missing)}")
+                if extra:
+                    parts.append(f"unknown: {', '.join(extra)}")
+                errors.append(
+                    MetaError(
+                        f"{label} attribute '@{FIELD_ATTR_INT_VALUE_MAP}' keys must exactly match "
+                        f"'@{FIELD_ATTR_VALUES}' members ({'; '.join(parts)}).",
+                        ErrorCode.ERR_BAD_ATTR_VALUE,
+                        envelope=node.source,
+                    )
+                )
+
+            seen_values: dict[int, str] = {}
+            for member, value in int_value_map.items():
+                if not isinstance(value, int) or isinstance(value, bool):
+                    continue  # _type_ok already reported this
+                owner = seen_values.get(value)
+                if owner is not None:
+                    errors.append(
+                        MetaError(
+                            f"{label} attribute '@{FIELD_ATTR_INT_VALUE_MAP}' members {owner!r} and {member!r} "
+                            f"share the same value {value}; every member must have a unique int.",
+                            ErrorCode.ERR_BAD_ATTR_VALUE,
+                            envelope=node.source,
+                        )
+                    )
+                else:
+                    seen_values[value] = member
 
 
 def _effective_enum_values(node: MetaData) -> list[str]:
