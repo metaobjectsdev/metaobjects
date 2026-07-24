@@ -36,6 +36,7 @@ final class InMemoryAuthRepositorySource {
         import com.metaobjects.generator.spring.runtime.FilterPredicate;
 
         import java.math.BigDecimal;
+        import java.time.Instant;
         import java.util.ArrayList;
         import java.util.Comparator;
         import java.util.List;
@@ -103,8 +104,13 @@ final class InMemoryAuthRepositorySource {
                 // `type` is a value-constrained enum (field.enum discriminator), so coerce the
                 // String URL discriminator into the generated AuthType (its members ARE the
                 // discriminator values).
+                //
+                // ADR-0045 (#203/#229): the GENERATED controller already stamped @autoSet via
+                // AuthDto.stampForInsert(dto) before calling createWithType — the repo just
+                // persists the incoming (already-stamped) autoCreatedAt/autoUpdatedAt verbatim.
                 AuthDto saved = new AuthDto(
                     nextId.getAndIncrement(), AuthDto.AuthType.valueOf(discriminator), dto.reference(),
+                    dto.autoCreatedAt(), dto.autoUpdatedAt(),
                     dto.quantity(), dto.copayAmount(), dto.approver());
                 rows.add(saved);
                 return saved;
@@ -118,10 +124,12 @@ final class InMemoryAuthRepositorySource {
                     // Partial patch; discriminator (type) and id are immutable.
                     AuthDto merged = new AuthDto(
                         id, cur.type(),
-                        dto.reference()   != null ? dto.reference()   : cur.reference(),
-                        dto.quantity()    != null ? dto.quantity()    : cur.quantity(),
-                        dto.copayAmount() != null ? dto.copayAmount() : cur.copayAmount(),
-                        dto.approver()    != null ? dto.approver()    : cur.approver());
+                        dto.reference()     != null ? dto.reference()     : cur.reference(),
+                        dto.autoCreatedAt() != null ? dto.autoCreatedAt() : cur.autoCreatedAt(),
+                        dto.autoUpdatedAt() != null ? dto.autoUpdatedAt() : cur.autoUpdatedAt(),
+                        dto.quantity()      != null ? dto.quantity()      : cur.quantity(),
+                        dto.copayAmount()   != null ? dto.copayAmount()   : cur.copayAmount(),
+                        dto.approver()      != null ? dto.approver()      : cur.approver());
                     rows.set(i, merged);
                     return Optional.of(merged);
                 }
@@ -131,6 +139,11 @@ final class InMemoryAuthRepositorySource {
             // FR-036 Program B present-key PATCH: apply ONLY the columns PRESENT in `assigned` (an
             // explicit null → cleared; an absent column keeps its stored value). `assigned` is the
             // controller's <Sub>Patch.assignedValues() map; id + discriminator (type) are immutable.
+            //
+            // ADR-0045 (#203/#229): the GENERATED controller already called
+            // patch.stampAutoSetOnUpdate() before delegating, so `assigned` carries "autoUpdatedAt"
+            // (the bumped now()) on every PATCH; "autoCreatedAt" is never present (onCreate columns
+            // are immutable on update), so it always falls through to the stored value below.
             @Override
             public Optional<AuthDto> patchByIdAndType(Long id, String discriminator, Map<String, Object> assigned) {
                 for (int i = 0; i < rows.size(); i++) {
@@ -138,10 +151,12 @@ final class InMemoryAuthRepositorySource {
                     if (!id.equals(cur.id()) || !discriminator.equals(cur.type().name())) continue;
                     AuthDto merged = new AuthDto(
                         id, cur.type(),
-                        assigned.containsKey("reference")   ? (String) assigned.get("reference")      : cur.reference(),
-                        assigned.containsKey("quantity")    ? (Integer) assigned.get("quantity")       : cur.quantity(),
-                        assigned.containsKey("copayAmount") ? (BigDecimal) assigned.get("copayAmount") : cur.copayAmount(),
-                        assigned.containsKey("approver")    ? (String) assigned.get("approver")        : cur.approver());
+                        assigned.containsKey("reference")     ? (String) assigned.get("reference")       : cur.reference(),
+                        assigned.containsKey("autoCreatedAt") ? (Instant) assigned.get("autoCreatedAt")  : cur.autoCreatedAt(),
+                        assigned.containsKey("autoUpdatedAt") ? (Instant) assigned.get("autoUpdatedAt")  : cur.autoUpdatedAt(),
+                        assigned.containsKey("quantity")      ? (Integer) assigned.get("quantity")       : cur.quantity(),
+                        assigned.containsKey("copayAmount")   ? (BigDecimal) assigned.get("copayAmount") : cur.copayAmount(),
+                        assigned.containsKey("approver")      ? (String) assigned.get("approver")        : cur.approver());
                     rows.set(i, merged);
                     return Optional.of(merged);
                 }

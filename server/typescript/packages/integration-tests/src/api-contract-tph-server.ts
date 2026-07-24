@@ -10,7 +10,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { sql } from "drizzle-orm";
-import { pgTable, bigserial, text, varchar, integer, numeric, check } from "drizzle-orm/pg-core";
+import { pgTable, bigserial, text, varchar, integer, numeric, timestamp, check } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import {
   mountCrudRoutes,
@@ -37,6 +37,11 @@ const auths = pgTable(
     quantity: integer("quantity"),
     copayAmount: numeric("copay_amount", { precision: 10, scale: 2 }),
     approver: varchar("approver", { length: 80 }),
+    // #203 / ADR-0045 — @autoSet timestamp columns (TPH leg). Nullable at the
+    // DDL tier; the seed / POST / PATCH paths always supply a value via the
+    // per-subtype Zod schemas below (mirrors api-contract-server.ts).
+    autoCreatedAt: timestamp("auto_created_at", { mode: "string" }),
+    autoUpdatedAt: timestamp("auto_updated_at", { mode: "string" }),
   },
   () => [check("chk_auths_type", sql`type IN ('Bridge', 'Copay', 'PriorAuth')`)],
 );
@@ -54,10 +59,33 @@ const AuthFilterAllowlist = {
 } as const satisfies FilterAllowlist;
 const AuthSortAllowlist = { id: {}, type: {}, reference: {} } as const satisfies SortAllowlist;
 
+// #203 / ADR-0045 — @autoSet timestamp shapes (TPH leg), mirroring the generated
+// per-subtype Insert/Update Zod schemas: INSERT stamps BOTH onCreate + onUpdate
+// columns to the SAME captured now() (caller-supplied values ignored); UPDATE
+// OMITS the onCreate column entirely (immutable) and stamps onUpdate to a fresh
+// now() on every call. mountCrudRoutes has no metadata awareness, so the
+// stamping must live in these hand-written schemas (the reference server IS the
+// stamping authority for this lane, same as api-contract-server.ts).
+const autoSetInsertShape = {
+  autoCreatedAt: z.string().optional().transform(() => new Date().toISOString()),
+  autoUpdatedAt: z.string().optional().transform(() => new Date().toISOString()),
+};
+const autoSetUpdateShape = {
+  autoUpdatedAt: z.string().optional().transform(() => new Date().toISOString()),
+};
+
 // Per-subtype insert schemas (discriminator pinned, omitted at the route boundary).
-const BridgeInsert = z.object({ reference: z.string().min(1).max(80), quantity: z.number().int() });
-const CopayInsert = z.object({ reference: z.string().min(1).max(80), copayAmount: z.string().nullable().optional() });
-const PriorAuthInsert = z.object({ reference: z.string().min(1).max(80), approver: z.string().max(80).nullable().optional() });
+const BridgeInsert = z.object({ reference: z.string().min(1).max(80), quantity: z.number().int(), ...autoSetInsertShape });
+const CopayInsert = z.object({ reference: z.string().min(1).max(80), copayAmount: z.string().nullable().optional(), ...autoSetInsertShape });
+const PriorAuthInsert = z.object({ reference: z.string().min(1).max(80), approver: z.string().max(80).nullable().optional(), ...autoSetInsertShape });
+
+// Per-subtype update schemas — NOT derived via `<Insert>.partial()` (that would
+// carry autoCreatedAt's stamping transform into every PATCH, re-writing the
+// creation timestamp on every update — the exact lost-update bug this gate
+// exists to catch). Declared explicitly instead, omitting autoCreatedAt.
+const BridgeUpdate = z.object({ reference: z.string().min(1).max(80).optional(), quantity: z.number().int().optional(), ...autoSetUpdateShape });
+const CopayUpdate = z.object({ reference: z.string().min(1).max(80).optional(), copayAmount: z.string().nullable().optional(), ...autoSetUpdateShape });
+const PriorAuthUpdate = z.object({ reference: z.string().min(1).max(80).optional(), approver: z.string().max(80).nullable().optional(), ...autoSetUpdateShape });
 
 const numberOps = ["eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull"] as const;
 const stringOps = ["eq", "ne", "in", "like", "isNull"] as const;
@@ -86,12 +114,14 @@ export async function startTphServer(connectionUri: string): Promise<TphServerHa
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS "auths" (
-      "id"           bigserial PRIMARY KEY,
-      "type"         text,
-      "reference"    varchar(80) NOT NULL,
-      "quantity"     integer,
-      "copay_amount" numeric(10,2),
-      "approver"     varchar(80)
+      "id"              bigserial PRIMARY KEY,
+      "type"            text,
+      "reference"       varchar(80) NOT NULL,
+      "quantity"        integer,
+      "copay_amount"    numeric(10,2),
+      "approver"        varchar(80),
+      "auto_created_at" timestamp,
+      "auto_updated_at" timestamp
     )`);
 
   const fastify = Fastify();
@@ -105,19 +135,19 @@ export async function startTphServer(connectionUri: string): Promise<TphServerHa
       });
       mountCrudRoutes({
         fastify: instance, path: "/auths/bridge", db, table: auths,
-        insertSchema: BridgeInsert, updateSchema: BridgeInsert.partial(),
+        insertSchema: BridgeInsert, updateSchema: BridgeUpdate,
         filterAllowlist: BridgeFilterAllowlist, sortAllowlist: BridgeSortAllowlist,
         dialect: "postgres", discriminator: { column: "type", value: "Bridge" },
       });
       mountCrudRoutes({
         fastify: instance, path: "/auths/copay", db, table: auths,
-        insertSchema: CopayInsert, updateSchema: CopayInsert.partial(),
+        insertSchema: CopayInsert, updateSchema: CopayUpdate,
         filterAllowlist: CopayFilterAllowlist, sortAllowlist: CopaySortAllowlist,
         dialect: "postgres", discriminator: { column: "type", value: "Copay" },
       });
       mountCrudRoutes({
         fastify: instance, path: "/auths/priorauth", db, table: auths,
-        insertSchema: PriorAuthInsert, updateSchema: PriorAuthInsert.partial(),
+        insertSchema: PriorAuthInsert, updateSchema: PriorAuthUpdate,
         filterAllowlist: PriorAuthFilterAllowlist, sortAllowlist: PriorAuthSortAllowlist,
         dialect: "postgres", discriminator: { column: "type", value: "PriorAuth" },
       });

@@ -33,6 +33,11 @@ export interface TphSeed {
     quantity: number | null;
     copayAmount: string | null;
     approver: string | null;
+    // #203 / ADR-0045 — @autoSet timestamp columns (TPH leg). Present verbatim
+    // in the seed (an OLD sentinel) so a PATCH can prove it bumps
+    // autoUpdatedAt (onUpdate) while leaving autoCreatedAt (onCreate) untouched.
+    autoCreatedAt?: string;
+    autoUpdatedAt?: string;
   }>;
 }
 
@@ -81,14 +86,21 @@ export const db = drizzle(pool);
 
   // 3. Provision the SINGLE TPH table to match the EMITTED Drizzle table.
   //    Subtype-only columns (quantity / copay_amount / approver) are nullable.
+  //    #203 / ADR-0045 — auto_created_at/auto_updated_at mirror the emitted
+  //    Auth.ts columns (physical snake_case naming). Plain `timestamp` here
+  //    (not `timestamptz`) matches the precedent in api-contract-generated-server.ts
+  //    — the physical DDL type doesn't need to match the Drizzle column's
+  //    `withTimezone` config bit-for-bit for the write/read path to function.
   await executeSql(connectionUri, `
     CREATE TABLE IF NOT EXISTS "auths" (
-      "id"           bigserial PRIMARY KEY,
-      "type"         text,
-      "reference"    varchar(80) NOT NULL,
-      "quantity"     integer,
-      "copay_amount" numeric(10,2),
-      "approver"     varchar(80)
+      "id"              bigserial PRIMARY KEY,
+      "type"            text,
+      "reference"       varchar(80) NOT NULL,
+      "quantity"        integer,
+      "copay_amount"    numeric(10,2),
+      "approver"        varchar(80),
+      "auto_created_at" timestamp,
+      "auto_updated_at" timestamp
     );
   `);
 
@@ -120,10 +132,18 @@ export const db = drizzle(pool);
 export async function seedTph(connectionUri: string, seed: TphSeed): Promise<void> {
   await executeSql(connectionUri, `TRUNCATE TABLE "auths" RESTART IDENTITY;`);
   for (const a of seed.auths) {
+    // #203 / ADR-0045 — auto_created_at/auto_updated_at are seeded VERBATIM via
+    // direct SQL (the OLD sentinel), bypassing BOTH lanes' stamping paths (the
+    // generated Zod InsertSchema's @autoSet transform, and the reference
+    // server's equivalent hand-written transform) — this seedTph function is
+    // shared by both lanes' applySeed. A subsequent PATCH flows through the
+    // real UpdateSchema/handler, which bumps autoUpdatedAt and leaves
+    // autoCreatedAt untouched — so the two diverge, which is what the
+    // tph-autoset-patch scenario asserts.
     await executeSql(
       connectionUri,
-      `INSERT INTO "auths" ("id","type","reference","quantity","copay_amount","approver")
-       VALUES (${a.id}, ${str(a.type)}, ${str(a.reference)}, ${num(a.quantity)}, ${num(a.copayAmount)}, ${str(a.approver)})`,
+      `INSERT INTO "auths" ("id","type","reference","quantity","copay_amount","approver","auto_created_at","auto_updated_at")
+       VALUES (${a.id}, ${str(a.type)}, ${str(a.reference)}, ${num(a.quantity)}, ${num(a.copayAmount)}, ${str(a.approver)}, ${str(a.autoCreatedAt ?? null)}, ${str(a.autoUpdatedAt ?? null)})`,
     );
   }
   // Seeding explicit ids into the bigserial PK does NOT advance its sequence, so

@@ -1,6 +1,12 @@
 package com.metaobjects.integration.api.tph.generated;
 
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.metaobjects.generator.spring.SpringControllerGenerator;
 import com.metaobjects.generator.spring.SpringDtoGenerator;
 import com.metaobjects.generator.spring.SpringFilterAllowlistGenerator;
@@ -34,6 +40,7 @@ import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -73,9 +80,17 @@ public final class GeneratedTphControllerHarness implements AutoCloseable {
     private static final String DTO_FQCN = ENTITY_PKG + ".AuthDto";
     private static final String REPO_FQCN = ENTITY_PKG + ".AuthRepository";
 
-    private final ObjectMapper mapper = new ObjectMapper();
+    // ADR-0045 (#203/#229): autoCreatedAt/autoUpdatedAt are bare field.timestamp → instant/tz-aware,
+    // so the generated union AuthDto carries them as java.time.Instant. The corpus seed/scenario
+    // values are offset-less wall-clock (yyyy-MM-ddTHH:mm:ss); an offset-less value is interpreted
+    // as UTC (the cross-port instant wire contract — mirrors GeneratedAuthorControllerHarness).
+    private static final String UTC_SUFFIX = "Z";
+
+    private final ObjectMapper mapper;
     private final URLClassLoader classLoader;
-    private final Constructor<?> dtoCtor;        // (Long id, AuthType type, String reference, Integer quantity, BigDecimal copayAmount, String approver)
+    // (Long id, AuthType type, String reference, Instant autoCreatedAt, Instant autoUpdatedAt,
+    //  Integer quantity, BigDecimal copayAmount, String approver)
+    private final Constructor<?> dtoCtor;
     private final Class<?> authTypeClass;        // the generated value-constrained enum discriminator (AuthDto.AuthType)
     private final Constructor<?> controllerCtor; // (AuthRepository, ObjectMapper, Validator)
     private final Constructor<?> repoCtor;       // (List<AuthDto> seed)
@@ -90,6 +105,24 @@ public final class GeneratedTphControllerHarness implements AutoCloseable {
     public GeneratedTphControllerHarness(Path corpusRoot, Path genDir, List<Map<String, Object>> seedRows)
             throws Exception {
         this.seedRows = seedRows;
+        // ADR-0045 (#203/#229): the union AuthDto now carries two java.time.Instant components
+        // (autoCreatedAt, autoUpdatedAt). Register JavaTimeModule (Instant serialization) plus a
+        // lenient Instant deserializer that treats an offset-less value as UTC — mirrors
+        // GeneratedAuthorControllerHarness's UTC Instant handling for the vanilla @autoSet gate.
+        SimpleModule utcInstant = new SimpleModule()
+            .addDeserializer(Instant.class, new JsonDeserializer<Instant>() {
+                @Override
+                public Instant deserialize(JsonParser p, DeserializationContext ctx)
+                        throws java.io.IOException {
+                    String raw = p.getValueAsString();
+                    if (raw == null || raw.isEmpty()) return null;
+                    return parseInstant(raw);
+                }
+            });
+        this.mapper = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .registerModule(utcInstant)
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         Path srcDir = genDir.resolve("src");
         Path classesDir = genDir.resolve("classes");
         Files.createDirectories(srcDir);
@@ -120,8 +153,12 @@ public final class GeneratedTphControllerHarness implements AutoCloseable {
         // `type` is the value-constrained enum discriminator (field.enum): the generated DTO ctor
         // takes the nested AuthType, not String. Resolve the enum reflectively to build seed rows.
         this.authTypeClass = classLoader.loadClass(DTO_FQCN + "$AuthType");
+        // ADR-0045 (#203/#229): the DTO record now carries the two @autoSet timestamp columns
+        // (autoCreatedAt onCreate, autoUpdatedAt onUpdate) right after the base's own scalars, in
+        // declared order — before the folded-in subtype-only columns.
         this.dtoCtor = dtoClass.getDeclaredConstructor(
-            Long.class, authTypeClass, String.class, Integer.class, BigDecimal.class, String.class);
+            Long.class, authTypeClass, String.class, Instant.class, Instant.class,
+            Integer.class, BigDecimal.class, String.class);
         Class<?> repoInterface = classLoader.loadClass(REPO_FQCN);
         this.controllerCtor = classLoader.loadClass(CONTROLLER_FQCN)
             .getDeclaredConstructor(repoInterface, ObjectMapper.class, Validator.class);
@@ -165,11 +202,24 @@ public final class GeneratedTphControllerHarness implements AutoCloseable {
     // setup helpers
     // -----------------------------------------------------------------------
 
-    /** Build a generated union {@code AuthDto} from a seed row map (one TPH table row). */
+    /**
+     * Build a generated union {@code AuthDto} from a seed row map (one TPH table row).
+     *
+     * <p>ADR-0045 (#203/#229): {@code autoCreatedAt}/{@code autoUpdatedAt} are read from the seed
+     * VERBATIM (the OLD sentinel) — this is a DIRECT insert into the in-memory repo behind the
+     * controller's repository seam, NOT a stamping POST, so a seeded row keeps its old values. A
+     * later PATCH bumps autoUpdatedAt (server-owned, via the generated controller's
+     * {@code patch.stampAutoSetOnUpdate()}) while autoCreatedAt stays old — the fieldsNotEqual
+     * divergence the gate scenario asserts.</p>
+     */
     private Object dtoFromRow(Map<String, Object> row) throws Exception {
         Long id = row.get("id") == null ? null : ((Number) row.get("id")).longValue();
         String type = (String) row.get("type");
         String reference = (String) row.get("reference");
+        Object autoCreatedRaw = row.get("autoCreatedAt");
+        Instant autoCreatedAt = autoCreatedRaw == null ? null : parseInstant(String.valueOf(autoCreatedRaw));
+        Object autoUpdatedRaw = row.get("autoUpdatedAt");
+        Instant autoUpdatedAt = autoUpdatedRaw == null ? null : parseInstant(String.valueOf(autoUpdatedRaw));
         Integer quantity = row.get("quantity") == null ? null : ((Number) row.get("quantity")).intValue();
         Object copayRaw = row.get("copayAmount");
         BigDecimal copayAmount = copayRaw == null ? null : new BigDecimal(String.valueOf(copayRaw));
@@ -177,7 +227,19 @@ public final class GeneratedTphControllerHarness implements AutoCloseable {
         // Coerce the seed's String discriminator into the generated AuthType enum value.
         @SuppressWarnings({ "unchecked", "rawtypes" })
         Object typeEnum = type == null ? null : Enum.valueOf((Class) authTypeClass, type);
-        return dtoCtor.newInstance(id, typeEnum, reference, quantity, copayAmount, approver);
+        return dtoCtor.newInstance(
+            id, typeEnum, reference, autoCreatedAt, autoUpdatedAt, quantity, copayAmount, approver);
+    }
+
+    /**
+     * Parse a corpus timestamp string into an {@link Instant}. Corpus values are offset-less
+     * wall-clock (yyyy-MM-ddTHH:mm:ss); per the instant wire contract an offset-less value is
+     * interpreted as UTC, so we append {@code Z} when no zone is present before
+     * {@code Instant.parse} (ISO-8601 with {@code Z}).
+     */
+    private static Instant parseInstant(String raw) {
+        String s = (raw.endsWith(UTC_SUFFIX) || raw.contains("+")) ? raw : raw + UTC_SUFFIX;
+        return Instant.parse(s);
     }
 
     private static MetaDataLoader loadCorpus(Path metaJson) {

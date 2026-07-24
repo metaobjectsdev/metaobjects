@@ -10,6 +10,8 @@
           { "field.long":       { "name": "id", "@filterable": true, "@sortable": true } },
           { "field.enum":       { "name": "type", "@values": ["Bridge", "Copay", "PriorAuth"], "@filterable": true } },
           { "field.string":     { "name": "reference", "@required": true, "@maxLength": 80, "@filterable": true, "@sortable": true } },
+          { "field.timestamp":  { "name": "autoCreatedAt", "@autoSet": "onCreate" } },
+          { "field.timestamp":  { "name": "autoUpdatedAt", "@autoSet": "onUpdate" } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
         ]
       }},

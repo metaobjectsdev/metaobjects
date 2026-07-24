@@ -261,6 +261,13 @@ internal sealed class TphReferenceServer : IAsyncDisposable
                 vals.Add(CoerceColumn(col, v));
             }
         }
+        // #203 / ADR-0045 — stamp BOTH @autoSet columns from ONE now(), ignoring any
+        // caller-supplied value (autoCreatedAt/autoUpdatedAt are NOT in AllCols, so the
+        // body-driven loop above never sets them from the request). A fresh row's
+        // autoUpdatedAt therefore equals its autoCreatedAt.
+        var autoNow = DateTimeOffset.UtcNow;
+        cols.Add("autoCreatedAt"); vals.Add(autoNow);
+        cols.Add("autoUpdatedAt"); vals.Add(autoNow);
 
         await using var c = new NpgsqlConnection(_pg.ConnectionString);
         await c.OpenAsync();
@@ -291,6 +298,13 @@ internal sealed class TphReferenceServer : IAsyncDisposable
             }
         }
         if (sets.Count == 0) return await GetAsync(discriminator, id); // no-op update returns current
+
+        // #203 / ADR-0045 — bump the onUpdate @autoSet column (autoUpdatedAt) to now();
+        // autoCreatedAt (onCreate) is NEVER written on update (the write-once created-at
+        // contract), so after this PATCH the two columns diverge. autoUpdatedAt is NOT in
+        // AllCols, so the body-driven loop above never let the caller set it directly.
+        sets.Add("\"autoUpdatedAt\" = @v" + vals.Count);
+        vals.Add(DateTimeOffset.UtcNow);
 
         await using var c = new NpgsqlConnection(_pg.ConnectionString);
         await c.OpenAsync();

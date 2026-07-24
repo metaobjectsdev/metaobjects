@@ -1,7 +1,7 @@
 {
   "auths": [
-    { "id": 1, "type": "Bridge",    "reference": "REF-1", "quantity": 5,        "copayAmount": null, "approver": null },
-    { "id": 2, "type": "Copay",     "reference": "REF-2", "quantity": null,     "copayAmount": "12.50", "approver": null },
-    { "id": 3, "type": "PriorAuth", "reference": "REF-3", "quantity": null,     "copayAmount": null, "approver": "Dr. Smith" }
+    { "id": 1, "type": "Bridge",    "reference": "REF-1", "quantity": 5,        "copayAmount": null, "approver": null,        "autoCreatedAt": "2000-01-01T00:00:00", "autoUpdatedAt": "2000-01-01T00:00:00" },
+    { "id": 2, "type": "Copay",     "reference": "REF-2", "quantity": null,     "copayAmount": "12.50", "approver": null,        "autoCreatedAt": "2000-01-01T00:00:00", "autoUpdatedAt": "2000-01-01T00:00:00" },
+    { "id": 3, "type": "PriorAuth", "reference": "REF-3", "quantity": null,     "copayAmount": null, "approver": "Dr. Smith", "autoCreatedAt": "2000-01-01T00:00:00", "autoUpdatedAt": "2000-01-01T00:00:00" }
   ]
 }

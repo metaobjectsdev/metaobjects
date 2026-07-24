@@ -1,0 +1,22 @@
+name: tph-autoset-patch
+description: >
+  #203 / ADR-0045 (TPH leg) — @autoSet timestamp stamping is honored by the deployed
+  TPH API surface (the generated per-subtype controller/router AND the hand-rolled
+  reference server). The seeded Bridge row (id:1) starts with autoCreatedAt ==
+  autoUpdatedAt (both an old 2000 sentinel). A PATCH on /api/auths/bridge/1 must bump
+  the onUpdate column (autoUpdatedAt) to now() while leaving the onCreate column
+  (autoCreatedAt) at the sentinel — so the two diverge. Asserted as a field-vs-field
+  inequality (format- and timing-agnostic: 2000 sentinel vs a 2026 now()), which
+  catches BOTH failure modes: not bumping autoUpdatedAt, and the lost-update bug of
+  rewriting autoCreatedAt on update.
+requests:
+  - id: r1
+    method: PATCH
+    path: /api/auths/bridge/1
+    body:
+      reference: "REF-1b"
+    expect:
+      status: 200
+      body:
+        # autoUpdatedAt bumped to now() (2026); autoCreatedAt preserved (2000 sentinel).
+        fieldsNotEqual: [autoCreatedAt, autoUpdatedAt]
