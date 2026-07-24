@@ -279,6 +279,14 @@ export const FIELD_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "FR-019: marks an abstract package-level field.enum as externally provided — codegen references the type (resolved via per-port codegen config) instead of materializing it. Default false. Not a field attr — it lives on the type declaration."
+        },
+        {
+          "type": "attr",
+          "subType": "intMap",
+          "name": "intValueMap",
+          "min": 0,
+          "max": 1,
+          "description": "Optional per-member int values ({member: int}) switching this enum field's DB persistence from string+CHECK to integer+CHECK. Keys must exactly match @values; values must be unique integers. The generated native type and wire format are unchanged in every language."
         }
       ]
     },

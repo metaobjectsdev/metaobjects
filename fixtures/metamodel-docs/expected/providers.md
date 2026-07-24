@@ -20,7 +20,7 @@ Core metaobjects metamodel types and subtypes.
 - `field.base`: `@default`, `@readOnly`, `@required`, `@unique`
 - `field.currency`: `@currency`
 - `field.decimal`: `@precision`, `@scale`
-- `field.enum`: `@provided`, `@values`
+- `field.enum`: `@intValueMap`, `@provided`, `@values`
 - `field.inet`: `@lenient`
 - `field.map`: `@objectRef`, `@valueType`
 - `field.object`: `@objectRef`

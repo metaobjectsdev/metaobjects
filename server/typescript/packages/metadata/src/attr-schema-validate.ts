@@ -52,6 +52,7 @@ import {
   FIELD_ATTR_VALUES,
   FIELD_ATTR_COERCE_DEFAULT,
   FIELD_ATTR_DEFAULT,
+  FIELD_ATTR_INT_VALUE_MAP,
   ENUM_MEMBER_PATTERN,
 } from "./core/field/field-constants.js";
 import {
@@ -396,6 +397,53 @@ function validateNode(
               { code: "ERR_BAD_ATTR_VALUE", source: node.source },
             ),
           );
+        }
+      }
+    }
+
+    // --- Check 5b: field.enum @intValueMap content rules ---
+    //
+    // Optional. Own-only (mirrors Checks 4/5's own-attrs-only policy) — an
+    // inherited @intValueMap is validated on its declaring node. The generic
+    // "is this an object of integers" shape check already ran via IntMapAttr
+    // (attr subtype `intMap`); this validates the field.enum-SPECIFIC
+    // semantics: key-set-equals-@values, and no two members share a value.
+    const rawIntValueMap = node.ownAttrs().get(FIELD_ATTR_INT_VALUE_MAP);
+    if (rawIntValueMap !== undefined && typeof rawIntValueMap === "object" && rawIntValueMap !== null) {
+      const map = rawIntValueMap as Record<string, number>;
+      const effectiveValues = node.attrs().get(FIELD_ATTR_VALUES);
+      const declaredMembers: string[] = Array.isArray(effectiveValues) ? effectiveValues : [];
+      const memberSet = new Set(declaredMembers);
+      const mapKeys = Object.keys(map);
+      const keySet = new Set(mapKeys);
+
+      const missing = declaredMembers.filter((m) => !keySet.has(m));
+      const extra = mapKeys.filter((k) => !memberSet.has(k));
+      if (missing.length > 0 || extra.length > 0) {
+        errors.push(
+          new ParseError(
+            `${nodeLabel(node)} attribute '@${FIELD_ATTR_INT_VALUE_MAP}' keys must exactly match '@${FIELD_ATTR_VALUES}' members` +
+              (missing.length > 0 ? ` (missing: ${missing.join(", ")})` : "") +
+              (extra.length > 0 ? ` (unknown: ${extra.join(", ")})` : "") + ".",
+            { code: "ERR_BAD_ATTR_VALUE", source: node.source },
+          ),
+        );
+      }
+
+      const seenValues = new Map<number, string>();
+      for (const [member, value] of Object.entries(map)) {
+        if (typeof value !== "number" || !Number.isInteger(value)) continue; // IntMapAttr already reported this
+        const owner = seenValues.get(value);
+        if (owner !== undefined) {
+          errors.push(
+            new ParseError(
+              `${nodeLabel(node)} attribute '@${FIELD_ATTR_INT_VALUE_MAP}' members '${owner}' and '${member}' ` +
+                `share the same value ${value}; every member must have a unique int.`,
+              { code: "ERR_BAD_ATTR_VALUE", source: node.source },
+            ),
+          );
+        } else {
+          seenValues.set(value, member);
         }
       }
     }
