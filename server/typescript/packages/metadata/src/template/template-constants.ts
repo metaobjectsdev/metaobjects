@@ -36,9 +36,10 @@ export const TEMPLATE_ATTR_FORMAT = "format";
 export const TEMPLATE_ATTR_MAX_CHARS = "maxChars";
 export const TEMPLATE_ATTR_OWNER = "owner";
 export const TEMPLATE_ATTR_SINCE = "since";
-// Output tags the rendered text must contain (drives the verify output-tag check).
-// Generic — not prompt-only: any rendered artifact (email, export, prompt) can
-// carry a tag contract a downstream parser depends on.
+// Output tags a template.prompt's rendered text must contain. `verify --templates` enforces
+// this ONLY on the prompt path — the email/document output gate does not apply per-part slot/tag
+// rules (the #193/#230 cross-port consensus). The attr may be authored on any template, but
+// verify checks it for prompts only.
 export const TEMPLATE_ATTR_REQUIRED_TAGS = "requiredTags";
 
 // --- @kind + email part-refs (template.output only) ---
