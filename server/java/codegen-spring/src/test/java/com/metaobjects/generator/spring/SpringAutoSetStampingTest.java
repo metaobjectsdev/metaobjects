@@ -189,6 +189,46 @@ public class SpringAutoSetStampingTest {
             ctrl.contains("patch.stampAutoSetOnUpdate();"));
     }
 
+    /**
+     * Review-gate regression: the VANILLA (non-TPH) {@code <Entity>Patch}'s settable/bindable
+     * member set must exclude BOTH {@code @autoSet} columns — {@code createdAt} (onCreate,
+     * write-once) AND {@code updatedAt} (onUpdate, server-stamped every write) — exactly like
+     * the TPH per-subtype {@code settableFields(entity, alsoExclude)} 2-arg overload already
+     * does (see {@code tphUnionDtoAndSubPatchCarryTheStampingHelpers}'s
+     * {@code hasAutoCreatedAt}/{@code hasAutoUpdatedAt} assertions). Before the fix, the vanilla
+     * 1-arg {@code settableFields(entity)} overload did NOT exclude {@code @autoSet} fields, so
+     * a caller-supplied PATCH body could set {@code createdAt} directly — nothing else in the
+     * generated CRUD ever overwrites {@code createdAt} on update (only {@code stampForInsert}
+     * touches it), so this was a write-once-contract violation. {@code updatedAt} is unaffected
+     * in practice (the controller always calls {@code stampAutoSetOnUpdate()} after binding,
+     * which unconditionally overwrites it), but it must ALSO leave the settable surface for
+     * consistency with the TPH overload and because the DTO's {@code @NotNull}/bind machinery
+     * should never present a caller-writable accessor for a server-owned column.
+     */
+    @Test
+    public void vanillaPatchExcludesAutoSetColumnsFromSettableSurface() throws Exception {
+        Path srcDir = tmp.newFolder("src").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(tmp.newFolder("fx").toPath(), "sub", SUBSCRIBER);
+        runGenerator(new SpringDtoGenerator(), loader, srcDir);
+
+        String patch = Files.readString(srcDir.resolve("acme/sub/SubscriberPatch.java"));
+
+        // Neither @autoSet column exposes a settable presence/value accessor...
+        assertFalse("SubscriberPatch must not expose a settable createdAt accessor "
+            + "(write-once @autoSet onCreate); saw:\n" + patch, patch.contains("hasCreatedAt"));
+        assertFalse("SubscriberPatch must not expose a settable updatedAt accessor "
+            + "(server-owned @autoSet onUpdate); saw:\n" + patch, patch.contains("hasUpdatedAt"));
+        // ...nor does fromJson bind either from the caller's request body.
+        assertFalse("fromJson must not bind createdAt from the caller; saw:\n" + patch,
+            patch.contains("\"createdAt\", new TypeReference"));
+        assertFalse("fromJson must not bind updatedAt from the caller; saw:\n" + patch,
+            patch.contains("\"updatedAt\", new TypeReference"));
+
+        // A non-@autoSet, non-PK field (email) stays a normal settable member — the fix must not
+        // over-exclude.
+        assertTrue("email must remain settable; saw:\n" + patch, patch.contains("hasEmail"));
+    }
+
     @Test
     public void nonAutoSetEntityStaysVerbatim() throws Exception {
         Path srcDir = tmp.newFolder("src").toPath();
@@ -343,6 +383,7 @@ public class SpringAutoSetStampingTest {
     // === lane 2: compile + run ===============================================
 
     @Test
+    @SuppressWarnings("unchecked")
     public void compiledStampingHonorsTheContract() throws Exception {
         Path srcDir = tmp.newFolder("src").toPath();
         Path classesDir = tmp.newFolder("classes").toPath();
@@ -382,19 +423,25 @@ public class SpringAutoSetStampingTest {
             assertEquals("insertPreserving keeps updated_at", past, updatedAt.invoke(preserved));
 
             // patch: stampAutoSetOnUpdate() bumps updated_at even when the caller omits it.
+            // Review-gate fix: neither @autoSet column (createdAt onCreate, updatedAt onUpdate)
+            // has a dedicated has<F>()/<f>() accessor any more — both left the settable/bindable
+            // surface (see vanillaPatchExcludesAutoSetColumnsFromSettableSurface) — so read back
+            // via the underlying assigned-map API (assignedValues()), which
+            // stampAutoSetOnUpdate() still writes into directly regardless of the settable list.
             Class<?> patchClass = cl.loadClass(PKG + ".SubscriberPatch");
             JsonNode body = MAPPER.readTree("{\"email\":\"c@d.co\"}");
             Object patch = patchClass.getMethod("fromJson", JsonNode.class, ObjectMapper.class)
                 .invoke(null, body, MAPPER);
-            assertEquals("updatedAt absent before stamping", Boolean.FALSE,
-                patchClass.getMethod("hasUpdatedAt").invoke(patch));
+            Method assignedValues = patchClass.getMethod("assignedValues");
+            Map<String, Object> beforeStamp = (Map<String, Object>) assignedValues.invoke(patch);
+            assertFalse("updatedAt absent before stamping", beforeStamp.containsKey("updatedAt"));
             patchClass.getMethod("stampAutoSetOnUpdate").invoke(patch);
-            assertEquals("updatedAt present after stamping", Boolean.TRUE,
-                patchClass.getMethod("hasUpdatedAt").invoke(patch));
-            assertFresh("patch.updatedAt", (Instant) patchClass.getMethod("updatedAt").invoke(patch), before);
-            // createdAt was never assigned by the patch (onCreate immutable on update).
-            assertEquals("patch leaves createdAt untouched", Boolean.FALSE,
-                patchClass.getMethod("hasCreatedAt").invoke(patch));
+            Map<String, Object> afterStamp = (Map<String, Object>) assignedValues.invoke(patch);
+            assertTrue("updatedAt present after stamping", afterStamp.containsKey("updatedAt"));
+            assertFresh("patch.updatedAt", (Instant) afterStamp.get("updatedAt"), before);
+            // createdAt was never assigned by the patch (onCreate immutable on update, and no
+            // longer even bindable from the caller — the write-once review-gate fix).
+            assertFalse("patch leaves createdAt untouched", afterStamp.containsKey("createdAt"));
         }
     }
 

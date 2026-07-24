@@ -327,10 +327,25 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
 
     /**
      * The vanilla {@code <Entity>Patch} settable set: DTO component fields (scalars PLUS
-     * value-object jsonb columns, Program D) MINUS the primary-key field(s).
+     * value-object jsonb columns, Program D) MINUS the primary-key field(s) MINUS any
+     * {@code @autoSet} column.
+     *
+     * <p>Review-gate fix (write-once contract): {@code @autoSet} is server-owned — onCreate
+     * columns (e.g. {@code createdAt}) are write-once and nothing else in the generated CRUD
+     * ever overwrites them past insert, so leaving one caller-bindable here let a PATCH mutate
+     * it directly. onUpdate columns (e.g. {@code updatedAt}) are always overwritten by the
+     * separately-emitted {@code stampAutoSetOnUpdate()} hook regardless of this list, but are
+     * excluded too for consistency with the TPH {@link #settableFields(MetaObject, String)}
+     * 2-arg overload below, which already excludes {@code @autoSet} entirely — this is the
+     * SSOT alignment the 2-arg overload's own comment calls out as remaining scope.</p>
      */
     private static List<MetaField> settableFields(MetaObject entity) {
-        return minusPk(entity, dtoComponentFields(entity), null);
+        List<MetaField> out = new ArrayList<>();
+        for (MetaField field : minusPk(entity, dtoComponentFields(entity), null)) {
+            if (AutoSetSupport.isAutoSet(field)) continue;
+            out.add(field);
+        }
+        return out;
     }
 
     /**
@@ -352,8 +367,9 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             // per-subtype field. Excluding it here is the SSOT for both the create-validated set
             // (SpringControllerGenerator#emitTph's createValidated) and the sibling <Sub>Patch's
             // settable/bindable set, so a caller can neither be required to supply it on POST nor
-            // mutate it via PATCH. (The single-arg vanilla settableFields(entity) overload below,
-            // used by the non-TPH <Entity>Patch, is untouched — out of this fix's scope.)
+            // mutate it via PATCH. (The single-arg vanilla settableFields(entity) overload above,
+            // used by the non-TPH <Entity>Patch, applies the identical exclusion — review-gate fix,
+            // see its javadoc.)
             if (AutoSetSupport.isAutoSet(field)) continue;
             out.add(field);
         }
