@@ -1940,9 +1940,20 @@ public static class ValidationPasses
             // here). Mirrors TS's generic IntMapAttr.validateValue per-member type check —
             // in this port that generic check lives here rather than in a per-subtype class.
             // field.enum's own key-set/uniqueness content rules run separately (Pass 10).
+            //
+            // Final-review fix: also bound every value to the 32-bit signed int range
+            // (inclusive) — the eventual DB column for an int-backed enum is a 32-bit
+            // Postgres/SQLite `integer` (design doc D5), matching Java's
+            // IntMapAttribute#setValueAsString bound check exactly. A `long` here can
+            // exceed Int32 range even though it's a whole number.
             ATTR_SUBTYPE_INT_MAP =>
                 value is IReadOnlyDictionary<string, object?> intMap
-                && intMap.Values.All(v => v is long or int),
+                && intMap.Values.All(v => v switch
+                {
+                    int => true,
+                    long l => l >= int.MinValue && l <= int.MaxValue,
+                    _ => false,
+                }),
 
             _ => true, // SUBTYPE_BASE or unknown → accept anything
         };

@@ -63,6 +63,18 @@ def test_duplicate_int_value_across_members_is_rejected():
     assert "DRAFT" in result.errors[0].message and "PUBLISHED" in result.errors[0].message
 
 
+def test_value_outside_32bit_range_is_rejected():
+    # Final-review fix: the eventual DB column for an int-backed enum is a
+    # 32-bit Postgres/SQLite `integer` (design doc D5) — a value outside that
+    # range can never actually be persisted, so it must be rejected at load
+    # time. Mirrors Java's IntMapAttribute#setValueAsString bound check
+    # (Python ints have no fixed width, so nothing else in this port would
+    # otherwise catch this).
+    result = _load(_model(', "@intValueMap": {"DRAFT": 0, "PUBLISHED": 5, "ARCHIVED": 9999999999}'))
+    assert len(result.errors) > 0
+    assert result.errors[0].code == ErrorCode.ERR_BAD_ATTR_VALUE
+
+
 # ---------------------------------------------------------------------------
 # Regression: @intValueMap validation when @values is INHERITED via extends
 # (bug — Rule 4 lived behind an `own_values is None: continue` early-return,

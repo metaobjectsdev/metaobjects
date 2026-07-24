@@ -73,4 +73,17 @@ public class EnumIntValueMapTests
         Assert.Contains(res.Errors, e => e.Code == ErrorCode.ERR_BAD_ATTR_VALUE
             && e.Message.Contains("DRAFT") && e.Message.Contains("PUBLISHED"));
     }
+
+    // Final-review fix: the eventual DB column for an int-backed enum is a
+    // 32-bit Postgres/SQLite `integer` (design doc D5) — a value outside that
+    // range can never actually be persisted, so it must be rejected at load
+    // time. Mirrors Java's IntMapAttribute#setValueAsString bound check
+    // (this port's generic type check parses integral JSON numbers as
+    // `long`, which has no fixed 32-bit width on its own).
+    [Fact]
+    public void Value_outside_32bit_range_is_rejected()
+    {
+        var res = TryLoad(Model(""", "@intValueMap": {"DRAFT": 0, "PUBLISHED": 5, "ARCHIVED": 9999999999}"""));
+        Assert.Contains(res.Errors, e => e.Code == ErrorCode.ERR_BAD_ATTR_VALUE);
+    }
 }

@@ -65,4 +65,16 @@ describe("field.enum @intValueMap content rules", () => {
     expect(result.errors[0]?.message).toContain("DRAFT");
     expect(result.errors[0]?.message).toContain("PUBLISHED");
   });
+
+  // Final-review fix: the eventual DB column for an int-backed enum is a
+  // 32-bit Postgres/SQLite `integer` (design doc D5) — a value outside that
+  // range can never actually be persisted, so it must be rejected at load
+  // time rather than silently accepted (TS numbers have no fixed width).
+  // Mirrors Java's IntMapAttribute#setValueAsString bound check.
+  test("rejects a value outside the 32-bit signed integer range", async () => {
+    const result = await load(base(', "@intValueMap": {"DRAFT": 0, "PUBLISHED": 5, "ARCHIVED": 9999999999}'));
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect((result.errors[0] as { code?: string })?.code).toBe("ERR_BAD_ATTR_VALUE");
+    expect(result.errors[0]?.message).toContain("ARCHIVED");
+  });
 });

@@ -282,8 +282,17 @@ def _type_ok(value: object, value_type: str) -> bool:
         # ATTR_SUBTYPE_INT_MAP case. field.enum's own key-set/uniqueness content
         # rules run separately in _validate_enum_values (Rule 4), which skips
         # re-reporting a non-integer member already caught here.
+        #
+        # Final-review fix: also bound every value to the 32-bit signed int range
+        # (inclusive) — the eventual DB column for an int-backed enum is a 32-bit
+        # Postgres/SQLite `integer` (design doc D5), matching Java's
+        # IntMapAttribute#setValueAsString bound check exactly. Python ints have
+        # no fixed width, so this is the only place that boundary is enforced.
         return isinstance(value, dict) and all(
-            isinstance(v, int) and not isinstance(v, bool) for v in value.values()
+            isinstance(v, int)
+            and not isinstance(v, bool)
+            and -2147483648 <= v <= 2147483647
+            for v in value.values()
         )
     # Unknown value types (e.g. "class") — allow anything.
     return True
