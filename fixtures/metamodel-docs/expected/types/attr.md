@@ -108,6 +108,20 @@ _No subtype-specific attributes._
 
 _No structural children._
 
+### attr.intMap
+
+An object-shaped attribute whose values are all integers (e.g. field.enum's @intValueMap: {memberSymbol: int}). Generic shape check only; a consumer field type layers its own semantic rules (key-set membership, uniqueness) in its own content-rule validation.
+
+**Owning provider:** metaobjects-core-types
+
+**Attributes**
+
+_No subtype-specific attributes._
+
+**Allowed children**
+
+_No structural children._
+
 ### attr.long
 
 A 64-bit-integer-valued metadata attribute. Coerces to and validates as a number.
