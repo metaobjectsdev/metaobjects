@@ -113,6 +113,34 @@ public class SpringAutoSetStampingTest {
         ]}}
         """;
 
+    /**
+     * FR-017 TPH base Device carrying NO {@code @autoSet} field, with a subtype SmartDevice
+     * declaring its OWN {@code field.timestamp @autoSet} columns (one onCreate, one onUpdate) —
+     * metadata the loader accepts. Regression fixture for the Task 3 review finding: the
+     * per-subtype controller create/update gates must read the BASE's {@code @autoSet} fields
+     * (matching {@code SpringDtoGenerator.emitTphUnion}'s helper-emission gate), never the
+     * subtype's own resolving field set — otherwise the controller emits a phantom
+     * {@code stampForInsert}/{@code stampAutoSetOnUpdate} call against a helper that was never
+     * generated (the union {@code DeviceDto} only gets {@code stampForInsert} when the BASE
+     * itself carries an {@code @autoSet} field).
+     */
+    private static final String SUBTYPE_OWN_AUTOSET_TPH_JSON = """
+        { "metadata.root": { "package": "acme::device", "children": [
+          { "object.entity": { "name": "Device", "@discriminator": "type", "children": [
+            { "source.rdb":       { "@table": "devices" } },
+            { "field.long":       { "name": "id" } },
+            { "field.enum":       { "name": "type", "@values": ["Smart"] } },
+            { "field.string":     { "name": "reference", "@required": true, "@maxLength": 80 } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+          ]}},
+          { "object.entity": { "name": "SmartDevice", "extends": "Device", "@discriminatorValue": "Smart", "children": [
+            { "field.int":       { "name": "quantity", "@required": true } },
+            { "field.timestamp": { "name": "activatedAt", "@autoSet": "onCreate" } },
+            { "field.timestamp": { "name": "pingedAt", "@autoSet": "onUpdate" } }
+          ]}}
+        ]}}
+        """;
+
     @Rule
     public TemporaryFolder tmp = new TemporaryFolder();
 
@@ -212,6 +240,58 @@ public class SpringAutoSetStampingTest {
             src.contains("stampForInsert"));
         assertFalse("no stampAutoSetOnUpdate in a non-@autoSet TPH controller; saw:\n" + src,
             src.contains("stampAutoSetOnUpdate"));
+    }
+
+    /**
+     * Review fix regression (Task 3, commit b5fc7741): a TPH subtype declaring its OWN
+     * {@code @autoSet} column — with the BASE carrying none — must never be stamped by the
+     * generated controller, and must never produce a phantom call against a helper that was
+     * never generated. Before the fix, the per-subtype create/update gates read
+     * {@code st.entity()} (subtype-resolving, which includes SmartDevice's own
+     * {@code activatedAt}/{@code pingedAt}) so they fired {@code true} and the controller emitted
+     * {@code DeviceDto.stampForInsert(dto)} / {@code patch.stampAutoSetOnUpdate()} — but
+     * {@code SpringDtoGenerator.emitTphUnion} gates the union {@code DeviceDto}'s
+     * {@code stampForInsert} helper on {@code AutoSetSupport.hasAutoSetFields(base)}, which is
+     * FALSE here (the base has no {@code @autoSet} field), so {@code DeviceDto} never gets that
+     * static method: a non-compiling controller. Fails before the fix (the controller string
+     * assertions below saw the phantom calls); passes after.
+     */
+    @Test
+    public void tphSubtypeOwnAutoSetIsNeverStampedAndDtoLayerCompiles() throws Exception {
+        Path srcDir = tmp.newFolder("subtype-own-src").toPath();
+        Path classesDir = tmp.newFolder("subtype-own-classes").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(
+            tmp.newFolder("subtype-own-fx").toPath(), "device", SUBTYPE_OWN_AUTOSET_TPH_JSON);
+        runGenerator(new SpringDtoGenerator(), loader, srcDir);
+        runGenerator(new SpringControllerGenerator(), loader, srcDir);
+
+        String ctrl = Files.readString(srcDir.resolve("acme/device/DeviceController.java"));
+        assertFalse("subtype-own @autoSet must NOT be stamped on create (base has none); saw:\n" + ctrl,
+            ctrl.contains("stampForInsert("));
+        assertFalse("subtype-own @autoSet must NOT be stamped on update (base has none); saw:\n" + ctrl,
+            ctrl.contains("stampAutoSetOnUpdate"));
+        assertTrue("verbatim per-subtype create (no stamping); saw:\n" + ctrl,
+            ctrl.contains("createWithType(\"Smart\", dto)"));
+
+        // Compile the DTO/Patch layer only — like tphUnionDtoAndSubPatchCarryTheStampingHelpers,
+        // NOT the controller itself, whose Spring Web MVC / jakarta.servlet imports aren't on this
+        // module's test classpath (see GeneratedM2mTraversalCompileRunTest's rationale). Delete the
+        // controller source from srcDir first so compile()'s directory walk doesn't pick it up.
+        Files.delete(srcDir.resolve("acme/device/DeviceController.java"));
+        compile(srcDir, classesDir);
+
+        // Lock the "phantom call would not compile" claim directly: the union DeviceDto
+        // genuinely declares NO stampForInsert method (gated on the BASE, which has no @autoSet
+        // field) — so the pre-fix controller's DeviceDto.stampForInsert(dto) call would have been
+        // a compile error had the controller been compiled alongside it.
+        try (URLClassLoader cl = new URLClassLoader(
+                new URL[]{ classesDir.toUri().toURL() }, getClass().getClassLoader())) {
+            Class<?> deviceDto = cl.loadClass("acme.device.DeviceDto");
+            boolean hasStampForInsert = Stream.of(deviceDto.getMethods())
+                .anyMatch(m -> m.getName().equals("stampForInsert"));
+            assertFalse("DeviceDto (TPH union; base has no @autoSet) must NOT declare stampForInsert",
+                hasStampForInsert);
+        }
     }
 
     @Test
