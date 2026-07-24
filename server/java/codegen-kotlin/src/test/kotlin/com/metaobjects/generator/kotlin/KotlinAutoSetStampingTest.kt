@@ -9,6 +9,7 @@ import kotlin.io.path.isRegularFile
 import kotlin.io.path.readText
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -218,6 +219,140 @@ class KotlinAutoSetStampingTest {
         assertTrue(".now()" !in src, "a non-@autoSet controller must not stamp now(); saw:\n$src")
         assertTrue(".any { body.has(it) }" in src,
             "a non-@autoSet controller keeps the any-present patch guard; saw:\n$src")
+    }
+
+    // === FR-017 TPH — the discriminator-base controller (emitTph) must ALSO stamp @autoSet,
+    // === mirroring the vanilla emit() path above: the @autoSet columns live on the BASE (shared by
+    // === every subtype row in the single table), so the per-subtype create/update handlers must
+    // === stamp them exactly like the vanilla create/update — never bind them from the caller dto/body.
+
+    /** TPH base Auth carries autoCreatedAt(onCreate)+autoUpdatedAt(onUpdate); BridgeAuth extends it. */
+    private val tphAutoSetFixture = """{
+      "metadata.root": { "package": "acme::auth", "children": [
+        { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
+            { "source.rdb":      { "@table": "auths" } },
+            { "field.long":      { "name": "id" } },
+            { "field.enum":      { "name": "type", "@values": ["Bridge"] } },
+            { "field.string":    { "name": "reference", "@required": true, "@maxLength": 80 } },
+            { "field.timestamp": { "name": "autoCreatedAt", "@autoSet": "onCreate" } },
+            { "field.timestamp": { "name": "autoUpdatedAt", "@autoSet": "onUpdate" } },
+            { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+        ] } },
+        { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
+            { "field.int": { "name": "quantity", "@required": true } }
+        ] } }
+      ] }
+    }""".trimIndent()
+
+    /** Same TPH shape with NO `@autoSet` field — the no-churn baseline. */
+    private val noAutoSetTphFixture = """{
+      "metadata.root": { "package": "acme::auth", "children": [
+        { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
+            { "source.rdb":      { "@table": "auths" } },
+            { "field.long":      { "name": "id" } },
+            { "field.enum":      { "name": "type", "@values": ["Bridge"] } },
+            { "field.string":    { "name": "reference", "@required": true, "@maxLength": 80 } },
+            { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+        ] } },
+        { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
+            { "field.int": { "name": "quantity", "@required": true } }
+        ] } }
+      ] }
+    }""".trimIndent()
+
+    /**
+     * TPH base with NO settable base field besides the two `@autoSet` columns; the `SpookGhost`
+     * subtype adds none of its own — `KotlinTphPlan.subtypeSettableFields(SpookGhost)` is EMPTY, so
+     * the per-subtype update handler exercises the "no caller-settable columns, but onUpdate must
+     * still bump" standalone `update{}` branch (`else if (mustStampOnUpdate)`) that no other fixture
+     * in this file reaches.
+     */
+    private val tphAutoSetNoSettableFixture = """{
+      "metadata.root": { "package": "acme::ghost", "children": [
+        { "object.entity": { "name": "Ghost", "@discriminator": "type", "children": [
+            { "source.rdb":      { "@table": "ghosts" } },
+            { "field.long":      { "name": "id" } },
+            { "field.enum":      { "name": "type", "@values": ["Spook"] } },
+            { "field.timestamp": { "name": "autoCreatedAt", "@autoSet": "onCreate" } },
+            { "field.timestamp": { "name": "autoUpdatedAt", "@autoSet": "onUpdate" } },
+            { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+        ] } },
+        { "object.entity": { "name": "SpookGhost", "extends": "Ghost", "@discriminatorValue": "Spook" } }
+      ] }
+    }""".trimIndent()
+
+    /** Generate a TPH discriminator-base controller (`emitTph`) and read its emitted source. */
+    private fun generateTphControllerSource(fixture: String, baseShortName: String): String =
+        generateController("autoset-tph", fixture, "acme/auth/${baseShortName}Controller.kt")
+
+    /**
+     * The body text between a method's signature (matched by [signaturePrefix], e.g.
+     * `"fun createBridge"`) and whichever comes first: the next method's leading `@`-annotation,
+     * the next subtype's `// ---` comment, or the closing brace of the class. Sufficient for the
+     * `contains`/`!contains` string-gate assertions this file uses throughout — it does not attempt
+     * to balance braces.
+     */
+    private fun methodBody(src: String, signaturePrefix: String): String {
+        val sigIdx = src.indexOf(signaturePrefix)
+        assertTrue(sigIdx >= 0, "expected to find '$signaturePrefix'; saw:\n$src")
+        val bodyStart = src.indexOf('\n', sigIdx) + 1
+        val bodyEnd = listOf(
+            src.indexOf("\n    @", bodyStart),
+            src.indexOf("\n    // ---", bodyStart),
+            src.indexOf("\n}\n", bodyStart),
+        ).filter { it >= 0 }.minOrNull() ?: src.length
+        return src.substring(bodyStart, bodyEnd)
+    }
+
+    @Test
+    fun `tph per-subtype create stamps both autoSet columns from one captured now`() {
+        val src = generateTphControllerSource(tphAutoSetFixture, "Auth")
+        val createBody = methodBody(src, "fun createBridge")
+        assertTrue("val autoSetNow0 =" in createBody, "create captures a now()-val; saw:\n$createBody")
+        assertTrue("it[autoCreatedAt] = autoSetNow0" in createBody,
+            "onCreate stamped from the captured now(); saw:\n$createBody")
+        assertTrue("it[autoUpdatedAt] = autoSetNow0" in createBody,
+            "onUpdate stamped from the same now() (created==updated); saw:\n$createBody")
+        assertFalse("it[autoCreatedAt] = dto." in createBody,
+            "autoSet is never bound from the caller DTO; saw:\n$createBody")
+    }
+
+    @Test
+    fun `tph per-subtype update bumps only onUpdate and never rewrites onCreate`() {
+        val src = generateTphControllerSource(tphAutoSetFixture, "Auth")
+        val updateBody = methodBody(src, "fun updateBridge")
+        assertTrue("it[AuthTable.autoUpdatedAt] =" in updateBody, "PATCH bumps onUpdate; saw:\n$updateBody")
+        assertFalse("it[AuthTable.autoCreatedAt] =" in updateBody,
+            "PATCH never rewrites onCreate; saw:\n$updateBody")
+    }
+
+    @Test
+    fun `tph controller without autoSet is byte-identical (no stamping scaffolding)`() {
+        val src = generateTphControllerSource(noAutoSetTphFixture, "Auth")
+        assertFalse("autoSetNow" in src,
+            "a non-@autoSet TPH controller must not capture a now() val; saw:\n$src")
+    }
+
+    @Test
+    fun `tph subtype with no settable columns still bumps onUpdate via a standalone update block`() {
+        val src = generateController("autoset-tph-nosettable", tphAutoSetNoSettableFixture,
+            "acme/ghost/GhostController.kt")
+        val createBody = methodBody(src, "fun createSpook")
+        // create still stamps both columns from one captured now(), even with an empty writableFields.
+        assertTrue("val autoSetNow0 =" in createBody, "create captures a now()-val; saw:\n$createBody")
+        assertTrue("it[autoCreatedAt] = autoSetNow0" in createBody &&
+            "it[autoUpdatedAt] = autoSetNow0" in createBody,
+            "create must stamp both @autoSet columns; saw:\n$createBody")
+        val updateBody = methodBody(src, "fun updateSpook")
+        // no per-subtype settable columns ⇒ no "try"/JsonMappingException scaffolding at all — a bare
+        // standalone update{} that only bumps onUpdate.
+        assertFalse("try {" in updateBody, "no settable columns means no bind/validate scaffolding; saw:\n$updateBody")
+        assertTrue("GhostTable.update({ (GhostTable.id eq id) and (GhostTable.type eq GhostType.Spook) }) {" in updateBody,
+            "expected a standalone update{} scoped by pk+discriminator; saw:\n$updateBody")
+        assertTrue("it[GhostTable.autoUpdatedAt] = java.time.Instant.now()" in updateBody,
+            "the standalone update{} must bump onUpdate; saw:\n$updateBody")
+        assertFalse("GhostTable.autoCreatedAt" in updateBody,
+            "the standalone update{} must never touch onCreate; saw:\n$updateBody")
     }
 
     @Test fun `the generated repository (with entity + table) compiles against Exposed`() {

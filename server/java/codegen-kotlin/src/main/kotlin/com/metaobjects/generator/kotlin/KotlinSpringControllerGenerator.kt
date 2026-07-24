@@ -667,9 +667,27 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
             .filter { it.name != plan.discriminatorField && it !is com.metaobjects.field.DecimalField &&
                 !KotlinTypeMapper.isJsonbOpenBag(it) }
             .map { ScalarFieldSpec(it.name, it.subType, columnElementType(it)) }
-        // Non-discriminator, non-PK columns the create handler writes from the body.
+        // #203/ADR-0045: @autoSet columns on the union table are stamped by the controller, never bound
+        // from the per-subtype create body. Same computation as the vanilla emit() (lines ~195-207); the
+        // columns live on the BASE (shared by every subtype row in the single table) — a TPH subtype
+        // never declares its own @autoSet column.
+        val insertAutoSetFields = base.metaFields.filter {
+            KotlinGenUtil.isAutoSetField(it) && it.name != pkFieldName
+        }
+        val onUpdateAutoSetFields = insertAutoSetFields.filter {
+            KotlinGenUtil.autoSetPolicy(it) == KotlinGenUtil.AUTO_SET_ON_UPDATE
+        }
+        val autoSetNames = insertAutoSetFields.map { it.name }.toSet()
+        // One captured now()-val per distinct temporal type, so all same-type @autoSet columns in a
+        // single per-subtype insert receive the identical value (createdAt == updatedAt exactly).
+        val insertNowVal = LinkedHashMap<String, String>() // nowExpr -> local val name
+        insertAutoSetFields.forEach { f ->
+            insertNowVal.getOrPut(KotlinTypeMapper.nowExpr(f)) { "autoSetNow${insertNowVal.size}" }
+        }
+
+        // Non-discriminator, non-PK, non-@autoSet columns the create handler writes from the body.
         val writableFields = scalarFields.map { it.name }
-            .filter { it != plan.discriminatorField && it != pkFieldName }
+            .filter { it != plan.discriminatorField && it != pkFieldName && it !in autoSetNames }
 
         // FR-035/FR-036 Program B: the per-subtype settable columns = the subtype's EFFECTIVE scalar
         // fields (base + own, resolved via extends) minus the PK and the discriminator, EXCLUDING
@@ -887,6 +905,8 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 for (field in stPatch) {
                     append("        if (validator.validateValue($validationRef::class.java, \"${field.name}\", dto.${field.name}).isNotEmpty()) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
                 }
+                // #203/ADR-0045: capture one now() per temporal type so createdAt == updatedAt exactly.
+                for ((expr, valName) in insertNowVal) append("        val $valName = $expr\n")
                 append("        val newId = $table.insert {\n")
                 append("            it[${plan.discriminatorField}] = $disc\n")
                 for (f in writableFields) {
@@ -897,6 +917,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                     val colNonNull = baseFieldNames.contains(f) && KotlinGenUtil.isRequiredField(scalarFields.first { it.name == f })
                     if (colNonNull) append("            it[$f] = dto.$f!!\n")
                     else append("            it[$f] = dto.$f\n")
+                }
+                // #203/ADR-0045: insert stamps onCreate+onUpdate @autoSet columns from the captured
+                // now() (the caller's dto value is ignored — never bound).
+                for (f in insertAutoSetFields) {
+                    append("            it[${f.name}] = ${insertNowVal[KotlinTypeMapper.nowExpr(f)]}\n")
                 }
                 append("        }[$table.$pkFieldName]\n")
                 append("        val saved = $table.selectAll().where { $table.$pkFieldName eq newId }.single()\n")
@@ -924,9 +949,14 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                         append("        if (body.has(\"${field.name}\") && body.get(\"${field.name}\").isNull) return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
                     }
                 }
+                // #203/ADR-0045: mirrors the vanilla update handler's mustStampOnUpdate control flow —
+                // an onUpdate @autoSet column must bump on EVERY patch, so the "any present" guard is
+                // dropped when one exists (else the guard would keep a no-settable-field patch from
+                // bumping it); with no caller-settable columns at all, a standalone update{} still bumps.
+                val mustStampOnUpdate = onUpdateAutoSetFields.isNotEmpty()
                 if (stPatch.isNotEmpty()) {
                     val settableNamesList = stPatch.joinToString(", ") { "\"${it.name}\"" }
-                    append("        if (listOf($settableNamesList).any { body.has(it) }) {\n")
+                    if (!mustStampOnUpdate) append("        if (listOf($settableNamesList).any { body.has(it) }) {\n")
                     append("            try {\n")
                     for (field in stPatch) {
                         // The union column's element type — a field.enum's materialized enum class resolved
@@ -950,6 +980,11 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                     // Apply the already-bound + validated values, scoped to (pk eq id) and (disc eq value).
                     // Columns are qualified ($table.col) so a field named like the body/id params can't shadow.
                     append("                $table.update({ ($table.$pkFieldName eq id) and ($table.${plan.discriminatorField} eq $disc) }) {\n")
+                    // #203/ADR-0045: bump every onUpdate @autoSet column first (server-owned); onCreate
+                    // columns are never touched on update (createdAt is immutable).
+                    for (field in onUpdateAutoSetFields) {
+                        append("                    it[$table.${field.name}] = ${KotlinTypeMapper.nowExpr(field)}\n")
+                    }
                     for (field in stPatch) {
                         val fn = field.name
                         val cap = capitalizeFirst(fn)
@@ -964,6 +999,14 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                     append("            } catch (e: com.fasterxml.jackson.databind.JsonMappingException) {\n")
                     append("                return@transaction ResponseEntity.badRequest().body(mapOf(\"error\" to \"validation\") as Any)\n")
                     append("            }\n")
+                    // Close the "any present" guard only when it was opened (see mustStampOnUpdate above).
+                    if (!mustStampOnUpdate) append("        }\n")
+                } else if (mustStampOnUpdate) {
+                    // No caller-settable columns for this subtype, but onUpdate @autoSet must still bump.
+                    append("        $table.update({ ($table.$pkFieldName eq id) and ($table.${plan.discriminatorField} eq $disc) }) {\n")
+                    for (field in onUpdateAutoSetFields) {
+                        append("            it[$table.${field.name}] = ${KotlinTypeMapper.nowExpr(field)}\n")
+                    }
                     append("        }\n")
                 }
                 append("        val row = $table.selectAll().where { ($table.$pkFieldName eq id) and ($table.${plan.discriminatorField} eq $disc) }.singleOrNull()\n")

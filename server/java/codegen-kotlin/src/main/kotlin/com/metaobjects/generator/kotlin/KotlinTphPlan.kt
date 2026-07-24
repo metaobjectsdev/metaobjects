@@ -129,7 +129,10 @@ object KotlinTphPlan {
         val pk = primaryKeyFieldName(base)
         return subtype.metaFields.filterNot {
             it is ObjectField || it is MapField || KotlinTypeMapper.isJsonbOpenBag(it)
-        }.filter { it.name != pk && it.name != discField }
+        }.filter {
+            it.name != pk && it.name != discField &&
+                !KotlinGenUtil.isAutoSetField(it)   // #203/ADR-0045: server-owned; controller stamps it
+        }
     }
 
     /** Default primary-key field name when a TPH base declares no `identity.primary`. */
