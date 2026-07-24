@@ -73,7 +73,10 @@ def test_router_update_bumps_only_onupdate() -> None:
     update_body = src.split("def update_")[1].split("def delete_")[0]
     # the update handler bumps updatedAt; createdAt is never stamped on update (immutable).
     assert 'dto["updatedAt"] = _asnow' in update_body
-    assert 'dto["createdAt"]' not in update_body
+    assert 'dto["createdAt"] = ' not in update_body
+    # #203/ADR-0045 integrity: a caller-supplied onCreate @autoSet value is STRIPPED on PATCH
+    # (write-once — cannot be mutated via the deployed API), so it never reaches repo.update.
+    assert 'dto.pop("createdAt", None)' in update_body
 
 
 def test_non_autoset_router_is_byte_identical() -> None:

@@ -663,7 +663,7 @@ object KotlinTypeMapper {
      * of those `java.time` types exposes a static `now()`. Fully-qualified so no import bookkeeping
      * is needed (the four types would otherwise collide on simple names across generated files).
      */
-    fun nowExpr(field: com.metaobjects.field.MetaField<*>): String {
+    fun nowExpr(field: MetaField<*>): String {
         val tn = kotlinTypeName(field)
         val fqn = (tn as? ClassName)?.canonicalName ?: tn.toString()
         return "$fqn.now()"

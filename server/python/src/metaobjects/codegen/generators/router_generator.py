@@ -96,7 +96,10 @@ def _required_field_names(entity: MetaObject) -> list[str]:
     _scalar_fields, which drops object fields for the sort allowlist). FR-035
     PATCH-2 guards present-null on any of these, and a @required jsonb column can
     be nulled just like a scalar one."""
-    return [f.name for f in entity.fields() if is_required(f)]
+    # #203/ADR-0045: an @autoSet field is server-owned — never a caller-facing PATCH field, so
+    # it is not present-null-checked (a caller-sent null is ignored/stamped, not a 400). Mirrors
+    # the Kotlin controller (which excludes @autoSet from its patch-settable set).
+    return [f.name for f in entity.fields() if is_required(f) and not _is_auto_set(f)]
 
 
 # --- #203 / ADR-0045: @autoSet stamping in the generated router (above the repo seam) ----------
@@ -106,6 +109,14 @@ _AUTO_SET_TEMPORAL_SUBTYPES = (
     fc.FIELD_SUBTYPE_TIME,
     fc.FIELD_SUBTYPE_TIMESTAMP,
 )
+
+
+def _is_auto_set(field: MetaField) -> bool:
+    """True iff *field* is a server-owned ``@autoSet`` column (ADR-0039 resolving read)."""
+    return field.get_meta_attr(fc.FIELD_ATTR_AUTO_SET) in (
+        fc.AUTO_SET_ON_CREATE,
+        fc.AUTO_SET_ON_UPDATE,
+    )
 
 
 def _auto_set_split(entity: MetaObject) -> tuple[list[MetaField], list[MetaField]]:
@@ -143,12 +154,13 @@ def _auto_set_stamp_expr(field: MetaField, base_var: str) -> str:
     return base_var if is_tz else f"{base_var}.replace(tzinfo=None)"
 
 
-def _auto_set_stamp_lines(fields: list[MetaField]) -> list[str]:
+def _auto_set_stamp_lines(fields: list[MetaField], comment: str) -> list[str]:
     """Router-handler body lines stamping *fields* into ``dto`` from ONE captured base
-    instant (so all same-op columns are equal). Empty list for no fields."""
+    instant (so all same-op columns are equal), led by *comment*. Empty for no fields
+    (so the call site spreads to nothing — a non-@autoSet router stays byte-identical)."""
     if not fields:
         return []
-    lines = ["    _asnow = _dt.datetime.now(_dt.timezone.utc)"]
+    lines = [f"    # {comment}", "    _asnow = _dt.datetime.now(_dt.timezone.utc)"]
     lines += [f'    dto["{f.name}"] = {_auto_set_stamp_expr(f, "_asnow")}' for f in fields]
     return lines
 
@@ -378,8 +390,7 @@ class RouterGenerator:
                 # #203/ADR-0045: the generated router (the API surface) stamps @autoSet columns
                 # ABOVE the consumer repo seam — onCreate + onUpdate both stamped from one instant
                 # (a fresh row's createdAt == updatedAt), ignoring any caller-supplied value.
-                *(["    # #203/ADR-0045: stamp @autoSet columns (server-owned; caller ignored)."]
-                  + list(create_autoset) if create_autoset else []),
+                *create_autoset,
                 "    return repo.create(dto)",
             ]
         if name == "update":
@@ -406,8 +417,7 @@ class RouterGenerator:
                 # #203/ADR-0045: bump onUpdate @autoSet columns (server-owned) on EVERY patch,
                 # above the repo seam — a server-inserted present key (compatible with the PATCH
                 # present-key tristate); onCreate columns are never touched here.
-                *(["    # #203/ADR-0045: bump onUpdate @autoSet column(s) (server-owned)."]
-                  + list(update_autoset) if update_autoset else []),
+                *update_autoset,
                 f"    saved = repo.update({pk_param}, dto)",
                 "    if saved is None:",
                 '        return JSONResponse(status_code=404, content={"error": "not_found"})',
@@ -755,8 +765,21 @@ class RouterGenerator:
         # non-@autoSet entity → byte-identical output). insert stamps onCreate+onUpdate from one
         # instant; a patch bumps onUpdate only (createdAt stays immutable).
         _on_create_auto, _on_update_auto = _auto_set_split(entity)
-        create_autoset = _auto_set_stamp_lines(_on_create_auto + _on_update_auto)
-        update_autoset = _auto_set_stamp_lines(_on_update_auto)
+        create_autoset = _auto_set_stamp_lines(
+            _on_create_auto + _on_update_auto,
+            "#203/ADR-0045: stamp @autoSet columns (server-owned; caller ignored).",
+        )
+        # #203/ADR-0045 (integrity): onCreate @autoSet columns are write-once — strip any
+        # caller-supplied value on PATCH before the repo call (a caller cannot mutate createdAt via
+        # the deployed API). Mirrors ObjectManager.update (`data.pop(...)`) + the Kotlin controller
+        # (which excludes @autoSet from its patch-settable set).
+        update_autoset = [
+            f'    dto.pop("{f.name}", None)  # onCreate @autoSet is write-once (server-owned)'
+            for f in _on_create_auto
+        ] + _auto_set_stamp_lines(
+            _on_update_auto,
+            "#203/ADR-0045: bump onUpdate @autoSet column(s) (server-owned).",
+        )
         has_autoset = bool(_on_create_auto or _on_update_auto)
 
         parts: list[str] = []
