@@ -132,16 +132,18 @@ final class InMemoryAuthorRepositorySource {
                 for (int i = 0; i < rows.size(); i++) {
                     AuthorDto cur = rows.get(i);
                     if (id.equals(cur.id())) {
-                        // Issue #203 / ADR-0045: the generated controller called patch.stampAutoSetOnUpdate()
-                        // before delegating, so hasAutoUpdatedAt() is true (→ now()) while autoCreatedAt is
-                        // absent from the patch (→ keeps the OLD seed value) — the two diverge.
+                        // Issue #203 / ADR-0045: @autoSet columns are server-owned and no longer
+                        // caller-settable on the patch (write-once contract). autoCreatedAt
+                        // (onCreate) keeps its stored value. autoUpdatedAt (onUpdate) was stamped
+                        // to now() by the generated controller's patch.stampAutoSetOnUpdate() into
+                        // the assigned-values map, so read it from there — the two diverge.
                         AuthorDto merged = new AuthorDto(
                             id,
                             patch.hasName()          ? patch.name()          : cur.name(),
                             patch.hasBio()           ? patch.bio()           : cur.bio(),
                             patch.hasCreatedAt()     ? patch.createdAt()     : cur.createdAt(),
-                            patch.hasAutoCreatedAt() ? patch.autoCreatedAt() : cur.autoCreatedAt(),
-                            patch.hasAutoUpdatedAt() ? patch.autoUpdatedAt() : cur.autoUpdatedAt());
+                            cur.autoCreatedAt(),
+                            (java.time.Instant) patch.assignedValues().getOrDefault("autoUpdatedAt", cur.autoUpdatedAt()));
                         rows.set(i, merged);
                         return Optional.of(merged);
                     }
