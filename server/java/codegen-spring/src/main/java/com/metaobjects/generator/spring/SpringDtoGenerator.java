@@ -157,8 +157,17 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         // repository.update / import path can reuse. Empty (no helpers) otherwise, so a
         // non-@autoSet DTO stays byte-identical. Gated on the writable-controller predicate so
         // a read-only projection DTO never sprouts write-path helpers.
+        //
+        // ADR-0045 (#203/#229): a TPH subtype (e.g. BridgeAuth) has no OWN source.rdb — single-
+        // table inheritance shares the base's — so SpringRepositoryGenerator.appliesTo's own-only
+        // firstRdbSource lookup always returns false for it, even though it IS writable via the
+        // base's table. Include TphPlan.isTphSubtype(entity) explicitly so its standalone <Sub>Dto
+        // gets the same stamping helpers as any other writable entity's DTO (parity with the
+        // vanilla contract for a consumer using the subtype DTO directly). The TPH controller's
+        // own per-subtype create instead stamps via the BASE union DTO's helper — see emitTphUnion.
+        boolean writableForAutoSet = SpringRepositoryGenerator.appliesTo(entity) || TphPlan.isTphSubtype(entity);
         List<String> extraBodyMembers =
-            (SpringRepositoryGenerator.appliesTo(entity) && AutoSetSupport.hasAutoSetFields(entity))
+            (writableForAutoSet && AutoSetSupport.hasAutoSetFields(entity))
                 ? autoSetStampHelpers(entity, fields, SpringNaming.dtoName(
                       SpringNaming.splitFqn(entity.getName())[1]))
                 : List.of();
@@ -198,10 +207,15 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         String shortName = SpringNaming.splitFqn(subtype.getName())[1];
         // The discriminator field is immutable on a per-subtype PATCH — exclude it from the patch.
         String discriminatorField = TphPlan.discriminatorFieldOf(subtype);
-        // TPH per-subtype writes flow through repository.patchByIdAndType(..., assignedValues()) —
-        // no stampAutoSetOnUpdate() hook (issue #203 @autoSet stamping is the vanilla path today).
+        // ADR-0045 (#203/#229): the TPH base controller's per-subtype update route calls
+        // patch.stampAutoSetOnUpdate() exactly like the vanilla update handler (emitPatch below) —
+        // wire the resolving onUpdate @autoSet fields (inherited from the base, shared by every
+        // subtype row in the single table) through so the generated <Sub>Patch actually carries
+        // the hook. Empty for a hierarchy with no @autoSet column, so a non-@autoSet <Sub>Patch
+        // stays byte-identical.
         writePatch(subtype, outRoot, SpringNaming.patchName(shortName),
-            SpringNaming.dtoName(shortName), settableFields(subtype, discriminatorField), List.of());
+            SpringNaming.dtoName(shortName), settableFields(subtype, discriminatorField),
+            AutoSetSupport.onUpdateFields(subtype));
     }
 
     /**
@@ -332,7 +346,18 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
      * validated from the body.</p>
      */
     public static List<MetaField> settableFields(MetaObject entity, String alsoExclude) {
-        return minusPk(entity, scalarFields(entity), alsoExclude);
+        List<MetaField> out = new ArrayList<>();
+        for (MetaField field : minusPk(entity, scalarFields(entity), alsoExclude)) {
+            // ADR-0045 (#203/#229): @autoSet is server-owned — never a caller-settable TPH
+            // per-subtype field. Excluding it here is the SSOT for both the create-validated set
+            // (SpringControllerGenerator#emitTph's createValidated) and the sibling <Sub>Patch's
+            // settable/bindable set, so a caller can neither be required to supply it on POST nor
+            // mutate it via PATCH. (The single-arg vanilla settableFields(entity) overload below,
+            // used by the non-TPH <Entity>Patch, is untouched — out of this fix's scope.)
+            if (AutoSetSupport.isAutoSet(field)) continue;
+            out.add(field);
+        }
+        return out;
     }
 
     /** {@code pool} MINUS the entity's primary-key field(s) MINUS {@code alsoExclude} (when non-null). */
@@ -387,9 +412,19 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         // the Kotlin lane's all-nullable union data class.
         List<String> annotationsPerField = new ArrayList<>(fields.size());
         for (int i = 0; i < fields.size(); i++) annotationsPerField.add("");
-        // TPH union is a read/polymorphic-write wire shape — no @autoSet stamping helpers
-        // (per-subtype writes go through the base controller's discriminator routes).
-        emitRecord(base, outRoot, fields, annotationsPerField, List.of());
+        // ADR-0045 (#203/#229): the TPH controller's per-subtype create/update bind and return
+        // this UNION Dto type (repository.createWithType/patchByIdAndType), never a subtype-shaped
+        // record, so the stamping helper the controller calls (stampForInsert) must be typed to
+        // the union HERE — a standalone <Sub>Dto's own stampForInsert(SubDto) would not type-check
+        // against the union-typed `dto` the create handler binds. Gated exactly like the vanilla
+        // path (AutoSetSupport.hasAutoSetFields(base) — @autoSet columns live on the base, shared
+        // by every subtype row in the single table): empty for a non-@autoSet hierarchy, so the
+        // union DTO stays byte-identical.
+        List<String> extraBodyMembers =
+            (SpringRepositoryGenerator.appliesTo(base) && AutoSetSupport.hasAutoSetFields(base))
+                ? autoSetStampHelpers(base, fields, SpringNaming.dtoName(SpringNaming.splitFqn(base.getName())[1]))
+                : List.of();
+        emitRecord(base, outRoot, fields, annotationsPerField, extraBodyMembers);
     }
 
     /** Shared record emitter: write {@code <Entity>Dto} record from a field + per-field annotation

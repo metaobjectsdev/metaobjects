@@ -623,7 +623,16 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
                 src.append("            return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
                 src.append("        }\n");
             }
-            src.append("        ").append(dtoName).append(" saved = repository.createWithType(\"").append(disc).append("\", dto);\n");
+            // ADR-0045 (#203/#229): honor @autoSet on the TPH per-subtype create — stamp EVERY
+            // onCreate AND onUpdate column with now() before persisting (the caller's value is
+            // ignored), mirroring the vanilla create handler's createArg above. The stamp helper
+            // is the BASE union <Base>Dto's static method (NOT a standalone <Sub>Dto's): dto above
+            // is declared as that same union type (createWithType binds/returns it), so a
+            // subtype-typed stampForInsert(SubDto) would not type-check against it.
+            String createArg = AutoSetSupport.hasAutoSetFields(st.entity())
+                ? dtoName + ".stampForInsert(dto)" : "dto";
+            src.append("        ").append(dtoName).append(" saved = repository.createWithType(\"").append(disc)
+               .append("\", ").append(createArg).append(");\n");
             src.append("        return ResponseEntity.status(HttpStatus.CREATED).body(saved);\n");
             src.append("    }\n\n");
 
@@ -650,6 +659,13 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
             src.append("                return ResponseEntity.badRequest().body(Map.of(\"error\", \"validation\"));\n");
             src.append("            }\n");
             src.append("        }\n");
+            // ADR-0045 (#203/#229): bump every onUpdate @autoSet column on the per-subtype PATCH,
+            // mirroring the vanilla update handler above — injected after present-value
+            // validation, before delegating, so the timestamp bumps even when the caller omits
+            // it. onCreate columns are never touched here (immutable on update).
+            if (AutoSetSupport.hasOnUpdateFields(st.entity())) {
+                src.append("        patch.stampAutoSetOnUpdate();\n");
+            }
             src.append("        return repository.patchByIdAndType(id, \"").append(disc)
                .append("\", patch.assignedValues())\n");
             src.append("                .<ResponseEntity<?>>map(ResponseEntity::ok)\n");

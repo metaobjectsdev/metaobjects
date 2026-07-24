@@ -79,6 +79,40 @@ public class SpringAutoSetStampingTest {
         ]}}
         """;
 
+    /** FR-017 TPH base Auth carrying two @autoSet timestamps + one subtype BridgeAuth. */
+    private static final String TPH_AUTOSET_JSON = """
+        { "metadata.root": { "package": "acme::auth", "children": [
+          { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
+            { "source.rdb":       { "@table": "auths" } },
+            { "field.long":       { "name": "id" } },
+            { "field.enum":       { "name": "type", "@values": ["Bridge"] } },
+            { "field.string":     { "name": "reference", "@required": true, "@maxLength": 80 } },
+            { "field.timestamp":  { "name": "autoCreatedAt", "@autoSet": "onCreate" } },
+            { "field.timestamp":  { "name": "autoUpdatedAt", "@autoSet": "onUpdate" } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+          ]}},
+          { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
+            { "field.int": { "name": "quantity", "@required": true } }
+          ]}}
+        ]}}
+        """;
+
+    /** Same TPH shape but NO @autoSet — the byte-identical control. */
+    private static final String NO_AUTOSET_TPH_JSON = """
+        { "metadata.root": { "package": "acme::auth", "children": [
+          { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
+            { "source.rdb":       { "@table": "auths" } },
+            { "field.long":       { "name": "id" } },
+            { "field.enum":       { "name": "type", "@values": ["Bridge"] } },
+            { "field.string":     { "name": "reference", "@required": true, "@maxLength": 80 } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+          ]}},
+          { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
+            { "field.int": { "name": "quantity", "@required": true } }
+          ]}}
+        ]}}
+        """;
+
     @Rule
     public TemporaryFolder tmp = new TemporaryFolder();
 
@@ -144,6 +178,86 @@ public class SpringAutoSetStampingTest {
         assertTrue("verbatim create; saw:\n" + ctrl, ctrl.contains("repository.create(dto)"));
         assertFalse("no stamp call in a non-@autoSet controller; saw:\n" + ctrl,
             ctrl.contains("stampAutoSetOnUpdate"));
+    }
+
+    // === lane 1b: FR-017 TPH per-subtype controller stamping =================
+
+    @Test
+    public void tphPerSubtypeCreateStampsAutoSetBeforeDelegating() throws Exception {
+        String src = generateTphController(TPH_AUTOSET_JSON, "Auth");
+        String createBody = methodBody(src, "createBridge");
+        // stamp above the consumer seam, then delegate — mirrors the vanilla createArg. The
+        // stamp is nested AS the createWithType argument (identical shape to the vanilla
+        // `repository.create(SubscriberDto.stampForInsert(dto))` — the call name always precedes
+        // its own argument textually, so createWithType necessarily precedes stampForInsert here,
+        // not the other way around).
+        assertTrue("per-subtype create stamps @autoSet before createWithType; saw:\n" + createBody,
+            createBody.contains(".stampForInsert(dto)"));
+        assertTrue("stamp is passed AS the create argument (mirrors the vanilla createArg); saw:\n" + createBody,
+            createBody.contains("createWithType(\"Bridge\", AuthDto.stampForInsert(dto))"));
+    }
+
+    @Test
+    public void tphPerSubtypeUpdateStampsOnUpdate() throws Exception {
+        String src = generateTphController(TPH_AUTOSET_JSON, "Auth");
+        String updateBody = methodBody(src, "updateBridge");
+        assertTrue("per-subtype update bumps onUpdate before patchByIdAndType; saw:\n" + updateBody,
+            updateBody.contains("stampAutoSetOnUpdate"));
+    }
+
+    @Test
+    public void tphControllerWithoutAutoSetIsByteIdentical() throws Exception {
+        String src = generateTphController(NO_AUTOSET_TPH_JSON, "Auth");
+        assertFalse("no stampForInsert in a non-@autoSet TPH controller; saw:\n" + src,
+            src.contains("stampForInsert"));
+        assertFalse("no stampAutoSetOnUpdate in a non-@autoSet TPH controller; saw:\n" + src,
+            src.contains("stampAutoSetOnUpdate"));
+    }
+
+    @Test
+    public void tphUnionDtoAndSubPatchCarryTheStampingHelpers() throws Exception {
+        Path srcDir = tmp.newFolder("tph-src").toPath();
+        Path classesDir = tmp.newFolder("tph-classes").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(tmp.newFolder("tph-fx").toPath(), "auth", TPH_AUTOSET_JSON);
+        runGenerator(new SpringDtoGenerator(), loader, srcDir);
+        // Real javac compile of the DTO layer (AuthDto + BridgeAuthDto/Copay.../Patch) — not just
+        // string assertions. Catches exactly the class of bug found while implementing this: a
+        // subtype-typed stampForInsert(BridgeAuthDto) would NOT type-check if the controller ever
+        // called it with an AuthDto argument (the union type repository.createWithType binds).
+        // The controller itself is intentionally NOT compiled here (Spring MVC is not a
+        // codegen-spring test dependency — see GeneratedM2mTraversalCompileRunTest's rationale;
+        // the controller's shape is string-gated by the tests above + SpringControllerGeneratorTest).
+        compile(srcDir, classesDir);
+
+        // The BASE union <Base>Dto — NOT a standalone <Sub>Dto — carries stampForInsert: the TPH
+        // controller's create handler binds/returns the union type (repository.createWithType),
+        // so the stamp helper the controller calls must be typed to that same union record.
+        String authDto = Files.readString(srcDir.resolve("acme/auth/AuthDto.java"));
+        assertTrue("AuthDto (TPH union) must carry stampForInsert; saw:\n" + authDto,
+            authDto.contains("public static AuthDto stampForInsert(AuthDto dto)"));
+
+        // The per-subtype <Sub>Patch carries the onUpdate stamping hook (mirrors the vanilla
+        // <Entity>Patch), consumed by the controller's updateBridge handler.
+        String bridgePatch = Files.readString(srcDir.resolve("acme/auth/BridgeAuthPatch.java"));
+        assertTrue("BridgeAuthPatch must carry stampAutoSetOnUpdate(); saw:\n" + bridgePatch,
+            bridgePatch.contains("public void stampAutoSetOnUpdate()"));
+        assertTrue("BridgeAuthPatch stamps autoUpdatedAt; saw:\n" + bridgePatch,
+            bridgePatch.contains("assigned.put(\"autoUpdatedAt\", java.time.Instant.now());"));
+
+        // The standalone <Sub>Dto (BridgeAuthDto) — used elsewhere only for its .class in
+        // per-field validateValue calls — ALSO gets the helpers for parity with the vanilla DTO
+        // contract (a consumer using it standalone, outside the TPH union path, gets the same
+        // stamping affordance).
+        String bridgeDto = Files.readString(srcDir.resolve("acme/auth/BridgeAuthDto.java"));
+        assertTrue("BridgeAuthDto must ALSO carry stampForInsert (vanilla-DTO parity); saw:\n" + bridgeDto,
+            bridgeDto.contains("public static BridgeAuthDto stampForInsert(BridgeAuthDto dto)"));
+
+        // Neither the create-validated set nor the <Sub>Patch settable set can bind @autoSet from
+        // the caller: no has<AutoSetField>() accessor on the patch.
+        assertFalse("BridgeAuthPatch must not expose a settable autoCreatedAt accessor; saw:\n" + bridgePatch,
+            bridgePatch.contains("hasAutoCreatedAt"));
+        assertFalse("BridgeAuthPatch must not expose a settable autoUpdatedAt accessor; saw:\n" + bridgePatch,
+            bridgePatch.contains("hasAutoUpdatedAt"));
     }
 
     // === lane 2: compile + run ===============================================
@@ -213,6 +327,35 @@ public class SpringAutoSetStampingTest {
     }
 
     // === harness (mirrors SpringPatchEnumCompileRunTest) =====================
+
+    /** Generate the DTO + controller for a TPH fixture and return the base's {@code <Base>Controller.java}
+     *  source (path {@code acme/auth/<baseShortName>Controller.java} — every TPH fixture in this file
+     *  uses package {@code acme::auth}). The DTO generator must run first: the controller's per-subtype
+     *  create/update reference the generated {@code <Sub>Patch} / stamping helpers. */
+    private String generateTphController(String json, String baseShortName) throws Exception {
+        Path srcDir = tmp.newFolder().toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(tmp.newFolder().toPath(), "tph", json);
+        runGenerator(new SpringDtoGenerator(), loader, srcDir);
+        runGenerator(new SpringControllerGenerator(), loader, srcDir);
+        return Files.readString(srcDir.resolve("acme/auth/" + baseShortName + "Controller.java"));
+    }
+
+    /** Extract one generated method's body: from just after its signature line up to whichever
+     *  comes first — the next member's {@code @}-annotation, the next subtype's {@code // ---}
+     *  comment, or the next {@code private} helper. Sufficient for this file's contains/matches
+     *  string-gate style (no brace-balancing attempted). */
+    private static String methodBody(String src, String methodName) {
+        int sigIdx = src.indexOf(methodName + "(");
+        assertTrue("method " + methodName + " not found; saw:\n" + src, sigIdx >= 0);
+        int bodyStart = src.indexOf('\n', sigIdx) + 1;
+        assertTrue("method " + methodName + " signature has no body; saw:\n" + src, bodyStart > 0);
+        int end = src.length();
+        for (String marker : new String[] { "\n    @", "\n    // ---", "\n    private " }) {
+            int idx = src.indexOf(marker, bodyStart);
+            if (idx >= 0 && idx < end) end = idx;
+        }
+        return src.substring(bodyStart, end);
+    }
 
     private static void runGenerator(Object generator, MetaDataLoader loader, Path outDir) {
         Map<String, String> args = new HashMap<>();
