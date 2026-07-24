@@ -494,6 +494,24 @@ class RouterGenerator:
         ops_const = f"{upper}_FILTER_OPS_BY_FIELD"
         allowlist_module = f"{snake}_filter_allowlist"
 
+        # #203/ADR-0045: @autoSet columns live on the BASE entity and are shared by every
+        # subtype (RESOLVING _auto_set_split(entity) picks up an inherited BaseEntity
+        # column too) — computed once here and threaded into each per-subtype handler
+        # below (empty for a non-@autoSet hierarchy → byte-identical output).
+        on_create_auto, on_update_auto = _auto_set_split(entity)
+        has_autoset = bool(on_create_auto or on_update_auto)
+        create_autoset = _auto_set_stamp_lines(
+            on_create_auto + on_update_auto,
+            "#203/ADR-0045: stamp @autoSet columns (server-owned; caller ignored).",
+        )
+        update_autoset = [
+            f'    dto.pop("{f.name}", None)  # onCreate @autoSet is write-once (server-owned)'
+            for f in on_create_auto
+        ] + _auto_set_stamp_lines(
+            on_update_auto,
+            "#203/ADR-0045: bump onUpdate @autoSet column(s) (server-owned).",
+        )
+
         # Sort allowlist = base scalar fields ∪ every subtype's own scalar fields, so a
         # per-subtype list can sort on a subtype-only column too. Stable order.
         sort_fields: list[str] = [f.name for f in _scalar_fields(entity)]
@@ -525,6 +543,10 @@ class RouterGenerator:
         )
         parts.append("from __future__ import annotations")
         parts.append("")
+        if has_autoset:
+            # #203/ADR-0045: the router stamps @autoSet columns inline (no runtime dependency).
+            parts.append("import datetime as _dt")
+            parts.append("")
         for import_line in sorted(pk.imports):
             parts.append(import_line)
         if pk.imports:
@@ -632,6 +654,9 @@ class RouterGenerator:
             parts.append(f"        {sub}Create(**dto)")
             parts.append("    except ValidationError:")
             parts.append('        return JSONResponse(status_code=400, content={"error": "validation"})')
+            # #203/ADR-0045: stamp @autoSet columns ABOVE the repo seam (empty for a
+            # non-@autoSet hierarchy — byte-identical output).
+            parts.extend(create_autoset)
             parts.append(f'    return repo.create("{val}", dto)')
             parts.append("")
             parts.append("")
@@ -662,6 +687,9 @@ class RouterGenerator:
             parts.append(f"        {sub}Patch(**dto)")
             parts.append("    except ValidationError:")
             parts.append('        return JSONResponse(status_code=400, content={"error": "validation"})')
+            # #203/ADR-0045: pop the write-once onCreate column(s), bump onUpdate — ABOVE
+            # the repo seam (empty for a non-@autoSet hierarchy — byte-identical output).
+            parts.extend(update_autoset)
             parts.append(f'    saved = repo.update("{val}", {pk_param}, dto)')
             parts.append("    if saved is None:")
             parts.append('        return JSONResponse(status_code=404, content={"error": "not_found"})')

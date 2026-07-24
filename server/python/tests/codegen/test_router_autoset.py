@@ -85,3 +85,84 @@ def test_non_autoset_router_is_byte_identical() -> None:
     assert "import datetime as _dt" not in src
     assert "_asnow" not in src
     assert "_dt.datetime.now" not in src
+
+
+# ---- FR-017 TPH: the per-subtype router also stamps @autoSet (#203/#229) ----------------
+#
+# The base `Auth` declares both @autoSet policies on field.timestamp columns (shared by
+# every subtype via `extends`); `PlainAuth` declares none (the byte-identical baseline).
+
+TPH_AUTOSET = """
+{ "metadata.root": { "package": "acme::auth", "children": [
+  { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
+    { "source.rdb": { "@table": "auths" } },
+    { "field.long": { "name": "id" } },
+    { "field.enum": { "name": "type", "@values": ["Bridge"] } },
+    { "field.string": { "name": "reference", "@required": true, "@maxLength": 80 } },
+    { "field.timestamp": { "name": "autoCreatedAt", "@autoSet": "onCreate" } },
+    { "field.timestamp": { "name": "autoUpdatedAt", "@autoSet": "onUpdate" } },
+    { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+  ]}},
+  { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
+    { "field.int": { "name": "quantity", "@required": true } }
+  ]}}
+]}}
+"""
+
+TPH_PLAIN = """
+{ "metadata.root": { "package": "acme::auth", "children": [
+  { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
+    { "source.rdb": { "@table": "auths" } },
+    { "field.long": { "name": "id" } },
+    { "field.enum": { "name": "type", "@values": ["Bridge"] } },
+    { "field.string": { "name": "reference", "@required": true, "@maxLength": 80 } },
+    { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+  ]}},
+  { "object.entity": { "name": "BridgeAuth", "extends": "Auth", "@discriminatorValue": "Bridge", "children": [
+    { "field.int": { "name": "quantity", "@required": true } }
+  ]}}
+]}}
+"""
+
+
+def _render_tph(fixture: str, name: str) -> str:
+    """Load *fixture*, build the object index, and render *name*'s (the TPH base's)
+    router — dispatched to ``_render_tph_router`` inside ``render_router`` once a
+    discriminator plan resolves for it."""
+    entities = _load(fixture)
+    index = build_object_index(list(entities.values()))
+    src = render_router(entities[name], index)
+    assert src is not None
+    return src
+
+
+def _handler_body(src: str, def_line: str) -> str:
+    """Slice out one handler's source, from *def_line* up to (not including) the next
+    top-level ``def `` (the next handler in the module)."""
+    after = src.split(def_line, 1)[1]
+    return after.split("\ndef ", 1)[0]
+
+
+def test_tph_router_imports_datetime_when_autoset_present() -> None:
+    src = _render_tph(TPH_AUTOSET, "Auth")
+    assert "import datetime as _dt" in src
+
+
+def test_tph_per_subtype_create_stamps_both_autoset_columns() -> None:
+    body = _handler_body(_render_tph(TPH_AUTOSET, "Auth"), "def create_auths_bridge")
+    assert "_asnow = _dt.datetime.now(_dt.timezone.utc)" in body
+    assert 'dto["autoCreatedAt"] = _asnow' in body
+    assert 'dto["autoUpdatedAt"] = _asnow' in body
+
+
+def test_tph_per_subtype_update_pops_oncreate_and_bumps_onupdate() -> None:
+    body = _handler_body(_render_tph(TPH_AUTOSET, "Auth"), "def update_auths_bridge")
+    assert 'dto.pop("autoCreatedAt", None)' in body
+    assert 'dto["autoUpdatedAt"] = _asnow' in body
+    assert 'dto["autoCreatedAt"] = ' not in body
+
+
+def test_tph_router_without_autoset_is_byte_identical() -> None:
+    src = _render_tph(TPH_PLAIN, "Auth")
+    assert "import datetime as _dt" not in src
+    assert "_asnow" not in src
