@@ -69,6 +69,7 @@ import com.metaobjects.util.ErrorMessageConstants;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -681,6 +682,12 @@ public final class ValidationPhase {
             return;
         }
 
+        // --- Own @intValueMap content check (optional) ---
+        // Independent of the @values own/inherited branching below — an @intValueMap
+        // owned by this node is validated here against the node's EFFECTIVE @values
+        // (own or inherited via extends), mirroring the TS/C# port structure exactly.
+        validateEnumIntValueMap(node);
+
         // --- Own @values content check ---
         if (node.hasMetaAttr(EnumField.ATTR_VALUES, false)) {
             MetaAttribute<?> valuesAttr = node.getMetaAttr(EnumField.ATTR_VALUES, false);
@@ -728,6 +735,62 @@ public final class ValidationPhase {
         // FR-011 own-attr checks still apply (a concrete enum can own @coerceDefault while
         // inheriting @values).
         validateEnumFr011Attrs(node);
+    }
+
+    /**
+     * Own {@code @intValueMap} content validation for a {@code field.enum} node.
+     *
+     * <p>Optional. Own-only (mirrors the {@code @values}/FR-011 own-attrs-only policy)
+     * — an inherited {@code @intValueMap} is validated on its declaring node. The
+     * generic "is this an object of integers" shape check already ran via
+     * {@link com.metaobjects.attr.IntMapAttribute} at parse time (its
+     * {@code setValueAsString}/{@code setValueAsObject} reject a non-integer member
+     * with {@link com.metaobjects.attr.InvalidAttributeValueException}, which the
+     * parser's strict-mode catch re-wraps as {@code ERR_BAD_ATTR_VALUE}); this method
+     * validates the field.enum-SPECIFIC semantics: key-set-equals-effective-@values,
+     * and no two members share the same int value.</p>
+     */
+    private static void validateEnumIntValueMap(MetaData node) {
+        if (!node.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP, false)) {
+            return;
+        }
+
+        @SuppressWarnings("unchecked")
+        Map<String, Integer> intValueMap = (Map<String, Integer>)
+            node.getMetaAttr(EnumField.ATTR_INT_VALUE_MAP, false).getValue();
+        if (intValueMap == null) {
+            return;
+        }
+
+        List<String> effective = effectiveEnumValues(node);
+        Set<String> memberSet = new HashSet<>(effective);
+        Set<String> keySet = intValueMap.keySet();
+
+        List<String> missing = effective.stream().filter(m -> !keySet.contains(m)).toList();
+        List<String> extra = keySet.stream().filter(k -> !memberSet.contains(k)).toList();
+        if (!missing.isEmpty() || !extra.isEmpty()) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                    + ": field.enum '" + node.getName() + "' attribute '@" + EnumField.ATTR_INT_VALUE_MAP
+                    + "' keys must exactly match '@" + EnumField.ATTR_VALUES + "' members"
+                    + (missing.isEmpty() ? "" : " (missing: " + String.join(", ", missing) + ")")
+                    + (extra.isEmpty() ? "" : " (unknown: " + String.join(", ", extra) + ")") + ".",
+                ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+        }
+
+        Map<Integer, String> seenValues = new HashMap<>();
+        for (Map.Entry<String, Integer> entry : intValueMap.entrySet()) {
+            Integer value = entry.getValue();
+            String owner = seenValues.putIfAbsent(value, entry.getKey());
+            if (owner != null) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": field.enum '" + node.getName() + "' attribute '@" + EnumField.ATTR_INT_VALUE_MAP
+                        + "' members '" + owner + "' and '" + entry.getKey()
+                        + "' share the same value " + value + "; every member must have a unique int.",
+                    ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+            }
+        }
     }
 
     /**
