@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.20.1] — 2026-07-25
+
+**npm `0.20.1`** (patch; NuGet 0.19.3 / PyPI 0.19.5 / Maven 7.11.3 unchanged). `meta init` quickstart polish: the post-init next-steps no longer lists the working `meta gen` / `meta docs` under "ship in later sub-projects" (only `ingest`/`serve`/`install-hooks` are unshipped), and `meta init` now scaffolds a minimal root `.gitignore` (node_modules/, *.sqlite, dist/) when the project has none, so a `git add -A` right after init does not stage node_modules or a local dev DB. No API or codegen-output change.
+
 ## [0.20.0] — 2026-07-25
 
 **npm `0.20.0` only** (NuGet stays at `0.19.3`, PyPI at `0.19.4`, Maven Central at `7.11.3` — those ports have no changed product file). Two first-touch quickstart UX fixes surfaced by a fresh-external-install pressure test; no new vocabulary. MINOR because the codegen import-extension default changes generated output (see below) and `relativeModuleSpecifier`'s signature gains a parameter.
