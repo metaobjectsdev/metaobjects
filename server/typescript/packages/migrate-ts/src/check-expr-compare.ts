@@ -36,7 +36,49 @@ export function normalizeCheckExpr(expr: string): string {
     .trim();
   // PG stores `col IN (…)` as `col = ANY (ARRAY[…])`; after the bracket strip above
   // that reads `col = any array …`. Fold it back to the `col in …` form we emit.
-  return stripped.replace(/=\s*any\s+array/g, "in").replace(/\s+/g, " ").trim();
+  const folded = stripped.replace(/=\s*any\s+array/g, "in").replace(/\s+/g, " ").trim();
+  // Normalize spacing AROUND COMMAS so a generated IN-list (`'a', 'b'`) compares equal
+  // to a hand-written one (`'a','b'`) — the separator commas are never semantically
+  // meaningful, and a hand SQLite migration omits the space. This is done OUTSIDE
+  // single-quoted literals only: a comma inside a string/regex literal (`'a, b'`, or a
+  // quantifier `'{1, 3}'`) IS meaningful, so two checks that differ only there must
+  // stay distinct (else a real regex/predicate change reads as clean drift).
+  return collapseCommaSpacingOutsideQuotes(folded);
+}
+
+/** Collapse `\s*,\s*` → `,` OUTSIDE single-quoted literals (see normalizeCheckExpr). */
+function collapseCommaSpacingOutsideQuotes(s: string): string {
+  let out = "";
+  let i = 0;
+  const n = s.length;
+  while (i < n) {
+    const ch = s[i]!;
+    if (ch === "'") {
+      // Copy the single-quoted literal verbatim ('' escapes honored) — never touched.
+      const start = i;
+      i++;
+      while (i < n) {
+        if (s[i] === "'") {
+          if (s[i + 1] === "'") { i += 2; continue; }
+          i++;
+          break;
+        }
+        i++;
+      }
+      out += s.slice(start, i);
+      continue;
+    }
+    if (ch === ",") {
+      out = out.replace(/\s+$/, "");           // drop whitespace already emitted before it
+      out += ",";
+      i++;
+      while (i < n && /\s/.test(s[i]!)) i++;    // skip whitespace after it
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
 }
 
 /** True when two CHECK expressions are equivalent after normalization. */

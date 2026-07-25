@@ -16,7 +16,7 @@
  *     column set while the other keyed by name — mis-diffing even the FK that matches.
  */
 import { test, expect, describe } from "bun:test";
-import { parseSqliteDefault } from "../../src/introspect/sqlite-shared.js";
+import { parseSqliteDefault, parseSqliteChecks } from "../../src/introspect/sqlite-shared.js";
 import { applyStatus } from "../../src/diff/status.js";
 import { diff } from "../../src/diff/index.js";
 import type { Change, FkDescriptor, SchemaSnapshot, ViewDescriptor } from "../../src/types.js";
@@ -35,6 +35,38 @@ describe("hole 1 — a quoted literal is a literal, even with parens in it", () 
     expect(parseSqliteDefault("CURRENT_TIMESTAMP")).toEqual({ kind: "expr", value: "CURRENT_TIMESTAMP" });
     expect(parseSqliteDefault("(lower(hex(randomblob(16))))"))
       .toEqual({ kind: "expr", value: "(lower(hex(randomblob(16))))" });
+  });
+
+  test("a bare NULL is NO default (the D1 runner stringifies SQL NULL to \"null\")", () => {
+    // `DEFAULT NULL` ≡ no default. A no-default column on D1 arrives as the string
+    // "null" — it must NOT become a literal-"null" default (permanent false drift).
+    expect(parseSqliteDefault("null")).toBeUndefined();
+    expect(parseSqliteDefault("NULL")).toBeUndefined();
+    expect(parseSqliteDefault(null)).toBeUndefined();
+    // ...but a QUOTED 'null' is a genuine string literal default and is preserved.
+    expect(parseSqliteDefault("'null'")).toEqual({ kind: "literal", value: "null" });
+  });
+});
+
+describe("parseSqliteChecks — anonymous + comment/literal safety", () => {
+  test("parses both named and anonymous (unnamed inline) checks", () => {
+    const sql = `CREATE TABLE t (a TEXT CHECK (a IN ('x','y')), b INT, CONSTRAINT t_b_chk CHECK (b > 0))`;
+    expect(parseSqliteChecks(sql)).toEqual([
+      { name: "", expression: "a IN ('x','y')" },
+      { name: "t_b_chk", expression: "b > 0" },
+    ]);
+  });
+
+  test("does NOT parse a CHECK( that lives inside a comment or a string literal", () => {
+    // Each of these would produce a PHANTOM anonymous check → a spurious drop-check
+    // (recreate-and-copy) on sqlite/d1. The finder masks comments + literals.
+    expect(parseSqliteChecks("CREATE TABLE t (id TEXT, -- legacy CHECK (id <> '') dropped\n x INT)")).toEqual([]);
+    expect(parseSqliteChecks("CREATE TABLE t (id TEXT /* CHECK (foo) */ NOT NULL)")).toEqual([]);
+    expect(parseSqliteChecks("CREATE TABLE t (note TEXT DEFAULT 'see CHECK (docs) here')")).toEqual([]);
+    // ...but a real check alongside such a comment/literal is still found.
+    expect(parseSqliteChecks("CREATE TABLE t (s TEXT /* note */ CHECK (s IN ('a','b')))")).toEqual([
+      { name: "", expression: "s IN ('a','b')" },
+    ]);
   });
 });
 

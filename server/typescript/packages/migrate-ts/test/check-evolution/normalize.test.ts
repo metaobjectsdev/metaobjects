@@ -20,7 +20,7 @@ describe("normalizeCheckExpr", () => {
       "status = ANY (ARRAY['OPEN'::text, 'CLOSED'::text])",
     )).toBe(true);
     expect(normalizeCheckExpr("status = ANY (ARRAY['OPEN'::text, 'CLOSED'::text])"))
-      .toBe("status in 'open', 'closed'");
+      .toBe("status in 'open','closed'");
     // different member sets remain distinct after the fold
     expect(checkExprEquals(
       "status IN ('OPEN', 'CLOSED')",
@@ -48,6 +48,16 @@ describe("normalizeCheckExpr", () => {
   });
   test("genuinely different expressions are not equal", () => {
     expect(checkExprEquals("col >= 0", "col >= 5")).toBe(false);
+  });
+
+  test("separator commas normalize, but a comma INSIDE a literal stays meaningful", () => {
+    // Separator commas (outside quotes) collapse, so a generated IN-list matches a
+    // hand-written one regardless of spacing...
+    expect(checkExprEquals("status IN ('a','b')", "status IN ('a', 'b')")).toBe(true);
+    // ...but a comma inside a string/regex literal is real: two checks differing only
+    // there must NOT compare equal, or a genuine regex/predicate change reads as clean.
+    expect(checkExprEquals("label <> 'a, b'", "label <> 'a,b'")).toBe(false);
+    expect(checkExprEquals("code ~ '^x{1, 3}$'", "code ~ '^x{1,3}$'")).toBe(false);
   });
   test("undefined is never equal", () => {
     expect(checkExprEquals(undefined, "x")).toBe(false);

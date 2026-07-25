@@ -18,6 +18,16 @@ export const SQLITE_EXPR_DEFAULT_PATTERNS = [
 export function parseSqliteDefault(raw: string | null): ColumnDefault | undefined {
   if (raw === null || raw === undefined || raw === "") return undefined;
 
+  // A bare (unquoted) NULL keyword is SQL for "no default": `DEFAULT NULL` is
+  // functionally identical to declaring no default at all. It reaches us as the
+  // JSON string "null" from the D1/wrangler runner (which stringifies a SQL NULL
+  // dflt_value) or as `NULL` from parsed DDL. A GENUINE string literal default of
+  // "null" is QUOTED (`'null'`) and is matched by the quoted branch below, so this
+  // bare test is unambiguous. Without it every no-default column on D1 reads back a
+  // literal "null" default that no metadata field ever declares — permanent, and on
+  // SQLite/D1 destructive (recreate-and-copy) false drift on every verify/migrate.
+  if (raw.trim().toLowerCase() === "null") return undefined;
+
   // A QUOTE-WRAPPED value is a string literal BY CONSTRUCTION — SQLite always quotes a
   // literal string default. This test MUST come before the expr patterns: one of those
   // patterns is a bare /\(.*\)/, so a perfectly ordinary literal containing parentheses
@@ -95,9 +105,13 @@ export function sqliteTypeToSqlType(declaredType: string): SqlType {
  * Without it the actual side always reported `checks: []` and every expected
  * check re-surfaced as add-check on every single run.
  *
- * Unnamed checks (`CHECK (…)` with no CONSTRAINT clause — hand-written DDL) are
- * NOT parsed: they have no identity to match on. A modeled check over such a
- * table converges after one recreate (which rewrites it in named form).
+ * Unnamed inline checks (`CHECK (…)` with no CONSTRAINT clause — the idiomatic
+ * hand-written-migration form) ARE parsed, with an empty name. They have no
+ * identity to match by name, so the diff reconciles them by NORMALIZED EXPRESSION
+ * on sqlite/d1: an anonymous DB check that already enforces a modeled constraint
+ * is matched to the expected named check rather than re-proposed as add-check.
+ * (Before, they were skipped entirely, so every modeled check over such a table
+ * re-surfaced as false drift on `verify --dialect d1` on every run.)
  *
  * The expression is scanned with balanced parens and string-literal awareness
  * (an enum member may contain `(`/`)`), and returned verbatim — the diff's
@@ -106,10 +120,18 @@ export function sqliteTypeToSqlType(declaredType: string): SqlType {
 export function parseSqliteChecks(createSql: string | null | undefined): CheckDescriptor[] {
   if (createSql === null || createSql === undefined || createSql === "") return [];
   const out: CheckDescriptor[] = [];
-  const re = /\bCONSTRAINT\s+(?:"((?:[^"]|"")+)"|([A-Za-z_][A-Za-z0-9_$]*))\s+CHECK\s*\(/gi;
+  // Find `CHECK (` on a MASKED copy (comments + single-quoted literals blanked to
+  // spaces of equal length) so a `CHECK (` appearing inside a `--`/`/* */` comment
+  // or a string literal (`DEFAULT 'see CHECK (x)'`) can NEVER be mis-parsed as a
+  // constraint. Positions are 1:1, so the balanced expression is sliced from the
+  // ORIGINAL (with its real quotes intact).
+  const masked = maskCommentsAndStrings(createSql);
+  // An optional `CONSTRAINT <name>` prefix then `CHECK (`. Named → group 1/2;
+  // bare inline `CHECK (` → name defaults to "" (anonymous, expression-matched).
+  const re = /(?:\bCONSTRAINT\s+(?:"((?:[^"]|"")+)"|([A-Za-z_][A-Za-z0-9_$]*))\s+)?\bCHECK\s*\(/gi;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(createSql)) !== null) {
-    const name = m[1] !== undefined ? m[1].replace(/""/g, '"') : m[2]!;
+  while ((m = re.exec(masked)) !== null) {
+    const name = m[1] !== undefined ? m[1].replace(/""/g, '"') : (m[2] ?? "");
     const open = re.lastIndex - 1; // position of the "(" the regex just consumed
     let depth = 0;
     let inString = false;
@@ -135,6 +157,42 @@ export function parseSqliteChecks(createSql: string | null | undefined): CheckDe
     re.lastIndex = close + 1;
   }
   return out;
+}
+
+/**
+ * Same-length copy of a CREATE TABLE DDL with SQL comments (`--` line, `/* *\/`
+ * block) and single-quoted string literals blanked to spaces, so a token scan
+ * (e.g. the CHECK finder) cannot match inside them. Double-quoted identifiers are
+ * PRESERVED — a constraint or column name may be double-quoted, and none legitimately
+ * contains a `CHECK (` token. Positions are unchanged for downstream slicing.
+ */
+function maskCommentsAndStrings(sql: string): string {
+  const chars = sql.split("");
+  let i = 0;
+  const n = sql.length;
+  while (i < n) {
+    const ch = sql[i];
+    if (ch === "'") {
+      const end = skipSingleQuoted(sql, i);
+      for (let j = i; j < end; j++) chars[j] = " ";
+      i = end;
+    } else if (ch === '"') {
+      i = skipDoubleQuoted(sql, i); // preserve the identifier verbatim
+    } else if (ch === "-" && sql[i + 1] === "-") {
+      let j = i;
+      while (j < n && sql[j] !== "\n") { chars[j] = " "; j++; }
+      i = j;
+    } else if (ch === "/" && sql[i + 1] === "*") {
+      let j = i + 2;
+      while (j < n && !(sql[j] === "*" && sql[j + 1] === "/")) j++;
+      const end = Math.min(n, j + 2);
+      for (let k = i; k < end; k++) chars[k] = " ";
+      i = end;
+    } else {
+      i++;
+    }
+  }
+  return chars.join("");
 }
 
 /** Skip a single-quoted SQL string starting at `i` (position of the opening

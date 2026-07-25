@@ -7,6 +7,35 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — D1/SQLite `verify` false schema drift (npm-only; `migrate-ts` + `cli`)
+
+`meta verify --dialect d1` reported permanent, unfixable schema drift for a
+hand-migrated D1/SQLite database whose schema genuinely matches its metadata,
+because the shared sqlite/d1 diff path compared distinctions SQLite cannot
+physically represent. Four fixes, all scoped to sqlite/d1 (Postgres behavior
+unchanged) and gated by a new `sqlite-hand-migrated-verify` integration test plus
+`parseSqliteChecks` / `normalizeCheckExpr` unit gates:
+
+- **`json` and `VARCHAR(N)` length no longer read as drift.** SQLite/D1 has one text
+  storage class — a `field.object @storage:jsonb` column is stored as `TEXT`, and a
+  `VARCHAR(N)` length is cosmetic (not enforced). A hand-written bare `TEXT` column is
+  the same physical column as the maxLength'd / jsonb one, so the diff now canonicalizes
+  `json→text` and drops text `maxLength` on sqlite/d1 before comparing. This also
+  corrects `meta migrate`: a metadata-only `maxLength` change on sqlite/d1 now emits no
+  migration — nothing physical changes in SQLite.
+- **Anonymous inline `CHECK (…)` constraints now reconcile.** Hand-written migrations
+  write unnamed inline checks; introspection parses them (previously skipped, and now
+  with a mask so a `CHECK (` inside a comment or string literal is never mis-parsed) and
+  the diff matches a modeled named check against an actual check by normalized expression
+  on sqlite/d1, so an already-enforced constraint is no longer re-proposed as add-check.
+  Comma spacing in an `IN (…)` list is normalized *outside string literals only*
+  (`'a', 'b'` == `'a','b'`, but a comma inside a literal/regex stays significant).
+- **A bare `NULL` default is now no default.** The D1/wrangler runner stringifies a SQL
+  `NULL` `dflt_value` to the string `"null"`, which was read as a literal default on
+  every no-default column — permanent (and, on SQLite/D1, destructive recreate-and-copy)
+  false drift on every `verify`/`migrate`. `DEFAULT NULL` is equivalent to no default; a
+  quoted `'null'` stays a genuine string literal.
+
 ## [0.20.1] — 2026-07-25
 
 **npm `0.20.1`** (patch; NuGet 0.19.3 / PyPI 0.19.5 / Maven 7.11.3 unchanged). `meta init` quickstart polish: the post-init next-steps no longer lists the working `meta gen` / `meta docs` under "ship in later sub-projects" (only `ingest`/`serve`/`install-hooks` are unshipped), and `meta init` now scaffolds a minimal root `.gitignore` (node_modules/, *.sqlite, dist/) when the project has none, so a `git add -A` right after init does not stage node_modules or a local dev DB. No API or codegen-output change.

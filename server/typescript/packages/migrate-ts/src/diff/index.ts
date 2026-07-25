@@ -3,6 +3,7 @@ import type {
   ViewDescriptor,
   DependentRelation,
   Change, ChangeStatus, DiffResult, AllowOptions, AmbiguousCallback, Dialect,
+  CheckDescriptor,
 } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 import { sqlTypeEquals } from "../sql-type.js";
@@ -212,7 +213,7 @@ export async function diff(
   for (const [id, expectedTable] of expectedTables) {
     const actualTable = actualTables.get(id);
     if (!actualTable) continue;
-    diffTableColumns(expectedTable, actualTable, changes);
+    diffTableColumns(expectedTable, actualTable, changes, args.dialect);
     diffTableIndexes(expectedTable, actualTable, changes);
     diffTableForeignKeys(expectedTable, actualTable, changes, args.dialect);
     // CHECK constraints on existing tables are evolved whenever a dialect is
@@ -223,7 +224,7 @@ export async function diff(
     // no dialect (legacy positional callers) checks stay un-diffed — those
     // callers may hold hand-built snapshots with empty check lists, and
     // diffing them would re-propose every modeled check forever.
-    if (args.dialect !== undefined) diffTableChecks(expectedTable, actualTable, changes);
+    if (args.dialect !== undefined) diffTableChecks(expectedTable, actualTable, changes, args.dialect);
   }
 
   // Pass 2b: views. Identity is (schema, name). How "changed" is decided is
@@ -272,10 +273,33 @@ function isDiffArgs(x: DiffArgs | SchemaSnapshot): x is DiffArgs {
   return "expected" in x && "actual" in x;
 }
 
+/**
+ * Collapse a SqlType to what SQLite/D1 can PHYSICALLY store, so the diff never
+ * reports drift the database could never represent (and thus could never fix).
+ *
+ * SQLite/D1 has a single text storage class: `json` is stored as TEXT (no native
+ * json type), and a `VARCHAR(N)` length is cosmetic — not enforced — so a bounded
+ * and an unbounded text column are the same physical column. Both collapse to bare
+ * `text`. The tool's own emit round-trips are unaffected (VARCHAR(8) and TEXT both
+ * canon to `text`), while a hand-written `TEXT` column now matches maxLength'd /
+ * jsonb metadata. Postgres represents both faithfully and is left exact.
+ */
+function canonTypeForDialect(t: SqlType, dialect: Dialect | undefined): SqlType {
+  if (dialect !== "sqlite" && dialect !== "d1") return t;
+  if (t.kind === "json") return { kind: "text" };
+  if (t.kind === "text" && t.maxLength !== undefined) return { kind: "text" };
+  return t;
+}
+
+function sqlTypeEqualsForDialect(a: SqlType, b: SqlType, dialect: Dialect | undefined): boolean {
+  return sqlTypeEquals(canonTypeForDialect(a, dialect), canonTypeForDialect(b, dialect));
+}
+
 function diffTableColumns(
   expected: TableDescriptor,
   actual: TableDescriptor,
   changes: Change[],
+  dialect?: Dialect,
 ): void {
   const table = expected.name;
   const sx = schemaSpread(expected.schema);
@@ -288,8 +312,11 @@ function diffTableColumns(
       changes.push({ kind: "add-column", table, ...sx, column: ec, status: ALLOWED });
       continue;
     }
-    // Compare type, nullable, default — emit per-aspect change.
-    if (!sqlTypeEquals(ec.sqlType, ac.sqlType)) {
+    // Compare type, nullable, default — emit per-aspect change. Type equality is
+    // dialect-aware: SQLite/D1 cannot physically represent a VARCHAR length or a
+    // native json type, so those distinctions must not read as drift (see
+    // canonTypeForDialect). Postgres stays exact.
+    if (!sqlTypeEqualsForDialect(ec.sqlType, ac.sqlType, dialect)) {
       changes.push({
         kind: "change-column-type", table, ...sx, column: name,
         from: ac.sqlType, to: ec.sqlType, status: ALLOWED,
@@ -441,23 +468,46 @@ function diffTableForeignKeys(
   }
 }
 
-function diffTableChecks(expected: TableDescriptor, actual: TableDescriptor, changes: Change[]): void {
+function diffTableChecks(
+  expected: TableDescriptor,
+  actual: TableDescriptor,
+  changes: Change[],
+  dialect?: Dialect,
+): void {
   const sx = schemaSpread(expected.schema);
-  const expectedChk = new Map(expected.checks.map((c) => [c.name, c]));
-  const actualChk = new Map(actual.checks.map((c) => [c.name, c]));
-  for (const [name, ec] of expectedChk) {
-    const ac = actualChk.get(name);
-    if (!ac) {
-      changes.push({ kind: "add-check", table: expected.name, ...sx, check: ec, status: ALLOWED });
-    } else if (!checkExprEquals(ec.expression, ac.expression)) {
-      changes.push({ kind: "drop-check", table: expected.name, ...sx, check: name, restore: ac, status: ALLOWED });
-      changes.push({ kind: "add-check", table: expected.name, ...sx, check: ec, status: ALLOWED });
+  // SQLite/D1 stores no constraint identity for an inline `CHECK (…)`, so hand-written
+  // DDL yields anonymous (empty-name) checks. When an expected named check has no
+  // same-name actual, fall back to matching by NORMALIZED EXPRESSION so an
+  // already-enforced constraint is not re-proposed as add-check (and its actual is not
+  // re-proposed as drop-check). The fallback scans ALL still-unconsumed actual checks,
+  // so it also reconciles a name-MISMATCHED actual (a check the DB named differently
+  // than the model's generated `<table>_<col>_chk`), not only truly-anonymous ones —
+  // beneficial and safe: the name-keyed pass runs first, so a genuine expression change
+  // on a name-matched check is still caught as drop+add. Postgres constraints are always
+  // named, so it keeps the exact name-keyed behavior (exprFallback off).
+  const exprFallback = dialect === "sqlite" || dialect === "d1";
+  const actualByName = new Map(actual.checks.filter((c) => c.name !== "").map((c) => [c.name, c]));
+  const consumed = new Set<CheckDescriptor>();
+
+  for (const ec of expected.checks) {
+    const ac = actualByName.get(ec.name);
+    if (ac) {
+      consumed.add(ac);
+      if (!checkExprEquals(ec.expression, ac.expression)) {
+        changes.push({ kind: "drop-check", table: expected.name, ...sx, check: ec.name, restore: ac, status: ALLOWED });
+        changes.push({ kind: "add-check", table: expected.name, ...sx, check: ec, status: ALLOWED });
+      }
+      continue;
     }
+    if (exprFallback) {
+      const match = actual.checks.find((a) => !consumed.has(a) && checkExprEquals(ec.expression, a.expression));
+      if (match) { consumed.add(match); continue; }
+    }
+    changes.push({ kind: "add-check", table: expected.name, ...sx, check: ec, status: ALLOWED });
   }
-  for (const [name, ac] of actualChk) {
-    if (!expectedChk.has(name)) {
-      changes.push({ kind: "drop-check", table: expected.name, ...sx, check: name, restore: ac, status: ALLOWED });
-    }
+  for (const ac of actual.checks) {
+    if (consumed.has(ac)) continue;
+    changes.push({ kind: "drop-check", table: expected.name, ...sx, check: ac.name, restore: ac, status: ALLOWED });
   }
 }
 
