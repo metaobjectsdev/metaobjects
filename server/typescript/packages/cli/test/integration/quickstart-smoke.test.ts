@@ -17,6 +17,7 @@
 import { describe, test, expect } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import type { FastifyPluginAsync } from "fastify";
 import { run } from "../../src/index.js";
 
 // Temp roots live inside the monorepo so the generated code and the config can
@@ -109,8 +110,10 @@ describe("quickstart smoke — the documented TS path, gen -> migrate -> boot ->
 
       // 3. boot the GENERATED routes plugin on Fastify, as the doc shows
       const { default: Fastify } = await import("fastify");
+      // The routes module is generated at runtime, so its type isn't knowable at
+      // compile time — register through Fastify's own plugin type.
       const { authorRoutes } = (await import(join(outDir, "Author.routes.ts"))) as {
-        authorRoutes: Parameters<ReturnType<typeof Fastify>["register"]>[0];
+        authorRoutes: FastifyPluginAsync;
       };
       const app = Fastify();
       await app.register(authorRoutes);
@@ -159,7 +162,7 @@ describe("quickstart smoke — the documented TS path, gen -> migrate -> boot ->
         body: JSON.stringify({ bio: "First programmer" }),
       });
       expect(patched.status).toBe(200);
-      expect((await patched.json()).bio).toBe("First programmer");
+      expect(((await patched.json()) as { bio: string }).bio).toBe("First programmer");
 
       // 8. delete -> 204
       const deleted = await fetch(`${base}/authors/${row.id}`, { method: "DELETE" });
