@@ -73,6 +73,12 @@ async function applyRaw(
 // ---------------------------------------------------------------------------
 // Fixture tables — dropped in the correct dependency order so that FK
 // constraints don't block the DROP.  The order here is leaves → roots.
+//
+// This list MUST cover every entity in the fixture. The pg integration files
+// share one database, and the ones that diff the WHOLE database (e.g.
+// pg-adversarial-fixes) read any table left behind as an unexpected object and
+// propose a blocked drop-table — so a missing entry here fails a *different*
+// file, and only when the runner happens to enumerate this file first.
 // ---------------------------------------------------------------------------
 
 const FIXTURE_TABLES = [
@@ -82,6 +88,8 @@ const FIXTURE_TABLES = [
   "videos",
   "programs",
   "subscribers",
+  // Root of the videos → media_assets FK, so it drops last.
+  "media_assets",
 ] as const;
 
 async function dropFixtureTables(k: Kysely<Record<string, unknown>>): Promise<void> {
