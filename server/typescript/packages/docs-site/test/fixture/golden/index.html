@@ -98,6 +98,22 @@ flowchart LR
   <div class="text-[11px] opacity-50 mt-1"><span class="font-mono">▭</span> entity · <span class="font-mono">⬭</span> value object · <span class="font-mono">▱</span> view</div>
 </div>
 <div class="card bg-base-100 border border-base-300 p-4 my-4">
+  <div class="font-semibold mb-2">Prompt data-flow</div>
+  <div class="pl-diagram"><pre class="mermaid">%%{init: {'theme':'base','themeVariables':{'darkMode':true,'background':'#0b1220','primaryColor':'#1e2a3a','primaryTextColor':'#cbd5e1','primaryBorderColor':'#4a7fa5','lineColor':'#64748b','secondaryColor':'#1a2535','tertiaryColor':'#0f1826','fontSize':'13px'}}}%%
+flowchart LR
+  NpcPayload(["NpcPayload"])
+  NpcResponse(["NpcResponse"])
+  npcReview["npcReview"]
+  npcReviewOutput["npcReviewOutput"]
+  NpcPayload -->|input| npcReview
+  npcReview -->|produces| NpcResponse
+  npcReviewOutput -->|parses| NpcResponse
+  class NpcPayload,NpcResponse,npcReview,npcReviewOutput d_ai
+  classDef d_ai fill:#3f2d5c,stroke:#a78bfa,color:#ede9fe</pre></div>
+  <div class="text-xs opacity-50 mt-1">The prompt-construction pipeline: request payload VOs flow <span class="font-mono">input</span>→ prompts; tool-calls/outputs <span class="font-mono">parse/produce</span>→ response VOs. A VO that references an entity adds the DB <span class="font-mono">source</span>/<span class="font-mono">persists</span> hops (entity → payload VO … response VO → entity).</div>
+  <div class="flex flex-wrap gap-1 mt-2 text-xs"><span class="badge badge-xs" style="background:#3f2d5c;border-color:#a78bfa;color:#cbd5e1">acme::ai</span></div>
+</div>
+<div class="card bg-base-100 border border-base-300 p-4 my-4">
   <div class="font-semibold mb-2">Package dependencies</div>
   <div class="pl-diagram"><pre class="mermaid">%%{init: {'theme':'base','themeVariables':{'darkMode':true,'background':'#0b1220','primaryColor':'#1e2a3a','primaryTextColor':'#cbd5e1','primaryBorderColor':'#4a7fa5','lineColor':'#64748b','secondaryColor':'#1a2535','tertiaryColor':'#0f1826','fontSize':'13px'}}}%%
 flowchart LR</pre></div>

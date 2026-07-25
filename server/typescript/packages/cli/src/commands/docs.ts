@@ -50,6 +50,11 @@ interface DocsFlags {
   /** Optional override for the project root used to resolve adopter
    *  `templates/` overrides. Defaults to the metadata root. */
   templates?: string;
+  /** Optional directory holding the prompt `.mustache` sources, for a project
+   *  whose templates live outside the conventional `metaobjects/` or `templates/`
+   *  roots (e.g. `data/templates/`). Added to the `--site` prompt-source search
+   *  path so the HTML site can show the prompt TEXT. Mirrors `verify --prompts`. */
+  prompts?: string;
   /** Which doc surfaces to emit, when overridden on the CLI. `--model` ⇒
    *  ["model"], `--api` ⇒ ["api"], both ⇒ ["model","api"]. Unset ⇒ defer to the
    *  resolved `docs:` config (default both). */
@@ -85,6 +90,7 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
   let metadata: string | undefined;
   let out: string | undefined;
   let templates: string | undefined;
+  let prompts: string | undefined;
   let layout: DocsLayout | undefined;
   let baseUrl: string | undefined;
   let wantModel = false;
@@ -132,6 +138,12 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
       templates = v;
     } else if (a.startsWith("--templates=")) {
       templates = a.slice("--templates=".length);
+    } else if (a === "--prompts") {
+      const v = argv[++i];
+      if (v === undefined) throw new Error(`${a} requires a directory argument`);
+      prompts = v;
+    } else if (a.startsWith("--prompts=")) {
+      prompts = a.slice("--prompts=".length);
     } else if (a.startsWith("-")) {
       throw new Error(`unknown flag: ${a}`);
     } else if (metadata === undefined) {
@@ -166,6 +178,7 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
     ...(surfaces.length > 0 || wantSite ? { surfaces } : {}),
     ...(baseUrl !== undefined ? { baseUrl } : {}),
     ...(templates !== undefined ? { templates } : {}),
+    ...(prompts !== undefined ? { prompts } : {}),
   };
 }
 
@@ -187,6 +200,9 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   }
 
   const metaRoot = resolvePath(cwd, flags.metadata);
+  // Absolute prompt-source dir for the site (--prompts), for a project whose
+  // templates live outside metaobjects/ or templates/ (e.g. data/templates/).
+  const promptsDir = flags.prompts !== undefined ? resolvePath(cwd, flags.prompts) : undefined;
 
   // `--scaffold-site`: copy the docs-site templates + assets into codegen/docs-site/
   // so the consumer owns them (ADR-0034 scaffold-and-own). Scaffold and return —
@@ -261,7 +277,7 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   // WITHOUT building the markdown GenContext — decoupled and one fewer failure
   // surface. Combined with --model/--api it is emitted after them (below).
   if (flags.site && docsCfg.surfaces.length === 0) {
-    return emitSite(metaRoot, outDir, configProviders);
+    return emitSite(metaRoot, outDir, configProviders, promptsDir);
   }
 
   // Load metadata standalone — same loader path as migrate/gen. Threads any
@@ -428,7 +444,7 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
 
   // SITE surface (additive) — emit after the markdown surfaces so both coexist.
   if (flags.site) {
-    const siteRc = await emitSite(metaRoot, outDir, configProviders);
+    const siteRc = await emitSite(metaRoot, outDir, configProviders, promptsDir);
     if (siteRc !== 0) return siteRc;
   }
 
@@ -501,9 +517,26 @@ async function emitSite(
   metaRoot: string,
   outDir: string,
   configProviders?: readonly MetaDataTypeProvider[],
+  promptsDir?: string,
 ): Promise<number> {
   const siteOutDir = resolvePath(outDir, "site");
+  // metaobjects/ is REQUIRED (the site loads the model from it) and always first.
+  // Prompt `.mustache` source is additionally searched in the conventional
+  // <root>/templates/ and any explicit --prompts dir (for a project whose templates
+  // live elsewhere, e.g. data/templates/) — else the site can't show the prompt TEXT
+  // and prints a "source missing" note. Only existing dirs are added, and dirs are
+  // deduped by BASENAME (the site keys source groups by basename, and rejects a dup).
   const sourceDirs = [join(metaRoot, DEFAULT_METADATA_DIR)];
+  const seenBasenames = new Set([basename(join(metaRoot, DEFAULT_METADATA_DIR))]);
+  if (promptsDir !== undefined && !existsSync(promptsDir)) {
+    log.warn(`docs: --prompts dir does not exist: ${promptsDir}`);
+  }
+  for (const d of [join(metaRoot, "templates"), ...(promptsDir !== undefined ? [promptsDir] : [])]) {
+    if (existsSync(d) && !seenBasenames.has(basename(d))) {
+      sourceDirs.push(d);
+      seenBasenames.add(basename(d));
+    }
+  }
   // Scaffold-and-own: when the consumer has copied templates/assets into
   // codegen/docs-site/ (via --scaffold-site), use those; else the bundled defaults.
   const ownedTemplates = join(metaRoot, "codegen/docs-site/templates");

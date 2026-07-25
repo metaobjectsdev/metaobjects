@@ -18,6 +18,7 @@ metadata:
     - template.prompt:
         name: npcReview
         "@payloadRef": NpcPayload
+        "@responseRef": NpcResponse
         "@textRef": ai/npc-review
         "@format": text
         "@dataflow": ingest

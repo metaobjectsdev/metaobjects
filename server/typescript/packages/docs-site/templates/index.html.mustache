@@ -17,6 +17,14 @@
   <div class="text-[11px] opacity-50 mt-1"><span class="font-mono">▭</span> entity · <span class="font-mono">⬭</span> value object · <span class="font-mono">▱</span> view</div>{{/coreLegend.length}}
 </div>
 {{/coreMermaid}}
+{{#dataflowMermaid}}
+<div class="card bg-base-100 border border-base-300 p-4 my-4">
+  <div class="font-semibold mb-2">Prompt data-flow</div>
+  <div class="pl-diagram"><pre class="mermaid">{{dataflowMermaid}}</pre></div>
+  <div class="text-xs opacity-50 mt-1">The prompt-construction pipeline: request payload VOs flow <span class="font-mono">input</span>→ prompts; tool-calls/outputs <span class="font-mono">parse/produce</span>→ response VOs. A VO that references an entity adds the DB <span class="font-mono">source</span>/<span class="font-mono">persists</span> hops (entity → payload VO … response VO → entity).</div>
+  {{#dataflowLegend.length}}<div class="flex flex-wrap gap-1 mt-2 text-xs">{{#dataflowLegend}}<span class="badge badge-xs" style="background:{{fill}};border-color:{{stroke}};color:#cbd5e1">{{pkg}}</span>{{/dataflowLegend}}</div>{{/dataflowLegend.length}}
+</div>
+{{/dataflowMermaid}}
 {{#packageMermaid}}
 <div class="card bg-base-100 border border-base-300 p-4 my-4">
   <div class="font-semibold mb-2">Package dependencies</div>

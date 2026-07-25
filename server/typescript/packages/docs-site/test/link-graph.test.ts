@@ -15,6 +15,8 @@ test("builds nodes, refs, backlinks, degree, hrefs", async () => {
   expect(g.refsFrom("acme::shop::Order").some((r) => r.to === "acme::shop::Customer" && r.kind === "fk")).toBe(false);
   // payload ref: prompt npcReview -> NpcPayload; nested objectRef NpcPayload -> ItemView
   expect(g.refsFrom("acme::ai::npcReview").some((r) => r.to === "acme::ai::NpcPayload" && r.kind === "payload")).toBe(true);
+  // response ref: prompt npcReview -> NpcResponse (the data-flow "produces" hop)
+  expect(g.refsFrom("acme::ai::npcReview").some((r) => r.to === "acme::ai::NpcResponse" && r.kind === "response")).toBe(true);
   expect(g.refsFrom("acme::ai::NpcPayload").some((r) => r.to === "acme::ai::ItemView" && r.kind === "field")).toBe(true);
   // backlinks to Customer: Order.customer (relationship) + LineItemView origin-passthrough
   //   + the self-join junction FKs (CustomerReferral x2, CustomerFriend x2) + the self relationships (referrals, friends)

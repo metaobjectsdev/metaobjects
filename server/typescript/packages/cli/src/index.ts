@@ -42,6 +42,7 @@ DOCS FLAGS:
   <metadata>            Project root holding metaobjects/ (default: current directory)
   --out <dir>, -o       Output directory for the pages (default: ./docs)
   --templates <dir>     Project root to resolve adopter templates/ overrides (default: <metadata>)
+  --prompts <dir>       Extra dir holding prompt .mustache sources for --site (e.g. data/templates/)
 
 VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drift):
   --templates           Template/prompt {{field}}↔payload drift (the bare-verify default)
@@ -159,6 +160,8 @@ FLAGS:
   --site                Generate the browsable HTML documentation site (<out>/site/)
   --scaffold-site       Copy the site's templates + assets into codegen/docs-site/ to own (theme) them
   --templates <dir>     Project root to resolve adopter templates/ overrides (default: <metadata>)
+  --prompts <dir>       Extra dir holding prompt .mustache sources (for --site) when they
+                        live outside metaobjects/ or templates/ (e.g. data/templates/)
   --help, -h            Print this help
 `,
   init: `meta init — scaffold metaobjects/ + .metaobjects/ in the current repo

@@ -5,7 +5,7 @@ import { type LoadedModel, treeOf } from "./load.js";
 export interface DocNode { kind: "object" | "prompt" | "output"; name: string; pkg: string; pkgPath: string; href: string; node: MetaData; tree: string; }
 export interface Ref {
   from: string; to: string; via: string;
-  kind: "field" | "fk" | "extends" | "payload" | "relationship" | "origin";
+  kind: "field" | "fk" | "extends" | "payload" | "response" | "relationship" | "origin";
   cardinality?: "one" | "many" | undefined;
   through?: string | undefined;         // junction FQN (M:N)
   sourceJoinField?: string | undefined; // junction source FK (M:N)
@@ -144,6 +144,13 @@ export class LinkGraph {
         if (typeof p === "string") {
           const to = resolveRef(p, dn.pkg);
           if (to) addRef({ from: fqn, to, via: "payloadRef", kind: "payload" });
+        }
+        // A prompt's @responseRef is the response value-object it PRODUCES — the
+        // missing hop of the data-flow pipeline (prompt → response VO → entity).
+        const r = dn.node.attr("responseRef");
+        if (typeof r === "string") {
+          const to = resolveRef(r, dn.pkg);
+          if (to) addRef({ from: fqn, to, via: "responseRef", kind: "response" });
         }
       }
     }

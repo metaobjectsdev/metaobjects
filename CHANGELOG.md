@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added — `meta docs` surfaces prompt TEXT + a prompt data-flow view (site)
+
+The browsable HTML doc site (`meta docs --site`) now shows the actual prompt text and a
+directional prompt-construction data-flow diagram (npm-only; `docs-site` + `cli`):
+
+- **`--prompts <dir>`** — the `--site` prompt-source search now includes `<root>/templates/`
+  and an explicit `--prompts` dir, so a project whose prompt `.mustache` sources live
+  outside `metaobjects/` or `templates/` (e.g. `data/templates/`) renders the actual
+  prompt TEXT on each prompt page (with every `{{var}}` linked to its payload field)
+  instead of a "source missing" note.
+- **Prompt data-flow diagram** on the site index — a directional Mermaid flowchart of the
+  pipeline: request payload VO ──input──▶ prompt, prompt/output ──produces/parses──▶
+  response VO, and (where a VO references an entity) the DB-entity ──source/persists──
+  bookends. Derived structurally from `template.prompt @payloadRef`/`@responseRef` and
+  `template.output`/`template.toolcall @payloadRef`, plus each VO's entity references. A
+  new `@responseRef` graph edge (prompt → response VO) completes the pipeline.
+
+Additive: markdown surfaces and non-pipeline site output are unchanged. Gated by the
+`docs-site` golden (its AI fixture now exercises the full pipeline) + a link-graph unit test.
+
 ## [0.20.2] — 2026-07-25
 
 **npm `0.20.2` only** (NuGet `0.19.3` / PyPI `0.19.5` / Maven Central `7.11.3` unchanged — no changed product file; D1 is a TS-only dialect). A bug-fix patch, no API or vocabulary change.
