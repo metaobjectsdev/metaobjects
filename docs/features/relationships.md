@@ -106,7 +106,7 @@ metadata:
 | `@onUpdate` | both | same as `@onDelete` | RDB referential action |
 
 The kebab-case metamodel values map to the SCREAMING_SNAKE forms in Exposed / EF
-Core / SQLAlchemy at codegen time.
+Core / the target ORM or DDL at codegen time.
 
 ## Navigating a relationship or reference in a projection (`@via`)
 
@@ -222,8 +222,9 @@ ALTER TABLE "posts"
 ### Python
 
 The Python loader recognizes `relationship.composition` and `identity.reference`
-and exposes them on the navigation API. SQLAlchemy `relationship()` codegen and
-the runtime ORM tier are in progress.
+and exposes them on the navigation API. Relationship-navigation codegen (emitting
+the FK-derived accessors into the generated Pydantic + FastAPI code) is still
+pending; the runtime is the shipped DB-API-2 `ObjectManager`.
 
 ```python
 # generated/acme/blog/post.py — current state

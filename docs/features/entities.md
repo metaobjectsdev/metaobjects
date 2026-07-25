@@ -145,7 +145,7 @@ export type Author = z.infer<typeof AuthorSchema>;
 
 ### Java
 
-`metaobjects-maven-plugin` with `MetaDataGenerator` writes a POJO + an OMDB-backed
+`metaobjects-maven-plugin` with `MetaDataGeneratorMojo` writes a POJO + an OMDB-backed
 descriptor. The OMDB ObjectManager reads the same metadata at runtime to drive
 CRUD.
 

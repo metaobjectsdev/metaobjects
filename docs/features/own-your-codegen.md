@@ -27,7 +27,7 @@ three-way-merges against a committed merge base, so your edits are preserved.
 | **TypeScript** | `meta init` → `meta gen` (Bun/Node CLI) | **Scaffold-and-own** — `meta init` copies `entityFile`/`queriesFile`/`routesFile`/`barrel` into `codegen/generators/*.ts`; `metaobjects.config.ts` imports those local copies. Edit them freely. |
 | **C#** | `dotnet meta gen` / `dotnet meta verify` (.NET tool) | Build-config: the generator set (EF Core entities + `AppDbContext` + CRUD routes) is selected via config; customize via template-spec. |
 | **Java / Kotlin** | `mvn metaobjects:generate` / `mvn metaobjects:verify` (`metaobjects-maven-plugin`) | Build-config: generators selected in `pom.xml`, by **stable name** (`entity`/`routes`/…) through the `GeneratorRegistryProvider` ServiceLoader SPI. Kotlin generators run through the same goal. |
-| **Python** | `metaobjects gen` / `metaobjects verify` (console-script) | Build-config: the generator set (Pydantic + FastAPI + SQLAlchemy) selected via config; customize via template-spec. |
+| **Python** | `metaobjects gen` / `metaobjects verify` (console-script) | Build-config: the generator set (Pydantic + FastAPI) selected via config; customize via template-spec. |
 
 *(Full command/flag matrix and rationale: [`docs/features/cli.md`](cli.md), locked per
 ADR-0015. Schema migrations are TypeScript-owned across all ports.)*

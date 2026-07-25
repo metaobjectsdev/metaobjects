@@ -4,7 +4,7 @@ The browser-side TypeScript client (`@metaobjectsdev/runtime-web` +
 `@metaobjectsdev/react` + `@metaobjectsdev/tanstack`) is **universal**: it
 ships with the React + TanStack runtime and the generated query hooks +
 column defs, but it makes **no assumption about which language wrote the
-backend**. Any HTTP server — TypeScript Fastify, Java Spring, Kotlin Ktor,
+backend**. Any HTTP server — TypeScript Fastify, Java Spring, Kotlin Spring,
 C# ASP.NET, Python FastAPI — that speaks the URL grammar and JSON wire
 format on this page can serve the same React app, with the same generated
 hooks and grids.
@@ -309,7 +309,7 @@ into your framework's idiomatic query-builder, gated by the generated
 Cross-port route + filter codegen (Java, Kotlin, Python), the shared
 route-shape oracle (`fixtures/api-contract-conformance/`), and a
 browser-side Angular client have all shipped — see "Per-port route
-codegen status" and "Verified by" above, and
+codegen status" above and "Verified by" below, and
 [`docs/ports/typescript-client.md#angular-18`](../ports/typescript-client.md#angular-18).
 
 What's still genuinely open:
@@ -349,8 +349,9 @@ each spin up their generated routes and pass every scenario. See
 [`docs/CONFORMANCE.md`](../CONFORMANCE.md) for per-port pass status.
 
 Filter operator coverage (`eq` / `ne` / `gt` / `gte` / `lt` / `lte` / `in` /
-`like` / `isNull`) is part of the corpus: 10 filter scenarios run on top of
-the 10 base CRUD scenarios, and all five ports satisfy all 20 today (see
+`like` / `isNull`) is part of the corpus: filter scenarios run on top of
+the base CRUD scenarios, and all five ports satisfy the full
+api-contract-conformance suite today (see
 [`docs/CONFORMANCE.md`](../CONFORMANCE.md)).
 
 ## See also

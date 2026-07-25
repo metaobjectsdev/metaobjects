@@ -341,7 +341,7 @@ import lines are stable.
 | Feature | Status |
 |---|---|
 | Entities + fields | Yes |
-| Relationships + FK | Loader-level yes; SQLAlchemy `relationship()` codegen is on the roadmap |
+| Relationships + FK | Loader-level yes; relationship-navigation codegen is on the roadmap |
 | Source kinds (table / view / storedProc) | Loader-level yes; codegen for non-`table` kinds is in progress |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Loader-level yes; codegen for `field.object` `flattened` storage is in progress |
 | Templates + render (FR-004) | Yes (`metaobjects.render`) |

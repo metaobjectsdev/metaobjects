@@ -88,7 +88,7 @@ first-week wedge plan — and `meta init` picks up from there.
 |---|---|---|---|
 | TypeScript | Published to npm at `0.20.0` (the `@metaobjectsdev/*` packages) | [`docs/ports/typescript.md`](docs/ports/typescript.md) | [`server/typescript/`](server/typescript/) · [`client/web/`](client/web/) |
 | Java | Loader + OMDB + render + Maven plugin all shipped; full conformance green | [`docs/ports/java.md`](docs/ports/java.md) | [`server/java/`](server/java/) |
-| Kotlin | Codegen tier on top of Java — 9 generators (entity, Exposed table, relations, payload, output-parser, validator, Spring config, storedProc, Spring controller); 12 / 12 persistence-conformance | [`docs/ports/kotlin.md`](docs/ports/kotlin.md) | [`server/java/codegen-kotlin/`](server/java/codegen-kotlin/) · [`server/java/metadata-ktx/`](server/java/metadata-ktx/) |
+| Kotlin | Codegen tier on top of Java — 14 generators (entity, Exposed table, relations, repository, payload, output-parser, output-prompt, render-helper, extractor, filter-allowlist, validator, Spring config, storedProc, Spring controller); 24 / 24 persistence-conformance | [`docs/ports/kotlin.md`](docs/ports/kotlin.md) | [`server/java/codegen-kotlin/`](server/java/codegen-kotlin/) · [`server/java/metadata-ktx/`](server/java/metadata-ktx/) |
 | C# | Loader + conformance + EF Core codegen + render engine + `dotnet meta` CLI all shipped | [`docs/ports/csharp.md`](docs/ports/csharp.md) | [`server/csharp/`](server/csharp/) |
 | Python | Loader + conformance + render + entity-model codegen + ObjectManager runtime shipped; schema migrations are TS-owned (ADR-0015) | [`docs/ports/python.md`](docs/ports/python.md) | [`server/python/`](server/python/) |
 
@@ -105,8 +105,8 @@ first-week wedge plan — and `meta init` picks up from there.
 | Templates + render (FR-004) | Yes | Yes | Yes (wraps Java) | Yes | Yes |
 | Payload-VO codegen | Yes (via projection) | Yes (`SpringPayloadGenerator`) | Yes (`@Serializable`) | Yes | Yes (`payload_vo_generator`) |
 | Migration emission | `meta migrate` (Postgres / SQLite / D1) | Via TS toolchain (`@metaobjectsdev/cli migrate`) | Via TS toolchain (`@metaobjectsdev/cli migrate`) | Via TS toolchain (ADR-0015) | Via TS toolchain (ADR-0015) |
-| DB-drift verify | `meta verify --db` | Template-drift: `Renderer.verify`; schema-drift is TS-owned (ADR-0015) | Template-drift: `Renderer.verify`; startup: `MetadataStartupValidator` | `dotnet meta verify` (codegen-drift) | Schema-drift is TS-owned (ADR-0015) |
-| Template-drift verify | Yes | Yes (`Renderer.verify`) | Yes (via Java) | Yes (`meta verify`) | Yes (`metaobjects.render.verify`) |
+| DB-drift verify | `meta verify --db` | Template-drift: `Verify.check`; schema-drift is TS-owned (ADR-0015) | Template-drift: `Verify.check`; startup: `MetadataStartupValidator` | `dotnet meta verify` (codegen-drift) | Schema-drift is TS-owned (ADR-0015) |
+| Template-drift verify | Yes | Yes (`Verify.check`) | Yes (via Java) | Yes (`dotnet meta verify`) | Yes (`metaobjects.render.verify`) |
 | YAML authoring (sigil-free → JSON) | Yes | Yes | Yes (via Java) | Yes | Yes |
 | Runtime metadata (ObjectManager-style) | Yes (`runtime-ts`) | Yes (OMDB) | Yes (via Java OMDB + Exposed) | Roadmap | Yes (ObjectManager) |
 | React / Angular UI client (browser) | Yes — React (`@metaobjectsdev/react` + `@metaobjectsdev/tanstack`) and Angular 18 (`@metaobjectsdev/angular`, published at `0.6.0`); both codegen + runtime | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST |
@@ -135,8 +135,8 @@ complete in all five ports; MCP exposure of declared prompts/tools is the one
 remaining roadmap item:
 
 1. **Codegen** — emit idiomatic per-language code (Drizzle/Zod + Fastify for TS,
-   POJO + OMDB for Java, `data class` + Exposed for Kotlin, EF Core
-   record + ASP.NET routes for C#, `@dataclass` for Python). Hand-edit-preserving
+   Spring REST + DTO + repository for Java, `data class` + Exposed for Kotlin, EF Core
+   record + ASP.NET routes for C#, Pydantic + FastAPI for Python). Hand-edit-preserving
    regen via three-way merge.
 2. **Runtime metadata** — load metadata at runtime, drive behavior dynamically
    (CRUD, validation, relationships, dynamic admin UIs; typed tool payloads are
@@ -200,13 +200,12 @@ ephemeral Postgres containers and exercises every shipped port's persistence
 layer against the shared scenario corpus:
 
 ```bash
-scripts/integration-test.sh            # all runners (ts + csharp + java + python)
+scripts/integration-test.sh            # all runners (ts + csharp + java + python + kotlin)
 scripts/integration-test.sh ts         # just TypeScript
 scripts/integration-test.sh csharp     # just C#
 scripts/integration-test.sh java       # just Java
 scripts/integration-test.sh python     # just Python
-# Kotlin runs via Maven directly (not yet wired into the script):
-cd server/java && mvn -pl integration-tests-kotlin test
+scripts/integration-test.sh kotlin     # just Kotlin
 ```
 
 The persistence corpus + the cross-port test harness are the contract: identical
