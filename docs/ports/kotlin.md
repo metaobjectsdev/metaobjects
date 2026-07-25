@@ -9,7 +9,7 @@ wiring) via KotlinPoet.
 
 Two modules:
 
-- **`metaobjects-codegen-kotlin`** — 7 KotlinPoet-based generators.
+- **`metaobjects-codegen-kotlin`** — 14 KotlinPoet-based generators.
 - **`metaobjects-metadata-ktx`** — thin Kotlin facade over the Java loader + render
   engine for idiomatic Kotlin runtime use.
 
@@ -69,15 +69,20 @@ Two modules:
 
 ## Configure
 
-The 9 generators in `codegen-kotlin`:
+The 14 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
 
 | Generator | Output | Per |
 |---|---|---|
-| `KotlinEntityGenerator` | `<Entity>.kt` — Kotlin `data class` (Jackson-compatible; no `@Serializable`) | every `object.entity` + `object.value` |
+| `KotlinEntityGenerator` | `<Entity>.kt` — Kotlin `data class` (Jackson-compatible; no `@Serializable`) | every `object.entity`, `object.value`, and `object.projection` |
 | `KotlinExposedTableGenerator` | `<Entity>Table.kt` — Exposed `Table` object with PK + FK + `@storage` columns | entities with `source.rdb` |
 | `KotlinRelationsGenerator` | `<Entity>Relations.kt` — extension fns for `cardinality=many` query helpers | entities with to-many relationships |
+| `KotlinRepositoryGenerator` | `<Entity>RepositoryBase.kt` — persistence repository base (row-mapper + CRUD + patch) | writable entities (`source.rdb @kind="table"`) |
+| `KotlinFilterAllowlistGenerator` | `<Entity>FilterAllowlist.kt` — FR-009 filter allowlist (filterable field names + allowed ops per field) | writable entities (`source.rdb @kind="table"`) |
 | `KotlinPayloadGenerator` | `<Template>Payload.kt` — `@Serializable` payload from `@payloadRef` view-object | every `template.prompt` / `template.output` |
 | `KotlinOutputParserGenerator` | `<Template>Parser.kt` — `object` with `parseXxx` (throws `SerializationException`) + `safeParseXxx` (returns `Result<TPayload>`) | every `template.output` (FR-006) |
+| `KotlinOutputPromptGenerator` | `<Template>Prompt.kt` — output-format prompt fragment (FR-010) | every `template.output` |
+| `KotlinRenderHelperGenerator` | `<Template>RenderHelper.kt` — typed `render()` wrappers (document/email, keyed off `@kind`) | every `template.output` |
+| `KotlinExtractorGenerator` | `<Template>Extractor.kt` — strict typed `extract<Name>` payload helper (FR-010) | every nested-capable `template.output` |
 | `KotlinValidatorGenerator` | `MetadataStartupValidator.kt` + `ExposedTableValidator.kt` | once per project |
 | `KotlinSpringConfigGenerator` | `MetadataExposedConfig.kt` — `@Configuration` wiring `Database.connect()` + auto-validator | once per project |
 | `KotlinStoredProcGenerator` | Stored-procedure call wrappers | entities with `source.rdb @kind="storedProc"` |
@@ -158,11 +163,17 @@ For the `Author` example (see [entities.md](../features/entities.md)), the codeg
 emits:
 
 ```kotlin
-// generated/acme/blog/Author.kt
-data class Author(
-    val id: Long,
-    val name: String,
-    val bio: String? = null,
+// generated/acme/blog/Author.kt  (jakarta.validation imports elided)
+/**
+ * GENERATED — do not hand-edit. Regenerated from metadata.
+ */
+public data class Author(
+    public val id: Long? = null,        // field.long PK → nullable, auto-assigned on insert
+    @field:NotNull
+    @field:Size(min = 1, max = 200)
+    public val name: String,            // @required + @maxLength: 200
+    @field:Size(max = 2000)
+    public val bio: String? = null,     // optional + @maxLength: 2000
 )
 
 // generated/acme/blog/AuthorTable.kt
@@ -327,7 +338,8 @@ the contract is universal.
 
 ## Test count
 
-122 tests in `codegen-kotlin` (`mvn -pl codegen-kotlin test`). Snapshot tests gate
+Several hundred tests in `codegen-kotlin` (`mvn -pl codegen-kotlin test`; ~290
+`@Test` methods across ~50 test files). Snapshot tests gate
 within-Java output stability; `kotlin-compile-testing` gates generated-code
 validity; an end-to-end test exercises the full loop including the Java
 `Renderer`. Persistence-conformance + the cross-port API contract run in

@@ -22,7 +22,7 @@ Install the CLI as a .NET tool:
 
 ```bash
 dotnet tool install --global MetaObjects.Cli
-dotnet meta --help
+dotnet meta          # bare invocation prints the usage banner
 ```
 
 The C# CLI is invoked as `dotnet meta` (command `dotnet-meta`), or run directly
@@ -59,12 +59,11 @@ If your app needs a metamodel subtype the core doesn't ship, declare an
 `IMetaDataTypeProvider` and compose it into the registry before loading:
 
 ```csharp
-using MetaObjects.Metadata;
+using MetaObjects;
 using MetaObjects.Loader;
 
 var registry = Provider.ComposeRegistry(new IMetaDataTypeProvider[] {
-    CoreTypesProvider.Instance,
-    ForgeTypesProvider.Instance,
+    CoreTypes.CoreTypesProvider,
     yourProvider,            // adds your custom subtype/attrs
 });
 
@@ -99,11 +98,13 @@ Schema migrations are owned by the Node `meta` CLI (ADR-0015) — the C# CLI is
 
 The codegen emits:
 
-- `Author.cs` — record per entity.
-- `AppDbContext.cs` — `DbSet<Author>`, projection `.ToView()`, `@storage` owned
+- `Author.g.cs` — class per entity (a mutable attributed POCO, not a record).
+- `AppDbContext.g.cs` — `DbSet<Author>`, projection `.ToView()`, `@storage` owned
   types via `OwnsOne` (single) / `OwnsMany(...).ToJson(...)` (`@isArray` array-of-VO),
   enum-as-string via `HasConversion<string>()`.
-- `Author.routes.cs` — CRUD minimal-API endpoints.
+- `AuthorRoutes.g.cs` — CRUD minimal-API endpoints.
+- `AuthorFilterAllowlist.g.cs` — the server-side filter/sort allowlist feeding the
+  generated list handler.
 
 ## Use
 
@@ -118,11 +119,17 @@ builder.Services.AddDbContext<AppDbContext>(opts =>
 
 var app = builder.Build();
 
-app.MapAuthorRoutes();   // generated — GET/POST/PUT/DELETE on /api/author
+app.MapAuthorRoutes();   // generated — GET/POST/PUT/DELETE on /api/authors
 app.Run();
 ```
 
 EF Core does the rest. The runtime has no MetaObjects dependency.
+
+**Consumer dependencies.** The generated `AppDbContext` and the `Program.cs`
+wiring above use EF Core (`AddDbContext`, `DbContext`, `UseNpgsql`), which
+MetaObjects does not pull in for you — add the two EF Core NuGet packages to
+the consuming app: `Microsoft.EntityFrameworkCore` and
+`Npgsql.EntityFrameworkCore.PostgreSQL`.
 
 ```csharp
 // Optional handwritten service over the generated DbContext
@@ -151,11 +158,12 @@ var payload = new WelcomePayload(
     PostCount: 12,
     Posts: new[] { new PostSummary("Hello") });
 
-string output = Renderer.Render(new RenderRequest(
-    Ref: "lobby/welcome",
-    Payload: payload,
-    Provider: provider,
-    Format: "xml"));
+string output = Renderer.Render(new RenderRequest {
+    Ref = "lobby/welcome",
+    Payload = payload,
+    Provider = provider,
+    Format = "xml",
+});
 ```
 
 `Verify` in `MetaObjects.Render` drift-checks every `template.*` against its

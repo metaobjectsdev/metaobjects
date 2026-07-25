@@ -2,7 +2,7 @@
 
 The Java port targets Spring-Boot consumers on Maven. It ships the full metamodel
 + loader + conformance + OMDB runtime persistence engine + the FR-004 render engine,
-plus the `metaobjects-maven-plugin` for build-time codegen (`meta:gen` / `meta:editor`).
+plus the `metaobjects-maven-plugin` for build-time codegen (`mvn metaobjects:generate` / `metaobjects:editor`).
 
 Schema migrations are owned by the TypeScript toolchain (`@metaobjectsdev/cli migrate`);
 the Java diff-and-converge migration engine and its `meta:migrate` / live-DB-drift
@@ -12,8 +12,15 @@ Prompt / template drift is still checked via the `metaobjects-render` `Verify` A
 
 ## Install
 
+Set `${metaobjects.version}` to the current Maven Central release (`7.11.3`) — both
+the dependency and plugin blocks below resolve it from one `<properties>` entry:
+
 ```xml
 <!-- pom.xml -->
+<properties>
+  <metaobjects.version>7.11.3</metaobjects.version>
+</properties>
+
 <dependencies>
   <dependency>
     <groupId>com.metaobjects</groupId>
@@ -55,7 +62,19 @@ For Spring integration: add `metaobjects-core-spring`.
             </loader>
             <generators>
               <generator>
-                <classname>com.metaobjects.generator.java.JavaPojoGenerator</classname>
+                <classname>com.metaobjects.generator.spring.SpringDtoGenerator</classname>
+                <args>
+                  <outputDir>${project.build.directory}/generated-sources/java</outputDir>
+                </args>
+              </generator>
+              <generator>
+                <classname>com.metaobjects.generator.spring.SpringControllerGenerator</classname>
+                <args>
+                  <outputDir>${project.build.directory}/generated-sources/java</outputDir>
+                </args>
+              </generator>
+              <generator>
+                <classname>com.metaobjects.generator.spring.SpringRepositoryGenerator</classname>
                 <args>
                   <outputDir>${project.build.directory}/generated-sources/java</outputDir>
                 </args>
@@ -147,37 +166,61 @@ auto-create path was removed per ADR-0015.
 OMDB reads the same metadata at runtime and drives CRUD; no per-entity ORM
 boilerplate.
 
+The Java port generates **no typed entity POJO** — the only entity-shaped Java
+output is the immutable `<Entity>Dto` record (from `codegen-spring`). OMDB drives
+CRUD against the loaded metadata plus generic `ValueObject` instances, and its API
+is connection-first (you pass an `ObjectConnection` to each call):
+
 ```java
 import com.metaobjects.loader.MetaDataLoader;
-import com.metaobjects.omdb.ObjectManagerDb;
-import com.metaobjects.object.ValueObject;
-import acme.blog.Author;
+import com.metaobjects.manager.ObjectConnection;
+import com.metaobjects.manager.QueryOptions;
+import com.metaobjects.manager.db.ObjectManagerDB;
+import com.metaobjects.manager.exp.Expression;
+import com.metaobjects.object.MetaObject;
+import com.metaobjects.object.value.ValueObject;
 
+import javax.sql.DataSource;
 import java.nio.file.Path;
-import java.util.List;
+import java.util.Collection;
 
 public class App {
     public static void main(String[] args) throws Exception {
         MetaDataLoader loader = MetaDataLoader.fromDirectory(
             "app", Path.of("src/main/metaobjects"));
 
-        ObjectManagerDb om = ObjectManagerDb.builder()
-            .loader(loader)
-            .dataSource(/* javax.sql.DataSource */)
-            .build();
+        DataSource ds = /* your javax.sql.DataSource */;
 
-        // CRUD
-        Author author = new Author();
-        author.setName("Ada");
-        om.persist(author);
+        ObjectManagerDB om = new ObjectManagerDB();
+        om.setDataSource(ds);
+        om.init();
 
-        List<Author> all = om.getObjectsBy(Author.class, new ValueObject());
-        Author fetched = om.getObjectById(Author.class, author.getId());
+        MetaObject author = loader.getMetaObjectByName("acme::blog::Author");
+
+        ObjectConnection oc = om.getConnection();
+        try {
+            // CREATE — a generic ValueObject typed by the Author MetaObject
+            ValueObject row = (ValueObject) author.newInstance();
+            row.setString("name", "Ada");
+            om.createObject(oc, row);
+            oc.commit();
+
+            // QUERY — all rows, or filtered via an Expression
+            Collection<?> all = om.getObjects(oc, author, new QueryOptions());
+            ValueObject match = (ValueObject) om.getObjects(
+                    oc, author, new QueryOptions(new Expression("name", "Ada")))
+                .iterator().next();
+
+            // LOAD by primary key — re-reads the row into the object
+            om.loadObject(oc, match);
+        } finally {
+            om.releaseConnection(oc);
+        }
     }
 }
 ```
 
-Spring wiring lives in `metaobjects-core-spring`; declare an `ObjectManagerDb`
+Spring wiring lives in `metaobjects-core-spring`; declare an `ObjectManagerDB`
 bean with the Spring `DataSource` and let Spring inject it into your services.
 
 ## FR-004 — render engine
@@ -190,20 +233,23 @@ import java.util.Map;
 
 Provider provider = new FilesystemProvider(Path.of("./prompts"));
 
-String out = Renderer.render(RenderRequest.builder()
-    .ref("lobby/welcome")
-    .payload(Map.of(
-        "displayName", "Ada",
-        "postCount", 12L,
-        "posts", List.of(Map.of("title", "Hello"))))
-    .provider(provider)
-    .format("xml")
-    .build());
+Map<String, Object> payload = Map.of(
+    "displayName", "Ada",
+    "postCount", 12L,
+    "posts", List.of(Map.of("title", "Hello")));
+
+// RenderRequest is a record (template, ref, payload, provider, format, verify, maxChars);
+// pass a null template for a provider-resolved ref, and null verify/maxChars.
+// render() is an instance method.
+String out = new Renderer().render(
+    new RenderRequest(null, "lobby/welcome", payload, provider, "xml", null, null));
 ```
 
-`Verify.verify(loader, provider, options)` drift-checks every `template.*` node
-against its `@payloadRef`. Wire it into a Maven test (e.g. a JUnit assertion in
-the `test` phase).
+`Verify.check(templateText, fields, options)` returns a `List<VerifyError>` (empty
+= no drift) — it cross-checks a template's variables against its declared payload
+field tree (`List<PayloadField>`), flagging any variable absent from the payload
+(`ERR_VAR_NOT_ON_PAYLOAD`), unresolved partials, and unused required slots. Wire it
+into a Maven test (e.g. a JUnit assertion in the `test` phase).
 
 ## Generators
 
@@ -248,7 +294,7 @@ configuration model that has not yet been specced.
 | Payload-VO codegen | Yes — `SpringPayloadGenerator` (in `metaobjects-codegen-spring`) emits a Java 21 `record` per template, mirrors the Kotlin shape |
 | Output parser codegen (FR-006) | Yes — `SpringOutputParserGenerator` (in `metaobjects-codegen-spring`) — see usage below |
 | Migrations | TS-only (`@metaobjectsdev/cli migrate`) — the Java migration engine and the OMDB runtime auto-create path were both removed (ADR-0015); apply the TS-produced DDL to the database |
-| Drift verify | `Renderer.verify` / `Verify.verify` (prompts). Live-DB schema-drift verification is part of the TS migration toolchain |
+| Drift verify | `Verify.check` / `Verify.checkOutputPrompt` (prompts). Live-DB schema-drift verification is part of the TS migration toolchain |
 | Runtime metadata | Full — OMDB ObjectManager |
 | REST controller codegen | Spring Web MVC — `metaobjects-codegen-spring` (FR-008 §2.1) |
 
@@ -287,9 +333,10 @@ try {
 }
 ```
 
-`Verify.verify(loader, provider, options)` walks `template.output` nodes the
-same way it walks `template.prompt`, catching payload-VO ↔ parser drift at
-build time. Cross-port design is at
+The same `Verify` API guards the output side: `Verify.checkOutputPrompt(fragment,
+requiredFieldNames)` checks the output-format prompt fragment names every required
+field, and `Verify.check(...)` (with output-tag slots supplied via its
+`VerifyOptions`) catches payload-VO ↔ parser drift at build time. Cross-port design is at
 [ADR-0010](../../spec/decisions/ADR-0010-template-output-parser-codegen.md);
 the feature reference is at
 [`features/templates-and-payloads.md`](../features/templates-and-payloads.md#output-parsing-fr-006).
