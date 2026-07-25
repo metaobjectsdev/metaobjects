@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { init, initCommand } from "../src/commands/init.js";
+import { init, initCommand, nextStepsBlock } from "../src/commands/init.js";
 import { saveConfig, ConfigSchema } from "@metaobjectsdev/sdk";
 
 let cwd: string;
@@ -11,6 +11,37 @@ beforeEach(() => {
 });
 afterEach(() => {
   rmSync(cwd, { recursive: true, force: true });
+});
+
+describe("init() — next-steps message (S1)", () => {
+  test("presents `meta gen` and `meta docs` as working steps, not as unshipped 'later sub-projects'", () => {
+    const block = nextStepsBlock();
+    // gen + docs work TODAY — they must be shown as actionable next steps.
+    expect(block).toContain("meta gen");
+    expect(block).toContain("meta docs");
+    // ...and must NOT be lumped under the "ship in later sub-projects" framing
+    // (only ingest/serve/install-hooks are actually unshipped — matches `meta --help`).
+    expect(block).not.toMatch(/later sub-projects[\s\S]*meta gen\b/);
+    expect(block).not.toMatch(/later sub-projects[\s\S]*meta docs\b/);
+  });
+});
+
+describe("init() — root .gitignore (S2/newcomer hygiene)", () => {
+  test("scaffolds a root .gitignore (ignoring node_modules) when absent", async () => {
+    const result = await init({ cwd });
+    expect(result.created).toContain(".gitignore");
+    const ignore = readFileSync(join(cwd, ".gitignore"), "utf8");
+    expect(ignore).toContain("node_modules");
+  });
+
+  test("does NOT clobber an existing root .gitignore", async () => {
+    writeFileSync(join(cwd, ".gitignore"), "my-custom-entry/\n", "utf8");
+    const result = await init({ cwd });
+    const ignore = readFileSync(join(cwd, ".gitignore"), "utf8");
+    expect(ignore).toContain("my-custom-entry/");
+    expect(result.created).not.toContain(".gitignore");
+    expect(result.preserved).toContain(".gitignore");
+  });
 });
 
 describe("init() — happy path", () => {

@@ -49,6 +49,22 @@ const METAOBJECTS_GITIGNORE_BODY = `.gen-state/
 !package.meta.json
 `;
 
+// A minimal root .gitignore for a fresh project — only written when none exists,
+// never clobbering the user's own. Keeps a `git add -A` right after `meta init`
+// from staging node_modules/, a local dev sqlite file, or build output.
+const ROOT_GITIGNORE_BODY = `# Dependencies
+node_modules/
+
+# Local dev database
+*.sqlite
+*.sqlite-journal
+*.db
+
+# Build output
+dist/
+*.tsbuildinfo
+`;
+
 function buildMetaobjectsConfigBody(dialect: "sqlite" | "postgres" | "d1" = "sqlite"): string {
   return `import { defineConfig } from "@metaobjectsdev/cli";
 // Owned codegen generators (ADR-0034 scaffold-and-own). \`meta init\` copied these
@@ -85,12 +101,15 @@ const NEXT_STEPS = `
 Initialized metaobjects/ + .metaobjects/ + metaobjects.config.ts
 Codegen generators copied to codegen/generators/ — they're YOURS to edit (ADR-0034 scaffold-and-own).
 
-Next steps (when later sub-projects ship):
-  meta ingest        # propose entities from your existing TS code
-  meta gen           # codegen TS targets from entities
-  meta docs          # neutral model docs (entity + template pages, incl. linked template source)
-  meta serve         # local viewer
-  meta install-hooks # register MCP server + Claude Code hooks
+Next steps:
+  1. Author entities under metaobjects/ (start from the scaffolded meta.common.json)
+  2. meta gen              # generate idiomatic TypeScript from your entities
+     meta gen --dry-run    #   ...preview without writing
+  3. meta docs             # neutral model + API docs
+  4. Create your tables: meta migrate --from-db --db file:dev.sqlite --dialect sqlite --slug init --apply
+
+Ship in later sub-projects: meta ingest (propose entities from existing code),
+meta serve (local viewer), meta install-hooks (MCP server + Claude Code hooks).
 `;
 
 export interface InitOptions {
@@ -322,7 +341,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
     );
     result.created.push(".metaobjects/AGENTS.md", ".metaobjects/CLAUDE.md", ".claude/skills/metaobjects-*", AGENT_CONTEXT_MANIFEST_PATH);
     for (const name of REFERENCE_GENERATOR_NAMES) result.created.push(`${OWNED_GENERATORS_DIR}/${name}.ts`);
-    result.created.push("metaobjects.config.ts");
+    result.created.push("metaobjects.config.ts", ".gitignore");
     return result;
   }
 
@@ -411,6 +430,16 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   if (!(await fileExists(forgeConfigPath))) {
     await writeFile(forgeConfigPath, buildMetaobjectsConfigBody(opts.d1 ? "d1" : "sqlite"), "utf8");
     result.created.push("metaobjects.config.ts");
+  }
+
+  // Scaffold a minimal root .gitignore ONLY when the project has none — never
+  // clobber a user's existing one (they may have their own rules).
+  const rootGitignorePath = join(opts.cwd, ".gitignore");
+  if (!(await fileExists(rootGitignorePath))) {
+    await writeFile(rootGitignorePath, ROOT_GITIGNORE_BODY, "utf8");
+    result.created.push(".gitignore");
+  } else {
+    result.preserved.push(".gitignore");
   }
 
   return result;

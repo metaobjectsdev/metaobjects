@@ -6,6 +6,12 @@ runtimes; Bun-first dev workflow.
 
 ## Install
 
+The README's quick-start — `npm i @metaobjectsdev/cli` — installs just the CLI,
+which is enough to run `meta init` and `meta gen`. For a **runnable app**, install
+the runtime packages too (the generated code imports `@metaobjectsdev/metadata`
+and `@metaobjectsdev/runtime-ts` directly, so declare them — don't rely on them
+being hoisted transitively, which breaks under pnpm's strict `node_modules`):
+
 ```bash
 npm install --save-dev @metaobjectsdev/cli @metaobjectsdev/codegen-ts
 npm install            @metaobjectsdev/metadata @metaobjectsdev/runtime-ts

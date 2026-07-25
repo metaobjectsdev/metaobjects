@@ -15,6 +15,12 @@ Requires **Python 3.11+**. Published to PyPI as **`metaobjects`**:
 pip install metaobjects        # or: uv add metaobjects
 ```
 
+> **On an older default interpreter?** Many systems (e.g. Ubuntu 22.04) still
+> ship `python3` = 3.10, where `pip install metaobjects` fails with a confusing
+> `ERROR: No matching distribution found for metaobjects` (the wheel is
+> `Requires-Python >=3.11`). Create the venv with an explicit 3.11+:
+> `python3.11 -m venv .venv && . .venv/bin/activate`, then `pip install metaobjects`.
+
 ```toml
 # pyproject.toml
 [project]
