@@ -1,23 +1,27 @@
 # MetaObjects — Java
 
-The Java port of the cross-language MetaObjects metadata standard. Published to Maven Central at `7.1.0` under `com.metaobjects:*` across 13 modules. Apache 2.0.
+The Java port of the cross-language MetaObjects metadata standard. Published to Maven Central at `7.11.3` under `com.metaobjects:*` across 14 modules. Apache 2.0.
 
 For the standard itself (metamodel, conformance corpora, ADRs) see the [repository-level docs](../../spec/) and the parent [README](../../README.md). This document is scoped to the Java implementation.
 
-## What ships in 7.1.0
+## What ships
 
 All four MetaObjects pillars ship across all five language ports — TypeScript, Java, Kotlin, C#, Python. Java's contributions:
 
 - **Codegen** — Spring REST + DTO + JPA repository emit (`codegen-spring`), Mustache template engine (`codegen-mustache`), PlantUML diagrams (`codegen-plantuml`), and a Kotlin emit pipeline on KotlinPoet (`codegen-kotlin`). Output is hand-edit-preserving via three-way merge.
-- **Runtime metadata** — OMDB persistence layer over modernized JDBC with Spring-`@Transactional` integration. FR-003 fully shipped: binding registry, typed jsonb codec, source/origin metamodel, atomic mapping cache + JDBC codec registry + `inTransaction` template (Plan 4). Schema migrations are owned by the TypeScript toolchain (`@metaobjectsdev/cli migrate`); the `meta:migrate` Maven goal was removed. Per the schema-authority consolidation the dev/test runtime auto-create path and `MetaClassDBValidatorService` were also removed — OMDB is now pure data-access (CRUD/query/codec/transactions only).
-- **Drift detection** — Template-drift: `Renderer.verify` checks `{{...}}` references against the payload VO at build time. The live-DB-schema `meta:verify` Maven goal was removed.
+- **Runtime metadata** — OMDB persistence layer over modernized JDBC with Spring-`@Transactional` integration. FR-003 fully shipped: binding registry, typed jsonb codec, source/origin metamodel, atomic mapping cache + JDBC codec registry + `inTransaction` template (Plan 4). Schema migrations are owned by the TypeScript toolchain (`@metaobjectsdev/cli migrate`); the `metaobjects:migrate` Maven goal was removed. Per the schema-authority consolidation the dev/test runtime auto-create path and `MetaClassDBValidatorService` were also removed — OMDB is now pure data-access (CRUD/query/codec/transactions only).
+- **Drift detection** — Template-drift: `Renderer.verify` checks `{{...}}` references against the payload VO at build time. The live-DB-schema mode of `metaobjects:verify` was removed; the goal now covers codegen drift (`mode=codegen`, the default) and template/prompt drift (`mode=templates`).
 - **Prompt construction** — `metaobjects-render` (Mustache + payload-VO + verify), FR-006 `template.output` parser-on-receipt codegen, render output byte-identical with the other four ports against the shared render-conformance corpus.
 
-Fully green across all five cross-port conformance corpora: metamodel (85), yaml (6), persistence (12 against Testcontainers Postgres), render (4), verify (31).
+Green across the shared cross-port conformance corpora it runs — metamodel, yaml,
+render, verify, persistence (query scenarios, against Testcontainers Postgres),
+registry manifest, api-contract (reference *and* generated lanes). Per-corpus sizes
+and the corpus × port matrix live in [`docs/CONFORMANCE.md`](../../docs/CONFORMANCE.md),
+so they are maintained in one place rather than restated per port.
 
 ## Modules
 
-All published to Maven Central under `com.metaobjects:*` at `7.1.0`:
+All published to Maven Central under `com.metaobjects:*` at `7.11.3`:
 
 | Module | Purpose |
 |---|---|
@@ -33,7 +37,8 @@ All published to Maven Central under `com.metaobjects:*` at `7.1.0`:
 | `metaobjects-omdb` | Relational implementation of ObjectManager over JDBC + Spring-tx |
 | `metaobjects-omdb-ktx` | Kotlin facade over OMDB |
 | `metaobjects-core-spring` | Spring auto-configuration + `MetaDataService` |
-| `metaobjects-maven-plugin` | `mvn meta:gen` / `meta:editor` |
+| `metaobjects-spring-boot-starter` | Spring Boot starter — OMDB autoconfiguration |
+| `metaobjects-maven-plugin` | `mvn metaobjects:generate` / `:verify` (codegen + template drift) / `:editor` / `:docs` |
 
 The `archetype` and `examples` directories were removed in 7.1.0 (they had been out of the reactor since 7.0.0 and were not deployed to Central).
 
@@ -43,7 +48,7 @@ The `archetype` and `examples` directories were removed in 7.1.0 (they had been 
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-metadata</artifactId>
-    <version>7.1.0</version>
+    <version>7.11.3</version>
 </dependency>
 ```
 
@@ -53,25 +58,25 @@ Spring REST + JPA stack:
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-codegen-spring</artifactId>
-    <version>7.1.0</version>
+    <version>7.11.3</version>
 </dependency>
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-core-spring</artifactId>
-    <version>7.1.0</version>
+    <version>7.11.3</version>
 </dependency>
 ```
 
-Maven plugin for `meta:gen` / `meta:editor` (schema migrations and live-DB schema-drift verification are managed by the TypeScript toolchain — `@metaobjectsdev/cli migrate`; prompt/template drift is checked via the `metaobjects-render` `Verify` API):
+Maven plugin for `metaobjects:generate` / `metaobjects:verify` / `metaobjects:editor` (schema migrations and live-DB schema-drift verification are managed by the TypeScript toolchain — `@metaobjectsdev/cli migrate`; prompt/template drift is checked via the `metaobjects-render` `Verify` API):
 
 ```xml
 <plugin>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-maven-plugin</artifactId>
-    <version>7.1.0</version>
+    <version>7.11.3</version>
     <executions>
         <execution>
-            <goals><goal>gen</goal></goals>
+            <goals><goal>generate</goal></goals>
         </execution>
     </executions>
 </plugin>
@@ -83,12 +88,12 @@ Kotlin entry point — adds the Kotlin facade and the KotlinPoet codegen pipelin
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-metadata-ktx</artifactId>
-    <version>7.1.0</version>
+    <version>7.11.3</version>
 </dependency>
 <dependency>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects-codegen-kotlin</artifactId>
-    <version>7.1.0</version>
+    <version>7.11.3</version>
 </dependency>
 ```
 
@@ -114,9 +119,17 @@ Java's `MetaDataTypeProvider` (`ServiceLoader`-discovered) is the implementation
 cd server/java
 mvn clean install              # build all reactor modules
 mvn test                       # run unit tests
-mvn -pl integration-tests verify
-mvn -pl integration-tests-kotlin verify  # persistence-conformance against Testcontainers Postgres
+
+# The two integration-test modules sit OUTSIDE the reactor (they need Docker), so
+# they are built by path, against locally-installed SNAPSHOT modules:
+mvn -q -DskipTests install -pl metadata,om,omdb,codegen-spring -am
+mvn -f integration-tests/pom.xml test          # OMDB persistence + api-contract
+
+mvn -q -DskipTests install -pl metadata,codegen-kotlin -am
+mvn -f integration-tests-kotlin/pom.xml test   # Exposed persistence-conformance, Testcontainers Postgres
 ```
+
+`scripts/integration-test.sh java` / `kotlin` runs exactly these from the repo root.
 
 Releases to Maven Central: see [docs/RELEASING-java.md](../../docs/RELEASING-java.md).
 

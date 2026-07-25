@@ -1,19 +1,22 @@
 # MetaObjects — C#
 
-C# implementation of the MetaObjects metadata Loader. Targets .NET 8 (C# 12).
+The C# port of the cross-language MetaObjects metadata standard. Targets .NET 8 (C# 12).
 
 ## What it covers
 
-- **Loader** — multi-file JSON / YAML loader with overlay merge and cross-file `extends:` resolution.
+- **Loader** (`MetaObjects`) — multi-file JSON / YAML loader with overlay merge and cross-file `extends:` resolution.
 - **Canonical serializer** — byte-identical output to the TypeScript reference (the cross-language wire format).
 - **YAML authoring front-end** — sigil-free attrs + `[]`-array suffix + fused-key default subtype + the D2 type-coercion guard (ADR-0006), via [YamlDotNet](https://github.com/aaubry/YamlDotNet). The cross-language interchange remains canonical JSON; YAML lowers to it.
-- **Conformance runners** — auto-discover `fixtures/conformance/*` AND `fixtures/yaml-conformance/*`, both shared with the other ports (TS/Python/Java). The conformance corpora are the **oracles** — when a fixture goes red the port is wrong, never the fixture.
+- **Codegen** (`MetaObjects.Codegen`) — idiomatic .NET emit: EF Core entities, an `AppDbContext`, ASP.NET minimal-API CRUD routes, filter allowlists, payload records, output parsers/prompts, TPH per-subtype surfaces and M:N navigation.
+- **Render + verify** (`MetaObjects.Render`) — Mustache render, payload value-object codegen and the `verify` drift gates, byte-identical with the other four ports against the shared render corpus.
+- **CLI** (`MetaObjects.Cli`) — packaged as a .NET tool invoked **`dotnet meta`**, with `gen` and `verify` verbs.
+- **Conformance runners** — auto-discover the shared corpora under `fixtures/` (metamodel, yaml, render, verify, validation, api-contract, persistence, registry manifest). The corpora are the **oracles** — when a fixture goes red the port is wrong, never the fixture.
 
 ## What it does NOT cover (out of scope)
 
-- Codegen (each language emits its own idiomatic per-language code; byte equivalence is not a goal at the codegen layer).
-- Runtime helpers (ObjectManager, filter parsing, CRUD endpoints) — per-language runtime concerns.
-- The `dbProvider` provider — the conformance corpus uses only `metaobjects-core-types`.
+- **Schema migrations.** Per [ADR-0015](../../spec/decisions/ADR-0015-single-shared-migrate-engine.md) the migration engine is owned by the TypeScript toolchain; the C# migrate engine and its `migrate` / `--from-db` CLI surface were removed. Use the Node `meta` CLI (`meta migrate`, `meta verify --db`) for schema. This is *only* about schema — C# codegen and runtime data access are first-class here.
+- **Byte-equal generated code.** Each language emits its own idiomatic output; byte equivalence is a goal at the render/canonical-serializer layer, not the codegen layer. Cross-port codegen parity is enforced behaviourally, through the api-contract corpus.
+- The `dbProvider` provider — the metamodel conformance corpus uses only `metaobjects-core-types`.
 
 ## AI assistant context
 
@@ -30,7 +33,7 @@ npx meta agent-docs --server csharp
 ## Running
 
 ```bash
-cd csharp
+cd server/csharp
 dotnet test
 ```
 
@@ -49,3 +52,8 @@ The test suite includes per-fixture `Lint` and `Conformance` theories over the s
   - `ConformanceAdapter.cs`, `FixtureDiscovery.cs`, `OperationScript.cs`, `FixtureLint.cs`, `Navigator.cs`, `CapabilityBinding.cs`, `Result.cs`, `ExpectedFailures.cs`, `conformance-expected-failures.json`, `ConformanceTests.cs`
   - `YamlConformanceTests.cs`, `YamlDesugarTests.cs`, `yaml-conformance-expected-failures.json` — YAML conformance + unit tests
   - Per-pipeline-stage unit tests (`ErrorsTests`, `RegistryTests`, `TreeTests`, `ParserTests`, `SerializerTests`, `LoaderTests`, `SuperResolveTests`, `ValidationTests`, …)
+- `MetaObjects.Codegen/` — the .NET emit pipeline (`Generators/` holds entity, db-context, routes, payload, filter-allowlist, output-parser/prompt, extractor, template) + `CodegenRunner`, `GeneratorRegistry`, `CodegenDrift`
+- `MetaObjects.Render/` — Mustache render, payload value objects, `verify`
+- `MetaObjects.Cli/` — the `dotnet meta` tool (`gen`, `verify`)
+- `MetaObjects.Codegen.Tests/`, `MetaObjects.Render.Tests/`, `MetaObjects.Cli.Tests/` — per-project unit + golden tests
+- `MetaObjects.IntegrationTests/` — the generated ASP.NET stack booted over HTTP against Testcontainers Postgres (api-contract + persistence corpora)
