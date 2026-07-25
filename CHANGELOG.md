@@ -5,7 +5,13 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
-## [Unreleased]
+## [0.20.3] — 2026-07-25
+
+**Coordinated release** — npm `0.20.3` · PyPI `0.19.6` · Maven Central `7.11.4` · NuGet
+`0.19.4`. The `meta docs` site feature is **npm-only** (TS `docs-site` + `cli`); **#238
+(ADR-0046) is cross-port**, so PyPI / Maven / NuGet each release the loader change too. All
+changes are additive (PATCH): existing `meta gen` output is byte-identical and no registry
+vocabulary is added.
 
 ### Added — `meta docs` surfaces prompt TEXT + a prompt data-flow view (site)
 
