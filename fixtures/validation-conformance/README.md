@@ -81,8 +81,13 @@ FR-036 pin cases (the two semantic pins + the length-precedence pin):
 
 All five port runners are wired into `.github/workflows/conformance.yml` (the
 non-Docker conformance job) — TS/C#/Java/Python under the `conformance` matrix,
-Kotlin under `conformance-kotlin` — so every PR and push asserts byte-identical
-boolean verdicts across all five generated validation artifacts.
+Kotlin under `conformance-kotlin` — asserting byte-identical boolean verdicts
+across all five generated validation artifacts.
+
+That workflow runs on release tags and on `workflow_dispatch`, not on every PR
+(pull requests get the leak scan only, for hosted-minutes cost). Push-to-`main`
+coverage comes from the self-hosted `local-ci.yml`, and `scripts/ci-local.sh`
+reproduces the gate locally. See [`docs/CONFORMANCE.md`](../../docs/CONFORMANCE.md).
 
 ## Notes
 

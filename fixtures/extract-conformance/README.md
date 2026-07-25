@@ -5,7 +5,10 @@ Each `<case>/` has:
 - `input.txt`    — the raw (deliberately dirty) model response
 - `expected.json` — { empty, states{path:FieldExtraction}, data{field:canonicalValue} }
 
-Every port's `extract` runs this corpus. The conformance assertion is on `empty` +
+Every port's `extract` runs this corpus — with the JVM nuance that Kotlin does not
+ship a separate extract engine: it drives the shared Java one (`metadata-ktx`), so a
+Kotlin lane here is engine reuse rather than an independent implementation. The
+conformance assertion is on `empty` +
 `states` (per-field classification) + `data` (canonical normalized values). Raw numeric
 coercion carries a documented tolerance: ints exact, doubles within 1e-9. Classification
 is byte-identical across ports; raw coercion is not required to be.

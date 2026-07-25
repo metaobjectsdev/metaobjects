@@ -203,8 +203,16 @@ against a Postgres testcontainer over HTTP:
 
 Both lanes live in `server/typescript/packages/integration-tests/test/` and are
 run by the same `cd server/typescript/packages/integration-tests && bun test`
-invocation, so the `.github/workflows/integration-tests.yml` TS job gates both
-on every PR and push-to-main — no separate opt-in.
+invocation, so the `.github/workflows/integration-tests.yml` TS job gates both —
+no separate opt-in.
+
+**When this actually runs.** Pull requests get the cheap public-repo leak scan
+only; the heavy corpora are too expensive for per-PR hosted minutes. Coverage
+comes from three places instead: `local-ci.yml` on every push to `main` (a
+self-hosted runner, affected ports only), the hosted `integration-tests.yml` on
+release tags and on `workflow_dispatch`, and `scripts/ci-local.sh` before you open
+a PR. See [`docs/CONFORMANCE.md`](../../docs/CONFORMANCE.md) for the corpus x port
+matrix and the per-port runner commands.
 
 ### Fan-out — COMPLETE (all 5 ports)
 
