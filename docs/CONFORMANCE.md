@@ -1,9 +1,17 @@
 # Conformance coverage
 
-The MetaObjects standard has 6 cross-language conformance corpora plus a deferred
-7th (`codegen-conformance/`, tracked as FR-007). Every port runs every applicable
-corpus and asserts the same expected behavior against the same fixtures. **This
-page is the inverse index**: fixture → feature doc + per-port pass status.
+The MetaObjects standard ships **19 shared conformance corpora** under
+[`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
+it* and asserts the same expected behaviour against the same fixtures. **This page
+is the inverse index**: fixture → feature doc + per-port pass status, and it is the
+single place per-corpus counts are maintained (the port READMEs deliberately point
+here instead of restating them).
+
+Not every corpus is a five-port corpus, and that asymmetry is deliberate rather
+than a gap — schema migration is TypeScript-owned ([ADR-0015](../spec/decisions/ADR-0015-single-shared-migrate-engine.md)),
+Kotlin runs on the JVM and inherits the Java loader/render/extract engines instead
+of re-implementing them, and a few corpora gate tooling that only one port ships.
+The dark cells below say which is which.
 
 If you are coming from a feature doc's `## Verified by` section, you are in the
 right place. If you are wondering whether a particular fixture has a
@@ -12,29 +20,45 @@ human-readable explanation somewhere, look it up in the
 
 ## Per-corpus totals
 
+Counts are fixture directories (or scenario files, where a corpus is file-shaped);
+regenerate with `ls -d fixtures/<corpus>/*/ | wc -l`.
+
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 219 | 219 / 219 | 219 / 219 | inherits via `metadata-ktx` | 219 / 219 | 219 / 219 |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 249 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 15 | 15 / 15 | 14 / 15 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 14 / 15 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 15 / 15 |
-| [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 31 | 31 / 31 | 31 / 31 | inherits via Java | 31 / 31 | 31 / 31 |
-| [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 15 | 15 / 15 | 15 / 15 | inherits via Java | 15 / 15 | 15 / 15 |
-| [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 29 (24 query + 5 migration) | 29 / 29 | 24 / 24 query (migrations TS-only) | 24 / 24 query (via Exposed) | 24 / 24 query | 24 / 24 query |
-| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 21 | 21 / 21 (Fastify reference runner) | 21 / 21 (embedded HTTP + JDBC reference runner) | 21 / 21 (embedded HTTP + Exposed reference runner) | 21 / 21 (HttpListener + Npgsql reference runner) | 21 / 21 (FastAPI + pg8000 reference runner) |
-| `fixtures/codegen-conformance/` (FR-007 — DROPPED in favor of `persistence-conformance` participation) | 0 | n/a | n/a | n/a | n/a | n/a |
+| [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 31 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
+| [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
+| [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 15 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
+| [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 33 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
+| [`fixtures/output-prompt-conformance/`](../fixtures/output-prompt-conformance/) | 14 | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 30 (24 query + 6 migration) | all 30 | 24 query (migrations TS-only, ADR-0015) | 24 query (via Exposed) | 24 query | 24 query |
+| [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 41 (26 core + 8 tph + 3 m2m + 2 jsonb + 2 write-through) | ✓ (Fastify reference + generated lane) | ✓ (embedded HTTP + JDBC) | ✓ (embedded HTTP + Exposed) | ✓ (HttpListener + Npgsql) | ✓ (FastAPI + pg8000) |
+| [`fixtures/validation-conformance/`](../fixtures/validation-conformance/) | 16 cases | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`fixtures/registry-conformance/`](../fixtures/registry-conformance/) | 1 canonical manifest | ✓ (reference emitter) | ✓ | ✓ | ✓ | ✓ |
+| [`fixtures/object-model-conformance/`](../fixtures/object-model-conformance/) | 1 shared metadata fixture (per-port scenarios) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`fixtures/codegen-conformance/`](../fixtures/codegen-conformance/) | 4 | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`fixtures/template-codegen-conformance/`](../fixtures/template-codegen-conformance/) | 3 | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`fixtures/template-output-render-conformance/`](../fixtures/template-output-render-conformance/) | 4 | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`fixtures/generator-registry-conformance/`](../fixtures/generator-registry-conformance/) | 1 canonical manifest | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`fixtures/provider-composition-conformance/`](../fixtures/provider-composition-conformance/) | 5 cases | ✓ | ✓ | — (JVM registry via Java) | ✓ | ✓ |
+| [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 4 | ✓ (the emitter is TS-owned) | — | — | — | — |
+| [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
 
-The two ledgered YAML fixtures are documented library-vs-pipeline divergences (see the
-`_comment` block in each port's `yaml-conformance-expected-failures.json` for the
-full reconciliation note). They are tracked as known-gaps rather than silently
-patched — the runner treats listed fixtures as passing, but a future port-level
-reconciliation pass would close them.
+A ✓ means the port runs the corpus green; an explicit `n / m` is used where a port
+carries a ledgered divergence. The two ledgered YAML fixtures are documented
+library-vs-pipeline divergences (see the `_comment` block in each port's
+`yaml-conformance-expected-failures.json` for the full reconciliation note). They
+are tracked as known-gaps rather than silently patched — the runner treats listed
+fixtures as passing, but a future port-level reconciliation pass would close them.
 
 Per-port runners + commands:
 
 | Port | Metamodel + YAML + render + verify | Persistence | API contract |
 |---|---|---|---|
 | TypeScript | `cd server/typescript && bun test` (per-package, `~3s`) | `scripts/integration-test.sh ts` (needs Docker) | `cd server/typescript/packages/integration-tests && bun test test/api-contract.test.ts` (needs Docker) |
-| Java | `mvn -pl metaobjects-conformance test` (and per-tier `-pl render`, etc.) | `scripts/integration-test.sh java` (needs Docker) | `mvn -f server/java/integration-tests/pom.xml test -Dtest=ApiContractConformanceTest` (needs Docker) |
-| Kotlin | `mvn -pl codegen-kotlin test` (snapshot suite) | `mvn -pl integration-tests-kotlin test` (needs Docker) | `mvn -f server/java/integration-tests-kotlin/pom.xml test -Dtest=ApiContractConformanceTest` (needs Docker) |
+| Java | `cd server/java && mvn -pl metadata test` (and per-tier `-pl render`, etc.) | `scripts/integration-test.sh java` (needs Docker) | `mvn -f server/java/integration-tests/pom.xml test -Dtest=ApiContractConformanceTest` (needs Docker) |
+| Kotlin | `cd server/java && mvn -pl codegen-kotlin test` (snapshot suite) | `mvn -f server/java/integration-tests-kotlin/pom.xml test` (needs Docker) | `mvn -f server/java/integration-tests-kotlin/pom.xml test -Dtest=ApiContractConformanceTest` (needs Docker) |
 | C# | `dotnet test` (per project) | `scripts/integration-test.sh csharp` (needs Docker) | `dotnet test server/csharp/MetaObjects.IntegrationTests/MetaObjects.IntegrationTests.csproj --filter "FullyQualifiedName~ApiContractConformanceTest"` (needs Docker) |
 | Python | `pytest` (per package) | `scripts/integration-test.sh python` (needs Docker) | `cd server/python && uv run --extra integration pytest tests/integration/test_api_contract.py` (needs Docker) |
 
@@ -45,7 +69,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (219)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (249)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -91,12 +115,12 @@ All 31 fixtures → [features/migrations-and-drift.md](features/migrations-and-d
 
 ### `fixtures/persistence-conformance/` (29 — 24 query + 5 migration)
 
-- `migrations/*` (3) → [features/migrations-and-drift.md](features/migrations-and-drift.md) (schema migration section)
-- `queries/*` (9) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
+- `migrations/*` (6) → [features/migrations-and-drift.md](features/migrations-and-drift.md) (schema migration section)
+- `queries/*` (24) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
 
-### `fixtures/api-contract-conformance/` (21)
+### `fixtures/api-contract-conformance/` (41)
 
-All 21 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
+All 41 scenarios → [features/api-contract.md](features/api-contract.md) (cross-port
 REST API URL grammar + JSON wire format). Verifies every backend's emitted CRUD
 routes answer identically over HTTP — list / get / create / patch+put / delete,
 plus pagination (`limit`/`offset`), sort (`sort=field:dir`), the `withCount=1`
@@ -106,15 +130,20 @@ status codes.
 The corpus also covers the 9 cross-port filter operators (`eq`, `ne`, `gt`,
 `gte`, `lt`, `lte`, `in`, `like`, `isNull`) plus the implicit-AND combinator
 and 2 error shapes (`invalid_filter_field` / `invalid_filter_op`) under the
-URL grammar `?filter[<field>][<op>]=<value>` (FR-009) — 10 filter scenarios
-on top of the 10 base CRUD scenarios. All 5 ports — TS, Java, Kotlin, C#,
-Python — satisfy all 20 scenarios today.
+URL grammar `?filter[<field>][<op>]=<value>` (FR-009). On top of the 26 core
+scenarios the corpus carries four sub-corpora — `tph/` (8, single-table
+inheritance), `m2m/` (3), `jsonb/` (2, typed value-object columns) and
+`write-through/` (2, table-write + view-read entities). All 5 ports — TS, Java,
+Kotlin, C#, Python — run it in BOTH lanes: a hand-rolled reference server and
+the port's own GENERATED API artifact booted over HTTP.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-All 330 fixtures across the 6 active corpora (metamodel 219 + yaml 15 + verify 31
-+ render 15 + persistence 29 + api-contract 21) map to a feature doc. None are
-orphaned today.
+The fixtures in the six corpora mapped above (metamodel 249 + yaml 15 + verify 31
++ render 15 + persistence 30 + api-contract 41) each map to a feature doc. None
+are orphaned today. The remaining corpora in the totals table gate tooling
+contracts (registry manifests, provider composition, agent context, docs emit)
+rather than user-facing metamodel behaviour, so they have no feature-doc row.
 
 If you add a new fixture and don't see a clear home for it, either:
 
