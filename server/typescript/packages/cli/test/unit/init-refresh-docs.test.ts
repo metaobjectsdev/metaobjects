@@ -125,7 +125,7 @@ describe("metaobjects.config.ts wiring still scaffolded", () => {
     expect(configTs).toContain("defineConfig");
     // ADR-0034 — the scaffolded config imports the OWNED local generators, never the
     // deprecated package `/generators` export.
-    expect(configTs).toContain('from "./codegen/generators/entity"');
+    expect(configTs).toContain('from "./codegen/generators/entity.js"');
     expect(configTs).not.toContain("@metaobjectsdev/codegen-ts/generators");
   });
 });

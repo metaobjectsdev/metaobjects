@@ -8,7 +8,7 @@ import { formatMigrateResult, formatMigrateResultToon, type BlockedEntry, type A
 import { formatMigrateResultJson } from "../lib/output-json.js";
 import type { OutputFormat } from "../lib/format.js";
 import { toonEncode } from "../lib/format.js";
-import { buildKyselyFromUrl } from "../lib/kysely.js";
+import { buildKyselyFromUrl, redactUrl } from "../lib/kysely.js";
 import { log } from "../lib/log.js";
 import { loadMemory } from "@metaobjectsdev/sdk";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
@@ -54,8 +54,10 @@ USAGE:
   meta migrate [baseline] [flags]
 
 SUBCOMMANDS:
-  baseline             Seed the committed reference snapshot (no migration emitted).
-                       Required before the first offline generate.
+  baseline             Snapshot an EXISTING database's schema as the reference point
+                       (use with --from-db). NOTE: for a brand-new/empty database use
+                       the greenfield example below, NOT baseline — an offline baseline
+                       records your metadata as already-applied and emits no CREATE TABLE.
 
 MIGRATE FLAGS:
   --db <url>           DB connection URL (required for live-introspect / --apply / --rollback)
@@ -80,10 +82,13 @@ MIGRATE FLAGS:
   --help, -h           Print this help
 
 EXAMPLES:
-  meta migrate baseline --dialect sqlite
-  meta migrate --dialect sqlite --slug add-users
-  meta migrate --db file:local.db --slug add-orders
+  # New project — create tables in a fresh database (introspect → diff → CREATE TABLE → apply):
+  meta migrate --from-db --db file:dev.sqlite --dialect sqlite --slug init --apply
+  # Later — add a schema change and apply it:
+  meta migrate --db file:dev.sqlite --dialect sqlite --slug add-users --apply
   meta migrate --db postgresql://localhost/mydb --slug add-index --apply
+  # Adopt an existing database — snapshot its current schema first:
+  meta migrate baseline --from-db --db postgresql://localhost/mydb
 `;
 
 /** Emit a structured error on stdout (not stderr) in the active format, per axi. */
@@ -110,6 +115,47 @@ class AlreadyEmittedError extends Error {
 
 function mapOnAmbiguous(v: "abort" | "rename" | "drop-add"): AmbiguousResolution {
   return v === "drop-add" ? "drop+add" : v;
+}
+
+/**
+ * The command that actually creates tables in a fresh/empty database. This is the
+ * correct first step for a brand-new project — it introspects the (empty) DB, diffs
+ * metadata against it to produce every CREATE TABLE, and applies them. Offline
+ * `baseline` is NOT this: it records the desired schema as already-applied and emits
+ * no DDL (launch-blocker B1).
+ */
+function greenfieldCreateCmd(dialect: string | undefined): string {
+  const d = dialect ?? "sqlite";
+  return `meta migrate --from-db --db <url> --dialect ${d} --slug init --apply`;
+}
+
+/** The command to adopt a database that already exists (snapshot its live schema). */
+function adoptExistingDbCmd(): string {
+  return "meta migrate baseline --from-db --db <url>";
+}
+
+/** Shared `emitStructuredError` detail — points at the greenfield-create and
+ *  adopt-existing commands. Used by the empty-DB refusal and the no-snapshot hint. */
+function nextStepsDetail(dialect: string | undefined): string {
+  return `run \`${greenfieldCreateCmd(dialect)}\` to create tables, or \`${adoptExistingDbCmd()}\` to adopt an existing database`;
+}
+
+/** Table count of the target DB, or undefined when it can't be reached/introspected
+ *  (any failure ⇒ unknown ⇒ never block; the caller warns instead of refusing). */
+async function countLiveTables(
+  url: string,
+  dialect: ResolvedMigrateConfig["dialect"],
+): Promise<number | undefined> {
+  try {
+    const kysely = await buildKyselyFromUrl(url, dialect);
+    try {
+      return (await introspect(kysely.db, kysely.dialect)).tables.length;
+    } finally {
+      await kysely.close();
+    }
+  } catch {
+    return undefined;
+  }
 }
 
 function summarizeChanges(changes: Change[]): Record<string, number> {
@@ -486,7 +532,7 @@ export async function migrateCommand(
 export async function runBaseline(
   config: ResolvedMigrateConfig,
   metaRoot: string,
-  _fmt: OutputFormat = "text",
+  fmt: OutputFormat = "text",
 ): Promise<number> {
   if (config.dialect === undefined) {
     log.error(`migrate baseline: --dialect required (or set migrate.dialect in .metaobjects/config.json)`);
@@ -514,6 +560,33 @@ export async function runBaseline(
       await kysely.close();
     }
   } else {
+    // Greenfield-trap guard (launch-blocker B1). An offline baseline records the
+    // metadata's DESIRED schema as the already-applied baseline; on an empty/new
+    // database that silently suppresses every CREATE TABLE forever. When we can see
+    // the target --db and PROVE it has no tables, refuse and point at the working
+    // greenfield path. In every OTHER case — no --db, a non-empty --db, or a --db we
+    // couldn't reach — we still write the snapshot but WARN: an offline baseline is
+    // only correct when the database already matches the metadata, and emits no DDL.
+    const liveTableCount = config.databaseUrl !== undefined
+      ? await countLiveTables(config.databaseUrl, config.dialect)
+      : undefined;
+    if (liveTableCount === 0) {
+      // `liveTableCount === 0` ⇒ databaseUrl was defined (countLiveTables only
+      // returns a number when it introspected a real connection).
+      log.error(
+        `migrate baseline: the database at ${redactUrl(config.databaseUrl!)} has no tables — ` +
+        `baselining now would record your metadata as already-applied and no CREATE TABLE ` +
+        `would ever be emitted. For a new/empty database run \`${greenfieldCreateCmd(config.dialect)}\` ` +
+        `to create your tables (or \`${adoptExistingDbCmd()}\` to adopt an existing database).`,
+      );
+      emitStructuredError("migrate baseline: target database is empty", nextStepsDetail(config.dialect), fmt);
+      return 2;
+    }
+    log.warn(
+      `migrate baseline (offline): recording your metadata's schema as the already-applied ` +
+      `baseline — this emits NO CREATE TABLE. Use it only if your database already matches ` +
+      `your metadata; for a new/empty database run \`${greenfieldCreateCmd(config.dialect)}\` instead.`,
+    );
     let metadata;
     // Load metaobjects.config.ts ONCE, up front, for BOTH the consumer providers
     // and the columnNamingStrategy — mirroring the DB path (and `meta gen`) so
@@ -603,13 +676,17 @@ export async function runOfflineGenerate(
     return 2;
   }
   if (snapshot === null) {
-    log.error(`migrate: no schema snapshot at ${path}; run \`meta migrate baseline --dialect ${config.dialect}\` first`);
-    // Structured next-step on stdout so callers / agents can parse it, in the active format.
-    emitStructuredError(
-      "no schema snapshot",
-      `first run \`meta migrate baseline --dialect ${config.dialect}\``,
-      fmt,
+    // For a brand-new project the working first step is the greenfield --from-db …
+    // --apply path (introspect the empty DB, diff, CREATE TABLE, apply), NOT the
+    // offline `baseline` subcommand — offline baseline records the desired schema as
+    // already-applied and would suppress every CREATE TABLE (launch-blocker B1).
+    log.error(
+      `migrate: no schema snapshot at ${path}. For a new project run ` +
+      `\`${greenfieldCreateCmd(config.dialect)}\` to create your tables, or ` +
+      `\`${adoptExistingDbCmd()}\` to adopt an existing database.`,
     );
+    // Structured next-step on stdout so callers / agents can parse it, in the active format.
+    emitStructuredError("no schema snapshot", nextStepsDetail(config.dialect), fmt);
     return 2;
   }
 

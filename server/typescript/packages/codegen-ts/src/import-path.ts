@@ -5,7 +5,7 @@
 
 import { relative as posixRelative } from "node:path/posix";
 import { PACKAGE_SEPARATOR } from "@metaobjectsdev/metadata";
-import { withExt, type ExtStyle } from "./render-context.js";
+import { withExt, withExtIfRelative, type ExtStyle } from "./render-context.js";
 
 export type OutputLayout = "flat" | "package";
 
@@ -89,23 +89,29 @@ export function barrelEntrySpecifier(
 }
 
 /** A `dbImport` (or any module specifier) adjusted for a file at the given
- *  package depth. A non-relative specifier (alias / package) is depth-invariant
- *  and returned unchanged; a relative one gets extra "../" per package segment.
- *  Caller contract: a relative moduleSpec must be relative to outDir root (as
- *  dbImport is). */
+ *  package depth AND the extension style. A non-relative specifier (alias /
+ *  package) is depth- and extension-invariant and returned unchanged; a relative
+ *  one gets extra "../" per package segment and, under extStyle "js", a `.js`
+ *  extension (so `../db` → `../db.js`, required by nodenext). Caller contract: a
+ *  relative moduleSpec must be relative to outDir root (as dbImport is). */
 export function relativeModuleSpecifier(
   layout: OutputLayout,
   pkg: string | undefined,
   moduleSpec: string,
+  extStyle: ExtStyle,
 ): string {
-  if (layout === "flat") return moduleSpec;
   const isRelative = moduleSpec.startsWith("./") || moduleSpec.startsWith("../");
   if (!isRelative) return moduleSpec;
-  const dir = packageToPath(pkg);
-  const depth = dir === "" ? 0 : dir.split("/").length;
-  if (depth === 0) return moduleSpec;
-  const extra = "../".repeat(depth);
-  return moduleSpec.startsWith("./") ? extra + moduleSpec.slice(2) : extra + moduleSpec;
+  let spec = moduleSpec;
+  if (layout !== "flat") {
+    const dir = packageToPath(pkg);
+    const depth = dir === "" ? 0 : dir.split("/").length;
+    if (depth > 0) {
+      const extra = "../".repeat(depth);
+      spec = moduleSpec.startsWith("./") ? extra + moduleSpec.slice(2) : extra + moduleSpec;
+    }
+  }
+  return withExtIfRelative(spec, extStyle);
 }
 
 /** A fully-resolved output destination. Import-identity belongs to the

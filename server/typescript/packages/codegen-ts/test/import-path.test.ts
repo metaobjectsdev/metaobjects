@@ -121,23 +121,40 @@ describe("barrelEntrySpecifier", () => {
   });
 });
 
-describe("relativeModuleSpecifier (dbImport adjustment)", () => {
+describe("relativeModuleSpecifier (dbImport adjustment) — extStyle 'none'", () => {
   it("flat → unchanged", () => {
-    expect(relativeModuleSpecifier("flat", "acme::commerce", "../index")).toBe("../index");
+    expect(relativeModuleSpecifier("flat", "acme::commerce", "../index", "none")).toBe("../index");
   });
   it("package, non-relative specifier → unchanged (depth-invariant)", () => {
-    expect(relativeModuleSpecifier("package", "acme::commerce", "~/server/db")).toBe("~/server/db");
-    expect(relativeModuleSpecifier("package", "acme::commerce", "@acme/db")).toBe("@acme/db");
+    expect(relativeModuleSpecifier("package", "acme::commerce", "~/server/db", "none")).toBe("~/server/db");
+    expect(relativeModuleSpecifier("package", "acme::commerce", "@acme/db", "none")).toBe("@acme/db");
   });
   it("package, relative '../' specifier → extra '../' per package segment", () => {
-    expect(relativeModuleSpecifier("package", "acme::commerce", "../index")).toBe("../../../index");
-    expect(relativeModuleSpecifier("package", undefined, "../index")).toBe("../index");
+    expect(relativeModuleSpecifier("package", "acme::commerce", "../index", "none")).toBe("../../../index");
+    expect(relativeModuleSpecifier("package", undefined, "../index", "none")).toBe("../index");
   });
   it("package, relative './' specifier → strip './' and prepend '../' per segment", () => {
-    expect(relativeModuleSpecifier("package", "acme::commerce", "./index")).toBe("../../index");
+    expect(relativeModuleSpecifier("package", "acme::commerce", "./index", "none")).toBe("../../index");
   });
   it("package, single-segment package, './' specifier", () => {
-    expect(relativeModuleSpecifier("package", "acme", "./index")).toBe("../index");
+    expect(relativeModuleSpecifier("package", "acme", "./index", "none")).toBe("../index");
+  });
+});
+
+describe("relativeModuleSpecifier — extStyle 'js' extension-ifies relative specifiers", () => {
+  it("flat, relative → gets .js (nodenext-safe)", () => {
+    expect(relativeModuleSpecifier("flat", "acme::commerce", "../db", "js")).toBe("../db.js");
+    expect(relativeModuleSpecifier("flat", undefined, "./enums", "js")).toBe("./enums.js");
+  });
+  it("non-relative specifier → never extensioned (package / alias)", () => {
+    expect(relativeModuleSpecifier("flat", "acme::commerce", "@acme/db", "js")).toBe("@acme/db");
+    expect(relativeModuleSpecifier("flat", "acme::commerce", "~/server/db", "js")).toBe("~/server/db");
+  });
+  it("already-extensioned relative specifier → not double-appended", () => {
+    expect(relativeModuleSpecifier("flat", "acme::commerce", "../db.js", "js")).toBe("../db.js");
+  });
+  it("package layout composes depth adjustment with the .js extension", () => {
+    expect(relativeModuleSpecifier("package", "acme::commerce", "../db", "js")).toBe("../../../db.js");
   });
 });
 

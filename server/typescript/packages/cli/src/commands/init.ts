@@ -55,14 +55,14 @@ function buildMetaobjectsConfigBody(dialect: "sqlite" | "postgres" | "d1" = "sql
 // reference templates into ./codegen/generators/ — they are YOURS to edit, and
 // \`meta gen\` runs from these local copies, not from the package. Read each file's
 // header doc-block for what it emits and how to customize it.
-import { entityFile } from "./codegen/generators/entity";
-import { queriesFile } from "./codegen/generators/queries";
-import { routesFile } from "./codegen/generators/routes";
-import { barrel } from "./codegen/generators/barrel";
+import { entityFile } from "./codegen/generators/entity.js";
+import { queriesFile } from "./codegen/generators/queries.js";
+import { routesFile } from "./codegen/generators/routes.js";
+import { barrel } from "./codegen/generators/barrel.js";
 
 export default defineConfig({
   outDir:    "src/generated",
-  extStyle:  "none",
+  extStyle:  "js",   // ".js"-extensioned relative imports — safe under Node ESM / tsc nodenext AND bundlers
   dbImport:  "../db",
   dialect:   "${dialect}",
   apiPrefix: "",     // set to "/api" if your routes mount under /api

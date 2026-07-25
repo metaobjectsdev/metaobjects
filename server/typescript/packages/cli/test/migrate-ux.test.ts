@@ -184,11 +184,14 @@ describe("migrate offline: no-snapshot discoverability hint", () => {
       "json",
     );
     expect(exit).toBe(2);
-    // Must emit a JSON object with "no schema snapshot" error and a baseline hint
+    // Must emit a JSON object with "no schema snapshot" error and a hint that routes
+    // to the WORKING greenfield path (`--from-db … --apply`), not the offline
+    // `baseline` trap (launch-blocker B1).
     expect(stdout.length).toBeGreaterThan(0);
     const parsed = JSON.parse(stdout.trim());
     expect(parsed.error).toBe("no schema snapshot");
-    expect(parsed.hint).toContain("baseline");
+    expect(parsed.hint).toContain("--from-db");
+    expect(parsed.hint).toContain("--apply");
   });
 
   test("when no snapshot exists, toon format emits structured hint on stdout", async () => {
@@ -199,21 +202,22 @@ describe("migrate offline: no-snapshot discoverability hint", () => {
       "toon",
     );
     expect(exit).toBe(2);
-    // TOON output must mention baseline
-    expect(stdout).toContain("baseline");
+    // TOON output must route to the greenfield --from-db path
+    expect(stdout).toContain("--from-db");
   });
 
-  test("when no snapshot exists, text format (default) includes baseline next-step in stderr", async () => {
+  test("when no snapshot exists, text format (default) includes the greenfield next-step in stderr", async () => {
     const root = await project();
     // text is the default / human TTY format — emitStructuredError is a no-op, so the
-    // baseline guidance must come from the log.error() message on stderr.
+    // greenfield guidance must come from the log.error() message on stderr.
     const { exit, stderr } = await captureCommand(
       ["--dialect", "sqlite", "--slug", "auto"],
       root,
       "text",
     );
     expect(exit).toBe(2);
-    expect(stderr).toContain("baseline");
+    expect(stderr).toContain("--from-db");
+    expect(stderr).toContain("--apply");
   });
 });
 
@@ -322,7 +326,7 @@ describe("migrate structured error output (--format json)", () => {
     const parsed = JSON.parse(stdout.trim());
     expect(parsed.error).toBe("no schema snapshot");
     expect(typeof parsed.hint).toBe("string");
-    expect(parsed.hint).toContain("baseline");
+    expect(parsed.hint).toContain("--from-db");
   });
 
   test("no-snapshot sub-function failure emits structured TOON on stdout with --format toon", async () => {
@@ -335,7 +339,7 @@ describe("migrate structured error output (--format json)", () => {
     expect(exit).toBe(2);
     // TOON-encoded payload must appear on stdout
     expect(stdout).toContain("no schema snapshot");
-    expect(stdout).toContain("baseline");
+    expect(stdout).toContain("--from-db");
   });
 
   test("--from-db without --db emits structured JSON on stdout (json) and stays exit 2", async () => {

@@ -76,7 +76,7 @@ describe("renderEntityFile", () => {
     // (re-exported from the ./enums module), and never emits "OrderStatus".
     expect(out).not.toContain('export type Status =');
     expect(out).not.toContain("export type OrderStatus");
-    expect(out).toContain('export { type Status } from "./enums"');
+    expect(out).toContain('export { type Status } from "./enums.js"');
   });
 
   test("two fields extending the SAME abstract field.enum → ONE type alias", async () => {
@@ -115,7 +115,7 @@ describe("renderEntityFile", () => {
     const out = renderEntityFile(order, ctx);
     // FR-019: both fields share the "Status" super → ONE re-export of the shared
     // type, no inline redeclaration. De-duplicated by alias name.
-    const reexportCount = out.split('export { type Status } from "./enums"').length - 1;
+    const reexportCount = out.split('export { type Status } from "./enums.js"').length - 1;
     expect(reexportCount).toBe(1);
     expect(out).not.toContain('export type Status =');
   });

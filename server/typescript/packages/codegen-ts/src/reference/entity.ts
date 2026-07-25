@@ -1,6 +1,6 @@
 // REFERENCE TEMPLATE — copy this into your repo (e.g. codegen/generators/entity.ts) and own it.
 // Then import it LOCALLY in metaobjects.config.ts:
-//   import { entityFile } from "./codegen/generators/entity";
+//   import { entityFile } from "./codegen/generators/entity.js";
 //
 // use-when:      ALWAYS — this is the entity-module generator. It owns the shape of each
 //                generated <Entity>.ts (the Drizzle table, Zod schemas, inferred types,

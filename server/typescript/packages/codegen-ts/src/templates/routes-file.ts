@@ -49,7 +49,7 @@ export function renderRoutesFile(entity: MetaObject, ctx: RenderContext): string
     entityName,
     ctx.extStyle,
   );
-  const dbImportSpec = relativeModuleSpecifier(ctx.outputLayout, entity.package, ctx.dbImport);
+  const dbImportSpec = relativeModuleSpecifier(ctx.outputLayout, entity.package, ctx.dbImport, ctx.extStyle);
 
   const header =
     `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
@@ -329,7 +329,7 @@ function renderTphRoutesFile(base: MetaObject, ctx: RenderContext): string {
   const baseFileSpec = entityModuleSpecifier(
     ctx.selfTarget, ctx.entityModuleTarget, base.package, baseName, ctx.extStyle,
   );
-  const dbImportSpec = relativeModuleSpecifier(ctx.outputLayout, base.package, ctx.dbImport);
+  const dbImportSpec = relativeModuleSpecifier(ctx.outputLayout, base.package, ctx.dbImport, ctx.extStyle);
 
   const FastifyInstanceSym = imp("t:FastifyInstance@fastify");
   const mountCrudRoutesSym = imp("mountCrudRoutes@@metaobjectsdev/runtime-ts/drizzle-fastify");

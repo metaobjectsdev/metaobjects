@@ -1,6 +1,6 @@
 // REFERENCE TEMPLATE — copy this into your repo (e.g. codegen/generators/queries.ts) and own it.
 // Then import it LOCALLY in metaobjects.config.ts:
-//   import { queriesFile } from "./codegen/generators/queries";
+//   import { queriesFile } from "./codegen/generators/queries.js";
 //
 // use-when:      you want generated typed CRUD finders (find<E>ById, list<E>s, create/update/delete)
 //                over Drizzle. Drop it if you hand-write your data access.

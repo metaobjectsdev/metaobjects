@@ -7,7 +7,6 @@
 //     (`ctx.providedEnumModule`). Missing config ⇒ a codegen-time error naming
 //     the enum + the config key (ADR-0026: namespace is config, not metadata).
 
-import { withExt } from "./render-context.js";
 import type { RenderContext } from "./render-context.js";
 import { relativeModuleSpecifier } from "./import-path.js";
 import { SHARED_ENUMS_BASENAME } from "./templates/enums-file.js";
@@ -22,8 +21,9 @@ export function sharedEnumImportSpecifier(
   ctx: RenderContext,
   entityPkg: string | undefined,
 ): string {
-  const base = withExt(`./${SHARED_ENUMS_BASENAME}`, ctx.extStyle);
-  return relativeModuleSpecifier(ctx.selfTarget.outputLayout, entityPkg, base);
+  // relativeModuleSpecifier adjusts `./enums` for the entity's package depth AND
+  // applies the extension style (`.js` under nodenext), so pass the bare base.
+  return relativeModuleSpecifier(ctx.selfTarget.outputLayout, entityPkg, `./${SHARED_ENUMS_BASENAME}`, ctx.extStyle);
 }
 
 /**

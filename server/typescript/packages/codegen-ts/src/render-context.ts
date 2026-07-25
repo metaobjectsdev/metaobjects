@@ -9,12 +9,14 @@ import type { OutputLayout, ResolvedTarget } from "./import-path.js";
 import { variableNameFromEntity } from "./naming.js";
 
 /**
- * How to format cross-entity import specifiers in generated files.
- *   - "none" → emit `"./Foo"`. **Default.** Works for moduleResolution
- *              "bundler"/"node", tsx, drizzle-kit's TS loader, Vite, esbuild,
- *              and almost every modern TS toolchain.
- *   - "js"   → emit `"./Foo.js"`. Required for Node ESM strict + TS NodeNext.
- *              Opt in via `--ext-style js` or `codegen.extStyle = "js"`.
+ * How to format relative import specifiers in generated files.
+ *   - "js"   → emit `"./Foo.js"`. **Default.** Required by Node ESM strict + TS
+ *              NodeNext/node16, and also accepted by moduleResolution
+ *              "bundler"/"node", tsx, drizzle-kit's TS loader, Vite, and esbuild —
+ *              so it is the strictly-more-compatible default (a stock `tsc --init`
+ *              defaults to nodenext, under which un-extensioned imports fail TS2835).
+ *   - "none" → emit `"./Foo"`. Opt out via `codegen.extStyle = "none"` when your
+ *              toolchain forbids `.js` specifiers (rare — most bundlers accept both).
  */
 export type ExtStyle = "js" | "none";
 
@@ -91,9 +93,25 @@ export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "
   collectionNameOverrides?: Record<string, string>;
 };
 
-/** Append the configured extension to a cross-entity module specifier. */
+/** Append the configured extension to a cross-entity module specifier (which is
+ *  always a bare, extension-less relative path like `./Foo`). */
 export function withExt(spec: string, style: ExtStyle): string {
   return style === "js" ? `${spec}.js` : spec;
+}
+
+/**
+ * Apply the extension style to a possibly-user-supplied module specifier
+ * (`dbImport`, `providedEnumModule`, …). Unlike {@link withExt}, this only touches
+ * RELATIVE specifiers and never double-appends: a bare package/alias specifier
+ * (`@acme/db`, `~/server/db`) is depth- and extension-invariant, and a specifier
+ * the author already extensioned (`../db.js`) is left as-is.
+ */
+export function withExtIfRelative(spec: string, style: ExtStyle): string {
+  if (style !== "js") return spec;
+  const isRelative = spec.startsWith("./") || spec.startsWith("../");
+  if (!isRelative) return spec;
+  if (/\.(js|jsx|mjs|cjs|ts|tsx|json)$/.test(spec)) return spec;
+  return `${spec}.js`;
 }
 
 /** Thin factory; applies sensible defaults for fields the caller may omit. */
@@ -113,7 +131,7 @@ export function makeRenderContext(opts: RenderContextInput): RenderContext {
   };
   return {
     ...opts,
-    extStyle: opts.extStyle ?? "none",
+    extStyle: opts.extStyle ?? "js",
     omImport: opts.omImport ?? "../index",
     columnNamingStrategy: opts.columnNamingStrategy ?? "snake_case",
     timestampMode: opts.timestampMode ?? "string",

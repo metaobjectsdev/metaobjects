@@ -1,6 +1,6 @@
 // REFERENCE TEMPLATE — copy this into your repo (e.g. codegen/generators/barrel.ts) and own it.
 // Then import it LOCALLY in metaobjects.config.ts instead of from the package:
-//   import { barrel } from "./codegen/generators/barrel";
+//   import { barrel } from "./codegen/generators/barrel.js";
 //
 // use-when:      you want a single `index.ts` re-exporting every generated entity module.
 // emits:         <target>/index.ts with one `export * from "./<Entity>"` per entity, alphabetical.

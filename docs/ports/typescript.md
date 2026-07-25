@@ -46,14 +46,15 @@ imports those local copies; `meta gen` runs from them, not from the package.
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
 // Owned generators scaffolded by `meta init` — yours to edit (ADR-0034).
-import { entityFile } from "./codegen/generators/entity";
-import { queriesFile } from "./codegen/generators/queries";
-import { routesFile } from "./codegen/generators/routes";
-import { barrel } from "./codegen/generators/barrel";
+import { entityFile } from "./codegen/generators/entity.js";
+import { queriesFile } from "./codegen/generators/queries.js";
+import { routesFile } from "./codegen/generators/routes.js";
+import { barrel } from "./codegen/generators/barrel.js";
 
 export default defineConfig({
   outDir: "src/generated",
   dialect: "postgres",                 // "postgres" | "sqlite" | "d1"
+  extStyle: "js",                      // ".js"-extensioned imports — nodenext- AND bundler-safe ("none" to opt out)
   apiPrefix: "/api",
   columnNamingStrategy: "snake_case",  // "snake_case" | "literal" | "kebab-case"
   generators: [entityFile(), queriesFile(), routesFile(), barrel()],
@@ -135,20 +136,20 @@ brand-new project there's no snapshot yet:
 
 ```bash
 meta migrate --dialect sqlite --slug init
-# meta: migrate: no schema snapshot at .../.schema.sqlite.json;
-#   run `meta migrate baseline --dialect sqlite` first
+# meta: migrate: no schema snapshot at .../.schema.sqlite.json. For a new project
+#   run `meta migrate --from-db --db <url> --dialect sqlite --slug init --apply`
+#   to create your tables, or `meta migrate baseline --from-db --db <url>` to
+#   adopt an existing database.
 ```
 
-**Do not follow that hint on a database that doesn't exist yet.** `meta
-migrate baseline` (without `--from-db`) derives the "existing" snapshot
-**from your metadata** — it records your entities' target shape as already
-applied, even against an empty/nonexistent database. Every subsequent `meta
-migrate` then reports `no changes` (exit 0) forever, and no table is ever
-created — a silent failure that only surfaces later, at the API layer, as
-`SQLITE_ERROR: no such table`.
-
-For a brand-new database, introspect the (empty) live DB instead and apply
-immediately — this is the correct one-time bootstrap command:
+The CLI points you at the right command (above). Avoid the `meta migrate
+baseline` subcommand **without** `--from-db` on a database that doesn't exist
+yet: an offline baseline derives the "existing" snapshot **from your metadata**,
+recording your entities' target shape as already applied. No table is ever
+created, and every subsequent `meta migrate` reports `no changes` (exit 0) — a
+silent failure that only surfaces later, at the API layer, as `SQLITE_ERROR: no
+such table`. (`meta migrate baseline` now refuses when it can see the target
+`--db` is empty, but the safe path for a new project is simply:)
 
 ```bash
 npx meta migrate --from-db --db file:dev.sqlite --dialect sqlite --slug init --apply
@@ -170,28 +171,20 @@ meta migrate --dialect d1                                        # Cloudflare D1
 
 ### Typecheck the generated code
 
-`npx tsc` (the hint every `meta gen`/`meta migrate` prints) needs a
-`tsconfig.json` that matches how the generated code is written: relative
-imports with **no file extensions**, resolved bundler-style — the same
-convention this repo's own `server/typescript/tsconfig.base.json` uses. A
-fresh `tsc --init` on some TypeScript versions instead defaults to Node's
-native ESM resolution (`"module": "nodenext"` / `"node16"`), which *requires*
-extensioned relative imports (`./Author.js`) and fails on every generated file
-with `TS2835`. Set:
+`npx tsc` (the hint every `meta gen`/`meta migrate` prints) works out of the
+box with a stock `tsc --init` tsconfig: the generated code emits
+`.js`-extensioned relative imports (`import { Author } from "./Author.js"`),
+which resolve correctly under **both** Node's native ESM resolution
+(`"module": "nodenext"`, the `tsc --init` default) **and** bundler-style
+resolution (`"moduleResolution": "bundler"`, Vite/esbuild/tsx). The one project
+setting to check: `package.json` must have `"type": "module"` — MetaObjects
+generates ESM only, no CommonJS. (The `.js` extension names the compiled output;
+`tsc`/your bundler resolves it back to the `.ts` source — this is the standard
+Node-ESM TypeScript convention.)
 
-```jsonc
-// tsconfig.json
-{
-  "compilerOptions": {
-    "module": "esnext",
-    "moduleResolution": "bundler"
-    // ...your other options
-  }
-}
-```
-
-and make sure `package.json` has `"type": "module"` — MetaObjects generates
-ESM only, no CommonJS.
+If you prefer un-extensioned imports (some legacy bundler setups), set
+`extStyle: "none"` in `metaobjects.config.ts` and use `"moduleResolution":
+"bundler"`.
 
 ## Use
 
@@ -218,7 +211,7 @@ export const db = drizzle(createClient({ url: "file:dev.sqlite" }));
 ```ts
 // src/server.ts
 import Fastify from "fastify";
-import { authorRoutes } from "./generated/Author.routes";
+import { authorRoutes } from "./generated/Author.routes.js";
 
 const app = Fastify();
 await app.register(authorRoutes);   // mounts GET/POST/PATCH/PUT/DELETE for Author
@@ -252,15 +245,16 @@ difference is the framework adapter the emitted code talks to.
 // metaobjects.config.ts
 import { defineConfig } from "@metaobjectsdev/cli";
 // Owned generators scaffolded by `meta init` (ADR-0034 scaffold-and-own).
-import { entityFile } from "./codegen/generators/entity";
-import { queriesFile } from "./codegen/generators/queries";
-import { barrel } from "./codegen/generators/barrel";
+import { entityFile } from "./codegen/generators/entity.js";
+import { queriesFile } from "./codegen/generators/queries.js";
+import { barrel } from "./codegen/generators/barrel.js";
 // Hono routes have no reference template yet — still imported from the package.
 import { routesFileHono } from "@metaobjectsdev/codegen-ts/generators";
 
 export default defineConfig({
   outDir: "src/generated",
   dialect: "sqlite",                    // or "postgres" / "d1"
+  extStyle: "js",
   apiPrefix: "/api",
   generators: [entityFile(), queriesFile(), routesFileHono(), barrel()],
 });
@@ -277,7 +271,7 @@ import {
   AuthorUpdateSchema,
   AuthorFilterAllowlist,
   AuthorSortAllowlist,
-} from "./Author";
+} from "./Author.js";
 import { mountCrudRoutes } from "@metaobjectsdev/runtime-ts/hono";
 import type { Hono } from "hono";
 
@@ -304,7 +298,7 @@ Consumer wiring (Workers example):
 ```ts
 import { Hono } from "hono";
 import { drizzle } from "drizzle-orm/d1";
-import { registerAuthorRoutes } from "./generated/Author.routes.hono";
+import { registerAuthorRoutes } from "./generated/Author.routes.hono.js";
 
 interface Env { DB: D1Database }
 
@@ -371,7 +365,7 @@ export function safeParseNpcResponse(text: string):
 Consumer wiring:
 
 ```ts
-import { parseNpcResponse, safeParseNpcResponse } from "./generated/NpcResponse.output";
+import { parseNpcResponse, safeParseNpcResponse } from "./generated/NpcResponse.output.js";
 
 const llmResponse = await myLlmProvider.call(promptText);
 

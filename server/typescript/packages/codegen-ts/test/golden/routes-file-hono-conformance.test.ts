@@ -26,6 +26,9 @@ function makeCtx(root: Awaited<ReturnType<MetaDataLoader["load"]>>["root"]): Gen
     loadedRoot: root,
     outDir: "/tmp",
     dbImport: "~/db",
+    // Pin the opt-out style so this shared conformance fixture stays byte-stable and
+    // consistent with the GenContext config below (the default is now "js").
+    extStyle: "none",
     pkMap: buildPkMap(root),
     relationMap: buildRelationMap(root),
   });

@@ -90,10 +90,10 @@ describe("meta init scaffolds OWNED codegen generators (ADR-0034)", () => {
   test("the scaffolded config imports each owned generator locally", async () => {
     await init({ cwd: tmp, quiet: true });
     const body = readFileSync(join(tmp, "metaobjects.config.ts"), "utf-8");
-    expect(body).toContain('import { entityFile } from "./codegen/generators/entity"');
-    expect(body).toContain('import { queriesFile } from "./codegen/generators/queries"');
-    expect(body).toContain('import { routesFile } from "./codegen/generators/routes"');
-    expect(body).toContain('import { barrel } from "./codegen/generators/barrel"');
+    expect(body).toContain('import { entityFile } from "./codegen/generators/entity.js"');
+    expect(body).toContain('import { queriesFile } from "./codegen/generators/queries.js"');
+    expect(body).toContain('import { routesFile } from "./codegen/generators/routes.js"');
+    expect(body).toContain('import { barrel } from "./codegen/generators/barrel.js"');
     expect(body).not.toContain("@metaobjectsdev/codegen-ts/generators");
   });
 

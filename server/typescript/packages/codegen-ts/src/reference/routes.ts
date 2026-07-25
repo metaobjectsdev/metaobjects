@@ -1,6 +1,6 @@
 // REFERENCE TEMPLATE — copy this into your repo (e.g. codegen/generators/routes.ts) and own it.
 // Then import it LOCALLY in metaobjects.config.ts:
-//   import { routesFile } from "./codegen/generators/routes";
+//   import { routesFile } from "./codegen/generators/routes.js";
 //
 // use-when:      you want generated Fastify REST routes per entity. Drop it and hand-write routes
 //                if you need bespoke endpoints — or keep it and add handlers via <Entity>.extra.ts.
