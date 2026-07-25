@@ -97,7 +97,7 @@ Because the render is conformance-gated, the determinism guarantee holds in ever
 | Java | Maven Central `7.11.3` | Spring REST + JPA codegen, OMDB runtime persistence (pure data-access) with Spring-tx. Fully green across all conformance corpora. |
 | Kotlin | Maven Central `7.11.3` | KotlinPoet codegen + Exposed runtime + `metadata-ktx` facade. Ships via the Java reactor. |
 | C# | NuGet `0.19.3` (.NET tool) | Loader + canonical serializer + EF Core + ASP.NET codegen + render/verify. `dotnet meta` tool. |
-| Python | PyPI `0.19.4` | Loader + serializer + render + verify + codegen + `ObjectManager` runtime. Fully green across all corpora. |
+| Python | PyPI `0.19.5` | Loader + serializer + render + verify + codegen + `ObjectManager` runtime. Fully green across all corpora. |
 
 Conformance fixtures live at [`fixtures/`](https://github.com/metaobjectsdev/metaobjects/tree/main/fixtures). Every port runs the shared corpus byte-identically: metamodel (`conformance/`, ~90 fixtures), render, persistence (Testcontainers Postgres, with an `op: roundtrip` gate so every `field.*` subtype write+read round-trips on every port), api-contract (20 scenarios, two lanes — a reference server AND each port's generated API booted over HTTP), registry (byte-matched metamodel-vocabulary manifest, live + green in all five ports), and yaml/verify.
 
