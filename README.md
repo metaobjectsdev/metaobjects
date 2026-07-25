@@ -88,7 +88,7 @@ first-week wedge plan — and `meta init` picks up from there.
 |---|---|---|---|
 | TypeScript | Published to npm at `0.19.3` (the `@metaobjectsdev/*` packages) | [`docs/ports/typescript.md`](docs/ports/typescript.md) | [`server/typescript/`](server/typescript/) · [`client/web/`](client/web/) |
 | Java | Loader + OMDB + render + Maven plugin all shipped; full conformance green | [`docs/ports/java.md`](docs/ports/java.md) | [`server/java/`](server/java/) |
-| Kotlin | Codegen tier on top of Java — 7 generators (entity, Exposed table, relations, payload, validator, Spring config, storedProc); 12 / 12 persistence-conformance | [`docs/ports/kotlin.md`](docs/ports/kotlin.md) | [`server/java/codegen-kotlin/`](server/java/codegen-kotlin/) · [`server/java/metadata-ktx/`](server/java/metadata-ktx/) |
+| Kotlin | Codegen tier on top of Java — 9 generators (entity, Exposed table, relations, payload, output-parser, validator, Spring config, storedProc, Spring controller); 12 / 12 persistence-conformance | [`docs/ports/kotlin.md`](docs/ports/kotlin.md) | [`server/java/codegen-kotlin/`](server/java/codegen-kotlin/) · [`server/java/metadata-ktx/`](server/java/metadata-ktx/) |
 | C# | Loader + conformance + EF Core codegen + render engine + `dotnet meta` CLI all shipped | [`docs/ports/csharp.md`](docs/ports/csharp.md) | [`server/csharp/`](server/csharp/) |
 | Python | Loader + conformance + render + entity-model codegen + ObjectManager runtime shipped; schema migrations are TS-owned (ADR-0015) | [`docs/ports/python.md`](docs/ports/python.md) | [`server/python/`](server/python/) |
 
@@ -103,26 +103,27 @@ first-week wedge plan — and `meta init` picks up from there.
 | `field.currency` / `field.enum` | Yes | Yes | Yes | Yes | Yes |
 | `field.object` + `@storage=flattened` | Yes | Yes | Yes (per-sub-field columns) | Yes (EF Core `OwnsOne`) | Loader yes; codegen partial |
 | Templates + render (FR-004) | Yes | Yes | Yes (wraps Java) | Yes | Yes |
-| Payload-VO codegen | Yes (via projection) | – (consumers use `Map`) | Yes (`@Serializable`) | Yes | – (consumers use `dict`) |
+| Payload-VO codegen | Yes (via projection) | Yes (`SpringPayloadGenerator`) | Yes (`@Serializable`) | Yes | Yes (`payload_vo_generator`) |
 | Migration emission | `meta migrate` (Postgres / SQLite / D1) | Via TS toolchain (`@metaobjectsdev/cli migrate`) | Via TS toolchain (`@metaobjectsdev/cli migrate`) | Via TS toolchain (ADR-0015) | Via TS toolchain (ADR-0015) |
 | DB-drift verify | `meta verify --db` | Template-drift: `Renderer.verify`; schema-drift is TS-owned (ADR-0015) | Template-drift: `Renderer.verify`; startup: `MetadataStartupValidator` | `dotnet meta verify` (codegen-drift) | Schema-drift is TS-owned (ADR-0015) |
 | Template-drift verify | Yes | Yes (`Renderer.verify`) | Yes (via Java) | Yes (`meta verify`) | Yes (`metaobjects.render.verify`) |
 | YAML authoring (sigil-free → JSON) | Yes | Yes | Yes (via Java) | Yes | Yes |
 | Runtime metadata (ObjectManager-style) | Yes (`runtime-ts`) | Yes (OMDB) | Yes (via Java OMDB + Exposed) | Roadmap | Yes (ObjectManager) |
-| React / UI client (browser) | Yes (`@metaobjectsdev/react` + `@metaobjectsdev/tanstack`; codegen + runtime) | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST |
-| Cross-port REST routes for the client | Generated (`routesFile()` → Fastify) | Hand-write Spring controller per contract | Hand-write Spring-Kotlin / Ktor per contract | Generated (`RoutesGenerator` → ASP.NET Minimal API) | Hand-write FastAPI router per contract |
+| React / Angular UI client (browser) | Yes — React (`@metaobjectsdev/react` + `@metaobjectsdev/tanstack`) and Angular 18 (`@metaobjectsdev/angular`, published at `0.6.0`); both codegen + runtime | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST |
+| Cross-port REST routes for the client | Generated (`routesFile()` → Fastify) | Generated (`SpringControllerGenerator` → Spring `@RestController`, incl. filter/sort) | Generated (`KotlinSpringControllerGenerator` → Spring `@RestController`, incl. filter/sort) | Generated (`RoutesGenerator` → ASP.NET Minimal API) | Generated (`router_generator` → FastAPI `APIRouter`, incl. filter/sort) |
 
 A "Yes" means the feature is covered by the shared conformance corpora at
 [`fixtures/`](fixtures/) for that port, or by a port-local test of equivalent
 scope. A "partial" means the loader recognizes the metamodel feature but the
 codegen / runtime tier doesn't fully exercise it yet.
 
-The React / UI client is TypeScript-only by construction (the browser is
-TS-native) but is **universal** — see
+The React and Angular UI clients are TypeScript-only by construction (the
+browser is TS-native) but are **universal** — see
 [`docs/features/api-contract.md`](docs/features/api-contract.md) for the
 URL grammar + wire format the client speaks, and
 [`docs/ports/typescript-client.md`](docs/ports/typescript-client.md) for
-the consumer-side wiring.
+the consumer-side wiring (React + TanStack, and the
+[Angular 18 tier](docs/ports/typescript-client.md#angular-18)).
 
 ## Four pillars
 
@@ -178,7 +179,7 @@ metaobjects/
 │   └── python/                     # Python port
 │
 └── client/
-    └── web/                        # universal browser packages (React, TanStack, framework-agnostic)
+    └── web/                        # universal browser packages (React, TanStack, Angular, framework-agnostic)
 ```
 
 ## Getting started

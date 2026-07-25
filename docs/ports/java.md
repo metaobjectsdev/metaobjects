@@ -209,7 +209,7 @@ the `test` phase).
 
 | Generator | Module | Output |
 |---|---|---|
-| `SpringControllerGenerator` | `metaobjects-codegen-spring` | One `<Entity>Controller.java` per writable entity (`source.rdb @kind="table"`). Spring Boot 3.x / Spring Web MVC. Five CRUD endpoints (GET list / GET by id / POST / PATCH + PUT / DELETE) matching the cross-port [REST API contract](../features/api-contract.md). `?sort`, `?limit/?offset`, `?withCount=1` envelope, 404 + 400 envelopes per the contract. Filter operators deferred — see the module's [`KNOWN_GAPS.md`](../../server/java/codegen-spring/src/main/java/com/metaobjects/generator/spring/KNOWN_GAPS.md). |
+| `SpringControllerGenerator` | `metaobjects-codegen-spring` | One `<Entity>Controller.java` per writable entity (`source.rdb @kind="table"`). Spring Boot 3.x / Spring Web MVC. Five CRUD endpoints (GET list / GET by id / POST / PATCH + PUT / DELETE) matching the cross-port [REST API contract](../features/api-contract.md). `?sort`, `?limit/?offset`, `?withCount=1` envelope, 404 + 400 envelopes per the contract. Filter operators (`eq/ne/gt/gte/lt/lte/in/like/isNull`) ship via the generated `<Entity>FilterAllowlist` (`SpringFilterAllowlistGenerator`) + the runtime `FilterParser`, wired directly into the list handler. |
 | `SpringDtoGenerator` | `metaobjects-codegen-spring` | One `<Entity>Dto.java` per entity as a Java 21 `record`. Wrapped-primitive components (`Long`, `Integer`, `Boolean`) so missing JSON properties deserialise to `null`. Currency = `Long` (integer minor units cross-port invariant). Used as both request and response body. |
 | `SpringRepositoryGenerator` | `metaobjects-codegen-spring` | One `<Entity>Repository.java` per writable entity as a hand-stubbed Java `interface` the consumer implements with their preferred persistence layer (Spring Data JPA / jOOQ / plain JDBC — all out of MetaObjects' concern). Nests the `SortClause` record the controller calls into. |
 
@@ -246,31 +246,64 @@ configuration model that has not yet been specced.
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Yes |
 | Templates + render (FR-004) | Yes (`metaobjects-render`) |
 | Payload-VO codegen | Yes — `SpringPayloadGenerator` (in `metaobjects-codegen-spring`) emits a Java 21 `record` per template, mirrors the Kotlin shape |
-| Output parser codegen (FR-006) | Not yet — see note below |
+| Output parser codegen (FR-006) | Yes — `SpringOutputParserGenerator` (in `metaobjects-codegen-spring`) — see usage below |
 | Migrations | TS-only (`@metaobjectsdev/cli migrate`) — the Java migration engine and the OMDB runtime auto-create path were both removed (ADR-0015); apply the TS-produced DDL to the database |
 | Drift verify | `Renderer.verify` / `Verify.verify` (prompts). Live-DB schema-drift verification is part of the TS migration toolchain |
 | Runtime metadata | Full — OMDB ObjectManager |
 | REST controller codegen | Spring Web MVC — `metaobjects-codegen-spring` (FR-008 §2.1) |
 
-**On output-parser codegen.** Java consumers today hand-write the Jackson
-`ObjectMapper.readValue(text, MyPayload.class)` call against the generated
-record from `SpringPayloadGenerator`. Auto-emission of a `<Name>Parser` class
-(the FR-006 equivalent of TS / C# / Python / Kotlin) is on the roadmap; the
-[FR-006 cross-port spec](../superpowers/specs/2026-05-25-fr6-template-output-parser-codegen.md)
-+ the [FR6-java sketch](../superpowers/specs/2026-05-25-fr6-java-template-output-parser.md)
-both describe the eventual `JsonProcessingException`-throwing shape. Until
-that ships, the Jackson one-liner pairs naturally with the generated record.
+## FR-006 — output parsing
 
-## Conformance status (as of 2026-05-27)
+`SpringOutputParserGenerator` (in `metaobjects-codegen-spring`) emits one
+`<TemplateName>Parser` Java class per `template.output` declaration — a
+Jackson-backed, throw-only parser around the `@payloadRef` payload record
+`SpringPayloadGenerator` already emits (no payload-shape re-declaration).
+Registered in the module's generator registry as `output-parser`.
 
-| Corpus | Result |
-|---|---|
-| Metamodel (`fixtures/conformance/`) | 91 / 91 |
-| YAML authoring (`fixtures/yaml-conformance/`) | 12 / 13 (1 ledgered — `yaml-quoted-leading-zero`, Java pipeline strips quotes off `"007"`) |
-| Render (`fixtures/render-conformance/`) | 14 / 14 |
-| Verify (`fixtures/verify-conformance/`) | 31 / 31 |
-| Persistence (`fixtures/persistence-conformance/`) | Query scenarios 9 / 10 (1 deferred: aggregate-projection view body was part of the removed migration engine). Java no longer runs the migration scenarios. |
-| API contract (`fixtures/api-contract-conformance/`) | 20 / 20 |
+```java
+// generated/NpcResponseParser.java
+public final class NpcResponseParser {
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private NpcResponseParser() {}
+
+    /** @throws JsonProcessingException on malformed JSON or a schema mismatch. */
+    public static NpcResponsePayload parse(String text) throws JsonProcessingException {
+        return MAPPER.readValue(text, NpcResponsePayload.class);
+    }
+}
+```
+
+Consumer wiring:
+
+```java
+String llmResponse = myLlmClient.complete(promptText);
+
+try {
+    NpcResponsePayload npc = NpcResponseParser.parse(llmResponse);
+    return ResponseEntity.ok(npc);
+} catch (JsonProcessingException e) {
+    return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+}
+```
+
+`Verify.verify(loader, provider, options)` walks `template.output` nodes the
+same way it walks `template.prompt`, catching payload-VO ↔ parser drift at
+build time. Cross-port design is at
+[ADR-0010](../../spec/decisions/ADR-0010-template-output-parser-codegen.md);
+the feature reference is at
+[`features/templates-and-payloads.md`](../features/templates-and-payloads.md#output-parsing-fr-006).
+FR-010's tolerant `extractLenient(loader, text)` variant (returns an
+`ExtractionResult<TPayload>` instead of throwing) ships alongside `parse()`.
+
+## Conformance status
+
+Per-corpus pass counts move every release — see
+[`docs/CONFORMANCE.md`](../CONFORMANCE.md) for the current, authoritative
+per-port numbers (metamodel, YAML, render, verify, persistence, API
+contract). Java is green across all six active corpora today (Java doesn't
+run the persistence corpus's migration scenarios — those are TS-only,
+ADR-0015).
 
 ## See also
 

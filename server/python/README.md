@@ -10,11 +10,13 @@ other language port.
 
 ## Install
 
+Requires **Python 3.11+**.
+
 ```bash
 pip install metaobjects
 ```
 
-Requires Python 3.11+. The only runtime dependency is PyYAML.
+The only runtime dependency is PyYAML.
 
 ## Quick start
 
@@ -42,7 +44,9 @@ The primary public API is the **loader** (`load_directory` / `load_uris` /
 `load_string`, `MetaDataLoader`, `LoadResult`, `ErrorCode`, `MetaError`). The
 distribution also ships the Python implementations of the other pillars used by the CLI
 and tooling: `codegen` (Pydantic + FastAPI emit), `render` (Mustache + payload-VO +
-verify), `runtime` (SQLAlchemy-Core object manager), and `migrate`.
+verify), and `runtime` (a DB-API 2 `ObjectManager` — pg8000 / psycopg — no SQLAlchemy).
+Schema migrations are owned by the TypeScript `meta` CLI (ADR-0015); there is
+**no `migrate` module** in this distribution.
 
 ## Authoring formats
 

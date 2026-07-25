@@ -112,8 +112,8 @@ meta migrate --db postgresql://... --apply          # apply pending migrations
 | Port | Command | What it does |
 |---|---|---|
 | TypeScript | `meta verify --db` | Introspects the live DB; reports DB-vs-metadata drift. |
-| Java | `Renderer.verify` (build-time) | Template-drift: verifies `{{...}}` references resolve against the payload VO. Live-DB-schema drift is TS-owned (`meta verify --db`); both the `meta:verify` Maven goal and the runtime auto-create validator were removed (ADR-0015). |
-| Kotlin | `Renderer.verify` (build-time) + `MetadataStartupValidator` (startup) | Same as Java — template-drift and startup validation. No `meta:verify` Maven goal. |
+| Java | `mvn metaobjects:verify -Dmeta.verify.mode=codegen\|templates` (`meta:verify` Maven goal) + `Renderer.verify` (build-time) | The codegen/template-drift `meta:verify` Maven goal is alive and is how Java gates drift in CI (`codegen` mode regens + fails on drift vs committed output; `templates` mode drift-checks `{{...}}` references against the payload VO via `Renderer.verify`). Only the *live-DB-schema* `meta:verify` goal was removed — that's TS-owned now (`meta verify --db`) — along with the runtime auto-create validator (ADR-0015). |
+| Kotlin | `mvn metaobjects:verify -Dmeta.verify.mode=codegen\|templates` (`meta:verify` Maven goal — same goal covers both Java + Kotlin) + `MetadataStartupValidator` (startup) | Same as Java — the `meta:verify` Maven goal remains, plus template-drift and startup validation. |
 | C# | `meta verify ./metadata --templates ./prompts` | Drift-checks templates against their payload VOs (FR-004 prompt-drift). |
 | Python | `python -m metaobjects.render.verify` | Same as C# verify — template-vs-payload drift. |
 

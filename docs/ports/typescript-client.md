@@ -44,8 +44,9 @@ Two disjoint dependency trees. The codegen packages live under
 `meta gen`), even though their **output** targets the browser. The runtime
 packages live under `client/web/packages/` and have zero Node-only deps.
 
-Future framework integrations (Angular, Svelte, React Native) follow the
-same two-package pattern.
+Angular follows the same two-package pattern and has shipped — see
+["Angular 18"](#angular-18) below. Future framework integrations (Svelte,
+React Native) will follow the same pattern.
 
 ## Browser runtime packages
 
@@ -365,7 +366,7 @@ URL grammar:
 ?filter[<field>][<op>]=<value>&sort=<field>:asc|desc&limit=<N>&offset=<N>
 ```
 
-Eight operators, gated by field subtype:
+Nine operators, gated by field subtype:
 
 | Operator | Strings | Numbers / Dates | Booleans |
 |---|---|---|---|
@@ -489,13 +490,13 @@ route-file generators still run unless they have their own opt-out.
 
 The TS client is **universal**: it consumes any backend that implements
 the URL grammar + wire format in
-[`features/api-contract.md`](../features/api-contract.md). Some backends
-ship route codegen so the consumer doesn't hand-write controllers (TS,
-C#); others don't yet ship route codegen and the consumer hand-writes a
-controller that matches the contract (Java, Kotlin, Python). See
+[`features/api-contract.md`](../features/api-contract.md). All five ports
+(TS, Java, Kotlin, C#, Python) ship route codegen today, including the
+filter/sort querystring — the consumer does not need to hand-write a
+controller on any port. See
 [`features/api-contract.md`](../features/api-contract.md) for the
-per-port route-codegen status table and per-language hand-written
-examples.
+per-port route-codegen status table (hand-written examples are also there,
+for the rare case where you need a shape the generator doesn't cover).
 
 ## Angular 18
 

@@ -18,6 +18,16 @@ npm install --save-dev @metaobjectsdev/codegen-ts-react @metaobjectsdev/codegen-
 npm install            @metaobjectsdev/react @metaobjectsdev/tanstack @metaobjectsdev/runtime-web
 ```
 
+`@metaobjectsdev/codegen-ts` declares `drizzle-orm` and `zod` as non-optional
+peer dependencies, so npm installs both automatically. The default Fastify
+routes generator (`routesFile()`) additionally needs `fastify` at runtime — it
+is an **optional** peer of `@metaobjectsdev/runtime-ts` (so it is *not*
+auto-installed); add it explicitly:
+
+```bash
+npm install fastify
+```
+
 ## Configure
 
 Two config files, by design:
@@ -113,33 +123,122 @@ meta gen                  # codegen → format → 3-way merge → write
 meta gen --dry-run        # preview without writing
 meta gen Author Post      # scope to named entities
 
-meta migrate              # diff vs DB → emit migration SQL
-meta migrate --dialect d1 # Cloudflare D1 dialect
-
 meta verify               # report DB-vs-metadata drift
 ```
+
+### Schema — first migration on a brand-new database
+
+`meta migrate` diffs your metadata against a **committed schema snapshot**,
+not against the live database, so `--dialect` is always required (it is not
+auto-detected for the offline diff path even when `--db` is present). On a
+brand-new project there's no snapshot yet:
+
+```bash
+meta migrate --dialect sqlite --slug init
+# meta: migrate: no schema snapshot at .../.schema.sqlite.json;
+#   run `meta migrate baseline --dialect sqlite` first
+```
+
+**Do not follow that hint on a database that doesn't exist yet.** `meta
+migrate baseline` (without `--from-db`) derives the "existing" snapshot
+**from your metadata** — it records your entities' target shape as already
+applied, even against an empty/nonexistent database. Every subsequent `meta
+migrate` then reports `no changes` (exit 0) forever, and no table is ever
+created — a silent failure that only surfaces later, at the API layer, as
+`SQLITE_ERROR: no such table`.
+
+For a brand-new database, introspect the (empty) live DB instead and apply
+immediately — this is the correct one-time bootstrap command:
+
+```bash
+npx meta migrate --from-db --db file:dev.sqlite --dialect sqlite --slug init --apply
+```
+
+This diffs metadata against what's *actually* in `dev.sqlite` (nothing), emits
+`CREATE TABLE "authors" (...)`, and applies it. Reserve `meta migrate baseline
+--from-db --db <url>` for the other case — adopting metadata onto a database
+that **already** has the schema (e.g. a pre-existing non-MetaObjects setup) —
+where you want to record current state without emitting any DDL.
+
+Once a real schema exists, everyday changes go through the incremental flow:
+
+```bash
+meta migrate --dialect sqlite --slug add-user-shipping           # diff vs committed snapshot; writes up/down.sql
+meta migrate --dialect sqlite --slug add-user-shipping --apply   # ...and apply it
+meta migrate --dialect d1                                        # Cloudflare D1 dialect
+```
+
+### Typecheck the generated code
+
+`npx tsc` (the hint every `meta gen`/`meta migrate` prints) needs a
+`tsconfig.json` that matches how the generated code is written: relative
+imports with **no file extensions**, resolved bundler-style — the same
+convention this repo's own `server/typescript/tsconfig.base.json` uses. A
+fresh `tsc --init` on some TypeScript versions instead defaults to Node's
+native ESM resolution (`"module": "nodenext"` / `"node16"`), which *requires*
+extensioned relative imports (`./Author.js`) and fails on every generated file
+with `TS2835`. Set:
+
+```jsonc
+// tsconfig.json
+{
+  "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "bundler"
+    // ...your other options
+  }
+}
+```
+
+and make sure `package.json` has `"type": "module"` — MetaObjects generates
+ESM only, no CommonJS.
 
 ## Use
 
 The generated code runs without any MetaObjects runtime dependency — Drizzle +
-Zod + Kysely + Fastify are direct user-app deps.
+Zod + Fastify are direct user-app deps. With the default (flat)
+`outputLayout`, entity output lands directly under `outDir` — `src/generated/Author.ts`,
+`Author.queries.ts`, `Author.routes.ts` — with no per-package subdirectory.
+
+The generated `Author.routes.ts` and `Author.queries.ts` files import a
+module-level `db` singleton from the path configured by `dbImport` in
+`metaobjects.config.ts` (`meta init` scaffolds `dbImport: "../db"`); wire it up
+once at `src/db.ts` — see
+[`docs/recipes/wiring-generated-queries.md`](../recipes/wiring-generated-queries.md)
+for the per-dialect setup (SQLite/libsql, Cloudflare D1, Postgres, multi-tenant):
+
+```ts
+// src/db.ts
+import { createClient } from "@libsql/client";
+import { drizzle } from "drizzle-orm/libsql";
+
+export const db = drizzle(createClient({ url: "file:dev.sqlite" }));
+```
 
 ```ts
 // src/server.ts
 import Fastify from "fastify";
-import { db } from "./db";
-import { author } from "./generated/acme/blog/Author";
-import { findAuthorById } from "./generated/acme/blog/Author.queries";
-import { registerAuthorRoutes } from "./generated/acme/blog/Author.routes";
+import { authorRoutes } from "./generated/Author.routes";
 
 const app = Fastify();
-registerAuthorRoutes(app, { db });   // mounts GET/POST/PUT/DELETE under /api/author
+await app.register(authorRoutes);   // mounts GET/POST/PATCH/PUT/DELETE for Author
 
 await app.listen({ port: 3000 });
 ```
 
-The `runtime-ts` package supplies the helpers that the generated routes lean on
-(`parseFilterParams`, the `ObjectManager` for full-runtime CRUD).
+`authorRoutes` is a Fastify plugin — `async function authorRoutes(fastify:
+FastifyInstance)` — registered with `fastify.register(...)`; `db` is the
+module-level singleton wired above, so `server.ts` never passes it explicitly.
+(`apiPrefix` in `metaobjects.config.ts` wraps the registration in a
+`fastify.register(..., { prefix })` block when set — see
+[`features/api-contract.md`](../features/api-contract.md).) The per-verb query
+helpers (`findAuthorById`, ...) live in the sibling `./generated/Author.queries`
+file and take `db` as an explicit first argument — useful directly in request
+handlers, tests, or any runtime where a module singleton doesn't fit (see the
+recipe above).
+
+The `runtime-ts` package supplies the helpers the generated routes lean on
+(`mountCrudRoutes`, `parseFilterParams`, the `ObjectManager` for full-runtime CRUD).
 
 ### Hono variant (Workers / Bun / edge)
 

@@ -19,10 +19,10 @@ Throughout the doc the worked example is an `Author` entity in the
 
 The contract has two halves: the **URL grammar** (paths + query-string
 shape) and the **wire format** (JSON request / response bodies). Both
-halves are language-agnostic and stable across the four shipped
-language ports. Routes can be **generated** (where the port ships a
-route generator) or **hand-written** (where it doesn't) — the wire
-behavior is identical either way.
+halves are language-agnostic and stable across all five shipped
+language ports. Every port ships a generated route implementation today
+(see "Per-port route codegen status" below) — hand-writing a controller
+is an option for custom needs, not the default path.
 
 ## The `EntityFetcher` contract
 
@@ -72,7 +72,7 @@ helper (so `Author` → `authors`). Generated TS hooks read `$path` from
 the entity-constants file, so the client and the server agree on the
 path segment without hand-coordination.
 
-### Filter operators (8)
+### Filter operators (9)
 
 Filters use a **bracketed qs** shape: `filter[<field>][<op>]=<value>`.
 A bare value (`filter[<field>]=<value>`) is sugar for `eq`. Multiple
@@ -90,12 +90,12 @@ filters AND together.
 The operator set is gated by field subtype in the generated
 `<Entity>FilterAllowlist`. A request with an operator that the field
 subtype doesn't support → HTTP 400. The operator list is a Tier 1
-cross-port invariant — every port's parser must implement these eight
-and only these eight.
+cross-port invariant — every port's parser must implement these nine
+and only these nine.
 
 ### TS-only filter extensions (not part of the cross-port contract)
 
-The TypeScript runtime parser ships five filter behaviors beyond the eight
+The TypeScript runtime parser ships five filter behaviors beyond the nine
 operators. They are **NOT part of the cross-port REST contract** — the other
 ports (Java, Kotlin, Python, C#) do not implement them, and a relying adopter
 must not assume them on a non-TS backend. They are deliberately deferred until
@@ -191,17 +191,20 @@ retryable / log-only.
 |---|---|---|
 | TypeScript | shipped — `@metaobjectsdev/codegen-ts` `routesFile()` → Fastify (`@metaobjectsdev/runtime-ts/drizzle-fastify`) AND `routesFileHono()` → Hono (`@metaobjectsdev/runtime-ts/hono`) | Reference implementation; full filter/sort + `withCount` support. Both flavors emit byte-identical on-the-wire responses for the same metadata (same envelopes, same status codes, same filter operator parser), so consumers can pick the server framework that matches their runtime (Fastify for long-lived Node, Hono for Workers / Bun / edge). |
 | C# | shipped — `MetaObjects.Codegen` `RoutesGenerator` → ASP.NET Minimal API | `MapGet` / `MapPost` / `MapPut` / `MapDelete` mounted under `apiPrefix`; full CRUD. |
-| Java | shipped — `metaobjects-codegen-spring` `SpringControllerGenerator` + `SpringDtoGenerator` + `SpringRepositoryGenerator` → Spring `@RestController` (Spring Boot 3.x / Spring Web MVC) | One controller per writable entity (`source.rdb @kind="table"`); 5 CRUD endpoints (GET list / GET by id / POST / PATCH + PUT / DELETE); `?sort`, `?limit/?offset`, `?withCount=1` envelope, 404 + 400 envelopes per the contract. Java 21 record DTOs for request/response; a stubbed `<Entity>Repository` interface the consumer implements against their persistence layer (JPA / jOOQ / JDBC). Filter operators (`eq/ne/...`) deferred — see the module's `KNOWN_GAPS.md`. |
-| Kotlin | shipped — `metaobjects-codegen-kotlin` `KotlinSpringControllerGenerator` → Spring `@RestController` | One controller per writable entity (`source.rdb @kind="table"`); 5 CRUD endpoints (GET list / GET by id / POST / PATCH+PUT / DELETE); `?sort`, `?limit/?offset`, `?withCount=1` envelope, 404 + 400 envelopes per the contract. Filter operators (`eq/ne/...`) deferred. |
-| Python | shipped — `metaobjects.codegen.generators.router_generator` → FastAPI `APIRouter` | One router per writable entity (`source.rdb @kind="table"`); 5 CRUD endpoints (GET list / GET by id / POST / PATCH+PUT / DELETE); `?sort`, `?limit/?offset`, `?withCount=1` envelope, 404 + 400 envelopes per the contract. Consumer wires the repository via FastAPI `app.dependency_overrides`; the generator emits a `Protocol` interface so the persistence layer (SQLAlchemy / asyncpg / etc.) is the consumer's choice. Filter operators (`eq/ne/...`) deferred — see the module's `KNOWN_GAPS.md`. |
+| Java | shipped — `metaobjects-codegen-spring` `SpringControllerGenerator` + `SpringDtoGenerator` + `SpringRepositoryGenerator` → Spring `@RestController` (Spring Boot 3.x / Spring Web MVC) | One controller per writable entity (`source.rdb @kind="table"`); 5 CRUD endpoints (GET list / GET by id / POST / PATCH + PUT / DELETE); `?sort`, `?limit/?offset`, `?withCount=1` envelope, 404 + 400 envelopes per the contract. Java 21 record DTOs for request/response; a stubbed `<Entity>Repository` interface the consumer implements against their persistence layer (JPA / jOOQ / JDBC). Filter operators (`eq/ne/gt/gte/lt/lte/in/like/isNull`) ship via the generated `<Entity>FilterAllowlist` (`SpringFilterAllowlistGenerator`) + the runtime `FilterParser`, wired directly into the list handler. |
+| Kotlin | shipped — `metaobjects-codegen-kotlin` `KotlinSpringControllerGenerator` → Spring `@RestController` | One controller per writable entity (`source.rdb @kind="table"`); 5 CRUD endpoints (GET list / GET by id / POST / PATCH+PUT / DELETE); `?sort`, `?limit/?offset`, `?withCount=1` envelope, 404 + 400 envelopes per the contract. Filter operators ship via the generated `<Entity>FilterAllowlist` (`KotlinFilterAllowlistGenerator`) + an inline `parse<Entity>Filter` helper emitted in the controller. |
+| Python | shipped — `metaobjects.codegen.generators.router_generator` → FastAPI `APIRouter` | One router per writable entity (`source.rdb @kind="table"`); 5 CRUD endpoints (GET list / GET by id / POST / PATCH+PUT / DELETE); `?sort`, `?limit/?offset`, `?withCount=1` envelope, 404 + 400 envelopes per the contract. Consumer wires the repository via FastAPI `app.dependency_overrides`; the generator emits a `Protocol` interface so the persistence layer (SQLAlchemy / asyncpg / etc.) is the consumer's choice. Filter operators ship via the generated `<entity>_filter_allowlist.py` (`filter_allowlist_generator.py`) + the shared `filter_parser` helper, wired into the list handler. |
 
-## Hand-writing a conforming controller
+## Hand-writing a conforming controller (if you outgrow the generated one)
 
-While the planned route-codegen work matures, here is the minimum
-controller needed to make `useAuthors`, `useAuthor`, etc. work against
-each non-TS / non-C# backend. The shape is the same in every language —
-mount five (or six, if you want PUT) routes under `apiPrefix` that
-match the URL grammar above.
+Every port ships a route generator today (see the status table above) —
+you do not need to hand-write a controller to get a conforming API. This
+section is for the rare case where you need a shape the generator
+doesn't cover (a custom auth scheme, a framework the generator doesn't
+target, etc.) and want a hand-rolled controller that still speaks the
+contract. The shape is the same in every language — mount five (or six,
+if you want PUT) routes under `apiPrefix` that match the URL grammar
+above.
 
 ### Java — Spring `@RestController`
 
@@ -303,20 +306,24 @@ into your framework's idiomatic query-builder, gated by the generated
 
 ## Future direction
 
-Cross-port route codegen — for Java (Spring), Kotlin (Spring-Kotlin /
-Ktor), Python (FastAPI), and a browser-side Angular client — is planned
-but not yet specced. The planned FR will track:
+Cross-port route + filter codegen (Java, Kotlin, Python), the shared
+route-shape oracle (`fixtures/api-contract-conformance/`), and a
+browser-side Angular client have all shipped — see "Per-port route
+codegen status" and "Verified by" above, and
+[`docs/ports/typescript-client.md#angular-18`](../ports/typescript-client.md#angular-18).
 
-- A shared route-shape oracle (analogous to the persistence-conformance
-  corpus) covering `list` / `get` / `create` / `update` / `delete` +
-  filter / sort / `withCount` + the error-response shape.
-- Per-port route generators emitting idiomatic controllers / routers
-  against that oracle.
-- An Angular client (browser-side) that consumes the same generated
-  hook surface as the React client.
+What's still genuinely open:
 
-Until then, hand-written controllers per the templates above are
-expected, and they remain the conformance gate.
+- The five **TS-only filter extensions** (`?search=`, `filter[or]` /
+  `filter[and]` nesting, leading-wildcard gating, the nesting-depth cap,
+  and the `in`-list size cap) — see "TS-only filter extensions" above.
+  None touch the metamodel vocabulary, so any of them can be promoted
+  cross-port later as a purely additive, non-breaking change if real
+  consumer demand shows up.
+- The `error` code vocabulary is not yet a hard cross-port invariant
+  beyond `not_found` and the filter-parser error codes.
+
+Neither item blocks adoption on any port today.
 
 ## Verified by
 
@@ -337,15 +344,14 @@ envelope shape) is exercised by the cross-port corpus at
 port's runner spins up a real HTTP server hosting its emitted routes for the
 canonical `Author` entity, walks the scenarios, and asserts byte-shape
 identical responses against the cross-port `expect.body.*` vocabulary.
-TypeScript + Kotlin runners ship; Java / C# / Python runners are planned
-follow-ups. See [`docs/CONFORMANCE.md`](../CONFORMANCE.md) for per-port pass
-status.
+All five ports ship a runner — TypeScript, Java, Kotlin, C#, and Python
+each spin up their generated routes and pass every scenario. See
+[`docs/CONFORMANCE.md`](../CONFORMANCE.md) for per-port pass status.
 
-Filter operator coverage (`eq` / `ne` / `gt` / `like` / `in` / `isNull`) is
-deferred from the API-contract corpus on purpose — backends defer those per
-their `KNOWN_GAPS.md`, so a scenario for `filter[name][like]=...` would fail
-on every port today. Filter-operator scenarios land alongside the per-port
-operator implementations.
+Filter operator coverage (`eq` / `ne` / `gt` / `gte` / `lt` / `lte` / `in` /
+`like` / `isNull`) is part of the corpus: 10 filter scenarios run on top of
+the 10 base CRUD scenarios, and all five ports satisfy all 20 today (see
+[`docs/CONFORMANCE.md`](../CONFORMANCE.md)).
 
 ## See also
 

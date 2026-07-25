@@ -345,12 +345,13 @@ Result-style "safe" variant where the language has an idiomatic precedent:
 | C# | `XxxParser.Parse(string): T` | `XxxParser.TryParse(text, out T, out string)` → `bool` | `System.Text.Json` |
 | Python | `parse_xxx(text: str) -> T` | — (Pythonic norm is throw-only; consumers `try/except`) | Pydantic v2 |
 | Kotlin | `XxxParser.parseXxx(text): TPayload` | `XxxParser.safeParseXxx(text): Result<TPayload>` | `kotlinx.serialization.json` |
-| Java | — (Jackson `ObjectMapper.readValue` paired with the `SpringPayloadGenerator`-emitted record; auto-emit on the roadmap) | — | (planned: Jackson) |
+| Java | `XxxParser.parse(text): TPayload` (throws `JsonProcessingException`) | — (throw-only; the FR-010 `extractLenient(loader, text)` tolerant-extraction variant ships alongside `parse()`) | Jackson `ObjectMapper` (`SpringOutputParserGenerator`) |
 
 The throwing API matches the substrate's native deserialization exception
-(Zod `ZodError`, `JsonException`, `ValidationError`, `SerializationException`).
-The Result-style API wraps the throwing API and does not throw on validation
-failure. All four shipped ports satisfy the same conformance fixture
+(Zod `ZodError`, `JsonException`, `ValidationError`, `SerializationException`,
+`JsonProcessingException`). The Result-style API wraps the throwing API and
+does not throw on validation failure. All five shipped ports satisfy the same
+conformance fixture
 ([`template-output-simple`](../../fixtures/conformance/template-output-simple/)).
 
 ### Consumer-side usage (Kotlin example)

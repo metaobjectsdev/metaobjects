@@ -16,7 +16,9 @@ copy-paste cross-port without context-switching.
 docs/
 ├── README.md                    # this file
 ├── CONFORMANCE.md               # inverse index: fixture → feature doc + per-port pass status
-├── features/                    # one file per metamodel feature
+├── features/                    # one file per metamodel feature — see `ls docs/features/`
+│                                 # for the definitive, always-current list; as of this
+│                                 # writing:
 │   ├── entities.md
 │   ├── source-kinds.md
 │   ├── relationships.md
@@ -24,18 +26,29 @@ docs/
 │   ├── templates-and-payloads.md
 │   ├── loaders.md
 │   ├── migrations-and-drift.md
+│   ├── migrations/                  # per-version migration guides (e.g. 0.x → 1.0)
 │   ├── api-contract.md          # cross-port REST contract (the universal browser client speaks it)
 │   ├── abstracts-and-inheritance.md # abstract: true + extends: — author-side shape reuse
 │   ├── extending-with-providers.md  # custom metamodel subtypes/attrs via MetaDataTypeProvider
-│   └── yaml-authoring.md
+│   ├── yaml-authoring.md
+│   ├── cli.md                       # CLI command matrix across all five ports
+│   ├── codegen-concepts.md          # declarative template-codegen scopes (perEntity/perPackage/perModel)
+│   ├── codegen-data-shapes.md       # the neutral template data dict shared cross-port
+│   ├── downstream-metadata-decisions.md # guidance for adopters extending the metamodel
+│   ├── generated-mutations.md       # generated POST/PATCH mutation surface
+│   ├── image-upload.md              # view.image form control (TS-web)
+│   └── own-your-codegen.md          # scaffold-and-own generator ownership (ADR-0034)
 └── ports/                       # one file per language/framework port
     ├── typescript.md
-    ├── typescript-client.md     # browser-side TS (React, TanStack, codegen pairs)
+    ├── typescript-client.md     # browser-side TS (React, TanStack, Angular, codegen pairs)
     ├── java.md
     ├── kotlin.md
     ├── csharp.md
     └── python.md
 ```
+
+If this list and `ls docs/features/` ever disagree, trust the directory listing —
+this tree is documentation, not the source of truth.
 
 ## When to read which
 
@@ -48,7 +61,7 @@ docs/
 | Wire prompt construction (FR-004) | [`features/templates-and-payloads.md`](features/templates-and-payloads.md) |
 | Share a metadata shape across multiple instances (abstracts, `extends:`) | [`features/abstracts-and-inheritance.md`](features/abstracts-and-inheritance.md) |
 | Add a custom metamodel subtype or attribute to a downstream project | [`features/extending-with-providers.md`](features/extending-with-providers.md) + [`recipes/extending-metaobjects-with-providers.md`](recipes/extending-metaobjects-with-providers.md) |
-| Wire the universal browser client (React + TanStack) to any backend | [`ports/typescript-client.md`](ports/typescript-client.md) + [`features/api-contract.md`](features/api-contract.md) |
+| Wire the universal browser client (React + TanStack, or Angular 18) to any backend | [`ports/typescript-client.md`](ports/typescript-client.md) (see [§Angular 18](ports/typescript-client.md#angular-18) for the Angular tier) + [`features/api-contract.md`](features/api-contract.md) |
 | Know which feature is supported in which port today | the capability matrix in the root [`README.md`](../README.md) or the per-port "Capability snapshot" table |
 | See which conformance fixtures gate each feature (and which port passes which) | [`CONFORMANCE.md`](CONFORMANCE.md) |
 | Read the canonical spec (target-agnostic) | [`../spec/`](../spec/) |

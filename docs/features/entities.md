@@ -227,8 +227,10 @@ public partial class AppDbContext : DbContext
 
 ### Python
 
-`metaobjects.codegen` emits a Python `@dataclass` per entity. Persistence
-(SQLAlchemy + FastAPI) is on the roadmap; the runtime tier is in progress.
+`metaobjects.codegen` emits a Python `@dataclass` per entity, plus a shipped
+FastAPI `APIRouter` (`router_generator`, FR-008 §2.3) and a shipped
+`ObjectManager` runtime (`metaobjects.runtime.object_manager`) for CRUD
+against the same metadata.
 
 ```python
 # generated/acme/blog/author.py
@@ -240,6 +242,14 @@ class Author:
     id: int
     name: str               # required, max_length=200
     bio: Optional[str] = None
+```
+
+```python
+from metaobjects.runtime.object_manager import ObjectManager
+
+om = ObjectManager(root, driver)   # driver wraps a DB-API 2 connection
+row = om.create("Author", {"name": "Ada", "bio": None})
+found = om.find_by_id("Author", row["id"])
 ```
 
 ## Verified by

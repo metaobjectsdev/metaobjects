@@ -1,6 +1,6 @@
 # Python port
 
-Targets Python 3.11+ on the SQLAlchemy + FastAPI / Pydantic stack. Ships the
+Targets Python 3.11+ on the FastAPI / Pydantic stack. Ships the
 metadata loader (canonical JSON + sigil-free YAML), conformance runner over the
 shared corpora, the FR-004 render engine, and the entity / payload / router
 codegen. Schema migrations are owned by the Node `meta` CLI (ADR-0015) — the
@@ -9,7 +9,7 @@ Python port has no `migrate` command by design; it consumes the canonical
 
 ## Install
 
-Published to PyPI as **`metaobjects`**:
+Requires **Python 3.11+**. Published to PyPI as **`metaobjects`**:
 
 ```bash
 pip install metaobjects        # or: uv add metaobjects
@@ -18,8 +18,9 @@ pip install metaobjects        # or: uv add metaobjects
 ```toml
 # pyproject.toml
 [project]
+requires-python = ">=3.11"
 dependencies = [
-    "metaobjects>=0.11",
+    "metaobjects>=0.19",
 ]
 ```
 
@@ -58,14 +59,14 @@ metadata:
 ### Custom providers (optional)
 
 If your app needs a metamodel subtype the core doesn't ship, declare a
-`MetaDataTypeProvider` and pass it through `from_directory`:
+`Provider` and pass it through `from_directory`:
 
 ```python
-from metaobjects.provider import MetaDataTypeProvider
-from metaobjects.loader import MetaDataLoader
+from metaobjects.provider import Provider
+from metaobjects import MetaDataLoader
 from .providers import your_provider
 
-loader = MetaDataLoader.from_directory("./metadata", providers=[your_provider])
+result = MetaDataLoader.from_directory("./metadata", providers=[your_provider])
 ```
 
 The provider object has the same four-member contract (`id`, `dependencies`,
@@ -79,30 +80,41 @@ for a worked example.
 
 ## Generate
 
+The `metaobjects` console-script (installed by `pip install metaobjects`) runs
+codegen and the drift gate — there is no `python -m metaobjects.codegen`
+module entry point:
+
 ```bash
-python -m metaobjects.codegen --metadata ./metadata --out ./generated
-python -m metaobjects.render.verify --metadata ./metadata --templates ./prompts
+metaobjects gen ./metadata --out ./generated      # codegen → write
+metaobjects verify ./metadata --out ./generated   # drift gate; bare verify defaults to --codegen
 ```
 
-The entity-model generator emits one `@dataclass` per entity:
+**Both `pydantic` and `fastapi` are consumer-installed, not transitive deps of
+`metaobjects` itself** — the entity/router files this emits `import pydantic`
+and `import fastapi`, so add them before importing the generated code:
+
+```bash
+pip install pydantic fastapi
+```
+
+The entity-model generator emits one Pydantic **`BaseModel`** per entity (not
+a `@dataclass`):
 
 ```python
-# generated/acme/blog/author.py
-from dataclasses import dataclass
-from typing import Optional
+# generated/Author.py
+from pydantic import BaseModel, Field
 
-@dataclass
-class Author:
-    id: int
-    name: str               # required, max_length=200
-    bio: Optional[str] = None
+class Author(BaseModel):
+    id: int | None = None
+    name: str = Field(max_length=200)               # required, max_length=200
+    bio: str | None = Field(default=None, max_length=2000)
 ```
 
 The router generator emits one FastAPI `APIRouter` per writable entity
 (`source.rdb` with `@kind="table"`):
 
 ```python
-# generated/acme/blog/author_router.py (excerpt)
+# generated/author_router.py (excerpt)
 router = APIRouter(prefix="/api/authors", tags=["authors"])
 
 class AuthorRepository(Protocol):
@@ -191,17 +203,20 @@ wiring is the `EntityFetcher` base URL + auth.
 
 ## Use
 
-The loader API is symmetric with the other ports — `from_directory` /
-`from_resources` / `from_string` factories, navigation methods on the loader and
-its child nodes.
+The loader API is symmetric with the other ports in shape — `from_directory` /
+`from_uris` / `from_string` factories returning a `LoadResult`, navigation
+methods on its `.root` and child nodes. `MetaDataLoader` is re-exported at the
+**top-level** `metaobjects` package (not `metaobjects.loader`); navigate the
+tree with `.children()` and the resolving `get_meta_attr(name)` (own +
+inherited via `extends` — see ADR-0039):
 
 ```python
-from metaobjects.loader import MetaDataLoader
+from metaobjects import MetaDataLoader
 
-loader = MetaDataLoader.from_directory("app", "./metadata")
-author = loader.meta_object("acme::blog::Author")
-name_field = author.field("name")
-print(name_field.attr_string_or_none("maxLength"))   # → "200"
+result = MetaDataLoader.from_directory("./metadata")
+author = result.root.children()[0]
+name_field = [f for f in author.children() if f.name == "name"][0]
+print(name_field.get_meta_attr("maxLength"))   # -> 200
 ```
 
 ## FR-004 — render
@@ -329,7 +344,7 @@ import lines are stable.
 | Declarative template-codegen | Yes — `metaobjects gen --template-spec` (scope perEntity/perPackage/perModel + outputPattern; the cross-port JSON contract shared with C#) |
 | Migrations | TS-only by design (ADR-0015) — no Python `migrate` command; consume the canonical `schema.postgres.sql` |
 | Drift verify | Yes — template / payload drift (`metaobjects.render.verify`) |
-| Runtime metadata | Loader API + render engine; SQLAlchemy ObjectManager-equivalent on the roadmap |
+| Runtime metadata | Yes (`metaobjects.runtime.ObjectManager` — DB-API 2 driver, pg8000/psycopg) + loader API + render engine |
 
 ## Conformance status (as of 2026-05-27)
 

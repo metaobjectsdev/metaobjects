@@ -6,22 +6,29 @@ Postgres + Npgsql.
 
 ## Install
 
-> **Note — not yet published to NuGet.** Consume from source via a project reference, OR adopt the in-repo build (`dotnet build server/csharp/`) and link to the produced DLLs. NuGet coordinates land once the C# port is ready for release:
+Published to [NuGet](https://www.nuget.org/packages/MetaObjects) at `0.19.3` — four
+packages, version-locked to the C# port version:
 
 ```xml
-<!-- YourApp.csproj — planned coordinates once published -->
+<!-- YourApp.csproj -->
 <ItemGroup>
-  <PackageReference Include="MetaObjects"          Version="0.15.10" />
-  <PackageReference Include="MetaObjects.Codegen"  Version="0.15.10" />
-  <PackageReference Include="MetaObjects.Render"   Version="0.15.10" />
+  <PackageReference Include="MetaObjects"          Version="0.19.3" />
+  <PackageReference Include="MetaObjects.Codegen"  Version="0.19.3" />
+  <PackageReference Include="MetaObjects.Render"   Version="0.19.3" />
 </ItemGroup>
 ```
 
-The C# CLI ships as a .NET tool invoked as `dotnet meta` (`dotnet tool install
---global MetaObjects.Cli`, command `dotnet-meta`) or run directly from the repo
-via `dotnet run --project server/csharp/MetaObjects.Cli`. It is deliberately
-**not** a bare `meta` executable — that name belongs to the canonical Node `meta`
-CLI, which owns schema + TS codegen (ADR-0015).
+Install the CLI as a .NET tool:
+
+```bash
+dotnet tool install --global MetaObjects.Cli
+dotnet meta --help
+```
+
+The C# CLI is invoked as `dotnet meta` (command `dotnet-meta`), or run directly
+from the repo via `dotnet run --project server/csharp/MetaObjects.Cli`. It is
+deliberately **not** a bare `meta` executable — that name belongs to the
+canonical Node `meta` CLI, which owns schema + TS codegen (ADR-0015).
 
 ## Configure
 
@@ -261,7 +268,10 @@ Today's `RoutesGenerator` honours pagination (`?limit`/`?offset`), sort
 `?withCount=1` envelope (`{ rows, total }`) that the Angular grid hook
 always sends. Filter operators (`eq` / `ne` / `gt` / `gte` / `lt` / `lte`
 / `in` / `like` / `isNull`) per [`api-contract.md`](../features/api-contract.md)
-are not yet generated — see
+ship too — the generated `<Entity>FilterAllowlist` (`FilterAllowlistGenerator`)
+feeds `FilterParser.Parse` + `EfCoreFilterDispatch.ApplyFilter`, both wired
+directly into the generated list handler. The one real gap: read-only
+projections (`source.rdb @kind: view/...`) don't get filter routes today — see
 [`server/csharp/MetaObjects.Codegen/Generators/KNOWN_GAPS.md`](../../server/csharp/MetaObjects.Codegen/Generators/KNOWN_GAPS.md).
 
 ## Capability snapshot
@@ -280,16 +290,12 @@ are not yet generated — see
 | Drift verify | `dotnet meta verify` (template drift, FR-004) |
 | Runtime metadata | Loader API + render engine; ObjectManager-style runtime tier on the roadmap |
 
-## Conformance status (as of 2026-05-27)
+## Conformance status
 
-| Corpus | Result |
-|---|---|
-| Metamodel (`fixtures/conformance/`) | 91 / 91 |
-| YAML authoring (`fixtures/yaml-conformance/`) | 12 / 13 (1 ledgered — `error-yaml-coerced-hex-in-string`, YamlDotNet doesn't coerce `0xFF`) |
-| Render (`fixtures/render-conformance/`) | 14 / 14 — byte-identical to TS |
-| Verify (`fixtures/verify-conformance/`) | 31 / 31 |
-| Persistence (`fixtures/persistence-conformance/`) | 12 / 12 (runnable via `scripts/integration-test.sh csharp`) |
-| API contract (`fixtures/api-contract-conformance/`) | 20 / 20 |
+Per-corpus pass counts move every release — see
+[`docs/CONFORMANCE.md`](../CONFORMANCE.md) for the current, authoritative
+per-port numbers (metamodel, YAML, render, verify, persistence, API
+contract). C# is green across all six active corpora today.
 
 ## See also
 
