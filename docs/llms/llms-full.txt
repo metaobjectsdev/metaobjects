@@ -113,6 +113,8 @@ metaobjects/
     typescript/   java/   python/   csharp/
   client/                        # runs on an end-user device
     web/                         # browser (TS-only -- the browser is TS-native)
+  examples/
+    advanced-modeling/           # a worked, runnable non-toy model
 ```
 
 Kotlin lives alongside Java under `server/java/` since both run on the JVM.

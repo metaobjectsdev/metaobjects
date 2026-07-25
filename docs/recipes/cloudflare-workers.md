@@ -8,7 +8,7 @@ learn the first time around.
 ## Which `@metaobjectsdev/*` packages run in Workers?
 
 Workers run V8 isolates with a Node.js compatibility flag. Not every package
-is V8-isolate-safe. The table below is the authoritative split as of 0.6.0:
+is V8-isolate-safe. The table below is the authoritative split:
 
 | Package | Workers-compatible? | Notes |
 |---|---|---|
@@ -22,7 +22,8 @@ is V8-isolate-safe. The table below is the authoritative split as of 0.6.0:
 | `@metaobjectsdev/react` | ✅ Runtime-safe | Browser; works in Workers if you render React on the edge. |
 | `@metaobjectsdev/tanstack` | ✅ Runtime-safe | Browser-side. |
 | Generated `<Entity>.entity.ts` / `<Entity>.queries.ts` | ✅ Runtime-safe | The generated code is the runtime; uses `drizzle-orm/d1`. |
-| Generated `<Entity>.routes.ts` | ⚠️ Mostly | Route handlers themselves are Workers-safe, but the Fastify adapter from `runtime-ts` is not. Workers adopters skip the routes generator and write their own minimal-API mounting. |
+| Generated `<Entity>.routes.ts` (Fastify, default) | ❌ Node-only | The handlers are Workers-safe but the Fastify adapter from `runtime-ts` is not. Use the Hono generator instead. |
+| Generated Hono routes (`routesFileHono()`) | ✅ Runtime-safe | The opt-in Workers routes generator — emits Hono handlers with no `runtime-ts` dependency. Wire it in `metaobjects.config.ts` in place of `routesFile()`. |
 
 ## Project layout
 

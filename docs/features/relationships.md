@@ -102,8 +102,14 @@ metadata:
 | `@cardinality` | `relationship.composition` | `one` / `many` | Multiplicity on the target side |
 | `@fields` | `identity.reference` | One field name or array | The FK column(s) on this entity |
 | `@references` | `identity.reference` | Entity name | The target entity (PK on the other side) |
-| `@onDelete` | both | `cascade` / `restrict` / `setNull` / `noAction` | RDB referential action |
-| `@onUpdate` | both | same as `@onDelete` | RDB referential action |
+| `@onDelete` | `relationship.*` only | `cascade` / `set-null` / `restrict` / `no-action` | RDB referential action. Default derives from the subtype: composition -> `cascade`, aggregation -> `set-null`, association -> `restrict`. |
+| `@onUpdate` | `relationship.*` only | same as `@onDelete` (default `cascade`) | RDB referential action |
+
+`@onDelete` / `@onUpdate` are registered on `relationship.association` /
+`aggregation` / `composition`. They are **not** attributes of `identity.reference` —
+putting one there fails load with `ERR_UNKNOWN_ATTR`. Declare the action on the
+relationship; the reference stays a pure FK declaration (`@fields`, `@references`,
+`@constraintName`, `@enforce`).
 
 The kebab-case metamodel values map to the SCREAMING_SNAKE forms in Exposed / EF
 Core / the target ORM or DDL at codegen time.

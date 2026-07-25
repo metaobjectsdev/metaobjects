@@ -64,6 +64,7 @@ this tree is documentation, not the source of truth.
 | Wire the universal browser client (React + TanStack, or Angular 18) to any backend | [`ports/typescript-client.md`](ports/typescript-client.md) (see [§Angular 18](ports/typescript-client.md#angular-18) for the Angular tier) + [`features/api-contract.md`](features/api-contract.md) |
 | Know which feature is supported in which port today | the capability matrix in the root [`README.md`](../README.md) or the per-port "Capability snapshot" table |
 | See which conformance fixtures gate each feature (and which port passes which) | [`CONFORMANCE.md`](CONFORMANCE.md) |
+| See a worked, non-toy model end to end (projections, value objects, TPH, prompt payloads on one runnable spine) | [`../examples/advanced-modeling/`](../examples/advanced-modeling/) |
 | Read the canonical spec (target-agnostic) | [`../spec/`](../spec/) |
 | Find a release recipe (Cloudflare D1, etc.) | [`recipes/`](recipes/) |
 | See the deeper design rationale for a feature | [`superpowers/specs/`](superpowers/specs/) |

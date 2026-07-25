@@ -236,6 +236,33 @@ file and take `db` as an explicit first argument — useful directly in request
 handlers, tests, or any runtime where a module singleton doesn't fit (see the
 recipe above).
 
+### Prove it works
+
+Boot the server (`bun src/server.ts` or `node --experimental-strip-types
+src/server.ts`) and exercise the generated routes. Three calls are enough to show
+codegen, persistence and validation are all live:
+
+```bash
+# 1. create -> 201 with the persisted row (id assigned by the DB)
+curl -isS -X POST localhost:3000/authors \
+  -H 'content-type: application/json' \
+  -d '{"name":"Ada Lovelace"}' | head -1
+# HTTP/1.1 201 Created
+
+# 2. read it back -> 200 and a JSON array containing the row
+curl -sS localhost:3000/authors
+
+# 3. violate a declared constraint -> 400, NOT a 500
+curl -isS -X POST localhost:3000/authors \
+  -H 'content-type: application/json' \
+  -d '{"name":""}' | head -1
+# HTTP/1.1 400 Bad Request
+```
+
+A 400 on step 3 is the point: `@required` in the metadata became a real wire-tier
+rejection, with no hand-written validation. If you set `apiPrefix` in
+`metaobjects.config.ts`, prefix the paths accordingly (`/api/authors`).
+
 The `runtime-ts` package supplies the helpers the generated routes lean on
 (`mountCrudRoutes`, `parseFilterParams`, the `ObjectManager` for full-runtime CRUD).
 
@@ -426,13 +453,18 @@ Python) that speaks the cross-port REST contract.
 
 ## Test counts
 
-- Server suite (`cd server/typescript && bun test`): 2500+ tests.
+- Server suite: `cd server/typescript && bun test` (scope it per package — a
+  whole-suite run is slow).
 - Persistence-conformance (Docker-required): runnable via
   `scripts/integration-test.sh ts`.
+- Which conformance corpus gates what: [`docs/CONFORMANCE.md`](../CONFORMANCE.md).
 
 ## See also
 
 - [`docs/RELEASING.md`](../RELEASING.md) — npm publish procedure (RC → smoke-test → promote)
 - [`docs/recipes/`](../recipes/) — deployment recipes (Cloudflare D1, more on the way)
 - All [`docs/features/`](../features/) feature docs show the TS output inline
+- [`examples/advanced-modeling/`](../../examples/advanced-modeling/) — a worked,
+  runnable model past the CRUD quickstart (projections, value objects, TPH,
+  prompt payloads on one spine)
 - [`server/typescript/`](../../server/typescript/) source tree

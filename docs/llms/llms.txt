@@ -81,6 +81,7 @@ MetaObjects deliberately does **not** ship one universal binary. Schema operatio
 - `server/csharp/` — C# implementation (`MetaObjects`, `MetaObjects.Render`, `MetaObjects.Codegen`)
 - `server/python/` — Python implementation (`metaobjects`, `ObjectManager`)
 - `client/web/` — universal web client TypeScript packages consumed by all backends (`@metaobjectsdev/runtime-web`, `@metaobjectsdev/react`, `@metaobjectsdev/tanstack`)
+- `examples/advanced-modeling/` — a worked, runnable model exercising projections, value objects, TPH and prompt payloads on one spine (the non-toy reference for authoring)
 
 ## TypeScript packages (npm)
 

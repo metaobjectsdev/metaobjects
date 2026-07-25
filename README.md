@@ -80,6 +80,8 @@ first-week wedge plan — and `meta init` picks up from there.
 - Want the metamodel feature reference? → [`docs/features/`](docs/features/).
 - Want the documentation index? → [`docs/README.md`](docs/README.md).
 - Want the design rationale? → [`spec/`](spec/) + [`docs/superpowers/specs/`](docs/superpowers/specs/).
+- Want a worked, non-toy model? → [`examples/advanced-modeling/`](examples/advanced-modeling/)
+  (projections, value objects, TPH, prompt payloads on one runnable spine).
 - Want the cross-language contract? → [`fixtures/`](fixtures/) (the conformance corpora are the oracle).
 
 ## Languages
