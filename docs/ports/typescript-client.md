@@ -500,6 +500,12 @@ for the rare case where you need a shape the generator doesn't cover).
 
 ## Angular 18
 
+> **Versioning.** The two `@metaobjectsdev/angular*` packages are on their own
+> `0.6.x` line, deliberately decoupled from the lockstep version the rest of the
+> `@metaobjectsdev/*` packages share. The Angular tier moves on its own cadence,
+> so a version mismatch against the React/TanStack packages is expected, not a
+> packaging error.
+
 Angular 18 ships as a **second universal browser-side client tier** alongside
 the React + TanStack pair. Same architecture — one runtime package
 (`@metaobjectsdev/angular`) plus one codegen package

@@ -1,6 +1,6 @@
 # ADR-0018 — Per-kind physical-name attributes within source paradigms
 
-**Status:** Proposed (2026-05-28)
+**Status:** Accepted (proposed 2026-05-28; shipped in all five ports)
 **Applies to:** all five language ports (TypeScript reference + Java / Kotlin / C# / Python); the `source` metatype attribute vocabulary.
 **Refines:** [ADR-0007](ADR-0007-source-v2-paradigm-subtypes-multisource.md) (source-v2 paradigm). Re-opens the within-paradigm physical-name attribute decision without abandoning the per-paradigm idiom principle.
 **Related:** [ADR-0002](ADR-0002-open-closed-typed-nodes.md) (open-closed typed nodes), [ADR-0013](ADR-0013-logical-field-types-vs-physical-column-attributes.md) (logical/physical layer split).

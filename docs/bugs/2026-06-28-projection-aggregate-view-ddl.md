@@ -5,6 +5,14 @@ title: "Projection origin.aggregate columns dropped from generated view DDL (inv
 labels: bug
 ---
 
+> **RESOLVED.** Both gaps are fixed and gated. The inverse-FK `@via` join
+> resolution and the `origin.aggregate` `@filter` rendering landed in
+> `7619002b` ("fix(codegen-ts): render origin.aggregate @filter in projection
+> view DDL", #90); `@filter` is now registered in all five ports with an
+> `origin-aggregate-filtered` registry-conformance fixture. Kept as a written
+> record of the failure mode — the contract-vs-DDL divergence class it describes
+> is worth recognising again.
+
 **Affected port(s):** TypeScript (codegen-ts view-SQL builder)
 **Package + version:** `@metaobjectsdev/codegen-ts` 0.12.5 (`projection/extract-view-spec.ts`), surfaced via `@metaobjectsdev/migrate-ts` 0.12.0 + `@metaobjectsdev/cli` 0.12.5, dialect postgres.
 

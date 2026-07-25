@@ -138,7 +138,8 @@ code behind a grep hit; a "duplicate" validator's *divergence* is the finding.
   `@dbColumn` → use `source.rdb` + `@kind` + `@table` / `@column` + `@role`, ADR-0007/0018);
   taxonomy impurity (entity over read-only primary source; read model that should be
   `object.projection`; `value` carrying identity/source, ADR-0028); copy-pasted base-field
-  blocks instead of abstract + `extends`; `@`-prefixed YAML keys (ADR-0006); relative refs
+  blocks — or the same-named field re-declared across objects (drift signature 10) — instead of
+  abstract + `extends`; `@`-prefixed YAML keys (ADR-0006); relative refs
   in committed canonical JSON (ADR-0032); DB-type-as-logical-subtype (ADR-0013); per-port
   migration engine where schema is Node-`meta`-owned (ADR-0015).
 
@@ -296,6 +297,7 @@ Per finding: `file:line` → what → generated-equivalent exists? → recommend
    - **Exposure contract, expressible → CODEGEN CANDIDATE (high):** a subset / renamed / versioned / multi-base read model → convert to an `object.projection` with a read-only `source.rdb` `@kind: view` child, let `meta migrate` emit the `CREATE VIEW`, and consume the generated read-only query — the hand-written view is a second source of truth for a derivable shape. Parity-gate: the generated view returns row-identical results before the hand-written SQL is deleted.
    - **Not expressible → carry it in `@sql` or `@unmanaged`, never a hand-edited migration (#208, ADR-0043).** When a NAMED irreducible construct blocks origin authoring — recursive CTE, window function / `OVER`, `UNION` / `INTERSECT` / `EXCEPT`, lateral join — the body still belongs in the metadata: carry the hand-written SQL in the `source.rdb` **`@sql`** escape — a read-only-`@kind` body the tool REGISTERS, fingerprints, and drift-checks (adopt a pre-existing view with `meta migrate --allow adopt-view`); `@sql` forbids `origin.*` children (two sources of truth). A DB object whose DDL is owned **entirely elsewhere** (Flyway / a hand-migration) → mark its source **`@unmanaged: true`** (legal on any `@kind` incl. `table`); `meta migrate` never creates/drops/drift-checks it and `verify --db` reports it as external. `@sql` and `@unmanaged` are mutually exclusive. **Only a view left *undeclared*** — neither modeled, nor `@sql`, nor `@unmanaged` — is truly *unmanaged*, invisible to `meta verify --db`, so this audit is the only gate that sees it. "It's an aggregation" is NOT an irreducibility justification (plain count/sum/avg/min/max rollups are `origin.aggregate`); nor is a `DISTINCT ON` pick-one-row (`origin.first`) or a non-aggregate expression column (`origin.computed`).
 9. **A closed variant-set hand-modeled per instance** — N sibling modules / classes / config blocks, one per channel / provider / target, sharing a payload + config shape and diverging only by transport. Grep for sibling-file families and switch-on-a-string dispatch; verify the set is closed and recurring (never a one-off). → axis I "New-vocabulary OPPORTUNITY" (VOCAB CANDIDATE, advisory).
+10. **N declarations of one FIELD across objects (same-name-field census)** — the field-level sibling of signature 6. Census field names across `object.*` nodes (`grep -rn 'name: <field>'` the metadata dir); a name recurring in ≥2 objects where a canonical owner exists — one whose name the field embeds (`<owner><Field>`: `wizardId` → `Wizard.id`, `orderTotal` → `Order.total`) or whose type+constraints it matches — is provenance loss → `extends: Owner.field` (dotted child targets, ADR-0029). **VERIFY by diffing the copies' attrs: a `@maxLength` / `@required` / validator divergence across them is drift already shipping — cite it.** Evidence multiplier: `extends` already used elsewhere in the repo raises confidence. Do NOT flag: generic names on unrelated concepts (`id` / `name` / `status` with no owner-embedding name and no matching constraints); required per-node attrs a loader forces (e.g. `payloadRef` / `format` on sibling `template.prompt` nodes — a product constraint, not a copy).
 
 ---
 
@@ -343,6 +345,7 @@ Per finding: `file:line` → what → generated-equivalent exists? → recommend
   `voRequest` / `voResponse` jsonb columns must be authored `field.object` — the loader
   must not mutate the tree; vendor SDK client + pricing are BYO (ADR-0024).
 - No `meta verify --templates` gate; no declared `@maxChars` / `@maxTokens` budget.
+- **Template-text duplication.** Hash every external template file (`md5sum` the template dir) and diff within groups sharing a `payloadRef`. A byte-identical cluster, or N≥3 templates sharing an identical skeleton with only slot lines differing, is ONE prompt maintained N times — a wording fix must be applied N times and WILL be missed. Recommend a shared `{{> group/partial }}` include (the render engine inlines partials recursively) or one template + payload-carried variant fields. Do NOT flag: the per-node `payloadRef` / `@format` repetition across `template.prompt` nodes (loader-forced, not a copy); templates meant to diverge independently — require N≥3 and structural identity before flagging.
 
 ---
 

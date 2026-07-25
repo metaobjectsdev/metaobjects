@@ -1,5 +1,10 @@
 # MetaObjects
 
+[![npm](https://img.shields.io/npm/v/%40metaobjectsdev%2Fcli?label=npm%20%40metaobjectsdev%2Fcli)](https://www.npmjs.com/package/@metaobjectsdev/cli)
+[![Maven Central](https://img.shields.io/maven-central/v/com.metaobjects/metaobjects-metadata?label=maven%20central)](https://central.sonatype.com/artifact/com.metaobjects/metaobjects-metadata)
+[![PyPI](https://img.shields.io/pypi/v/metaobjects?label=pypi)](https://pypi.org/project/metaobjects/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 A **cross-language metadata standard** for declaring typed entity models that
 drive code generation, runtime metadata access, drift detection, and prompt
 construction — across TypeScript, Java, Kotlin, C#, and Python.
@@ -111,7 +116,7 @@ first-week wedge plan — and `meta init` picks up from there.
 | Template-drift verify | Yes | Yes (`Verify.check`) | Yes (via Java) | Yes (`dotnet meta verify`) | Yes (`metaobjects.render.verify`) |
 | YAML authoring (sigil-free → JSON) | Yes | Yes | Yes (via Java) | Yes | Yes |
 | Runtime metadata (ObjectManager-style) | Yes (`runtime-ts`) | Yes (OMDB) | Yes (via Java OMDB + Exposed) | Roadmap | Yes (ObjectManager) |
-| React / Angular UI client (browser) | Yes — React (`@metaobjectsdev/react` + `@metaobjectsdev/tanstack`) and Angular 18 (`@metaobjectsdev/angular`, published at `0.6.0`); both codegen + runtime | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST |
+| React / Angular UI client (browser) | Yes — React (`@metaobjectsdev/react` + `@metaobjectsdev/tanstack`) and Angular 18 (`@metaobjectsdev/angular`, on its own `0.6.x` line — deliberately versioned separately from the lockstep `@metaobjectsdev/*` packages, since the Angular tier moves on its own cadence); both codegen + runtime | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST | Consumes TS client via REST |
 | Cross-port REST routes for the client | Generated (`routesFile()` → Fastify) | Generated (`SpringControllerGenerator` → Spring `@RestController`, incl. filter/sort) | Generated (`KotlinSpringControllerGenerator` → Spring `@RestController`, incl. filter/sort) | Generated (`RoutesGenerator` → ASP.NET Minimal API) | Generated (`router_generator` → FastAPI `APIRouter`, incl. filter/sort) |
 
 A "Yes" means the feature is covered by the shared conformance corpora at
@@ -160,19 +165,33 @@ metaobjects/
 ├── README.md                       # you are here
 ├── CLAUDE.md                       # project instructions for Claude
 ├── spec/                           # canonical metamodel docs, ADRs, roadmap
-├── fixtures/                       # cross-language conformance corpora
-│   ├── conformance/                # metamodel (loader + serializer + navigation)
+├── fixtures/                       # 19 cross-language conformance corpora — the oracle
+│   ├── conformance/                # metamodel (loader + serializer + navigation), 249 fixtures
 │   ├── yaml-conformance/           # YAML authoring desugar
 │   ├── render-conformance/         # FR-004 byte-identical render oracle
 │   ├── verify-conformance/         # FR-004 template-drift gate
-│   └── persistence-conformance/    # on-demand integration tests vs real Postgres
+│   ├── extract-conformance/        # FR-010 tolerant output parsing
+│   ├── api-contract-conformance/   # the REST wire contract, reference + generated lanes
+│   ├── persistence-conformance/    # on-demand integration tests vs real Postgres
+│   └── …                           # registry, validation, codegen, provider-composition, …
+│                                   #   full matrix: docs/CONFORMANCE.md
 ├── docs/
 │   ├── README.md                   # docs index
 │   ├── features/                   # feature reference (one file per metamodel feature)
 │   ├── ports/                      # per-port quickstarts
 │   ├── recipes/                    # deployment recipes (Cloudflare D1, …)
+│   ├── CONFORMANCE.md              # corpus × port matrix + fixture→feature index
 │   ├── superpowers/specs/          # design specs
 │   └── RELEASING.md                # npm publish procedure
+├── examples/
+│   └── advanced-modeling/          # a worked, runnable non-toy model
+├── library/                        # shipped standard-library metadata, opt-in per project
+│   └── ai/                         #   via `libraries: ["ai"]` (e.g. the LLM-call trace base)
+├── templates/                      # canonical api/docs Mustache templates (the SSOT the
+│                                   #   ports embed; byte-gated so copies cannot drift)
+├── agent-context/                  # the shared source the per-port AI-assistant context
+│                                   #   surfaces are generated from (AGENTS.md, skills, llms.txt)
+├── scripts/                        # CI parity (`ci-local.sh`), codegen of embedded assets, one-offs
 │
 ├── server/                         # runs on a server
 │   ├── typescript/                 # the reference port

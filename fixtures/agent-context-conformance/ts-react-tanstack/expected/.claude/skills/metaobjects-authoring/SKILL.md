@@ -216,6 +216,31 @@ name), `@default`, `@filterable`, `@sortable`. On temporal fields
 (`field.date`/`field.time`/`field.timestamp`) `@autoSet` stamps the value
 automatically — see the `@autoSet` callout under Timestamps below.
 
+#### What `@required` actually means
+
+`@required: true` is **NOT NULL** (presence). Two consequences that are easy to
+get wrong:
+
+1. **On a non-array string it also rejects `""` — but only at the wire tier.**
+   Generated *input* validation (the create/patch models behind POST/PATCH)
+   rejects the empty string by default; whitespace-only IS accepted. Generated
+   in-process read models never enforce this at construction, so reading an
+   existing row containing `""` does not throw.
+2. **To say "must be provided, but may be empty", author an explicit
+   `validator.length` with `@min: 0`.** An explicitly authored `@min` is always
+   authoritative over that implicit non-empty floor; the floor applies only when
+   no `@min` is authored at all. Dropping `@required` is NOT the way to express
+   this — that makes the field optional and loses presence typing.
+
+```jsonc
+// must be provided; empty string allowed
+{ "field.string": { "name": "note", "@required": true, "children": [
+  { "validator.length": { "name": "noteLen", "@min": 0 } }
+]}}
+```
+
+Arrays are unaffected: `@required` on an array field is presence only.
+
 ### Choosing the right shape — the general decision procedure (ADR-0037)
 
 This procedure decides the shape of **any** concept entering the metamodel — a

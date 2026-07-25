@@ -1,6 +1,6 @@
 # ADR-0007 — Source metatype v2: storage-paradigm subtypes, logical names, multi-source, per-subtype physical addresses
 
-**Status:** Proposed (2026-05-23)
+**Status:** Accepted (proposed 2026-05-23; shipped in all five ports)
 
 **Supersedes:** the `source.dbTable` / `source.dbView` vocabulary introduced for FR-003
 (Project E, "Source-aware entities + projections"). Builds on ADR-0002 (subtype behavior on

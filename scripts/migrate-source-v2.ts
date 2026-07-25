@@ -1,4 +1,11 @@
-// tools/migrate-source-v2.ts
+// scripts/migrate-source-v2.ts
+//
+// HISTORICAL — a one-off bulk migration, kept as a record of how the source-v2
+// cutover was applied. It is not part of any build or CI lane and is not
+// something a consumer should run: the vocabulary it migrates FROM
+// (`source.dbTable` / `source.dbView`) was retired long ago, so on current
+// metadata it is a no-op. Moved here from `tools/` so all repo scripts live in
+// one place.
 //
 // One-off bulk migration for the source-v2 TypeScript work + reserved-word fix.
 //
