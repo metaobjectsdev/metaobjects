@@ -70,6 +70,49 @@ Publish in tier order so a dependent never lands before its dependency. **`forge
 5. **npm versions are immutable.** You can never re-publish a version, and unpublish is a
    restricted 72-hour escape hatch. That's why we go RC-first.
 
+## Versioning policy (pre-1.0)
+
+**The version number's only mechanical meaning today is npm's caret rule.** For
+`0.y.z`, `^0.19.3` resolves `>=0.19.3 <0.20.0`, so: **PATCH is auto-adopted by every
+consumer on a routine `npm update`; MINOR requires a deliberate bump of their range.**
+That — not semver §8 — is the contract you are versioning against pre-1.0.
+
+**Litmus test.** Can a consumer on `^prev` run `npm update && meta gen` and (1) still
+typecheck their owned generators + hand-written imports, and (2) get output that is
+byte-identical *or only corrects previously-wrong output*? **Yes to both → PATCH.
+Otherwise → MINOR.**
+
+Do NOT reach for MINOR merely because "generated output changed." Scaffold-and-own
+(ADR-0034) does not firewall consumers from engine-output changes — the copied
+generators are thin compositions; the `render*` primitives + defaults live in the
+package and re-propagate on the next `meta gen`. So the axis is **API/default vs.
+bytes**, not "did output change."
+
+| Change class | Example | Pre-1.0 | Post-1.0 |
+|---|---|---|---|
+| Public API **additive** (new export / optional param / CLI flag) | new `render*` primitive | PATCH (MINOR if it headlines a feature release) | MINOR |
+| Public API **breaking** (required param, removed/renamed export, changed CLI semantics) | `relativeModuleSpecifier` +required param | **MINOR** | MAJOR |
+| Output change = **pure bugfix** (wrong output corrected; correct output byte-identical) | 0.19.3 payload naming, 0.19.4 TPH stamping | **PATCH** | PATCH |
+| Output change alters **shape/default of *correct* output** (renamed generated export, changed default, dropped artifact) | `extStyle` `"none"→"js"` default flip | **MINOR** + a "Generated-output change" changelog flag + an opt-out where feasible | MAJOR if consumer code referencing the output breaks; else MINOR |
+| New **opt-in** codegen feature, default output byte-identical | new generator defaulting off | PATCH (MINOR if it adds registry vocabulary — cross-port conformance surface) | MINOR |
+| Wire-contract / conformance behavior change of already-valid deployments | FR-036 enforcement | **MINOR**, loud notice (pre-1.0 MINOR *is* the breaking slot) | MAJOR |
+| Wire behavior fixed to match the documented/conformance contract | 0.19.1 `@min` clamp | PATCH | PATCH |
+| Docs / tests / fixtures only (no product file in a port) | 0.19.4 npm scope | **No release for that registry** (per-registry scoping) | same |
+
+**The `extStyle` 0.20.0 case, for calibration:** it was correctly MINOR — but for the
+*API break* (`relativeModuleSpecifier` gained a required param — a public export) **and**
+the *default flip* (churns every existing project's diff on regen), NOT because "output
+changed." Had it kept `"none"` as the default and only scaffolded `"js"` for new
+projects, PATCH would have been defensible.
+
+**Changelog convention (required for output-changing releases).** Every entry in
+classes (bugfix-output) and (shape/default-output) must carry the phrase
+**"Generated-output change — regenerate to pick it up; three-way merge preserves hand
+edits."** The real risk of the (correct) PATCH cadence is a consumer seeing an
+unexplained `meta gen` diff after `npm update`; the changelog flag + the planned
+gen-state engine-version stamp (see the tracking issue) are how you keep every such
+diff explained.
+
 ## Prerequisites
 
 - The JS/TS **workspace root is the repo root** (`/package.json`), globbing
