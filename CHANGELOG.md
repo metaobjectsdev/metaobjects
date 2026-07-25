@@ -7,7 +7,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### Fixed — D1/SQLite `verify` false schema drift (npm-only; `migrate-ts` + `cli`)
+## [0.20.2] — 2026-07-25
+
+**npm `0.20.2` only** (NuGet `0.19.3` / PyPI `0.19.5` / Maven Central `7.11.3` unchanged — no changed product file; D1 is a TS-only dialect). A bug-fix patch, no API or vocabulary change.
+
+### Fixed — D1/SQLite `verify` false schema drift (`migrate-ts` + `cli`)
 
 `meta verify --dialect d1` reported permanent, unfixable schema drift for a
 hand-migrated D1/SQLite database whose schema genuinely matches its metadata,
