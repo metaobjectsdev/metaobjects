@@ -114,14 +114,32 @@ public static class ValidationPasses
         }
     }
 
-    // FR-024 value purity (ADR-0028): a value object is a pure data shape — it
-    // carries NO identity of any subtype and NO source.
+    // FR-024 value purity (ADR-0028): a value object owns NO identity and NO source.
+    // ADR-0046 admits ONE exception: a navigation-only identity.reference with explicit
+    // @enforce:false — an outbound pointer to an entity (a DTO/message referencing X by
+    // id) is not persistence. Its target still resolves (dangling → ERR_INVALID_REFERENCE
+    // via the registry-derived pass) and codegen emits no FK/DDL. The value's OWN identity
+    // (primary/secondary) and any enforced reference (a physical FK it has no table to
+    // hold) stay banned.
     private static void ValidateValuePurity(MetaData model, List<MetaError> errors)
     {
         foreach (var child in model.Children())
         {
             if (child.Type == TYPE_IDENTITY)
             {
+                if (child.SubType == IDENTITY_SUBTYPE_REFERENCE)
+                {
+                    // ADR-0046: navigation-only reference is the sanctioned exception.
+                    if (child.Attr(IDENTITY_REFERENCE_ATTR_ENFORCE) is false) continue;
+                    errors.Add(new MetaError(
+                        $"value object '{model.Fqn()}' has an enforced reference " +
+                        $"({TYPE_IDENTITY}.{child.SubType} '{child.Name}') — a value is not persisted " +
+                        "and has no table to hold a physical FK; declare a navigation-only reference " +
+                        "with @enforce: false (FR-024, ADR-0028, ADR-0046)",
+                        ErrorCode.ERR_SUBTYPE_RULE_VIOLATION,
+                        Envelope: child.Source));
+                    continue;
+                }
                 errors.Add(new MetaError(
                     $"value object '{model.Fqn()}' must not have an identity " +
                     $"({TYPE_IDENTITY}.{child.SubType} '{child.Name}') — value objects are " +
@@ -2763,6 +2781,20 @@ public static class ValidationPasses
                         $"relationship \"{obj.Name}.{rel.Name}\" @{RELATIONSHIP_ATTR_THROUGH} \"{through}\" does not resolve to an entity.",
                         ErrorCode.ERR_INVALID_RELATIONSHIP,
                         Envelope: ResolvedSource.From(rel.Source, $"{obj.Fqn()}::{rel.Name}", (string)through!)));
+                    continue;
+                }
+                // A junction is a physical join table — it MUST be an object.entity. ADR-0046
+                // lets a value carry navigation-only references, so value-purity no longer
+                // implicitly guarantees a two-reference junction is an entity; assert it here.
+                // (A value/projection has no table to join through.)
+                if (junction.SubType != OBJECT_SUBTYPE_ENTITY)
+                {
+                    errors.Add(new MetaError(
+                        $"relationship \"{obj.Name}.{rel.Name}\" @{RELATIONSHIP_ATTR_THROUGH} \"{through}\" resolves to " +
+                        $"{junction.Type}.{junction.SubType}, not an entity — a junction is a persisted join table " +
+                        "and must be object.entity.",
+                        ErrorCode.ERR_INVALID_RELATIONSHIP,
+                        Envelope: rel.Source));
                     continue;
                 }
                 int refCount = CountJunctionReferences(junction);

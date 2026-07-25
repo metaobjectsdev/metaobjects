@@ -110,6 +110,7 @@ from ..meta.core.relationship.relationship_constants import (
 from ..meta.core.identity.identity_constants import (
     IDENTITY_SUBTYPE_REFERENCE,
     IDENTITY_REFERENCE_ATTR_REFERENCES,
+    IDENTITY_REFERENCE_ATTR_ENFORCE,
 )
 from ..shared.separators import PACKAGE_SEP
 from ..meta.core.object.object_constants import (
@@ -2290,6 +2291,20 @@ def _validate_relationships(root: MetaData, errors: list[MetaError]) -> None:
                     ),
                 ))
                 continue
+            # A junction is a physical join table — it MUST be an object.entity.
+            # ADR-0046 lets a value carry navigation-only references, so value-purity
+            # no longer implicitly guarantees a two-reference junction is an entity;
+            # assert it here. (A value/projection has no table to join through.)
+            if junction.sub_type != OBJECT_SUBTYPE_ENTITY:
+                errors.append(MetaError(
+                    f'relationship "{obj.name}.{rel.name}" '
+                    f'@{RELATIONSHIP_ATTR_THROUGH} "{through}" resolves to '
+                    f"{junction.type}.{junction.sub_type}, not an entity — a junction is a "
+                    f"persisted join table and must be object.entity.",
+                    ErrorCode.ERR_INVALID_RELATIONSHIP,
+                    envelope=rel.source,
+                ))
+                continue
             ref_count = _count_junction_references(junction)
             if ref_count != 2:
                 errors.append(MetaError(
@@ -2619,12 +2634,31 @@ def _validate_max_occurs(
                 )
 
 
-# FR-024 value purity (ADR-0028): a value object is a pure data shape — it
-# carries NO identity of any subtype and NO source. Mirrors TS subtype-rules.ts
-# validateValuePurity (effective children; envelope = the offending child).
+# FR-024 value purity (ADR-0028): a value object owns NO identity and NO source.
+# ADR-0046 admits ONE exception: a navigation-only identity.reference with explicit
+# @enforce: false — an outbound pointer to an entity (a DTO/message referencing X by
+# id) is not persistence. Its target still resolves (dangling → ERR_INVALID_REFERENCE
+# via the registry-derived pass) and codegen emits no FK/DDL. The value's OWN identity
+# (primary/secondary) and any enforced reference (a physical FK it has no table to
+# hold) stay banned. Mirrors TS subtype-rules.ts validateValuePurity.
 def _validate_value_purity(node: MetaObject, errors: list[MetaError]) -> None:
     for child in node.children():
         if child.type == TYPE_IDENTITY:
+            if child.sub_type == IDENTITY_SUBTYPE_REFERENCE:
+                # ADR-0046: navigation-only reference is the sanctioned exception.
+                if child.get_meta_attr(IDENTITY_REFERENCE_ATTR_ENFORCE) is False:
+                    continue
+                errors.append(
+                    MetaError(
+                        f"value object '{node.fqn()}' has an enforced reference "
+                        f"({TYPE_IDENTITY}.{child.sub_type} '{child.name}') — a value is not "
+                        f"persisted and has no table to hold a physical FK; declare a "
+                        f"navigation-only reference with @enforce: false (FR-024, ADR-0028, ADR-0046)",
+                        ErrorCode.ERR_SUBTYPE_RULE_VIOLATION,
+                        envelope=child.source,
+                    )
+                )
+                continue
             errors.append(
                 MetaError(
                     f"value object '{node.fqn()}' must not have an identity "

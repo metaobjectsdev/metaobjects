@@ -1750,6 +1750,21 @@ export function validateRelationships(root: MetaData): ParseError[] {
         );
         continue;
       }
+      // A junction is a physical join table — it MUST be an object.entity. ADR-0046
+      // lets a value carry navigation-only references, so value-purity no longer
+      // implicitly guarantees a two-reference junction is an entity; assert it here.
+      // (A value/projection has no table to join through.)
+      if (junction.subType !== OBJECT_SUBTYPE_ENTITY) {
+        errors.push(
+          new ParseError(
+            `relationship "${obj.name}.${rel.name}" @${RELATIONSHIP_ATTR_THROUGH} "${through}" resolves to ` +
+              `${junction.type}.${junction.subType}, not an entity — a junction is a persisted join table ` +
+              `and must be object.entity.`,
+            { code: "ERR_INVALID_RELATIONSHIP", source: rel.source },
+          ),
+        );
+        continue;
+      }
       const refCount = _countJunctionReferences(junction);
       if (refCount !== 2) {
         errors.push(

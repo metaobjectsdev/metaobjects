@@ -24,7 +24,11 @@ import {
   TYPE_IDENTITY,
   TYPE_SOURCE,
 } from "./shared/base-types.js";
-import { IDENTITY_SUBTYPE_PRIMARY } from "./core/identity/identity-constants.js";
+import {
+  IDENTITY_SUBTYPE_PRIMARY,
+  IDENTITY_SUBTYPE_REFERENCE,
+  IDENTITY_REFERENCE_ATTR_ENFORCE,
+} from "./core/identity/identity-constants.js";
 import {
   OBJECT_SUBTYPE_ENTITY,
   OBJECT_SUBTYPE_VALUE,
@@ -85,10 +89,30 @@ function walk(model: MetaData, errors: ParseError[], warnings: string[]): void {
 }
 
 // FR-024 value purity (ADR-0028): a value object is a pure data shape — it
-// carries NO identity of any subtype and NO source.
+// owns NO identity and NO source. ADR-0046 admits ONE exception: a
+// navigation-only `identity.reference` with explicit `@enforce: false` — an
+// outbound pointer to an entity (a DTO/message referencing X by id) is not
+// persistence. Its target still resolves (dangling → ERR_INVALID_REFERENCE via
+// the registry-derived pass) and codegen emits no FK/DDL. The value's OWN
+// identity (primary/secondary) and any enforced reference (a physical FK it has
+// no table to hold) stay banned.
 function validateValuePurity(model: MetaData, errors: ParseError[]): void {
   for (const child of model.children()) {
     if (child.type === TYPE_IDENTITY) {
+      if (child.subType === IDENTITY_SUBTYPE_REFERENCE) {
+        // ADR-0046: navigation-only reference is the sanctioned exception.
+        if (child.attr(IDENTITY_REFERENCE_ATTR_ENFORCE) === false) continue;
+        errors.push(
+          new ParseError(
+            `value object '${model.fqn()}' has an enforced reference ` +
+              `(${TYPE_IDENTITY}.${child.subType} '${child.name}') — a value is not ` +
+              `persisted and has no table to hold a physical FK; declare a ` +
+              `navigation-only reference with @enforce: false (FR-024, ADR-0028, ADR-0046)`,
+            { code: "ERR_SUBTYPE_RULE_VIOLATION", source: child.source },
+          ),
+        );
+        continue;
+      }
       errors.push(
         new ParseError(
           `value object '${model.fqn()}' must not have an identity ` +

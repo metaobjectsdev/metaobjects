@@ -195,7 +195,8 @@ describe("FR-024 B4a value purity", () => {
     expect(errors[0]!.message).toContain("identity");
   });
 
-  it("value object with a reference identity is an error", async () => {
+  it("value object with an ENFORCED reference identity is an error (no table for a physical FK)", async () => {
+    // @enforce defaults true → a hard FK, which a non-persisted value cannot carry.
     const { errors } = await load(
       JSON.stringify({
         "metadata.root": {
@@ -222,6 +223,101 @@ describe("FR-024 B4a value purity", () => {
       }),
     );
     expect(codes(errors)).toEqual(["ERR_SUBTYPE_RULE_VIOLATION"]);
+    expect(errors[0]!.message).toContain("@enforce: false");
+  });
+
+  it("value object with an explicit @enforce:true reference identity is still an error", async () => {
+    const { errors } = await load(
+      JSON.stringify({
+        "metadata.root": {
+          package: "demo",
+          children: [
+            CUSTOMER_ENTITY,
+            {
+              "object.value": {
+                name: "Money",
+                children: [
+                  { "field.uuid": { name: "customerId" } },
+                  {
+                    "identity.reference": {
+                      name: "customerRef",
+                      "@fields": ["customerId"],
+                      "@references": "Customer",
+                      "@enforce": true,
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(codes(errors)).toEqual(["ERR_SUBTYPE_RULE_VIOLATION"]);
+  });
+
+  // ADR-0046: a value MAY carry a navigation-only (@enforce:false) reference —
+  // a DTO/message referencing an entity by id is not persistence.
+  it("value object with a navigation-only (@enforce:false) reference is legal", async () => {
+    const { errors, warnings } = await load(
+      JSON.stringify({
+        "metadata.root": {
+          package: "demo",
+          children: [
+            CUSTOMER_ENTITY,
+            {
+              "object.value": {
+                name: "AskForStake",
+                children: [
+                  { "field.uuid": { name: "customerId" } },
+                  {
+                    "identity.reference": {
+                      name: "customerRef",
+                      "@fields": ["customerId"],
+                      "@references": "Customer",
+                      "@enforce": false,
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(errors).toHaveLength(0);
+    expect(warnings).toHaveLength(0);
+  });
+
+  // ADR-0046: the reference on a value still resolves — a dangling target fails
+  // the load exactly as it would on an entity (ERR_INVALID_REFERENCE).
+  it("value object with a navigation-only reference to a NON-existent target is an error", async () => {
+    const { errors } = await load(
+      JSON.stringify({
+        "metadata.root": {
+          package: "demo",
+          children: [
+            {
+              "object.value": {
+                name: "AskForStake",
+                children: [
+                  { "field.uuid": { name: "tableId" } },
+                  {
+                    "identity.reference": {
+                      name: "tableRef",
+                      "@fields": ["tableId"],
+                      "@references": "NoSuchTable",
+                      "@enforce": false,
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      }),
+    );
+    expect(codes(errors)).toEqual(["ERR_INVALID_REFERENCE"]);
   });
 
   it("value object with a source.* child is an error (values are not persisted shapes)", async () => {

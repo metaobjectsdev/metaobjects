@@ -42,6 +42,7 @@ import com.metaobjects.index.LookupIndex;
 import com.metaobjects.layout.DataGridLayout;
 import com.metaobjects.layout.MetaLayout;
 import com.metaobjects.identity.MetaIdentity;
+import com.metaobjects.identity.ReferenceIdentity;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.attr.ExpressionAttribute;
 import com.metaobjects.origin.AggregateOrigin;
@@ -1427,6 +1428,19 @@ public final class ValidationPhase {
                     + "\" does not resolve to an entity." + didYouMeanHint(root, through),
                 ErrorCode.ERR_INVALID_RELATIONSHIP,
                 ResolvedSource.from(rel.getSource(), obj.getShortName() + "::" + rel.getShortName(), through));
+        }
+        // A junction is a physical join table — it MUST be an object.entity. ADR-0046
+        // lets a value carry navigation-only references, so value-purity no longer
+        // implicitly guarantees a two-reference junction is an entity; assert it here.
+        // (A value/projection has no table to join through.)
+        if (!MetaObject.SUBTYPE_ENTITY.equals(junction.getSubType())) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_INVALID_RELATIONSHIP
+                    + ": relationship \"" + obj.getShortName() + "." + rel.getShortName()
+                    + "\" @" + MetaRelationship.ATTR_THROUGH + " \"" + through
+                    + "\" resolves to " + junction.getType() + "." + junction.getSubType()
+                    + ", not an entity — a junction is a persisted join table and must be object.entity.",
+                ErrorCode.ERR_INVALID_RELATIONSHIP, rel.getSource());
         }
         int refCount = countJunctionReferences(junction);
         if (refCount != 2) {
@@ -3474,6 +3488,22 @@ public final class ValidationPhase {
     /** A value object is a pure shape — NO identity of any subtype and NO source. */
     private static void validateValuePurity(MetaObject obj) {
         for (MetaData child : obj.getChildren(MetaData.class, true)) {
+            // ADR-0046: a value MAY carry a navigation-only reference — an
+            // identity.reference with explicit @enforce:false. Its target still
+            // resolves (dangling → ERR_INVALID_REFERENCE via the registry pass) and
+            // codegen emits no FK/DDL. Check ReferenceIdentity BEFORE the generic
+            // MetaIdentity ban (it is a subclass). Its OWN identity (primary/secondary)
+            // and any enforced reference (a physical FK it has no table to hold) stay banned.
+            if (child instanceof ReferenceIdentity) {
+                if (!((ReferenceIdentity) child).isEnforced()) continue;
+                throw new MetaDataException(
+                    "ERR_SUBTYPE_RULE_VIOLATION"
+                        + ": value object '" + obj.getName() + "' has an enforced reference ("
+                        + child.getType() + "." + child.getSubType() + ") — a value is not persisted "
+                        + "and has no table to hold a physical FK; declare a navigation-only reference "
+                        + "with @enforce: false (FR-024, ADR-0028, ADR-0046).",
+                    ErrorCode.ERR_SUBTYPE_RULE_VIOLATION, child.getSource());
+            }
             if (child instanceof MetaIdentity) {
                 throw new MetaDataException(
                     "ERR_SUBTYPE_RULE_VIOLATION"

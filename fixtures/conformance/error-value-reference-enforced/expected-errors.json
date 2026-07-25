@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_SUBTYPE_RULE_VIOLATION",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.poker.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.value'].children[1]['identity.reference']"
+      }
+    }
+  ],
+  "warnings": []
+}

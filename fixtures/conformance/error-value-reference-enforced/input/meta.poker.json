@@ -1,0 +1,32 @@
+{
+  "metadata.root": {
+    "package": "gaming::poker",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Table",
+          "children": [
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "label" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "AskForStake",
+          "children": [
+            { "field.uuid": { "name": "tableId" } },
+            {
+              "identity.reference": {
+                "name": "tableRef",
+                "@fields": ["tableId"],
+                "@references": "Table"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

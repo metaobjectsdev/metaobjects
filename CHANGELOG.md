@@ -27,6 +27,37 @@ directional prompt-construction data-flow diagram (npm-only; `docs-site` + `cli`
 Additive: markdown surfaces and non-pipeline site output are unchanged. Gated by the
 `docs-site` golden (its AI fixture now exercises the full pipeline) + a link-graph unit test.
 
+### Added — value objects may carry navigation-only references (ADR-0046, #238)
+
+A non-persisted shape — an API DTO, an event payload, a wire-protocol command message —
+can now declare that a field references an entity, using the chartered navigation-only
+reference form. Previously value purity (ADR-0028) banned **all** identity/reference
+constructs on `object.value`, so a message carrying `tableId` had no way to say it
+references `Table`.
+
+- An `object.value` may now carry an `identity.reference` child **when it declares
+  explicit `@enforce: false`** (the already-chartered logical-reference form). The loader
+  resolves its `@references` target exactly as on an entity — a dangling target fails the
+  load with `ERR_INVALID_REFERENCE` — and codegen emits **no** FK/DDL (a value has no
+  table). A value's own identity (`identity.primary`/`identity.secondary`) and any
+  enforced reference stay banned (`ERR_SUBTYPE_RULE_VIOLATION`).
+- **Zero new vocabulary** — a child-licensing relaxation (ADR-0037 step 0), not an
+  expansion; `registry-conformance` is unaffected. The value↔entity dichotomy just gained
+  the "referencing DTO" it lacked without a new subtype.
+- **M:N junction guard made explicit.** Value purity used to *implicitly* guarantee that an
+  M:N `@through` junction was an `object.entity` (a value couldn't hold the two required
+  `identity.reference` children). Allowing navigation-only references on values removes that
+  implicit guard, so the `@through` validation now explicitly requires the junction resolve
+  to an `object.entity` (`ERR_INVALID_RELATIONSHIP` otherwise) — a junction is a physical
+  join table.
+
+Additive: no existing metadata triggers the relaxed rule, so `meta gen` output is
+byte-identical. This is a **cross-port loader change** (TS / Java / Python / C#; Kotlin
+inherits the JVM loader), gated by four new shared conformance fixtures
+(`value-reference-navigation-only` loads + resolves; `error-value-reference-enforced`,
+`error-value-reference-unresolved`, and `error-m2m-through-value` fail). See
+[ADR-0046](spec/decisions/ADR-0046-value-navigation-only-references.md).
+
 ## [0.20.2] — 2026-07-25
 
 **npm `0.20.2` only** (NuGet `0.19.3` / PyPI `0.19.5` / Maven Central `7.11.3` unchanged — no changed product file; D1 is a TS-only dialect). A bug-fix patch, no API or vocabulary change.

@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_INVALID_REFERENCE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.poker.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.value'].children[1]['identity.reference']"
+      }
+    }
+  ],
+  "warnings": []
+}
