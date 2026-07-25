@@ -116,6 +116,18 @@ jobs:
         if: matrix.language == 'typescript'
         run: |
           bun install
+          # Build the workspace BEFORE the suites. The generated-output compile
+          # gates (e.g. the #214 read-half tsc gate) run the real TypeScript
+          # compiler over emitted code that imports `@metaobjectsdev/runtime-ts/
+          # drizzle-fastify`; tsc resolves that subpath through the package's
+          # `exports` map, whose `types`/`default` conditions point at `dist/` —
+          # build output a fresh checkout does not have (tsc does not honour the
+          # `bun` condition that makes bun's own resolution work off `src/`).
+          # `scripts/ci-local.sh` builds in its ts-fast lane before this same
+          # gate, so without this step hosted and local-CI disagree: local stays
+          # green off a previously-built dist/ while hosted fails with "Cannot
+          # find module … or its corresponding type declarations".
+          bun run --filter '*' build
           # Loader + YAML + object-model corpora (packages/metadata).
           cd server/typescript/packages/metadata && bun test test/conformance.test.ts test/yaml-conformance.test.ts test/object-model-conformance.test.ts
           # Registry-conformance gate (TS is the reference emitter — byte-matches
