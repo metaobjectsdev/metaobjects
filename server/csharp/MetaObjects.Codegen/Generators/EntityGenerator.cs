@@ -825,13 +825,18 @@ public class EntityGenerator : IGenerator
         return member[..idx] + hook + member[idx..];
     }
 
-    // #234 — true iff the entity has a (single, non-array) STRICT field.uri / field.inet — the
-    // fields carrying the generated [JsonConverter] + backing MetaNetValidation. A @lenient uri/inet
-    // is a plain string with no converter, so it does not count.
-    private static bool HasStrictNetField(MetaObject entity) =>
-        entity.Fields().Any(f => !f.ResolvedIsArray()
-            && (f.SubType == FIELD_SUBTYPE_URI || f.SubType == FIELD_SUBTYPE_INET)
-            && !CSharpNaming.IsLenientNet(f));
+    // #234 — true iff FIELD is a (single, non-array) STRICT field.uri / field.inet — the fields
+    // carrying the generated [JsonConverter] + backing MetaNetValidation. A @lenient uri/inet is a
+    // plain string with no converter, so it does not count. Single SSOT predicate for both the
+    // per-entity emit gate and the per-property attribute guard (mirrors the Java/Kotlin ports'
+    // own isStrictNetField).
+    private static bool IsStrictNetField(MetaField field) =>
+        !field.ResolvedIsArray()
+        && (field.SubType == FIELD_SUBTYPE_URI || field.SubType == FIELD_SUBTYPE_INET)
+        && !CSharpNaming.IsLenientNet(field);
+
+    // #234 — true iff the entity has any strict field.uri / field.inet (needs MetaNetValidation).
+    private static bool HasStrictNetField(MetaObject entity) => entity.Fields().Any(IsStrictNetField);
 
     // #234 — append the [JsonConverter(typeof(…))] binding a strict field.uri / field.inet property
     // to the same-namespace generated MetaNetValidation converter. No-op for a @lenient uri/inet
@@ -839,7 +844,7 @@ public class EntityGenerator : IGenerator
     // follow-up (no validation-conformance case).
     private static void AppendNetConverterAttribute(StringBuilder sb, MetaField field)
     {
-        if (field.ResolvedIsArray() || CSharpNaming.IsLenientNet(field)) return;
+        if (!IsStrictNetField(field)) return; // strict predicate guarantees a non-array uri/inet
         if (field.SubType == FIELD_SUBTYPE_URI)
             sb.AppendLine("    [JsonConverter(typeof(MetaNetValidation.AbsoluteUriJsonConverter))]");
         else if (field.SubType == FIELD_SUBTYPE_INET)
