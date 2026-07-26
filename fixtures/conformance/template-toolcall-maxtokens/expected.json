@@ -1,0 +1,27 @@
+{
+  "metadata.root": {
+    "package": "acme::ai",
+    "children": [
+      {
+        "object.value": {
+          "name": "LookupResult",
+          "children": [
+            {
+              "field.string": {
+                "name": "summary"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "template.toolcall": {
+          "name": "lookupProduct",
+          "@maxTokens": 2048,
+          "@payloadRef": "acme::ai::LookupResult",
+          "@toolName": "lookup_product"
+        }
+      }
+    ]
+  }
+}

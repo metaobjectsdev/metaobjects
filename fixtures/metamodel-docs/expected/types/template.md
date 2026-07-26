@@ -99,6 +99,7 @@ A vendor-agnostic LLM tool-call envelope (ADR-0011). Unlike prompt/output it has
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
+| `@maxTokens` | int | no |  |  | metaobjects-prompt | Per-call token budget for the tool-call's structured response (LLM-specific). Vendor-agnostic config; peer of @maxTokens on template.prompt (#237). |
 | `@owner` | string | no |  |  | metaobjects-prompt | Governance: the owner of this toolcall. |
 | `@payloadRef` | string | yes |  |  | metaobjects-prompt | Output value-object the tool produces (resolved against the metamodel). |
 | `@since` | string | no |  |  | metaobjects-prompt | Governance: the version this toolcall was introduced in. |

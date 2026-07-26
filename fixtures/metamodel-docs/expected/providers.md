@@ -110,7 +110,7 @@ Prompt / AI + serialization domain — @xmlText / @example / @instruction field 
 - `object.value`: `@normalize`
 - `template.output`: `@format`, `@htmlBodyRef`, `@kind`, `@maxChars`, `@owner`, `@payloadRef`, `@promptStyle`, `@requiredTags`, `@since`, `@subjectRef`, `@textBodyRef`, `@textRef`
 - `template.prompt`: `@format`, `@maxChars`, `@maxTokens`, `@model`, `@owner`, `@payloadRef`, `@requiredSlots`, `@requiredTags`, `@responseRef`, `@since`, `@textRef`
-- `template.toolcall`: `@owner`, `@payloadRef`, `@since`, `@toolName`
+- `template.toolcall`: `@maxTokens`, `@owner`, `@payloadRef`, `@since`, `@toolName`
 
 ## metaobjects-ui
 

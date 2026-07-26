@@ -134,6 +134,8 @@ const EXPECTED: Record<string, Record<string, ExpectedAttr>> = {
     payloadRef: { valueType: "string", isArray: false, required: true },
     owner: { valueType: "string", isArray: false, required: false },
     since: { valueType: "string", isArray: false, required: false },
+    // #237 — vendor-agnostic per-call token budget (peer of @maxTokens on prompt).
+    maxTokens: { valueType: "int", isArray: false, required: false },
   },
 };
 

@@ -7,6 +7,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added — `@maxTokens` on core `template.toolcall` (#237)
+
+**Cross-port** (metamodel — TS / Java / Python / C# / Kotlin). `@maxTokens` (a vendor-agnostic
+per-call token budget, already core on `template.prompt`) is now registered on
+`template.toolcall` too, so a tool-call's response token budget is first-class metadata rather
+than an `attr.properties`-bag / hardcoded runtime concern. Per the ADR-0037 decision procedure
+it's a §2c configuration attribute (`int`, optional). **`@fallback` is deliberately NOT
+promoted** — ADR-0011 charters retry/fallback shapes as consumer-provider (vendor-specific)
+extensions, and `@fallback`'s value is a vendor-specific structured object; it stays a
+`registry.extend` concern. Registered in all five ports + gated by `expected-registry.json`
+and the `template-toolcall-maxtokens` conformance fixture.
+
 ### Fixed — an abstract `template.prompt` may omit a required `@payloadRef` (#236)
 
 **Cross-port** (loader — TS / Java / Python / C#; Kotlin inherits the JVM loader). The generic

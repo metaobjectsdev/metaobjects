@@ -3995,6 +3995,13 @@
       "rules": "toolcall requires @toolName (the wire tool name surfaced to the LLM) AND @payloadRef (the output value-object the tool produces). @textRef is intentionally absent — a tool-call has no renderable text. Core keeps toolcall vendor-agnostic; vendor wire details (retry semantics, fallback shapes, parallel invocation, cache hints) are added by consumer providers via registry.extend(TYPE_TEMPLATE, \"toolcall\", { attributes: [...] }). The LLM-facing tool description reuses the @description documentation common attr (added to every type by docProvider), so it is not redeclared here.",
       "attrs": [
         {
+          "name": "maxTokens",
+          "valueType": "int",
+          "isArray": false,
+          "required": false,
+          "description": "Per-call token budget for the tool-call's structured response (LLM-specific). Vendor-agnostic config; peer of @maxTokens on template.prompt (#237)."
+        },
+        {
           "name": "owner",
           "valueType": "string",
           "isArray": false,

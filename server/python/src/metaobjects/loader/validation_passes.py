@@ -124,21 +124,23 @@ from ..meta.core.index.index_constants import INDEX_ATTR_FIELDS, INDEX_SUBTYPE_L
 from ..source import resolved_source
 from ..naming_refs import did_you_mean_hint, resolve_object_ref
 
-# A subtype-specific template attr is valid ONLY on the subtype it is registered
+# A subtype-specific template attr is valid ONLY on the subtype(s) it is registered
 # for. The metamodel registers these per-subtype (see the core_types template block),
 # but the lenient loader does not reject a misplaced one — _validate_templates does.
 # Mirrors the per-subtype TEMPLATE_ATTRS_MAP split across the other ports.
-_TEMPLATE_SUBTYPE_ONLY_ATTRS: dict[str, str] = {
-    tc.TEMPLATE_ATTR_MAX_TOKENS: tc.TEMPLATE_SUBTYPE_PROMPT,
-    tc.TEMPLATE_ATTR_REQUIRED_SLOTS: tc.TEMPLATE_SUBTYPE_PROMPT,
-    tc.TEMPLATE_ATTR_MODEL: tc.TEMPLATE_SUBTYPE_PROMPT,
-    tc.TEMPLATE_ATTR_RESPONSE_REF: tc.TEMPLATE_SUBTYPE_PROMPT,
-    tc.TEMPLATE_ATTR_PROMPT_STYLE: tc.TEMPLATE_SUBTYPE_OUTPUT,
-    tc.TEMPLATE_ATTR_KIND: tc.TEMPLATE_SUBTYPE_OUTPUT,
-    tc.TEMPLATE_ATTR_SUBJECT_REF: tc.TEMPLATE_SUBTYPE_OUTPUT,
-    tc.TEMPLATE_ATTR_HTML_BODY_REF: tc.TEMPLATE_SUBTYPE_OUTPUT,
-    tc.TEMPLATE_ATTR_TEXT_BODY_REF: tc.TEMPLATE_SUBTYPE_OUTPUT,
-    tc.TEMPLATE_ATTR_TOOL_NAME: tc.TEMPLATE_SUBTYPE_TOOLCALL,
+# #237: @maxTokens is registered on BOTH prompt AND toolcall (a vendor-agnostic token
+# budget), so the value is a SET of allowed subtypes, not a single one.
+_TEMPLATE_SUBTYPE_ONLY_ATTRS: dict[str, frozenset[str]] = {
+    tc.TEMPLATE_ATTR_MAX_TOKENS: frozenset({tc.TEMPLATE_SUBTYPE_PROMPT, tc.TEMPLATE_SUBTYPE_TOOLCALL}),
+    tc.TEMPLATE_ATTR_REQUIRED_SLOTS: frozenset({tc.TEMPLATE_SUBTYPE_PROMPT}),
+    tc.TEMPLATE_ATTR_MODEL: frozenset({tc.TEMPLATE_SUBTYPE_PROMPT}),
+    tc.TEMPLATE_ATTR_RESPONSE_REF: frozenset({tc.TEMPLATE_SUBTYPE_PROMPT}),
+    tc.TEMPLATE_ATTR_PROMPT_STYLE: frozenset({tc.TEMPLATE_SUBTYPE_OUTPUT}),
+    tc.TEMPLATE_ATTR_KIND: frozenset({tc.TEMPLATE_SUBTYPE_OUTPUT}),
+    tc.TEMPLATE_ATTR_SUBJECT_REF: frozenset({tc.TEMPLATE_SUBTYPE_OUTPUT}),
+    tc.TEMPLATE_ATTR_HTML_BODY_REF: frozenset({tc.TEMPLATE_SUBTYPE_OUTPUT}),
+    tc.TEMPLATE_ATTR_TEXT_BODY_REF: frozenset({tc.TEMPLATE_SUBTYPE_OUTPUT}),
+    tc.TEMPLATE_ATTR_TOOL_NAME: frozenset({tc.TEMPLATE_SUBTYPE_TOOLCALL}),
 }
 
 # ---------------------------------------------------------------------------
@@ -3006,13 +3008,14 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
         # e.g. @maxTokens (prompt-only) on a template.output, or @promptStyle
         # (output-only) on a template.prompt. ADR-0039: resolving — a subtype-only
         # attr may be inherited via extends, so read the effective value.
-        for attr_name, allowed_sub in _TEMPLATE_SUBTYPE_ONLY_ATTRS.items():
-            if tpl.get_meta_attr(attr_name) is not None and tpl.sub_type != allowed_sub:
+        for attr_name, allowed_subs in _TEMPLATE_SUBTYPE_ONLY_ATTRS.items():
+            if tpl.get_meta_attr(attr_name) is not None and tpl.sub_type not in allowed_subs:
+                valid_on = " / ".join(f"template.{s}" for s in sorted(allowed_subs))
                 errors.append(MetaError(
                     code=ErrorCode.ERR_INVALID_TEMPLATE,
                     message=(
                         f'template.{tpl.sub_type} "{tpl.name}" carries @{attr_name}, '
-                        f"which is only valid on template.{allowed_sub}"
+                        f"which is only valid on {valid_on}"
                     ),
                     envelope=tpl.source,
                 ))

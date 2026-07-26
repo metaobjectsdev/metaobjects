@@ -368,6 +368,14 @@ export const PROMPT_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "Governance: the version this toolcall was introduced in."
+        },
+        {
+          "type": "attr",
+          "subType": "int",
+          "name": "maxTokens",
+          "min": 0,
+          "max": 1,
+          "description": "Per-call token budget for the tool-call's structured response (LLM-specific). Vendor-agnostic config; peer of @maxTokens on template.prompt (#237)."
         }
       ]
     }

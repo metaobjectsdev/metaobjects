@@ -69,7 +69,8 @@
         { "type": "attr", "subType": "string", "name": "toolName", "min": 1, "max": 1, "description": "Wire tool name surfaced to the LLM (vendor-specific format)." },
         { "type": "attr", "subType": "string", "name": "payloadRef", "min": 1, "max": 1, "description": "Output value-object the tool produces (resolved against the metamodel)." },
         { "type": "attr", "subType": "string", "name": "owner", "min": 0, "max": 1, "description": "Governance: the owner of this toolcall." },
-        { "type": "attr", "subType": "string", "name": "since", "min": 0, "max": 1, "description": "Governance: the version this toolcall was introduced in." }
+        { "type": "attr", "subType": "string", "name": "since", "min": 0, "max": 1, "description": "Governance: the version this toolcall was introduced in." },
+        { "type": "attr", "subType": "int", "name": "maxTokens", "min": 0, "max": 1, "description": "Per-call token budget for the tool-call's structured response (LLM-specific). Vendor-agnostic config; peer of @maxTokens on template.prompt (#237)." }
       ]
     }
   ]
