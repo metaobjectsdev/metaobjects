@@ -97,6 +97,13 @@
     { "name": "inet-reject-hostname",   "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "sourceIp": "example.com" },   "expectValid": false },
     { "name": "inet-reject-octet-range","payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "sourceIp": "256.1.1.1" },     "expectValid": false },
     { "name": "inet-reject-cidr",       "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "sourceIp": "192.168.0.1/24" },"expectValid": false },
-    { "name": "inet-reject-padded",     "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "sourceIp": " 192.168.0.1 " }, "expectValid": false }
+    { "name": "inet-reject-padded",     "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "sourceIp": " 192.168.0.1 " }, "expectValid": false },
+
+    { "name": "lenient-uri-accepts-schemeless", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "citationUrl": "example.com" },   "expectValid": true },
+    { "name": "lenient-uri-accepts-garbage",    "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "citationUrl": "not a url" },     "expectValid": true },
+    { "name": "lenient-uri-accepts-valid",      "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "citationUrl": "https://a.com" }, "expectValid": true },
+    { "name": "lenient-inet-accepts-hostname",  "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "reportedIp": "example.com" },    "expectValid": true },
+    { "name": "lenient-inet-accepts-cidr",      "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "reportedIp": "192.168.0.1/24" },"expectValid": true },
+    { "name": "lenient-inet-accepts-valid",     "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "reportedIp": "10.0.0.1" },      "expectValid": true }
   ]
 }

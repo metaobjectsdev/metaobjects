@@ -529,10 +529,11 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     /**
      * #234: true iff `field` is a STRICT (non-`@lenient`) field.uri / field.inet — the properties
      * whose data-class component binds through the generated [NET_JSON_SUPPORT] literal deserializer.
-     * (Stage 2 adds the `@lenient` opt-out here: a lenient uri/inet degrades to a plain String.)
+     * A `@lenient` uri/inet degrades to a plain String ([KotlinTypeMapper.kotlinTypeName]) with NO
+     * deserializer, so it is NOT strict.
      */
     private fun isStrictNetField(field: MetaField<*>): Boolean =
-        field is UriField || field is InetField
+        (field is UriField || field is InetField) && !KotlinTypeMapper.lenientNetField(field)
 
     /**
      * #234: the `@field:JsonDeserialize(using = …)` annotation binding a STRICT field.uri /

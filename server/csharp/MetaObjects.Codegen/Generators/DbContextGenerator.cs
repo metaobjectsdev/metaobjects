@@ -386,7 +386,10 @@ public class DbContextGenerator : IGenerator
             modelLines.Add($"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasColumnType(\"{colType}\");");
         }
 
-        foreach (var f in fieldList.Where(f => !f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_URI))
+        // #234: a @lenient field.uri / field.inet is a plain string mapped to a plain `text`
+        // column (EF's string default) — no System.Uri HasConversion, no native `inet` type.
+        foreach (var f in fieldList.Where(f => !f.ResolvedIsArray()
+                     && f.SubType == FIELD_SUBTYPE_URI && !CSharpNaming.IsLenientNet(f)))
         {
             var prop = CSharpNaming.Pascal(f.Name);
             // System.Uri is FULLY QUALIFIED: the emitted AppDbContext carries no `using System;`
@@ -397,7 +400,8 @@ public class DbContextGenerator : IGenerator
                 $"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasColumnType(\"text\").HasConversion(v => v!.ToString(), v => new System.Uri(v));");
         }
 
-        foreach (var f in fieldList.Where(f => !f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_INET))
+        foreach (var f in fieldList.Where(f => !f.ResolvedIsArray()
+                     && f.SubType == FIELD_SUBTYPE_INET && !CSharpNaming.IsLenientNet(f)))
         {
             var prop = CSharpNaming.Pascal(f.Name);
             modelLines.Add(

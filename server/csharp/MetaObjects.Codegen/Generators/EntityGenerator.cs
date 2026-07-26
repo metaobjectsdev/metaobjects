@@ -825,17 +825,21 @@ public class EntityGenerator : IGenerator
         return member[..idx] + hook + member[idx..];
     }
 
-    // #234 — true iff the entity has a (single, non-array) strict field.uri / field.inet.
+    // #234 — true iff the entity has a (single, non-array) STRICT field.uri / field.inet — the
+    // fields carrying the generated [JsonConverter] + backing MetaNetValidation. A @lenient uri/inet
+    // is a plain string with no converter, so it does not count.
     private static bool HasStrictNetField(MetaObject entity) =>
         entity.Fields().Any(f => !f.ResolvedIsArray()
-            && (f.SubType == FIELD_SUBTYPE_URI || f.SubType == FIELD_SUBTYPE_INET));
+            && (f.SubType == FIELD_SUBTYPE_URI || f.SubType == FIELD_SUBTYPE_INET)
+            && !CSharpNaming.IsLenientNet(f));
 
     // #234 — append the [JsonConverter(typeof(…))] binding a strict field.uri / field.inet property
-    // to the same-namespace generated MetaNetValidation converter. No-op for any other field. An
-    // @isArray uri/inet (element-wise converter) is a follow-up (no validation-conformance case).
+    // to the same-namespace generated MetaNetValidation converter. No-op for a @lenient uri/inet
+    // (a plain string) or any other field. An @isArray uri/inet (element-wise converter) is a
+    // follow-up (no validation-conformance case).
     private static void AppendNetConverterAttribute(StringBuilder sb, MetaField field)
     {
-        if (field.ResolvedIsArray()) return;
+        if (field.ResolvedIsArray() || CSharpNaming.IsLenientNet(field)) return;
         if (field.SubType == FIELD_SUBTYPE_URI)
             sb.AppendLine("    [JsonConverter(typeof(MetaNetValidation.AbsoluteUriJsonConverter))]");
         else if (field.SubType == FIELD_SUBTYPE_INET)

@@ -26,6 +26,8 @@
           ] } },
           { "field.uri":        { "name": "website" } },
           { "field.inet":       { "name": "sourceIp" } },
+          { "field.uri":        { "name": "citationUrl", "@lenient": true } },
+          { "field.inet":       { "name": "reportedIp", "@lenient": true } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
         ]
       }}

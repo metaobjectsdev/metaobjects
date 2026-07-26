@@ -271,11 +271,12 @@ object KotlinTypeMapper {
         // field.uri → native java.net.URI property (ADR-0036/0037 Wave 3). The DB column is
         // plain text (Postgres has no uri type); the file-local `uriColumn(...)` extension
         // gives a `Column<URI>` so the property and column types match.
-        is UriField       -> ClassName("java.net", "URI")
+        // #234: a @lenient field.uri degrades to a plain String (no native URI type, no validator).
+        is UriField       -> if (lenientNetField(field)) STRING else ClassName("java.net", "URI")
         // field.inet → native java.net.InetAddress property (ADR-0036/0037 Wave 3). The DB
         // column is the Postgres-native inet type; the file-local `inetColumn(...)` extension
-        // gives a `Column<InetAddress>`.
-        is InetField      -> ClassName("java.net", "InetAddress")
+        // gives a `Column<InetAddress>`. #234: a @lenient field.inet degrades to a plain String.
+        is InetField      -> if (lenientNetField(field)) STRING else ClassName("java.net", "InetAddress")
         // field.map → an open-keyed Map<String, V> stored in a single jsonb column.
         // Keys are always String. The value type is the scalar named by @valueType,
         // or (for an @objectRef map) the referenced VO — which needs the loader to
@@ -488,11 +489,14 @@ object KotlinTypeMapper {
         // field.uri → file-local `uriColumn(...)` extension: a `Column<java.net.URI>` whose
         // DDL is plain `text` (Postgres has no uri type). The helper lives in the package-shared
         // MetaInetUriColumnType.kt support file (emitted once per package).
-        is UriField       -> "$EXPOSED_URI_FN(\"$colName\")"
+        // #234: a @lenient field.uri is a plain `text` column (no uriColumn / Column<URI>).
+        is UriField       -> if (lenientNetField(field)) "text(\"$colName\")" else "$EXPOSED_URI_FN(\"$colName\")"
         // field.inet → file-local `inetColumn(...)` extension: a `Column<java.net.InetAddress>`
         // whose DDL is the Postgres-native `inet`. The helper lives in the package-shared
-        // MetaInetUriColumnType.kt support file (emitted once per package).
-        is InetField      -> "$EXPOSED_INET_FN(\"$colName\")"
+        // MetaInetUriColumnType.kt support file (emitted once per package). #234: a @lenient
+        // field.inet is a plain `text` column (the native inet column would reject a
+        // not-strictly-valid value at INSERT).
+        is InetField      -> if (lenientNetField(field)) "text(\"$colName\")" else "$EXPOSED_INET_FN(\"$colName\")"
         // field.map → a single Postgres `JSONB` column holding the JSON object. Same emission
         // as a `field.object` jsonb column (the typed-object JSONB path) — the Exposed
         // `jsonb(name, encoder, decoder)` extension encoded/decoded through the shared Jackson
@@ -555,6 +559,16 @@ object KotlinTypeMapper {
         booleanAttr(field, ATTR_LOCAL_TIME)
 
     /**
+     * #234 — true iff [field] is a `field.uri` / `field.inet` carrying `@lenient=true` (the opt-out of
+     * strict well-formedness). A lenient uri/inet degrades to a plain `String` property + a plain `text`
+     * column (no native java.net.URI / InetAddress type, no wire deserializer). ADR-0039: resolving read
+     * ([booleanAttr] passes includeParent=true) so an abstract `field.uri @lenient` inherited via
+     * `extends` degrades the concrete field too. Public so [KotlinEntityGenerator] shares the SSOT.
+     */
+    fun lenientNetField(field: MetaField<*>): Boolean =
+        (field is UriField || field is InetField) && booleanAttr(field, UriField.ATTR_LENIENT)
+
+    /**
      * True iff [field] is a [TimestampField] using the instant/TZ-aware column — i.e. the
      * DEFAULT (ADR-0036 Wave 2): every `field.timestamp` NOT flagged `@localTime:true`.
      * [KotlinExposedTableGenerator] uses this to decide whether a table file must carry the
@@ -573,7 +587,7 @@ object KotlinTypeMapper {
      * file (one `uriColumn`/`inetColumn` extension declaration shared across its tables).
      */
     fun usesInetUriHelper(field: MetaField<*>): Boolean =
-        field is UriField || field is InetField
+        (field is UriField || field is InetField) && !lenientNetField(field)
 
     /**
      * Best-effort read of a named boolean attribute on [field], resolved THROUGH the `extends`

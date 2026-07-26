@@ -298,6 +298,30 @@ describe("renderZodValidators", () => {
     expect(compact).toContain("z.string().regex(/^(?:(?:25[0-5]"); // the IPv4 octet regex
   });
 
+  // #234 — @lenient degrades field.uri / field.inet to a plain string (no validator).
+  test("field.uri @lenient / field.inet @lenient → plain z.string() (no url/ip validator)", () => {
+    const ep = metaObject(OBJECT_SUBTYPE_ENTITY, "Endpoint");
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
+    ep.addChild(id);
+    const url = metaField(FIELD_SUBTYPE_URI, "citationUrl");
+    url.setAttr("lenient", true);
+    ep.addChild(url);
+    const ip = metaField(FIELD_SUBTYPE_INET, "reportedIp");
+    ip.setAttr("lenient", true);
+    ep.addChild(ip);
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    ep.addChild(primary);
+
+    const out = renderZodValidators(ep).toString();
+    // A lenient uri/inet is a plain string — no well-formedness validator emitted.
+    expect(out).not.toContain(".url()");
+    expect(out).not.toContain(".regex(");
+    expect(out).toContain("citationUrl: z.string()");
+    expect(out).toContain("reportedIp: z.string()");
+  });
+
   test("field.string @stringFormat: email → z.string().email(); hostname → z.string().regex(...)", () => {
     const ep = metaObject(OBJECT_SUBTYPE_ENTITY, "Contact");
     const id = metaField(FIELD_SUBTYPE_LONG, "id");

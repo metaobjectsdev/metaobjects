@@ -117,11 +117,13 @@ public final class SpringTypeMapper {
         // UUID — native java.util.UUID binding (R6 Plan 2a).
         if (field instanceof UuidField) return "java.util.UUID";
         // URI — native java.net.URI binding (ADR-0036/0037 Wave 3). Wire/storage stays
-        // a String; the DB column is plain text (Postgres has no uri type).
-        if (field instanceof UriField) return "java.net.URI";
+        // a String; the DB column is plain text (Postgres has no uri type). #234: a
+        // @lenient field.uri degrades to a plain String (no native URI type, no validator).
+        if (field instanceof UriField) return isLenientNetField(field) ? "String" : "java.net.URI";
         // inet — native java.net.InetAddress binding (ADR-0036/0037 Wave 3). Wire/storage
-        // stays a String; the DB column is the Postgres-native inet type.
-        if (field instanceof InetField) return "java.net.InetAddress";
+        // stays a String; the DB column is the Postgres-native inet type. #234: a @lenient
+        // field.inet degrades to a plain String (no native InetAddress type, no validator).
+        if (field instanceof InetField) return isLenientNetField(field) ? "String" : "java.net.InetAddress";
         // field.object @objectRef → the referenced value object's generated record type
         // (Program D). A jsonb value-object column surfaces as the <VO> record (single) or
         // — via componentType wrapping — List<<VO>> (isArray). Fully-qualified so the
@@ -188,6 +190,20 @@ public final class SpringTypeMapper {
     private static boolean localTimeOptIn(MetaField<?> field) {
         if (!field.hasMetaAttr(CoreDBMetaDataProvider.LOCAL_TIME)) return false;
         Object raw = field.getMetaAttr(CoreDBMetaDataProvider.LOCAL_TIME).getValue();
+        return raw != null && Boolean.parseBoolean(String.valueOf(raw).trim());
+    }
+
+    /**
+     * #234 — true iff {@code field} is a {@code field.uri} / {@code field.inet} carrying
+     * {@code @lenient=true} (the opt-out of strict well-formedness). A lenient uri/inet degrades to a
+     * plain {@code String} (no native java.net.URI / InetAddress type, no wire deserializer, and a
+     * {@code text} DB column). ADR-0039: RESOLVING read ({@code getMetaAttr}) so an abstract
+     * {@code field.uri @lenient} inherited via {@code extends} degrades the concrete field too.
+     */
+    static boolean isLenientNetField(MetaField<?> field) {
+        if (!(field instanceof UriField || field instanceof InetField)) return false;
+        if (!field.hasMetaAttr(UriField.ATTR_LENIENT)) return false;
+        Object raw = field.getMetaAttr(UriField.ATTR_LENIENT).getValue();
         return raw != null && Boolean.parseBoolean(String.valueOf(raw).trim());
     }
 

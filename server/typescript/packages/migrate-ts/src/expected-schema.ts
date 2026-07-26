@@ -49,6 +49,7 @@ import {
   DB_COLUMN_TYPE_UUID,
   DB_COLUMN_TYPE_JSONB,
   FIELD_ATTR_LOCAL_TIME,
+  FIELD_ATTR_LENIENT,
   STORAGE_FLATTENED,
   DOC_ATTR_DESCRIPTION,
   applyColumnNamingStrategy, DEFAULT_COLUMN_NAMING_STRATEGY,
@@ -1019,7 +1020,10 @@ function subtypeToSqlType(field: MetaData): SqlType {
     case FIELD_SUBTYPE_MAP:       return { kind: "json" }; // field.map → single jsonb (pg) / text-json (sqlite) column
     case FIELD_SUBTYPE_UUID:      return { kind: "uuid" }; // R6 Plan 2a — Postgres native uuid
     case FIELD_SUBTYPE_URI:       return { kind: "text" }; // ADR-0036/0037 Wave 3 — no Postgres uri type → text
-    case FIELD_SUBTYPE_INET:      return { kind: "inet" }; // ADR-0036/0037 Wave 3 — Postgres-native inet
+    // ADR-0036/0037 Wave 3 — Postgres-native inet. #234: a @lenient field.inet
+    // stores as text (the native inet column would reject a not-strictly-valid
+    // value at INSERT). ADR-0039: resolving — @lenient may be inherited via extends.
+    case FIELD_SUBTYPE_INET:      return field.attr(FIELD_ATTR_LENIENT) === true ? { kind: "text" } : { kind: "inet" };
     default:                      return { kind: "text" }; // unknown → text fallback
   }
 }

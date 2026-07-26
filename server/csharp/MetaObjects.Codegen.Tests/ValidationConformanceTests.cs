@@ -48,7 +48,7 @@ public sealed class ValidationConformanceTests
     [Fact]
     public void Discovers_all_validation_conformance_cases()
     {
-        Assert.Equal(32, Cases().Count());
+        Assert.Equal(38, Cases().Count());
     }
 
     [Theory]

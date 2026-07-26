@@ -783,11 +783,12 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
     /**
      * True iff {@code field} is a STRICT (non-{@code @lenient}) {@code field.uri} / {@code field.inet} —
      * the fields whose DTO component binds through the {@link #emitNetBindings generated MetaNetBindings}
-     * literal deserializer. (Stage 2 adds the {@code @lenient} opt-out here: a lenient uri/inet degrades
-     * to a plain String with no deserializer.)
+     * literal deserializer. #234: a {@code @lenient} uri/inet degrades to a plain String
+     * ({@link SpringTypeMapper#javaTypeName}) with NO deserializer, so it is NOT strict.
      */
     private static boolean isStrictNetField(MetaField<?> field) {
-        return field instanceof UriField || field instanceof InetField;
+        return (field instanceof UriField || field instanceof InetField)
+            && !SpringTypeMapper.isLenientNetField(field);
     }
 
     /**
