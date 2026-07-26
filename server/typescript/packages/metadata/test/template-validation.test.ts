@@ -120,3 +120,38 @@ describe("template load-time validation", () => {
     expect(errs.length).toBeGreaterThan(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// #236 — an ABSTRACT template.prompt may omit the required @payloadRef (concrete
+// subtypes / extends supply it). The required-attr check reads the RESOLVING set
+// (a concrete inheriting via extends is satisfied) and EXEMPTS abstract nodes (a
+// template is not instantiated; its incompleteness is fine). Consistent with ADR-0039.
+// ---------------------------------------------------------------------------
+describe("#236 abstract template.prompt may omit required @payloadRef", () => {
+  test("abstract WITHOUT @payloadRef + concrete extends supplying it → loads", async () => {
+    const errs = await load([
+      authorBrief,
+      { "template.prompt": { name: "BasePrompt", abstract: true, "@textRef": "p/base" } },
+      { "template.prompt": { name: "Concrete", extends: "test::BasePrompt", "@payloadRef": "AuthorBrief", "@textRef": "p/c" } },
+    ]);
+    expect(errs).toEqual([]);
+  });
+
+  test("concrete INHERITS @payloadRef from an abstract via extends → loads (resolving)", async () => {
+    const errs = await load([
+      authorBrief,
+      { "template.prompt": { name: "BasePrompt", abstract: true, "@payloadRef": "AuthorBrief", "@textRef": "p/base" } },
+      { "template.prompt": { name: "Concrete", extends: "test::BasePrompt", "@textRef": "p/c" } },
+    ]);
+    expect(errs).toEqual([]);
+  });
+
+  test("CONCRETE missing @payloadRef (nowhere in its chain) → ERR_MISSING_REQUIRED_ATTR", async () => {
+    const errs = await load([
+      authorBrief,
+      { "template.prompt": { name: "BasePrompt", abstract: true, "@textRef": "p/base" } },
+      { "template.prompt": { name: "Concrete", extends: "test::BasePrompt", "@textRef": "p/c" } },
+    ]);
+    expect(errs.map((e) => e.code)).toContain("ERR_MISSING_REQUIRED_ATTR");
+  });
+});

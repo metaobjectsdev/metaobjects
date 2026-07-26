@@ -7,6 +7,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — an abstract `template.prompt` may omit a required `@payloadRef` (#236)
+
+**Cross-port** (loader — TS / Java / Python / C#; Kotlin inherits the JVM loader). The generic
+required-attr check flagged an **abstract** node for a missing required attr, so an abstract
+`template.prompt` that hoists shared children but leaves `@payloadRef` to its concrete subtypes
+(or to `extends`) failed to load — forcing every concrete prompt to restate it. An abstract is
+a template, not an instantiated node, so it's now **exempt** from the required-attr check;
+enforcement stays at the concrete level (a concrete node's resolving attr set must still satisfy
+the requirement — a concrete missing `@payloadRef`, inherited or own, still errors
+`ERR_MISSING_REQUIRED_ATTR`). Consistent with ADR-0039 (all four ports already read the
+resolving set for this check; the fix is the abstract exemption). Gated by the
+`abstract-template-prompt-hoists-payloadref` conformance fixture across all four ports.
+
 ### Fixed — empty-string column `@default: ""` no longer drifts on sqlite/d1 (#235)
 
 **npm-only** (`migrate-ts`). `buildExpectedSchema` dropped an empty-string default with a

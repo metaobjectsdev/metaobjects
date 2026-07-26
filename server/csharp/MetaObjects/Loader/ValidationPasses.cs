@@ -1760,15 +1760,21 @@ public static class ValidationPasses
         // --- Check 1: required attrs present ---
         // Use Attrs() (effective = own + inherited) so a node that legitimately
         // inherits a required attr from its super is not flagged as missing it.
-        var effective = node.Attrs();
-        foreach (var spec in byName.Values)
+        // #236: an ABSTRACT node is a template, not instantiated — it may omit a required
+        // attr for concrete subtypes / `extends` to supply. Enforcement stays at the
+        // concrete level (a concrete's resolving Attrs() must satisfy it). ADR-0039.
+        if (!node.IsAbstract)
         {
-            if (spec.Required && !effective.ContainsKey(spec.Name))
+            var effective = node.Attrs();
+            foreach (var spec in byName.Values)
             {
-                errors.Add(new MetaError(
-                    $"{NodeLabel(node)} is missing required attribute '@{spec.Name}'",
-                    ErrorCode.ERR_MISSING_REQUIRED_ATTR,
-                    Envelope: node.Source));
+                if (spec.Required && !effective.ContainsKey(spec.Name))
+                {
+                    errors.Add(new MetaError(
+                        $"{NodeLabel(node)} is missing required attribute '@{spec.Name}'",
+                        ErrorCode.ERR_MISSING_REQUIRED_ATTR,
+                        Envelope: node.Source));
+                }
             }
         }
 

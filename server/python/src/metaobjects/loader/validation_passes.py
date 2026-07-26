@@ -437,18 +437,22 @@ def _validate_attr_schema(
 
         # --- Check 1: required attrs must be present (uses node.attrs() = effective,
         #     so an inherited attr from the super chain satisfies the requirement) ---
-        present_attrs = node.attrs()
-        for schema in schemas:
-            if not schema.required:
-                continue
-            if schema.name not in present_attrs:
-                errors.append(
-                    MetaError(
-                        f"{_node_label(node)} is missing required attribute '@{schema.name}'",
-                        ErrorCode.ERR_MISSING_REQUIRED_ATTR,
-                        envelope=node.source,
+        # #236: an ABSTRACT node is a template, not instantiated — it may omit a required
+        # attr for concrete subtypes / `extends` to supply. Enforcement stays at the
+        # concrete level (a concrete's resolving attrs() must satisfy it). ADR-0039.
+        if not node.is_abstract:
+            present_attrs = node.attrs()
+            for schema in schemas:
+                if not schema.required:
+                    continue
+                if schema.name not in present_attrs:
+                    errors.append(
+                        MetaError(
+                            f"{_node_label(node)} is missing required attribute '@{schema.name}'",
+                            ErrorCode.ERR_MISSING_REQUIRED_ATTR,
+                            envelope=node.source,
+                        )
                     )
-                )
 
         # --- Checks 2 + 3: own attrs only (inherited attrs were already checked on
         #     the node that declared them; re-checking would double-report) ---

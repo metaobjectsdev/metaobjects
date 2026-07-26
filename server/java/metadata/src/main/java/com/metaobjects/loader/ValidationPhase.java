@@ -352,6 +352,11 @@ public final class ValidationPhase {
         TypeDefinition def = registry.getTypeDefinition(type, subType);
         if (def == null) return; // unregistered (test scaffold etc.) — skip silently
 
+        // #236: an ABSTRACT node is a template, not instantiated — it may omit a required
+        // attr for concrete subtypes / extends: to supply. Enforcement stays at the
+        // concrete level (a concrete's effective attrs must satisfy it). ADR-0039.
+        if (isAbstract(node)) return;
+
         // Collect required ATTR requirements: direct first (wins on name
         // collision), then inherited for names not directly declared.
         Map<String, ChildRequirement> requiredAttrs = new java.util.LinkedHashMap<>();

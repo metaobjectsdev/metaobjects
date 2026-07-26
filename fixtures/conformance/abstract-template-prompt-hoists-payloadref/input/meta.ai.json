@@ -1,0 +1,31 @@
+{
+  "metadata.root": {
+    "package": "acme::ai",
+    "children": [
+      {
+        "object.value": {
+          "name": "AuthorBrief",
+          "children": [
+            { "field.string": { "name": "displayName" } }
+          ]
+        }
+      },
+      {
+        "template.prompt": {
+          "name": "BasePrompt",
+          "abstract": true,
+          "@textRef": "prompt/base",
+          "@format": "xml"
+        }
+      },
+      {
+        "template.prompt": {
+          "name": "ConcretePrompt",
+          "extends": "acme::ai::BasePrompt",
+          "@payloadRef": "acme::ai::AuthorBrief",
+          "@textRef": "prompt/concrete"
+        }
+      }
+    ]
+  }
+}

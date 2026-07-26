@@ -225,15 +225,25 @@ function validateNode(
   // Contrast with Checks 2+3 below, which iterate own attrs only: inherited attrs
   // were already validated on the node that declared them, so re-checking would
   // double-report. This mirrors the effective-vs-own split in subtype-rules.ts.
-  const effective = node.attrs();
-  for (const spec of byName.values()) {
-    if (spec.required && !effective.has(spec.name)) {
-      errors.push(
-        new ParseError(
-          `${nodeLabel(node)} is missing required attribute '@${spec.name}'`,
-          { code: "ERR_MISSING_REQUIRED_ATTR", source: node.source },
-        ),
-      );
+  //
+  // #236: an ABSTRACT node is a template, not an instantiated node — it may omit a
+  // required attr for concrete subtypes / `extends` to supply (e.g. an abstract
+  // `template.prompt` that hoists shared children but leaves `@payloadRef` to its
+  // concretes). Enforcement stays at the CONCRETE level: a concrete node's resolving
+  // attrs() must satisfy the requirement (a concrete missing it — inherited or own —
+  // still errors). Consistent with ADR-0039 (resolving-default; abstract = the
+  // metamodel's incompleteness escape).
+  if (!node.isAbstract) {
+    const effective = node.attrs();
+    for (const spec of byName.values()) {
+      if (spec.required && !effective.has(spec.name)) {
+        errors.push(
+          new ParseError(
+            `${nodeLabel(node)} is missing required attribute '@${spec.name}'`,
+            { code: "ERR_MISSING_REQUIRED_ATTR", source: node.source },
+          ),
+        );
+      }
     }
   }
 
