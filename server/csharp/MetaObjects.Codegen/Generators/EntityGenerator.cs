@@ -874,6 +874,10 @@ public class EntityGenerator : IGenerator
         sb.AppendLine("    {");
         sb.AppendLine("        public override Uri? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)");
         sb.AppendLine("        {");
+        sb.AppendLine("            // #234 review N2: a non-string JSON token (number/object/array) rejects as a");
+        sb.AppendLine("            // JsonException (a clean 400), not an InvalidOperationException from GetString().");
+        sb.AppendLine("            if (reader.TokenType != JsonTokenType.String && reader.TokenType != JsonTokenType.Null)");
+        sb.AppendLine("                throw new JsonException(\"expected a JSON string\");");
         sb.AppendLine("            string? raw = reader.GetString();");
         sb.AppendLine("            if (raw is null) return null;");
         sb.AppendLine("            string s = raw.Trim();");
@@ -895,6 +899,10 @@ public class EntityGenerator : IGenerator
         sb.AppendLine("    {");
         sb.AppendLine("        public override IPAddress? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)");
         sb.AppendLine("        {");
+        sb.AppendLine("            // #234 review N2: a non-string JSON token (number/object/array) rejects as a");
+        sb.AppendLine("            // JsonException (a clean 400), not an InvalidOperationException from GetString().");
+        sb.AppendLine("            if (reader.TokenType != JsonTokenType.String && reader.TokenType != JsonTokenType.Null)");
+        sb.AppendLine("                throw new JsonException(\"expected a JSON string\");");
         sb.AppendLine("            string? raw = reader.GetString();");
         sb.AppendLine("            if (raw is null) return null;");
         sb.AppendLine("            // No trim: IP-literal grammar has no whitespace, so padding is rejected.");
@@ -917,7 +925,9 @@ public class EntityGenerator : IGenerator
         sb.AppendLine("            for (int i = 0; i < 4; i++)");
         sb.AppendLine("            {");
         sb.AppendLine("                string part = parts[i];");
-        sb.AppendLine("                if (part.Length == 0 || part.Length > 3)");
+        sb.AppendLine("                // #234 review H1: reject a leading-zero octet (010 / 01) — the");
+        sb.AppendLine("                // octal/decimal-parse ambiguity — matching Python ipaddress + the TS regex.");
+        sb.AppendLine("                if (part.Length == 0 || part.Length > 3 || (part.Length > 1 && part[0] == '0'))");
         sb.AppendLine("                    throw new JsonException(\"field.inet: not a valid IPv4 literal: \" + s);");
         sb.AppendLine("                foreach (char ch in part)");
         sb.AppendLine("                    if (!char.IsDigit(ch))");

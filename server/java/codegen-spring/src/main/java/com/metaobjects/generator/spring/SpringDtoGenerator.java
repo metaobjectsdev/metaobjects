@@ -891,7 +891,10 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         src.append("            byte[] octets = new byte[4];\n");
         src.append("            for (int i = 0; i < 4; i++) {\n");
         src.append("                String part = parts[i];\n");
-        src.append("                if (part.isEmpty() || part.length() > 3) {\n");
+        src.append("                // #234 review H1: reject a leading-zero octet (010 / 01) — the\n");
+        src.append("                // octal/decimal-parse ambiguity — matching Python ipaddress + the TS regex.\n");
+        src.append("                if (part.isEmpty() || part.length() > 3\n");
+        src.append("                        || (part.length() > 1 && part.charAt(0) == '0')) {\n");
         src.append("                    throw new IllegalArgumentException(\"field.inet: not a valid IPv4 literal: \" + s);\n");
         src.append("                }\n");
         src.append("                for (int j = 0; j < part.length(); j++) {\n");

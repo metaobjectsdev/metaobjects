@@ -98,6 +98,8 @@
     { "name": "inet-reject-octet-range","payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "sourceIp": "256.1.1.1" },     "expectValid": false },
     { "name": "inet-reject-cidr",       "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "sourceIp": "192.168.0.1/24" },"expectValid": false },
     { "name": "inet-reject-padded",     "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "sourceIp": " 192.168.0.1 " }, "expectValid": false },
+    { "name": "inet-reject-leading-zero","payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "sourceIp": "192.168.01.1" }, "expectValid": false },
+    { "name": "inet-accept-ipv4-mapped-ipv6","payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "sourceIp": "::ffff:1.2.3.4" }, "expectValid": true },
 
     { "name": "lenient-uri-accepts-schemeless", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "citationUrl": "example.com" },   "expectValid": true },
     { "name": "lenient-uri-accepts-garbage",    "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "citationUrl": "not a url" },     "expectValid": true },

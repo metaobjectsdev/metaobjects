@@ -11,7 +11,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 **Coordinated PATCH** (npm / PyPI / NuGet / Maven Central). Two halves, one release:
 
-- **Strict is now pinned and identical across all five ports.** A `field.uri` must be an
+- **Strict accept/reject is now pinned and identical across all five ports** (on the shared
+  `validation-conformance` probe set, which spans the URI/IP-literal edge cases — scheme-less,
+  relative, garbage, empty-authority, leading-zero octet, IPv4-mapped IPv6, CIDR, padding).
+  A `field.uri` must be an
   **absolute, scheme-bearing URI** (`https://a.com`, `mailto:a@b`, `urn:…`; a scheme-less
   `example.com` or a bare `/path` is rejected) and a `field.inet` must be an **IPv4/IPv6 literal**
   (no hostnames, no CIDR, no padding). Previously the ports diverged: C#/Java/Kotlin accepted

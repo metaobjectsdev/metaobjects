@@ -95,8 +95,13 @@ pre-#234 case (which omits them) is untouched.
 Deliberately UNPINNED gray zone (parser-specific, excluded from the probe set,
 like the corpus already does for regex/length): a raw space in a URI *path*
 (`https://a.com/a b` — WHATWG percent-encodes, `java.net.URI` throws); and
-value-normalization-on-accept differences (e.g. Pydantic appends a trailing
-slash). The corpus pins a FINITE probe set, never total accept-set equality.
+**value-normalization-on-accept differences** — the corpus pins the accept/reject
+VERDICT, not the stored/echoed value. Notably an IPv4-mapped IPv6 literal
+(`::ffff:1.2.3.4`) is *accepted* by all five ports (pinned) but each normalizes it
+differently on read (Java collapses to the `Inet4Address` `1.2.3.4`, C# keeps
+`::ffff:1.2.3.4`, Python canonicalizes to `::ffff:102:304`); likewise Pydantic
+appends a trailing slash to a URL. The corpus pins a FINITE probe set of verdicts,
+never total accept-set equality nor round-trip value equality.
 
 **Verdict normalization for native-typed fields.** TS binds `field.uri`/`field.inet`
 to a plain `string` + a separable Zod check, so `safeParse().success` already fuses

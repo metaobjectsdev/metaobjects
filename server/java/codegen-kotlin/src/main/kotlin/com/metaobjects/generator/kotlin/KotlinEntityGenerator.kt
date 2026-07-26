@@ -674,7 +674,10 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             |            val octets = ByteArray(4)
             |            for (i in 0 until 4) {
             |                val part = parts[i]
-            |                require(part.isNotEmpty() && part.length <= 3 && part.all { it.isDigit() }) {
+            |                // #234 review H1: reject a leading-zero octet (010 / 01) — the octal/decimal
+            |                // -parse ambiguity — matching Python ipaddress + the TS regex.
+            |                require(part.isNotEmpty() && part.length <= 3 && part.all { it.isDigit() }
+            |                    && !(part.length > 1 && part[0] == '0')) {
             |                    "field.inet: not a valid IPv4 literal: " + s
             |                }
             |                val v = part.toInt()

@@ -288,7 +288,7 @@ Single-precision floating point. Binds to the native double/number type (TS has 
 
 ### field.inet
 
-An IP-address string (IPv4 or IPv6) (ADR-0036/0037 — a concept with a native type + behavior, so a subtype not a @stringFormat). Binds to TS string (TS has no native IP type, same as field.uuid); other ports bind to their native IP type (Java java.net.InetAddress, C# System.Net.IPAddress, Python ipaddress, Kotlin java.net.InetAddress). DB column is the Postgres-native inet type. Codegen emits an IP validator accepting both v4 and v6 (TS Zod z.string().ip()). v1 ships WITHOUT @kind — the native type subsumes ipv4/ipv6; @kind is reserved for a later ipv4|ipv6 value-constraint.
+An IP-address string (IPv4 or IPv6) (ADR-0036/0037 — a concept with a native type + behavior, so a subtype not a @stringFormat). Binds to TS string (TS has no native IP type, same as field.uuid); other ports bind to their native IP type (Java java.net.InetAddress, C# System.Net.IPAddress, Python ipaddress, Kotlin java.net.InetAddress). DB column is the Postgres-native inet type. Codegen emits an IPv4-or-IPv6 literal validator (a Zod regex union in TS — z.string().ip() was removed in Zod 4 — native IP-type parsing in the other ports); add @lenient to bind a plain string with no validator. v1 ships WITHOUT @kind — the native type subsumes ipv4/ipv6; @kind is reserved for a later ipv4|ipv6 value-constraint.
 
 **Owning provider:** metaobjects-core-types
 

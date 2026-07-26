@@ -19,6 +19,10 @@ public static class MetaNetValidation
     {
         public override Uri? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
+            // #234 review N2: a non-string JSON token (number/object/array) rejects as a
+            // JsonException (a clean 400), not an InvalidOperationException from GetString().
+            if (reader.TokenType != JsonTokenType.String && reader.TokenType != JsonTokenType.Null)
+                throw new JsonException("expected a JSON string");
             string? raw = reader.GetString();
             if (raw is null) return null;
             string s = raw.Trim();
@@ -40,6 +44,10 @@ public static class MetaNetValidation
     {
         public override IPAddress? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
+            // #234 review N2: a non-string JSON token (number/object/array) rejects as a
+            // JsonException (a clean 400), not an InvalidOperationException from GetString().
+            if (reader.TokenType != JsonTokenType.String && reader.TokenType != JsonTokenType.Null)
+                throw new JsonException("expected a JSON string");
             string? raw = reader.GetString();
             if (raw is null) return null;
             // No trim: IP-literal grammar has no whitespace, so padding is rejected.
@@ -62,7 +70,9 @@ public static class MetaNetValidation
             for (int i = 0; i < 4; i++)
             {
                 string part = parts[i];
-                if (part.Length == 0 || part.Length > 3)
+                // #234 review H1: reject a leading-zero octet (010 / 01) — the
+                // octal/decimal-parse ambiguity — matching Python ipaddress + the TS regex.
+                if (part.Length == 0 || part.Length > 3 || (part.Length > 1 && part[0] == '0'))
                     throw new JsonException("field.inet: not a valid IPv4 literal: " + s);
                 foreach (char ch in part)
                     if (!char.IsDigit(ch))
