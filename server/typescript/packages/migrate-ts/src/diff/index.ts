@@ -613,15 +613,20 @@ function pushViewUpdate(
 ): void {
   const sx = schemaSpread(expected.schema);
   const adopt = unmanaged ? { unmanagedActual: true as const } : {};
-  // #239: emit a replace only when it is a legal CREATE OR REPLACE. When both column
-  // sets are KNOWN (a projection), that's viewReplaceIsLegal (a prefix-extension) — a
-  // structural change (rename/reorder/mid-insert) is PROVABLY illegal and must be
-  // drop+create. When the columns are UNKNOWN (an opaque `@sql` body), legality is
-  // unprovable: a MANAGED body change still drops+creates (a real change is safest
-  // rebuilt), but an ADOPTION keeps the non-destructive replace — the common
-  // "re-stamp an identical, pre-fingerprint view" case (its behavior before #239).
+  // #239/#240: emit a replace only when it is a legal CREATE OR REPLACE. The decision
+  // keys on the EXPECTED (desired) view's column knowledge, NOT on both sides:
+  //   - EXPECTED columns KNOWN (a projection): run viewReplaceIsLegal. It fails safe to
+  //     `false` (→ drop+create) when the ACTUAL columns are unknown too — which is
+  //     exactly the OFFLINE adopt case (#240): a pre-fingerprint snapshot records no
+  //     view columns, yet the projection's desired shape IS known, so a structural
+  //     change must still drop+create, never an illegal OR REPLACE. (Also fails safe
+  //     when actual is known but non-prefix — the #239 online case.)
+  //   - EXPECTED columns UNKNOWN (an opaque `@sql` body): legality is unprovable. A
+  //     MANAGED change drops+creates (a real body change is safest rebuilt); an ADOPTION
+  //     keeps the non-destructive replace (the common "re-stamp an identical,
+  //     pre-fingerprint hand-written view" case, #208 — its behavior before #239).
   const legal =
-    expected.columns !== undefined && actual.columns !== undefined
+    expected.columns !== undefined
       ? viewReplaceIsLegal(expected.columns, actual.columns)
       : unmanaged;
   if (legal) {

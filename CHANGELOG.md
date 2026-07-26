@@ -5,6 +5,22 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
+## [Unreleased]
+
+### Fixed — offline `--allow adopt-view` illegal `CREATE OR REPLACE` for a projection (#240)
+
+**npm-only** (`migrate-ts`). Follow-up to #239: the 0.20.4 fix keyed the legal/illegal
+`CREATE OR REPLACE` decision on **both** column sets being known, but the OFFLINE
+(snapshot-based) migrate path — the primary authoring path — diffs against a pre-fingerprint
+snapshot that records **no view columns**, so `actual.columns` is undefined and the adopt
+branch fell back to a non-destructive `replace-view` (= illegal `CREATE OR REPLACE`) even for
+a projection whose desired shape is fully known. The decision now keys on the **expected**
+(desired) view's columns only: a known projection runs `viewReplaceIsLegal` (which fail-safes
+to drop+create when the actual columns are unknown), so a structural change drop+creates
+offline too; an opaque `@sql` body (expected columns unknown) still keeps its non-destructive
+replace on adoption. Gated by a diff unit test (expected-known / actual-columns-absent →
+drop+create, still gated on `adoptView`); #208 `@sql` adopt + #239 real-PG round-trip unchanged.
+
 ## [0.20.4] — 2026-07-26
 
 **npm-only** (NuGet `0.19.4` / PyPI `0.19.6` / Maven Central `7.11.4` unchanged — schema

@@ -212,6 +212,28 @@ describe("diff — Postgres adopt-view legality (#239)", () => {
     expect(r.changes.find((c) => c.kind === "drop-view")).toBeUndefined();
   });
 
+  test("#240 offline adopt: expected columns KNOWN but actual (old snapshot) has NO columns → drop+create", async () => {
+    // A pre-fingerprint snapshot records no view columns (actual.columns undefined), but
+    // a projection's desired shape IS known. The decision keys on EXPECTED knowledge, so
+    // a structural change still drop+creates — never an illegal CREATE OR REPLACE.
+    const actualNoCols = { name: "v_foo", sql: "SELECT t.a AS a, t.b AS b FROM t" }; // no columns, no fingerprint
+    const r = await diff(
+      { tables: [], views: [expView(["a", "c"])] }, // expected knows [a, c] (b renamed to c)
+      { tables: [], views: [actualNoCols] },
+      opts(true),
+    );
+    expect(r.changes.find((c) => c.kind === "replace-view")).toBeUndefined();
+    expect(r.changes.find((c) => c.kind === "drop-view")).toMatchObject({ kind: "drop-view", view: "v_foo" });
+    expect(r.changes.find((c) => c.kind === "create-view")).toBeDefined();
+    // Still gated on adoptView (unmanagedActual on the drop half).
+    const rBlocked = await diff(
+      { tables: [], views: [expView(["a", "c"])] },
+      { tables: [], views: [actualNoCols] },
+      opts(false),
+    );
+    expect(rBlocked.changes.find((c) => c.kind === "drop-view")?.status.state).toBe("blocked");
+  });
+
   test("OPAQUE @sql body (columns unknown) adopts via non-destructive replace-view, not drop+create", async () => {
     // A hand-written @sql view has no parsed columns, so replace legality is unprovable.
     // The common case is re-stamping an identical pre-fingerprint view (#208), which a
