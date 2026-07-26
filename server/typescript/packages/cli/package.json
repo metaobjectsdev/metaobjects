@@ -1,6 +1,6 @@
 {
   "name": "@metaobjectsdev/cli",
-  "version": "0.20.4",
+  "version": "0.20.5",
   "description": "CLI for MetaObjects: scaffold, codegen, migrate, and drift-detection commands.",
   "type": "module",
   "main": "./dist/src/index.js",

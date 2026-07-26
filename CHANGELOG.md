@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.20.5] — 2026-07-26
+
+**Coordinated release** — npm `0.20.5` · PyPI `0.19.7` · Maven Central `7.11.5` · NuGet
+`0.19.5`. **#236 (abstract required-attr exemption) and #237 (`@maxTokens` on
+`template.toolcall`) are cross-port**, so PyPI / Maven / NuGet each release the loader +
+metamodel change too; **#235 and #240 are npm-only** (`migrate-ts` — schema migrations are
+TS-owned, ADR-0015, so no other port has a migrate engine to fix). All changes are additive
+(PATCH): existing `meta gen` output is byte-identical, and #237 adds a single optional
+registry attr (gated by `registry-conformance` in all five ports).
+
 ### Added — `@maxTokens` on core `template.toolcall` (#237)
 
 **Cross-port** (metamodel — TS / Java / Python / C# / Kotlin). `@maxTokens` (a vendor-agnostic
