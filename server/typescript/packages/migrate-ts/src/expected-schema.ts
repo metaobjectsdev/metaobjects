@@ -869,8 +869,12 @@ function buildColumn(
     nullable: !isPk && !fieldIsRequired,
   };
 
-  if (typeof defaultRaw === "string" && defaultRaw.length > 0) {
-    const isExpr = EXPR_DEFAULT_PATTERNS.some((re) => re.test(defaultRaw));
+  if (typeof defaultRaw === "string") {
+    // #235: an EMPTY-string default (`@default: ""`) is a real literal default —
+    // codegen emits `.default("")` and the DB gets `DEFAULT ''`, so dropping it here
+    // (a falsy `.length > 0` check) made the column drift forever on sqlite/d1 and
+    // disagree with codegen. Keep it as a literal; only `undefined` means "no default".
+    const isExpr = defaultRaw.length > 0 && EXPR_DEFAULT_PATTERNS.some((re) => re.test(defaultRaw));
     col.default = { kind: isExpr ? "expr" : "literal", value: defaultRaw };
   } else if (typeof defaultRaw === "boolean" || typeof defaultRaw === "number") {
     col.default = { kind: "literal", value: String(defaultRaw) };

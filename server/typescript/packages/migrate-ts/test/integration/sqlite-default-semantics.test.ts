@@ -49,6 +49,8 @@ const META = JSON.stringify({
             { "field.boolean": { name: "isPublished", "@default": true, "@required": true } },
             { "field.int": { name: "sortOrder", "@default": 0, "@required": true } },
             { "field.string": { name: "label", "@default": "none", "@required": true } },
+            // #235 — an EMPTY-string default must round-trip (was dropped as falsy → drift).
+            { "field.string": { name: "caption", "@default": "", "@required": true } },
             { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },
           ],
         },
@@ -139,5 +141,17 @@ describe("SQLite defaults — real-engine value semantics + idempotence", () => 
       .execute(k)).rows[0] as Record<string, unknown>;
     expect(row["t"]).toBe("text");
     expect(row["l"]).toBe("none");
+  });
+
+  test("#235 an EMPTY-string @default emits DEFAULT '' and stores the empty string (not NULL)", async () => {
+    const { up } = await migrateFromEmpty();
+    // The emitter must render the empty-string literal, not drop it.
+    expect(up).toMatch(/"caption"\s+text\s+not null\s+default\s+''/i);
+    await sql.raw(`INSERT INTO "photos" ("id") VALUES (3)`).execute(k);
+    const row = (await sql
+      .raw(`SELECT typeof("caption") AS t, "caption" AS c FROM "photos" WHERE "id" = 3`)
+      .execute(k)).rows[0] as Record<string, unknown>;
+    expect(row["t"]).toBe("text");
+    expect(row["c"]).toBe(""); // the empty string, applied from DEFAULT '' — NOT NULL
   });
 });

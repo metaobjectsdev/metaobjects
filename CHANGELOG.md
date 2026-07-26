@@ -7,6 +7,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — empty-string column `@default: ""` no longer drifts on sqlite/d1 (#235)
+
+**npm-only** (`migrate-ts`). `buildExpectedSchema` dropped an empty-string default with a
+falsy `defaultRaw.length > 0` guard, so a `field.string @default: ""` column read as
+"no default" — perpetually drifting against a DB that has `DEFAULT ''` (a destructive
+recreate-and-copy on every sqlite/d1 migrate) and disagreeing with codegen (Drizzle emits
+`.default("")`). Only `undefined` now means "no default"; `""` is kept as a literal. Gated by
+the real-SQLite default-semantics round-trip (emit `DEFAULT ''` → apply → introspect → re-diff
+empty; a seeded row stores the empty string, not NULL). Introspection already round-tripped
+`DEFAULT ''`; the fix was purely the expected-side falsy check.
+
 ### Fixed — offline `--allow adopt-view` illegal `CREATE OR REPLACE` for a projection (#240)
 
 **npm-only** (`migrate-ts`). Follow-up to #239: the 0.20.4 fix keyed the legal/illegal
