@@ -212,6 +212,22 @@ describe("diff — Postgres adopt-view legality (#239)", () => {
     expect(r.changes.find((c) => c.kind === "drop-view")).toBeUndefined();
   });
 
+  test("OPAQUE @sql body (columns unknown) adopts via non-destructive replace-view, not drop+create", async () => {
+    // A hand-written @sql view has no parsed columns, so replace legality is unprovable.
+    // The common case is re-stamping an identical pre-fingerprint view (#208), which a
+    // legal CREATE OR REPLACE handles without cascading — so adoption keeps replace-view.
+    const opaque = { name: "v_foo", sql: "SELECT t.a AS a, t.b AS b FROM t", fingerprint: "b".repeat(64) };
+    const r = await diff(
+      { tables: [], views: [opaque] },
+      { tables: [], views: [dbView(["a", "b"])] },
+      opts(true),
+    );
+    expect(r.changes.find((c) => c.kind === "replace-view")).toMatchObject({
+      kind: "replace-view", view: { name: "v_foo" }, unmanagedActual: true,
+    });
+    expect(r.changes.find((c) => c.kind === "drop-view")).toBeUndefined();
+  });
+
   test("emitted up.sql for a structural adoption is DROP+CREATE (no illegal CREATE OR REPLACE)", async () => {
     // The bug's symptom: `CREATE OR REPLACE VIEW` for a rename fails at apply on a DB
     // that already holds the prior view. The fix emits DROP VIEW + CREATE VIEW + a
