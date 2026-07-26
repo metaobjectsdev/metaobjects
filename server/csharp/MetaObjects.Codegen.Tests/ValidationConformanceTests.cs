@@ -1,4 +1,3 @@
-using System.Collections;
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 using System.Text.Json;
@@ -49,7 +48,7 @@ public sealed class ValidationConformanceTests
     [Fact]
     public void Discovers_all_validation_conformance_cases()
     {
-        Assert.Equal(16, Cases().Count());
+        Assert.Equal(32, Cases().Count());
     }
 
     [Theory]
@@ -66,54 +65,29 @@ public sealed class ValidationConformanceTests
         JsonElement payload = theCase.GetProperty("payload");
         bool expectValid = theCase.GetProperty("expectValid").GetBoolean();
 
-        object instance = Activator.CreateInstance(accountType)!;
-        MaterializePayload(instance, payload);
-
+        // Deserialize the WHOLE payload onto the generated type (case-insensitive: the corpus JSON is
+        // camelCase, the properties PascalCase) so property [JsonConverter]s — the #234 strict
+        // field.uri / field.inet converters — are honored (a per-property reflection set would bypass
+        // them). A bind failure IS an invalid verdict: a request whose body fails to deserialize
+        // returns 400 exactly as a DataAnnotations failure does (matches TS safeParse / Python
+        // construct). Remaining constraints are enforced by Validator.TryValidateObject.
+        bool valid;
         var results = new List<ValidationResult>();
-        bool valid = Validator.TryValidateObject(
-            instance, new ValidationContext(instance), results, validateAllProperties: true);
+        try
+        {
+            object? instance = JsonSerializer.Deserialize(payload.GetRawText(), accountType,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            valid = instance is not null && Validator.TryValidateObject(
+                instance, new ValidationContext(instance), results, validateAllProperties: true);
+        }
+        catch (JsonException)
+        {
+            valid = false;
+        }
 
         Assert.True(valid == expectValid,
             $"case '{caseName}': expected valid={expectValid} but got valid={valid}; " +
             $"errors=[{string.Join("; ", results.Select(r => r.ErrorMessage))}]");
-    }
-
-    // Sets each payload key onto the matching PascalCase property of the generated DTO,
-    // coercing the JSON value to the property's CLR type. Mirrors the minimal
-    // reflection-set used by the cross-port runners (no MetaObjects runtime here — we
-    // validate the generated type exactly as a framework's model binder would feed it).
-    private static void MaterializePayload(object instance, JsonElement payload)
-    {
-        Type t = instance.GetType();
-        foreach (JsonProperty prop in payload.EnumerateObject())
-        {
-            string pascal = char.ToUpperInvariant(prop.Name[0]) + prop.Name[1..];
-            PropertyInfo? p = t.GetProperty(pascal);
-            if (p is null) continue;
-            p.SetValue(instance, Coerce(prop.Value, p.PropertyType));
-        }
-    }
-
-    private static object? Coerce(JsonElement value, Type target)
-    {
-        Type under = Nullable.GetUnderlyingType(target) ?? target;
-
-        if (under == typeof(string))
-            return value.ValueKind == JsonValueKind.Null ? null : value.GetString();
-        if (under == typeof(int))
-            return value.GetInt32();
-        if (under == typeof(long))
-            return value.GetInt64();
-        if (typeof(IEnumerable).IsAssignableFrom(under) && under != typeof(string))
-        {
-            Type elem = under.IsGenericType ? under.GetGenericArguments()[0] : typeof(object);
-            var list = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(elem))!;
-            foreach (JsonElement el in value.EnumerateArray())
-                list.Add(Coerce(el, elem));
-            return list;
-        }
-        // Fallback: raw deserialize.
-        return JsonSerializer.Deserialize(value.GetRawText(), target);
     }
 
     // The compiled, generated Account type — compiled once for the whole test class.

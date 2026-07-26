@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Net;
+using System.Text.Json.Serialization;
 
 namespace MetaObjects.IntegrationTests.Generated;
 
@@ -49,12 +50,15 @@ public class AllTypes
     public Guid UuidVal { get; set; }
     [Column("uriVal")]
     [Required]
+    [JsonConverter(typeof(MetaNetValidation.AbsoluteUriJsonConverter))]
     public Uri UriVal { get; set; } = default!;
     [Column("inetVal")]
     [Required]
+    [JsonConverter(typeof(MetaNetValidation.IPAddressJsonConverter))]
     public IPAddress InetVal { get; set; } = default!;
     [Column("inet6Val")]
     [Required]
+    [JsonConverter(typeof(MetaNetValidation.IPAddressJsonConverter))]
     public IPAddress Inet6Val { get; set; } = default!;
     public Settings? Settings { get; set; }
     public ICollection<Label>? Labels { get; set; }

@@ -57,6 +57,14 @@ public class ValidationConformanceTest extends SharedRegistryTestBase {
         return Path.of(System.getProperty("user.dir")).resolve("../../..").normalize();
     }
 
+    /** The message of the deepest cause — a Jackson bind failure wraps the deserializer's
+     *  IllegalArgumentException, so the root carries the actionable "field.uri/…" reason. */
+    private static String rootMessage(Throwable t) {
+        Throwable cur = t;
+        while (cur.getCause() != null && cur.getCause() != cur) cur = cur.getCause();
+        return cur.getMessage();
+    }
+
     @Test
     @SuppressWarnings("unchecked")
     public void generatedDtoEnforcesCorpusVerdicts() throws Exception {
@@ -128,19 +136,29 @@ public class ValidationConformanceTest extends SharedRegistryTestBase {
                 Object payload = c.get("payload");
                 boolean expectValid = Boolean.TRUE.equals(c.get("expectValid"));
 
-                Object dto = MAPPER.convertValue(payload, dtoCls);
-                Set<ConstraintViolation<Object>> violations = validator.validate(dto);
-                boolean actualValid = violations.isEmpty();
+                boolean actualValid;
+                String detail;
+                try {
+                    Object dto = MAPPER.convertValue(payload, dtoCls);
+                    Set<ConstraintViolation<Object>> violations = validator.validate(dto);
+                    actualValid = violations.isEmpty();
+                    detail = "violations=" + violations.stream()
+                            .map(v -> v.getPropertyPath() + " " + v.getMessage())
+                            .collect(Collectors.toList());
+                } catch (IllegalArgumentException bindFailure) {
+                    // #234: a native-typed field.uri/field.inet value that fails to deserialize is
+                    // rejected at the wire tier (HTTP 400) — a bind failure IS an invalid verdict,
+                    // exactly as the TS safeParse / Python construct paths fuse bind + validate.
+                    actualValid = false;
+                    detail = "bind-failure: " + rootMessage(bindFailure);
+                }
 
                 if (actualValid == expectValid) {
                     passed++;
                 } else {
                     failures.append(String.format(
-                            "  case '%s': expectValid=%s but generated DTO said valid=%s (violations=%s)%n",
-                            name, expectValid, actualValid,
-                            violations.stream()
-                                      .map(v -> v.getPropertyPath() + " " + v.getMessage())
-                                      .collect(Collectors.toList())));
+                            "  case '%s': expectValid=%s but generated DTO said valid=%s (%s)%n",
+                            name, expectValid, actualValid, detail));
                 }
             }
             if (failures.length() > 0) {

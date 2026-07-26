@@ -2,9 +2,11 @@ package com.metaobjects.generator.spring;
 
 import com.metaobjects.MetaData;
 import com.metaobjects.field.EnumField;
+import com.metaobjects.field.InetField;
 import com.metaobjects.field.MetaField;
 import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
+import com.metaobjects.field.UriField;
 import com.metaobjects.generator.GeneratorException;
 import com.metaobjects.generator.GeneratorIOWriter;
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase;
@@ -117,6 +119,9 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
                 emitTphSubtypePatch(entity, outRoot);
             }
         }
+        // #234: emit the strict field.uri / field.inet Jackson deserializers ONCE per package
+        // that has such a field (a same-package MetaNetBindings the DTO components bind through).
+        emitNetBindings(loader, outRoot);
     }
 
     /**
@@ -149,6 +154,12 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         for (MetaField field : fields) {
             String a = validationAnnotations(field);
             if (isValueObjectJsonbField(field)) a = a.isEmpty() ? "@Valid" : "@Valid " + a;
+            // #234: a STRICT field.uri / field.inet component binds through the codegen-owned
+            // literal deserializer (absolute-scheme URI / IPv4-or-IPv6 literal, no DNS) so a
+            // malformed value is rejected at the wire tier (HTTP 400), aligning the JVM DTO with
+            // the TS/Python strict contract.
+            String net = netDeserializeAnnotation(field);
+            if (!net.isEmpty()) a = a.isEmpty() ? net : net + " " + a;
             annotationsPerField.add(a);
         }
         // Issue #203: for an entity declaring @autoSet timestamp fields, emit the record-body
@@ -453,14 +464,24 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         String shortName = split[1];
         String recordName = SpringNaming.dtoName(shortName);
 
-        boolean usesValidation = annotationsPerField.stream().anyMatch(a -> !a.isEmpty());
+        // A jakarta constraint is any annotation content OTHER than the Jackson @JsonDeserialize
+        // (#234) — stripping only @JsonDeserialize keeps this byte-identical for every pre-#234
+        // DTO (which never carries one) while a uri/inet-only component doesn't pull an unused
+        // jakarta.validation import.
+        boolean usesValidation = annotationsPerField.stream()
+            .anyMatch(a -> !a.replaceAll("@JsonDeserialize\\([^)]*\\)", "").trim().isEmpty());
         // @Valid (jakarta.validation, NOT ...constraints) cascades validation into a
         // value-object jsonb component — emitted on VO fields by emit() (Program D).
         boolean usesValid = annotationsPerField.stream().anyMatch(a -> a.contains("@Valid"));
+        // #234: a strict field.uri / field.inet component carries @JsonDeserialize(using = …).
+        boolean usesNetDeser = annotationsPerField.stream().anyMatch(a -> a.contains("@JsonDeserialize"));
 
         StringBuilder src = new StringBuilder();
         if (!pkg.isEmpty()) {
             src.append("package ").append(pkg).append(";\n\n");
+        }
+        if (usesNetDeser) {
+            src.append("import com.fasterxml.jackson.databind.annotation.JsonDeserialize;\n");
         }
         // Wildcard import keeps the emit simple — record components carry a small,
         // closed set of jakarta.validation.constraints annotations.
@@ -470,7 +491,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         if (usesValidation) {
             src.append("import jakarta.validation.constraints.*;\n");
         }
-        if (usesValid || usesValidation) {
+        if (usesNetDeser || usesValid || usesValidation) {
             src.append('\n');
         }
         src.append("/** GENERATED — wire DTO for ").append(shortName)
@@ -754,6 +775,150 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             src.append("public enum ").append(shared.name()).append(" { ")
                .append(String.join(", ", shared.values())).append(" }\n");
             writeSharedEnumFile(shared, outRoot, src.toString());
+        }
+    }
+
+    // === #234 strict field.uri / field.inet bind-layer enforcement =============
+
+    /**
+     * True iff {@code field} is a STRICT (non-{@code @lenient}) {@code field.uri} / {@code field.inet} —
+     * the fields whose DTO component binds through the {@link #emitNetBindings generated MetaNetBindings}
+     * literal deserializer. (Stage 2 adds the {@code @lenient} opt-out here: a lenient uri/inet degrades
+     * to a plain String with no deserializer.)
+     */
+    private static boolean isStrictNetField(MetaField<?> field) {
+        return field instanceof UriField || field instanceof InetField;
+    }
+
+    /**
+     * #234: the Jackson {@code @JsonDeserialize} annotation binding a STRICT {@code field.uri} /
+     * {@code field.inet} record component to the codegen-owned literal deserializer in the same-package
+     * {@code MetaNetBindings} — an absolute-scheme URI or an IPv4/IPv6 LITERAL (never a DNS lookup). An
+     * {@code @isArray} component uses {@code contentUsing} (deserialize the ELEMENTS). Empty for any
+     * other field.
+     */
+    private static String netDeserializeAnnotation(MetaField<?> field) {
+        if (!isStrictNetField(field)) return "";
+        String deser = (field instanceof UriField)
+            ? "MetaNetBindings.AbsoluteUriDeserializer.class"
+            : "MetaNetBindings.InetLiteralDeserializer.class";
+        String key = field.isArrayType() ? "contentUsing" : "using";
+        return "@JsonDeserialize(" + key + " = " + deser + ")";
+    }
+
+    /**
+     * #234: emit the codegen-owned {@code MetaNetBindings} support file — the strict Jackson
+     * deserializers a STRICT {@code field.uri} / {@code field.inet} record component binds through —
+     * ONCE per Java package that has such a field. Dependency-free (java.net + Jackson only), so the
+     * generated code still runs without any MetaObjects runtime (mirrors the Kotlin support-block).
+     */
+    private void emitNetBindings(MetaDataLoader loader, Path outRoot) {
+        java.util.Set<String> packages = new java.util.LinkedHashSet<>();
+        for (MetaObject entity : loader.getMetaObjects()) {
+            if (!appliesTo(entity)) continue;
+            for (MetaField field : dtoComponentFields(entity)) {
+                if (isStrictNetField(field)) {
+                    packages.add(SpringNaming.splitFqn(entity.getName())[0]);
+                    break;
+                }
+            }
+        }
+        for (String pkg : packages) writeNetBindingsFile(pkg, outRoot);
+    }
+
+    /** Write {@code MetaNetBindings.java} into {@code pkg}. The class is fixed (only the package
+     *  header varies): two {@link com.fasterxml.jackson.databind.JsonDeserializer}s implementing the
+     *  #234 Contract-A strict URI / IP-literal rules verified against the shared validation-conformance
+     *  corpus. */
+    private void writeNetBindingsFile(String pkg, Path outRoot) {
+        StringBuilder src = new StringBuilder();
+        if (!pkg.isEmpty()) src.append("package ").append(pkg).append(";\n\n");
+        src.append("import com.fasterxml.jackson.core.JsonParser;\n");
+        src.append("import com.fasterxml.jackson.databind.DeserializationContext;\n");
+        src.append("import com.fasterxml.jackson.databind.JsonDeserializer;\n\n");
+        src.append("import java.io.IOException;\n");
+        src.append("import java.net.InetAddress;\n");
+        src.append("import java.net.URI;\n");
+        src.append("import java.net.URISyntaxException;\n\n");
+        src.append("/** GENERATED (#234) — strict Jackson deserializers for field.uri / field.inet.\n");
+        src.append(" *  Do not hand-edit; regenerated from metadata. Dependency-free (java.net + Jackson). */\n");
+        src.append("public final class MetaNetBindings {\n\n");
+        src.append("    private MetaNetBindings() {}\n\n");
+        src.append("    /** field.uri — an ABSOLUTE URI carrying a scheme (leading/trailing whitespace trimmed,\n");
+        src.append("     *  WHATWG). A relative reference (example.com, /path) or malformed value is rejected. */\n");
+        src.append("    public static final class AbsoluteUriDeserializer extends JsonDeserializer<URI> {\n");
+        src.append("        @Override\n");
+        src.append("        public URI deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {\n");
+        src.append("            String raw = p.getValueAsString();\n");
+        src.append("            if (raw == null) return null;\n");
+        src.append("            URI uri;\n");
+        src.append("            try {\n");
+        src.append("                uri = new URI(raw.trim());\n");
+        src.append("            } catch (URISyntaxException e) {\n");
+        src.append("                throw new IllegalArgumentException(\"field.uri: not a valid URI: \" + raw, e);\n");
+        src.append("            }\n");
+        src.append("            if (!uri.isAbsolute()) {\n");
+        src.append("                throw new IllegalArgumentException(\n");
+        src.append("                        \"field.uri: must be an absolute URI carrying a scheme: \" + raw);\n");
+        src.append("            }\n");
+        src.append("            return uri;\n");
+        src.append("        }\n");
+        src.append("    }\n\n");
+        src.append("    /** field.inet — an IPv4 or IPv6 LITERAL only. Never a DNS lookup: a value containing\n");
+        src.append("     *  ':' can only be an IPv6 literal (getByName parses it offline), otherwise a strict\n");
+        src.append("     *  dotted-quad IPv4. Hostnames, CIDR, padding, out-of-range octets are rejected. */\n");
+        src.append("    public static final class InetLiteralDeserializer extends JsonDeserializer<InetAddress> {\n");
+        src.append("        @Override\n");
+        src.append("        public InetAddress deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {\n");
+        src.append("            String raw = p.getValueAsString();\n");
+        src.append("            if (raw == null) return null;\n");
+        src.append("            // No trim: IP-literal grammar has no whitespace, so padding is rejected.\n");
+        src.append("            if (raw.indexOf(':') >= 0) {\n");
+        src.append("                try {\n");
+        src.append("                    return InetAddress.getByName(raw); // ':' => IPv6 literal — getByName does no DNS\n");
+        src.append("                } catch (Exception e) {\n");
+        src.append("                    throw new IllegalArgumentException(\"field.inet: not a valid IPv6 literal: \" + raw, e);\n");
+        src.append("                }\n");
+        src.append("            }\n");
+        src.append("            return parseIpv4(raw);\n");
+        src.append("        }\n\n");
+        src.append("        private static InetAddress parseIpv4(String s) {\n");
+        src.append("            String[] parts = s.split(\"\\\\.\", -1);\n");
+        src.append("            if (parts.length != 4) {\n");
+        src.append("                throw new IllegalArgumentException(\"field.inet: not a valid IPv4 literal: \" + s);\n");
+        src.append("            }\n");
+        src.append("            byte[] octets = new byte[4];\n");
+        src.append("            for (int i = 0; i < 4; i++) {\n");
+        src.append("                String part = parts[i];\n");
+        src.append("                if (part.isEmpty() || part.length() > 3) {\n");
+        src.append("                    throw new IllegalArgumentException(\"field.inet: not a valid IPv4 literal: \" + s);\n");
+        src.append("                }\n");
+        src.append("                for (int j = 0; j < part.length(); j++) {\n");
+        src.append("                    if (!Character.isDigit(part.charAt(j))) {\n");
+        src.append("                        throw new IllegalArgumentException(\"field.inet: not a valid IPv4 literal: \" + s);\n");
+        src.append("                    }\n");
+        src.append("                }\n");
+        src.append("                int v = Integer.parseInt(part);\n");
+        src.append("                if (v > 255) {\n");
+        src.append("                    throw new IllegalArgumentException(\"field.inet: IPv4 octet out of range: \" + s);\n");
+        src.append("                }\n");
+        src.append("                octets[i] = (byte) v;\n");
+        src.append("            }\n");
+        src.append("            try {\n");
+        src.append("                return InetAddress.getByAddress(octets);\n");
+        src.append("            } catch (Exception e) {\n");
+        src.append("                throw new IllegalArgumentException(\"field.inet: not a valid IPv4 literal: \" + s, e);\n");
+        src.append("            }\n");
+        src.append("        }\n");
+        src.append("    }\n");
+        src.append("}\n");
+
+        try {
+            Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("MetaNetBindings.java");
+            if (outFile.getParent() != null) Files.createDirectories(outFile.getParent());
+            Files.writeString(outFile, src.toString());
+        } catch (IOException e) {
+            throw new GeneratorException("failed writing MetaNetBindings.java for package " + pkg + ": " + e, e);
         }
     }
 

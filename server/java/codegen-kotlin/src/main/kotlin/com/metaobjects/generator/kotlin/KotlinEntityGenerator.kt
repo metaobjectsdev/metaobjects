@@ -2,10 +2,12 @@ package com.metaobjects.generator.kotlin
 
 import com.metaobjects.MetaData
 import com.metaobjects.field.EnumField
+import com.metaobjects.field.InetField
 import com.metaobjects.field.MetaField
 import com.metaobjects.field.MapField
 import com.metaobjects.field.ObjectField
 import com.metaobjects.field.StringField
+import com.metaobjects.field.UriField
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.loader.MetaDataLoader
@@ -100,6 +102,39 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             }
             emit(obj, outRoot, loader, emittedEnumFqns)
         }
+        // #234: emit the strict field.uri / field.inet Jackson deserializers ONCE per package that
+        // has such a field (a same-package MetaNetJson the data-class properties bind through).
+        emitNetJsonSupport(loader, outRoot)
+    }
+
+    /**
+     * #234: emit the per-package `MetaNetJson.kt` support object (the strict field.uri / field.inet
+     * Jackson deserializers a data-class property binds through via `@field:JsonDeserialize`), ONCE
+     * for each package with such a field. Dependency-free (java.net + Jackson), so the generated code
+     * still runs without any MetaObjects runtime.
+     */
+    private fun emitNetJsonSupport(loader: MetaDataLoader, outRoot: Path) {
+        val packages = linkedSetOf<String>()
+        for (obj in loader.metaObjects) {
+            if (obj.subType !in EMITTED_SUBTYPES) continue
+            if (KotlinGenUtil.isAbstractEntity(obj)) continue
+            if (KotlinTphPlan.isTphSubtype(obj)) continue
+            if (obj.metaFields.any { isStrictNetField(it) }) {
+                packages.add(PackageMapping.splitFqn(obj.name).first)
+            }
+        }
+        for (pkg in packages) writeNetJsonSupportFile(pkg, outRoot)
+    }
+
+    /** Write `MetaNetJson.kt` into `pkg` — two `JsonDeserializer`s implementing the #234 Contract-A
+     *  strict URI / IP-literal rules (verified against the shared validation-conformance corpus). The
+     *  class body is fixed; only the package header varies. */
+    private fun writeNetJsonSupportFile(pkg: String, outRoot: Path) {
+        val header = if (pkg.isEmpty()) "" else "package $pkg\n\n"
+        val body = header + NET_JSON_SUPPORT_BODY
+        val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$NET_JSON_SUPPORT.kt")
+        outFile.parent?.let { java.nio.file.Files.createDirectories(it) }
+        java.nio.file.Files.writeString(outFile, body)
     }
 
     protected open fun emit(obj: MetaObject, outRoot: Path, loader: MetaDataLoader, emittedEnumFqns: MutableSet<String>) {
@@ -173,6 +208,10 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
                 for (annotation in validationAnnotations(field)) {
                     propBuilder.addAnnotation(annotation)
                 }
+                // #234: a STRICT field.uri / field.inet property binds through the codegen-owned
+                // literal deserializer (absolute-scheme URI / IPv4-or-IPv6 literal, no DNS), so a
+                // malformed value is rejected at the wire tier — aligning with TS/Python strict.
+                netDeserializeAnnotation(field, pkg)?.let { propBuilder.addAnnotation(it) }
                 // Program D (spec §0): a field.object (value-object) member carries @field:Valid so a
                 // parent validator.validate(bean) / @Valid cascades into the nested VO's own
                 // constraints (the create-body POST path). jakarta validateValue does NOT cascade, so
@@ -488,6 +527,31 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             .build()
 
     /**
+     * #234: true iff `field` is a STRICT (non-`@lenient`) field.uri / field.inet — the properties
+     * whose data-class component binds through the generated [NET_JSON_SUPPORT] literal deserializer.
+     * (Stage 2 adds the `@lenient` opt-out here: a lenient uri/inet degrades to a plain String.)
+     */
+    private fun isStrictNetField(field: MetaField<*>): Boolean =
+        field is UriField || field is InetField
+
+    /**
+     * #234: the `@field:JsonDeserialize(using = …)` annotation binding a STRICT field.uri /
+     * field.inet property to the same-`pkg` generated `MetaNetJson` deserializer — an
+     * absolute-scheme URI or an IPv4/IPv6 literal (never a DNS lookup). `contentUsing` for an
+     * `@isArray` property (the ELEMENTS deserialize strictly). Null for any other field.
+     */
+    private fun netDeserializeAnnotation(field: MetaField<*>, pkg: String): AnnotationSpec? {
+        if (!isStrictNetField(field)) return null
+        val deserializer = ClassName(pkg, NET_JSON_SUPPORT,
+            if (field is UriField) "AbsoluteUriDeserializer" else "InetLiteralDeserializer")
+        val member = if (field.isArrayType) "contentUsing" else "using"
+        return AnnotationSpec.builder(JSON_DESERIALIZE)
+            .useSiteTarget(AnnotationSpec.UseSiteTarget.FIELD)
+            .addMember("$member = %T::class", deserializer)
+            .build()
+    }
+
+    /**
      * `@field:Size(min = …, max = …)` — each bound omitted when null. Emitted as ONE member
      * (a single literal) so a two-bound `@Size` stays single-line, matching the historical
      * single-bound shape (KotlinPoet wraps multi-`addMember` annotations across lines).
@@ -549,6 +613,78 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
          *  validate cascades into the nested VO's own constraints (lives in `jakarta.validation`,
          *  NOT `jakarta.validation.constraints`). */
         val VALID = ClassName("jakarta.validation", "Valid")
+
+        /** #234: `@field:JsonDeserialize(using = …)` binds a STRICT field.uri / field.inet property
+         *  to the same-package [NET_JSON_SUPPORT] literal deserializer. */
+        val JSON_DESERIALIZE = ClassName("com.fasterxml.jackson.databind.annotation", "JsonDeserialize")
+        /** The per-package generated support object holding the #234 strict Jackson deserializers. */
+        const val NET_JSON_SUPPORT = "MetaNetJson"
+
+        /** The fixed `MetaNetJson.kt` body (below the package header). Two strict Jackson
+         *  deserializers — an absolute-scheme URI and an IPv4/IPv6 literal (never a DNS lookup) —
+         *  implementing the #234 Contract-A rules. Uses `+`-concatenated messages (no Kotlin string
+         *  templates) so THIS generator's raw string needs no `$` escaping. */
+        val NET_JSON_SUPPORT_BODY: String = """
+            |import com.fasterxml.jackson.core.JsonParser
+            |import com.fasterxml.jackson.databind.DeserializationContext
+            |import com.fasterxml.jackson.databind.JsonDeserializer
+            |import java.net.InetAddress
+            |import java.net.URI
+            |import java.net.URISyntaxException
+            |
+            |/** GENERATED (#234) — strict Jackson deserializers for field.uri / field.inet.
+            | *  Do not hand-edit; regenerated from metadata. Dependency-free (java.net + Jackson). */
+            |internal object MetaNetJson {
+            |    /** field.uri — an ABSOLUTE URI carrying a scheme (leading/trailing whitespace trimmed,
+            |     *  WHATWG). A relative reference (example.com, /path) or malformed value is rejected. */
+            |    class AbsoluteUriDeserializer : JsonDeserializer<URI>() {
+            |        override fun deserialize(p: JsonParser, ctxt: DeserializationContext): URI? {
+            |            val raw = p.valueAsString ?: return null
+            |            val uri = try {
+            |                URI(raw.trim())
+            |            } catch (e: URISyntaxException) {
+            |                throw IllegalArgumentException("field.uri: not a valid URI: " + raw, e)
+            |            }
+            |            require(uri.isAbsolute) { "field.uri: must be an absolute URI carrying a scheme: " + raw }
+            |            return uri
+            |        }
+            |    }
+            |
+            |    /** field.inet — an IPv4 or IPv6 LITERAL only. Never a DNS lookup: a value containing
+            |     *  ':' can only be an IPv6 literal (getByName parses it offline), otherwise a strict
+            |     *  dotted-quad IPv4. Hostnames, CIDR, padding, out-of-range octets are rejected. */
+            |    class InetLiteralDeserializer : JsonDeserializer<InetAddress>() {
+            |        override fun deserialize(p: JsonParser, ctxt: DeserializationContext): InetAddress? {
+            |            val raw = p.valueAsString ?: return null
+            |            // No trim: IP-literal grammar has no whitespace, so padding is rejected.
+            |            if (raw.indexOf(':') >= 0) {
+            |                return try {
+            |                    InetAddress.getByName(raw) // ':' => IPv6 literal — getByName does no DNS
+            |                } catch (e: Exception) {
+            |                    throw IllegalArgumentException("field.inet: not a valid IPv6 literal: " + raw, e)
+            |                }
+            |            }
+            |            return parseIpv4(raw)
+            |        }
+            |
+            |        private fun parseIpv4(s: String): InetAddress {
+            |            val parts = s.split(".")
+            |            require(parts.size == 4) { "field.inet: not a valid IPv4 literal: " + s }
+            |            val octets = ByteArray(4)
+            |            for (i in 0 until 4) {
+            |                val part = parts[i]
+            |                require(part.isNotEmpty() && part.length <= 3 && part.all { it.isDigit() }) {
+            |                    "field.inet: not a valid IPv4 literal: " + s
+            |                }
+            |                val v = part.toInt()
+            |                require(v <= 255) { "field.inet: IPv4 octet out of range: " + s }
+            |                octets[i] = v.toByte()
+            |            }
+            |            return InetAddress.getByAddress(octets)
+            |        }
+            |    }
+            |}
+            |""".trimMargin()
 
         /**
          * Canonical DNS-hostname matcher for `@stringFormat: hostname` (ADR-0036/0037 Wave 3).
