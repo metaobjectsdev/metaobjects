@@ -1,5 +1,6 @@
 import { test, expect, describe } from "bun:test";
 import { diff } from "../../src/diff/index.js";
+import { emit } from "../../src/emit/index.js";
 import type { SchemaSnapshot, ColumnDescriptor } from "../../src/types.js";
 
 const empty: SchemaSnapshot = { tables: [], views: [] };
@@ -135,5 +136,95 @@ describe("diff — view-body drift", () => {
     expect(r.changes.find((c) => c.kind === "create-view")).toMatchObject({
       kind: "create-view", view: { name: "order_summary" },
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #239 — the Postgres adopt-view branch (DB view carries no fingerprint) must
+// make the SAME legal/illegal OR-REPLACE decision the managed path makes.
+// A structural change (rename / reorder / mid-insert) is NOT a legal
+// CREATE OR REPLACE, so it must be emitted as drop-view + create-view — and the
+// adoption of an unmanaged view still requires allow.adoptView (the recreate-pair
+// auto-allow must not wave through clobbering hand-written SQL).
+// ---------------------------------------------------------------------------
+describe("diff — Postgres adopt-view legality (#239)", () => {
+  const T = { kind: "text" as const };
+  // A view metadata (expected) side always carries a fingerprint.
+  const expView = (cols: string[]) => ({
+    name: "v_foo",
+    sql: `SELECT ${cols.map((c) => `t.${c} AS ${c}`).join(", ")} FROM t`,
+    fingerprint: "a".repeat(64), // raw sha256-hex; renderFingerprintMarker adds the prefix
+    columns: cols.map((name) => ({ name, sqlType: T })),
+  });
+  // The DB (actual) side has NO fingerprint — pre-fingerprint or hand-written.
+  const dbView = (cols: string[]) => ({
+    name: "v_foo",
+    sql: `SELECT ${cols.map((c) => `t.${c} AS ${c}`).join(", ")} FROM t`,
+    columns: cols.map((name) => ({ name, sqlType: T })),
+  });
+  const opts = (adoptView = false) => ({ dialect: "postgres" as const, allow: { adoptView } });
+
+  test("STRUCTURAL change (renamed output column) → drop-view + create-view, NOT replace-view", async () => {
+    // DB view outputs (a, b); metadata renames b→c → columns (a, c). Postgres cannot
+    // OR-REPLACE a column rename ("cannot change name of view column").
+    const r = await diff(
+      { tables: [], views: [expView(["a", "c"])] },
+      { tables: [], views: [dbView(["a", "b"])] },
+      opts(true),
+    );
+    expect(r.changes.find((c) => c.kind === "replace-view")).toBeUndefined();
+    expect(r.changes.find((c) => c.kind === "drop-view")).toMatchObject({ kind: "drop-view", view: "v_foo" });
+    expect(r.changes.find((c) => c.kind === "create-view")).toMatchObject({
+      kind: "create-view", view: { name: "v_foo" },
+    });
+  });
+
+  test("adopting an unmanaged view via drop+create STILL requires allow.adoptView", async () => {
+    // Without allow.adoptView the drop must be BLOCKED — the recreate-pair auto-allow
+    // must not silently clobber the (possibly hand-written) unmanaged view.
+    const r = await diff(
+      { tables: [], views: [expView(["a", "c"])] },
+      { tables: [], views: [dbView(["a", "b"])] },
+      opts(false),
+    );
+    const dropv = r.changes.find((c) => c.kind === "drop-view");
+    expect(dropv?.status.state).toBe("blocked");
+    // With allow.adoptView → allowed.
+    const r2 = await diff(
+      { tables: [], views: [expView(["a", "c"])] },
+      { tables: [], views: [dbView(["a", "b"])] },
+      opts(true),
+    );
+    expect(r2.changes.find((c) => c.kind === "drop-view")?.status.state).toBe("allowed");
+  });
+
+  test("PURE APPEND (columns are a prefix) is still a legal replace-view (unmanagedActual)", async () => {
+    // DB (a, b); metadata (a, b, c) — c appended. Legal OR-REPLACE → replace-view,
+    // still gated on adoptView.
+    const r = await diff(
+      { tables: [], views: [expView(["a", "b", "c"])] },
+      { tables: [], views: [dbView(["a", "b"])] },
+      opts(true),
+    );
+    expect(r.changes.find((c) => c.kind === "replace-view")).toMatchObject({
+      kind: "replace-view", view: { name: "v_foo" }, unmanagedActual: true,
+    });
+    expect(r.changes.find((c) => c.kind === "drop-view")).toBeUndefined();
+  });
+
+  test("emitted up.sql for a structural adoption is DROP+CREATE (no illegal CREATE OR REPLACE)", async () => {
+    // The bug's symptom: `CREATE OR REPLACE VIEW` for a rename fails at apply on a DB
+    // that already holds the prior view. The fix emits DROP VIEW + CREATE VIEW + a
+    // fingerprint COMMENT (so the next migrate converges).
+    const r = await diff(
+      { tables: [], views: [expView(["a", "c"])] },
+      { tables: [], views: [dbView(["a", "b"])] },
+      opts(true),
+    );
+    const up = emit(r.changes, { dialect: "postgres" }).up;
+    expect(up).not.toMatch(/CREATE OR REPLACE VIEW/i);
+    expect(up).toMatch(/DROP VIEW/i);
+    expect(up).toMatch(/CREATE VIEW/i);
+    expect(up).toMatch(/COMMENT ON VIEW .* IS 'metaobjects:/i);
   });
 });

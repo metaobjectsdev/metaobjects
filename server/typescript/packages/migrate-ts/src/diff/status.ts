@@ -70,6 +70,16 @@ function blockedReasonFor(
           + `(${external.map((d) => `${d.schema}.${d.name}`).join(", ")}) `
           + `— pass allow.dropViewCascade to destroy them, or migrate them off this view first`;
       }
+      // #239: the drop half of ADOPTING an unmanaged view (no fingerprint) whose shape
+      // changed too much for a legal CREATE OR REPLACE. It is paired with a create-view,
+      // so the recreate-pair rule below would auto-allow it — but clobbering (possibly
+      // hand-written) SQL needs explicit consent, exactly like the replace-view adopt
+      // path. Gate on allow.adoptView BEFORE the recreate-pair auto-allow.
+      if (c.unmanagedActual && !allow.adoptView) {
+        return `existing view "${c.view}" carries no MetaObjects fingerprint — it is hand-written, `
+          + `or was created before view fingerprinting. Its shape changed, so adopting it means `
+          + `DROP + rebuild, which takes ownership and cannot be undone. Pass allow.adoptView to adopt it`;
+      }
       // Identity, not bare name — see viewIdentity().
       if (recreatedViews.has(viewIdentity(c.view, c.schema))) return null; // recreate pair — view survives
       return allow.dropView ? null : "destructive: drop-view not allowed (pass allow.dropView)";

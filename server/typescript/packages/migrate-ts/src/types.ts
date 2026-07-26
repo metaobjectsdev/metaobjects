@@ -243,6 +243,15 @@ export type Change =
        * do not manage — so this is blocked pending `allow.dropViewCascade`.
        */
       dependents?: readonly DependentRelation[];
+      /**
+       * This drop is the drop half of adopting an UNMANAGED view (no fingerprint)
+       * whose shape changed too much for a legal `CREATE OR REPLACE` (#239). It is
+       * paired with a `create-view`, so the recreate-pair rule would normally
+       * auto-allow it — but clobbering (possibly hand-written) SQL still needs
+       * explicit consent, so status.ts gates it on `allow.adoptView`, exactly like
+       * the `replace-view` adopt path.
+       */
+      unmanagedActual?: boolean;
     }
   | {
       kind: "replace-view";

@@ -5,6 +5,30 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
+## [Unreleased]
+
+### Fixed — `--allow adopt-view` no longer emits an illegal `CREATE OR REPLACE VIEW` (#239)
+
+**npm-only** (`migrate-ts` + `cli`; schema migrations are TS-owned, ADR-0015 — NuGet / PyPI /
+Maven have no migrate engine). `meta migrate --allow adopt-view` emitted `CREATE OR REPLACE
+VIEW` when adopting an **unmanaged** Postgres view (one with no MetaObjects fingerprint —
+created before view stamping, or hand-written) that was **also** structurally changed in the
+same migration (column rename / reorder / mid-list insert). Postgres rejects that DDL at apply
+time (`cannot change name of view column …`), aborting the migration on any DB that already
+holds the prior view. It was invisible until apply: offline `meta migrate` and a freshly
+provisioned DB (where `CREATE OR REPLACE` behaves as a plain `CREATE`) never hit it — it bites
+exactly once per project, on the first migration authored after upgrading into view
+fingerprinting.
+
+The adopt-view branch now runs the **same** legal/illegal `CREATE OR REPLACE` decision the
+managed path already made (`viewReplaceIsLegal`): a legal append stays a non-destructive
+`replace-view`; a structural change is emitted as `drop-view` + `create-view` (the recreated
+view is re-stamped, so the next migrate converges). Adopting an unmanaged view still requires
+`allow.adoptView` in both cases — the drop+create path carries the adopt-view gate so the
+recreate-pair auto-allow can't silently clobber hand-written SQL. Gated by unit + emit tests
+and a real-Postgres round-trip (`hold prior unmanaged view → diff → emit → APPLY → re-diff ==
+[]`). Generated-output change — regenerate to pick it up; three-way merge preserves hand edits.
+
 ## [0.20.3] — 2026-07-25
 
 **Coordinated release** — npm `0.20.3` · PyPI `0.19.6` · Maven Central `7.11.4` · NuGet

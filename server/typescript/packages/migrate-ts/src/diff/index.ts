@@ -558,12 +558,14 @@ function diffViews(
       // existed, OR somebody's hand-written SQL sitting at a projection's name — and on
       // Postgres those are indistinguishable, because the deparser destroyed the text
       // evidence. Overwriting the second destroys work nothing can restore, so fail
-      // closed: propose the replace but BLOCK it pending `allow.adoptView`.
+      // closed: propose the adoption but BLOCK it pending `allow.adoptView`.
+      //
+      // #239: route through the SAME legal/illegal OR-REPLACE decision the managed
+      // path makes — a structural change (rename/reorder/mid-insert) is not a legal
+      // CREATE OR REPLACE and must be drop+create. `unmanaged: true` carries the
+      // adopt-view gate onto whichever change kind we emit.
       if (a.fingerprint === undefined) {
-        changes.push({
-          kind: "replace-view", view: v, ...schemaSpread(v.schema),
-          restore: a, unmanagedActual: true, status: ALLOWED,
-        });
+        pushViewUpdate(v, a, changes, /* unmanaged */ true);
         continue;
       }
 
@@ -602,16 +604,23 @@ function diffViews(
  * view's columns come out in projection DECLARATION order, so a field APPENDED to a
  * projection lands last, which is exactly what Postgres's prefix rule permits.
  */
-function pushViewUpdate(expected: ViewDescriptor, actual: ViewDescriptor, changes: Change[]): void {
+function pushViewUpdate(
+  expected: ViewDescriptor, actual: ViewDescriptor, changes: Change[],
+  // #239: when the ACTUAL view is unmanaged (no fingerprint), this is an ADOPTION —
+  // stamp the adopt-view gate (`unmanagedActual`) onto whichever change we emit so
+  // status.ts fails closed on `allow.adoptView`, legal-replace and drop+create alike.
+  unmanaged = false,
+): void {
   const sx = schemaSpread(expected.schema);
+  const adopt = unmanaged ? { unmanagedActual: true as const } : {};
   if (viewReplaceIsLegal(expected.columns, actual.columns)) {
-    changes.push({ kind: "replace-view", view: expected, ...sx, restore: actual, status: ALLOWED });
+    changes.push({ kind: "replace-view", view: expected, ...sx, restore: actual, ...adopt, status: ALLOWED });
     return;
   }
   // The column list changed shape (removed / renamed / reordered / retyped), so
   // Postgres refuses OR REPLACE. The view must be dropped and rebuilt — which is
   // destructive to anything depending on it (annotateViewDropDependents makes that loud).
-  changes.push({ kind: "drop-view", view: expected.name, ...sx, restore: actual, status: ALLOWED });
+  changes.push({ kind: "drop-view", view: expected.name, ...sx, restore: actual, ...adopt, status: ALLOWED });
   changes.push({ kind: "create-view", view: expected, ...sx, status: ALLOWED });
 }
 
