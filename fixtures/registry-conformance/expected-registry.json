@@ -1314,6 +1314,13 @@
           "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
         },
         {
+          "name": "lenient",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "#234: opt this field out of strict well-formedness enforcement. When true, codegen binds a plain string (no URL/IP validator, no native URI/InetAddress type; field.inet uses a text column, not the native inet type) so a not-strictly-valid value round-trips unchanged. Default (absent/false) is strict: an absolute-scheme URI / an IPv4-or-IPv6 literal."
+        },
+        {
           "name": "readOnly",
           "valueType": "boolean",
           "isArray": false,
@@ -2489,6 +2496,13 @@
           "isArray": false,
           "required": false,
           "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
+        },
+        {
+          "name": "lenient",
+          "valueType": "boolean",
+          "isArray": false,
+          "required": false,
+          "description": "#234: opt this field out of strict well-formedness enforcement. When true, codegen binds a plain string (no URL/IP validator, no native URI/InetAddress type; field.inet uses a text column, not the native inet type) so a not-strictly-valid value round-trips unchanged. Default (absent/false) is strict: an absolute-scheme URI / an IPv4-or-IPv6 literal."
         },
         {
           "name": "readOnly",

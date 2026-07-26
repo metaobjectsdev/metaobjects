@@ -116,6 +116,10 @@ const AUTO_SET_EXTRA: Record<string, AttrExp> = {
 const LOCAL_TIME_EXTRA: Record<string, AttrExp> = {
   localTime: { valueType: "boolean", required: false },
 };
+// #234 — @lenient (opt out of strict well-formedness) on field.uri / field.inet ONLY.
+const LENIENT_EXTRA: Record<string, AttrExp> = {
+  lenient: { valueType: "boolean", required: false },
+};
 const ENUM_PROMPT_EXTRA: Record<string, AttrExp> = {
   enumAlias: { valueType: "properties", required: false },
   enumDoc: { valueType: "properties", required: false },
@@ -161,6 +165,7 @@ function expectedAttrsFor(subType: string): Record<string, AttrExp> {
   if (subType === FIELD_SUBTYPE_ENUM) Object.assign(exp, ENUM_CORE_EXTRA, ENUM_PROMPT_EXTRA);
   if (TEMPORAL.has(subType)) Object.assign(exp, AUTO_SET_EXTRA);
   if (subType === FIELD_SUBTYPE_TIMESTAMP) Object.assign(exp, LOCAL_TIME_EXTRA);
+  if (subType === "uri" || subType === "inet") Object.assign(exp, LENIENT_EXTRA);
   return exp;
 }
 

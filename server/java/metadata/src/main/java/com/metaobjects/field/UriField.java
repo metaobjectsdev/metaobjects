@@ -16,6 +16,7 @@
 package com.metaobjects.field;
 
 import com.metaobjects.DataTypes;
+import com.metaobjects.attr.BooleanAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,6 +48,10 @@ public class UriField extends PrimitiveField<String> {
     /** URI field subtype constant — cross-language vocabulary ({@code field.uri}). */
     public static final String SUBTYPE_URI = "uri";
 
+    /** #234: {@code @lenient} (boolean, optional) — opt this field out of strict URI
+     *  well-formedness enforcement (codegen binds a plain string). Default = strict. */
+    public static final String ATTR_LENIENT = "lenient";
+
     public UriField(String name) {
         // String-backed value: the wire/storage representation is the URI string. The
         // native java.net.URI binding is build-time codegen only.
@@ -64,6 +69,11 @@ public class UriField extends PrimitiveField<String> {
                 def.type(TYPE_FIELD).subType(SUBTYPE_URI)
                    .description("URI field — logical string scalar; native java.net.URI binding")
                    .inheritsFrom(TYPE_FIELD, SUBTYPE_BASE);
+                // #234: @lenient (boolean) — opt out of strict URI well-formedness (separate
+                // def.* statement, mirroring TimestampField's @localTime registration).
+                def.optionalAttributeWithConstraints(ATTR_LENIENT)
+                   .ofType(BooleanAttribute.SUBTYPE_BOOLEAN)
+                   .asSingle();
             });
             if (log != null) log.debug("Registered UriField type with unified registry");
         } catch (Exception e) {

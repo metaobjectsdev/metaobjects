@@ -293,6 +293,10 @@ public static class CoreTypes
                 // here and prunes it everywhere else.
                 FIELD_SUBTYPE_STRING   => [.. FieldSchema.CommonFieldAttrs, FieldSchema.StringFormatAttr],
                 FIELD_SUBTYPE_CURRENCY => [.. FieldSchema.CommonFieldAttrs, FieldSchema.CurrencyFieldAttr],
+                // #234: @lenient (opt out of strict URI / IP-literal well-formedness) is scoped to
+                // field.uri / field.inet (from spec field.json's per-subtype allow-list).
+                FIELD_SUBTYPE_URI      => [.. FieldSchema.CommonFieldAttrs, FieldSchema.LenientAttr],
+                FIELD_SUBTYPE_INET     => [.. FieldSchema.CommonFieldAttrs, FieldSchema.LenientAttr],
                 // field.map — the open-keyed map. @objectRef is already in CommonFieldAttrs;
                 // @valueType is map-specific. Strict attr scoping (from spec field.json's
                 // field.map allow-list) then prunes the object-only @storage attr.

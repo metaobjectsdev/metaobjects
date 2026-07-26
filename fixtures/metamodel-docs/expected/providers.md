@@ -21,9 +21,11 @@ Core metaobjects metamodel types and subtypes.
 - `field.currency`: `@currency`
 - `field.decimal`: `@precision`, `@scale`
 - `field.enum`: `@provided`, `@values`
+- `field.inet`: `@lenient`
 - `field.map`: `@objectRef`, `@valueType`
 - `field.object`: `@objectRef`
 - `field.string`: `@maxLength`, `@stringFormat`
+- `field.uri`: `@lenient`
 - `identity.primary`: `@fields`, `@generation`
 - `identity.reference`: `@enforce`, `@fields`, `@references`
 - `identity.secondary`: `@fields`

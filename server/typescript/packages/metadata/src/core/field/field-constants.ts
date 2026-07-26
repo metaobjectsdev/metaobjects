@@ -93,6 +93,13 @@ export const STRING_FORMAT_VALUES = [
   STRING_FORMAT_HOSTNAME,
 ] as const;
 export type StringFormatValue = (typeof STRING_FORMAT_VALUES)[number];
+
+/** #234: opt a field.uri / field.inet OUT of strict well-formedness enforcement. Optional
+ *  boolean; default (absent/false) is strict (an absolute-scheme URI / an IPv4-or-IPv6 literal).
+ *  When true, codegen binds a PLAIN STRING (no URL/IP validator, no native URI/InetAddress type)
+ *  and field.inet uses a text column (not the native inet type), so a not-strictly-valid value
+ *  (an LLM-emitted citation URL, a hostname) round-trips unchanged. Only on field.uri / field.inet. */
+export const FIELD_ATTR_LENIENT = "lenient";
 export const FIELD_ATTR_PRECISION = "precision";
 export const FIELD_ATTR_SCALE = "scale";
 export const FIELD_ATTR_FILTERABLE = "filterable";
