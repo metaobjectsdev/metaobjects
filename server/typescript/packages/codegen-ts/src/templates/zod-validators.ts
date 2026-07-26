@@ -30,6 +30,7 @@ import {
   OBJECT_ATTR_DISCRIMINATOR, OBJECT_ATTR_DISCRIMINATOR_VALUE,
 } from "@metaobjectsdev/metadata";
 import { enumValues, zodEnumExpr } from "../enum-meta.js";
+import { ZOD_INET_EXPR } from "./net-regex.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { sharedEnumForField } from "../enum-shared.js";
 import { sharedEnumImportSpecifier } from "../enum-import.js";
@@ -532,9 +533,10 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
       baseStr = "z.string().url()";
       break;
     case FIELD_SUBTYPE_INET:
-      // ADR-0036/0037 Wave 3: an IP-address string (v4 or v6) — codegen owns
-      // the canonical IP matcher (Zod .ip() accepts both versions).
-      baseStr = "z.string().ip()";
+      // ADR-0036/0037 Wave 3 + #234: an IP-address string (v4 or v6 literal) —
+      // codegen owns the canonical IP matcher. Zod-version-agnostic regex union
+      // (Zod 4 removed `z.string().ip()`); see net-regex.ts.
+      baseStr = ZOD_INET_EXPR;
       break;
     case FIELD_SUBTYPE_STRING: {
       // ADR-0036/0037 Wave 3: @stringFormat narrows a plain string to a closed

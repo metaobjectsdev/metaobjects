@@ -79,6 +79,24 @@
       "name": "note-missing",
       "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"] },
       "expectValid": false
-    }
+    },
+
+    { "name": "uri-accept-https",  "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "website": "https://a.com" },       "expectValid": true },
+    { "name": "uri-accept-ftp",    "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "website": "ftp://ftp.x.com/p" },   "expectValid": true },
+    { "name": "uri-accept-mailto", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "website": "mailto:a@b.com" },      "expectValid": true },
+    { "name": "uri-accept-urn",    "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "website": "urn:isbn:0451450523" }, "expectValid": true },
+    { "name": "uri-accept-padded", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "website": "  https://a.com  " },   "expectValid": true },
+    { "name": "uri-reject-schemeless", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "website": "example.com" },     "expectValid": false },
+    { "name": "uri-reject-relative",   "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "website": "/path/only" },      "expectValid": false },
+    { "name": "uri-reject-garbage",    "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "website": "not a url" },       "expectValid": false },
+    { "name": "uri-reject-empty-authority", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "website": "http://" },    "expectValid": false },
+
+    { "name": "inet-accept-ipv4",      "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "sourceIp": "192.168.0.1" },    "expectValid": true },
+    { "name": "inet-accept-ipv6",      "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "sourceIp": "::1" },            "expectValid": true },
+    { "name": "inet-accept-ipv6-full", "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "sourceIp": "2001:db8::1" },    "expectValid": true },
+    { "name": "inet-reject-hostname",   "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "sourceIp": "example.com" },   "expectValid": false },
+    { "name": "inet-reject-octet-range","payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "sourceIp": "256.1.1.1" },     "expectValid": false },
+    { "name": "inet-reject-cidr",       "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "sourceIp": "192.168.0.1/24" },"expectValid": false },
+    { "name": "inet-reject-padded",     "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "sourceIp": " 192.168.0.1 " }, "expectValid": false }
   ]
 }

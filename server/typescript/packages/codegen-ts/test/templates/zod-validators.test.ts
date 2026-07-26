@@ -276,8 +276,8 @@ describe("renderZodValidators", () => {
     expect(out).not.toContain("lifetimeValue");
   });
 
-  // ADR-0036/0037 Wave 3 — field.uri / field.inet subtypes + @stringFormat.
-  test("field.uri → z.string().url(); field.inet → z.string().ip()", () => {
+  // ADR-0036/0037 Wave 3 + #234 — field.uri / field.inet subtypes + @stringFormat.
+  test("field.uri → z.string().url(); field.inet → Zod-version-agnostic IP regex union (not z.string().ip())", () => {
     const ep = metaObject(OBJECT_SUBTYPE_ENTITY, "Endpoint");
     const id = metaField(FIELD_SUBTYPE_LONG, "id");
     ep.addChild(id);
@@ -289,8 +289,13 @@ describe("renderZodValidators", () => {
     ep.addChild(primary);
 
     const out = renderZodValidators(ep).toString();
+    const compact = out.replace(/\s+/g, "");
     expect(out).toContain("z.string().url()");
-    expect(out).toContain("z.string().ip()");
+    // #234: `z.string().ip()` was REMOVED in Zod 4; codegen emits an explicit
+    // IPv4-or-IPv6 regex union that is valid on both Zod 3 and Zod 4.
+    expect(out).not.toContain("z.string().ip()");
+    expect(compact).toContain(".or(z.string().regex(");
+    expect(compact).toContain("z.string().regex(/^(?:(?:25[0-5]"); // the IPv4 octet regex
   });
 
   test("field.string @stringFormat: email → z.string().email(); hostname → z.string().regex(...)", () => {

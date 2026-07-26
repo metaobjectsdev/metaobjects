@@ -15,7 +15,10 @@ model, so asserting against the read model would no longer exercise Pin 1 at all
 """
 from __future__ import annotations
 
+import importlib.util
 import json
+import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -52,9 +55,22 @@ def _build_generated_model() -> type[BaseModel]:
     artifact), not the plain ``Account`` read model: FR-036 Pin 1 lives on the wire
     tier only."""
     source = render_entity_model(_load_account_entity())
-    namespace: dict[str, object] = {}
-    exec(compile(source, "<generated Account.py>", "exec"), namespace)  # noqa: S102
-    model = namespace["AccountCreate"]
+    # Import the generated source as a REAL module rather than exec'ing it into a
+    # bare dict: under ``from __future__ import annotations`` Pydantic resolves
+    # type annotations lazily via the class's module globals, so a non-builtin
+    # import (e.g. ``AnyUrl``/``IPvAnyAddress`` for field.uri/field.inet) only
+    # resolves when ``__name__`` and the module's imports are in scope. A bare
+    # exec namespace has no ``__name__`` (forward refs fall back to builtins and
+    # fail — #234); a proper module import mirrors the TS runner's temp-module.
+    tmp_dir = tempfile.mkdtemp()
+    mod_path = Path(tmp_dir) / "generated_account.py"
+    mod_path.write_text(source)
+    spec = importlib.util.spec_from_file_location("generated_account", mod_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["generated_account"] = module
+    spec.loader.exec_module(module)
+    model = module.AccountCreate
     assert isinstance(model, type) and issubclass(model, BaseModel)
     return model
 

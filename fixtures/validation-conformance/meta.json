@@ -24,6 +24,8 @@
           { "field.string":     { "name": "note", "@required": true, "children": [
             { "validator.length": { "@min": 0 } }
           ] } },
+          { "field.uri":        { "name": "website" } },
+          { "field.inet":       { "name": "sourceIp" } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
         ]
       }}
