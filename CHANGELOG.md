@@ -5,12 +5,14 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
-## [Unreleased]
+## [0.20.4] — 2026-07-26
+
+**npm-only** (NuGet `0.19.4` / PyPI `0.19.6` / Maven Central `7.11.4` unchanged — schema
+migrations are TS-owned, ADR-0015, so no other port has a migrate engine to fix).
 
 ### Fixed — `--allow adopt-view` no longer emits an illegal `CREATE OR REPLACE VIEW` (#239)
 
-**npm-only** (`migrate-ts` + `cli`; schema migrations are TS-owned, ADR-0015 — NuGet / PyPI /
-Maven have no migrate engine). `meta migrate --allow adopt-view` emitted `CREATE OR REPLACE
+`migrate-ts` + `cli`. `meta migrate --allow adopt-view` emitted `CREATE OR REPLACE
 VIEW` when adopting an **unmanaged** Postgres view (one with no MetaObjects fingerprint —
 created before view stamping, or hand-written) that was **also** structurally changed in the
 same migration (column rename / reorder / mid-list insert). Postgres rejects that DDL at apply
