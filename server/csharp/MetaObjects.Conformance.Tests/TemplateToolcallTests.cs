@@ -62,6 +62,7 @@ public class TemplateToolcallTests
                 TEMPLATE_ATTR_PAYLOAD_REF,
                 TEMPLATE_ATTR_OWNER,
                 TEMPLATE_ATTR_SINCE,
+                TEMPLATE_ATTR_MAX_TOKENS, // #237 — vendor-agnostic per-call token budget
             },
             attrNames);
 

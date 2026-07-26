@@ -51,6 +51,7 @@ def test_template_toolcall_attr_schema_does_not_inherit_generic_attrs() -> None:
         tc.TEMPLATE_ATTR_PAYLOAD_REF,
         tc.TEMPLATE_ATTR_OWNER,
         tc.TEMPLATE_ATTR_SINCE,
+        tc.TEMPLATE_ATTR_MAX_TOKENS,  # #237 — vendor-agnostic per-call token budget
     }
     assert tc.TEMPLATE_ATTR_TEXT_REF not in attrs, "toolcall must NOT carry @textRef"
     assert tc.TEMPLATE_ATTR_FORMAT not in attrs, "toolcall must NOT carry @format"
@@ -59,6 +60,7 @@ def test_template_toolcall_attr_schema_does_not_inherit_generic_attrs() -> None:
     assert attrs[tc.TEMPLATE_ATTR_PAYLOAD_REF].required is True
     assert attrs[tc.TEMPLATE_ATTR_OWNER].required is False
     assert attrs[tc.TEMPLATE_ATTR_SINCE].required is False
+    assert attrs[tc.TEMPLATE_ATTR_MAX_TOKENS].required is False
 
 
 # ---------------------------------------------------------------------------
