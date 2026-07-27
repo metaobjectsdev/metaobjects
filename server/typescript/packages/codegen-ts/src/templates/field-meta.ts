@@ -21,6 +21,7 @@ import {
   FIELD_SUBTYPE_URI,
   FIELD_SUBTYPE_INET,
   FIELD_ATTR_STRING_FORMAT,
+  FIELD_ATTR_LENIENT,
   STRING_FORMAT_EMAIL,
   STRING_FORMAT_HOSTNAME,
   VIEW_SUBTYPE_TEXT,
@@ -34,6 +35,7 @@ import {
   VIEW_CURRENCY_ATTR_LOCALE_DEFAULT,
 } from "@metaobjectsdev/metadata";
 import { enumValues, zodEnumExpr } from "../enum-meta.js";
+import { ZOD_INET_EXPR } from "./net-regex.js";
 
 // ---------------------------------------------------------------------------
 // inferViewKind
@@ -95,10 +97,13 @@ export function zodTypeFor(field: MetaField): string {
       return "z.string()";
     case FIELD_SUBTYPE_URI:
       // ADR-0036/0037 Wave 3: a URI string — codegen owns the URL matcher.
-      return "z.string().url()";
+      // #234: @lenient opts out of well-formedness — bind a plain string.
+      return field.attr(FIELD_ATTR_LENIENT) === true ? "z.string()" : "z.string().url()";
     case FIELD_SUBTYPE_INET:
-      // ADR-0036/0037 Wave 3: an IP string — codegen owns the IP matcher (v4+v6).
-      return "z.string().ip()";
+      // ADR-0036/0037 Wave 3 + #234: an IP string — codegen owns the IP matcher
+      // (v4 or v6 literal). Zod-version-agnostic regex union (Zod 4 removed
+      // `z.string().ip()`); see net-regex.ts. @lenient → a plain string.
+      return field.attr(FIELD_ATTR_LENIENT) === true ? "z.string()" : ZOD_INET_EXPR;
     case FIELD_SUBTYPE_BOOLEAN:
       return "z.boolean()";
     case FIELD_SUBTYPE_DATE:

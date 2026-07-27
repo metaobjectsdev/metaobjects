@@ -116,6 +116,14 @@ def py_type_for(field: MetaField) -> PyType:
         # z.unknown() (#97) — since jsonb can hold any JSON value. (Other ports whose
         # drivers return jsonb as raw text correctly keep their string type.)
         base = PyType("Any", ("from typing import Any",))
+    elif (
+        field.sub_type in (fc.FIELD_SUBTYPE_URI, fc.FIELD_SUBTYPE_INET)
+        and field.attrs().get(fc.FIELD_ATTR_LENIENT) is True
+    ):
+        # #234 — @lenient opts a field.uri / field.inet out of strict well-formedness:
+        # bind a plain ``str`` (not Pydantic AnyUrl / IPvAnyAddress, whose construction
+        # IS the validator) so a not-strictly-valid value round-trips unchanged.
+        base = PyType("str")
     else:
         base = _SCALAR.get(field.sub_type, PyType("str"))
     if field_is_array(field):

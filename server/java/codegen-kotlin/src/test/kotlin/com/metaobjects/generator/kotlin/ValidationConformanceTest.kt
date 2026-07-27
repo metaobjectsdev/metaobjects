@@ -106,8 +106,13 @@ class ValidationConformanceTest {
                 val actualValid = try {
                     val dto = mapper.readValue(payloadJson, accountClass)
                     validator.validate(dto).isEmpty()
-                } catch (ignored: com.fasterxml.jackson.databind.exc.MismatchedInputException) {
-                    // Missing/!nullable creator param or type mismatch → cannot bind → invalid request.
+                } catch (ignored: com.fasterxml.jackson.core.JacksonException) {
+                    // Missing/!nullable creator param, type mismatch, OR a #234 strict
+                    // field.uri/field.inet deserializer rejecting a malformed literal → cannot
+                    // bind → invalid request (HTTP 400), same verdict as TS safeParse / Python.
+                    false
+                } catch (ignored: IllegalArgumentException) {
+                    // A deserializer's IllegalArgumentException that Jackson rethrew unwrapped.
                     false
                 }
 

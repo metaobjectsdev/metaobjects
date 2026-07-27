@@ -37,6 +37,7 @@ import {
   DB_COLUMN_TYPE_UUID,
   DB_COLUMN_TYPE_JSONB,
   FIELD_ATTR_LOCAL_TIME,
+  FIELD_ATTR_LENIENT,
   TYPE_ORIGIN,
   ORIGIN_SUBTYPE_AGGREGATE,
   ORIGIN_AGGREGATE_ATTR_AGG,
@@ -473,8 +474,11 @@ export function mapColumnType(
         case FIELD_SUBTYPE_INET:
           // ADR-0036/0037 Wave 3: Postgres-native `inet` column (Drizzle's
           // pg-core `inet()` infers as `string`). Native TS binding stays
-          // `string` (validated as an IP via Zod .ip()).
-          fnName = "inet";
+          // `string` (validated as an IP via the Zod IP regex). #234: a
+          // @lenient field.inet stores as `text` — the native `inet` column
+          // would itself reject a not-strictly-valid value at INSERT, defeating
+          // the opt-out.
+          fnName = field.attr(FIELD_ATTR_LENIENT) === true ? "text" : "inet";
           break;
         case FIELD_SUBTYPE_DECIMAL: {
           // Drizzle pg `numeric` infers as a TS `string` (precision-exact); the

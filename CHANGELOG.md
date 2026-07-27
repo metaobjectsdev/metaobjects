@@ -7,6 +7,37 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added — `@lenient` opt-out on `field.uri` / `field.inet`; strict well-formedness pinned cross-port (#234)
+
+**Coordinated PATCH** (npm / PyPI / NuGet / Maven Central). Two halves, one release:
+
+- **Strict accept/reject is now pinned and identical across all five ports** (on the shared
+  `validation-conformance` probe set, which spans the URI/IP-literal edge cases — scheme-less,
+  relative, garbage, empty-authority, leading-zero octet, IPv4-mapped IPv6, CIDR, padding).
+  A `field.uri` must be an
+  **absolute, scheme-bearing URI** (`https://a.com`, `mailto:a@b`, `urn:…`; a scheme-less
+  `example.com` or a bare `/path` is rejected) and a `field.inet` must be an **IPv4/IPv6 literal**
+  (no hostnames, no CIDR, no padding). Previously the ports diverged: C#/Java/Kotlin accepted
+  relative URIs, and the JVM ports resolved **hostnames into `field.inet` via a live DNS lookup on
+  the request path** (blocking I/O, a network-dependent verdict, and a silent value rewrite) — now
+  fixed. Enforcement lives at each port's wire/bind layer via small generated, dependency-free
+  support files (`MetaNetBindings.java` / `MetaNetJson.kt` / `MetaNetValidation.cs`; TS keeps its
+  Zod check, Python its Pydantic type). **This is a wire-acceptance change for existing C#/Java/Kotlin
+  deployments** that were accepting values now rejected — the escape hatch ships in the same release:
+- **`@lenient: true`** (a new optional boolean attribute on `field.uri` / `field.inet`, registered
+  cross-port + gated by `registry-conformance`) opts a field **out** of strict enforcement: codegen
+  binds a plain string (no URL/IP validator, no native `URI`/`InetAddress` type) so a
+  not-necessarily-well-formed value — an LLM-emitted citation URL, a user-supplied host — round-trips
+  unchanged. A `field.inet @lenient` additionally uses a plain `text` column instead of the native
+  `inet` type, so **toggling `@lenient` on an existing `field.inet` is schema-affecting** (an `ALTER`
+  on the next `meta migrate`). Strict remains the default (attr absent/false → byte-identical output).
+
+Gated by the shared `validation-conformance` corpus (strict accept/reject + `@lenient` accept-garbage,
+identical boolean verdicts on all five ports) and a real-Postgres idempotence + value-semantics
+round-trip for the lenient-inet `text` column. Also fixes a **latent Zod-4 bug**: `field.inet` codegen
+emitted `z.string().ip()`, which was removed in Zod 4 (the workspace + generated consumers run Zod 4);
+it now emits a version-agnostic IPv4/IPv6 regex union valid on both Zod 3 and Zod 4.
+
 ## [0.20.5] — 2026-07-26
 
 **Coordinated release** — npm `0.20.5` · PyPI `0.19.7` · Maven Central `7.11.5` · NuGet

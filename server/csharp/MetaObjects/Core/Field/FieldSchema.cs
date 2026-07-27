@@ -151,6 +151,22 @@ public static class FieldSchema
             "string (native binding + DB column unchanged); codegen emits the matching validator. " +
             "The canonical matcher per format lives in each port's codegen, NOT author validator.regex.");
 
+    /// <summary>
+    /// #234 — the @lenient attr — only on field.uri / field.inet. Optional boolean; default (absent
+    /// /false) is strict (an absolute-scheme URI / an IPv4-or-IPv6 literal). When true, codegen binds
+    /// a plain string (no URL/IP validator, no native Uri/IPAddress type; field.inet uses a text
+    /// column) so a not-strictly-valid value round-trips unchanged.
+    /// </summary>
+    public static readonly AttrSchema LenientAttr = new AttrSchema(
+        Name: FieldConstants.FIELD_ATTR_LENIENT,
+        ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
+        Required: false,
+        Description:
+            "#234: opt this field out of strict well-formedness enforcement. When true, codegen binds " +
+            "a plain string (no URL/IP validator, no native URI/InetAddress type; field.inet uses a " +
+            "text column, not the native inet type) so a not-strictly-valid value round-trips " +
+            "unchanged. Default (absent/false) is strict: an absolute-scheme URI / an IPv4-or-IPv6 literal.");
+
     /// <summary>The @currency attr — only on field.currency.</summary>
     public static readonly AttrSchema CurrencyFieldAttr = new AttrSchema(
         Name: FieldConstants.FIELD_ATTR_CURRENCY,

@@ -107,6 +107,13 @@ public static class FieldConstants
 
     /// <summary>The closed @stringFormat value set.</summary>
     public static readonly string[] STRING_FORMAT_VALUES = [STRING_FORMAT_EMAIL, STRING_FORMAT_HOSTNAME];
+
+    /// <summary>
+    /// #234: opt a field.uri / field.inet OUT of strict well-formedness enforcement (optional
+    /// boolean; default strict). When true, codegen binds a plain string (no URL/IP validator, no
+    /// native Uri/IPAddress type; field.inet uses a text column). Only on field.uri / field.inet.
+    /// </summary>
+    public const string FIELD_ATTR_LENIENT              = "lenient";
     /// <summary>
     /// FR-013: when true, the field is read-only — codegen emits no setter, the
     /// persistence layer skips the column on INSERT/UPDATE, and input schemas mark

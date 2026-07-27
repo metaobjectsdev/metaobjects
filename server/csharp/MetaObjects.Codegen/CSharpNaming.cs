@@ -90,6 +90,17 @@ public static class CSharpNaming
         field.SubType == FIELD_SUBTYPE_TIMESTAMP && field.Attr(DbConstants.FIELD_ATTR_LOCAL_TIME) is true;
 
     /// <summary>
+    /// #234 — true iff <paramref name="field"/> is a <c>field.uri</c> / <c>field.inet</c> carrying
+    /// <c>@lenient=true</c> (the opt-out of strict well-formedness). A lenient uri/inet degrades to a
+    /// plain <c>string</c> property (no <c>System.Uri</c> / <c>IPAddress</c> type, no strict
+    /// <c>[JsonConverter]</c>, and a <c>text</c> DB column). Resolving read (<c>field.Attr</c> walks
+    /// <c>extends</c>) so an abstract <c>field.uri @lenient</c> inherited via <c>extends</c> degrades too.
+    /// </summary>
+    public static bool IsLenientNet(MetaField field) =>
+        (field.SubType == FIELD_SUBTYPE_URI || field.SubType == FIELD_SUBTYPE_INET)
+        && field.Attr(FIELD_ATTR_LENIENT) is true;
+
+    /// <summary>
     /// The base C# scalar type for a field (no nullability), accounting for the
     /// ADR-0036 Wave 2 conditional <c>field.timestamp</c> binding:
     /// <list type="bullet">
@@ -100,7 +111,10 @@ public static class CSharpNaming
     /// Returns null for object fields.
     /// </summary>
     public static string? ScalarForField(MetaField field) =>
-        IsLocalTime(field) ? "DateTime" : ScalarFor(field.SubType);
+        IsLocalTime(field) ? "DateTime"
+        // #234: a @lenient field.uri / field.inet is a plain string (not System.Uri / IPAddress).
+        : IsLenientNet(field) ? "string"
+        : ScalarFor(field.SubType);
 
     /// <summary>
     /// The System.Text.Json type that holds a parsed JSON value — the CLR property
@@ -129,7 +143,7 @@ public static class CSharpNaming
     /// <c>field.inet</c> (so the generated file needs <c>using System.Net;</c> for the
     /// <c>IPAddress</c> type). <c>field.uri</c> needs only <c>System</c> (always imported).</summary>
     public static bool RequiresSystemNet(MetaObject obj) =>
-        obj.Fields().Any(f => !f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_INET);
+        obj.Fields().Any(f => !f.ResolvedIsArray() && f.SubType == FIELD_SUBTYPE_INET && !IsLenientNet(f));
 
     /// <summary>True when the C# type is a value type (gets <c>?</c> for nullable; needs no <c>= default!</c>).</summary>
     public static bool IsValueType(string csharpType) => ValueTypes.Contains(csharpType);

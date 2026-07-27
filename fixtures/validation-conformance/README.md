@@ -77,6 +77,47 @@ FR-036 pin cases (the two semantic pins + the length-precedence pin):
   absent `note` is still rejected. No port may apply the Pin 1 floor (min 1)
   when an author has explicitly said `@min: 0`.
 
+## `field.uri` / `field.inet` strict contract (#234, ADR-0037 — Contract A)
+
+`Account` carries two OPTIONAL fields — `website` (`field.uri`) and `sourceIp`
+(`field.inet`) — pinning the canonical STRICT accept/reject set. Optional so every
+pre-#234 case (which omits them) is untouched.
+
+- **`field.uri` = an absolute URI carrying a scheme** (WHATWG / Zod `.url()` /
+  Pydantic `AnyUrl`-aligned). ACCEPT `https://a.com`, `ftp://…`, `mailto:a@b`,
+  `urn:isbn:…`, and leading/trailing-whitespace-padded (WHATWG trims). REJECT a
+  scheme-less/relative reference (`example.com`, `/path`), garbage (`not a url`),
+  and an empty authority (`http://`).
+- **`field.inet` = an IPv4 or IPv6 LITERAL only** — no hostnames (**never a DNS
+  lookup**), no CIDR (`1.2.3.4/24`), no padding, no out-of-range octet
+  (`256.1.1.1`). ACCEPT `192.168.0.1`, `::1`, `2001:db8::1`.
+
+Deliberately UNPINNED gray zone (parser-specific, excluded from the probe set,
+like the corpus already does for regex/length): a raw space in a URI *path*
+(`https://a.com/a b` — WHATWG percent-encodes, `java.net.URI` throws); and
+**value-normalization-on-accept differences** — the corpus pins the accept/reject
+VERDICT, not the stored/echoed value. Notably an IPv4-mapped IPv6 literal
+(`::ffff:1.2.3.4`) is *accepted* by all five ports (pinned) but each normalizes it
+differently on read (Java collapses to the `Inet4Address` `1.2.3.4`, C# keeps
+`::ffff:1.2.3.4`, Python canonicalizes to `::ffff:102:304`); likewise Pydantic
+appends a trailing slash to a URL. The corpus pins a FINITE probe set of verdicts,
+never total accept-set equality nor round-trip value equality.
+
+**Verdict normalization for native-typed fields.** TS binds `field.uri`/`field.inet`
+to a plain `string` + a separable Zod check, so `safeParse().success` already fuses
+bind + validate. The other ports bind to a NATIVE type (Pydantic `AnyUrl`/
+`IPvAnyAddress`; Java/Kotlin `java.net.URI`/`InetAddress`; C# `System.Uri`/
+`IPAddress`) whose parser IS the validator — a malformed value fails to *bind*.
+So the rule is:
+
+> `valid := (the payload binds to the port's generated wire-input artifact) AND
+> (the artifact's declared validator reports no violations)`. **A bind failure IS
+> an invalid verdict** — semantically honest: a request whose body fails to
+> deserialize returns 400 exactly as a validation failure does.
+
+Python fuses both (Pydantic construct-or-`ValidationError`); the Java/Kotlin/C#
+runners wrap the bind step so a native-parse failure maps to `valid=false`.
+
 ## CI gate
 
 All five port runners are wired into `.github/workflows/conformance.yml` (the

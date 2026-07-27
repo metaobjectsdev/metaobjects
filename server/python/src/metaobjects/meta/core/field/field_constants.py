@@ -132,6 +132,11 @@ STRING_FORMAT_EMAIL = "email"
 STRING_FORMAT_HOSTNAME = "hostname"
 STRING_FORMAT_VALUES = (STRING_FORMAT_EMAIL, STRING_FORMAT_HOSTNAME)
 
+# #234: opt a field.uri / field.inet OUT of strict well-formedness enforcement (optional boolean;
+# default strict). When true, codegen binds a plain string (no URL/IP validator, no native type;
+# field.inet uses a text column). Only on field.uri / field.inet. Mirrors TS FIELD_ATTR_LENIENT.
+FIELD_ATTR_LENIENT = "lenient"
+
 # @autoSet allowed values (cross-port).
 AUTO_SET_ON_CREATE = "onCreate"
 AUTO_SET_ON_UPDATE = "onUpdate"

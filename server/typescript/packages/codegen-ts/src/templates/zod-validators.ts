@@ -20,7 +20,7 @@ import {
   VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
   VALIDATOR_SUBTYPE_NUMERIC, VALIDATOR_SUBTYPE_ARRAY,
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
-  FIELD_ATTR_STRING_FORMAT, STRING_FORMAT_EMAIL, STRING_FORMAT_HOSTNAME,
+  FIELD_ATTR_STRING_FORMAT, FIELD_ATTR_LENIENT, STRING_FORMAT_EMAIL, STRING_FORMAT_HOSTNAME,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_DEFAULT,
   FIELD_ATTR_AUTO_SET, FIELD_ATTR_OBJECT_REF, FIELD_ATTR_VALUE_TYPE, FIELD_ATTR_READ_ONLY,
   FIELD_ATTR_DB_COLUMN_TYPE, DB_COLUMN_TYPE_JSONB,
@@ -30,6 +30,7 @@ import {
   OBJECT_ATTR_DISCRIMINATOR, OBJECT_ATTR_DISCRIMINATOR_VALUE,
 } from "@metaobjectsdev/metadata";
 import { enumValues, zodEnumExpr } from "../enum-meta.js";
+import { ZOD_INET_EXPR } from "./net-regex.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { sharedEnumForField } from "../enum-shared.js";
 import { sharedEnumImportSpecifier } from "../enum-import.js";
@@ -528,13 +529,15 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
     }
     case FIELD_SUBTYPE_URI:
       // ADR-0036/0037 Wave 3: a URI/URL string — codegen owns the canonical
-      // URL matcher (Zod .url()), never author regex.
-      baseStr = "z.string().url()";
+      // URL matcher (Zod .url()), never author regex. #234: @lenient opts out
+      // of well-formedness — bind a plain string.
+      baseStr = field.attr(FIELD_ATTR_LENIENT) === true ? "z.string()" : "z.string().url()";
       break;
     case FIELD_SUBTYPE_INET:
-      // ADR-0036/0037 Wave 3: an IP-address string (v4 or v6) — codegen owns
-      // the canonical IP matcher (Zod .ip() accepts both versions).
-      baseStr = "z.string().ip()";
+      // ADR-0036/0037 Wave 3 + #234: an IP-address string (v4 or v6 literal) —
+      // codegen owns the canonical IP matcher. Zod-version-agnostic regex union
+      // (Zod 4 removed `z.string().ip()`); see net-regex.ts. @lenient → a plain string.
+      baseStr = field.attr(FIELD_ATTR_LENIENT) === true ? "z.string()" : ZOD_INET_EXPR;
       break;
     case FIELD_SUBTYPE_STRING: {
       // ADR-0036/0037 Wave 3: @stringFormat narrows a plain string to a closed

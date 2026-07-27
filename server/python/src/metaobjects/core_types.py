@@ -391,6 +391,15 @@ for _def in core_provider._defs:  # noqa: SLF001 (provider build-time enrichment
         )
         break
 
+# #234 — field.uri / field.inet carry the @lenient attr (opt out of strict URI / IP-literal
+# well-formedness; codegen binds a plain string, and field.inet a text column) IN ADDITION to the
+# common field attrs. Mirrors the @stringFormat enrichment above (and TS/Java/C#).
+for _def in core_provider._defs:  # noqa: SLF001 (provider build-time enrichment)
+    if _def.type == TYPE_FIELD and _def.sub_type in (fc.FIELD_SUBTYPE_URI, fc.FIELD_SUBTYPE_INET):
+        _def.attrs.append(
+            AttrSchema(name=fc.FIELD_ATTR_LENIENT, value_type=ATTR_SUBTYPE_BOOLEAN, required=False)
+        )
+
 # field.map carries the @valueType attr (scalar value subtype) IN ADDITION to the
 # common field attrs (@objectRef is already common). The bulk loop registered
 # field.map with the common attrs; append @valueType to that definition (mirrors

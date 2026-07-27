@@ -313,8 +313,8 @@ Canonical form for common field needs — reach for these before inventing anyth
 | Long / unbounded text | bare `field.string` | add `@maxLength` only when you want `varchar(N)` |
 | Nested structured value | `field.object` | `@objectRef` + `@storage` |
 | Open JSON bag (no fixed shape) | `field.string` + `@dbColumnType: jsonb` | logical type stays string; column is jsonb |
-| URL / URI | `field.uri` | native `URI`/`Uri`; `text` column; URL validation — a real native type + behavior, so a subtype (not a validated string) |
-| IP address | `field.inet` | native IP type; Postgres `inet` column |
+| URL / URI | `field.uri` | native `URI`/`Uri`; `text` column; strict absolute-URI validation (add `@lenient: true` to store any string) — a real native type + behavior, so a subtype (not a validated string) |
+| IP address | `field.inet` | native IP type; Postgres `inet` column; strict IPv4/IPv6-literal validation (add `@lenient: true` for a plain-string `text` column) |
 | Validated plain string (email / hostname) | `field.string` + `@stringFormat` | `@stringFormat: email` or `@stringFormat: hostname` — idiomatic per-port validation; don't hand-write the `validator.regex` |
 
 **UUID columns are `field.uuid` — `field.string` + `@dbColumnType: uuid` is a forbidden smell.**
@@ -350,6 +350,24 @@ lives in `field.timestamp` (instant by default) + the `@localTime` naive opt-out
 ```json
 { "field.timestamp": { "name": "createdAt", "@required": true } }
 { "field.timestamp": { "name": "opensAt", "@localTime": true } }
+```
+
+**URIs / IPs — strict by default, `@lenient` to store any string (#234).** `field.uri` is a
+strict **absolute, scheme-bearing URI** (`https://a.com`, `mailto:a@b`; a scheme-less
+`example.com` or a bare `/path` is rejected) and `field.inet` is a strict **IPv4/IPv6 literal**
+(no hostnames, no CIDR). When a field must hold a *not-necessarily-well-formed* value — an
+LLM-emitted citation URL, a user-supplied host that might be a name — add **`@lenient: true`**:
+codegen then binds a plain string (no URL/IP validator) and a `field.inet @lenient` uses a plain
+`text` column instead of the native `inet` type (so a value the native column would reject at
+INSERT round-trips unchanged). Strict is the default; `@lenient` is the deliberate opt-out (never
+default-true — the same shape as `@localTime`). **Toggling `@lenient` on an existing `field.inet`
+is schema-affecting** (`inet` ⇄ `text`), so it shows up as an `ALTER` on the next `meta migrate`.
+
+```json
+{ "field.uri":  { "name": "homepage" } }                       // strict — must be an absolute URL
+{ "field.uri":  { "name": "citationUrl", "@lenient": true } }  // any string (LLM-emitted, may be malformed)
+{ "field.inet": { "name": "sourceIp" } }                       // strict — IPv4/IPv6 literal only
+{ "field.inet": { "name": "reportedHost", "@lenient": true } } // any string; text column
 ```
 
 **`@autoSet` — let the runtime stamp created/updated times; never hand-set them.**
