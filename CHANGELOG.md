@@ -5,11 +5,15 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
-## [Unreleased]
+## [0.20.6] — 2026-07-26
+
+**Coordinated PATCH** — npm `0.20.6` · PyPI `0.19.8` · Maven Central `7.11.6` · NuGet
+`0.19.6`. #234 is a cross-port fix, so all four registries release together. Existing
+`meta gen` output is byte-identical when `@lenient` is absent.
 
 ### Added — `@lenient` opt-out on `field.uri` / `field.inet`; strict well-formedness pinned cross-port (#234)
 
-**Coordinated PATCH** (npm / PyPI / NuGet / Maven Central). Two halves, one release:
+Two halves, one release:
 
 - **Strict accept/reject is now pinned and identical across all five ports** (on the shared
   `validation-conformance` probe set, which spans the URI/IP-literal edge cases — scheme-less,
