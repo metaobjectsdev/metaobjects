@@ -63,7 +63,7 @@ new migration from the metadata-vs-DB diff before applying it. `apply-pending` j
 the pending already-committed files, making it idempotent; `--dry-run` lists what would
 run. postgres/sqlite only — on D1 use `wrangler d1 migrations apply`.
 
-#### D1 limitation: rebuilding a foreign-key-referenced table
+#### D1: rebuilding a foreign-key-referenced table
 
 Cloudflare D1 applies each migration inside its own implicit transaction, and SQLite
 ignores `PRAGMA foreign_keys` while a transaction is open. The SQLite table-rebuild
@@ -71,20 +71,28 @@ recipe (used for a `CHECK`, column type/nullability/default, foreign-key, or
 `field.enum` values change) relies on `PRAGMA foreign_keys = OFF` taking effect before
 it drops and recreates the table — which does not happen on remote D1.
 
-To avoid emitting a migration that would fail against a populated production database
-with `FOREIGN KEY constraint failed`, `meta migrate --dialect d1` **refuses at
-generation time** when a change would rebuild a table that another table's foreign key
-references. Apply such a change by hand-writing the migration: rebuild the referencing
-table to temporarily drop its foreign key, rebuild the referenced table, then restore
-the foreign key — or make the change on an unreferenced table. (Auto-generating this
-cascade is tracked as a follow-up, [#241](https://github.com/metaobjectsdev/metaobjects/issues/241).)
+`meta migrate --dialect d1` handles this by **auto-generating a cascade**
+([#241](https://github.com/metaobjectsdev/metaobjects/issues/241), closing
+[#226](https://github.com/metaobjectsdev/metaobjects/issues/226)'s residual
+under-refuse gap below) instead of refusing outright. When a change would rebuild a
+table that another table's foreign key references, the emitter rebuilds that table
+together with every table that transitively references it, in one pass: the affected
+tables are dropped referrers-first and recreated parents-first, under `PRAGMA
+defer_foreign_keys = ON` so every foreign-key check defers to the end of D1's implicit
+transaction instead of firing mid-rebuild. The result applies cleanly against a
+populated production database and re-converges — a follow-up `meta verify`/`meta
+migrate` sees no drift. The cascade is built over the **union of the actual (live) and
+expected (target) schemas' foreign-key graphs**, so it also covers the case a
+target-schema-only check would miss: a single migration that both rebuilds a
+referenced table *and* drops the referencing foreign key in the same run.
 
-**Known limitation of the current refusal:** it is computed from the *target* schema's
-foreign keys. A single migration that **both** rebuilds a referenced table **and** drops
-the referencing foreign key in the same run is therefore not detected, and can still fail
-on remote D1 (the parent's `DROP TABLE` can be emitted before the referencing table is
-rebuilt). Split such a change into two migrations, or hand-write it. Closing this gap
-requires the actual-schema foreign-key graph and rides the same follow-up (#241).
+The one case still hand-written: a **multi-table foreign-key cycle** (table A
+references B references … references A, two or more tables). A cycle has no
+parents-first rebuild order, so `meta migrate --dialect d1` still **refuses at
+generation time** — hand-write the migration (drop the foreign key on one side of the
+cycle, rebuild the tables, then restore it) or break the cycle in your metadata. A
+self-referencing table (a table whose own foreign key targets itself) is not a cycle
+in this sense and is handled by the cascade like any other rebuild.
 
 ### Java
 

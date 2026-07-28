@@ -5,6 +5,33 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
+## [Unreleased]
+
+**npm-only** — the changed code is all in `migrate-ts` (D1 is a TS-only dialect);
+PyPI / NuGet / Maven Central are unchanged.
+
+### Added — D1 auto-cascade for rebuilding foreign-key-referenced tables (#241)
+
+npm-only (`migrate-ts` — D1 is a TS-only dialect). `meta migrate --dialect d1` no
+longer refuses when a change would rebuild a table that another table's foreign key
+references ([#226](https://github.com/metaobjectsdev/metaobjects/issues/226)) — it now
+**auto-generates an appliable cascade** instead. The emitter rebuilds the referenced
+table together with every table that transitively references it, in one pass: the
+affected tables are dropped referrers-first and recreated parents-first, under `PRAGMA
+defer_foreign_keys = ON` so every foreign-key check defers to the end of D1's implicit
+transaction rather than firing mid-rebuild. The cascade is built over the **union of
+the actual (live) and expected (target) schemas' foreign-key graphs**, closing #226's
+residual under-refuse gap: a single migration that both rebuilds a referenced table
+*and* drops the referencing foreign key in the same run is now detected and handled
+correctly (a target-schema-only check missed this). A **multi-table foreign-key cycle**
+(two or more tables referencing each other in a loop) has no parents-first rebuild
+order and is still refused at generation time with actionable guidance; a
+self-referencing table is not a cycle and is rebuilt by the cascade like any other
+table. Migrations that do not rebuild a foreign-key-referenced table are
+**byte-identical**. Gated by a real-libSQL-engine convergence round-trip across every
+cascade topology (linear chain, diamond, self-reference), the #226 gap scenario, and
+the cycle-refusal case.
+
 ## [0.20.7] — 2026-07-28
 
 **npm-only** — the changed code is all in `cli` / `migrate-ts`; PyPI / NuGet / Maven
