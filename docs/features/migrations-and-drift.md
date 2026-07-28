@@ -86,6 +86,14 @@ expected (target) schemas' foreign-key graphs**, so it also covers the case a
 target-schema-only check would miss: a single migration that both rebuilds a
 referenced table *and* drops the referencing foreign key in the same run.
 
+One known exception: a table with a **dependent projection/view** that gets rebuilt
+by the cascade (or by any CHECK/FK/enum-values rebuild) may need that view
+hand-managed — the diff layer only auto-drops/recreates a dependent view for
+column-altering changes, not the CHECK/FK/enum-values class the cascade exists to
+handle. Tracked as [#243](https://github.com/metaobjectsdev/metaobjects/issues/243).
+The common case — no dependent view on a rebuilt table — applies cleanly as described
+above.
+
 The one case still hand-written: a **multi-table foreign-key cycle** (table A
 references B references … references A, two or more tables). A cycle has no
 parents-first rebuild order, so `meta migrate --dialect d1` still **refuses at

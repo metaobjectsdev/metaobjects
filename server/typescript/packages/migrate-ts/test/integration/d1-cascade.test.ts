@@ -19,7 +19,9 @@
  * (3) multiple children of one parent, (4) self-referential, (5) the #226 residual
  * gap (rebuild parent AND drop the child's FK in one migration), (6) a multi-table
  * A↔B cycle → refuse (emitter-level), (7) a no-referenced-rebuild → byte-identical to
- * the pre-#241 path.
+ * the pre-#241 path, (8) a MIXED migration — cascade + unrelated create-table/add-column
+ * in the same batch, proving `renderD1`'s splice with a NON-empty `rest` (every other
+ * scenario has every change on an affected table, so `rest.up` is always empty there).
  */
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -494,6 +496,91 @@ describe("#241 D1 FK-cascade — real-engine gate (libSQL, one transaction = rem
     const res = await applyInImplicitTxn(splitSql(em.up));
     expect(res.ok).toBe(true);
     expect(String((await queryRows("SELECT level FROM logs"))[0]!.level)).toBe("info");
+    expect(await reDiffChanges(expected2)).toEqual([]);
+  });
+
+  // Scenario 8 — mixed migration: cascade + unrelated native changes → non-empty `rest` ---
+  test("mixed migration: cascade (referenced parent) PLUS unrelated create-table/add-column flow through `rest`, re-diff EMPTY", async () => {
+    const parentV = (withEnum: boolean): unknown =>
+      entity("Parent", [
+        { "field.long": { name: "id" } },
+        { "field.string": { name: "name", "@required": true } },
+        ...(withEnum ? [ENUM_KIND] : []),
+        ID_PK,
+      ]);
+    const child = entity("Note", [
+      { "field.long": { name: "id" } },
+      { "field.long": { name: "parentId", "@required": true } },
+      ID_PK,
+      { "identity.reference": { name: "ref_parent", "@fields": ["parentId"], "@references": "Parent" } },
+    ]);
+    // Unrelated to the Parent/Note cascade set — no FK to or from either. Exists in
+    // BOTH versions; v2 adds a column, exercising `rest`'s add-column path.
+    const otherV = (withNote: boolean): unknown =>
+      entity("Other", [
+        { "field.long": { name: "id" } },
+        { "field.string": { name: "tag", "@required": true } },
+        ...(withNote ? [{ "field.string": { name: "note" } }] : []),
+        ID_PK,
+      ]);
+    // Brand-new in v2 — exercises `rest`'s create-table path.
+    const widget = entity("Widget", [
+      { "field.long": { name: "id" } },
+      { "field.string": { name: "label", "@required": true } },
+      ID_PK,
+    ]);
+    const v1 = rootMeta([parentV(false), child, otherV(false)]);
+    const v2 = rootMeta([parentV(true), child, otherV(true), widget]);
+
+    await applyV1(v1);
+    await execEach([
+      "INSERT INTO parents (id, name) VALUES (1, 'root')",
+      "INSERT INTO notes (id, parent_id) VALUES (1, 1)",
+      "INSERT INTO others (id, tag) VALUES (1, 'x')",
+    ]);
+
+    const { res, em, changes, expected2 } = await migrateV2(v2);
+    expect(res.ok).toBe(true);
+
+    // The construction under test: an FK-referenced-parent rebuild (cascade) PLUS
+    // unrelated native changes on tables outside the affected set — proves
+    // `nonAffected`/`rest` is non-empty for this migration.
+    expect(changes.some((c) => c.kind === "add-check" && c.table === "parents")).toBe(true);
+    expect(changes.some((c) => c.kind === "create-table" && c.table.name === "widgets")).toBe(true);
+    expect(
+      changes.some((c) => c.kind === "add-column" && c.table === "others" && c.column.name === "note"),
+    ).toBe(true);
+
+    // The emitted `up` contains BOTH the cascade block (temp `__f_` tables for the
+    // referenced parent + its referrer) AND the spliced-in `rest` (the unrelated
+    // create-table and add-column) — proving the splice really ran with a
+    // non-empty `rest`, not the trivially-empty case every other scenario exercises.
+    expect(em.up).toContain('CREATE TABLE "__f_parents"');
+    expect(em.up).toContain('CREATE TABLE "__f_notes"');
+    expect(em.up).toContain('CREATE TABLE "widgets"');
+    expect(em.up).toContain('ALTER TABLE "others" ADD COLUMN "note"');
+
+    // Seeded row data intact — across the cascaded tables AND the `rest`-altered table.
+    const parents = await queryRows("SELECT id, name, kind FROM parents ORDER BY id");
+    expect(parents.length).toBe(1);
+    expect(String(parents[0]!.name)).toBe("root");
+    expect(parents[0]!.kind).toBeNull();
+    const notes = await queryRows("SELECT id, parent_id FROM notes ORDER BY id");
+    expect(notes.length).toBe(1);
+    expect(Number(notes[0]!.parent_id)).toBe(1);
+    const others = await queryRows("SELECT id, tag, note FROM others ORDER BY id");
+    expect(others.length).toBe(1);
+    expect(String(others[0]!.tag)).toBe("x");
+    expect(others[0]!.note).toBeNull();
+
+    // The brand-new native table is live (created AFTER the cascade, per the splice order).
+    await execEach(["INSERT INTO widgets (id, label) VALUES (1, 'w1')"]);
+    expect((await queryRows("SELECT label FROM widgets"))[0]!.label).toBe("w1");
+
+    // The rebuilt FK is LIVE, not silently dropped.
+    expect(await insertIsRejected("INSERT INTO notes (id, parent_id) VALUES (2, 999)")).toBe(true);
+
+    // Convergence — the whole point: a mixed migration re-diffs EMPTY too.
     expect(await reDiffChanges(expected2)).toEqual([]);
   });
 });
