@@ -5,7 +5,7 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
-## [Unreleased]
+## [0.20.8] — 2026-07-28
 
 **npm-only** — the changed code is all in `migrate-ts` (D1 is a TS-only dialect);
 PyPI / NuGet / Maven Central are unchanged.
