@@ -4,6 +4,8 @@ import type {
 } from "../types.js";
 import type { SqlType } from "../sql-type.js";
 
+export interface CarryColumns { insertCols: string[]; selectCols: string[]; }
+
 // Stage ordering similar to PG; recreate-and-copy bundles get inserted
 // at their first triggering change's position in Task 23.
 const STAGE_ORDER: Record<Change["kind"], number> = {
@@ -129,31 +131,24 @@ function changeTable(c: Change): string | undefined {
   }
 }
 
+/** newTable columns not newly-added, mapped to their old-name SELECT source (for renames). */
+export function computeCarryColumns(tableChanges: Change[], newTable: TableDescriptor): CarryColumns {
+  const renames = new Map<string, string>();
+  for (const c of tableChanges) if (c.kind === "rename-column") renames.set(c.from, c.to);
+  const addedNames = new Set<string>();
+  for (const c of tableChanges) if (c.kind === "add-column") addedNames.add(c.column.name);
+  const renamesReverse = new Map<string, string>();
+  for (const [from, to] of renames) renamesReverse.set(to, from);
+  const carry = newTable.columns.filter((c) => !addedNames.has(c.name));
+  return { insertCols: carry.map((c) => c.name), selectCols: carry.map((c) => renamesReverse.get(c.name) ?? c.name) };
+}
+
 function renderRecreate(
   table: string,
   tableChanges: Change[],
   newTable: TableDescriptor,
 ): { up: string; down: string } {
-  // Build the column-name remapping: old_name → new_name (for renames).
-  const renames = new Map<string, string>();
-  for (const c of tableChanges) {
-    if (c.kind === "rename-column") renames.set(c.from, c.to);
-  }
-
-  // Columns added in this migration don't exist in old table — exclude from SELECT.
-  const addedNames = new Set<string>();
-  for (const c of tableChanges) {
-    if (c.kind === "add-column") addedNames.add(c.column.name);
-  }
-
-  // Reverse map: new_name → old_name (for SELECT source column lookup).
-  const renamesReverse = new Map<string, string>();
-  for (const [from, to] of renames) renamesReverse.set(to, from);
-
-  // carryColumns = newTable columns NOT being newly added (they exist in the old table).
-  const carryColumns = newTable.columns.filter((c) => !addedNames.has(c.name));
-  const insertCols = carryColumns.map((c) => c.name);
-  const selectCols = carryColumns.map((c) => renamesReverse.get(c.name) ?? c.name);
+  const { insertCols, selectCols } = computeCarryColumns(tableChanges, newTable);
 
   // Build the new-table CREATE using temp name.
   const tmp = `__new_${table}`;
@@ -254,7 +249,7 @@ function renderDownNative(c: Change): string {
   }
 }
 
-function renderCreateTable(t: TableDescriptor): string {
+export function renderCreateTable(t: TableDescriptor): string {
   const compositePk = t.primaryKey.length > 1;
   const colDefs = t.columns.map((c) => {
     const isSinglePk = !compositePk && t.primaryKey[0] === c.name;
@@ -364,7 +359,7 @@ function renderDefault(d: ColumnDefault, t: SqlType): string {
   }
 }
 
-function renderCreateIndex(table: string, ix: IndexDescriptor): string {
+export function renderCreateIndex(table: string, ix: IndexDescriptor): string {
   const u = ix.unique ? "UNIQUE " : "";
   // SQLite natively supports expression indexes, per-column DESC, and partial
   // (WHERE) indexes — render all three. Dropping them is not an option:
