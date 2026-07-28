@@ -5,6 +5,21 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
+## [Unreleased]
+
+### Fixed — `meta migrate --dialect d1` no longer emits an un-appliable rebuild of a foreign-key-referenced table (#226)
+
+npm-only (`migrate-ts` — D1 is a TS-only dialect). On remote Cloudflare D1 a migration
+runs inside D1's implicit transaction, where `PRAGMA foreign_keys = OFF` is a no-op — so
+the SQLite table-rebuild recipe failed to drop a foreign-key-referenced table, aborting
+the migration with `FOREIGN KEY constraint failed`. The failure was silent until a table
+held rows, so it first surfaced against populated production databases. `meta migrate
+--dialect d1` now **refuses at generation time** with a clear, actionable error when a
+change would rebuild a table that another table's foreign key references (self-references
+included), instead of emitting SQL that fails at apply time. Migrations that do not
+rebuild a referenced table are byte-identical. Auto-generating the rebuild cascade is
+tracked as a follow-up (#241).
+
 ## [0.20.6] — 2026-07-26
 
 **Coordinated PATCH** — npm `0.20.6` · PyPI `0.19.8` · Maven Central `7.11.6` · NuGet

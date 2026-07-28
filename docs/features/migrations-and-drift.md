@@ -55,6 +55,22 @@ meta migrate --dialect d1     # Cloudflare D1 dialect (TS-only)
 Dialects: `postgres` (default), `sqlite`, `d1`. Output lands under the path
 configured in `metaobjects.config.ts` (typically `./migrations/<timestamp>__<slug>.sql`).
 
+#### D1 limitation: rebuilding a foreign-key-referenced table
+
+Cloudflare D1 applies each migration inside its own implicit transaction, and SQLite
+ignores `PRAGMA foreign_keys` while a transaction is open. The SQLite table-rebuild
+recipe (used for a `CHECK`, column type/nullability/default, foreign-key, or
+`field.enum` values change) relies on `PRAGMA foreign_keys = OFF` taking effect before
+it drops and recreates the table — which does not happen on remote D1.
+
+To avoid emitting a migration that would fail against a populated production database
+with `FOREIGN KEY constraint failed`, `meta migrate --dialect d1` **refuses at
+generation time** when a change would rebuild a table that another table's foreign key
+references. Apply such a change by hand-writing the migration: rebuild the referencing
+table to temporarily drop its foreign key, rebuild the referenced table, then restore
+the foreign key — or make the change on an unreferenced table. (Auto-generating this
+cascade is tracked as a follow-up.)
+
 ### Java
 
 Schema migrations for Java projects are owned by the **TypeScript toolchain**
