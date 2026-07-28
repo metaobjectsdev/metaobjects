@@ -440,6 +440,7 @@ export async function migrateCommand(
         emitted = emit(diffResult.changes, {
           dialect: kysely.dialect,
           expectedSchema: expected,
+          actualSchema: actual,
           ...(actual.meta !== undefined ? { actualMeta: actual.meta } : {}),
         });
       } catch (err) {
@@ -833,6 +834,7 @@ export async function runOfflineGenerate(
   const emitResult = emit(diffResult.changes, {
     dialect: config.dialect,
     expectedSchema: nextSnapshot,
+    actualSchema: snapshot,
     ...(snapshot.meta ? { actualMeta: snapshot.meta } : {}),
   });
 
@@ -1049,7 +1051,7 @@ async function runD1Migrate(
   // 6. Emit (with D1 safety pass) + write Wrangler migration files.
   let emitResult;
   try {
-    emitResult = renderD1(diffResult.changes, expected, actual.meta);
+    emitResult = renderD1(diffResult.changes, expected, actual.meta, actual);
   } catch (err) {
     if (err instanceof BlockedChangesError) {
       const entries = blockedToEntries(err);

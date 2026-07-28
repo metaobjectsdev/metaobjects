@@ -7,6 +7,8 @@ export function renderD1(
   changes: readonly Change[],
   expectedSchema?: SchemaSnapshot,
   actualMeta?: SnapshotMeta,
+  /** Used by the #241 cascade (Task 4) to build the actual∪expected FK graph. Unused for now. */
+  actualSchema?: SchemaSnapshot,
 ): EmitResult {
   const sqliteResult = renderSqlite(changes, expectedSchema, actualMeta);
 

@@ -20,6 +20,8 @@ export interface EmitOptions {
    * fall back to recreate-and-copy. Unknown/absent version → assume modern.
    */
   actualMeta?: SnapshotMeta;
+  /** Used by the d1 cascade emitter to build the actual∪expected FK graph. */
+  actualSchema?: SchemaSnapshot;
 }
 
 export function emit(changes: Change[], opts: EmitOptions): EmitResult {
@@ -29,6 +31,6 @@ export function emit(changes: Change[], opts: EmitOptions): EmitResult {
   switch (opts.dialect) {
     case "postgres": return renderPostgres(changes);
     case "sqlite":   return renderSqlite(changes, opts.expectedSchema, opts.actualMeta);
-    case "d1":       return renderD1(changes, opts.expectedSchema, opts.actualMeta);
+    case "d1":       return renderD1(changes, opts.expectedSchema, opts.actualMeta, opts.actualSchema);
   }
 }
