@@ -63,6 +63,8 @@ export { normalizeViewSql, viewSqlEquals } from "./view-sql-compare.js";
 // independently without going through emit().
 export { renderD1 } from "./emit/d1.js";
 export { applyD1SafetyPass, D1UnsupportedStatementError } from "./emit/d1-safety-pass.js";
+export { findReferencedRebuilds, D1ReferencedTableRebuildError } from "./emit/d1-fk-refuse.js";
+export type { D1RebuildRefusal } from "./emit/d1-fk-refuse.js";
 
 // D1 introspection
 export { introspectD1, type D1Runner, type IntrospectD1Options } from "./introspect/d1.js";
