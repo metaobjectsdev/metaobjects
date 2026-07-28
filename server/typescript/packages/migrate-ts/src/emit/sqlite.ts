@@ -108,7 +108,8 @@ export function renderSqlite(
   };
 }
 
-function changeTable(c: Change): string | undefined {
+/** The table a change targets, or undefined for view-scoped changes. Exported for the D1 FK-cascade emitter (read-only). */
+export function changeTable(c: Change): string | undefined {
   switch (c.kind) {
     case "create-table": return c.table.name;
     case "drop-table":   return c.table;
@@ -381,7 +382,8 @@ export function renderCreateIndex(table: string, ix: IndexDescriptor): string {
   return `CREATE ${u}INDEX ${quote(ix.name)} ON ${quote(table)} (${keys})${where};`;
 }
 
-function quote(ident: string): string {
+/** SQLite identifier quoter (`"id"`). Exported for the D1 FK-cascade emitter (read-only). */
+export function quote(ident: string): string {
   if (ident.includes('"')) throw new Error(`unsafe identifier: ${ident}`);
   return `"${ident}"`;
 }

@@ -37,6 +37,33 @@ export class D1ReferencedTableRebuildError extends Error {
   }
 }
 
+/**
+ * Thrown when a D1 FK-cascade rebuild (#241) cannot be ordered because the
+ * affected tables form a multi-table foreign-key cycle. Unlike the acyclic case
+ * (which the cascade emitter rebuilds via `PRAGMA defer_foreign_keys = ON`), a
+ * cycle has no parents-first order, so the rebuild is refused at generation time.
+ */
+export class D1CyclicForeignKeyError extends Error {
+  constructor(public readonly cycle: string[]) {
+    super(formatCycleMessage(cycle));
+    this.name = "D1CyclicForeignKeyError";
+  }
+}
+
+function formatCycleMessage(cycle: string[]): string {
+  const members = cycle.map((n) => `"${n}"`).join(", ");
+  return (
+    `Cannot rebuild the following table(s) on Cloudflare D1 — their foreign keys form a ` +
+    `cycle: ${members}.\n\n` +
+    `The FK-cascade rebuild recipe recreates tables parents-first, which is impossible ` +
+    `when tables reference each other in a cycle. Even with ` +
+    "`PRAGMA defer_foreign_keys = ON`" +
+    ` the DROP/RENAME sequence cannot be ordered to keep every reference valid. To apply ` +
+    `this on D1, hand-write the migration (drop the foreign key on one side of the cycle, ` +
+    `rebuild the tables, then restore it), or break the cycle in your metadata.`
+  );
+}
+
 function formatMessage(refusals: D1RebuildRefusal[]): string {
   const lines = refusals.map((r) => {
     const refs = r.referencedBy.map((n) => `"${n}"`).join(", ");
