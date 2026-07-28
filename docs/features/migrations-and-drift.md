@@ -69,7 +69,14 @@ generation time** when a change would rebuild a table that another table's forei
 references. Apply such a change by hand-writing the migration: rebuild the referencing
 table to temporarily drop its foreign key, rebuild the referenced table, then restore
 the foreign key — or make the change on an unreferenced table. (Auto-generating this
-cascade is tracked as a follow-up.)
+cascade is tracked as a follow-up, [#241](https://github.com/metaobjectsdev/metaobjects/issues/241).)
+
+**Known limitation of the current refusal:** it is computed from the *target* schema's
+foreign keys. A single migration that **both** rebuilds a referenced table **and** drops
+the referencing foreign key in the same run is therefore not detected, and can still fail
+on remote D1 (the parent's `DROP TABLE` can be emitted before the referencing table is
+rebuilt). Split such a change into two migrations, or hand-write it. Closing this gap
+requires the actual-schema foreign-key graph and rides the same follow-up (#241).
 
 ### Java
 
