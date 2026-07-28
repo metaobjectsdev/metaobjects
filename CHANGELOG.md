@@ -20,6 +20,16 @@ included), instead of emitting SQL that fails at apply time. Migrations that do 
 rebuild a referenced table are byte-identical. Auto-generating the rebuild cascade is
 tracked as a follow-up (#241).
 
+### Added — `meta migrate apply-pending` (#242)
+
+npm-only (`@metaobjectsdev/cli`). A first-class subcommand that replays the committed
+migration files against `--db` (ledger-tracked, transactional) with no diff and no
+metadata load — the fresh-DB / CI provisioning path the diff-first `meta migrate
+--apply` cannot serve (on an empty DB `--apply` exits before `applyPending` runs, or
+authors a redundant migration). A thin wrapper over the already-public `applyPending`;
+idempotent, `--dry-run` lists pending. postgres/sqlite only (D1 uses `wrangler d1
+migrations apply`).
+
 ## [0.20.6] — 2026-07-26
 
 **Coordinated PATCH** — npm `0.20.6` · PyPI `0.19.8` · Maven Central `7.11.6` · NuGet
