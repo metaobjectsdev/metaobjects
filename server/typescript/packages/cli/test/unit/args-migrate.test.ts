@@ -18,6 +18,7 @@ describe("parseMigrateArgs", () => {
       yes: false,
       fromDb: false,
       baseline: false,
+      applyPending: false,
     });
   });
 

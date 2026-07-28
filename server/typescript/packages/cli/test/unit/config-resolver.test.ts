@@ -53,6 +53,7 @@ describe("resolveMigrateConfig", () => {
     yes: false,
     fromDb: false,
     baseline: false,
+    applyPending: false,
   } as const;
 
   test("built-in defaults when no flag/env/config", async () => {
@@ -163,6 +164,7 @@ describe("resolveMigrateConfig", () => {
       yes: false,
       fromDb: false,
       baseline: false,
+      applyPending: false,
     }, root);
     expect(resolved.d1?.binding).toBe("MYDB");
     expect(resolved.d1?.remote).toBe(true);
@@ -187,6 +189,7 @@ describe("resolveMigrateConfig", () => {
       yes: false,
       fromDb: false,
       baseline: false,
+      applyPending: false,
     }, root);
     expect(resolved.d1?.remote).toBe(true);
   });
@@ -255,6 +258,7 @@ describe("resolveD1Config", () => {
       yes: false,
       fromDb: false,
       baseline: false,
+      applyPending: false,
     }, root);
     const viaVerify = await resolveD1Config({ d1Binding: "DB", remote: false }, root);
     expect(viaVerify).toEqual(viaMigrate.d1);

@@ -58,6 +58,8 @@ SUBCOMMANDS:
                        (use with --from-db). NOTE: for a brand-new/empty database use
                        the greenfield example below, NOT baseline — an offline baseline
                        records your metadata as already-applied and emits no CREATE TABLE.
+  apply-pending        Replay committed migration files against --db (no diff);
+                       provisions a fresh/CI database. postgres/sqlite only.
 
 MIGRATE FLAGS:
   --db <url>           DB connection URL (required for live-introspect / --apply / --rollback)
@@ -89,6 +91,8 @@ EXAMPLES:
   meta migrate --db postgresql://localhost/mydb --slug add-index --apply
   # Adopt an existing database — snapshot its current schema first:
   meta migrate baseline --from-db --db postgresql://localhost/mydb
+  # Provision a fresh/CI database from the committed migration files:
+  meta migrate apply-pending --db postgresql://localhost/mydb
 `;
 
 /** Emit a structured error on stdout (not stderr) in the active format, per axi. */
@@ -240,6 +244,15 @@ export async function migrateCommand(
       );
       return 2;
     }
+    if (config.applyPending) {
+      log.error(`migrate apply-pending is not supported for dialect 'd1' — use 'wrangler d1 migrations apply' to replay committed migrations`);
+      emitStructuredError(
+        `migrate apply-pending is not supported for dialect 'd1'`,
+        "use 'wrangler d1 migrations apply' to replay committed migrations for d1",
+        fmt,
+      );
+      return 2;
+    }
     if (config.databaseUrl !== undefined) {
       log.error(`migrate: --db / DATABASE_URL is not used for dialect 'd1' — wrangler.toml owns connection`);
       emitStructuredError(
@@ -264,6 +277,11 @@ export async function migrateCommand(
   // `migrate baseline` — seed the committed reference snapshot, emit no migration.
   if (config.baseline) {
     return await runBaseline(config, metaRoot, fmt);
+  }
+
+  // `migrate apply-pending` — replay committed migration files; no diff, no metadata load.
+  if (config.applyPending) {
+    return await runApplyPending(config, metaRoot, fmt);
   }
 
   // Default = offline snapshot generation. The live-introspection path runs only
@@ -621,6 +639,86 @@ export async function runBaseline(
 
   await writeSnapshot(path, snapshot);
   log.info(`migrate: wrote schema snapshot ${path}`);
+  return 0;
+}
+
+/**
+ * `meta migrate apply-pending` — replay the committed migration files against the
+ * target DB, ledger-tracked and transactional (no diff, no metadata load). This is the
+ * fresh-DB / CI provisioning path the diff-first `--apply` cannot serve. postgres/sqlite
+ * only (d1 replays via `wrangler d1 migrations apply`). See #242.
+ */
+export async function runApplyPending(
+  config: ResolvedMigrateConfig,
+  metaRoot: string,
+  fmt: OutputFormat = "text",
+): Promise<number> {
+  if (config.databaseUrl === undefined) {
+    log.error(`migrate apply-pending: --db <url> required (or set DATABASE_URL, or add migrate.databaseUrl to .metaobjects/config.json)`);
+    emitStructuredError(
+      `migrate apply-pending: --db <url> required`,
+      "pass --db <url>, set DATABASE_URL, or add migrate.databaseUrl to .metaobjects/config.json",
+      fmt,
+    );
+    return 2;
+  }
+
+  let kysely;
+  try {
+    kysely = await buildKyselyFromUrl(config.databaseUrl, config.dialect);
+  } catch (err) {
+    log.error(`migrate apply-pending: ${(err as Error).message}`);
+    return 2;
+  }
+
+  const outDir = resolvePath(metaRoot, config.outDir);
+  let exitCode = 0;
+  let pendingNames: string[] = [];
+  let appliedNames: string[] = [];
+  try {
+    const result = await applyPending(kysely.db, outDir, {
+      dryRun: config.dryRun,
+      dialect: kysely.dialect as "sqlite" | "postgres",
+    });
+    pendingNames = [...result.pending];
+    appliedNames = [...result.applied];
+  } catch (err) {
+    log.error(`migrate apply-pending: apply failed: ${(err as Error).message}`);
+    exitCode = 1;
+  } finally {
+    try {
+      await kysely.close();
+    } catch (err) {
+      log.warn(`migrate apply-pending: failed to close DB cleanly: ${(err as Error).message}`);
+    }
+  }
+  if (exitCode !== 0) return exitCode;
+
+  const payload = {
+    command: "apply-pending",
+    dialect: kysely.dialect,
+    displayUrl: kysely.displayUrl,
+    dryRun: config.dryRun,
+    pending: pendingNames,
+    applied: appliedNames,
+  };
+  if (fmt === "json") {
+    log.info(JSON.stringify(payload, null, 2));
+  } else if (fmt === "toon") {
+    log.info(toonEncode(payload));
+  } else if (config.dryRun) {
+    log.info(
+      pendingNames.length > 0
+        ? `migrate apply-pending (dry-run): ${pendingNames.length} pending: ${pendingNames.join(", ")}`
+        : `migrate apply-pending (dry-run): already up to date`,
+    );
+  } else {
+    log.info(
+      appliedNames.length > 0
+        ? `migrate apply-pending: applied ${appliedNames.length} migration(s): ${appliedNames.join(", ")}`
+        : `migrate apply-pending: already up to date`,
+    );
+  }
   return 0;
 }
 
