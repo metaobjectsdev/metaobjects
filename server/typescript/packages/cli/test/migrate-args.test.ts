@@ -37,3 +37,27 @@ describe("parseMigrateArgs — --allow tokens", () => {
     expect(() => parseMigrateArgs(["--allow", "drop-everything"])).toThrow(/invalid --allow token/);
   });
 });
+
+describe("parseMigrateArgs — apply-pending subcommand", () => {
+  test("recognizes the apply-pending positional", () => {
+    const f = parseMigrateArgs(["apply-pending", "--db", "file:t.db", "--dialect", "sqlite"]);
+    expect(f.applyPending).toBe(true);
+    expect(f.baseline).toBe(false);
+    expect(f.db).toBe("file:t.db");
+    expect(f.dialect).toBe("sqlite");
+  });
+
+  test("no subcommand → applyPending false", () => {
+    expect(parseMigrateArgs([]).applyPending).toBe(false);
+  });
+
+  test("baseline positional still parses and does not set applyPending", () => {
+    const f = parseMigrateArgs(["baseline"]);
+    expect(f.baseline).toBe(true);
+    expect(f.applyPending).toBe(false);
+  });
+
+  test("an unknown subcommand still throws, now listing apply-pending", () => {
+    expect(() => parseMigrateArgs(["bogus"])).toThrow(/unknown migrate subcommand/);
+  });
+});

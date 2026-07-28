@@ -344,6 +344,8 @@ export interface MigrateFlags {
   fromDb: boolean;
   /** `migrate baseline` subcommand: seed the snapshot, emit no migration. */
   baseline: boolean;
+  /** `migrate apply-pending` subcommand: replay committed migration files, no diff. */
+  applyPending: boolean;
 }
 
 export function parseMigrateArgs(argv: string[]): MigrateFlags {
@@ -369,8 +371,9 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
   });
 
   const baseline = positionals[0] === "baseline";
-  if (positionals.length > 0 && !baseline) {
-    throw new Error(`unknown migrate subcommand '${positionals[0]}'; expected 'baseline' or no subcommand`);
+  const applyPending = positionals[0] === "apply-pending";
+  if (positionals.length > 0 && !baseline && !applyPending) {
+    throw new Error(`unknown migrate subcommand '${positionals[0]}'; expected 'baseline', 'apply-pending', or no subcommand`);
   }
 
   if (values.rollback !== undefined && values.apply === true) {
@@ -414,5 +417,6 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
     yes: !!values.yes,
     fromDb: !!values["from-db"],
     baseline,
+    applyPending,
   };
 }

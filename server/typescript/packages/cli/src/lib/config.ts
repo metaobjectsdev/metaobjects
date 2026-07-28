@@ -54,6 +54,8 @@ export interface ResolvedMigrateConfig {
   fromDb: boolean;
   /** Seed the snapshot and exit (no migration). */
   baseline: boolean;
+  /** Replay committed migration files, no diff. */
+  applyPending: boolean;
   d1: ResolvedD1Config;
 }
 
@@ -125,6 +127,7 @@ export async function resolveMigrateConfig(
     yes: flags.yes,
     fromDb: flags.fromDb,
     baseline: flags.baseline,
+    applyPending: flags.applyPending,
     d1: {
       binding: flags.d1Binding ?? d1Block.binding,
       remote: flags.remote || (d1Block.remote ?? false),
