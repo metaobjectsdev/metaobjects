@@ -5,7 +5,13 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
-## [Unreleased]
+## [0.20.7] — 2026-07-28
+
+**npm-only** — the changed code is all in `cli` / `migrate-ts`; PyPI / NuGet / Maven
+Central are unchanged (different ports on different version lines). Bundles a D1 migrate
+bug fix (#226) and an additive `meta migrate apply-pending` CLI subcommand (#242).
+Existing `meta gen` / `meta migrate` output is unchanged for migrations that don't
+rebuild an FK-referenced table on D1.
 
 ### Fixed — `meta migrate --dialect d1` no longer emits an un-appliable rebuild of a foreign-key-referenced table (#226)
 
