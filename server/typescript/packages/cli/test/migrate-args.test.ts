@@ -58,6 +58,6 @@ describe("parseMigrateArgs — apply-pending subcommand", () => {
   });
 
   test("an unknown subcommand still throws, now listing apply-pending", () => {
-    expect(() => parseMigrateArgs(["bogus"])).toThrow(/unknown migrate subcommand/);
+    expect(() => parseMigrateArgs(["bogus"])).toThrow(/apply-pending/);
   });
 });

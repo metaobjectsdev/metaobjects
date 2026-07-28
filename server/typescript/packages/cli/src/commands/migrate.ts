@@ -51,7 +51,7 @@ import { tokensToAllowOptions, describeChange } from "../lib/allow.js";
 const MIGRATE_HELP_TEXT = `meta migrate — diff metadata vs live DB; emit migration SQL files
 
 USAGE:
-  meta migrate [baseline] [flags]
+  meta migrate [baseline|apply-pending] [flags]
 
 SUBCOMMANDS:
   baseline             Snapshot an EXISTING database's schema as the reference point

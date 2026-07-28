@@ -58,9 +58,10 @@ configured in `metaobjects.config.ts` (typically `./migrations/<timestamp>__<slu
 **`meta migrate apply-pending`** replays the committed migration files against `--db`
 in order, ledger-tracked (`_metaobjects_migrations`) and transactional — with **no
 diff and no metadata load**. It is the way to provision a fresh or CI database from the
-committed migrations: `meta migrate --apply` is diff-first and cannot bootstrap an empty
-DB, whereas `apply-pending` just runs the pending files (idempotent; `--dry-run` lists
-what would run). postgres/sqlite only — on D1 use `wrangler d1 migrations apply`.
+committed migrations. `meta migrate --apply`, by contrast, is diff-first — it authors a
+new migration from the metadata-vs-DB diff before applying it. `apply-pending` just runs
+the pending already-committed files, making it idempotent; `--dry-run` lists what would
+run. postgres/sqlite only — on D1 use `wrangler d1 migrations apply`.
 
 #### D1 limitation: rebuilding a foreign-key-referenced table
 
