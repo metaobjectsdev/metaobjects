@@ -7,6 +7,8 @@ import {
 } from "../../src/emit/sqlite.js";
 import type { TableDescriptor, IndexDescriptor, Change } from "../../src/types.js";
 
+const ALLOWED = { state: "allowed" as const };
+
 describe("SQLite primitives export", () => {
   it("renderCreateTable emits CREATE TABLE statement", () => {
     const table: TableDescriptor = {
@@ -17,7 +19,6 @@ describe("SQLite primitives export", () => {
           sqlType: { kind: "integer", bits: 64 },
           nullable: false,
           identity: "increment",
-          default: undefined,
         },
       ],
       indexes: [],
@@ -38,9 +39,6 @@ describe("SQLite primitives export", () => {
       name: "idx_col",
       columns: ["col"],
       unique: false,
-      expr: undefined,
-      where: undefined,
-      orders: undefined,
     };
 
     const result = renderCreateIndex("my_table", ix);
@@ -57,6 +55,7 @@ describe("SQLite primitives export", () => {
         table: "users",
         from: "old_name",
         to: "new_name",
+        status: ALLOWED,
       },
       {
         kind: "add-column",
@@ -65,9 +64,8 @@ describe("SQLite primitives export", () => {
           name: "added_col",
           sqlType: { kind: "text" },
           nullable: true,
-          identity: undefined,
-          default: undefined,
         },
+        status: ALLOWED,
       },
     ];
 
@@ -79,21 +77,16 @@ describe("SQLite primitives export", () => {
           sqlType: { kind: "integer", bits: 64 },
           nullable: false,
           identity: "increment",
-          default: undefined,
         },
         {
           name: "new_name",
           sqlType: { kind: "text" },
           nullable: true,
-          identity: undefined,
-          default: undefined,
         },
         {
           name: "added_col",
           sqlType: { kind: "text" },
           nullable: true,
-          identity: undefined,
-          default: undefined,
         },
       ],
       indexes: [],
@@ -121,7 +114,6 @@ describe("SQLite primitives export", () => {
           sqlType: { kind: "integer", bits: 64 },
           nullable: false,
           identity: "increment",
-          default: undefined,
         },
       ],
       indexes: [],
