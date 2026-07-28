@@ -90,7 +90,8 @@ function orderProjection(filter: unknown, extraFields: unknown[] = []) {
 const OPTS = {
   dialect: "postgres",
   baseTableName: "orders",
-  joinTables: { Customer: "customers" },
+  // FQN key — extractViewSpec now stores resolutionKey() join targets (#244).
+  joinTables: { "test::Customer": "customers" },
   bodyOnly: true,
 } as const;
 

@@ -42,7 +42,7 @@ import {
   FIELD_ATTR_COLUMN,
   OBJECT_PROJECTION_ATTR_FILTER,
   findReferenceBetween,
-  stripPackage,
+  resolveObjectRef,
   type AggregateFunction,
 } from "@metaobjectsdev/metadata";
 import { type MetaData, type MetaField, type MetaRoot, MetaObject } from "@metaobjectsdev/metadata";
@@ -290,11 +290,34 @@ export function projectionViewName(
 export function refNamedOwner(node: MetaData, root: MetaRoot): MetaObject | undefined {
   const ref = (node as { superRef?: string }).superRef;
   if (ref === undefined) return undefined;
-  const lastSep = ref.lastIndexOf("::");
-  const tail = lastSep === -1 ? ref : ref.slice(lastSep + 2);
-  const dot = tail.indexOf(".");
+  // The entity portion is everything before the FIRST "." (packages use "::", the
+  // member path uses ".").
+  const dot = ref.indexOf(".");
   if (dot <= 0) return undefined;
-  return root.findObject(tail.slice(0, dot)) ?? undefined;
+  const entityRef = ref.slice(0, dot);
+  // An FQN `extends` binds the EXACT package's entity (#244); a bare ref keeps the prior
+  // findObject behavior (a projection extends its base by bare name in the same package).
+  if (entityRef.includes("::")) return resolveEntityRef(root, entityRef, "");
+  return root.findObject(entityRef) ?? undefined;
+}
+
+/** Effective package of an object, taken from its resolution key ("<pkg>::<Name>"). */
+function packageOf(obj: MetaData): string {
+  const key = obj.resolutionKey();
+  const i = key.lastIndexOf("::");
+  return i >= 0 ? key.slice(0, i) : "";
+}
+
+/**
+ * Resolve an object reference (bare or fully-qualified) to its MetaObject, package-aware
+ * per the ADR-0042 contract (`resolveObjectRef`): an FQN binds exactly, a bare ref binds
+ * the referrer's package then a root-level object. Replaces the load-order-dependent
+ * `root.findObject(stripPackage(ref))` the view-spec used to do, which discarded the
+ * package qualifier and let a same-bare-named entity in another package win (#244).
+ */
+function resolveEntityRef(root: MetaRoot, ref: string, referrerPkg: string): MetaObject | undefined {
+  const node = resolveObjectRef(root, ref, referrerPkg).node;
+  return node instanceof MetaObject ? node : undefined;
 }
 
 function baseEntityFor(
@@ -370,20 +393,20 @@ function primaryKeyColumn(entity: MetaObject, ctx: ExtractContext): string | und
  * `@of` to name the aggregated entity, so it is derived from the last `@via` hop.
  * Returns undefined if any hop fails to resolve (a prior loader error already fired).
  */
-function viaTerminalEntity(via: string, root: MetaRoot): string | undefined {
+function viaTerminalEntity(via: string, root: MetaRoot, referrerPkg: string): string | undefined {
   const segments = via.split(".");
   const rawEntity = segments[0];
   if (!rawEntity) return undefined;
-  let currentObj = root.findObject(stripPackage(rawEntity));
+  let currentObj = resolveEntityRef(root, rawEntity, referrerPkg);
   if (!currentObj) return undefined;
-  let terminal = currentObj.name;
+  let terminal = currentObj.resolutionKey();
   for (const relName of segments.slice(1)) {
     const resolved = resolveHop(currentObj, relName);
     if (!resolved) return undefined;
-    const target = root.findObject(stripPackage(resolved.targetName));
+    const target = resolveEntityRef(root, resolved.targetName, packageOf(currentObj));
     if (!target) return undefined;
     currentObj = target;
-    terminal = target.name;
+    terminal = target.resolutionKey();
   }
   return terminal;
 }
@@ -474,7 +497,11 @@ function resolveExprNode(
 }
 
 function shortAliasFor(entityName: string, used: Set<string>): string {
-  const base = (entityName[0] ?? "x").toLowerCase();
+  // Derive from the SHORT name — an entity ref may now be a resolutionKey ("pkg::Name",
+  // #244); the alias must stay the first letter of the entity, so existing single-package
+  // view SQL is byte-identical (a changed alias would churn `verify --db` fingerprints).
+  const short = entityName.includes("::") ? entityName.slice(entityName.lastIndexOf("::") + 2) : entityName;
+  const base = (short[0] ?? "x").toLowerCase();
   if (!used.has(base)) { used.add(base); return base; }
   let i = 0;
   let candidate: string;
@@ -517,6 +544,9 @@ function buildJoinTree(
   ctx: ExtractContext,
 ): JoinTree {
   const allPaths: Path[] = [];
+  // Referrer package for resolving a bare @via head: the origins are authored on the
+  // projection, so bare refs bind package-locally to it (FQN refs ignore this).
+  const projPkg = packageOf(projection);
 
   // ADR-0039: own — a projection's DECLARED field set IS the exposure (FR-024/
   // ADR-0028, inclusive + fail-closed); iterate the projection's own fields and
@@ -546,10 +576,10 @@ function buildJoinTree(
       const rawEntity = segments[0];
       const relSegments = segments.slice(1);
       if (!rawEntity) continue;
-      // @via may be package-qualified ("pkg::Entity.rel"); the joinTree + findObject
-      // key on bare names (so they line up with bare passthrough @from lookups).
-      const entityName = stripPackage(rawEntity);
-      let currentObj = root.findObject(entityName);
+      // @via may be package-qualified ("pkg::Entity.rel"). Resolve package-aware and key
+      // the joinTree on resolutionKey() (FQN) so a same-bare-named entity in another
+      // package can't win — the passthrough @from lookups key on the same FQN (#244).
+      let currentObj = resolveEntityRef(root, rawEntity, projPkg);
       if (!currentObj) continue;
 
       const path: Path = [];
@@ -560,11 +590,10 @@ function buildJoinTree(
         const resolved = resolveHop(currentObj, relName);
         if (!resolved) break;
         const { targetName, cardinality } = resolved;
-        // @objectRef/@references may be package-qualified ("pkg::Entity") — the directory
-        // loader qualifies a same-package ref even when authored bare — but findObject
-        // keys on the BARE name (like the @via/@of/@from paths above). Strip first, or
-        // the join (and every aggregate traversing it) is silently dropped.
-        const target = root.findObject(stripPackage(targetName));
+        // @objectRef/@references may be package-qualified ("pkg::Entity"); resolve it
+        // package-aware relative to the hop's source entity (the loader qualifies a
+        // same-package ref even when authored bare), so the join binds the exact target.
+        const target = resolveEntityRef(root, targetName, packageOf(currentObj));
         if (!target) break;
 
         const ref = findReferenceBetween(currentObj as MetaObject, target);
@@ -608,7 +637,7 @@ function buildJoinTree(
           pkColumn: joinColumnFor(pkHolder, resolvedPkField, ctx),
           referenceHolder,
           joinType,
-          targetEntity: stripPackage(targetName),
+          targetEntity: target.resolutionKey(),
         });
         currentObj = target;
       }
@@ -646,7 +675,7 @@ function buildJoinTree(
   }
 
   return {
-    baseEntity: base.name,
+    baseEntity: base.resolutionKey(),
     baseAlias,
     joins: Array.from(trieRoot.children.values()).map(toJoinNode),
   };
@@ -683,6 +712,8 @@ function buildSelectSpec(
   usedAliases: Set<string>,
 ): SelectSpec {
   const columns: SelectColumn[] = [];
+  // Referrer package for resolving bare @from/@of/@via entity refs (FQN refs ignore it).
+  const projPkg = packageOf(projection);
 
   // FR-024 (ADR-0028): the projection's DECLARED field set IS the exposure —
   // the inclusive list, fail-closed by construction. The pre-FR-024 loop that
@@ -721,13 +752,13 @@ function buildSelectSpec(
       const from = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_FROM) as string;
       const dotIdx = from.indexOf(".");
       if (dotIdx < 1) continue;
-      // @from is package-qualified ("pkg::Entity.field"); the joinTree + findObject
-      // key on the BARE entity name, so strip the package before resolving.
-      const entityName = stripPackage(from.slice(0, dotIdx));
+      // @from may be package-qualified ("pkg::Entity.field"). Resolve package-aware and
+      // key the alias lookup on the SAME resolutionKey() the joinTree stored (#244).
       const fieldName = from.slice(dotIdx + 1);
-      const targetEntity = root.findObject(entityName);
-      const sourceAlias = findAliasInTree(joinTree, entityName);
-      if (!targetEntity || sourceAlias === undefined) continue;
+      const targetEntity = resolveEntityRef(root, from.slice(0, dotIdx), projPkg);
+      if (!targetEntity) continue;
+      const sourceAlias = findAliasInTree(joinTree, targetEntity.resolutionKey());
+      if (sourceAlias === undefined) continue;
       // EFFECTIVE fields — the source column may be inherited via `extends`
       // (e.g. created_at/updated_at/created_by from an audited base), which
       // ownChildren() would miss.
@@ -751,9 +782,9 @@ function buildSelectSpec(
         // hop, and @filter is the (required) quantified predicate.
         const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA) as string | undefined;
         if (!via) continue;
-        const relatedName = viaTerminalEntity(via, root);
+        const relatedName = viaTerminalEntity(via, root, projPkg);
         if (!relatedName) continue;
-        const relatedEntity = root.findObject(relatedName);
+        const relatedEntity = resolveEntityRef(root, relatedName, projPkg);
         const sourceAlias = findAliasInTree(joinTree, relatedName);
         if (!relatedEntity || sourceAlias === undefined) continue;
         const joinedPk = primaryKeyColumn(relatedEntity, ctx);
@@ -779,11 +810,11 @@ function buildSelectSpec(
       if (!of_) continue;
       const dotIdx = of_.indexOf(".");
       if (dotIdx < 1) continue;
-      const entityName = stripPackage(of_.slice(0, dotIdx));
       const fieldName = of_.slice(dotIdx + 1);
-      const targetEntity = root.findObject(entityName);
-      const sourceAlias = findAliasInTree(joinTree, entityName);
-      if (!targetEntity || sourceAlias === undefined) continue;
+      const targetEntity = resolveEntityRef(root, of_.slice(0, dotIdx), projPkg);
+      if (!targetEntity) continue;
+      const sourceAlias = findAliasInTree(joinTree, targetEntity.resolutionKey());
+      if (sourceAlias === undefined) continue;
       const targetField = targetEntity.fields().find((f) => f.name === fieldName);
       if (!targetField) continue;
 
@@ -837,9 +868,8 @@ function buildSelectSpec(
       if (!of_) continue;
       const dotIdx = of_.indexOf(".");
       if (dotIdx < 1) continue;
-      const childName = stripPackage(of_.slice(0, dotIdx));
       const ofFieldName = of_.slice(dotIdx + 1);
-      const childEntity = root.findObject(childName);
+      const childEntity = resolveEntityRef(root, of_.slice(0, dotIdx), projPkg);
       if (!childEntity) continue;
       const ofField = childEntity.fields().find((f) => f.name === ofFieldName);
       if (!ofField) continue;
@@ -867,9 +897,10 @@ function buildSelectSpec(
         : undefined;
       columns.push({
         kind: "first",
+        // FQN so it lines up with the resolutionKey()-keyed joinTables in build-projection-views (#244).
         fieldName: field.name,
         dbColAlias: dbCol,
-        childEntity: childEntity.name,
+        childEntity: childEntity.resolutionKey(),
         childAlias,
         sourceColumn: sourceColumnNameFor(ofField, ctx),
         referenceHolder,

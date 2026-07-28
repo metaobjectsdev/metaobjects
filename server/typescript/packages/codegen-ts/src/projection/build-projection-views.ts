@@ -88,8 +88,11 @@ export function buildProjectionViews(
   const dialect: "postgres" | "sqlite" = opts.dialect === "d1" ? "sqlite" : opts.dialect;
   const columnNamingStrategy = opts.columnNamingStrategy ?? "snake_case";
 
+  // Keyed by resolutionKey() (FQN), NOT bare name — two packages may declare a
+  // same-named entity, and the view-spec's join targets are FQN so they bind the exact
+  // one (#244). Keying by bare name let a cross-package same-name entity overwrite the map.
   const joinTables: Record<string, string> = {};
-  for (const obj of root.objects()) joinTables[obj.name] = resolveTableName(obj);
+  for (const obj of root.objects()) joinTables[obj.resolutionKey()] = resolveTableName(obj);
 
   const out: ExpectedView[] = [];
   for (const projection of root.objects().filter(isProjection)) {
@@ -266,7 +269,7 @@ function collectSqlDependsOn(
     (c) => c instanceof MetaSource && c.isWritable(),
   );
   if (hasWritableSource) {
-    const t = joinTables[host.name];
+    const t = joinTables[host.resolutionKey()];
     if (t !== undefined) tables.add(t);
   }
   // Extends-bound anchor tables (a projection's read-model base).
@@ -274,7 +277,7 @@ function collectSqlDependsOn(
     if (child.type !== TYPE_IDENTITY && child.type !== TYPE_FIELD) continue;
     const owner = refNamedOwner(child, root);
     if (owner === undefined) continue;
-    const t = joinTables[owner.name];
+    const t = joinTables[owner.resolutionKey()];
     if (t !== undefined) tables.add(t);
   }
   return [...tables];

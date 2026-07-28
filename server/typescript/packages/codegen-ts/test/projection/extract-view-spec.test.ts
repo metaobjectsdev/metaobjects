@@ -81,10 +81,10 @@ describe("extractViewSpec — flat passthrough via extends", () => {
     const spec = extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
 
     expect(spec.viewName).toBe("v_program_summary");
-    expect(spec.joinTree.baseEntity).toBe("Program");
+    expect(spec.joinTree.baseEntity).toBe("test::Program");
     expect(spec.joinTree.joins.length).toBe(1);
     expect(spec.joinTree.joins[0]!.relationship).toBe("weeks");
-    expect(spec.joinTree.joins[0]!.targetEntity).toBe("Week");
+    expect(spec.joinTree.joins[0]!.targetEntity).toBe("test::Week");
     expect(spec.joinTree.joins[0]!.fkColumn).toBe("program_id");
 
     // Select columns: id + title (inherited from extends), weekCount (aggregate)
@@ -162,11 +162,11 @@ describe("extractViewSpec — @via over a reference-only FK (FR-024)", () => {
     const spec = extractViewSpec(projection, root, { columnNamingStrategy: "snake_case" });
 
     expect(spec.viewName).toBe("v_enrollment");
-    expect(spec.joinTree.baseEntity).toBe("Enrollment");
+    expect(spec.joinTree.baseEntity).toBe("test::Enrollment");
     expect(spec.joinTree.joins.length).toBe(1);
     const join = spec.joinTree.joins[0]!;
     expect(join.relationship).toBe("ref_program"); // the reference name IS the hop
-    expect(join.targetEntity).toBe("Program");
+    expect(join.targetEntity).toBe("test::Program");
     expect(join.fkColumn).toBe("program_id"); // FK on Enrollment (the holder/source)
     expect(join.cardinality).toBe("one"); // a forward FK is inherently to-one
     expect(join.referenceHolder).toBe("source");
@@ -258,7 +258,7 @@ describe("extractViewSpec — multi-level via path", () => {
 
     expect(spec.joinTree.joins.length).toBe(1);
     expect(spec.joinTree.joins[0]!.children.length).toBe(1);
-    expect(spec.joinTree.joins[0]!.children[0]!.targetEntity).toBe("Workout");
+    expect(spec.joinTree.joins[0]!.children[0]!.targetEntity).toBe("test::Workout");
   });
 });
 
@@ -838,7 +838,7 @@ describe("extractViewSpec — #195 correlated first", () => {
     const col = spec.selectSpec.columns.find((c) => c.fieldName === "currentLabel")!;
     expect(col.kind).toBe("first");
     if (col.kind === "first") {
-      expect(col.childEntity).toBe("ChildA");
+      expect(col.childEntity).toBe("test::ChildA");
       expect(col.sourceColumn).toBe("label");
       expect(col.referenceHolder).toBe("target"); // FK (parent_id) lives on the child
       expect(col.fkColumn).toBe("parent_id");
