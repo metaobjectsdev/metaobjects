@@ -1,6 +1,6 @@
 {
   "name": "@metaobjectsdev/codegen-ts-react",
-  "version": "0.20.8",
+  "version": "0.20.9",
   "description": "React codegen for metaobjects — emits <Entity>.form.tsx files using react-hook-form and @metaobjectsdev/react helpers.",
   "type": "module",
   "main": "./dist/index.js",

@@ -5,7 +5,7 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
-## [Unreleased]
+## [0.20.9] — 2026-07-28
 
 **npm-only** — `migrate-ts` + `codegen-ts` (schema migrations and projection-view codegen
 are TS-owned, ADR-0015); PyPI / NuGet / Maven Central are unchanged.
