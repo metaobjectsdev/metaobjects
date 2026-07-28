@@ -2,6 +2,7 @@ import type { Change, SchemaSnapshot, TableDescriptor } from "../types.js";
 import {
   renderCreateTable,
   renderCreateIndex,
+  renderCreateView,
   computeCarryColumns,
   changeTable,
   quote,
@@ -21,7 +22,7 @@ const TEMP_TABLE_PREFIX = "__f_";
  * refusal because the affected tables form a foreign-key cycle.
  */
 export type D1CascadeResult =
-  | { up: string; downWarning: string; affected: Set<string> }
+  | { up: string; downWarning: string; affected: Set<string>; handledViews: Set<string> }
   | { refuseCycle: string[] };
 
 /**
@@ -75,7 +76,19 @@ export function emitD1Cascade(
   };
   const temp = (name: string): string => TEMP_TABLE_PREFIX + name;
 
+  // Views reading any affected table are stranded by the DROP/RENAME dance (a plain
+  // recreate-and-copy of a base table breaks a dependent view mid-transaction, #243).
+  // Drop them before the rebuild and recreate them after every table is back at its
+  // final name. The dispatcher filters any diff-injected view change for these from the
+  // native "rest" so they are not emitted twice / out of order.
+  const affectedViews = expectedSchema.views.filter((v) =>
+    (v.dependsOn ?? []).some((t) => affected.has(t)),
+  );
+  const handledViews = new Set(affectedViews.map((v) => v.name));
+
   const stmts: string[] = [];
+
+  for (const v of affectedViews) stmts.push(`DROP VIEW IF EXISTS ${quote(v.name)};`);
 
   // Defer FK enforcement to commit — the D1-legal alternative to the (no-op) OFF bracket.
   stmts.push("PRAGMA defer_foreign_keys = ON;");
@@ -121,6 +134,9 @@ export function emitD1Cascade(
     }
   }
 
+  // Recreate the dependent views now that every affected table is back at its final name.
+  for (const v of affectedViews) stmts.push(renderCreateView(v));
+
   const up = stmts.join("\n\n");
 
   // Best-effort down, mirroring renderRecreate's WARNING block.
@@ -130,5 +146,5 @@ export function emitD1Cascade(
     `-- Dropped data cannot be restored.`,
   ].join("\n");
 
-  return { up, downWarning, affected };
+  return { up, downWarning, affected, handledViews };
 }

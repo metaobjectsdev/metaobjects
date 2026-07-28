@@ -167,17 +167,43 @@ export function buildExpectedSchema(
     }
     entities.push({ entity: child as MetaObject, tableName });
   }
-  const entityToTable = new Map(
-    [...entities, ...fkTargetOnly].map((e) => [e.entity.name, e.tableName]),
-  );
-  // A reference's targetEntity is package-qualified by the loader (e.g.
-  // "acme::a::Foo"), but entityToTable is keyed by the bare entity name ("Foo").
-  // Fall back to the bare suffix so cross-package FK targets resolve.
-  const resolveTargetTable = (entityName: string) =>
-    entityToTable.get(entityName) ??
-    (entityName.includes("::")
-      ? entityToTable.get(entityName.slice(entityName.lastIndexOf("::") + 2))
-      : undefined);
+  // FK targets resolve by FULLY-QUALIFIED name, not bare name. The loader qualifies a
+  // reference's targetEntity to its canonical FQN (e.g. "acme::a::Foo"), and each entity's
+  // `resolutionKey()` is that same "<package>::<name>" form — so an FK target binds the
+  // EXACT entity in the EXACT package. Keying by bare name (the prior behavior) silently
+  // mis-resolved when two packages declared a same-named entity: the last one loaded won
+  // the map, so a cross-package FK could point at the wrong table.
+  const AMBIGUOUS = Symbol("ambiguous-bare-name");
+  const byFqn = new Map<string, string>();
+  const byBare = new Map<string, string | typeof AMBIGUOUS>();
+  for (const e of [...entities, ...fkTargetOnly]) {
+    byFqn.set(e.entity.resolutionKey(), e.tableName);
+    const bare = e.entity.name;
+    byBare.set(bare, byBare.has(bare) ? AMBIGUOUS : e.tableName);
+  }
+  // Resolve an FK target to its physical table, mirroring the metadata package's
+  // `resolutionKey()` contract so migrate binds the SAME entity the loader/codegen would.
+  // A reference's `targetEntity` is the raw `@references` value (usually BARE), so a bare
+  // ref is qualified with the REFERRER's package first (`<referrerPkg>::<ref>`), then the
+  // root-level (empty-package) object, then an UNAMBIGUOUS bare name. Keying by bare name
+  // alone (the prior behavior) let the last-loaded of two same-named entities win the map,
+  // so a cross-package FK could silently point at the wrong table.
+  const resolveTargetTable = (targetRef: string, referrerKey: string): string | undefined => {
+    const direct = byFqn.get(targetRef);
+    if (direct !== undefined) return direct;
+    if (!targetRef.includes("::")) {
+      const sep = referrerKey.lastIndexOf("::");
+      if (sep >= 0) {
+        const pkgLocal = byFqn.get(`${referrerKey.slice(0, sep)}::${targetRef}`);
+        if (pkgLocal !== undefined) return pkgLocal;
+      }
+      const rootLevel = byFqn.get(`::${targetRef}`);
+      if (rootLevel !== undefined) return rootLevel;
+    }
+    const bare = targetRef.includes("::") ? targetRef.slice(targetRef.lastIndexOf("::") + 2) : targetRef;
+    const byBareHit = byBare.get(bare);
+    return byBareHit === AMBIGUOUS ? undefined : byBareHit;
+  };
 
   // Pass 2: build full descriptors with FK resolution.
   // Schema is resolved here (not stored in Pass 1) to avoid exactOptionalPropertyTypes
@@ -268,6 +294,33 @@ export function buildExpectedSchema(
       ...(columns !== undefined ? { columns } : {}),
     };
   });
+
+  // Collision guard: two DISTINCT metadata objects that resolve to the same generated
+  // database name (schema-qualified) produce un-appliable DDL — the DB rejects the second
+  // CREATE, or a diff silently conflates the two. Catch it at build time with both owners
+  // named, rather than shipping a broken migration. Covers table/table, view/view, and
+  // table/view collisions across packages.
+  const sqlNameOwners = new Map<string, string[]>();
+  const addOwner = (schema: string | undefined, name: string, label: string): void => {
+    const key = `${schema ?? ""}.${name}`;
+    const list = sqlNameOwners.get(key);
+    if (list) list.push(label);
+    else sqlNameOwners.set(key, [label]);
+  };
+  for (const { entity, tableName } of entities) {
+    addOwner(resolveTableSchema(entity), tableName, `table ${entity.resolutionKey()}`);
+  }
+  for (const v of views) addOwner(v.schema, v.name, `view "${v.name}"`);
+  const collisions = [...sqlNameOwners.entries()].filter(([, owners]) => owners.length > 1);
+  if (collisions.length > 0) {
+    const detail = collisions
+      .map(([key, owners]) => `  "${key.slice(key.indexOf(".") + 1)}" ← ${owners.join(" + ")}`)
+      .join("\n");
+    throw new Error(
+      `ERR_DUPLICATE_SQL_NAME: distinct metadata objects generate the same database name. ` +
+        `Rename one (entity source \`@table\`, projection \`@kind view @table\`):\n${detail}`,
+    );
+  }
 
   return { tables, views };
 }
@@ -375,7 +428,7 @@ function tphConcreteSubtypes(base: MetaObject, root: MetaData): MetaObject[] {
 function buildTable(
   entity: MetaObject,
   tableName: string,
-  resolveTargetTable: (entityName: string) => string | undefined,
+  resolveTargetTable: (targetRef: string, referrerKey: string) => string | undefined,
   root: MetaRoot,
   strategy: ColumnNamingStrategy,
   dialect: Dialect | undefined,
@@ -765,7 +818,7 @@ function crossFieldCheck(
 function buildForeignKeys(
   entity: MetaObject,
   tableName: string,
-  resolveTargetTable: (entityName: string) => string | undefined,
+  resolveTargetTable: (targetRef: string, referrerKey: string) => string | undefined,
   root: MetaRoot,
   strategy: ColumnNamingStrategy,
 ): FkDescriptor[] {
@@ -775,7 +828,7 @@ function buildForeignKeys(
     if (!refChild.enforce) continue;
     const targetEntity = refChild.targetEntity;
     if (targetEntity === undefined) continue;
-    const refTable = resolveTargetTable(targetEntity);
+    const refTable = resolveTargetTable(targetEntity, entity.resolutionKey());
     if (!refTable) continue;
 
     const fkFieldJsNames = readIdentityFields(refChild);

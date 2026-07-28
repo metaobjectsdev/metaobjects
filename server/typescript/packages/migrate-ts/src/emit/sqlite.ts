@@ -216,7 +216,9 @@ function renderUpNative(c: Change): string {
   }
 }
 
-function renderCreateView(v: ViewDescriptor): string {
+// Exported read-only for the D1 FK-cascade, which recreates dependent views around a
+// rebuilt table (#243). SQLite emit behavior is unchanged.
+export function renderCreateView(v: ViewDescriptor): string {
   if (v.sql === undefined || v.sql.trim().length === 0) {
     throw new Error(`view "${v.name}" has no sql body — buildExpectedSchema must populate it before emit`);
   }

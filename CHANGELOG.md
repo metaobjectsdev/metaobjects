@@ -5,6 +5,35 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
+## [Unreleased]
+
+**npm-only** — `migrate-ts` (schema migrations are TS-owned, ADR-0015); PyPI / NuGet /
+Maven Central are unchanged.
+
+### Fixed — a projection/view over a rebuilt table is no longer stranded mid-migration (#243)
+
+On SQLite and Cloudflare D1, a table is rebuilt via recreate-and-copy (DROP + RENAME) not
+only for column changes but also for CHECK / foreign-key / evolved `field.enum @values`
+changes — and, on D1, for any table pulled into the FK-cascade as a referrer. A view
+reading that table was left dangling across the rebuild, so the migration failed at apply
+time (`error in view …: no such table …`). The diff now drops a dependent view **before**
+the rebuild and recreates it **after** for the CHECK/FK/enum-values class too (previously
+only column-altering changes triggered it), and the D1 cascade drops/recreates every view
+over an affected table in the correct order — no double-emit. Postgres is unaffected
+(FK/CHECK changes there are `ALTER … ADD/DROP CONSTRAINT`, no table rebuild).
+
+### Fixed — foreign-key targets resolve by fully-qualified name; duplicate generated SQL names are refused
+
+The schema builder resolved an FK's target entity by **bare** name, so when two packages
+declared a same-named entity the last one loaded won an internal map and a cross-package FK
+could silently point at the **wrong** table. FK targets now resolve by fully-qualified name
+(a bare `@references` is qualified with the referrer's own package, mirroring the loader's
+`resolutionKey()` contract); an ambiguous bare name resolves to nothing rather than
+guessing. Separately, two distinct metadata objects that generate the **same** database
+name (schema-qualified — table/table, view/view, or table/view, across packages) now fail
+at build time with `ERR_DUPLICATE_SQL_NAME` naming both owners, instead of emitting an
+un-appliable migration the database would reject.
+
 ## [0.20.8] — 2026-07-28
 
 **npm-only** — the changed code is all in `migrate-ts` (D1 is a TS-only dialect);

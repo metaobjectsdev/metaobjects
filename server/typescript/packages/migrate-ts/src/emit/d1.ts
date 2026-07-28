@@ -64,10 +64,21 @@ export function renderD1(
   // before any native CREATE TABLE referencing them. `defer_foreign_keys = ON`
   // persists across the whole implicit transaction, so FK checks defer to commit
   // where the final state is consistent.
-  const { up: cascadeUp, downWarning, affected } = cascade;
+  const { up: cascadeUp, downWarning, affected, handledViews } = cascade;
+  // A diff-injected view drop/recreate for a view the cascade already owns must NOT
+  // also flow through `rest` — the cascade emits it in the correct order (drop before
+  // the table dance, create after), whereas `rest` runs after the whole cascade (#243).
+  const viewNameOf = (c: Change): string | undefined => {
+    if (c.kind === "drop-view") return c.view;
+    if (c.kind === "create-view" || c.kind === "replace-view") return c.view.name;
+    return undefined;
+  };
   const nonAffected = changes.filter((c) => {
     const t = changeTable(c);
-    return !(t !== undefined && affected.has(t));
+    if (t !== undefined && affected.has(t)) return false;
+    const vn = viewNameOf(c);
+    if (vn !== undefined && handledViews.has(vn)) return false;
+    return true;
   });
   const rest = renderSqlite(nonAffected, expectedSchema, actualMeta);
 

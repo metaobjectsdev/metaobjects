@@ -237,11 +237,12 @@ export async function diff(
   );
   diffViews(expectedViewsInScope, actualViewsInScope, changes, args.dialect);
 
-  // Pass 2c: a column-altering change to a table a view reads forces the view to be
+  // Pass 2c: a change that disturbs the table under a view forces the view to be
   // dropped before and recreated after — postgres blocks ALTER on a column a view
-  // depends on, and sqlite rebuilds the table via recreate-and-copy. Body-unchanged
-  // dependent views get no change from Pass 2b, so this is where they're picked up.
-  recreateViewsDependingOnChangedTables(expectedViewsInScope, actualViewsInScope, changes);
+  // depends on; sqlite/d1 rebuild the table via recreate-and-copy for column, FK, AND
+  // CHECK/enum changes (#243), any of which strands the view. Body-unchanged dependent
+  // views get no change from Pass 2b, so this is where they're picked up.
+  recreateViewsDependingOnChangedTables(expectedViewsInScope, actualViewsInScope, changes, args.dialect);
 
   // Any drop-view (from Pass 2b or 2c) that would destroy relations we do NOT manage
   // must say so — a plain DROP fails at apply, and a CASCADE destroys them for good.
@@ -684,21 +685,41 @@ function annotateViewDropDependents(actual: readonly ViewDescriptor[], changes: 
   }
 }
 
-/** Column-altering change kinds: a view reading the affected column must be recreated. */
-const VIEW_RECREATE_TRIGGERS = new Set<Change["kind"]>([
+/**
+ * Postgres: a view reading a column blocks `ALTER … ALTER COLUMN`, so a column-altering
+ * change forces the view to be dropped-before / recreated-after. FK/CHECK changes are
+ * `ALTER TABLE ADD/DROP CONSTRAINT` — no table rebuild — so a dependent view is unaffected.
+ */
+const VIEW_RECREATE_TRIGGERS_PG = new Set<Change["kind"]>([
   "change-column-type", "change-column-nullable", "change-column-default",
   "drop-column", "rename-column",
+]);
+/**
+ * SQLite / D1: recreate-and-copy DROPs + RENAMEs the whole table for ANY of these
+ * (RECREATE_TRIGGERING_KINDS), which strands a dependent view across the rebuild even
+ * when the columns the view reads are unchanged — an evolved `field.enum @values`, a
+ * CHECK, or an FK change. So the FK/CHECK kinds join the column-altering set here. (#243)
+ */
+const VIEW_RECREATE_TRIGGERS_SQLITE = new Set<Change["kind"]>([
+  ...VIEW_RECREATE_TRIGGERS_PG,
+  "add-fk", "drop-fk", "add-check", "drop-check",
 ]);
 
 function recreateViewsDependingOnChangedTables(
   expectedViews: ViewDescriptor[],
   actualViews: ViewDescriptor[],
   changes: Change[],
+  dialect: Dialect | undefined,
 ): void {
+  // Only the recreate-and-copy dialects rebuild the table (and strand the view) for an
+  // FK/CHECK change; postgres and the dialect-less legacy path keep the narrow set.
+  const triggers = dialect === "sqlite" || dialect === "d1"
+    ? VIEW_RECREATE_TRIGGERS_SQLITE
+    : VIEW_RECREATE_TRIGGERS_PG;
   const actualById = new Map(actualViews.map((v) => [viewIdentity(v), v] as const));
   const alteredTables = new Set<string>();
   for (const c of changes) {
-    if (VIEW_RECREATE_TRIGGERS.has(c.kind)) {
+    if (triggers.has(c.kind)) {
       const t = (c as { table?: string }).table;
       if (typeof t === "string") alteredTables.add(t);
     }
