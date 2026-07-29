@@ -7,7 +7,33 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-**npm-only** — `codegen-ts`; PyPI / NuGet / Maven Central unchanged.
+**npm-only** — `metadata` + `codegen-ts`; PyPI / NuGet / Maven Central unchanged.
+
+### Fixed — a reference to a non-`object` top-level node now resolves (#194)
+
+A `ReferenceDescriptor`'s `targetType` is a free string (the mechanism promises a
+downstream provider's references validate "present and future"), but the loader's symbol
+table indexed only `object.*` nodes — so a descriptor targeting a custom top-level type
+(`targetType: "adapter"`) type-checked, registered, and then *unconditionally* failed
+every reference with a false "does not resolve to an object". The symbol table is now
+keyed per node type, so a reference to any registered top-level node kind resolves under
+the same ADR-0042 package-local contract (FQN-exact, else the referrer's package, else
+root-level), and the unresolved-error message names the actual target kind. Object-target
+references (every core `@objectRef` / `@from` / `@references` / `@payloadRef`) are
+byte-identical — the whole conformance corpus is unchanged; the change is strictly
+enabling.
+
+### Fixed — `dbImport` / `dialect` are optional for a value-object-only project (#194)
+
+A model that declares only `object.value`s generates zero database / query / route code,
+yet `dbImport` and `dialect` were **required** codegen-config fields, so a
+value-object-only project had to supply dead-but-mandatory placeholders to satisfy
+`tsc`. They are now optional on the user config; `meta gen` fills inert defaults when they
+are absent AND the model emits no DB artifacts, and throws a clear error naming the
+offending entities when they are absent but the model *does* generate DB code (so a
+Postgres project that forgets `dialect` gets an error, never silently-emitted sqlite).
+The resolved config the generators consume still carries both as required — generated
+output for every DB-generating project is unchanged.
 
 ### Added — `meta gen` records the codegen engine version and flags a change since the last run (#232)
 

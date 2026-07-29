@@ -343,33 +343,38 @@ configuration rich.
 All five ports compose providers in **dependency order** (Kahn's algorithm)
 and emit the same stable error codes when composition fails.
 
-## Adopter constraints (worth knowing up front)
+## Defining a custom top-level node type
 
-Three constraints that surface when building a real consumer — each is resolvable,
-but none is obvious from the happy-path docs:
+`metadata.root`'s child rules are a **closed set** — by design (FR-033 fail-closed
+hardening): a document root admits `object` / `field` / `validator` / `template` nodes
+and nothing else. So registering a new top-level subtype via a provider is **two steps**,
+both in the same provider's `registerTypes`:
 
-1. **Adding a new top-level node type requires `registry.extend` on `metadata.root`.**
-   `metadata.root`'s child rules are closed: a custom top-level subtype (e.g. an
-   `adapter.*` / `probe.*` you register via a provider) fails to load with
-   `ERR_CHILD_NOT_ALLOWED` unless a provider **also** `extend`s `metadata.root`'s
-   child rules to license it as a permitted child. Registering the subtype is not
-   enough on its own — its container must be told the subtype is allowed there.
+1. `registry.register(...)` the new `(type, subType)` — this declares the vocabulary
+   *exists*, not where it may *live*.
+2. `registry.extend(TYPE_METADATA, SUBTYPE_ROOT, { childRules: [...] })` to **license**
+   it as a permitted child of `metadata.root`.
 
-2. **Declarative reference resolution only indexes `object.*` nodes.** The built-in
-   ref resolver (the one behind `@objectRef` / `@from` / `@references` / `@payloadRef`)
-   binds references to `object.*` targets only. A reference **to a non-`object.*`
-   node** (e.g. a custom `adapter.*` referencing another custom top-level node) is not
-   resolved by the built-in resolver — resolve it yourself in the provider's `validate`
-   hook by walking the tree. Model references to entities/values/projections and you
-   get resolution for free; references to other node kinds are yours to resolve.
+Skip step 2 and the node fails to load with `ERR_CHILD_NOT_ALLOWED`. This is
+deliberate, not a papercut: registration declaring existence and the parent declaring
+admission are separate concerns (most registered subtypes — `view.image`,
+`template.toolcall` — are emphatically *not* root-level), and root admission is part of
+the byte-matched cross-port registry manifest. Auto-admitting every new type at the
+document root would be fail-open and would take admission out of the declarative record.
 
-3. **`dbImport` / `dialect` are required config even for a value-object-only project.**
-   A model that declares only `object.value`s (no write-through entities) generates
-   zero database / query / route code — yet `dbImport` and `dialect` are **required**
-   fields of the codegen config, so omitting them is a `tsc` type error. Supply inert
-   placeholders (e.g. `dialect: "sqlite"`, `dbImport: "./db"`); they are never read
-   when no DB code is generated. This is required regardless and harmless for
-   value-object-only models.
+```ts
+registerTypes(registry) {
+  registry.register({ typeId: new TypeId("adapter", "http"), /* … */ });
+  registry.extend(TYPE_METADATA, SUBTYPE_ROOT, {
+    childRules: [{ childType: "adapter", childSubType: "*", childName: "*" }],
+  });
+}
+```
+
+A **reference to your custom top-level type resolves package-aware for free** — a
+`ReferenceDescriptor` with `targetType: "adapter"` on some other node validates through
+the same resolver as `@objectRef` (FQN-exact, else the referrer's package, else
+root-level), so you do **not** hand-walk the tree in a `validate` hook.
 
 ## See also
 

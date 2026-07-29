@@ -149,6 +149,30 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     return { files: [], warnings, conflicts: [] };
   }
 
+  // #194 — dbImport / dialect are optional config, BUT a model that emits database
+  // artifacts (any concrete object that is not an object.value — entities and
+  // projections generate schema / query / route code) genuinely needs them. Guard
+  // BEFORE normalizeConfig fills its inert defaults, so a DB project that forgot
+  // either gets a clear error naming the objects, never silently-defaulted output
+  // (e.g. a Postgres project quietly emitting sqlite). A value-object-only project
+  // reaches normalizeConfig and gets the harmless placeholders.
+  const dbEmittingObjects = safeEntities.filter(
+    (e) => !e.isAbstract && e.subType !== OBJECT_SUBTYPE_VALUE,
+  );
+  if (dbEmittingObjects.length > 0) {
+    const missing: string[] = [];
+    if (opts.config.dialect === undefined) missing.push("dialect");
+    if (opts.config.dbImport === undefined) missing.push("dbImport");
+    if (missing.length > 0) {
+      const names = dbEmittingObjects.map((e) => e.name).join(", ");
+      throw new Error(
+        `codegen config is missing ${missing.join(" and ")} — required because this model ` +
+          `generates database code for: ${names}. Set ${missing.join(" and ")} in ` +
+          `metaobjects.config.ts. (Only a value-object-only model may omit them.)`,
+      );
+    }
+  }
+
   // 2. Resolve targets + entity-module target.
   const config = normalizeConfig(opts.config);
   const targets = config.targets;

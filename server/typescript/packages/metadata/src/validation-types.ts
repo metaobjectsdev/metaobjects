@@ -30,10 +30,20 @@ export interface ReferenceDescriptor {
   readonly errorCode: LoaderCode;
 }
 
-/** Resolve a ref string to its object node under the ADR-0042 package-local
+/** Resolve a ref string to a top-level node under the ADR-0042 package-local
  *  contract. `referrerPkg` is the effective package of the node that declares
  *  the ref (a bare ref resolves in that package, else root-level). */
 export interface SymbolTable {
+  /**
+   * Resolve a ref to a node of the given target TYPE. A `ReferenceDescriptor` may
+   * target a non-`object` node kind (its `targetType` is a free string), so the
+   * resolver is keyed by type — a downstream provider's `adapter.*`→`adapter.*`
+   * reference resolves for free, matching the descriptor mechanism's "present and
+   * future" promise. (Previously only `object.*` targets were indexed, so a
+   * non-object `targetType` was silently unsatisfiable.)
+   */
+  resolve(type: string, ref: string, referrerPkg: string): MetaData | undefined;
+  /** The common case — an `object`-target reference. Delegates to `resolve("object", …)`. */
   resolveObject(ref: string, referrerPkg: string): MetaData | undefined;
 }
 
