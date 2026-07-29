@@ -100,8 +100,9 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // since the last gen, note it (generated output may legitimately differ). Purely
   // informational — the version file is separate from `.hashes.json` and never
   // affects the merge. Only fires when a prior stamp exists AND differs.
-  const installedEngine = engineVersion();
-  const recordedEngine = loadEngineVersion(genStateDir);
+  const hasPersistentGenState = opts.projectRoot !== undefined || opts.genStateDir !== undefined;
+  const installedEngine = hasPersistentGenState ? engineVersion() : undefined;
+  const recordedEngine = hasPersistentGenState ? loadEngineVersion(genStateDir) : undefined;
   if (
     installedEngine !== undefined &&
     recordedEngine !== undefined &&
