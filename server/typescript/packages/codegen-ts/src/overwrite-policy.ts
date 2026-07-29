@@ -108,6 +108,38 @@ function saveHashes(genStateDir: string, hashes: HashesFile): void {
   writeFileSync(join(genStateDir, HASHES_FILE), JSON.stringify(hashes, null, 2) + "\n");
 }
 
+const ENGINE_FILE = ".engine.json";
+
+/**
+ * The codegen engine version that last wrote this `.gen-state`, or undefined if it
+ * was never stamped (a pre-#232 snapshot, or a fresh project). Informational only —
+ * a separate reserved file from `.hashes.json`, it never participates in the
+ * three-way merge decision. (#232)
+ */
+export function loadEngineVersion(genStateDir: string): string | undefined {
+  const f = join(genStateDir, ENGINE_FILE);
+  if (!existsSync(f)) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(f, "utf-8"));
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const v = (parsed as { codegenVersion?: unknown }).codegenVersion;
+      return typeof v === "string" ? v : undefined;
+    }
+  } catch {
+    // Malformed → treat as unstamped; the stamp is informational, never load-bearing.
+  }
+  return undefined;
+}
+
+/** Record the codegen engine version alongside the gen-state hashes (#232). */
+export function saveEngineVersion(genStateDir: string, version: string): void {
+  mkdirSync(genStateDir, { recursive: true });
+  writeFileSync(
+    join(genStateDir, ENGINE_FILE),
+    JSON.stringify({ codegenVersion: version }, null, 2) + "\n",
+  );
+}
+
 function snapshotPath(genStateDir: string, relPath: string): string {
   // `.hashes.json` is reserved at the top of .gen-state/; relPath must never
   // collide with it. Output paths derived from entity names ("Post.ts" etc.)

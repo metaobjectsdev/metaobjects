@@ -1,5 +1,7 @@
-import { join, relative, resolve, isAbsolute } from "node:path";
+import { join, relative, resolve, isAbsolute, dirname } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import type { MetaData, MetaObject } from "@metaobjectsdev/metadata";
 import { MetaRoot, OBJECT_SUBTYPE_VALUE } from "@metaobjectsdev/metadata";
 import { assignEmittedNames } from "./naming/collision-names.js";
@@ -13,6 +15,8 @@ import { buildRelationMap } from "./relation-resolver.js";
 import { makeRenderContext } from "./render-context.js";
 import {
   decideAndWrite,
+  loadEngineVersion,
+  saveEngineVersion,
   type WriteResult,
   type MergeStrategy,
   type BaselineMode,
@@ -54,6 +58,22 @@ export interface RunGenResult {
   conflicts: WriteResult[];
 }
 
+/**
+ * codegen-ts's own published version, for the #232 gen-state engine stamp. Read from
+ * this package's package.json (one level above `dist/` or `src/`); undefined when it
+ * can't be resolved (e.g. inside a compiled standalone binary with no on-disk
+ * package.json) — the stamp is informational, so an unknown version simply skips it.
+ */
+function engineVersion(): string | undefined {
+  try {
+    const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { version?: unknown };
+    return typeof pkg.version === "string" ? pkg.version : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   const warnings: string[] = [];
   const strategy = opts.mergeStrategy ?? "overwrite";
@@ -75,6 +95,23 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     : (projectRoot !== undefined
         ? join(projectRoot, ".metaobjects", ".gen-state")
         : join(tmpdir(), `meta-gen-state-${process.pid}`));
+
+  // #232 — make an unexplained regen diff explained: if the codegen engine changed
+  // since the last gen, note it (generated output may legitimately differ). Purely
+  // informational — the version file is separate from `.hashes.json` and never
+  // affects the merge. Only fires when a prior stamp exists AND differs.
+  const installedEngine = engineVersion();
+  const recordedEngine = loadEngineVersion(genStateDir);
+  if (
+    installedEngine !== undefined &&
+    recordedEngine !== undefined &&
+    recordedEngine !== installedEngine
+  ) {
+    warnings.push(
+      `codegen engine ${recordedEngine} → ${installedEngine} since last gen — ` +
+        `generated output may differ; see CHANGELOG.`,
+    );
+  }
 
   // loadMemory now returns MetaRoot; guard here also covers callers that pass a
   // plain MetaData (e.g. test helpers that build trees programmatically).
@@ -299,6 +336,10 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       );
     }
   }
+
+  // #232 — stamp the engine version that produced this snapshot, so the NEXT gen can
+  // detect an engine change. Written after a successful run only.
+  if (installedEngine !== undefined) saveEngineVersion(genStateDir, installedEngine);
 
   return { files: writes, warnings, conflicts };
 }

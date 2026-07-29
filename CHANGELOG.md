@@ -5,6 +5,23 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
+## [Unreleased]
+
+**npm-only** — `codegen-ts`; PyPI / NuGet / Maven Central unchanged.
+
+### Added — `meta gen` records the codegen engine version and flags a change since the last run (#232)
+
+`.metaobjects/.gen-state/` recorded per-file content hashes but not the
+`@metaobjectsdev/codegen-ts` **engine version** that produced them, so a consumer who
+ran `npm update && meta gen` after an engine change saw a surprising diff (or a
+three-way-merge conflict) with no signal about *why* the output moved. `meta gen` now
+stamps the engine version alongside the hashes (a separate `.engine.json` — it never
+participates in the merge decision) and, when the recorded version differs from the
+installed one, prints one informational line before writing: `codegen engine
+<old> → <new> since last gen — generated output may differ; see CHANGELOG.` Purely
+informational, never blocks; a pre-`0.20.x` snapshot (or a fresh project) has no stamp
+and warns nothing. No change to generated output.
+
 ## [7.20.12] — 2026-08-02
 
 **Maven-only PATCH** — Maven Central `7.20.12` (npm/PyPI/NuGet unchanged at `0.20.11`; the fix is Java-only, so only the Maven line moves — Maven now runs one patch ahead of the shared `20.11`, mirroring how npm runs a patch ahead with npm-only fixes). Fixes **[#233](https://github.com/metaobjectsdev/metaobjects/issues/233)**: a multi-module Maven reactor building `metaobjects-maven-plugin` in **parallel** (`mvn -T<N>`) deadlocked/hung; the serial default (`-T1`) always worked. Two compounding causes, both fixed:
