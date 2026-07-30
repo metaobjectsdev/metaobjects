@@ -47,7 +47,12 @@ export const extractor = function extractor(opts?: ExtractorOpts): Generator {
         if (format !== "json" && format !== "xml") continue;
         files.push({
           path: `${dirPrefix}${t.name}.extractor.ts`,
-          content: renderExtractor(ctx.loadedRoot, t.name),
+          // ADR-0044/#228: thread ctx.renderContext (when present — runGen always supplies it;
+          // a hand-rolled GenContext in a unit test may omit it, falling back to bare naming) so
+          // a payload/nested value-object whose bare name collides across packages emits/imports
+          // the entity-domain qualified name (Task 3's valueObjectEmittedName), matching
+          // entityFile()'s module.
+          content: renderExtractor(ctx.loadedRoot, t.name, ctx.renderContext),
         });
       }
       return files;

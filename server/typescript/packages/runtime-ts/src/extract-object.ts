@@ -29,7 +29,8 @@ import {
   MetaField,
   MetaRoot,
   type MetaData,
-  PACKAGE_SEPARATOR,
+  TYPE_OBJECT,
+  resolveObjectRef,
   FIELD_SUBTYPE_ENUM,
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_STRING,
@@ -159,7 +160,7 @@ function fieldSpecFor(
 
   // --- Nested object (single or array) --------------------------------------
   if (field.subType === FIELD_SUBTYPE_OBJECT || field.objectRef !== undefined) {
-    const ref = resolveObjectRef(field);
+    const ref = resolveFieldObjectRef(field);
     const cyclicOrDeep = ref === undefined || visited.has(ref) || depth + 1 >= MAX_NEST_DEPTH;
     if (cyclicOrDeep) {
       // Opaque leaf — never recurse into a cycle / past the depth bound.
@@ -239,7 +240,7 @@ function assembleInner(
     }
 
     // Nested object — guard cycles/depth (mirror the schema guard).
-    const ref = resolveObjectRef(field);
+    const ref = resolveFieldObjectRef(field);
     const cyclicOrDeep = ref === undefined || visited.has(ref) || depth + 1 >= MAX_NEST_DEPTH;
 
     if (field.resolvedIsArray()) {
@@ -359,23 +360,32 @@ function attrString(node: MetaData, attr: string): string | null {
 }
 
 /**
- * Resolve a field's `@objectRef` FQN to its MetaObject by walking to the tree root and looking it
- * up. The objectRef may be a bare name or a `pkg::Name` FQN; we try the value as-is, then the short
- * name after the last package separator. Returns undefined when unresolvable (→ opaque-leaf guard).
+ * Resolve a field's `@objectRef` to its MetaObject via the canonical ADR-0042 package-local
+ * resolver (`resolveObjectRef` from `@metaobjectsdev/metadata`): an FQN ref (contains `::`)
+ * matches EXACTLY on `resolutionKey()`; a bare ref resolves in the field's OWN declaring
+ * package (`field.parent?.package ?? field.parent?.fileDefaultPackage`), else root-level.
+ *
+ * #228: this previously called `MetaRoot.findObject(name)` directly — a bare-`name`-only
+ * lookup — and, for an FQN ref (which never matches any object's bare `.name`), fell back to
+ * `MetaRoot.findObject(<bare tail>)`. That bare-tail fallback is the exact cross-package
+ * short-name collision hazard ADR-0042 closed everywhere else: TWO value-objects sharing a
+ * short name in different packages (e.g. `acme::alpha::Note` / `acme::beta::Note`) made this
+ * resolve to WHICHEVER one happened to load first, silently assembling the WRONG shape's data
+ * into the runtime-delegating JSON/XML extract path (`extractObject`) — reachable end-to-end
+ * through a generated `extractLenient<Template>WithLoader`. Fixed to the shared FQN-exact/
+ * package-local resolver so it can never mis-bind (proven against
+ * fixtures/template-output-render-conformance/xpkg-collision-json/).
+ *
+ * Returns undefined when unresolvable (→ opaque-leaf guard).
  */
-function resolveObjectRef(field: MetaField): MetaObject | undefined {
+function resolveFieldObjectRef(field: MetaField): MetaObject | undefined {
   const ref = attrString(field, FIELD_ATTR_OBJECT_REF) ?? field.objectRef;
   if (ref === undefined || ref === null) return undefined;
   const root = field.root();
   if (!(root instanceof MetaRoot)) return undefined;
-  const direct = root.findObject(ref);
-  if (direct !== undefined) return direct;
-  const sep = ref.lastIndexOf(PACKAGE_SEPARATOR);
-  if (sep >= 0) {
-    const short = ref.slice(sep + PACKAGE_SEPARATOR.length);
-    return root.findObject(short);
-  }
-  return undefined;
+  const referrerPkg = field.parent?.package ?? field.parent?.fileDefaultPackage ?? "";
+  const { node } = resolveObjectRef(root, ref, referrerPkg);
+  return node !== undefined && node.type === TYPE_OBJECT ? (node as MetaObject) : undefined;
 }
 
 function isPlainObject(o: unknown): boolean {
