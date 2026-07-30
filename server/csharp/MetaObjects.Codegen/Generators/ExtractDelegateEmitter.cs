@@ -201,6 +201,27 @@ internal static class ExtractDelegateEmitter
         string rootMirror, string formatEnum)
     {
         var nameMap = ClosureNameMap(vo, root);
+
+        // ADR-0044/#228 fix round 1 — root.FindObject(name) (MetaRoot's public runtime API) is
+        // a bare-Name-only, first-match lookup with NO package awareness. Payload
+        // records/extractors/output-parsers emit into ONE FLAT namespace (config.Namespace),
+        // while entities and owned value-objects can emit into PER-PACKAGE namespaces (FR-019
+        // PackageBindingResolver) — so two DIFFERENT-package objects sharing this payload's bare
+        // short name (e.g. an object.value "Report" used as this @payloadRef in one package, and
+        // an unrelated object.entity "Report" in another) can BOTH load and compile cleanly (no
+        // duplicate-type error, since they land in different namespaces), yet
+        // root.FindObject(bareName) at RUNTIME silently binds whichever one loaded first —
+        // reachable, compiling, silent wrong-node extraction. Bake the FULL ResolutionKey (FQN)
+        // and resolve via the canonical NamingRefs.ResolveObjectRef matcher (FQN-exact,
+        // load-order-independent) ONLY when this payload's bare name is actually AMBIGUOUS at
+        // the metadata root (more than one root-level object.* shares it — the SAME domain
+        // MetaRoot.FindObject itself searches). A UNIQUE (the overwhelmingly common) payload
+        // name keeps TODAY'S exact bare-name + root.FindObject() path, byte-identical to
+        // pre-fix output — a naive "always bake the FQN" would REGRESS the unique case, since
+        // MetaRoot.FindObject matches bare child names only and would return null for an FQN.
+        bool payloadNameAmbiguous = root.Children().Count(c => c.Type == TYPE_OBJECT && c.Name == vo.Name) > 1;
+        string bakedPayloadFqn = payloadNameAmbiguous ? vo.ResolutionKey() : payloadFqn;
+
         var sb = new StringBuilder();
         sb.AppendLine();
         sb.AppendLine("    // FR-010 — runtime-delegating extraction (the single metadata-driven extract path).");
@@ -208,8 +229,11 @@ internal static class ExtractDelegateEmitter
         sb.AppendLine("    // FULL object graph (nested objects + arrays-of-objects) reflection-free by reading the live");
         sb.AppendLine("    // metadata, then maps it into the typed nullable mirror via From*Extracted.");
         sb.AppendLine();
-        sb.AppendLine($"    /// <summary>The payload's metadata name — resolve it against a loaded <c>MetaRoot</c> to obtain the runtime <c>MetaObject</c>.</summary>");
-        sb.AppendLine($"    public const string PAYLOAD_FQN = \"{Fr010FieldMapping.CSharpStringLiteral(payloadFqn)}\";");
+        var ambiguousNote = payloadNameAmbiguous
+            ? " ADR-0042 FQN (this payload's bare name collides with a same-short-name object elsewhere in the run)."
+            : "";
+        sb.AppendLine($"    /// <summary>The payload's metadata name — resolve it against a loaded <c>MetaRoot</c> to obtain the runtime <c>MetaObject</c>.{ambiguousNote}</summary>");
+        sb.AppendLine($"    public const string PAYLOAD_FQN = \"{Fr010FieldMapping.CSharpStringLiteral(bakedPayloadFqn)}\";");
         sb.AppendLine();
         sb.AppendLine($"    /// <summary>Tolerant best-effort extraction delegating to the runtime; fully populates nested-object and");
         sb.AppendLine($"    /// array-of-object components by reading the live metadata. Never throws.</summary>");
@@ -227,7 +251,12 @@ internal static class ExtractDelegateEmitter
         sb.AppendLine($"    public static global::MetaObjects.Render.Extract.ExtractionResult<{rootMirror}> ExtractLenient(");
         sb.AppendLine($"        global::MetaObjects.Meta.MetaRoot root, string text, ExtractOptions? opts = null)");
         sb.AppendLine("    {");
-        sb.AppendLine("        var mo = root.FindObject(PAYLOAD_FQN)");
+        // NamingRefs.ResolveObjectRef returns MetaData?; ExtractLenient(MetaObject, ...) needs a
+        // MetaObject — the "as" narrows (never a hard cast throw) matching root.FindObject's own
+        // MetaObject? return type on the unique path.
+        sb.AppendLine(payloadNameAmbiguous
+            ? "        var mo = global::MetaObjects.NamingRefs.ResolveObjectRef(root, PAYLOAD_FQN, \"\") as global::MetaObjects.Meta.MetaObject"
+            : "        var mo = root.FindObject(PAYLOAD_FQN)");
         sb.AppendLine("            ?? throw new global::System.InvalidOperationException(");
         sb.AppendLine("                $\"payload object \\\"{PAYLOAD_FQN}\\\" not found in the loaded metadata\");");
         sb.AppendLine("        return ExtractLenient(mo, text, opts);");

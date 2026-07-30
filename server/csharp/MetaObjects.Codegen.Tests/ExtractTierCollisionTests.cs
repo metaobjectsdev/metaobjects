@@ -174,6 +174,100 @@ public sealed class ExtractTierCollisionTests
         Assert.DoesNotContain("AcmeDemo", extractorFile.Content);
     }
 
+    // ---------------------------------------------------------------------
+    // #228 fix round 1 — the RUNTIME PAYLOAD_FQN lookup wrong-node bug. Payload
+    // records/extractors/output-parsers ALWAYS emit into ONE FLAT namespace
+    // (ctx.Config.Namespace), while entities (and owned value-objects referenced by an
+    // entity) can emit into PER-PACKAGE namespaces via PackageBindingResolver (FR-019 —
+    // the recommended setup for multi-package projects). So an object.value "Report"
+    // (this @payloadRef, in acme::beta) and an UNRELATED object.entity "Report" (in
+    // acme::alpha) can BOTH load (ADR-0042 makes cross-package bare short names legal)
+    // AND compile cleanly (different namespaces — no duplicate-type error) while
+    // sharing the exact same bare short name. Before this fix, the generated
+    // ExtractLenient(MetaRoot, string) overload resolved its payload via a bare
+    // root.FindObject("Report") (MetaRoot's public runtime API — package-blind,
+    // first-match) — reachable, COMPILING, and silently wrong-node at runtime (the
+    // build-time resolver fix earlier in this file does NOT cover this: it only
+    // decides which node the GENERATOR walks, not what the GENERATED CODE looks up
+    // at runtime).
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void ExtractLenient_MetaRoot_overload_binds_the_payload_not_a_same_named_entity_in_another_package()
+    {
+        const string alphaEntity = """
+        { "metadata.root": { "package": "acme::alpha", "children": [
+          { "object.entity": { "name": "Report", "children": [
+            { "source.rdb": { "@table": "reports" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]}}
+        ]}}
+        """;
+        const string betaPayload = """
+        { "metadata.root": { "package": "acme::beta", "children": [
+          { "object.value": { "name": "Report", "children": [
+            { "field.string": { "name": "betaVal", "@required": true } }
+          ]}},
+          { "template.output": { "name": "ReportDoc", "@payloadRef": "Report",
+              "@textRef": "x/y", "@format": "json" } }
+        ]}}
+        """;
+        // Adversarial load order: alpha's ENTITY "Report" loads FIRST, so a package-blind
+        // bare-name-first-match runtime lookup would bind IT, never beta's payload value.
+        var r = new MetaDataLoader().Load([
+            new InMemoryStringSource(alphaEntity, id: "alpha.json"),
+            new InMemoryStringSource(betaPayload, id: "beta.json"),
+        ]);
+        Assert.Empty(r.Errors);
+        var root = r.Root;
+
+        var config = new GenConfig
+        {
+            OutDir = "/tmp",
+            Namespace = "Acme.Generated",
+            // FR-019 per-package namespace binding — acme::alpha's entities land in a
+            // DIFFERENT namespace than the flat payload/output-parser namespace, so the
+            // two same-bare-named "Report"s do NOT collide at compile time (proving the
+            // scenario is reachable in a real, recommended multi-package setup).
+            PackageNamespaces = new Dictionary<string, string> { ["acme::alpha"] = "Acme.Alpha" },
+        };
+        var ctx = new GenContext { Entities = root.Objects(), Root = root, Config = config };
+
+        var entitySrc = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
+        var parserSrc = Assert.Single(new OutputParserGenerator().Generate(ctx), f => f.Path == "ReportDoc.output.cs").Content;
+        var payloadSrc = "using System.Collections.Generic;\nnamespace Acme.Generated;\n"
+            + PayloadCodegen.GeneratePayloadRecords(root, "acme::beta::Report");
+
+        // The entity lands in its OWN per-package namespace, distinct from the flat
+        // payload namespace — proves the "no compile collision" premise this bug relies on.
+        Assert.Contains("namespace Acme.Alpha;", entitySrc);
+        Assert.Contains("public class Report", entitySrc);
+        Assert.Contains("namespace Acme.Generated;", parserSrc);
+
+        // The runtime PAYLOAD_FQN lookup bakes the FULL FQN (never the bare, ambiguous
+        // "Report") and resolves via the canonical FQN-exact matcher — never MetaRoot's
+        // bare-name-first-match FindObject.
+        Assert.Contains("public const string PAYLOAD_FQN = \"acme::beta::Report\";", parserSrc);
+        Assert.Contains("global::MetaObjects.NamingRefs.ResolveObjectRef(root, PAYLOAD_FQN, \"\")", parserSrc);
+        Assert.DoesNotContain("root.FindObject(PAYLOAD_FQN)", parserSrc);
+
+        var asm = Compile(entitySrc, parserSrc, payloadSrc);
+
+        var parserType = asm.GetType("Acme.Generated.ReportDocParser")!;
+        var extractLenientWithLoader = parserType.GetMethods()
+            .Single(m => m.Name == "ExtractLenient" && m.GetParameters()[0].ParameterType == typeof(MetaRoot));
+
+        const string text = "{ \"betaVal\": \"BV\" }";
+        var result = extractLenientWithLoader.Invoke(null, new object?[] { root, text, null })!;
+        var data = result.GetType().GetProperty("Data")!.GetValue(result)!;
+
+        // Binds the PAYLOAD value's shape (betaVal), NOT the entity's (id) — the wrong-node
+        // bug would have assembled the graph against alpha's entity schema instead, losing
+        // betaVal entirely (no such property on the entity's field set).
+        Assert.Equal("BV", data.GetType().GetProperty("betaVal")!.GetValue(data));
+    }
+
     private static Assembly Compile(params string[] sources)
     {
         var trees = sources.Select(s =>
