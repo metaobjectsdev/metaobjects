@@ -447,7 +447,11 @@ def test_cross_package_short_name_collision_qualifies_both_nested_classes() -> N
         ],
         package="acme::app",
     )
-    tmpl = _template("DigestOut", "Digest")
+    # #228 fix round 2: @payloadRef authored FQN — `Digest` is explicitly
+    # package="acme::app" while `tmpl` (added at root, default package
+    # "acme::ai") is NOT in that package; ADR-0042 package-local resolution
+    # requires an FQN ref here (matches how this would actually be authored).
+    tmpl = _template("DigestOut", "acme::app::Digest")
     root = _root([alpha, beta, digest, tmpl])
     out = render_payload_vo(tmpl, root)
     assert out is not None
@@ -478,7 +482,11 @@ def test_nested_of_nested_collision_qualifies_across_depths() -> None:
         ],
         package="acme::app",
     )
-    tmpl = _template("DigestOut", "Digest")
+    # #228 fix round 2: @payloadRef authored FQN — `Digest` is explicitly
+    # package="acme::app" while `tmpl` (added at root, default package
+    # "acme::ai") is NOT in that package; ADR-0042 package-local resolution
+    # requires an FQN ref here (matches how this would actually be authored).
+    tmpl = _template("DigestOut", "acme::app::Digest")
     root = _root([beta_note, gamma_note, outer, digest, tmpl])
     out = render_payload_vo(tmpl, root)
     assert out is not None
@@ -505,7 +513,11 @@ def test_derived_name_still_colliding_fails_loud() -> None:
         ],
         package="acme::app",
     )
-    tmpl = _template("DigestOut", "Digest")
+    # #228 fix round 2: @payloadRef authored FQN — `Digest` is explicitly
+    # package="acme::app" while `tmpl` (added at root, default package
+    # "acme::ai") is NOT in that package; ADR-0042 package-local resolution
+    # requires an FQN ref here (matches how this would actually be authored).
+    tmpl = _template("DigestOut", "acme::app::Digest")
     root = _root([a, b, digest, tmpl])
     with pytest.raises(ValueError) as ei:
         render_payload_vo(tmpl, root)

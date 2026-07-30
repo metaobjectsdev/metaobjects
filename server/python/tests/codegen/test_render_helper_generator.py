@@ -399,7 +399,14 @@ def test_snake_case_pascal_to_snake() -> None:
 
 def test_resolve_payload_vo_matches_short_and_fully_qualified_ref() -> None:
     """FR-026 expands @payloadRef to a fully-qualified ``a::b::Name`` while the
-    object.value child still carries the short ``name`` — both forms must resolve."""
+    object.value child still carries the short ``name`` — both forms must resolve.
+
+    #228 fix round 2: ``_resolve_payload_vo`` now requires an explicit
+    ``referrer_pkg`` (package-local, ADR-0042) — a SHORT (bare) ref resolves
+    against the referrer's OWN package (here ``"acme::blog"``, the SAME package
+    ``WelcomePayload`` is declared in — the common same-package case this test
+    exercises); an FQN ref resolves exactly regardless of the referrer package
+    (passed ``""`` below to prove that)."""
     import json
 
     from metaobjects import InMemoryStringSource, MetaDataFormat, MetaDataLoader
@@ -413,6 +420,6 @@ def test_resolve_payload_vo_matches_short_and_fully_qualified_ref() -> None:
             id="m.json", format=MetaDataFormat.JSON,
         )
     ]).root
-    assert _resolve_payload_vo(root, "WelcomePayload") is not None  # short ref
-    assert _resolve_payload_vo(root, "acme::blog::WelcomePayload") is not None  # FQN ref
-    assert _resolve_payload_vo(root, "acme::blog::Missing") is None
+    assert _resolve_payload_vo(root, "WelcomePayload", "acme::blog") is not None  # short ref, same-package referrer
+    assert _resolve_payload_vo(root, "acme::blog::WelcomePayload", "") is not None  # FQN ref
+    assert _resolve_payload_vo(root, "acme::blog::Missing", "") is None

@@ -37,6 +37,8 @@ import sys
 from importlib import import_module
 from pathlib import Path
 
+import pytest
+
 import metaobjects.core_types  # noqa: F401 — side-effect: registers attr classes
 from metaobjects import InMemoryStringSource, MetaDataLoader
 from metaobjects.codegen.config import GenConfig
@@ -309,28 +311,32 @@ def test_no_churn_non_colliding_nested_vo_keeps_bare_names() -> None:
 # happened to iterate first. Mirrors the TS reference's
 # ReportDocAlpha/ReportDocBeta proof (output-parser.ts's `payloadNameCollides`).
 #
-# NOTE: the `@payloadRef` values below are authored FQN (not bare), which
-# sidesteps a SEPARATE, pre-existing, out-of-scope bug discovered while writing
-# this test: `payload_vo_generator.resolve_payload_vo` (the BUILD-TIME
-# `@payloadRef` -> object.value resolver, shared by payload_vo_generator.py,
-# output_parser_generator.py, AND extractor_generator.py — and, via its
-# `_resolve_object_by_short_or_fqn` helper, several other unrelated call sites
-# in cli.py / apidocs/builder.py / output_prompt_generator.py /
-# trace_helper_generator.py) is NOT referrer-package-aware for a BARE
-# `@payloadRef` — unlike `@objectRef`'s `ref_vo`, which #228 already fixed via
-# `resolve_object_ref`. A bare `@payloadRef` that collides across packages
-# resolves to whichever same-bare-named object.value loads first, REGARDLESS
-# of the referencing template's own package — a real, reachable "wrong node"
-# bug, but a MUCH wider blast radius than this task (touches subsystems
-# unrelated to the extract tier). Flagged in the report as a follow-up
-# candidate, deliberately NOT fixed here. Authoring FQN `@payloadRef`s here
-# isolates THIS test to the fix this round actually makes: the RUNTIME
-# PAYLOAD_NAME lookup, once the (already build-time-correct, because FQN)
-# `payload` MetaObject is resolved.
+# Fix round 2 (#228 Important, fable-adjudicated in-scope) — this originally
+# authored each `@payloadRef` as an FQN to sidestep a SEPARATE bug found while
+# writing this test: `payload_vo_generator.resolve_payload_vo` (the BUILD-TIME
+# `@payloadRef` -> object.value resolver — the loader's own `_validate_templates`
+# pass ALREADY resolves this exact ref package-local, so codegen silently
+# emitting a DIFFERENT object than the loader validated was in-charter) was not
+# referrer-package-aware for a BARE ref, resolving to whichever same-bare-named
+# object.value loaded first, regardless of which package the referencing
+# template belonged to. Round 2 fixed `resolve_payload_vo` (now routes through
+# `naming_refs.resolve_object_ref`, package-local, ADR-0042) — so this now
+# authors the REALISTIC common case (a bare, same-package self-reference,
+# exactly like the TS reference's own test) and proves BOTH fixes together:
+# build-time resolution binds each template to ITS OWN package's `Report`
+# (round 2), and the runtime `PAYLOAD_NAME` lookup for that same-bare-name
+# collision correctly bakes the FQN (round 1) — tested under BOTH load orders
+# (`beta_first`), since the pre-round-2 bug was load-order-dependent.
 # ---------------------------------------------------------------------------
 
 
-def _load_two_package_report_collision_root() -> MetaRoot:
+def _load_two_package_report_collision_root(*, beta_first: bool = False) -> MetaRoot:
+    """Two packages, each declaring its OWN bare-colliding ``Report`` value-object
+    and a ``template.output`` that references it via a BARE (same-package)
+    ``@payloadRef`` — the realistic common case (mirrors the TS reference's
+    ``ReportDocAlpha``/``ReportDocBeta`` test). *beta_first* controls load order
+    (``MetaDataLoader().load()`` processes an in-memory source list in the given
+    order — unlike the CLI's directory scan, there is no filename to sort by)."""
     alpha = {
         "metadata.root": {
             "package": "acme::alpha",
@@ -346,7 +352,7 @@ def _load_two_package_report_collision_root() -> MetaRoot:
                 {
                     "template.output": {
                         "name": "ReportDocAlpha",
-                        "@payloadRef": "acme::alpha::Report",
+                        "@payloadRef": "Report",
                         "@textRef": "unused/a",
                         "@format": "json",
                     }
@@ -369,7 +375,7 @@ def _load_two_package_report_collision_root() -> MetaRoot:
                 {
                     "template.output": {
                         "name": "ReportDocBeta",
-                        "@payloadRef": "acme::beta::Report",
+                        "@payloadRef": "Report",
                         "@textRef": "unused/b",
                         "@format": "json",
                     }
@@ -377,17 +383,25 @@ def _load_two_package_report_collision_root() -> MetaRoot:
             ],
         }
     }
-    sources = [
-        InMemoryStringSource(json.dumps(alpha)),
-        InMemoryStringSource(json.dumps(beta)),
-    ]
+    alpha_src = InMemoryStringSource(json.dumps(alpha))
+    beta_src = InMemoryStringSource(json.dumps(beta))
+    sources = [beta_src, alpha_src] if beta_first else [alpha_src, beta_src]
     res = MetaDataLoader().load(sources)
     assert res.errors == [], res.errors
     return res.root
 
 
-def test_colliding_own_payload_name_bakes_fqn_and_uses_resolve_object_ref() -> None:
-    root = _load_two_package_report_collision_root()
+@pytest.mark.parametrize(
+    "beta_first", [False, True], ids=["alpha-loads-first", "beta-loads-first"]
+)
+def test_colliding_own_payload_name_binds_own_package_bakes_fqn(
+    beta_first: bool,
+) -> None:
+    """Bare, same-package ``@payloadRef`` — each template binds ITS OWN
+    package's ``Report`` at BUILD time (round 2's `resolve_payload_vo` fix),
+    regardless of load order, and each bakes ITS OWN FQN for the RUNTIME lookup
+    (round 1's fix) — never the bare ``"Report"``, never the other's FQN."""
+    root = _load_two_package_report_collision_root(beta_first=beta_first)
     files = OutputParserGenerator().generate(_ctx(root))
     alpha_src = next(
         f for f in files if f.path == "report_doc_alpha_output_parser.py"
@@ -395,6 +409,13 @@ def test_colliding_own_payload_name_bakes_fqn_and_uses_resolve_object_ref() -> N
     beta_src = next(
         f for f in files if f.path == "report_doc_beta_output_parser.py"
     ).content
+
+    # Each template's STRICT parser binds its OWN package's shape — proves
+    # round 2's build-time resolve_payload_vo fix (never load-order-dependent).
+    assert "def parse_report_doc_alpha(text: str) -> ReportDocAlphaPayload:" in alpha_src
+    assert "from .report_doc_alpha_payload import ReportDocAlphaPayload" in alpha_src
+    assert "def parse_report_doc_beta(text: str) -> ReportDocBetaPayload:" in beta_src
+    assert "from .report_doc_beta_payload import ReportDocBetaPayload" in beta_src
 
     # Each bakes ITS OWN FQN — never the bare "Report", never the other's FQN.
     assert 'PAYLOAD_NAME = "acme::alpha::Report"' in alpha_src
@@ -415,15 +436,20 @@ def test_colliding_own_payload_name_bakes_fqn_and_uses_resolve_object_ref() -> N
     assert "meta_object import MetaObject" not in beta_src
 
 
+@pytest.mark.parametrize(
+    "beta_first", [False, True], ids=["alpha-loads-first", "beta-loads-first"]
+)
 def test_colliding_own_payload_names_run_verified_each_extracts_its_own_shape(
-    tmp_path,
+    tmp_path, beta_first: bool
 ) -> None:
-    """The strongest proof: generate BOTH output parsers, materialize +
-    import + RUN both against ONE shared MetaRoot. Each must extract via ITS
-    OWN payload shape — never the other's (the pre-fix wrong-node bug would
-    have made this load-order-dependent: whichever object iterated first in
-    `root.own_children()` would win for BOTH templates)."""
-    root = _load_two_package_report_collision_root()
+    """The strongest proof: generate BOTH output parsers (+ the payload module)
+    from a bare, same-package ``@payloadRef`` on each side, materialize + import
+    + RUN both against ONE shared MetaRoot. Each must extract via ITS OWN
+    payload shape — never the other's, and never dependent on load order (the
+    pre-round-2 build-time bug — and the pre-round-1 runtime bug — would BOTH
+    have made this load-order-dependent: whichever object iterated first would
+    win for BOTH templates)."""
+    root = _load_two_package_report_collision_root(beta_first=beta_first)
     files = (
         OutputParserGenerator().generate(_ctx(root))
         + PayloadVoGenerator().generate(_ctx(root))
@@ -433,6 +459,12 @@ def test_colliding_own_payload_names_run_verified_each_extracts_its_own_shape(
         "_payload_collision_pkg.report_doc_alpha_output_parser"
     )
     beta_mod = import_module("_payload_collision_pkg.report_doc_beta_output_parser")
+
+    # Strict, throw-only parse (FR-006) — each binds its OWN package's shape.
+    alpha_payload = alpha_mod.parse_report_doc_alpha(json.dumps({"alphaVal": "AV"}))
+    assert alpha_payload.alphaVal == "AV"
+    beta_payload = beta_mod.parse_report_doc_beta(json.dumps({"betaVal": "BV"}))
+    assert beta_payload.betaVal == "BV"
 
     alpha_result = alpha_mod.extract_lenient_report_doc_alpha_with_loader(
         root, json.dumps({"alphaVal": "AV"})
@@ -450,6 +482,8 @@ def test_colliding_own_payload_names_run_verified_each_extracts_its_own_shape(
     # show up as a spurious extra attribute or the wrong value).
     assert not hasattr(alpha_result.data, "betaVal")
     assert not hasattr(beta_result.data, "alphaVal")
+    assert not hasattr(alpha_payload, "betaVal")
+    assert not hasattr(beta_payload, "alphaVal")
 
 
 def test_no_churn_unique_payload_name_keeps_bare_scan_no_fqn_resolver() -> None:

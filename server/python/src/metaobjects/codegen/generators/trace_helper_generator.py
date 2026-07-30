@@ -53,12 +53,25 @@ from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.template import template_constants as tc
 from metaobjects.meta.template.meta_template import MetaTemplate
 from metaobjects.shared.base_types import TYPE_TEMPLATE
+from metaobjects.shared.separators import PACKAGE_SEP
 
 _GENERATOR_NAME = "trace-helper"
 
 #: The abstract base entity a trace entity must (transitively) ``extends``.
 #: Cross-port constant — mirrors TS ``LLM_CALL_BASE`` / Java ``LLM_CALL_BASE``.
 LLM_CALL_BASE = "LlmCallBase"
+
+
+def _pkg_of(node: MetaData) -> str:
+    """The effective package of a node — its ``resolution_key()`` minus the
+    trailing ``::<name>`` ("" for a root-level node). Duplicated (not imported) to
+    match the existing per-generator convention. Used to derive the referring
+    ``template.prompt``'s package for ``resolve_payload_vo`` (#228) — see that
+    function's docstring for why this ancestor-walk-aware form is used instead of
+    the loader's bare ``tpl.package or tpl.file_default_package or ""``."""
+    key = node.resolution_key()
+    i = key.rfind(PACKAGE_SEP)
+    return "" if i == -1 else key[:i]
 
 
 def _snake_case(name: str) -> str:
@@ -136,7 +149,12 @@ def render_trace_helper(entity: MetaObject, root: MetaData) -> str | None:
     # The response VO drives the baked extract schema + the typed voResponse. When
     # only @payloadRef is set we still emit a helper (the request is typed); the
     # extract schema falls back to an empty descriptor (no response VO to shape it).
-    response_vo = resolve_payload_vo(root, response_ref) if response_ref else None
+    # ADR-0042 (#228): the referrer is the PROMPT (a bare @responseRef resolves in
+    # its own package first — the prompt is nested inside `entity` but carries its
+    # OWN effective package via resolution_key()'s ancestor walk).
+    response_vo = (
+        resolve_payload_vo(root, response_ref, _pkg_of(prompt)) if response_ref else None
+    )
     if response_ref is not None and response_vo is None:
         raise ValueError(
             f"{_GENERATOR_NAME}: entity {entity.name!r} prompt @responseRef "

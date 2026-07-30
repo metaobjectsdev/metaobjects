@@ -84,6 +84,17 @@ from metaobjects.render.verify import (
     verify as render_verify,
 )
 from metaobjects.shared.base_types import TYPE_TEMPLATE
+from metaobjects.shared.separators import PACKAGE_SEP
+
+
+def _pkg_of(node: MetaData) -> str:
+    """The effective package of a node — its ``resolution_key()`` minus the
+    trailing ``::<name>`` ("" for a root-level node). Duplicated (not imported) to
+    match the existing per-generator convention. Used to derive a template's
+    referrer package for ``_resolve_payload_vo`` (#228)."""
+    key = node.resolution_key()
+    i = key.rfind(PACKAGE_SEP)
+    return "" if i == -1 else key[:i]
 
 
 def _default_generators() -> list[Generator]:
@@ -642,7 +653,9 @@ def _verify_templates(args: argparse.Namespace) -> int:
             print(f"error: [{tmpl.name}] missing @payloadRef.", file=sys.stderr)
             error_count += 1
             continue
-        vo = _resolve_payload_vo(root, payload_ref)
+        # ADR-0042 (#228): the referrer is THIS template — a bare @payloadRef
+        # resolves in ITS OWN package first.
+        vo = _resolve_payload_vo(root, payload_ref, _pkg_of(tmpl))
         if vo is None:
             print(
                 f"error: [{tmpl.name}] @payloadRef '{payload_ref}' did not "

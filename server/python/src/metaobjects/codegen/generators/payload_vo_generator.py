@@ -143,11 +143,34 @@ def _resolve_object_by_short_or_fqn(root: MetaData, ref: str) -> MetaObject | No
     return None
 
 
-def resolve_payload_vo(root: MetaData, ref: str) -> MetaObject | None:
-    """Resolve a ``@payloadRef`` to its ``object.value``. Rejects entities —
-    payloads MUST be value-objects (same contract as Kotlin)."""
-    obj = _resolve_object_by_short_or_fqn(root, ref)
-    if obj is None or obj.sub_type != OBJECT_SUBTYPE_VALUE:
+def resolve_payload_vo(root: MetaData, ref: str, referrer_pkg: str) -> MetaObject | None:
+    """Resolve a ``@payloadRef`` to its ``object.value``, PACKAGE-LOCAL (ADR-0042) —
+    the SAME canonical ``resolve_object_ref`` contract the loader's own
+    ``_validate_templates`` pass already uses to validate this exact ref
+    (``loader/validation_passes.py`` — an FQN resolves exactly; a bare ref resolves
+    in the referrer's own package first, else a root-level object). Rejects
+    entities — payloads MUST be value-objects (same contract as Kotlin).
+
+    *referrer_pkg* is the REFERENCING TEMPLATE's own effective package — pass
+    ``_pkg_of(template)`` (this module's ancestor-walk-aware helper, via
+    ``resolution_key()``), NOT the template's bare ``.package``/``.file_default_package``
+    attrs directly: for any LOADER-PARSED tree the two are identical (every parsed
+    node is stamped with ``file_default_package`` at parse time, so
+    ``resolution_key()``'s ancestor-walk branch never fires — this is provably the
+    SAME value the loader's own ``tpl.package or tpl.file_default_package or ""``
+    computes), but ``_pkg_of`` is ALSO correct for the many hand-built (non-loader)
+    ``MetaData`` trees this generator's own test suite constructs (package set only
+    on an ancestor, never stamped onto every node) — the bare expression would
+    wrongly resolve those to ``""``, breaking existing byte-identical output.
+
+    #228 — this used to delegate to ``_resolve_object_by_short_or_fqn``, a flat,
+    package-BLIND bare-name-anywhere-at-root scan: a bare ``@payloadRef`` colliding
+    across packages resolved to whichever same-bare-named ``object.value`` happened
+    to load first, regardless of which package the referencing template belonged
+    to — a "wrong node" mismatch against the loader, which ALREADY validates this
+    exact ref package-local. Now both agree."""
+    obj = resolve_object_ref(root, ref, referrer_pkg)
+    if not isinstance(obj, MetaObject) or obj.sub_type != OBJECT_SUBTYPE_VALUE:
         return None
     return obj
 
@@ -616,7 +639,9 @@ def render_payload_vo(
     payload_ref = template.get_meta_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
     if not isinstance(payload_ref, str) or not payload_ref:
         return None
-    payload = resolve_payload_vo(root, payload_ref)
+    # ADR-0042 (#228): the referrer is THIS template — a bare @payloadRef resolves
+    # in ITS OWN package first.
+    payload = resolve_payload_vo(root, payload_ref, _pkg_of(template))
     if payload is None:
         return None
 
