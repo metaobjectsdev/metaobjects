@@ -9,6 +9,7 @@ import {
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
   GENERATION_INCREMENT, GENERATION_UUID,
   FIELD_ATTR_AUTO_SET,
+  FIELD_ATTR_OBJECT_REF,
 } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier, valueObjectModuleSpecifier } from "../import-path.js";
@@ -386,8 +387,17 @@ function renderColumn(
   // first."
   // Resolve a VO name → an imported type symbol (shared layout/package/extStyle-aware
   // helper, so the .$type<VO> import matches the field's TS type + Zod schema).
-  const voSym = (name: string) =>
-    imp(`${name}@${valueObjectModuleSpecifier(name, ctx.packageOf, entityPackage, ctx.outputLayout, ctx.extStyle)}`);
+  // ADR-0044/#228 — resolve the field's @objectRef to the value object's EMITTED
+  // name (bare when unique in the run, package-qualified on a cross-package
+  // short-name collision), resolved package-locally from the FIELD's declaring
+  // package. `name` (the bare dollarTypeRef name) is the byte-identical fallback
+  // when the ref doesn't resolve to an emitted value object.
+  const voSym = (name: string) => {
+    const refRaw = field.attr(FIELD_ATTR_OBJECT_REF);
+    const refPkg = field.parent?.package ?? field.parent?.fileDefaultPackage ?? entityPackage;
+    const emitted = typeof refRaw === "string" ? ctx.resolveValueObjectName(refRaw, refPkg) : name;
+    return imp(`${emitted}@${valueObjectModuleSpecifier(emitted, ctx.packageOf, entityPackage, ctx.outputLayout, ctx.extStyle)}`);
+  };
 
   let dollarTypeSegment: Code | string = "";
   if (spec.dollarTypeRef !== undefined) {

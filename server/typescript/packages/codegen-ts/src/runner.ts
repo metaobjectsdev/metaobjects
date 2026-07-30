@@ -1,7 +1,8 @@
 import { join, relative, resolve, isAbsolute } from "node:path";
 import { tmpdir } from "node:os";
 import type { MetaData, MetaObject } from "@metaobjectsdev/metadata";
-import { MetaRoot } from "@metaobjectsdev/metadata";
+import { MetaRoot, OBJECT_SUBTYPE_VALUE } from "@metaobjectsdev/metadata";
+import { assignEmittedNames } from "./naming/collision-names.js";
 import type { Generator, GenContext, EmittedFile } from "./generator.js";
 import type { MetaobjectsGenConfig } from "./metaobjects-config.js";
 import { normalizeConfig, DEFAULT_TARGET_NAME } from "./metaobjects-config.js";
@@ -143,9 +144,32 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // 3. Build shared render state once.
   const pkMap = buildPkMap(root);
   const relationMap = buildRelationMap(root);
-  const packageOf = new Map<string, string | undefined>(
-    root.objects().map((o) => [o.name, o.package]),
-  );
+  // ADR-0044/#228 — the ENTITY-tier collision domain is the run's emitted
+  // `object.value` SET (NOT any per-payload closure): value-object module
+  // filenames + `packageOf` are per-run/global, so the emitted-name map is built
+  // ONCE over every top-level `object.value`, keyed by `resolutionKey()`. A bare
+  // short name unique across the set stays bare (byte-identical to pre-#228
+  // output); a cross-package short-name collision qualifies every member
+  // (`AcmeAlphaNote`), and a still-colliding derived name fails loud
+  // (ERR_PAYLOAD_NAME_COLLISION, thrown by assignEmittedNames).
+  const valueObjectClosure = new Map<string, MetaData>();
+  for (const o of root.objects()) {
+    if (o.subType === OBJECT_SUBTYPE_VALUE) valueObjectClosure.set(o.resolutionKey(), o);
+  }
+  const valueObjectNames = assignEmittedNames(valueObjectClosure);
+  // `packageOf` keys value objects by their EMITTED name (unique by construction
+  // via the backstop) so `valueObjectModuleSpecifier` resolves the right module
+  // even when two same-bare-named value objects live in different packages (the
+  // #244 misbinding disease). Non-value objects keep their bare name. With no
+  // collision, every emitted name equals its bare name, so this map is
+  // byte-identical to the pre-#228 `[o.name, o.package]` map.
+  const packageOf = new Map<string, string | undefined>();
+  for (const o of root.objects()) {
+    const key = o.subType === OBJECT_SUBTYPE_VALUE
+      ? (valueObjectNames.get(o.resolutionKey()) ?? o.name)
+      : o.name;
+    packageOf.set(key, o.package);
+  }
 
   // Auto-detect: is the OPT-IN Hono routes generator in the active suite? If so,
   // surface it on every generator's ctx.config so api-docs documents the Hono
@@ -192,6 +216,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       pkMap,
       relationMap,
       packageOf,
+      valueObjectNames,
       selfTarget,
       entityModuleTarget,
       ...(config.providedEnumModule !== undefined && { providedEnumModule: config.providedEnumModule }),

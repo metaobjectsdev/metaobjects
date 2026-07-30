@@ -63,9 +63,13 @@ export function renderValueObjectFile(obj: MetaObject, apiPrefix = "", ctx?: Ren
     ...(tphFilterType !== null ? [tphFilterType] : []),
   ];
   const body = joinCode(sections, { on: "\n" }).toString();
+  // ADR-0044/#228 — the hand-edit sidecar name follows this value object's EMITTED
+  // module name (== the generated filename), so the `.extra.ts` hint is correct
+  // even for a collision-qualified value object. Byte-identical (bare) otherwise.
+  const emittedName = ctx ? ctx.valueObjectEmittedName(obj) : obj.name;
   const header =
     `// ${GENERATED_HEADER} — DO NOT EDIT.\n` +
     `// Source metadata: ${obj.name} (${obj.fqn()})\n` +
-    `// Customize via ${obj.name}.extra.ts in this directory.\n`;
+    `// Customize via ${emittedName}.extra.ts in this directory.\n`;
   return header + body;
 }
