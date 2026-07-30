@@ -126,6 +126,47 @@ public class PayloadCodegenTests
         Assert.Equal("betaText", Assert.Single(fromBeta.Fields!).Name);
     }
 
+    // #228 — the build-time @payloadRef resolver bug class (Python's round-2 fix; the CROSS-PORT
+    // checkpoint for this task). Two packages each declare their OWN bare-colliding "Report" and a
+    // template.output with a BARE (same-package) @payloadRef "Report" — the realistic common case
+    // (a template referencing its own package's local value-object). Before this fix,
+    // BuildPayloadFieldTree(root, "Report") had no referrerPkg parameter at all and resolved via a
+    // GLOBAL bare-name-first-match scan — VerifyCommand's drift check for EITHER template's
+    // "Report" would silently bind to WHICHEVER "Report" happened to load first, regardless of
+    // which package the declaring template belonged to. Passing each template's OWN effective
+    // package now binds each to ITS OWN "Report" — never the other's, never load-order-dependent.
+    [Fact]
+    public void BuildPayloadFieldTree_bare_payloadRef_binds_own_package_not_first_loaded()
+    {
+        const string alpha = """
+        { "metadata.root": { "package": "acme::alpha", "children": [
+          { "object.value": { "name": "Report", "children": [ { "field.string": { "name": "alphaVal" } } ] } } ] } }
+        """;
+        const string beta = """
+        { "metadata.root": { "package": "acme::beta", "children": [
+          { "object.value": { "name": "Report", "children": [ { "field.string": { "name": "betaVal" } } ] } } ] } }
+        """;
+        var root = new MetaDataLoader().Load([
+            new InMemoryStringSource(alpha, id: "a.json"),
+            new InMemoryStringSource(beta,  id: "b.json"),
+        ]).Root;
+
+        // A BARE "Report" ref resolved with alpha's own package binds alpha's Report...
+        var alphaTree = PayloadCodegen.BuildPayloadFieldTree(root, "Report", "acme::alpha");
+        Assert.Equal("alphaVal", Assert.Single(alphaTree).Name);
+
+        // ...and the SAME bare ref resolved with beta's own package binds beta's Report — never
+        // whichever "Report" happened to load first (both alpha-first and beta-first orderings
+        // give the SAME per-referrer result, proving this is referrer-scoped, not load-order).
+        var betaTree = PayloadCodegen.BuildPayloadFieldTree(root, "Report", "acme::beta");
+        Assert.Equal("betaVal", Assert.Single(betaTree).Name);
+
+        // A bare ref with NO referrer package (today's pre-#228 call convention) keeps the
+        // permissive global-scan fallback — unaffected callers see unchanged behavior.
+        var noReferrerTree = PayloadCodegen.BuildPayloadFieldTree(root, "Report");
+        Assert.Single(noReferrerTree);
+    }
+
     [Fact]
     public void Emits_render_handle_binding_textRef_and_format()
     {

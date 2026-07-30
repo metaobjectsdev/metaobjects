@@ -273,7 +273,11 @@ public static class VerifyCommand
 
             // Both subtypes: @payloadRef must resolve to a loaded object.value (=>
             // non-empty derived field tree). Catches a renamed VO before codegen.
-            var fields = PayloadCodegen.BuildPayloadFieldTree(load.Root, payloadRef);
+            // ADR-0042/#228: a bare @payloadRef resolves in the template's OWN package FIRST —
+            // never whichever same-short-named object.value another package happens to declare
+            // (the loader validates @payloadRef package-locally too; verify must agree).
+            var referrerPkg = global::MetaObjects.NamingRefs.EffectivePackage(tmpl);
+            var fields = PayloadCodegen.BuildPayloadFieldTree(load.Root, payloadRef, referrerPkg);
             if (fields.Count == 0)
             {
                 errors.Add(new Drift(tmpl.Name, kind, ERR_PAYLOAD_REF_UNRESOLVED, payloadRef));
