@@ -45,6 +45,37 @@ _EXTRACT_FORMATS = frozenset({tc.TEMPLATE_FORMAT_JSON, tc.TEMPLATE_FORMAT_XML})
 _GENERATOR_NAME = "output-parser-generator"
 
 
+def _payload_name_collides(root: MetaData, payload: MetaObject) -> bool:
+    """ADR-0044 (#228) — True iff more than one root-level ``MetaObject`` (ANY
+    subtype — matching the exact domain the GENERATED runtime lookup itself
+    scans: ``isinstance(child, MetaObject)``, no subtype filter) shares
+    *payload*'s bare ``name``.
+
+    The emitted ``extract_lenient_*_with_loader`` resolves its payload at
+    RUNTIME via a bare-name-only, load-order-dependent first-match scan over
+    ``root.own_children()`` — the same ADR-0042 "wrong node" hazard class
+    ``ref_vo`` had before #228, just one layer up (a generated-code runtime
+    lookup, not a build-time codegen resolution). When two ``template.output``s
+    in different packages declare an own ``@payloadRef`` payload that shares a
+    bare name, that scan could silently bind whichever object the loader
+    happened to iterate first.
+
+    Mirrors the TS reference (``output-parser.ts``'s ``payloadNameCollides``,
+    driven there by the entity-domain name map Task 3 built for the whole
+    run). Python's payload-record tier has no equivalent whole-run name map to
+    reuse for this signal (its ADR-0044 closure is scoped per-payload, not
+    global) — so this computes the identical collision FACT directly against
+    ``root.own_children()``, the actual domain the generated scan searches."""
+    return (
+        sum(
+            1
+            for c in root.own_children()
+            if isinstance(c, MetaObject) and c.name == payload.name
+        )
+        > 1
+    )
+
+
 def render_output_parser(template: MetaData, root: MetaData) -> str | None:
     """Render one parser module for a ``template.output`` node.
 
@@ -60,6 +91,13 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
     payload = resolve_payload_vo(root, payload_ref)
     if payload is None:
         return None
+
+    # ADR-0044 (#228) — computed once, up front: does more than one root-level
+    # object share this payload's bare name? Drives BOTH the conditional
+    # `resolve_object_ref` import below and the PAYLOAD_NAME/lookup emission
+    # further down. Only relevant when the extract-lenient block is emitted
+    # (text-format outputs never bake a runtime payload lookup at all).
+    payload_name_collides = _payload_name_collides(root, payload)
 
     template_name = template.name
     snake = _snake_case(template_name)
@@ -101,9 +139,18 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
         # (which assembles the FULL nested object graph reflection-free by reading
         # the live metadata directly). Codegen-wrapping-runtime — mirrors the
         # Java/Kotlin/TS pilots.
-        lines.append(
-            "from metaobjects.meta.core.object.meta_object import MetaObject"
-        )
+        #
+        # ADR-0044 (#228) — the payload lookup below is EITHER a bare
+        # `root.own_children()` scan (needs the `MetaObject` isinstance check) OR,
+        # on a bare-name collision, a canonical FQN-exact `resolve_object_ref` (needs
+        # no `MetaObject` import) — so exactly ONE of these two imports is emitted,
+        # never both, keeping the generated module import-clean either way.
+        if payload_name_collides:
+            lines.append("from metaobjects.naming_refs import resolve_object_ref")
+        else:
+            lines.append(
+                "from metaobjects.meta.core.object.meta_object import MetaObject"
+            )
         lines.append(
             "from metaobjects.meta.core.object.object_extract import extract_object"
         )
@@ -145,17 +192,34 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
         lines.append("")
 
         # ---- Runtime-delegating extract (the single metadata-driven extract path) ----
-        # The baked PAYLOAD_NAME is the resolved payload VO's SIMPLE name: the
+        # The baked PAYLOAD_NAME is normally the resolved payload VO's SIMPLE name: the
         # delegating entry resolves the MetaObject from a loaded MetaRoot by it
         # (root child named ``payload.name``), then delegates to the runtime
         # ``extract_object`` (FULL nested graph, reflection-free) and maps the
         # assembled ValueObject graph into the typed nullable mirror graph.
+        #
+        # ADR-0044 (#228) — a bare ``root.own_children()`` first-match scan (below) is a
+        # load-order-dependent "wrong node" hazard when this payload's OWN bare name
+        # collides with another root-level object elsewhere in the run (see
+        # ``_payload_name_collides``). When it does, PAYLOAD_NAME bakes the FQN
+        # (``resolution_key()``) and the lookup resolves via the canonical ADR-0042
+        # ``resolve_object_ref`` (FQN-exact, load-order-independent) instead of the
+        # scan. A non-colliding payload keeps the bare name + the scan — byte-identical
+        # to pre-#228 output.
         format_enum = "Format.XML" if fmt_str.lower() == "xml" else "Format.JSON"
         root_mapper = rde.root_mapper_name(template_name)
         extract_lenient_with_fn = f"{extract_lenient_fn}_with_loader"
+        baked_payload_name = (
+            payload.resolution_key() if payload_name_collides else payload.name
+        )
         lines.append("#: Payload value-object name this parser extracts — resolved")
-        lines.append("#: against a loaded MetaRoot at runtime.")
-        lines.append(f'PAYLOAD_NAME = "{payload.name}"')
+        if payload_name_collides:
+            lines.append("#: against a loaded MetaRoot at runtime. ADR-0042 FQN (this")
+            lines.append("#: payload's bare name collides with a same-short-name")
+            lines.append("#: object elsewhere in the run).")
+        else:
+            lines.append("#: against a loaded MetaRoot at runtime.")
+        lines.append(f'PAYLOAD_NAME = "{baked_payload_name}"')
         lines.append("")
         lines.append("")
         lines.extend(
@@ -182,16 +246,23 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
         lines.append("")
         lines.append("    :param root: a loaded ``MetaRoot`` that declares the")
         lines.append(f'                 ``{payload.name}`` value-object."""')
-        lines.append("    mo = None")
-        # Emits a root-scan into generated code: root is the loader ROOT (never
-        # extended, so own == effective) — ADR-0039 sanctioned own in emitted code.
-        lines.append("    for child in root.own_children():")
-        lines.append("        if (")
-        lines.append("            isinstance(child, MetaObject)")
-        lines.append("            and child.name == PAYLOAD_NAME")
-        lines.append("        ):")
-        lines.append("            mo = child")
-        lines.append("            break")
+        if payload_name_collides:
+            # ADR-0044 (#228) — PAYLOAD_NAME is a baked FQN; resolve it via the
+            # canonical ADR-0042 package-local contract (FQN-exact here, so the
+            # "" referrer package is inert) rather than a bare load-order-dependent
+            # scan.
+            lines.append('    mo = resolve_object_ref(root, PAYLOAD_NAME, "")')
+        else:
+            lines.append("    mo = None")
+            # Emits a root-scan into generated code: root is the loader ROOT (never
+            # extended, so own == effective) — ADR-0039 sanctioned own in emitted code.
+            lines.append("    for child in root.own_children():")
+            lines.append("        if (")
+            lines.append("            isinstance(child, MetaObject)")
+            lines.append("            and child.name == PAYLOAD_NAME")
+            lines.append("        ):")
+            lines.append("            mo = child")
+            lines.append("            break")
         lines.append("    if mo is None:")
         lines.append("        raise ValueError(")
         lines.append(

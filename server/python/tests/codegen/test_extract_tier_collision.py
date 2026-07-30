@@ -297,3 +297,177 @@ def test_no_churn_non_colliding_nested_vo_keeps_bare_names() -> None:
 
     assert "class DetailPayload(BaseModel):" in payload_src
     assert "AcmeDemo" not in payload_src
+
+
+# ---------------------------------------------------------------------------
+# Fix round 1 (#228 MUST-FIX) — output_parser_generator.py's GENERATED-RUNTIME
+# PAYLOAD_NAME lookup. The emitted `extract_lenient_*_with_loader` resolves its
+# OWN payload at RUNTIME via `for child in root.own_children(): if child.name
+# == PAYLOAD_NAME` — a bare, load-order-dependent first-match scan. When two
+# `template.output`s in different packages declare an OWN `@payloadRef` payload
+# that shares a bare name, that scan could bind whichever object the loader
+# happened to iterate first. Mirrors the TS reference's
+# ReportDocAlpha/ReportDocBeta proof (output-parser.ts's `payloadNameCollides`).
+#
+# NOTE: the `@payloadRef` values below are authored FQN (not bare), which
+# sidesteps a SEPARATE, pre-existing, out-of-scope bug discovered while writing
+# this test: `payload_vo_generator.resolve_payload_vo` (the BUILD-TIME
+# `@payloadRef` -> object.value resolver, shared by payload_vo_generator.py,
+# output_parser_generator.py, AND extractor_generator.py — and, via its
+# `_resolve_object_by_short_or_fqn` helper, several other unrelated call sites
+# in cli.py / apidocs/builder.py / output_prompt_generator.py /
+# trace_helper_generator.py) is NOT referrer-package-aware for a BARE
+# `@payloadRef` — unlike `@objectRef`'s `ref_vo`, which #228 already fixed via
+# `resolve_object_ref`. A bare `@payloadRef` that collides across packages
+# resolves to whichever same-bare-named object.value loads first, REGARDLESS
+# of the referencing template's own package — a real, reachable "wrong node"
+# bug, but a MUCH wider blast radius than this task (touches subsystems
+# unrelated to the extract tier). Flagged in the report as a follow-up
+# candidate, deliberately NOT fixed here. Authoring FQN `@payloadRef`s here
+# isolates THIS test to the fix this round actually makes: the RUNTIME
+# PAYLOAD_NAME lookup, once the (already build-time-correct, because FQN)
+# `payload` MetaObject is resolved.
+# ---------------------------------------------------------------------------
+
+
+def _load_two_package_report_collision_root() -> MetaRoot:
+    alpha = {
+        "metadata.root": {
+            "package": "acme::alpha",
+            "children": [
+                {
+                    "object.value": {
+                        "name": "Report",
+                        "children": [
+                            {"field.string": {"name": "alphaVal", "@required": True}}
+                        ],
+                    }
+                },
+                {
+                    "template.output": {
+                        "name": "ReportDocAlpha",
+                        "@payloadRef": "acme::alpha::Report",
+                        "@textRef": "unused/a",
+                        "@format": "json",
+                    }
+                },
+            ],
+        }
+    }
+    beta = {
+        "metadata.root": {
+            "package": "acme::beta",
+            "children": [
+                {
+                    "object.value": {
+                        "name": "Report",
+                        "children": [
+                            {"field.string": {"name": "betaVal", "@required": True}}
+                        ],
+                    }
+                },
+                {
+                    "template.output": {
+                        "name": "ReportDocBeta",
+                        "@payloadRef": "acme::beta::Report",
+                        "@textRef": "unused/b",
+                        "@format": "json",
+                    }
+                },
+            ],
+        }
+    }
+    sources = [
+        InMemoryStringSource(json.dumps(alpha)),
+        InMemoryStringSource(json.dumps(beta)),
+    ]
+    res = MetaDataLoader().load(sources)
+    assert res.errors == [], res.errors
+    return res.root
+
+
+def test_colliding_own_payload_name_bakes_fqn_and_uses_resolve_object_ref() -> None:
+    root = _load_two_package_report_collision_root()
+    files = OutputParserGenerator().generate(_ctx(root))
+    alpha_src = next(
+        f for f in files if f.path == "report_doc_alpha_output_parser.py"
+    ).content
+    beta_src = next(
+        f for f in files if f.path == "report_doc_beta_output_parser.py"
+    ).content
+
+    # Each bakes ITS OWN FQN — never the bare "Report", never the other's FQN.
+    assert 'PAYLOAD_NAME = "acme::alpha::Report"' in alpha_src
+    assert 'PAYLOAD_NAME = "acme::beta::Report"' in beta_src
+    assert 'PAYLOAD_NAME = "Report"' not in alpha_src
+    assert 'PAYLOAD_NAME = "Report"' not in beta_src
+
+    # Both resolve via the canonical FQN-exact resolver — never the bare,
+    # load-order-dependent `root.own_children()` scan.
+    assert "from metaobjects.naming_refs import resolve_object_ref" in alpha_src
+    assert "from metaobjects.naming_refs import resolve_object_ref" in beta_src
+    assert 'mo = resolve_object_ref(root, PAYLOAD_NAME, "")' in alpha_src
+    assert 'mo = resolve_object_ref(root, PAYLOAD_NAME, "")' in beta_src
+    assert "root.own_children()" not in alpha_src
+    assert "root.own_children()" not in beta_src
+    # No leftover unused MetaObject import on the FQN-resolve path.
+    assert "meta_object import MetaObject" not in alpha_src
+    assert "meta_object import MetaObject" not in beta_src
+
+
+def test_colliding_own_payload_names_run_verified_each_extracts_its_own_shape(
+    tmp_path,
+) -> None:
+    """The strongest proof: generate BOTH output parsers, materialize +
+    import + RUN both against ONE shared MetaRoot. Each must extract via ITS
+    OWN payload shape — never the other's (the pre-fix wrong-node bug would
+    have made this load-order-dependent: whichever object iterated first in
+    `root.own_children()` would win for BOTH templates)."""
+    root = _load_two_package_report_collision_root()
+    files = (
+        OutputParserGenerator().generate(_ctx(root))
+        + PayloadVoGenerator().generate(_ctx(root))
+    )
+    _materialize_and_import(files, tmp_path, "_payload_collision_pkg")
+    alpha_mod = import_module(
+        "_payload_collision_pkg.report_doc_alpha_output_parser"
+    )
+    beta_mod = import_module("_payload_collision_pkg.report_doc_beta_output_parser")
+
+    alpha_result = alpha_mod.extract_lenient_report_doc_alpha_with_loader(
+        root, json.dumps({"alphaVal": "AV"})
+    )
+    assert alpha_result.report.has_lost_required() is False
+    assert alpha_result.data.alphaVal == "AV"
+
+    beta_result = beta_mod.extract_lenient_report_doc_beta_with_loader(
+        root, json.dumps({"betaVal": "BV"})
+    )
+    assert beta_result.report.has_lost_required() is False
+    assert beta_result.data.betaVal == "BV"
+
+    # Neither result carries the OTHER template's field (a cross-wire would
+    # show up as a spurious extra attribute or the wrong value).
+    assert not hasattr(alpha_result.data, "betaVal")
+    assert not hasattr(beta_result.data, "alphaVal")
+
+
+def test_no_churn_unique_payload_name_keeps_bare_scan_no_fqn_resolver() -> None:
+    """Global constraint: a UNIQUE (non-colliding) payload's OWN bare name keeps
+    TODAY'S exact runtime lookup — bare ``PAYLOAD_NAME`` + the
+    ``root.own_children()`` scan — with NO FQN bake and NO
+    ``resolve_object_ref`` import/call. Reuses the xpkg-collision-json corpus's
+    ``DigestDoc`` template, whose OWN payload (``Digest``) is unique (only the
+    NESTED ``Note`` VOs collide — a different, already-fixed concern)."""
+    root = _load_corpus_root()
+    files = [
+        f
+        for f in OutputParserGenerator().generate(_ctx(root))
+        if f.path == "digest_doc_output_parser.py"
+    ]
+    assert len(files) == 1
+    src = files[0].content
+    assert 'PAYLOAD_NAME = "Digest"' in src
+    assert "root.own_children()" in src
+    assert "resolve_object_ref" not in src
+    assert "from metaobjects.naming_refs" not in src
