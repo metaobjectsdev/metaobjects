@@ -146,6 +146,87 @@ describe("entity tier — ADR-0044 cross-package value-object short-name collisi
     expect(betaHost).toContain("./AcmeBetaNote.js");
   });
 
+  test("write-through read-view, projection, and field.map references all use the qualified name", async () => {
+    const root = await loadMultiPackageRoot([
+      {
+        package: "acme::alpha",
+        children: [
+          {
+            "object.value": {
+              name: "Note",
+              children: [{ "field.string": { name: "alphaText", "@required": true } }],
+            },
+          },
+          {
+            // Write-through entity (writable table + read-only replica view) carrying
+            // a jsonb field.object AND a field.map of the colliding VO. Exercises the
+            // entity-file.ts write-through `voRef` (fix #1) + view-decl.ts (fix #3) +
+            // the field.map reference branch.
+            "object.entity": {
+              name: "AlphaReport",
+              children: [
+                { "source.rdb": { "@role": "primary", "@table": "alpha_reports" } },
+                { "source.rdb": { "@role": "replica", "@kind": "view", "@table": "v_alpha_reports" } },
+                { "field.long": { name: "id" } },
+                { "field.object": { name: "note", "@objectRef": "acme::alpha::Note", "@storage": "jsonb" } },
+                { "field.map": { name: "tags", "@objectRef": "acme::alpha::Note" } },
+                { "identity.primary": { name: "pk", "@fields": "id" } },
+              ],
+            },
+          },
+          {
+            // Projection extends-binding the write-through entity's VO column.
+            // Exercises the projection-decl.ts `voRef` (fix #2) + view-decl.ts.
+            "object.projection": {
+              name: "AlphaNoteView",
+              children: [
+                { "source.rdb": { "@kind": "view", "@table": "v_alpha_note" } },
+                { "field.long": { name: "id", extends: "AlphaReport.id" } },
+                { "field.object": { name: "note", extends: "AlphaReport.note" } },
+                { "identity.primary": { extends: "AlphaReport.pk" } },
+              ],
+            },
+          },
+        ],
+      },
+      {
+        // The collision partner — forces acme::alpha::Note to qualify to AcmeAlphaNote.
+        package: "acme::beta",
+        children: [
+          {
+            "object.value": {
+              name: "Note",
+              children: [{ "field.string": { name: "betaText", "@required": true } }],
+            },
+          },
+        ],
+      },
+    ]);
+
+    const files = await genFiles(root);
+
+    // Write-through entity: BOTH the read-view Zod schema (renderViewReadZodObject)
+    // and the `.existing()` view decl (renderExistingViewDecl) must qualify — no bare
+    // `Note` symbol/type may leak into the shipped write-through artifact.
+    const alphaReport = files.get("AlphaReport.ts")!;
+    expect(alphaReport).toContain("export const AlphaReportSchema");       // read-view zod
+    expect(alphaReport).toContain("alphaReportView");                       // .existing() view var
+    expect(alphaReport).toContain("AcmeAlphaNoteInsertSchema");
+    expect(alphaReport).toMatch(/\.\$type<AcmeAlphaNote>/);
+    expect(alphaReport).toContain("./AcmeAlphaNote.js");
+    expect(alphaReport).not.toMatch(/[^a-zA-Z]NoteInsertSchema/);
+    expect(alphaReport).not.toMatch(/\.\$type<Note>/);
+    // field.map reference (Record<string, VO>) qualifies too.
+    expect(alphaReport).toMatch(/Record<string,\s*AcmeAlphaNote>/);
+    expect(alphaReport).not.toMatch(/Record<string,\s*Note>/);
+
+    // Projection read model imports the qualified VO schema/module (not bare `Note`).
+    const alphaNoteView = files.get("AlphaNoteView.ts")!;
+    expect(alphaNoteView).toContain("AcmeAlphaNoteInsertSchema");
+    expect(alphaNoteView).toContain("./AcmeAlphaNote.js");
+    expect(alphaNoteView).not.toMatch(/[^a-zA-Z]NoteInsertSchema/);
+  });
+
   test("no-churn — a non-colliding value object keeps its BARE name/module (qualification never fires)", async () => {
     const root = await loadMultiPackageRoot([
       {

@@ -9,7 +9,7 @@
 
 import { code, imp, joinCode, type Code } from "ts-poet";
 import {
-  type MetaField, FIELD_SUBTYPE_OBJECT, FIELD_ATTR_OBJECT_REF, stripPackage,
+  type MetaField, FIELD_SUBTYPE_OBJECT, FIELD_ATTR_OBJECT_REF,
 } from "@metaobjectsdev/metadata";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
 import { mapColumnType } from "../column-mapper.js";
@@ -20,8 +20,15 @@ export interface ViewDeclOpts {
   readonly columnNamingStrategy: ColumnNamingStrategy;
   /** Drives the timestamp column TS type (Date vs string) in the view declaration. */
   readonly timestampMode: "date" | "string";
-  /** Resolve a value-object short name → its import module specifier. */
-  readonly voModule: (refBase: string) => string;
+  /**
+   * ADR-0044/#228 — resolve a `field.object` / `field.map`'s `@objectRef` to the
+   * value object's EMITTED name (bare when unique in the run, package-qualified on
+   * a cross-package short-name collision) AND its import module, TOGETHER, so the
+   * imported symbol and its module can never diverge (a bare `Note` symbol pointing
+   * at an `./AcmeAlphaNote.js` module, or vice-versa). Callers build this from
+   * `RenderContext.resolveValueObjectName` + `valueObjectModuleSpecifier`.
+   */
+  readonly voRef: (field: MetaField) => { name: string; module: string };
 }
 
 /**
@@ -31,7 +38,7 @@ export interface ViewDeclOpts {
  * views carry type + physical name only (no PK/default/notNull DDL modifiers).
  */
 function viewColumnLine(f: MetaField, opts: ViewDeclOpts): Code {
-  const { dialect, columnNamingStrategy, timestampMode, voModule } = opts;
+  const { dialect, columnNamingStrategy, timestampMode } = opts;
   const spec = mapColumnType(f, dialect, columnNamingStrategy, timestampMode);
   const colSym = imp(`${spec.fnName}@${spec.importModule}`);
   const optsArg =
@@ -53,12 +60,17 @@ function viewColumnLine(f: MetaField, opts: ViewDeclOpts): Code {
   if (dtr?.kind === "scalar") {
     dollarType = `.$type<${dtr.tsType}${dtr.array ? "[]" : ""}>()`;
   } else if (dtr?.kind === "objectRef") {
-    const voTypeSym = imp(`${dtr.name}@${voModule(dtr.name)}`);
+    // #228 — emitted name + module resolved together (lock-step) from the field's ref.
+    const vo = opts.voRef(f);
+    const voTypeSym = imp(`${vo.name}@${vo.module}`);
     dollarType = dtr.array ? code`.$type<${voTypeSym}[]>()` : code`.$type<${voTypeSym}>()`;
   } else if (dtr?.kind === "map") {
-    dollarType = "scalar" in dtr.value
-      ? `.$type<Record<string, ${dtr.value.scalar}>>()`
-      : code`.$type<Record<string, ${imp(`${dtr.value.objectRef}@${voModule(dtr.value.objectRef)}`)}>>()`;
+    if ("scalar" in dtr.value) {
+      dollarType = `.$type<Record<string, ${dtr.value.scalar}>>()`;
+    } else {
+      const vo = opts.voRef(f);
+      dollarType = code`.$type<Record<string, ${imp(`${vo.name}@${vo.module}`)}>>()`;
+    }
   }
   return code`  ${f.name}: ${colSym}(${JSON.stringify(spec.dbName)}${optsArg})${dollarType}${viewModifiers}`;
 }
@@ -98,22 +110,22 @@ ${joinCode(viewColumnLines, { on: ",\n" })}
  * `voModule` resolves a value-object short name → its import module.
  */
 export function renderViewReadZodObject(fields: readonly MetaField[], opts: ViewDeclOpts): Code {
-  const { dialect, columnNamingStrategy, timestampMode, voModule } = opts;
+  const { dialect, columnNamingStrategy, timestampMode } = opts;
   const z = imp("z@zod");
   const lines: Code[] = fields.map((f) => {
     const nullable =
       mapColumnType(f, dialect, columnNamingStrategy, timestampMode).modifiers.includes(".notNull()")
         ? ""
         : ".nullable()";
-    const refBase =
-      f.subType === FIELD_SUBTYPE_OBJECT
-        ? (() => {
-            const ref = f.attr(FIELD_ATTR_OBJECT_REF);
-            return typeof ref === "string" && ref.length > 0 ? stripPackage(ref) : undefined;
-          })()
-        : undefined;
-    if (refBase) {
-      const schemaSym = imp(`${refBase}InsertSchema@${voModule(refBase)}`);
+    const hasObjectRef =
+      f.subType === FIELD_SUBTYPE_OBJECT &&
+      typeof f.attr(FIELD_ATTR_OBJECT_REF) === "string" &&
+      (f.attr(FIELD_ATTR_OBJECT_REF) as string).length > 0;
+    if (hasObjectRef) {
+      // #228 — the <Ref>InsertSchema symbol + its module resolved together from the
+      // field's ref, so a cross-package collision qualifies both consistently.
+      const vo = opts.voRef(f);
+      const schemaSym = imp(`${vo.name}InsertSchema@${vo.module}`);
       const base = f.resolvedIsArray() ? code`${z}.array(${schemaSym})` : code`${schemaSym}`;
       return code`  ${f.name}: ${base}${nullable}`;
     }

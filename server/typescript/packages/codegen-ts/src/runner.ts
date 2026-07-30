@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import type { MetaData, MetaObject } from "@metaobjectsdev/metadata";
 import { MetaRoot, OBJECT_SUBTYPE_VALUE } from "@metaobjectsdev/metadata";
 import { assignEmittedNames } from "./naming/collision-names.js";
+import { isAbstract } from "./instance-artifacts.js";
 import type { Generator, GenContext, EmittedFile } from "./generator.js";
 import type { MetaobjectsGenConfig } from "./metaobjects-config.js";
 import { normalizeConfig, DEFAULT_TARGET_NAME } from "./metaobjects-config.js";
@@ -144,17 +145,23 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // 3. Build shared render state once.
   const pkMap = buildPkMap(root);
   const relationMap = buildRelationMap(root);
-  // ADR-0044/#228 — the ENTITY-tier collision domain is the run's emitted
+  // ADR-0044/#228 — the ENTITY-tier collision domain is the run's EMITTED
   // `object.value` SET (NOT any per-payload closure): value-object module
   // filenames + `packageOf` are per-run/global, so the emitted-name map is built
-  // ONCE over every top-level `object.value`, keyed by `resolutionKey()`. A bare
-  // short name unique across the set stays bare (byte-identical to pre-#228
-  // output); a cross-package short-name collision qualifies every member
-  // (`AcmeAlphaNote`), and a still-colliding derived name fails loud
-  // (ERR_PAYLOAD_NAME_COLLISION, thrown by assignEmittedNames).
+  // ONCE over every top-level `object.value` that actually produces a file, keyed
+  // by `resolutionKey()`. A bare short name unique across the set stays bare
+  // (byte-identical to pre-#228 output); a cross-package short-name collision
+  // qualifies every member (`AcmeAlphaNote`), and a still-colliding derived name
+  // fails loud (ERR_PAYLOAD_NAME_COLLISION, thrown by assignEmittedNames). A
+  // NON-emitted abstract value object (abstract + emitAbstractShapes off) produces
+  // no file/reference and is excluded — the entity-file generator's own emit gate
+  // (`isAbstract && !emitAbstractShapes` ⇒ skip) — so it can't over-qualify a
+  // concrete value object that merely shares its bare name in another package.
+  const isEmittedValueObject = (o: MetaObject): boolean =>
+    o.subType === OBJECT_SUBTYPE_VALUE && (!isAbstract(o) || config.emitAbstractShapes);
   const valueObjectClosure = new Map<string, MetaData>();
   for (const o of root.objects()) {
-    if (o.subType === OBJECT_SUBTYPE_VALUE) valueObjectClosure.set(o.resolutionKey(), o);
+    if (isEmittedValueObject(o)) valueObjectClosure.set(o.resolutionKey(), o);
   }
   const valueObjectNames = assignEmittedNames(valueObjectClosure);
   // `packageOf` keys value objects by their EMITTED name (unique by construction

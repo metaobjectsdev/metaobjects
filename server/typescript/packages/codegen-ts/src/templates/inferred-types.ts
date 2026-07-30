@@ -40,7 +40,7 @@ import { enumValues } from "../enum-meta.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { sharedEnumForField } from "../enum-shared.js";
 import { sharedEnumImportSpecifier, providedEnumImportSpecifier } from "../enum-import.js";
-import type { RenderContext } from "../render-context.js";
+import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
 
 /**
  * Emit Drizzle's InferSelectModel / InferInsertModel aliases for an entity.
@@ -219,6 +219,12 @@ export function fieldTsTypeString(ownerName: string, field: MetaField): string {
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
+      // #228: docs-tier bare name under collision — this is the deprecated `meta docs`
+      // TEXT-shape helper (no ctx/root in scope; callers api-field-shape run under
+      // api-model's `{ pkMap } as RenderContext` shim), so it can't resolve the ADR-0044
+      // emitted name. Byte-identical to codegen in every non-colliding model; on a
+      // cross-package collision it documents the bare `Note` while codegen emits
+      // `AcmeAlphaNote`. Threading a real RenderContext into api-docs is out of scope.
       const base = stripPackage(ref);
       return field.resolvedIsArray() ? `${base}[]` : base;
     }
@@ -238,14 +244,6 @@ export function fieldTsTypeString(ownerName: string, field: MetaField): string {
   }
   const scalar = SCALAR_TS_BY_SUBTYPE[field.subType] ?? "unknown";
   return field.resolvedIsArray() ? `${scalar}[]` : scalar;
-}
-
-/** ADR-0042 — the package a field's `@objectRef` resolves in: the FIELD's OWN
- *  declaring package (which differs from the owner when the field is inherited via
- *  `extends` from an abstract value-object in another package), falling back to the
- *  owner's package. Mirrors payload-codegen's `collectClosure`. */
-function refPkg(field: MetaField, owner: MetaObject): string | undefined {
-  return field.parent?.package ?? field.parent?.fileDefaultPackage ?? owner.package;
 }
 
 /**
@@ -277,7 +275,7 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
       // layout/package/extStyle-aware helper (the SAME one the Zod schema +
       // Drizzle .$type<> use) so all three agree. Without a ctx (bare unit-test
       // calls) fall back to the bare name + flat same-dir specifier.
-      const refName = ctx ? ctx.resolveValueObjectName(ref, refPkg(field, entity)) : stripPackage(ref);
+      const refName = ctx ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, entity.package)) : stripPackage(ref);
       const moduleSpec = ctx
         ? valueObjectModuleSpecifier(refName, ctx.packageOf, entity.package, ctx.outputLayout, ctx.extStyle)
         : `./${refName}.js`;
@@ -291,7 +289,7 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
   if (field.subType === FIELD_SUBTYPE_MAP) {
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
-      const refName = ctx ? ctx.resolveValueObjectName(ref, refPkg(field, entity)) : stripPackage(ref);
+      const refName = ctx ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, entity.package)) : stripPackage(ref);
       const moduleSpec = ctx
         ? valueObjectModuleSpecifier(refName, ctx.packageOf, entity.package, ctx.outputLayout, ctx.extStyle)
         : `./${refName}.js`;

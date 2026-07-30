@@ -1,6 +1,6 @@
 // RenderContext — cross-cutting state passed to every template.
 
-import type { MetaRoot, MetaData } from "@metaobjectsdev/metadata";
+import type { MetaRoot, MetaData, MetaField } from "@metaobjectsdev/metadata";
 import { resolveObjectRef, stripPackage } from "@metaobjectsdev/metadata";
 import type { Dialect } from "./column-mapper.js";
 import type { PkInfo } from "./pk-resolver.js";
@@ -117,6 +117,17 @@ export type RenderContextInput = Omit<RenderContext, "extStyle" | "omImport" | "
   /** Per-entity exact collection-var-name overrides, keyed by bare entity name. */
   collectionNameOverrides?: Record<string, string>;
 };
+
+/** ADR-0042/#228 — the package a field's `@objectRef` resolves in: the FIELD's OWN
+ *  declaring package (which differs from the referring object's when the field is
+ *  inherited via `extends` from an abstract node in another package), falling back
+ *  to `fallbackPkg` (the referring object's package). THE single source of truth for
+ *  the referrer package passed to `RenderContext.resolveValueObjectName`, so every
+ *  value-object reference site resolves a cross-package short-name collision
+ *  identically (they cannot drift). Mirrors payload-codegen's `collectClosure`. */
+export function fieldDeclaringPackage(field: MetaField, fallbackPkg: string | undefined): string | undefined {
+  return field.parent?.package ?? field.parent?.fileDefaultPackage ?? fallbackPkg;
+}
 
 /** Append the configured extension to a cross-entity module specifier (which is
  *  always a bare, extension-less relative path like `./Foo`). */

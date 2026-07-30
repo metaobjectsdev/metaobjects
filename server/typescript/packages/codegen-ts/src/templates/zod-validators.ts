@@ -35,7 +35,7 @@ import { renderDocsFor } from "./jsdoc.js";
 import { sharedEnumForField } from "../enum-shared.js";
 import { sharedEnumImportSpecifier } from "../enum-import.js";
 import { sharedEnumZodConstName } from "./enums-file.js";
-import type { RenderContext } from "../render-context.js";
+import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
 import { valueObjectModuleSpecifier } from "../import-path.js";
 // FR-035: the SAME required-predicate that drives the Drizzle column's .notNull()
 // drives the UpdateSchema's .nullable() exclusion — shared so they cannot drift.
@@ -432,14 +432,6 @@ function zodScalarFor(subType: string): string {
   return "z.string()"; // string/uuid/date/time/timestamp/decimal/enum on the wire
 }
 
-/** ADR-0042 — the package a field's `@objectRef` resolves in: the FIELD's OWN
- *  declaring package (differs from the owner when the field is inherited via
- *  `extends` from an abstract value-object in another package), falling back to the
- *  owner's package. Mirrors payload-codegen's `collectClosure` + inferred-types. */
-function voRefPkg(field: MetaField, owner: MetaObject): string | undefined {
-  return field.parent?.package ?? field.parent?.fileDefaultPackage ?? owner.package;
-}
-
 function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext): Code {
   // `@dbColumnType: jsonb` on a scalar (legal only on field.string) is the
   // sanctioned "open JSON bag" escape hatch — a genuinely untyped JSON column
@@ -471,7 +463,7 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
       // layout/package/extStyle-aware helper (the SAME one the field's TS type +
       // Drizzle .$type<> use) so all three agree. Without owner/ctx (bare
       // unit-test calls) fall back to the bare name + flat same-dir.
-      const refName = (ctx && owner) ? ctx.resolveValueObjectName(ref, voRefPkg(field, owner)) : stripPackage(ref);
+      const refName = (ctx && owner) ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, owner.package)) : stripPackage(ref);
       const moduleSpec = (ctx && owner)
         ? valueObjectModuleSpecifier(refName, ctx.packageOf, owner.package, ctx.outputLayout, ctx.extStyle)
         : `./${refName}.js`;
@@ -492,7 +484,7 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
   if (field.subType === FIELD_SUBTYPE_MAP) {
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
-      const refName = (ctx && owner) ? ctx.resolveValueObjectName(ref, voRefPkg(field, owner)) : stripPackage(ref);
+      const refName = (ctx && owner) ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, owner.package)) : stripPackage(ref);
       const moduleSpec = (ctx && owner)
         ? valueObjectModuleSpecifier(refName, ctx.packageOf, owner.package, ctx.outputLayout, ctx.extStyle)
         : `./${refName}.js`;

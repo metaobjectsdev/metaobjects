@@ -11,7 +11,7 @@ import {
   FIELD_ATTR_AUTO_SET,
   FIELD_ATTR_OBJECT_REF,
 } from "@metaobjectsdev/metadata";
-import { type RenderContext } from "../render-context.js";
+import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier, valueObjectModuleSpecifier } from "../import-path.js";
 import { mapColumnType, type ColumnSpec } from "../column-mapper.js";
 import { tableNameFromEntity, columnNameFromField } from "../naming.js";
@@ -394,8 +394,9 @@ function renderColumn(
   // when the ref doesn't resolve to an emitted value object.
   const voSym = (name: string) => {
     const refRaw = field.attr(FIELD_ATTR_OBJECT_REF);
-    const refPkg = field.parent?.package ?? field.parent?.fileDefaultPackage ?? entityPackage;
-    const emitted = typeof refRaw === "string" ? ctx.resolveValueObjectName(refRaw, refPkg) : name;
+    const emitted = typeof refRaw === "string"
+      ? ctx.resolveValueObjectName(refRaw, fieldDeclaringPackage(field, entityPackage))
+      : name;
     return imp(`${emitted}@${valueObjectModuleSpecifier(emitted, ctx.packageOf, entityPackage, ctx.outputLayout, ctx.extStyle)}`);
   };
 
