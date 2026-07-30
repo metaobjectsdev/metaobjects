@@ -166,6 +166,19 @@ The render-output pins above (`"Alpha=AA Beta=BB"`) are UNCHANGED by this contra
 idiomatic (Tier-1 codegen); this sub-corpus gates it by compile + construct +
 render + name assertions, strengthening the gate rather than weakening it.
 
+## Cross-package short-name collision with extract/output-parser tier — `xpkg-collision-json/`
+
+Identical to `xpkg-collision/` above (same three metadata files, same `Digest`
+payload with colliding `Note` VOs from `acme::alpha` and `acme::beta`), but the
+`DigestDoc` `template.output` has `@format="json"` instead of `@format="html"`.
+This variant exercises the extract/output-parser tier (which gates on
+`@format ∈ {json,xml}`); the html variant does not. The generated render helper,
+collision-aware payload naming, and render output remain identical — see
+[Cross-package short-name collision](#cross-package-short-name-collision--xpkg-collision-digestdoc)
+above for the full contract and expected payload names
+(`AcmeAlphaNotePayload`/`AcmeBetaNotePayload` for Java/Kotlin/Python;
+`AcmeAlphaNote`/`AcmeBetaNote` for TS/C#).
+
 ## Expected build-time drift FAILURE — `drift/`
 
 `drift/meta.json` declares the same `Welcome` VO and a `document`

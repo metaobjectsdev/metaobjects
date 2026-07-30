@@ -39,7 +39,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l`.
 | [`fixtures/object-model-conformance/`](../fixtures/object-model-conformance/) | 1 shared metadata fixture (per-port scenarios) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/codegen-conformance/`](../fixtures/codegen-conformance/) | 4 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/template-codegen-conformance/`](../fixtures/template-codegen-conformance/) | 3 | ✓ | ✓ | ✓ | ✓ | ✓ |
-| [`fixtures/template-output-render-conformance/`](../fixtures/template-output-render-conformance/) | 4 | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [`fixtures/template-output-render-conformance/`](../fixtures/template-output-render-conformance/) | 5 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/generator-registry-conformance/`](../fixtures/generator-registry-conformance/) | 1 canonical manifest | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/provider-composition-conformance/`](../fixtures/provider-composition-conformance/) | 5 cases | ✓ | ✓ | — (JVM registry via Java) | ✓ | ✓ |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 4 | ✓ (the emitter is TS-owned) | — | — | — | — |
