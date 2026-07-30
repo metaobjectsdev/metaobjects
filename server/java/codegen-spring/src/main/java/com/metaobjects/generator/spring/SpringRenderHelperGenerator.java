@@ -134,7 +134,8 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
         if (!TemplateConstants.SUBTYPE_OUTPUT.equals(template.getSubType())) return false;
         String payloadRef = template.getPayloadRef();
         if (payloadRef == null || payloadRef.isEmpty()) return false;
-        return resolveValueObject(loader, payloadRef) != null;
+        return resolveValueObject(loader, payloadRef,
+            com.metaobjects.util.MetaDataUtil.findPackageForMetaData(template)) != null;
     }
 
     protected void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot,
@@ -142,7 +143,8 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
         if (!appliesTo(template, loader)) {
             return; // missing @payloadRef, or not a VO — same contract as SpringPayloadGenerator
         }
-        MetaObject payloadVo = resolveValueObject(loader, template.getPayloadRef());
+        MetaObject payloadVo = resolveValueObject(loader, template.getPayloadRef(),
+            com.metaobjects.util.MetaDataUtil.findPackageForMetaData(template));
 
         String[] split = SpringNaming.splitFqn(template.getName());
         String templatePkg = split[0];
@@ -408,15 +410,16 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
         return template.getMetaAttr(attr).getValueAsString();
     }
 
-    /** Resolve {@code @payloadRef} to its {@code object.value} target (rejects entities). */
-    protected static MetaObject resolveValueObject(MetaDataLoader loader, String ref) {
-        for (MetaObject obj : loader.getMetaObjects()) {
-            if (!MetaObject.SUBTYPE_VALUE.equals(obj.getSubType())) continue;
-            if (obj.getName().equals(ref)) return obj;
-            String[] split = SpringNaming.splitFqn(obj.getName());
-            if (split[1].equals(ref)) return obj;
-        }
-        return null;
+    /**
+     * Resolve {@code @payloadRef} to its {@code object.value} target (rejects entities)
+     * under the ADR-0042 package-local contract (#228) — was a package-BLIND bare-name
+     * scan (first match wins, load-order-dependent); now delegates to the shared
+     * {@link SpringNaming#resolveValueObjectRef}. Distinct from this file's OWN
+     * {@link #resolveNestedObjectRef} (the {@code @objectRef} field-tree walk), which was
+     * ALREADY package-local-correct.
+     */
+    protected static MetaObject resolveValueObject(MetaDataLoader loader, String ref, String referrerPkg) {
+        return SpringNaming.resolveValueObjectRef(loader, ref, referrerPkg);
     }
 
     /** Java string-literal quoting with the common escapes. */

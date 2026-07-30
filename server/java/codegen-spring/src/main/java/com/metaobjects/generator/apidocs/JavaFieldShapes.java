@@ -10,6 +10,7 @@ import com.metaobjects.generator.spring.SpringTypeMapper;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.template.MetaTemplate;
+import com.metaobjects.util.MetaDataUtil;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -94,7 +95,8 @@ public final class JavaFieldShapes {
         if (!(template instanceof MetaTemplate tmpl)) return List.of();
         String payloadRef = tmpl.getPayloadRef();
         if (payloadRef == null || payloadRef.isEmpty()) return List.of();
-        MetaObject vo = SpringPayloadGenerator.resolveValueObject(loader, payloadRef);
+        MetaObject vo = SpringPayloadGenerator.resolveValueObject(
+            loader, payloadRef, MetaDataUtil.findPackageForMetaData(tmpl));
         if (vo == null) return List.of();
 
         SpringPayloadGenerator gen = new SpringPayloadGenerator();

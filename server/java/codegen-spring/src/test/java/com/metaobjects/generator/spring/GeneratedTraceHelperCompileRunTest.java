@@ -209,6 +209,64 @@ public class GeneratedTraceHelperCompileRunTest {
             Files.exists(gen.resolve("acme/ai/PlainEntityTraceHelper.java")));
     }
 
+    /**
+     * #228 checkpoint 4 — {@code resolveValueObject}'s pre-fix bare-tail-fallback bug
+     * (the #219/#244 "wrong node despite a VALID FQN target" pattern): the old
+     * implementation checked, PER CANDIDATE in loader iteration order, "does this
+     * object's bare short name equal the ref's bare tail?" — so a same-bare-named
+     * DECOY {@code object.value} visited BEFORE the true FQN target would win
+     * immediately, even though the correctly-FQN-qualified target also exists and
+     * loads later. Package {@code acme::other} declares a decoy {@code GreetResponse}
+     * (loaded FIRST); {@code acme::ai} declares its OWN {@code GreetResponse} and an
+     * FQN {@code @responseRef: "acme::ai::GreetResponse"} that unambiguously names it.
+     * Asserts the generated helper derives its typed result record from {@code acme::ai}'s
+     * shape ({@code greeting}/{@code score}) — never the decoy's ({@code otherField}).
+     */
+    @Test
+    public void responseRefFqnBindsOwnPackageNotABareTailDecoyLoadedFirst() throws Exception {
+        String decoyMeta = "{ \"metadata.root\": {"
+            + "  \"package\": \"acme::other\","
+            + "  \"children\": ["
+            + "    { \"object.value\": { \"name\": \"GreetResponse\", \"children\": ["
+            + "      { \"field.string\": { \"name\": \"otherField\", \"@required\": true } }"
+            + "    ]}}"
+            + "  ]"
+            + "}}";
+
+        MetaDataLoader loader = new MetaDataLoader(
+                LoaderOptions.create(false, false, true),
+                MetaDataLoader.SUBTYPE_MANUAL, "trace-responseref-fqn");
+        loader.init();
+        // Decoy loads FIRST — under the pre-fix bare-tail-fallback bug this would win.
+        loader.load(List.of(
+            new InMemoryStringSource(decoyMeta, "trace-responseref-fqn/meta.other.json"),
+            new InMemoryStringSource(META, "trace-responseref-fqn/meta.ai.json")));
+
+        Path gen = tmp.newFolder("gen-responseref-fqn").toPath();
+        LlmTraceHelperGenerator generator = new LlmTraceHelperGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", gen.toString());
+        generator.setArgs(args);
+        generator.execute(loader);
+
+        Path helper = gen.resolve("acme/ai/GreetingCallTraceHelper.java");
+        assertTrue("GreetingCallTraceHelper.java must be emitted at " + helper, Files.exists(helper));
+        String src = Files.readString(helper);
+
+        // The baked FQN string is the load-bearing proof: LlmTraceHelperGenerator bakes
+        // the RESOLVED responseVo's OWN name (not the raw @responseRef attr verbatim), so
+        // a pre-fix bare-tail-fallback mis-resolution to the decoy would have baked
+        // "acme::other::GreetResponse" here instead.
+        assertTrue("must resolve + bake acme::ai's OWN GreetResponse FQN; saw:\n" + src,
+            src.contains("getMetaObjectByName(\"acme::ai::GreetResponse\")"));
+        assertFalse("must NEVER bind/bake the decoy acme::other::GreetResponse; saw:\n" + src,
+            src.contains("acme::other") || src.contains("otherField"));
+
+        // Compile it too — proves the resolved MetaObject is a real, loadable node
+        // (not just a text match), same rigor as the other tests in this file.
+        compileGenerated(gen);
+    }
+
     // -----------------------------------------------------------------------------------------
     // helpers
     // -----------------------------------------------------------------------------------------

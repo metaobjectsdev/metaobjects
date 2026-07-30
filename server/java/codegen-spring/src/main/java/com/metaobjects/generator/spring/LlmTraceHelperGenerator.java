@@ -149,7 +149,11 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
         String responseRef = prompt.getResponseRef();
         if (responseRef == null || responseRef.isEmpty()) return; // @responseRef gates the helper
 
-        MetaObject responseVo = resolveValueObject(loader, responseRef);
+        // #228 — referrer is the PROMPT (the @responseRef is authored on it), not the
+        // entity: findPackageForMetaData walks parents, so a nested prompt still
+        // resolves the entity's effective package when the prompt itself carries none.
+        MetaObject responseVo = resolveValueObject(loader, responseRef,
+            com.metaobjects.util.MetaDataUtil.findPackageForMetaData(prompt));
         if (responseVo == null) {
             throw new GeneratorException(
                 "trace-helper: entity \"" + entity.getName() + "\" prompt @responseRef \""
@@ -276,15 +280,18 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
         return null;
     }
 
-    /** Resolve a {@code @responseRef} to its {@code object.value} target (by FQN or short name). */
-    protected static MetaObject resolveValueObject(MetaDataLoader loader, String ref) {
-        String refShort = SpringNaming.splitFqn(ref)[1];
-        for (MetaObject obj : loader.getMetaObjects()) {
-            if (!MetaObject.SUBTYPE_VALUE.equals(obj.getSubType())) continue;
-            if (obj.getName().equals(ref)) return obj;
-            if (SpringNaming.splitFqn(obj.getName())[1].equals(refShort)) return obj;
-        }
-        return null;
+    /**
+     * Resolve a {@code @responseRef} to its {@code object.value} target under the
+     * ADR-0042 package-local contract (#228). Was a package-BLIND bare-name scan that,
+     * worse, reduced the REF ITSELF to its trailing {@code ::} segment before matching
+     * — the #219/#244 bare-tail-fallback pattern: an FQN {@code @responseRef} that
+     * failed an exact match would still bind ANY same-bare-named {@code object.value}
+     * in a WRONG package (first match, load-order-dependent), not just a genuinely
+     * bare ref. Now delegates to the shared {@link SpringNaming#resolveValueObjectRef}
+     * (FQN matches exactly, never a bare-tail fallback).
+     */
+    protected static MetaObject resolveValueObject(MetaDataLoader loader, String ref, String referrerPkg) {
+        return SpringNaming.resolveValueObjectRef(loader, ref, referrerPkg);
     }
 
     /** Java string-literal quoting with the common escapes. */

@@ -21,8 +21,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -115,18 +117,28 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         parseArgs();
         Path outRoot = Paths.get(outDir.getAbsolutePath());
 
-        // Stable name order — matches the other ports' deterministic emission.
+        // ADR-0044 (#228) — gather ALL MetaTemplate (prompt/output/toolcall), matching
+        // SpringPayloadGenerator.execute()'s domain EXACTLY, so the run-wide nested-payload
+        // name map (below) agrees with the payload tier's — even though only
+        // template.output gets a parser FILE emitted here (the SUBTYPE_OUTPUT filter moves
+        // to the `outputs` sublist, after the nameMap is computed over every template).
         // ADR-0039: root-scan discipline — resolving children accessor.
+        List<MetaTemplate> allTemplates =
+            new ArrayList<>(loader.getRoot().getChildren(MetaTemplate.class, true));
+        allTemplates.sort(Comparator.comparing(MetaTemplate::getName));
+
+        Map<String, String> nameMap = SpringPayloadGenerator.computePayloadNameMap(allTemplates, loader);
+
+        // Stable name order — matches the other ports' deterministic emission.
         List<MetaTemplate> outputs = new ArrayList<>();
-        for (MetaTemplate t : loader.getRoot().getChildren(MetaTemplate.class, true)) {
+        for (MetaTemplate t : allTemplates) {
             if (TemplateConstants.SUBTYPE_OUTPUT.equals(t.getSubType())) {
                 outputs.add(t);
             }
         }
-        outputs.sort((a, b) -> a.getName().compareTo(b.getName()));
 
         for (MetaTemplate tmpl : outputs) {
-            emit(tmpl, loader, outRoot);
+            emit(tmpl, loader, outRoot, nameMap);
         }
     }
 
@@ -146,14 +158,15 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         if (!TemplateConstants.SUBTYPE_OUTPUT.equals(template.getSubType())) return false;
         String payloadRef = template.getPayloadRef();
         if (payloadRef == null || payloadRef.isEmpty()) return false;
-        return resolveValueObject(loader, payloadRef) != null;
+        return resolveValueObject(loader, payloadRef, MetaDataUtil.findPackageForMetaData(template)) != null;
     }
 
-    protected void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot) {
+    protected void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot, Map<String, String> nameMap) {
         if (!appliesTo(template, loader)) {
             return; // missing @payloadRef, or not a VO — same contract as SpringPayloadGenerator
         }
-        MetaObject payloadVo = resolveValueObject(loader, template.getPayloadRef());
+        MetaObject payloadVo = resolveValueObject(loader, template.getPayloadRef(),
+            MetaDataUtil.findPackageForMetaData(template));
 
         String[] split = SpringNaming.splitFqn(template.getName());
         String templatePkg = split[0];
@@ -228,7 +241,7 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
             src.append("    }\n");
 
             // ---- Generated ValueObject(Map) -> typed-record mappers (payload + nested, deduped) ----
-            emitMapperMethods(src, payloadVo, loader, payloadClass);
+            emitMapperMethods(src, payloadVo, loader, payloadClass, nameMap);
             appendMapperHelpers(src);
         }
         src.append("}\n");
@@ -258,15 +271,20 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
      * here also stops the emitter from recursing forever on a cyclic value-object graph.</p>
      */
     protected void emitMapperMethods(StringBuilder src, MetaObject rootVo,
-                                   MetaDataLoader loader, String rootPayloadClass) {
+                                   MetaDataLoader loader, String rootPayloadClass,
+                                   Map<String, String> nameMap) {
         Set<String> emitted = new LinkedHashSet<>();
-        emitMapper(src, rootVo, loader, rootPayloadClass, emitted);
+        emitMapper(src, rootVo, loader, rootPayloadClass, emitted, nameMap);
     }
 
     protected void emitMapper(StringBuilder src, MetaObject vo, MetaDataLoader loader,
-                            String payloadClass, Set<String> emitted) {
+                            String payloadClass, Set<String> emitted, Map<String, String> nameMap) {
         if (!emitted.add(vo.getName())) {
-            return; // already emitted (dedupe + cycle guard)
+            return; // already emitted (dedupe + cycle guard) — vo.getName() is already the
+                     // FQN (Java's MetaObject.getName() is package-qualified), so this key
+                     // is never bare — a cross-package same-short-name collision does NOT
+                     // silently drop the second VO's mapper (unlike the #219/#244 bare-key
+                     // dedupe bug other ports hit here).
         }
 
         // Discover nested mappers to emit AFTER this one (declaration order is irrelevant
@@ -285,7 +303,7 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         List<MetaField> fields = new ArrayList<>(vo.getMetaFields());
         for (int i = 0; i < fields.size(); i++) {
             MetaField<?> field = fields.get(i);
-            String arg = mapperArgForField(field, vo, payloadClass, loader, nestedVos);
+            String arg = mapperArgForField(field, vo, payloadClass, loader, nestedVos, nameMap);
             body.append("                ").append(arg);
             if (i < fields.size() - 1) body.append(',');
             body.append('\n');
@@ -296,8 +314,8 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
 
         // Recurse into nested payloads (post-order, deduped).
         for (MetaObject nested : nestedVos) {
-            String nestedClass = nestedPayloadClass(nested);
-            emitMapper(src, nested, loader, nestedClass, emitted);
+            String nestedClass = nestedPayloadClass(nested, nameMap);
+            emitMapper(src, nested, loader, nestedClass, emitted, nameMap);
         }
     }
 
@@ -309,7 +327,8 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
      */
     @SuppressWarnings("rawtypes")
     protected String mapperArgForField(MetaField<?> field, MetaObject owner, String payloadClass,
-                                     MetaDataLoader loader, List<MetaObject> nestedVos) {
+                                     MetaDataLoader loader, List<MetaObject> nestedVos,
+                                     Map<String, String> nameMap) {
         String name = field.getName();
 
         // Nested object / array-of-objects (but NOT enum, which is a string-backed scalar).
@@ -318,7 +337,7 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
             MetaObject target = MetaDataUtil.getObjectRef(field);
             if (target != null && MetaObject.SUBTYPE_VALUE.equals(target.getSubType())) {
                 nestedVos.add(target);
-                String nestedClass = nestedPayloadClass(target);
+                String nestedClass = nestedPayloadClass(target, nameMap);
                 if (field.isArrayType()) {
                     // List<NestedPayload>: map each element Map; the assembled value is a List.
                     // from<Nested> is a static method in scope within this generated parser class.
@@ -365,8 +384,22 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         return "ExtractMap.asString(d, \"" + name + "\")";
     }
 
-    /** {@code <CapitalizedShortName>Payload} — mirrors {@link SpringPayloadGenerator}'s nested naming. */
-    protected static String nestedPayloadClass(MetaObject vo) {
+    /**
+     * {@code <CapitalizedShortName>Payload} — consults the ADR-0044 collision-scoped
+     * {@code nameMap} ({@link SpringPayloadGenerator#computePayloadNameMap}) FIRST (#228):
+     * a nested VO whose bare short name is unique in the run's payload domain keeps its
+     * bare {@code <Short>Payload} derivation (byte-identical to pre-#228 output); a
+     * cross-package short-name collision resolves to the SAME package-qualified name
+     * {@link SpringPayloadGenerator} actually emitted (e.g. {@code AcmeAlphaNotePayload}) —
+     * otherwise this generator would reference a bare {@code NotePayload} class the payload
+     * generator never emits under collision (a compile error: two same-named
+     * {@code from<Name>Payload} mapper methods would ALSO collide). Falls back to the bare
+     * derivation when {@code vo} isn't in the map (the primary VO — template-named, outside
+     * the map's domain — or a caller without a precomputed map).
+     */
+    protected static String nestedPayloadClass(MetaObject vo, Map<String, String> nameMap) {
+        String mapped = nameMap.get(vo.getName());
+        if (mapped != null) return mapped;
         return SpringNaming.payloadName(SpringNaming.splitFqn(vo.getName())[1]);
     }
 
@@ -417,15 +450,16 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         return sb.toString();
     }
 
-    /** Resolve {@code @payloadRef} to its {@code object.value} target (rejects entities). */
-    protected static MetaObject resolveValueObject(MetaDataLoader loader, String ref) {
-        for (MetaObject obj : loader.getMetaObjects()) {
-            if (!MetaObject.SUBTYPE_VALUE.equals(obj.getSubType())) continue;
-            if (obj.getName().equals(ref)) return obj;
-            String[] split = SpringNaming.splitFqn(obj.getName());
-            if (split[1].equals(ref)) return obj;
-        }
-        return null;
+    /**
+     * Resolve {@code @payloadRef} to its {@code object.value} target (rejects entities)
+     * under the ADR-0042 package-local contract (#228) — was a package-BLIND bare-name
+     * scan over every loaded {@code object.value} (first match wins, load-order-dependent);
+     * now delegates to the shared {@link SpringNaming#resolveValueObjectRef} so a bare
+     * {@code @payloadRef} binds the referrer's OWN package first, agreeing with the
+     * loader's own {@code ValidationPhase} validation of the same ref.
+     */
+    protected static MetaObject resolveValueObject(MetaDataLoader loader, String ref, String referrerPkg) {
+        return SpringNaming.resolveValueObjectRef(loader, ref, referrerPkg);
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================

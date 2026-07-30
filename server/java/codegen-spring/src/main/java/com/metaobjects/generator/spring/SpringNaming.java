@@ -1,6 +1,7 @@
 package com.metaobjects.generator.spring;
 
 import com.metaobjects.MetaData;
+import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.source.RdbSource;
 
@@ -48,6 +49,60 @@ public final class SpringNaming {
             toJavaPackage(fqn.substring(0, lastSep)),
             fqn.substring(lastSep + 2)
         };
+    }
+
+    /**
+     * ADR-0042 — resolve a metadata OBJECT reference (bare or FQN) to a {@link MetaObject}
+     * under the package-local contract, or {@code null} when nothing matches:
+     * <ul>
+     *   <li><b>FQN</b> {@code ref} (contains {@code "::"}) → EXACT match on
+     *       {@link MetaData#getName()}. No bare-tail fallback, so an FQN pointing at one
+     *       package never binds a same-named object in another.</li>
+     *   <li><b>bare</b> {@code ref} (no {@code "::"}) → the referrer's OWN package
+     *       ({@code <referrerPkg>::<ref>}) first, else a root-level (unpackaged) object
+     *       whose name IS {@code ref}. Package-local BEFORE root-level; no cross-package
+     *       short-name scan, no bare-tail fallback.</li>
+     * </ul>
+     * Mirrors the loader's own {@code ValidationPhase#resolveRootObject} (the same contract
+     * the TS/Python/C# ports' canonical resolvers implement), so a codegen-time
+     * {@code @payloadRef}/{@code @responseRef} resolution agrees with the loader's own
+     * validation of the same ref under a cross-package short-name collision.
+     *
+     * @param referrerPkg the effective package of the node carrying the ref ("" for root-level)
+     */
+    public static MetaObject resolveObjectRef(MetaDataLoader loader, String ref, String referrerPkg) {
+        if (ref == null) return null;
+        String pkg = referrerPkg == null ? "" : referrerPkg;
+        if (ref.contains("::")) {
+            for (MetaObject obj : loader.getMetaObjects()) {
+                if (ref.equals(obj.getName())) return obj;
+            }
+            return null;
+        }
+        String localKey = pkg.isEmpty() ? ref : pkg + "::" + ref;
+        MetaObject own = null;
+        MetaObject rootLevel = null;
+        for (MetaObject obj : loader.getMetaObjects()) {
+            String key = obj.getName();
+            if (key == null) continue;
+            if (key.equals(localKey)) own = obj;
+            if (key.equals(ref)) rootLevel = obj;
+        }
+        if (own != null) return own;
+        return localKey.equals(ref) ? null : rootLevel;
+    }
+
+    /**
+     * Resolve {@code ref} to its {@code object.value} target under the same ADR-0042
+     * package-local contract as {@link #resolveObjectRef} (rejects entities / other
+     * subtypes). The shared home for every {@code @payloadRef}/{@code @responseRef}
+     * resolution in this package — callers derive {@code referrerPkg} via
+     * {@code MetaDataUtil.findPackageForMetaData(referrerNode)} (walks parents, so it
+     * works for both a root-level template and a nested {@code template.prompt}).
+     */
+    public static MetaObject resolveValueObjectRef(MetaDataLoader loader, String ref, String referrerPkg) {
+        MetaObject obj = resolveObjectRef(loader, ref, referrerPkg);
+        return (obj != null && MetaObject.SUBTYPE_VALUE.equals(obj.getSubType())) ? obj : null;
     }
 
     /**
