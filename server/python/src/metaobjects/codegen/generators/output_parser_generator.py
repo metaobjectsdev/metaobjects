@@ -128,10 +128,19 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
     )
 
     if emit_extract_lenient:
+        # ADR-0044 (#228) — the collision-scoped BASE name map for the payload's
+        # reachable nested-VO closure (bare unless a cross-package bare-name
+        # collision requires package-qualification). Computed ONCE and threaded
+        # through both the mirror dataclasses and the mappers below so a nested
+        # VO's ``<Base>Extracted`` name and its `_from_<base>_extracted` mapper
+        # agree — and so the STRICT payload class the extractor tier imports for
+        # the SAME base (see extractor_generator.py) can never diverge.
+        name_map = rde.build_name_map(payload, root)
+
         # FR-010 nested-AWARE extracted mirror: the payload mirror keeps the canonical
         # ``<Name>PayloadExtracted`` name, and a mirror dataclass is emitted for every
         # reachable nested value-object. The single (delegating) extract path returns it.
-        lines.extend(rde.nested_mirror_dataclasses(payload, root, extracted_class))
+        lines.extend(rde.nested_mirror_dataclasses(payload, root, extracted_class, name_map))
         lines.append("")
         lines.append("")
 
@@ -149,7 +158,9 @@ def render_output_parser(template: MetaData, root: MetaData) -> str | None:
         lines.append(f'PAYLOAD_NAME = "{payload.name}"')
         lines.append("")
         lines.append("")
-        lines.extend(rde.nested_mappers(payload, root, root_mapper, extracted_class))
+        lines.extend(
+            rde.nested_mappers(payload, root, root_mapper, extracted_class, name_map)
+        )
         lines.append("")
         lines.append("")
         lines.extend(rde.delegate_helpers(rde.used_helpers(payload, root)))
