@@ -3,13 +3,18 @@ package com.metaobjects.generator.kotlin
 import com.metaobjects.MetaData
 import com.metaobjects.field.DateField
 import com.metaobjects.field.MetaField
+import com.metaobjects.field.ObjectField
 import com.metaobjects.field.TimeField
 import com.metaobjects.field.TimestampField
+import com.metaobjects.generator.GeneratorException
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.origin.AggregateOrigin
+import com.metaobjects.origin.CollectionOrigin
 import com.metaobjects.origin.MetaOrigin
 import com.metaobjects.source.RdbSource
+import com.metaobjects.template.MetaTemplate
+import com.metaobjects.validation.SymbolTable
 
 /**
  * Helpers shared by the codegen-kotlin generators. Extracted to keep
@@ -43,6 +48,38 @@ public object KotlinGenUtil {
         }
         return null
     }
+
+    // =========================================================================
+    // ADR-0042 — canonical package-local object-ref resolution (@payloadRef).
+    //
+    // The loader validates a template's @payloadRef via the SAME package-local
+    // contract (ValidationPhase.resolveRootObject, backed by SymbolTable): an FQN ref
+    // binds EXACTLY; a bare ref binds the referrer's own package, else a root-level
+    // object; NO cross-package bare-name / bare-tail fallback. Reusing the loader's own
+    // public [SymbolTable] (rather than a divergent codegen copy) keeps codegen's
+    // @payloadRef resolution identical to the loader's, so under a cross-package
+    // short-name collision codegen binds the SAME value-object the loader validated —
+    // never a load-order-dependent decoy (the #244 class). The bare-tail/first-match
+    // [resolveObjectByShortOrFqn] above is deliberately left as-is: it backs the
+    // @from/@of/@via dotted-ref navigation (a different ref kind, #244's own domain).
+    // =========================================================================
+
+    /**
+     * Resolve a metadata OBJECT reference (bare or FQN) under the loader's ADR-0042
+     * package-local contract, or null. [referrerPkg] is the effective package of the node
+     * carrying the ref (a template's own `getPackage()` for a @payloadRef); "" for root-level.
+     */
+    fun resolveObjectRef(loader: MetaDataLoader, ref: String?, referrerPkg: String?): MetaObject? {
+        if (ref == null) return null
+        return SymbolTable.build(loader.root).resolveObject(ref, referrerPkg ?: "")
+    }
+
+    /**
+     * Resolve [ref] to its `object.value` target under the same ADR-0042 package-local
+     * contract as [resolveObjectRef] (rejects entities — a @payloadRef must be a VO).
+     */
+    fun resolveValueObjectRef(loader: MetaDataLoader, ref: String?, referrerPkg: String?): MetaObject? =
+        resolveObjectRef(loader, ref, referrerPkg)?.takeIf { it.subType == MetaObject.SUBTYPE_VALUE }
 
     /**
      * The first `source.rdb` child of [obj], RESOLVED through the `extends` super chain
@@ -229,5 +266,163 @@ public object KotlinGenUtil {
             sb.append(c.lowercaseChar())
         }
         return sb.toString()
+    }
+
+    // =========================================================================
+    // ADR-0044 — collision-scoped payload / extracted-mirror naming.
+    //
+    // Lifted here (was private on [KotlinPayloadGenerator]) so the strict payload
+    // record, the `...Extracted` mirror family, and the extractor all share ONE
+    // name-map algorithm. Kotlin `protected` is NOT same-package-visible, so the
+    // extract-tier emitters ([KotlinExtractSchemaEmitter] / [KotlinExtractMapperEmitter] /
+    // [KotlinExtractorGenerator], all in this package) reach these public helpers here.
+    // =========================================================================
+
+    /**
+     * ADR-0044 — the run's nested-PAYLOAD name map (VO FQN -> `<Short>Payload`, or the
+     * package-qualified `AcmeAlphaNotePayload` on a same-output-package short-name collision).
+     * See [computeNameMap]. Consumed by [KotlinPayloadGenerator] (the strict record files) and
+     * the extractor's `toStrict<Name>` / mapper-return references.
+     */
+    fun computePayloadNameMap(templates: List<MetaTemplate>, loader: MetaDataLoader): Map<String, String> =
+        computeNameMap(templates, loader) { KotlinNaming.payloadName(it) }
+
+    /**
+     * ADR-0044 — the run's nested-EXTRACTED-mirror name map (VO FQN -> `<Short>Extracted`, or the
+     * package-qualified `AcmeAlphaNoteExtracted` on a collision). Uses the SAME [computeNameMap]
+     * closure + collision grouping as [computePayloadNameMap] (differing only in the leaf suffix),
+     * so the `...Extracted` mirror and the `...Payload` strict record qualify in lockstep.
+     */
+    fun computeExtractedNameMap(templates: List<MetaTemplate>, loader: MetaDataLoader): Map<String, String> =
+        computeNameMap(templates, loader) { KotlinNaming.extractedName(it) }
+
+    /**
+     * ADR-0044 pass 1/2 — the run's nested-class name map, keyed by value-object FQN
+     * (`MetaObject.name`), scoped per OUTPUT PACKAGE. Kotlin is a one-class-per-file emitter,
+     * so its collision domain is the output prompts package: two value-objects sharing a bare
+     * short name written into the same package would clobber one `NotePayload.kt` /
+     * `NoteExtracted` declaration. A nested VO whose bare short name is UNIQUE in its output
+     * package is named `nameOf(<Short>)` (byte-identical to pre-ADR-0044 output); a COLLISION
+     * names every member `nameOf(<PkgQualified><Short>)` (`acme::alpha::Note` -> `AcmeAlphaNote...`).
+     * A still-colliding derived name fails loud with [KotlinPayloadGenerator.ERR_PAYLOAD_NAME_COLLISION].
+     * Pure function of the templates — never of emission order.
+     */
+    private fun computeNameMap(
+        templates: List<MetaTemplate>,
+        loader: MetaDataLoader,
+        nameOf: (String) -> String,
+    ): Map<String, String> {
+        // FQN -> output package (first reaching template in caller-sorted order wins, matching
+        // the run-wide dedupe). The primary VO is template-named, so excluded.
+        val voOutPkg = LinkedHashMap<String, String>()
+        val orderedFqns = ArrayList<String>()
+        for (tmpl in templates) {
+            val payloadRef = tmpl.payloadRef ?: continue
+            // ADR-0042 — resolve @payloadRef under the loader's own package-local contract.
+            val vo = resolveValueObjectRef(loader, payloadRef, tmpl.getPackage()) ?: continue
+            val nestedPkg = KotlinNaming.promptsPackage(PackageMapping.splitFqn(tmpl.name).first)
+            collectNestedClosure(vo, loader, nestedPkg, voOutPkg, orderedFqns, mutableSetOf(vo.name))
+        }
+        // Group by (output package, bare short name).
+        val byPkgShort = LinkedHashMap<String, MutableList<String>>()
+        for (fqn in orderedFqns) {
+            val key = voOutPkg[fqn] + " " + PackageMapping.splitFqn(fqn).second
+            byPkgShort.getOrPut(key) { ArrayList() }.add(fqn)
+        }
+        val nameMap = LinkedHashMap<String, String>()
+        for (fqns in byPkgShort.values) {
+            if (fqns.size == 1) {
+                val fqn = fqns[0]
+                nameMap[fqn] = nameOf(PackageMapping.splitFqn(fqn).second)
+            } else {
+                for (fqn in fqns) {
+                    val (pkg, short) = PackageMapping.splitFqn(fqn)
+                    nameMap[fqn] = nameOf(packageQualifiedName(pkg, short))
+                }
+            }
+        }
+        // Backstop — per output package, two DISTINCT FQNs deriving the same class name.
+        // Sorted so the named pair (and whether any collision fires) is order-independent.
+        val ownerByPkgName = HashMap<String, String>()
+        for (fqn in nameMap.keys.sorted()) {
+            val pkgName = voOutPkg[fqn] + " " + nameMap[fqn]
+            val prev = ownerByPkgName.putIfAbsent(pkgName, fqn)
+            if (prev != null && prev != fqn) {
+                throw GeneratorException(
+                    "${KotlinPayloadGenerator.ERR_PAYLOAD_NAME_COLLISION}: payload record name collision: \"${nameMap[fqn]}\" " +
+                        "derives from both \"$prev\" and \"$fqn\" — rename one value-object or move " +
+                        "it to a package that derives a distinct name"
+                )
+            }
+        }
+        return nameMap
+    }
+
+    /**
+     * ADR-0044 pass 1 — walk [vo]'s transitive nested-payload closure (plain
+     * `field.object @objectRef` + `origin.collection @via` edges), assigning each
+     * not-yet-seen target VO to [outPkg] (first reaching template wins) and recording it
+     * in [orderedFqns]. [seen] is seeded with the primary VO's FQN and is the cycle guard.
+     */
+    private fun collectNestedClosure(
+        vo: MetaObject,
+        loader: MetaDataLoader,
+        outPkg: String,
+        voOutPkg: MutableMap<String, String>,
+        orderedFqns: MutableList<String>,
+        seen: MutableSet<String>,
+    ) {
+        for (field in vo.metaFields) {
+            val target = nestedTargetOf(field, loader) ?: continue
+            val fqn = target.name
+            if (!seen.add(fqn)) continue
+            if (!voOutPkg.containsKey(fqn)) {
+                voOutPkg[fqn] = outPkg
+                orderedFqns.add(fqn)
+            }
+            collectNestedClosure(target, loader, outPkg, voOutPkg, orderedFqns, seen)
+        }
+    }
+
+    /**
+     * The nested-payload target VO a [field] contributes to the closure, or `null` when it
+     * contributes no nested class. Passthrough / aggregate / computed / first origins yield
+     * scalar types (no nested class). NOTE: the `origin.collection @via` and `field.objectRef`
+     * navigation here uses [resolveObjectByShortOrFqn] / the loader-bound `objectRef` — the
+     * origin-navigation ref kind (#244's domain), intentionally NOT the ADR-0042 @payloadRef
+     * resolver (which is only for the template's own @payloadRef).
+     */
+    private fun nestedTargetOf(field: MetaField<*>, loader: MetaDataLoader): MetaObject? {
+        val origin = field.children.filterIsInstance<MetaOrigin>().firstOrNull()
+        if (origin is CollectionOrigin) {
+            val via = origin.via ?: return null
+            val (parentName, relName) = splitDottedRef(via) ?: return null
+            val parent = resolveObjectByShortOrFqn(loader, parentName) ?: return null
+            val rel = parent.relationships
+                .firstOrNull { it.name == relName || it.name.substringAfterLast("::") == relName }
+                ?: return null
+            val targetRef = rel.objectRef ?: return null
+            return resolveObjectByShortOrFqn(loader, targetRef)
+        }
+        if (origin != null) return null // passthrough / aggregate / computed / first -> scalar
+        if (field is ObjectField) {
+            val target = try { field.objectRef } catch (e: RuntimeException) { null } ?: return null
+            if (target.subType != MetaObject.SUBTYPE_VALUE) return null
+            return target
+        }
+        return null
+    }
+
+    /**
+     * ADR-0044 — PascalCase each dotted segment of [kotlinPkg] (already `::`->`.`
+     * converted by [PackageMapping.splitFqn]), concatenate, append the bare [shortName]
+     * (`"acme.alpha"` + `"Note"` -> `"AcmeAlphaNote"`). A root-level (empty-package) node
+     * keeps its bare short name.
+     */
+    fun packageQualifiedName(kotlinPkg: String, shortName: String): String {
+        if (kotlinPkg.isEmpty()) return shortName
+        return kotlinPkg.split(".")
+            .filter { it.isNotEmpty() }
+            .joinToString("") { it.replaceFirstChar { c -> c.uppercaseChar() } } + shortName
     }
 }

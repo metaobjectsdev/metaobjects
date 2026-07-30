@@ -12,6 +12,7 @@ import com.metaobjects.render.VerifyOptions;
 import com.metaobjects.template.MetaTemplate;
 import com.metaobjects.template.PromptTemplate;
 import com.metaobjects.template.TemplateConstants;
+import com.metaobjects.validation.SymbolTable;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -95,6 +96,14 @@ public final class TemplateVerify {
         List<Drift> warnings = new ArrayList<>();
         List<String> unresolved = new ArrayList<>();
 
+        // ADR-0042 — resolve @payloadRef through the loader's OWN package-local symbol table
+        // (#228), so a bare ref binds the template's own package (else root-level) and an FQN
+        // binds exactly — the same contract the loader validated the ref under. The prior
+        // package-blind bare-tail scan bound a same-short-named value-object in the WRONG
+        // package under a cross-package collision (load-order-dependent), deriving the wrong
+        // field tree and mis-reporting {{field}} drift.
+        SymbolTable symbols = SymbolTable.build(loader.getRoot());
+
         for (com.metaobjects.MetaData child : loader.getRoot().getChildren()) {
             if (!(child instanceof MetaTemplate tmpl)) continue;
 
@@ -107,7 +116,7 @@ public final class TemplateVerify {
 
             // Both subtypes: @payloadRef must resolve to a loaded object.value (a
             // non-empty derived field tree). Catches a renamed VO before codegen.
-            MetaObject payloadVo = resolveValueObject(loader, payloadRef);
+            MetaObject payloadVo = resolveValueObject(symbols, payloadRef, tmpl.getPackage());
             List<PayloadField> fields = payloadVo == null
                     ? List.of()
                     : derivePayloadFieldTree(loader, payloadVo, new LinkedHashSet<>());
@@ -237,14 +246,15 @@ public final class TemplateVerify {
         if (ref != null && !ref.isEmpty()) refs.add(ref);
     }
 
-    /** Resolve {@code @payloadRef} to its {@code object.value} target (rejects entities). */
-    private static MetaObject resolveValueObject(MetaDataLoader loader, String ref) {
-        for (MetaObject obj : loader.getMetaObjects()) {
-            if (!MetaObject.SUBTYPE_VALUE.equals(obj.getSubType())) continue;
-            if (obj.getName().equals(ref)) return obj;
-            if (shortName(obj.getName()).equals(ref)) return obj;
-        }
-        return null;
+    /**
+     * Resolve {@code @payloadRef} to its {@code object.value} target under the loader's ADR-0042
+     * package-local contract (rejects entities). {@code referrerPkg} is the template's own package
+     * ({@code ""} for a root-level template): a bare ref binds {@code <referrerPkg>::<ref>} first,
+     * else a root-level object; an FQN binds exactly — no cross-package bare-name fallback.
+     */
+    private static MetaObject resolveValueObject(SymbolTable symbols, String ref, String referrerPkg) {
+        MetaObject obj = symbols.resolveObject(ref, referrerPkg == null ? "" : referrerPkg);
+        return (obj != null && MetaObject.SUBTYPE_VALUE.equals(obj.getSubType())) ? obj : null;
     }
 
     /** Last {@code ::} segment of a (possibly packaged) metadata name. */

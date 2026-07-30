@@ -47,41 +47,51 @@ internal object KotlinExtractSchemaEmitter {
      * <p>Cycle/depth bounding is handled upstream by `MetaObjectExtractor`; the per-FQN
      * dedupe set here also stops the emitter from recursing forever on a cyclic graph.</p>
      *
+     * @param nameMap ADR-0044 collision-scoped nested-mirror name map (VO FQN ->
+     *         `<Short>Extracted`, or `AcmeAlphaNoteExtracted` on a cross-package short-name
+     *         collision) from [KotlinGenUtil.computeExtractedNameMap] (#228).
      * @return Kotlin source: the root mirror declaration followed by the nested ones,
      *         separated by blank lines. Returns the same shape as [extractedClassDecl]
      *         when [rootVo] has no nested object fields.
      */
-    fun extractedClassDeclsNested(rootVo: MetaObject, rootClassName: String): String {
+    fun extractedClassDeclsNested(
+        rootVo: MetaObject,
+        rootClassName: String,
+        nameMap: Map<String, String>,
+    ): String {
         val out = StringBuilder()
         val emitted = LinkedHashSet<String>()
-        emitMirror(rootVo, rootClassName, out, emitted)
+        emitMirror(rootVo, rootClassName, out, emitted, nameMap)
         return out.toString().trimEnd()
     }
 
     /**
-     * The nested mirror class name for a value-object: `<ShortName>Extracted`. Mirrors
-     * [KotlinPayloadGenerator]'s nested payload naming (`<ShortName>Payload`) but for the
-     * extracted (all-nullable) mirror. Public so the parser generator names mappers consistently.
+     * The nested mirror class name for a value-object: the ADR-0044 collision-scoped name from
+     * [nameMap] (`AcmeAlphaNoteExtracted` on a cross-package short-name collision), else the bare
+     * `<ShortName>Extracted`. Mirrors [KotlinPayloadGenerator]'s nested payload naming
+     * (`<ShortName>Payload`) but for the extracted (all-nullable) mirror. Public so the parser
+     * generator names mappers consistently.
      */
-    fun nestedExtractedClass(vo: MetaObject): String =
-        PackageMapping.splitFqn(vo.name).second + "Extracted"
+    fun nestedExtractedClass(vo: MetaObject, nameMap: Map<String, String>): String =
+        nameMap[vo.name] ?: KotlinNaming.extractedName(PackageMapping.splitFqn(vo.name).second)
 
     private fun emitMirror(
         vo: MetaObject,
         className: String,
         out: StringBuilder,
         emitted: LinkedHashSet<String>,
+        nameMap: Map<String, String>,
     ) {
         if (!emitted.add(vo.name)) return // dedupe + cycle guard
 
         val nested = mutableListOf<MetaObject>()
         val props = vo.metaFields.joinToString(",\n") { field ->
-            "    val ${field.name}: ${nestedNullableTypeName(field, nested)} = null"
+            "    val ${field.name}: ${nestedNullableTypeName(field, nested, nameMap)} = null"
         }
         out.append("data class $className(\n$props,\n)\n\n")
 
         for (nestedVo in nested) {
-            emitMirror(nestedVo, nestedExtractedClass(nestedVo), out, emitted)
+            emitMirror(nestedVo, nestedExtractedClass(nestedVo, nameMap), out, emitted, nameMap)
         }
     }
 
@@ -90,12 +100,17 @@ internal object KotlinExtractSchemaEmitter {
      * `@objectRef` resolves to a value-object become the nested mirror type (single) or
      * `List<<NestedShort>Extracted>?` (array-of-objects); the discovered nested VO is
      * recorded into [nested] so the caller emits its mirror. All other fields fall back
-     * to the scalar mapping in [nullableTypeName].
+     * to the scalar mapping in [nullableTypeName]. The nested mirror name is resolved through
+     * the collision-scoped [nameMap] (#228).
      */
-    private fun nestedNullableTypeName(field: MetaField<*>, nested: MutableList<MetaObject>): String {
+    private fun nestedNullableTypeName(
+        field: MetaField<*>,
+        nested: MutableList<MetaObject>,
+        nameMap: Map<String, String>,
+    ): String {
         val target = objectRefValueObject(field)
         if (target != null) {
-            val nestedClass = nestedExtractedClass(target)
+            val nestedClass = nestedExtractedClass(target, nameMap)
             nested.add(target)
             return if (field.isArrayType()) "List<$nestedClass>?" else "$nestedClass?"
         }

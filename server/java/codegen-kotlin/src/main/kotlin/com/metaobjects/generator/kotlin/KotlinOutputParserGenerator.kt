@@ -80,17 +80,30 @@ open class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject
         parseArgs()
         val outRoot = Paths.get(outDir.absolutePath)
 
-        // Stable name order — matches TS/C#/Python deterministic emission.
+        // ADR-0044 (#228) — the collision-scoped `...Extracted` mirror name map is computed over
+        // ALL templates (not just outputs) so its domain / package assignment matches the payload
+        // generator's, keeping the nested-mirror names in lockstep with the strict payload records.
         // ADR-0039: root-scan discipline — resolving children accessor.
+        val allTemplates = loader.root.getChildren(MetaTemplate::class.java, true)
+            .sortedBy { it.name }
+        val extractedNameMap = KotlinGenUtil.computeExtractedNameMap(allTemplates, loader)
+
+        // Only template.output gets a parser file. Stable name order — matches TS/C#/Python
+        // deterministic emission.
         val outputs = loader.root.getChildren(OutputTemplate::class.java, true)
             .sortedBy { it.name }
 
         for (tmpl in outputs) {
-            emit(tmpl, loader, outRoot)
+            emit(tmpl, loader, outRoot, extractedNameMap)
         }
     }
 
-    protected open fun emit(template: MetaTemplate, loader: MetaDataLoader, outRoot: Path) {
+    protected open fun emit(
+        template: MetaTemplate,
+        loader: MetaDataLoader,
+        outRoot: Path,
+        extractedNameMap: Map<String, String>,
+    ) {
         val payloadRef = template.payloadRef
         if (payloadRef.isNullOrEmpty()) {
             // Loader validation normally catches this first; defensive only.
@@ -100,7 +113,8 @@ open class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject
             )
             return
         }
-        val payloadVo = resolveViewObject(loader, payloadRef)
+        // ADR-0042 — resolve @payloadRef under the loader's package-local contract (#228).
+        val payloadVo = KotlinGenUtil.resolveValueObjectRef(loader, payloadRef, template.getPackage())
         if (payloadVo == null) {
             // @payloadRef resolves to an object.entity (or nothing) — same contract
             // as KotlinPayloadGenerator: payloads MUST be VOs.
@@ -115,7 +129,9 @@ open class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject
         val outPkg = KotlinNaming.promptsPackage(templatePkg)
         val parserClass = KotlinNaming.parserName(templateShort)
         val payloadClass = KotlinNaming.payloadName(templateShort)
-        val extractedClass = templateShort + "Extracted"
+        // Root mirror is template-named (unique — never collision-scoped); nested mirrors
+        // consult [extractedNameMap] (#228).
+        val extractedClass = KotlinNaming.extractedName(templateShort)
         val parseFn = "parse$templateShort"
         val safeParseFn = "safeParse$templateShort"
 
@@ -145,7 +161,7 @@ open class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject
                 // nested value-object. Object fields are typed as the nested mirror (single)
                 // or List<NestedExtracted>? (array-of-objects) so the runtime-delegating
                 // extractLenient(loader, ...) overload can populate the full graph (FR-010 nested gap).
-                append(KotlinExtractSchemaEmitter.extractedClassDeclsNested(payloadVo, extractedClass))
+                append(KotlinExtractSchemaEmitter.extractedClassDeclsNested(payloadVo, extractedClass, extractedNameMap))
                 append("\n\n")
             }
             append("/** Parser for LLM responses matching the `")
@@ -219,7 +235,7 @@ open class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject
                 append("    }\n")
 
                 // ---- Generated ValueObject(Map) -> typed Extracted-mirror mappers (root + nested, deduped) ----
-                append(KotlinExtractMapperEmitter.mapperMethods(payloadVo, extractedClass))
+                append(KotlinExtractMapperEmitter.mapperMethods(payloadVo, extractedClass, extractedNameMap))
             }
             append("}\n")
         }
@@ -228,11 +244,6 @@ open class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject
         outFile.parent?.let { Files.createDirectories(it) }
         Files.writeString(outFile, src)
     }
-
-    /** Resolve a `@payloadRef` to its `object.value` (rejects entities — payloads must be VOs). */
-    private fun resolveViewObject(loader: MetaDataLoader, ref: String): MetaObject? =
-        KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref)
-            ?.takeIf { it.subType == MetaObject.SUBTYPE_VALUE }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
     override fun writeSingleFile(md: MetaObject, writer: GeneratorIOWriter<*>?) { /* unused */ }
