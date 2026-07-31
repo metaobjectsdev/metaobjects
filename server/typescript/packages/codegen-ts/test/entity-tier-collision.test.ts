@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { runGen } from "../src/runner.js";
 import { defineConfig } from "../src/metaobjects-config.js";
 import { entityFile } from "../src/generators/entity-file.js";
+import { barrel } from "../src/generators/barrel.js";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 
 // ADR-0044 / #228 — the ENTITY tier brings the per-value-object entity module
@@ -36,7 +37,7 @@ async function genFiles(root: Awaited<ReturnType<typeof loadMultiPackageRoot>>):
       // postgres: a single (non-array) field.object jsonb column gets a
       // Drizzle `.$type<VO>()` — the value-object reference site under test.
       dialect: "postgres",
-      generators: [entityFile()],
+      generators: [entityFile(), barrel()],
     }),
     metadata: root,
   });
@@ -144,6 +145,17 @@ describe("entity tier — ADR-0044 cross-package value-object short-name collisi
     expect(betaHost).toContain("AcmeBetaNoteInsertSchema");
     expect(betaHost).toMatch(/\.\$type<AcmeBetaNote>/);
     expect(betaHost).toContain("./AcmeBetaNote.js");
+
+    // Barrel re-exports the COLLISION-SCOPED value-object modules (AcmeAlphaNote /
+    // AcmeBetaNote) — never a bare (duplicated, dangling) `./Note.js`. Entities keep
+    // their bare names. This is the entity-tier collision-scoping closure (#228).
+    const index = files.get("index.ts")!;
+    expect(index).toContain("./AcmeAlphaNote.js");
+    expect(index).toContain("./AcmeBetaNote.js");
+    expect(index).toContain("./AlphaHost.js");
+    expect(index).toContain("./BetaHost.js");
+    expect(index).not.toMatch(/\.\/Note\.js/);
+    expect(index.match(/export \* from/g)?.length ?? 0).toBeGreaterThan(0);
   });
 
   test("write-through read-view, projection, and field.map references all use the qualified name", async () => {
@@ -278,5 +290,12 @@ describe("entity tier — ADR-0044 cross-package value-object short-name collisi
     expect(host).toContain("WidgetInsertSchema");
     expect(host).toMatch(/\.\$type<Widget>/);
     expect(host).toContain("./Widget.js");
+
+    // Barrel no-churn: with no collision the value-object module is re-exported by
+    // its BARE name (qualification never fires) — byte-identical to pre-#228 output.
+    const index = files.get("index.ts")!;
+    expect(index).toContain("./Widget.js");
+    expect(index).toContain("./Host.js");
+    expect(index).not.toMatch(/DemoWidget/);
   });
 });
