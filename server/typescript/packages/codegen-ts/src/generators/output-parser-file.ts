@@ -36,7 +36,12 @@ export const outputParser = function outputParser(opts?: OutputParserOpts): Gene
       for (const t of outputs) {
         files.push({
           path: `${dirPrefix}${t.name}.output.ts`,
-          content: renderOutputParser(ctx.loadedRoot, t.name),
+          // ADR-0044/#228: thread ctx.renderContext (when present — runGen always supplies it;
+          // a hand-rolled GenContext in a unit test may omit it, falling back to bare naming) so
+          // a payload/nested value-object whose bare name collides across packages emits the
+          // entity-domain qualified mirror type (Task 3's valueObjectEmittedName), and the
+          // payload runtime lookup baked FQN-safe.
+          content: renderOutputParser(ctx.loadedRoot, t.name, ctx.renderContext),
         });
       }
       return files;

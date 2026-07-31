@@ -50,6 +50,9 @@ from metaobjects.apidocs.naming import snake_case as _snake_case
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
+from metaobjects.codegen.generators.payload_vo_generator import (
+    resolve_payload_vo as _shared_resolve_payload_vo,
+)
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
@@ -161,23 +164,23 @@ def _field_tree_literal(fields: list[PayloadField]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _resolve_payload_vo(root: MetaData, payload_ref: str) -> MetaObject | None:
-    """``@payloadRef`` must resolve to an ``object.value``. Package-local (ADR-0042):
-    the referrer's own package first (else a root-level object), FQN exact. The
-    referrer package is derived from the resolved match's own resolution key, so this
-    keeps the same behavior for the single-package + FQN codegen fixtures while never
-    binding a same-named VO in the wrong package (the nested @objectRef path is the
-    one #191 named — see _resolve_nested_object_ref). Matches a value-object child by
-    the package-folded resolution key OR the bare short name (FR-026 expands refs to
-    FQN, while the child node still carries the short ``name``)."""
-    ref_short = payload_ref.rsplit(PACKAGE_SEP, 1)[-1]
-    # ADR-0039 sanctioned own: top-level scan on the loader ROOT (never extended, own == effective)
-    for child in root.own_children():
-        if not isinstance(child, MetaObject) or child.sub_type != OBJECT_SUBTYPE_VALUE:
-            continue
-        if child.resolution_key() == payload_ref or child.name == ref_short:
-            return child
-    return None
+def _resolve_payload_vo(
+    root: MetaData, payload_ref: str, referrer_pkg: str
+) -> MetaObject | None:
+    """``@payloadRef`` must resolve to an ``object.value`` — delegates to the ONE
+    shared canonical resolver every other generator uses
+    (:func:`~metaobjects.codegen.generators.payload_vo_generator.resolve_payload_vo`),
+    which routes through ``naming_refs.resolve_object_ref`` (ADR-0042 package-local:
+    an FQN resolves exactly; a bare ref resolves in *referrer_pkg* first, else a
+    root-level object).
+
+    #228 — this used to be a LOCAL bare-tail-fallback matcher (``child.name ==
+    payload_ref.rsplit("::", 1)[-1]``) that mis-bound even an FULLY-QUALIFIED ref
+    under a cross-package bare-name collision — the same #244 "wrong node" class
+    the entity tier already closed elsewhere. Collapsed onto the shared resolver
+    rather than re-deriving a second, subtly-different copy that could (and did)
+    drift out of sync."""
+    return _shared_resolve_payload_vo(root, payload_ref, referrer_pkg)
 
 
 def _max_chars_of(tmpl: MetaData) -> int | None:
@@ -255,7 +258,9 @@ class RenderHelperGenerator:
                     "@payloadRef — skipped."
                 )
                 continue
-            vo = _resolve_payload_vo(root, payload_ref)
+            # ADR-0042 (#228): the referrer is THIS template — a bare @payloadRef
+            # resolves in ITS OWN package first.
+            vo = _resolve_payload_vo(root, payload_ref, _pkg_of(tmpl))
             if vo is None:
                 ctx.warn(
                     f"{_GENERATOR_NAME}: template.output '{tmpl.name}' @payloadRef "

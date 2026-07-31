@@ -37,23 +37,31 @@ internal static class ExtractDelegateEmitter
     // VO / field discovery (object-before-isArray order — the cross-port fix)
     // =========================================================================
 
-    internal static MetaData? FindObject(MetaData root, string name) =>
-        // ADR-0039: Children() — resolving root scan (behavior-identical; root has no super).
-        root.Children().FirstOrDefault(c => c.Type == TYPE_OBJECT && c.Name == name);
+    /// <summary>
+    /// Resolve an OBJECT reference under the ADR-0042 package-local contract (FQN-exact when
+    /// qualified; else the referrer's own package, else root-level) — never a bare-tail
+    /// fallback (the #219/#228 "wrong node" class: under a cross-package short-name collision,
+    /// a bare-tail match binds WHICHEVER same-named object happens to load first, regardless of
+    /// which package <paramref name="name"/> actually points at).
+    /// </summary>
+    internal static MetaData? FindObject(MetaData root, string name, string referrerPkg) =>
+        global::MetaObjects.NamingRefs.ResolveObjectRef(root, name, referrerPkg);
 
     /// <summary>
     /// The <c>@objectRef</c> target VO for a nested-object field, or null when unresolvable.
-    /// Matches by the bare ref first, then by the package-stripped short name. Shared with
+    /// The referrer package is the FIELD's own declaring package (ADR-0042 — the field's parent
+    /// object, not necessarily the walk's root VO, since a field may be inherited via extends
+    /// from an abstract VO declared in a different package). Shared with
     /// <see cref="ExtractorGenerator"/> (the extract tier walks the same VO graph).
     /// </summary>
     internal static MetaData? RefVo(MetaData field, MetaData root)
     {
         // ADR-0039: resolving — @objectRef may be inherited via extends (TS reads f.attr).
         if (field.Attr(FIELD_ATTR_OBJECT_REF) is not string objectRef) return null;
-        var direct = FindObject(root, objectRef);
-        if (direct is not null) return direct;
-        int sep = objectRef.LastIndexOf(PACKAGE_SEPARATOR, System.StringComparison.Ordinal);
-        return sep >= 0 ? FindObject(root, objectRef[(sep + PACKAGE_SEPARATOR.Length)..]) : null;
+        var referrerPkg = field.Parent is not null
+            ? global::MetaObjects.NamingRefs.EffectivePackage(field.Parent)
+            : "";
+        return FindObject(root, objectRef, referrerPkg);
     }
 
     /// <summary>
@@ -64,11 +72,30 @@ internal static class ExtractDelegateEmitter
     /// </summary>
     internal static bool IsObjectField(MetaData field) => field.SubType == FIELD_SUBTYPE_OBJECT;
 
-    /// <summary>The extracted-mirror record name for a value-object (<c>&lt;Name&gt;Extracted</c>).</summary>
-    public static string MirrorName(MetaData vo) => $"{vo.Name}Extracted";
+    /// <summary>ADR-0044 (#228) — the ADR-0044 emitted name for <paramref name="vo"/> from the
+    /// shared <see cref="PayloadCodegen"/> closure name-map: bare when unique in the closure,
+    /// package-qualified on a cross-package short-name collision. Reused (never re-derived) so
+    /// the mirror/mapper types the extract tier emits always agree with PayloadCodegen's own
+    /// record names.</summary>
+    private static string EmittedName(MetaData vo, IReadOnlyDictionary<string, string> nameMap) =>
+        PayloadCodegen.EmittedNameOf(vo, nameMap);
 
-    /// <summary>The mapper-method name for a value-object (<c>From&lt;Name&gt;Extracted</c>).</summary>
-    private static string MapperName(MetaData vo) => $"From{vo.Name}Extracted";
+    /// <summary>The extracted-mirror record name for a value-object (<c>&lt;EmittedName&gt;Extracted</c>).</summary>
+    public static string MirrorName(MetaData vo, IReadOnlyDictionary<string, string> nameMap) =>
+        $"{EmittedName(vo, nameMap)}Extracted";
+
+    /// <summary>The mapper-method name for a value-object (<c>From&lt;EmittedName&gt;Extracted</c>).</summary>
+    private static string MapperName(MetaData vo, IReadOnlyDictionary<string, string> nameMap) =>
+        $"From{EmittedName(vo, nameMap)}Extracted";
+
+    /// <summary>ADR-0044 (#228) — the closure name-map for <paramref name="vo"/>'s OWN reference
+    /// closure (the same closure <see cref="PayloadCodegen.GeneratePayloadRecords"/> would walk
+    /// for this VO). <paramref name="vo"/> is already-resolved, so its <c>ResolutionKey()</c> is
+    /// used as a self-resolving FQN reference (referrer package is irrelevant for an FQN, and for
+    /// a root-level VO its own effective package — "" — correctly self-resolves).</summary>
+    private static IReadOnlyDictionary<string, string> ClosureNameMap(MetaData vo, MetaData root) =>
+        PayloadCodegen.ComputeClosureAndNames(
+            root, vo.ResolutionKey(), global::MetaObjects.NamingRefs.EffectivePackage(vo)).NameMap;
 
     // =========================================================================
     // "Has nested" — only emit the delegating overload + mappers when worthwhile
@@ -83,7 +110,10 @@ internal static class ExtractDelegateEmitter
         while (stack.Count > 0)
         {
             var cur = stack.Pop();
-            if (!seen.Add(cur.Name)) continue;
+            // Dedupe by ResolutionKey (FQN) — NOT the bare Name — so a cross-package same-short-
+            // named VO reached from a DIFFERENT branch is still walked (the #219-class defect:
+            // bare-name dedupe would prune it as "already seen" and could miss its nested fields).
+            if (!seen.Add(cur.ResolutionKey())) continue;
             foreach (var f in Fr010FieldMapping.Fields(cur))
             {
                 if (!IsObjectField(f)) continue;
@@ -100,14 +130,14 @@ internal static class ExtractDelegateEmitter
     // =========================================================================
 
     /// <summary>The nullable mirror C# type for one field — nested-aware (recurses into nested mirror names).</summary>
-    private static string NestedMirrorType(MetaData field, MetaData root)
+    private static string NestedMirrorType(MetaData field, MetaData root, IReadOnlyDictionary<string, string> nameMap)
     {
         // Object BEFORE array (the object-before-isArray fix): an array-of-objects must map to
         // a list of nested mirrors, NOT a string list.
         if (IsObjectField(field))
         {
             var target = RefVo(field, root);
-            string baseName = target is not null ? MirrorName(target) : "object";
+            string baseName = target is not null ? MirrorName(target, nameMap) : "object";
             return Fr010FieldMapping.IsArray(field)
                 ? $"global::System.Collections.Generic.IReadOnlyList<{baseName}?>?"
                 : $"{baseName}?";
@@ -122,23 +152,25 @@ internal static class ExtractDelegateEmitter
 
     /// <summary>
     /// Emit the PAYLOAD mirror record (nested-aware, so object fields are typed as nested mirrors,
-    /// not <c>object?</c>) plus every reachable NESTED mirror record, deduped by simple name
-    /// (cycle-safe). The PAYLOAD mirror keeps the canonical <c>&lt;Payload&gt;Extracted</c> name
-    /// (<paramref name="payloadMirror"/>) so the delegating overload's one shared mirror type can
-    /// carry populated nested components.
+    /// not <c>object?</c>) plus every reachable NESTED mirror record, deduped by ResolutionKey
+    /// (cycle-safe; ADR-0044 #228 — never the bare metadata name, which would silently collapse two
+    /// cross-package same-short-named VOs onto one emitted mirror). The PAYLOAD mirror keeps the
+    /// canonical <c>&lt;Payload&gt;Extracted</c> name (<paramref name="payloadMirror"/>) so the
+    /// delegating overload's one shared mirror type can carry populated nested components.
     /// </summary>
     public static string NestedMirrorRecords(MetaData vo, MetaData root, string payloadMirror)
     {
+        var nameMap = ClosureNameMap(vo, root);
         var sb = new StringBuilder();
         var seen = new HashSet<string>(System.StringComparer.Ordinal);
-        EmitMirror(vo, root, payloadMirror, seen, sb);
+        EmitMirror(vo, root, payloadMirror, nameMap, seen, sb);
         return sb.ToString();
     }
 
     private static void EmitMirror(MetaData vo, MetaData root, string recordName,
-        HashSet<string> seen, StringBuilder sb)
+        IReadOnlyDictionary<string, string> nameMap, HashSet<string> seen, StringBuilder sb)
     {
-        if (!seen.Add(vo.Name)) return;
+        if (!seen.Add(vo.ResolutionKey())) return;
         string baseName = recordName.EndsWith("Extracted", System.StringComparison.Ordinal)
             ? recordName[..^"Extracted".Length] : recordName;
         sb.AppendLine();
@@ -146,12 +178,12 @@ internal static class ExtractDelegateEmitter
         sb.AppendLine($"public sealed record {recordName}");
         sb.AppendLine("{");
         foreach (var f in Fr010FieldMapping.Fields(vo))
-            sb.AppendLine($"    public {NestedMirrorType(f, root)} {f.Name} {{ get; init; }}");
+            sb.AppendLine($"    public {NestedMirrorType(f, root, nameMap)} {f.Name} {{ get; init; }}");
         sb.AppendLine("}");
 
         foreach (var f in Fr010FieldMapping.Fields(vo))
             if (IsObjectField(f) && RefVo(f, root) is { } target)
-                EmitMirror(target, root, MirrorName(target), seen, sb);
+                EmitMirror(target, root, MirrorName(target, nameMap), nameMap, seen, sb);
     }
 
     // =========================================================================
@@ -168,6 +200,28 @@ internal static class ExtractDelegateEmitter
     public static string DelegatingMembers(MetaData vo, MetaData root, string payloadFqn,
         string rootMirror, string formatEnum)
     {
+        var nameMap = ClosureNameMap(vo, root);
+
+        // ADR-0044/#228 fix round 1 — root.FindObject(name) (MetaRoot's public runtime API) is
+        // a bare-Name-only, first-match lookup with NO package awareness. Payload
+        // records/extractors/output-parsers emit into ONE FLAT namespace (config.Namespace),
+        // while entities and owned value-objects can emit into PER-PACKAGE namespaces (FR-019
+        // PackageBindingResolver) — so two DIFFERENT-package objects sharing this payload's bare
+        // short name (e.g. an object.value "Report" used as this @payloadRef in one package, and
+        // an unrelated object.entity "Report" in another) can BOTH load and compile cleanly (no
+        // duplicate-type error, since they land in different namespaces), yet
+        // root.FindObject(bareName) at RUNTIME silently binds whichever one loaded first —
+        // reachable, compiling, silent wrong-node extraction. Bake the FULL ResolutionKey (FQN)
+        // and resolve via the canonical NamingRefs.ResolveObjectRef matcher (FQN-exact,
+        // load-order-independent) ONLY when this payload's bare name is actually AMBIGUOUS at
+        // the metadata root (more than one root-level object.* shares it — the SAME domain
+        // MetaRoot.FindObject itself searches). A UNIQUE (the overwhelmingly common) payload
+        // name keeps TODAY'S exact bare-name + root.FindObject() path, byte-identical to
+        // pre-fix output — a naive "always bake the FQN" would REGRESS the unique case, since
+        // MetaRoot.FindObject matches bare child names only and would return null for an FQN.
+        bool payloadNameAmbiguous = root.Children().Count(c => c.Type == TYPE_OBJECT && c.Name == vo.Name) > 1;
+        string bakedPayloadFqn = payloadNameAmbiguous ? vo.ResolutionKey() : payloadFqn;
+
         var sb = new StringBuilder();
         sb.AppendLine();
         sb.AppendLine("    // FR-010 — runtime-delegating extraction (the single metadata-driven extract path).");
@@ -175,8 +229,11 @@ internal static class ExtractDelegateEmitter
         sb.AppendLine("    // FULL object graph (nested objects + arrays-of-objects) reflection-free by reading the live");
         sb.AppendLine("    // metadata, then maps it into the typed nullable mirror via From*Extracted.");
         sb.AppendLine();
-        sb.AppendLine($"    /// <summary>The payload's metadata name — resolve it against a loaded <c>MetaRoot</c> to obtain the runtime <c>MetaObject</c>.</summary>");
-        sb.AppendLine($"    public const string PAYLOAD_FQN = \"{Fr010FieldMapping.CSharpStringLiteral(payloadFqn)}\";");
+        var ambiguousNote = payloadNameAmbiguous
+            ? " ADR-0042 FQN (this payload's bare name collides with a same-short-name object elsewhere in the run)."
+            : "";
+        sb.AppendLine($"    /// <summary>The payload's metadata name — resolve it against a loaded <c>MetaRoot</c> to obtain the runtime <c>MetaObject</c>.{ambiguousNote}</summary>");
+        sb.AppendLine($"    public const string PAYLOAD_FQN = \"{Fr010FieldMapping.CSharpStringLiteral(bakedPayloadFqn)}\";");
         sb.AppendLine();
         sb.AppendLine($"    /// <summary>Tolerant best-effort extraction delegating to the runtime; fully populates nested-object and");
         sb.AppendLine($"    /// array-of-object components by reading the live metadata. Never throws.</summary>");
@@ -194,7 +251,12 @@ internal static class ExtractDelegateEmitter
         sb.AppendLine($"    public static global::MetaObjects.Render.Extract.ExtractionResult<{rootMirror}> ExtractLenient(");
         sb.AppendLine($"        global::MetaObjects.Meta.MetaRoot root, string text, ExtractOptions? opts = null)");
         sb.AppendLine("    {");
-        sb.AppendLine("        var mo = root.FindObject(PAYLOAD_FQN)");
+        // NamingRefs.ResolveObjectRef returns MetaData?; ExtractLenient(MetaObject, ...) needs a
+        // MetaObject — the "as" narrows (never a hard cast throw) matching root.FindObject's own
+        // MetaObject? return type on the unique path.
+        sb.AppendLine(payloadNameAmbiguous
+            ? "        var mo = global::MetaObjects.NamingRefs.ResolveObjectRef(root, PAYLOAD_FQN, \"\") as global::MetaObjects.Meta.MetaObject"
+            : "        var mo = root.FindObject(PAYLOAD_FQN)");
         sb.AppendLine("            ?? throw new global::System.InvalidOperationException(");
         sb.AppendLine("                $\"payload object \\\"{PAYLOAD_FQN}\\\" not found in the loaded metadata\");");
         sb.AppendLine("        return ExtractLenient(mo, text, opts);");
@@ -202,26 +264,28 @@ internal static class ExtractDelegateEmitter
 
         // ---- mappers (root + nested, deduped). Root mapper is named distinctly so it can carry
         //      the canonical payload-mirror return type (the template name may differ from the VO).
-        EmitMappers(sb, vo, root, rootMirror);
+        EmitMappers(sb, vo, root, rootMirror, nameMap);
 
         // ---- shared helpers
         AppendHelpers(sb);
         return sb.ToString();
     }
 
-    private static void EmitMappers(StringBuilder sb, MetaData rootVo, MetaData root, string rootMirror)
+    private static void EmitMappers(StringBuilder sb, MetaData rootVo, MetaData root, string rootMirror,
+        IReadOnlyDictionary<string, string> nameMap)
     {
         var seen = new HashSet<string>(System.StringComparer.Ordinal);
         // Root mapper: a distinctly-named method returning the canonical payload mirror.
-        EmitRootMapper(sb, rootVo, root, rootMirror);
-        seen.Add(rootVo.Name);
+        EmitRootMapper(sb, rootVo, root, rootMirror, nameMap);
+        seen.Add(rootVo.ResolutionKey());
         // Nested mappers (each named From<VO>Extracted, returning <VO>Extracted).
         foreach (var f in Fr010FieldMapping.Fields(rootVo))
             if (IsObjectField(f) && RefVo(f, root) is { } target)
-                EmitNestedMapper(sb, target, root, seen);
+                EmitNestedMapper(sb, target, root, seen, nameMap);
     }
 
-    private static void EmitRootMapper(StringBuilder sb, MetaData vo, MetaData root, string mirror)
+    private static void EmitRootMapper(StringBuilder sb, MetaData vo, MetaData root, string mirror,
+        IReadOnlyDictionary<string, string> nameMap)
     {
         sb.AppendLine();
         sb.AppendLine($"    /// <summary>Map an assembled ValueObject graph into a typed <c>{mirror}</c>. Generated; null-tolerant.</summary>");
@@ -231,34 +295,35 @@ internal static class ExtractDelegateEmitter
         sb.AppendLine($"        return new {mirror}");
         sb.AppendLine("        {");
         foreach (var f in Fr010FieldMapping.Fields(vo))
-            sb.AppendLine($"            {f.Name} = {MapperArg(f, root)},");
+            sb.AppendLine($"            {f.Name} = {MapperArg(f, root, nameMap)},");
         sb.AppendLine("        };");
         sb.AppendLine("    }");
     }
 
-    private static void EmitNestedMapper(StringBuilder sb, MetaData vo, MetaData root, HashSet<string> seen)
+    private static void EmitNestedMapper(StringBuilder sb, MetaData vo, MetaData root, HashSet<string> seen,
+        IReadOnlyDictionary<string, string> nameMap)
     {
-        if (!seen.Add(vo.Name)) return;
-        string mirror = MirrorName(vo);
+        if (!seen.Add(vo.ResolutionKey())) return;
+        string mirror = MirrorName(vo, nameMap);
         sb.AppendLine();
         sb.AppendLine($"    /// <summary>Map an assembled ValueObject graph into a typed <c>{mirror}</c>. Generated; null-tolerant.</summary>");
-        sb.AppendLine($"    private static {mirror}? {MapperName(vo)}(object? o)");
+        sb.AppendLine($"    private static {mirror}? {MapperName(vo, nameMap)}(object? o)");
         sb.AppendLine("    {");
         sb.AppendLine("        if (o is null) return null;");
         sb.AppendLine($"        return new {mirror}");
         sb.AppendLine("        {");
         foreach (var f in Fr010FieldMapping.Fields(vo))
-            sb.AppendLine($"            {f.Name} = {MapperArg(f, root)},");
+            sb.AppendLine($"            {f.Name} = {MapperArg(f, root, nameMap)},");
         sb.AppendLine("        };");
         sb.AppendLine("    }");
 
         foreach (var f in Fr010FieldMapping.Fields(vo))
             if (IsObjectField(f) && RefVo(f, root) is { } target)
-                EmitNestedMapper(sb, target, root, seen);
+                EmitNestedMapper(sb, target, root, seen, nameMap);
     }
 
     /// <summary>The mirror-field initializer expression that reads <paramref name="field"/> from the assembled object.</summary>
-    private static string MapperArg(MetaData field, MetaData root)
+    private static string MapperArg(MetaData field, MetaData root, IReadOnlyDictionary<string, string> nameMap)
     {
         string key = $"\"{Fr010FieldMapping.CSharpStringLiteral(field.Name)}\"";
 
@@ -267,7 +332,7 @@ internal static class ExtractDelegateEmitter
         {
             var target = RefVo(field, root);
             if (target is null) return "null /* unresolved @objectRef */";
-            string fn = MapperName(target);
+            string fn = MapperName(target, nameMap);
             return Fr010FieldMapping.IsArray(field)
                 ? $"MapObjectList(ReadProp(o, {key}), {fn})"
                 : $"{fn}(ReadProp(o, {key}))";

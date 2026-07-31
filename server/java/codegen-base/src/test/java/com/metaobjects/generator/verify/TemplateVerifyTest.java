@@ -279,6 +279,90 @@ public class TemplateVerifyTest {
         assertEquals("somethingElse", out.errors().get(0).path());
     }
 
+    // === #228 — the @payloadRef resolver is package-local (ADR-0042). Two packages each
+    // === declare their OWN payload VO `Report` (distinct field) AND a template.prompt with a
+    // === BARE @payloadRef "Report". The prior package-blind bare-tail scan bound whichever
+    // === Report loaded first, deriving the WRONG package's field tree and mis-reporting
+    // === {{field}} drift. The fix binds each template's OWN package's Report — in BOTH orders.
+
+    /** Package pv::alpha — its OWN Report (field alphaField) + a bare-@payloadRef prompt. */
+    private static final String PAYLOAD_ALPHA_FIXTURE = """
+        {
+          "metadata.root": { "package": "pv::alpha", "children": [
+            { "object.value": { "name": "Report", "children": [
+                { "field.string": { "name": "alphaField" } }
+            ] } },
+            { "template.prompt": {
+                "name": "ReportPrompt",
+                "@payloadRef": "Report",
+                "@textRef": "alpha/tmpl"
+            } }
+          ] }
+        }
+        """;
+
+    /** Package pv::beta — a DIFFERENT Report (same short name, field betaField) + its own prompt. */
+    private static final String PAYLOAD_BETA_FIXTURE = """
+        {
+          "metadata.root": { "package": "pv::beta", "children": [
+            { "object.value": { "name": "Report", "children": [
+                { "field.string": { "name": "betaField" } }
+            ] } },
+            { "template.prompt": {
+                "name": "ReportPrompt",
+                "@payloadRef": "Report",
+                "@textRef": "beta/tmpl"
+            } }
+          ] }
+        }
+        """;
+
+    private void assertBarePayloadRefBindsOwnPackage(String baseName, String first, String second)
+            throws Exception {
+        Path templateRoot = Files.createTempDirectory("tv-payloadref-" + baseName);
+        // Each template references ONLY its own package's field: clean iff each @payloadRef
+        // binds its own package's Report (a wrong-package bind would drift on the other field).
+        writeTemplate(templateRoot, "alpha/tmpl", "{{alphaField}}");
+        writeTemplate(templateRoot, "beta/tmpl", "{{betaField}}");
+
+        MetaDataLoader loader = loadFixtures(baseName, first, second);
+
+        TemplateVerify.Outcome out = TemplateVerify.run(loader, templateRoot);
+
+        assertTrue("bare @payloadRef must bind each template's own package's Report; got: " + out,
+                out.ok());
+    }
+
+    @Test
+    public void barePayloadRefBindsOwnPackageAcrossCollision_alphaFirst() throws Exception {
+        assertBarePayloadRefBindsOwnPackage("alpha-first", PAYLOAD_ALPHA_FIXTURE, PAYLOAD_BETA_FIXTURE);
+    }
+
+    @Test
+    public void barePayloadRefBindsOwnPackageAcrossCollision_betaFirst() throws Exception {
+        assertBarePayloadRefBindsOwnPackage("beta-first", PAYLOAD_BETA_FIXTURE, PAYLOAD_ALPHA_FIXTURE);
+    }
+
+    @Test
+    public void barePayloadRefRejectsOtherPackagesField() throws Exception {
+        Path templateRoot = Files.createTempDirectory("tv-payloadref-reject");
+        // pv::alpha's prompt references betaField (only on pv::beta::Report) — must drift, proving
+        // the alpha prompt bound pv::alpha::Report, not the colliding pv::beta::Report.
+        writeTemplate(templateRoot, "alpha/tmpl", "{{betaField}}");
+        writeTemplate(templateRoot, "beta/tmpl", "{{betaField}}");
+
+        MetaDataLoader loader = loadFixtures("reject", PAYLOAD_ALPHA_FIXTURE, PAYLOAD_BETA_FIXTURE);
+
+        TemplateVerify.Outcome out = TemplateVerify.run(loader, templateRoot);
+
+        assertFalse("a field from the colliding package's Report must NOT resolve", out.ok());
+        assertTrue("expected an ERR_VAR_NOT_ON_PAYLOAD for betaField on the alpha prompt; got: " + out,
+                out.errors().stream().anyMatch(d ->
+                        "pv::alpha::ReportPrompt".equals(d.template())
+                                && "ERR_VAR_NOT_ON_PAYLOAD".equals(d.code())
+                                && "betaField".equals(d.path())));
+    }
+
     // === helpers ============================================================
 
     private static void writeTemplate(Path root, String ref, String body) throws IOException {

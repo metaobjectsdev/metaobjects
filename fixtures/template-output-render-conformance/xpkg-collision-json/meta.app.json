@@ -1,0 +1,25 @@
+{
+  "metadata.root": {
+    "package": "acme::app",
+    "children": [
+      {
+        "object.value": {
+          "name": "Digest",
+          "children": [
+            { "field.object": { "name": "fromAlpha", "@objectRef": "acme::alpha::Note" } },
+            { "field.object": { "name": "fromBeta", "@objectRef": "acme::beta::Note" } }
+          ]
+        }
+      },
+      {
+        "template.output": {
+          "name": "DigestDoc",
+          "@kind": "document",
+          "@payloadRef": "Digest",
+          "@textRef": "xpkg/digest",
+          "@format": "json"
+        }
+      }
+    ]
+  }
+}

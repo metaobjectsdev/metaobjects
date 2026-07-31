@@ -94,7 +94,9 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
         if (payloadRef.isNullOrEmpty()) {
             return // loader validation normally catches this first
         }
-        val payloadVo = resolveValueObject(loader, payloadRef) ?: return // not a VO
+        // ADR-0042 — resolve @payloadRef under the loader's package-local contract (#228).
+        val payloadVo = KotlinGenUtil.resolveValueObjectRef(loader, payloadRef, template.getPackage())
+            ?: return // not a VO
 
         val (templatePkg, templateShort) = PackageMapping.splitFqn(template.name)
         val outPkg = KotlinNaming.promptsPackage(templatePkg)
@@ -327,11 +329,6 @@ open class KotlinRenderHelperGenerator : MultiFileDirectGeneratorBase<MetaObject
         if (template.hasMetaAttr(attr))
             template.getMetaAttr(attr).valueAsString
         else null
-
-    /** Resolve a `@payloadRef` to its `object.value` (rejects entities — payloads must be VOs). */
-    private fun resolveValueObject(loader: MetaDataLoader, ref: String): MetaObject? =
-        KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref)
-            ?.takeIf { it.subType == MetaObject.SUBTYPE_VALUE }
 
     /** Kotlin string-literal quoting with the common escapes. */
     private fun quote(s: String?): String {

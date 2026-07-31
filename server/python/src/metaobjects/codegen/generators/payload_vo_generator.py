@@ -43,6 +43,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from metaobjects.codegen.collision_names import (
+    ERR_PAYLOAD_NAME_COLLISION,  # noqa: F401 — re-exported; tests import it from here
+    assign_nested_names,
+)
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen import type_map
@@ -69,12 +73,9 @@ from metaobjects.shared.separators import PACKAGE_SEP
 
 _GENERATOR_NAME = "payload-vo-generator"
 
-# ADR-0044 backstop error code — a codegen-time (not loader) error, peer of the
-# render tier's ERR_VAR_NOT_ON_PAYLOAD. Declared LOCALLY here for the same reason
-# the TS reference (codegen-ts/src/payload-codegen.ts) declares it locally rather
-# than in the shared cross-port ledger: promoting it to the ledger is coordinated
-# with the Java/Kotlin follow-up so no port reddens on a code it doesn't yet emit.
-ERR_PAYLOAD_NAME_COLLISION = "ERR_PAYLOAD_NAME_COLLISION"
+# ADR-0044 backstop error code — re-exported (not redefined; see #228) from the
+# shared `collision_names` module, which reuses the canonical `errors.ErrorCode`
+# entry. Kept importable under this name for back-compat (tests import it from here).
 
 
 # ---------------------------------------------------------------------------
@@ -142,11 +143,34 @@ def _resolve_object_by_short_or_fqn(root: MetaData, ref: str) -> MetaObject | No
     return None
 
 
-def resolve_payload_vo(root: MetaData, ref: str) -> MetaObject | None:
-    """Resolve a ``@payloadRef`` to its ``object.value``. Rejects entities —
-    payloads MUST be value-objects (same contract as Kotlin)."""
-    obj = _resolve_object_by_short_or_fqn(root, ref)
-    if obj is None or obj.sub_type != OBJECT_SUBTYPE_VALUE:
+def resolve_payload_vo(root: MetaData, ref: str, referrer_pkg: str) -> MetaObject | None:
+    """Resolve a ``@payloadRef`` to its ``object.value``, PACKAGE-LOCAL (ADR-0042) —
+    the SAME canonical ``resolve_object_ref`` contract the loader's own
+    ``_validate_templates`` pass already uses to validate this exact ref
+    (``loader/validation_passes.py`` — an FQN resolves exactly; a bare ref resolves
+    in the referrer's own package first, else a root-level object). Rejects
+    entities — payloads MUST be value-objects (same contract as Kotlin).
+
+    *referrer_pkg* is the REFERENCING TEMPLATE's own effective package — pass
+    ``_pkg_of(template)`` (this module's ancestor-walk-aware helper, via
+    ``resolution_key()``), NOT the template's bare ``.package``/``.file_default_package``
+    attrs directly: for any LOADER-PARSED tree the two are identical (every parsed
+    node is stamped with ``file_default_package`` at parse time, so
+    ``resolution_key()``'s ancestor-walk branch never fires — this is provably the
+    SAME value the loader's own ``tpl.package or tpl.file_default_package or ""``
+    computes), but ``_pkg_of`` is ALSO correct for the many hand-built (non-loader)
+    ``MetaData`` trees this generator's own test suite constructs (package set only
+    on an ancestor, never stamped onto every node) — the bare expression would
+    wrongly resolve those to ``""``, breaking existing byte-identical output.
+
+    #228 — this used to delegate to ``_resolve_object_by_short_or_fqn``, a flat,
+    package-BLIND bare-name-anywhere-at-root scan: a bare ``@payloadRef`` colliding
+    across packages resolved to whichever same-bare-named ``object.value`` happened
+    to load first, regardless of which package the referencing template belonged
+    to — a "wrong node" mismatch against the loader, which ALREADY validates this
+    exact ref package-local. Now both agree."""
+    obj = resolve_object_ref(root, ref, referrer_pkg)
+    if not isinstance(obj, MetaObject) or obj.sub_type != OBJECT_SUBTYPE_VALUE:
         return None
     return obj
 
@@ -465,18 +489,11 @@ def _resolve_field_type(
 # assigns names as a pure function of the closure (bare when unique, package-
 # qualified on collision, hard fail on a still-colliding derived name); pass 3
 # (the existing emit path) uses the name map for both declaration and reference.
+#
+# Pass 2 (:func:`assign_nested_names`) + its ``package_qualified_name`` helper are
+# PROMOTED to ``metaobjects.codegen.collision_names`` (#228) so the extract/
+# output-parser tier reuses this SAME naming pass rather than re-deriving one.
 # ---------------------------------------------------------------------------
-
-
-def _package_qualified_name(pkg: str, short_name: str) -> str:
-    """ADR-0044 — PascalCase each ``::``-segment of *pkg*, concatenate, append the
-    bare *short_name* (``acme::alpha`` + ``Note`` → ``AcmeAlphaNote``). A root-level
-    (empty-package) node keeps its bare short name — the loader's own-package
-    uniqueness already precludes two root-level VOs sharing a name, so this can't
-    silently under-qualify."""
-    if pkg == "":
-        return short_name
-    return "".join(_pascal(seg) for seg in pkg.split(PACKAGE_SEP)) + short_name
 
 
 def _nested_target_of(field: MetaField, root: MetaData) -> MetaObject | None:
@@ -542,44 +559,6 @@ def _collect_nested_closure(
         seen.add(key)
         closure[key] = target
         _collect_nested_closure(root, target, closure, seen)
-
-
-def _assign_nested_names(closure: dict[str, MetaObject]) -> dict[str, str]:
-    """ADR-0044 pass 2 — ``resolution_key()`` → emitted class name. A PURE function
-    of the closure's ``(key, short-name, package)`` triples, never of traversal
-    order: a bare short name unique in the closure emits ``<Short>Payload``
-    (byte-identical to pre-ADR-0044 output); a short-name collision emits EVERY
-    member under its package-qualified derived name
-    (``<PkgSegmentsPascal><Short>Payload``). If two distinct keys still derive the
-    same name, fail loud with ``ERR_PAYLOAD_NAME_COLLISION`` — never silently
-    collide a second time."""
-    by_short: dict[str, list[str]] = {}
-    for key, node in closure.items():
-        by_short.setdefault(node.name, []).append(key)
-
-    name_map: dict[str, str] = {}
-    for short, keys in by_short.items():
-        if len(keys) == 1:
-            name_map[keys[0]] = payload_class_name(short)
-            continue
-        for key in keys:
-            node = closure[key]
-            name_map[key] = payload_class_name(_package_qualified_name(_pkg_of(node), short))
-
-    # Backstop — sorted by key so both the emptiness of the colliding set and the
-    # pair named in the message are a pure function of the closure, not dict order.
-    owner: dict[str, str] = {}
-    for key in sorted(name_map):
-        emitted = name_map[key]
-        existing = owner.get(emitted)
-        if existing is not None and existing != key:
-            raise ValueError(
-                f"{ERR_PAYLOAD_NAME_COLLISION}: payload record name collision: "
-                f'"{emitted}" derives from both "{existing}" and "{key}" — rename one '
-                "value-object or move it to a package that derives a distinct name"
-            )
-        owner[emitted] = key
-    return name_map
 
 
 # ---------------------------------------------------------------------------
@@ -660,7 +639,9 @@ def render_payload_vo(
     payload_ref = template.get_meta_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
     if not isinstance(payload_ref, str) or not payload_ref:
         return None
-    payload = resolve_payload_vo(root, payload_ref)
+    # ADR-0042 (#228): the referrer is THIS template — a bare @payloadRef resolves
+    # in ITS OWN package first.
+    payload = resolve_payload_vo(root, payload_ref, _pkg_of(template))
     if payload is None:
         return None
 
@@ -669,7 +650,7 @@ def render_payload_vo(
     # the TEMPLATE, not the VO) stays out of the VO-short-name collision domain.
     closure: dict[str, MetaObject] = {}
     _collect_nested_closure(root, payload, closure, {payload.resolution_key()})
-    name_map = _assign_nested_names(closure)
+    name_map = assign_nested_names(closure, payload_class_name)
 
     # Per-file dedupe set: scoped to this single render call so each emitted
     # module is self-contained (no cross-template forward references). Keyed by

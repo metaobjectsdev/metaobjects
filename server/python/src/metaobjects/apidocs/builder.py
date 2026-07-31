@@ -55,9 +55,22 @@ from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.persistence.source.source_constants import SOURCE_KIND_TABLE
 from metaobjects.meta.template import template_constants as tc
 from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_TEMPLATE
+from metaobjects.shared.separators import PACKAGE_SEP
 
 # Structured formats that get an output-format prompt + a tolerant extractor.
 _STRUCTURED_FORMATS = frozenset({tc.TEMPLATE_FORMAT_JSON, tc.TEMPLATE_FORMAT_XML})
+
+
+def _pkg_of(node: MetaData) -> str:
+    """The effective package of a node — its ``resolution_key()`` minus the
+    trailing ``::<name>`` ("" for a root-level node). Duplicated (not imported) to
+    match the existing per-generator convention. Used to derive a template's
+    referrer package for ``resolve_payload_vo`` (#228) — see that function's
+    docstring for why this ancestor-walk-aware form is used instead of the
+    loader's bare ``tpl.package or tpl.file_default_package or ""``."""
+    key = node.resolution_key()
+    i = key.rfind(PACKAGE_SEP)
+    return "" if i == -1 else key[:i]
 
 
 # ---------------------------------------------------------------------------
@@ -95,7 +108,9 @@ def _payload_resolves(tmpl: MetaData, root: MetaData) -> MetaObject | None:
     payload_ref = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
     if not isinstance(payload_ref, str) or not payload_ref:
         return None
-    return resolve_payload_vo(root, payload_ref)
+    # ADR-0042 (#228): the referrer is THIS template — a bare @payloadRef resolves
+    # in ITS OWN package first.
+    return resolve_payload_vo(root, payload_ref, _pkg_of(tmpl))
 
 
 def _is_email_kind(tmpl: MetaData) -> bool:

@@ -89,10 +89,22 @@ public class OutputParserGenerator : IGenerator
     {
         var templateName = tmpl.Name;
         var parserClass = CSharpNaming.ParserClassName(templateName);
-        // FR-032: @payloadRef is an FQN after the desugar/sweep; the generated C# TYPE
-        // NAME is the resolved value-object's bare name (an FQN like "acme::ai::Payload"
-        // is not a valid C# identifier). Mirrors RenderHelperGenerator's StripPkg use.
-        var payloadType = CSharpNaming.StripPkg(payloadRef);
+
+        // ADR-0042/#228: resolve @payloadRef package-aware — never a bare-tail/global-scan
+        // fallback that could bind the WRONG package's same-short-named object under a
+        // cross-package collision (the #219/#244 "wrong node" class). The loader validates
+        // @payloadRef through this SAME canonical resolver; codegen must never silently walk
+        // a DIFFERENT node than what was validated.
+        var referrerPkg = global::MetaObjects.NamingRefs.EffectivePackage(tmpl);
+        var vo = global::MetaObjects.NamingRefs.ResolveObjectRef(ctx.Root, payloadRef, referrerPkg);
+        // FR-032/ADR-0044: @payloadRef may be an FQN after the desugar/sweep; the generated C#
+        // TYPE NAME is PayloadCodegen's OWN emitted name for the resolved VO — bare unless its
+        // within-closure short name collides (never a raw StripPkg of the possibly-FQN attribute
+        // string, which would diverge from the ACTUAL record PayloadGenerator/PayloadCodegen
+        // emits under a collision). Falls back to StripPkg only when payloadRef is unresolvable
+        // (mirrors the pre-#228 permissive behavior for a dangling/malformed @payloadRef).
+        var payloadType = PayloadCodegen.ResolveEmittedName(ctx.Root, payloadRef, referrerPkg)
+            ?? CSharpNaming.StripPkg(payloadRef);
         var extractedType = $"{payloadType}Extracted";
 
         // FR-010: emit the tolerant extract() API alongside strict Parse/TryParse when the
@@ -103,8 +115,6 @@ public class OutputParserGenerator : IGenerator
         bool formatSupportsExtract =
             format.Equals("json", StringComparison.OrdinalIgnoreCase) ||
             format.Equals("xml", StringComparison.OrdinalIgnoreCase);
-        // ADR-0039: Children() — resolving root scan (behavior-identical; root has no super).
-        var vo = ctx.Root.Children().FirstOrDefault(c => c.Type == TYPE_OBJECT && CSharpNaming.StripPkg(c.Name) == payloadType);
         bool emitExtract = formatSupportsExtract && vo is not null;
 
         var sb = new StringBuilder();

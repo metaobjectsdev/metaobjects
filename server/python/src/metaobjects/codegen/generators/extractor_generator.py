@@ -52,6 +52,7 @@ from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.template import template_constants as tc
 from metaobjects.shared.base_types import TYPE_TEMPLATE
+from metaobjects.shared.separators import PACKAGE_SEP
 
 _GENERATOR_NAME = "extractor-generator"
 
@@ -59,21 +60,45 @@ _GENERATOR_NAME = "extractor-generator"
 _EXTRACT_FORMATS = frozenset({tc.TEMPLATE_FORMAT_JSON, tc.TEMPLATE_FORMAT_XML})
 
 
-def _strict_class(vo: MetaData, root_vo: MetaData, template_name: str) -> str:
-    """The strict Pydantic class name for a value-object. The ROOT payload VO maps to
-    the template-named ``<Template>Payload`` (payload_vo emits the primary class under
-    the template name); every nested VO maps to ``<Vo>Payload``."""
-    if vo.name == root_vo.name:
+def _pkg_of(node: MetaData) -> str:
+    """The effective package of a node — its ``resolution_key()`` minus the
+    trailing ``::<name>`` ("" for a root-level node). Duplicated (not imported) to
+    match the existing per-generator convention. Used to derive a template's
+    referrer package for ``resolve_payload_vo`` (#228) — see that function's
+    docstring for why this ancestor-walk-aware form is used instead of the
+    loader's bare ``tpl.package or tpl.file_default_package or ""``."""
+    key = node.resolution_key()
+    i = key.rfind(PACKAGE_SEP)
+    return "" if i == -1 else key[:i]
+
+
+def _strict_class(
+    vo: MetaData, root_vo: MetaData, template_name: str, name_map: dict[str, str]
+) -> str:
+    """The strict Pydantic class name for a value-object. The ROOT payload VO
+    (matched by ``resolution_key()`` — NOT bare ``name``, so a nested VO that
+    happens to share the root's bare name across packages is never mistaken for
+    the root) maps to the template-named ``<Template>Payload`` (payload_vo emits
+    the primary class under the template name); every OTHER (nested) VO maps to
+    its ADR-0044 (#228) *name_map* base + ``Payload`` — bare when unique in the
+    payload's nested-VO closure, package-qualified on a cross-package short-name
+    collision (see :func:`~metaobjects.codegen.extract_delegate_emitter.build_name_map`,
+    which reuses the SAME naming pass ``payload_vo_generator`` runs, so this name
+    always matches the payload module's own emitted class)."""
+    if vo.resolution_key() == root_vo.resolution_key():
         return payload_class_name(template_name)
-    return payload_class_name(vo.name)
+    base = name_map.get(vo.resolution_key(), vo.name)
+    return payload_class_name(base)
 
 
-def _mapper_name(vo: MetaData) -> str:
-    """``_to_strict_<vo_snake>`` — the recursive mirror→strict mapper for a VO."""
-    return f"_to_strict_{_snake_case(vo.name)}"
+def _mapper_name(vo: MetaData, name_map: dict[str, str]) -> str:
+    """``_to_strict_<base_snake>`` — the recursive mirror→strict mapper for a VO,
+    *base* per the ADR-0044 (#228) *name_map* (see :func:`_strict_class`)."""
+    base = name_map.get(vo.resolution_key(), vo.name)
+    return f"_to_strict_{_snake_case(base)}"
 
 
-def _strict_arg(field: MetaData, root: MetaData) -> str:
+def _strict_arg(field: MetaData, root: MetaData, name_map: dict[str, str]) -> str:
     """The strict-payload initializer expression for one field, reading the mirror
     member ``m.<name>`` and mapping it onto the strict payload's exact optionality
     (``is_field_required`` — shared with payload_vo so there is no skew).
@@ -93,7 +118,7 @@ def _strict_arg(field: MetaData, root: MetaData) -> str:
         target = rde.ref_vo(field, root)
         if target is None:
             return f"m.{name}"  # unresolved @objectRef — pass the mirror value through
-        fn = _mapper_name(target)
+        fn = _mapper_name(target, name_map)
         if fm.is_array(field):
             # Required or optional array-of-objects: map present elements (drop Nones).
             return f"[{fn}(e) for e in (m.{name} or [])]" if required else (
@@ -119,11 +144,17 @@ def _strict_arg(field: MetaData, root: MetaData) -> str:
     return f"m.{name}"
 
 
-def _emit_mapper(vo: MetaData, root: MetaData, root_vo: MetaData, template_name: str) -> list[str]:
-    """One ``_to_strict_<vo>(m) -> <Strict>`` mapper, one-shot-constructing the strict
+def _emit_mapper(
+    vo: MetaData,
+    root: MetaData,
+    root_vo: MetaData,
+    template_name: str,
+    name_map: dict[str, str],
+) -> list[str]:
+    """One ``_to_strict_<base>(m) -> <Strict>`` mapper, one-shot-constructing the strict
     Pydantic model from the mirror ``m``."""
-    fn = _mapper_name(vo)
-    strict = _strict_class(vo, root_vo, template_name)
+    fn = _mapper_name(vo, name_map)
+    strict = _strict_class(vo, root_vo, template_name, name_map)
     lines: list[str] = [
         f"def {fn}(m) -> {strict}:",
         f'    """Map the all-nullable extracted mirror onto the strict ``{strict}``.',
@@ -131,7 +162,7 @@ def _emit_mapper(vo: MetaData, root: MetaData, root_vo: MetaData, template_name:
         f"    return {strict}(",
     ]
     for f in fm.fields(vo):
-        lines.append(f"        {f.name}={_strict_arg(f, root)},")
+        lines.append(f"        {f.name}={_strict_arg(f, root, name_map)},")
     lines.append("    )")
     return lines
 
@@ -154,7 +185,9 @@ def render_extractor(
     payload_ref = template.get_meta_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
     if not isinstance(payload_ref, str) or not payload_ref:
         return None
-    payload = resolve_payload_vo(root, payload_ref)
+    # ADR-0042 (#228): the referrer is THIS template — a bare @payloadRef resolves
+    # in ITS OWN package first.
+    payload = resolve_payload_vo(root, payload_ref, _pkg_of(template))
     if payload is None:
         return None
 
@@ -171,18 +204,22 @@ def render_extractor(
     extract_lenient_fn = f"extract_lenient_{snake}"
     extract_fn = f"extract_{snake}"
     root_strict = payload_class_name(template_name)
-    root_mapper = _mapper_name(payload)
 
     fqn = f"{payload.package}::{template_name}" if payload.package else template_name
 
     # The strict payload graph: root payload class (template-named) + every nested
-    # VO's ``<Vo>Payload`` (reachable through @objectRef, deduped/cycle-safe — the SAME
-    # walk payload_vo emits the nested classes for, so each import resolves).
+    # VO's ADR-0044 (#228) collision-scoped ``<Base>Payload`` (reachable through
+    # @objectRef, deduped/cycle-safe — the SAME walk + the SAME shared name-map
+    # payload_vo emits the nested classes for, so each import resolves to the exact
+    # class payload_vo_generator declared).
     vos = rde.reachable_vos(payload, root)
+    name_map = rde.build_name_map(payload, root)
+    root_mapper = _mapper_name(payload, name_map)
     strict_imports = {root_strict}
     for vo in vos:
-        if vo.name != payload.name:
-            strict_imports.add(payload_class_name(vo.name))
+        if vo.resolution_key() != payload.resolution_key():
+            base = name_map.get(vo.resolution_key(), vo.name)
+            strict_imports.add(payload_class_name(base))
 
     lines: list[str] = [
         generated_header(template_name, fqn),
@@ -233,7 +270,7 @@ def render_extractor(
         if i > 0:
             lines.append("")
             lines.append("")
-        lines.extend(emit_mapper(vo, root, payload, template_name))
+        lines.extend(emit_mapper(vo, root, payload, template_name, name_map))
 
     lines.append("")
     lines.append("")
@@ -257,12 +294,14 @@ class ExtractorGenerator:
         root: MetaData,
         root_vo: MetaData,
         template_name: str,
+        name_map: dict[str, str],
     ) -> list[str]:
-        """EXTENSION SEAM — one ``_to_strict_<vo>(m) -> <Strict>`` mirror→strict
+        """EXTENSION SEAM — one ``_to_strict_<base>(m) -> <Strict>`` mirror→strict
         mapper block. Defaults to the module-level :func:`_emit_mapper`; override to
         customize how the extracted mirror graph is mapped onto the strict Pydantic
-        payload (e.g. coercion, post-validation, default-filling)."""
-        return _emit_mapper(vo, root, root_vo, template_name)
+        payload (e.g. coercion, post-validation, default-filling). *name_map* is the
+        ADR-0044 (#228) collision-scoped name map (see :func:`_strict_class`)."""
+        return _emit_mapper(vo, root, root_vo, template_name, name_map)
 
     def _render_module(self, template: MetaData, root: MetaData) -> str | None:
         """EXTENSION SEAM — render the whole extractor module for one

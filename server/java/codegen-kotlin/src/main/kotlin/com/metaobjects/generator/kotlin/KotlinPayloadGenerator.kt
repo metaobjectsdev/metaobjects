@@ -3,7 +3,6 @@ package com.metaobjects.generator.kotlin
 import com.metaobjects.field.EnumField
 import com.metaobjects.field.MetaField
 import com.metaobjects.field.ObjectField
-import com.metaobjects.generator.GeneratorException
 import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.loader.MetaDataLoader
@@ -85,139 +84,12 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val templates = loader.root.getChildren(MetaTemplate::class.java, true)
             .sortedBy { it.name }
         // ADR-0044 — collision-scoped nested-payload class names, a pure function of the
-        // loaded templates (order-independent). Keyed by VO FQN.
-        val nameMap = computePayloadNameMap(templates, loader)
+        // loaded templates (order-independent). Keyed by VO FQN. Lifted to [KotlinGenUtil]
+        // so the extract-tier emitters reuse the SAME name-map algorithm (#228).
+        val nameMap = KotlinGenUtil.computePayloadNameMap(templates, loader)
         for (md in templates) {
             emit(md, loader, outRoot, emittedNestedFqns, emittedEnumFqns, nameMap)
         }
-    }
-
-    /**
-     * ADR-0044 pass 1/2 — the run's nested-payload name map, keyed by value-object FQN
-     * (`MetaObject.name`), scoped per OUTPUT PACKAGE. Kotlin is a one-class-per-file
-     * emitter (KotlinPoet `FileSpec(outPkg, className)`), so its collision domain is the
-     * output prompts package: two value-objects sharing a bare short name written into
-     * the same package would clobber one `NotePayload.kt`. A nested VO whose bare short
-     * name is UNIQUE in its output package emits `<Short>Payload` (byte-identical to
-     * pre-ADR-0044 output); a COLLISION emits every member under its package-qualified
-     * derived name (`acme::alpha::Note` -> `AcmeAlphaNotePayload`). A still-colliding
-     * derived name fails loud with [ERR_PAYLOAD_NAME_COLLISION]. Pure function of the
-     * templates — never of emission order.
-     */
-    protected open fun computePayloadNameMap(
-        templates: List<MetaTemplate>,
-        loader: MetaDataLoader,
-    ): Map<String, String> {
-        // FQN -> output package (first reaching template in sorted order wins, matching
-        // the run-wide dedupe). The primary VO is template-named, so excluded.
-        val voOutPkg = LinkedHashMap<String, String>()
-        val orderedFqns = ArrayList<String>()
-        for (tmpl in templates) {
-            val payloadRef = tmpl.payloadRef ?: continue
-            val vo = resolveViewObject(loader, payloadRef) ?: continue
-            val nestedPkg = KotlinNaming.promptsPackage(PackageMapping.splitFqn(tmpl.name).first)
-            collectNestedClosure(vo, loader, nestedPkg, voOutPkg, orderedFqns, mutableSetOf(vo.name))
-        }
-        // Group by (output package, bare short name).
-        val byPkgShort = LinkedHashMap<String, MutableList<String>>()
-        for (fqn in orderedFqns) {
-            val key = voOutPkg[fqn] + " " + PackageMapping.splitFqn(fqn).second
-            byPkgShort.getOrPut(key) { ArrayList() }.add(fqn)
-        }
-        val nameMap = LinkedHashMap<String, String>()
-        for (fqns in byPkgShort.values) {
-            if (fqns.size == 1) {
-                val fqn = fqns[0]
-                nameMap[fqn] = KotlinNaming.payloadName(PackageMapping.splitFqn(fqn).second)
-            } else {
-                for (fqn in fqns) {
-                    val (pkg, short) = PackageMapping.splitFqn(fqn)
-                    nameMap[fqn] = KotlinNaming.payloadName(packageQualifiedName(pkg, short))
-                }
-            }
-        }
-        // Backstop — per output package, two DISTINCT FQNs deriving the same class name.
-        // Sorted so the named pair (and whether any collision fires) is order-independent.
-        val ownerByPkgName = HashMap<String, String>()
-        for (fqn in nameMap.keys.sorted()) {
-            val pkgName = voOutPkg[fqn] + " " + nameMap[fqn]
-            val prev = ownerByPkgName.putIfAbsent(pkgName, fqn)
-            if (prev != null && prev != fqn) {
-                throw GeneratorException(
-                    "$ERR_PAYLOAD_NAME_COLLISION: payload record name collision: \"${nameMap[fqn]}\" " +
-                        "derives from both \"$prev\" and \"$fqn\" — rename one value-object or move " +
-                        "it to a package that derives a distinct name"
-                )
-            }
-        }
-        return nameMap
-    }
-
-    /**
-     * ADR-0044 pass 1 — walk [vo]'s transitive nested-payload closure (plain
-     * `field.object @objectRef` + `origin.collection @via` edges), assigning each
-     * not-yet-seen target VO to [outPkg] (first reaching template wins) and recording it
-     * in [orderedFqns]. [seen] is seeded with the primary VO's FQN and is the cycle guard.
-     */
-    protected fun collectNestedClosure(
-        vo: MetaObject,
-        loader: MetaDataLoader,
-        outPkg: String,
-        voOutPkg: MutableMap<String, String>,
-        orderedFqns: MutableList<String>,
-        seen: MutableSet<String>,
-    ) {
-        for (field in vo.metaFields) {
-            val target = nestedTargetOf(field, loader) ?: continue
-            val fqn = target.name
-            if (!seen.add(fqn)) continue
-            if (!voOutPkg.containsKey(fqn)) {
-                voOutPkg[fqn] = outPkg
-                orderedFqns.add(fqn)
-            }
-            collectNestedClosure(target, loader, outPkg, voOutPkg, orderedFqns, seen)
-        }
-    }
-
-    /**
-     * The nested-payload target VO a [field] contributes to the closure, or `null` when
-     * it contributes no nested class. Mirrors the resolution in [resolveObjectFieldType]
-     * (plain `field.object @objectRef`) and [resolveCollectionType] (`origin.collection
-     * @via`) EXACTLY, so the closure walk and the emission walk agree. Passthrough /
-     * aggregate / computed / first origins yield scalar types (no nested class).
-     */
-    protected fun nestedTargetOf(field: MetaField<*>, loader: MetaDataLoader): MetaObject? {
-        val origin = field.children.filterIsInstance<MetaOrigin>().firstOrNull()
-        if (origin is CollectionOrigin) {
-            val via = origin.via ?: return null
-            val (parentName, relName) = KotlinGenUtil.splitDottedRef(via) ?: return null
-            val parent = KotlinGenUtil.resolveObjectByShortOrFqn(loader, parentName) ?: return null
-            val rel = parent.relationships
-                .firstOrNull { it.name == relName || it.name.substringAfterLast("::") == relName }
-                ?: return null
-            val targetRef = rel.objectRef ?: return null
-            return KotlinGenUtil.resolveObjectByShortOrFqn(loader, targetRef)
-        }
-        if (origin != null) return null // passthrough / aggregate / computed / first -> scalar
-        if (field is ObjectField) {
-            val target = try { field.objectRef } catch (e: RuntimeException) { null } ?: return null
-            if (target.subType != MetaObject.SUBTYPE_VALUE) return null
-            return target
-        }
-        return null
-    }
-
-    /**
-     * ADR-0044 — PascalCase each dotted segment of [kotlinPkg] (already `::`->`.`
-     * converted by [PackageMapping.splitFqn]), concatenate, append the bare [shortName]
-     * (`"acme.alpha"` + `"Note"` -> `"AcmeAlphaNote"`). A root-level (empty-package) node
-     * keeps its bare short name.
-     */
-    protected fun packageQualifiedName(kotlinPkg: String, shortName: String): String {
-        if (kotlinPkg.isEmpty()) return shortName
-        return kotlinPkg.split(".")
-            .filter { it.isNotEmpty() }
-            .joinToString("") { it.replaceFirstChar { c -> c.uppercaseChar() } } + shortName
     }
 
     protected open fun emit(
@@ -229,7 +101,8 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         nameMap: Map<String, String>,
     ) {
         val payloadRef = template.payloadRef ?: return
-        val payloadVo = resolveViewObject(loader, payloadRef) ?: return
+        // ADR-0042 — resolve @payloadRef under the loader's package-local contract (#228).
+        val payloadVo = KotlinGenUtil.resolveValueObjectRef(loader, payloadRef, template.getPackage()) ?: return
 
         val (templatePkg, templateShort) = PackageMapping.splitFqn(template.name)
         val outPkg = KotlinNaming.promptsPackage(templatePkg)
@@ -543,11 +416,6 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             it.name == fieldName || it.name.substringAfterLast("::") == fieldName
         }
     }
-
-    /** Resolve a `@payloadRef` to its `object.value` (rejects entities — payloads must be VOs). */
-    private fun resolveViewObject(loader: MetaDataLoader, ref: String): MetaObject? =
-        KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref)
-            ?.takeIf { it.subType == MetaObject.SUBTYPE_VALUE }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
     override fun writeSingleFile(md: MetaObject, writer: GeneratorIOWriter<*>?) { /* unused */ }

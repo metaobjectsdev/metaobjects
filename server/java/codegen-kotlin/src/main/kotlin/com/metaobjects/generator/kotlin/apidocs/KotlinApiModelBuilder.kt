@@ -430,8 +430,8 @@ class KotlinApiModelBuilder {
     private fun payloadValueObject(tmpl: MetaTemplate, loader: MetaDataLoader): MetaObject? {
         val ref = tmpl.payloadRef
         if (ref.isNullOrEmpty()) return null
-        return KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref)
-            ?.takeIf { it.subType == MetaObject.SUBTYPE_VALUE }
+        // ADR-0042 — resolve @payloadRef under the loader's package-local contract (#228).
+        return KotlinGenUtil.resolveValueObjectRef(loader, ref, tmpl.getPackage())
     }
 
     private fun isEmailKind(tmpl: MetaTemplate): Boolean {

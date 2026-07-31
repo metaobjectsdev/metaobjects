@@ -155,14 +155,20 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
      * {@code AcmeAlphaNotePayload}). A still-colliding derived name fails loud with
      * {@link #ERR_PAYLOAD_NAME_COLLISION}. Pure function of the templates — never of
      * emission order.
+     *
+     * <p><b>public static</b> (promoted from {@code protected} instance) so
+     * {@link SpringOutputParserGenerator} — a sibling generator consuming the SAME
+     * {@code @payloadRef} closure — reuses this ONE name map rather than re-deriving
+     * naming (#228: extract/output-parser tier collision-scoped naming).
      */
-    protected Map<String, String> computePayloadNameMap(List<MetaTemplate> templates, MetaDataLoader loader) {
+    public static Map<String, String> computePayloadNameMap(List<MetaTemplate> templates, MetaDataLoader loader) {
         // FQN -> output package (first reaching template in sorted order wins, matching
         // the run-wide dedupe below). The primary VO is template-named, so excluded.
         Map<String, String> voOutPkg = new LinkedHashMap<>();
         List<String> orderedFqns = new ArrayList<>();
         for (MetaTemplate tmpl : templates) {
-            MetaObject vo = resolveValueObject(loader, tmpl.getPayloadRef());
+            MetaObject vo = resolveValueObject(loader, tmpl.getPayloadRef(),
+                com.metaobjects.util.MetaDataUtil.findPackageForMetaData(tmpl));
             if (vo == null) continue;
             String nestedPkg = SpringNaming.promptsPackage(SpringNaming.splitFqn(tmpl.getName())[0]);
             Set<String> seen = new HashSet<>();
@@ -212,8 +218,11 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
      * assigning each not-yet-seen target VO to {@code outPkg} (first reaching
      * template wins) and recording it in {@code orderedFqns}. {@code seen} is seeded
      * with the primary VO's FQN and doubles as the cycle guard.
+     *
+     * <p><b>public static</b> (promoted from {@code protected} instance, #228) — see
+     * {@link #computePayloadNameMap}.
      */
-    protected void collectNestedClosure(MetaObject vo,
+    public static void collectNestedClosure(MetaObject vo,
                                         MetaDataLoader loader,
                                         String outPkg,
                                         Map<String, String> voOutPkg,
@@ -239,8 +248,11 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
      * {@link #resolveCollectionType} ({@code origin.collection @via}) EXACTLY, so the
      * closure walk and the emission walk agree on the target set. Passthrough /
      * aggregate origins yield scalar types (no nested record).
+     *
+     * <p><b>public static</b> (promoted from {@code protected} instance, #228) — see
+     * {@link #computePayloadNameMap}.
      */
-    protected MetaObject nestedTargetOf(MetaField<?> field, MetaDataLoader loader) {
+    public static MetaObject nestedTargetOf(MetaField<?> field, MetaDataLoader loader) {
         MetaOrigin origin = firstOriginChild(field);
         if (origin instanceof CollectionOrigin co) {
             String via = co.getVia();
@@ -273,8 +285,11 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
      * {@code ::}->{@code .} converted by {@link SpringNaming#splitFqn}), concatenate,
      * append the bare {@code shortName} ({@code "acme.alpha"} + {@code "Note"} ->
      * {@code "AcmeAlphaNote"}). A root-level (empty-package) node keeps its bare name.
+     *
+     * <p><b>public static</b> (widened from package-private-visible {@code protected
+     * static}, #228) — see {@link #computePayloadNameMap}.
      */
-    protected static String packageQualifiedName(String javaPkg, String shortName) {
+    public static String packageQualifiedName(String javaPkg, String shortName) {
         if (javaPkg == null || javaPkg.isEmpty()) return shortName;
         StringBuilder sb = new StringBuilder();
         for (String seg : javaPkg.split("\\.")) {
@@ -295,7 +310,8 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         if (!(node instanceof MetaTemplate template)) return false;
         String payloadRef = template.getPayloadRef();
         if (payloadRef == null || payloadRef.isEmpty()) return false;
-        return resolveValueObject(loader, payloadRef) != null;
+        return resolveValueObject(loader, payloadRef,
+            com.metaobjects.util.MetaDataUtil.findPackageForMetaData(template)) != null;
     }
 
     protected void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot,
@@ -303,7 +319,8 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         if (!appliesTo(template, loader)) {
             return; // missing @payloadRef, or not a VO — same contract as Kotlin / C# / Python
         }
-        MetaObject payloadVo = resolveValueObject(loader, template.getPayloadRef());
+        MetaObject payloadVo = resolveValueObject(loader, template.getPayloadRef(),
+            com.metaobjects.util.MetaDataUtil.findPackageForMetaData(template));
 
         String[] split = SpringNaming.splitFqn(template.getName());
         String templatePkg = split[0];
@@ -673,11 +690,17 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         return null;
     }
 
-    /** Resolve {@code @payloadRef} to its {@code object.value} target (rejects entities). */
-    public static MetaObject resolveValueObject(MetaDataLoader loader, String ref) {
-        MetaObject obj = resolveObjectByShortOrFqn(loader, ref);
-        if (obj == null) return null;
-        return MetaObject.SUBTYPE_VALUE.equals(obj.getSubType()) ? obj : null;
+    /**
+     * Resolve {@code @payloadRef} to its {@code object.value} target (rejects entities)
+     * under the ADR-0042 package-local contract (#228): a bare ref resolves in
+     * {@code referrerPkg} first, else root-level; an FQN ref matches exactly. Distinct
+     * from {@link #resolveObjectByShortOrFqn} (used only by the {@code origin.@from}/
+     * {@code @of}/{@code @via} dotted-ref walk above, a different ref kind out of this
+     * fix's scope) — {@code @payloadRef} is the one every port's canonical resolver
+     * gates, matching the loader's own {@code ValidationPhase} validation of the same ref.
+     */
+    public static MetaObject resolveValueObject(MetaDataLoader loader, String ref, String referrerPkg) {
+        return SpringNaming.resolveValueObjectRef(loader, ref, referrerPkg);
     }
 
     /**

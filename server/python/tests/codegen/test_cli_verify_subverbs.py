@@ -17,7 +17,10 @@ aggregates the exit code (non-zero if ANY drift).
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+
+import pytest
 
 from metaobjects.cli import main
 
@@ -312,3 +315,110 @@ def test_combined_codegen_and_templates_aggregates_exit(tmp_path: Path) -> None:
         ]
     )
     assert rc != 0
+
+
+# --- FQN @payloadRef collision through the `verify --templates` CLI path ----
+# (#228 fix round 2) — render_helper_generator._resolve_payload_vo (shared by
+# THIS `verify --templates` path) used to fall back to a bare-TAIL short-name
+# match (`child.name == ref.rsplit("::", 1)[-1]`) that could mis-bind an FQN
+# `@payloadRef` under a cross-package bare-name collision: whichever
+# same-bare-named object.value the loader iterated FIRST won, even when the ref
+# explicitly named the OTHER package's object — the #244 "wrong node" class.
+#
+# Two packages each declare a bare-colliding `Note` VO with a DIFFERENT single
+# field (so a wrong-node bind is externally observable as spurious drift);
+# `DigestDoc`'s `@payloadRef` FQN-targets one specific package's `Note`, and its
+# mustache references ONLY that package's field. Filenames force the SORTED
+# (deterministic) load order — both orders are exercised (parametrized) so the
+# fix is proven independent of which package's Note the loader iterates first.
+
+
+@pytest.mark.parametrize(
+    ("first_pkg", "first_field", "second_pkg", "second_field", "target_pkg", "target_field"),
+    [
+        ("alpha", "alphaOnly", "beta", "betaOnly", "beta", "betaOnly"),
+        ("beta", "betaOnly", "alpha", "alphaOnly", "alpha", "alphaOnly"),
+    ],
+    ids=["alpha-loads-first-fqn-targets-beta", "beta-loads-first-fqn-targets-alpha"],
+)
+def test_templates_payload_ref_fqn_collision_binds_correct_package_not_load_first(
+    tmp_path: Path,
+    first_pkg: str,
+    first_field: str,
+    second_pkg: str,
+    second_field: str,
+    target_pkg: str,
+    target_field: str,
+) -> None:
+    d = tmp_path / "meta"
+    d.mkdir()
+    # "1_"/"2_"/"3_" filename prefixes force the sorted directory-scan order
+    # (DirectorySource sorts by filename) — deterministic, not incidental.
+    (d / f"meta.1_{first_pkg}.json").write_text(
+        json.dumps(
+            {
+                "metadata.root": {
+                    "package": f"acme::{first_pkg}",
+                    "children": [
+                        {
+                            "object.value": {
+                                "name": "Note",
+                                "children": [
+                                    {"field.string": {"name": first_field, "@required": True}}
+                                ],
+                            }
+                        }
+                    ],
+                }
+            }
+        )
+    )
+    (d / f"meta.2_{second_pkg}.json").write_text(
+        json.dumps(
+            {
+                "metadata.root": {
+                    "package": f"acme::{second_pkg}",
+                    "children": [
+                        {
+                            "object.value": {
+                                "name": "Note",
+                                "children": [
+                                    {"field.string": {"name": second_field, "@required": True}}
+                                ],
+                            }
+                        }
+                    ],
+                }
+            }
+        )
+    )
+    (d / "meta.3_app.json").write_text(
+        json.dumps(
+            {
+                "metadata.root": {
+                    "package": "acme::app",
+                    "children": [
+                        {
+                            "template.output": {
+                                "name": "DigestDoc",
+                                "@kind": "document",
+                                "@payloadRef": f"acme::{target_pkg}::Note",
+                                "@textRef": "pages/digest",
+                                "@format": "html",
+                            }
+                        }
+                    ],
+                }
+            }
+        )
+    )
+    troot = tmp_path / "templates"
+    (troot / "pages").mkdir(parents=True)
+    (troot / "pages" / "digest.mustache").write_text("{{" + target_field + "}}")
+
+    # A pre-fix wrong-node bind would have resolved to WHICHEVER package loaded
+    # first (never the FQN's actual target unless it happened to be first),
+    # whose field tree lacks `target_field` — spurious ERR_VAR_NOT_ON_PAYLOAD
+    # drift. The fix must report CLEAN (exit 0) regardless of load order.
+    rc = main(["verify", "--templates", str(d), "--templates-root", str(troot)])
+    assert rc == 0

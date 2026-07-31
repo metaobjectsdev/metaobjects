@@ -40,7 +40,7 @@ import { enumValues } from "../enum-meta.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { sharedEnumForField } from "../enum-shared.js";
 import { sharedEnumImportSpecifier, providedEnumImportSpecifier } from "../enum-import.js";
-import type { RenderContext } from "../render-context.js";
+import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
 
 /**
  * Emit Drizzle's InferSelectModel / InferInsertModel aliases for an entity.
@@ -132,6 +132,11 @@ export function renderEnumTypeAliases(entity: MetaObject, ctx?: RenderContext): 
   // De-duplicate by type-alias name — multiple fields can extend the same abstract enum.
   const seen = new Set<string>();
   const lines: string[] = [];
+  // ADR-0044/#228 — an inline enum's alias is `<Owner><Field>`; `<Owner>` is this
+  // object's EMITTED name so a collision-qualified value object declares (and its
+  // interface references) `AcmeAlphaNoteStatus`, not a bare `NoteStatus`. Entities
+  // and non-colliding value objects keep their bare name (byte-identical).
+  const ownerName = ctx ? ctx.valueObjectEmittedName(entity) : entity.name;
 
   for (const field of entity.fields()) {
     if (field.subType !== FIELD_SUBTYPE_ENUM) continue;
@@ -139,7 +144,7 @@ export function renderEnumTypeAliases(entity: MetaObject, ctx?: RenderContext): 
     const values = enumValues(field);
     if (values === undefined) continue;
 
-    const typeName = enumUnionAliasName(entity.name, field);
+    const typeName = enumUnionAliasName(ownerName, field);
     if (seen.has(typeName)) continue;
     seen.add(typeName);
 
@@ -214,6 +219,12 @@ export function fieldTsTypeString(ownerName: string, field: MetaField): string {
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
+      // #228: docs-tier bare name under collision — this is the deprecated `meta docs`
+      // TEXT-shape helper (no ctx/root in scope; callers api-field-shape run under
+      // api-model's `{ pkMap } as RenderContext` shim), so it can't resolve the ADR-0044
+      // emitted name. Byte-identical to codegen in every non-colliding model; on a
+      // cross-package collision it documents the bare `Note` while codegen emits
+      // `AcmeAlphaNote`. Threading a real RenderContext into api-docs is out of scope.
       const base = stripPackage(ref);
       return field.resolvedIsArray() ? `${base}[]` : base;
     }
@@ -241,6 +252,10 @@ export function fieldTsTypeString(ownerName: string, field: MetaField): string {
  * ts-poet `imp(...)` — matching how the Zod emitter hoists `<Ref>InsertSchema`.
  */
 function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: RenderContext): Code {
+  // ADR-0044/#228 — the owning value-object's EMITTED name (bare when unique in
+  // the run, package-qualified on a cross-package short-name collision). Drives
+  // the inline enum-union alias so it matches the alias declared for this object.
+  const ownerName = ctx ? ctx.valueObjectEmittedName(entity) : entity.name;
   // `@dbColumnType: jsonb` (open JSON bag) → `unknown`, in lock-step with
   // fieldTsTypeString above and the `z.unknown()` Zod emission.
   if (field.attr(FIELD_ATTR_DB_COLUMN_TYPE) === DB_COLUMN_TYPE_JSONB) {
@@ -252,16 +267,19 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
-      // @objectRef may be authored fully-qualified (acme::sales::Brief) or bare; the
-      // referenced interface is named by the BARE short name. The import MODULE is
-      // resolved through the shared layout/package/extStyle-aware helper (the SAME
-      // one the Zod schema + Drizzle .$type<> use) so all three agree. Without a
-      // ctx (bare unit-test calls) fall back to the flat same-dir specifier.
-      const base = stripPackage(ref);
+      // @objectRef may be authored fully-qualified (acme::sales::Brief) or bare.
+      // ADR-0044/#228 — the referenced interface is named by its EMITTED name
+      // (bare when unique in the run, package-qualified on a cross-package
+      // short-name collision), resolved package-locally from the FIELD's declaring
+      // package. The import MODULE is resolved through the shared
+      // layout/package/extStyle-aware helper (the SAME one the Zod schema +
+      // Drizzle .$type<> use) so all three agree. Without a ctx (bare unit-test
+      // calls) fall back to the bare name + flat same-dir specifier.
+      const refName = ctx ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, entity.package)) : stripPackage(ref);
       const moduleSpec = ctx
-        ? valueObjectModuleSpecifier(base, ctx.packageOf, entity.package, ctx.outputLayout, ctx.extStyle)
-        : `./${base}.js`;
-      const refImp = imp(`${base}@${moduleSpec}`);
+        ? valueObjectModuleSpecifier(refName, ctx.packageOf, entity.package, ctx.outputLayout, ctx.extStyle)
+        : `./${refName}.js`;
+      const refImp = imp(`${refName}@${moduleSpec}`);
       return field.resolvedIsArray() ? code`${refImp}[]` : code`${refImp}`;
     }
     return field.resolvedIsArray() ? code`unknown[]` : code`unknown`;
@@ -271,11 +289,11 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
   if (field.subType === FIELD_SUBTYPE_MAP) {
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
-      const base = stripPackage(ref);
+      const refName = ctx ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, entity.package)) : stripPackage(ref);
       const moduleSpec = ctx
-        ? valueObjectModuleSpecifier(base, ctx.packageOf, entity.package, ctx.outputLayout, ctx.extStyle)
-        : `./${base}.js`;
-      const refImp = imp(`${base}@${moduleSpec}`);
+        ? valueObjectModuleSpecifier(refName, ctx.packageOf, entity.package, ctx.outputLayout, ctx.extStyle)
+        : `./${refName}.js`;
+      const refImp = imp(`${refName}@${moduleSpec}`);
       return code`Record<string, ${refImp}>`;
     }
     const vt = field.attr(FIELD_ATTR_VALUE_TYPE);
@@ -287,7 +305,7 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
   if (field.subType === FIELD_SUBTYPE_ENUM) {
     const values = enumValues(field);
     if (values !== undefined) {
-      const alias = enumUnionAliasName(entity.name, field);
+      const alias = enumUnionAliasName(ownerName, field);
       // FR-019: a shared/provided enum's type lives in another module (./enums or
       // the provided module). Use imp() so ts-poet hoists `import { type E }` —
       // the local interface can then reference E. Inline enums reference the
@@ -322,6 +340,10 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
 export function renderValueObjectInterface(entity: MetaObject, ctx?: RenderContext): Code {
   const docs = renderDocsFor(entity);
   const docsPrefix = docs ? `${docs}\n` : "";
+  // ADR-0044/#228 — the declared interface name is this value object's EMITTED
+  // name (bare when unique in the run, package-qualified on a cross-package
+  // short-name collision). Byte-identical (bare) when there is no collision.
+  const objName = ctx ? ctx.valueObjectEmittedName(entity) : entity.name;
 
   const lines: Code[] = [];
   for (const field of entity.fields()) {
@@ -333,7 +355,7 @@ export function renderValueObjectInterface(entity: MetaObject, ctx?: RenderConte
 
   // joinCode with "\n" interpolates each Code segment on its own line and
   // keeps the imp() registrations intact so ts-poet hoists the imports.
-  return code`${docsPrefix}export interface ${entity.name} {
+  return code`${docsPrefix}export interface ${objName} {
 ${joinCode(lines, { on: "\n" })}
 }
 `;

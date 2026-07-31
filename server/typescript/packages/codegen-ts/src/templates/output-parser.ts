@@ -28,6 +28,7 @@ import {
   usedHelpers,
   hasNested,
 } from "./extract-delegate-emitter.js";
+import type { RenderContext } from "../render-context.js";
 
 const SCALAR_ZOD: Record<string, string> = {
   string: "z.string()",
@@ -93,7 +94,7 @@ function renderObjectSchema(vo: MetaData, root: MetaData, seen: ReadonlySet<stri
  * Throws if the template isn't found, isn't a template.output, or its
  * @payloadRef doesn't resolve to an object.value.
  */
-export function renderOutputParser(root: MetaData, templateName: string): string {
+export function renderOutputParser(root: MetaData, templateName: string, ctx?: RenderContext): string {
   const tmpl = findTemplate(root, templateName);
   if (!tmpl) {
     throw new Error(`template "${templateName}" not found in metadata root`);
@@ -176,8 +177,10 @@ export function ${safeParseName}(
   // The nullable mirror is the return shape of the delegating extract. Use the nested-aware
   // emitter so the payload mirror's nested-object / array-of-object components are typed (not
   // `unknown`), and so a mirror interface is emitted for every reachable nested value-object.
-  // The payload mirror keeps the canonical `<Template>Extracted` name.
-  const mirrorDecls = nestedMirrorInterfaces(vo, root, extractedName);
+  // The payload mirror keeps the canonical `<Template>Extracted` name. ADR-0044/#228: `ctx`
+  // qualifies a nested mirror's name/dedupe when its VO's bare short name collides across
+  // packages, matching Task 3's entity-domain emitted name (e.g. `AcmeAlphaNoteExtracted`).
+  const mirrorDecls = nestedMirrorInterfaces(vo, root, extractedName, ctx);
 
   // Render-package imports the (single, loader-delegating) extract block needs. Kept minimal so
   // the file has no unused imports (tsc noUnusedLocals-safe).
@@ -190,19 +193,41 @@ export function ${safeParseName}(
   // graph is then mapped into the typed nullable mirror graph by the generated from<VO>Extracted
   // mappers. Codegen-wrapping-runtime (a generated DAO calling the dynamic-metadata runtime).
   //
-  // The baked PAYLOAD_NAME is the resolved payload VO's SIMPLE name (root.findObject matches on
-  // the object's `name`, not its FQN). The root mapper is named for the TEMPLATE (so it returns
-  // the canonically-named `<Template>Extracted` mirror); nested mappers use their VO names.
+  // The baked PAYLOAD_NAME is normally the resolved payload VO's SIMPLE name (root.findObject
+  // matches on the object's `name`, not its FQN). The root mapper is named for the TEMPLATE (so
+  // it returns the canonically-named `<Template>Extracted` mirror); nested mappers use their VO
+  // names (via the entity-domain name map, so they agree with the imported mirror types above).
+  //
+  // ADR-0044/#228 — `root.findObject()` (MetaRoot's public runtime API) is a BARE-name-only,
+  // first-match lookup with no package awareness. If THIS PAYLOAD's own bare name collides with
+  // a same-short-name value-object elsewhere in the run (the identical signal Option A already
+  // computes: `ctx.valueObjectEmittedName(vo)` diverges from the bare name), a bare lookup could
+  // silently resolve to the WRONG package's object at runtime (load-order-dependent — the exact
+  // hazard class ADR-0042 closed everywhere else). When it does collide, bake the FQN
+  // (`resolutionKey()`) instead and resolve it via the SAME canonical ADR-0042 `resolveObjectRef`
+  // this file's own build-time `findObject()` wraps (FQN-exact, load-order-independent). A
+  // non-colliding payload keeps the bare name + `root.findObject()` path — byte-identical to
+  // pre-#228 output.
   const payloadName = vo.name;
+  const emittedPayloadName = ctx ? ctx.valueObjectEmittedName(vo) : payloadName;
+  const payloadNameCollides = emittedPayloadName !== payloadName;
+  const bakedPayloadName = payloadNameCollides ? vo.resolutionKey() : payloadName;
   const rootMapper = rootMapperName(templateName);
   void hasNested;
+  const lookupExpr = payloadNameCollides
+    ? `resolveObjectRef(root, ${payloadFqnConst}, "").node`
+    : `root.findObject(${payloadFqnConst})`;
   const delegating = `
-/** Payload value-object name this parser extracts — resolved against a loaded MetaRoot at runtime. */
-export const ${payloadFqnConst} = ${JSON.stringify(payloadName)};
+/** Payload value-object name this parser extracts — resolved against a loaded MetaRoot at runtime.${
+    payloadNameCollides
+      ? " ADR-0042 FQN (this payload's bare name collides with a same-short-name value object elsewhere in the run)."
+      : ""
+  } */
+export const ${payloadFqnConst} = ${JSON.stringify(bakedPayloadName)};
 
 ${mirrorDecls}
 
-${nestedMappers(vo, root, rootMapper, extractedName)}
+${nestedMappers(vo, root, rootMapper, extractedName, ctx)}
 
 ${delegateHelpers(usedHelpers(vo, root))}
 
@@ -221,7 +246,7 @@ export function ${extractLenientWithName}(
   text: string,
   opts?: Partial<ExtractOptions> | null,
 ): ExtractionResult<${extractedName}> {
-  const mo = root.findObject(${payloadFqnConst});
+  const mo = ${lookupExpr};
   if (mo === undefined) {
     throw new Error(\`${extractLenientWithName}: payload "\${${payloadFqnConst}}" not found in the supplied MetaRoot\`);
   }
@@ -230,8 +255,11 @@ export function ${extractLenientWithName}(
 }
 `;
 
-  // The delegating overload needs runtime-ts (extractObject) + the MetaRoot type from metadata.
-  const metadataImport = `import type { MetaRoot } from "@metaobjectsdev/metadata";\n`;
+  // The delegating overload needs runtime-ts (extractObject) + the MetaRoot type from metadata
+  // (+ resolveObjectRef, ADR-0044/#228, only when this payload's own bare name collides).
+  const metadataImport = payloadNameCollides
+    ? `import type { MetaRoot } from "@metaobjectsdev/metadata";\nimport { resolveObjectRef } from "@metaobjectsdev/metadata";\n`
+    : `import type { MetaRoot } from "@metaobjectsdev/metadata";\n`;
   const runtimeImport = `import { extractObject } from "@metaobjectsdev/runtime-ts";\n`;
 
   return (

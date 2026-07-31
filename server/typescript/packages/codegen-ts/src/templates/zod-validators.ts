@@ -35,7 +35,7 @@ import { renderDocsFor } from "./jsdoc.js";
 import { sharedEnumForField } from "../enum-shared.js";
 import { sharedEnumImportSpecifier } from "../enum-import.js";
 import { sharedEnumZodConstName } from "./enums-file.js";
-import type { RenderContext } from "../render-context.js";
+import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
 import { valueObjectModuleSpecifier } from "../import-path.js";
 // FR-035: the SAME required-predicate that drives the Drizzle column's .notNull()
 // drives the UpdateSchema's .nullable() exclusion — shared so they cannot drift.
@@ -117,10 +117,11 @@ export function renderTphSubtypeReadSchema(obj: MetaObject, ctx?: RenderContext)
     );
   }
 
+  const objName = ctx ? ctx.valueObjectEmittedName(obj) : obj.name;
   const docs = renderDocsFor(obj);
   const docsPrefix = docs ? `${docs}\n` : "";
   return code`
-${docsPrefix}export const ${obj.name}Schema = ${z}.object({
+${docsPrefix}export const ${objName}Schema = ${z}.object({
 ${joinCode(fieldLines, { on: ",\n" })}
 });
 `;
@@ -199,7 +200,11 @@ export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Co
     }
   }
 
-  const insertSchemaName = `${obj.name}InsertSchema`;
+  // ADR-0044/#228 — the schema name follows the value object's EMITTED name
+  // (bare when unique in the run, package-qualified on a cross-package short-name
+  // collision) so importers (entity/extract tiers) resolve the same symbol.
+  const objName = ctx ? ctx.valueObjectEmittedName(obj) : obj.name;
+  const insertSchemaName = `${objName}InsertSchema`;
   const docs = renderDocsFor(obj);
   const docsPrefix = docs ? `${docs}\n` : "";
 
@@ -369,9 +374,13 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
     }
   }
 
-  const insertSchemaName = `${obj.name}InsertSchema`;
-  const updateSchemaName = `${obj.name}UpdateSchema`;
-  const preservingSchemaName = `${obj.name}InsertPreservingSchema`;
+  // ADR-0044/#228 — schema + type-alias names follow the object's EMITTED name.
+  // For entities (never in the value-object collision set) and non-colliding value
+  // objects this equals `obj.name` (byte-identical).
+  const objName = ctx ? ctx.valueObjectEmittedName(obj) : obj.name;
+  const insertSchemaName = `${objName}InsertSchema`;
+  const updateSchemaName = `${objName}UpdateSchema`;
+  const preservingSchemaName = `${objName}InsertPreservingSchema`;
 
   const docs = renderDocsFor(obj);
   const docsPrefix = docs ? `${docs}\n` : "";
@@ -381,7 +390,7 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
   const preservingBlock = emitPreserving
     ? code`
 
-/** Insert-shape for import / restore / replication of ${obj.name}: identical to
+/** Insert-shape for import / restore / replication of ${objName}: identical to
  * ${insertSchemaName}, but the @autoSet timestamp columns are written VERBATIM
  * (no create-time now() stamp) so the caller's original values are preserved. */
 export const ${preservingSchemaName} = ${z}.object({
@@ -398,9 +407,9 @@ ${docsPrefix}export const ${updateSchemaName} = ${z}.object({
 ${joinCode(updateFieldLines, { on: ",\n" })}
 });
 
-/** Typed patch shape for ${obj.name}: every settable field, optional (FR-035 PATCH). A
- * renamed/dropped field is a compile error at every \`update${obj.name}\` call site. */
-export type ${obj.name}Patch = ${z}.input<typeof ${updateSchemaName}>;${preservingBlock}
+/** Typed patch shape for ${objName}: every settable field, optional (FR-035 PATCH). A
+ * renamed/dropped field is a compile error at every \`update${objName}\` call site. */
+export type ${objName}Patch = ${z}.input<typeof ${updateSchemaName}>;${preservingBlock}
 `;
 }
 
@@ -446,16 +455,19 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
   if (field.subType === FIELD_SUBTYPE_OBJECT) {
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
-      // @objectRef may be authored fully-qualified or bare — the referenced
-      // <Ref>InsertSchema is named by the BARE short name. The import MODULE is
-      // resolved via the shared layout/package/extStyle-aware helper (the SAME
-      // one the field's TS type + Drizzle .$type<> use) so all three agree.
-      // Without owner/ctx (bare unit-test calls) fall back to the flat same-dir.
-      const refBase = stripPackage(ref);
+      // @objectRef may be authored fully-qualified or bare. ADR-0044/#228 — the
+      // referenced <Ref>InsertSchema is named by the value object's EMITTED name
+      // (bare when unique in the run, package-qualified on a cross-package
+      // short-name collision), resolved package-locally from the FIELD's declaring
+      // package. The import MODULE is resolved via the shared
+      // layout/package/extStyle-aware helper (the SAME one the field's TS type +
+      // Drizzle .$type<> use) so all three agree. Without owner/ctx (bare
+      // unit-test calls) fall back to the bare name + flat same-dir.
+      const refName = (ctx && owner) ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, owner.package)) : stripPackage(ref);
       const moduleSpec = (ctx && owner)
-        ? valueObjectModuleSpecifier(refBase, ctx.packageOf, owner.package, ctx.outputLayout, ctx.extStyle)
-        : `./${refBase}.js`;
-      const refImp = imp(`${refBase}InsertSchema@${moduleSpec}`);
+        ? valueObjectModuleSpecifier(refName, ctx.packageOf, owner.package, ctx.outputLayout, ctx.extStyle)
+        : `./${refName}.js`;
+      const refImp = imp(`${refName}InsertSchema@${moduleSpec}`);
       let base: Code = code`${refImp}`;
       if (field.resolvedIsArray()) base = code`z.array(${base})`;
       return appendValidatorChain(base, field);
@@ -472,11 +484,11 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
   if (field.subType === FIELD_SUBTYPE_MAP) {
     const ref = field.attr(FIELD_ATTR_OBJECT_REF);
     if (typeof ref === "string" && ref.length > 0) {
-      const refBase = stripPackage(ref);
+      const refName = (ctx && owner) ? ctx.resolveValueObjectName(ref, fieldDeclaringPackage(field, owner.package)) : stripPackage(ref);
       const moduleSpec = (ctx && owner)
-        ? valueObjectModuleSpecifier(refBase, ctx.packageOf, owner.package, ctx.outputLayout, ctx.extStyle)
-        : `./${refBase}.js`;
-      const refImp = imp(`${refBase}InsertSchema@${moduleSpec}`);
+        ? valueObjectModuleSpecifier(refName, ctx.packageOf, owner.package, ctx.outputLayout, ctx.extStyle)
+        : `./${refName}.js`;
+      const refImp = imp(`${refName}InsertSchema@${moduleSpec}`);
       return appendValidatorChain(code`z.record(z.string(), ${refImp})`, field);
     }
     const vt = field.attr(FIELD_ATTR_VALUE_TYPE);

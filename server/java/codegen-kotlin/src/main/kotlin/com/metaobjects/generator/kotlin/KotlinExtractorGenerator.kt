@@ -70,23 +70,40 @@ open class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         parseArgs()
         val outRoot = Paths.get(outDir.absolutePath)
 
-        // Stable name order — matches the sibling generators' deterministic emission.
+        // ADR-0044 (#228) — the extractor references BOTH the strict payload records (`toStrict<Name>`)
+        // and the `...Extracted` mirrors, so it consults BOTH collision-scoped name maps. Both are
+        // computed over ALL templates (not just outputs) so their domain / package assignment match
+        // the payload + parser generators, keeping all three tiers' nested names in lockstep.
         // ADR-0039: root-scan discipline — resolving children accessor.
+        val allTemplates = loader.root.getChildren(MetaTemplate::class.java, true)
+            .sortedBy { it.name }
+        val payloadNameMap = KotlinGenUtil.computePayloadNameMap(allTemplates, loader)
+        val extractedNameMap = KotlinGenUtil.computeExtractedNameMap(allTemplates, loader)
+
+        // Only template.output gets an extractor file. Stable name order — matches the sibling
+        // generators' deterministic emission.
         val outputs = loader.root.getChildren(OutputTemplate::class.java, true)
             .sortedBy { it.name }
 
         for (tmpl in outputs) {
-            emit(tmpl, loader, outRoot)
+            emit(tmpl, loader, outRoot, payloadNameMap, extractedNameMap)
         }
     }
 
-    protected open fun emit(template: MetaTemplate, loader: MetaDataLoader, outRoot: Path) {
+    protected open fun emit(
+        template: MetaTemplate,
+        loader: MetaDataLoader,
+        outRoot: Path,
+        payloadNameMap: Map<String, String>,
+        extractedNameMap: Map<String, String>,
+    ) {
         val payloadRef = template.payloadRef
         if (payloadRef.isNullOrEmpty()) {
             LOG.warn("skipping extractor for {} — missing @payloadRef", template.name)
             return
         }
-        val payloadVo = resolveViewObject(loader, payloadRef)
+        // ADR-0042 — resolve @payloadRef under the loader's package-local contract (#228).
+        val payloadVo = KotlinGenUtil.resolveValueObjectRef(loader, payloadRef, template.getPackage())
         if (payloadVo == null) {
             LOG.warn(
                 "skipping extractor for {} — @payloadRef '{}' does not resolve to an object.value",
@@ -112,7 +129,9 @@ open class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         // nested mirrors/payloads are keyed on the value-object short name.
         val extractorClass = KotlinNaming.extractorName(templateShort)
         val parserClass = KotlinNaming.parserName(templateShort)
-        val rootMirror = templateShort + "Extracted"
+        // Root mirror + strict payload are template-named (unique — never collision-scoped);
+        // nested targets consult the collision-scoped name maps (#228).
+        val rootMirror = KotlinNaming.extractedName(templateShort)
         val rootStrict = KotlinNaming.payloadName(templateShort)
 
         val src = buildString {
@@ -178,7 +197,7 @@ open class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             append(parserClass)
             append(".extractLenient(loader, text, opts)\n")
             // Recursive mirror->strict mappers (root + nested, deduped, cycle-safe).
-            appendMappers(payloadVo, rootMirror, rootStrict)
+            appendMappers(payloadVo, rootMirror, rootStrict, payloadNameMap, extractedNameMap)
             append("}\n")
         }
 
@@ -196,9 +215,15 @@ open class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
      * mapper is named on its value-object short name (`<Short>Extracted`/`<Short>Payload`),
      * matching the nested classes those generators emit.</p>
      */
-    private fun StringBuilder.appendMappers(rootVo: MetaObject, rootMirror: String, rootStrict: String) {
+    private fun StringBuilder.appendMappers(
+        rootVo: MetaObject,
+        rootMirror: String,
+        rootStrict: String,
+        payloadNameMap: Map<String, String>,
+        extractedNameMap: Map<String, String>,
+    ) {
         val emitted = LinkedHashSet<String>()
-        appendMapper(rootVo, rootMirror, rootStrict, emitted)
+        appendMapper(rootVo, rootMirror, rootStrict, emitted, payloadNameMap, extractedNameMap)
     }
 
     private fun StringBuilder.appendMapper(
@@ -206,13 +231,15 @@ open class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         mirror: String,
         strict: String,
         emitted: LinkedHashSet<String>,
+        payloadNameMap: Map<String, String>,
+        extractedNameMap: Map<String, String>,
     ) {
         if (!emitted.add(vo.name)) return // dedupe + cycle guard
 
         val nested = mutableListOf<MetaObject>()
 
         val args = vo.metaFields.joinToString(",\n") { field ->
-            "        ${field.name} = ${strictArg(field, vo, nested)}"
+            "        ${field.name} = ${strictArg(field, vo, nested, payloadNameMap)}"
         }
 
         append("\n")
@@ -235,10 +262,15 @@ open class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         append("    )\n")
 
         // Recurse into nested-object targets (single + array) for their mappers (post-order).
-        // Nested mappers are keyed on the value-object short name.
+        // Nested mapper names are collision-scoped: the `...Extracted` mirror from
+        // [extractedNameMap] and the strict `...Payload` from [payloadNameMap] (#228), falling
+        // back to the bare `<Short>Extracted`/`<Short>Payload` when a target is not in the map
+        // (non-colliding — byte-identical to pre-#228 output).
         for (nestedVo in nested) {
             val nestedShort = PackageMapping.splitFqn(nestedVo.name).second
-            appendMapper(nestedVo, nestedShort + "Extracted", nestedShort + "Payload", emitted)
+            val nestedMirror = extractedNameMap[nestedVo.name] ?: KotlinNaming.extractedName(nestedShort)
+            val nestedStrict = payloadNameMap[nestedVo.name] ?: KotlinNaming.payloadName(nestedShort)
+            appendMapper(nestedVo, nestedMirror, nestedStrict, emitted, payloadNameMap, extractedNameMap)
         }
     }
 
@@ -261,14 +293,23 @@ open class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
      *   <li>scalar (single) → `m.f!!`.</li>
      * </ul>
      */
-    private fun strictArg(field: MetaField<*>, owner: MetaObject, nested: MutableList<MetaObject>): String {
+    private fun strictArg(
+        field: MetaField<*>,
+        owner: MetaObject,
+        nested: MutableList<MetaObject>,
+        payloadNameMap: Map<String, String>,
+    ): String {
         val name = field.name
 
         // Object BEFORE array: array-of-objects maps element-wise (checked before isArray).
         val target = KotlinExtractSchemaEmitter.objectRefValueObject(field)
         if (target != null) {
             nested.add(target)
-            val nestedStrict = PackageMapping.splitFqn(target.name).second + "Payload"
+            // ADR-0044 (#228) — the strict `toStrict<Name>` target is collision-scoped via
+            // [payloadNameMap] (the SAME map the payload generator + the nested recursion use),
+            // so the call and the emitted `toStrict<Name>` definition agree under a collision.
+            val nestedStrict = payloadNameMap[target.name]
+                ?: KotlinNaming.payloadName(PackageMapping.splitFqn(target.name).second)
             return if (field.isArrayType()) {
                 // The mirror element type for an array-of-objects is the NON-NULL nested mirror
                 // (KotlinExtractSchemaEmitter.nestedNullableTypeName emits `List<<Nested>Extracted>?`),
@@ -372,11 +413,6 @@ open class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
             }
         }
     }
-
-    /** Resolve a `@payloadRef` to its `object.value` (rejects entities — payloads must be VOs). */
-    private fun resolveViewObject(loader: MetaDataLoader, ref: String): MetaObject? =
-        KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref)
-            ?.takeIf { it.subType == MetaObject.SUBTYPE_VALUE }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
     override fun writeSingleFile(md: MetaObject, writer: GeneratorIOWriter<*>?) { /* unused */ }

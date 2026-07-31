@@ -28,6 +28,7 @@ import {
   resolveObjectRef,
 } from "@metaobjectsdev/metadata";
 import { fields, isArray, scalarKind, jsonStringLiteral } from "./fr010-field-mapping.js";
+import type { RenderContext } from "../render-context.js";
 
 // ADR-0039: resolving — root has no super (children()==ownChildren()); a top-level object/template may itself extend, so resolve rather than work-by-accident.
 // ADR-0042: resolveObjectRef gives package-local-before-root-level precedence for a bare ref, FQN-exact otherwise.
@@ -50,14 +51,20 @@ function isObjectField(field: MetaData): boolean {
   return field.subType === FIELD_SUBTYPE_OBJECT;
 }
 
-/** The extracted-mirror interface name for a value-object (`<Name>Extracted`). */
-export function mirrorName(vo: MetaData): string {
-  return `${vo.name}Extracted`;
+/** The extracted-mirror interface name for a value-object (`<Name>Extracted`). ADR-0044/#228:
+ *  `ctx` (optional) resolves the collision-scoped entity-domain emitted name (Task 3's
+ *  `valueObjectEmittedName`), so a cross-package short-name collision qualifies both the
+ *  entity module AND its extract mirror identically (`AcmeAlphaNoteExtracted`). Omitted →
+ *  the bare `vo.name` (bare template unit-test calls; byte-identical to pre-#228 output). */
+export function mirrorName(vo: MetaData, ctx?: RenderContext): string {
+  const name = ctx ? ctx.valueObjectEmittedName(vo) : vo.name;
+  return `${name}Extracted`;
 }
 
-/** The mapper function name for a value-object (`from<Name>Extracted`). */
-function mapperName(vo: MetaData): string {
-  return `from${vo.name}Extracted`;
+/** The mapper function name for a value-object (`from<Name>Extracted`). See {@link mirrorName}. */
+function mapperName(vo: MetaData, ctx?: RenderContext): string {
+  const name = ctx ? ctx.valueObjectEmittedName(vo) : vo.name;
+  return `from${name}Extracted`;
 }
 
 // =============================================================================
@@ -65,10 +72,10 @@ function mapperName(vo: MetaData): string {
 // =============================================================================
 
 /** The nullable mirror TS type for one field — nested-aware (recurses into nested mirror names). */
-function nestedMirrorType(field: MetaData, root: MetaData): string {
+function nestedMirrorType(field: MetaData, root: MetaData, ctx?: RenderContext): string {
   if (isObjectField(field)) {
     const target = refVo(field, root);
-    const base = target !== undefined ? mirrorName(target) : "unknown";
+    const base = target !== undefined ? mirrorName(target, ctx) : "unknown";
     const elem = `${base} | null`;
     return isArray(field) ? `(${elem})[] | null` : elem;
   }
@@ -92,10 +99,15 @@ function nestedMirrorType(field: MetaData, root: MetaData): string {
  * name (passed in) so the existing self-contained extract<Name>() and the delegating overload
  * share one mirror type. Returns the joined interface declarations in stable (BFS) order.
  */
-export function nestedMirrorInterfaces(vo: MetaData, root: MetaData, payloadMirror: string): string {
+export function nestedMirrorInterfaces(
+  vo: MetaData,
+  root: MetaData,
+  payloadMirror: string,
+  ctx?: RenderContext,
+): string {
   const out: string[] = [];
   const seen = new Set<string>();
-  emitMirror(vo, root, payloadMirror, seen, out);
+  emitMirror(vo, root, payloadMirror, seen, out, ctx);
   return out.join("\n\n");
 }
 
@@ -105,9 +117,14 @@ function emitMirror(
   interfaceName: string,
   seen: Set<string>,
   out: string[],
+  ctx?: RenderContext,
 ): void {
-  if (seen.has(vo.name)) return;
-  seen.add(vo.name);
+  // ADR-0044/#228: dedupe by resolutionKey(), NOT the bare name — two distinct value-objects
+  // sharing a bare short name across packages (the collision case) are DIFFERENT nodes with
+  // DIFFERENT resolutionKey()s; bare-name dedupe would treat the second as "already seen" and
+  // silently DROP its mirror interface (and every mapper reading it downstream).
+  if (seen.has(vo.resolutionKey())) return;
+  seen.add(vo.resolutionKey());
 
   const base = interfaceName.endsWith("Extracted")
     ? interfaceName.slice(0, -"Extracted".length)
@@ -118,7 +135,7 @@ function emitMirror(
   );
   lines.push(`export interface ${interfaceName} {`);
   for (const f of fields(vo)) {
-    lines.push(`  ${f.name}: ${nestedMirrorType(f, root)};`);
+    lines.push(`  ${f.name}: ${nestedMirrorType(f, root, ctx)};`);
   }
   lines.push("}");
   out.push(lines.join("\n"));
@@ -127,7 +144,7 @@ function emitMirror(
   for (const f of fields(vo)) {
     if (isObjectField(f)) {
       const target = refVo(f, root);
-      if (target !== undefined) emitMirror(target, root, mirrorName(target), seen, out);
+      if (target !== undefined) emitMirror(target, root, mirrorName(target, ctx), seen, out, ctx);
     }
   }
 }
@@ -149,10 +166,11 @@ export function nestedMappers(
   root: MetaData,
   rootMapperFn: string,
   rootMirror: string,
+  ctx?: RenderContext,
 ): string {
   const out: string[] = [];
   const seen = new Set<string>();
-  emitMapper(vo, root, seen, out, { fn: rootMapperFn, mirror: rootMirror });
+  emitMapper(vo, root, seen, out, { fn: rootMapperFn, mirror: rootMirror }, ctx);
   return out.join("\n\n");
 }
 
@@ -167,13 +185,17 @@ function emitMapper(
   seen: Set<string>,
   out: string[],
   override?: { fn: string; mirror: string },
+  ctx?: RenderContext,
 ): void {
-  if (seen.has(vo.name)) return;
-  seen.add(vo.name);
+  // ADR-0044/#228: dedupe by resolutionKey() — see emitMirror for why bare-name dedupe drops
+  // the second colliding VO's mapper (silently misdirecting its extraction to the FIRST
+  // colliding VO's mapper — the exact wrong-data bug closed by this fix).
+  if (seen.has(vo.resolutionKey())) return;
+  seen.add(vo.resolutionKey());
 
-  const fn = override?.fn ?? mapperName(vo);
-  const mir = override?.mirror ?? mirrorName(vo);
-  const assigns = fields(vo).map((f) => `    ${f.name}: ${mapperArg(f, root)},`);
+  const fn = override?.fn ?? mapperName(vo, ctx);
+  const mir = override?.mirror ?? mirrorName(vo, ctx);
+  const assigns = fields(vo).map((f) => `    ${f.name}: ${mapperArg(f, root, ctx)},`);
   const body = [
     `/** Map an assembled ValueObject graph into a typed \`${mir}\` mirror. Generated; null-tolerant. */`,
     `function ${fn}(o: unknown): ${mir} | null {`,
@@ -188,19 +210,19 @@ function emitMapper(
   for (const f of fields(vo)) {
     if (isObjectField(f)) {
       const target = refVo(f, root);
-      if (target !== undefined) emitMapper(target, root, seen, out);
+      if (target !== undefined) emitMapper(target, root, seen, out, undefined, ctx);
     }
   }
 }
 
 /** The mirror-field initializer expression that reads `field` from the assembled object `o`. */
-function mapperArg(field: MetaData, root: MetaData): string {
+function mapperArg(field: MetaData, root: MetaData, ctx?: RenderContext): string {
   const key = jsonStringLiteral(field.name);
 
   if (isObjectField(field)) {
     const target = refVo(field, root);
     if (target === undefined) return "null /* unresolved @objectRef */";
-    const fn = mapperName(target);
+    const fn = mapperName(target, ctx);
     if (isArray(field)) {
       return `mapObjectList(readProp(o, ${key}), ${fn})`;
     }
@@ -242,8 +264,10 @@ export function usedHelpers(vo: MetaData, root: MetaData): Set<string> {
   const stack = [vo];
   while (stack.length > 0) {
     const cur = stack.pop()!;
-    if (seen.has(cur.name)) continue;
-    seen.add(cur.name);
+    // ADR-0044/#228: dedupe by resolutionKey() — bare-name dedupe would skip walking the
+    // SECOND colliding VO's fields entirely, silently missing a helper only IT needs.
+    if (seen.has(cur.resolutionKey())) continue;
+    seen.add(cur.resolutionKey());
     for (const f of fields(cur)) {
       if (isObjectField(f)) {
         const target = refVo(f, root);
@@ -285,8 +309,9 @@ export function hasNested(vo: MetaData, root: MetaData): boolean {
   const stack = [vo];
   while (stack.length > 0) {
     const cur = stack.pop()!;
-    if (seen.has(cur.name)) continue;
-    seen.add(cur.name);
+    // ADR-0044/#228: dedupe by resolutionKey() (see usedHelpers).
+    if (seen.has(cur.resolutionKey())) continue;
+    seen.add(cur.resolutionKey());
     for (const f of cur.children().filter((c) => c.type === TYPE_FIELD)) {
       if (isObjectField(f)) {
         const target = refVo(f, root);

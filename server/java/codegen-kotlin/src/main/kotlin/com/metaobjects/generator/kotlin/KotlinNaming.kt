@@ -102,6 +102,14 @@ object KotlinNaming {
     /** [KotlinPayloadGenerator]: `templateShort + "Payload"`. */
     fun payloadName(templateShort: String): String = templateShort + "Payload"
 
+    /**
+     * [KotlinExtractSchemaEmitter] / [KotlinOutputParserGenerator] / [KotlinExtractorGenerator]:
+     * `templateShort + "Extracted"` — the all-nullable extract mirror class name. The peer of
+     * [payloadName] for the lenient `...Extracted` mirror family; the SSOT so the root mirror,
+     * the nested mirrors, and the extractor's mirror references stay in lockstep.
+     */
+    fun extractedName(templateShort: String): String = templateShort + "Extracted"
+
     /** [KotlinRenderHelperGenerator]: `capitalizeFirst(templateShort) + "RenderHelper"`. */
     fun renderHelperName(templateShort: String): String = capitalizeFirst(templateShort) + "RenderHelper"
 

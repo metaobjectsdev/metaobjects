@@ -65,21 +65,6 @@ public static class PayloadCodegen
             [FIELD_SUBTYPE_TIMESTAMP] = "string",
         };
 
-    // ADR-0041: the verify field-tree resolver — a FULLY-QUALIFIED ref (contains ::) resolves
-    // EXACTLY on the package-qualified name (ResolutionKey()/Fqn()), never a bare-tail fallback
-    // that would bind a same-named object.value in the WRONG package on a cross-package
-    // short-name collision. A bare ref matches by short name (first-wins). Used ONLY by the
-    // verify field-tree walk (BuildTree) below — record emission resolves through the shared
-    // NamingRefs.ResolveObjectRef matcher instead (ADR-0044; see CollectClosure). The render
-    // engine + verify field-tree resolve against METADATA, not record names, and are UNCHANGED
-    // by the ADR-0044 naming rule.
-    private static MetaData? ResolveObjectRef(MetaData root, string reference)
-    {
-        bool fqn = reference.Contains("::");
-        return root.Children().FirstOrDefault(c => c.Type == TYPE_OBJECT &&
-            (fqn ? c.ResolutionKey() == reference || c.Fqn() == reference : c.Name == reference));
-    }
-
     // ADR-0039: resolve array-ness through the super chain (isArray is a native
     // property, not an attr; the former OwnAttr("isArray") clause was dead code).
     private static bool IsArrayField(MetaData field) => field.ResolvedIsArray();
@@ -211,6 +196,32 @@ public static class PayloadCodegen
         return nameMap;
     }
 
+    /// <summary>
+    /// ADR-0044 — compute the full reference closure + collision-aware emitted-name map for
+    /// <paramref name="voRef"/>, for reuse by OTHER codegen tiers that must reference the SAME
+    /// payload record names <see cref="GeneratePayloadRecords"/> would emit (the extract /
+    /// output-parser tier — #228 — reuses this rather than re-deriving its own naming). Returns
+    /// the traversal order (FQNs), the resolved-node-by-FQN map, and the emitted-name map (FQN
+    /// -&gt; the bare-or-package-qualified C# identifier). A closure containing an unresolvable
+    /// still-colliding derived name throws <c>ERR_PAYLOAD_NAME_COLLISION</c> (see <see cref="AssignEmittedNames"/>).
+    /// </summary>
+    internal static (List<string> Order, Dictionary<string, MetaData> ByFqn, Dictionary<string, string> NameMap)
+        ComputeClosureAndNames(MetaData root, string voRef, string referrerPkg)
+    {
+        var order = new List<string>();
+        var byFqn = new Dictionary<string, MetaData>(StringComparer.Ordinal);
+        CollectClosure(root, voRef, referrerPkg, order, byFqn);
+        var nameMap = AssignEmittedNames(byFqn);
+        return (order, byFqn, nameMap);
+    }
+
+    /// <summary>The ADR-0044 emitted name for <paramref name="vo"/> from a closure name-map
+    /// computed by <see cref="ComputeClosureAndNames"/> — falls back to the bare metadata name
+    /// when <paramref name="vo"/> isn't a key in the map (defensive; a map from a closure walk
+    /// that actually reached <paramref name="vo"/> always contains it).</summary>
+    internal static string EmittedNameOf(MetaData vo, IReadOnlyDictionary<string, string> nameMap) =>
+        nameMap.GetValueOrDefault(vo.ResolutionKey(), vo.Name);
+
     /// <summary>Resolve <paramref name="reference"/>'s emitted C# record name under the
     /// ADR-0044 naming rule, scoped to its OWN reference closure (the same closure
     /// <see cref="GeneratePayloadRecords"/> would emit). Returns null when <paramref name="reference"/>
@@ -219,10 +230,8 @@ public static class PayloadCodegen
     {
         var vo = ResolveForEmission(root, reference, referrerPkg);
         if (vo is null) return null;
-        var order = new List<string>();
-        var byFqn = new Dictionary<string, MetaData>(StringComparer.Ordinal);
-        CollectClosure(root, reference, referrerPkg, order, byFqn);
-        return AssignEmittedNames(byFqn).GetValueOrDefault(vo.ResolutionKey());
+        var (_, _, nameMap) = ComputeClosureAndNames(root, reference, referrerPkg);
+        return nameMap.GetValueOrDefault(vo.ResolutionKey());
     }
 
     /// <summary>
@@ -339,10 +348,7 @@ public static class PayloadCodegen
     /// </summary>
     public static string GeneratePayloadRecords(MetaData root, string voName, string referrerPkg = "")
     {
-        var order = new List<string>();
-        var byFqn = new Dictionary<string, MetaData>(StringComparer.Ordinal);
-        CollectClosure(root, voName, referrerPkg, order, byFqn);
-        var nameMap = AssignEmittedNames(byFqn);
+        var (order, byFqn, nameMap) = ComputeClosureAndNames(root, voName, referrerPkg);
         var output = new List<string>();
         EmitClosureRecords(root, order, byFqn, nameMap, output);
         return string.Join("\n\n", output) + "\n";
@@ -352,29 +358,44 @@ public static class PayloadCodegen
     /// Derive the verify field tree (the input to <c>Verify.Check</c>) from an
     /// object.value view-object: scalars become leaves, object-ref fields recurse
     /// into nested element trees. This is the metadata→verify bridge a `dotnet meta verify`
-    /// command uses to drift-check a template against its @payloadRef.
+    /// command uses to drift-check a template against its @payloadRef. <paramref name="referrerPkg"/>
+    /// (ADR-0042, #228) is the declaring template's effective package — a bare <paramref name="voName"/>
+    /// resolves there FIRST (else root-level, else the pre-ADR-0044 global bare-name scan — the
+    /// SAME fallback record emission uses, see <see cref="ResolveForEmission"/>), so a template
+    /// whose bare <c>@payloadRef</c> collides with a same-short-named object.value in ANOTHER
+    /// package binds its OWN package's object — never whichever one loads first.
     /// </summary>
-    public static IReadOnlyList<PayloadField> BuildPayloadFieldTree(MetaData root, string voName) =>
-        BuildTree(root, voName, new HashSet<string>(StringComparer.Ordinal));
+    public static IReadOnlyList<PayloadField> BuildPayloadFieldTree(MetaData root, string voName, string referrerPkg = "") =>
+        BuildTree(root, voName, referrerPkg, new HashSet<string>(StringComparer.Ordinal));
 
-    private static IReadOnlyList<PayloadField> BuildTree(MetaData root, string voName, HashSet<string> visiting)
+    private static IReadOnlyList<PayloadField> BuildTree(MetaData root, string voName, string referrerPkg, HashSet<string> visiting)
     {
-        // ADR-0041: FQN-exact resolution for the verify field-tree (a SEPARATE resolver from
-        // record emission's CollectClosure — see the ResolveObjectRef doc comment above) so a
-        // fully-qualified nested @objectRef binds its own package.
-        var vo = ResolveObjectRef(root, voName);
-        if (vo is null || !visiting.Add(voName)) return [];
+        // Shares the record-emission resolver (ADR-0042/0044): FQN-exact when qualified, else
+        // referrer-package-local, else the pre-ADR-0044 global bare-name-scan fallback.
+        var vo = ResolveForEmission(root, voName, referrerPkg);
+        // ADR-0039: dedupe/cycle-guard by ResolutionKey (FQN), never the bare ref string — two
+        // DIFFERENT same-short-named nodes reached via different bare refs must not collapse
+        // onto "already visiting" (the #219-class dedupe defect).
+        if (vo is null || !visiting.Add(vo.ResolutionKey())) return [];
+        var voPkg = global::MetaObjects.NamingRefs.EffectivePackage(vo);
         var fields = new List<PayloadField>();
         foreach (var f in vo.Children().Where(c => c.Type == TYPE_FIELD))
         {
             // ADR-0039: resolving — @objectRef may be inherited via extends (TS reads f.attr).
-            // ADR-0041: pass the FULL (possibly FQN) ref — ResolveObjectRef resolves it exactly.
             if (f.SubType == FIELD_SUBTYPE_OBJECT && f.Attr(FIELD_ATTR_OBJECT_REF) is string refName)
-                fields.Add(new PayloadField(f.Name, BuildTree(root, refName, visiting)));
+            {
+                // ADR-0042: a nested @objectRef resolves in the FIELD's OWN declaring package,
+                // which may differ from this VO's when the field is inherited via extends from
+                // an abstract VO in another package (mirrors CollectClosure's fieldPkg).
+                var fieldPkg = f.Parent is not null
+                    ? global::MetaObjects.NamingRefs.EffectivePackage(f.Parent)
+                    : voPkg;
+                fields.Add(new PayloadField(f.Name, BuildTree(root, refName, fieldPkg, visiting)));
+            }
             else
                 fields.Add(new PayloadField(f.Name));
         }
-        visiting.Remove(voName);
+        visiting.Remove(vo.ResolutionKey());
         return fields;
     }
 

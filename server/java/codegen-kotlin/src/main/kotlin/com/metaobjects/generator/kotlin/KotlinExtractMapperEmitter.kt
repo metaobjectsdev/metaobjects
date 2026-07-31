@@ -38,10 +38,14 @@ internal object KotlinExtractMapperEmitter {
      * [rootExtractedClass]) plus the shared `asMap` / `mapObjectList` helpers. Returns the
      * concatenated Kotlin source, each member prefixed with a blank line for readability.
      */
-    fun mapperMethods(rootVo: MetaObject, rootExtractedClass: String): String {
+    fun mapperMethods(
+        rootVo: MetaObject,
+        rootExtractedClass: String,
+        nameMap: Map<String, String>,
+    ): String {
         val out = StringBuilder()
         val emitted = LinkedHashSet<String>()
-        emitMapper(rootVo, rootExtractedClass, out, emitted)
+        emitMapper(rootVo, rootExtractedClass, out, emitted, nameMap)
         appendHelpers(out)
         return out.toString()
     }
@@ -51,12 +55,13 @@ internal object KotlinExtractMapperEmitter {
         extractedClass: String,
         out: StringBuilder,
         emitted: LinkedHashSet<String>,
+        nameMap: Map<String, String>,
     ) {
         if (!emitted.add(vo.name)) return // dedupe + cycle guard
 
         val nested = mutableListOf<MetaObject>()
         val args = vo.metaFields.joinToString(",\n") { field ->
-            "            ${mapperArgForField(field, nested)}"
+            "            ${mapperArgForField(field, nested, nameMap)}"
         }
 
         out.append("\n")
@@ -71,7 +76,10 @@ internal object KotlinExtractMapperEmitter {
 
         // Recurse into nested mappers (post-order, deduped).
         for (nestedVo in nested) {
-            emitMapper(nestedVo, KotlinExtractSchemaEmitter.nestedExtractedClass(nestedVo), out, emitted)
+            emitMapper(
+                nestedVo, KotlinExtractSchemaEmitter.nestedExtractedClass(nestedVo, nameMap),
+                out, emitted, nameMap
+            )
         }
     }
 
@@ -81,14 +89,18 @@ internal object KotlinExtractMapperEmitter {
      * object recurses into its generated mapper; an array-of-objects maps each element.
      * Records the discovered nested VO into [nested] so the caller emits its mapper.
      */
-    private fun mapperArgForField(field: MetaField<*>, nested: MutableList<MetaObject>): String {
+    private fun mapperArgForField(
+        field: MetaField<*>,
+        nested: MutableList<MetaObject>,
+        nameMap: Map<String, String>,
+    ): String {
         val name = KotlinExtractSchemaEmitter.kotlinStringLiteral(field.name)
 
         // Nested object / array-of-objects (NOT enum — that is a string-backed scalar).
         val target = KotlinExtractSchemaEmitter.objectRefValueObject(field)
         if (target != null) {
             nested.add(target)
-            val nestedClass = KotlinExtractSchemaEmitter.nestedExtractedClass(target)
+            val nestedClass = KotlinExtractSchemaEmitter.nestedExtractedClass(target, nameMap)
             return if (field.isArrayType()) {
                 // List<NestedExtracted>?: map each element Map; the assembled value is a List.
                 // `it` is a non-null Map here, so from<Nested> never returns null — `!!` keeps

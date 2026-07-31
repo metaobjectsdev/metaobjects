@@ -101,7 +101,8 @@ open class KotlinOutputPromptGenerator : MultiFileDirectGeneratorBase<MetaObject
             )
             return
         }
-        val payloadVo = resolveValueObject(loader, payloadRef)
+        // ADR-0042 — resolve @payloadRef under the loader's package-local contract (#228).
+        val payloadVo = KotlinGenUtil.resolveValueObjectRef(loader, payloadRef, template.getPackage())
         if (payloadVo == null) {
             // @payloadRef resolves to an object.entity (or nothing) — same contract
             // as KotlinPayloadGenerator: payloads MUST be VOs.
@@ -156,10 +157,6 @@ open class KotlinOutputPromptGenerator : MultiFileDirectGeneratorBase<MetaObject
         Files.writeString(outFile, src)
     }
 
-    /** Resolve a `@payloadRef` to its `object.value` (rejects entities — payloads must be VOs). */
-    private fun resolveValueObject(loader: MetaDataLoader, ref: String): MetaObject? =
-        KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref)
-            ?.takeIf { it.subType == MetaObject.SUBTYPE_VALUE }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
     override fun writeSingleFile(md: MetaObject, writer: GeneratorIOWriter<*>?) { /* unused */ }

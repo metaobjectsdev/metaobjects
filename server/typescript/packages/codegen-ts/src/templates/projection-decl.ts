@@ -10,12 +10,13 @@
 import { code, imp, joinCode, type Code } from "ts-poet";
 import {
   MetaField, MetaObject, type MetaRoot,
+  FIELD_ATTR_OBJECT_REF, stripPackage,
 } from "@metaobjectsdev/metadata";
 import { projectionViewName } from "../projection/extract-view-spec.js";
 import { columnNameFromField, toSnakeCase, pluralize } from "../naming.js";
 import { GENERATED_HEADER } from "../constants.js";
 import type { ColumnNamingStrategy } from "../metaobjects-config.js";
-import type { RenderContext } from "../render-context.js";
+import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
 import { valueObjectModuleSpecifier } from "../import-path.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
@@ -92,13 +93,22 @@ export function renderProjectionDecl(
 ): string {
   const { dialect, columnNamingStrategy, apiPrefix = "", timestampMode = "string", allowlists = true, ctx, includeViewDecl = true } = opts;
 
-  // Resolve a value-object name → its import module. Layout/package/extStyle-aware
-  // when a render context is present (so the projection's VO imports match the
-  // entity's), else a flat same-dir import — identical to zodFieldExpr's fallback.
-  const voModule = (refBase: string): string =>
-    ctx
-      ? valueObjectModuleSpecifier(refBase, ctx.packageOf, projection.package, ctx.outputLayout, ctx.extStyle)
-      : `./${refBase}.js`;
+  // ADR-0044/#228 — resolve a projection field's `@objectRef` to the value object's
+  // EMITTED name + module TOGETHER (lock-step): bare when unique in the run,
+  // package-qualified on a cross-package short-name collision, so the projection's
+  // VO import matches the entity's. Layout/package/extStyle-aware when a render
+  // context is present, else a flat same-dir import (zodFieldExpr's fallback).
+  const voRef = (field: MetaField): { name: string; module: string } => {
+    const ref = field.attr(FIELD_ATTR_OBJECT_REF);
+    const rawRef = typeof ref === "string" ? ref : "";
+    const name = ctx
+      ? ctx.resolveValueObjectName(rawRef, fieldDeclaringPackage(field, projection.package))
+      : stripPackage(rawRef);
+    const module = ctx
+      ? valueObjectModuleSpecifier(name, ctx.packageOf, projection.package, ctx.outputLayout, ctx.extStyle)
+      : `./${name}.js`;
+    return { name, module };
+  };
 
   const z = imp("z@zod");
 
@@ -145,12 +155,12 @@ export function renderProjectionDecl(
   const sections: Code[] = [
     ...(includeViewDecl
       ? [renderExistingViewDecl(allFields, viewName, `${camelName}View`, {
-          dialect, columnNamingStrategy, timestampMode, voModule,
+          dialect, columnNamingStrategy, timestampMode, voRef,
         })]
       : []),
     code`
 export const ${projName}Schema = ${renderViewReadZodObject(allFields, {
-  dialect, columnNamingStrategy, timestampMode, voModule,
+  dialect, columnNamingStrategy, timestampMode, voRef,
 })};
 `,
     code`

@@ -201,4 +201,41 @@ public sealed class VerifyCommandTests : IDisposable
             d.Code == VerifyCommand.ERR_PAYLOAD_REF_UNRESOLVED &&
             d.Path == "NoSuchPayload");
     }
+
+    // #228 — the build-time @payloadRef resolver bug class (cross-port checkpoint for this
+    // task). Two packages each declare their OWN bare-colliding "Report" and a template.output
+    // with a BARE (same-package) @payloadRef "Report" — the realistic common case (a template
+    // referencing its own package's local value-object). Before this fix,
+    // PayloadCodegen.BuildPayloadFieldTree had no referrer-package parameter and resolved via a
+    // GLOBAL bare-name-first-match scan, so ONE of these two templates' drift check would
+    // silently bind to the OTHER package's "Report" (load-order dependent) and spuriously fail
+    // with ERR_VAR_NOT_ON_PAYLOAD for its own field. Passing each template's own effective
+    // package now binds each to ITS OWN "Report".
+    [Fact]
+    public void Bare_payloadRef_collision_across_packages_binds_own_package_report()
+    {
+        const string alphaModel = """
+        { "metadata.root": { "package": "acme::alpha", "children": [
+          { "object.value": { "name": "Report", "children": [ { "field.string": { "name": "alphaVal" } } ] } },
+          { "template.output": { "name": "ReportDocAlpha", "@payloadRef": "Report",
+              "@textRef": "t/alpha", "@format": "json" } }
+        ]}}
+        """;
+        const string betaModel = """
+        { "metadata.root": { "package": "acme::beta", "children": [
+          { "object.value": { "name": "Report", "children": [ { "field.string": { "name": "betaVal" } } ] } },
+          { "template.output": { "name": "ReportDocBeta", "@payloadRef": "Report",
+              "@textRef": "t/beta", "@format": "json" } }
+        ]}}
+        """;
+        File.WriteAllText(Path.Combine(MetaDir, "meta.ai.json"), alphaModel);
+        File.WriteAllText(Path.Combine(MetaDir, "meta.beta.json"), betaModel);
+        WriteAt("t/alpha", "{{alphaVal}}");
+        WriteAt("t/beta", "{{betaVal}}");
+
+        var o = VerifyCommand.Run(MetaDir, TplDir);
+        Assert.True(o.Ok, string.Join("; ",
+            o.LoadErrors.Concat(o.UnresolvedText).Concat(o.Errors.Select(e => $"{e.Code}({e.Path})"))));
+        Assert.Empty(o.Errors);
+    }
 }

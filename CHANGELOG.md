@@ -5,6 +5,62 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
+## [Unreleased]
+
+**Coordinated PATCH (all 5 ports)** — will release across npm / PyPI / Maven Central / NuGet
+together when cut; #228 is a cross-port fix. Existing `meta gen` output is byte-identical for
+every model without a cross-package short-name collision.
+
+### Fixed — extract/output-parser tier and build-time `@payloadRef`/`@responseRef` resolution under a cross-package payload collision (#228)
+
+ADR-0044 (#219/#220) gave every port's *payload-record* emitter collision-scoped naming: two
+cross-package `object.value`s sharing a bare short name (`acme::alpha::Note` /
+`acme::beta::Note`) now each emit a distinct, package-qualified type instead of silently
+colliding. The **extract tier** — the `template.output`/`template.toolcall` parser generator
+that reads a rendered payload back off an LLM response — was a sibling generator ADR-0044
+flagged as a recurrence risk but did not fix: it named and imported nested value-object
+classes by bare short name, so under a real collision it referenced a class the payload
+generator no longer emits. This half is **latent** — the only shipped collision fixture
+(`fixtures/template-output-render-conformance/xpkg-collision/`) used `@format: html`, which the
+extract tier never runs against (it only engages for `@format: json | xml`) — closed by a new
+`xpkg-collision-json` fixture plus a hardcoded per-port collision test, all five ports.
+
+A second, **reachable** bug surfaced auditing the fix: several build-time
+`@payloadRef`/`@responseRef` resolvers — feeding the extract tier, the render-helper /
+output-prompt generators, and (JVM ports) the `meta:verify` template-drift check — resolved a
+bare ref package-blind (first-match by load order, or a bare-tail fallback), while the loader
+validates the same ref package-local per ADR-0042. Under a genuine cross-package bare
+collision this meant the loader accepted object A while codegen silently emitted against
+object B. Fixed by routing every one of these resolvers through each port's canonical
+package-local resolver, threading the referring template's package: Python
+(`resolve_payload_vo` + `render_helper_generator` + `@responseRef`), C# (`VerifyCommand` /
+`BuildPayloadFieldTree`), Java (five call sites consolidated into a new `SpringNaming` helper,
+plus a `LlmTraceHelperGenerator` bare-tail fix), Kotlin (`KotlinGenUtil` — reusing the loader's
+own `SymbolTable` — plus the render-helper, output-prompt, and api-docs generators, and the
+shared `codegen-base/TemplateVerify.java` used by both JVM ports).
+
+A third fix closes a **generated-runtime** analog: TS, Python, and C#'s generated
+output-parser code resolved its *own* `@payloadRef` payload by a bare runtime lookup — wrong
+under a cross-package bare collision between two `template.output`s (or a payload bare-name
+colliding with another root object). All three now bake the fully-qualified name and resolve
+package-locally only when the bare name is genuinely ambiguous; byte-identical when it isn't.
+Java and Kotlin already baked the FQN in generated code and needed no change here.
+
+TS additionally extended its entity-tier collision-scoped naming (previously payload-record
+only) to cover every value-object *reference* site reachable from an entity module —
+write-through read-views, projection declarations, and view declarations — plus a `runner.ts`
+load-order package-binding misbind found in the same pass (the same class of bug #244 fixed
+elsewhere), and fixed a reachable **runtime** wrong-data bug in `runtime-ts`'s
+`extract-object.ts` (a bare-tail fallback resolver that extracted a nested colliding
+value-object using the wrong package's shape).
+
+Byte-identical for every non-colliding model, all ports. Gated by the new
+`xpkg-collision-json` fixture plus a per-port collision test (compile-and-run proof where the
+port's toolchain supports it). Reuses `ERR_PAYLOAD_NAME_COLLISION` — no new error code, no new
+metamodel vocabulary (ADR-0023 unaffected). See
+[ADR-0044](spec/decisions/ADR-0044-payload-record-naming-cross-package-collision.md), whose
+Consequences section now marks this recurrence closed.
+
 ## [0.20.9] — 2026-07-28
 
 **npm-only** — `migrate-ts` + `codegen-ts` (schema migrations and projection-view codegen

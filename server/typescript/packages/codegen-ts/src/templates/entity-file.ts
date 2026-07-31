@@ -7,8 +7,9 @@
 //   vanilla / write-through entity     → Drizzle table path
 
 import { code, imp, joinCode, type Code } from "ts-poet";
-import type { MetaObject } from "@metaobjectsdev/metadata";
-import type { RenderContext } from "../render-context.js";
+import type { MetaObject, MetaField } from "@metaobjectsdev/metadata";
+import { FIELD_ATTR_OBJECT_REF } from "@metaobjectsdev/metadata";
+import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
 import { renderDrizzleSchema } from "./drizzle-schema.js";
 import { renderInferredTypes, renderEnumTypeAliases } from "./inferred-types.js";
 import { renderZodValidators, isTphSubtype } from "./zod-validators.js";
@@ -23,7 +24,6 @@ import { projectionViewName } from "../projection/extract-view-spec.js";
 import { renderExistingViewDecl, renderViewReadZodObject } from "./view-decl.js";
 import { renderDocsFor } from "./jsdoc.js";
 import { valueObjectModuleSpecifier } from "../import-path.js";
-import { stripPackage } from "@metaobjectsdev/metadata";
 import { hasWritableRdbSource } from "../source-detect.js";
 import { renderValueObjectFile } from "./value-object-file.js";
 import { isAbstract } from "../instance-artifacts.js";
@@ -131,10 +131,18 @@ export function renderEntityFile(
   if (writeThrough) {
     const camel = entity.name.charAt(0).toLowerCase() + entity.name.slice(1);
     const fields = entity.fields();
-    const voModule = (refBase: string): string =>
-      valueObjectModuleSpecifier(stripPackage(refBase), ctx.packageOf, entity.package, ctx.outputLayout, ctx.extStyle);
+    // ADR-0044/#228 — resolve a view column's `@objectRef` to the value object's
+    // EMITTED name + module TOGETHER (lock-step), so the read-view artifact imports
+    // `AcmeAlphaNote` from `./AcmeAlphaNote.js` (not a bare `Note` → `./Note.js`)
+    // under a cross-package short-name collision.
+    const voRef = (field: MetaField): { name: string; module: string } => {
+      const ref = field.attr(FIELD_ATTR_OBJECT_REF);
+      const name = ctx.resolveValueObjectName(typeof ref === "string" ? ref : "", fieldDeclaringPackage(field, entity.package));
+      const module = valueObjectModuleSpecifier(name, ctx.packageOf, entity.package, ctx.outputLayout, ctx.extStyle);
+      return { name, module };
+    };
     const viewOpts = {
-      dialect: ctx.dialect, columnNamingStrategy: ctx.columnNamingStrategy, timestampMode: ctx.timestampMode, voModule,
+      dialect: ctx.dialect, columnNamingStrategy: ctx.columnNamingStrategy, timestampMode: ctx.timestampMode, voRef,
     };
     const z = imp("z@zod");
     const docs = renderDocsFor(entity);
