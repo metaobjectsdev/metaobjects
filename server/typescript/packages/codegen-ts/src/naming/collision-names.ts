@@ -7,17 +7,17 @@
 // package-qualified derived name (PascalCase each package segment + short
 // name). A still-colliding derived name fails loud (ERR_PAYLOAD_NAME_COLLISION).
 
-import { type MetaData, PACKAGE_SEPARATOR } from "@metaobjectsdev/metadata";
+import { type ErrorCode, type MetaData, PACKAGE_SEPARATOR } from "@metaobjectsdev/metadata";
 
 // ADR-0044 backstop error code — a codegen-time (not loader) error, peer of
-// @metaobjectsdev/render's ERR_VAR_NOT_ON_PAYLOAD. Declared LOCALLY rather than
-// added to packages/metadata/src/errors.ts's ERROR_CODES ledger: that ledger is
-// checked for FULL cross-port agreement against fixtures/conformance/ERROR-CODES.json
-// (packages/metadata/test/errors.test.ts) and, on the Python side, for corpus-code
-// coverage — registering it there before every port implements the ADR-0044 fix
-// would turn those OTHER ports' tests red. It moves into the shared ledger once the
-// Java/Kotlin/Python follow-up (ADR-0044 §4, items 3-4) lands alongside this code.
-export const ERR_PAYLOAD_NAME_COLLISION = "ERR_PAYLOAD_NAME_COLLISION";
+// @metaobjectsdev/render's ERR_VAR_NOT_ON_PAYLOAD. Already promoted to the shared
+// cross-language error-code ledger in 0.19.3 (packages/metadata/src/errors.ts's
+// ERROR_CODES, fixtures/conformance/ERROR-CODES.json, server/python/src/metaobjects/errors.py).
+// That ledger has no per-code named export (only the ERROR_CODES array + the ErrorCode
+// union type), so this stays a local literal — but `satisfies ErrorCode` binds it to the
+// shared ledger's type: a future rename/removal there fails this file's typecheck instead
+// of silently drifting.
+export const ERR_PAYLOAD_NAME_COLLISION = "ERR_PAYLOAD_NAME_COLLISION" satisfies ErrorCode;
 
 function pascalSegment(s: string): string {
   return s.length > 0 ? s[0]!.toUpperCase() + s.slice(1) : s;
