@@ -174,4 +174,87 @@ class KotlinExtractTierCollisionTest {
 
     @Test fun `bare payloadRef binds own package's payload — beta loaded first`() =
         assertBarePayloadRefBindsOwnPackage(firstAlpha = false)
+
+    // === Checkpoint #1 (fix round 1) — the RENDER-HELPER and OUTPUT-PROMPT generators also ===
+    // resolve @payloadRef; they must bind package-locally too. Two packages each declare their
+    // OWN `Report` output VO (distinct field) + a template.output with a BARE @payloadRef.
+    // The render-helper's build-time drift gate would THROW (wrong VO field-tree) and the
+    // output-prompt fragment would list the OTHER package's field, under the prior first-match
+    // resolver. Both must bind each template's own package's Report — in BOTH load orders.
+
+    private val alphaOutFixture = """{
+      "metadata.root": { "package": "po::alpha", "children": [
+        { "object.value": { "name": "Report", "children": [
+            { "field.string": { "name": "alphaVal" } }
+        ] } },
+        { "template.output": { "name": "ReportOut",
+            "@payloadRef": "Report", "@textRef": "alpha/t", "@format": "json" } }
+      ] }
+    }""".trimIndent()
+
+    private val betaOutFixture = """{
+      "metadata.root": { "package": "po::beta", "children": [
+        { "object.value": { "name": "Report", "children": [
+            { "field.string": { "name": "betaVal" } }
+        ] } },
+        { "template.output": { "name": "ReportOut",
+            "@payloadRef": "Report", "@textRef": "beta/t", "@format": "json" } }
+      ] }
+    }""".trimIndent()
+
+    private fun writeTemplate(root: Path, ref: String, body: String) {
+        val file = root.resolve("$ref.mustache")
+        Files.createDirectories(file.parent)
+        Files.writeString(file, body)
+    }
+
+    private fun assertRenderHelperAndOutputPromptBindOwnPackage(firstAlpha: Boolean) {
+        val outDir = Files.createTempDirectory("krh-op-bareref-")
+        val templateRoot = Files.createTempDirectory("krh-op-tmpl-")
+        try {
+            // Each template's mustache references ONLY its own package's field: a wrong-package
+            // bind makes the render-helper drift gate THROW (the referenced var is not on the
+            // mis-bound field-tree).
+            writeTemplate(templateRoot, "alpha/t", "{{alphaVal}}")
+            writeTemplate(templateRoot, "beta/t", "{{betaVal}}")
+
+            val loader = MetaDataLoader.createManual(false, "rhop-bareref-$firstAlpha")
+            loader.init()
+            val sources = if (firstAlpha)
+                listOf(InMemoryStringSource(alphaOutFixture, "alpha"), InMemoryStringSource(betaOutFixture, "beta"))
+            else
+                listOf(InMemoryStringSource(betaOutFixture, "beta"), InMemoryStringSource(alphaOutFixture, "alpha"))
+            loader.load(sources)
+            loader.register()
+
+            // Render-helper: its drift gate would throw under a wrong-package @payloadRef bind.
+            KotlinRenderHelperGenerator().apply {
+                setArgs(mapOf("outputDir" to outDir.toString(), "templateRoot" to templateRoot.toString()))
+            }.execute(loader)
+            // Output-prompt: emits a field-name fragment derived from the resolved VO.
+            KotlinOutputPromptGenerator().apply { setArgs(mapOf("outputDir" to outDir.toString())) }.execute(loader)
+
+            val alphaPrompt = outDir.resolve("po/alpha/prompts/ReportOutPrompt.kt").readText()
+            val betaPrompt = outDir.resolve("po/beta/prompts/ReportOutPrompt.kt").readText()
+            assertTrue("alphaVal" in alphaPrompt && "betaVal" !in alphaPrompt,
+                "po::alpha ReportOut output-prompt must list po::alpha::Report (alphaVal); saw:\n$alphaPrompt")
+            assertTrue("betaVal" in betaPrompt && "alphaVal" !in betaPrompt,
+                "po::beta ReportOut output-prompt must list po::beta::Report (betaVal); saw:\n$betaPrompt")
+
+            // Render-helper files emitted for both (no drift throw aborted generation).
+            assertTrue(Files.exists(outDir.resolve("po/alpha/prompts/ReportOutRenderHelper.kt")),
+                "po::alpha ReportOut render-helper must be emitted (drift gate bound the right VO)")
+            assertTrue(Files.exists(outDir.resolve("po/beta/prompts/ReportOutRenderHelper.kt")),
+                "po::beta ReportOut render-helper must be emitted (drift gate bound the right VO)")
+        } finally {
+            outDir.toFile().deleteRecursively()
+            templateRoot.toFile().deleteRecursively()
+        }
+    }
+
+    @Test fun `render-helper and output-prompt bind own package's payload — alpha loaded first`() =
+        assertRenderHelperAndOutputPromptBindOwnPackage(firstAlpha = true)
+
+    @Test fun `render-helper and output-prompt bind own package's payload — beta loaded first`() =
+        assertRenderHelperAndOutputPromptBindOwnPackage(firstAlpha = false)
 }
