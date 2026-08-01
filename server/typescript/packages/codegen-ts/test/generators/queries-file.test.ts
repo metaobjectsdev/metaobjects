@@ -13,7 +13,26 @@ async function loadRoot(children: unknown[]) {
   return res.root;
 }
 
+// #248 R2: persistability derives from declared source, never subtype — a
+// "normal, queryable entity" fixture must declare a source.rdb (any kind; bare
+// is enough, physical naming is unaffected — see source-detect.ts).
 function entityWithPk(name: string) {
+  return {
+    "object.entity": {
+      name,
+      children: [
+        { "source.rdb": {} },
+        { "field.string": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+      ],
+    },
+  };
+}
+
+// A sourceless object.entity — loads clean (zero sources = "not persisted",
+// per validate-source-roles), but must NOT be queryable (the actual #248 bug:
+// a queries file importing Drizzle table exports that were never generated).
+function sourcelessEntityWithPk(name: string) {
   return {
     "object.entity": {
       name,
@@ -48,11 +67,21 @@ describe("queriesFile() factory", () => {
     expect(filtered.map((e) => e.name)).toEqual(["Post"]);
   });
 
-  test("default filter keeps every object.entity", async () => {
+  test("default filter keeps every source-backed object.entity", async () => {
     const root = await loadRoot([entityWithPk("Post"), entityWithPk("Comment"), valueShape("Stamp")]);
     const gen = queriesFile();
     const filtered = root.objects().filter(gen.filter!);
     expect(filtered.map((e) => e.name).sort()).toEqual(["Comment", "Post"]);
+  });
+
+  // #248 R2: persistability derives from source presence, not subtype — a
+  // sourceless object.entity is excluded exactly like a value object, even
+  // though it declares a primary identity.
+  test("default filter excludes a sourceless object.entity (not just object.value)", async () => {
+    const root = await loadRoot([entityWithPk("Post"), sourcelessEntityWithPk("Ghost"), valueShape("Stamp")]);
+    const gen = queriesFile();
+    const filtered = root.objects().filter(gen.filter!);
+    expect(filtered.map((e) => e.name)).toEqual(["Post"]);
   });
 
   test("user-supplied filter is composed with the value-skip default via AND", async () => {

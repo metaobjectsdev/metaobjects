@@ -5,6 +5,7 @@
         "object.entity": {
           "name": "Program",
           "children": [
+            { "source.rdb": {} },
             {
               "field.long": {
                 "name": "id",

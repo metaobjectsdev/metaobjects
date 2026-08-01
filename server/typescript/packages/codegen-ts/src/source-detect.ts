@@ -29,3 +29,23 @@ export function hasWritableRdbSource(entity: MetaObject): boolean {
   }
   return false;
 }
+
+/**
+ * True when the object declares (or inherits via extends — ADR-0039 resolving)
+ * at least one source.rdb child of ANY kind (writable OR read-only). Zero
+ * sources means "not backed by any store" (loader contract,
+ * validate-source-roles: zero sources is allowed, means not persisted) — the
+ * DB-artifact tier (queries/routes/api-model) must emit nothing for it, exactly
+ * as the table tier already refuses to emit a Drizzle table for it
+ * (hasWritableRdbSource, above — this is its any-kind sibling).
+ */
+export function hasAnyRdbSource(entity: MetaObject): boolean {
+  // ADR-0039: resolving — same rationale as hasWritableRdbSource.
+  for (const child of entity.children()) {
+    if (child.type !== TYPE_SOURCE) continue;
+    if (child.subType !== SOURCE_SUBTYPE_RDB) continue;
+    if (!(child instanceof MetaSource)) continue;
+    return true;
+  }
+  return false;
+}
