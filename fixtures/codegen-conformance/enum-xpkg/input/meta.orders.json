@@ -1,0 +1,13 @@
+{
+  "metadata.root": {
+    "package": "acme::orders",
+    "children": [
+      { "object.entity": { "name": "Order", "children": [
+        { "field.long":   { "name": "id" } },
+        { "field.enum":   { "name": "status", "@required": true, "extends": "acme::common::RecordStatus" } },
+        { "source.rdb":   { "@table": "orders" } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+      ] } }
+    ]
+  }
+}
