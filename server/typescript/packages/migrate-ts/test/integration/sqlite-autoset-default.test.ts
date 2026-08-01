@@ -37,6 +37,7 @@ const META = JSON.stringify({
         "object.entity": {
           name: "Event",
           children: [
+            { "source.rdb": {} },
             { "field.long": { name: "id" } },
             { "field.string": { name: "title", "@required": true } },
             { "field.timestamp": { name: "createdAt", "@autoSet": "onCreate", "@required": true } },

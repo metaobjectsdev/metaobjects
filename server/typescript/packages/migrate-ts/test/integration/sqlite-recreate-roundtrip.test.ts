@@ -58,6 +58,7 @@ describe("SQLite recreate-and-copy — data preservation", () => {
           "object.entity": {
             name: "Item",
             children: [
+              { "source.rdb": {} },
               { "field.long": { name: "id" } },
               { "field.string": { name: "name", "@required": true } },
               { "field.string": { name: "tag", "@default": "untagged" } },
@@ -125,6 +126,7 @@ describe("SQLite recreate-and-copy — data preservation", () => {
           "object.entity": {
             name: "Person",
             children: [
+              { "source.rdb": {} },
               { "field.long": { name: "id" } },
               { "field.string": { name: "firstName", "@required": true } },
               { "field.string": { name: "tag", "@default": "v1" } },

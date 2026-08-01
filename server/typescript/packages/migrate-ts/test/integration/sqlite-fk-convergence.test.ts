@@ -35,6 +35,7 @@ const META = JSON.stringify({
         "object.entity": {
           name: "Region",
           children: [
+            { "source.rdb": {} },
             { "field.string": { name: "code", "@required": true } },
             { "field.string": { name: "country", "@required": true } },
             // Composite primary key — the referenced side of the composite FK.
@@ -46,6 +47,7 @@ const META = JSON.stringify({
         "object.entity": {
           name: "City",
           children: [
+            { "source.rdb": {} },
             { "field.long": { name: "id" } },
             { "field.string": { name: "regionCode", "@required": true } },
             { "field.string": { name: "regionCountry", "@required": true } },
@@ -66,6 +68,7 @@ const META = JSON.stringify({
         "object.entity": {
           name: "Landmark",
           children: [
+            { "source.rdb": {} },
             { "field.long": { name: "id" } },
             { "field.long": { name: "cityId", "@required": true } },
             { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },

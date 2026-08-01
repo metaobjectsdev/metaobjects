@@ -45,6 +45,7 @@ const META = JSON.stringify({
         "object.entity": {
           name: "Gadget",
           children: [
+            { "source.rdb": {} },
             { "field.long": { name: "id" } },
             { "field.string": { name: "label" } },
             { "identity.primary": { name: "pk", "@fields": ["id"] } },

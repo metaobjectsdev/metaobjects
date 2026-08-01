@@ -5,6 +5,7 @@
         "object.entity": {
           "name": "User",
           "children": [
+            { "source.rdb": {} },
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "email", "@required": true } },
             { "field.string": { "name": "firstName" } },
