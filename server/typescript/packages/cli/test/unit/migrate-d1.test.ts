@@ -37,6 +37,7 @@ describe("migrate command with --dialect d1", () => {
           "object.entity": {
             "name": "User",
             "children": [
+              { "source.rdb": {} },
               { "field.long":   { "name": "id" } },
               { "field.string": { "name": "email" } },
               { "identity.primary": { "name": "id", "@fields": ["id"], "@generation": "increment" } }

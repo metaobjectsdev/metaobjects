@@ -86,6 +86,7 @@ describe("meta verify --dialect d1 — schema-drift gate", () => {
           "object.entity": {
             name: "User",
             children: [
+              { "source.rdb": {} },
               { "field.long": { name: "id" } },
               { "field.string": { name: "email" } },
               { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },

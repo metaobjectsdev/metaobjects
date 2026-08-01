@@ -17,6 +17,7 @@ import { run } from "../../src/index.js";
 
 function metaJson(withColor: boolean): string {
   const widgetChildren: Record<string, unknown>[] = [
+    { "source.rdb": {} },
     { "field.long": { name: "id" } },
     { "field.string": { name: "name", "@column": "name" } },
   ];
@@ -144,6 +145,7 @@ describe("meta verify --db — schema-drift gate", () => {
         package: "acme::drift",
         children: [
           { "object.entity": { name: "Widget", children: [
+            { "source.rdb": {} },
             { "field.long": { name: "id" } },
             { "field.string": { name: "name", "@column": "name" } },
             { "identity.primary": { name: "pk", "@fields": ["id"] } },

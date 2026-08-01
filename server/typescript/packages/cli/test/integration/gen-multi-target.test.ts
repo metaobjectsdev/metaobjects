@@ -20,6 +20,7 @@ function setupRepo(): string {
           name: "Program",
           package: "mikes::commerce",
           children: [
+            { "source.rdb": {} },
             { "field.long": { name: "id", children: [
               { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } },
             ] } },
