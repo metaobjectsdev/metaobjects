@@ -412,6 +412,15 @@ public enum ErrorCode {
      */
     ERR_ORIGIN_UNDER_SQL_BODY,
 
+    /**
+     * #246: a {@code field.enum} both extends a shared package-level abstract
+     * enum and declares its own {@code @values}. One shared enum type has one
+     * member set — the own {@code @values} would be silently dropped in
+     * codegen. Remove the own {@code @values} to inherit the shared set, or
+     * extend a concrete (non-shared) enum instead.
+     */
+    ERR_ENUM_EXTENDS_VALUES_CONFLICT,
+
     /** An internal loader error with no stable error code. */
     ERR_UNKNOWN,
 }

@@ -247,6 +247,15 @@ public final class ErrorMessageConstants {
     public static final String ERR_ORIGIN_UNDER_SQL_BODY = "ERR_ORIGIN_UNDER_SQL_BODY";
 
     /**
+     * #246: a {@code field.enum} both extends a shared package-level abstract
+     * enum and declares its own {@code @values}. One shared enum type has one
+     * member set — the own {@code @values} would be silently dropped in
+     * codegen.
+     * Cross-language contract: {@code ERR_ENUM_EXTENDS_VALUES_CONFLICT}.
+     */
+    public static final String ERR_ENUM_EXTENDS_VALUES_CONFLICT = "ERR_ENUM_EXTENDS_VALUES_CONFLICT";
+
+    /**
      * #208 (design doc §5 R6) warning: an {@code origin.*}-bearing (derived) own
      * field lives under a host object that declares an {@code @unmanaged} source.
      * {@code @unmanaged} acts on nothing, so documented-but-unacted-on lineage is

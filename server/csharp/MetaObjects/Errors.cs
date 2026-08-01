@@ -173,6 +173,11 @@ public enum ErrorCode
     ERR_SQL_BODY_WITH_UNMANAGED,
     ERR_SQL_BODY_ON_WRITABLE_KIND,
     ERR_ORIGIN_UNDER_SQL_BODY,
+    // #246 — a field.enum both extends a shared package-level abstract enum and
+    // declares its own @values. One shared enum type has one member set — the
+    // own @values would be silently dropped in codegen. Remove the own @values
+    // to inherit the shared set, or extend a concrete (non-shared) enum instead.
+    ERR_ENUM_EXTENDS_VALUES_CONFLICT,
     ERR_UNKNOWN,
 }
 
