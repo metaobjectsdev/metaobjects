@@ -88,4 +88,50 @@ describe("field.enum — extends a shared abstract enum AND declares own @values
     );
     expect(conflictErrors).toHaveLength(0);
   });
+
+  it("does NOT emit ERR_ENUM_EXTENDS_VALUES_CONFLICT when the field extends an ABSTRACT but NON-ROOT enum (nested inside an object, not the shared package level) and also declares own @values", async () => {
+    const { errors } = await load({
+      "metadata.root": {
+        package: "acme",
+        children: [
+          {
+            "object.entity": {
+              name: "Container",
+              abstract: true,
+              children: [
+                {
+                  "field.enum": {
+                    name: "kind",
+                    abstract: true,
+                    "@values": ["X", "Y"],
+                  },
+                },
+              ],
+            },
+          },
+          {
+            "object.entity": {
+              name: "Order",
+              children: [
+                { "field.long": { name: "id" } },
+                {
+                  "field.enum": {
+                    name: "status",
+                    extends: "acme::Container.kind",
+                    "@values": ["X", "Y", "Z"],
+                  },
+                },
+                { "identity.primary": { "name": "id", "@fields": "id" } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const conflictErrors = errors.filter(
+      (e) => (e as { code?: string }).code === "ERR_ENUM_EXTENDS_VALUES_CONFLICT",
+    );
+    expect(conflictErrors).toHaveLength(0);
+  });
 });
