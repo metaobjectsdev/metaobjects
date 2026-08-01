@@ -43,24 +43,6 @@ async function gen(dir: string, generators: ReturnType<typeof builtinEntity>[], 
   return out;
 }
 
-// #248 R2 (Task 2 of 2 for the codegen-ts half): the built-in engine generators
-// (src/generators/*) now gate queries/routes on hasAnyRdbSource — a sourceless
-// object no longer gets a broken queries/routes file. The scaffold-and-own
-// reference templates (src/reference/*) get the SAME fix in the very next
-// commit (Task 3); until then they still use the old subtype-based filter, so
-// they diverge from the now-fixed built-ins by exactly the DB-bound artifacts
-// a sourceless/value object should never have gotten in the first place. Known,
-// tracked, temporary — remove KNOWN_PENDING_DIVERGENCE once Task 3 lands (it
-// makes src/reference/{queries,routes}.ts derive from hasAnyRdbSource too).
-const KNOWN_PENDING_DIVERGENCE: Record<string, string[]> = {
-  // cross-package-vo.json's "Triple" is an object.value (no source, value
-  // purity) — reference/routes.ts has no value/source skip at all (design
-  // spec §4, "reference/routes.ts:40-44 same" REDERIVE row) and still emits
-  // Triple.routes.ts; the built-in routes-file.ts (fixed here) correctly does
-  // not.
-  "cross-package-vo.json": ["Triple.routes.ts"],
-};
-
 describe("ADR-0034 — reference templates are byte-identical to built-ins", () => {
   for (const fixture of FIXTURES) {
     test(fixture, async () => {
@@ -73,10 +55,9 @@ describe("ADR-0034 — reference templates are byte-identical to built-ins", () 
       try {
         const a = await gen(aDir, [builtinEntity(), builtinQueries(), builtinRoutes(), builtinBarrel()], result.root);
         const b = await gen(bDir, [refEntity(), refQueries(), refRoutes(), refBarrel()], result.root);
-        const pending = new Set(KNOWN_PENDING_DIVERGENCE[fixture] ?? []);
-        const aKeys = Object.keys(a).filter((k) => !pending.has(k)).sort();
-        const bKeys = Object.keys(b).filter((k) => !pending.has(k)).sort();
-        // same set of files (excluding the known-pending Task 3 divergence)
+        const aKeys = Object.keys(a).sort();
+        const bKeys = Object.keys(b).sort();
+        // same set of files
         expect(bKeys).toEqual(aKeys);
         // byte-identical contents for every file both sides agree on emitting
         for (const k of aKeys) {

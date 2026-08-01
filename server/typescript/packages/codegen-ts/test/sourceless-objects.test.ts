@@ -20,6 +20,8 @@ import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen, defineConfig } from "../src/index.js";
 import { entityFile, queriesFile, routesFile, routesFileHono } from "../src/generators/index.js";
+import { queriesFile as refQueriesFile } from "../src/reference/queries.js";
+import { routesFile as refRoutesFile } from "../src/reference/routes.js";
 
 let tmp: string;
 beforeEach(() => {
@@ -86,6 +88,22 @@ function genConfig(outDir: string) {
   });
 }
 
+// Task 3 — the ADR-0034 scaffold-and-own reference templates (src/reference/*)
+// must gate queries/routes emission on the same hasAnyRdbSource signal as the
+// engine generators above. `entityFile` is reused unchanged (its table-vs-shape
+// dispatch was already correct — see design spec §4 "KEEP" row); only the
+// queries/routes reference generators are under test here. There is no
+// reference hono generator, so routesFileHono is intentionally omitted.
+function refGenConfig(outDir: string) {
+  return defineConfig({
+    outDir,
+    extStyle: "none",
+    dbImport: "~/server/db",
+    dialect: "postgres",
+    generators: [entityFile(), refQueriesFile(), refRoutesFile()],
+  });
+}
+
 describe("#248 R2 — sourceless objects get no DB-bound artifacts", () => {
   test("Order (sourced) gets entity+queries+routes+hono; Money (value) and Ghost (sourceless entity) get neither", async () => {
     const root = await loadRoot([ORDER, MONEY, GHOST]);
@@ -116,6 +134,32 @@ describe("#248 R2 — sourceless objects get no DB-bound artifacts", () => {
     expect(paths.has(at("Money.routes.hono.ts"))).toBe(false);
 
     // Nothing beyond the on-disk files reported by runGen either.
+    const onDisk = new Set(readdirSync(tmp));
+    expect(onDisk.has("Ghost.queries.ts")).toBe(false);
+    expect(onDisk.has("Money.routes.ts")).toBe(false);
+  });
+
+  test("reference (scaffold-and-own) generators: same gating as the engine — Order gets queries+routes; Money/Ghost get neither", async () => {
+    const root = await loadRoot([ORDER, MONEY, GHOST]);
+    const out = await runGen({ config: refGenConfig(tmp), metadata: root });
+    expect(out.warnings).toEqual([]);
+
+    const paths = new Set(out.files.map((f) => f.path));
+    const at = (name: string) => join(tmp, name);
+
+    // INCLUDES
+    expect(paths.has(at("Order.ts"))).toBe(true);
+    expect(paths.has(at("Order.queries.ts"))).toBe(true);
+    expect(paths.has(at("Order.routes.ts"))).toBe(true);
+    expect(paths.has(at("Money.ts"))).toBe(true);
+    expect(paths.has(at("Ghost.ts"))).toBe(true);
+
+    // EXCLUDES — the same bug, in the reference (copy-and-own) template.
+    expect(paths.has(at("Ghost.queries.ts"))).toBe(false);
+    expect(paths.has(at("Ghost.routes.ts"))).toBe(false);
+    expect(paths.has(at("Money.queries.ts"))).toBe(false);
+    expect(paths.has(at("Money.routes.ts"))).toBe(false);
+
     const onDisk = new Set(readdirSync(tmp));
     expect(onDisk.has("Ghost.queries.ts")).toBe(false);
     expect(onDisk.has("Money.routes.ts")).toBe(false);
