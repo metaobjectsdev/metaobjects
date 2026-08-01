@@ -45,7 +45,7 @@ import type { MetaData } from "./shared/meta-data.js";
 import { ParseError } from "./errors.js";
 import type { AttrSchema, TypeRegistry } from "./registry.js";
 import { childRuleMatches } from "./registry.js";
-import { TYPE_FIELD } from "./shared/base-types.js";
+import { TYPE_FIELD, TYPE_METADATA } from "./shared/base-types.js";
 import { ATTR_SUBTYPE_PROPERTIES } from "./core/attr/attr-constants.js";
 import {
   FIELD_SUBTYPE_ENUM,
@@ -345,6 +345,25 @@ function validateNode(
             seen.add(member);
           }
         }
+      }
+
+      // #246: a field.enum extending a shared package-level abstract enum
+      // (a root-level abstract field — one whose parent is the metadata root,
+      // not an object) that ALSO declares its own @values is a conflict: one
+      // shared enum type has one member set, so codegen's shared-enum collapse
+      // would silently drop this field's own @values in favor of the shared
+      // type's. Own-attrs-only (matches the rest of Check 4): only fires when
+      // THIS node declares @values itself, not when it merely inherits.
+      const sup = node.superData;
+      if (sup !== undefined && sup.isAbstract && sup.parent?.type === TYPE_METADATA) {
+        errors.push(
+          new ParseError(
+            `${nodeLabel(node)} extends shared abstract enum '${nodeLabel(sup)}' AND declares its own ` +
+              `'@${FIELD_ATTR_VALUES}' — a shared enum's member set is owned by the shared declaration; ` +
+              `remove the own '@${FIELD_ATTR_VALUES}' to inherit it, or extend a non-shared enum instead.`,
+            { code: "ERR_ENUM_EXTENDS_VALUES_CONFLICT", source: node.source },
+          ),
+        );
       }
     }
 
