@@ -24,6 +24,13 @@ import kotlin.test.assertTrue
  * `field.enum RecordStatus` declared in `acme::common`, and two entities in DIFFERENT packages
  * (`acme::orders::Order`, `acme::billing::Invoice`) whose `status` field `extends` it — so both
  * generated tables reference the ONE shared `acme.common.RecordStatus` enum class.
+ *
+ * The fixture also covers the TPH-fold path (FR-017 discriminator): `acme::shipping::Shipment`
+ * is a discriminator base whose SUBTYPE `AirShipment` declares a subtype-only `recordStatus`
+ * field that `extends` the SAME cross-package `acme::common::RecordStatus`. The subtype field is
+ * folded into the base's single table via [KotlinTphPlan.collectSubtypeFields] — a SEPARATE
+ * code path from the vanilla own-field loop above, with its own import-collection walk, that a
+ * base-only-enum TPH fixture (every other TPH fixture in this module) never exercises.
  */
 @OptIn(org.jetbrains.kotlin.compiler.plugin.ExperimentalCompilerApi::class)
 class KotlinExposedTableCrossPackageEnumTest {
@@ -79,6 +86,17 @@ class KotlinExposedTableCrossPackageEnumTest {
                 "InvoiceTable must import the cross-package shared enum; saw:\n$invoiceTable")
             assertTrue(invoiceTable.contains("RecordStatus::class"),
                 "InvoiceTable still references the enum in enumerationByName; saw:\n$invoiceTable")
+
+            // TPH-fold path: the base ShipmentTable.kt (NOT AirShipmentTable — TPH subtypes emit
+            // no table of their own) must carry the import for the SUBTYPE-only cross-package
+            // enum folded into its single table.
+            val shipmentTable = readGenerated(outDir, "acme/shipping/ShipmentTable.kt")
+            assertTrue(shipmentTable.contains("import acme.common.RecordStatus"),
+                "TPH-folded ShipmentTable must import the cross-package shared enum; saw:\n$shipmentTable")
+            assertTrue(shipmentTable.contains("val recordStatus = enumerationByName(\"record_status\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, RecordStatus::class).nullable()"),
+                "TPH-folded status column must reference the shared enum; saw:\n$shipmentTable")
+            assertTrue(!Files.exists(outDir.resolve("acme/shipping/AirShipmentTable.kt")),
+                "a TPH subtype must NOT emit its own table")
 
             // Compile-gate: the whole generated tree must compile (catches any import variant).
             val result = compile(outDir)
