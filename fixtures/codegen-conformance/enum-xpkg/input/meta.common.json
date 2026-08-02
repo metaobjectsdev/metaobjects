@@ -1,0 +1,8 @@
+{
+  "metadata.root": {
+    "package": "acme::common",
+    "children": [
+      { "field.enum": { "name": "RecordStatus", "abstract": true, "@values": ["DRAFT", "ACTIVE", "CLOSED"] } }
+    ]
+  }
+}

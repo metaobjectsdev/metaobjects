@@ -523,6 +523,24 @@ public final class ValidationPhase {
                         + " (e.g. [\"DRAFT\",\"PUBLISHED\"])",
                     ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
             }
+            // #246: own @values + extends a shared root-level abstract enum is a
+            // conflict — one shared enum type has one member set, so codegen's
+            // shared-enum collapse would silently drop this field's own @values in
+            // favor of the shared type's. Own-attrs-only (matches the check above):
+            // only fires when THIS node declares @values itself, not when it merely
+            // inherits.
+            MetaData sup = node.getSuperData();
+            if (sup != null && isAbstract(sup) && sup.getParent() instanceof MetaRoot) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_ENUM_EXTENDS_VALUES_CONFLICT
+                        + ": field.enum '" + node.getName()
+                        + "' extends shared abstract enum '" + sup.getName()
+                        + "' AND declares its own @values - a shared enum's member set is"
+                        + " owned by the shared declaration; remove the own @values to"
+                        + " inherit it, or extend a non-shared enum instead",
+                    ErrorCode.ERR_ENUM_EXTENDS_VALUES_CONFLICT, node.getSource());
+            }
+
             // Own @values present and valid — required check not needed.
             validateEnumFr011Attrs(node);
             return;

@@ -1,0 +1,13 @@
+{
+  "metadata.root": {
+    "package": "acme::billing",
+    "children": [
+      { "object.entity": { "name": "Invoice", "children": [
+        { "field.long":   { "name": "id" } },
+        { "field.enum":   { "name": "status", "@required": true, "extends": "acme::common::RecordStatus" } },
+        { "source.rdb":   { "@table": "invoices" } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+      ] } }
+    ]
+  }
+}

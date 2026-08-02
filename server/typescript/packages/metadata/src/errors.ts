@@ -195,6 +195,11 @@ export const ERROR_CODES = [
   // two sources of truth for the same body (the synthesized derivation/WHERE
   // vs. the author's verbatim SQL). Fail-closed.
   "ERR_ORIGIN_UNDER_SQL_BODY",
+  // #246 — a field.enum both extends a shared package-level abstract enum and
+  // declares its own @values. One shared enum type has one member set — the
+  // own @values would be silently dropped in codegen. Remove the own @values
+  // to inherit the shared set, or extend a concrete (non-shared) enum instead.
+  "ERR_ENUM_EXTENDS_VALUES_CONFLICT",
   "ERR_UNKNOWN",
 ] as const;
 

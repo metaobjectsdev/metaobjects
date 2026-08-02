@@ -2325,6 +2325,23 @@ public static class ValidationPasses
                         }
                     }
                 }
+
+                // #246: a field.enum extending a shared root-level abstract enum (a metadata.root
+                // child, not one nested under an object) that ALSO declares its own @values is a
+                // conflict: one shared enum type has one member set, so codegen's shared-enum
+                // collapse would silently drop this field's own @values in favor of the shared
+                // type's. Own-attrs-only (matches Rules 1-3 above): only fires when THIS node
+                // declares @values itself, not when it merely inherits.
+                var sup = field.SuperData;
+                if (sup is not null && sup.IsAbstract && sup.Parent is { } p && p.Type == TYPE_METADATA)
+                {
+                    errors.Add(new MetaError(
+                        $"field.enum '{field.Name}' extends shared abstract enum '{sup.Name}' AND declares its own " +
+                        $"@{FIELD_ATTR_VALUES} — a shared enum's member set is owned by the shared declaration; " +
+                        $"remove the own @{FIELD_ATTR_VALUES} to inherit it, or extend a non-shared enum instead.",
+                        ErrorCode.ERR_ENUM_EXTENDS_VALUES_CONFLICT,
+                        Envelope: field.Source));
+                }
             }
 
             // Rule 4 (FR-011): the enum fallback attrs must be one of the field's @values.

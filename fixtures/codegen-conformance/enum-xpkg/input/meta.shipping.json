@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "acme::shipping",
+    "children": [
+      { "object.entity": { "name": "Shipment", "@discriminator": "carrier", "children": [
+        { "source.rdb":   { "@table": "shipments" } },
+        { "field.long":   { "name": "id" } },
+        { "field.enum":   { "name": "carrier", "@values": ["AIR", "GROUND"] } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment" } }
+      ] } },
+      { "object.entity": { "name": "AirShipment", "extends": "Shipment",
+          "@discriminatorValue": "AIR", "children": [
+        { "field.enum": { "name": "recordStatus", "@required": true, "extends": "acme::common::RecordStatus" } }
+      ] } }
+    ]
+  }
+}

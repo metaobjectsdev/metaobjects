@@ -41,7 +41,19 @@ internal object KotlinEnumEmitter {
         val enumClassName = KotlinTypeMapper.enumTypeName(field, owner) ?: return false
         if (!emittedFqns.add(enumClassName.canonicalName)) return false // dedupe by enum FQN
         val members = readEnumValues(field)
-        if (members.isNullOrEmpty()) return false
+        if (members.isNullOrEmpty()) {
+            // #259: a field.enum must resolve to a NON-EMPTY @values set — the loader's ValidationPhase
+            // guarantees it (a root enum owns @values or fails ERR_MISSING_REQUIRED_ATTR; a field with a
+            // super inherits it, resolved multi-hop). Reaching here with none means a loader gap or a
+            // genuinely value-less enum; FAIL LOUDLY at generate-time instead of silently emitting no file
+            // (which surfaces only later as a downstream "unresolved reference" compile error — the exact
+            // failure #259 reported).
+            error(
+                "field.enum '${field.name}' on '${owner.name}' resolved to no @values — cannot emit enum " +
+                    "class ${enumClassName.canonicalName}. A field.enum must declare or inherit a non-empty " +
+                    "@values set."
+            )
+        }
         val serializable = ClassName("kotlinx.serialization", "Serializable")
         val enumBuilder = TypeSpec.enumBuilder(enumClassName.simpleName)
             .addAnnotation(serializable)

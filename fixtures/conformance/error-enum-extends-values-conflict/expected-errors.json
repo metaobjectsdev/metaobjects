@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_ENUM_EXTENDS_VALUES_CONFLICT",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.enums.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.entity'].children[1]['field.enum']"
+      }
+    }
+  ],
+  "warnings": []
+}

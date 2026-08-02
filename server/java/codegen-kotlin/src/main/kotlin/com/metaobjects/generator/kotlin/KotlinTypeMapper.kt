@@ -175,22 +175,32 @@ object KotlinTypeMapper {
     fun enumTypeName(field: MetaField<*>, entity: MetaObject?): ClassName? {
         if (field !is EnumField) return null
 
-        // Shared-enum naming: when this field `extends` an abstract enum super (e.g. two fields
-        // both `extends: Priority`), ALL such fields collapse onto ONE enum class named for the
-        // top-most super (`Priority`) so the generated type is shared (and deduped by FQN at
-        // emission). Walk the super chain to the root. When there is no super, fall back to the
-        // per-entity `<EntityShort><FieldPascal>` naming. Mirrors the C#/TS/Python ports.
-        // Collapse onto a SHARED enum type only for a package-level ABSTRACT enum super (FR-019,
-        // e.g. two fields `extends: Priority`) — identified by having NO declaring object. A super
-        // bound to a CONCRETE entity field (e.g. a read-model projection `extends`-ing
-        // `ActiveNpc.status`) does NOT collapse: it falls through to the per-object naming below,
-        // so the projection gets its OWN `<ProjectionShort><FieldPascal>` enum in its OWN package
-        // (self-contained — no cross-package reference), populated with the values it inherits via
-        // `extends` ([KotlinEnumEmitter.readEnumValues] is inheritance-aware). Without this guard
-        // such a field named the enum from the super's bare short name (`status`), which `splitFqn`
-        // collapsed to a root-package `Status` — colliding across every entity that has a `status`.
-        val superRoot = resolveSuperRoot(field)
-        if (superRoot != null && runCatching { superRoot.declaringObject }.getOrNull() == null) {
+        // Shared-enum naming: when this field `extends` a package-level ABSTRACT enum super (e.g.
+        // two fields both `extends: Priority`), ALL such fields collapse onto ONE enum class named
+        // for the top-most super (`Priority`) so the generated type is shared (and deduped by FQN at
+        // emission). When there is no super, fall back to the per-entity `<EntityShort><FieldPascal>`
+        // naming. Mirrors the C#/TS/Python ports.
+        //
+        // The collapse decision keys on the DIRECT (immediate) super, NOT the top-most root: collapse
+        // onto a SHARED enum type ONLY when the field's IMMEDIATE `extends` target is a package-level
+        // abstract enum — identified by having NO declaring object. A field whose direct super is a
+        // CONCRETE entity/projection field (e.g. a read-model projection `extends`-ing `ActiveNpc.status`)
+        // does NOT collapse — even when that entity field itself `extends` a shared abstract enum (#259,
+        // the two-hop case): it falls through to the per-object naming below, so the projection gets its
+        // OWN `<ProjectionShort><FieldPascal>` enum in its OWN package (self-contained — no cross-package
+        // reference), populated with the values it inherits via `extends` ([KotlinEnumEmitter.readEnumValues]
+        // is inheritance-aware across ANY number of hops). Keying on the top-most root instead (an earlier
+        // bug) walked PAST the concrete entity super to the shared abstract root and wrongly collapsed the
+        // projection onto the shared type, so its per-projection enum was never emitted. Without any guard
+        // at all, a concrete-super field named the enum from the super's bare short name (`status`), which
+        // `splitFqn` collapsed to a root-package `Status` — colliding across every entity with a `status`.
+        val immediateSuper = field.superField
+        if (immediateSuper != null && runCatching { immediateSuper.declaringObject }.getOrNull() == null) {
+            // The DIRECT super is a package-level abstract enum → collapse onto the shared type. Name it
+            // for the top-most abstract root so a chain of abstract enums (abstract extends abstract) still
+            // collapses onto one type (resolveSuperRoot walks the abstract chain; == immediateSuper when
+            // there is no further super).
+            val superRoot = resolveSuperRoot(field) ?: immediateSuper
             val (superPkg, superShort) = PackageMapping.splitFqn(superRoot.name)
             return ClassName(superPkg, superShort.replaceFirstChar { it.uppercase() })
         }

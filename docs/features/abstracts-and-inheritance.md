@@ -390,6 +390,9 @@ inheritance chain.
   — `ERR_UNRESOLVED_SUPER` when the reference doesn't resolve
 - [`enum-abstract-extends`](../../fixtures/conformance/enum-abstract-extends/) —
   abstracts on enum fields specifically
+- [`enum-extends-two-hop-projection`](../../fixtures/conformance/enum-extends-two-hop-projection/)
+  — inherited enum members resolve through two `extends` hops (projection → entity
+  → shared abstract enum)
 
 ## See also
 

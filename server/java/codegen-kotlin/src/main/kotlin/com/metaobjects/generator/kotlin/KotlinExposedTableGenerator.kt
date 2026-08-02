@@ -16,6 +16,7 @@ import com.metaobjects.relationship.CompositionRelationship
 import com.metaobjects.relationship.MetaRelationship
 import com.metaobjects.source.MetaSource
 import com.metaobjects.source.RdbSource
+import com.squareup.kotlinpoet.ClassName
 import java.io.OutputStream
 import java.io.PrintWriter
 import java.nio.file.Files
@@ -516,6 +517,31 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             for (decor in refDecorations.values) consider(decor.targetFqn, decor.targetTable)
         }
 
+        // #246: cross-package shared-enum imports. A `field.enum` that `extends` an abstract enum
+        // super declared in a DIFFERENT package (the FR-019 shared-enum collapse) resolves — via
+        // KotlinTypeMapper.enumTypeName — to ONE enum class named for the super and generated in
+        // the SUPER'S package, not this table's. The `enumerationByName(...)` column token below
+        // references that class by simple name only; unlike KotlinEntityGenerator's data class
+        // (KotlinPoet auto-imports the full ClassName it is handed), this generator hand-rolls its
+        // file body as a string, so a cross-package reference is unresolved without an explicit
+        // import here. Walks the same two enum-field surfaces the column-emit loops below use:
+        // own fields, plus (TPH) the base's folded-in subtype-only fields. Same-package enums
+        // (including this entity's own per-entity <EntityShort><FieldPascal> naming) contribute no
+        // import, so a single-package model's output stays byte-identical.
+        val crossPackageEnumImports = sortedSetOf<String>().apply {
+            fun consider(cn: ClassName?) {
+                if (cn != null && cn.packageName.isNotEmpty() && cn.packageName != pkg) {
+                    add("${cn.packageName}.${cn.simpleName}")
+                }
+            }
+            for (field in entity.metaFields) {
+                if (field is EnumField) consider(KotlinTypeMapper.enumTypeName(field, entity))
+            }
+            for (field in KotlinTphPlan.collectSubtypeFields(entity, loader)) {
+                if (field is EnumField) consider(KotlinTypeMapper.enumTypeName(field, entity))
+            }
+        }
+
         val source = buildString {
             if (pkg.isNotEmpty()) {
                 append("package $pkg\n\n")
@@ -528,6 +554,9 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 append("import $imp\n")
             }
             for (imp in crossPackageTableImports) {
+                append("import $imp\n")
+            }
+            for (imp in crossPackageEnumImports) {
                 append("import $imp\n")
             }
             if (needsJsonbExtensionImport) {
@@ -580,13 +609,16 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 val baseSpec = if (field is EnumField) {
                     // field.enum → typed Exposed enumerationByName column referencing the
                     // generated enum class. Length matches the historical VARCHAR fallback
-                    // (KotlinTypeMapper.ENUM_VARCHAR_LEN). Same-package class reference, so
-                    // no import is required. Column name is snake_case-d for Postgres
-                    // convention (matches the StringField/varchar path).
-                    val enumName = KotlinTypeMapper.enumTypeName(field, entity)?.simpleName
+                    // (KotlinTypeMapper.ENUM_VARCHAR_LEN). #246: the enum may be a CROSS-PACKAGE
+                    // shared type (FR-019 collapse onto an abstract super in another package) — the
+                    // full ClassName is kept so its package is available; the import itself is
+                    // emitted (only when cross-package) via crossPackageEnumImports above. Column
+                    // name is snake_case-d for Postgres convention (matches the StringField/varchar
+                    // path).
+                    val enumCn = KotlinTypeMapper.enumTypeName(field, entity)
                         ?: error("enumTypeName returned null for EnumField '${field.name}' on ${entity.name}")
                     val colName = KotlinGenUtil.camelToSnake(field.name)
-                    "enumerationByName(\"$colName\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, $enumName::class)"
+                    "enumerationByName(\"$colName\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, ${enumCn.simpleName}::class)"
                 } else {
                     KotlinTypeMapper.exposedColumnSpec(field)
                 }
@@ -614,10 +646,12 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             for (field in KotlinTphPlan.collectSubtypeFields(entity, loader)) {
                 if (field is ObjectField || field is MapField) continue
                 val baseSpec = if (field is EnumField) {
-                    val enumName = KotlinTypeMapper.enumTypeName(field, entity)?.simpleName
+                    // #246: same cross-package-aware handling as the base-column loop above — the
+                    // import (when cross-package) is emitted via crossPackageEnumImports.
+                    val enumCn = KotlinTypeMapper.enumTypeName(field, entity)
                         ?: error("enumTypeName returned null for EnumField '${field.name}' on ${entity.name}")
                     val colName = KotlinGenUtil.camelToSnake(field.name)
-                    "enumerationByName(\"$colName\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, $enumName::class)"
+                    "enumerationByName(\"$colName\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, ${enumCn.simpleName}::class)"
                 } else {
                     KotlinTypeMapper.exposedColumnSpec(field)
                 }
