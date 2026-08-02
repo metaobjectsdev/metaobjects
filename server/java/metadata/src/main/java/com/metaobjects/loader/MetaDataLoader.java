@@ -110,6 +110,16 @@ public class MetaDataLoader implements LoaderConfigurable {
     private final String subType;
     private final String name;
 
+    // Process-unique instance discriminator. Used ONLY to scope the activeLoaders
+    // concurrency-protection key to THIS instance (#233): two loaders sharing
+    // class/subType/name (e.g. two reactor modules with the same <loader> name)
+    // must NOT share one init() future — the future loads into whichever instance
+    // won the race, leaving the other's tree empty. Not part of identity / equals /
+    // hashCode / toString.
+    private static final java.util.concurrent.atomic.AtomicLong INSTANCE_SEQ =
+            new java.util.concurrent.atomic.AtomicLong();
+    private final long instanceId = INSTANCE_SEQ.incrementAndGet();
+
     // The tree-root node this loader produces and owns.
     private final MetaRoot root;
 
@@ -1054,10 +1064,14 @@ public class MetaDataLoader implements LoaderConfigurable {
     }
 
     /**
-     * Build a unique key for this loader instance for concurrent loading protection
+     * Build a unique key for THIS loader instance for concurrent loading protection.
+     * Includes {@link #instanceId} so the {@code activeLoaders} dedup only ever
+     * coalesces concurrent {@code init()} on the same instance (#233). Package-private
+     * for {@code LoaderKeyIsolationTest}.
      */
-    private String buildLoaderKey() {
-        return String.format("%s:%s:%s", getClass().getSimpleName(), getSubType(), getName());
+    String buildLoaderKey() {
+        return String.format("%s:%s:%s:%d",
+                getClass().getSimpleName(), getSubType(), getName(), instanceId);
     }
 
     /**
