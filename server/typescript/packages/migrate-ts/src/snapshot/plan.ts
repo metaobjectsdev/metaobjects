@@ -38,6 +38,10 @@ export async function planOffline(args: PlanOfflineArgs): Promise<PlanOfflineRes
     expected: nextSnapshot,
     actual: args.snapshot,
     dialect: args.dialect,
+    // #258 — migration generation refuses a primary-key MOVE (there is no primary-key
+    // change kind to express it; it would otherwise silently drop the constraint). The
+    // read-only verify/drift path does NOT set this, so `meta verify` still reports drift.
+    refusePrimaryKeyChange: true,
     // #208 §7 — exclude declared-@unmanaged objects from the actual (snapshot) side too,
     // so the OFFLINE generate path never proposes DROP for an external table that a
     // `baseline --from-db` captured into the snapshot (parity with the online/verify paths).

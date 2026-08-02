@@ -31,7 +31,7 @@ export { planOffline, baselineFromMetadata } from "./snapshot/plan.js";
 export type { PlanOfflineArgs, PlanOfflineResult } from "./snapshot/plan.js";
 
 // Errors
-export { BlockedChangesError, SetNullNotNullableError } from "./errors.js";
+export { BlockedChangesError, SetNullNotNullableError, PrimaryKeyChangeError } from "./errors.js";
 
 // SqlType helpers (rarely needed but useful for advanced consumers)
 export { isWidening, sqlTypeEquals } from "./sql-type.js";

@@ -7,10 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-Shared-enum cross-package hardening (**#246** + its sibling **#259**). When cut this releases
-as a coordinated PATCH — the loader change (#246) lands in all five ports, the Kotlin codegen
-changes (#246 Bug 1, #259) land on Maven Central; no metadata vocabulary changes, byte-identical
-output for any model that doesn't hit the specific cross-package/two-hop enum shapes below.
+Shared-enum cross-package hardening (**#246** + its sibling **#259**), plus an **npm-only**
+migrate-ts fix (**#258**). When cut this releases as a coordinated PATCH — the loader change
+(#246) lands in all five ports, the Kotlin codegen changes (#246 Bug 1, #259) land on Maven
+Central, and #258 lands on npm only (`migrate-ts` + `cli`; schema/migrate is TS-owned, ADR-0015);
+no metadata vocabulary changes, byte-identical output for any model that doesn't hit the specific
+cross-package/two-hop enum shapes below (and, for #258, any migration that isn't a primary-key
+move).
 
 - **#246 — a `field.enum` may now be shared across packages, and a conflicting redeclaration is
   rejected instead of silently dropped.** Two independent fixes:
@@ -47,6 +50,35 @@ documented as out-of-scope in the design spec
 (`docs/superpowers/specs/2026-07-31-shared-enum-cross-package-design.md`); a follow-up is the
 Kotlin `enumTypeName` collapse gaining the `isAbstract` leg the other ports already carry (so a
 root-level *concrete* enum extended with own `@values` gets a per-field enum on every port).
+
+### Fixed — migrate refuses a primary-key move instead of silently dropping the PK (#258)
+
+**npm-only** (`migrate-ts` + `cli`; PyPI / NuGet / Maven Central unchanged — schema migrations are
+TS-owned, ADR-0015). The diff/emit has no primary-key change kind, so adopting an existing database
+(`--from-db`) whose `PRIMARY KEY` differs from the metadata identity degraded **silently** into an
+add-column + drop-column: the old PK column and its constraint were dropped, the new column was
+never made PK, leaving the table with **no primary key**, so every foreign key referencing it
+failed at apply (`there is no unique constraint matching given keys for referenced table`). Only
+observable when adopting an existing DB whose PK disagrees with the metadata — a greenfield
+`create-table` carries its PK inline. Follow-on from #255, which is what let the apply clear the
+column drops and reach the FK stage where this surfaced.
+
+Migration generation now detects the move and throws a new `PrimaryKeyChangeError` (naming the
+table and both PKs) instead of emitting the un-appliable SQL — detect-and-refuse, the #226→#241 arc
+for D1 FK cascades being the precedent (auto-migrating the PK remains a follow-up). The check runs
+**after** rename detection, mapping live PK column names through any detected `rename-column` for
+the table, so a PK column that was merely renamed (the engine preserves the PK through `RENAME
+COLUMN`) is not mistaken for a move. It is gated by a `DiffArgs.refusePrimaryKeyChange` flag set
+only by the migration-generation paths (the online `meta migrate --db` diff call and the offline
+`planOffline`); the read-only `meta verify`/drift path does **not** set it, so `verify` keeps
+reporting PK drift rather than throwing. The CLI catches `PrimaryKeyChangeError` at both throw
+sites (online + offline, including the D1 path) and emits a structured error + exit 1.
+
+Byte-identical for any migration that is not a primary-key move (the full `migrate-ts` suite passes
+unchanged). Gated by 5 unit tests (refuse on a move; no-refuse on an unchanged PK; no-refuse on a
+resolved PK-column rename; no-throw without the flag) plus a real-Postgres integration round-trip
+(gated on `MIGRATE_TS_PG_URL`) that reproduces the original failure — a live
+`user_profiles PK(user_id)` with a referencing FK — and asserts the refusal fires.
 
 ## [0.20.10] — 2026-08-02
 

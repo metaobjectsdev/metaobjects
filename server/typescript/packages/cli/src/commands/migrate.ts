@@ -25,6 +25,7 @@ import {
   readSnapshot,
   writeSnapshot,
   BlockedChangesError,
+  PrimaryKeyChangeError,
   renderD1,
   writeMigrationD1,
   introspectD1,
@@ -389,6 +390,10 @@ export async function migrateCommand(
         actual,
         dialect: kysely.dialect,
         allow: tokensToAllowOptions(config.allow),
+        // #258 — adopting a live DB whose PRIMARY KEY differs from the metadata identity
+        // has no expressible migration; refuse loudly instead of emitting SQL that drops
+        // the constraint and breaks referencing FKs at apply.
+        refusePrimaryKeyChange: true,
         // #208 §7 — declared-@unmanaged objects are external: exclude them from the
         // actual side so migrate proposes neither create nor drop for them.
         unmanagedNames: collectUnmanagedNames(metadata),
@@ -398,6 +403,13 @@ export async function migrateCommand(
         },
       });
     } catch (err) {
+      // #258 — a primary-key move has no expressible migration; refuse loudly.
+      if (err instanceof PrimaryKeyChangeError) {
+        log.error(`migrate: ${err.message}`);
+        emitStructuredError(`migrate: ${err.message}`, "align the primary key manually, or reconcile the metadata identity to match the live table", fmt);
+        await kysely.close();
+        return 1;
+      }
       // diff() throws when onAmbiguous returns "abort" — surface as exit 1
       // with the collected ambiguity list.
       if ((err as Error).message.includes("aborted by onAmbiguous")) {
@@ -809,6 +821,12 @@ export async function runOfflineGenerate(
       },
     });
   } catch (err) {
+    // #258 — a primary-key move has no expressible migration; refuse loudly.
+    if (err instanceof PrimaryKeyChangeError) {
+      log.error(`migrate: ${err.message}`);
+      emitStructuredError(`migrate: ${err.message}`, "align the primary key manually, or reconcile the metadata identity to match the live table", fmt);
+      return 1;
+    }
     if ((err as Error).message.includes("aborted by onAmbiguous")) {
       log.error(`migrate: ambiguous rename/drop detected; re-run with --on-ambiguous rename|drop-add`);
       return 1;
@@ -912,7 +930,7 @@ async function runD1Migrate(
   config: ResolvedMigrateConfig,
   metaRoot: string,
   runner: WranglerRunner,
-  _fmt: OutputFormat = "text",
+  fmt: OutputFormat = "text",
 ): Promise<number> {
   // 1. Resolve wrangler.toml + binding.
   const wranglerConfigPath = config.d1.wranglerConfigPath
@@ -1012,6 +1030,10 @@ async function runD1Migrate(
       // @constraintName models churning and enum @values changes silent on D1.
       dialect: "d1",
       allow: tokensToAllowOptions(config.allow),
+      // #258 — adopting a live D1 DB whose PRIMARY KEY differs from the metadata identity
+      // has no expressible migration; refuse loudly instead of emitting SQL that drops
+      // the constraint and breaks referencing FKs at apply (same failure as the online path).
+      refusePrimaryKeyChange: true,
       // #208 §7 — declared-@unmanaged objects are external (see the online path above).
       unmanagedNames: collectUnmanagedNames(metadata),
       onAmbiguous: async (a) => {
@@ -1020,6 +1042,12 @@ async function runD1Migrate(
       },
     });
   } catch (err) {
+    // #258 — a primary-key move has no expressible migration; refuse loudly.
+    if (err instanceof PrimaryKeyChangeError) {
+      log.error(`migrate: ${err.message}`);
+      emitStructuredError(`migrate: ${err.message}`, "align the primary key manually, or reconcile the metadata identity to match the live table", fmt);
+      return 1;
+    }
     if ((err as Error).message.includes("aborted by onAmbiguous")) {
       const entries = ambiguousToEntries(collectedAmbiguous);
       for (const e of entries) {

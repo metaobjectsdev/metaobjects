@@ -5,7 +5,22 @@ title: "migrate: no primary-key change kind, so moving a table's PK leaves it wi
 labels: bug
 ---
 
-> **Filed as** https://github.com/metaobjectsdev/metaobjects/issues/258 (2026-08-02). Open. Follow-on from #255.
+> **Filed as** https://github.com/metaobjectsdev/metaobjects/issues/258 (2026-08-02). **RESOLVED
+> (detect-and-refuse).** Follow-on from #255.
+>
+> Migration generation now refuses a primary-key move instead of emitting un-appliable SQL — the
+> second of the two approaches proposed below, chosen deliberately over auto-migrating. It landed
+> in `272ee9d5` ("fix(#258): migrate refuses a primary-key move instead of silently dropping the
+> PK") and was extended to the D1 path in `737d3244`. The diff throws a new `PrimaryKeyChangeError`
+> (naming the table and both PKs) when an existing table's live `PRIMARY KEY` differs from the
+> metadata identity; the check runs after rename detection, so a PK column that was merely renamed
+> (the engine preserves the PK through `RENAME COLUMN`) is not mistaken for a move. It is gated by
+> a `DiffArgs.refusePrimaryKeyChange` flag that only the migration-generation paths set (the online
+> `meta migrate --db` diff call and the offline `planOffline`); the read-only `meta verify`/drift
+> path does **not** set it, so `verify` keeps reporting PK drift rather than throwing. Gated by 5
+> unit tests plus a real-Postgres round-trip on the genuine reproduction. Auto-migrating the PK —
+> the `add-primary-key`/`drop-primary-key` change kinds and staging proposed in "Suggested fix"
+> below — remains a follow-up. Kept as a written record of the failure mode.
 
 **Affected port(s):** TypeScript (diff + emit; shared migration engine, so all ports)
 **Package + version:** `@metaobjectsdev/cli` + `@metaobjectsdev/migrate-ts` 0.20.10
