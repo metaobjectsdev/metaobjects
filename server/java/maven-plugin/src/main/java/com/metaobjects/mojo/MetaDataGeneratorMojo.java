@@ -10,7 +10,8 @@ import java.util.*;
 
 @Mojo(name="generate",
         requiresDependencyResolution= ResolutionScope.COMPILE_PLUS_RUNTIME,
-        defaultPhase = LifecyclePhase.GENERATE_SOURCES)
+        defaultPhase = LifecyclePhase.GENERATE_SOURCES,
+        threadSafe = true)   // #233: safe under `mvn -T` once the registry warm-up + per-instance loader key land
 public class MetaDataGeneratorMojo extends AbstractMetaDataMojo
 {
     @Override

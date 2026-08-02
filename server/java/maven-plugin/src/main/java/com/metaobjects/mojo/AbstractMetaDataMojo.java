@@ -103,6 +103,11 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
 
     public void execute() throws MojoExecutionException, MojoFailureException
     {
+        // #233: warm the global registry singletons before this reactor module's load
+        // can race a sibling module's first-init under `mvn -T`. Must precede
+        // createLoader(), which triggers MavenLoaderConfiguration's eager
+        // getTypeRegistry().getRegisteredTypes() first-touch on this thread.
+        com.metaobjects.registry.RegistryBootstrap.warmUpDefaults();
         if ( getLoader() == null ) {
             throw new MojoExecutionException( "No <loader> element was defined");
         }

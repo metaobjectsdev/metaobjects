@@ -66,7 +66,8 @@ import java.util.TreeSet;
  */
 @Mojo(name = "verify",
         requiresDependencyResolution = ResolutionScope.COMPILE_PLUS_RUNTIME,
-        defaultPhase = LifecyclePhase.VERIFY)
+        defaultPhase = LifecyclePhase.VERIFY,
+        threadSafe = true)   // #233
 public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
 
     /** Arg used by {@link GeneratorBase} to locate each generator's output root. */
@@ -104,6 +105,9 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
+        // #233: warm the global registry singletons before verify builds its loader,
+        // for the same reason as the generate path (this mojo has its own execute()).
+        com.metaobjects.registry.RegistryBootstrap.warmUpDefaults();
         if (getLoader() == null) {
             throw new MojoExecutionException("No <loader> element was defined");
         }

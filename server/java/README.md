@@ -82,6 +82,8 @@ Maven plugin for `metaobjects:generate` / `metaobjects:verify` / `metaobjects:ed
 </plugin>
 ```
 
+The `generate`, `verify`, and `docs` goals are declared `threadSafe` and support parallel multi-module reactor builds (`mvn -T`) (#233).
+
 Kotlin entry point — adds the Kotlin facade and the KotlinPoet codegen pipeline:
 
 ```xml
