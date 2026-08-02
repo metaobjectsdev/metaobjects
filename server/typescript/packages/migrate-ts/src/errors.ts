@@ -93,3 +93,37 @@ export class BlockedChangesError extends Error {
     this.enableHints = hints;
   }
 }
+
+/**
+ * #258 — a table whose live PRIMARY KEY differs from the metadata identity cannot be
+ * migrated: the diff/emit has no primary-key change kind, so the difference degrades
+ * silently into an add-column + drop-column (the old PK column is dropped, the new one
+ * is never made PK), leaving the table with no primary key and breaking every foreign
+ * key that references it at apply time. Migration generation detects the move and throws
+ * this instead of emitting un-appliable SQL (detect-and-refuse; the #226→#241 arc for D1
+ * FK cascades is the precedent). A pure column RENAME is NOT a key move — the engine
+ * preserves the PK through a `RENAME COLUMN` — and does not trigger this.
+ */
+export class PrimaryKeyChangeError extends Error {
+  override readonly name = "PrimaryKeyChangeError";
+  readonly table: string;
+  readonly livePrimaryKey: string[];
+  readonly expectedPrimaryKey: string[];
+  readonly schema?: string;
+
+  constructor(table: string, livePrimaryKey: string[], expectedPrimaryKey: string[], schema?: string) {
+    const qualified = schema !== undefined ? `${schema}.${table}` : table;
+    const fmt = (cols: string[]) => (cols.length > 0 ? `PRIMARY KEY (${cols.join(", ")})` : "no primary key");
+    super(
+      `primary key of "${qualified}" differs from the live database: live ${fmt(livePrimaryKey)} vs ` +
+        `metadata ${fmt(expectedPrimaryKey)}. migrate cannot express a primary-key change (there is no ` +
+        `add/drop-primary-key change kind), so this would silently drop the constraint and break every ` +
+        `foreign key that references this table. Align the primary key manually — or reconcile the metadata ` +
+        `identity to match the live table — before migrating.`,
+    );
+    this.table = table;
+    this.livePrimaryKey = livePrimaryKey;
+    this.expectedPrimaryKey = expectedPrimaryKey;
+    if (schema !== undefined) this.schema = schema;
+  }
+}

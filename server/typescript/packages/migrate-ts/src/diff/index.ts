@@ -8,6 +8,7 @@ import type {
 import type { SqlType } from "../sql-type.js";
 import { sqlTypeEquals } from "../sql-type.js";
 import { applyStatus } from "./status.js";
+import { PrimaryKeyChangeError } from "../errors.js";
 import { detectColumnRenames, detectTableRenames } from "./rename-heuristic.js";
 import { viewSqlEquals } from "../view-sql-compare.js";
 import { viewReplaceIsLegal } from "../view-column-types.js";
@@ -58,6 +59,16 @@ export interface DiffArgs {
   unmanagedNames?: string[];
   /** Dialect; CHECK-constraint evolution on existing tables is emitted for postgres only. */
   dialect?: Dialect;
+  /**
+   * #258 — refuse (throw {@link PrimaryKeyChangeError}) when an existing table's live
+   * PRIMARY KEY differs from the metadata identity. There is no primary-key change kind
+   * in the emitter, so such a move would silently degrade into add-column + drop-column
+   * and leave the table with no PK, breaking referencing FKs at apply time. Set by the
+   * migration-generation path (snapshot/plan.ts); left unset by the read-only drift/verify
+   * path so `meta verify` keeps reporting drift rather than throwing. Off by default —
+   * existing callers are byte-identical.
+   */
+  refusePrimaryKeyChange?: boolean;
 }
 
 const ALLOWED: ChangeStatus = { state: "allowed" };
@@ -266,8 +277,49 @@ export async function diff(
     delete (c as Aug)._columns;
   }
 
+  // #258: refuse a primary-key MOVE at generation time. There is no primary-key change
+  // kind, so a table whose live PK differs from the metadata identity would degrade into
+  // an add-column + drop-column and lose the constraint (breaking referencing FKs at
+  // apply). Runs after rename detection so a PK column that was merely RENAMED (PK
+  // preserved by the engine) is not mistaken for a move. Gated by refusePrimaryKeyChange
+  // so only migration generation refuses; the read-only drift/verify path is unchanged.
+  if (args.refusePrimaryKeyChange === true) {
+    for (const [id, expectedTable] of expectedTables) {
+      const actualTable = actualTables.get(id);
+      if (actualTable === undefined) continue; // create-table: PK is inline, not a move
+      assertPrimaryKeyUnchanged(expectedTable, actualTable, changes);
+    }
+  }
+
   applyStatus(changes, args.allow ?? {});
   return { changes, blocked: changes.filter((c) => c.status.state === "blocked") };
+}
+
+/**
+ * #258 — throw {@link PrimaryKeyChangeError} when a table's live PRIMARY KEY differs from
+ * the metadata identity. Live PK column names are first mapped through any detected
+ * `rename-column` for this table, so a renamed PK column (the engine preserves the PK
+ * through a `RENAME COLUMN`) is not treated as a move. A genuine move — a PK column added
+ * or dropped, or the key repointed to different columns — has no expressible migration and
+ * is refused.
+ */
+function assertPrimaryKeyUnchanged(
+  expected: TableDescriptor,
+  actual: TableDescriptor,
+  changes: Change[],
+): void {
+  const wantId = tableIdentity(expected);
+  const renamed = new Map<string, string>();
+  for (const c of changes) {
+    if (c.kind === "rename-column" && tableIdentity({ name: c.table, ...schemaSpread(c.schema) }) === wantId) {
+      renamed.set(c.from, c.to);
+    }
+  }
+  const livePk = actual.primaryKey.map((col) => renamed.get(col) ?? col);
+  const wantPk = expected.primaryKey;
+  const unchanged = livePk.length === wantPk.length && livePk.every((col, i) => col === wantPk[i]);
+  if (unchanged) return;
+  throw new PrimaryKeyChangeError(expected.name, actual.primaryKey, expected.primaryKey, expected.schema);
 }
 
 function isDiffArgs(x: DiffArgs | SchemaSnapshot): x is DiffArgs {
