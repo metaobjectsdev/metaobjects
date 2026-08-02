@@ -44,6 +44,7 @@ function makeDoc(options: {
           "object.entity": {
             name: "Program",
             children: [
+              { "source.rdb": {} },
               { "field.long": { name: "id" } },
               { "identity.primary": { "name": "id", "@fields": "id" } },
             ],
@@ -53,6 +54,7 @@ function makeDoc(options: {
           "object.entity": {
             name: "Week",
             children: [
+              { "source.rdb": {} },
               { "field.long": { name: "id" } },
               {
                 "field.long": {

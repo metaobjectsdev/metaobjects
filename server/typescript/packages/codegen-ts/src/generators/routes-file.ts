@@ -2,6 +2,7 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 import { perEntity, type Generator, type GeneratorFactory } from "../generator.js";
 import { renderRoutesFile } from "../templates/routes-file.js";
 import { isTphSubtype } from "../templates/zod-validators.js";
+import { hasAnyRdbSource } from "../source-detect.js";
 import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";
 import { CODEGEN_ATTR_EMIT_ROUTES } from "../constants.js";
@@ -15,6 +16,10 @@ export interface RoutesFileOpts {
  * Per-entity opt-out via `@emitRoutes: false` is honored. If the user supplies
  * their own filter, both must pass (AND).
  *
+ * #248 R2: an object with no declared/inherited source.rdb (of ANY kind) isn't
+ * backed by any store — routes against it would import Drizzle table/allowlist
+ * exports the entity-file generator never emits. Gated by `hasAnyRdbSource`.
+ *
  * FR-017 Tier 2: TPH subtypes get no standalone routes file — their per-subtype
  * route set lives in the discriminator base's routes file.
  */
@@ -25,7 +30,7 @@ export const routesFile = function routesFile(opts?: RoutesFileOpts): Generator 
     // Always set: AND-composes metadata opt-out with optional user filter.
     filter: (e: MetaObject) =>
       // ADR-0039: resolving — a concrete entity may inherit its @emit* opt-out flag via extends.
-      e.attr(CODEGEN_ATTR_EMIT_ROUTES) !== false && !isTphSubtype(e) && userFilter(e),
+      e.attr(CODEGEN_ATTR_EMIT_ROUTES) !== false && hasAnyRdbSource(e) && !isTphSubtype(e) && userFilter(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("routes-file: renderContext is required (provided by runGen)");

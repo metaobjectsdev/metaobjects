@@ -112,6 +112,7 @@ describe("buildExpectedSchema — @autoSet timestamp default", () => {
     };
     const doc = { "metadata.root": { package: "acme", children: [
       { "object.entity": { name: "Event", children: [
+        { "source.rdb": {} },
         { "field.long": { name: "id" } },
         { "identity.primary": { "name": "id", "@fields": "id" } },
         stampField,
@@ -158,6 +159,7 @@ describe("buildExpectedSchema — native array columns (derived from isArray)", 
   async function arrayCols() {
     const doc = { "metadata.root": { package: "acme", children: [
       { "object.entity": { name: "Bag", children: [
+        { "source.rdb": {} },
         { "field.long": { name: "id" } },
         { "identity.primary": { "name": "id", "@fields": "id" } },
         { "field.uuid": { name: "memberIds", isArray: true } },
@@ -180,6 +182,7 @@ describe("buildExpectedSchema — native array columns (derived from isArray)", 
   test("field.uuid scalar → uuid; field.string scalar (no maxLength) → text", async () => {
     const doc = { "metadata.root": { package: "acme", children: [
       { "object.entity": { name: "Scalars", children: [
+        { "source.rdb": {} },
         { "field.long": { name: "id" } },
         { "identity.primary": { "name": "id", "@fields": "id" } },
         { "field.uuid": { name: "ownerId" } },

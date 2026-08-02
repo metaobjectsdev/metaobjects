@@ -44,6 +44,7 @@ const META = JSON.stringify({
         "object.entity": {
           name: "Photo",
           children: [
+            { "source.rdb": {} },
             { "field.long": { name: "id" } },
             { "field.boolean": { name: "isPrimary", "@default": false, "@required": true } },
             { "field.boolean": { name: "isPublished", "@default": true, "@required": true } },

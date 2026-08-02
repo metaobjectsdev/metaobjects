@@ -125,9 +125,10 @@ export function buildExpectedSchema(
   // Pass 1: collect entities + their resolved table names.
   // Skip:
   //   - abstract objects (e.g., BaseEntity)
-  //   - value objects (no table backing)
-  //   - projections (read-only @kind source with no writable peer — handled by
-  //     the view-diff pipeline, not the table diff)
+  //   - TPH subtypes (their columns fold into the discriminator base's table)
+  //   - any object with no declared/inherited WRITABLE source (#248 — covers
+  //     value objects, projections, sourceless entities, and any sourceless
+  //     custom subtype uniformly; see the rule comment below)
   const entities: { entity: MetaObject; tableName: string }[] = [];
   // #208 §7 — entities whose physical name must still resolve for FK TARGETING even
   // though we emit NO TableDescriptor for them: an @unmanaged table (Flyway/hand-
@@ -139,19 +140,20 @@ export function buildExpectedSchema(
   for (const child of root.children()) {
     if (child.type !== TYPE_OBJECT) continue;
     if (child.isAbstract) continue;
-    if (child.subType === "value") continue;
     // FR-017 TPH: a subtype shares its discriminator base's single table, so it
     // emits no table of its own. Its own columns are folded into the base below.
     if (isTphSubtype(child)) continue;
-    // ADR-0039: effective children — an entity may inherit its source.rdb via extends.
-    const hasReadOnlySource = child.children().some(
-      (c) => c instanceof MetaSource && c.isReadOnly(),
-    );
+    // #248 — persistability derives from source presence, never subtype (loader
+    // contract: zero sources ⇒ not persisted — metadata validate-source-roles).
+    // Table iff a WRITABLE source is declared or inherited (ADR-0039 resolving).
+    // Subsumes the old `subType === "value"` skip (value purity bans sources on
+    // the resolving view) and the read-only-only projection skip (view pipeline
+    // owns those); closes the fail-open where a sourceless object (custom
+    // subtype or plain entity) got a phantom CREATE TABLE + fabricated FK name.
     const hasWritableSource = child.children().some(
       (c) => c instanceof MetaSource && c.isWritable(),
     );
-    // Projection: read-only and not write-through.
-    if (hasReadOnlySource && !hasWritableSource) continue;
+    if (!hasWritableSource) continue;
     const tableName = resolveTableName(child);
     // #208 §7 — an @unmanaged writable (table) source: emit no descriptor, but keep the
     // entity in entityToTable so an inbound FK resolves the physical name. OWN-source

@@ -37,6 +37,7 @@ function metaWithStatuses(values: string[]): string {
           "object.entity": {
             name: "Ticket",
             children: [
+              { "source.rdb": {} },
               { "field.long": { name: "id" } },
               { "field.enum": { name: "status", "@values": values, "@required": true } },
               { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },

@@ -61,6 +61,44 @@ metamodel vocabulary (ADR-0023 unaffected). See
 [ADR-0044](spec/decisions/ADR-0044-payload-record-naming-cross-package-collision.md), whose
 Consequences section now marks this recurrence closed.
 
+### Fixed — persistability derives from a declared/inherited source, never object subtype (#248)
+
+**npm-only** (`migrate-ts` + `codegen-ts`; PyPI / NuGet / Maven Central unchanged — schema
+migrations and this codegen tier are TS-owned artifacts, ADR-0015, and no other port emits
+DDL). Both `migrate-ts`'s expected-schema builder and `codegen-ts`'s query/route/api-doc
+emitters decided "is this object persisted?" against a hardcoded `subType === "value"`
+compare (migrate) or a subtype allowlist (codegen), instead of asking whether the object
+declares — or inherits via `extends` — a `source.*` child, which is the loader's own
+already-published contract (`validate-source-roles`: an object with zero sources loads clean
+and means "not persisted"). Any OTHER provider-registered `object` subtype with no source fell
+through both gates and was silently treated as persisted.
+
+- **`meta migrate` / `meta verify --db|--d1`:** a sourceless object no longer produces a
+  phantom `CREATE TABLE` (with a fabricated physical table name) and is no longer eligible as
+  a foreign-key target. Reported blast radius: a package of roughly 150 wire-protocol message
+  objects modeled as a registered custom `object` subtype, co-loaded with domain entities so
+  messages could reference them, produced well over a hundred phantom `CREATE TABLE`
+  statements — making `meta migrate` and `meta verify --db` unusable against that model.
+- **`meta gen`:** queries/routes (both the Fastify and Hono generators) and api-doc CRUD are
+  no longer emitted for a sourceless object, gated on the presence of a `source.rdb` of any
+  kind (a new `hasAnyRdbSource` check) — matching the Drizzle table tier's existing
+  `hasWritableRdbSource` gate. This also closes a pre-existing fail-open where a plain
+  `object.value` got a broken `*.routes.ts` file, importing a table const and
+  filter/sort allowlists that don't exist for a value object.
+
+This is a bugfix, not a behavior-contract change — it aligns both tiers to an invariant the
+loader already enforces. `meta gen` / `meta migrate` output is **byte-identical** for
+well-formed models (every table-owning object declares or inherits a source, the norm); the
+only delta is that files which could never have typechecked (importing exports that don't
+exist) stop being emitted.
+
+**Migration note for models already bitten by the bug:** a database or migration snapshot
+that already contains phantom tables (created by applying a pre-fix migration) will correctly
+propose `DROP TABLE` for them on the next `meta migrate` — destructive-gated behind the
+existing `--allow drop-table` policy, so nothing drops without explicit opt-in.
+Previously-generated broken `*.queries.ts` / `*.routes.ts` files are **not** auto-pruned
+(`meta gen` never deletes existing files) — remove them by hand.
+
 ## [0.20.9] — 2026-07-28
 
 **npm-only** — `migrate-ts` + `codegen-ts` (schema migrations and projection-view codegen
