@@ -11,22 +11,33 @@ import { viewReplaceIsLegal } from "../view-column-types.js";
 // depends on a soon-to-be-dropped table is removed first. create-view runs
 // AFTER add-fk so the view can reference the new schema in full.
 //
-// #255: constraint DROPS and constraint ADDS share the same "constraint" kind
+// #255: a constraint/index DROP and its ADD counterpart share the same kind
 // but need OPPOSITE ordering relative to column mutation — a drop must run
-// BEFORE the column change (the constraint must be gone before its column is
-// dropped, or Postgres refuses `DROP COLUMN` with "other objects depend on
-// it"), while an add must run AFTER (the column it references must already
-// exist). One stage can't satisfy both, so drop-fk/drop-check are hoisted to
-// stage 1 (alongside create-table, before any column mutation); add-fk/
-// add-check stay at stage 5.
+// BEFORE the column change (the constraint/index must be gone before its
+// column is dropped, or Postgres refuses `DROP COLUMN` with "other objects
+// depend on it" — this applies just as much to an index backing a UNIQUE/FK
+// target as it does to the FK/CHECK constraint itself), while an add must run
+// AFTER (the column it references must already exist). One stage can't
+// satisfy both, so ALL drops — drop-fk/drop-check/drop-index — are hoisted
+// ahead of any column mutation; their ADD counterparts (add-fk/add-check/
+// add-index) stay at their later stages.
+//
+// Within that "drops" group, drop-fk/drop-check must ALSO run BEFORE
+// drop-index: an FK constraint depends on the unique/PK index backing its
+// target column (that's how Postgres enforces the target must be unique), so
+// dropping the index first fails with the same "other objects depend on it"
+// class of error, one level removed — "constraint … depends on index …".
+// drop-index therefore gets its own stage (1.5) strictly between drop-fk/
+// drop-check/create-table (1) and column mutation (2).
 const STAGE_ORDER: Record<Change["kind"], number> = {
   "drop-view": 0,
   "drop-fk": 1, "drop-check": 1,
   "create-table": 1,
+  "drop-index": 1.5,
   "add-column": 2, "drop-column": 2,
   "change-column-type": 2, "change-column-nullable": 2, "change-column-default": 2,
   "rename-column": 3, "rename-table": 3,
-  "add-index": 4, "drop-index": 4,
+  "add-index": 4,
   "add-fk": 5,
   "add-check": 5,
   "drop-table": 6,

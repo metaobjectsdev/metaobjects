@@ -346,3 +346,41 @@ describe("renderSqlite — add-fk / drop-fk via recreate", () => {
     expect(idxWeeksRecreate).toBeLessThan(idxProgramsDropColumn);
   });
 });
+
+describe("renderSqlite — drop-index vs drop-column (#255 generalized)", () => {
+  // Unlike drop-fk/drop-check, drop-index is NOT recreate-triggering on
+  // SQLite — it's a plain native `DROP INDEX` — so, unlike the drop-fk case
+  // above, the SAME-table ordering IS directly observable here as two
+  // separate emitted statements.
+  test("drop-index runs before drop-column for the column it indexes, same table", () => {
+    const { up } = emit(
+      [
+        { kind: "drop-column", table: "programs", column: "code", status: ALLOWED },
+        { kind: "drop-index", table: "programs", index: "uniqueCode", status: ALLOWED },
+      ],
+      { dialect: "sqlite" },
+    );
+    const idxDropIndex = up.indexOf('DROP INDEX "uniqueCode"');
+    const idxDropColumn = up.indexOf('ALTER TABLE "programs" DROP COLUMN "code"');
+    expect(idxDropIndex).toBeGreaterThanOrEqual(0);
+    expect(idxDropColumn).toBeGreaterThanOrEqual(0);
+    expect(idxDropIndex).toBeLessThan(idxDropColumn);
+  });
+
+  // add-index must still run AFTER column mutation — only the DROP direction
+  // was hoisted.
+  test("add-index still runs after add-column (adds are unaffected)", () => {
+    const { up } = emit(
+      [
+        { kind: "add-index", table: "users", index: { name: "users_phone_idx", columns: ["phone"], unique: false }, status: ALLOWED },
+        { kind: "add-column", table: "users", column: { name: "phone", sqlType: { kind: "text" }, nullable: true }, status: ALLOWED },
+      ],
+      { dialect: "sqlite" },
+    );
+    const idxAddColumn = up.indexOf('ADD COLUMN "phone"');
+    const idxCreateIndex = up.indexOf("CREATE INDEX");
+    expect(idxAddColumn).toBeGreaterThanOrEqual(0);
+    expect(idxCreateIndex).toBeGreaterThanOrEqual(0);
+    expect(idxAddColumn).toBeLessThan(idxCreateIndex);
+  });
+});

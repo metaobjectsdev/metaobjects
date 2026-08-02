@@ -9,18 +9,29 @@ export interface CarryColumns { insertCols: string[]; selectCols: string[]; }
 // Stage ordering similar to PG; recreate-and-copy bundles get inserted
 // at their first triggering change's position in Task 23.
 //
-// #255: constraint DROPS and constraint ADDS share the same "constraint" kind
+// #255: a constraint/index DROP and its ADD counterpart share the same kind
 // but need OPPOSITE ordering relative to column mutation — a drop must run
-// BEFORE the column change (the constraint must be gone before its column is
-// dropped, or the DDL fails on the referenced-column dependency), while an add
-// must run AFTER (the column it references must already exist). One stage
-// can't satisfy both, so drop-fk/drop-check are hoisted to stage 1 (alongside
-// create-table, before any column mutation); add-fk/add-check stay at stage 5.
+// BEFORE the column change (the constraint/index must be gone before its
+// column is dropped, or the DDL fails on the referenced-column dependency —
+// this applies just as much to an index backing a UNIQUE/FK target as it does
+// to the FK/CHECK constraint itself), while an add must run AFTER (the column
+// it references must already exist). One stage can't satisfy both, so ALL
+// drops — drop-fk/drop-check/drop-index — are hoisted ahead of any column
+// mutation; their ADD counterparts (add-fk/add-check/add-index) stay at their
+// later stages.
+//
+// Within that "drops" group, drop-fk/drop-check must ALSO run BEFORE
+// drop-index — mirrors postgres.ts: an FK depends on the unique/PK index
+// backing its target column, so dropping the index first can fail on that
+// dependency, one level removed. drop-index gets its own stage (1.5) strictly
+// between drop-fk/drop-check/create-table (1) and column mutation (2).
 // (drop-fk/drop-check are always recreate-triggering on SQLite — see
 // RECREATE_TRIGGERING_KINDS below — so this mainly orders a drop-fk's
 // table-recreate ahead of a native drop-column on a DIFFERENT table it once
 // referenced; within the SAME table's recreate bundle, tableChanges order
-// doesn't affect the emitted recipe.)
+// doesn't affect the emitted recipe. drop-index is NOT recreate-triggering —
+// it's a plain `DROP INDEX`, so this ordering directly controls emission
+// order among native statements.)
 const STAGE_ORDER: Record<Change["kind"], number> = {
   // drop-view runs FIRST (mirrors postgres): a view that depends on a table about
   // to be recreated-and-copied must be dropped before the DROP TABLE / RENAME, or
@@ -29,10 +40,11 @@ const STAGE_ORDER: Record<Change["kind"], number> = {
   "drop-view": 0,
   "drop-fk": 1, "drop-check": 1,
   "create-table": 1,
+  "drop-index": 1.5,
   "add-column": 2, "drop-column": 2,
   "change-column-type": 2, "change-column-nullable": 2, "change-column-default": 2,
   "rename-column": 3, "rename-table": 3,
-  "add-index": 4, "drop-index": 4,
+  "add-index": 4,
   "add-fk": 5,
   "add-check": 5,
   "drop-table": 6,
