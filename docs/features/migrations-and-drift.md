@@ -97,6 +97,32 @@ cycle, rebuild the tables, then restore it) or break the cycle in your metadata.
 self-referencing table (a table whose own foreign key targets itself) is not a cycle
 in this sense and is handled by the cascade like any other rebuild.
 
+#### A moved primary key (adoption-time refusal)
+
+The diff/emit has no `add-primary-key` / `drop-primary-key` change kind, so an **existing**
+table whose live `PRIMARY KEY` differs from the metadata identity cannot be expressed as a
+migration. When adopting such a database (`--from-db`), `meta migrate` now **refuses at
+generation time** instead of emitting un-appliable SQL — detect-and-refuse, the same arc as
+[#226](https://github.com/metaobjectsdev/metaobjects/issues/226)→[#241](https://github.com/metaobjectsdev/metaobjects/issues/241)
+for the D1 foreign-key rebuilds above. It throws a `PrimaryKeyChangeError` (naming the table
+and both PKs), the CLI catches it and exits 1
+([#258](https://github.com/metaobjectsdev/metaobjects/issues/258)).
+
+Previously the move degraded **silently** into an add-column + drop-column: the old PK
+column and its constraint were dropped while the new column was never made primary key,
+leaving the table with no primary key, so every foreign key referencing it failed at apply
+(`there is no unique constraint matching given keys`). This surfaces only when **adopting**
+an existing database whose PK disagrees with the metadata — a greenfield `create-table`
+carries its primary key inline.
+
+The check is engine-wide (`postgres` / `sqlite` / `d1` — the diff is shared) and runs
+**after** rename detection, mapping live PK column names through any detected
+`rename-column` change, so a primary-key column that was merely **renamed** (the engine
+preserves the PK through `RENAME COLUMN`) is not mistaken for a move. The read-only
+`meta verify` / drift path does not set the refusal flag, so `verify` keeps **reporting**
+primary-key drift rather than throwing. Auto-migrating the move (adding the
+`add-primary-key` / `drop-primary-key` change kinds) is a documented future follow-up.
+
 ### Java
 
 Schema migrations for Java projects are owned by the **TypeScript toolchain**
