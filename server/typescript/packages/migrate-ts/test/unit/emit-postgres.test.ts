@@ -205,6 +205,108 @@ describe("renderPostgres — statement ordering", () => {
     expect(idxCreate).toBeLessThan(idxAdd);
     expect(idxAdd).toBeLessThan(idxDrop);
   });
+
+  // #255 — a DROP CONSTRAINT for an FK still referencing a column must run
+  // before that column's DROP COLUMN, or Postgres refuses at apply time with
+  // "cannot drop column … because other objects depend on it".
+  test("drop-fk runs before drop-column for the column it references (#255)", () => {
+    const changes: Change[] = [
+      { kind: "drop-column", table: "weeks", column: "program_id", status: ALLOWED },
+      { kind: "drop-fk", table: "weeks", fk: "weeks_program_id_fk", status: ALLOWED },
+    ];
+    const { up } = emit(changes, { dialect: "postgres" });
+    const idxDropConstraint = up.indexOf("DROP CONSTRAINT");
+    const idxDropColumn = up.indexOf("DROP COLUMN");
+    expect(idxDropConstraint).toBeGreaterThanOrEqual(0);
+    expect(idxDropColumn).toBeGreaterThanOrEqual(0);
+    expect(idxDropConstraint).toBeLessThan(idxDropColumn);
+  });
+
+  // Same invariant for drop-check — a CHECK constraint on a column must be
+  // dropped before that column is dropped.
+  test("drop-check runs before drop-column for the column it constrains (#255)", () => {
+    const changes: Change[] = [
+      { kind: "drop-column", table: "orders", column: "qty", status: ALLOWED },
+      { kind: "drop-check", table: "orders", check: "orders_qty_chk", status: ALLOWED },
+    ];
+    const { up } = emit(changes, { dialect: "postgres" });
+    const idxDropConstraint = up.indexOf("DROP CONSTRAINT");
+    const idxDropColumn = up.indexOf("DROP COLUMN");
+    expect(idxDropConstraint).toBeGreaterThanOrEqual(0);
+    expect(idxDropColumn).toBeGreaterThanOrEqual(0);
+    expect(idxDropConstraint).toBeLessThan(idxDropColumn);
+  });
+
+  // add-fk must still run AFTER column mutation (the referenced column must
+  // already exist) — only the DROP direction was hoisted.
+  test("add-fk still runs after add-column (adds are unaffected by #255)", () => {
+    const changes: Change[] = [
+      { kind: "add-fk", table: "weeks",
+        fk: { name: "weeks_program_id_fk", columns: ["program_id"], refTable: "programs", refColumns: ["id"] },
+        status: ALLOWED },
+      { kind: "add-column", table: "weeks", column: { name: "program_id", sqlType: { kind: "integer", bits: 64 }, nullable: true }, status: ALLOWED },
+    ];
+    const { up } = emit(changes, { dialect: "postgres" });
+    const idxAddColumn = up.indexOf("ADD COLUMN");
+    const idxAddConstraint = up.indexOf("ADD CONSTRAINT");
+    expect(idxAddColumn).toBeGreaterThanOrEqual(0);
+    expect(idxAddConstraint).toBeGreaterThanOrEqual(0);
+    expect(idxAddColumn).toBeLessThan(idxAddConstraint);
+  });
+
+  // #255 (generalized) — dropping a column that has a backing index (e.g. a
+  // UNIQUE index also targeted by another table's FK) auto-cascades that
+  // index away in Postgres, so a standalone DROP INDEX emitted AFTER the
+  // DROP COLUMN fails ("index … does not exist"). drop-index must run before
+  // drop-column, same as drop-fk/drop-check.
+  test("drop-index runs before drop-column for the column it indexes (#255)", () => {
+    const changes: Change[] = [
+      { kind: "drop-column", table: "programs", column: "code", status: ALLOWED },
+      { kind: "drop-index", table: "programs", index: "uniqueCode", status: ALLOWED },
+    ];
+    const { up } = emit(changes, { dialect: "postgres" });
+    const idxDropIndex = up.indexOf("DROP INDEX");
+    const idxDropColumn = up.indexOf("DROP COLUMN");
+    expect(idxDropIndex).toBeGreaterThanOrEqual(0);
+    expect(idxDropColumn).toBeGreaterThanOrEqual(0);
+    expect(idxDropIndex).toBeLessThan(idxDropColumn);
+  });
+
+  // #255 (sub-ordering within the drops group) — an FK constraint depends on
+  // the unique/PK index backing its target column (that's how Postgres
+  // enforces the target must be unique), so dropping the index BEFORE the FK
+  // that depends on it fails: "cannot drop index … because other objects
+  // depend on it" / "constraint … depends on index …". drop-fk must run
+  // before drop-index, not just before drop-column.
+  test("drop-fk runs before drop-index that backs its target column (#255)", () => {
+    const changes: Change[] = [
+      { kind: "drop-index", table: "programs", index: "uniqueCode", status: ALLOWED },
+      { kind: "drop-fk", table: "weeks", fk: "weeks_program_code_fk", status: ALLOWED },
+    ];
+    const { up } = emit(changes, { dialect: "postgres" });
+    const idxDropConstraint = up.indexOf("DROP CONSTRAINT");
+    const idxDropIndex = up.indexOf("DROP INDEX");
+    expect(idxDropConstraint).toBeGreaterThanOrEqual(0);
+    expect(idxDropIndex).toBeGreaterThanOrEqual(0);
+    expect(idxDropConstraint).toBeLessThan(idxDropIndex);
+  });
+
+  // add-index must still run AFTER column mutation (the indexed column must
+  // already exist) — only the DROP direction was hoisted.
+  test("add-index still runs after add-column (adds are unaffected by #255)", () => {
+    const changes: Change[] = [
+      { kind: "add-index", table: "users",
+        index: { name: "users_phone_idx", columns: ["phone"], unique: false },
+        status: ALLOWED },
+      { kind: "add-column", table: "users", column: { name: "phone", sqlType: { kind: "text" }, nullable: true }, status: ALLOWED },
+    ];
+    const { up } = emit(changes, { dialect: "postgres" });
+    const idxAddColumn = up.indexOf("ADD COLUMN");
+    const idxCreateIndex = up.indexOf("CREATE INDEX");
+    expect(idxAddColumn).toBeGreaterThanOrEqual(0);
+    expect(idxCreateIndex).toBeGreaterThanOrEqual(0);
+    expect(idxAddColumn).toBeLessThan(idxCreateIndex);
+  });
 });
 
 describe("renderPostgres — down statements", () => {

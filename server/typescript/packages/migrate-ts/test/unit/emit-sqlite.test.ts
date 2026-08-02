@@ -285,4 +285,102 @@ describe("renderSqlite — add-fk / drop-fk via recreate", () => {
     expect(up).toContain('CREATE TABLE "__new_weeks"');
     expect(up).not.toContain('REFERENCES');
   });
+
+  // #255 — drop-fk + drop-column on the SAME table both fold into ONE
+  // recreate-and-copy bundle regardless of STAGE_ORDER (bundling is by table,
+  // not by kind order), so the correct outcome — recreated table missing both
+  // the FK and the dropped column — already held pre-fix here. This pins that
+  // invariant so a future bundling change can't silently regress it.
+  test("drop-fk + drop-column on the same table: recreated table has neither (#255)", () => {
+    const newCols: ColumnDescriptor[] = [
+      { name: "id", sqlType: { kind: "integer", bits: 64 }, nullable: false, identity: "increment" },
+    ];
+    const expectedSchema: SchemaSnapshot = {
+      tables: [table("weeks", newCols, ["id"])],
+      views: [],
+    };
+    const { up } = emit(
+      [
+        { kind: "drop-column", table: "weeks", column: "program_id", status: ALLOWED },
+        { kind: "drop-fk", table: "weeks", fk: "weeks_program_id_fk", status: ALLOWED },
+      ],
+      { dialect: "sqlite", expectedSchema },
+    );
+    expect(up).toContain('CREATE TABLE "__new_weeks"');
+    expect(up).not.toContain("REFERENCES");
+    expect(up).not.toContain("program_id");
+  });
+
+  // #255 — the STAGE_ORDER-observable case for SQLite: a drop-fk on table B
+  // (always recreate-triggering) must sequence BEFORE a native drop-column on
+  // an unrelated table A that the dropped FK used to reference. Pre-fix,
+  // drop-column (stage 2) sorted before drop-fk (stage 5), so table A's
+  // column drop ran while table B's schema still declared the FK against it.
+  test("drop-fk on one table runs before a native drop-column on another table it referenced (#255)", () => {
+    const newProgramsCols: ColumnDescriptor[] = [
+      { name: "id", sqlType: { kind: "integer", bits: 64 }, nullable: false, identity: "increment" },
+    ];
+    const newWeeksCols: ColumnDescriptor[] = [
+      { name: "id", sqlType: { kind: "integer", bits: 64 }, nullable: false, identity: "increment" },
+    ];
+    const expectedSchema: SchemaSnapshot = {
+      tables: [
+        table("programs", newProgramsCols, ["id"]),
+        table("weeks", newWeeksCols, ["id"]),
+      ],
+      views: [],
+    };
+    const { up } = emit(
+      [
+        // drop-column on "programs" (native — not recreate-triggering on modern SQLite)
+        { kind: "drop-column", table: "programs", column: "code", status: ALLOWED },
+        // drop-fk on "weeks" (always recreate-triggering)
+        { kind: "drop-fk", table: "weeks", fk: "weeks_program_code_fk", status: ALLOWED },
+      ],
+      { dialect: "sqlite", expectedSchema },
+    );
+    const idxWeeksRecreate = up.indexOf('CREATE TABLE "__new_weeks"');
+    const idxProgramsDropColumn = up.indexOf('ALTER TABLE "programs" DROP COLUMN "code"');
+    expect(idxWeeksRecreate).toBeGreaterThanOrEqual(0);
+    expect(idxProgramsDropColumn).toBeGreaterThanOrEqual(0);
+    expect(idxWeeksRecreate).toBeLessThan(idxProgramsDropColumn);
+  });
+});
+
+describe("renderSqlite — drop-index vs drop-column (#255 generalized)", () => {
+  // Unlike drop-fk/drop-check, drop-index is NOT recreate-triggering on
+  // SQLite — it's a plain native `DROP INDEX` — so, unlike the drop-fk case
+  // above, the SAME-table ordering IS directly observable here as two
+  // separate emitted statements.
+  test("drop-index runs before drop-column for the column it indexes, same table", () => {
+    const { up } = emit(
+      [
+        { kind: "drop-column", table: "programs", column: "code", status: ALLOWED },
+        { kind: "drop-index", table: "programs", index: "uniqueCode", status: ALLOWED },
+      ],
+      { dialect: "sqlite" },
+    );
+    const idxDropIndex = up.indexOf('DROP INDEX "uniqueCode"');
+    const idxDropColumn = up.indexOf('ALTER TABLE "programs" DROP COLUMN "code"');
+    expect(idxDropIndex).toBeGreaterThanOrEqual(0);
+    expect(idxDropColumn).toBeGreaterThanOrEqual(0);
+    expect(idxDropIndex).toBeLessThan(idxDropColumn);
+  });
+
+  // add-index must still run AFTER column mutation — only the DROP direction
+  // was hoisted.
+  test("add-index still runs after add-column (adds are unaffected)", () => {
+    const { up } = emit(
+      [
+        { kind: "add-index", table: "users", index: { name: "users_phone_idx", columns: ["phone"], unique: false }, status: ALLOWED },
+        { kind: "add-column", table: "users", column: { name: "phone", sqlType: { kind: "text" }, nullable: true }, status: ALLOWED },
+      ],
+      { dialect: "sqlite" },
+    );
+    const idxAddColumn = up.indexOf('ADD COLUMN "phone"');
+    const idxCreateIndex = up.indexOf("CREATE INDEX");
+    expect(idxAddColumn).toBeGreaterThanOrEqual(0);
+    expect(idxCreateIndex).toBeGreaterThanOrEqual(0);
+    expect(idxAddColumn).toBeLessThan(idxCreateIndex);
+  });
 });
