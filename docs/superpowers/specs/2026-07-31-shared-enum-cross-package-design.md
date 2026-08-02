@@ -46,6 +46,7 @@ The loader intentionally treats an own `@values` as authoritative when present (
 - **Python latent same-premise** (`fr019_shared_enum.py` relative `from .enums import Name`) — correct today because Python emits entity files flat; only a risk if a nested per-package layout is ever added. No change now.
 - TypeScript is already correct (`enum-import.ts` computes a real relative module specifier); it is the reference design. No change.
 - Java (`codegen-spring`) is immune — no generated typed persistence class (OMDB is runtime); its DTO tier already uses an inline-FQN fallback.
+- **Kotlin `enumTypeName` collapse lacks the `isAbstract` leg** (`KotlinTypeMapper.kt`). After #259 the collapse keys on the *immediate* super having no declaring object (root-level), but — unlike the TS/C#/Python `resolveSharedEnumDecl` resolvers, which also require the super to be **abstract** — it does not check `isAbstract`. So a root-level *concrete* enum extended with own `@values` collapses onto the super's name on Kotlin (with a first-wins FQN dedupe that silently drops one member set under multiple extenders), where the other three ports emit an independent per-field enum. Pre-existing (the old `resolveSuperRoot` keying had the same hole); output-changing to fix (renames the collapsed enum for existing consumers), so it is a separate follow-up, not part of the #246/#259 PATCH. Surfaced by the Fable whole-branch review 2026-08-02.
 
 ## Design
 

@@ -42,8 +42,11 @@ output for any model that doesn't hit the specific cross-package/two-hop enum sh
   instead of silently emitting nothing (the exact silent no-emit #259 reported). Gated by a
   two-hop `KotlinCompilation` compile-gate + a depth-2 cross-port conformance fixture.
 
-The C# materialized-enum cross-namespace sibling and the enum-primary-key-as-`String` issue remain
-tracked separately.
+The C# materialized-enum cross-namespace sibling and the enum-primary-key-as-`String` issue are
+documented as out-of-scope in the design spec
+(`docs/superpowers/specs/2026-07-31-shared-enum-cross-package-design.md`); a follow-up is the
+Kotlin `enumTypeName` collapse gaining the `isAbstract` leg the other ports already carry (so a
+root-level *concrete* enum extended with own `@values` gets a per-field enum on every port).
 
 ## [0.20.10] — 2026-08-02
 

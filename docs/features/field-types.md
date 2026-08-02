@@ -93,8 +93,9 @@ Two rules the loader/codegen enforce:
   A shared enum is one type with one member set, so an own `@values` on the
   extending field would be silently dropped by the shared-enum collapse — it is a
   load error, `ERR_ENUM_EXTENDS_VALUES_CONFLICT`. Remove the own `@values` to
-  inherit the shared set, or `extends` a **concrete** (non-shared) enum if you
-  genuinely need an independent member set on top of a base shape.
+  inherit the shared set. If you need a **different** member set, declare a
+  separate `field.enum` with its own `@values` rather than extending the shared
+  one — extending is for *reuse* of one member set, not for overriding it.
 - **Inherited members resolve through any number of `extends` hops.** A projection
   field that extends an entity field which itself extends a shared abstract enum
   gets the shared members transitively — the projection still materializes its own
