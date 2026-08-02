@@ -68,6 +68,7 @@ from ..shared.base_types import (
     TYPE_IDENTITY,
     TYPE_INDEX,
     TYPE_LAYOUT,
+    TYPE_METADATA,
     TYPE_OBJECT,
     TYPE_ORIGIN,
     TYPE_RELATIONSHIP,
@@ -595,6 +596,33 @@ def _validate_enum_values(
                 MetaError(
                     f"{label} attribute '@{FIELD_ATTR_VALUES}' contains duplicate members",
                     ErrorCode.ERR_BAD_ATTR_VALUE,
+                    envelope=node.source,
+                )
+            )
+
+        # #246: own @values AND extends a shared package-level abstract enum —
+        # one shared enum type has one member set, so the own @values would be
+        # silently dropped by the shared-enum codegen collapse. "Shared" means
+        # the resolved super is abstract AND declared at metadata-root (its
+        # parent is the metadata.root node, not nested inside an object) — a
+        # concrete super, or a non-root abstract super (e.g. nested inside an
+        # object), is legal and not flagged. Mirrors the TS reference
+        # (attr-schema-validate.ts).
+        sup = node.super_data
+        if (
+            sup is not None
+            and sup.is_abstract
+            and sup.parent is not None
+            and sup.parent.type == TYPE_METADATA
+        ):
+            errors.append(
+                MetaError(
+                    f"{label} declares its own '@{FIELD_ATTR_VALUES}' but extends "
+                    f"a shared package-level abstract enum — one shared enum type "
+                    f"has one member set. Remove the own '@{FIELD_ATTR_VALUES}' to "
+                    f"inherit the shared set, or extend a concrete (non-shared) "
+                    f"enum instead",
+                    ErrorCode.ERR_ENUM_EXTENDS_VALUES_CONFLICT,
                     envelope=node.source,
                 )
             )
