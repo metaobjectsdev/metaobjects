@@ -5,6 +5,7 @@
         "object.entity": {
           "name": "Subscriber",
           "children": [
+            { "source.rdb": {} },
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "email", "@required": true } },
             { "field.string": { "name": "firstName", "@required": true } },
@@ -21,6 +22,7 @@
         "object.entity": {
           "name": "Program",
           "children": [
+            { "source.rdb": {} },
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "slug", "@required": true } },
             { "field.string": { "name": "title", "@required": true } },
@@ -37,6 +39,7 @@
         "object.entity": {
           "name": "Week",
           "children": [
+            { "source.rdb": {} },
             { "field.long": { "name": "id" } },
             { "field.long": { "name": "programId", "@required": true } },
             { "field.int": { "name": "weekNumber", "@required": true } },
@@ -51,6 +54,7 @@
         "object.entity": {
           "name": "Workout",
           "children": [
+            { "source.rdb": {} },
             { "field.long": { "name": "id" } },
             { "field.long": { "name": "weekId", "@required": true } },
             { "field.int": { "name": "dayNumber", "@required": true } },
@@ -65,6 +69,7 @@
         "object.entity": {
           "name": "Video",
           "children": [
+            { "source.rdb": {} },
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "bunnyVideoId", "@required": true } },
             { "field.string": { "name": "title", "@required": true } },
@@ -86,6 +91,7 @@
         "object.entity": {
           "name": "MediaAsset",
           "children": [
+            { "source.rdb": {} },
             { "field.uuid": { "name": "id" } },
             { "field.string": { "name": "storageKey", "@required": true } },
             { "field.string": { "name": "caption", "@default": "n/a (unknown)" } },
@@ -109,6 +115,7 @@
         "object.entity": {
           "name": "Exercise",
           "children": [
+            { "source.rdb": {} },
             { "field.long": { "name": "id" } },
             { "field.long": { "name": "workoutId", "@required": true } },
             { "field.long": { "name": "videoId" } },

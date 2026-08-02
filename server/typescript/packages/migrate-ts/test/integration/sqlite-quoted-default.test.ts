@@ -31,6 +31,7 @@ const META = JSON.stringify({
         "object.entity": {
           name: "Quip",
           children: [
+            { "source.rdb": {} },
             { "field.long": { name: "id" } },
             // The quote-bearing literal default under test.
             { "field.string": { name: "greeting", "@default": "don't panic", "@required": true } },

@@ -94,7 +94,7 @@ export { isTphSubtype, tphDiscriminatorPin } from "./templates/zod-validators.js
 // package-internal relative path. These are the assembly pieces the built-in
 // entity/queries composers use; the reference templates relocate that assembly.
 export { renderTphDiscriminatorUnion } from "./templates/tph-discriminator.js";
-export { hasWritableRdbSource } from "./source-detect.js";
+export { hasWritableRdbSource, hasAnyRdbSource } from "./source-detect.js";
 export { renderSharedEnumsFile, SHARED_ENUMS_BASENAME } from "./templates/enums-file.js";
 
 // ADR-0034 scaffold-and-own — reader for the copyable reference generators in

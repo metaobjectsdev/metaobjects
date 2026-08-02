@@ -5,6 +5,7 @@
         "object.entity": {
           "name": "Program",
           "children": [
+            { "source.rdb": {} },
             { "field.long": { "name": "id" } },
             { "field.string": { "name": "slug", "@required": true } },
             { "field.string": { "name": "title", "@required": true } },
@@ -17,6 +18,7 @@
         "object.entity": {
           "name": "Week",
           "children": [
+            { "source.rdb": {} },
             { "field.long": { "name": "id" } },
             { "field.long": { "name": "programId", "@required": true } },
             { "field.int": { "name": "weekNumber", "@required": true } },

@@ -112,7 +112,7 @@ async function insertIsRejected(stmt: string): Promise<boolean> {
 // --- metadata + pipeline helpers -------------------------------------------
 
 function entity(name: string, children: unknown[]): unknown {
-  return { "object.entity": { name, children } };
+  return { "object.entity": { name, children: [{ "source.rdb": {} }, ...children] } };
 }
 function rootMeta(children: unknown[]): string {
   return JSON.stringify({ "metadata.root": { package: "acme", children } });

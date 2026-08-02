@@ -42,6 +42,7 @@ function meta(opts: { summaryFields: string[] }): string {
       "package": "acme",
       "children": [
         { "object.entity": { "name": "Program", "children": [
+          { "source.rdb": {} },
           { "field.long":   { "name": "id" } },
           { "field.string": { "name": "title",  "@required": true } },
           { "field.string": { "name": "status", "@required": true } },
@@ -49,6 +50,7 @@ function meta(opts: { summaryFields: string[] }): string {
           { "relationship.aggregation": { "name": "weeks", "@cardinality": "many", "@objectRef": "Week" } }
         ] } },
         { "object.entity": { "name": "Week", "children": [
+          { "source.rdb": {} },
           { "field.long": { "name": "id" } },
           { "field.long": { "name": "programId", "@required": true } },
           { "identity.primary":   { "name": "id", "@fields": "id", "@generation": "increment" } },
@@ -84,6 +86,7 @@ function metaSql(): string {
       "package": "acme",
       "children": [
         { "object.entity": { "name": "Program", "children": [
+          { "source.rdb": {} },
           { "field.long":   { "name": "id" } },
           { "field.string": { "name": "title",  "@required": true } },
           { "field.string": { "name": "status", "@required": true } },
@@ -106,6 +109,7 @@ function metaUnmanagedView(): string {
   return `{
     "metadata.root": { "package": "acme", "children": [
       { "object.entity": { "name": "Program", "children": [
+        { "source.rdb": {} },
         { "field.long":   { "name": "id" } },
         { "field.string": { "name": "title", "@required": true } },
         { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }

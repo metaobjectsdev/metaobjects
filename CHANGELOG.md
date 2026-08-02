@@ -5,11 +5,14 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
-## [Unreleased]
+## [0.20.10] — 2026-08-02
 
-**Coordinated PATCH (all 5 ports)** — will release across npm / PyPI / Maven Central / NuGet
-together when cut; #228 is a cross-port fix. Existing `meta gen` output is byte-identical for
-every model without a cross-package short-name collision.
+**Coordinated PATCH** — npm `0.20.10` · PyPI `0.19.9` · NuGet `0.19.7` · Maven Central `7.11.7`.
+This cut bundles the cross-port **#228** (all 5 ports — the reason for the coordinated release)
+with two **npm-only** fixes, **#248** and **#255** (`migrate-ts` + `codegen-ts`; schema/DDL is
+TS-owned, ADR-0015, so no other port has the changed code). Existing `meta gen` / `meta migrate`
+output is byte-identical for every model without a cross-package short-name collision (#228),
+without a sourceless object (#248), and without a drop-before-column migration (#255).
 
 ### Fixed — extract/output-parser tier and build-time `@payloadRef`/`@responseRef` resolution under a cross-package payload collision (#228)
 
@@ -60,6 +63,64 @@ port's toolchain supports it). Reuses `ERR_PAYLOAD_NAME_COLLISION` — no new er
 metamodel vocabulary (ADR-0023 unaffected). See
 [ADR-0044](spec/decisions/ADR-0044-payload-record-naming-cross-package-collision.md), whose
 Consequences section now marks this recurrence closed.
+
+### Fixed — persistability derives from a declared/inherited source, never object subtype (#248)
+
+**npm-only** (`migrate-ts` + `codegen-ts`; PyPI / NuGet / Maven Central unchanged — schema
+migrations and this codegen tier are TS-owned artifacts, ADR-0015, and no other port emits
+DDL). Both `migrate-ts`'s expected-schema builder and `codegen-ts`'s query/route/api-doc
+emitters decided "is this object persisted?" against a hardcoded `subType === "value"`
+compare (migrate) or a subtype allowlist (codegen), instead of asking whether the object
+declares — or inherits via `extends` — a `source.*` child, which is the loader's own
+already-published contract (`validate-source-roles`: an object with zero sources loads clean
+and means "not persisted"). Any OTHER provider-registered `object` subtype with no source fell
+through both gates and was silently treated as persisted.
+
+- **`meta migrate` / `meta verify --db|--d1`:** a sourceless object no longer produces a
+  phantom `CREATE TABLE` (with a fabricated physical table name) and is no longer eligible as
+  a foreign-key target. Reported blast radius: a package of roughly 150 wire-protocol message
+  objects modeled as a registered custom `object` subtype, co-loaded with domain entities so
+  messages could reference them, produced well over a hundred phantom `CREATE TABLE`
+  statements — making `meta migrate` and `meta verify --db` unusable against that model.
+- **`meta gen`:** queries/routes (both the Fastify and Hono generators) and api-doc CRUD are
+  no longer emitted for a sourceless object, gated on the presence of a `source.rdb` of any
+  kind (a new `hasAnyRdbSource` check) — matching the Drizzle table tier's existing
+  `hasWritableRdbSource` gate. This also closes a pre-existing fail-open where a plain
+  `object.value` got a broken `*.routes.ts` file, importing a table const and
+  filter/sort allowlists that don't exist for a value object.
+
+This is a bugfix, not a behavior-contract change — it aligns both tiers to an invariant the
+loader already enforces. `meta gen` / `meta migrate` output is **byte-identical** for
+well-formed models (every table-owning object declares or inherits a source, the norm); the
+only delta is that files which could never have typechecked (importing exports that don't
+exist) stop being emitted.
+
+**Migration note for models already bitten by the bug:** a database or migration snapshot
+that already contains phantom tables (created by applying a pre-fix migration) will correctly
+propose `DROP TABLE` for them on the next `meta migrate` — destructive-gated behind the
+existing `--allow drop-table` policy, so nothing drops without explicit opt-in.
+Previously-generated broken `*.queries.ts` / `*.routes.ts` files are **not** auto-pruned
+(`meta gen` never deletes existing files) — remove them by hand.
+
+### Fixed — migrate emits constraint/index DROPs before DROP COLUMN so referenced-column drops apply (#255)
+
+**npm-only** (`migrate-ts`; PyPI / NuGet / Maven Central unchanged — schema migrations are
+TS-owned, ADR-0015). The SQL emitter's stage ordering ran `DROP COLUMN` before `DROP CONSTRAINT`
+(foreign key / check) and `DROP INDEX`, so dropping a column that a still-present foreign key
+referenced — or that a still-present index backed — produced an **un-appliable** migration
+(`cannot drop column … because other objects depend on it`). Both the Postgres and SQLite
+emitters now hoist every constraint/index drop ahead of column mutation: `drop-fk`/`drop-check`
+first, then `drop-index` (a foreign key depends on the unique/PK index backing its target, so the
+FK must be dropped before that index), then the column ops; the matching adds
+(`add-fk`/`add-check`/`add-index`) stay after column mutation (they reference columns that must
+already exist). Reproduced against a real Postgres before fixing (emit → apply → introspect →
+re-diff-empty), including the combined FK + backing-index + column-drop case.
+
+Byte-identical for any migration that contains none of `drop-fk` / `drop-check` / `drop-index`. A
+migration that combines one of those drops with a column change now emits the same statements in
+the corrected order — **re-review any committed-but-not-yet-applied migration file** that drops a
+foreign key / check / index alongside a column, since its statement order changes (and will now
+apply where it previously failed).
 
 ## [0.20.9] — 2026-07-28
 

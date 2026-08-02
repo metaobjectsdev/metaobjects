@@ -110,6 +110,7 @@ import { getPkInfo } from "../templates/queries.js";
 import { isTphSubtype } from "../templates/zod-validators.js";
 import { isTphDiscriminatorBase } from "../templates/tph-discriminator.js";
 import { isCallableEntity } from "../templates/callable-file.js";
+import { hasAnyRdbSource } from "../source-detect.js";
 import { CODEGEN_ATTR_EMIT_ROUTES } from "../constants.js";
 import { resourcePath } from "../templates/entity-constants.js";
 import { isProjection } from "../projection/projection-detector.js";
@@ -334,10 +335,13 @@ function stripTs(path: string): string {
 // ---------------------------------------------------------------------------
 
 /** Mirror of the queries generator's filter (queries-file.ts `skipNonQueryable`
- *  = `subType !== OBJECT_SUBTYPE_VALUE && !isTphSubtype`). A queryable entity is
- *  any non-value, non-TPH-subtype object:
- *   • Value objects have no primary identity → the queries/routes/validation
- *     generators emit no CRUD for them.
+ *  = `hasAnyRdbSource(e) && !isTphSubtype(e)`, #248 R2). A queryable object is
+ *  any source-backed, non-TPH-subtype object:
+ *   • An object with no declared/inherited source.rdb (of ANY kind) isn't
+ *     backed by any store → the queries/routes/validation generators emit no
+ *     CRUD for it. Value objects are subsumed here: value purity (ADR-0028)
+ *     bans sources on values, loader-enforced, so no loadable value ever has
+ *     hasAnyRdbSource === true.
  *   • TPH subtypes (@discriminatorValue under a @discriminator base) emit no
  *     standalone queries/routes file — their surface lives in the discriminator
  *     BASE's polymorphic file (routes-file.ts:27 + queries-file.ts:21-22).
@@ -345,7 +349,7 @@ function stripTs(path: string): string {
  *  per-subtype polymorphic helpers + subpaths are a documented deferral — see
  *  the module header.) */
 function isQueryable(obj: MetaObject): boolean {
-  return obj.subType !== OBJECT_SUBTYPE_VALUE && !isTphSubtype(obj);
+  return hasAnyRdbSource(obj) && !isTphSubtype(obj);
 }
 
 /** Whether the routes generator emits REST routes for this entity. It filters

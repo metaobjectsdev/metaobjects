@@ -24,10 +24,12 @@ async function loadDoc(doc: unknown) {
 function weekDoc(rel: Record<string, unknown> | undefined) {
   return { "metadata.root": { package: "acme", children: [
     { "object.entity": { name: "Program", children: [
+      { "source.rdb": {} },
       { "field.long": { name: "id" } },
       { "identity.primary": { "name": "id", "@fields": "id" } },
     ] } },
     { "object.entity": { name: "Week", children: [
+      { "source.rdb": {} },
       { "field.long": { name: "id" } },
       { "field.long": { name: "programId" } },
       ...(rel ? [rel] : []),
@@ -155,10 +157,12 @@ describe("end-to-end FK actions in emitted DDL", () => {
 function weekDocRef(refAttrs: Record<string, unknown>, rel?: Record<string, unknown>) {
   return { "metadata.root": { package: "acme", children: [
     { "object.entity": { name: "Program", children: [
+      { "source.rdb": {} },
       { "field.long": { name: "id" } },
       { "identity.primary": { "name": "id", "@fields": "id" } },
     ] } },
     { "object.entity": { name: "Week", children: [
+      { "source.rdb": {} },
       { "field.long": { name: "id" } },
       { "field.long": { name: "programId" } },
       ...(rel ? [rel] : []),

@@ -1,6 +1,7 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { perEntity, type Generator, type GeneratorFactory } from "../generator.js";
 import { renderRoutesFileHono } from "../templates/routes-file-hono.js";
+import { hasAnyRdbSource } from "../source-detect.js";
 import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";
 import { CODEGEN_ATTR_EMIT_ROUTES } from "../constants.js";
@@ -22,6 +23,10 @@ export interface RoutesFileHonoOpts {
  *
  * Per-entity opt-out via `@emitRoutes: false` is honored. If the user
  * supplies their own filter, both must pass (AND).
+ *
+ * #248 R2: an object with no declared/inherited source.rdb (of ANY kind) isn't
+ * backed by any store — gated by `hasAnyRdbSource` (does NOT add TPH handling;
+ * that gap is pre-existing and out of scope here).
  */
 export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts): Generator {
   const userFilter = opts?.filter ?? (() => true);
@@ -31,7 +36,8 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
     // `ctx.config.includeHonoRoutes` and api-docs auto-documents the Hono surface.
     emitsHonoRoutes: true,
     // ADR-0039: resolving — a concrete entity may inherit @emitRoutes via extends.
-    filter: (e: MetaObject) => e.attr(CODEGEN_ATTR_EMIT_ROUTES) !== false && userFilter(e),
+    filter: (e: MetaObject) =>
+      e.attr(CODEGEN_ATTR_EMIT_ROUTES) !== false && hasAnyRdbSource(e) && userFilter(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("routes-file-hono: renderContext is required (provided by runGen)");

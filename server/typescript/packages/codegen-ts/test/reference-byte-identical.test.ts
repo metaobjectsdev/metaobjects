@@ -55,10 +55,12 @@ describe("ADR-0034 — reference templates are byte-identical to built-ins", () 
       try {
         const a = await gen(aDir, [builtinEntity(), builtinQueries(), builtinRoutes(), builtinBarrel()], result.root);
         const b = await gen(bDir, [refEntity(), refQueries(), refRoutes(), refBarrel()], result.root);
+        const aKeys = Object.keys(a).sort();
+        const bKeys = Object.keys(b).sort();
         // same set of files
-        expect(Object.keys(b).sort()).toEqual(Object.keys(a).sort());
-        // byte-identical contents
-        for (const k of Object.keys(a)) {
+        expect(bKeys).toEqual(aKeys);
+        // byte-identical contents for every file both sides agree on emitting
+        for (const k of aKeys) {
           expect(`${k}:\n${b[k]}`).toBe(`${k}:\n${a[k]}`);
         }
       } finally {
