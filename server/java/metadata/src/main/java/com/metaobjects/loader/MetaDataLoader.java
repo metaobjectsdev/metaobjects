@@ -1312,6 +1312,11 @@ public class MetaDataLoader implements LoaderConfigurable {
      * Internal initialization method with concurrent protection
      */
     private MetaDataLoader initWithConcurrencyProtection(long timeoutMs) {
+        // #233: deterministically warm the process-global registry singletons on the
+        // caller thread BEFORE any parallel first-init can race their independent locks.
+        // Covers every loader embedder (Spring, parallel test runners, servers), not
+        // just Maven. Idempotent (no-op after the first init in this JVM).
+        com.metaobjects.registry.RegistryBootstrap.warmUpDefaults();
         String loaderKey = buildLoaderKey();
 
         CompletableFuture<MetaDataLoader> loadingFuture = activeLoaders.computeIfAbsent(loaderKey,

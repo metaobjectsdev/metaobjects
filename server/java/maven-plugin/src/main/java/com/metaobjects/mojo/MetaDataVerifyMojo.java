@@ -104,6 +104,9 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
+        // #233: warm the global registry singletons before verify builds its loader,
+        // for the same reason as the generate path (this mojo has its own execute()).
+        com.metaobjects.registry.RegistryBootstrap.warmUpDefaults();
         if (getLoader() == null) {
             throw new MojoExecutionException("No <loader> element was defined");
         }
