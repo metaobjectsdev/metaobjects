@@ -5,15 +5,22 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
-## [Unreleased]
+## [0.20.11] — 2026-08-02
 
-Shared-enum cross-package hardening (**#246** + its sibling **#259**), plus an **npm-only**
-migrate-ts fix (**#258**). When cut this releases as a coordinated PATCH — the loader change
-(#246) lands in all five ports, the Kotlin codegen changes (#246 Bug 1, #259) land on Maven
-Central, and #258 lands on npm only (`migrate-ts` + `cli`; schema/migrate is TS-owned, ADR-0015);
-no metadata vocabulary changes, byte-identical output for any model that doesn't hit the specific
-cross-package/two-hop enum shapes below (and, for #258, any migration that isn't a primary-key
-move).
+**Coordinated PATCH** — npm `0.20.11` · PyPI `0.20.11` · NuGet `0.20.11` · Maven Central `7.20.11`.
+This cut also **re-baselines the version numbers**: the three semver-`0.x` registries (npm/PyPI/NuGet)
+now share one number (`0.20.11`), and Maven aligns its `minor.patch` to match (`7.20.11`, keeping its
+historical major `7`), so "the 20.11 release" maps across every registry. PyPI (`0.19.9` → `0.20.11`)
+and NuGet (`0.19.7` → `0.20.11`) jump forward to align; Maven jumps `7.11.7` → `7.20.11` (semver-legal
+forward gaps). Going forward, coordinated releases keep the shared minor in lockstep; npm may run a
+patch ahead between cuts (it carries npm-only migrate fixes). See `docs/RELEASING.md`.
+
+Contents: the shared-enum cross-package hardening (**#246** + its sibling **#259**) lands the loader
+change (#246) in all five ports and the Kotlin codegen changes (#246 Bug 1, #259) on Maven Central;
+plus an **npm-only** migrate-ts fix (**#258**, `migrate-ts` + `cli`; schema/migrate is TS-owned,
+ADR-0015). No metadata vocabulary changes; byte-identical output for any model that doesn't hit the
+specific cross-package/two-hop enum shapes below (and, for #258, any migration that isn't a
+primary-key move).
 
 - **#246 — a `field.enum` may now be shared across packages, and a conflicting redeclaration is
   rejected instead of silently dropped.** Two independent fixes:

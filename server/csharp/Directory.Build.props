@@ -8,7 +8,7 @@
   -->
 
   <PropertyGroup>
-    <Version>0.19.7</Version>
+    <Version>0.20.11</Version>
     <Authors>Doug Mealing</Authors>
     <Company>Doug Mealing LLC</Company>
     <Product>MetaObjects</Product>
