@@ -99,6 +99,26 @@ existing `--allow drop-table` policy, so nothing drops without explicit opt-in.
 Previously-generated broken `*.queries.ts` / `*.routes.ts` files are **not** auto-pruned
 (`meta gen` never deletes existing files) — remove them by hand.
 
+### Fixed — migrate emits constraint/index DROPs before DROP COLUMN so referenced-column drops apply (#255)
+
+**npm-only** (`migrate-ts`; PyPI / NuGet / Maven Central unchanged — schema migrations are
+TS-owned, ADR-0015). The SQL emitter's stage ordering ran `DROP COLUMN` before `DROP CONSTRAINT`
+(foreign key / check) and `DROP INDEX`, so dropping a column that a still-present foreign key
+referenced — or that a still-present index backed — produced an **un-appliable** migration
+(`cannot drop column … because other objects depend on it`). Both the Postgres and SQLite
+emitters now hoist every constraint/index drop ahead of column mutation: `drop-fk`/`drop-check`
+first, then `drop-index` (a foreign key depends on the unique/PK index backing its target, so the
+FK must be dropped before that index), then the column ops; the matching adds
+(`add-fk`/`add-check`/`add-index`) stay after column mutation (they reference columns that must
+already exist). Reproduced against a real Postgres before fixing (emit → apply → introspect →
+re-diff-empty), including the combined FK + backing-index + column-drop case.
+
+Byte-identical for any migration that contains none of `drop-fk` / `drop-check` / `drop-index`. A
+migration that combines one of those drops with a column change now emits the same statements in
+the corrected order — **re-review any committed-but-not-yet-applied migration file** that drops a
+foreign key / check / index alongside a column, since its statement order changes (and will now
+apply where it previously failed).
+
 ## [0.20.9] — 2026-07-28
 
 **npm-only** — `migrate-ts` + `codegen-ts` (schema migrations and projection-view codegen
