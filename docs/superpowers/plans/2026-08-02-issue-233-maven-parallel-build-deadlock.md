@@ -14,7 +14,7 @@
 - Metamodel strings via constants where a constant exists; no `own*()` accessor misuse (not relevant here).
 - No backwards-compat hacks; no `any`-equivalent shortcuts.
 - Byte-identical generated output for existing single-module builds (same shared sealed registry).
-- Commit author `Doug Mealing <doug@dougmealing.com>`; trailers `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` + `Claude-Session: https://claude.ai/code/session_01HLoJkFSyoticveo5ehMUAr`.
+- Commit author + the standard `Co-Authored-By` / `Claude-Session` trailers per the repo's commit convention.
 - Scope: Java maven-plugin + metadata registry only (Maven `7.x` line). No TS/Python/C#/Kotlin product changes.
 - Fix bugs in place; no new follow-up tickets.
 
@@ -132,7 +132,7 @@ B's init() rode module A's future and returned A, leaving B's tree empty.
 Append a process-unique instanceId so dedup only coalesces the same instance.
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01HLoJkFSyoticveo5ehMUAr
+Claude-Session: <session-url>
 MSG
 )"
 ```
@@ -266,7 +266,7 @@ under one lock, so a concurrent first-init cannot deadlock on their
 independent locks. Idempotent; failure propagates.
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01HLoJkFSyoticveo5ehMUAr
+Claude-Session: <session-url>
 MSG
 )"
 ```
@@ -344,7 +344,7 @@ and the generate/docs/editor + verify mojo execute()s (covers Maven's
 pre-init eager getTypeRegistry() first-touch).
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01HLoJkFSyoticveo5ehMUAr
+Claude-Session: <session-url>
 MSG
 )"
 ```
@@ -437,7 +437,7 @@ atomically with the fix. editor (direct-invocation) and agent-docs (stub)
 are correctly left unmarked.
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01HLoJkFSyoticveo5ehMUAr
+Claude-Session: <session-url>
 MSG
 )"
 ```
@@ -502,7 +502,7 @@ and all three must complete without deadlock (Part A). timeoutInSeconds makes
 a reintroduced hang fail rather than wedge CI.
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01HLoJkFSyoticveo5ehMUAr
+Claude-Session: <session-url>
 MSG
 )"
 ```

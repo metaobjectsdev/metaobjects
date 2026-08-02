@@ -37,6 +37,14 @@ public class RegistryBootstrapTest {
         assertSame(sealed1, RegistryManifest.defaultLoaderRegistry());
     }
 
+    /**
+     * Concurrent callers do not throw or hang. NOTE: this cannot reproduce the #233
+     * cold first-init deadlock — the three singletons are process-global with no reset,
+     * so whichever test ran first already flipped {@code warmedUp}, and every caller
+     * here hits the lock-free fast path. Faithful cold-init reproduction needs a fresh
+     * JVM (the real {@code mvn -T} reactor); that before/after is verified manually and
+     * recorded in the design doc.
+     */
     @Test(timeout = 30_000)
     public void warmUpIsThreadSafeUnderConcurrentCallers() throws Exception {
         int n = 8;
