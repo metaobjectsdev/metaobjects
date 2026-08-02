@@ -5,11 +5,14 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
-## [Unreleased]
+## [0.20.10] — 2026-08-02
 
-**Coordinated PATCH (all 5 ports)** — will release across npm / PyPI / Maven Central / NuGet
-together when cut; #228 is a cross-port fix. Existing `meta gen` output is byte-identical for
-every model without a cross-package short-name collision.
+**Coordinated PATCH** — npm `0.20.10` · PyPI `0.19.9` · NuGet `0.19.7` · Maven Central `7.11.7`.
+This cut bundles the cross-port **#228** (all 5 ports — the reason for the coordinated release)
+with two **npm-only** fixes, **#248** and **#255** (`migrate-ts` + `codegen-ts`; schema/DDL is
+TS-owned, ADR-0015, so no other port has the changed code). Existing `meta gen` / `meta migrate`
+output is byte-identical for every model without a cross-package short-name collision (#228),
+without a sourceless object (#248), and without a drop-before-column migration (#255).
 
 ### Fixed — extract/output-parser tier and build-time `@payloadRef`/`@responseRef` resolution under a cross-package payload collision (#228)
 
