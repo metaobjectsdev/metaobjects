@@ -1,0 +1,75 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "field.enum": {
+          "name": "SharedStatus",
+          "package": "demo",
+          "abstract": true,
+          "@values": [
+            "DRAFT",
+            "PUBLISHED",
+            "ARCHIVED"
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.uuid": {
+                "name": "id"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "status",
+                "extends": "demo::SharedStatus"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "ProgramView",
+          "children": [
+            {
+              "field.uuid": {
+                "name": "id",
+                "extends": "demo::Program.id"
+              }
+            },
+            {
+              "field.enum": {
+                "name": "status",
+                "extends": "demo::Program.status"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "demo::Program.id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
