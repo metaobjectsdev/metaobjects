@@ -45,7 +45,8 @@ import java.util.Map;
  */
 @Mojo(name = "docs",
         requiresDependencyResolution = ResolutionScope.COMPILE_PLUS_RUNTIME,
-        defaultPhase = LifecyclePhase.GENERATE_RESOURCES)
+        defaultPhase = LifecyclePhase.GENERATE_RESOURCES,
+        threadSafe = true)   // #233
 public class DocsMojo extends AbstractMetaDataMojo {
 
     private static final String LANG_JAVA = "java";

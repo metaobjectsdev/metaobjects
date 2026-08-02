@@ -66,7 +66,8 @@ import java.util.TreeSet;
  */
 @Mojo(name = "verify",
         requiresDependencyResolution = ResolutionScope.COMPILE_PLUS_RUNTIME,
-        defaultPhase = LifecyclePhase.VERIFY)
+        defaultPhase = LifecyclePhase.VERIFY,
+        threadSafe = true)   // #233
 public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
 
     /** Arg used by {@link GeneratorBase} to locate each generator's output root. */
