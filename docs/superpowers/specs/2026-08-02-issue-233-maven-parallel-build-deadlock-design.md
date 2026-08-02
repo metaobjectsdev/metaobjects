@@ -162,12 +162,18 @@ has no external callers. `instanceId` participates in **nothing** but the key (n
   trivial `buildLoaderKey()`-uniqueness unit test across two identically-named instances.
 - **Part A (metadata module).** `warmUpDefaults()` idempotent + thread-safe under N concurrent
   callers (all complete; the three singletons non-null and identical across calls).
-- **Part A deadlock guard (faithful, end-to-end).** A **maven-invoker IT**: a 3-module reactor —
-  two modules sharing a `<loader>` name, one distinct — built with `mvn -T4 generate-sources`,
-  `invoker.timeoutInSeconds` set so a regression **fails** rather than wedging CI. Exercises Part A
-  (no deadlock) **and** Part B (each module generates its own output) end-to-end. Runs in the
-  local-ci Java lane (hosted CI does not gate Java on PRs). This is the only surface a source-level
-  unit test structurally cannot see (same lesson as ADR-0045: verify against the integration surface).
+- **End-to-end `-T4` reactor verification (manual, documented — NOT a committed IT).** A 3-module
+  reactor — mod-a + mod-b sharing `<loader> name=shared`, mod-c distinct — each binding
+  `metaobjects:docs` (loads metadata, no `<generators>` config needed), built with `mvn -T4`. A
+  committed maven-invoker IT was **considered and declined**: the Part B collision it would catch is
+  already deterministically covered by `LoaderKeyIsolationTest`, and the Part A deadlock is
+  probabilistic (didn't surface end-to-end because the Part B collision fails the build first), so an
+  invoker IT adds heavy infra (invoker plugin + local-repo plumbing + the plugin's full dep tree) for
+  mostly-redundant, partly-probabilistic coverage. Instead the fix was verified by a before/after run
+  (see result below).
+  **Result:** pre-fix (`origin/main` plugin) **8/8** `-T4` runs FAILED — the shared-name module errored
+  `MetaDataLoader [shared] is not usable. Phase: UNINITIALIZED` (the exact Part B collision);
+  post-fix **5/5** `-T4` runs succeeded with each module correctly emitting only its own entity.
 - **maven-plugin (MojoRule).** Existing generate/verify/docs tests stay green (**byte-identical**
   output — same shared sealed registry, only the getInstance-vs-defaultLoaderRegistry *build order*
   flips, and they are independent registries). A reflection test asserting generate/verify/docs are
@@ -183,8 +189,8 @@ correctness, not the hang. Part B **is** deterministically tested.
 
 ## Verification checklist
 
-- [ ] Existing maven-plugin MojoRule generate/verify/docs output byte-identical.
-- [ ] Part B concurrent test fails on `main`, passes with the fix.
-- [ ] Invoker `-T4` reactor completes; each module emits its own output.
-- [ ] `metadata` + `maven-plugin` + `codegen-kotlin` + `codegen-spring` suites green.
-- [ ] generate/verify/docs mojos report `threadSafe = true`.
+- [x] Existing maven-plugin MojoRule tests green (24); metadata suite green (1272) — behavior byte-identical.
+- [x] `LoaderKeyIsolationTest` (Part B) — distinct instances get distinct keys; pre-fix would collide.
+- [x] Manual `-T4` reactor: pre-fix 8/8 FAIL (`... is not usable. Phase: UNINITIALIZED`), post-fix 5/5 pass with per-module isolation.
+- [ ] `metadata` + `maven-plugin` + `codegen-kotlin` + `codegen-spring` suites green (Task 6 full pass).
+- [x] generate/verify/docs mojos report `threadSafe = true` (`MojoThreadSafeDescriptorTest`).
