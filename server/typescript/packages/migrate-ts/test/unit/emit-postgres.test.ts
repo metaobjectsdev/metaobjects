@@ -205,6 +205,54 @@ describe("renderPostgres — statement ordering", () => {
     expect(idxCreate).toBeLessThan(idxAdd);
     expect(idxAdd).toBeLessThan(idxDrop);
   });
+
+  // #255 — a DROP CONSTRAINT for an FK still referencing a column must run
+  // before that column's DROP COLUMN, or Postgres refuses at apply time with
+  // "cannot drop column … because other objects depend on it".
+  test("drop-fk runs before drop-column for the column it references (#255)", () => {
+    const changes: Change[] = [
+      { kind: "drop-column", table: "weeks", column: "program_id", status: ALLOWED },
+      { kind: "drop-fk", table: "weeks", fk: "weeks_program_id_fk", status: ALLOWED },
+    ];
+    const { up } = emit(changes, { dialect: "postgres" });
+    const idxDropConstraint = up.indexOf("DROP CONSTRAINT");
+    const idxDropColumn = up.indexOf("DROP COLUMN");
+    expect(idxDropConstraint).toBeGreaterThanOrEqual(0);
+    expect(idxDropColumn).toBeGreaterThanOrEqual(0);
+    expect(idxDropConstraint).toBeLessThan(idxDropColumn);
+  });
+
+  // Same invariant for drop-check — a CHECK constraint on a column must be
+  // dropped before that column is dropped.
+  test("drop-check runs before drop-column for the column it constrains (#255)", () => {
+    const changes: Change[] = [
+      { kind: "drop-column", table: "orders", column: "qty", status: ALLOWED },
+      { kind: "drop-check", table: "orders", check: "orders_qty_chk", status: ALLOWED },
+    ];
+    const { up } = emit(changes, { dialect: "postgres" });
+    const idxDropConstraint = up.indexOf("DROP CONSTRAINT");
+    const idxDropColumn = up.indexOf("DROP COLUMN");
+    expect(idxDropConstraint).toBeGreaterThanOrEqual(0);
+    expect(idxDropColumn).toBeGreaterThanOrEqual(0);
+    expect(idxDropConstraint).toBeLessThan(idxDropColumn);
+  });
+
+  // add-fk must still run AFTER column mutation (the referenced column must
+  // already exist) — only the DROP direction was hoisted.
+  test("add-fk still runs after add-column (adds are unaffected by #255)", () => {
+    const changes: Change[] = [
+      { kind: "add-fk", table: "weeks",
+        fk: { name: "weeks_program_id_fk", columns: ["program_id"], refTable: "programs", refColumns: ["id"] },
+        status: ALLOWED },
+      { kind: "add-column", table: "weeks", column: { name: "program_id", sqlType: { kind: "integer", bits: 64 }, nullable: true }, status: ALLOWED },
+    ];
+    const { up } = emit(changes, { dialect: "postgres" });
+    const idxAddColumn = up.indexOf("ADD COLUMN");
+    const idxAddConstraint = up.indexOf("ADD CONSTRAINT");
+    expect(idxAddColumn).toBeGreaterThanOrEqual(0);
+    expect(idxAddConstraint).toBeGreaterThanOrEqual(0);
+    expect(idxAddColumn).toBeLessThan(idxAddConstraint);
+  });
 });
 
 describe("renderPostgres — down statements", () => {

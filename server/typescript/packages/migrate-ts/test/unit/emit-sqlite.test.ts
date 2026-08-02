@@ -285,4 +285,64 @@ describe("renderSqlite — add-fk / drop-fk via recreate", () => {
     expect(up).toContain('CREATE TABLE "__new_weeks"');
     expect(up).not.toContain('REFERENCES');
   });
+
+  // #255 — drop-fk + drop-column on the SAME table both fold into ONE
+  // recreate-and-copy bundle regardless of STAGE_ORDER (bundling is by table,
+  // not by kind order), so the correct outcome — recreated table missing both
+  // the FK and the dropped column — already held pre-fix here. This pins that
+  // invariant so a future bundling change can't silently regress it.
+  test("drop-fk + drop-column on the same table: recreated table has neither (#255)", () => {
+    const newCols: ColumnDescriptor[] = [
+      { name: "id", sqlType: { kind: "integer", bits: 64 }, nullable: false, identity: "increment" },
+    ];
+    const expectedSchema: SchemaSnapshot = {
+      tables: [table("weeks", newCols, ["id"])],
+      views: [],
+    };
+    const { up } = emit(
+      [
+        { kind: "drop-column", table: "weeks", column: "program_id", status: ALLOWED },
+        { kind: "drop-fk", table: "weeks", fk: "weeks_program_id_fk", status: ALLOWED },
+      ],
+      { dialect: "sqlite", expectedSchema },
+    );
+    expect(up).toContain('CREATE TABLE "__new_weeks"');
+    expect(up).not.toContain("REFERENCES");
+    expect(up).not.toContain("program_id");
+  });
+
+  // #255 — the STAGE_ORDER-observable case for SQLite: a drop-fk on table B
+  // (always recreate-triggering) must sequence BEFORE a native drop-column on
+  // an unrelated table A that the dropped FK used to reference. Pre-fix,
+  // drop-column (stage 2) sorted before drop-fk (stage 5), so table A's
+  // column drop ran while table B's schema still declared the FK against it.
+  test("drop-fk on one table runs before a native drop-column on another table it referenced (#255)", () => {
+    const newProgramsCols: ColumnDescriptor[] = [
+      { name: "id", sqlType: { kind: "integer", bits: 64 }, nullable: false, identity: "increment" },
+    ];
+    const newWeeksCols: ColumnDescriptor[] = [
+      { name: "id", sqlType: { kind: "integer", bits: 64 }, nullable: false, identity: "increment" },
+    ];
+    const expectedSchema: SchemaSnapshot = {
+      tables: [
+        table("programs", newProgramsCols, ["id"]),
+        table("weeks", newWeeksCols, ["id"]),
+      ],
+      views: [],
+    };
+    const { up } = emit(
+      [
+        // drop-column on "programs" (native — not recreate-triggering on modern SQLite)
+        { kind: "drop-column", table: "programs", column: "code", status: ALLOWED },
+        // drop-fk on "weeks" (always recreate-triggering)
+        { kind: "drop-fk", table: "weeks", fk: "weeks_program_code_fk", status: ALLOWED },
+      ],
+      { dialect: "sqlite", expectedSchema },
+    );
+    const idxWeeksRecreate = up.indexOf('CREATE TABLE "__new_weeks"');
+    const idxProgramsDropColumn = up.indexOf('ALTER TABLE "programs" DROP COLUMN "code"');
+    expect(idxWeeksRecreate).toBeGreaterThanOrEqual(0);
+    expect(idxProgramsDropColumn).toBeGreaterThanOrEqual(0);
+    expect(idxWeeksRecreate).toBeLessThan(idxProgramsDropColumn);
+  });
 });

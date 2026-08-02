@@ -8,19 +8,33 @@ export interface CarryColumns { insertCols: string[]; selectCols: string[]; }
 
 // Stage ordering similar to PG; recreate-and-copy bundles get inserted
 // at their first triggering change's position in Task 23.
+//
+// #255: constraint DROPS and constraint ADDS share the same "constraint" kind
+// but need OPPOSITE ordering relative to column mutation — a drop must run
+// BEFORE the column change (the constraint must be gone before its column is
+// dropped, or the DDL fails on the referenced-column dependency), while an add
+// must run AFTER (the column it references must already exist). One stage
+// can't satisfy both, so drop-fk/drop-check are hoisted to stage 1 (alongside
+// create-table, before any column mutation); add-fk/add-check stay at stage 5.
+// (drop-fk/drop-check are always recreate-triggering on SQLite — see
+// RECREATE_TRIGGERING_KINDS below — so this mainly orders a drop-fk's
+// table-recreate ahead of a native drop-column on a DIFFERENT table it once
+// referenced; within the SAME table's recreate bundle, tableChanges order
+// doesn't affect the emitted recipe.)
 const STAGE_ORDER: Record<Change["kind"], number> = {
   // drop-view runs FIRST (mirrors postgres): a view that depends on a table about
   // to be recreated-and-copied must be dropped before the DROP TABLE / RENAME, or
   // SQLite's rename re-parses the dependent view and can error mid-recreate. The
   // diff's Pass 2c injects exactly this drop(before)/create(after) pair.
   "drop-view": 0,
+  "drop-fk": 1, "drop-check": 1,
   "create-table": 1,
   "add-column": 2, "drop-column": 2,
   "change-column-type": 2, "change-column-nullable": 2, "change-column-default": 2,
   "rename-column": 3, "rename-table": 3,
   "add-index": 4, "drop-index": 4,
-  "add-fk": 5, "drop-fk": 5,
-  "add-check": 5, "drop-check": 5,
+  "add-fk": 5,
+  "add-check": 5,
   "drop-table": 6,
   // create-view / replace-view run LAST — after every table change the view reads.
   "create-view": 99, "replace-view": 99,

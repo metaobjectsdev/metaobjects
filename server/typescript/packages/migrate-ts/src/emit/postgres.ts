@@ -7,18 +7,28 @@ import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 import { renderFingerprintMarker, viewFingerprint } from "../view-fingerprint.js";
 import { viewReplaceIsLegal } from "../view-column-types.js";
 
-// Stages run low → high. drop-view + drop-fk run BEFORE drop-table so a view
-// that depends on a soon-to-be-dropped table is removed first. create-view
-// runs AFTER add-fk so the view can reference the new schema in full.
+// Stages run low → high. drop-view runs BEFORE drop-table so a view that
+// depends on a soon-to-be-dropped table is removed first. create-view runs
+// AFTER add-fk so the view can reference the new schema in full.
+//
+// #255: constraint DROPS and constraint ADDS share the same "constraint" kind
+// but need OPPOSITE ordering relative to column mutation — a drop must run
+// BEFORE the column change (the constraint must be gone before its column is
+// dropped, or Postgres refuses `DROP COLUMN` with "other objects depend on
+// it"), while an add must run AFTER (the column it references must already
+// exist). One stage can't satisfy both, so drop-fk/drop-check are hoisted to
+// stage 1 (alongside create-table, before any column mutation); add-fk/
+// add-check stay at stage 5.
 const STAGE_ORDER: Record<Change["kind"], number> = {
   "drop-view": 0,
+  "drop-fk": 1, "drop-check": 1,
   "create-table": 1,
   "add-column": 2, "drop-column": 2,
   "change-column-type": 2, "change-column-nullable": 2, "change-column-default": 2,
   "rename-column": 3, "rename-table": 3,
   "add-index": 4, "drop-index": 4,
-  "add-fk": 5, "drop-fk": 5,
-  "add-check": 5, "drop-check": 5,
+  "add-fk": 5,
+  "add-check": 5,
   "drop-table": 6,
   "create-view": 7, "replace-view": 7,
 };
