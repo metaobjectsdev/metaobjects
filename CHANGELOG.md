@@ -5,6 +5,46 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
+## [Unreleased]
+
+Shared-enum cross-package hardening (**#246** + its sibling **#259**). When cut this releases
+as a coordinated PATCH — the loader change (#246) lands in all five ports, the Kotlin codegen
+changes (#246 Bug 1, #259) land on Maven Central; no metadata vocabulary changes, byte-identical
+output for any model that doesn't hit the specific cross-package/two-hop enum shapes below.
+
+- **#246 — a `field.enum` may now be shared across packages, and a conflicting redeclaration is
+  rejected instead of silently dropped.** Two independent fixes:
+  - **Kotlin codegen (Bug 1).** The Exposed table generator dropped the cross-package import for a
+    shared `field.enum`: when two entities in different packages `extends` one abstract enum
+    declared in a common package, the generated `<Entity>Table` referenced the shared enum by its
+    simple name but never imported it (`Unresolved reference`). It now emits the cross-package
+    import for enum columns on both the vanilla and TPH-fold paths, mirroring the existing
+    FK-import machinery. Same-package models are byte-identical (an enum in the table's own
+    package adds no import). Gated by a new `enum-xpkg` fixture + a `KotlinCompilation` compile-gate.
+  - **Cross-port loader error `ERR_ENUM_EXTENDS_VALUES_CONFLICT`.** A `field.enum` that both
+    `extends` a shared package-level abstract enum **and** declares its own `@values` now fails to
+    load (was silently dropped — one shared enum type has one member set, so the own `@values`
+    would be discarded by the shared-enum codegen collapse). Enforced identically in all four
+    loaders (TypeScript, Python, Java, C#; Kotlin inherits the JVM loader), gated by a shared
+    conformance fixture with an exact cross-port error `jsonPath`. Extending a **concrete**
+    (non-shared) enum with your own `@values` is still legal.
+- **#259 — a `field.enum` inheriting `@values` through TWO `extends` hops now generates correctly
+  (Kotlin codegen; sibling of #246).** A projection field extending an entity field, where that
+  entity field itself extends a shared abstract enum, generated **no** per-projection enum at all
+  — its type collapsed onto the shared enum because the collapse decision inspected the top-most
+  super rather than the immediate one, so every consumer of that column failed to resolve the
+  absent per-projection type. The collapse now keys on the **immediate** super: a field whose
+  direct `extends` target is a package-level abstract enum collapses onto the shared type; a field
+  whose direct super is a concrete entity/projection field gets its own `<Object><Field>` enum,
+  populated with the values it inherits (resolved across any number of hops). Byte-identical for
+  one-hop projections, shared-enum (FR-019) collapse, and entity-extends-shared. Also hardens the
+  enum emitter: a `field.enum` that resolves to no `@values` now fails loudly at generate-time
+  instead of silently emitting nothing (the exact silent no-emit #259 reported). Gated by a
+  two-hop `KotlinCompilation` compile-gate + a depth-2 cross-port conformance fixture.
+
+The C# materialized-enum cross-namespace sibling and the enum-primary-key-as-`String` issue remain
+tracked separately.
+
 ## [0.20.10] — 2026-08-02
 
 **Coordinated PATCH** — npm `0.20.10` · PyPI `0.19.9` · NuGet `0.19.7` · Maven Central `7.11.7`.

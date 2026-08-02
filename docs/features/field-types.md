@@ -66,10 +66,40 @@ must be a non-empty set of unique members matching `^[A-Za-z_][A-Za-z0-9_]*$`.
 ```
 
 The loader enforces members own-only and emits `ERR_BAD_ATTR_VALUE` on a bad
-member or `ERR_MISSING_REQUIRED_ATTR` on missing `@values`. Reuse via an abstract
-`field.enum` + `extends`. Int-backed enums, display labels, and native Postgres
-`ENUM` types are deferred (see
+member or `ERR_MISSING_REQUIRED_ATTR` on missing `@values`. Int-backed enums,
+display labels, and native Postgres `ENUM` types are deferred (see
 [enum-datatype-design.md](../superpowers/specs/2026-05-23-enum-datatype-design.md)).
+
+### Sharing one enum — abstract `field.enum` + `extends`
+
+Reuse a constraint set across entities by declaring one **abstract** `field.enum`
+(with the `@values`) and having each concrete field `extends` it — including
+**across packages** (declare the shared enum in a common package and reference it
+by FQN). Every field that extends the same abstract enum collapses onto one
+generated enum type, so the members stay in exactly one place:
+
+```jsonc
+// meta.common.json — package acme::common
+{ "field.enum": { "name": "RecordStatus", "abstract": true,
+    "@values": ["DRAFT", "ACTIVE", "CLOSED"] } }
+
+// meta.orders.json — package acme::orders
+{ "field.enum": { "name": "status", "extends": "acme::common::RecordStatus" } }
+```
+
+Two rules the loader/codegen enforce:
+
+- **A field extending a shared abstract enum must NOT declare its own `@values`.**
+  A shared enum is one type with one member set, so an own `@values` on the
+  extending field would be silently dropped by the shared-enum collapse — it is a
+  load error, `ERR_ENUM_EXTENDS_VALUES_CONFLICT`. Remove the own `@values` to
+  inherit the shared set, or `extends` a **concrete** (non-shared) enum if you
+  genuinely need an independent member set on top of a base shape.
+- **Inherited members resolve through any number of `extends` hops.** A projection
+  field that extends an entity field which itself extends a shared abstract enum
+  gets the shared members transitively — the projection still materializes its own
+  per-projection enum type, populated from the inherited set (a projection is
+  self-contained: its enum lives in the projection's own package).
 
 ## Embedded value objects — `field.object` + `@storage`
 
@@ -236,6 +266,8 @@ The following conformance fixtures gate this feature's behavior across ports:
 - [`fixtures/conformance/enum-inline/`](../../fixtures/conformance/enum-inline/) — inline `field.enum @values`
 - [`fixtures/conformance/enum-array/`](../../fixtures/conformance/enum-array/) — array-of-enum field
 - [`fixtures/conformance/enum-abstract-extends/`](../../fixtures/conformance/enum-abstract-extends/) — reuse via abstract `field.enum` + `extends`
+- [`fixtures/conformance/enum-extends-two-hop-projection/`](../../fixtures/conformance/enum-extends-two-hop-projection/) — inherited members resolve through two `extends` hops (projection → entity → shared)
+- [`fixtures/conformance/error-enum-extends-values-conflict/`](../../fixtures/conformance/error-enum-extends-values-conflict/) — `ERR_ENUM_EXTENDS_VALUES_CONFLICT` when extending a shared abstract enum and also declaring own `@values`
 - [`fixtures/conformance/error-enum-missing-values/`](../../fixtures/conformance/error-enum-missing-values/) — `ERR_MISSING_REQUIRED_ATTR` when `@values` absent
 - [`fixtures/conformance/error-enum-empty-values/`](../../fixtures/conformance/error-enum-empty-values/) — empty `@values` rejected
 - [`fixtures/conformance/error-enum-duplicate-member/`](../../fixtures/conformance/error-enum-duplicate-member/) — duplicate member symbols rejected
