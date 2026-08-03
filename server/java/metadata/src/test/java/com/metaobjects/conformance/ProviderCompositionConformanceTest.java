@@ -52,6 +52,7 @@ import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.fail;
 
 /**
@@ -372,6 +373,77 @@ public class ProviderCompositionConformanceTest {
                 Collections.sort(expectedCodes);
                 assertEquals(expectedCodes, actualCodes);
             }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // #265 regression — extendType()'s diff-stamp base must be existing's FULL
+    // (direct + inherited) requirement set, not direct-only. Java-local (not a
+    // shared cross-port fixture): the direct/inherited requirement split this
+    // bug lives in is a Java-registry-specific concept — Python/C#/TS registries
+    // are flat, with no separate "inherited" tier to flatten.
+    //
+    // Not corpus-driven (a single fixed scenario), so a plain JUnit4 class with
+    // one @Test — Enclosed's default RunnerBuilder picks BlockJUnit4ClassRunner
+    // for it automatically (no @RunWith needed).
+    // ------------------------------------------------------------------
+
+    public static class InheritedAttrProvenanceRegression {
+
+        @Test
+        public void extendingASubtypeDoesNotSpareItsInheritedOutOfScopeAttrs() {
+            // extendType() rebuilds via TypeDefinitionBuilder.from(existing), which
+            // seeds its flat builder map from existing.getChildRequirements() (direct
+            // + inherited) — build() then writes that flat map into the REBUILT
+            // definition's DIRECT requirements (inherited left empty). A provider
+            // extending object.projection for a reason entirely UNRELATED to
+            // @discriminator must not cause object.base's broadly-inherited
+            // @discriminator (B2b scopes discriminator*/discriminatorValue to
+            // object.entity ONLY — an FR-014 single-table-inheritance marker
+            // meaningless on a derived, read-only projection) to be mis-stamped as
+            // this provider's own and spared from strict scoping's prune.
+            //
+            // object.projection (unlike field.* / view.currency / object.value /
+            // identity.secondary / index.lookup) is untouched by every library
+            // register()/extendType()/applyProviderExtends pass — grep spec/metamodel/
+            // {ui,prompt,db}.json's "extends" targets plus CoreDBMetaDataProvider's two
+            // explicit extendType() calls: none touch object.projection. So, unlike
+            // those, its inherited attrs are STILL genuinely inherited (not already
+            // flattened + library-stamped by an earlier pass) at the moment this
+            // provider's own extendType() runs — which is what actually exercises the
+            // diff-base bug rather than incidentally masking it.
+            MetaDataTypeProvider extendObjectProjection = new MetaDataTypeProvider() {
+                @Override public String getProviderId() { return "extend-object-projection-unrelated"; }
+                @Override public String[] getDependencies() { return new String[0]; }
+                @Override public void registerTypes(MetaDataRegistry registry) {
+                    registry.extendType(com.metaobjects.object.ProjectionMetaObject.class, def ->
+                        def.optionalAttribute("unrelatedProbeAttr", StringAttribute.SUBTYPE_STRING));
+                }
+                @Override public String getDescription() {
+                    return "Test-only — #265 regression probe: extends object.projection with an "
+                        + "attr unrelated to @discriminator, to isolate the flatten-on-extend bug.";
+                }
+            };
+
+            MetaDataRegistry registry = RegistryManifest.composeMetamodelRegistry(List.of(extendObjectProjection));
+
+            // @discriminator is scoped to object.entity only (B2b) — object.projection
+            // merely INHERITS it from object.base, and that inheritance must still be
+            // pruned from the registry's declared-attr lookup even though an unrelated
+            // provider extendType()'d object.projection. Pre-fix, the flatten-on-extend
+            // bug mis-stamped @discriminator as the extending provider's own, so it
+            // survived the prune (getChildRequirement returned non-null).
+            assertNull(
+                "expected (object, projection) to NOT declare @discriminator (B2b scopes it "
+                    + "to object.entity only; object.projection only INHERITS it from object.base "
+                    + "and that inheritance must still be pruned after an unrelated extendType())",
+                registry.getChildRequirement("object", "projection", "discriminator"));
+
+            // Sanity check: the unrelated attr this provider actually added is present —
+            // proves the extendType() call itself succeeded and wasn't a no-op.
+            assertNotNull(
+                "expected (object, projection) to declare the provider's own unrelatedProbeAttr",
+                registry.getChildRequirement("object", "projection", "unrelatedProbeAttr"));
         }
     }
 }

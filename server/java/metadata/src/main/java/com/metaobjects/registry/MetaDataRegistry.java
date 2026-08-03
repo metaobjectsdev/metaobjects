@@ -1153,8 +1153,17 @@ public class MetaDataRegistry {
      * attr-conflict-clash probe) is intentionally left alone — it keeps its PRIOR origin.
      */
     private void stampNewAttrProvenance(MetaDataTypeId typeId, TypeDefinition existing, TypeDefinition extended) {
+        // Base set must be existing's FULL (direct + inherited) requirements, not just
+        // direct: TypeDefinitionBuilder.from(existing) seeds its flat builder map from
+        // existing.getChildRequirements() (direct + inherited), and build() writes that
+        // flat map into `extended`'s DIRECT requirements (inherited left empty). Diffing
+        // against direct-only would see every previously-INHERITED attr as "new" and
+        // stamp it with the extending provider's id — wrongly sparing a broadly-inherited
+        // library attr (e.g. object.base's @discriminator inherited onto object.projection,
+        // scoped by B2b to object.entity only) from strict scoping's prune. See the
+        // InheritedAttrProvenanceRegression test.
         Set<String> existingNames = new HashSet<>();
-        for (ChildRequirement req : existing.getDirectChildRequirements()) {
+        for (ChildRequirement req : existing.getChildRequirements()) {
             if (isNamedAttrRequirement(req)) {
                 existingNames.add(req.getName());
             }
