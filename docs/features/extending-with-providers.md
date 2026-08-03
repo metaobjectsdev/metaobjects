@@ -343,6 +343,39 @@ configuration rich.
 All five ports compose providers in **dependency order** (Kahn's algorithm)
 and emit the same stable error codes when composition fails.
 
+## Defining a custom top-level node type
+
+`metadata.root`'s child rules are a **closed set** — by design (FR-033 fail-closed
+hardening): a document root admits `object` / `field` / `validator` / `template` nodes
+and nothing else. So registering a new top-level subtype via a provider is **two steps**,
+both in the same provider's `registerTypes`:
+
+1. `registry.register(...)` the new `(type, subType)` — this declares the vocabulary
+   *exists*, not where it may *live*.
+2. `registry.extend(TYPE_METADATA, SUBTYPE_ROOT, { childRules: [...] })` to **license**
+   it as a permitted child of `metadata.root`.
+
+Skip step 2 and the node fails to load with `ERR_CHILD_NOT_ALLOWED`. This is
+deliberate, not a papercut: registration declaring existence and the parent declaring
+admission are separate concerns (most registered subtypes — `view.image`,
+`template.toolcall` — are emphatically *not* root-level), and root admission is part of
+the byte-matched cross-port registry manifest. Auto-admitting every new type at the
+document root would be fail-open and would take admission out of the declarative record.
+
+```ts
+registerTypes(registry) {
+  registry.register({ typeId: new TypeId("adapter", "http"), /* … */ });
+  registry.extend(TYPE_METADATA, SUBTYPE_ROOT, {
+    childRules: [{ childType: "adapter", childSubType: "*", childName: "*" }],
+  });
+}
+```
+
+A **reference to your custom top-level type resolves package-aware for free** — a
+`ReferenceDescriptor` with `targetType: "adapter"` on some other node validates through
+the same resolver as `@objectRef` (FQN-exact, else the referrer's package, else
+root-level), so you do **not** hand-walk the tree in a `validate` hook.
+
 ## See also
 
 - [`../recipes/extending-metaobjects-with-providers.md`](../recipes/extending-metaobjects-with-providers.md) — hands-on walkthrough

@@ -63,3 +63,6 @@ server/java/.claude/
 
 # Lavish review-surface scratch artifacts (local HTML review pages)
 .lavish/
+
+# Serena MCP project cache (local tooling scratch)
+.serena/

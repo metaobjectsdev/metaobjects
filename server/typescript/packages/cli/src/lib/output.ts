@@ -25,7 +25,8 @@ export interface GenFileEntry {
 export interface GenResultShape {
   files: GenFileEntry[];
   outDir: string;
-  dialect: Dialect;
+  /** Absent for a value-object-only project (no DB code generated → no dialect used). */
+  dialect: Dialect | undefined;
   dryRun: boolean;
   warnings: string[];
 }
@@ -48,7 +49,8 @@ const GEN_WORDS: Record<GenFileStatus, string> = {
 
 export function formatGenResult(result: GenResultShape, opts: FormatOptions): string {
   const symbols = opts.isTTY ? GEN_GLYPHS : GEN_WORDS;
-  const header = `meta gen${result.dryRun ? " --dry-run" : ""} — ${result.dialect}, ${result.outDir}`;
+  // A value-object-only project uses no dialect — show only the outDir in that case.
+  const header = `meta gen${result.dryRun ? " --dry-run" : ""} — ${result.dialect ? `${result.dialect}, ` : ""}${result.outDir}`;
 
   if (result.files.length === 0) {
     return `${header}\n\n  No entities to generate.\n`;

@@ -66,7 +66,23 @@ export interface ResolvedGenConfig {
   providedEnumModule?: string;
 }
 
-export interface MetaobjectsGenConfig extends ResolvedGenConfig {
+/** Default dialect / entity-import when a value-object-only project omits them.
+ *  Inert — they are only ever read when DB code is generated, and a project that
+ *  would generate DB code is required to set them explicitly (see `runGen`'s guard). */
+export const DEFAULT_DIALECT: Dialect = "sqlite";
+export const DEFAULT_DB_IMPORT = "./db";
+
+/**
+ * The user-facing codegen config. `dbImport` / `dialect` are OPTIONAL here (unlike the
+ * resolved `ResolvedGenConfig` the generators consume): a value-object-only project
+ * (no `object.entity` / `object.projection`) generates zero database / query / route
+ * code, so requiring them would be a dead-but-mandatory `tsc` obligation. `runGen`
+ * fills inert defaults when they are absent AND the model emits no DB artifacts, and
+ * throws a clear error when they are absent but the model DOES emit DB code (#194).
+ */
+export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport" | "dialect"> {
+  dbImport?: string;
+  dialect?: Dialect;
   /**
    * Generators to run. Each entry is either a typed generator factory result
    * (`entityFile()`) or a stable-name string (`"entity"`) resolved via the
@@ -129,7 +145,11 @@ export interface MetaobjectsGenConfig extends ResolvedGenConfig {
  *  `targets` is Omitted from the base so it can narrow from the user-facing
  *  TargetConfig to the fully-resolved ResolvedTarget (incompatible under
  *  exactOptionalPropertyTypes otherwise). */
-export interface NormalizedMetaobjectsGenConfig extends Omit<MetaobjectsGenConfig, "targets" | "generators"> {
+export interface NormalizedMetaobjectsGenConfig
+  extends Omit<MetaobjectsGenConfig, "targets" | "generators" | "dbImport" | "dialect"> {
+  /** Resolved to a concrete value (the user's, else the inert default). */
+  dbImport: string;
+  dialect: Dialect;
   /** Fully resolved — every string spec has been mapped to its factory result. */
   generators: Generator[];
   columnNamingStrategy: ColumnNamingStrategy;
@@ -202,7 +222,7 @@ export function resolveTargets(config: MetaobjectsGenConfig): Record<string, Res
       outDir: config.outDir,
       importBase: config.importBase,
       outputLayout: layout,
-      dbImport: config.dbImport,
+      dbImport: config.dbImport ?? DEFAULT_DB_IMPORT,
       // The default target is the server package — runtime bindings on.
       runtime: true,
     },
@@ -213,7 +233,7 @@ export function resolveTargets(config: MetaobjectsGenConfig): Record<string, Res
       outDir: t.outDir,
       importBase: t.importBase,
       outputLayout: t.outputLayout ?? layout,
-      dbImport: t.dbImport ?? config.dbImport,
+      dbImport: t.dbImport ?? config.dbImport ?? DEFAULT_DB_IMPORT,
       runtime: t.runtime ?? true,
     };
   }
@@ -257,6 +277,8 @@ export function resolveGenerators(specs: readonly GeneratorSpec[]): Generator[] 
 export function normalizeConfig(config: MetaobjectsGenConfig): NormalizedMetaobjectsGenConfig {
   return {
     ...config,
+    dbImport: config.dbImport ?? DEFAULT_DB_IMPORT,
+    dialect: config.dialect ?? DEFAULT_DIALECT,
     generators: resolveGenerators(config.generators),
     columnNamingStrategy: config.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY,
     pluralizeCollections: config.pluralizeCollections ?? true,
