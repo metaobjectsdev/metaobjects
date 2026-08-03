@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metaobjects.dev/schemas/metaobjects-config.schema.json",
+  "title": "MetaObjects Python codegen config",
+  "description": "Declarative config for the `metaobjects` Python CLI (#267). Schema keys mirror the TS metaobjects.config.ts vocabulary (outDir/generators/entities/providers/metadata).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["targets"],
+  "properties": {
+    "metadata": {
+      "type": "string",
+      "description": "Metadata directory, relative to this config file. Default: metaobjects",
+      "default": "metaobjects"
+    },
+    "providers": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[^:]+:[^:]+$" },
+      "description": "Consumer provider refs as 'module:symbol', resolved relative to this config file's directory (no PYTHONPATH needed)."
+    },
+    "targets": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Named run-specs; each key is a target name.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["outDir"],
+        "properties": {
+          "outDir": {
+            "type": "string",
+            "description": "Output directory, relative to this config file."
+          },
+          "generators": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Stable generator names (see `metaobjects gen --list`). Omit to run the default suite."
+          },
+          "entities": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Entity-name allowlist. Omit to emit every entity."
+          }
+        }
+      }
+    }
+  }
+}
