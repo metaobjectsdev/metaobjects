@@ -86,6 +86,38 @@ public class MetaDataRegistry {
     private final Map<String, CommonAttributeDef> commonAttributes = new ConcurrentHashMap<>();
 
     /**
+     * #265 — attr-name provenance stamped during provider composition:
+     * {@code (type, subType) -> (attrName -> providerId)}. Consulted by
+     * {@link #applyStrictAttrScoping} so the strict prune only removes
+     * LIBRARY-origin attrs, sparing an attr a downstream provider added via
+     * {@link #extendType} (or {@link #register} directly). An attr name with no
+     * entry here (never stamped — e.g. an inherited copy, or a rebuild pass that
+     * only re-describes existing requirements) defaults to LIBRARY-origin, which
+     * preserves today's prune behavior. Keyed the same way as
+     * {@link #typeDefinitions} so provenance travels with its owning type.
+     */
+    private final Map<MetaDataTypeId, Map<String, String>> attrProvenance = new ConcurrentHashMap<>();
+
+    /**
+     * #265 — sentinel provenance for an attr stamped OUTSIDE a provider's
+     * {@code registerTypes} turn (a direct {@link #register}/{@link #extendType}
+     * call made while {@link #currentProviderId} is {@code null} — e.g. a
+     * build-time constraint-expansion rebuild, or test code calling the registry
+     * API directly). Treated as LIBRARY-origin (prunable) by
+     * {@link #applyStrictAttrScoping}, same as an unstamped name.
+     */
+    static final String LIBRARY_PROVENANCE = "_LIBRARY";
+
+    /**
+     * #265 — the provider id currently executing its {@code registerTypes} turn
+     * inside {@link #registerProviders}, or {@code null} outside that scope. Set
+     * around each provider's turn; read by {@link #register} and
+     * {@link #extendType} to stamp newly-added attr requirements with the
+     * provider that added them.
+     */
+    private volatile String currentProviderId;
+
+    /**
      * Fully-global parent-key tier in {@link #globalRequirements} — matches any
      * (parentType, parentSubType). Used by {@link #registerCommonAttribute} so
      * common attrs surface on every node via {@link #acceptsChild} /
@@ -249,6 +281,12 @@ public class MetaDataRegistry {
         checkNotSealed("registerProviders");
         List<MetaDataTypeProvider> ordered = resolveDependenciesStrict(providers);
         for (MetaDataTypeProvider provider : ordered) {
+            // #265 — stamp attr provenance with the provider currently registering
+            // (read by register()/extendType()); restored (not just cleared) so a
+            // provider whose registerTypes() re-enters registerProviders (unusual,
+            // but not contractually forbidden) leaves the outer turn's id intact.
+            String previousProviderId = currentProviderId;
+            currentProviderId = provider.getProviderId();
             try {
                 provider.registerTypes(this);
                 if (!deferredInheritanceTypes.isEmpty()) {
@@ -262,6 +300,8 @@ public class MetaDataRegistry {
                     com.metaobjects.ErrorCode.ERR_UNKNOWN);
                 wrap.initCause(e);
                 throw wrap;
+            } finally {
+                currentProviderId = previousProviderId;
             }
         }
     }
@@ -328,6 +368,15 @@ public class MetaDataRegistry {
         // Update the registered type with extended definition
         TypeDefinition extendedDefinition = builder.build();
         typeDefinitions.put(typeIdToExtend, extendedDefinition);
+        // #265 — extendType() rebuilds from `existing` and writes straight into
+        // typeDefinitions WITHOUT going through register(), so it must stamp
+        // provenance itself. Unlike register()'s blanket stamp, this DIFFS: only
+        // attr names newly present vs. `existing` get stamped with the current
+        // provider. Blanket-stamping here would mis-attribute every attr `existing`
+        // already carried (e.g. re-registering core's own attrs as this provider's)
+        // — and a same-name redefinition (the attr-conflict probe) must keep its
+        // PRIOR origin, not be silently reassigned to whoever redefined it.
+        stampNewAttrProvenance(typeIdToExtend, existing, extendedDefinition);
 
         log.debug("Extended type: {} with additional attributes/children",
                  typeIdToExtend.toQualifiedName());
@@ -469,6 +518,13 @@ public class MetaDataRegistry {
         resolveInheritance(definition);
 
         typeDefinitions.put(typeId, definition);
+        // #265 — stamp this definition's direct attr requirements with whichever
+        // provider is currently registering (or LIBRARY_PROVENANCE outside a
+        // provider's turn). Blanket, not diffed: register() always REPLACES the
+        // (type, subType)'s complete definition (unlike extendType(), which
+        // rebuilds an already-registered type from `existing` — see
+        // stampNewAttrProvenance for why that path diffs instead).
+        recordAttrProvenance(typeId, definition.getDirectChildRequirements());
         log.debug("Registered type: {} -> {} (parent: {})", typeId.toQualifiedName(),
                  definition.getImplementationClass().getSimpleName(),
                  definition.hasParent() ? definition.getParentQualifiedName() : "none");
@@ -975,6 +1031,13 @@ public class MetaDataRegistry {
      * the emitter and the loader still needs them. Pruning is applied to BOTH the
      * direct and the inherited attr requirements (the strict set is per-subtype, so a
      * subtype no longer keeps a broadly-inherited attr the JSON does not scope to it).
+     *
+     * <p><strong>#265</strong> — the prune is now provenance-scoped: a disallowed attr
+     * is dropped only when {@link #isLibraryOrigin} says it came from the library
+     * (unstamped, or stamped by one of {@link RegistryManifest#libraryProviderIds()}).
+     * An attr a downstream consumer provider added via {@link #extendType} survives —
+     * without this guard, strict scoping deleted every consumer extension on a
+     * spec-declared core subtype, blind to who registered it.</p>
      */
     private void applyStrictAttrScoping(com.metaobjects.registry.spec.SpecMetamodelReader reader) {
         for (Map.Entry<MetaDataTypeId, TypeDefinition> entry : new ArrayList<>(typeDefinitions.entrySet())) {
@@ -987,11 +1050,12 @@ public class MetaDataRegistry {
 
             Set<String> allow = reader.strictAttrNames(id.type(), id.subType());
 
-            // Rebuild DIRECT requirements, dropping disallowed INCLUDED attrs.
+            // Rebuild DIRECT requirements, dropping disallowed INCLUDED library-origin attrs.
             Map<String, ChildRequirement> directReqs = new LinkedHashMap<>();
             for (ChildRequirement req : def.getDirectChildRequirements()) {
-                if (isPrunableAttr(req) && !allow.contains(req.getName())) {
-                    continue; // logical attr not scoped to this subtype → prune
+                if (isPrunableAttr(req) && !allow.contains(req.getName())
+                        && isLibraryOrigin(id.type(), id.subType(), req.getName())) {
+                    continue; // library-origin logical attr not scoped to this subtype → prune
                 }
                 directReqs.put(directKey(req), req);
             }
@@ -1001,12 +1065,18 @@ public class MetaDataRegistry {
                     directReqs, def.getParentType(), def.getParentSubType(),
                     def.getRules(), def.getExample(), def.getWhenToUse(), def.getParents());
 
-            // Re-populate inherited requirements, dropping disallowed INCLUDED attrs.
+            // Re-populate inherited requirements, dropping disallowed INCLUDED library-origin
+            // attrs. Inherited copies are always unstamped at the CHILD (type, subType) key
+            // (provenance is recorded where an attr is directly declared, not on every
+            // descendant it is inherited onto) — so isLibraryOrigin defaults them to
+            // library-origin, and they keep pruning exactly as before. This is intended:
+            // they genuinely originate from a library base type either way.
             Map<String, ChildRequirement> inherited = new LinkedHashMap<>();
             for (Map.Entry<String, ChildRequirement> e : def.getInheritedChildRequirements().entrySet()) {
                 ChildRequirement req = e.getValue();
-                if (isPrunableAttr(req) && !allow.contains(req.getName())) {
-                    continue; // logical attr not scoped to this subtype → prune
+                if (isPrunableAttr(req) && !allow.contains(req.getName())
+                        && isLibraryOrigin(id.type(), id.subType(), req.getName())) {
+                    continue; // library-origin logical attr not scoped to this subtype → prune
                 }
                 inherited.put(e.getKey(), req);
             }
@@ -1032,15 +1102,89 @@ public class MetaDataRegistry {
      * dup) — those are left registered.
      */
     private static boolean isPrunableAttr(ChildRequirement req) {
+        if (!isNamedAttrRequirement(req)) {
+            return false; // structural placement rule, or the any-attr wildcard
+        }
+        return RegistryManifest.classifyPerTypeAttr(req.getName())
+                == RegistryManifest.ExclusionReason.INCLUDED;
+    }
+
+    /**
+     * #265 — true for a NAMED {@code attr}-typed requirement (concrete, non-wildcard
+     * name): the shape {@link #recordAttrProvenance}/{@link #stampNewAttrProvenance}
+     * track provenance for, and the shape {@link #isPrunableAttr} narrows further by
+     * spec-inclusion. False for structural placement rules and the any-attr wildcard.
+     */
+    private static boolean isNamedAttrRequirement(ChildRequirement req) {
         if (!MetaAttribute.TYPE_ATTR.equals(req.getExpectedType())) {
             return false; // structural placement rule
         }
         String name = req.getName();
-        if (name == null || "*".equals(name)) {
-            return false; // the any-attr wildcard
+        return name != null && !"*".equals(name); // false for the any-attr wildcard
+    }
+
+    /**
+     * #265 — record provenance for every named attr requirement in {@code directRequirements}
+     * onto {@code typeId}, stamping {@link #currentProviderId} (or {@link #LIBRARY_PROVENANCE}
+     * outside a provider's turn). Called from {@link #register}, which always replaces the
+     * (type, subType)'s COMPLETE definition — so a blanket stamp is correct here (contrast
+     * {@link #stampNewAttrProvenance}, which diffs because {@link #extendType} rebuilds from
+     * an already-registered definition).
+     */
+    private void recordAttrProvenance(MetaDataTypeId typeId, Collection<ChildRequirement> directRequirements) {
+        String providerId = currentProviderId != null ? currentProviderId : LIBRARY_PROVENANCE;
+        for (ChildRequirement req : directRequirements) {
+            if (!isNamedAttrRequirement(req)) {
+                continue;
+            }
+            attrProvenance.computeIfAbsent(typeId, k -> new ConcurrentHashMap<>())
+                    .put(req.getName(), providerId);
         }
-        return RegistryManifest.classifyPerTypeAttr(name)
-                == RegistryManifest.ExclusionReason.INCLUDED;
+    }
+
+    /**
+     * #265 — {@link #extendType}'s provenance hook. Diffs {@code extended}'s named attr
+     * requirements against {@code existing}'s and stamps {@link #currentProviderId} (or
+     * {@link #LIBRARY_PROVENANCE}) ONLY onto names that are genuinely NEW. extendType()
+     * rebuilds via {@code TypeDefinitionBuilder.from(existing)} and writes the result
+     * straight into {@code typeDefinitions} without going through {@link #register} — a
+     * blanket stamp here would mis-attribute every attr {@code existing} already carried
+     * to whichever provider called extendType() this time. A same-name redefinition (the
+     * attr-conflict-clash probe) is intentionally left alone — it keeps its PRIOR origin.
+     */
+    private void stampNewAttrProvenance(MetaDataTypeId typeId, TypeDefinition existing, TypeDefinition extended) {
+        Set<String> existingNames = new HashSet<>();
+        for (ChildRequirement req : existing.getDirectChildRequirements()) {
+            if (isNamedAttrRequirement(req)) {
+                existingNames.add(req.getName());
+            }
+        }
+        String providerId = currentProviderId != null ? currentProviderId : LIBRARY_PROVENANCE;
+        for (ChildRequirement req : extended.getDirectChildRequirements()) {
+            if (!isNamedAttrRequirement(req) || existingNames.contains(req.getName())) {
+                continue;
+            }
+            attrProvenance.computeIfAbsent(typeId, k -> new ConcurrentHashMap<>())
+                    .put(req.getName(), providerId);
+        }
+    }
+
+    /**
+     * #265 — true when {@code attrName} on {@code (type, subType)} counts as
+     * LIBRARY-origin for {@link #applyStrictAttrScoping}'s prune: never stamped
+     * (the default — an inherited copy, or a rebuild pass that only re-describes
+     * existing requirements), stamped {@link #LIBRARY_PROVENANCE}, or stamped with
+     * one of {@link RegistryManifest#libraryProviderIds()}. False only for an attr
+     * stamped with a provider id OUTSIDE the metamodel provider set — a downstream
+     * consumer extension.
+     */
+    private boolean isLibraryOrigin(String type, String subType, String attrName) {
+        Map<String, String> byName = attrProvenance.get(new MetaDataTypeId(type, subType));
+        String providerId = byName != null ? byName.get(attrName) : null;
+        if (providerId == null || LIBRARY_PROVENANCE.equals(providerId)) {
+            return true; // unstamped, or the explicit build-time sentinel
+        }
+        return RegistryManifest.libraryProviderIds().contains(providerId);
     }
 
     /**

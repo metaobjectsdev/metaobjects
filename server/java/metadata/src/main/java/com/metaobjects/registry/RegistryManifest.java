@@ -24,14 +24,17 @@ import com.metaobjects.view.CurrencyView;
 import com.metaobjects.view.MetaView;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 /**
  * SP-G Registry Conformance — the Java registry-manifest emitter.
@@ -112,7 +115,31 @@ public final class RegistryManifest {
      * @return a new registry composed from the metamodel provider set
      */
     public static MetaDataRegistry composeMetamodelRegistry() {
-        MetaDataRegistry registry = MetaDataRegistry.compose(metamodelProviders());
+        return composeMetamodelRegistry(List.of());
+    }
+
+    /**
+     * #265 — compose the metamodel provider set PLUS the given {@code extra}
+     * providers (appended after the library set), returning an
+     * <strong>unsealed</strong> registry run through the SAME strict
+     * spec-description + attr-scoping pipeline {@link #composeMetamodelRegistry()}
+     * runs. This is the {@code MetaDataLoader.setTypeRegistry(...)} seam — the
+     * sanctioned path for a downstream app that genuinely needs additional
+     * vocabulary while its metadata still strict-loads against the full spec
+     * contract (see {@code docs/superpowers/specs/2026-08-02-issue-265-strict-scoping-provenance-design.md}).
+     * Composing zero extras ({@link #composeMetamodelRegistry()}) is
+     * byte-identical to today — {@code MetaDataRegistry.compose(...)} itself is
+     * unchanged; this only routes the caller's extra providers through the same
+     * post-compose pipeline.
+     *
+     * @param extra additional providers composed after the metamodel provider set
+     * @return a new, unsealed registry (the caller may seal it)
+     */
+    public static MetaDataRegistry composeMetamodelRegistry(Collection<MetaDataTypeProvider> extra) {
+        Objects.requireNonNull(extra, "extra must not be null");
+        List<MetaDataTypeProvider> providers = new ArrayList<>(metamodelProviders());
+        providers.addAll(extra);
+        MetaDataRegistry registry = MetaDataRegistry.compose(providers);
         // Force the lazy core-constraint init NOW: it expands the named inherited
         // attr child-requirements (e.g. field.base's `required`/`default`/`unique`
         // onto each concrete field subtype). Those named requirements must exist
@@ -127,6 +154,30 @@ public final class RegistryManifest {
                 com.metaobjects.registry.spec.SpecMetamodelReader.load());
         return registry;
     }
+
+    /**
+     * #265 — memoized library provider ids: every {@link MetaDataTypeProvider#getProviderId()}
+     * in {@link #metamodelProviders()}. Consulted by
+     * {@link MetaDataRegistry#applyStrictAttrScoping} to decide whether an attr's
+     * stamped provenance is LIBRARY-origin (prunable by strict scoping) or
+     * consumer-origin (spared). Deliberately homed in this composition layer, not
+     * the loader layer — {@code Loader -> Registry/RegistryManifest} is the
+     * existing dependency direction and must not invert.
+     *
+     * @return the immutable set of library provider ids
+     */
+    static Set<String> libraryProviderIds() {
+        Set<String> ids = libraryProviderIds;
+        if (ids == null) {
+            ids = metamodelProviders().stream()
+                    .map(MetaDataTypeProvider::getProviderId)
+                    .collect(Collectors.toUnmodifiableSet());
+            libraryProviderIds = ids;
+        }
+        return ids;
+    }
+
+    private static volatile Set<String> libraryProviderIds;
 
     /**
      * The process-wide, lazily-built, <strong>sealed</strong> default registry the
