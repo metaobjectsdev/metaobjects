@@ -202,6 +202,54 @@ public sealed class TypeRegistry
     /// <summary>Whether this registry has been sealed (ADR-0023).</summary>
     public bool IsSealed => _sealed;
 
+    // ------------------------------------------------------------------
+    // #265 — attr provenance (which provider registered/extended each attr)
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// #265 — sentinel attr-provenance origin for an attr registered/extended with no
+    /// active provider id (an unstamped registration — e.g. a hand-built registry in a
+    /// unit test that never goes through <see cref="Provider.ComposeRegistry"/>'s
+    /// stamping loop, or any future registration path that forgets to set
+    /// <see cref="CurrentProviderId"/>). Treated as LIBRARY origin by the strict-attr-
+    /// scoping prune guard (<see cref="ApplyStrictAttrScoping"/>) — i.e. still
+    /// prunable, preserving pre-#265 behavior for anything not explicitly attributed
+    /// to a provider.
+    /// </summary>
+    public const string LibrarySentinel = "__library__";
+
+    /// <summary>
+    /// #265 — the provider id active during the CURRENT <c>RegisterTypes()</c> call,
+    /// set/cleared by <see cref="Provider.ComposeRegistry"/> around each provider's
+    /// turn. Null outside a compose loop (e.g. a hand-built registry in a unit test).
+    /// </summary>
+    internal string? CurrentProviderId { get; set; }
+
+    /// <summary>
+    /// #265 — (type, subType, attrName) -> the provider id that registered/extended
+    /// that attr (<see cref="LibrarySentinel"/> when unstamped). Consulted by
+    /// <see cref="ApplyStrictAttrScoping"/> so a consumer-registered attr on a
+    /// spec-declared subtype is never pruned by the library's strict per-subtype
+    /// allow-list — only LIBRARY-origin attrs are.
+    /// </summary>
+    private readonly Dictionary<(string Type, string SubType, string AttrName), string> _attrProvenance = new();
+
+    /// <summary>Stamp provenance for one (type, subType, attrName) — the provider active
+    /// via <see cref="CurrentProviderId"/>, or <see cref="LibrarySentinel"/> when
+    /// unstamped. Called per-attr from <see cref="Register"/> (captures a provider's own
+    /// build-time enrichment too, since it reads the attrs already on the definition at
+    /// registration time) and from <see cref="Extend"/>.</summary>
+    private void StampAttrProvenance(string type, string subType, string attrName)
+    {
+        _attrProvenance[(type, subType, attrName)] = CurrentProviderId ?? LibrarySentinel;
+    }
+
+    /// <summary>The provider id that registered/extended <paramref name="attrName"/> on
+    /// (<paramref name="type"/>, <paramref name="subType"/>), or <see cref="LibrarySentinel"/>
+    /// if unstamped. #265 provenance-scoped strict prune.</summary>
+    public string AttrOrigin(string type, string subType, string attrName) =>
+        _attrProvenance.TryGetValue((type, subType, attrName), out string? origin) ? origin : LibrarySentinel;
+
     private void CheckNotSealed(string operation)
     {
         if (_sealed)
@@ -250,6 +298,14 @@ public sealed class TypeRegistry
         }
 
         _defs[key] = def;
+
+        // #265 — stamp provenance for every attr present at registration time (also
+        // captures a provider's own build-time enrichment, e.g. a provider building its
+        // own AttrSchema list before calling Register()).
+        foreach (AttrSchema attr in def.Attributes)
+        {
+            StampAttrProvenance(def.TypeId.Type, def.TypeId.SubType, attr.Name);
+        }
 
         if (_subTypes.TryGetValue(def.TypeId.Type, out List<string>? list))
         {
@@ -411,6 +467,8 @@ public sealed class TypeRegistry
             }
 
             def.AppendAttr(attr);
+            // #265 — stamp the extending provider as this attr's origin.
+            StampAttrProvenance(type, subType, attr.Name);
         }
 
         foreach (ChildRule rule in childRules ?? [])
@@ -656,6 +714,18 @@ public sealed class TypeRegistry
     /// manifest anyway and the loader needs them. Only the INCLUDED logical attrs are
     /// pruned, which TIGHTENS the loader — a misplaced attr → its unknown-attr error.
     /// Types NOT in the JSON keep their attrs untouched. Mirrors Java/Python's pass 5.
+    /// <para>
+    /// #265 — the prune is PROVENANCE-scoped: only a LIBRARY-origin logical attr
+    /// (registered by one of the library's own providers, or unstamped — see
+    /// <see cref="AttrOrigin"/> / <see cref="LibrarySentinel"/>) is prunable against
+    /// the strict per-subtype allow-list. An attr a CONSUMER provider added via
+    /// <see cref="Extend"/> (e.g. a downstream app widening a spec-declared core
+    /// subtype) is never pruned — the strict allow-list is a library-vocabulary
+    /// contract, blind to consumer-registered vocabulary by design. This does not
+    /// relax the check itself (still own-attrs-only, ADR-0039) and does not widen
+    /// scoping for a misplaced LIBRARY attr just because a consumer provider happens
+    /// to be composed in.
+    /// </para>
     /// </summary>
     private void ApplyStrictAttrScoping(MetaObjects.Registry.Spec.SpecMetamodelReader reader)
     {
@@ -674,10 +744,17 @@ public sealed class TypeRegistry
             foreach (AttrSchema attr in def.Attributes)
             {
                 bool prunable =
-                    RegistryManifest.ClassifyPerTypeAttr(attr.Name) == RegistryManifest.ExclusionReason.Included;
-                if (prunable && !allow.Contains(attr.Name))
+                    RegistryManifest.ClassifyPerTypeAttr(attr.Name) == RegistryManifest.ExclusionReason.Included
+                    && !allow.Contains(attr.Name);
+                if (prunable)
                 {
-                    continue; // logical attr not scoped to this subtype → prune
+                    string origin = AttrOrigin(id.Type, id.SubType, attr.Name);
+                    bool isLibraryOrigin =
+                        origin == LibrarySentinel || MetaObjects.Loader.MetaDataLoader.LibraryProviderIds.Contains(origin);
+                    if (isLibraryOrigin)
+                    {
+                        continue; // library-origin logical attr not scoped to this subtype → prune
+                    }
                 }
                 attrs.Add(attr);
             }

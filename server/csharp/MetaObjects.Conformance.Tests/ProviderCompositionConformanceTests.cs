@@ -13,7 +13,10 @@
 
 using System.Text.Json;
 using MetaObjects;
+using MetaObjects.Core.Attr;
+using MetaObjects.Loader;
 using MetaObjects.Meta;
+using MetaObjects.Presentation.View;
 using MetaObjects.Shared;
 using Xunit;
 
@@ -85,6 +88,34 @@ internal sealed class SealProbeProvider : IMetaDataTypeProvider
     }
 }
 
+/// <summary>
+/// #265 `compose-load/` canonical named provider. Extends `view.currency` (a
+/// SPEC-DECLARED CORE subtype the library's own core-types provider registers)
+/// with a new `decimals` int attr. Deliberately NO dependencies — see the corpus
+/// README "Canonical named provider `extend-spec-subtype`" for why (cross-port
+/// id/dep parity vs. the `composeWithCore` ordering contract).
+/// </summary>
+internal sealed class ExtendSpecSubtypeProvider : IMetaDataTypeProvider
+{
+    public string Id => "extend-spec-subtype";
+    public IReadOnlyList<string> Dependencies => System.Array.Empty<string>();
+
+    public void RegisterTypes(TypeRegistry registry)
+    {
+        registry.Extend(
+            BaseTypes.TYPE_VIEW,
+            ViewConstants.VIEW_SUBTYPE_CURRENCY,
+            attributes: new List<AttrSchema>
+            {
+                new AttrSchema(
+                    "decimals",
+                    AttrConstants.ATTR_SUBTYPE_INT,
+                    Required: false,
+                    Description: "Test-only — #265 compose-load probe attr."),
+            });
+    }
+}
+
 public sealed class ProviderCompositionConformanceTests
 {
     private static readonly IReadOnlyDictionary<string, IMetaDataTypeProvider> Providers =
@@ -99,12 +130,25 @@ public sealed class ProviderCompositionConformanceTests
             ["attr-conflict-base"]  = new AttrConflictBaseProvider(),
             ["attr-conflict-clash"] = new AttrConflictClashProvider(),
             ["seal-probe"]          = new SealProbeProvider(),
+            ["extend-spec-subtype"] = new ExtendSpecSubtypeProvider(),
         };
+
+    // Flat-corpus (error-code) manifest shape — unchanged.
+    // #265 compose-load manifest shape — see fixtures/provider-composition-conformance/README.md
+    // "The `compose-load/` subdir". A manifest never carries both shapes; ExpectedError is
+    // OPTIONAL (null) on a compose-load manifest, and ExpectAttrs/Metadata/ExpectErrors are
+    // OPTIONAL (null) on a flat-corpus manifest — the two runner loops below dispatch on which
+    // fields are present.
+    private sealed record ComposeLoadExpectAttrs(string Type, string SubType, string[] Contains);
 
     private sealed record Manifest(
         string[] Providers,
-        string ExpectedError,
-        string? SealThenRegister);
+        string? ExpectedError = null,
+        string? SealThenRegister = null,
+        bool? ComposeWithCore = null,
+        ComposeLoadExpectAttrs? ExpectAttrs = null,
+        JsonElement? Metadata = null,
+        string[]? ExpectErrors = null);
 
     private static string CorpusRootPath()
     {
@@ -146,6 +190,16 @@ public sealed class ProviderCompositionConformanceTests
         var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         var manifest = JsonSerializer.Deserialize<Manifest>(
             File.ReadAllText(Path.Combine(CorpusRootPath(), fileName)), opts)!;
+
+        // Flat-corpus manifests always carry expectedError (the old shape); guard + narrow
+        // rather than a non-null assertion so a malformed fixture fails loud.
+        string? expectedError = manifest.ExpectedError;
+        if (expectedError is null)
+        {
+            throw new System.InvalidOperationException(
+                $"flat-corpus manifest \"{fileName}\" is missing required \"expectedError\"");
+        }
+
         var resolved = manifest.Providers.Select(Resolve).ToList();
 
         if (manifest.SealThenRegister != null)
@@ -155,12 +209,80 @@ public sealed class ProviderCompositionConformanceTests
             registry.Seal();
             var probe = Resolve(manifest.SealThenRegister);
             var sealedEx = Assert.Throws<MetaModelException>(() => probe.RegisterTypes(registry));
-            Assert.Equal(manifest.ExpectedError, sealedEx.Code.ToString());
+            Assert.Equal(expectedError, sealedEx.Code.ToString());
             return;
         }
 
         // Ordinary scenario: the compose call itself throws.
         var ex = Assert.Throws<MetaModelException>(() => Provider.ComposeRegistry(resolved));
-        Assert.Equal(manifest.ExpectedError, ex.Code.ToString());
+        Assert.Equal(expectedError, ex.Code.ToString());
+    }
+
+    // -----------------------------------------------------------------------
+    // #265 `compose-load/` corpus — see fixtures/provider-composition-conformance/
+    // README.md "The `compose-load/` subdir". Own directory, own loop: a manifest
+    // here never carries `expectedError` / `sealThenRegister` (the flat-corpus shape
+    // above); it carries `composeWithCore` / `expectAttrs` / `metadata` /
+    // `expectErrors` instead.
+    // -----------------------------------------------------------------------
+
+    private static string ComposeLoadCorpusRootPath() =>
+        Path.Combine(CorpusRootPath(), "compose-load");
+
+    public static IEnumerable<object[]> ComposeLoadManifestFiles()
+    {
+        foreach (var file in Directory.GetFiles(ComposeLoadCorpusRootPath(), "*.json").OrderBy(f => f, System.StringComparer.Ordinal))
+            yield return new object[] { Path.GetFileName(file) };
+    }
+
+    [Fact]
+    public void ComposeLoadCorpusIsNonEmpty()
+    {
+        Assert.NotEmpty(ComposeLoadManifestFiles());
+    }
+
+    [Theory]
+    [MemberData(nameof(ComposeLoadManifestFiles))]
+    public void ProviderCompositionComposeLoad(string fileName)
+    {
+        var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var manifest = JsonSerializer.Deserialize<Manifest>(
+            File.ReadAllText(Path.Combine(ComposeLoadCorpusRootPath(), fileName)), opts)!;
+
+        var named = manifest.Providers.Select(Resolve).ToList();
+        List<IMetaDataTypeProvider> providerSet = manifest.ComposeWithCore == true
+            ? MetaDataLoader.LibraryProviders.Concat(named).ToList()
+            : named;
+
+        TypeRegistry? registry = null;
+
+        if (manifest.ExpectAttrs is not null)
+        {
+            registry = Provider.ComposeRegistry(providerSet);
+            var declaredNames = registry.AttrsOf(manifest.ExpectAttrs.Type, manifest.ExpectAttrs.SubType)
+                .Select(a => a.Name)
+                .ToList();
+            foreach (string name in manifest.ExpectAttrs.Contains)
+            {
+                Assert.Contains(name, declaredNames);
+            }
+        }
+
+        if (manifest.Metadata is JsonElement metadataElement)
+        {
+            registry ??= Provider.ComposeRegistry(providerSet);
+            string doc = metadataElement.GetRawText();
+            var loader = new MetaDataLoader(registry, strict: true);
+            LoadResult result = loader.Load(new IMetaDataSource[] { new InMemoryStringSource(doc, format: MetaDataFormat.Json) });
+
+            var actualCodes = result.Errors
+                .Select(e => e.Code.ToString())
+                .OrderBy(c => c, System.StringComparer.Ordinal)
+                .ToList();
+            var expectedCodes = (manifest.ExpectErrors ?? System.Array.Empty<string>())
+                .OrderBy(c => c, System.StringComparer.Ordinal)
+                .ToList();
+            Assert.Equal(expectedCodes, actualCodes);
+        }
     }
 }
