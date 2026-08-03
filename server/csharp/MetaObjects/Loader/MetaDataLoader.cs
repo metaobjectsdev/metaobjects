@@ -71,40 +71,14 @@ public class MetaDataLoader
         _strict = strict;
     }
 
-    /// <summary>
-    /// #265 — the library's own default provider set (core + db + ui + prompt), kept as a
-    /// field so <see cref="DefaultRegistry"/> and <see cref="LibraryProviderIds"/> share
-    /// ONE enumeration (never hand-listed twice). Also what the
-    /// provider-composition-conformance runner composes for its `composeWithCore`
-    /// scenarios (real library providers + a named consumer provider) — mirrors Python's
-    /// <c>core_types.core_providers</c>.
-    /// </summary>
-    public static readonly IReadOnlyList<IMetaDataTypeProvider> LibraryProviders =
-    [
-        CoreTypes.CoreTypesProvider,
-        // DB-domain field attrs (@column / @db.indexed / @dbColumnType) — Extend over core
-        // field types. Mirrors Java's CoreDBMetaDataProvider and TS's dbProvider.
-        MetaObjects.Persistence.Db.DbMetaDataProvider.Instance,
-        // FR-033 concern providers — re-home the UI / prompt attrs out of the core type
-        // classes (read spec/metamodel/ui.json + prompt.json). The prompt provider absorbs
-        // the @xmlText marker the former TemplateTypesProvider registered. Mirrors the TS
-        // ui/prompt provider split (and Java/Python).
-        MetaObjects.Presentation.Ui.UiMetaDataProvider.Instance,
-        MetaObjects.Template.PromptMetaDataProvider.Instance,
-    ];
-
-    /// <summary>
-    /// #265 — the ids of the <see cref="LibraryProviders"/> above, derived (never
-    /// hand-listed). Consulted by <see cref="TypeRegistry.ApplyStrictAttrScoping"/> (via
-    /// <see cref="TypeRegistry.AttrOrigin"/>) to decide whether an attr's provenance is
-    /// "library" (still prunable against the strict per-subtype allow-list) or a
-    /// consumer's own provider (never pruned).
-    /// </summary>
-    public static readonly IReadOnlySet<string> LibraryProviderIds =
-        LibraryProviders.Select(p => p.Id).ToHashSet();
-
+    // #265 — the library's own default provider set (core + db + ui + prompt) and its
+    // derived provider-id set now live on CoreTypes (CoreTypes.LibraryProviders /
+    // CoreTypes.LibraryProviderIds) — a peer of Registry/Provider, not here — so
+    // Registry.cs::ApplyStrictAttrScoping can consult the id set without a
+    // Registry → Loader back-reference (Loader → Registry/Provider/CoreTypes is the
+    // sole pre-existing dependency direction).
     private static TypeRegistry DefaultRegistry() =>
-        Provider.ComposeRegistry(LibraryProviders);
+        Provider.ComposeRegistry(CoreTypes.LibraryProviders);
 
     // -------------------------------------------------------------------------
     // Static factories (the 99% case, cross-language consistent)

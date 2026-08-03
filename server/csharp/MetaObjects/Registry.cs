@@ -750,7 +750,7 @@ public sealed class TypeRegistry
                 {
                     string origin = AttrOrigin(id.Type, id.SubType, attr.Name);
                     bool isLibraryOrigin =
-                        origin == LibrarySentinel || MetaObjects.Loader.MetaDataLoader.LibraryProviderIds.Contains(origin);
+                        origin == LibrarySentinel || CoreTypes.LibraryProviderIds.Contains(origin);
                     if (isLibraryOrigin)
                     {
                         continue; // library-origin logical attr not scoped to this subtype → prune

@@ -251,7 +251,7 @@ public sealed class ProviderCompositionConformanceTests
 
         var named = manifest.Providers.Select(Resolve).ToList();
         List<IMetaDataTypeProvider> providerSet = manifest.ComposeWithCore == true
-            ? MetaDataLoader.LibraryProviders.Concat(named).ToList()
+            ? CoreTypes.LibraryProviders.Concat(named).ToList()
             : named;
 
         TypeRegistry? registry = null;

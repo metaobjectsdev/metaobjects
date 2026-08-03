@@ -40,6 +40,42 @@ public static class CoreTypes
     /// </summary>
     public static readonly IMetaDataTypeProvider CoreTypesProvider = new CoreTypesProviderImpl();
 
+    /// <summary>
+    /// #265 — the library's own default provider set (core + db + ui + prompt), kept as a
+    /// field so <see cref="MetaObjects.Loader.MetaDataLoader"/>'s default registry and
+    /// <see cref="LibraryProviderIds"/> share ONE enumeration (never hand-listed twice).
+    /// Also what the provider-composition-conformance runner composes for its
+    /// `composeWithCore` scenarios (real library providers + a named consumer provider) —
+    /// mirrors Python's <c>core_types.core_providers</c>. Homed here (a peer of
+    /// <see cref="Registry"/>/<see cref="Provider"/>, not <c>Loader/MetaDataLoader.cs</c>)
+    /// so the strict-attr-scoping guard below can consult it without introducing a
+    /// Registry → Loader back-reference (the pre-existing dependency direction is
+    /// strictly Loader → Registry/Provider/CoreTypes).
+    /// </summary>
+    public static readonly IReadOnlyList<IMetaDataTypeProvider> LibraryProviders =
+    [
+        CoreTypesProvider,
+        // DB-domain field attrs (@column / @db.indexed / @dbColumnType) — Extend over core
+        // field types. Mirrors Java's CoreDBMetaDataProvider and TS's dbProvider.
+        MetaObjects.Persistence.Db.DbMetaDataProvider.Instance,
+        // FR-033 concern providers — re-home the UI / prompt attrs out of the core type
+        // classes (read spec/metamodel/ui.json + prompt.json). The prompt provider absorbs
+        // the @xmlText marker the former TemplateTypesProvider registered. Mirrors the TS
+        // ui/prompt provider split (and Java/Python).
+        MetaObjects.Presentation.Ui.UiMetaDataProvider.Instance,
+        MetaObjects.Template.PromptMetaDataProvider.Instance,
+    ];
+
+    /// <summary>
+    /// #265 — the ids of the <see cref="LibraryProviders"/> above, derived (never
+    /// hand-listed). Consulted by <see cref="TypeRegistry.ApplyStrictAttrScoping"/> (via
+    /// <see cref="TypeRegistry.AttrOrigin"/>) to decide whether an attr's provenance is
+    /// "library" (still prunable against the strict per-subtype allow-list) or a
+    /// consumer's own provider (never pruned).
+    /// </summary>
+    public static readonly IReadOnlySet<string> LibraryProviderIds =
+        LibraryProviders.Select(p => p.Id).ToHashSet();
+
     // -------------------------------------------------------------------------
     // wildcard helper — builds a ChildRule that matches any subType and name
     // -------------------------------------------------------------------------
