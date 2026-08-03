@@ -52,6 +52,13 @@ from metaobjects.agent_context import (
 )
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.codegen.config import GenConfig
+from metaobjects.codegen.project_config import (
+    CONFIG_FILENAME,
+    ConfigError,
+    ProjectConfig,
+    TargetConfig,
+    load_project_config,
+)
 from metaobjects.codegen.generator import Generator
 from metaobjects.codegen.generators.entity_model import entity_model
 from metaobjects.codegen.generators.extractor_generator import extractor_generator
@@ -178,6 +185,48 @@ def _providers_from_args(args: argparse.Namespace) -> tuple[list[object], bool]:
             print(f"  {msg}", file=sys.stderr)
         return providers, False
     return providers, True
+
+
+def _find_config(args: argparse.Namespace) -> Path | None:
+    """The config path: ``--config`` if given (even if missing → clear load error),
+    else ``./metaobjects.config.yaml`` in cwd when it exists, else ``None``."""
+    explicit = getattr(args, "config", None)
+    if explicit:
+        return Path(explicit)
+    default = Path.cwd() / CONFIG_FILENAME
+    return default if default.is_file() else None
+
+
+def _config_providers(config: ProjectConfig) -> tuple[list[object], bool]:
+    """Resolve ``config.providers`` with the config file's directory on ``sys.path``.
+
+    #267: prepend the config directory so a ``module:symbol`` provider living beside
+    the config imports with no ``PYTHONPATH=``. Idempotent; the entry is left in
+    place (a short-lived CLI process). Prints resolution errors; returns (providers, ok).
+    """
+    config_dir = str(config.config_dir)
+    if config_dir not in sys.path:
+        sys.path.insert(0, config_dir)
+    providers, errors = _resolve_providers(config.providers)
+    if errors:
+        print("error: invalid provider in config:", file=sys.stderr)
+        for msg in errors:
+            print(f"  {msg}", file=sys.stderr)
+        return providers, False
+    return providers, True
+
+
+def _select_targets(
+    config: ProjectConfig, target_name: str | None
+) -> tuple[list[TargetConfig], str | None]:
+    """All targets, or the single ``--target`` (error string when the name is unknown)."""
+    if target_name is None:
+        return config.targets, None
+    t = config.target(target_name)
+    if t is None:
+        known = ", ".join(sorted(x.name for x in config.targets))
+        return [], f"unknown --target {target_name!r}; known targets: {known}"
+    return [t], None
 
 
 def _load_root(
@@ -422,9 +471,14 @@ def _cmd_gen(args: argparse.Namespace) -> int:
 
     _warn_if_agent_context_stale()
 
-    if args.metadata_dir is None or args.out is None:
+    # #267: config mode ⇔ no positional <metadata_dir>. The explicit
+    # <metadata_dir> + --out flag path below is untouched (byte-identical).
+    if args.metadata_dir is None:
+        return _cmd_gen_config(args)
+    if args.out is None:
         print(
-            "error: gen requires <metadata_dir> and --out (or use --list).",
+            "error: gen requires <metadata_dir> and --out "
+            "(or a metaobjects.config.yaml / --list).",
             file=sys.stderr,
         )
         return 2
@@ -492,6 +546,98 @@ def _cmd_gen(args: argparse.Namespace) -> int:
     for path in written:
         print(path)
     print(f"metaobjects gen: wrote {len(written)} file(s) to {args.out}")
+    return 0
+
+
+def _run_gen_targets(
+    config: ProjectConfig, targets: list[TargetConfig], root: MetaData
+) -> tuple[list[str], list[str]]:
+    """Run each target's suite into its ``outDir``. Returns (all_written, errors).
+
+    Cross-target duplicate-output-path guard (#267): ``run_gen``'s collision guard
+    is per-pass, so two targets writing the same full path would silently clobber
+    (generated files carry the @generated header). We accumulate every written full
+    path across targets and record an error when two targets emit the same one.
+    (Detection is post-write — the colliding file may already be on disk — but the
+    command still fails, so a misconfigured gate is caught in CI.)
+    """
+    all_written: list[str] = []
+    seen: dict[str, str] = {}  # full path -> target name
+    errors: list[str] = []
+    for t in targets:
+        gens: list[Generator] | None = None
+        if t.generators is not None:
+            gens, gen_errors = _resolve_generators(",".join(t.generators))
+            if gen_errors:
+                errors.extend(f"target '{t.name}': {m}" for m in gen_errors)
+                continue
+        out_dir = config.out_dir_for(t)
+        try:
+            written = _run_suite(root, out_dir, gens, t.entities)
+        except ValueError as exc:  # intra-target run_gen collision → clean error
+            errors.append(f"target '{t.name}': {exc}")
+            continue
+        for full in written:
+            prior = seen.get(full)
+            if prior is not None and prior != t.name:
+                errors.append(
+                    f"duplicate output path across targets: {full!r} written by "
+                    f"both '{prior}' and '{t.name}'."
+                )
+            else:
+                seen[full] = t.name
+        all_written.extend(written)
+    return all_written, errors
+
+
+def _cmd_gen_config(args: argparse.Namespace) -> int:
+    """``gen`` with no positional ``metadata_dir`` → declarative-config mode (#267).
+
+    Load ``metaobjects.config.yaml``, load metadata ONCE, and run every target
+    (or ``--target``) into its own ``outDir`` with a cross-target duplicate-path
+    guard. Providers resolve relative to the config file (no ``PYTHONPATH=``).
+    """
+    config_path = _find_config(args)
+    if config_path is None:
+        print(
+            "error: no <metadata_dir> given and no metaobjects.config.yaml found. "
+            "Either pass <metadata_dir> --out (flag mode) or create a "
+            "metaobjects.config.yaml (or pass --config <path>).",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        config = load_project_config(config_path)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    targets, target_err = _select_targets(config, getattr(args, "target", None))
+    if target_err:
+        print(f"error: {target_err}", file=sys.stderr)
+        return 1
+
+    providers, providers_ok = _config_providers(config)
+    if not providers_ok:
+        return 1
+
+    root, load_errors = _load_root(config.metadata_dir(), providers=providers)
+    if root is None:
+        print("error: failed to load metadata:", file=sys.stderr)
+        for msg in load_errors:
+            print(f"  {msg}", file=sys.stderr)
+        return 1
+
+    written, errors = _run_gen_targets(config, targets, root)
+    if errors:
+        for msg in errors:
+            print(f"error: {msg}", file=sys.stderr)
+        return 1
+    for path in written:
+        print(path)
+    print(
+        f"metaobjects gen: wrote {len(written)} file(s) across {len(targets)} target(s)."
+    )
     return 0
 
 
@@ -854,6 +1000,20 @@ def _build_parser() -> argparse.ArgumentParser:
             "Python parity of TS metaobjects.config.ts providers, so a custom subtype "
             "resolves through the standalone CLI (#158)"
         ),
+    )
+    gen.add_argument(
+        "--config",
+        default=None,
+        help=(
+            "path to a metaobjects.config.yaml (declarative targets registry). "
+            "Config mode runs when no <metadata_dir> is given; default lookup is "
+            "./metaobjects.config.yaml in cwd."
+        ),
+    )
+    gen.add_argument(
+        "--target",
+        default=None,
+        help="run only this named target from the config (default: every target)",
     )
     gen.set_defaults(func=_cmd_gen)
 
