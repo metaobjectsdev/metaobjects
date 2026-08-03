@@ -874,3 +874,9 @@ core_providers: list[Provider] = [
     prompt_provider,
     ui_provider,
 ]
+
+# #265 — the ids of the LIBRARY providers above, as a frozen set. Consulted by
+# spec_metamodel._apply_strict_attr_scoping (via TypeRegistry.attr_origin) to
+# decide whether an attr's provenance is "library" (still prunable against the
+# strict per-subtype allow-list) or a consumer's own provider (never pruned).
+LIBRARY_PROVIDER_IDS: frozenset[str] = frozenset(p.id for p in core_providers)

@@ -96,6 +96,15 @@ registry.extend(TYPE_SOURCE, SOURCE_SUBTYPE_RDB, {
 `extend` throws if the target `(type, subType)` was never registered — order
 matters, which is why providers declare `dependencies`.
 
+**Extending a spec-declared core subtype survives strict-mode load.**
+Adding an attr to a subtype the *library* itself registers (e.g. a
+consumer `@decimals` on the core `view.currency`) composes cleanly with a
+**strict** load of metadata that uses the new attr — no need to fall back
+to `--lax` for the whole file just because one attr came from a consumer
+provider. This is conformance-gated across all five ports (the
+`compose-load/` fixtures in
+[`../../fixtures/provider-composition-conformance/`](../../fixtures/provider-composition-conformance/)).
+
 ## Wiring providers into the loader
 
 Each port has its own loader entry point. The contract is identical:
@@ -125,7 +134,13 @@ loader = MetaDataLoader.from_directory("./metadata", providers=[example_toolcall
 
 ```java
 // Java — SPI auto-discovery is the default; META-INF/services lists every provider
-// (no API call required). Programmatic compose() factory is a planned follow-up.
+// (no API call required). When a consumer genuinely needs extra vocabulary
+// composed with the full metamodel provider set — so its metadata still
+// strict-loads against the spec contract instead of getting the weaker
+// classpath-SPI registry — the sanctioned seam is:
+loader.setTypeRegistry(RegistryManifest.composeMetamodelRegistry(List.of(myProvider)));
+// Calling MetaDataRegistry.compose(...) directly does NOT run spec scoping —
+// use composeMetamodelRegistry(extras), not a raw compose() call.
 ```
 
 The semantic rule is identical across ports:

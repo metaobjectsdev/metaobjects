@@ -53,7 +53,21 @@ public static class Provider
         TypeRegistry registry = new();
         foreach (IMetaDataTypeProvider provider in ordered)
         {
-            provider.RegisterTypes(registry);
+            // #265 — stamp the active provider id for the duration of this provider's
+            // RegisterTypes() call (covers both its own Register()-ed definitions AND
+            // any registry.Extend() it triggers, e.g. via ApplyProviderExtends), so
+            // Registry.cs can attribute every attr it sees to the provider that
+            // registered it. Cleared after so LibrarySentinel is the default outside a
+            // compose loop.
+            registry.CurrentProviderId = provider.Id;
+            try
+            {
+                provider.RegisterTypes(registry);
+            }
+            finally
+            {
+                registry.CurrentProviderId = null;
+            }
         }
 
         // FR-033 (sub-step B1) — after every provider has registered and BEFORE the

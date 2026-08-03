@@ -144,10 +144,16 @@ all providers via Kahn's algorithm and emits the same stable error codes
 on failure (`ERR_PROVIDER_DUPLICATE_ID`, `_MISSING_DEPENDENCY`,
 `_DEPENDENCY_CYCLE`).
 
-A programmatic `MetaDataRegistry.compose(List<MetaDataTypeProvider>)`
-factory (matching the explicit-list approach used by TS / C# / Python) is
-on the follow-up backlog for callers who want to bypass SPI auto-discovery
-in tests or embedded scenarios. The conceptual reference lives in
+For callers who want to bypass SPI auto-discovery — or compose extra
+consumer vocabulary on top of the full metamodel provider set so it still
+strict-loads against the spec contract (no `--lax` fallback) — the
+sanctioned seam is
+`RegistryManifest.composeMetamodelRegistry(extraProviders)`, which composes
+the core metamodel providers plus `extraProviders` and runs the full
+spec-description + provenance-safe attr-scoping pipeline (hand the result
+to `loader.setTypeRegistry(...)`). Raw `MetaDataRegistry.compose(...)`
+composes only the explicit list, skips spec scoping, and is for
+internal/test partial sets. The cross-port contract lives in
 [`../features/extending-with-providers.md`](../features/extending-with-providers.md).
 
 ## Generate

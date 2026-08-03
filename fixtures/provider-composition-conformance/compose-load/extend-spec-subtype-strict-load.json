@@ -1,0 +1,30 @@
+{
+  "description": "A metadata document authoring the consumer-extended view.currency @decimals attr strict-loads cleanly against the composed registry — the consumer extension survives strict scoping (#265).",
+  "composeWithCore": true,
+  "providers": ["extend-spec-subtype"],
+  "metadata": {
+    "metadata.root": {
+      "package": "acme::compose",
+      "children": [
+        {
+          "object.entity": {
+            "name": "Invoice",
+            "children": [
+              { "field.long": { "name": "id" } },
+              { "identity.primary": { "@fields": "id" } },
+              {
+                "field.currency": {
+                  "name": "amount",
+                  "children": [
+                    { "view.currency": { "@decimals": 2 } }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "expectErrors": []
+}

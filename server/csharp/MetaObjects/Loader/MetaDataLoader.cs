@@ -71,19 +71,14 @@ public class MetaDataLoader
         _strict = strict;
     }
 
+    // #265 — the library's own default provider set (core + db + ui + prompt) and its
+    // derived provider-id set now live on CoreTypes (CoreTypes.LibraryProviders /
+    // CoreTypes.LibraryProviderIds) — a peer of Registry/Provider, not here — so
+    // Registry.cs::ApplyStrictAttrScoping can consult the id set without a
+    // Registry → Loader back-reference (Loader → Registry/Provider/CoreTypes is the
+    // sole pre-existing dependency direction).
     private static TypeRegistry DefaultRegistry() =>
-        Provider.ComposeRegistry([
-            CoreTypes.CoreTypesProvider,
-            // DB-domain field attrs (@column / @db.indexed / @dbColumnType) — Extend over core
-            // field types. Mirrors Java's CoreDBMetaDataProvider and TS's dbProvider.
-            MetaObjects.Persistence.Db.DbMetaDataProvider.Instance,
-            // FR-033 concern providers — re-home the UI / prompt attrs out of the core type
-            // classes (read spec/metamodel/ui.json + prompt.json). The prompt provider absorbs
-            // the @xmlText marker the former TemplateTypesProvider registered. Mirrors the TS
-            // ui/prompt provider split (and Java/Python).
-            MetaObjects.Presentation.Ui.UiMetaDataProvider.Instance,
-            MetaObjects.Template.PromptMetaDataProvider.Instance,
-        ]);
+        Provider.ComposeRegistry(CoreTypes.LibraryProviders);
 
     // -------------------------------------------------------------------------
     // Static factories (the 99% case, cross-language consistent)

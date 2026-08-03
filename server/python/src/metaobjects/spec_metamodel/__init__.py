@@ -580,8 +580,21 @@ def _apply_strict_attr_scoping(registry, reader: SpecMetamodelReader) -> None:
     loader (a misplaced attr → ``ERR_UNKNOWN_ATTR``). Types NOT declared in the JSON
     keep their attrs untouched (no JSON-sourced strict set exists).
 
+    #265 — the prune is PROVENANCE-scoped: only a LIBRARY-origin logical attr
+    (registered by one of the library's own providers, or unstamped — see
+    ``TypeRegistry.attr_origin`` / ``LIBRARY_ATTR_ORIGIN``) is prunable against
+    the strict per-subtype allow-list. An attr a CONSUMER provider added via
+    ``registry.extend()`` (e.g. a downstream app widening a spec-declared core
+    subtype) is never pruned — the strict allow-list is a library-vocabulary
+    contract, blind to consumer-registered vocabulary by design. This does not
+    relax the check itself (still own-attrs-only, ADR-0039) and does not widen
+    scoping for a misplaced LIBRARY attr just because a consumer provider
+    happens to be composed in.
+
     Deferred import avoids the provider import cycle.
     """
+    from ..core_types import LIBRARY_PROVIDER_IDS
+    from ..registry import LIBRARY_ATTR_ORIGIN
     from ..registry_manifest import ExclusionReason, classify_per_type_attr
 
     for definition in registry._defs.values():  # noqa: SLF001
@@ -591,7 +604,11 @@ def _apply_strict_attr_scoping(registry, reader: SpecMetamodelReader) -> None:
         kept = []
         for attr in definition.attrs:
             is_logical = classify_per_type_attr(attr.name) is ExclusionReason.INCLUDED
-            if is_logical and attr.name not in allow:
-                continue  # logical attr not scoped to this subtype → prune
+            prunable = is_logical and attr.name not in allow
+            if prunable:
+                origin = registry.attr_origin(definition.type, definition.sub_type, attr.name)
+                is_library_origin = origin == LIBRARY_ATTR_ORIGIN or origin in LIBRARY_PROVIDER_IDS
+                if is_library_origin:
+                    continue  # library-origin logical attr not scoped to this subtype → prune
             kept.append(attr)
         definition.attrs[:] = kept
