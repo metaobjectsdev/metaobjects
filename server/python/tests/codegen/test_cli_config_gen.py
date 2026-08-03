@@ -102,6 +102,30 @@ def test_gen_cross_target_duplicate_output_path_guard(tmp_path: Path, capsys) ->
     assert "duplicate output path across targets" in capsys.readouterr().err
 
 
+SHARED_OUTDIR_DISJOINT_ENTITIES = """
+targets:
+  a:
+    outDir: shared
+    generators: [entity]
+    entities: [Program]
+  b:
+    outDir: shared
+    generators: [entity]
+    entities: [Week]
+"""
+
+
+def test_gen_cross_target_shared_outdir_disjoint_entities_not_flagged(tmp_path: Path) -> None:
+    """Two targets sharing an outDir with DISJOINT entities must succeed: the
+    auto-emitted package-marker __init__.py is byte-identical across both targets
+    and must not trip the cross-target duplicate-output-path guard."""
+    cfg = _project(tmp_path, SHARED_OUTDIR_DISJOINT_ENTITIES)
+    rc = main(["gen", "--config", str(cfg)])
+    assert rc == 0
+    assert (tmp_path / "shared/Program.py").exists()
+    assert (tmp_path / "shared/Week.py").exists()
+
+
 # --- config-relative provider (no PYTHONPATH) -------------------------------
 
 PROVIDER_MODULE = '''

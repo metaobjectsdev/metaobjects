@@ -77,3 +77,10 @@ def test_verify_flag_path_still_works_with_config_present(tmp_path: Path) -> Non
     out = tmp_path / "flagout"
     assert main(["gen", str(meta), "--out", str(out)]) == 0
     assert main(["verify", str(meta), "--out", str(out)]) == 0
+
+
+def test_verify_templates_config_mode_requires_metadata_dir(tmp_path: Path) -> None:
+    """`verify --templates` is not config-driven — the guard returns exit 2 when
+    no positional metadata_dir is given (config mode / --templates only drives
+    --codegen)."""
+    assert main(["verify", "--templates"]) == 2

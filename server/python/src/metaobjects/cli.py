@@ -578,6 +578,8 @@ def _run_gen_targets(
             errors.append(f"target '{t.name}': {exc}")
             continue
         for full in written:
+            if Path(full).name == "__init__.py":
+                continue  # auto-emitted package marker — byte-identical across targets sharing an outDir; not a real collision
             prior = seen.get(full)
             if prior is not None and prior != t.name:
                 errors.append(

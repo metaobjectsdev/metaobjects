@@ -89,6 +89,15 @@ def test_missing_file_raises(tmp_path: Path) -> None:
         load_project_config(tmp_path / "nope.yaml")
 
 
+def test_unreadable_non_utf8_config_raises_configerror_not_traceback(tmp_path: Path) -> None:
+    """A non-UTF-8 config file must fail with a ConfigError ("cannot read"), not a
+    raw UnicodeDecodeError escaping the ConfigError "no stack trace" contract."""
+    p = tmp_path / CONFIG_FILENAME
+    p.write_bytes(b"\xff\xfe\x00 targets: bad")
+    with pytest.raises(ConfigError, match="cannot read"):
+        load_project_config(p)
+
+
 @pytest.mark.parametrize(
     "text, match",
     [

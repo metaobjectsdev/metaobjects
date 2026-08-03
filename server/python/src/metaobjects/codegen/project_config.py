@@ -108,7 +108,11 @@ def load_project_config(path: Path) -> ProjectConfig:
     if not path.is_file():
         raise ConfigError(f"config file not found: {path}")
     try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ConfigError(f"{path}: cannot read config file: {exc}") from exc
+    try:
+        raw = yaml.safe_load(text)
     except yaml.YAMLError as exc:
         raise ConfigError(f"{path}: invalid YAML: {exc}") from exc
 
