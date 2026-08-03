@@ -662,6 +662,10 @@ def _verify_codegen(args: argparse.Namespace) -> int:
     code path (gen-to-temp + diff), so drift can never be a generator-wiring
     divergence between the two commands.
     """
+    # #267: config mode ⇔ no positional <metadata_dir>. The legacy
+    # <metadata_dir> + --out diff below is untouched.
+    if args.metadata_dir is None:
+        return _verify_codegen_config(args)
     if args.out is None:
         print(
             "error: verify --codegen requires --out (the committed output dir).",
@@ -718,6 +722,95 @@ def _verify_codegen(args: argparse.Namespace) -> int:
     return 1
 
 
+def _verify_one_target(
+    config: ProjectConfig, target: TargetConfig, root: MetaData
+) -> int:
+    """Regenerate one target to a temp dir + diff against its committed ``outDir``.
+
+    Mirrors :func:`_verify_codegen`'s diff, labeled per target. Returns 0 (in sync)
+    or 1 (drift / bad generator name)."""
+    gens: list[Generator] | None = None
+    if target.generators is not None:
+        gens, gen_errors = _resolve_generators(",".join(target.generators))
+        if gen_errors:
+            for m in gen_errors:
+                print(f"error: target '{target.name}': {m}", file=sys.stderr)
+            return 1
+
+    out_dir = Path(config.out_dir_for(target))
+    with tempfile.TemporaryDirectory() as tmp:
+        _run_suite(root, tmp, gens, target.entities)
+        expected = _relative_set(Path(tmp))
+        committed = _relative_set(out_dir)
+
+    changed = sorted(k for k in expected if k in committed and expected[k] != committed[k])
+    missing = sorted(k for k in expected if k not in committed)
+    extra = sorted(k for k in committed if k not in expected)
+
+    if not changed and not missing and not extra:
+        print(f"metaobjects verify [{target.name}]: in sync ({len(expected)} file(s)).")
+        return 0
+
+    print(
+        f"error: [{target.name}] generated code is out of sync with metadata.",
+        file=sys.stderr,
+    )
+    for k in changed:
+        print(f"  drifted: {k}", file=sys.stderr)
+    for k in missing:
+        print(f"  missing: {k}", file=sys.stderr)
+    for k in extra:
+        print(f"  extra:   {k}", file=sys.stderr)
+    print("regenerate (metaobjects gen) and commit the result.", file=sys.stderr)
+    return 1
+
+
+def _verify_codegen_config(args: argparse.Namespace) -> int:
+    """``verify --codegen`` with no positional ``metadata_dir`` → config mode (#267).
+
+    Load the config + metadata ONCE, then regen+diff each target (or ``--target``)
+    against its committed ``outDir``, aggregating the exit code (non-zero if ANY
+    target drifts). Strict-by-default (ADR-0023) unless ``--lax``.
+    """
+    config_path = _find_config(args)
+    if config_path is None:
+        print(
+            "error: verify --codegen with no <metadata_dir> requires a "
+            "metaobjects.config.yaml (or --config <path>).",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        config = load_project_config(config_path)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    targets, target_err = _select_targets(config, getattr(args, "target", None))
+    if target_err:
+        print(f"error: {target_err}", file=sys.stderr)
+        return 1
+
+    strict = not getattr(args, "lax", False)
+    providers, providers_ok = _config_providers(config)
+    if not providers_ok:
+        return 1
+
+    root, load_errors = _load_root(config.metadata_dir(), strict=strict, providers=providers)
+    if root is None:
+        print("error: failed to load metadata:", file=sys.stderr)
+        for msg in load_errors:
+            print(f"  {msg}", file=sys.stderr)
+        if strict and any("ERR_UNKNOWN_ATTR" in m for m in load_errors):
+            print(_strict_load_hint(), file=sys.stderr)
+        return 1
+
+    exit_code = 0
+    for t in targets:
+        exit_code = max(exit_code, _verify_one_target(config, t, root))
+    return exit_code
+
+
 #: The text-ref attrs a ``template.*`` node may carry. Each is resolved through
 #: the filesystem provider and run through the render ``verify()`` gate. A prompt
 #: / document uses ``@textRef``; an email uses subject / html / (optional) text
@@ -753,6 +846,14 @@ def _verify_templates(args: argparse.Namespace) -> int:
     (exit 1). Clean → 0. Reuses the render engine + field-tree walk; nothing is
     reimplemented here.
     """
+    if args.metadata_dir is None:
+        print(
+            "error: verify --templates requires <metadata_dir> (it is not "
+            "config-driven; the config's targets registry drives --codegen only).",
+            file=sys.stderr,
+        )
+        return 2
+
     template_root = getattr(args, "templates_root", None)
     if not template_root:
         print(
@@ -1062,7 +1163,15 @@ def _build_parser() -> argparse.ArgumentParser:
             "(ADR-0021 D2); bare verify defaults to --codegen"
         ),
     )
-    verify.add_argument("metadata_dir", help="directory of metadata JSON/YAML files")
+    verify.add_argument(
+        "metadata_dir",
+        nargs="?",
+        default=None,
+        help=(
+            "directory of metadata JSON/YAML files. Omit to use a "
+            "metaobjects.config.yaml (--codegen config mode, #267)."
+        ),
+    )
     verify.add_argument(
         "--codegen",
         action="store_true",
@@ -1112,6 +1221,20 @@ def _build_parser() -> argparse.ArgumentParser:
         action="append",
         metavar="module:symbol",
         help="load a consumer metadata Provider as 'module:symbol' (repeatable; #158)",
+    )
+    verify.add_argument(
+        "--config",
+        default=None,
+        help=(
+            "path to a metaobjects.config.yaml. Config mode runs when no "
+            "<metadata_dir> is given; default ./metaobjects.config.yaml in cwd. "
+            "Drives --codegen per-target regen+diff."
+        ),
+    )
+    verify.add_argument(
+        "--target",
+        default=None,
+        help="verify only this named target from the config (default: every target)",
     )
     verify.set_defaults(func=_cmd_verify)
 
