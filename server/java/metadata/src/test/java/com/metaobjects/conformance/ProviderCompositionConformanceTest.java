@@ -354,15 +354,28 @@ public class ProviderCompositionConformanceTest {
                 loader.setTypeRegistry(registry);
                 loader.init();
 
-                List<String> actualCodes = new ArrayList<>();
+                MetaDataException thrown = null;
                 try {
                     loader.load(List.of(new InMemoryStringSource(
                         content, "<inline>", MetaDataSource.MetaDataFormat.JSON)));
                 } catch (MetaDataException ex) {
-                    actualCodes.add(codeOf(ex));
+                    thrown = ex;
                 }
-                for (MetaDataException recorded : loader.getErrors()) {
+                List<MetaDataException> recordedErrors = loader.getErrors();
+                List<String> actualCodes = new ArrayList<>();
+                for (MetaDataException recorded : recordedErrors) {
                     actualCodes.add(codeOf(recorded));
+                }
+                // #265/#267 hardening: MetaDataException carries no equals()/hashCode()
+                // override, so this List#contains is a reference-identity check — it
+                // skips `thrown` only when it is the EXACT SAME exception instance a
+                // validation phase already recorded via addError() (then eager-threw),
+                // preventing a double count of one underlying failure. Two genuinely
+                // distinct exceptions sharing the same .code (a future multi-error
+                // fixture) are still both counted, matching the TS reference's sorted
+                // full error-code list comparison.
+                if (thrown != null && !recordedErrors.contains(thrown)) {
+                    actualCodes.add(codeOf(thrown));
                 }
 
                 List<String> expectedCodes = new ArrayList<>();
