@@ -1,0 +1,28 @@
+{
+  "description": "A misplaced CORE attr (@maxLength, declared only on field.string) authored on field.boolean is rejected under strict load even with a consumer provider composed into the registry — the provenance guard must not accidentally widen scoping for core attrs either (#265).",
+  "composeWithCore": true,
+  "providers": ["extend-spec-subtype"],
+  "metadata": {
+    "metadata.root": {
+      "package": "acme::compose",
+      "children": [
+        {
+          "object.entity": {
+            "name": "Flag",
+            "children": [
+              { "field.long": { "name": "id" } },
+              { "identity.primary": { "@fields": "id" } },
+              {
+                "field.boolean": {
+                  "name": "active",
+                  "@maxLength": 5
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "expectErrors": ["ERR_UNKNOWN_ATTR"]
+}

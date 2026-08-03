@@ -122,3 +122,99 @@ Composing `["attr-conflict-base", "attr-conflict-clash"]` → `ERR_PROVIDER_ATTR
   dependencies wiring is the entire contract.
 - The `.code` read off a caught exception is the assertion surface — message text is
   never compared (message wording is per-port).
+
+## The `compose-load/` subdir (#265)
+
+#265 gates a **different** invariant than the five error codes above: strict attr
+scoping must not wrongly prune an attribute a *consumer* provider added (via
+`registry.extend()`) to a spec-declared **core** subtype. That requires composing a
+consumer provider on top of the port's real **library** provider set (not just named
+test providers in isolation) and, for two of the four scenarios, strict-loading an
+actual metadata document against the composed registry — a shape the five
+error-code manifests above don't need and don't carry.
+
+These `compose-load/` fixtures live in their **own subdirectory**, not the flat
+corpus dir, for backward compatibility: every existing runner (TS / Python / C# /
+Java) lists the corpus directory **non-recursively** and hard-requires the old
+`{description, providers[], expectedError, sealThenRegister?}` shape for every
+`.json` file it finds there. Dropping a new-shape manifest into the flat dir would
+red every not-yet-updated runner. `compose-load/` is invisible to a non-recursive
+`readdir` of the parent, so an un-updated runner keeps passing unchanged; a runner
+that has been extended for #265 globs `compose-load/` as a **second**, separate
+pass. The flat dir's 5 existing manifests are unchanged.
+
+### Shape
+
+Each `compose-load/*.json` manifest carries some or all of these OPTIONAL keys
+(`description` and `providers` are still present; `expectedError` /
+`sealThenRegister` from the flat-dir shape do NOT appear here — a runner dispatches
+on which shape a manifest carries):
+
+```jsonc
+{
+  "description": "...",
+  "providers": ["extend-spec-subtype"],     // named test providers, composed AFTER the library core set
+  "composeWithCore": true,                   // compose the port's LIBRARY provider set first, then `providers`
+  "expectAttrs": {                           // OPTIONAL registry-inspection: the port's declared-attr lookup its strict check uses
+    "type": "view", "subType": "currency", "contains": ["locale", "decimals"]
+  },
+  "metadata": { "metadata.root": { "..." : "..." } }, // OPTIONAL canonical-JSON doc to strict-load
+  "expectErrors": ["ERR_UNKNOWN_ATTR"]       // OPTIONAL error codes the strict load must surface ([] = expect success)
+}
+```
+
+Runner behavior:
+
+1. If `composeWithCore`, compose `[...libraryProviders, ...namedProviders]`; else
+   (today's flat-dir behavior) compose the named providers alone.
+2. If `expectAttrs` is present, assert the port's declared-attr set for
+   `(type, subType)` is a **superset** of `contains` (flat lookup in TS / Python /
+   C#; Java via `typeDef.getChildRequirement(name)`, direct-or-inherited).
+3. If `metadata` is present, strict-load it and assert the surfaced `.code`s equal
+   `expectErrors` exactly (order-insensitive; `[]` means the load must surface zero
+   errors).
+
+No new error codes: these scenarios only ever surface `ERR_UNKNOWN_ATTR` (already
+gated above) or nothing.
+
+### Canonical named provider `extend-spec-subtype`
+
+- **id:** `"extend-spec-subtype"`
+- **dependencies:** **none** — deliberately. The provider that registers
+  `view.currency` (the library's core-types provider) has a **different id per
+  port**, and this corpus mandates an identical id/dependency set across ports for
+  every named provider — so `extend-spec-subtype` cannot name that provider as a
+  dependency without breaking cross-port id parity. Ordering is instead guaranteed
+  by the `composeWithCore` contract: the library set composes first, the named set
+  is appended after, and every port's compose is a **stable** topological sort that
+  preserves input order among providers with no ordering constraint between them.
+  `composeWithCore` is the sanctioned exception to Python's "an extender MUST
+  declare a dependency on what it extends" docstring guidance — it's a corpus-level
+  ordering guarantee, not a per-provider one.
+- **registerTypes:** `extend`s `view.currency` (a subtype the library's own core
+  provider registers) with one new **int** attr, `decimals`.
+
+Composing `[...coreProviders, "extend-spec-subtype"]` must succeed, and the
+resulting registry's declared-attr set for `(view, currency)` contains BOTH
+`locale` (core-declared) and `decimals` (consumer-added).
+
+### The four fixtures
+
+1. **`extend-spec-subtype-registry`** — `composeWithCore` + `extend-spec-subtype`;
+   asserts `(view, currency)` in the composed registry's declared-attr lookup
+   contains `locale` and `decimals`.
+2. **`extend-spec-subtype-strict-load`** — same composition, plus a metadata
+   document with a `field.currency` (the structural parent a `view.currency` child
+   is admitted under; `@currency` itself may be omitted, it defaults to `USD`)
+   carrying a `view.currency @decimals: 2` child. Strict-loads with
+   `expectErrors: []` — the consumer-added attr is accepted, not pruned.
+3. **`extend-spec-subtype-typo-rejected`** — same shape, but `@decimalz: 2` (a
+   typo — not the provider-registered name). Strict-loads with
+   `expectErrors: ["ERR_UNKNOWN_ATTR"]` — the extension widens scoping for its own
+   declared attr only, never for an arbitrary name.
+4. **`misplaced-core-attr-consumer-registry`** — same composition (a consumer
+   provider IS composed in), but the metadata document puts `@maxLength` (a CORE
+   attr declared only on `field.string`) on a `field.boolean`. Strict-loads with
+   `expectErrors: ["ERR_UNKNOWN_ATTR"]` — proves the provenance guard doesn't
+   accidentally widen scoping for misplaced CORE attrs just because a consumer
+   provider is present in the composition.

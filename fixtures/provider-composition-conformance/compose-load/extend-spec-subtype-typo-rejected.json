@@ -1,0 +1,30 @@
+{
+  "description": "A typo'd attr (@decimalz, not the provider-registered @decimals) on view.currency is rejected under strict load even though the base subtype was consumer-extended — the extension widens scoping for its OWN declared attr only, never for an arbitrary name (#265).",
+  "composeWithCore": true,
+  "providers": ["extend-spec-subtype"],
+  "metadata": {
+    "metadata.root": {
+      "package": "acme::compose",
+      "children": [
+        {
+          "object.entity": {
+            "name": "Invoice",
+            "children": [
+              { "field.long": { "name": "id" } },
+              { "identity.primary": { "@fields": "id" } },
+              {
+                "field.currency": {
+                  "name": "amount",
+                  "children": [
+                    { "view.currency": { "@decimalz": 2 } }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "expectErrors": ["ERR_UNKNOWN_ATTR"]
+}

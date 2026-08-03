@@ -1,0 +1,10 @@
+{
+  "description": "Composing the library's core provider set plus a consumer provider that extends a spec-declared core subtype (view.currency) with a new attr (decimals) — the extended attr must appear alongside the core-declared locale attr in the registry's declared-attr lookup for (view, currency). #265: strict scoping must not prune a consumer-added attr on a core subtype.",
+  "composeWithCore": true,
+  "providers": ["extend-spec-subtype"],
+  "expectAttrs": {
+    "type": "view",
+    "subType": "currency",
+    "contains": ["locale", "decimals"]
+  }
+}
