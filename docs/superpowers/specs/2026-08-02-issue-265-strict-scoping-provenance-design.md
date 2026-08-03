@@ -61,7 +61,9 @@ Fixtures 1 + 4 together catch both the bug and all three divergent behaviors in 
 ## Accepted residual / non-goals
 
 - **Extending a subtype with a core-attr *name* the port legacy-registers broadly** (e.g. `@maxLength` onto `field.boolean` via `extend`) throws `ERR_PROVIDER_ATTR_CONFLICT` on Python/C#/Java but succeeds on TS (whose registry never had it there). The deep fix — every port registers exactly-per-spec and the prune is deleted — is the eventual end state but a large per-port registration refactor; **out of scope for #265**, documented as a known residual.
+- **The SAME provenance-blind hole exists in FR-033 sub-step B2a — strict *structural-children* scoping** (`_apply_strict_structural_children` / Java pass 4 / C# equivalent keep only attr-type rules + the spec's strict child graph). A consumer provider that extends a spec-declared subtype with an extra **child rule** (not an attr) would be pruned identically. #265 is attrs-only and the `extend-spec-subtype` provider adds only an attr, so the fix + fixtures do not cover B2a. It is named here so a future consumer child-rule extension re-files as the structural twin of #265, not a surprise — the same provenance mechanism would extend to it when needed.
 - No change to the strict *check* semantics (own-only is correct, ADR-0039). No new error codes. No metamodel vocabulary change.
+- **Convergent side-effect (intended):** a consumer extending a *base* subtype (e.g. `field.base`) ends up legal on the base only — the inherited copies on concrete subtypes are unstamped (library-origin) and still prune — which converges Java with the flat-registry semantics of TS/Python/C#.
 
 ## Batch context
 
