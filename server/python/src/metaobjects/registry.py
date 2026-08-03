@@ -8,6 +8,15 @@ from .errors import ErrorCode, ParseError
 from .shared.base_types import SUBTYPE_BASE
 from .validation_types import NodeValidator, ReferenceDescriptor
 
+# #265 — sentinel attr-provenance origin for an attr registered/extended with no
+# active provider id (an unstamped registration — e.g. a hand-built registry in a
+# unit test that never goes through provider.compose_registry's stamping loop, or
+# any future registration path that forgets to set `_current_provider_id`).
+# Treated as LIBRARY origin by the strict-attr-scoping prune guard
+# (spec_metamodel._apply_strict_attr_scoping) — i.e. still prunable, preserving
+# pre-#265 behavior for anything not explicitly attributed to a provider.
+LIBRARY_ATTR_ORIGIN = "__library__"
+
 
 @dataclass(frozen=True)
 class AttrSchema:
@@ -106,6 +115,16 @@ class TypeRegistry:
         # pivot off). The library seals after the metamodel bootstrap; a
         # downstream app composes its own (unsealed) registry.
         self._sealed = False
+        # #265 — the provider id active during the CURRENT register_types() call,
+        # set/cleared by provider.compose_registry around each provider's turn.
+        # None outside a compose loop (e.g. a hand-built registry in a unit test).
+        self._current_provider_id: str | None = None
+        # #265 — (type, subType, attrName) -> the provider id that registered
+        # that attr (LIBRARY_ATTR_ORIGIN when unstamped). Consulted by
+        # spec_metamodel._apply_strict_attr_scoping so a consumer-registered attr
+        # on a spec-declared subtype is never pruned by the library's strict
+        # per-subtype allow-list — only LIBRARY-origin attrs are.
+        self._attr_provenance: dict[tuple[str, str, str], str] = {}
 
     def seal(self) -> None:
         """Seal the registry: every subsequent mutating registration raises
@@ -155,6 +174,18 @@ class TypeRegistry:
             references=list(definition.references),
             validate=definition.validate,
         )
+        # #265 — stamp provenance for every attr present at registration time
+        # (this also captures a provider's own build-time enrichment, e.g.
+        # core_types.py's post-hoc `_def.attrs.append(...)` on its own
+        # TypeDefinition objects before `register()` is ever called).
+        origin = self._current_provider_id or LIBRARY_ATTR_ORIGIN
+        for attr in self._defs[definition.key].attrs:
+            self._attr_provenance[(definition.type, definition.sub_type, attr.name)] = origin
+
+    def attr_origin(self, type_: str, sub_type: str, attr_name: str) -> str:
+        """The provider id that registered/extended ``attr_name`` on ``(type_, sub_type)``,
+        or :data:`LIBRARY_ATTR_ORIGIN` if unstamped. #265 provenance-scoped strict prune."""
+        return self._attr_provenance.get((type_, sub_type, attr_name), LIBRARY_ATTR_ORIGIN)
 
     def find(self, type_: str, sub_type: str) -> TypeDefinition | None:
         return self._defs.get((type_, sub_type))
@@ -244,6 +275,7 @@ class TypeRegistry:
                 ErrorCode.ERR_UNKNOWN_SUBTYPE,
             )
 
+        origin = self._current_provider_id or LIBRARY_ATTR_ORIGIN
         for attr in attributes or []:
             if attr.value_type == SUBTYPE_BASE:
                 raise ValueError(
@@ -258,6 +290,8 @@ class TypeRegistry:
                     ErrorCode.ERR_PROVIDER_ATTR_CONFLICT,
                 )
             definition.attrs.append(attr)
+            # #265 — stamp the extending provider as this attr's origin.
+            self._attr_provenance[(type_, sub_type, attr.name)] = origin
 
         for rule in child_rules or []:
             definition.child_rules.append(rule)

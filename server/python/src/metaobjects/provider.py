@@ -77,7 +77,17 @@ def compose_registry(providers: list[Provider]) -> TypeRegistry:
     ordered = _topo_sort(providers)
     registry = TypeRegistry()
     for provider in ordered:
-        provider.register_types(registry)
+        # #265 — stamp the active provider id for the duration of this
+        # provider's register_types() call (covers both its own `.add()`-ed
+        # definitions AND any `registry.extend()` it triggers, e.g. via an
+        # `on_register` hook), so registry.py can attribute every attr it sees
+        # to the provider that registered it. Cleared after so the sentinel
+        # (LIBRARY_ATTR_ORIGIN) is the default outside a compose loop.
+        registry._current_provider_id = provider.id  # noqa: SLF001
+        try:
+            provider.register_types(registry)
+        finally:
+            registry._current_provider_id = None  # noqa: SLF001
     apply_spec_descriptions(registry)
     return registry
 

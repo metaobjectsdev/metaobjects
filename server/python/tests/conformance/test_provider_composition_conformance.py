@@ -18,11 +18,15 @@ from pathlib import Path
 
 import pytest
 
+from metaobjects.core_types import core_providers
 from metaobjects.errors import ErrorCode, ParseError
+from metaobjects.loader.meta_data_loader import MetaDataLoader
+from metaobjects.meta.core.attr.attr_constants import ATTR_SUBTYPE_INT
+from metaobjects.meta.presentation.view.view_constants import VIEW_SUBTYPE_CURRENCY
 from metaobjects.provider import Provider, compose_registry
 from metaobjects.registry import AttrSchema, ChildRule, TypeDefinition, TypeRegistry
 from metaobjects.meta.template.meta_template import MetaTemplate
-from metaobjects.shared.base_types import TYPE_ATTR
+from metaobjects.shared.base_types import TYPE_ATTR, TYPE_VIEW
 
 # Fresh, otherwise-unused template subtype the attr-conflict / seal providers use.
 _CONFLICT_SUBTYPE = "compositionprobe"
@@ -89,6 +93,32 @@ class _SealProbeProvider(Provider):
         )
 
 
+class _ExtendSpecSubtypeProvider(Provider):
+    """#265 `compose-load/` canonical named provider. Extends `view.currency` (a
+    SPEC-DECLARED CORE subtype the library's own core-types provider registers)
+    with a new `decimals` int attr. Deliberately NO dependencies — see the corpus
+    README "Canonical named provider `extend-spec-subtype`" for why (cross-port
+    id/dep parity vs. the `composeWithCore` ordering contract).
+    """
+
+    def __init__(self) -> None:
+        super().__init__("extend-spec-subtype")
+
+    def register_types(self, registry: TypeRegistry) -> None:  # noqa: D401
+        registry.extend(
+            TYPE_VIEW,
+            VIEW_SUBTYPE_CURRENCY,
+            attributes=[
+                AttrSchema(
+                    "decimals",
+                    ATTR_SUBTYPE_INT,
+                    required=False,
+                    description="Test-only — #265 compose-load probe attr.",
+                )
+            ],
+        )
+
+
 def _providers() -> dict[str, Provider]:
     return {
         "duplicate-x": _noop_provider("duplicate-x"),
@@ -100,6 +130,7 @@ def _providers() -> dict[str, Provider]:
         "attr-conflict-base": _attr_conflict_base_provider(),
         "attr-conflict-clash": _AttrConflictClashProvider(),
         "seal-probe": _SealProbeProvider(),
+        "extend-spec-subtype": _ExtendSpecSubtypeProvider(),
     }
 
 
@@ -114,7 +145,18 @@ def _manifest_files() -> list[Path]:
     return sorted(_corpus_root().glob("*.json"))
 
 
-def _error_code(exc: BaseException) -> str:
+def _compose_load_corpus_root() -> Path:
+    return _corpus_root() / "compose-load"
+
+
+def _compose_load_manifest_files() -> list[Path]:
+    return sorted(_compose_load_corpus_root().glob("*.json"))
+
+
+def _error_code(exc: object) -> str:
+    # Accepts both a caught exception (ParseError) and a MetaError — both carry
+    # a `.code: ErrorCode` attribute; only the container differs (raised vs.
+    # collected in `LoadResult.errors`).
     code = getattr(exc, "code", None)
     if isinstance(code, ErrorCode):
         return code.value
@@ -148,3 +190,38 @@ def test_provider_composition(manifest_path: Path) -> None:
     with pytest.raises(ParseError) as exc_info:
         compose_registry(resolved)
     assert _error_code(exc_info.value) == expected
+
+
+# ---------------------------------------------------------------------------
+# #265 `compose-load/` corpus — see the corpus README "The `compose-load/`
+# subdir". Own directory, own loop: a manifest here never carries
+# `expectedError` / `sealThenRegister` (the flat-corpus shape above); it
+# carries `composeWithCore` / `expectAttrs` / `metadata` / `expectErrors`
+# instead.
+# ---------------------------------------------------------------------------
+
+
+def test_compose_load_corpus_non_empty() -> None:
+    assert len(_compose_load_manifest_files()) > 0
+
+
+@pytest.mark.parametrize("manifest_path", _compose_load_manifest_files(), ids=lambda p: p.name)
+def test_provider_composition_compose_load(manifest_path: Path) -> None:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    providers = _providers()
+    resolved = [_resolve(providers, pid) for pid in manifest["providers"]]
+    provider_list = [*core_providers, *resolved] if manifest.get("composeWithCore") else resolved
+
+    if "expectAttrs" in manifest:
+        registry = compose_registry(provider_list)
+        expect_attrs = manifest["expectAttrs"]
+        declared_names = [a.name for a in registry.attrs_of(expect_attrs["type"], expect_attrs["subType"])]
+        for name in expect_attrs["contains"]:
+            assert name in declared_names
+
+    if "metadata" in manifest:
+        content = json.dumps(manifest["metadata"])
+        result = MetaDataLoader.from_string(content, providers=provider_list, strict=True)
+        actual_codes = sorted(_error_code(e) for e in result.errors)
+        expected_codes = sorted(manifest.get("expectErrors", []))
+        assert actual_codes == expected_codes
