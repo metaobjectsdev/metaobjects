@@ -306,9 +306,12 @@ README, "Multiple output targets".
 
 The runner `runGen()` (1) loads metadata, (2) resolves targets + derives the
 entity-module target, (3) precomputes shared render state once, (4) runs each
-generator with a per-target `RenderContext`, (5) errors on duplicate full output
-paths, unknown target, missing `importBase` for cross-target imports, or any
-generator throw, (6) writes each file under its target's `outDir` (overwriting only
+generator with a per-target `RenderContext`, (5) errors on *conflicting* duplicate
+full output paths — two emissions of the same path whose CONTENT differs, where the
+result would depend on generator order — while byte-identical duplicates collapse to
+one file (#266: a shared artifact rendered from the whole loaded root, like the shared
+`enums.ts`, is emitted by every `entityFile()` instance); also errors on an unknown
+target, missing `importBase` for cross-target imports, or any generator throw, (6) writes each file under its target's `outDir` (overwriting only
 files carrying the `@generated` header; refusing others).
 
 ### Filter syntax + sort (Project D)

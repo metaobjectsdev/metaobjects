@@ -84,6 +84,33 @@ describe("runGen — error paths", () => {
     })).rejects.toThrow(/Output path collision.*Post\.ts".*alpha.*beta/);
   });
 
+  // #266 — a shared artifact rendered from the whole loaded root (the shared
+  // `enums.ts`) is emitted by EVERY entityFile() instance, so a config running more
+  // than one instance against one target collided an emission with a byte-identical
+  // copy of itself. Identical bytes at the same path are not a conflict: whichever
+  // "wins" produces the same file, so emit once instead of failing the build.
+  test("byte-identical duplicate emissions collapse to one file instead of throwing", async () => {
+    const loader = new MetaDataLoader();
+    const { root } = await loader.load([new FileSource(FIXTURE)]);
+
+    const shared = "// shared artifact\n";
+    const a: Generator = { name: "alpha", generate: oncePerRun(() => ({ path: "enums.ts", content: shared })) };
+    const b: Generator = { name: "beta",  generate: oncePerRun(() => ({ path: "enums.ts", content: shared })) };
+
+    const result = await runGen({
+      config: defineConfig({
+        outDir: tmp, extStyle: "none", dbImport: "../db", dialect: "sqlite",
+        generators: [a, b],
+      }),
+      metadata: root,
+    });
+
+    const enumFiles = result.files.filter((f) => f.path.endsWith("enums.ts"));
+    expect(enumFiles.length).toBe(1);
+    expect(readFileSync(join(tmp, "enums.ts"), "utf-8")).toBe(shared);
+    expect(result.warnings).toEqual([]);
+  });
+
   test("generator throws -> error prefixed with [generator.name]", async () => {
     const loader = new MetaDataLoader();
     const { root } = await loader.load([new FileSource(FIXTURE)]);

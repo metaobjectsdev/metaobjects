@@ -118,6 +118,50 @@ describe("FR-019 enum-shared-materialized-once", () => {
   });
 });
 
+describe("#266 shared enums across multiple entityFile() instances", () => {
+  // The reported repro: splitting a model across generated areas is done by running
+  // several entityFile() instances against one target with disjoint filters. Every
+  // instance renders the shared enums module from the WHOLE loaded root, so each
+  // emitted a byte-identical `enums.ts` and the runner failed the build on the
+  // collision — making a root-level abstract field.enum unusable in any such config.
+  test("two filtered entityFile() instances in one target emit the shared enums module once", async () => {
+    const root = await loadRoot(sharedModel());
+    const tmp = mkdtempSync(join(tmpdir(), "enum-266-"));
+    try {
+      const result = await runGen({
+        config: defineConfig({
+          outDir: tmp,
+          extStyle: "none",
+          dbImport: "~/db",
+          dialect: "sqlite",
+          generators: [
+            entityFile({ filter: (e) => e.name === "Order" }),
+            entityFile({ filter: (e) => e.name === "Article" }),
+          ],
+        }),
+        metadata: root,
+      });
+
+      // Both areas generated, and the shared module was emitted exactly once.
+      expect(existsSync(join(tmp, "Order.ts"))).toBe(true);
+      expect(existsSync(join(tmp, "Article.ts"))).toBe(true);
+      expect(result.files.filter((f) => f.path.endsWith("enums.ts")).length).toBe(1);
+
+      // Its content is the full shared declaration — rendered from the whole root,
+      // NOT narrowed to one instance's filtered subset.
+      const enums = readFileSync(join(tmp, "enums.ts"), "utf-8");
+      expect(enums).toContain('export type Status = "DRAFT" | "PUBLISHED" | "ARCHIVED";');
+
+      // Both entity files reference the one shared module.
+      for (const name of ["Order.ts", "Article.ts"]) {
+        expect(readFileSync(join(tmp, name), "utf-8")).toContain('from "./enums"');
+      }
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("FR-019 enum-provided", () => {
   test("@provided: true emits NO type anywhere; entities import from the configured module", async () => {
     const root = await loadRoot(sharedModel({ provided: true }));

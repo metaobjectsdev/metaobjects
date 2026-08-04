@@ -7,7 +7,36 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-**npm-only** — `metadata` + `codegen-ts`; PyPI / NuGet / Maven Central unchanged.
+**npm** — `metadata` + `codegen-ts`; **Maven Central** — `maven-plugin`; PyPI / NuGet
+unchanged.
+
+### Fixed — a shared `enums.ts` no longer collides across `entityFile()` instances (#266)
+
+Declaring a root-level abstract `field.enum` made **every** `entityFile()` instance emit
+the shared `enums.ts` at its target root — the module is rendered from the whole loaded
+root, not from the instance's filtered subset — so a config running more than one
+`entityFile()` against one target (the normal way to split a model across generated
+areas) failed the build with `Output path collision: enums.ts emitted by both
+"entity-file" and "entity-file"`: an emission colliding with a byte-identical copy of
+itself. Shared enums were therefore unusable in any multi-`entityFile` config, and the
+only workaround distorted the model (declare the enum inline on an arbitrary "owner"
+field, every other field `extends` it).
+
+The runner now collapses byte-identical duplicate emissions to one file. Content that
+genuinely **differs** at the same path is still a hard error — there the result would
+depend on generator order, which is the ambiguity the guard exists to catch. Existing
+single-`entityFile` output is byte-identical.
+
+### Fixed — `mvn meta:verify` diffs per unique `outputDir`, not per generator
+
+`MetaDataVerifyMojo`'s codegen mode minted a temp output dir per `<generator>` and
+compared each against the shared committed tree, so two file-emitting generators
+configured with the same `outputDir` each saw only their own half of it and reported the
+other's committed files as `[stale-in-repo]` — permanent, unfixable false drift. The temp
+dir is now minted per unique `outputDir` (normalized absolute path) and compared once per
+output dir over the union of every generator writing there, matching the TypeScript
+`computeCodegenDrift` and the Python `verify --codegen` (#267) semantics. Byte-identical
+for the idiomatic one-`outputDir`-per-generator pom.
 
 ### Fixed — a reference to a non-`object` top-level node now resolves (#194)
 

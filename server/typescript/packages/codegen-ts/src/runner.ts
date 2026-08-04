@@ -319,6 +319,15 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       const fullPath = join(writeOutDir, file.path);
       const collision = emitted.find((prev) => prev.fullPath === fullPath);
       if (collision) {
+        // #266 — identical bytes at the same path are not a conflict: either
+        // emission produces exactly the same file, so keep the first and move on.
+        // This is what makes a SHARED artifact rendered from the whole loaded root
+        // (the shared `enums.ts`, emitted by every entityFile() instance) work in a
+        // config that runs more than one instance against one target — previously
+        // the build failed on an emission colliding with a copy of itself. Content
+        // that genuinely DIFFERS is still a hard error: the outcome would depend on
+        // generator order, which is exactly the ambiguity this guard exists to catch.
+        if (collision.content === file.content) continue;
         throw new Error(
           `Output path collision: "${fullPath}" emitted by both ` +
           `"${collision.generatedBy}" and "${generator.name}". ` +
