@@ -77,7 +77,9 @@ the committed `--out` tree, never touching it), and a **clean `--db` rejection
 note. The **Java/Kotlin `mvn meta:verify`** port expresses the same vocabulary as a
 `mode` parameter (Maven goals are parameter-driven, not flag-driven): `-Dmeta.verify.mode=codegen`
 (default, byte-identical to the historical goal — regen-to-temp + diff vs committed
-output) and `-Dmeta.verify.mode=templates` (each `template.*` node's `{{field}}`↔payload-VO
+output; drift is computed per **unique `outputDir`** over the whole `<generators>`
+selection, so several generators may share one `outputDir` without cross-flagging each
+other's committed files as stale) and `-Dmeta.verify.mode=templates` (each `template.*` node's `{{field}}`↔payload-VO
 field tree via the render `Verify` engine, resolving refs through a filesystem provider rooted
 at `-Dmeta.verify.templateRoot`). The one goal covers BOTH Java (`codegen-spring`) and Kotlin
 (`codegen-kotlin`) since they share it. `mode=db` is **cleanly rejected** ("schema verify is the

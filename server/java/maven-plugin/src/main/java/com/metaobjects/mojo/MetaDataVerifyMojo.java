@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -178,8 +179,17 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         MetaDataLoader loader = createLoader(projectClassLoader);
 
         // Per-generator: resolve its committed (real) outputDir from the merged args, then
-        // mint a unique temp output dir and stage an arg-override so the regenerate writes
-        // to temp instead. Keep the real<->temp mapping for the post-run comparison.
+        // stage an arg-override so the regenerate writes to a temp dir instead. Keep the
+        // real<->temp mapping for the post-run comparison.
+        //
+        // The temp dir is minted per UNIQUE output directory, not per generator: two
+        // file-emitting generators MAY share one outputDir (nothing in the gen goal forbids
+        // it, and it is idiomatic elsewhere — buf, graphql-codegen, and the TypeScript port's
+        // per-target codegen, whose drift check likewise dedupes outDirs). Giving each
+        // generator its own temp dir would make its compare see only its own half of the
+        // committed tree, so a co-located generator's files would read as [stale-in-repo] —
+        // permanent, unfixable false drift. Sharing the temp dir also keeps verify faithful
+        // to gen when two generators emit the same path: last-writer-wins in both.
         Path tempRoot;
         try {
             tempRoot = Files.createTempDirectory("metaobjects-verify");
@@ -190,8 +200,11 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
         Map<GeneratorParam, Map<String, String>> overrides = new HashMap<>();
         List<GenTarget> targets = new ArrayList<>();
 
+        // Keyed by the normalized absolute output dir so two spellings of the same
+        // directory ("gen", "./gen") collapse to one target.
+        Map<Path, Path> tempByOutputDir = new LinkedHashMap<>();
+
         if (getGenerators() != null) {
-            int idx = 0;
             for (GeneratorParam g : getGenerators()) {
                 Map<String, String> merged = mergeAndOverwriteArgs(g);
                 String realDir = merged.get(ARG_OUTPUT_DIR);
@@ -202,9 +215,15 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
                             "Generator [" + g.getClassname() + "] has no '" + ARG_OUTPUT_DIR
                                     + "' arg; meta:verify can only drift-check file-emitting generators");
                 }
-                Path tempDir = tempRoot.resolve("gen-" + (idx++));
+                Path realPath = Path.of(realDir);
+                Path tempDir = tempByOutputDir.get(realPath.toAbsolutePath().normalize());
+                if (tempDir == null) {
+                    tempDir = tempRoot.resolve("out-" + tempByOutputDir.size());
+                    tempByOutputDir.put(realPath.toAbsolutePath().normalize(), tempDir);
+                    // One compare per unique output dir, over every generator writing there.
+                    targets.add(new GenTarget(realPath, tempDir));
+                }
                 overrides.put(g, Collections.singletonMap(ARG_OUTPUT_DIR, tempDir.toString()));
-                targets.add(new GenTarget(Path.of(realDir), tempDir));
             }
         }
 
@@ -216,7 +235,7 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
                 gen.execute(loader);
             }
 
-            // Compare each generator's temp output against its committed output.
+            // Compare each output directory's temp tree against its committed tree.
             List<String> drift = new ArrayList<>();
             for (GenTarget t : targets) {
                 drift.addAll(compareTrees(t));
@@ -233,14 +252,16 @@ public class MetaDataVerifyMojo extends AbstractMetaDataMojo {
             }
 
             getLog().info("MetaData Verify Mojo > No codegen drift detected across "
-                    + targets.size() + " generator(s).");
+                    + generatorImpls.size() + " generator(s) in "
+                    + targets.size() + " output director(y/ies).");
         } finally {
             deleteRecursively(tempRoot);
         }
     }
 
     /**
-     * Compare a single generator's freshly-generated temp tree against its committed tree.
+     * Compare one output directory's freshly-generated temp tree — the union of every
+     * generator configured to write there — against its committed tree.
      * Returns a list of human-readable drift descriptions (empty if in sync).
      */
     private List<String> compareTrees(GenTarget t) throws MojoExecutionException {
