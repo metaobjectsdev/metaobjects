@@ -14,6 +14,7 @@ from typing import Callable, NamedTuple
 from ..errors import ErrorCode, MetaError
 from ..source.error_source import LoaderWarning
 from .validate_source_physical_names import validate_source_physical_names
+from .validate_enum_normalize_ambiguity import validate_enum_normalize_ambiguity
 from .validate_field_readonly import validate_field_readonly
 from .validate_discriminator import validate_discriminator
 from .validate_source_parameter_ref import validate_source_parameter_ref
@@ -195,6 +196,9 @@ def run_validations(
     validate_source_physical_names(root, errors, envelope_warnings, warnings)
     # FR-013 — field-level @readOnly cross-attribute rules.
     validate_field_readonly(root, errors, envelope_warnings, warnings)
+    # Authoring guard — a field.enum vocabulary ambiguous under the default
+    # @normalize: strip. WARN_ENUM_NORMALIZE_AMBIGUOUS.
+    validate_enum_normalize_ambiguity(root, envelope_warnings, warnings)
     # FR-014 — TPH discriminator cross-attribute rules.
     validate_discriminator(root, errors)
     # FR-015 — source.rdb @parameterRef typed-input rules.

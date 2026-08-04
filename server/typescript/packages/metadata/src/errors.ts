@@ -226,6 +226,13 @@ export const WARNING_CODES = [
   // benign — a WARN preserves the matview symmetry and lets an author
   // document lineage for future in-process evaluation (#211).
   "WARN_ORIGIN_UNDER_UNMANAGED",
+  // A field.enum whose @values contains a member equal to the concatenation of
+  // two or more OTHER members once `strip`-normalized (the default mode erases
+  // separators). A delimited value then collapses into that member and coerces
+  // SUCCESSFULLY — reported EXTRACTED with a wrong-but-valid value rather than
+  // MALFORMED. Advisory: such a vocabulary is legal and unambiguous for exact
+  // matching; `@normalize: collapse` is the fix when delimited input is possible.
+  "WARN_ENUM_NORMALIZE_AMBIGUOUS",
 ] as const;
 export type WarningCode = (typeof WARNING_CODES)[number];
 

@@ -19,6 +19,41 @@ cross-port reference (Kotlin reuses it directly via the shared JVM render engine
 - **Fuzzy matching is deliberately DEFERRED.** A reserved no-op slot exists in the pipeline
   (between `@enumAlias` and `@coerceDefault`). If added later it must be guarded integer
   Levenshtein — never float / Jaro-Winkler — to preserve cross-port determinism.
+- **`strip` concatenates a delimited scalar — guarded at authoring time, not at coercion.**
+  `strip` (the default) keeps only `[A-Z0-9]`, which is what makes `"SOCIAL-ATTACK"` match the
+  member `SOCIAL_ATTACK`. The same erasure means a *delimited* value collapses into one token, and
+  where a vocabulary contains a member equal to the concatenation of others that token coerces
+  SUCCESSFULLY: `values = {READ, WRITE, READWRITE}`, input `"read|write"` → `READWRITE`, reported
+  EXTRACTED (not MALFORMED) with a plausible wrong value. This is inherent to `strip` and cannot be
+  fixed at coercion time — `"read-write"` legitimately means `READWRITE`, so the two readings are
+  genuinely indistinguishable from the value alone. The collision IS detectable from metadata, so
+  the **loader** warns the author instead: `WARN_ENUM_NORMALIZE_AMBIGUOUS`, emitted by all four
+  loaders when a `field.enum`'s own `@values` contains a member that word-breaks into two or more
+  other members and the effective mode is `strip`. `collapse` is immune (it folds only `[\s_-]+`,
+  so a `|` survives and the value fails cleanly) and is the documented fix for a vocabulary that
+  can receive delimited input. Corpus: `fixtures/conformance/warning-enum-normalize-ambiguous`.
+
+- **Splitting a delimited scalar into array elements is intentionally NOT offered** (no
+  `@delimiter` attribute; `Extract.java`'s array branch wraps a non-list presence as a ONE-element
+  array and will keep doing so). Raised by a downstream consumer whose LLM emitted `attr="A|B|C"`
+  in an XML attribute. Rejected on four grounds: (1) no schema language makes "delimited scalar" a
+  *data-model* property — the declarative forms that exist (XSD `xs:list`, OpenAPI `pipeDelimited`,
+  Swagger `collectionFormat: pipes`) live at wire boundaries where real lists are physically
+  impossible, as fixed closed styles, never a free delimiter character; everywhere else it is a
+  code-level adapter; (2) the ecosystem moved the other way — OpenAPI 3 demoted delimited styles to
+  non-default legacy, and LLM structured-output libraries moved to JSON-schema real lists; (3) no
+  declarative system escapes an embedded delimiter (XSD's normative answer is "then you cannot use
+  `xs:list`"), and CSV-style quoting fails this engine's cross-port byte-identity bar for the same
+  reason Unicode `@normalize` was rejected above; (4) decisively — the generated output-format
+  prompt emits every field as a child element or JSON array, so it could never have *instructed* a
+  delimited attribute: such a value is model drift from a contract we never issued, i.e. a
+  tolerance concern, not a shape to bless as declarable. ADR-0037 step 0 also fails the attribute:
+  enum members match `^[A-Za-z_][A-Za-z0-9_]*$`, so a candidate split is checkable from existing
+  `@values` — the only thing an attribute would add is free-string arrays with an author-chosen
+  delimiter, which is exactly the unsafe domain. **The supported way to express a multi-valued
+  response field is repeated elements / a JSON array plus `field.enum` + `isArray: true`,** which
+  already gives per-element coercion with partial-array survival.
+
 - **`@normalize` `unicode` mode is intentionally NOT offered.** Normalization is ASCII-only (enum
   members are ASCII identifiers), so it is byte-identical cross-port. A full Unicode / NFKC_Casefold
   mode was rejected: cross-port byte-identity can't be guaranteed.

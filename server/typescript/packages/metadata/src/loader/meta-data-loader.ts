@@ -25,6 +25,7 @@ import { validateSourceEscapes } from "../persistence/source/validate-source-esc
 import { validateSourcePhysicalNames } from "../persistence/source/validate-source-physical-names.js";
 import { validateSourceParameterRef } from "../persistence/source/validate-source-parameter-ref.js";
 import { validateFieldReadOnly } from "../core/field/validate-field-readonly.js";
+import { validateEnumNormalizeAmbiguity } from "../core/field/validate-enum-normalize-ambiguity.js";
 import { validateDiscriminator } from "../core/object/validate-discriminator.js";
 import { resolveDeferredSupers } from "../super-resolve.js";
 import { validateSubtypeRules } from "../subtype-rules.js";
@@ -655,6 +656,12 @@ export class MetaDataLoader {
       const readOnlyResult = validateFieldReadOnly(root);
       errors.push(...readOnlyResult.errors);
       envelopeWarnings.push(...readOnlyResult.warnings);
+
+      // Authoring guard — a field.enum vocabulary that is ambiguous under the
+      // default `@normalize: strip` (a member equal to the concatenation of
+      // others), which would silently coerce delimited input to a wrong-but-valid
+      // member. WARN_ENUM_NORMALIZE_AMBIGUOUS.
+      envelopeWarnings.push(...validateEnumNormalizeAmbiguity(root).warnings);
 
       // FR-015 — source.rdb @parameterRef typed-input validation.
       errors.push(...validateSourceParameterRef(root));

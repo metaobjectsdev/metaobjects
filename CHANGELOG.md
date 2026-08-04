@@ -10,6 +10,35 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 **npm** — `metadata` + `codegen-ts`; **Maven Central** — `maven-plugin`; PyPI / NuGet
 unchanged.
 
+### Added — `WARN_ENUM_NORMALIZE_AMBIGUOUS`, an authoring guard for a silent enum mis-extraction
+
+`@normalize: strip` — the **default** — upper-cases and keeps only `[A-Z0-9]`, which is what lets
+`"SOCIAL-ATTACK"` match the member `SOCIAL_ATTACK`. The same erasure means a *delimited* value
+collapses into a single token, so where a vocabulary contains a member equal to the concatenation of
+others, a stray delimited value coerces **successfully** to the wrong member:
+
+```
+values = {READ, WRITE, READWRITE};  input "read|write"  ->  READWRITE
+```
+
+The field is reported `EXTRACTED`, not `MALFORMED` — a plausible, wrong value that anything
+branching on field state will trust. It cannot be fixed at coercion time (`"read-write"`
+legitimately means `READWRITE`, so the two readings are indistinguishable from the value alone), but
+the collision **is** detectable from metadata. All four loaders now warn at declaration time when a
+`field.enum`'s own `@values` contains a member that word-breaks into two or more other members and
+the effective mode is `strip`. `collapse` is immune — it folds only `[\s_-]+`, so a `|` survives and
+the value fails cleanly — and is the documented fix for a field that can receive delimited input.
+
+Advisory, never an error: such a vocabulary is legal and completely unambiguous for exact matching.
+Detection is word-break (not pairwise), so three-way collisions are caught; the warning fires once at
+the declaring node rather than on every field that `extends` it. Cross-port, gated by the shared
+`warning-enum-normalize-ambiguous` conformance fixture (TS / Java / Python / C#; Kotlin inherits the
+JVM loader). No existing fixture in the corpus collides, and no generated output changes.
+
+Also recorded in the extract engine's `KNOWN_GAPS.md`: splitting a delimited scalar into array
+elements (a `@delimiter` attribute) is **intentionally not offered** — the supported way to express a
+multi-valued response field is repeated elements / a JSON array plus `field.enum` + `isArray: true`.
+
 ### Fixed — a shared `enums.ts` no longer collides across `entityFile()` instances (#266)
 
 Declaring a root-level abstract `field.enum` made **every** `entityFile()` instance emit

@@ -1,0 +1,15 @@
+{
+  "errors": [],
+  "warnings": [
+    {
+      "code": "WARN_ENUM_NORMALIZE_AMBIGUOUS",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.access.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['field.enum']"
+      }
+    }
+  ]
+}

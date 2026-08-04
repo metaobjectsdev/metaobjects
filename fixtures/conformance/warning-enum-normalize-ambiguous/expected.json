@@ -1,0 +1,19 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "field.enum": {
+          "name": "Access",
+          "package": "acme",
+          "abstract": true,
+          "@values": [
+            "READ",
+            "WRITE",
+            "READWRITE"
+          ]
+        }
+      }
+    ]
+  }
+}

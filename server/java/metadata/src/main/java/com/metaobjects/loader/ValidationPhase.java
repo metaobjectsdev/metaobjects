@@ -66,8 +66,11 @@ import com.metaobjects.template.PromptTemplate;
 import com.metaobjects.template.TemplateConstants;
 import com.metaobjects.util.ErrorMessageConstants;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -175,6 +178,9 @@ public final class ValidationPhase {
         pass(collected, () -> validateSourcePhysicalNames(root, loader));
         // FR-013 — field-level @readOnly cross-attribute rules.
         pass(collected, () -> validateFieldReadOnly(root, loader));
+        // Authoring guard — a field.enum vocabulary ambiguous under the default
+        // @normalize: strip. WARN_ENUM_NORMALIZE_AMBIGUOUS.
+        pass(collected, () -> validateEnumNormalizeAmbiguity(root, loader));
         // FR-014 — TPH discriminator cross-attribute rules.
         pass(collected, () -> validateDiscriminator(root));
         // FR-015 — source.rdb @parameterRef typed-input rules.
@@ -481,6 +487,150 @@ public final class ValidationPhase {
      */
     static void validateEnumValues(MetaRoot root) {
         walkEnumValues(root);
+    }
+
+    // =========================================================================
+    // Authoring guard — enum vocabularies ambiguous under @normalize: strip.
+    //   WARN_ENUM_NORMALIZE_AMBIGUOUS
+    // Mirrors TS core/field/validate-enum-normalize-ambiguity.ts.
+    //
+    // `strip` (the DEFAULT) upper-cases and keeps only [A-Z0-9], erasing every
+    // separator. That is what makes "SOCIAL-ATTACK" match SOCIAL_ATTACK — desired.
+    // But it also collapses a DELIMITED value into one token, and if that token
+    // equals another member the extract engine coerces it SUCCESSFULLY:
+    //   values = {READ, WRITE, READWRITE};  input "read|write"  ->  READWRITE
+    // reported EXTRACTED, not MALFORMED — a plausible wrong value. Detectable from
+    // metadata alone, so warn the author at declaration time.
+    //
+    // WARNING, not error: such a vocabulary is legal and unambiguous for exact
+    // matching. `collapse` folds only [\s_-]+ and `none` folds nothing, so neither
+    // can merge tokens across a delimiter like "|" — both are skipped.
+    // =========================================================================
+
+    static void validateEnumNormalizeAmbiguity(MetaRoot root, MetaDataLoader loader) {
+        walkEnumNormalizeAmbiguity(root, loader);
+    }
+
+    private static void walkEnumNormalizeAmbiguity(MetaData node, MetaDataLoader loader) {
+        checkEnumNormalizeAmbiguity(node, loader);
+        // Own children only — inherited children are checked on their declaring nodes.
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkEnumNormalizeAmbiguity(child, loader);
+        }
+    }
+
+    private static void checkEnumNormalizeAmbiguity(MetaData node, MetaDataLoader loader) {
+        if (loader == null) return;
+        if (!EnumField.TYPE_FIELD.equals(node.getType())
+                || !EnumField.SUBTYPE_ENUM.equals(node.getSubType())) {
+            return;
+        }
+        // Own-attrs-only: check the vocabulary DECLARED here. A concrete enum that
+        // inherits @values shares the super's member set, already checked at the
+        // super — one hazard yields one warning, not one per referring field.
+        if (!node.hasMetaAttr(EnumField.ATTR_VALUES, false)) return;
+        Object raw = node.getMetaAttr(EnumField.ATTR_VALUES, false).getValue();
+        if (!(raw instanceof List)) return;
+        List<?> rawList = (List<?>) raw;
+        if (rawList.size() < 2) return;
+        if (!EnumField.NORMALIZE_DEFAULT.equals(effectiveNormalizeMode(node))) return;
+
+        List<String> members = new ArrayList<>();
+        List<String> stripped = new ArrayList<>();
+        for (Object o : rawList) {
+            String m = String.valueOf(o);
+            members.add(m);
+            stripped.add(stripNormalize(m));
+        }
+        for (int i = 0; i < members.size(); i++) {
+            String selfStripped = stripped.get(i);
+            if (selfStripped.isEmpty()) continue; // e.g. "_" — nothing to collide with
+            // Exclude self BY INDEX, not by value: two distinct members can strip to
+            // the same string, which is a separate (duplicate) concern.
+            List<String> dictMembers = new ArrayList<>();
+            List<String> dictStripped = new ArrayList<>();
+            for (int j = 0; j < members.size(); j++) {
+                if (j == i || stripped.get(j).isEmpty()) continue;
+                dictMembers.add(members.get(j));
+                dictStripped.add(stripped.get(j));
+            }
+            List<String> seg = segmentInto(selfStripped, dictMembers, dictStripped);
+            if (seg != null) {
+                StringBuilder plus = new StringBuilder();
+                StringBuilder delimited = new StringBuilder();
+                for (int k = 0; k < seg.size(); k++) {
+                    if (k > 0) { plus.append(" + "); delimited.append("|"); }
+                    plus.append('\'').append(seg.get(k)).append('\'');
+                    delimited.append(seg.get(k).toLowerCase(Locale.ROOT));
+                }
+                loader.addEnvelopeWarning(new LoaderWarning(
+                    ErrorMessageConstants.WARN_ENUM_NORMALIZE_AMBIGUOUS,
+                    "field.enum \"" + node.getName() + "\" member '" + members.get(i)
+                        + "' is the concatenation of " + plus + " under @"
+                        + EnumField.ATTR_NORMALIZE + ": '" + EnumField.NORMALIZE_DEFAULT
+                        + "' (the default), which erases separators. A delimited value such as \""
+                        + delimited + "\" would coerce silently to '" + members.get(i)
+                        + "' and be reported as extracted rather than malformed. Set @"
+                        + EnumField.ATTR_NORMALIZE + ": 'collapse' on this field if it can "
+                        + "receive delimited input.",
+                    node.getSource()));
+                return; // one warning per declaring node
+            }
+        }
+    }
+
+    /** Effective @normalize for an enum field: own/inherited -> owning object -> default. */
+    private static String effectiveNormalizeMode(MetaData field) {
+        // Resolving (includeParentData=true) — an enum extending an abstract enum must
+        // see the super's @normalize (ADR-0039).
+        if (field.hasMetaAttr(EnumField.ATTR_NORMALIZE, true)) {
+            return field.getMetaAttr(EnumField.ATTR_NORMALIZE, true).getValueAsString();
+        }
+        MetaData parent = field.getParent();
+        if (parent instanceof MetaObject && parent.hasMetaAttr(EnumField.ATTR_NORMALIZE, true)) {
+            return parent.getMetaAttr(EnumField.ATTR_NORMALIZE, true).getValueAsString();
+        }
+        return EnumField.NORMALIZE_DEFAULT;
+    }
+
+    /** `strip` normalization: ASCII upper-case, then keep only [A-Z0-9]. Mirrors Normalize.STRIP. */
+    private static String stripNormalize(String s) {
+        StringBuilder sb = new StringBuilder(s.length());
+        String up = s.toUpperCase(Locale.ROOT);
+        for (int i = 0; i < up.length(); i++) {
+            char c = up.charAt(i);
+            if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) sb.append(c);
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Word-break: can {@code target} be segmented into two or more dictionary entries?
+     * Returns the member names in order, or null. Word-break rather than a pairwise
+     * scan so a three-way collision (A + B + C == ABC) is caught too.
+     */
+    private static List<String> segmentInto(String target, List<String> dictMembers,
+                                            List<String> dictStripped) {
+        int n = target.length();
+        List<List<String>> best = new ArrayList<>(Collections.nCopies(n + 1, (List<String>) null));
+        best.set(0, new ArrayList<>());
+        for (int i = 0; i < n; i++) {
+            List<String> prefix = best.get(i);
+            if (prefix == null) continue;
+            for (int d = 0; d < dictStripped.size(); d++) {
+                String sv = dictStripped.get(d);
+                int end = i + sv.length();
+                if (end > n || !target.startsWith(sv, i)) continue;
+                List<String> cand = new ArrayList<>(prefix);
+                cand.add(dictMembers.get(d));
+                List<String> cur = best.get(end);
+                if (cur == null || cand.size() < cur.size()) best.set(end, cand);
+            }
+        }
+        List<String> full = best.get(n);
+        // Two or more segments: a single-segment match is just another member that
+        // strips to the same string — a different (duplicate) concern.
+        return (full != null && full.size() >= 2) ? full : null;
     }
 
     private static void walkEnumValues(MetaData node) {

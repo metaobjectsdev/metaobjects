@@ -2961,6 +2961,135 @@ public static class ValidationPasses
     }
 
     // =========================================================================
+    // Authoring guard — enum vocabularies ambiguous under @normalize: strip.
+    //   WARN_ENUM_NORMALIZE_AMBIGUOUS
+    // Mirrors TS core/field/validate-enum-normalize-ambiguity.ts.
+    //
+    // `strip` (the DEFAULT) upper-cases and keeps only [A-Z0-9], erasing every
+    // separator. That is what makes "SOCIAL-ATTACK" match SOCIAL_ATTACK — desired.
+    // But it also collapses a DELIMITED value into one token, and if that token
+    // equals another member the extract engine coerces it SUCCESSFULLY:
+    //   values = {READ, WRITE, READWRITE};  input "read|write"  ->  READWRITE
+    // reported EXTRACTED, not MALFORMED — a plausible wrong value.
+    //
+    // WARNING, not error: such a vocabulary is legal and unambiguous for exact
+    // matching. `collapse` folds only [\s_-]+ and `none` folds nothing, so neither
+    // can merge tokens across a delimiter like "|" — both are skipped.
+    // =========================================================================
+
+    /// <summary>`strip` normalization: ASCII upper-case, then keep only [A-Z0-9]. Mirrors Normalize.STRIP.</summary>
+    private static string StripNormalize(string s)
+    {
+        var sb = new System.Text.StringBuilder(s.Length);
+        foreach (var ch in s.ToUpperInvariant())
+        {
+            if ((ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')) sb.Append(ch);
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Word-break: can <paramref name="target"/> be segmented into two or more dictionary
+    /// entries? Returns the member names in order, or null. Word-break rather than a pairwise
+    /// scan so a three-way collision (A + B + C == ABC) is caught too.
+    /// </summary>
+    private static List<string>? SegmentInto(string target, List<(string Member, string Stripped)> dict)
+    {
+        int n = target.Length;
+        var best = new List<string>?[n + 1];
+        best[0] = new List<string>();
+        for (int i = 0; i < n; i++)
+        {
+            var prefix = best[i];
+            if (prefix is null) continue;
+            foreach (var (member, stripped) in dict)
+            {
+                int end = i + stripped.Length;
+                if (end > n || string.CompareOrdinal(target, i, stripped, 0, stripped.Length) != 0) continue;
+                var cand = new List<string>(prefix) { member };
+                var cur = best[end];
+                if (cur is null || cand.Count < cur.Count) best[end] = cand;
+            }
+        }
+        var full = best[n];
+        // Two or more segments: a single-segment match is just another member that strips
+        // to the same string — a different (duplicate) concern.
+        return (full is not null && full.Count >= 2) ? full : null;
+    }
+
+    /// <summary>Effective @normalize for an enum field: own/inherited → owning object → default.</summary>
+    private static string EffectiveNormalizeMode(MetaData field)
+    {
+        // ADR-0039: resolving accessor — an enum extending an abstract enum must see the
+        // super's @normalize.
+        if (field.Attr(FIELD_ATTR_NORMALIZE) is string own) return own;
+        var parent = field.Parent;
+        if (parent is not null && parent.Type == TYPE_OBJECT
+            && parent.Attr(FIELD_ATTR_NORMALIZE) is string objMode)
+        {
+            return objMode;
+        }
+        return NORMALIZE_DEFAULT;
+    }
+
+    public static IReadOnlyList<LoaderWarning> ValidateEnumNormalizeAmbiguity(MetaData root)
+    {
+        var warnings = new List<LoaderWarning>();
+        VisitEnumNormalizeAmbiguity(root, warnings);
+        return warnings;
+    }
+
+    private static void VisitEnumNormalizeAmbiguity(MetaData node, List<LoaderWarning> warnings)
+    {
+        if (node.Type == TYPE_FIELD && node.SubType == FIELD_SUBTYPE_ENUM)
+        {
+            // ADR-0039 sanctioned own: check the vocabulary DECLARED here. A concrete enum
+            // inheriting @values shares the super's member set, already checked at the super —
+            // one hazard yields one warning, not one per referring field.
+            if (node.OwnAttr(FIELD_ATTR_VALUES) is System.Collections.IEnumerable rawEnum
+                && node.OwnAttr(FIELD_ATTR_VALUES) is not string)
+            {
+                var members = new List<string>();
+                foreach (var o in rawEnum) members.Add(o?.ToString() ?? string.Empty);
+                if (members.Count > 1
+                    && EffectiveNormalizeMode(node) == NORMALIZE_DEFAULT)
+                {
+                    var entries = members.Select(m => (Member: m, Stripped: StripNormalize(m))).ToList();
+                    for (int i = 0; i < entries.Count; i++)
+                    {
+                        var self = entries[i];
+                        if (self.Stripped.Length == 0) continue; // e.g. "_" — nothing to collide with
+                        // Exclude self BY INDEX, not by value: two distinct members can strip
+                        // to the same string, which is a separate (duplicate) concern.
+                        var others = entries.Where((_, j) => j != i)
+                                            .Where(e => e.Stripped.Length > 0).ToList();
+                        var seg = SegmentInto(self.Stripped, others);
+                        if (seg is not null)
+                        {
+                            var plus = string.Join(" + ", seg.Select(s => $"'{s}'"));
+                            var delimited = string.Join("|", seg.Select(s => s.ToLowerInvariant()));
+                            warnings.Add(new LoaderWarning(
+                                Code: WarningCodes.WARN_ENUM_NORMALIZE_AMBIGUOUS,
+                                Message:
+                                    $"field.enum \"{node.Name}\" member '{self.Member}' is the " +
+                                    $"concatenation of {plus} under @{FIELD_ATTR_NORMALIZE}: " +
+                                    $"'{NORMALIZE_DEFAULT}' (the default), which erases " +
+                                    $"separators. A delimited value such as \"{delimited}\" would coerce " +
+                                    $"silently to '{self.Member}' and be reported as extracted rather " +
+                                    $"than malformed. Set @{FIELD_ATTR_NORMALIZE}: " +
+                                    "'collapse' on this field if it can receive delimited input.",
+                                Source: node.Source));
+                            break; // one warning per declaring node
+                        }
+                    }
+                }
+            }
+        }
+        // ADR-0039 sanctioned own: structural walk of what each node declares.
+        foreach (var child in node.OwnChildren()) VisitEnumNormalizeAmbiguity(child, warnings);
+    }
+
+    // =========================================================================
     // FR-013 — field-level @readOnly cross-attribute rules.
     //   ERR_READONLY_ASSIGNED_PRIMARY / ERR_READONLY_DOWNGRADE / WARN_READONLY_VALUE_OBJECT
     // Mirrors TS core/field/validate-field-readonly.ts.

@@ -566,6 +566,18 @@ public class MetaDataLoader
                 }
             }
 
+            // Authoring guard: a field.enum vocabulary ambiguous under the default
+            // @normalize: strip. WARN_ENUM_NORMALIZE_AMBIGUOUS.
+            var enumAmbiguity = ValidationPasses.ValidateEnumNormalizeAmbiguity(root);
+            if (enumAmbiguity.Count > 0)
+            {
+                envelopeWarnings.AddRange(enumAmbiguity);
+                foreach (var w in enumAmbiguity)
+                {
+                    warnings.Add(w.Message);
+                }
+            }
+
             // FR-014: TPH discriminator cross-attribute rules.
             errors.AddRange(ValidationPasses.ValidateDiscriminator(root));
 

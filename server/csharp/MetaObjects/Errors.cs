@@ -224,6 +224,16 @@ public static class WarningCodes
     /// across different sources.
     /// </summary>
     public const string WARN_ORIGIN_UNDER_UNMANAGED = "WARN_ORIGIN_UNDER_UNMANAGED";
+
+    /// <summary>
+    /// A field.enum whose @values contains a member equal to the concatenation of two or
+    /// more OTHER members once <c>strip</c>-normalized (the default mode erases separators).
+    /// A delimited value then collapses into that member and coerces SUCCESSFULLY — reported
+    /// EXTRACTED with a wrong-but-valid value rather than MALFORMED. Advisory: such a
+    /// vocabulary is legal and unambiguous for exact matching; <c>@normalize: collapse</c>
+    /// is the fix when delimited input is possible.
+    /// </summary>
+    public const string WARN_ENUM_NORMALIZE_AMBIGUOUS = "WARN_ENUM_NORMALIZE_AMBIGUOUS";
 }
 
 /// <summary>

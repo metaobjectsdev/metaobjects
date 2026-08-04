@@ -264,6 +264,18 @@ public final class ErrorMessageConstants {
      */
     public static final String WARN_ORIGIN_UNDER_UNMANAGED = "WARN_ORIGIN_UNDER_UNMANAGED";
 
+    /**
+     * A {@code field.enum} whose {@code @values} contains a member equal to the
+     * concatenation of two or more OTHER members once {@code strip}-normalized (the
+     * default mode erases separators). A delimited value then collapses into that
+     * member and coerces SUCCESSFULLY — reported EXTRACTED with a wrong-but-valid
+     * value rather than MALFORMED. Advisory: such a vocabulary is legal and
+     * unambiguous for exact matching; {@code @normalize: collapse} is the fix when
+     * delimited input is possible.
+     * Cross-language contract: {@code WARN_ENUM_NORMALIZE_AMBIGUOUS}.
+     */
+    public static final String WARN_ENUM_NORMALIZE_AMBIGUOUS = "WARN_ENUM_NORMALIZE_AMBIGUOUS";
+
     // === ERROR MESSAGE FORMATS ===
 
     /** Format template for not found errors */
