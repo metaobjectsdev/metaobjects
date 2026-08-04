@@ -39,7 +39,9 @@ generator-wiring divergence between the two commands.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -52,6 +54,13 @@ from metaobjects.agent_context import (
 )
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.codegen.config import GenConfig
+from metaobjects.codegen.project_config import (
+    CONFIG_FILENAME,
+    ConfigError,
+    ProjectConfig,
+    TargetConfig,
+    load_project_config,
+)
 from metaobjects.codegen.generator import Generator
 from metaobjects.codegen.generators.entity_model import entity_model
 from metaobjects.codegen.generators.extractor_generator import extractor_generator
@@ -178,6 +187,48 @@ def _providers_from_args(args: argparse.Namespace) -> tuple[list[object], bool]:
             print(f"  {msg}", file=sys.stderr)
         return providers, False
     return providers, True
+
+
+def _find_config(args: argparse.Namespace) -> Path | None:
+    """The config path: ``--config`` if given (even if missing → clear load error),
+    else ``./metaobjects.config.yaml`` in cwd when it exists, else ``None``."""
+    explicit = getattr(args, "config", None)
+    if explicit:
+        return Path(explicit)
+    default = Path.cwd() / CONFIG_FILENAME
+    return default if default.is_file() else None
+
+
+def _config_providers(config: ProjectConfig) -> tuple[list[object], bool]:
+    """Resolve ``config.providers`` with the config file's directory on ``sys.path``.
+
+    #267: prepend the config directory so a ``module:symbol`` provider living beside
+    the config imports with no ``PYTHONPATH=``. Idempotent; the entry is left in
+    place (a short-lived CLI process). Prints resolution errors; returns (providers, ok).
+    """
+    config_dir = str(config.config_dir)
+    if config_dir not in sys.path:
+        sys.path.insert(0, config_dir)
+    providers, errors = _resolve_providers(config.providers)
+    if errors:
+        print("error: invalid provider in config:", file=sys.stderr)
+        for msg in errors:
+            print(f"  {msg}", file=sys.stderr)
+        return providers, False
+    return providers, True
+
+
+def _select_targets(
+    config: ProjectConfig, target_name: str | None
+) -> tuple[list[TargetConfig], str | None]:
+    """All targets, or the single ``--target`` (error string when the name is unknown)."""
+    if target_name is None:
+        return config.targets, None
+    t = config.target(target_name)
+    if t is None:
+        known = ", ".join(sorted(x.name for x in config.targets))
+        return [], f"unknown --target {target_name!r}; known targets: {known}"
+    return [t], None
 
 
 def _load_root(
@@ -422,9 +473,14 @@ def _cmd_gen(args: argparse.Namespace) -> int:
 
     _warn_if_agent_context_stale()
 
-    if args.metadata_dir is None or args.out is None:
+    # #267: config mode ⇔ no positional <metadata_dir>. The explicit
+    # <metadata_dir> + --out flag path below is untouched (byte-identical).
+    if args.metadata_dir is None:
+        return _cmd_gen_config(args)
+    if args.out is None:
         print(
-            "error: gen requires <metadata_dir> and --out (or use --list).",
+            "error: gen requires <metadata_dir> and --out "
+            "(or a metaobjects.config.yaml / --list).",
             file=sys.stderr,
         )
         return 2
@@ -495,6 +551,100 @@ def _cmd_gen(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_gen_targets(
+    config: ProjectConfig, targets: list[TargetConfig], root: MetaData
+) -> tuple[list[str], list[str]]:
+    """Run each target's suite into its ``outDir``. Returns (all_written, errors).
+
+    Cross-target duplicate-output-path guard (#267): ``run_gen``'s collision guard
+    is per-pass, so two targets writing the same full path would silently clobber
+    (generated files carry the @generated header). We accumulate every written full
+    path across targets and record an error when two targets emit the same one.
+    (Detection is post-write — the colliding file may already be on disk — but the
+    command still fails, so a misconfigured gate is caught in CI.)
+    """
+    all_written: list[str] = []
+    seen: dict[str, str] = {}  # full path -> target name
+    errors: list[str] = []
+    for t in targets:
+        gens: list[Generator] | None = None
+        if t.generators is not None:
+            gens, gen_errors = _resolve_generators(",".join(t.generators))
+            if gen_errors:
+                errors.extend(f"target '{t.name}': {m}" for m in gen_errors)
+                continue
+        out_dir = config.out_dir_for(t)
+        try:
+            written = _run_suite(root, out_dir, gens, t.entities)
+        except ValueError as exc:  # intra-target run_gen collision → clean error
+            errors.append(f"target '{t.name}': {exc}")
+            continue
+        for full in written:
+            if Path(full).name == "__init__.py":
+                continue  # auto-emitted package marker — byte-identical across targets sharing an outDir; not a real collision
+            prior = seen.get(full)
+            if prior is not None and prior != t.name:
+                errors.append(
+                    f"duplicate output path across targets: {full!r} written by "
+                    f"both '{prior}' and '{t.name}'."
+                )
+            else:
+                seen[full] = t.name
+        all_written.extend(written)
+    return all_written, errors
+
+
+def _cmd_gen_config(args: argparse.Namespace) -> int:
+    """``gen`` with no positional ``metadata_dir`` → declarative-config mode (#267).
+
+    Load ``metaobjects.config.yaml``, load metadata ONCE, and run every target
+    (or ``--target``) into its own ``outDir`` with a cross-target duplicate-path
+    guard. Providers resolve relative to the config file (no ``PYTHONPATH=``).
+    """
+    config_path = _find_config(args)
+    if config_path is None:
+        print(
+            "error: no <metadata_dir> given and no metaobjects.config.yaml found. "
+            "Either pass <metadata_dir> --out (flag mode) or create a "
+            "metaobjects.config.yaml (or pass --config <path>).",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        config = load_project_config(config_path)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    targets, target_err = _select_targets(config, getattr(args, "target", None))
+    if target_err:
+        print(f"error: {target_err}", file=sys.stderr)
+        return 1
+
+    providers, providers_ok = _config_providers(config)
+    if not providers_ok:
+        return 1
+
+    root, load_errors = _load_root(config.metadata_dir(), providers=providers)
+    if root is None:
+        print("error: failed to load metadata:", file=sys.stderr)
+        for msg in load_errors:
+            print(f"  {msg}", file=sys.stderr)
+        return 1
+
+    written, errors = _run_gen_targets(config, targets, root)
+    if errors:
+        for msg in errors:
+            print(f"error: {msg}", file=sys.stderr)
+        return 1
+    for path in written:
+        print(path)
+    print(
+        f"metaobjects gen: wrote {len(written)} file(s) across {len(targets)} target(s)."
+    )
+    return 0
+
+
 def _relative_set(root: Path) -> dict[str, str]:
     """Map every ``*.py`` file under ``root`` to its content, keyed by rel path.
 
@@ -516,6 +666,10 @@ def _verify_codegen(args: argparse.Namespace) -> int:
     code path (gen-to-temp + diff), so drift can never be a generator-wiring
     divergence between the two commands.
     """
+    # #267: config mode ⇔ no positional <metadata_dir>. The legacy
+    # <metadata_dir> + --out diff below is untouched.
+    if args.metadata_dir is None:
+        return _verify_codegen_config(args)
     if args.out is None:
         print(
             "error: verify --codegen requires --out (the committed output dir).",
@@ -572,6 +726,139 @@ def _verify_codegen(args: argparse.Namespace) -> int:
     return 1
 
 
+def _temp_slot_for(temp_root: Path, real_outdir: str, config_dir: Path) -> str:
+    """The temp mirror of a committed ``outDir``.
+
+    Keyed by the real outDir's path relative to ``config_dir`` when it lives under
+    it, else a sanitized flat name — mirroring the TS ``computeCodegenDrift``
+    ``tempFor``. Two targets sharing a real outDir map to the SAME slot so their
+    co-resident regen accumulates into one tree: the diff is then union-of-
+    co-resident-regen vs the shared committed dir, so the other target's files are
+    never false ``extra`` drift.
+    """
+    try:
+        rel = Path(real_outdir).relative_to(config_dir)
+    except ValueError:
+        rel = None
+    if rel is None:
+        safe = re.sub(r"[^A-Za-z0-9]+", "_", real_outdir)
+        return str(temp_root / safe)
+    return str(temp_root / rel)
+
+
+def _verify_codegen_config(args: argparse.Namespace) -> int:
+    """``verify --codegen`` with no positional ``metadata_dir`` → config mode (#267).
+
+    Symmetric with ``gen`` config mode: ONE whole-selection regen into a temp tree
+    (reusing :func:`_run_gen_targets` — the exact gen pipeline, so verify rejects
+    exactly what gen rejects, including the cross-target duplicate-output-path
+    guard), then a diff per UNIQUE real outDir. Targets that share an outDir are
+    verified TOGETHER — the diff is the union of their co-resident regen vs the
+    shared committed dir, so a shared outDir is never a false-positive ``extra``
+    drift (mirrors the TS ``computeCodegenDrift`` unit = unique outDir).
+    ``--target`` widens to the outDir-sharing closure (an outDir is verified as a
+    unit). Strict-by-default (ADR-0023) unless ``--lax``.
+    """
+    config_path = _find_config(args)
+    if config_path is None:
+        print(
+            "error: verify --codegen with no <metadata_dir> requires a "
+            "metaobjects.config.yaml (or --config <path>).",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        config = load_project_config(config_path)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    selected, target_err = _select_targets(config, getattr(args, "target", None))
+    if target_err:
+        print(f"error: {target_err}", file=sys.stderr)
+        return 1
+
+    # Widen to the outDir-sharing closure: a shared outDir is verified as a unit,
+    # so --target a (whose outDir b also writes) pulls b in.
+    selected_outdirs = {config.out_dir_for(t) for t in selected}
+    closure = [t for t in config.targets if config.out_dir_for(t) in selected_outdirs]
+    added = [t.name for t in closure if t not in selected]
+    if added:
+        target_arg = getattr(args, "target", None)
+        print(
+            f"note: --target {target_arg!r} shares an outDir with "
+            f"{', '.join(added)}; verifying the shared outDir as a unit.",
+            file=sys.stderr,
+        )
+
+    strict = not getattr(args, "lax", False)
+    providers, providers_ok = _config_providers(config)
+    if not providers_ok:
+        return 1
+
+    root, load_errors = _load_root(config.metadata_dir(), strict=strict, providers=providers)
+    if root is None:
+        print("error: failed to load metadata:", file=sys.stderr)
+        for msg in load_errors:
+            print(f"  {msg}", file=sys.stderr)
+        if strict and any("ERR_UNKNOWN_ATTR" in m for m in load_errors):
+            print(_strict_load_hint(), file=sys.stderr)
+        return 1
+
+    with tempfile.TemporaryDirectory() as temp_root:
+        # Map each unique real outDir to ONE temp slot (shared real dir => shared slot).
+        temp_for: dict[str, str] = {}
+        for t in closure:
+            real = config.out_dir_for(t)
+            if real not in temp_for:
+                temp_for[real] = _temp_slot_for(Path(temp_root), real, config.config_dir)
+        remapped = [
+            dataclasses.replace(t, out_dir=temp_for[config.out_dir_for(t)]) for t in closure
+        ]
+
+        # The exact gen pipeline into the temp tree — verify now rejects exactly
+        # what gen rejects (incl. the cross-target duplicate-output-path guard).
+        _written, errors = _run_gen_targets(config, remapped, root)
+        if errors:
+            for msg in errors:
+                print(f"error: {msg}", file=sys.stderr)
+            return 1
+
+        exit_code = 0
+        for real_outdir in sorted(temp_for):
+            tmp_slot = temp_for[real_outdir]
+            expected = _relative_set(Path(tmp_slot))
+            committed = _relative_set(Path(real_outdir))
+
+            changed = sorted(
+                k for k in expected if k in committed and expected[k] != committed[k]
+            )
+            missing = sorted(k for k in expected if k not in committed)
+            extra = sorted(k for k in committed if k not in expected)
+
+            names = "+".join(
+                t.name for t in closure if config.out_dir_for(t) == real_outdir
+            )
+            if not changed and not missing and not extra:
+                print(
+                    f"metaobjects verify [{names}]: in sync ({len(expected)} file(s))."
+                )
+                continue
+            exit_code = max(exit_code, 1)
+            print(
+                f"error: [{names}] generated code is out of sync with metadata.",
+                file=sys.stderr,
+            )
+            for k in changed:
+                print(f"  drifted: {k}", file=sys.stderr)
+            for k in missing:
+                print(f"  missing: {k}", file=sys.stderr)
+            for k in extra:
+                print(f"  extra:   {k}", file=sys.stderr)
+            print("regenerate (metaobjects gen) and commit the result.", file=sys.stderr)
+        return exit_code
+
+
 #: The text-ref attrs a ``template.*`` node may carry. Each is resolved through
 #: the filesystem provider and run through the render ``verify()`` gate. A prompt
 #: / document uses ``@textRef``; an email uses subject / html / (optional) text
@@ -607,6 +894,14 @@ def _verify_templates(args: argparse.Namespace) -> int:
     (exit 1). Clean → 0. Reuses the render engine + field-tree walk; nothing is
     reimplemented here.
     """
+    if args.metadata_dir is None:
+        print(
+            "error: verify --templates requires <metadata_dir> (it is not "
+            "config-driven; the config's targets registry drives --codegen only).",
+            file=sys.stderr,
+        )
+        return 2
+
     template_root = getattr(args, "templates_root", None)
     if not template_root:
         print(
@@ -855,6 +1150,20 @@ def _build_parser() -> argparse.ArgumentParser:
             "resolves through the standalone CLI (#158)"
         ),
     )
+    gen.add_argument(
+        "--config",
+        default=None,
+        help=(
+            "path to a metaobjects.config.yaml (declarative targets registry). "
+            "Config mode runs when no <metadata_dir> is given; default lookup is "
+            "./metaobjects.config.yaml in cwd."
+        ),
+    )
+    gen.add_argument(
+        "--target",
+        default=None,
+        help="run only this named target from the config (default: every target)",
+    )
     gen.set_defaults(func=_cmd_gen)
 
     docs = sub.add_parser(
@@ -902,7 +1211,15 @@ def _build_parser() -> argparse.ArgumentParser:
             "(ADR-0021 D2); bare verify defaults to --codegen"
         ),
     )
-    verify.add_argument("metadata_dir", help="directory of metadata JSON/YAML files")
+    verify.add_argument(
+        "metadata_dir",
+        nargs="?",
+        default=None,
+        help=(
+            "directory of metadata JSON/YAML files. Omit to use a "
+            "metaobjects.config.yaml (--codegen config mode, #267)."
+        ),
+    )
     verify.add_argument(
         "--codegen",
         action="store_true",
@@ -952,6 +1269,20 @@ def _build_parser() -> argparse.ArgumentParser:
         action="append",
         metavar="module:symbol",
         help="load a consumer metadata Provider as 'module:symbol' (repeatable; #158)",
+    )
+    verify.add_argument(
+        "--config",
+        default=None,
+        help=(
+            "path to a metaobjects.config.yaml. Config mode runs when no "
+            "<metadata_dir> is given; default ./metaobjects.config.yaml in cwd. "
+            "Drives --codegen per-target regen+diff."
+        ),
+    )
+    verify.add_argument(
+        "--target",
+        default=None,
+        help="verify only this named target from the config (default: every target)",
     )
     verify.set_defaults(func=_cmd_verify)
 

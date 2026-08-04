@@ -95,6 +95,12 @@ metaobjects gen ./metadata --out ./generated      # codegen → write
 metaobjects verify ./metadata --out ./generated   # drift gate; bare verify defaults to --codegen
 ```
 
+For multi-target projects (several `outDir`s, per-target generator/entity
+selection, config-relative provider resolution), `metaobjects gen`/`verify` also
+read a declarative [`metaobjects.config.yaml`](../features/cli.md) (#267) — run
+either with no positional `<metadata_dir>` to use it; the flag path above stays
+byte-identical.
+
 **Both `pydantic` and `fastapi` are consumer-installed, not transitive deps of
 `metaobjects` itself** — the entity/router files this emits `import pydantic`
 and `import fastapi`, so add them before importing the generated code:

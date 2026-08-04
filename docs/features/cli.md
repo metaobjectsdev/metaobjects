@@ -84,6 +84,57 @@ at `-Dmeta.verify.templateRoot`). The one goal covers BOTH Java (`codegen-spring
 migrate engine, ADR-0015"); an unknown mode fails listing the valid ones. (Schema `--db` remains
 Node-only by the ADR-0015 design — see below.)
 
+## Declarative config (`metaobjects.config.yaml`) — Python codegen
+
+Alongside its flag-only mode (`metaobjects gen <metadata_dir> --out <dir>`), the
+Python `metaobjects` CLI supports a declarative project config,
+`metaobjects.config.yaml` (#267). The **schema keys are identical to the TS
+`metaobjects.config.ts` vocabulary** — a polyglot adopter learns one
+targets-registry shape regardless of port. A JSON Schema ships at
+[`server/python/src/metaobjects/codegen/metaobjects-config.schema.json`](../../server/python/src/metaobjects/codegen/metaobjects-config.schema.json)
+for editor autocomplete and non-Python validation.
+
+```yaml
+metadata: metaobjects            # optional, default "metaobjects" — relative to this file
+providers:                       # optional; "module:symbol" refs, resolved config-relative (no PYTHONPATH=)
+  - my_project.providers:register_custom_types
+targets:
+  api:
+    outDir: src/generated/api
+    generators: [entity, routes] # optional; stable names from `metaobjects gen --list`; omit = default suite
+  admin:
+    outDir: src/generated/admin
+    entities: [Author, Book]     # optional allowlist; omit = every entity
+```
+
+- **`metaobjects gen`** with no positional `<metadata_dir>` runs config mode:
+  it loads the config and metadata once and runs every target into its own
+  `outDir`, with a cross-target guard against two targets writing the same
+  output path. `--target <name>` scopes the run to a single target.
+- **`metaobjects verify --codegen`** — including bare `verify`, since
+  `--codegen` is the Python default (see above) — runs the matching config
+  mode with no positional `<metadata_dir>`: it regenerates the whole selection
+  into a temp tree (the exact `gen` pipeline, including the cross-target
+  duplicate-output-path guard) and diffs each **unique `outDir`** against the
+  union of the co-resident targets' regen, aggregating the exit code (non-zero
+  if *any* outDir has drifted). Targets sharing an `outDir` are verified
+  together, so a shared `outDir` is never a false-positive `extra`. `--target`
+  widens to the `outDir`-sharing closure (an `outDir` is verified as a unit).
+  Strict-attr loading (ADR-0023) still applies unless `--lax` is passed.
+- **`--config <path>`** picks the config file explicitly on either command;
+  with no positional metadata dir and no `--config`, both commands default to
+  looking for `./metaobjects.config.yaml` in the current directory.
+- **Providers resolve config-relative.** A `providers:` entry is imported
+  with the config file's own directory prepended to `sys.path`, so a
+  consumer provider module living beside the config resolves with no
+  `PYTHONPATH=` needed (unlike the flag-only `--provider module:symbol`
+  path, which relies on the ambient environment).
+- **Back-compat is load-bearing.** Passing an explicit positional
+  `<metadata_dir>` (with `--out` on `gen`, or `--out` on `verify --codegen`)
+  keeps the original flag-only path byte-identical — the config file is never
+  consulted. Config mode activates only when no positional `<metadata_dir>`
+  is given.
+
 ## `meta gen` / `meta verify` run an advisory anti-pattern pass (Node `meta`)
 
 Both `meta verify` and a real `meta gen` write run (not `--dry-run`) end with a

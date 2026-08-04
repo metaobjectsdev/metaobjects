@@ -47,7 +47,9 @@ the path-resolution and import-base machinery that is not yet on the
 Python codegen surface). Consumers wanting strong typing can hand-edit
 the generated router to import their preferred entity shape.
 
-**When it ships:** once the Python codegen grows per-target output
-directories (mirroring the TS `targets` registry — see
-`@metaobjectsdev/cli` README), the router generator will emit
-`from .<snake>_entity import <Entity>` and use the entity type throughout.
+**When it ships:** the Python codegen now has a per-target output-directory
+targets registry via the declarative `metaobjects.config.yaml` (#267 — mirrors
+the TS `targets` registry). The remaining deferred piece is the router→entity-model
+import wiring itself (`from .<snake>_entity import <Entity>`), which still needs the
+path-resolution/import-base machinery; the config's per-target `outDir` is the
+prerequisite that is now in place.
