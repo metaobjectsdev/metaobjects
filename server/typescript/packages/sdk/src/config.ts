@@ -22,10 +22,14 @@ const D1Block = z.object({
   wranglerConfigPath: z.string(),
 }).partial();
 
+/** #192 — migration output-format adapters; orthogonal to dialect. */
+const MigrateFormatEnum = z.enum(["default", "flyway"]);
+
 const MigrateBlock = z.object({
   outDir: z.string(),
   databaseUrl: z.string(),
   dialect: DialectEnum,
+  format: MigrateFormatEnum,
   onAmbiguous: OnAmbiguousEnum,
   allow: z.array(AllowTokenEnum),
   d1: D1Block,

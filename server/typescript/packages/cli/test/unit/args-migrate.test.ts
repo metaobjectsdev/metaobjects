@@ -6,6 +6,7 @@ describe("parseMigrateArgs", () => {
     expect(parseMigrateArgs([])).toEqual({
       db: undefined,
       dialect: undefined,
+      format: undefined,
       outDir: undefined,
       slug: undefined,
       allow: [],

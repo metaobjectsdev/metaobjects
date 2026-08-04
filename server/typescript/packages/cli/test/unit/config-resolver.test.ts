@@ -46,6 +46,7 @@ describe("resolveMigrateConfig", () => {
   });
 
   const defaultD1Flags = {
+    format: undefined,
     d1Binding: undefined,
     remote: false,
     apply: false,
@@ -152,6 +153,7 @@ describe("resolveMigrateConfig", () => {
     const resolved = await resolveMigrateConfig({
       db: undefined,
       dialect: "d1",
+      format: undefined,
       outDir: undefined,
       slug: undefined,
       allow: [],
@@ -177,6 +179,7 @@ describe("resolveMigrateConfig", () => {
     const resolved = await resolveMigrateConfig({
       db: undefined,
       dialect: "d1",
+      format: undefined,
       outDir: undefined,
       slug: undefined,
       allow: [],
@@ -246,6 +249,7 @@ describe("resolveD1Config", () => {
     const viaMigrate = await resolveMigrateConfig({
       db: undefined,
       dialect: "d1",
+      format: undefined,
       outDir: undefined,
       slug: undefined,
       allow: [],

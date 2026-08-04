@@ -157,6 +157,14 @@ export function parseExportArgs(argv: string[]): ExportFlags {
 const DIALECTS = ["sqlite", "postgres", "d1"] as const;
 type Dialect = (typeof DIALECTS)[number];
 
+/**
+ * #192 — migration output-format adapters. Orthogonal to dialect: a Flyway shop
+ * is still on postgres or sqlite. "default" is the homegrown
+ * `<ts>-<slug>/up.sql` layout; "flyway" is the `V<N>__`/`U<N>__` envelope.
+ */
+export const MIGRATE_FORMATS = ["default", "flyway"] as const;
+export type MigrateFormat = (typeof MIGRATE_FORMATS)[number];
+
 const ALLOW_TOKENS = [
   "drop-column",
   "drop-table",
@@ -324,6 +332,8 @@ type OnAmbiguous = (typeof ON_AMBIGUOUS)[number];
 export interface MigrateFlags {
   db: string | undefined;
   dialect: Dialect | undefined;
+  /** Output-format adapter (#192); undefined means "not specified on the CLI". */
+  format: MigrateFormat | undefined;
   outDir: string | undefined;
   slug: string | undefined;
   allow: AllowToken[];
@@ -354,6 +364,7 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
     options: {
       "db": { type: "string" },
       "dialect": { type: "string" },
+      "format": { type: "string" },
       "out-dir": { type: "string" },
       "slug": { type: "string" },
       "allow": { type: "string" },
@@ -385,6 +396,11 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
     throw new Error(`invalid --dialect '${dialect}'; expected: ${DIALECTS.join(", ")}`);
   }
 
+  const format = values.format as string | undefined;
+  if (format !== undefined && !MIGRATE_FORMATS.includes(format as MigrateFormat)) {
+    throw new Error(`invalid --format '${format}'; expected: ${MIGRATE_FORMATS.join(", ")}`);
+  }
+
   const onAmb = values["on-ambiguous"] as string | undefined;
   if (onAmb !== undefined && !ON_AMBIGUOUS.includes(onAmb as OnAmbiguous)) {
     throw new Error(`invalid --on-ambiguous '${onAmb}'; expected: ${ON_AMBIGUOUS.join(", ")}`);
@@ -405,6 +421,7 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
   return {
     db: values.db as string | undefined,
     dialect: dialect as Dialect | undefined,
+    format: format as MigrateFormat | undefined,
     outDir: values["out-dir"] as string | undefined,
     slug: values.slug as string | undefined,
     allow: allowTokens as AllowToken[],

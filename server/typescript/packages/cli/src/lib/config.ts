@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ConfigSchema, type Config, DEFAULT_METAOBJECTS_DIR } from "@metaobjectsdev/sdk";
-import type { GenFlags, MigrateFlags } from "./args.js";
+import type { GenFlags, MigrateFlags, MigrateFormat } from "./args.js";
 import type { Dialect } from "./kysely.js";
 
 // ---------------------------------------------------------------------------
@@ -14,6 +14,7 @@ const MIGRATE_DEFAULTS = {
   outDir: MIGRATE_DEFAULT_OUT_DIR,
   databaseUrl: undefined as string | undefined,
   dialect: undefined as Dialect | undefined,
+  format: "default" as MigrateFormat,
   onAmbiguous: "abort" as const,
   allow: [] as string[],
 };
@@ -38,6 +39,8 @@ export interface ResolvedMigrateConfig {
   outDir: string;
   databaseUrl: string | undefined;
   dialect: Dialect | undefined;
+  /** Output-format adapter (#192): "default" homegrown layout, or "flyway" V__/U__. */
+  format: MigrateFormat;
   onAmbiguous: "abort" | "rename" | "drop-add";
   allow: string[];
   slug: string | undefined;
@@ -116,6 +119,7 @@ export async function resolveMigrateConfig(
     outDir: flags.outDir ?? cfgBlock.outDir ?? MIGRATE_DEFAULTS.outDir,
     databaseUrl: flags.db ?? envUrl ?? cfgBlock.databaseUrl ?? MIGRATE_DEFAULTS.databaseUrl,
     dialect: flags.dialect ?? cfgBlock.dialect ?? MIGRATE_DEFAULTS.dialect,
+    format: flags.format ?? cfgBlock.format ?? MIGRATE_DEFAULTS.format,
     onAmbiguous: flags.onAmbiguous ?? cfgBlock.onAmbiguous ?? MIGRATE_DEFAULTS.onAmbiguous,
     allow: flags.allow.length > 0
       ? flags.allow
