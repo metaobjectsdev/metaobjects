@@ -166,13 +166,21 @@ gate_conf_ts() {
 # Measured ~5s total, so the independent signal is nearly free.
 # NOTE: per-package `bun test` only — a bare root `bun test` walks java/python/
 # csharp/fixtures and takes many minutes.
+# --timeout 30000 (same reasoning as gate_cli above; bunfig.toml `[test] timeout`
+# is NOT honored by bun, so it must be the CLI flag): this lane has repeatedly
+# stalled on the self-hosted runner until the job's 20-minute cap, at a DIFFERENT
+# file each time (metadata/index.test.ts, react/currency-input.test.tsx,
+# tanstack/grid-from-metadata.test.ts) and never with a failing assertion — so the
+# stall is environmental, not one bad test. A 20-minute cancel reports nothing;
+# a per-test cap turns the next occurrence into a named failure in 30s. The whole
+# lane measures ~5s, so any single test past 30s is a hang by definition.
 gate_ts_unit() {
   bun_install || return 1
   for p in metadata render runtime-ts; do
-    ( cd "server/typescript/packages/$p" && bun test ) || return 1
+    ( cd "server/typescript/packages/$p" && bun test --timeout 30000 ) || return 1
   done
   for p in runtime-web react tanstack; do
-    ( cd "client/web/packages/$p" && bun test ) || return 1
+    ( cd "client/web/packages/$p" && bun test --timeout 30000 ) || return 1
   done
 }
 gate_conf_csharp() {
