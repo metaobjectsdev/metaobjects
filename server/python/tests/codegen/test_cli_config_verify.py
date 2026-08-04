@@ -55,7 +55,7 @@ def test_verify_codegen_no_args_in_sync(tmp_path: Path) -> None:
 
 
 def test_verify_codegen_bare_defaults_to_codegen(tmp_path: Path, monkeypatch) -> None:
-    cfg = _project(tmp_path)
+    _project(tmp_path)
     monkeypatch.chdir(tmp_path)
     assert main(["gen"]) == 0
     assert main(["verify"]) == 0  # bare verify → --codegen default, config-driven
@@ -84,7 +84,7 @@ def test_verify_codegen_target_scopes(tmp_path: Path) -> None:
 
 def test_verify_flag_path_still_works_with_config_present(tmp_path: Path) -> None:
     """Back-compat: legacy `verify <dir> --out` diff is unchanged when a config exists."""
-    cfg = _project(tmp_path)
+    _project(tmp_path)
     meta = tmp_path / "metaobjects"
     out = tmp_path / "flagout"
     assert main(["gen", str(meta), "--out", str(out)]) == 0
