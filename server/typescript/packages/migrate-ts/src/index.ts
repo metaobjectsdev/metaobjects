@@ -18,6 +18,7 @@ export type { DriftClassification } from "./drift/classify.js";
 export { emit } from "./emit/index.js";
 export { writeMigration } from "./write-migration.js";
 export { writeMigrationD1 } from "./write-migration-d1.js";
+export { writeMigrationFlyway } from "./write-migration-flyway.js";
 
 // Reference-snapshot generation (offline, deterministic).
 export {
@@ -50,6 +51,7 @@ export type { DiffArgs } from "./diff/index.js";
 export type { EmitOptions } from "./emit/index.js";
 export type { WriteMigrationOptions, WriteMigrationResult } from "./write-migration.js";
 export type { WriteMigrationD1Options, WriteMigrationD1Result } from "./write-migration-d1.js";
+export type { WriteMigrationFlywayOptions, WriteMigrationFlywayResult } from "./write-migration-flyway.js";
 
 // View-body comparison — used by the diff to detect body drift (replace-view).
 // View DDL itself is produced by the diff + rendered by each dialect's emitter;
