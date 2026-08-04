@@ -102,6 +102,16 @@ def test_gen_cross_target_duplicate_output_path_guard(tmp_path: Path, capsys) ->
     assert "duplicate output path across targets" in capsys.readouterr().err
 
 
+def test_verify_dup_targets_config_rejected(tmp_path: Path, capsys) -> None:
+    """verify --codegen runs the SAME cross-target duplicate-output-path guard as
+    gen (verify is symmetric with gen): the DUP_TARGETS config — two targets emit
+    the same Program.py into the same outDir — is rejected with exit 1."""
+    cfg = _project(tmp_path, DUP_TARGETS)
+    rc = main(["verify", "--codegen", "--config", str(cfg)])
+    assert rc == 1
+    assert "duplicate output path across targets" in capsys.readouterr().err
+
+
 SHARED_OUTDIR_DISJOINT_ENTITIES = """
 targets:
   a:

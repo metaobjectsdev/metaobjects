@@ -39,7 +39,9 @@ generator-wiring divergence between the two commands.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -724,55 +726,38 @@ def _verify_codegen(args: argparse.Namespace) -> int:
     return 1
 
 
-def _verify_one_target(
-    config: ProjectConfig, target: TargetConfig, root: MetaData
-) -> int:
-    """Regenerate one target to a temp dir + diff against its committed ``outDir``.
+def _temp_slot_for(temp_root: Path, real_outdir: str, config_dir: Path) -> str:
+    """The temp mirror of a committed ``outDir``.
 
-    Mirrors :func:`_verify_codegen`'s diff, labeled per target. Returns 0 (in sync)
-    or 1 (drift / bad generator name)."""
-    gens: list[Generator] | None = None
-    if target.generators is not None:
-        gens, gen_errors = _resolve_generators(",".join(target.generators))
-        if gen_errors:
-            for m in gen_errors:
-                print(f"error: target '{target.name}': {m}", file=sys.stderr)
-            return 1
-
-    out_dir = Path(config.out_dir_for(target))
-    with tempfile.TemporaryDirectory() as tmp:
-        _run_suite(root, tmp, gens, target.entities)
-        expected = _relative_set(Path(tmp))
-        committed = _relative_set(out_dir)
-
-    changed = sorted(k for k in expected if k in committed and expected[k] != committed[k])
-    missing = sorted(k for k in expected if k not in committed)
-    extra = sorted(k for k in committed if k not in expected)
-
-    if not changed and not missing and not extra:
-        print(f"metaobjects verify [{target.name}]: in sync ({len(expected)} file(s)).")
-        return 0
-
-    print(
-        f"error: [{target.name}] generated code is out of sync with metadata.",
-        file=sys.stderr,
-    )
-    for k in changed:
-        print(f"  drifted: {k}", file=sys.stderr)
-    for k in missing:
-        print(f"  missing: {k}", file=sys.stderr)
-    for k in extra:
-        print(f"  extra:   {k}", file=sys.stderr)
-    print("regenerate (metaobjects gen) and commit the result.", file=sys.stderr)
-    return 1
+    Keyed by the real outDir's path relative to ``config_dir`` when it lives under
+    it, else a sanitized flat name — mirroring the TS ``computeCodegenDrift``
+    ``tempFor``. Two targets sharing a real outDir map to the SAME slot so their
+    co-resident regen accumulates into one tree: the diff is then union-of-
+    co-resident-regen vs the shared committed dir, so the other target's files are
+    never false ``extra`` drift.
+    """
+    try:
+        rel = Path(real_outdir).relative_to(config_dir)
+    except ValueError:
+        rel = None
+    if rel is None:
+        safe = re.sub(r"[^A-Za-z0-9]+", "_", real_outdir)
+        return str(temp_root / safe)
+    return str(temp_root / rel)
 
 
 def _verify_codegen_config(args: argparse.Namespace) -> int:
     """``verify --codegen`` with no positional ``metadata_dir`` → config mode (#267).
 
-    Load the config + metadata ONCE, then regen+diff each target (or ``--target``)
-    against its committed ``outDir``, aggregating the exit code (non-zero if ANY
-    target drifts). Strict-by-default (ADR-0023) unless ``--lax``.
+    Symmetric with ``gen`` config mode: ONE whole-selection regen into a temp tree
+    (reusing :func:`_run_gen_targets` — the exact gen pipeline, so verify rejects
+    exactly what gen rejects, including the cross-target duplicate-output-path
+    guard), then a diff per UNIQUE real outDir. Targets that share an outDir are
+    verified TOGETHER — the diff is the union of their co-resident regen vs the
+    shared committed dir, so a shared outDir is never a false-positive ``extra``
+    drift (mirrors the TS ``computeCodegenDrift`` unit = unique outDir).
+    ``--target`` widens to the outDir-sharing closure (an outDir is verified as a
+    unit). Strict-by-default (ADR-0023) unless ``--lax``.
     """
     config_path = _find_config(args)
     if config_path is None:
@@ -788,10 +773,23 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    targets, target_err = _select_targets(config, getattr(args, "target", None))
+    selected, target_err = _select_targets(config, getattr(args, "target", None))
     if target_err:
         print(f"error: {target_err}", file=sys.stderr)
         return 1
+
+    # Widen to the outDir-sharing closure: a shared outDir is verified as a unit,
+    # so --target a (whose outDir b also writes) pulls b in.
+    selected_outdirs = {config.out_dir_for(t) for t in selected}
+    closure = [t for t in config.targets if config.out_dir_for(t) in selected_outdirs]
+    added = [t.name for t in closure if t not in selected]
+    if added:
+        target_arg = getattr(args, "target", None)
+        print(
+            f"note: --target {target_arg!r} shares an outDir with "
+            f"{', '.join(added)}; verifying the shared outDir as a unit.",
+            file=sys.stderr,
+        )
 
     strict = not getattr(args, "lax", False)
     providers, providers_ok = _config_providers(config)
@@ -807,10 +805,58 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
             print(_strict_load_hint(), file=sys.stderr)
         return 1
 
-    exit_code = 0
-    for t in targets:
-        exit_code = max(exit_code, _verify_one_target(config, t, root))
-    return exit_code
+    with tempfile.TemporaryDirectory() as temp_root:
+        # Map each unique real outDir to ONE temp slot (shared real dir => shared slot).
+        temp_for: dict[str, str] = {}
+        for t in closure:
+            real = config.out_dir_for(t)
+            if real not in temp_for:
+                temp_for[real] = _temp_slot_for(Path(temp_root), real, config.config_dir)
+        remapped = [
+            dataclasses.replace(t, out_dir=temp_for[config.out_dir_for(t)]) for t in closure
+        ]
+
+        # The exact gen pipeline into the temp tree — verify now rejects exactly
+        # what gen rejects (incl. the cross-target duplicate-output-path guard).
+        _written, errors = _run_gen_targets(config, remapped, root)
+        if errors:
+            for msg in errors:
+                print(f"error: {msg}", file=sys.stderr)
+            return 1
+
+        exit_code = 0
+        for real_outdir in sorted(temp_for):
+            tmp_slot = temp_for[real_outdir]
+            expected = _relative_set(Path(tmp_slot))
+            committed = _relative_set(Path(real_outdir))
+
+            changed = sorted(
+                k for k in expected if k in committed and expected[k] != committed[k]
+            )
+            missing = sorted(k for k in expected if k not in committed)
+            extra = sorted(k for k in committed if k not in expected)
+
+            names = "+".join(
+                t.name for t in closure if config.out_dir_for(t) == real_outdir
+            )
+            if not changed and not missing and not extra:
+                print(
+                    f"metaobjects verify [{names}]: in sync ({len(expected)} file(s))."
+                )
+                continue
+            exit_code = max(exit_code, 1)
+            print(
+                f"error: [{names}] generated code is out of sync with metadata.",
+                file=sys.stderr,
+            )
+            for k in changed:
+                print(f"  drifted: {k}", file=sys.stderr)
+            for k in missing:
+                print(f"  missing: {k}", file=sys.stderr)
+            for k in extra:
+                print(f"  extra:   {k}", file=sys.stderr)
+            print("regenerate (metaobjects gen) and commit the result.", file=sys.stderr)
+        return exit_code
 
 
 #: The text-ref attrs a ``template.*`` node may carry. Each is resolved through

@@ -113,11 +113,14 @@ targets:
   output path. `--target <name>` scopes the run to a single target.
 - **`metaobjects verify --codegen`** — including bare `verify`, since
   `--codegen` is the Python default (see above) — runs the matching config
-  mode with no positional `<metadata_dir>`: it regenerates each target to a
-  temp dir, diffs it against that target's committed `outDir`, and
-  aggregates the exit code (non-zero if *any* target has drifted). `--target`
-  scopes it the same way. Strict-attr loading (ADR-0023) still applies unless
-  `--lax` is passed.
+  mode with no positional `<metadata_dir>`: it regenerates the whole selection
+  into a temp tree (the exact `gen` pipeline, including the cross-target
+  duplicate-output-path guard) and diffs each **unique `outDir`** against the
+  union of the co-resident targets' regen, aggregating the exit code (non-zero
+  if *any* outDir has drifted). Targets sharing an `outDir` are verified
+  together, so a shared `outDir` is never a false-positive `extra`. `--target`
+  widens to the `outDir`-sharing closure (an `outDir` is verified as a unit).
+  Strict-attr loading (ADR-0023) still applies unless `--lax` is passed.
 - **`--config <path>`** picks the config file explicitly on either command;
   with no positional metadata dir and no `--config`, both commands default to
   looking for `./metaobjects.config.yaml` in the current directory.

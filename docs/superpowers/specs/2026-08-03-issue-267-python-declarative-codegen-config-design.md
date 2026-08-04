@@ -35,7 +35,7 @@ targets:                            # named map (like TS `targets`), not a list
 
 - **Provider resolution:** prepend the **config file's directory** to `sys.path` before the existing `_resolve_providers` importlib path — removes the `PYTHONPATH=` requirement; `module:symbol` strings unchanged. Optional later: a `pythonPath: [./tools]` key for providers living elsewhere (don't block on it).
 - **`metaobjects gen` (no positional dir / no `--out`)** → load config, load metadata **once**, run **every** target (per-target generators/entities into its `outDir`). Add a **cross-target duplicate-output-path guard** (TS's runner errors on duplicate full paths; Python's `run_gen` guard is per-pass only). Add `--target <name>` to scope to one target.
-- **`metaobjects verify --codegen` (no args)** → per-target regen-to-temp + diff, aggregating exit codes (the existing `_verify_codegen` loop, per target). `--target <name>` scopes.
+- **`metaobjects verify --codegen` (no args)** → one whole-selection regen into a temp tree (the exact `gen` pipeline, including the cross-target duplicate-output-path guard), then a diff per **unique outDir** — the union of co-resident targets' regen vs the shared committed dir — so two targets sharing an outDir are verified *together* (no false `extra` drift). `--target <name>` widens to the outDir-sharing closure (an outDir is verified as a unit).
 - **Config lookup:** `--config <path>` else `./metaobjects.config.yaml` in cwd. (Optional secondary `pyproject.toml [tool.metaobjects]` location later — don't block on it.)
 - **Back-compat (load-bearing):** an explicit positional `metadata_dir` + `--out` keeps today's flag path **byte-identical** — flags present ⇒ legacy path, config not consulted (simplest, least-surprising rule). Purely additive; existing CI keeps working.
 
@@ -51,7 +51,7 @@ A config-declared provider that `registry.extend()`s a core subtype still hits t
 
 - Config loader unit tests (parse YAML → typed config; missing/invalid → clear error; defaults).
 - `gen` no-arg runs all targets into their `outDir`s with the right generators/entities (temp-dir integration); duplicate-output-path guard fires on a colliding config.
-- `verify --codegen` no-arg per-target regen+diff, aggregate exit; a stale target fails, a fresh tree passes.
+- `verify --codegen` no-arg one whole-selection regen + diff per unique outDir, aggregate exit; a stale target fails, a fresh tree passes; a shared outDir with disjoint entities verifies clean, and real drift/extra is still detected under sharing.
 - Provider resolved config-relative WITHOUT `PYTHONPATH=` (a provider module beside the config).
 - `--target <name>` scopes gen + verify.
 - Back-compat: the existing positional+`--out` flag path is byte-identical (config ignored).
