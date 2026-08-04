@@ -87,8 +87,10 @@ idiomatic. The D1 adapter sanitizes to hyphens; the Flyway adapter must not copy
 
 ### D4 — `--format` flag plus a config key
 
-`--format flyway|default` on `meta migrate`, also settable once in `metaobjects.config.ts`. Flag
-overrides config; default is `default`, so existing behavior is untouched.
+`--format flyway|default` on `meta migrate`, also settable once as `migrate.format` in
+**`.metaobjects/config.json`** — the static project-state file the migrate command already reads via
+`tryLoadConfig` → SDK `ConfigSchema.MigrateBlock` (NOT `metaobjects.config.ts`, which carries
+generator wiring). Flag overrides config; default is `default`, so existing behavior is untouched.
 
 Rationale: a JVM shop sets it once and forgets, while a one-off generation in another format stays
 possible. Flag-only would mean repeating it forever with a forgotten flag silently writing the wrong
@@ -107,11 +109,14 @@ existing per-adapter default-fallback pattern: the D1 path already falls back to
    Creates `dir` if missing, computes the next version, writes both files with a trailing newline.
    Structurally mirrors `write-migration-d1.ts`.
 2. **`cli/src/lib/config.ts`** — add `format: "default" | "flyway"` to `ResolvedMigrateConfig`,
-   resolved flag > `metaobjects.config.ts` > `"default"`.
+   resolved flag > `.metaobjects/config.json` `migrate.format` > `"default"`.
 3. **`cli/src/commands/migrate.ts`** — dispatch on `config.format` at **both** `writeMigration` call
    sites (the live-DB/diff path and the offline `runOfflineGenerate` path), plus the refusal matrix
    in §6.
-4. **`codegen-ts/src/metaobjects-config.ts`** — typed `migrate.format` config key.
+4. **`sdk/src/config.ts`** — add `format` to the `MigrateBlock` Zod schema, so
+   `.metaobjects/config.json` can carry `migrate.format`.
+5. **`cli/src/lib/args.ts`** — `--format` in `parseMigrateArgs` + `MigrateFlags`, validated against
+   the closed set (invalid value → parse error, matching the existing `--dialect` handling).
 
 ## 5. Data flow
 
