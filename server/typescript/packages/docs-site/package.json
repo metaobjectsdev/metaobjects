@@ -1,6 +1,6 @@
 {
   "name": "@metaobjectsdev/docs-site",
-  "version": "0.20.11",
+  "version": "0.20.13",
   "description": "HTML documentation-site generator for metaobjects models — a browsable multi-page site (nav, search, per-object/package pages, kind-aware ER diagrams). Powers the `meta docs --site` surface.",
   "type": "module",
   "main": "./dist/index.js",

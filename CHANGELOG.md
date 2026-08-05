@@ -7,8 +7,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-**Coordinated across all four registries** — `WARN_ENUM_NORMALIZE_AMBIGUOUS` is a cross-port
-loader change, so every port ships:
+## [0.20.13] — npm `0.20.13` · PyPI `0.20.13` · NuGet `0.20.13` · Maven `7.20.13`
+
+**Coordinated across all four registries**, and the first release where all four share the same
+patch number. `WARN_ENUM_NORMALIZE_AMBIGUOUS` is a cross-port loader change, so every port ships;
+Maven moves `7.20.12` → `7.20.13` (it ran one ahead after the Maven-only #233 fix) so the shared
+`minor.patch` is aligned. **Going forward the four registries stay on a single shared patch
+number** — no more per-registry drift.
 
 - **npm** — `metadata`, `codegen-ts`, `migrate-ts`, `cli`, `sdk`
 - **PyPI** — the loader guard (`validate_enum_normalize_ambiguity.py`, `validation_passes.py`)
