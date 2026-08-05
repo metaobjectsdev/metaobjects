@@ -592,16 +592,33 @@ export async function migrateCommand(
     // the documented everyday flow had it worse: no warning, and the next offline
     // diff re-emitted the already-applied change.)
     //
-    // Written as the metadata-expected schema — byte-identical to the `nextSnapshot`
-    // runOfflineGenerate persists — so the two paths converge on one representation
-    // and a follow-up offline diff sees no phantom churn. Guarded on a clean run:
-    // dry-run previews nothing, and a blocked/refused/apply-failed run must not
-    // record a schema the database is not in.
-    if (!config.dryRun && exitCode === 0 && !applyFailed) {
-      await writeSnapshot(
-        snapshotPath(resolvePath(metaRoot, config.outDir), kysely.dialect),
-        expected,
-      );
+    // The snapshot means "the schema the COMMITTED MIGRATIONS land you in", so it
+    // advances exactly when this run wrote one — the same rule runOfflineGenerate
+    // follows (it returns on `no changes` before writing). Advancing on a run that
+    // emitted nothing would be the greenfield-`baseline` trap by another door: a
+    // drift check against a hand-migrated database would record the target schema
+    // as already-applied with no CREATE TABLE anywhere, so the offline path would
+    // report `no changes` forever and `apply-pending` would provision an empty
+    // database. Dry-run previews nothing, and a blocked / refused / apply-failed
+    // run must not record a schema the database is not in.
+    //
+    // Written as the metadata-expected schema — the same construction offline
+    // persists as `nextSnapshot`, so both paths converge on one representation and
+    // a follow-up offline diff sees no phantom churn — but carrying the live
+    // engine version introspection just captured, which `emit` reads to choose
+    // native ALTER vs recreate-and-copy on older SQLite.
+    if (!config.dryRun && exitCode === 0 && !applyFailed && writtenPaths.length > 0) {
+      try {
+        await writeSnapshot(
+          snapshotPath(resolvePath(metaRoot, config.outDir), kysely.dialect),
+          actual.meta !== undefined ? { ...expected, meta: actual.meta } : expected,
+        );
+      } catch (err) {
+        // The migration itself is written (and possibly applied) — report the
+        // bookkeeping failure for what it is rather than as an unexpected error.
+        log.error(`migrate: failed to write the schema snapshot: ${(err as Error).message}`);
+        exitCode = 1;
+      }
     }
   } finally {
     try {

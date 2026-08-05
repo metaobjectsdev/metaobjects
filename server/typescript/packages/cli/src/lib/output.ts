@@ -252,7 +252,10 @@ export function migrateResultToData(result: MigrateResultShape): {
     summary = `${prefix}wrote ${result.writtenPaths.length} migration file(s)`;
     help = result.format === "flyway"
       ? ["apply with `flyway migrate` — Flyway owns apply and its schema history"]
-      : ["apply with `meta migrate --db <url> --apply`"];
+      // NOT `meta migrate --db <url> --apply` — that re-runs the diff, so it
+      // demands --slug again and emits a SECOND migration with the same DDL.
+      // apply-pending (#242) replays what was just written, with no diff.
+      : ["apply with `meta migrate apply-pending --db <url>`"];
   } else if (!hasChanges) {
     summary = "no schema changes";
     help = ["metadata and schema are in sync — nothing to do"];

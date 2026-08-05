@@ -272,8 +272,8 @@ $ meta verify --codegen      # regen-and-diff vs committed output
 $ meta verify --templates    # prompt {{field}} ↔ payload-VO drift
 $ meta verify --db postgres://...   # live-DB schema drift (Node meta only)
 
-# Emit migration SQL files (Node meta only, used by every port). --dialect is always
-# required — it selects the diff pipeline, not just the SQL flavor.
+# Emit migration SQL files (Node meta only, used by every port). --dialect selects the
+# diff pipeline, not just the SQL flavor: required offline, auto-detected from --db.
 $ meta migrate --from-db --db file:./dev.db --dialect sqlite --slug init --apply  # first migration, brand-new DB
 $ meta migrate --dialect sqlite --slug add-subscriber                             # everyday: diff vs the committed snapshot
 $ meta migrate --dialect sqlite --slug add-subscriber --db file:./dev.db --apply  # ...and apply it

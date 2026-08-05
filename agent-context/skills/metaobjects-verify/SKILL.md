@@ -155,9 +155,11 @@ What this means in practice:
   meta migrate --dialect postgres --slug add-user-shipping --dry-run   # preview without writing
   ```
 
-  `--dialect` is always required — it selects the diff pipeline, not just the SQL
-  flavor. Do **not** run `meta migrate baseline` on a database that does not exist
-  yet; see `references/migration.md`.
+  Always pass `--dialect` — it selects the diff pipeline, not just the SQL flavor.
+  It is *required* on the offline path and on `baseline`; with `--db` the CLI can
+  auto-detect it from the URL scheme, but being explicit keeps the two paths
+  reading the same. Do **not** run `meta migrate baseline` on a database that does
+  not exist yet; see `references/migration.md`.
 
 - Dialects: `postgres` (default), `sqlite`, and `d1` (Cloudflare D1, TS-only).
 - The JVM and Python ports have **no** migration command of their own — their

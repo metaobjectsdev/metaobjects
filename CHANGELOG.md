@@ -7,6 +7,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+**Scope: npm · PyPI · NuGet** — Maven Central has no changed product file (its
+`AgentDocsMojo` no longer scaffolds agent context; it redirects to the Node CLI).
+The migrate fix is npm-only (`@metaobjectsdev/cli`); the agent-context correction
+ships wherever the scaffolded skills ship — `@metaobjectsdev/sdk` on npm, the
+bundled content tree in the PyPI package, and the C# CLI on NuGet.
+
 ### Fixed — the live-DB `meta migrate` path now advances the committed snapshot
 
 The day-1 command `meta init` prints as its next step —
@@ -36,10 +42,50 @@ blocked, refused, or apply-failed run leaves the snapshot untouched rather than
 recording a schema the database is not in. The now-obsolete
 `--from-db did not advance the committed snapshot` warning is gone.
 
+The snapshot advances **exactly when the run wrote a migration** — the rule the
+offline path already follows (it returns on `no changes` before writing). A live
+run that emits nothing leaves it alone: recording the target schema as
+already-applied with no `CREATE TABLE` anywhere would be the greenfield-`baseline`
+trap by another door, leaving the offline path reporting `no changes` forever and
+`apply-pending` provisioning an empty database. The snapshot also now carries the
+engine version introspection just captured, which `emit` reads to choose native
+`ALTER` vs recreate-and-copy on older SQLite.
+
 Gated by a real-engine round-trip (`cli/test/integration/migrate-fromdb-snapshot.test.ts`):
 greenfield `--from-db … --apply` → offline incremental emits a real migration →
-apply → live re-diff converges to empty, plus the `--dry-run` and blocked-change
-no-write assertions.
+apply → live re-diff converges to empty, plus no-write assertions for `--dry-run`,
+a blocked destructive change, and a zero-change live run against a hand-migrated
+database.
+
+### Fixed — the post-write next-step hint named a command that fails
+
+After writing a migration, `meta migrate` printed ``apply with `meta migrate --db
+<url> --apply` ``. That re-runs the diff, so it demands `--slug` again (exit 2) and,
+if given one, emits a *second* migration carrying the same DDL. The hint now names
+`meta migrate apply-pending --db <url>` (#242), which replays what was just written
+with no diff. This matters more alongside the snapshot fix above: the snapshot now
+advances on a files-only run, so the offline path afterwards correctly reports
+`no changes` and no longer doubles as an accidental reminder that something is
+pending.
+
+### Fixed — the migrate guidance shipped to adopters as agent context
+
+The `metaobjects-verify` skill that `meta init` scaffolds into every adopter repo
+(and its `llms.txt` mirror) told agents to run `meta migrate baseline --dialect
+sqlite` on a **fresh** database — the exact greenfield trap `0.20.1` hardened the
+CLI to refuse. An offline baseline derives the "existing" snapshot from the
+metadata, recording the target shape as already applied, so no table is ever
+created and the failure surfaces later at the API layer as `no such table`. An
+agent following the shipped skill walked a newcomer straight into it. Corrected to
+the working `--from-db … --slug init --apply` path, with `baseline --from-db` kept
+for its real use — adopting a database that already has its schema.
+
+Same family, same files: `meta migrate --db <url> --slug <name>` was described as
+"diff metadata vs the live DB", but without `--from-db`/`--apply` that is the
+offline path and `--db` is ignored. Every example now distinguishes the offline,
+live (`--from-db`) and replay (`apply-pending`) forms, and states `--dialect`
+accurately (required offline and on `baseline`; auto-detected from the URL scheme
+when `--db` is given).
 
 ### Fixed — the documented Node server-boot command (`docs/ports/typescript.md`)
 

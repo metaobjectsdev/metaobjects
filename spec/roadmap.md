@@ -75,7 +75,7 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
 
 ### Cross-port conformance corpora (every port runs the shared corpus)
 
-- **Metamodel conformance** — `fixtures/conformance/` (258 fixtures + CAPABILITIES + ERROR-CODES manifests). TS / C# / Java / Python all green; Kotlin inherits via `metadata-ktx`. Per-corpus counts: `docs/CONFORMANCE.md`.
+- **Metamodel conformance** — `fixtures/conformance/` (260 fixtures + CAPABILITIES + ERROR-CODES manifests). TS / C# / Java / Python all green; Kotlin inherits via `metadata-ktx`. Per-corpus counts: `docs/CONFORMANCE.md`.
 - **Render conformance** — `fixtures/render-conformance/`. TS / C# / Java / Kotlin / Python byte-identical.
 - **Persistence conformance** — `fixtures/persistence-conformance/` (24 query + 6 migration scenarios). Every port runs the **query** scenarios against Testcontainers Postgres, each provisioning its test DB from the committed, TS-produced `canonical/schema.postgres.sql` (Derby was dropped for the cross-port query corpus, ADR-0015). The **migration** scenarios are TS-only, since TS owns schema.
 - **API-contract conformance** — `fixtures/api-contract-conformance/` (26 core + tph/m2m/jsonb/write-through sub-corpora). All five ports run it in BOTH lanes — a hand-rolled reference server and the port's own GENERATED API artifact booted over HTTP.
@@ -173,7 +173,7 @@ we keep it **lean** — consistency fixes + cheap, broadly-leveraged foundations
 themes (serializers, downloads, runtime-driven UI) land post-GA where they can be built
 properly without holding the GA.
 
-### Before 1.0 (tackle now — consistency + cheap foundations)
+### Before 1.0 — adjudicated 2026-08-05: nothing here blocks the promotion
 
 - **[SHIPPED] FR-031 — MetaData read-path caching** + throughput benchmark. Low effort, high
   leverage, benefits everything; serialization is the example, not the only consumer.

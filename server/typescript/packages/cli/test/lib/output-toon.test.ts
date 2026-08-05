@@ -62,7 +62,10 @@ describe("migrate TOON output (axi)", () => {
     expect(d.summary).toContain("wrote");
     expect(d.summary).not.toContain("applied");
     expect(Array.isArray(d.help)).toBe(true);
-    expect(d.help.join(" ")).toContain("--apply");
+    // The hint must name a command that actually applies what was just written.
+    // `meta migrate --db <url> --apply` re-runs the diff, so it demands --slug
+    // again and emits a second migration with the same DDL; apply-pending replays.
+    expect(d.help.join(" ")).toContain("apply-pending");
     // The rollback hint must NOT appear when nothing was applied.
     expect(d.help.join(" ")).not.toContain("--rollback");
   });

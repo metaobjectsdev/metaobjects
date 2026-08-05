@@ -82,8 +82,9 @@ meta migrate baseline --from-db --db postgresql://... --dialect postgres
                                                               # diff vs the LIVE database instead
    ```
 
-   `--dialect` is always required and is load-bearing — it selects the diff
-   pipeline, not just the SQL flavor. The default path is offline (`--db` is
+   `--dialect` is load-bearing — it selects the diff pipeline, not just the SQL
+   flavor. It is *required* offline and on `baseline`; with `--db` it is
+   auto-detected from the URL scheme. The default path is offline (`--db` is
    ignored without `--from-db` or `--apply`); pass `--from-db` when you want the
    diff taken against the live database.
 

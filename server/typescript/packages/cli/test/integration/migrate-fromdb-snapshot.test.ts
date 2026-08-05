@@ -143,6 +143,67 @@ describe("meta migrate live-DB path: committed snapshot (real sqlite)", () => {
     }
   }, 60000);
 
+  test("a live run that writes no migration writes no snapshot", async () => {
+    const { repo, dbUrl, snapshot } = setupRepo();
+    try {
+      // A database that already matches the metadata, reached WITHOUT any
+      // committed migration — a restored dump, hand-run DDL, an adopted DB.
+      const client = createClient({ url: dbUrl });
+      await client.execute(
+        `CREATE TABLE "authors" ("id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, "name" TEXT)`,
+      );
+      client.close();
+
+      // Running the live diff as a drift check reports no changes and emits
+      // nothing. It must not record a snapshot either: the snapshot means "this
+      // is where the committed migrations land you", and there are none. Writing
+      // one here is the greenfield-baseline trap by another door — the offline
+      // path would report `no changes` forever and `apply-pending` would
+      // provision an empty database on CI.
+      const exit = await run([
+        "migrate", "--cwd", repo, "--from-db", "--db", dbUrl, "--dialect", "sqlite",
+      ]);
+      expect(exit).toBe(0);
+      expect(migrationDirs(join(repo, ".metaobjects", "migrations"))).toEqual([]);
+      expect(existsSync(snapshot)).toBe(false);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  }, 60000);
+
+  test("the snapshot records the live engine version for later offline emits", async () => {
+    const { repo, dbUrl, snapshot } = setupRepo();
+    try {
+      const exit = await run([
+        "migrate", "--cwd", repo, "--from-db", "--db", dbUrl,
+        "--dialect", "sqlite", "--slug", "init", "--apply",
+      ]);
+      expect(exit).toBe(0);
+      // `emit` reads snapshot.meta to decide native ALTER vs recreate-and-copy on
+      // older SQLite; dropping it makes a later offline migration un-appliable.
+      const meta = JSON.parse(readFileSync(snapshot, "utf8")).snapshot.meta;
+      expect(meta?.sqliteVersion).toMatch(/^\d+\.\d+/);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  }, 60000);
+
+  test("--migration-format flyway keeps the snapshot in the migrations out-dir", async () => {
+    const { repo, dbUrl, snapshot } = setupRepo();
+    try {
+      const exit = await run([
+        "migrate", "--cwd", repo, "--from-db", "--db", dbUrl, "--dialect", "sqlite",
+        "--migration-format", "flyway", "--slug", "init",
+      ]);
+      expect(exit).toBe(0);
+      // Flyway routes the SQL to src/main/resources/db/migration, but the snapshot
+      // is metaobjects' own state and must stay where the offline path reads it.
+      expect(existsSync(snapshot)).toBe(true);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  }, 60000);
+
   test("--dry-run writes no snapshot", async () => {
     const { repo, dbUrl, snapshot } = setupRepo();
     try {
