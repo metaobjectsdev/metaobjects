@@ -555,9 +555,6 @@ export async function migrateCommand(
                 { dir: outDir, slug: config.slug },
               );
           writtenPaths = [res.upPath, res.downPath];
-          if (config.fromDb) {
-            log.info(`migrate: --from-db did not advance the committed snapshot; run 'meta migrate baseline --from-db' to re-sync`);
-          }
         }
       }
     }
@@ -583,6 +580,28 @@ export async function migrateCommand(
         exitCode = 1;
         applyFailed = true;
       }
+    }
+
+    // Advance the committed reference snapshot — the live-DB path writes the same
+    // migration files the offline path does, so it owes the same bookkeeping. It
+    // used to skip it, which broke the documented day-1 -> day-2 sequence: the
+    // greenfield `--from-db … --apply` command `meta init` prints created the
+    // schema but left no snapshot, so the very next incremental
+    // `meta migrate --dialect <d> --slug …` died with `no schema snapshot` on a
+    // project whose database was provably correct. (The `--apply`-only variant of
+    // the documented everyday flow had it worse: no warning, and the next offline
+    // diff re-emitted the already-applied change.)
+    //
+    // Written as the metadata-expected schema — byte-identical to the `nextSnapshot`
+    // runOfflineGenerate persists — so the two paths converge on one representation
+    // and a follow-up offline diff sees no phantom churn. Guarded on a clean run:
+    // dry-run previews nothing, and a blocked/refused/apply-failed run must not
+    // record a schema the database is not in.
+    if (!config.dryRun && exitCode === 0 && !applyFailed) {
+      await writeSnapshot(
+        snapshotPath(resolvePath(metaRoot, config.outDir), kysely.dialect),
+        expected,
+      );
     }
   } finally {
     try {

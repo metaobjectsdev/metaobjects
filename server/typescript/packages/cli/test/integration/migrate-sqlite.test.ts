@@ -25,6 +25,14 @@ async function applyMigration(dbUrl: string, sqlPath: string): Promise<void> {
   client.close();
 }
 
+/**
+ * Migration directories only — `.metaobjects/migrations/` also holds the committed
+ * `.schema.<dialect>.json` snapshot, which is metaobjects' own state, not a migration.
+ */
+function migrationDirs(migrationsRoot: string): string[] {
+  return readdirSync(migrationsRoot).filter((e) => !e.startsWith("."));
+}
+
 function findMigrationDir(migrationsRoot: string, slug: string): string {
   const subdirs = readdirSync(migrationsRoot);
   const match = subdirs.find((s) => s.endsWith(`-${slug}`));
@@ -54,9 +62,8 @@ describe("meta migrate — sqlite end-to-end round-trip", () => {
 
       const exit2 = await run(["migrate", "--from-db", "--cwd", repo, "--db", dbUrl]);
       expect(exit2).toBe(0);
-      const subdirsAfter = readdirSync(migrationsRoot);
       // No new migration should have been created (still just the one)
-      expect(subdirsAfter.length).toBe(1);
+      expect(migrationDirs(migrationsRoot).length).toBe(1);
     } finally {
       rmSync(repo, { recursive: true, force: true });
     }
@@ -111,8 +118,7 @@ describe("meta migrate — sqlite end-to-end round-trip", () => {
       const exit = await run(["migrate", "--from-db", "--cwd", repo, "--db", dbUrl]);
       expect(exit).toBe(0);
 
-      const subdirsAfter = readdirSync(migrationsRoot);
-      expect(subdirsAfter.length).toBe(1);
+      expect(migrationDirs(migrationsRoot).length).toBe(1);
     } finally {
       rmSync(repo, { recursive: true, force: true });
     }

@@ -7,6 +7,51 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — the live-DB `meta migrate` path now advances the committed snapshot
+
+The day-1 command `meta init` prints as its next step —
+
+```
+meta migrate --from-db --db file:dev.sqlite --dialect sqlite --slug init --apply
+```
+
+— created the schema but never wrote the committed reference snapshot. The very next
+day-2 command in the documented everyday flow (`meta migrate --dialect sqlite --slug
+<name>`, the offline incremental path) then failed with `no schema snapshot` on a
+project whose database was provably correct, and pointed the user back at the day-1
+command. Recovery via `meta migrate baseline --from-db` worked, but the happy path
+should not need a recovery step.
+
+The `--apply`-without-`--from-db` variant — also documented, as "…and apply it" —
+had it worse: no warning at all, and because the snapshot stayed behind, the next
+offline diff re-emitted the already-applied change, producing a migration that fails
+at apply.
+
+Root cause: the live-introspection path writes the same migration files the offline
+path does, but skipped the same bookkeeping. It now writes the metadata-expected
+schema as the snapshot — byte-identical to the `nextSnapshot` the offline path
+persists, so the two paths converge on one representation and a follow-up offline
+diff sees no phantom churn. Guarded on a clean run: `--dry-run` writes nothing, and a
+blocked, refused, or apply-failed run leaves the snapshot untouched rather than
+recording a schema the database is not in. The now-obsolete
+`--from-db did not advance the committed snapshot` warning is gone.
+
+Gated by a real-engine round-trip (`cli/test/integration/migrate-fromdb-snapshot.test.ts`):
+greenfield `--from-db … --apply` → offline incremental emits a real migration →
+apply → live re-diff converges to empty, plus the `--dry-run` and blocked-change
+no-write assertions.
+
+### Fixed — the documented Node server-boot command (`docs/ports/typescript.md`)
+
+The "Prove it works" step offered `node --experimental-strip-types src/server.ts`,
+which fails with `ERR_MODULE_NOT_FOUND` on the generated `./generated/<Entity>.routes.js`
+import: Node's type stripping deliberately does not rewrite `.js` specifiers to `.ts`
+sources, and the scaffold's default `extStyle` is `"js"` (chosen in `0.20.1` so
+generated code type-checks under a stock `tsc --init`). Same class as that `0.20.1`
+fix — the compile half was covered, the run half was not. The doc now gives
+`bun src/server.ts` and `npx tsx src/server.ts` (both verified end-to-end) and
+explains why Node's built-in stripping is not sufficient on its own.
+
 ## [0.20.13] — npm `0.20.13` · PyPI `0.20.13` · NuGet `0.20.13` · Maven `7.20.13`
 
 **Coordinated across all four registries**, and the first release where all four share the same
