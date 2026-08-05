@@ -164,6 +164,48 @@ Java, Python, and Kotlin command surfaces are **codegen only** (`gen` + codegen
 goals and the C#/Python migrate surfaces were removed in the schema-authority
 consolidation; the only schema entry point anywhere is the Node `meta`.
 
+## Migration output formats (`--migration-format`)
+
+The engine generates the up/down SQL **once**; a pluggable output adapter decides
+the file envelope ([ADR-0015](../../spec/decisions/ADR-0015-single-shared-migrate-engine.md) §3).
+The format is **orthogonal to dialect** — a Flyway shop is still on postgres or
+sqlite — so it is its own flag:
+
+| Format | Layout | Selected by |
+|---|---|---|
+| `default` | `<ts>-<slug>/up.sql` + `down.sql` | default |
+| D1/Wrangler | `<seq>_<slug>.sql` + `.down/<same>` | `--dialect d1` |
+| `flyway` | `V<N>__<slug>.sql` + `U<N>__<slug>.sql` | `--migration-format flyway` |
+
+**Why `--migration-format` and not `--format`:** `--format` is already the global
+output-rendering flag (`toon` / `json` / `text`). The config key, being namespaced
+under `migrate`, has no such clash — set `migrate.format` once in
+`.metaobjects/config.json` and a JVM shop never passes the flag. The flag wins
+over the config key.
+
+**Flyway specifics (#192).** This is the adapter ADR-0015 designated when the Java
+`meta:migrate --flyway` mojo was removed. Versions are assigned by scanning the
+target dir for the highest `V<N>__` and incrementing, so it composes with
+hand-authored migrations already present; a dotted version (`V10.5__`) increments
+on its leading integer. The down SQL is emitted as `U<N>__` — Flyway's own undo
+convention. Undo is a paid Flyway edition feature and **Community ignores `U__`
+files** rather than failing, so they are inert-but-correct there and become live on
+Teams/Enterprise. Output dir defaults to Flyway's convention
+`src/main/resources/db/migration`; `--out-dir` overrides it.
+
+**Flyway owns apply.** `--apply`, `apply-pending` and `--rollback` are **refused**
+under this format, each naming the Flyway command instead: writing behind Flyway
+desyncs its `flyway_schema_history`. Generate with `meta migrate`, apply with
+`flyway migrate`. `--dialect d1` with `--migration-format flyway` is also refused —
+D1 has its own Wrangler layout and transport.
+
+```bash
+meta migrate --db "$DB_URL" --dialect postgres \
+  --migration-format flyway --slug add_program_view
+# -> src/main/resources/db/migration/V4__add_program_view.sql
+# -> src/main/resources/db/migration/U4__add_program_view.sql
+```
+
 ## Agent-context scaffold is Node-only — by design
 
 The `.metaobjects/AGENTS.md`/`CLAUDE.md` always-on files and the

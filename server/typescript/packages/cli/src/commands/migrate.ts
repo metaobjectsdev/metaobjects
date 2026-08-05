@@ -600,6 +600,7 @@ export async function migrateCommand(
     ambiguous,
     writtenPaths,
     dryRun: config.dryRun,
+    format: config.format,
     applied: appliedNames,
     applyFailed,
   };

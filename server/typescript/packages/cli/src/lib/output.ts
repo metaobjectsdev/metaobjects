@@ -119,6 +119,13 @@ export interface MigrateResultShape {
   applied?: string[];
   /** True when --apply was attempted but failed (exit 1). */
   applyFailed?: boolean;
+  /**
+   * #192 — active output-format adapter. Only affects the post-write HINT: under
+   * the flyway layout `meta migrate --apply` is REFUSED (Flyway owns apply and
+   * flyway_schema_history), so suggesting it would send the reader at a command
+   * that cannot work.
+   */
+  format?: "default" | "flyway";
 }
 
 export function formatMigrateResult(result: MigrateResultShape, _opts: FormatOptions): string {
@@ -243,7 +250,9 @@ export function migrateResultToData(result: MigrateResultShape): {
     help = ["roll back with `meta migrate --rollback <target>`"];
   } else if (result.writtenPaths.length > 0) {
     summary = `${prefix}wrote ${result.writtenPaths.length} migration file(s)`;
-    help = ["apply with `meta migrate --db <url> --apply`"];
+    help = result.format === "flyway"
+      ? ["apply with `flyway migrate` — Flyway owns apply and its schema history"]
+      : ["apply with `meta migrate --db <url> --apply`"];
   } else if (!hasChanges) {
     summary = "no schema changes";
     help = ["metadata and schema are in sync — nothing to do"];

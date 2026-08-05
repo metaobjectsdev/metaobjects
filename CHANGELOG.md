@@ -10,6 +10,36 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 **npm** — `metadata` + `codegen-ts`; **Maven Central** — `maven-plugin`; PyPI / NuGet
 unchanged.
 
+### Added — Flyway migration output adapter (#192)
+
+`meta migrate --migration-format flyway` emits `V<N>__<slug>.sql` + `U<N>__<slug>.sql`
+for a Flyway runner, restoring the metadata → migration path JVM/Flyway consumers lost
+when ADR-0015 removed the Java `meta:migrate --flyway` mojo. The ADR designated a
+Flyway-prefix output adapter on the shared TS engine as the replacement; this is that
+adapter — the third beside the homegrown and D1/Wrangler layouts. The diff/emit engine
+is untouched: it already produces the up/down SQL, and an adapter only chooses the
+envelope.
+
+Versions are assigned by scanning the target dir for the highest `V<N>__` and
+incrementing, so the adapter composes with migrations already in the directory; a dotted
+version (`V10.5__`) increments on its leading integer, and the `U__` files it emits do
+not bump the counter. Undo is a paid Flyway edition feature and Community **ignores**
+`U__` files rather than failing, so they are inert-but-correct there and live on
+Teams/Enterprise. The output dir defaults to Flyway's convention
+`src/main/resources/db/migration`; `--out-dir` overrides.
+
+Format is orthogonal to dialect (a Flyway shop is still postgres/sqlite), so it is its
+own flag — named `--migration-format` because `--format` is already the global
+output-rendering flag — plus a `migrate.format` key in `.metaobjects/config.json` for
+shops that set it once. **Flyway owns apply and `flyway_schema_history`**, so `--apply`,
+`apply-pending` and `--rollback` are refused under this format, each naming the Flyway
+command instead; `--dialect d1` with it is refused too.
+
+npm-only (`migrate-ts` + `cli` + `sdk`); no other port has a migrate engine (ADR-0015).
+Existing default-format and D1 output is byte-identical. Gated by the real-engine
+round-trip this repo requires of every migrate change: emit → apply to a real database →
+re-diff must be empty.
+
 ### Added — `WARN_ENUM_NORMALIZE_AMBIGUOUS`, an authoring guard for a silent enum mis-extraction
 
 `@normalize: strip` — the **default** — upper-cases and keeps only `[A-Z0-9]`, which is what lets
