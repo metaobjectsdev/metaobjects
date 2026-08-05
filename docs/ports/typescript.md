@@ -238,9 +238,22 @@ recipe above).
 
 ### Prove it works
 
-Boot the server (`bun src/server.ts` or `node --experimental-strip-types
-src/server.ts`) and exercise the generated routes. Three calls are enough to show
-codegen, persistence and validation are all live:
+Boot the server:
+
+```bash
+bun src/server.ts          # Bun
+npx tsx src/server.ts      # stock Node
+```
+
+Node's built-in TypeScript support is **not** enough here — `node src/server.ts`
+(type stripping, on by default in Node 24; `--experimental-strip-types` before
+that) strips the types but deliberately does not rewrite module specifiers, so
+the generated `import … from "./generated/Author.routes.js"` fails with
+`ERR_MODULE_NOT_FOUND`. Run it through `tsx` as above, or compile with `npx tsc`
+first and run the emitted JavaScript.
+
+Now exercise the generated routes. Three calls are enough to show codegen,
+persistence and validation are all live:
 
 ```bash
 # 1. create -> 201 with the persisted row (id assigned by the DB)

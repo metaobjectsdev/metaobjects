@@ -235,10 +235,11 @@ normalized results across every port, or it's a port bug. See
 
 ## How to contribute
 
-PRs welcome. Read [`CLAUDE.md`](CLAUDE.md) for the project conventions (TDD
-discipline, named-constants-for-metamodel-strings, no-`any` rule, cross-language
-porting contract). For significant new features, open an issue first to discuss
-the approach.
+PRs welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to propose a
+change and the project conventions it has to meet (TDD discipline,
+named-constants-for-metamodel-strings, no-`any` rule, cross-language porting
+contract, public-repo hygiene). For significant new features, open an issue
+first to discuss the approach.
 
 ## Roadmap
 
