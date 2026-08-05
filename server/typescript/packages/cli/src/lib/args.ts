@@ -364,7 +364,7 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
     options: {
       "db": { type: "string" },
       "dialect": { type: "string" },
-      "format": { type: "string" },
+      "migration-format": { type: "string" },
       "out-dir": { type: "string" },
       "slug": { type: "string" },
       "allow": { type: "string" },
@@ -396,9 +396,11 @@ export function parseMigrateArgs(argv: string[]): MigrateFlags {
     throw new Error(`invalid --dialect '${dialect}'; expected: ${DIALECTS.join(", ")}`);
   }
 
-  const format = values.format as string | undefined;
+  // NOTE: the flag is --migration-format, not --format: `--format` is already a
+  // GLOBAL cli flag selecting output rendering (toon|json|text), consumed in index.ts.
+  const format = values["migration-format"] as string | undefined;
   if (format !== undefined && !MIGRATE_FORMATS.includes(format as MigrateFormat)) {
-    throw new Error(`invalid --format '${format}'; expected: ${MIGRATE_FORMATS.join(", ")}`);
+    throw new Error(`invalid --migration-format '${format}'; expected: ${MIGRATE_FORMATS.join(", ")}`);
   }
 
   const onAmb = values["on-ambiguous"] as string | undefined;

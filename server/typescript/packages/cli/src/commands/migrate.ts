@@ -28,6 +28,7 @@ import {
   PrimaryKeyChangeError,
   renderD1,
   writeMigrationD1,
+  writeMigrationFlyway,
   introspectD1,
   applyPending,
   rollbackTo,
@@ -67,7 +68,15 @@ MIGRATE FLAGS:
                        Supports: file:, libsql:, postgres:, postgresql:
   --dialect sqlite|postgres|d1
                        Optional dialect override (auto-detected from URL scheme)
-  --out-dir <path>     Migration directory (default: ./.metaobjects/migrations)
+  --migration-format default|flyway
+                       Migration file layout (default: default). 'flyway' emits
+                       V<N>__<slug>.sql + U<N>__<slug>.sql for a Flyway runner;
+                       --apply/apply-pending/--rollback are refused under it
+                       because Flyway owns apply and flyway_schema_history.
+                       Also settable once as migrate.format in
+                       .metaobjects/config.json.
+  --out-dir <path>     Migration directory (default: ./.metaobjects/migrations;
+                       flyway: src/main/resources/db/migration)
   --slug <name>        Required when changes are present (e.g., --slug add-user-shipping)
   --allow <csv>        Comma-separated destructive-change permissions:
                        drop-column,drop-table,type-change,drop-index,drop-fk,
@@ -97,6 +106,22 @@ EXAMPLES:
 `;
 
 /** Emit a structured error on stdout (not stderr) in the active format, per axi. */
+/** Flyway's conventional migrations location for a JVM project (#192). */
+const FLYWAY_DEFAULT_OUT_DIR = "src/main/resources/db/migration";
+
+/**
+ * Resolve the migration output dir for the active format. Mirrors the D1 path's
+ * shape: an explicit --out-dir always wins; otherwise each adapter falls back to
+ * its own ecosystem convention rather than the homegrown default.
+ */
+function resolveFormatOutDir(config: ResolvedMigrateConfig, metaRoot: string): string {
+  const isDefaultOutDir = config.outDir === MIGRATE_DEFAULT_OUT_DIR;
+  if (config.format === "flyway" && isDefaultOutDir) {
+    return resolvePath(metaRoot, FLYWAY_DEFAULT_OUT_DIR);
+  }
+  return resolvePath(metaRoot, config.outDir);
+}
+
 function emitStructuredError(error: string, hint: string, fmt: OutputFormat): void {
   const payload = { error, hint };
   if (fmt === "json") {
@@ -235,6 +260,49 @@ export async function migrateCommand(
   const config = await resolveMigrateConfig(flags, metaRoot);
 
   try {
+  // #192 — Flyway owns apply + history (flyway_schema_history). We generate the
+  // migration; applying it is Flyway's job. Refuse at generation time rather than
+  // emitting something that would desync its history table (the #226/#241/#258
+  // detect-and-refuse posture).
+  if (config.format === "flyway") {
+    if (config.dialect === "d1") {
+      log.error(`migrate: --migration-format flyway is not supported for dialect 'd1' (d1 has its own wrangler migrations layout)`);
+      emitStructuredError(
+        `migrate: --migration-format flyway is not supported for dialect 'd1'`,
+        "drop --migration-format flyway for d1 — wrangler owns the migrations layout",
+        fmt,
+      );
+      return 2;
+    }
+    if (config.apply) {
+      log.error(`migrate: --apply is not supported with --migration-format flyway — run 'flyway migrate' to apply`);
+      emitStructuredError(
+        `migrate: --apply is not supported with --migration-format flyway`,
+        "run 'flyway migrate' to apply — applying behind Flyway desyncs flyway_schema_history",
+        fmt,
+      );
+      return 2;
+    }
+    if (config.applyPending) {
+      log.error(`migrate apply-pending is not supported with --migration-format flyway — run 'flyway migrate' to replay`);
+      emitStructuredError(
+        `migrate apply-pending is not supported with --migration-format flyway`,
+        "run 'flyway migrate' to replay committed migrations",
+        fmt,
+      );
+      return 2;
+    }
+    if (config.rollback !== undefined) {
+      log.error(`migrate: --rollback is not supported with --migration-format flyway — use 'flyway undo' (Teams) or roll forward`);
+      emitStructuredError(
+        `migrate: --rollback is not supported with --migration-format flyway`,
+        "use 'flyway undo' (Flyway Teams) or roll forward — the metaobjects ledger does not exist on a Flyway-managed DB",
+        fmt,
+      );
+      return 2;
+    }
+  }
+
   if (config.dialect === "d1") {
     if (config.baseline) {
       log.error(`migrate baseline is not supported for dialect 'd1' (snapshots are a postgres/sqlite concept)`);
@@ -474,12 +542,18 @@ export async function migrateCommand(
         if (config.dryRun) {
           log.info(`-- UP --\n${emitted.up}\n\n-- DOWN --\n${emitted.down}`);
         } else {
-          const outDir = resolvePath(metaRoot, config.outDir);
+          const outDir = resolveFormatOutDir(config, metaRoot);
           await mkdir(outDir, { recursive: true });
-          const res = await writeMigration(
-            { up: emitted.up, down: emitted.down },
-            { dir: outDir, slug: config.slug },
-          );
+          // #192 — only the envelope differs; the emitted SQL is identical.
+          const res = config.format === "flyway"
+            ? await writeMigrationFlyway(
+                { up: emitted.up, down: emitted.down },
+                { dir: outDir, slug: config.slug },
+              )
+            : await writeMigration(
+                { up: emitted.up, down: emitted.down },
+                { dir: outDir, slug: config.slug },
+              );
           writtenPaths = [res.upPath, res.downPath];
           if (config.fromDb) {
             log.info(`migrate: --from-db did not advance the committed snapshot; run 'meta migrate baseline --from-db' to re-sync`);
@@ -861,11 +935,20 @@ export async function runOfflineGenerate(
     return 0;
   }
 
-  await mkdir(outDir, { recursive: true });
-  const res = await writeMigration(
-    { up: emitResult.up, down: emitResult.down },
-    { dir: outDir, slug: config.slug },
-  );
+  // #192 — the MIGRATION FILES follow the active format's layout, but the
+  // snapshot stays in `outDir` (it is metaobjects' own state, not something a
+  // Flyway runner should ever see in its migrations dir).
+  const writeDir = resolveFormatOutDir(config, metaRoot);
+  await mkdir(writeDir, { recursive: true });
+  const res = config.format === "flyway"
+    ? await writeMigrationFlyway(
+        { up: emitResult.up, down: emitResult.down },
+        { dir: writeDir, slug: config.slug },
+      )
+    : await writeMigration(
+        { up: emitResult.up, down: emitResult.down },
+        { dir: writeDir, slug: config.slug },
+      );
   await writeSnapshot(path, nextSnapshot);
   log.info(`migrate: wrote ${res.upPath}`);
   return 0;
