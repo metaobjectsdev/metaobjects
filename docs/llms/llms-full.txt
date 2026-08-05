@@ -272,8 +272,11 @@ $ meta verify --codegen      # regen-and-diff vs committed output
 $ meta verify --templates    # prompt {{field}} ↔ payload-VO drift
 $ meta verify --db postgres://...   # live-DB schema drift (Node meta only)
 
-# Diff metadata vs live DB and emit migration SQL files (Node meta only, used by every port)
-$ meta migrate --db file:./dev.db --slug add-subscriber
+# Emit migration SQL files (Node meta only, used by every port). --dialect is always
+# required — it selects the diff pipeline, not just the SQL flavor.
+$ meta migrate --from-db --db file:./dev.db --dialect sqlite --slug init --apply  # first migration, brand-new DB
+$ meta migrate --dialect sqlite --slug add-subscriber                             # everyday: diff vs the committed snapshot
+$ meta migrate --dialect sqlite --slug add-subscriber --db file:./dev.db --apply  # ...and apply it
 
 # Flatten loaded metadata to a canonical JSON snapshot
 $ meta export --out ./snapshot.json

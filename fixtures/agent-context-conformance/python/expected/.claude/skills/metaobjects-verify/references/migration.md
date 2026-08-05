@@ -40,25 +40,35 @@ active format, so callers can parse them without scraping stderr.
 
 ## The workflow
 
-### Fresh database: baseline first
+### Fresh database: create the tables with `--from-db … --apply`
 
 The default `meta migrate` path is **offline** — it diffs metadata against a
 committed schema snapshot rather than the live DB. On a fresh database there is no
-snapshot yet; run the `baseline` step once before the first migration generate:
+snapshot yet, so the first command introspects the (empty) database instead:
 
 ```bash
-meta migrate baseline --dialect sqlite     # seed snapshot from metadata (no DB needed)
-meta migrate baseline --dialect postgres   # same for Postgres
-meta migrate baseline --from-db --db postgresql://... --dialect postgres
-                                           # alternative: seed from live DB (for existing schemas)
+meta migrate --from-db --db file:dev.sqlite --dialect sqlite --slug init --apply
 ```
 
-`baseline` writes a reference snapshot to `.metaobjects/migrations/` and exits
-without emitting any SQL. After this, `meta migrate --dialect <d> --slug <name>`
-operates offline against that snapshot.
+That diffs metadata against what is *actually* in the database (nothing), emits the
+full `CREATE TABLE` set, applies it, and records the resulting snapshot — so the
+everyday offline flow works immediately afterwards, with no extra step.
 
-If you run `meta migrate` before baselining, the CLI surfaces a structured
-next-step hint pointing to the exact `baseline` command.
+**Do NOT reach for `meta migrate baseline` on a database that does not exist yet.**
+An offline baseline derives the "existing" snapshot from your *metadata*, recording
+your entities' target shape as already applied: no table is ever created, every
+later `meta migrate` reports `no changes` (exit 0), and the failure only surfaces at
+the API layer as `no such table`. The CLI now refuses an offline baseline when it can
+prove the target `--db` is empty, and its no-snapshot hint routes to the `--from-db`
+command above.
+
+`baseline` is for the other case — **adopting** metadata onto a database that already
+has its schema (a pre-existing, non-MetaObjects setup), where you want to record
+current state without emitting any DDL:
+
+```bash
+meta migrate baseline --from-db --db postgresql://... --dialect postgres
+```
 
 ### Generating a migration
 
@@ -66,10 +76,16 @@ next-step hint pointing to the exact `baseline` command.
    committed snapshot). The engine emits paired `up.sql` + `down.sql`:
 
    ```bash
-   meta migrate --db postgresql://...               # emit up.sql + down.sql
-   meta migrate --db postgresql://... --slug initial # name the migration
-   meta migrate --dry-run                            # preview without writing
+   meta migrate --dialect postgres --slug add-user-shipping   # offline: diff vs the committed snapshot
+   meta migrate --dialect postgres --slug add-user-shipping --dry-run   # preview without writing
+   meta migrate --from-db --db postgresql://... --dialect postgres --slug add-user-shipping
+                                                              # diff vs the LIVE database instead
    ```
+
+   `--dialect` is always required and is load-bearing — it selects the diff
+   pipeline, not just the SQL flavor. The default path is offline (`--db` is
+   ignored without `--from-db` or `--apply`); pass `--from-db` when you want the
+   diff taken against the live database.
 
 2. **Review the SQL.** Read the emitted `up.sql` (forward) and `down.sql`
    (rollback) before applying. Destructive changes (drop column / drop table) are
@@ -80,7 +96,10 @@ next-step hint pointing to the exact `baseline` command.
    a ledger table:
 
    ```bash
-   meta migrate --db postgresql://... --apply                # run pending up.sql
+   meta migrate --dialect postgres --slug add-user-shipping --db postgresql://... --apply
+                                                              # generate ...and apply it
+   meta migrate apply-pending --db postgresql://... --dialect postgres
+                                                              # replay committed migrations, no diff (fresh DB / CI)
    meta migrate --db postgresql://... --rollback <target>     # run down.sql for migrations newer than <target>
    meta migrate --db postgresql://... --rollback ""           # roll back everything (empty target)
    ```

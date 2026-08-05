@@ -147,10 +147,17 @@ What this means in practice:
   it. You point it at the same database your server connects to:
 
   ```
-  meta migrate --db postgresql://... --slug initial   # emit migration SQL
-  meta migrate --db postgresql://... --apply          # apply pending migrations
-  meta migrate --dry-run                              # preview without writing
+  meta migrate --from-db --db postgresql://... --dialect postgres --slug init --apply
+                                                      # first migration on a brand-new database
+  meta migrate --dialect postgres --slug add-user-shipping          # everyday: emit migration SQL
+  meta migrate --dialect postgres --slug add-user-shipping --apply --db postgresql://...
+                                                      # ...and apply it
+  meta migrate --dialect postgres --slug add-user-shipping --dry-run   # preview without writing
   ```
+
+  `--dialect` is always required — it selects the diff pipeline, not just the SQL
+  flavor. Do **not** run `meta migrate baseline` on a database that does not exist
+  yet; see `references/migration.md`.
 
 - Dialects: `postgres` (default), `sqlite`, and `d1` (Cloudflare D1, TS-only).
 - The JVM and Python ports have **no** migration command of their own — their
