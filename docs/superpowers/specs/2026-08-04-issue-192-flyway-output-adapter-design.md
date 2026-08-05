@@ -38,7 +38,7 @@ A **third output adapter**, sibling to the two that already exist:
 |---|---|---|
 | homegrown (`write-migration.ts`) | `<ts>-<slug>/up.sql` + `down.sql` | default |
 | D1/Wrangler (`write-migration-d1.ts`) | `<seq>_<slug>.sql` + `.down/<same>` | `--dialect d1` |
-| **Flyway (new)** | `V<N>__<slug>.sql` + `U<N>__<slug>.sql` | `--format flyway` |
+| **Flyway (new)** | `V<N>__<slug>.sql` + `U<N>__<slug>.sql` | `--migration-format flyway` |
 
 The diff/emit engine is **untouched**. It already produces `{ up, down }`; an adapter only decides
 the envelope. This is exactly ADR-0015 §3's model ("the engine generates the up+down SQL once;
@@ -85,12 +85,18 @@ SQL entirely — it discards something already computed, for no gain.
 Flyway renders the description with underscores as spaces, so `V4__add_program_view.sql` is
 idiomatic. The D1 adapter sanitizes to hyphens; the Flyway adapter must not copy that.
 
-### D4 — `--format` flag plus a config key
+### D4 — `--migration-format` flag plus a config key
 
-`--format flyway|default` on `meta migrate`, also settable once as `migrate.format` in
+`--migration-format flyway|default` on `meta migrate`, also settable once as `migrate.format` in
 **`.metaobjects/config.json`** — the static project-state file the migrate command already reads via
 `tryLoadConfig` → SDK `ConfigSchema.MigrateBlock` (NOT `metaobjects.config.ts`, which carries
 generator wiring). Flag overrides config; default is `default`, so existing behavior is untouched.
+
+**Corrected during implementation:** this decision originally specified `--format`. That name is
+already taken by the **global** output-rendering flag (`toon` / `json` / `text`), consumed in
+`cli/src/index.ts` before any command sees it — the original check looked only at `migrate.ts` and
+wrongly concluded it was free. The flag is therefore `--migration-format`. The config key stays
+`migrate.format`: nested under `migrate`, it has no such clash.
 
 Rationale: a JVM shop sets it once and forgets, while a one-off generation in another format stays
 possible. Flag-only would mean repeating it forever with a forgotten flag silently writing the wrong
@@ -115,7 +121,7 @@ existing per-adapter default-fallback pattern: the D1 path already falls back to
    in §6.
 4. **`sdk/src/config.ts`** — add `format` to the `MigrateBlock` Zod schema, so
    `.metaobjects/config.json` can carry `migrate.format`.
-5. **`cli/src/lib/args.ts`** — `--format` in `parseMigrateArgs` + `MigrateFlags`, validated against
+5. **`cli/src/lib/args.ts`** — `--migration-format` in `parseMigrateArgs` + `MigrateFlags`, validated against
    the closed set (invalid value → parse error, matching the existing `--dialect` handling).
 
 ## 5. Data flow
@@ -140,10 +146,10 @@ by #226/#241 (D1 FK cascade) and #258 (PK move):
 
 | Combination | Refusal reason |
 |---|---|
-| `--format flyway --apply` | Applying behind Flyway desyncs `flyway_schema_history` → use `flyway migrate` |
-| `--format flyway apply-pending` | Same — replaying committed migrations is Flyway's job |
-| `--format flyway --rollback` | Our ledger does not exist on a Flyway-managed DB → `flyway undo` (Teams) or roll forward |
-| `--format flyway --dialect d1` | D1 has its own Wrangler layout and wrangler transport; the combination is meaningless |
+| `--migration-format flyway --apply` | Applying behind Flyway desyncs `flyway_schema_history` → use `flyway migrate` |
+| `--migration-format flyway apply-pending` | Same — replaying committed migrations is Flyway's job |
+| `--migration-format flyway --rollback` | Our ledger does not exist on a Flyway-managed DB → `flyway undo` (Teams) or roll forward |
+| `--migration-format flyway --dialect d1` | D1 has its own Wrangler layout and wrangler transport; the combination is meaningless |
 
 Non-fatal behaviors:
 
@@ -159,7 +165,7 @@ Non-fatal behaviors:
 versions (`V10.5__`) → `V11`; `U__` files do **not** bump the counter; slug sanitized to underscores;
 trailing newline on both files.
 
-**CLI:** the four refusals in §6, each asserting exit code and message; `--format` precedence
+**CLI:** the four refusals in §6, each asserting exit code and message; `--migration-format` precedence
 (flag > config > default); dir resolution (`--out-dir` vs the Flyway convention default).
 
 **Real-engine gate (required).** Every migrate change in this repo carries it, because a green unit
@@ -183,7 +189,7 @@ pass unchanged.
 
 - The other ADR-0015 adapters (two-file `.up.sql`/`.down.sql`, single-file-with-divider for
   dbmate/goose, Liquibase formatted-SQL). This design deliberately builds only the reference adapter;
-  the others become mechanical once the `--format` axis exists.
+  the others become mechanical once the `--migration-format` axis exists.
 - Restoring any Java-side migrate goal. Schema stays TS-owned per ADR-0015; JVM consumers run the
   Node `meta` CLI for migration generation.
 - Closing the engine's modeling gaps (triggers, cross-column CHECKs, function-valued defaults, GIN
