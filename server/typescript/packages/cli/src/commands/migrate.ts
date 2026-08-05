@@ -936,9 +936,11 @@ export async function runOfflineGenerate(
     return 0;
   }
 
-  // #192 — the MIGRATION FILES follow the active format's layout, but the
-  // snapshot stays in `outDir` (it is metaobjects' own state, not something a
-  // Flyway runner should ever see in its migrations dir).
+  // #192 — the MIGRATION FILES follow the active format's layout, while the
+  // snapshot stays in `outDir` (it is metaobjects' own state). With the default
+  // out-dir that separates them: snapshot in .metaobjects/migrations/, migrations
+  // in the Flyway dir. With an explicit --out-dir the two coincide by the caller's
+  // own choice — harmless, since the snapshot is a dotfile and Flyway scans *.sql.
   const writeDir = resolveFormatOutDir(config, metaRoot);
   await mkdir(writeDir, { recursive: true });
   const res = config.format === "flyway"

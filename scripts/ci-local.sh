@@ -171,9 +171,16 @@ gate_conf_ts() {
 # stalled on the self-hosted runner until the job's 20-minute cap, at a DIFFERENT
 # file each time (metadata/index.test.ts, react/currency-input.test.tsx,
 # tanstack/grid-from-metadata.test.ts) and never with a failing assertion — so the
-# stall is environmental, not one bad test. A 20-minute cancel reports nothing;
-# a per-test cap turns the next occurrence into a named failure in 30s. The whole
-# lane measures ~5s, so any single test past 30s is a hang by definition.
+# stall is environmental, not one bad test. The whole lane measures ~5s, so any
+# single test past 30s is a hang by definition.
+#
+# SCOPE — do not over-read this mitigation. It converts an IN-TEST hang into a
+# named 30s failure. It does NOT interrupt a process-level bun crash or stall,
+# which is what was actually observed afterwards: the runner's bun died with
+# `Illegal instruction (core dumped)` on one run and wedged past the 20-minute
+# job cap on others. A per-test timer cannot fire when the runtime itself is
+# gone. If a lane is cancelled at the job timeout with no named test, this flag
+# is not the thing that failed — look at the bun runtime on the runner.
 gate_ts_unit() {
   bun_install || return 1
   for p in metadata render runtime-ts; do

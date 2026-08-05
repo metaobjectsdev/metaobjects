@@ -25,7 +25,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l`.
 
 | Corpus | Fixtures | TS | Java | Kotlin | C# | Python |
 |---|---|---|---|---|---|---|
-| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 258 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
+| [`fixtures/conformance/`](../fixtures/conformance/) (metamodel) | 260 | ✓ | ✓ | inherits via `metadata-ktx` | ✓ | ✓ |
 | [`fixtures/yaml-conformance/`](../fixtures/yaml-conformance/) | 15 | 15 / 15 | 14 / 15 (1 ledgered: `yaml-quoted-leading-zero` — Java pipeline strips quotes off `"007"`) | inherits via Java | 14 / 15 (1 ledgered: `error-yaml-coerced-hex-in-string` — YamlDotNet doesn't coerce `0xFF`) | 15 / 15 |
 | [`fixtures/verify-conformance/`](../fixtures/verify-conformance/) | 31 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/verify-strict-conformance/`](../fixtures/verify-strict-conformance/) | 1 | ✓ | — | — | — | ✓ |
@@ -69,7 +69,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (258)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (260)
 
 | Fixture prefix | Feature doc |
 |---|---|
@@ -84,7 +84,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 | `merge-three-way-no-conflict`, `error-merge-conflict-attr`, `warning-duplicate-declaration` | [features/loaders.md](features/loaders.md) (multi-file merge attribution, FR5c) |
 | `field-string-*`, `field-decimal-*`, `field-object-storage-*`, `error-field-object-storage-*` | [features/field-types.md](features/field-types.md) |
 | `currency-*` | [features/field-types.md](features/field-types.md) (currency) |
-| `enum-*`, `error-enum-*` | [features/field-types.md](features/field-types.md) (enum) |
+| `enum-*`, `error-enum-*`, `warning-enum-*` | [features/field-types.md](features/field-types.md) (enum) |
 | `source-rdb-*`, `source-db-table-*`, `source-db-view-*`, `source-multi-source-*`, `error-source-*` | [features/source-kinds.md](features/source-kinds.md) |
 | `relationship-*`, `error-unknown-relationship-*` | [features/relationships.md](features/relationships.md) |
 | `template-*`, `error-template-*` | [features/templates-and-payloads.md](features/templates-and-payloads.md) |

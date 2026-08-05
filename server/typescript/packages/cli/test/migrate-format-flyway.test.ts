@@ -139,6 +139,24 @@ describe("migrate --migration-format flyway — emit", () => {
     expect(visible(await readdir(dir))).toEqual(["U1__add_note.sql", "V1__add_note.sql"]);
   });
 
+  // The writeDir/outDir split: the MIGRATION FILES follow the format's layout, but the
+  // schema SNAPSHOT is metaobjects' own state and must NOT be relocated into the Flyway
+  // runner's migrations dir. Asserted explicitly because every other assertion here
+  // filters dotfiles out, so a regression would be invisible.
+  test("the schema snapshot stays in outDir, not the Flyway dir", async () => {
+    const root = await project('[{"field.string":{"name":"ref"}}]');
+    await runBaseline(cfg({ format: "flyway" }), root);
+    await rewrite(root, '[{"field.string":{"name":"ref"}},{"field.string":{"name":"note"}}]');
+    expect(await runOfflineGenerate(cfg({ format: "flyway", slug: "add_note" }), root)).toBe(0);
+
+    // Snapshot in .metaobjects/migrations/ …
+    const snapshotDir = await readdir(join(root, ".metaobjects", "migrations"));
+    expect(snapshotDir.some((e) => e.startsWith(".schema."))).toBe(true);
+    // … and NOT in the Flyway dir, which holds only the V/U pair.
+    const flywayDir = join(root, "src", "main", "resources", "db", "migration");
+    expect((await readdir(flywayDir)).sort()).toEqual(["U1__add_note.sql", "V1__add_note.sql"]);
+  });
+
   test("a second change advances to V2__ past the existing V1__", async () => {
     const root = await project('[{"field.string":{"name":"ref"}}]');
     await runBaseline(cfg({ format: "flyway" }), root);

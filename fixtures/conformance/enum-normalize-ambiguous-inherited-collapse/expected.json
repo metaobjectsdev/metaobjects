@@ -1,0 +1,38 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "field.enum": {
+          "name": "Access",
+          "package": "acme",
+          "abstract": true,
+          "@normalize": "collapse",
+          "@values": [
+            "READ",
+            "WRITE",
+            "READWRITE"
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Grant",
+          "@normalize": "collapse",
+          "children": [
+            {
+              "field.enum": {
+                "name": "scope",
+                "@values": [
+                  "SOCIAL",
+                  "ATTACK",
+                  "SOCIALATTACK"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

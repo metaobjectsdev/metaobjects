@@ -533,7 +533,9 @@ public final class ValidationPhase {
         if (!(raw instanceof List)) return;
         List<?> rawList = (List<?>) raw;
         if (rawList.size() < 2) return;
-        if (!EnumField.NORMALIZE_DEFAULT.equals(effectiveNormalizeMode(node))) return;
+        String[] normalize = effectiveNormalizeMode(node);
+        if (!EnumField.NORMALIZE_DEFAULT.equals(normalize[0])) return;
+        boolean modeIsExplicit = "true".equals(normalize[1]);
 
         List<String> members = new ArrayList<>();
         List<String> stripped = new ArrayList<>();
@@ -565,10 +567,11 @@ public final class ValidationPhase {
                 }
                 loader.addEnvelopeWarning(new LoaderWarning(
                     ErrorMessageConstants.WARN_ENUM_NORMALIZE_AMBIGUOUS,
-                    "field.enum \"" + node.getName() + "\" member '" + members.get(i)
+                    "field.enum \"" + shortNameOf(node) + "\" member '" + members.get(i)
                         + "' is the concatenation of " + plus + " under @"
                         + EnumField.ATTR_NORMALIZE + ": '" + EnumField.NORMALIZE_DEFAULT
-                        + "' (the default), which erases separators. A delimited value such as \""
+                        + "'" + (modeIsExplicit ? "" : " (the default)")
+                        + ", which erases separators. A delimited value such as \""
                         + delimited + "\" would coerce silently to '" + members.get(i)
                         + "' and be reported as extracted rather than malformed. Set @"
                         + EnumField.ATTR_NORMALIZE + ": 'collapse' on this field if it can "
@@ -580,26 +583,35 @@ public final class ValidationPhase {
     }
 
     /** Effective @normalize for an enum field: own/inherited -> owning object -> default. */
-    private static String effectiveNormalizeMode(MetaData field) {
+    private static String[] effectiveNormalizeMode(MetaData field) {
         // Resolving (includeParentData=true) — an enum extending an abstract enum must
         // see the super's @normalize (ADR-0039).
         if (field.hasMetaAttr(EnumField.ATTR_NORMALIZE, true)) {
-            return field.getMetaAttr(EnumField.ATTR_NORMALIZE, true).getValueAsString();
+            return new String[] {
+                field.getMetaAttr(EnumField.ATTR_NORMALIZE, true).getValueAsString(), "true" };
         }
         MetaData parent = field.getParent();
         if (parent instanceof MetaObject && parent.hasMetaAttr(EnumField.ATTR_NORMALIZE, true)) {
-            return parent.getMetaAttr(EnumField.ATTR_NORMALIZE, true).getValueAsString();
+            return new String[] {
+                parent.getMetaAttr(EnumField.ATTR_NORMALIZE, true).getValueAsString(), "true" };
         }
-        return EnumField.NORMALIZE_DEFAULT;
+        return new String[] { EnumField.NORMALIZE_DEFAULT, "false" };
     }
 
-    /** `strip` normalization: ASCII upper-case, then keep only [A-Z0-9]. Mirrors Normalize.STRIP. */
+    /**
+     * `strip` normalization: ASCII fold (a-z -> A-Z), then keep only [A-Z0-9].
+     * Mirrors Normalize.STRIP exactly -- note the manual ASCII fold rather than
+     * toUpperCase(Locale.ROOT): the engine's Normalize.asciiUpper is deliberately
+     * ASCII-only, and locale uppercasing diverges on non-ASCII input. Unreachable
+     * for legal metadata (enum members are ASCII identifiers), but an identical
+     * fold is what makes "mirrors STRIP" true rather than approximate.
+     */
     private static String stripNormalize(String s) {
         StringBuilder sb = new StringBuilder(s.length());
-        String up = s.toUpperCase(Locale.ROOT);
-        for (int i = 0; i < up.length(); i++) {
-            char c = up.charAt(i);
-            if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) sb.append(c);
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c >= 'a' && c <= 'z') sb.append((char) (c - 32));
+            else if ((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) sb.append(c);
         }
         return sb.toString();
     }

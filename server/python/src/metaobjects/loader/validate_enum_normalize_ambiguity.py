@@ -40,12 +40,22 @@ WARN_ENUM_NORMALIZE_AMBIGUOUS = "WARN_ENUM_NORMALIZE_AMBIGUOUS"
 
 
 def _strip_normalize(s: str) -> str:
-    """``strip`` normalization: ASCII upper-case, then keep only ``[A-Z0-9]``.
+    """``strip`` normalization: ASCII fold (a-z -> A-Z), then keep only ``[A-Z0-9]``.
 
     Mirrors the extract engine's ``Normalize.STRIP`` exactly — the two must agree
     or the guard warns about collisions the engine does not have (and misses ones
-    it does)."""
-    return "".join(c for c in s.upper() if ("A" <= c <= "Z") or ("0" <= c <= "9"))
+    it does). Note the ASCII fold rather than ``str.upper()``: the engine's
+    ``asciiUpper`` is deliberately ASCII-only, and locale uppercasing diverges on
+    non-ASCII input (``"ß"`` -> ``"SS"`` in Python/JS/Java but unchanged in C#).
+    Unreachable for legal metadata (enum members are ASCII identifiers), but an
+    identical fold is what makes "mirrors STRIP" true rather than approximate."""
+    out = []
+    for c in s:
+        if "a" <= c <= "z":
+            out.append(chr(ord(c) - 32))
+        elif ("A" <= c <= "Z") or ("0" <= c <= "9"):
+            out.append(c)
+    return "".join(out)
 
 
 def _segment_into(target: str, dict_entries: list[tuple[str, str]]) -> list[str] | None:
@@ -76,19 +86,23 @@ def _segment_into(target: str, dict_entries: list[tuple[str, str]]) -> list[str]
     return full if full is not None and len(full) >= 2 else None
 
 
-def _effective_normalize(field: MetaData) -> str:
-    """Effective ``@normalize``: own/inherited -> owning object -> default."""
+def _effective_normalize(field: MetaData) -> tuple[str, bool]:
+    """Effective ``@normalize``: own/inherited -> owning object -> default.
+
+    Returns ``(mode, explicit)``; ``explicit`` distinguishes an authored mode from
+    the fallback so the warning does not tell an author "(the default)" about a
+    value they set deliberately."""
     # ADR-0039: attrs() RESOLVES (Python naming inversion) — an enum extending an
     # abstract enum must see the super's @normalize.
     mode = field.attrs().get(FIELD_ATTR_NORMALIZE)
     if isinstance(mode, str):
-        return mode
+        return mode, True
     parent = field.parent
     if parent is not None and parent.type == TYPE_OBJECT:
         obj_mode = parent.attrs().get(FIELD_ATTR_NORMALIZE)
         if isinstance(obj_mode, str):
-            return obj_mode
-    return NORMALIZE_DEFAULT
+            return obj_mode, True
+    return NORMALIZE_DEFAULT, False
 
 
 def validate_enum_normalize_ambiguity(
@@ -104,7 +118,8 @@ def validate_enum_normalize_ambiguity(
             # one per referring field.
             raw = node.own_attrs().get(FIELD_ATTR_VALUES)
             if isinstance(raw, list) and len(raw) > 1:
-                if _effective_normalize(node) == NORMALIZE_DEFAULT:
+                mode, explicit = _effective_normalize(node)
+                if mode == NORMALIZE_DEFAULT:
                     entries = [(str(m), _strip_normalize(str(m))) for m in raw]
                     for i, (member, stripped) in enumerate(entries):
                         if not stripped:
@@ -121,7 +136,8 @@ def validate_enum_normalize_ambiguity(
                             msg = (
                                 f'field.enum "{node.name}" member \'{member}\' is the '
                                 f"concatenation of {plus} under @{FIELD_ATTR_NORMALIZE}: "
-                                f"'{NORMALIZE_DEFAULT}' (the default), which erases "
+                                f"'{NORMALIZE_DEFAULT}'"
+                                f"{'' if explicit else ' (the default)'}, which erases "
                                 f'separators. A delimited value such as "{delimited}" '
                                 f"would coerce silently to '{member}' and be reported as "
                                 f"extracted rather than malformed. Set "

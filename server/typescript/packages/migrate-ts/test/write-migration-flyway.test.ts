@@ -56,6 +56,30 @@ describe("writeMigrationFlyway — versioning", () => {
     expect(res.version).toBe(11);
   });
 
+  // Flyway accepts UNDERSCORES as version separators too: V1_0__ is version 1.0.
+  // Missing these is not cosmetic — the scanner would see no versioned files,
+  // restart at V1, and Flyway (which pads 1 == 1.0) would reject the result as a
+  // duplicate version, i.e. an un-appliable migration.
+  test("an underscore-separated version is recognized and incremented", async () => {
+    writeFileSync(join(dir, "V1_0__init.sql"), "");
+    writeFileSync(join(dir, "V2_0__add_x.sql"), "");
+    const res = await writeMigrationFlyway(SQL, { dir, slug: "third" });
+    expect(res.version).toBe(3);
+  });
+
+  test("a multi-part underscore version increments on its leading integer", async () => {
+    writeFileSync(join(dir, "V2_0_1__a.sql"), "");
+    const res = await writeMigrationFlyway(SQL, { dir, slug: "next" });
+    expect(res.version).toBe(3);
+  });
+
+  test("mixed dot and underscore separators both count", async () => {
+    writeFileSync(join(dir, "V1.5__a.sql"), "");
+    writeFileSync(join(dir, "V4_2__b.sql"), "");
+    const res = await writeMigrationFlyway(SQL, { dir, slug: "next" });
+    expect(res.version).toBe(5);
+  });
+
   test("non-migration files and repeatables are ignored", async () => {
     writeFileSync(join(dir, "README.md"), "");
     writeFileSync(join(dir, "R__view.sql"), "");

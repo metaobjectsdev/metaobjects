@@ -49,8 +49,14 @@ export interface EnumNormalizeAmbiguityResult {
  */
 function stripNormalize(s: string): string {
   let out = "";
-  for (const ch of s.toUpperCase()) {
-    if ((ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9")) out += ch;
+  // ASCII fold (a-z -> A-Z), NOT toUpperCase(): the engine's Normalize.asciiUpper
+  // is deliberately ASCII-only, and locale uppercasing diverges on non-ASCII input
+  // (e.g. "ß" -> "SS" in JS/Python/Java but unchanged in C#). Unreachable for legal
+  // metadata — ENUM_MEMBER_PATTERN is ASCII — but keeping the fold identical is
+  // what makes "mirrors Normalize.STRIP" true rather than approximately true.
+  for (const ch of s) {
+    if (ch >= "a" && ch <= "z") out += String.fromCharCode(ch.charCodeAt(0) - 32);
+    else if ((ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9")) out += ch;
   }
   return out;
 }
@@ -90,18 +96,22 @@ function segmentInto(
   return full !== undefined && full.length >= 2 ? full : undefined;
 }
 
-/** Effective `@normalize` for an enum field: own/inherited → owning object → default. */
-function effectiveNormalize(field: MetaData): string {
+/**
+ * Effective `@normalize` for an enum field: own/inherited → owning object → default.
+ * `explicit` distinguishes an authored mode from the fallback, so the warning does not
+ * tell an author "(the default)" about a value they set deliberately.
+ */
+function effectiveNormalize(field: MetaData): { mode: string; explicit: boolean } {
   // ADR-0039: resolving accessor — an enum field that extends an abstract enum must
   // see the super's @normalize, so this must NOT be ownAttrs().
   const own = field.attr(FIELD_ATTR_NORMALIZE);
-  if (typeof own === "string") return own;
+  if (typeof own === "string") return { mode: own, explicit: true };
   const parent = field.parent;
   if (parent !== undefined && parent.type === TYPE_OBJECT) {
     const objMode = parent.attr(FIELD_ATTR_NORMALIZE);
-    if (typeof objMode === "string") return objMode;
+    if (typeof objMode === "string") return { mode: objMode, explicit: true };
   }
-  return NORMALIZE_DEFAULT;
+  return { mode: NORMALIZE_DEFAULT, explicit: false };
 }
 
 export function validateEnumNormalizeAmbiguity(root: MetaData): EnumNormalizeAmbiguityResult {
@@ -115,7 +125,8 @@ export function validateEnumNormalizeAmbiguity(root: MetaData): EnumNormalizeAmb
       // one hazard to one warning instead of one per referring field.
       const rawValues = node.ownAttrs().get(FIELD_ATTR_VALUES);
       if (Array.isArray(rawValues) && rawValues.length > 1) {
-        if (effectiveNormalize(node) === NORMALIZE_DEFAULT) {
+        const normalize = effectiveNormalize(node);
+        if (normalize.mode === NORMALIZE_DEFAULT) {
           const entries = rawValues.map((m) => ({ member: String(m), stripped: stripNormalize(String(m)) }));
           for (let i = 0; i < entries.length; i++) {
             const self = entries[i]!;
@@ -130,7 +141,8 @@ export function validateEnumNormalizeAmbiguity(root: MetaData): EnumNormalizeAmb
                 message:
                   `field.enum "${node.name}" member '${self.member}' is the concatenation of ` +
                   `${seg.map((s) => `'${s}'`).join(" + ")} under @${FIELD_ATTR_NORMALIZE}: ` +
-                  `'${NORMALIZE_DEFAULT}' (the default), which erases separators. A delimited ` +
+                  `'${NORMALIZE_DEFAULT}'${normalize.explicit ? "" : " (the default)"}, which ` +
+                  `erases separators. A delimited ` +
                   `value such as "${seg.map((s) => s.toLowerCase()).join("|")}" would coerce ` +
                   `silently to '${self.member}' and be reported as extracted rather than ` +
                   `malformed. Set @${FIELD_ATTR_NORMALIZE}: 'collapse' on this field if it can ` +

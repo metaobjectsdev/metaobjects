@@ -31,7 +31,19 @@ cross-port reference (Kotlin reuses it directly via the shared JVM render engine
   loaders when a `field.enum`'s own `@values` contains a member that word-breaks into two or more
   other members and the effective mode is `strip`. `collapse` is immune (it folds only `[\s_-]+`,
   so a `|` survives and the value fails cleanly) and is the documented fix for a vocabulary that
-  can receive delimited input. Corpus: `fixtures/conformance/warning-enum-normalize-ambiguous`.
+  can receive delimited input. Corpus: `fixtures/conformance/warning-enum-normalize-ambiguous`
+  (fires) and `enum-normalize-ambiguous-inherited-collapse` (must not fire — the field-tier and
+  owning-object-tier resolution discriminator).
+
+  **Two known precision limits of that guard** (identical in all four ports, so not a conformance
+  divergence — a bounded detector, not a proof):
+  (a) the word-break keeps the FEWEST-segment segmentation, so a member that also equals another
+  member's stripped form suppresses the ≥2-segment check — `{READ, WRITE, READ_WRITE, READWRITE}`
+  does NOT warn even though `"read|write"` → `READWRITE` is exactly the hazard;
+  (b) the check is own-`@values`-only (so one hazard yields one warning at the declaring node), so
+  an abstract enum that owns the `@values` while a *consumer* overrides `@normalize` to `strip`
+  warns nowhere — the node with the hazardous mode owns no vocabulary.
+  Both under-report; neither produces a false warning.
 
 - **Splitting a delimited scalar into array elements is intentionally NOT offered** (no
   `@delimiter` attribute; `Extract.java`'s array branch wraps a non-list presence as a ONE-element

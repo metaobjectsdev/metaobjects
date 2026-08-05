@@ -7,8 +7,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-**npm** — `metadata` + `codegen-ts`; **Maven Central** — `maven-plugin`; PyPI / NuGet
-unchanged.
+**Coordinated across all four registries** — `WARN_ENUM_NORMALIZE_AMBIGUOUS` is a cross-port
+loader change, so every port ships:
+
+- **npm** — `metadata`, `codegen-ts`, `migrate-ts`, `cli`, `sdk`
+- **PyPI** — the loader guard (`validate_enum_normalize_ambiguity.py`, `validation_passes.py`)
+- **NuGet** — the loader guard (`ValidationPasses.cs`, `MetaDataLoader.cs`, `Errors.cs`)
+- **Maven Central** — `metadata` (the loader guard) + `maven-plugin` (the `meta:verify` fix)
+
+Cutting this as an npm/Maven-only release would publish Python and C# **without** the warning
+while the shared conformance fixture is committed and green in-repo — a cross-port divergence in
+the wild, and the published packages would fail the shared corpus.
 
 ### Added — Flyway migration output adapter (#192)
 

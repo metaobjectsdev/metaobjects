@@ -2977,13 +2977,21 @@ public static class ValidationPasses
     // can merge tokens across a delimiter like "|" — both are skipped.
     // =========================================================================
 
-    /// <summary>`strip` normalization: ASCII upper-case, then keep only [A-Z0-9]. Mirrors Normalize.STRIP.</summary>
+    /// <summary>
+    /// `strip` normalization: ASCII fold (a-z -> A-Z), then keep only [A-Z0-9].
+    /// Mirrors Normalize.STRIP exactly — note the manual ASCII fold rather than
+    /// ToUpperInvariant(): the engine's Normalize.asciiUpper is deliberately ASCII-only,
+    /// and locale uppercasing diverges on non-ASCII input (C# leaves "ß" alone where
+    /// JS/Python/Java expand it to "SS"). Unreachable for legal metadata (enum members
+    /// are ASCII identifiers), but an identical fold is what makes "mirrors STRIP" true.
+    /// </summary>
     private static string StripNormalize(string s)
     {
         var sb = new System.Text.StringBuilder(s.Length);
-        foreach (var ch in s.ToUpperInvariant())
+        foreach (var ch in s)
         {
-            if ((ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')) sb.Append(ch);
+            if (ch >= 'a' && ch <= 'z') sb.Append((char)(ch - 32));
+            else if ((ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')) sb.Append(ch);
         }
         return sb.ToString();
     }
@@ -3017,19 +3025,23 @@ public static class ValidationPasses
         return (full is not null && full.Count >= 2) ? full : null;
     }
 
-    /// <summary>Effective @normalize for an enum field: own/inherited → owning object → default.</summary>
-    private static string EffectiveNormalizeMode(MetaData field)
+    /// <summary>
+    /// Effective @normalize for an enum field: own/inherited → owning object → default.
+    /// The bool says whether the mode was AUTHORED, so the warning does not tell an
+    /// author "(the default)" about a value they set deliberately.
+    /// </summary>
+    private static (string Mode, bool Explicit) EffectiveNormalizeMode(MetaData field)
     {
         // ADR-0039: resolving accessor — an enum extending an abstract enum must see the
         // super's @normalize.
-        if (field.Attr(FIELD_ATTR_NORMALIZE) is string own) return own;
+        if (field.Attr(FIELD_ATTR_NORMALIZE) is string own) return (own, true);
         var parent = field.Parent;
         if (parent is not null && parent.Type == TYPE_OBJECT
             && parent.Attr(FIELD_ATTR_NORMALIZE) is string objMode)
         {
-            return objMode;
+            return (objMode, true);
         }
-        return NORMALIZE_DEFAULT;
+        return (NORMALIZE_DEFAULT, false);
     }
 
     public static IReadOnlyList<LoaderWarning> ValidateEnumNormalizeAmbiguity(MetaData root)
@@ -3046,13 +3058,13 @@ public static class ValidationPasses
             // ADR-0039 sanctioned own: check the vocabulary DECLARED here. A concrete enum
             // inheriting @values shares the super's member set, already checked at the super —
             // one hazard yields one warning, not one per referring field.
-            if (node.OwnAttr(FIELD_ATTR_VALUES) is System.Collections.IEnumerable rawEnum
-                && node.OwnAttr(FIELD_ATTR_VALUES) is not string)
+            var ownValues = node.OwnAttr(FIELD_ATTR_VALUES);
+            if (ownValues is System.Collections.IEnumerable rawEnum && ownValues is not string)
             {
                 var members = new List<string>();
                 foreach (var o in rawEnum) members.Add(o?.ToString() ?? string.Empty);
-                if (members.Count > 1
-                    && EffectiveNormalizeMode(node) == NORMALIZE_DEFAULT)
+                var normalize = EffectiveNormalizeMode(node);
+                if (members.Count > 1 && normalize.Mode == NORMALIZE_DEFAULT)
                 {
                     var entries = members.Select(m => (Member: m, Stripped: StripNormalize(m))).ToList();
                     for (int i = 0; i < entries.Count; i++)
@@ -3073,7 +3085,7 @@ public static class ValidationPasses
                                 Message:
                                     $"field.enum \"{node.Name}\" member '{self.Member}' is the " +
                                     $"concatenation of {plus} under @{FIELD_ATTR_NORMALIZE}: " +
-                                    $"'{NORMALIZE_DEFAULT}' (the default), which erases " +
+                                    $"'{NORMALIZE_DEFAULT}'{(normalize.Explicit ? "" : " (the default)")}, which erases " +
                                     $"separators. A delimited value such as \"{delimited}\" would coerce " +
                                     $"silently to '{self.Member}' and be reported as extracted rather " +
                                     $"than malformed. Set @{FIELD_ATTR_NORMALIZE}: " +

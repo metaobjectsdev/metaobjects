@@ -19,10 +19,17 @@ export interface WriteMigrationFlywayResult {
 }
 
 // Versioned migrations ONLY. Matching [VU] here would let the undo files we
-// ourselves emit bump the counter, skipping a version on every run. The version
-// may be dotted (Flyway permits V1.1__ / V2.0.1__); we increment its LEADING
-// integer, so an existing V10.5__ yields V11__.
-const VERSIONED_RE = /^V(\d+)(?:\.\d+)*__/;
+// ourselves emit bump the counter, skipping a version on every run.
+//
+// A Flyway version may have multiple parts separated by EITHER a dot or an
+// underscore (V1.1__ and V1_0__ are both legal; the latter is version 1.0). We
+// increment the LEADING integer, so an existing V10.5__ yields V11__. Missing the
+// underscore form is not cosmetic: against a dir holding V1_0__init.sql the
+// scanner would see nothing versioned, restart at V1, and Flyway — which pads
+// versions for comparison, so 1 == 1.0 — would reject the result as a duplicate
+// version. That is an un-appliable migration, the failure class this engine
+// hardens against elsewhere (#226/#241/#258).
+const VERSIONED_RE = /^V(\d+)(?:[._]\d+)*__/;
 
 /**
  * #192 — the ADR-0015 Flyway-prefix output adapter.
