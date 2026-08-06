@@ -4,6 +4,8 @@
 
 Accepted (2026-06-12). Defined by FR-024
 (`docs/superpowers/specs/2026-06-12-fr-024-entity-surfaces-projections-design.md`).
+**Amended 2026-08-06** — see *Amendment: a concrete projection owns its source*
+below (`ERR_PROJECTION_INHERITED_SOURCE`).
 
 ## Context
 
@@ -48,6 +50,56 @@ semantic lie.
    forbidden) is registry **child-licensing** — definitional, not computable.
    Lineage, exposure, read-only-ness, and keys all remain computed; only the
    licensing is declared.
+
+## Amendment (2026-08-06) — a concrete projection owns its source
+
+A **concrete** `object.projection` must declare its own `source.*`; inheriting one
+through `extends` is `ERR_PROJECTION_INHERITED_SOURCE`. An **abstract** projection
+base carries shape only — a source on one is inert until a concrete child extends
+it, at which point the error fires on the child.
+
+**Why.** A projection's `extends` is *shape lineage*, not a shared-storage
+hierarchy. `extends` only ADDS members, so a child inheriting the parent's view
+gains fields that view cannot provide, and both objects then claim one physical
+view while declaring different exposures — which contradicts decision 6's
+fail-closed rule that the declared field set IS the exposure, and gives one view
+two DDL owners.
+
+The shape was also the one place two source predicates disagreed. "Which source am
+I bound to" resolves through the super chain — an entity legitimately inherits its
+table (TPH / a `BaseEntity`), and making that lookup resolving fixed a real
+"inherited source emitted nothing" bug. "What KIND of source am I" is own-only,
+because projection-ness is a property of the declaring object (ADR-0039 sanctioned
+own; see `codegen-ts` `projection-detector.ts`). Both readings are correct for what
+they were designed for; only their intersection was incoherent, and it produced no
+working artifact in any port — TypeScript mounted writable CRUD over a read-only
+view, Java and Kotlin skipped on their subtype gate, Python on the resolved kind,
+and C# emitted nothing. Guarding the shape makes the predicates agree without
+flipping either.
+
+**Prior art.** The split matches how mature ORMs divide the two inheritance
+regimes. Shared-storage inheritance inherits binding AND writability together —
+Hibernate's `@Immutable` "may be applied only to the root entity, and is inherited
+by entity subclasses"; EF Core keyless `ToView` types; SQLAlchemy single-table.
+Shape-reuse inheritance does not inherit the binding at all — JPA
+`@MappedSuperclass` "has no separate table defined for it", and Django documents
+inheriting `db_table` from an abstract base as a trap: "all the child classes …
+would use the same database table, which is almost certainly not what you want".
+A projection is the second kind. Systems that expose views also derive writability
+structurally per object rather than splitting it from the binding (jOOQ's
+`TableRecord` vs `UpdatableRecord`; Prisma disables mutations on views outright).
+
+**The sanctioned pattern** (already in the corpus as
+`fixtures/conformance/projection-extends-projection`): an abstract, sourceless
+projection base carries the shared field shape; each concrete projection declares
+its own read-only source. A versioned successor therefore declares its own view
+rather than silently sharing its predecessor's.
+
+Enforced at the concrete level, mirroring #236's abstract-exemption precedent. The
+check is skipped when the super is not a legal projection, so a projection
+extending an entity still reports one error at its root cause rather than two.
+Gated by `fixtures/conformance/error-projection-inherited-source` across all five
+ports.
 
 ## Consequences
 
