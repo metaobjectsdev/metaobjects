@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.20.15] — npm `0.20.15` · PyPI `0.20.15` · NuGet `0.20.15` · Maven `7.20.15`
+
+**Coordinated across all four registries** — the loader guard below lands in every port.
+
 ### Fixed — a projection may no longer inherit a source through `extends` (`ERR_PROJECTION_INHERITED_SOURCE`)
 
 All four loaders now reject a **concrete** `object.projection` that inherits a
