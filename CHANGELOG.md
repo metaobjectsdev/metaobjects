@@ -7,6 +7,28 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added — sourceless-projection conformance fixture (#271)
+
+`projection-sourceless` pins, across all five ports, that an `object.projection`
+may carry no `source.*` at all — the shape #210 makes common when prompt payloads
+become projections. It complements the existing `projection-basic` (also
+sourceless) by adding two axes nothing else covers: a **self-declared** field
+(no `extends`, no `origin.*`) and **no identity at all**.
+
+Running it retired #210's stated falsifier: every port accepts the shape with **no
+new vocabulary**, so the ADR-0023 escape hatch that ruling was gated on is not
+needed.
+
+Each non-TS port gains a codegen test asserting the DB-bound tier emits nothing
+for it — behavior they already had via #248's source-derived contract, now
+regression-proof. The Java test pins the source gate through a sourceless
+**entity**, since `SpringRepositoryGenerator.appliesTo` rejects a projection on its
+leading subtype check before the source is ever consulted.
+
+### Fixed — `server/python/uv.lock` still pinned `metaobjects` at `0.20.11`
+
+The `0.20.14` cut bumped `pyproject.toml` without regenerating the lock.
+
 ## [0.20.14] — npm `0.20.14` · PyPI `0.20.14` · NuGet `0.20.14` · Maven `7.20.14`
 
 **Scope: npm `0.20.14` · PyPI `0.20.14` · NuGet `0.20.14` · Maven Central `7.20.14`** —
