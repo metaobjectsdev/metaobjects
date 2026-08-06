@@ -6,15 +6,15 @@ Postgres + Npgsql.
 
 ## Install
 
-Published to [NuGet](https://www.nuget.org/packages/MetaObjects) at `0.20.13` — four
+Published to [NuGet](https://www.nuget.org/packages/MetaObjects) at `0.20.14` — four
 packages, version-locked to the C# port version:
 
 ```xml
 <!-- YourApp.csproj -->
 <ItemGroup>
-  <PackageReference Include="MetaObjects"          Version="0.20.13" />
-  <PackageReference Include="MetaObjects.Codegen"  Version="0.20.13" />
-  <PackageReference Include="MetaObjects.Render"   Version="0.20.13" />
+  <PackageReference Include="MetaObjects"          Version="0.20.14" />
+  <PackageReference Include="MetaObjects.Codegen"  Version="0.20.14" />
+  <PackageReference Include="MetaObjects.Render"   Version="0.20.14" />
 </ItemGroup>
 ```
 
