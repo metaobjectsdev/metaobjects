@@ -2739,6 +2739,38 @@ def _validate_projection_licensing(node: MetaObject, errors: list[MetaError]) ->
             )
         )
 
+    # A projection's extends is SHAPE lineage, not a shared-storage hierarchy, so a
+    # CONCRETE projection must declare its own source rather than inherit one. extends
+    # only ADDS members, so the child's extra fields have no provider in the parent's
+    # view, and both objects would claim one physical view while declaring different
+    # exposures (the declared field set IS the exposure, fail-closed). Prior art splits
+    # the same way: shared-storage inheritance (JPA @Inheritance, EF Core TPH) inherits
+    # binding AND writability together; shape-reuse inheritance (@MappedSuperclass,
+    # Django abstract bases) does not inherit the binding at all.
+    #
+    # Enforced at the CONCRETE level (mirrors #236) — an abstract base carries shape
+    # only, and a source on one is inert until a concrete child extends it. Skipped
+    # when the super is not a legal projection: that trips the rule above and inherits
+    # its source too, and one defect should yield one error.
+    _super_is_legal_projection = sup is None or (
+        sup.type == TYPE_OBJECT and sup.sub_type == OBJECT_SUBTYPE_PROJECTION
+    )
+    if not node.is_abstract and _super_is_legal_projection:
+        _own = sum(1 for c in node.own_children() if c.type == TYPE_SOURCE)
+        _resolved = sum(1 for c in node.children() if c.type == TYPE_SOURCE)
+        if _resolved > _own:
+            errors.append(
+                MetaError(
+                    f"projection '{node.fqn()}' inherits a source through extends "
+                    f"instead of declaring its own — a projection's extends is shape "
+                    f"lineage, not a shared-storage hierarchy. Declare the source on "
+                    f"this projection; an abstract projection base carries shape only "
+                    f"(FR-024, ADR-0028)",
+                    ErrorCode.ERR_PROJECTION_INHERITED_SOURCE,
+                    envelope=node.source,
+                )
+            )
+
     # ADR-0039 sanctioned own: OWN sources only — an inherited source is validated
     # on the projection that declares it; an inherited source from a non-projection
     # super is unreachable without first tripping the extends rule above. Mirrors the

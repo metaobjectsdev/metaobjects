@@ -176,6 +176,56 @@ function validateProjectionLicensing(
     );
   }
 
+  // A projection's `extends` is SHAPE lineage, not a shared-storage hierarchy, so a
+  // concrete projection must declare its own source rather than inherit one.
+  //
+  // Inheriting it is incoherent by construction: `extends` only ADDS members, so the
+  // child's extra fields have no provider in the parent's view, and both objects
+  // would claim one physical view while declaring different exposures (the declared
+  // field set IS the exposure, fail-closed — ADR-0028). It is also the shape that
+  // made two source predicates disagree: "which source am I bound to" resolves
+  // through the super chain while "what KIND of source am I" is own-only, so an
+  // inheriting projection read as bound-but-not-a-projection and TS mounted writable
+  // CRUD over a read-only view. Guarding the shape makes the predicates agree instead
+  // of flipping either one (own-only classification is the deliberate cross-port
+  // contract — see projection-detector.ts).
+  //
+  // Prior art agrees on the split: shared-storage inheritance (JPA @Inheritance,
+  // EF Core TPH, SQLAlchemy single-table) inherits binding AND writability together,
+  // while shape-reuse inheritance (JPA @MappedSuperclass, Django abstract bases) does
+  // not inherit the binding at all — Django documents inheriting `db_table` as a trap
+  // for exactly this reason. A projection is the second kind.
+  //
+  // Enforced at the CONCRETE level (mirrors #236): an abstract projection base may
+  // carry shared shape, and a source on an abstract base is inert until something
+  // extends it — at which point this fires on the concrete child.
+  //
+  // Only checked when the super is a legal projection: a non-projection super trips
+  // the extends rule above and inherits its source too, and one defect should yield
+  // one error, reported at its root cause.
+  const superIsLegalProjection =
+    sup === undefined ||
+    (sup.type === TYPE_OBJECT && sup.subType === OBJECT_SUBTYPE_PROJECTION);
+  if (!model.isAbstract && superIsLegalProjection) {
+    const ownSourceCount = model.ownChildren().filter((c) => c.type === TYPE_SOURCE).length;
+    const inherited = model
+      .children()
+      .filter((c) => c.type === TYPE_SOURCE)
+      .slice(ownSourceCount);
+    if (model.children().filter((c) => c.type === TYPE_SOURCE).length > ownSourceCount) {
+      const src = inherited[0] ?? model;
+      errors.push(
+        new ParseError(
+          `projection '${model.fqn()}' inherits a source (${TYPE_SOURCE}.${src.subType}) ` +
+            `through extends instead of declaring its own — a projection's extends is ` +
+            `shape lineage, not a shared-storage hierarchy. Declare the source on this ` +
+            `projection; an abstract projection base carries shape only (FR-024, ADR-0028)`,
+          { code: "ERR_PROJECTION_INHERITED_SOURCE", source: model.source },
+        ),
+      );
+    }
+  }
+
   // ADR-0039: own — OWN sources only: an inherited source is validated on the
   // (projection) object that declares it; an inherited source from a non-projection
   // super is unreachable without first tripping the extends rule above.

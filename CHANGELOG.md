@@ -7,6 +7,54 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — a projection may no longer inherit a source through `extends` (`ERR_PROJECTION_INHERITED_SOURCE`)
+
+All four loaders now reject a **concrete** `object.projection` that inherits a
+`source.*` through `extends` instead of declaring its own. Cross-port loader change,
+no new vocabulary, no codegen change.
+
+The shape produced a broken artifact and did so differently in every port, because
+two source predicates disagree **by design**: "which source am I bound to" resolves
+through the super chain (an entity legitimately inherits its table — TPH/BaseEntity),
+while "what KIND of source am I" is own-only (projection-ness is a property of the
+declaring object). In TypeScript that meant `hasAnyRdbSource` selected the object for
+route generation while `isProjection` returned false, so it fell through to the
+writable branch and mounted full `mountCrudRoutes` POST/PATCH/DELETE **over a
+read-only view** — against a Drizzle binding the entity generator never emitted.
+Java and Kotlin skipped it on their subtype gate, Python on the resolved source's
+kind, and C# emitted nothing at all. Five ports, four behaviors, no working output.
+
+The fix guards the shape rather than flipping either predicate. Both readings are
+correct for what they were designed for; only their intersection is incoherent, and
+it is incoherent by construction: `extends` only ADDS members, so a child projection's
+extra fields have no provider in the parent's view, and both objects would claim one
+physical view while declaring different exposures (the declared field set IS the
+exposure, fail-closed — ADR-0028).
+
+Prior art splits the same way and validates the split. Shared-storage inheritance
+inherits binding **and** writability together (Hibernate `@Immutable` "may be applied
+only to the root entity, and is inherited by entity subclasses"; EF Core keyless
+`ToView` types; SQLAlchemy single-table). Shape-reuse inheritance does not inherit the
+binding at all — JPA `@MappedSuperclass` "has no separate table defined for it", and
+Django documents inheriting `db_table` from an abstract base as a trap: "all the child
+classes … would use the same database table, which is almost certainly not what you
+want". A projection is the second kind. Systems that expose views also derive
+writability structurally per object rather than splitting it from the binding (jOOQ
+emits `TableRecord` rather than `UpdatableRecord`; Prisma disables mutations on views
+outright).
+
+Enforced at the **concrete** level (mirrors #236): an abstract projection base may
+carry shared shape, and a source on one stays inert until a concrete child extends it.
+The sanctioned pattern is unchanged and already in the corpus — abstract sourceless
+base, concrete projection declaring its own view. Skipped when the super is not a legal
+projection, so a projection extending an entity still reports one error at its root
+cause rather than two.
+
+Gated by a shared `error-projection-inherited-source` conformance fixture run by all
+five ports. No fixture, example or adopter model in the repo relies on the shape, and
+no port generated working output for it.
+
+
 ### Added — sourceless-projection conformance fixture (#271)
 
 `projection-sourceless` pins, across all five ports, that an `object.projection`

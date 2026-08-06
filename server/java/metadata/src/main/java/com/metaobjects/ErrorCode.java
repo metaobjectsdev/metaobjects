@@ -99,6 +99,7 @@ public enum ErrorCode {
      * Phase E.
      */
     ERR_PROJECTION_SOURCE_WRITABLE,
+    ERR_PROJECTION_INHERITED_SOURCE,
 
     /** A child node type/subType is not permitted under its parent. */
     ERR_INVALID_SUBTYPE_CHILD,

@@ -28,6 +28,7 @@ public enum ErrorCode
     // @kind — projection sources must be read-only kinds. Vocabulary-only
     // here until FR-024 Phase E.
     ERR_PROJECTION_SOURCE_WRITABLE,
+    ERR_PROJECTION_INHERITED_SOURCE,
     ERR_INVALID_SUBTYPE_CHILD,
     ERR_UNKNOWN_ATTR,
     ERR_MISSING_REQUIRED_ATTR,

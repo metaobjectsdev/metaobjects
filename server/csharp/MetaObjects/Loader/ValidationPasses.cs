@@ -189,6 +189,37 @@ public static class ValidationPasses
                 Envelope: model.Source));
         }
 
+        // A projection's extends is SHAPE lineage, not a shared-storage hierarchy, so a
+        // CONCRETE projection must declare its own source rather than inherit one.
+        // extends only ADDS members, so the child's extra fields have no provider in the
+        // parent's view, and both objects would claim one physical view while declaring
+        // different exposures (the declared field set IS the exposure, fail-closed).
+        // Prior art splits the same way: shared-storage inheritance (JPA @Inheritance,
+        // EF Core TPH) inherits binding AND writability together; shape-reuse inheritance
+        // (@MappedSuperclass, Django abstract bases) does not inherit the binding at all.
+        //
+        // Enforced at the CONCRETE level (mirrors #236) — an abstract base carries shape
+        // only, and a source on one is inert until a concrete child extends it. Skipped
+        // when the super is not a legal projection: that trips the rule above and
+        // inherits its source too, and one defect should yield one error.
+        bool superIsLegalProjection = sup is null ||
+            (sup.Type == TYPE_OBJECT && sup.SubType == OBJECT_SUBTYPE_PROJECTION);
+        if (!model.IsAbstract && superIsLegalProjection)
+        {
+            int own = model.OwnChildren().Count(c => c.Type == TYPE_SOURCE);
+            int resolved = model.Children().Count(c => c.Type == TYPE_SOURCE);
+            if (resolved > own)
+            {
+                errors.Add(new MetaError(
+                    $"projection '{model.Fqn()}' inherits a source through extends instead of " +
+                    "declaring its own — a projection's extends is shape lineage, not a " +
+                    "shared-storage hierarchy. Declare the source on this projection; an " +
+                    "abstract projection base carries shape only (FR-024, ADR-0028)",
+                    ErrorCode.ERR_PROJECTION_INHERITED_SOURCE,
+                    Envelope: model.Source));
+            }
+        }
+
         // OWN sources only: an inherited source is validated on the object that
         // declares it; an inherited source from a non-projection super is
         // unreachable without first tripping the extends rule above.

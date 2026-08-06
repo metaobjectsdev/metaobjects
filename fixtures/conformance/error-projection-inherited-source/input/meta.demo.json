@@ -1,0 +1,38 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Customer",
+          "children": [
+            { "source.rdb": { "@table": "customers" } },
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "name" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "CustomersV1",
+          "children": [
+            { "source.rdb": { "@kind": "view", "@view": "v_customers_v1" } },
+            { "field.uuid": { "name": "customerId", "extends": "demo::Customer.id" } },
+            { "field.string": { "name": "name", "extends": "demo::Customer.name" } },
+            { "identity.primary": { "name": "id", "extends": "demo::Customer.id" } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "CustomersV1Extra",
+          "extends": "demo::CustomersV1",
+          "children": [
+            { "field.string": { "name": "label" } }
+          ]
+        }
+      }
+    ]
+  }
+}

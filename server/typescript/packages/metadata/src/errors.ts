@@ -44,6 +44,7 @@ export const ERROR_CODES = [
   // @kind (table, or @kind omitted which defaults to table). Projections are
   // derived read-only representations; their sources must be read-only kinds.
   "ERR_PROJECTION_SOURCE_WRITABLE",
+  "ERR_PROJECTION_INHERITED_SOURCE",
   "ERR_INVALID_SUBTYPE_CHILD",
   // FR-033 — a STRUCTURAL child (field/identity/source/validator/… — not an
   // attr) is placed under a parent whose registered childRules do not admit it

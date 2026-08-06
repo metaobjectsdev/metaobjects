@@ -3717,6 +3717,39 @@ public final class ValidationPhase {
                     + sup.getType() + "." + sup.getSubType() + " — a projection may only extend a projection (FR-024).",
                 ErrorCode.ERR_SUBTYPE_RULE_VIOLATION, obj.getSource());
         }
+        // A projection's extends is SHAPE lineage, not a shared-storage hierarchy, so a
+        // CONCRETE projection must declare its own source rather than inherit one.
+        // extends only ADDS members, so the child's extra fields have no provider in the
+        // parent's view, and both objects would claim one physical view while declaring
+        // different exposures (the declared field set IS the exposure, fail-closed).
+        // Prior art splits the same way: shared-storage inheritance (@Inheritance, EF Core
+        // TPH) inherits binding AND writability together; shape-reuse inheritance
+        // (@MappedSuperclass, Django abstract bases) does not inherit the binding at all.
+        // Enforced at the CONCRETE level (mirrors #236) — an abstract base carries shape
+        // only, and a source on one is inert until a concrete child extends it.
+        // Skipped when the super is not a legal projection: that trips the rule above and
+        // inherits its source too, and one defect should yield one error.
+        if (!isAbstract(obj) && sup != null
+                && MetaObject.TYPE_OBJECT.equals(sup.getType())
+                && MetaObject.SUBTYPE_PROJECTION.equals(sup.getSubType())) {
+            int own = 0;
+            for (MetaData c : obj.getChildren(MetaData.class, false)) {
+                if (c instanceof MetaSource) own++;
+            }
+            int resolved = 0;
+            for (MetaData c : obj.getChildren(MetaData.class, true)) {
+                if (c instanceof MetaSource) resolved++;
+            }
+            if (resolved > own) {
+                throw new MetaDataException(
+                    "ERR_PROJECTION_INHERITED_SOURCE"
+                        + ": projection '" + obj.getName() + "' inherits a source through extends "
+                        + "instead of declaring its own — a projection's extends is shape lineage, "
+                        + "not a shared-storage hierarchy. Declare the source on this projection; "
+                        + "an abstract projection base carries shape only (FR-024, ADR-0028).",
+                    ErrorCode.ERR_PROJECTION_INHERITED_SOURCE, obj.getSource());
+            }
+        }
         for (MetaData child : obj.getChildren(MetaData.class, false)) {
             if (!(child instanceof MetaSource)) continue;
             MetaSource s = (MetaSource) child;

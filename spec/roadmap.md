@@ -75,7 +75,7 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
 
 ### Cross-port conformance corpora (every port runs the shared corpus)
 
-- **Metamodel conformance** — `fixtures/conformance/` (261 fixtures + CAPABILITIES + ERROR-CODES manifests). TS / C# / Java / Python all green; Kotlin inherits via `metadata-ktx`. Per-corpus counts: `docs/CONFORMANCE.md`.
+- **Metamodel conformance** — `fixtures/conformance/` (262 fixtures + CAPABILITIES + ERROR-CODES manifests). TS / C# / Java / Python all green; Kotlin inherits via `metadata-ktx`. Per-corpus counts: `docs/CONFORMANCE.md`.
 - **Render conformance** — `fixtures/render-conformance/`. TS / C# / Java / Kotlin / Python byte-identical.
 - **Persistence conformance** — `fixtures/persistence-conformance/` (24 query + 6 migration scenarios). Every port runs the **query** scenarios against Testcontainers Postgres, each provisioning its test DB from the committed, TS-produced `canonical/schema.postgres.sql` (Derby was dropped for the cross-port query corpus, ADR-0015). The **migration** scenarios are TS-only, since TS owns schema.
 - **API-contract conformance** — `fixtures/api-contract-conformance/` (26 core + tph/m2m/jsonb/write-through sub-corpora). All five ports run it in BOTH lanes — a hand-rolled reference server and the port's own GENERATED API artifact booted over HTTP.

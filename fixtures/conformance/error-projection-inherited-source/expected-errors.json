@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_PROJECTION_INHERITED_SOURCE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.demo.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[2]['object.projection']"
+      }
+    }
+  ],
+  "warnings": []
+}
