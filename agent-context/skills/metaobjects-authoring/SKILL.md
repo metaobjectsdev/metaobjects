@@ -731,6 +731,18 @@ declared field set IS the exposure (fail-closed). Give it a read-only `source.rd
 projection detection + view DDL off that read-only source, so without it `meta gen`
 emits nothing for the projection.
 
+**A CONCRETE projection declares its OWN source — never inherits one.** A
+projection may `extends` another projection to reuse shape, but the child must
+declare its own `source.rdb`; inheriting the parent's is
+`ERR_PROJECTION_INHERITED_SOURCE`. `extends` only ADDS fields, so an inherited view
+cannot provide the child's extra columns, and two objects would claim one physical
+view with different exposures. The sanctioned pattern is an **abstract, sourceless**
+projection base carrying shared shape, with each concrete projection declaring its
+own view — so a versioned successor (`CustomersV2 extends CustomersV1`) declares
+`v_customers_v2` rather than silently sharing V1's view. (Same rule JPA gets from
+`@MappedSuperclass` and Django documents as the `db_table`-on-abstract trap; ADR-0028
+amendment 2026-08-06.)
+
 **Origin vocabulary (#195).** `origin.aggregate @agg` takes `count`/`sum`/`avg`/`min`/`max`
 (numeric reduces over `@of`), `any`/`all` (predicate quantifiers over a `@filter`; `@of`
 forbidden; empty set → `any=false`, `all=true`), and `collect` (an array rollup of `@of`
