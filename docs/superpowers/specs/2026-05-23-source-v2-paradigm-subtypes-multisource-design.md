@@ -2,6 +2,13 @@
 
 - **Date:** 2026-05-23
 - **Status:** Design — plan-of-record. Authority for the `source` metatype going forward.
+  **Amended 2026-08-05** ([#212](https://github.com/metaobjectsdev/metaobjects/issues/212), ADR-0007
+  Amendments 1–2): the **`event` paradigm is removed** (a stream is a channel, not a source — a
+  `source.*` binds **addressable state at rest**; emission moves to the surface layer as
+  `api.eventing`/`operation.event`/`binding.messaging` with a payload→**projection** reference), and
+  **`@role`'s registered vocabulary shrinks to `primary | replica`** (`index`/`cache`/`publish`/`mirror`
+  become reserved-not-registered; no port ever built the anticipated role-routing). The rows below
+  marked ~~struck~~ are retained for provenance — read ADR-0007 for the governing contract.
 - **Decision record:** [ADR-0007](../../../spec/decisions/ADR-0007-source-v2-paradigm-subtypes-multisource.md) (the durable contract); this spec is the detailed design + migration + rollout.
 - **Supersedes:** FR-003 / Project E `source.dbTable` / `source.dbView`.
 - **Related:** [ADR-0006](../../../spec/decisions/ADR-0006-reserved-keywords-vs-inline-attributes.md) (reserved keywords vs `@`-attrs — resolved here for `source`), ADR-0002 (subtype behavior), ADR-0004 (per-subtype attr schemas).
@@ -13,7 +20,7 @@
 
 A `source` declares **where an object's data physically lives**. Rules:
 
-1. **Subtype = storage paradigm** (`rdb`, `document`, `event`, …). The paradigm selects the
+1. **Subtype = storage paradigm** (`rdb`, `document`, `search`, …). The paradigm selects the
    codegen/runtime driver, so it's the behavioral axis (ADR-0002). Each subtype owns its
    attribute vocabulary (ADR-0004).
 2. **`name` = logical name** (optional on sources), consistent with every node (ADR-0006).
@@ -31,7 +38,7 @@ A `source` declares **where an object's data physically lives**. Rules:
 |--|--|--|--|--|
 | **rdb** | Postgres, MySQL, SQLite, SQL Server, Oracle | `@table` | table* · view · materializedView · storedProc · tableFunction | `@schema`, `@refresh`(matview), `@params`(proc/fn) |
 | **document** | MongoDB, CouchDB, Cosmos, Firestore | `@collection` | collection* · view · gridFs | `@database`, `@viewOn`+`@pipeline`(view) |
-| **event** | Kafka, Pulsar, Kinesis | `@topic` | topic* · stream · eventStore · changelog | `@keySchema`, `@valueSchema`, `@partitions`, `@compaction`, `@consumerGroup` |
+| ~~**event**~~ **REMOVED (#212)** | ~~Kafka, Pulsar, Kinesis~~ | ~~`@topic`~~ | ~~topic* · stream · eventStore · changelog~~ | A stream is a *channel*, not a source. Emission belongs to the surface layer (`binding.messaging` on an `operation.event`, payload → projection). A compacted changelog / event store read **by key** re-enters as an ordinary read-only-`@kind` paradigm source under the escape clause — it is addressable state at rest. |
 | **keyValue** | DynamoDB, Redis, etcd | `@table` / `@namespace` | table* · keyspace | `@partitionKey`, `@sortKey`, `@gsi`, `@ttl` |
 | **wideColumn** | Cassandra, ScyllaDB, Bigtable | `@table` | table* | `@keyspace`, `@partitionKey`, `@clusteringKey`, `@columnFamily` |
 | **graph** | Neo4j, Neptune, ArangoDB | `@label` / `@edge` | node* · relationship | `@from`, `@to` (relationship) |
@@ -79,7 +86,7 @@ The same per-subtype principle, one level down — a field's address *within* a 
 | paradigm | field physical attr | notes |
 |--|--|--|
 | rdb / wideColumn / objectStore | `@column` | renames the old `@dbColumn` |
-| document / event / search / vector | `@field` | dotted path allowed (`name.first`) |
+| document / search / vector | `@field` | dotted path allowed (`name.first`) |
 | graph | `@property` | |
 | keyValue | `@attribute` | |
 | timeSeries | `@column` / `@tag` | Influx tag vs field distinction |
@@ -101,7 +108,8 @@ An object may declare multiple `source` children:
 { "object.entity": { "name": "Product", "children": [
   { "source.rdb":      { "@table": "products", "@schema": "catalog" } },     // primary (default), table
   { "source.search":   { "@index": "products_idx", "@role": "index" } },     // maintained on write
-  { "source.event":    { "@topic": "product.changed", "@role": "publish" } },// CDC / outbox
+  // REMOVED (#212): `source.event @role: publish` — a CDC/outbox topic is emission, not
+  // population. The outbox TABLE is an ordinary rdb source; the topic hop is a binding.
   { "source.keyValue": { "@namespace": "product:", "@role": "cache", "@ttl": 300 } }
   /* …fields… */
 ]}}
@@ -111,10 +119,15 @@ An object may declare multiple `source` children:
 |--|--|--|
 | `primary`* | system of record (may be read-only for a projection) | CRUD / canonical read |
 | `replica` | read copy (read replica, matview) | read routing |
-| `index` | search/vector index derived from primary | search queries; maintained on write |
-| `cache` | read-/write-through cache | cache get/set |
-| `publish` | event/stream sink (CDC, outbox, event-sourcing) | emit-on-write |
-| `mirror` | dual-write (migration) | parallel write |
+| ~~`index`~~ **RESERVED (#212)** | ~~search/vector index derived from primary~~ | Not registered — no consumer dispatches on it |
+| ~~`cache`~~ **RESERVED (#212)** | ~~read-/write-through cache~~ | Not registered — no consumer dispatches on it |
+| ~~`publish`~~ **RESERVED, not registered (#212)** | ~~event/stream sink (CDC, outbox, event-sourcing)~~ | Emission is a surface concern; see ADR-0007 Amendment 2. `index`/`cache`/`mirror` are likewise reserved-not-registered — no consumer in any port dispatches on them. |
+| ~~`mirror`~~ **RESERVED (#212)** | ~~dual-write (migration)~~ | Not registered — no consumer dispatches on it |
+
+**Registered vocabulary is `primary | replica` only** (ADR-0007 Amendment 2). The struck rows are
+reserved: documented here, not in the registry, re-entering only when a shipping consumer
+dispatches on them. The example above is therefore illustrative of the *paradigm* axis; its
+`@role: index` / `@role: cache` values are not currently loadable.
 
 **Validation:** exactly one `primary` per object (`ERR_SOURCE_NO_PRIMARY` / `ERR_SOURCE_MULTIPLE_PRIMARY`). Single-source objects need no `@role` (defaults to `primary`).
 

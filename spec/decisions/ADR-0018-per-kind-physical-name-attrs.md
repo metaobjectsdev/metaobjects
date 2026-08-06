@@ -7,7 +7,7 @@
 
 ## Context
 
-ADR-0007 introduced the source-v2 paradigm and established the rule that the physical-address attribute is *per-paradigm-idiomatic*: `@table` for `source.rdb`, `@collection` for `source.document`, `@topic` for `source.event`, `@label`/`@edge` for `source.graph`. The Alternatives Considered section rejected a single generic `@locator` / `@map` attribute on the grounds that paradigms have genuinely different vocabularies and a multi-sourced field needs paradigm-specific addresses (`@column` for the rdb side, `@field` for the document side, simultaneously).
+ADR-0007 introduced the source-v2 paradigm and established the rule that the physical-address attribute is *per-paradigm-idiomatic*: `@table` for `source.rdb`, `@collection` for `source.document`, `@index` for `source.search`, `@label`/`@edge` for `source.graph`. The Alternatives Considered section rejected a single generic `@locator` / `@map` attribute on the grounds that paradigms have genuinely different vocabularies and a multi-sourced field needs paradigm-specific addresses (`@column` for the rdb side, `@field` for the document side, simultaneously).
 
 That per-paradigm principle is correct and is preserved here.
 

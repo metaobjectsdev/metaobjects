@@ -33,6 +33,11 @@ semantic lie.
    or by embedding; embedded VO storage belongs to the owning entity's field).
    Message topics/queues are *channels*, not sources — they live at the surface
    layer as `binding.*` on operations (AsyncAPI's model), never in `source.*`.
+   *(Ratified over ADR-0007's conflicting `source.event` catalog entry on
+   2026-08-05, [#212](https://github.com/metaobjectsdev/metaobjects/issues/212);
+   ADR-0007 Amendment 1 removes `event` and generalizes this into the admission
+   test — a source binds **addressable state at rest**, and a stream becomes a
+   source exactly when it is treated as addressable state.)*
 4. **Derived means read-only, at two levels:** any field carrying `origin.*` is
    derived and therefore read-only wherever it lives (on entities: excluded from
    INSERT/UPDATE, write codecs, and create/update inputs); a projection is wholly

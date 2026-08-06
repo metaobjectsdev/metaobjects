@@ -232,7 +232,7 @@ errors when it is **provably all-to-one** (every hop explicitly declares
 | `rdb @kind:table` | **entity** only | own, required |
 | `rdb @kind:view` / `materializedView` | **projection** (standalone) or **entity** (multi-source, read role) | borrowed / own |
 | `rdb @kind:storedProc` / `tableFunction` | result shape = **projection** (today spelled entity — migration candidate, §10); args = **value** via `@parameterRef` (shipped) | optional — result sets are often keyless |
-| *(future)* message topic / queue | **nobody** — a topic is a *channel*, not a population location; it belongs to the surface layer as `binding.messaging` on an operation referencing a value (AsyncAPI's model: channels reference message schemas) | n/a |
+| *(future)* message topic / queue | **nobody** — a topic is a *channel*, not a population location; it belongs to the surface layer as `binding.messaging` on an operation referencing a **projection** (AsyncAPI's model: channels reference message schemas). Ratified 2026-08-05 (#212 / ADR-0007 Amendment 1): an emitted event's shape is system-produced derived output, so the CQRS symmetry is *queries return projections, commands take values, **events emit projections***. A topic that is treated as addressable state (compacted changelog / event store read by key) re-enters as an ordinary read-only-`@kind` paradigm source. | n/a |
 | no source | **value** (embedded / payload / args) or **projection** (wire-only contract shape) | value: never; projection: optional |
 
 **Assembly modes.** Whether origins are *required* depends on the source:
