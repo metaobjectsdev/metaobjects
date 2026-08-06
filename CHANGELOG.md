@@ -7,11 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-**Scope: npm · PyPI · NuGet** — Maven Central has no changed product file (its
-`AgentDocsMojo` no longer scaffolds agent context; it redirects to the Node CLI).
-The migrate fix is npm-only (`@metaobjectsdev/cli`); the agent-context correction
-ships wherever the scaffolded skills ship — `@metaobjectsdev/sdk` on npm, the
-bundled content tree in the PyPI package, and the C# CLI on NuGet.
+## [0.20.14] — npm `0.20.14` · PyPI `0.20.14` · NuGet `0.20.14` · Maven `7.20.14`
+
+**Scope: npm `0.20.14` · PyPI `0.20.14` · NuGet `0.20.14` · Maven Central `7.20.14`** —
+coordinated at the shared patch number per the single-shared-patch policy ([0.20.13]).
+Every changed product file is npm-only: the migrate fix lives in `@metaobjectsdev/cli`,
+and the corrected agent-context ships via `@metaobjectsdev/sdk` — the only package on
+any registry that bundles the repo-root `agent-context/` tree (the Python wheel vendors
+none, its build hook is a no-op; the C# `dotnet meta agent-docs` and the Maven
+`AgentDocsMojo` are redirect stubs to the Node CLI). PyPI, NuGet and Maven Central are
+version-parity bumps with no changed product file.
 
 ### Fixed — the live-DB `meta migrate` path now advances the committed snapshot
 

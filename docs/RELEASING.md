@@ -13,9 +13,12 @@
 > - **NuGet** → keyless OIDC via the `publish-csharp.yml` workflow: `gh workflow run
 >   publish-csharp.yml` (or push a `csharp-v<version>` tag).
 >
-> Run network commands via the sandbox-disabled shell. Versions are **not unified** (TS/C#/Python
-> on the `0.x` line, Java/Kotlin on the `7.x` line). The rest of this doc is the per-registry
-> procedure.
+> Run network commands via the sandbox-disabled shell. **Single shared patch number (standing
+> policy since 0.20.13):** every release cuts ALL FOUR registries at the same `minor.patch` —
+> npm / PyPI / NuGet on `0.<m>.<p>`, Maven on `7.<m>.<p>` (only the major differs, for historical
+> continuity). A registry with no changed product file publishes a **version-parity bump**
+> (identical content at the new version) rather than sitting the release out. The rest of this doc
+> is the per-registry procedure.
 
 ## Releasing the TypeScript packages to npm
 
@@ -97,7 +100,7 @@ bytes**, not "did output change."
 | New **opt-in** codegen feature, default output byte-identical | new generator defaulting off | PATCH (MINOR if it adds registry vocabulary — cross-port conformance surface) | MINOR |
 | Wire-contract / conformance behavior change of already-valid deployments | FR-036 enforcement | **MINOR**, loud notice (pre-1.0 MINOR *is* the breaking slot) | MAJOR |
 | Wire behavior fixed to match the documented/conformance contract | 0.19.1 `@min` clamp | PATCH | PATCH |
-| Docs / tests / fixtures only (no product file in a port) | 0.19.4 npm scope | **No release for that registry** (per-registry scoping) | same |
+| No changed product file in a port | PyPI/NuGet/Maven at 0.20.14 | **Version-parity bump at the shared patch number** — publish identical content at the new version; never skip a registry (single-shared-patch policy, standing since 0.20.13) | same |
 
 **The `extStyle` 0.20.0 case, for calibration:** it was correctly MINOR — but for the
 *API break* (`relativeModuleSpecifier` gained a required param — a public export) **and**
@@ -210,7 +213,7 @@ How to publish the `MetaObjects*` C# packages to nuget.org. We use **Trusted Pub
 
 ## What gets published
 
-Four packages, version-locked at the C# port version (currently `0.19.7`):
+Four packages, version-locked at the C# port version (currently `0.20.13`):
 
 | Package | Contents |
 |---|---|
@@ -298,7 +301,7 @@ How to publish the **`metaobjects`** Python package to PyPI via **Trusted Publis
 ## What gets published
 
 One package, `metaobjects` (version in [`server/python/pyproject.toml`](../server/python/pyproject.toml),
-currently `0.19.9`), as an **sdist + a universal `py3-none-any` wheel** (pure Python).
+currently `0.20.13`), as an **sdist + a universal `py3-none-any` wheel** (pure Python).
 
 ## How we publish: Trusted Publishing (OIDC)
 
@@ -354,7 +357,7 @@ subsequent releases keyless.)
 # Releasing the Java/Kotlin modules to Maven Central
 
 The 18 `com.metaobjects:*` modules ship to **Maven Central via the Sonatype Central Portal**,
-versioned on the `7.x` line (currently `7.11.7`) in the parent + module poms. Signed with the
+versioned on the `7.x` line (currently `7.20.13`) in the parent + module poms. Signed with the
 maintainer's GPG key.
 
 ## Procedure
@@ -396,8 +399,10 @@ maintainer's GPG key.
 > If all are `200`, the release is out — the error was just the response parse. Bump the plugin to
 > ≥`0.7.0` to stop the crash on the next release.
 
-**Versions are not unified across languages** — TS, C#, and Python are on the `0.9.x` line, the
-Java/Kotlin module line is on the `7.2.x` track. Don't force one number. The cross-language contract
+**The `minor.patch` IS unified across languages** (standing policy since 0.20.13): npm, PyPI and
+NuGet share `0.<m>.<p>`, and Maven Central ships the same `minor.patch` on its historical major `7`.
+Every release bumps all four registries, with version-parity bumps where a port has no changed
+file. The cross-language *behavior* contract
 is the **conformance corpus + [`fixtures/conformance/CAPABILITIES.json`](../fixtures/conformance/CAPABILITIES.json)**:
 each release states which capabilities/conformance level it satisfies, and *that* manifest — not a
 shared version — is the coordination point. (Generated code runs without any MetaObjects runtime, so
