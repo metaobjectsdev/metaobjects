@@ -330,8 +330,12 @@ Per finding: `file:line` → what → generated-equivalent exists? → recommend
 ## Prompt anti-patterns (hunt per site; classify: fully-modeled / partial / fully-inline)
 
 - Inline prompt strings (triple-quoted / template-literal constants in service code).
-- Untyped payloads (`str.format(**dict)` / f-strings / ad-hoc dicts) — payload should be an
-  `object.value` with `origin.*` (`passthrough` / `aggregate` / `collection`) fields.
+- Untyped payloads (`str.format(**dict)` / f-strings / ad-hoc dicts) — payload should be a declared
+  shape: an `object.value` (caller-supplied fields; `origin.passthrough` only — FR-015 parameter
+  lineage) or, when fields derive by `aggregate` / `collection` / `computed` / `first`, a
+  **sourceless `object.projection`** carrying those origins (#210 — assembly origins on an
+  `object.value` fail load with `ERR_SUBTYPE_RULE_VIOLATION`; `@payloadRef` accepts the sourceless
+  projection).
 - Silent-degradation hack (`try/except KeyError` or `?? ''` around formatting) — flag every instance.
 - Hand-rolled output parsing (regex / XML / ad-hoc JSON) vs declared `template.output` +
   generated `parse*` / `safeParse*` / `extract*` parser — **generated in all five ports**

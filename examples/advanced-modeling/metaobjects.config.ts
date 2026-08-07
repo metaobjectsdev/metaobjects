@@ -22,7 +22,10 @@ import { TYPE_SOURCE, type MetaObject } from "@metaobjectsdev/metadata";
 
 // `entityFile`/`queriesFile`/`routesFile` derive DB participation from a
 // declared/inherited `source.*` child (the #248 persistability contract), so
-// they already skip the sourceless shapes here on their own: the pure
+// the sourceless shapes here need no filter for them: `entityFile` renders a
+// sourceless shape as SHAPE-ONLY output (interface + Zod, no Drizzle table —
+// see ProgramDescriptionPayload.ts in src/generated/), while `queriesFile`/
+// `routesFile` skip it outright. The sourceless shapes: the pure
 // `object.value`s (SyllabusSection / InstructorProfile — a value can never
 // declare a source, loader-enforced) and the SOURCELESS `object.projection`
 // payload (ProgramDescriptionPayload, #210 — assembly origins live on

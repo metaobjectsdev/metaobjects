@@ -225,10 +225,18 @@ time.
 
 ## Multi-source via `@role`
 
-An entity may have multiple `source.rdb` children, one per role. Exactly one must
-carry `@role: "primary"`; the others identify additional sources (typically
-read-replicas or split-domain projections). The TS persistence layer and the Java
-OMDB engine route writes to `primary` and reads to the role you select.
+An entity may have multiple `source.rdb` children. `@role` is exactly
+`primary | replica` (#212 — the former `index` / `cache` / `publish` / `mirror`
+members are retired, reserved-not-registered; a role member re-enters the
+registry only when a shipping consumer dispatches on it). Exactly one source
+must carry `@role: "primary"` (`primary` is also the default when `@role` is
+omitted); every additional source is `@role: "replica"` — typically a
+read-replica or the read-only view of an entity read-view (#214). `@role` is a
+**designation**, not a routing mechanism: consumers test "is this the primary?"
+— writes go to the primary source and reads to a read-only-kind replica — and
+nothing ever dispatched on the retired members (ADR-0007 Amendment 2).
+Migrating a retired member:
+[value-assembly-origins-and-source-role-shrink.md](migrations/value-assembly-origins-and-source-role-shrink.md).
 
 ```json
 {

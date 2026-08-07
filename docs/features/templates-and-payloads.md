@@ -192,7 +192,8 @@ For the `lobby/welcome` template:
 ### TypeScript
 
 `@metaobjectsdev/render` ships the render engine + verify. Payload-VO codegen is
-shared with the projection codegen path (the payload IS an `object.value`).
+shared with the projection codegen path (the payload is an `object.value` or a
+sourceless `object.projection`, #210).
 
 ```ts
 import { render } from "@metaobjectsdev/render";
@@ -543,4 +544,5 @@ for the per-port pass/skip ledger.
 - [field-types.md](field-types.md) — fields in payload VOs
 - [source-kinds.md](source-kinds.md) — `source.rdb` `@kind: "view"` for materialized payloads (FR-003)
 - [migrations-and-drift.md](migrations-and-drift.md) — the verify pillar
+- [migrations/value-assembly-origins-and-source-role-shrink.md](migrations/value-assembly-origins-and-source-role-shrink.md) — migrating a pre-#210 payload (assembly origins on a value; nested non-value targets)
 - FR-004 spec: [2026-05-22-fr-004-cross-language-prompt-construction-design.md](../superpowers/specs/2026-05-22-fr-004-cross-language-prompt-construction-design.md)

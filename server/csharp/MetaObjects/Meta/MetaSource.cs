@@ -16,7 +16,7 @@ namespace MetaObjects.Meta;
 /// Concrete node class for <c>source.*</c> nodes.
 /// Declares where an object's data lives. Source v2 uses kind-aware physical-name
 /// aliases (<c>@table</c>/<c>@view</c>/<c>@materializedView</c>/<c>@proc</c>/<c>@function</c>),
-/// <c>@kind</c> (table/view/...), <c>@role</c> (primary/replica/...), and
+/// <c>@kind</c> (table/view/...), <c>@role</c> (<c>primary</c> | <c>replica</c> — the closed #212 set), and
 /// <c>@schema</c> (optional DB schema). See <see cref="PhysicalName"/> for the
 /// FR-016 four-step resolution rule that codegen / migrate / runtime should use.
 /// </summary>

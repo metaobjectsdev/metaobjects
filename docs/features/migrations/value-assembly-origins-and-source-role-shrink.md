@@ -1,15 +1,19 @@
 # Migrating value-hosted assembly origins (#210) and retired `@role` members (#212)
 
-This release line carries two coordinated breaking metamodel changes. Both fail
-at **load time** with a clear error — nothing changes silently — and both have a
-mechanical rewrite.
+This release line carries **three** coordinated breaking metamodel changes. All
+three fail at **load time** with a clear error — nothing changes silently — and
+each has a mechanical rewrite.
 
 1. **Assembly origins leave `object.value` (#210).** A field hosted on an
    `object.value` may no longer carry `origin.aggregate`, `origin.computed`,
    `origin.collection` or `origin.first`. Re-host the payload as a
    **sourceless `object.projection`** — `@payloadRef`/`@responseRef` now accept
    one.
-2. **`source.rdb @role` shrinks to `primary | replica` (#212).** The
+2. **Nested payload targets are value-only, loader-enforced (#210).** A payload
+   field's `field.object @objectRef` must resolve to an `object.value`.
+   TypeScript, C# and Python previously accepted a non-value target here and
+   emitted a nested shape from it — that metadata now fails load.
+3. **`source.rdb @role` shrinks to `primary | replica` (#212).** The
    `index` / `cache` / `publish` / `mirror` members are retired
    (reserved-not-registered, the ADR-0040 treatment).
 
@@ -54,14 +58,6 @@ object.projection; origin.passthrough (FR-015 parameter lineage) remains legal
 on a value (#210, ADR-0028)
 ```
 
-A nested payload `field.object @objectRef` pointing at anything other than an
-`object.value` (an entity, or a projection) also fails:
-
-```
-ERR_SUBTYPE_RULE_VIOLATION: payload 'acme::ai::ReviewRequest' field 'author'
-@objectRef 'acme::Author' resolves to object.entity — a nested payload target
-must be an object.value (…)
-```
 
 ### Rewrite rule
 
@@ -106,21 +102,92 @@ derive `Author` as the base entity; every explicit-`@via` origin needs no
 anchor.)
 
 A value that carries **only** `origin.passthrough` (an FR-015 parameter VO)
-needs no change. Generated payload records/interfaces are byte-identical across
-the re-host — every port's payload emitter is declared-type-authoritative
-(#270), so the host subtype does not affect payload typing.
+needs no change. The host subtype change **alone** does not affect payload
+typing — every port's payload emitter is declared-type-authoritative (#270) —
+but **adding an `extends` anchor is not typing-neutral: the field then inherits
+the anchored field's properties, which can flip its optionality** (e.g. a
+`title` anchored to a `@required` entity field becomes required in the
+generated record). Regenerate and review the payload diff rather than assuming
+byte-identity; this repo's own canonical example changed
+`title?: string` → `title: string` under exactly this rewrite.
 
 ### What does NOT change
 
 - `origin.passthrough` on `object.value` (parameter lineage).
 - Assembly origins on `object.projection` and on `object.entity` read-views.
-- Nested payload shapes (`field.object @objectRef` → `object.value`).
+- Nested payload shapes already targeting an `object.value`.
 - Physical schema: a sourceless projection has no DDL, so `meta migrate` emits
   nothing for it.
 
 ---
 
-## 2. `source.rdb @role` shrinks to `primary | replica` (#212)
+## 2. Nested payload targets are value-only (#210)
+
+### What changed
+
+Every `field.object @objectRef` reachable from a template-level payload target
+(the `@payloadRef`/`@responseRef` closure) must resolve to an `object.value` —
+now enforced by the loader in all four ports. Before this release the loader
+did not constrain the target's subtype: Kotlin and Java codegen filtered
+non-value targets out, but **TypeScript, C# and Python accepted the shape and
+emitted a nested interface/record from the entity** — so a payload field
+pointing at an `object.entity` (or a projection) previously loaded and
+generated code, and now fails.
+
+### The error you'll see
+
+```
+ERR_SUBTYPE_RULE_VIOLATION: payload 'acme::ai::ReviewRequest' field 'author'
+@objectRef 'acme::Author' resolves to object.entity — a nested payload target
+must be an object.value (template-level refs may also target a sourceless
+object.projection, nested refs may not) (#210, ADR-0028, ADR-0044)
+```
+
+### Rewrite rule
+
+Declare an `object.value` mirroring the subset of the entity the payload
+actually needs — optionally `extends`-binding the entity's fields to reuse
+their shape — and repoint the `@objectRef` at it. Embedding a full entity in a
+payload was always payload bloat (every entity column shipped to the LLM); the
+curated value makes the exposure an explicit, reviewable list.
+
+**Before:**
+
+```jsonc
+{ "object.value": {
+    "name": "ReviewRequest",
+    "children": [
+      { "field.string": { "name": "instructions" } },
+      { "field.object": { "name": "author", "@objectRef": "Author" } }
+    ]
+}}
+```
+
+**After:**
+
+```jsonc
+{ "object.value": {
+    "name": "AuthorBrief",
+    "children": [
+      { "field.string": { "name": "name", "extends": "Author.name" } }
+    ]
+}},
+{ "object.value": {
+    "name": "ReviewRequest",
+    "children": [
+      { "field.string": { "name": "instructions" } },
+      { "field.object": { "name": "author", "@objectRef": "AuthorBrief" } }
+    ]
+}}
+```
+
+(The widen does NOT extend here: a nested `@objectRef` at a sourceless
+projection is also rejected — only the **template-level**
+`@payloadRef`/`@responseRef` accept a projection.)
+
+---
+
+## 3. `source.rdb @role` shrinks to `primary | replica` (#212)
 
 ### What changed
 
@@ -137,8 +204,15 @@ ERR_BAD_ATTR_VALUE: source.rdb attribute '@role' has value 'publish' which is
 not one of the allowed values: primary, replica
 ```
 
-(A single-source object with a retired role also reports `ERR_SOURCE_NO_PRIMARY`
-— the retired member no longer counts as any role.)
+(Wording varies by port — Java, for example, emits `… is not a valid value;
+allowed: primary, replica` — but the code and the allowed set are identical in
+all four loaders.)
+
+A single-source object with a non-`primary` role also reports
+`ERR_SOURCE_NO_PRIMARY`. That error is not new — a single source declaring
+`@role: index` failed the one-primary rule before the shrink too; what changes
+is that you now see **both** errors, since the retired member additionally
+fails the `allowedValues` check.
 
 ### Rewrite rule
 

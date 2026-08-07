@@ -28,7 +28,7 @@ Both carry the generic attrs:
 
 | Attr | Required | Purpose |
 |---|---|---|
-| `@payloadRef` | yes | the `object.value` declaring the payload shape |
+| `@payloadRef` | yes | the `object.value` — or sourceless `object.projection` (#210) — declaring the payload shape |
 | `@textRef` | yes for `template.prompt` and a `template.output @kind: document` (the default) — a `template.output @kind: email` carries **no** `@textRef`; it uses `@subjectRef` + `@htmlBodyRef` (+ optional `@textBodyRef`) instead | the 2-layer logical text reference `group/source`, resolved by a provider |
 | `@format` | no | `text` (default) / `html` / `xml` / `csv` / `json` / `markdown` / `spreadsheet` — drives the escaper |
 | `@maxChars` | no | build-time size budget |
@@ -41,7 +41,8 @@ selects how the output-format prompt fragment presents the payload shape to an L
 (see "the output-format prompt fragment" below); `@requiredTags` names output tags
 the rendered text must contain (`verify` checks it) on both subtypes.
 `template.prompt` additionally carries `@responseRef` — naming the response
-value-object the prompt expects, for typed LLM-call trace derivation.
+shape (an `object.value` or sourceless `object.projection`, #210) the prompt
+expects, for typed LLM-call trace derivation.
 
 A third, structurally different subtype is also registered core vocabulary:
 **`template.toolcall`** (`@toolName` + `@payloadRef`, ADR-0011) — a vendor-agnostic
@@ -50,21 +51,26 @@ LLM tool-call envelope with no renderable text body (the body IS the
 `@format` attrs above). The vocabulary exists today; MCP exposure of declared
 prompts/tools is roadmap, not shipped — don't promise it.
 
-## The payload is an `object.value` you declare
+## The payload is a shape you declare — an `object.value`, or a sourceless `object.projection`
 
-The payload is **not** an entity — it's an `object.value` whose DECLARED fields ARE
-the prompt's typed shape. Every port's payload codegen is
+The payload is **not** an entity — it's a declared shape whose fields ARE the
+prompt's typed surface: an `object.value` (caller-supplied fields;
+`origin.passthrough` only — FR-015 parameter lineage), or a **sourceless
+`object.projection`** (#210 — no `source.*` child, own or inherited) when fields
+derive by assembly. Every port's payload codegen is
 **declared-type-authoritative (#270)**: a field's generated type comes only from its
 declared `field.<subType>` + `isArray` + `@objectRef`, and a nested payload is a
 declared `field.object @objectRef` to another `object.value` (`isArray: true` for a
-list). The caller supplies the field values at render time. An `origin.*` child on a
-payload field is IGNORED for typing — never author assembly origins (`aggregate` /
-`collection` / `computed` / `first`) on a payload VO. Derivation belongs to
-**projection** read models (`object.projection` over an entity), covered by the
-`metaobjects-authoring` skill and `docs/features/source-kinds.md`, not here.
+list — nested targets stay value-only, loader-enforced). The caller supplies the
+field values at render time. An `origin.*` child on a payload field is IGNORED for
+typing — and the assembly origins (`aggregate` / `collection` / `computed` /
+`first`) are ILLEGAL on an `object.value` host (`ERR_SUBTYPE_RULE_VIOLATION`, #210):
+an origin-derived payload lives on the sourceless projection, which `@payloadRef`
+accepts. Projections generally are covered by the `metaobjects-authoring` skill and
+`docs/features/source-kinds.md`, not here.
 
 Declaring the payload shape is what makes payload bloat visible: adding a field to
-the prompt is a diff on the `object.value`, and `verify` catches template/payload
+the prompt is a diff on the declared shape, and `verify` catches template/payload
 drift at build time instead of letting a prompt silently degrade.
 
 ```json

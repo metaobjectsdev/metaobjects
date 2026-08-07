@@ -69,7 +69,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 
 ## Fixture-to-doc mapping
 
-### `fixtures/conformance/` — metamodel loader + canonical serializer (263)
+### `fixtures/conformance/` — metamodel loader + canonical serializer (270)
 
 | Fixture prefix | Feature doc |
 |---|---|
