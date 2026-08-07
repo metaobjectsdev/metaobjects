@@ -11,10 +11,3 @@ export interface InstructorProfile {
   bio?: string | null;
   credentialsSummary?: string | null;
 }
-
-export interface ProgramDescriptionPayload {
-  title?: string | null;
-  summary?: string | null;
-  authorName?: string | null;
-  lessonCount?: number | null;
-}

@@ -13,8 +13,8 @@
           { "field.string": { "name": "title" } },
           { "relationship.composition": { "name": "author", "@objectRef": "Author" } }
       ] } },
-      { "object.value": { "name": "AuthorReport", "children": [
-          { "field.string": { "name": "name", "children": [
+      { "object.projection": { "name": "AuthorReport", "children": [
+          { "field.string": { "name": "name", "extends": "Author.name", "children": [
               { "origin.passthrough": { "@from": "Author.name" } }
           ] } },
           { "field.long":   { "name": "postCount", "children": [

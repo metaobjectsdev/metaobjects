@@ -11,7 +11,9 @@ const META = {
     children: [
       { "object.value": { name: "PostBrief", children: [{ "field.string": { name: "title" } }] } },
       {
-        "object.value": {
+        // #210 — origin.collection is an ASSEMBLY origin: its host is a sourceless
+        // object.projection (a value may host only origin.passthrough).
+        "object.projection": {
           name: "AuthorBrief",
           children: [
             { "field.string": { name: "displayName" } },

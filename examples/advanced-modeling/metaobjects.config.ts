@@ -18,7 +18,7 @@ import {
   outputPrompt,
   renderHelper,
 } from "@metaobjectsdev/codegen-ts/generators";
-import { OBJECT_SUBTYPE_VALUE, type MetaObject } from "@metaobjectsdev/metadata";
+import { OBJECT_SUBTYPE_VALUE, TYPE_SOURCE, type MetaObject } from "@metaobjectsdev/metadata";
 
 // `entityFile`/`queriesFile` already special-case a pure `object.value` (no
 // identity, no source — ADR-0028) as shape-only (interface + Zod, no Drizzle
@@ -27,11 +27,17 @@ import { OBJECT_SUBTYPE_VALUE, type MetaObject } from "@metaobjectsdev/metadata"
 // pure VO's `renderValueObjectFile` output doesn't emit. Filtering VOs out of
 // these two generators here is the config-level workaround (the `filter`
 // option exists for exactly this); it does not belong in this teaching
-// example as a code fix. SyllabusSection / InstructorProfile /
-// ProgramDescriptionPayload are used only as embedded jsonb shapes / a
-// payload — none is independently CRUD-addressable or form-submitted, so
-// excluding them is also the semantically correct call for this domain.
-const isNotValueObject = (e: MetaObject): boolean => e.subType !== OBJECT_SUBTYPE_VALUE;
+// example as a code fix. SyllabusSection / InstructorProfile are used only as
+// embedded jsonb shapes — neither is independently CRUD-addressable or
+// form-submitted, so excluding them is also the semantically correct call for
+// this domain. ProgramDescriptionPayload is a SOURCELESS object.projection
+// since #210 (assembly origins live on projections; a template payloadRef may
+// target a sourceless projection) — it is a wire-assembled payload with no
+// backing store, so it is excluded the same way. The one predicate covering
+// all three: only a PERSISTED object (a declared/inherited source.* child —
+// the #248 persistability contract) is CRUD-addressable or form-submitted.
+const isPersisted = (e: MetaObject): boolean =>
+  e.children().some((c) => c.type === TYPE_SOURCE) && e.subType !== OBJECT_SUBTYPE_VALUE;
 
 export default defineConfig({
   outDir: "src/generated",
@@ -42,8 +48,8 @@ export default defineConfig({
   generators: [
     entityFile(),
     queriesFile(),
-    routesFile({ filter: isNotValueObject }),
-    formFile({ filter: isNotValueObject }),
+    routesFile({ filter: isPersisted }),
+    formFile({ filter: isPersisted }),
     promptRender(),
     outputParser(),
     extractor(),

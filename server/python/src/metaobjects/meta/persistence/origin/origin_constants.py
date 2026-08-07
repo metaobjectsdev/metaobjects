@@ -18,6 +18,19 @@ ORIGIN_SUBTYPES = (
     ORIGIN_SUBTYPE_FIRST,
 )
 
+# #210 — the ASSEMBLY origins: they derive a value by rolling up, computing, or
+# collecting from a backing store, which is what an object.projection is for.
+# They are illegal on an object.value-hosted field (ERR_SUBTYPE_RULE_VIOLATION);
+# ORIGIN_SUBTYPE_PASSTHROUGH is NOT in this set — on a value it is FR-015
+# parameter lineage, not an assembly path (ADR-0028). Mirrors the TS
+# ASSEMBLY_ORIGIN_SUBTYPES.
+ASSEMBLY_ORIGIN_SUBTYPES = (
+    ORIGIN_SUBTYPE_AGGREGATE,
+    ORIGIN_SUBTYPE_COMPUTED,
+    ORIGIN_SUBTYPE_COLLECTION,
+    ORIGIN_SUBTYPE_FIRST,
+)
+
 # passthrough attrs
 ORIGIN_ATTR_FROM = "from"
 ORIGIN_ATTR_VIA = "via"

@@ -225,7 +225,8 @@ public static class PayloadCodegen
     /// <summary>Resolve <paramref name="reference"/>'s emitted C# record name under the
     /// ADR-0044 naming rule, scoped to its OWN reference closure (the same closure
     /// <see cref="GeneratePayloadRecords"/> would emit). Returns null when <paramref name="reference"/>
-    /// does not resolve to an object.value.</summary>
+    /// does not resolve to an object.value or sourceless object.projection (#210 — the loader
+    /// enforces the legal template-level target set; nested targets stay value-only).</summary>
     internal static string? ResolveEmittedName(MetaData root, string reference, string referrerPkg)
     {
         var vo = ResolveForEmission(root, reference, referrerPkg);

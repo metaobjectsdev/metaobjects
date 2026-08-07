@@ -1917,6 +1917,23 @@ public final class ValidationPhase {
         // (a value's origin.passthrough is FR-015 parameter lineage, not assembly).
         boolean isValueHost = MetaObject.SUBTYPE_VALUE.equals(obj.getSubType());
 
+        // #210 — assembly origins live on projections. A value-hosted field may not
+        // carry origin.aggregate / origin.computed / origin.collection / origin.first:
+        // a value is constructed — by a caller or by embedding — never assembled from
+        // a backing store. origin.passthrough STAYS legal on a value (FR-015 parameter
+        // lineage; the B5 exemption above).
+        if (isValueHost && MetaOrigin.ASSEMBLY_ORIGIN_SUBTYPES.contains(subType)) {
+            throw new MetaDataException(
+                "ERR_SUBTYPE_RULE_VIOLATION"
+                    + ": value object '" + obj.getName() + "' field '" + field.getName()
+                    + "' hosts origin." + subType + " — assembly origins (aggregate, computed, "
+                    + "collection, first) live on object.projection; a value is constructed by a "
+                    + "caller or by embedding, never assembled from a backing store. Re-host this "
+                    + "field on a sourceless object.projection; origin.passthrough (FR-015 "
+                    + "parameter lineage) remains legal on a value (#210, ADR-0028).",
+                ErrorCode.ERR_SUBTYPE_RULE_VIOLATION, origin.getSource());
+        }
+
         if (PassthroughOrigin.SUBTYPE_PASSTHROUGH.equals(subType)) {
             String from = origin.getFrom();
             if (from == null || from.isEmpty()) {
@@ -2092,15 +2109,9 @@ public final class ValidationPhase {
                 return;
             }
             // FR-024 §6 — no @via on an aggregate: inference applies only when @of
-            // targets a non-base entity from a non-value host; an aggregate over the
-            // base relation itself still requires an explicit path.
-            if (isValueHost) {
-                throw new MetaDataException(
-                    ErrorMessageConstants.ERR_INVALID_ORIGIN
-                        + ": origin.aggregate on " + obj.getName() + "." + field.getName()
-                        + ": missing @via (aggregates require a relationship path).",
-                    ErrorCode.ERR_INVALID_ORIGIN, src);
-            }
+            // targets a non-base entity; an aggregate over the base relation itself
+            // still requires an explicit path. (A value host never reaches here —
+            // the #210 assembly-origin check above already rejected it.)
             MetaObject base = deriveBaseEntity(obj, root, field.getName(), src);
             if (base == null) return; // base underivable — error already thrown
             if (isBaseRelationTarget(ofTarget.entity, base, obj)) {
@@ -2219,7 +2230,9 @@ public final class ValidationPhase {
                 java.util.List<MetaData> hops =
                     validateViaPath(via, root, obj, field.getName(), src);
                 checkAggregateCardinality(hops, obj, field.getName(), src);
-            } else if (!isValueHost) {
+            } else {
+                // (A value host never reaches here — the #210 assembly-origin
+                // check above already rejected origin.first on a value.)
                 MetaObject base = deriveBaseEntity(obj, root, field.getName(), src);
                 if (base != null && !isBaseRelationTarget(ofTarget.entity, base, obj)) {
                     java.util.List<MetaData> hops = inferViaSingleHop(
@@ -3003,9 +3016,11 @@ public final class ValidationPhase {
 
         // ADR-0042 — a bare @payloadRef resolves in the template's package (else root-level);
         // an FQN resolves exactly. No bare-tail cross-package fallback.
+        // #210 — a template-level payload target widened to object.value OR a
+        // sourceless object.projection (a SOURCED projection stays illegal).
         String referrerPkg = template.getPackage() == null ? "" : template.getPackage();
         MetaObject payloadVo = resolveRootObject(root, payloadRef, referrerPkg);
-        if (payloadVo == null || !MetaObject.SUBTYPE_VALUE.equals(payloadVo.getSubType())) {
+        if (payloadVo == null || !isLegalPayloadTarget(payloadVo)) {
             // FR5d — @payloadRef is a reference; emit format=resolved with
             // referrer=template bare (short) name to match TS/C#/Python (the
             // reference contract does not propagate the root `package:` to
@@ -3013,10 +3028,13 @@ public final class ValidationPhase {
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_INVALID_TEMPLATE
                     + ": template '" + template.getName() + "' @payloadRef '" + payloadRef
-                    + "' does not resolve to an object.value at root",
+                    + "' does not resolve to an object.value or sourceless object.projection at root",
                 ErrorCode.ERR_INVALID_TEMPLATE,
                 ResolvedSource.from(template.getSource(), template.getShortName(), payloadRef));
         }
+
+        // #210 — nested payload targets stay value-only (see the helper's doctrine).
+        checkNestedPayloadRefsValueOnly(payloadVo, root, new java.util.HashSet<>());
 
         // R3 — every @requiredSlots member must be a field on the payload VO
         if (!(template instanceof PromptTemplate prompt)) return;
@@ -3054,6 +3072,67 @@ public final class ValidationPhase {
             if (child instanceof MetaField) out.add(shortNameOf(child));
         }
         return out;
+    }
+
+    /**
+     * #210 — a template-level payload target ({@code @payloadRef} / {@code @responseRef})
+     * is an {@code object.value} OR a SOURCELESS {@code object.projection}. "Sourceless"
+     * is the #248 persistability contract: no declared/inherited {@code source.*} child
+     * (a concrete projection cannot inherit one — {@code ERR_PROJECTION_INHERITED_SOURCE}
+     * — so for a concrete projection this is simply "no own source"). Mirrors the TS
+     * {@code _isLegalPayloadTarget}.
+     */
+    private static boolean isLegalPayloadTarget(MetaObject obj) {
+        if (MetaObject.SUBTYPE_VALUE.equals(obj.getSubType())) return true;
+        if (!MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType())) return false;
+        // ADR-0039: resolving (includeParentData=true) — a source anywhere in the
+        // extends chain binds the projection to a backing store, which disqualifies
+        // it as a payload shape.
+        for (MetaData child : obj.getChildren(MetaData.class, true)) {
+            if (child instanceof MetaSource) return false;
+        }
+        return true;
+    }
+
+    /**
+     * #210 (carried forward from the #219/ADR-0044 adjudication) — NESTED payload
+     * targets stay value-only: every {@code field.object @objectRef} reachable from a
+     * template-level payload target must resolve to an {@code object.value}. The
+     * template-level widen (sourceless projections) deliberately does NOT extend to
+     * nested targets. Dangling refs are NOT reported here — the registry-derived
+     * {@code @objectRef} resolution check already owns that failure. Mirrors the TS
+     * {@code _checkNestedPayloadRefsValueOnly}.
+     */
+    private static void checkNestedPayloadRefsValueOnly(MetaObject payload, MetaRoot root,
+                                                        Set<MetaObject> visited) {
+        if (!visited.add(payload)) return;
+        // ADR-0039: resolving (includeParentData=true) — a payload shape may inherit
+        // fields via extends.
+        for (MetaData child : payload.getChildren(MetaData.class, true)) {
+            if (!(child instanceof ObjectField)) continue;
+            // ADR-0039: resolving — @objectRef may be inherited via extends.
+            if (!child.hasMetaAttr(ObjectField.ATTR_OBJECTREF)) continue;
+            Object refVal = child.getMetaAttr(ObjectField.ATTR_OBJECTREF).getValue();
+            String ref = refVal == null ? null : String.valueOf(refVal);
+            if (ref == null || ref.isEmpty()) continue;
+            // ADR-0042: a bare ref resolves in the DECLARING owner's package (an
+            // inherited field resolves in the package that declared it).
+            MetaData owner = child.getParent() instanceof MetaObject ? child.getParent() : payload;
+            String ownerPkg = owner.getPackage() == null ? "" : owner.getPackage();
+            MetaObject target = resolveRootObject(root, ref, ownerPkg);
+            if (target == null) continue; // dangling — reported by the @objectRef resolution check
+            if (!MetaObject.SUBTYPE_VALUE.equals(target.getSubType())) {
+                throw new MetaDataException(
+                    "ERR_SUBTYPE_RULE_VIOLATION"
+                        + ": payload '" + payload.getName() + "' field '" + shortNameOf(child)
+                        + "' @objectRef '" + ref + "' resolves to object." + target.getSubType()
+                        + " — a nested payload target must be an object.value (template-level refs"
+                        + " may also target a sourceless object.projection, nested refs may not)"
+                        + " (#210, ADR-0028, ADR-0044).",
+                    ErrorCode.ERR_SUBTYPE_RULE_VIOLATION, child.getSource());
+            }
+            checkNestedPayloadRefsValueOnly(target, root, visited);
+        }
     }
 
     /**

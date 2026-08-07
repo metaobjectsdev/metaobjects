@@ -1,0 +1,40 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Author",
+          "children": [
+            { "source.rdb": { "@table": "authors" } },
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "name" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "ReviewRequest",
+          "children": [
+            { "field.string": { "name": "instructions" } },
+            {
+              "field.object": {
+                "name": "author",
+                "@objectRef": "demo::Author"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "template.prompt": {
+          "name": "reviewPrompt",
+          "@payloadRef": "demo::ReviewRequest",
+          "@textRef": "prompt/review",
+          "@format": "xml"
+        }
+      }
+    ]
+  }
+}

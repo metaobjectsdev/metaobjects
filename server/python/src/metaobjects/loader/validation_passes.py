@@ -86,6 +86,7 @@ from ..meta.persistence.origin.origin_constants import (
     AGG_ALL,
     AGG_ANY,
     AGG_COLLECT,
+    ASSEMBLY_ORIGIN_SUBTYPES,
     ORIGIN_ATTR_AGG,
     ORIGIN_ATTR_CONVERT,
     ORIGIN_ATTR_DISTINCT,
@@ -1877,6 +1878,28 @@ def _validate_origin_paths(
                 else (node.fqn() if hasattr(node, "fqn") else node.name)
             )
 
+            # #210 — assembly origins live on projections. A value-hosted field
+            # may not carry origin.aggregate / origin.computed / origin.collection
+            # / origin.first: a value is constructed — by a caller or by embedding
+            # — never assembled from a backing store. origin.passthrough STAYS
+            # legal on a value (FR-015 parameter lineage; the B5 exemption).
+            if is_value_host and origin.sub_type in ASSEMBLY_ORIGIN_SUBTYPES:
+                errors.append(
+                    MetaError(
+                        f"value object '{obj.fqn()}' field '{node.name}' hosts "
+                        f"origin.{origin.sub_type} — assembly origins "
+                        f"({', '.join(ASSEMBLY_ORIGIN_SUBTYPES)}) live on "
+                        f"object.projection; a value is constructed by a caller or by "
+                        f"embedding, never assembled from a backing store. Re-host this "
+                        f"field on a sourceless object.projection; origin.passthrough "
+                        f"(FR-015 parameter lineage) remains legal on a value "
+                        f"(#210, ADR-0028)",
+                        ErrorCode.ERR_SUBTYPE_RULE_VIOLATION,
+                        envelope=origin.source,
+                    )
+                )
+                continue
+
             if origin.sub_type == ORIGIN_SUBTYPE_PASSTHROUGH:
                 from_ref = origin.attr(ORIGIN_ATTR_FROM)
                 if not isinstance(from_ref, str) or not from_ref:
@@ -2039,19 +2062,11 @@ def _validate_origin_paths(
                     if hops is not None:
                         _check_aggregate_cardinality(hops, node.name, src, errors)
                     continue
-                # FR-024 §6 — no @via on an aggregate: inference applies only when
-                # @of targets a non-base entity from a non-value host.
+                # FR-024 §6 — no @via on an aggregate: inference applies only
+                # when @of targets a non-base entity. (A value host never
+                # reaches here — the #210 assembly-origin check above already
+                # rejected it.)
                 if of_target is None:
-                    continue
-                if is_value_host:
-                    errors.append(
-                        MetaError(
-                            f"{ctx} is missing required attribute '@{ORIGIN_ATTR_VIA}' "
-                            f"(aggregates require a relationship path)",
-                            ErrorCode.ERR_INVALID_ORIGIN,
-                            envelope=src,
-                        )
-                    )
                     continue
                 base = _derive_base_entity(
                     obj, root, host_pkg, node.name, src, errors
@@ -2157,7 +2172,9 @@ def _validate_origin_paths(
                     hops = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
                     if hops is not None:
                         _check_aggregate_cardinality(hops, node.name, src, errors)
-                elif of_target is not None and not is_value_host:
+                elif of_target is not None:
+                    # (A value host never reaches here — the #210 assembly-origin
+                    # check above already rejected origin.first on a value.)
                     base = _derive_base_entity(obj, root, host_pkg, node.name, src, errors)
                     if base is not None and not _is_base_relation_target(of_target[0], base, obj):
                         hops = _infer_via_single_hop(
@@ -3040,10 +3057,76 @@ def _validate_field_map(root: MetaData, errors: list[MetaError]) -> None:
 # ---------------------------------------------------------------------------
 # Four cross-port rules:
 #   R1 — template.prompt requires @payloadRef     → ERR_MISSING_REQUIRED_ATTR
-#   R2 — @payloadRef resolves to a root-level object.value → ERR_INVALID_TEMPLATE
+#   R2 — @payloadRef resolves to a root-level object.value or sourceless
+#        object.projection (#210) → ERR_INVALID_TEMPLATE
 #   R3 — @requiredSlots entries are fields on the payload → ERR_INVALID_TEMPLATE
 #   R4 — @format (if set) is in the closed enum set → ERR_BAD_ATTR_VALUE
 #        (handled by AttrSchema.allowed_values already; included for parity).
+
+
+def _is_legal_payload_target(obj: MetaData) -> bool:
+    """#210 — a template-level payload target (@payloadRef / @responseRef) is an
+    object.value OR a SOURCELESS object.projection. "Sourceless" is the #248
+    persistability contract: no declared/inherited ``source.*`` child (a concrete
+    projection cannot inherit one — ERR_PROJECTION_INHERITED_SOURCE — so for a
+    concrete projection this is simply "no own source"). Mirrors the TS
+    ``_isLegalPayloadTarget``."""
+    if obj.sub_type == OBJECT_SUBTYPE_VALUE:
+        return True
+    if obj.sub_type != OBJECT_SUBTYPE_PROJECTION:
+        return False
+    # ADR-0039: resolving — a source anywhere in the extends chain binds the
+    # projection to a backing store, which disqualifies it as a payload shape.
+    return not any(c.type == TYPE_SOURCE for c in obj.children())
+
+
+def _check_nested_payload_refs_value_only(
+    payload: MetaData,
+    root: MetaData,
+    errors: list[MetaError],
+    visited: set[int] | None = None,
+) -> None:
+    """#210 (carried forward from the #219/ADR-0044 adjudication) — NESTED
+    payload targets stay value-only: every ``field.object @objectRef`` reachable
+    from a template-level payload target must resolve to an object.value. The
+    template-level widen (sourceless projections) deliberately does NOT extend
+    to nested targets. Dangling refs are NOT reported here — the registry-derived
+    @objectRef resolution check already owns that failure. Mirrors the TS
+    ``_checkNestedPayloadRefsValueOnly``."""
+    if visited is None:
+        visited = set()
+    if id(payload) in visited:
+        return
+    visited.add(id(payload))
+    # ADR-0039: resolving — a payload shape may inherit fields via extends.
+    for field in (c for c in payload.children() if c.type == TYPE_FIELD):
+        if field.sub_type != FIELD_SUBTYPE_OBJECT:
+            continue
+        # ADR-0039: resolving — @objectRef may be inherited via extends.
+        ref = field.get_meta_attr(FIELD_ATTR_OBJECT_REF)
+        if not isinstance(ref, str) or not ref:
+            continue
+        # ADR-0042: a bare ref resolves in the DECLARING owner's package (an
+        # inherited field resolves in the package that declared it).
+        owner = getattr(field, "parent", None) or payload
+        owner_pkg = owner.package or owner.file_default_package or ""
+        target = resolve_object_ref(root, ref, owner_pkg)
+        if target is None:
+            continue  # dangling — reported by the @objectRef resolution check
+        if target.sub_type != OBJECT_SUBTYPE_VALUE:
+            errors.append(MetaError(
+                code=ErrorCode.ERR_SUBTYPE_RULE_VIOLATION,
+                message=(
+                    f"payload '{payload.fqn()}' field '{field.name}' @objectRef "
+                    f"'{ref}' resolves to {TYPE_OBJECT}.{target.sub_type} — a nested "
+                    f"payload target must be an object.value (template-level refs may "
+                    f"also target a sourceless object.projection, nested refs may not) "
+                    f"(#210, ADR-0028, ADR-0044)"
+                ),
+                envelope=field.source,
+            ))
+            continue
+        _check_nested_payload_refs_value_only(target, root, errors, visited)
 
 
 def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
@@ -3133,20 +3216,25 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
         if not has_payload_ref:
             continue
 
-        # R2 — @payloadRef must resolve to a root-level object.value
+        # R2 — @payloadRef must resolve to a root-level object.value or
+        # sourceless object.projection (#210 — a SOURCED projection stays illegal).
         # FR5d — @payloadRef is a reference; emit format=resolved with
         # referrer=template FQN, target=the unresolved payloadRef string.
         payload = resolve_object_ref(root, payload_ref, referrer_pkg)
-        if payload is None or payload.sub_type != OBJECT_SUBTYPE_VALUE:
+        if payload is None or not _is_legal_payload_target(payload):
             errors.append(MetaError(
                 code=ErrorCode.ERR_INVALID_TEMPLATE,
                 message=(
                     f"template '{tpl.name}' @payloadRef '{payload_ref}' "
-                    f"does not resolve to an object.value at root"
+                    f"does not resolve to an object.value or sourceless "
+                    f"object.projection at root"
                 ),
                 envelope=resolved_source(tpl.source, tpl.fqn(), payload_ref),
             ))
             continue
+
+        # #210 — nested payload targets stay value-only (see the helper's doctrine).
+        _check_nested_payload_refs_value_only(payload, root, errors)
 
         # R3 — required-slots membership
         if is_prompt:

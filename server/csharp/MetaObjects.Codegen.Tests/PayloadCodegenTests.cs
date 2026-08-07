@@ -23,7 +23,7 @@ public class PayloadCodegenTests
           { "object.value": { "name": "PostBrief", "children": [
             { "field.string": { "name": "title" } }
           ]}},
-          { "object.value": { "name": "AuthorBrief", "children": [
+          { "object.projection": { "name": "AuthorBrief", "children": [
             { "field.string": { "name": "displayName" } },
             { "field.int": { "name": "postCount" } },
             { "field.object": { "name": "posts", "isArray": true, "@objectRef": "PostBrief",
@@ -66,7 +66,7 @@ public class PayloadCodegenTests
           { "object.value": { "name": "PostBrief", "children": [
             { "field.string": { "name": "title" } }
           ]}},
-          { "object.value": { "name": "AuthorBrief", "children": [
+          { "object.projection": { "name": "AuthorBrief", "children": [
             { "field.string": { "name": "displayName" } },
             { "field.object": { "name": "posts", "isArray": true, "@objectRef": "acme::ai::PostBrief",
               "children": [ { "origin.collection": { "@via": "Author.posts" } } ] } }

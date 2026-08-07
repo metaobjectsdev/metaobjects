@@ -159,7 +159,7 @@ public sealed class PayloadGeneratorTests
 
     // #270 reference-emitter pin — C# is one of the two genuinely origin-blind REFERENCE
     // payload emitters the Kotlin / Python / Java ports converged on, but nothing gated
-    // that: this pins that an `origin.*` child on a payload VO field is IGNORED for
+    // that: this pins that an `origin.*` child on a payload-shape field is IGNORED for
     // typing — the declared `field.<subType>` + `isArray` + `@objectRef` win — so a
     // future change cannot drift this reference into origin dispatch (the drift that
     // let three ports diverge in the first place). Test-only: product code untouched.
@@ -182,7 +182,8 @@ public sealed class PayloadGeneratorTests
           { "object.value": { "name": "Highlight", "children": [
             { "field.string": { "name": "snippet" } }
           ]}},
-          { "object.value": { "name": "Digest", "children": [
+          { "object.projection": { "name": "Digest", "children": [
+            { "field.string": { "name": "displayName", "extends": "Source.displayName" } },
             { "field.int": { "name": "alias", "children": [
               { "origin.passthrough": { "@from": "Source.displayName", "@convert": true } }
             ]}},

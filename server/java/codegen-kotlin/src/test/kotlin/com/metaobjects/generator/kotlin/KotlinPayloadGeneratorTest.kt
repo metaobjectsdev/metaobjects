@@ -136,7 +136,7 @@ class KotlinPayloadGeneratorTest {
             { "object.entity": { "name": "Post", "children": [
                 { "field.long": { "name": "id" } }
             ] } },
-            { "object.value": { "name": "AuthorSummary", "children": [
+            { "object.projection": { "name": "AuthorSummary", "children": [
                 { "field.int": { "name": "postCount", "children": [
                     { "origin.aggregate": {
                         "@agg": "count", "@of": "Post.id", "@via": "Author.posts" } }
@@ -179,7 +179,7 @@ class KotlinPayloadGeneratorTest {
                 { "field.long":   { "name": "id" } },
                 { "field.long":   { "name": "score" } }
             ] } },
-            { "object.value": { "name": "AuthorSummary", "children": [
+            { "object.projection": { "name": "AuthorSummary", "children": [
                 { "field.float": { "name": "avgScore", "children": [
                     { "origin.aggregate": {
                         "@agg": "avg", "@of": "Post.score", "@via": "Author.posts" } }
@@ -224,7 +224,7 @@ class KotlinPayloadGeneratorTest {
                 { "field.long":   { "name": "id" } },
                 { "field.string": { "name": "title" } }
             ] } },
-            { "object.value": { "name": "AuthorDetail", "children": [
+            { "object.projection": { "name": "AuthorDetail", "children": [
                 { "field.string": { "name": "posts", "children": [
                     { "origin.collection": { "@via": "Author.posts" } }
                 ] } }
@@ -280,7 +280,7 @@ class KotlinPayloadGeneratorTest {
             { "object.value": { "name": "Highlight", "children": [
                 { "field.string": { "name": "snippet" } }
             ] } },
-            { "object.value": { "name": "AuthorDigest", "children": [
+            { "object.projection": { "name": "AuthorDigest", "children": [
                 { "field.object": { "name": "posts", "@objectRef": "Highlight",
                     "isArray": true, "children": [
                     { "origin.collection": { "@via": "Author.posts" } }
@@ -324,7 +324,9 @@ class KotlinPayloadGeneratorTest {
     }
 
     @Test fun `issue-195 origins hosted on a payload VO are ignored — declared types win (issue-270)`() {
-        // #270 — the four #195 origins, hosted on a payload VO, are IGNORED for typing:
+        // #270 — the four #195 origins, hosted on a payload shape, are IGNORED for typing:
+        // (#210: the host is a SOURCELESS object.projection — assembly origins are illegal
+        // on an object.value, and a template-level @payloadRef may target the projection.)
         // every field types from its DECLARED `field.<subType>` + `isArray`, non-null
         // (the payload emitter's declared-path default — nullability never comes from
         // origin semantics: no more "first is nullable" / "computed is conservatively
@@ -339,6 +341,7 @@ class KotlinPayloadGeneratorTest {
           "metadata.root": { "package": "acme::demo", "children": [
             { "object.entity": { "name": "Author", "children": [
                 { "field.long":   { "name": "id" } },
+                { "field.string": { "name": "bio" } },
                 { "relationship.aggregation": { "name": "posts",
                     "@objectRef": "Post", "@cardinality": "many" } }
             ] } },
@@ -346,8 +349,8 @@ class KotlinPayloadGeneratorTest {
                 { "field.long":   { "name": "id" } },
                 { "field.string": { "name": "category" } }
             ] } },
-            { "object.value": { "name": "AuthorSummary", "children": [
-                { "field.string": { "name": "bio" } },
+            { "object.projection": { "name": "AuthorSummary", "children": [
+                { "field.string": { "name": "bio", "extends": "Author.bio" } },
                 { "field.boolean": { "name": "hasAnyPost", "children": [
                     { "origin.aggregate": { "@agg": "any", "@via": "Author.posts",
                         "@filter": { "category": "tech" } } }

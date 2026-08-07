@@ -93,16 +93,35 @@ public final class SpringNaming {
     }
 
     /**
-     * Resolve {@code ref} to its {@code object.value} target under the same ADR-0042
-     * package-local contract as {@link #resolveObjectRef} (rejects entities / other
-     * subtypes). The shared home for every {@code @payloadRef}/{@code @responseRef}
-     * resolution in this package — callers derive {@code referrerPkg} via
+     * Resolve {@code ref} to its payload-shape target under the same ADR-0042
+     * package-local contract as {@link #resolveObjectRef}. #210 — a template-level
+     * payload target is an {@code object.value} OR a SOURCELESS
+     * {@code object.projection} (rejects entities and sourced projections; the
+     * loader enforces the same set). The shared home for every
+     * {@code @payloadRef}/{@code @responseRef} resolution in this package — callers
+     * derive {@code referrerPkg} via
      * {@code MetaDataUtil.findPackageForMetaData(referrerNode)} (walks parents, so it
      * works for both a root-level template and a nested {@code template.prompt}).
      */
     public static MetaObject resolveValueObjectRef(MetaDataLoader loader, String ref, String referrerPkg) {
         MetaObject obj = resolveObjectRef(loader, ref, referrerPkg);
-        return (obj != null && MetaObject.SUBTYPE_VALUE.equals(obj.getSubType())) ? obj : null;
+        return (obj != null && isLegalPayloadTarget(obj)) ? obj : null;
+    }
+
+    /**
+     * #210 — a template-level payload target ({@code @payloadRef} / {@code @responseRef})
+     * is an {@code object.value} OR a SOURCELESS {@code object.projection}.
+     * "Sourceless" is the #248 persistability contract: no declared/inherited
+     * {@code source.*} child (a concrete projection cannot inherit one —
+     * {@code ERR_PROJECTION_INHERITED_SOURCE}). Nested {@code field.object @objectRef}
+     * targets stay value-only (the loader enforces both halves).
+     */
+    public static boolean isLegalPayloadTarget(MetaObject obj) {
+        if (MetaObject.SUBTYPE_VALUE.equals(obj.getSubType())) return true;
+        if (!MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType())) return false;
+        // ADR-0039: resolving (includeParentData=true) — a source anywhere in the
+        // extends chain binds the projection to a backing store, disqualifying it.
+        return obj.getChildren(com.metaobjects.source.MetaSource.class, true).isEmpty();
     }
 
     /**

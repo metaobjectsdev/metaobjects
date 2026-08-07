@@ -115,7 +115,7 @@ class KotlinGenUtilTest {
                 { "field.long":   { "name": "id" } },
                 { "field.string": { "name": "internalNotes" } }
             ] } },
-            { "object.value": { "name": "Digest", "children": [
+            { "object.projection": { "name": "Digest", "children": [
                 { "field.object": { "name": "fromAlpha",
                     "@objectRef": "acme::alpha::Note", "children": [
                     { "origin.collection": { "@via": "Author.posts" } }
@@ -152,7 +152,7 @@ class KotlinGenUtilTest {
                 { "relationship.aggregation": { "name": "notes",
                     "@objectRef": "acme::beta::Note", "@cardinality": "many" } }
             ] } },
-            { "object.value": { "name": "Digest", "children": [
+            { "object.projection": { "name": "Digest", "children": [
                 { "field.object": { "name": "fromAlpha",
                     "@objectRef": "acme::alpha::Note" } },
                 { "field.string": { "name": "posts", "children": [

@@ -74,11 +74,28 @@ public object KotlinGenUtil {
     }
 
     /**
-     * Resolve [ref] to its `object.value` target under the same ADR-0042 package-local
-     * contract as [resolveObjectRef] (rejects entities — a @payloadRef must be a VO).
+     * Resolve [ref] to its payload-shape target under the same ADR-0042 package-local
+     * contract as [resolveObjectRef]. #210 — a template-level payload target is an
+     * `object.value` OR a SOURCELESS `object.projection` (rejects entities and sourced
+     * projections; the loader enforces the same set). Nested `field.object @objectRef`
+     * targets stay value-only ([nestedTargetOf]).
      */
     fun resolveValueObjectRef(loader: MetaDataLoader, ref: String?, referrerPkg: String?): MetaObject? =
-        resolveObjectRef(loader, ref, referrerPkg)?.takeIf { it.subType == MetaObject.SUBTYPE_VALUE }
+        resolveObjectRef(loader, ref, referrerPkg)?.takeIf { isLegalPayloadTarget(it) }
+
+    /**
+     * #210 — a template-level payload target (@payloadRef / @responseRef) is an
+     * `object.value` OR a SOURCELESS `object.projection`. "Sourceless" is the #248
+     * persistability contract: no declared/inherited `source.*` child (a concrete
+     * projection cannot inherit one — `ERR_PROJECTION_INHERITED_SOURCE`).
+     */
+    fun isLegalPayloadTarget(obj: MetaObject): Boolean {
+        if (obj.subType == MetaObject.SUBTYPE_VALUE) return true
+        if (obj.subType != MetaObject.SUBTYPE_PROJECTION) return false
+        // ADR-0039: resolving — a source anywhere in the extends chain binds the
+        // projection to a backing store, which disqualifies it as a payload shape.
+        return obj.getSources(true).isEmpty()
+    }
 
     /**
      * The first `source.rdb` child of [obj], RESOLVED through the `extends` super chain
@@ -386,10 +403,13 @@ public object KotlinGenUtil {
      * The nested-payload target VO a [field] contributes to the closure, or `null` when it
      * contributes no nested class. The ONLY closure edge is a declared
      * `field.object @objectRef` whose target is an `object.value` (#270 — an `origin.*`
-     * child never contributes an edge; a non-object field contributes nothing). NOTE: the
-     * `field.objectRef` navigation uses the loader-bound `objectRef` — the field-navigation
-     * ref kind (#244's domain), intentionally NOT the ADR-0042 @payloadRef resolver (which
-     * is only for the template's own @payloadRef).
+     * child never contributes an edge; a non-object field contributes nothing). #210 —
+     * DELIBERATELY value-only: the template-level widen ([resolveValueObjectRef] accepting
+     * a sourceless `object.projection`) does NOT extend to nested targets (the loader
+     * fail-closes the same rule). NOTE: the `field.objectRef` navigation uses the
+     * loader-bound `objectRef` — the field-navigation ref kind (#244's domain),
+     * intentionally NOT the ADR-0042 @payloadRef resolver (which is only for the
+     * template's own @payloadRef).
      */
     private fun nestedTargetOf(field: MetaField<*>): MetaObject? {
         if (field is ObjectField) {

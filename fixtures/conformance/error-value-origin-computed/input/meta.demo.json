@@ -1,0 +1,27 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.value": {
+          "name": "CallSummary",
+          "children": [
+            { "field.string": { "name": "label" } },
+            {
+              "field.boolean": {
+                "name": "hasPayload",
+                "children": [
+                  {
+                    "origin.computed": {
+                      "@expr": { "op": "isNotNull", "arg": { "field": "payloadJson" } }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

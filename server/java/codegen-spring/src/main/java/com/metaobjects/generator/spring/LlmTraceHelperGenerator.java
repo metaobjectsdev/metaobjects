@@ -157,7 +157,7 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
         if (responseVo == null) {
             throw new GeneratorException(
                 "trace-helper: entity \"" + entity.getName() + "\" prompt @responseRef \""
-                    + responseRef + "\" does not resolve to an object.value");
+                    + responseRef + "\" does not resolve to an object.value or sourceless object.projection");
         }
 
         String[] split = SpringNaming.splitFqn(entity.getName());

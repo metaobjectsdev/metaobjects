@@ -103,7 +103,9 @@ function collectClosure(
 /** Resolve `ref`'s emitted TS interface name under the ADR-0044 naming rule,
  *  scoped to `ref`'s OWN reference closure (the same closure
  *  `generatePayloadInterfaces(root, ref, referrerPkg)` would emit). Returns
- *  undefined when `ref` does not resolve to an object.value. */
+ *  undefined when `ref` does not resolve to an object.value or sourceless
+ *  object.projection (#210 — the loader enforces the legal template-level
+ *  target set; nested targets stay value-only). */
 function resolveEmittedName(root: MetaData, ref: string, referrerPkg: string): string | undefined {
   const vo = findObject(root, ref, referrerPkg);
   if (!vo) return undefined;

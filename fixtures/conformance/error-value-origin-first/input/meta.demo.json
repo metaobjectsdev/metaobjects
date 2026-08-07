@@ -1,0 +1,29 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.value": {
+          "name": "AuthorDigest",
+          "children": [
+            { "field.string": { "name": "displayName" } },
+            {
+              "field.string": {
+                "name": "latestTitle",
+                "children": [
+                  {
+                    "origin.first": {
+                      "@of": "demo::Post.title",
+                      "@via": "demo::Author.posts",
+                      "@orderBy": ["createdAt:desc"]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

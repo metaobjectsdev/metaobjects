@@ -106,7 +106,7 @@ open class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         val payloadVo = KotlinGenUtil.resolveValueObjectRef(loader, payloadRef, template.getPackage())
         if (payloadVo == null) {
             LOG.warn(
-                "skipping extractor for {} — @payloadRef '{}' does not resolve to an object.value",
+                "skipping extractor for {} — @payloadRef '{}' does not resolve to an object.value or sourceless object.projection",
                 template.name, payloadRef
             )
             return

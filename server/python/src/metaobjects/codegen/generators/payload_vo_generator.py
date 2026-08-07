@@ -54,12 +54,15 @@ from metaobjects.codegen.type_map import py_type_for
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
-from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_VALUE
+from metaobjects.meta.core.object.object_constants import (
+    OBJECT_SUBTYPE_PROJECTION,
+    OBJECT_SUBTYPE_VALUE,
+)
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.template import template_constants as tc
 from metaobjects.meta.template.meta_template import MetaTemplate
 from metaobjects.naming_refs import resolve_object_ref
-from metaobjects.shared.base_types import TYPE_TEMPLATE
+from metaobjects.shared.base_types import TYPE_SOURCE, TYPE_TEMPLATE
 from metaobjects.shared.separators import PACKAGE_SEP
 
 _GENERATOR_NAME = "payload-vo-generator"
@@ -115,12 +118,14 @@ def _pkg_of(node: MetaData) -> str:
 
 
 def resolve_payload_vo(root: MetaData, ref: str, referrer_pkg: str) -> MetaObject | None:
-    """Resolve a ``@payloadRef`` to its ``object.value``, PACKAGE-LOCAL (ADR-0042) —
+    """Resolve a ``@payloadRef`` to its payload shape, PACKAGE-LOCAL (ADR-0042) —
     the SAME canonical ``resolve_object_ref`` contract the loader's own
     ``_validate_templates`` pass already uses to validate this exact ref
     (``loader/validation_passes.py`` — an FQN resolves exactly; a bare ref resolves
     in the referrer's own package first, else a root-level object). Rejects
-    entities — payloads MUST be value-objects (same contract as Kotlin).
+    entities and sourced projections — a template-level payload target is an
+    ``object.value`` or sourceless ``object.projection`` (#210; same contract as
+    Kotlin).
 
     *referrer_pkg* is the REFERENCING TEMPLATE's own effective package — pass
     ``_pkg_of(template)`` (this module's ancestor-walk-aware helper, via
@@ -139,11 +144,30 @@ def resolve_payload_vo(root: MetaData, ref: str, referrer_pkg: str) -> MetaObjec
     across packages resolved to whichever same-bare-named ``object.value`` happened
     to load first, regardless of which package the referencing template belonged
     to — a "wrong node" mismatch against the loader, which ALREADY validates this
-    exact ref package-local. Now both agree."""
+    exact ref package-local. Now both agree.
+
+    #210 — widened: a template-level payload target is an ``object.value`` OR a
+    SOURCELESS ``object.projection`` (the loader enforces the same set; nested
+    ``field.object @objectRef`` targets stay value-only)."""
     obj = resolve_object_ref(root, ref, referrer_pkg)
-    if not isinstance(obj, MetaObject) or obj.sub_type != OBJECT_SUBTYPE_VALUE:
+    if not isinstance(obj, MetaObject) or not is_legal_payload_target(obj):
         return None
     return obj
+
+
+def is_legal_payload_target(obj: MetaData) -> bool:
+    """#210 — a template-level payload target (``@payloadRef``/``@responseRef``) is
+    an ``object.value`` OR a SOURCELESS ``object.projection`` ("sourceless" per the
+    #248 persistability contract: no declared/inherited ``source.*`` child; a
+    concrete projection cannot inherit one — ``ERR_PROJECTION_INHERITED_SOURCE``).
+    Mirrors the loader's ``_is_legal_payload_target``."""
+    if obj.sub_type == OBJECT_SUBTYPE_VALUE:
+        return True
+    if obj.sub_type != OBJECT_SUBTYPE_PROJECTION:
+        return False
+    # ADR-0039: resolving — a source anywhere in the extends chain binds the
+    # projection to a backing store, which disqualifies it as a payload shape.
+    return not any(c.type == TYPE_SOURCE for c in obj.children())
 
 
 def is_field_required(field: MetaField) -> bool:

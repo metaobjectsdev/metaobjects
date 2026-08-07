@@ -167,8 +167,9 @@ def _field_tree_literal(fields: list[PayloadField]) -> str:
 def _resolve_payload_vo(
     root: MetaData, payload_ref: str, referrer_pkg: str
 ) -> MetaObject | None:
-    """``@payloadRef`` must resolve to an ``object.value`` — delegates to the ONE
-    shared canonical resolver every other generator uses
+    """``@payloadRef`` must resolve to an ``object.value`` or sourceless
+    ``object.projection`` (#210) — delegates to the ONE shared canonical resolver
+    every other generator uses
     (:func:`~metaobjects.codegen.generators.payload_vo_generator.resolve_payload_vo`),
     which routes through ``naming_refs.resolve_object_ref`` (ADR-0042 package-local:
     an FQN resolves exactly; a bare ref resolves in *referrer_pkg* first, else a
@@ -264,7 +265,8 @@ class RenderHelperGenerator:
             if vo is None:
                 ctx.warn(
                     f"{_GENERATOR_NAME}: template.output '{tmpl.name}' @payloadRef "
-                    f"'{payload_ref}' does not resolve to an object.value — skipped."
+                    f"'{payload_ref}' does not resolve to an object.value or "
+                    f"sourceless object.projection — skipped."
                 )
                 continue
             # _emit_helper runs the build-time drift gate first and RAISES (fails

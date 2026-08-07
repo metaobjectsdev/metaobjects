@@ -199,7 +199,10 @@ def test_render_raises_when_response_ref_unresolvable() -> None:
     root = MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "test")
     for c in (base, entity):
         root.add_child(c)
-    with pytest.raises(ValueError, match="does not resolve to an object.value"):
+    with pytest.raises(
+        ValueError,
+        match="does not resolve to an object.value or sourceless object.projection",
+    ):
         render_trace_helper(entity, root)
 
 

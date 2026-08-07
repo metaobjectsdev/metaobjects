@@ -418,6 +418,24 @@ public static class ValidationPasses
                 foreach (var origin in field.OwnChildren()
                              .Where(c => c.Type == TYPE_ORIGIN))
                 {
+                    // #210 — assembly origins live on projections. A value-hosted
+                    // field may not carry origin.aggregate / origin.computed /
+                    // origin.collection / origin.first: a value is constructed —
+                    // by a caller or by embedding — never assembled from a backing
+                    // store. origin.passthrough STAYS legal on a value (FR-015
+                    // parameter lineage; the B5 exemption above).
+                    if (isValueHost && ASSEMBLY_ORIGIN_SUBTYPES.Contains(origin.SubType))
+                    {
+                        errors.Add(new MetaError(
+                            $"value object '{obj.Fqn()}' field '{field.Name}' hosts origin.{origin.SubType} — " +
+                            "assembly origins (aggregate, computed, collection, first) live on " +
+                            "object.projection; a value is constructed by a caller or by embedding, " +
+                            "never assembled from a backing store. Re-host this field on a sourceless " +
+                            "object.projection; origin.passthrough (FR-015 parameter lineage) remains " +
+                            "legal on a value (#210, ADR-0028)",
+                            ErrorCode.ERR_SUBTYPE_RULE_VIOLATION, Envelope: origin.Source));
+                        continue;
+                    }
                     if (origin.SubType == ORIGIN_SUBTYPE_PASSTHROUGH)
                     {
                         var fromObj = origin.OwnAttr(ORIGIN_PASSTHROUGH_ATTR_FROM);
@@ -569,16 +587,10 @@ public static class ValidationPasses
                             continue;
                         }
                         // FR-024 §6 — no @via on an aggregate: inference applies only
-                        // when @of targets a non-base entity from a non-value host.
+                        // when @of targets a non-base entity. (A value host never
+                        // reaches here — the #210 assembly-origin check above already
+                        // rejected it.)
                         if (ofTarget is not ResolvedFromTarget oft) continue; // @of did not resolve
-                        if (isValueHost)
-                        {
-                            errors.Add(new MetaError(
-                                $"origin.aggregate on {obj.Name}.{field.Name}: missing @via " +
-                                "(aggregates require a relationship path).",
-                                ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
-                            continue;
-                        }
                         var aggBase = DeriveBaseEntity(obj, root, field.Name, src, errors);
                         if (aggBase is null) continue; // base underivable — error already pushed
                         if (IsBaseRelationTarget(oft.Entity, aggBase, obj))
@@ -668,8 +680,10 @@ public static class ValidationPasses
                             var hops = ValidateViaPath(via, root, obj, field.Name, errors, src);
                             if (hops is not null) CheckAggregateCardinality(hops, obj, field.Name, src, errors);
                         }
-                        else if (ofTarget is ResolvedFromTarget inferTarget && !isValueHost)
+                        else if (ofTarget is ResolvedFromTarget inferTarget)
                         {
+                            // (A value host never reaches here — the #210 assembly-origin
+                            // check above already rejected origin.first on a value.)
                             var firstBase = DeriveBaseEntity(obj, root, field.Name, src, errors);
                             if (firstBase is not null && !IsBaseRelationTarget(inferTarget.Entity, firstBase, obj))
                             {
@@ -2948,17 +2962,22 @@ public static class ValidationPasses
 
             // ADR-0042 — a bare @payloadRef resolves in the template's package (else root-level);
             // an FQN resolves exactly. Shares the single NamingRefs.ResolveObjectRef matcher.
+            // #210 — a template-level payload target widened to object.value OR a
+            // sourceless object.projection (a SOURCED projection stays illegal).
             var payload = NamingRefs.ResolveObjectRef(root, payloadRef, NamingRefs.EffectivePackage(tmpl));
-            if (payload is null || payload.SubType != OBJECT_SUBTYPE_VALUE)
+            if (payload is null || !IsLegalPayloadTarget(payload))
             {
                 // FR5d — @payloadRef is a reference; emit format=resolved with
                 // referrer = template FQN, target = the unresolved payloadRef.
                 errors.Add(new MetaError(
-                    $"template \"{tmpl.Name}\" @payloadRef \"{payloadRef}\" does not resolve to an object.value at root",
+                    $"template \"{tmpl.Name}\" @payloadRef \"{payloadRef}\" does not resolve to an object.value or sourceless object.projection at root",
                     ErrorCode.ERR_INVALID_TEMPLATE,
                     Envelope: ResolvedSource.From(tmpl.Source, tmpl.Fqn(), payloadRef)));
                 continue;
             }
+
+            // #210 — nested payload targets stay value-only (see the helper's doctrine).
+            CheckNestedPayloadRefsValueOnly(payload, root, errors, new HashSet<MetaData>());
 
             // Use Children() (effective) so inherited payload fields are visible.
             var fieldNames = new HashSet<string>(
@@ -2989,6 +3008,61 @@ public static class ValidationPasses
         }
 
         return errors.AsReadOnly();
+    }
+
+    /// <summary>
+    /// #210 — a template-level payload target (@payloadRef / @responseRef) is an
+    /// object.value OR a SOURCELESS object.projection. "Sourceless" is the #248
+    /// persistability contract: no declared/inherited source.* child (a concrete
+    /// projection cannot inherit one — ERR_PROJECTION_INHERITED_SOURCE — so for a
+    /// concrete projection this is simply "no own source"). Mirrors the TS
+    /// _isLegalPayloadTarget.
+    /// </summary>
+    private static bool IsLegalPayloadTarget(MetaData obj)
+    {
+        if (obj.SubType == OBJECT_SUBTYPE_VALUE) return true;
+        if (obj.SubType != OBJECT_SUBTYPE_PROJECTION) return false;
+        // ADR-0039: resolving — a source anywhere in the extends chain binds the
+        // projection to a backing store, which disqualifies it as a payload shape.
+        return !obj.Children().Any(c => c.Type == TYPE_SOURCE);
+    }
+
+    /// <summary>
+    /// #210 (carried forward from the #219/ADR-0044 adjudication) — NESTED payload
+    /// targets stay value-only: every field.object @objectRef reachable from a
+    /// template-level payload target must resolve to an object.value. The
+    /// template-level widen (sourceless projections) deliberately does NOT extend
+    /// to nested targets. Dangling refs are NOT reported here — the registry-derived
+    /// @objectRef resolution check already owns that failure. Mirrors the TS
+    /// _checkNestedPayloadRefsValueOnly.
+    /// </summary>
+    private static void CheckNestedPayloadRefsValueOnly(
+        MetaData payload, MetaData root, List<MetaError> errors, HashSet<MetaData> visited)
+    {
+        if (!visited.Add(payload)) return;
+        // ADR-0039: resolving — a payload shape may inherit fields via extends.
+        foreach (var field in payload.Children().Where(c => c.Type == TYPE_FIELD))
+        {
+            if (field.SubType != FIELD_SUBTYPE_OBJECT) continue;
+            // ADR-0039: resolving — @objectRef may be inherited via extends.
+            if (field.Attr(FIELD_ATTR_OBJECT_REF) is not string @ref || @ref == "") continue;
+            // ADR-0042: a bare ref resolves in the DECLARING owner's package (an
+            // inherited field resolves in the package that declared it).
+            var owner = field.Parent ?? payload;
+            var target = NamingRefs.ResolveObjectRef(root, @ref, NamingRefs.EffectivePackage(owner));
+            if (target is null) continue; // dangling — reported by the @objectRef resolution check
+            if (target.SubType != OBJECT_SUBTYPE_VALUE)
+            {
+                errors.Add(new MetaError(
+                    $"payload '{payload.Fqn()}' field '{field.Name}' @objectRef '{@ref}' resolves to " +
+                    $"{TYPE_OBJECT}.{target.SubType} — a nested payload target must be an object.value " +
+                    "(template-level refs may also target a sourceless object.projection, nested refs " +
+                    "may not) (#210, ADR-0028, ADR-0044)",
+                    ErrorCode.ERR_SUBTYPE_RULE_VIOLATION, Envelope: field.Source));
+                continue;
+            }
+            CheckNestedPayloadRefsValueOnly(target, root, errors, visited);
+        }
     }
 
     // =========================================================================

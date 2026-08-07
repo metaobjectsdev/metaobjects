@@ -260,7 +260,7 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
                 { "object.entity": { "name": "Post", "children": [
                     { "field.long": { "name": "id" } }
                 ] } },
-                { "object.value": { "name": "AuthorSummary", "children": [
+                { "object.projection": { "name": "AuthorSummary", "children": [
                     { "field.int": { "name": "postCount", "children": [
                         { "origin.aggregate": {
                             "@agg": "count", "@of": "Post.id", "@via": "Author.posts" } }
@@ -307,7 +307,7 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
                     { "field.long":   { "name": "id" } },
                     { "field.long":   { "name": "score" } }
                 ] } },
-                { "object.value": { "name": "AuthorSummary", "children": [
+                { "object.projection": { "name": "AuthorSummary", "children": [
                     { "field.float": { "name": "avgScore", "children": [
                         { "origin.aggregate": {
                             "@agg": "avg", "@of": "Post.score", "@via": "Author.posts" } }
@@ -353,7 +353,7 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
                     { "field.long":   { "name": "id" } },
                     { "field.long":   { "name": "score" } }
                 ] } },
-                { "object.value": { "name": "AuthorSummary", "children": [
+                { "object.projection": { "name": "AuthorSummary", "children": [
                     { "field.int": { "name": "totalScore", "children": [
                         { "origin.aggregate": {
                             "@agg": "sum", "@of": "Post.score", "@via": "Author.posts" } }
@@ -402,7 +402,7 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
                     { "field.long":   { "name": "id" } },
                     { "field.string": { "name": "title" } }
                 ] } },
-                { "object.value": { "name": "AuthorDetail", "children": [
+                { "object.projection": { "name": "AuthorDetail", "children": [
                     { "field.string": { "name": "posts", "children": [
                         { "origin.collection": { "@via": "Author.posts" } }
                     ] } }
@@ -452,12 +452,12 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
                     { "field.long":   { "name": "id" } },
                     { "field.string": { "name": "title" } }
                 ] } },
-                { "object.value": { "name": "AuthorDetail", "children": [
+                { "object.projection": { "name": "AuthorDetail", "children": [
                     { "field.string": { "name": "posts", "children": [
                         { "origin.collection": { "@via": "Author.posts" } }
                     ] } }
                 ] } },
-                { "object.value": { "name": "AuthorOverview", "children": [
+                { "object.projection": { "name": "AuthorOverview", "children": [
                     { "field.string": { "name": "posts", "children": [
                         { "origin.collection": { "@via": "Author.posts" } }
                     ] } }
@@ -507,7 +507,7 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
         String fixture = """
             {
               "metadata.root": { "package": "acme::demo", "children": [
-                { "object.value": { "name": "TagList", "children": [
+                { "object.projection": { "name": "TagList", "children": [
                     { "field.string": { "name": "title" } },
                     { "field.string": { "name": "tags", "isArray": true } }
                 ] } },
@@ -560,7 +560,7 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
                     { "field.long":   { "name": "id" } },
                     { "field.string": { "name": "internalNotes" } }
                 ] } },
-                { "object.value": { "name": "TagList", "children": [
+                { "object.projection": { "name": "TagList", "children": [
                     { "field.string": { "name": "tags", "isArray": true, "children": [
                         { "origin.collection": { "@via": "Author.posts" } }
                     ] } }
@@ -619,7 +619,7 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
                 { "object.value": { "name": "Highlight", "children": [
                     { "field.string": { "name": "snippet" } }
                 ] } },
-                { "object.value": { "name": "AuthorDigest", "children": [
+                { "object.projection": { "name": "AuthorDigest", "children": [
                     { "field.object": { "name": "posts", "@objectRef": "Highlight",
                         "isArray": true, "children": [
                         { "origin.collection": { "@via": "Author.posts" } }
@@ -707,7 +707,7 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
                     { "field.long":   { "name": "id" } },
                     { "field.string": { "name": "internalNotes" } }
                 ] } },
-                { "object.value": { "name": "Digest", "children": [
+                { "object.projection": { "name": "Digest", "children": [
                     { "field.object": { "name": "fromAlpha",
                         "@objectRef": "acme::alpha::Note", "children": [
                         { "origin.collection": { "@via": "Author.posts" } }
@@ -786,7 +786,7 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
                     { "relationship.aggregation": { "name": "notes",
                         "@objectRef": "acme::beta::Note", "@cardinality": "many" } }
                 ] } },
-                { "object.value": { "name": "Digest", "children": [
+                { "object.projection": { "name": "Digest", "children": [
                     { "field.object": { "name": "fromAlpha",
                         "@objectRef": "acme::alpha::Note" } },
                     { "field.string": { "name": "posts", "children": [

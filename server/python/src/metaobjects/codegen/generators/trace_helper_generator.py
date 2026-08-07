@@ -128,7 +128,8 @@ def render_trace_helper(entity: MetaObject, root: MetaData) -> str | None:
     neither ``@responseRef`` nor ``@payloadRef``).
 
     Raises ``ValueError`` when the prompt's ``@responseRef`` does not resolve to an
-    ``object.value`` (matching the Java port's hard ``GeneratorException``)."""
+    ``object.value`` or sourceless ``object.projection`` (#210; matching the Java
+    port's hard ``GeneratorException``)."""
     if entity.is_abstract:
         return None
     if not _extends_base(entity):
@@ -158,7 +159,8 @@ def render_trace_helper(entity: MetaObject, root: MetaData) -> str | None:
     if response_ref is not None and response_vo is None:
         raise ValueError(
             f"{_GENERATOR_NAME}: entity {entity.name!r} prompt @responseRef "
-            f"{response_ref!r} does not resolve to an object.value"
+            f"{response_ref!r} does not resolve to an object.value or sourceless "
+            f"object.projection"
         )
 
     entity_name = entity.name
