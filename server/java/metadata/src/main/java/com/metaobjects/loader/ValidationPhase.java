@@ -73,6 +73,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Post-load validation phase — runs after all sources are parsed and before the
@@ -964,7 +965,7 @@ public final class ValidationPhase {
     // framework — same reason field.enum uses a post-load pass).
     //
     //   @kind must be one of: table / view / materializedView / storedProc / tableFunction
-    //   @role must be one of: primary / replica / index / cache / publish / mirror
+    //   @role must be one of MetaSource.VALID_ROLES: primary / replica
     //
     // Missing attrs are fine (defaults apply); only explicitly-set bad values fail.
     // =========================================================================
@@ -1026,7 +1027,11 @@ public final class ValidationPhase {
                     ErrorMessageConstants.ERR_BAD_ATTR_VALUE
                         + ": source '" + node.getName()
                         + "' @role '" + role
-                        + "' is not a valid value; allowed: primary, replica, index, cache, publish, mirror",
+                        // Derived from the registered set (sorted for a deterministic
+                        // message — Set.of iteration order is unspecified) so the
+                        // diagnostic can never drift from MetaSource.VALID_ROLES again.
+                        + "' is not a valid value; allowed: "
+                        + String.join(", ", new TreeSet<>(MetaSource.VALID_ROLES)),
                     ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
             }
         }
