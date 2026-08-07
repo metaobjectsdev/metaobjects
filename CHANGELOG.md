@@ -7,6 +7,94 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.20.16] — npm `0.20.16` · PyPI `0.20.16` · NuGet `0.20.16` · Maven `7.20.16`
+
+**Coordinated across all four registries.** The fix below is Kotlin, Python and Java, so
+**Maven** (`codegen-kotlin` + `codegen-spring`) and **PyPI** carry the changed product
+code; **npm** and **NuGet** are version-parity bumps under the one-shared-patch policy in
+force since `0.20.13`.
+
+### Fixed — a prompt payload's field types are declared-authoritative, never origin-derived (#270)
+
+**Generated-output change — regenerate to pick it up; three-way merge preserves hand edits.**
+
+The prompt-construction pillar's contract is that a payload is a typed projection the
+author **declares**, so payload bloat shows up as a diff. The **Kotlin**, **Python** and
+**Java** payload-VO generators broke that contract by deriving a payload field's type from
+its `origin.*` child rather than from what the author wrote. TypeScript and C# were
+already origin-blind — the correct reference behavior — so this was a silent cross-port
+divergence. It went unnoticed because the `passthrough` arm is harmless by construction
+(#185 made `origin.passthrough` type-preserving, so declared and derived always agree
+there); the `collection` and `aggregate` arms had no such protection and are where the
+real damage was.
+
+(The issue as filed named only Kotlin and Python; Java was found to have the same bug
+during pre-merge review, and is fixed here too. It matters more than it looks: the
+follow-on work in this line makes prompt payloads `object.projection`s, and projections
+legitimately carry assembly origins — so an origin-dispatching payload emitter would fire
+on the shape that is about to become the norm.)
+
+Three ways it went wrong, worst first:
+
+- **`origin.collection` discarded the field's declared `@objectRef`** and substituted the
+  `@via` relationship's target entity. A declared *curated* value object silently became
+  the **full entity** — exactly the payload bloat the pillar exists to prevent, and
+  invisible in a diff because the metadata still read as curated. Every field the entity
+  carried went into the prompt.
+- **`origin.aggregate @agg: count`** hardwired a long/int type regardless of the field's
+  declared `field.<subType>`.
+- **`passthrough` / `computed` / `first`** overrode declared types and, for `computed` and
+  `first`, forced nullability that the declared `@required` did not ask for.
+
+All three ports now type a payload field **only** from its declared `field.<subType>` +
+`@isArray` + `@objectRef`, never derive nullability from origin semantics, and walk the
+nested-payload closure **only** over declared `field.object @objectRef` edges. A field
+carrying any `origin.*` child now types exactly as if the child were absent, and a
+non-object field carrying `origin.collection` contributes no nested class. The
+`origin.collection` closure edge is deleted in lockstep from the ADR-0044 name-map closure
+that each port shares with its extract tier (#228), so the parser-on-receipt side cannot
+drift back the other way.
+
+Gated by a new **disagreement test** in each port: a field declared
+`field.object @objectRef: <CuratedVO> @isArray` that *also* carries an `origin.collection
+@via` pointing at a different, fuller entity now asserts the declared curated VO wins and
+that the emitted closure contains the curated VO's class, not the entity's. Each was
+observed failing against the old behavior before the fix. TypeScript and C# — the two
+reference emitters — were previously ungated entirely, which is how this survived long
+enough to be recorded as settled fact; each now carries a regression pin (test-only, no
+product change in either port).
+
+**Also fixed in Java, found while converging it:** a payload field declaring a plain scalar
+array (`field.string @isArray`, etc.) emitted a bare component type, silently dropping the
+array-ness — Kotlin and Python both wrapped it. Java already honored `@isArray` for enums
+and object references; plain scalars were the one hole. **Adopter-visible:** such a
+component changes from `T` to `java.util.List<T>` in the generated record, and Java's
+generated api-docs now document a `field.int @isArray` component as optional rather than
+required, following the corrected type.
+
+**Adopter-visible in Kotlin: `origin.first` and `origin.computed` were the only producers
+of a nullable (`T?`) payload property, and both now emit `T`.** Kotlin's payload emitter
+has never read `@required`, so there is currently no declared route to a nullable payload
+property in that port — a generated `@Serializable` `template.output` class will now throw
+on a JSON `null` where it previously yielded `null`. This is the intended doctrine (the
+shape is one the follow-on projection work retires), but it is a behavior change, not just
+a type change.
+
+Output is unchanged wherever declared and derived already agreed — the
+`payload-with-origins` Kotlin snapshot, whose fixture is constructed so declared ==
+derived on every field, is byte-identical, as is all other Kotlin snapshot output. One
+cosmetic change on the Python side: nested payload class docstrings in generated modules
+now read "object field target" rather than the now-false "collection target".
+
+Also in this release: two raw `NUL` bytes embedded in Java string literals (composite
+map-key delimiters written as literal `0x00` rather than the `\0` escape) became proper
+escapes. Runtime-identical, but they had made the file test as *binary*, so
+binary-skipping search tools silently ignored it — which is precisely why Java was
+mis-recorded as an origin-blind reference port in the first place.
+
+Closes the long-standing `codegen-spring` "payload `origin.*` resolution" open question as
+**moot** — origin-blindness is the intended contract, not a gap.
+
 ## [0.20.15] — npm `0.20.15` · PyPI `0.20.15` · NuGet `0.20.15` · Maven `7.20.15`
 
 **Coordinated across all four registries** — the loader guard below lands in every port.
