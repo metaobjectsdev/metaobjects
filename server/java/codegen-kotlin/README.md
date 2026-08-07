@@ -67,17 +67,19 @@ fun AuthorTable.postsQuery(authorId: Long): Query =
 
 so consumers can write `AuthorTable.postsQuery(author.id).toList()` (or chain `.orderBy(...)` / `.limit(...)` first). One helper fn per to-many composition; the file is skipped entirely for entities with no to-many relationships.
 
-## FR-004 payload origins
+## FR-004 payload codegen
 
-`KotlinPayloadGenerator` resolves all three origin subtypes on payload-VO fields:
-
-| Origin | Behavior |
-|---|---|
-| `origin.passthrough @from "Entity.field"` | payload property type = source field's type |
-| `origin.aggregate @agg count` | `Long` (regardless of `@of`) |
-| `origin.aggregate @agg avg` | `Double` |
-| `origin.aggregate @agg sum\|min\|max` | matches source field's type |
-| `origin.collection @via "Parent.rel"` | `List<NestedPayload>`; nested payload class generated recursively + deduplicated |
+`KotlinPayloadGenerator` emits a `@Serializable` payload data class per
+`template.*`, typing every property from its **declared field only** (#270 —
+declared-type-authoritative): a property's type comes from the field's
+`field.<subType>` + `isArray`, and a nested payload is a declared `field.object
+@objectRef` to another `object.value` (`isArray: true` → a `List<…>`). The
+caller supplies the field values at render time; an `origin.*` child on a
+payload field is ignored for typing (derivation/assembly origins live on
+`object.projection` read models, not payload VOs). Nested payload classes are
+generated recursively and deduplicated per run. See
+[`docs/features/templates-and-payloads.md`](../../../docs/features/templates-and-payloads.md)
+for the cross-port contract and a worked example.
 
 ## Wiring in your `pom.xml`
 

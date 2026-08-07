@@ -8,11 +8,14 @@
 
 ## STATUS — update as you go (edit this file, commit the checkbox flips with the work)
 
-- [ ] Phase 0 — setup, premise recon
-- [ ] Unit A (#270) — Python: payload typing declared-authoritative
-- [ ] Unit A (#270) — Kotlin: payload typing declared-authoritative
-- [ ] Unit A (#270) — docs closure (CLAUDE.md open question, KNOWN_GAPS, roadmap)
-- [ ] Unit A — independent review + merge to `main` + local-ci green
+- [x] Phase 0 — setup, premise recon — **DONE 2026-08-06**
+- [x] Unit A (#270) — Python: payload typing declared-authoritative — **DONE** (`c5ad0802`)
+- [x] Unit A (#270) — Kotlin: payload typing declared-authoritative — **DONE** (`c5ad0802`)
+- [x] Unit A (#270) — **Java: payload typing declared-authoritative — SCOPE ADDITION, see A.0 NOTE** (`2d67696d`)
+- [x] Unit A (#270) — Java honors declared `@isArray` on plain scalars (`34705ce9`)
+- [x] Unit A (#270) — docs closure (CLAUDE.md open question, KNOWN_GAPS, roadmap) + doc-truth wave (`608f4217`)
+- [x] Unit A — independent review (review → adjudication → 2 fix rounds → final review → re-review): **SHIP**
+- [ ] Unit A — merge to `main` + local-ci green
 - [ ] Release 1 — `0.20.16` / `7.20.16` coordinated PATCH (checkpoint with the maintainer first)
 - [ ] Unit B — doctrine docs amendment (ADR-0007 / FR-024 §7) — docs-only
 - [x] Unit C — Gate 0 adopter scan — **CLEARED 2026-08-06** (see C.0)
@@ -79,7 +82,11 @@ Read the rulings in `spec/roadmap.md` (grep `"#210 — \[RULED"`, `"#212 — \[R
 
 ## Unit A — #270: payload typing is declared-type-authoritative (Kotlin + Python)
 
-**Ruling:** TS / C# / Java payload emitters are origin-blind and **correct**. Kotlin and Python derive payload field types from `origin.*`; on `origin.collection` they discard the field's declared `@objectRef` and substitute the `@via` relationship's target entity — a declared curated VO silently becomes the full entity, defeating the payload-bloat contract. `@agg count` is hardwired to a long type regardless of a declared `field.int`. Delete the origin dispatch **including** the `origin.collection` edge in each port's ADR-0044 name-map closure and the extract tier that shares the name map (#228) — lockstep per port. Nullability falls back to declared `@required`.
+> **NOTE (2026-08-06, executed) — THIS RULING'S PREMISE WAS FALSIFIED FOR JAVA.** `SpringPayloadGenerator` was **also** origin-aware (imports at L12–16, the contract in its Javadoc at L63–75, dispatch at L453–461, `@agg count`→`Long` at L531–532, the `@via` walk at L552, plus a `CollectionOrigin` edge in the #228-shared name-map closure at L255–272 with **no** subtype filter). Only **TS and C#** were genuinely origin-blind. Phase 0's recon missed it because this environment's `grep` wrapper passes `-I` (skip binary) and the file contained **raw NUL bytes** in string literals, so the search silently returned nothing — see the tooling note below. **Maintainer ruled: fix Java too**, since #210 makes payloads projections and projections legitimately carry assembly origins, so the dispatch would fire on the shape that becomes the norm. Java converged in `2d67696d`; the NUL bytes became `"\0"` escapes in the same commit. **Also falsified: "nullability falls back to declared `@required`"** — only TS and Python read `@required` at all; Kotlin, Java and C# never did. The accurate contract is *"nullability is never derived from origin semantics."*
+>
+> **Tooling note for every future unit:** `grep` in this environment is a shell function shadowing `/usr/bin/grep` that skips binary-looking files **silently** (no output, exit 1). A file with a raw NUL byte is invisible to it. Use `git grep <sha> -- <path>` or `command grep` for load-bearing claims, and treat empty output from a command that must print something as a broken command, never a negative result. The one remaining NUL-bearing file, `server/typescript/packages/metadata/src/constraint-merge.ts` L72, is fixed in Unit C §7b.
+
+**Ruling (as written 2026-08-05, corrected by the NOTE above):** TS / C# / Java payload emitters are origin-blind and **correct**. Kotlin and Python derive payload field types from `origin.*`; on `origin.collection` they discard the field's declared `@objectRef` and substitute the `@via` relationship's target entity — a declared curated VO silently becomes the full entity, defeating the payload-bloat contract. `@agg count` is hardwired to a long type regardless of a declared `field.int`. Delete the origin dispatch **including** the `origin.collection` edge in each port's ADR-0044 name-map closure and the extract tier that shares the name map (#228) — lockstep per port. Nullability falls back to declared `@required`.
 
 ### A.0 Premise recon (stop if any fails)
 

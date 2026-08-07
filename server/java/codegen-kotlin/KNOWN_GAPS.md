@@ -99,34 +99,22 @@ flagging needs metadata-level expression (an `@updateRequired` attr or
 similar) that hasn't been settled cross-port; a follow-up FR can add
 the typed split once the partial-update story converges.
 
-## `EnumField` on payload VOs emitted as `String`
+## `EnumField` on payload VOs emitted as `String` (RESOLVED)
 
-**Status:** Day-1 fallback on the payload-VO codepath only. Entities and Exposed columns already emit typed enum classes.
+**Status:** RESOLVED — the payload-VO codepath now emits the typed enum class too,
+so this former Day-1 gap is closed on every path.
 
-[`KotlinTypeMapper.kt:126`](src/main/kotlin/com/metaobjects/generator/kotlin/KotlinTypeMapper.kt#L126)
-maps `EnumField` to `STRING` in `kotlinTypeName(...)`, which is the type
-function `KotlinPayloadGenerator` calls when building each payload-VO
-data-class property. The resulting payload class therefore exposes the
-enum as a `String` — the wire-stable shape for kotlinx.serialization JSON
-output. The deferral comment at lines 123-125 explains the rationale and
-points at the cross-port enum-design spec
-[`docs/superpowers/specs/2026-05-23-enum-datatype-design.md`](../../../docs/superpowers/specs/2026-05-23-enum-datatype-design.md).
-
-**What's NOT gappy** (corrects a common misread):
-
-- Entity data classes already emit typed enum classes —
-  [`KotlinEntityGenerator.kt:79`](src/main/kotlin/com/metaobjects/generator/kotlin/KotlinEntityGenerator.kt#L79)
-  emits a top-level `@Serializable enum class` per `field.enum` before the
-  data class, and the field is typed as that enum.
-- Exposed table columns already emit typed `enumerationByName(...)` —
-  [`KotlinExposedTableGenerator.kt:229`](src/main/kotlin/com/metaobjects/generator/kotlin/KotlinExposedTableGenerator.kt#L229)
-  uses the generated enum class via `KotlinTypeMapper.enumTypeName(field, entity)`.
-
-So the only path still using `String` is the payload-VO. Migrating it to
-the typed enum class is a small generator change — gated on the cross-port
-enum-design spec settling the wire-vs-Kotlin representation question (does
-the JSON wire stay string-valued? Use `@SerialName` per member? Use an
-int-backed `@values` form?).
+`KotlinPayloadGenerator.resolveFieldType`'s `field.enum` arm types the STRICT
+payload property as the generated enum class
+(`KotlinTypeMapper.enumTypeName(field, owner)`; single → `<Enum>`, array →
+`List<<Enum>>`) and emits the enum file per run via `KotlinEnumEmitter`. The
+lenient `<Name>Extracted` mirror deliberately stays `String` / `List<String?>`
+(the extract mapper bridges `String` → enum via `valueOf`). Entity data classes
+([`KotlinEntityGenerator.kt`](src/main/kotlin/com/metaobjects/generator/kotlin/KotlinEntityGenerator.kt))
+and Exposed columns
+([`KotlinExposedTableGenerator.kt`](src/main/kotlin/com/metaobjects/generator/kotlin/KotlinExposedTableGenerator.kt))
+were typed all along. Kept as a resolved entry (rather than deleted) because
+external notes referenced this section by title.
 
 ## Composite-FK relationships not emitted
 
@@ -155,3 +143,15 @@ specified the URL grammar for nested-jsonb sort. Materializing nested
 jsonb on read needs an `@Contextual` kotlinx.serialization round-trip
 plus a column-type wiring; both ship as a unit when a real consumer needs
 the path.
+
+## `KotlinGenUtil.splitDottedRef` has zero in-repo callers
+
+**Status:** deliberately kept, not dead code — recorded here so it is not later
+rediscovered as live.
+
+#270 (payload typing is declared-type-authoritative) deleted the payload
+generator's `origin.*` dotted-ref navigation, which was the last in-repo caller
+of [`KotlinGenUtil.splitDottedRef`](src/main/kotlin/com/metaobjects/generator/kotlin/KotlinGenUtil.kt).
+The helper stays because `KotlinGenUtil` is deliberately `public` for adopters
+subclassing a generator (see its class KDoc) — removing a public helper is an
+API break out of proportion to the cleanup. Prune it in a future MAJOR.

@@ -50,27 +50,22 @@ LLM tool-call envelope with no renderable text body (the body IS the
 `@format` attrs above). The vocabulary exists today; MCP exposure of declared
 prompts/tools is roadmap, not shipped — don't promise it.
 
-## The payload is an `object.value` projection
+## The payload is an `object.value` you declare
 
-The payload is **not** an entity — it's an `object.value` whose every field carries
-an `origin.*` child saying where its value comes from. Three origin subtypes:
+The payload is **not** an entity — it's an `object.value` whose DECLARED fields ARE
+the prompt's typed shape. Every port's payload codegen is
+**declared-type-authoritative (#270)**: a field's generated type comes only from its
+declared `field.<subType>` + `isArray` + `@objectRef`, and a nested payload is a
+declared `field.object @objectRef` to another `object.value` (`isArray: true` for a
+list). The caller supplies the field values at render time. An `origin.*` child on a
+payload field is IGNORED for typing — never author assembly origins (`aggregate` /
+`collection` / `computed` / `first`) on a payload VO. Derivation belongs to
+**projection** read models (`object.projection` over an entity), covered by the
+`metaobjects-authoring` skill and `docs/features/source-kinds.md`, not here.
 
-| Origin | Behavior |
-|---|---|
-| `origin.passthrough @from "Entity.field"` | payload property matches the source field |
-| `origin.aggregate @agg <count\|sum\|avg\|min\|max>` | `count`→long, `avg`→double, others match source |
-| `origin.collection @via "Parent.rel"` | a list of a nested payload, assembled from a relationship |
-
-These are the **payload-assembly** origins — the vocabulary this skill covers.
-**Projection** read models (`object.projection` over an entity) carry a fuller origin
-vocabulary — the `@agg` predicate quantifiers `any`/`all`, the `collect` array rollup,
-plus `origin.computed` (a closed `@expr` grammar) and `origin.first` (an argmax-style
-pick) — those live in the `metaobjects-authoring` skill and
-`docs/features/source-kinds.md`, not here: don't reach for them on a payload VO.
-
-Declaring the payload as a projection is what makes payload bloat visible: adding a
-field to the prompt is a diff on the `object.value`, and a renamed source field
-breaks the build instead of silently degrading the prompt.
+Declaring the payload shape is what makes payload bloat visible: adding a field to
+the prompt is a diff on the `object.value`, and `verify` catches template/payload
+drift at build time instead of letting a prompt silently degrade.
 
 ```json
 {
@@ -81,12 +76,10 @@ breaks the build instead of silently degrading the prompt.
         "object.value": {
           "name": "WelcomePayload",
           "children": [
-            { "field.string": { "name": "displayName",
-              "children": [ { "origin.passthrough": { "@from": "Author.name" } } ] } },
-            { "field.long": { "name": "postCount",
-              "children": [ { "origin.aggregate": { "@agg": "count", "@of": "Post.id", "@via": "Author.posts" } } ] } },
+            { "field.string": { "name": "displayName" } },
+            { "field.long": { "name": "postCount" } },
             { "field.object": { "name": "posts", "@objectRef": "PostSummary",
-              "children": [ { "origin.collection": { "@via": "Author.posts" } } ] } }
+              "isArray": true } }
           ]
         }
       },
@@ -94,8 +87,7 @@ breaks the build instead of silently degrading the prompt.
         "object.value": {
           "name": "PostSummary",
           "children": [
-            { "field.string": { "name": "title",
-              "children": [ { "origin.passthrough": { "@from": "Post.title" } } ] } }
+            { "field.string": { "name": "title" } }
           ]
         }
       },

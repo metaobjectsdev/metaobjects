@@ -2,9 +2,9 @@
 
 Mirrors the Kotlin ``KotlinPayloadGenerator`` test contract — one Pydantic
 ``BaseModel`` per declared ``template.*`` (prompt / output / toolcall),
-origin-aware field-type resolution, in-file nested-payload emission for
-``origin.collection`` (with per-run dedupe across templates referencing the
-same target).
+declared-type-authoritative field typing (#270 — any ``origin.*`` child is
+IGNORED for typing, matching the origin-blind TS/C# reference emitters), and
+in-file nested-payload emission for declared ``field.object @objectRef`` targets.
 """
 from __future__ import annotations
 
@@ -224,16 +224,19 @@ def test_simple_field_projection_uses_type_map() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Origin-aware resolution.
+# Origins are IGNORED for typing (#270 — declared-type-authoritative).
+#
+# A payload field's type comes ONLY from its declared ``field.<subType>`` +
+# ``@isArray`` + ``@objectRef``; a field carrying any ``origin.*`` child types
+# exactly as if the origin child were absent. Matches the origin-blind TS / C#
+# reference emitters (Java converged alongside this port, #270 fix round 1).
 # ---------------------------------------------------------------------------
 
 
-def test_origin_passthrough_resolves_to_source_field_type() -> None:
-    """``origin.passthrough @from "Entity.field"`` — payload field type
-    should mirror the source field's type, not the payload field's own subtype."""
+def test_origin_passthrough_ignored_declared_type_wins() -> None:
+    """#270 — ``origin.passthrough`` is ignored for typing. A field declared
+    ``field.int`` with a passthrough to a STRING source still types ``int``."""
     src_entity = _entity("Source", [_field("displayName", fc.FIELD_SUBTYPE_STRING)])
-    # Payload field declared as ``int`` but with a passthrough to a string source
-    # field — the passthrough wins.
     payload = _value_object(
         "Aliased",
         [_field_with_origin("alias", fc.FIELD_SUBTYPE_INT, _passthrough("Source.displayName"))],
@@ -242,10 +245,13 @@ def test_origin_passthrough_resolves_to_source_field_type() -> None:
     root = _root([src_entity, payload, tmpl])
     out = render_payload_vo(tmpl, root)
     assert out is not None
-    assert "alias: str" in out
+    assert "alias: int" in out
+    assert "alias: str" not in out
 
 
-def test_origin_aggregate_count_resolves_to_int() -> None:
+def test_origin_aggregate_count_ignored_declared_type_wins() -> None:
+    """#270 — ``@agg count`` no longer hardwires ``int``; the declared
+    ``field.string`` types ``str``."""
     src = _entity("Source", [_field("id", fc.FIELD_SUBTYPE_LONG)])
     payload = _value_object(
         "Counted",
@@ -255,10 +261,13 @@ def test_origin_aggregate_count_resolves_to_int() -> None:
     root = _root([src, payload, tmpl])
     out = render_payload_vo(tmpl, root)
     assert out is not None
-    assert "total: int" in out
+    assert "total: str" in out
+    assert "total: int" not in out
 
 
-def test_origin_aggregate_avg_resolves_to_float() -> None:
+def test_origin_aggregate_avg_ignored_declared_type_wins() -> None:
+    """#270 — ``@agg avg`` no longer hardwires ``float``; the declared
+    ``field.string`` types ``str``."""
     src = _entity("Source", [_field("score", fc.FIELD_SUBTYPE_INT)])
     payload = _value_object(
         "Averaged",
@@ -268,12 +277,13 @@ def test_origin_aggregate_avg_resolves_to_float() -> None:
     root = _root([src, payload, tmpl])
     out = render_payload_vo(tmpl, root)
     assert out is not None
-    assert "avgScore: float" in out
+    assert "avgScore: str" in out
+    assert "avgScore: float" not in out
 
 
-def test_origin_aggregate_sum_resolves_to_of_field_type() -> None:
-    """``@agg sum`` (and min/max) — type comes from the ``@of`` field, not from
-    the payload field's declared subtype."""
+def test_origin_aggregate_sum_ignored_declared_type_wins() -> None:
+    """#270 — ``@agg sum`` no longer takes the ``@of`` field's type; the
+    declared ``field.string`` types ``str``."""
     src = _entity("Source", [_field("priceCents", fc.FIELD_SUBTYPE_CURRENCY)])
     payload = _value_object(
         "Summed",
@@ -283,13 +293,14 @@ def test_origin_aggregate_sum_resolves_to_of_field_type() -> None:
     root = _root([src, payload, tmpl])
     out = render_payload_vo(tmpl, root)
     assert out is not None
-    assert "totalCents: int" in out  # currency is int
+    assert "totalCents: str" in out
+    assert "totalCents: int" not in out
 
 
-def test_origin_collection_emits_nested_payload_and_list_type() -> None:
-    """``origin.collection @via "Parent.rel"`` walks the relationship to a target
-    value-object, emits a ``<TargetShortName>Payload`` IN-FILE, and types the
-    payload field as ``list[<TargetShortName>Payload]``."""
+def test_origin_collection_ignored_no_nested_payload_emitted() -> None:
+    """#270 — ``origin.collection @via`` on a NON-object field contributes no
+    nested payload class and no ``list[...]``; the declared ``field.string``
+    types ``str`` and the ``@via`` target VO is never reached."""
     post = _value_object(
         "Post",
         [_field("title", fc.FIELD_SUBTYPE_STRING), _field("body", fc.FIELD_SUBTYPE_STRING)],
@@ -307,20 +318,18 @@ def test_origin_collection_emits_nested_payload_and_list_type() -> None:
     root = _root([post, author, payload, tmpl])
     out = render_payload_vo(tmpl, root)
     assert out is not None
-    # Nested payload emitted in the same file, BEFORE the primary class.
-    assert out.find("class PostPayload(BaseModel):") < out.find("class AuthorSummaryOutputPayload(BaseModel):")
-    assert "title: str" in out
-    assert "posts: list[PostPayload]" in out
-    # __all__ includes both class names.
-    assert '__all__ = ["AuthorSummaryOutputPayload", "PostPayload"]' in out
+    assert "posts: str" in out
+    assert "class PostPayload(BaseModel):" not in out
+    assert "list[PostPayload]" not in out
+    # __all__ carries ONLY the primary class.
+    assert '__all__ = ["AuthorSummaryOutputPayload"]' in out
 
 
-def test_origin_collection_nested_payload_self_contained_per_file() -> None:
-    """Each emitted payload module is self-contained: when two templates
-    reference the same collection target, BOTH files declare the nested
-    ``PostPayload`` class. Cross-template dedupe would leave the second file
-    with a dangling forward-reference (Pydantic v2 raises
-    ``PydanticUserError: ... not fully defined`` at model-build time)."""
+def test_origin_collection_ignored_in_every_template_file() -> None:
+    """#270 — each emitted payload module independently ignores origins: two
+    templates whose payload fields carry the same ``origin.collection`` both
+    emit the declared scalar type, and NEITHER file declares a nested
+    ``PostPayload`` class."""
     post = _value_object(
         "Post", [_field("title", fc.FIELD_SUBTYPE_STRING)]
     )
@@ -348,17 +357,16 @@ def test_origin_collection_nested_payload_self_contained_per_file() -> None:
     by_path = {f.path: f.content for f in files}
     a_content = by_path["summary_a_output_payload.py"]
     b_content = by_path["summary_b_output_payload.py"]
-    # Both files MUST declare PostPayload AND reference it — otherwise the
-    # second file's SummaryBOutputPayload is unbuildable by Pydantic.
-    assert "class PostPayload(BaseModel):" in a_content
-    assert "class PostPayload(BaseModel):" in b_content
-    assert "posts: list[PostPayload]" in a_content
-    assert "posts: list[PostPayload]" in b_content
+    # Declared type wins in BOTH files; no nested class in either.
+    assert "posts: str" in a_content
+    assert "posts: str" in b_content
+    assert "class PostPayload(BaseModel):" not in a_content
+    assert "class PostPayload(BaseModel):" not in b_content
 
 
-def test_origin_collection_nested_payload_deduped_within_file() -> None:
-    """Within a single payload module, the same collection target is only
-    emitted ONCE even if multiple fields reference it (no duplicate class)."""
+def test_origin_collection_ignored_for_multiple_fields_in_one_file() -> None:
+    """#270 — multiple fields carrying ``origin.collection`` in one payload
+    module all type from their declarations; no nested class is emitted."""
     post = _value_object("Post", [_field("title", fc.FIELD_SUBTYPE_STRING)])
     author = _entity(
         "Author",
@@ -376,11 +384,137 @@ def test_origin_collection_nested_payload_deduped_within_file() -> None:
     root = _root([post, author, summary, tmpl])
     out = render_payload_vo(tmpl, root)
     assert out is not None
-    # PostPayload class declared exactly once.
-    assert out.count("class PostPayload(BaseModel):") == 1
-    # Both fields type to it.
-    assert "posts: list[PostPayload]" in out
-    assert "drafts: list[PostPayload]" in out
+    assert "class PostPayload(BaseModel):" not in out
+    assert "posts: str" in out
+    assert "drafts: str" in out
+
+
+def test_disagreeing_origin_collection_declared_object_ref_wins() -> None:
+    """#270 load-bearing disagreement test — a payload VO field declared
+    ``field.object @objectRef: <CuratedVO> @isArray: true`` that ALSO carries an
+    ``origin.collection @via`` walking to a DIFFERENT, fuller entity must:
+
+    (a) type as ``list[<CuratedVO>Payload]`` — the DECLARATION wins; and
+    (b) emit the CURATED VO's payload class in the closure, never the ``@via``
+        entity's — the payload-bloat leak the prompt pillar exists to prevent.
+    """
+    highlight = _value_object(
+        "Highlight", [_field("snippet", fc.FIELD_SUBTYPE_STRING)], package="acme::ai"
+    )
+    post = _entity(
+        "Post",
+        [
+            _field("id", fc.FIELD_SUBTYPE_LONG),
+            _field("title", fc.FIELD_SUBTYPE_STRING),
+            _field("body", fc.FIELD_SUBTYPE_STRING),
+            _field("internalNotes", fc.FIELD_SUBTYPE_STRING),
+        ],
+    )
+    author = _entity(
+        "Author",
+        [_field("id", fc.FIELD_SUBTYPE_LONG)],
+        relationships=[_relationship("posts", "Post")],
+    )
+    disagreeing = _object_field("posts", "acme::ai::Highlight", is_array=True)
+    disagreeing.add_child(_collection("Author.posts"))
+    payload = _value_object("AuthorDigest", [disagreeing], package="acme::ai")
+    tmpl = _template("AuthorDigestOutput", "AuthorDigest")
+    root = _root([highlight, post, author, payload, tmpl])
+    out = render_payload_vo(tmpl, root)
+    assert out is not None
+    # (a) DECLARED wins: @objectRef + @isArray, not the @via walk.
+    assert "posts: list[HighlightPayload]" in out
+    # (b) closure emits the curated VO's class, NOT the @via entity's.
+    assert "class HighlightPayload(BaseModel):" in out
+    assert "snippet: str" in out
+    assert "class PostPayload(BaseModel):" not in out
+    assert "internalNotes" not in out
+    assert '__all__ = ["AuthorDigestOutputPayload", "HighlightPayload"]' in out
+
+
+# ---------------------------------------------------------------------------
+# #270 / ADR-0044 name-map closure gates — the closure walks ONLY declared
+# `field.object @objectRef` -> object.value edges. Positive: an origin child on
+# a field.object does NOT remove its declared edge from the closure. Negative:
+# a field carrying ONLY origin.collection contributes nothing to the map.
+# ---------------------------------------------------------------------------
+
+
+def test_origin_carrying_object_field_stays_in_name_map_closure() -> None:
+    """#270 / ADR-0044 gate (positive) — a ``field.object @objectRef`` that ALSO
+    carries an origin child still contributes its DECLARED edge to the name-map
+    closure: two same-short-named ``Note`` VOs (one reached through the
+    origin-carrying field, one plain) must BOTH be package-qualified. If the
+    origin-carrying edge were dropped, the collision would go undetected and both
+    would emit under a shadowed bare ``NotePayload``."""
+    alpha = _value_object("Note", [_field("alphaText", fc.FIELD_SUBTYPE_STRING)], package="acme::alpha")
+    beta = _value_object("Note", [_field("betaText", fc.FIELD_SUBTYPE_STRING)], package="acme::beta")
+    post = _entity(
+        "Post",
+        [_field("id", fc.FIELD_SUBTYPE_LONG), _field("internalNotes", fc.FIELD_SUBTYPE_STRING)],
+    )
+    author = _entity(
+        "Author",
+        [_field("id", fc.FIELD_SUBTYPE_LONG)],
+        relationships=[_relationship("posts", "Post")],
+    )
+    from_alpha = _object_field("fromAlpha", "acme::alpha::Note")
+    from_alpha.add_child(_collection("Author.posts"))
+    digest = _value_object(
+        "Digest",
+        [from_alpha, _object_field("fromBeta", "acme::beta::Note")],
+        package="acme::app",
+    )
+    tmpl = _template("DigestOut", "acme::app::Digest")
+    root = _root([alpha, beta, post, author, digest, tmpl])
+    out = render_payload_vo(tmpl, root)
+    assert out is not None
+    # Both colliding VOs package-qualify — the origin-carrying declared edge is
+    # still in the closure.
+    assert "class AcmeAlphaNotePayload(BaseModel):" in out
+    assert "class AcmeBetaNotePayload(BaseModel):" in out
+    assert "class NotePayload(BaseModel):" not in out
+    assert "fromAlpha: AcmeAlphaNotePayload | None = None" in out
+    assert "fromBeta: AcmeBetaNotePayload | None = None" in out
+    # The ignored @via entity contributes nothing.
+    assert "class PostPayload(BaseModel):" not in out
+    assert "internalNotes" not in out
+
+
+def test_origin_collection_only_field_contributes_nothing_to_name_map() -> None:
+    """#270 / ADR-0044 gate (negative) — a field carrying ONLY
+    ``origin.collection`` (a non-object field) contributes NOTHING to the
+    name-map closure. Its ``@via`` walk reaches ``acme::beta::Note``, which
+    shares a bare short name with the declared ``acme::alpha::Note``; were the
+    retired collection edge still in the closure, the two would collide and both
+    would qualify. Instead the declared Note stays BARE."""
+    alpha = _value_object("Note", [_field("alphaText", fc.FIELD_SUBTYPE_STRING)], package="acme::alpha")
+    beta = _value_object("Note", [_field("betaText", fc.FIELD_SUBTYPE_STRING)], package="acme::beta")
+    author = _entity(
+        "Author",
+        [_field("id", fc.FIELD_SUBTYPE_LONG)],
+        relationships=[_relationship("notes", "acme::beta::Note")],
+    )
+    digest = _value_object(
+        "Digest",
+        [
+            _object_field("fromAlpha", "acme::alpha::Note"),
+            _field_with_origin("posts", fc.FIELD_SUBTYPE_STRING, _collection("Author.notes")),
+        ],
+        package="acme::app",
+    )
+    tmpl = _template("DigestOut", "acme::app::Digest")
+    root = _root([alpha, beta, author, digest, tmpl])
+    out = render_payload_vo(tmpl, root)
+    assert out is not None
+    # No collision without the origin edge: the declared Note keeps its BARE name.
+    assert "class NotePayload(BaseModel):" in out
+    assert "alphaText: str" in out
+    assert "class AcmeAlphaNotePayload(BaseModel):" not in out
+    assert "class AcmeBetaNotePayload(BaseModel):" not in out
+    assert "betaText" not in out
+    # The origin-only field types as its declared scalar.
+    assert "posts: str" in out
 
 
 # ---------------------------------------------------------------------------

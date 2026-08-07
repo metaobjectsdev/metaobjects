@@ -45,8 +45,8 @@ import java.util.Set;
  * {@link #payloadFields(MetaData, MetaDataLoader)} resolves the template's
  * {@code @payloadRef} value-object and maps each of its fields via
  * {@link SpringPayloadGenerator#resolveFieldType} (the same per-field type
- * resolution the payload generator uses, incl. origin.passthrough / aggregate /
- * collection and enums). Optionality mirrors the payload generator's nullable
+ * resolution the payload generator uses — declared-type-authoritative per #270,
+ * incl. nested {@code field.object} refs and enums). Optionality mirrors the payload generator's nullable
  * rule: a field is optional iff the generator would emit a {@code hasXxx()}
  * helper for it ({@link SpringPayloadGenerator#hasHelperBody(String, String)}
  * returns non-null) — i.e. String / List / reference types are optional, bare
@@ -86,8 +86,8 @@ public final class JavaFieldShapes {
      * {@link SpringPayloadGenerator#appliesTo(MetaData, MetaDataLoader)} first).
      *
      * <p>The payload generator's {@code resolveFieldType} may recursively emit
-     * nested payload records to disk as a side effect (origin.collection /
-     * field.object arms). Since this is a docs-derivation path, those writes are
+     * nested payload records to disk as a side effect (the declared
+     * {@code field.object} arm). Since this is a docs-derivation path, those writes are
      * directed to a throwaway temp directory so the real output tree is never
      * touched.</p>
      */

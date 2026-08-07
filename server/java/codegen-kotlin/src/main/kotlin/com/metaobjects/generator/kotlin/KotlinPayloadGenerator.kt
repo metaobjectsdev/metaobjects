@@ -7,21 +7,11 @@ import com.metaobjects.generator.GeneratorIOWriter
 import com.metaobjects.generator.direct.MultiFileDirectGeneratorBase
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
-import com.metaobjects.origin.AggregateOrigin
-import com.metaobjects.origin.CollectionOrigin
-import com.metaobjects.origin.ComputedOrigin
-import com.metaobjects.origin.FirstOrigin
-import com.metaobjects.origin.MetaOrigin
-import com.metaobjects.origin.PassthroughOrigin
-import com.metaobjects.relationship.MetaRelationship
 import com.metaobjects.template.MetaTemplate
-import com.squareup.kotlinpoet.BOOLEAN
 import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.DOUBLE
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
-import com.squareup.kotlinpoet.LONG
 import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
@@ -38,23 +28,25 @@ import java.nio.file.Paths
  *
  * <p>Output package = `<entity-package>.prompts`; class name = `<TemplateShortName>Payload`.
  *
- * <p>Origin-aware: each field on the payload VO may carry an `origin.*` child that
- * declares how the value is derived. The property's TypeName is resolved as:
+ * <p>DECLARED-TYPE-AUTHORITATIVE (#270): a payload field's property type comes ONLY from
+ * its declared `field.<subType>` + `isArray` + `@objectRef` — never from any `origin.*`
+ * child it carries (an origin child is IGNORED for typing; the field types exactly as if
+ * it were absent). Nullability is never derived from origin semantics (no more
+ * "computed/first are nullable"); this port does not read `@required` either — every
+ * emitted property is unconditionally non-null (only the TS and Python emitters
+ * consult `@required` for optionality). A prompt's payload is a typed projection the
+ * author DECLARES, so payload bloat shows up as a diff — matching the origin-blind
+ * TS / C# reference emitters (Java converged alongside this port, #270 fix round 1).
+ * The property's TypeName is resolved as:
  * <ul>
- *   <li>{@code origin.passthrough} (@from "Entity.field") — type of the referenced source field.</li>
- *   <li>{@code origin.aggregate}  (@agg count) — {@code Long}; (@agg avg) — {@code Double};
- *       (@agg sum/min/max) — type of the referenced `@of` field; (@agg any/all) — {@code Boolean}
- *       (a predicate quantifier, #195); (@agg collect) — {@code List<T>} where T is the `@of`
- *       element type (an array rollup, #195).</li>
- *   <li>{@code origin.collection} (@via "Parent.rel") — {@code List<TargetPayload>}, and the
- *       nested payload class is recursively emitted alongside (deduped per execute() run).</li>
- *   <li>{@code origin.computed} (@expr ...) — the field's own declared subType, NULLABLE
- *       (expression nullability is conservative, #195).</li>
- *   <li>{@code origin.first} (@of "Entity.field" @orderBy [...]) — the `@of` source column's type,
- *       NULLABLE (an empty related set → null, #195).</li>
- *   <li>No origin child — fall back to {@link KotlinTypeMapper#payloadTypeName(MetaField)}
- *       (parsed JSON value for a `field.string @dbColumnType=jsonb` open bag; otherwise the
- *       same mapping as {@code kotlinTypeName}).</li>
+ *   <li>{@code field.enum} — the generated enum class (single, or {@code List<Enum>}).</li>
+ *   <li>{@code field.object @objectRef} to an `object.value` — the nested
+ *       `<TargetShortName>Payload` (single, or {@code List<TargetPayload>} when isArray),
+ *       recursively emitted alongside (deduped per execute() run). This declared edge is
+ *       the ONLY nested-payload closure edge.</li>
+ *   <li>Otherwise — {@link KotlinTypeMapper#payloadTypeName(MetaField)} (parsed JSON value
+ *       for a `field.string @dbColumnType=jsonb` open bag; otherwise the same mapping as
+ *       {@code kotlinTypeName}), wrapped {@code List<...>} when isArray.</li>
  * </ul>
  */
 open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
@@ -72,9 +64,9 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     override fun execute(loader: MetaDataLoader) {
         parseArgs()
         val outRoot = Paths.get(outDir.absolutePath)
-        // Dedupe nested payload classes emitted via origin.collection across all
-        // templates in this run. Key = FQN of the source view-object (or entity) the
-        // nested payload was generated from.
+        // Dedupe nested payload classes emitted via declared `field.object @objectRef`
+        // edges across all templates in this run. Key = FQN of the source value-object
+        // the nested payload was generated from.
         val emittedNestedFqns = mutableSetOf<String>()
         // Run-level dedupe of emitted enum-class files by enum FQN. A `field.enum` payload field is
         // typed as its generated enum class (reusing the entity enum scheme); two fields sharing an
@@ -123,9 +115,9 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
     /**
      * Emit a single @Serializable data class for [voObject] into [outPkg].[className],
-     * resolving each field's TypeName via [resolveFieldType]. When a field has an
-     * `origin.collection`, recursively emits its nested payload class first (per-run
-     * deduped via [emittedNestedFqns]).
+     * resolving each field's TypeName via [resolveFieldType]. When a field is a declared
+     * `field.object @objectRef` to an `object.value`, recursively emits its nested
+     * payload class first (per-run deduped via [emittedNestedFqns]).
      */
     protected open fun emitPayloadClass(
         outPkg: String,
@@ -161,10 +153,13 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     }
 
     /**
-     * Resolve the Kotlin TypeName of a single payload-VO field, honoring any
-     * `origin.*` child. Falls back to [KotlinTypeMapper.payloadTypeName] when no
-     * origin is present (parsed JSON value for a `field.string @dbColumnType=jsonb` open
-     * bag, otherwise identical to `kotlinTypeName`).
+     * Resolve the Kotlin TypeName of a single payload-VO field from its DECLARATION
+     * only (#270): `field.<subType>` + `isArray` + `@objectRef`. Any `origin.*` child
+     * the field carries is IGNORED — the field types exactly as if the origin child
+     * were absent (matching the origin-blind TS / C# reference emitters). Falls
+     * back to [KotlinTypeMapper.payloadTypeName] (parsed JSON value for a
+     * `field.string @dbColumnType=jsonb` open bag, otherwise identical to
+     * `kotlinTypeName`).
      */
     protected open fun resolveFieldType(
         field: MetaField<*>,
@@ -176,28 +171,6 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         emittedEnumFqns: MutableSet<String>,
         nameMap: Map<String, String>,
     ): TypeName {
-        // ADR-0039/ADR-0029: origin.* NEVER inherits — a derived field's origin is
-        // declared-here, so read OWN children (field.children), not resolving.
-        val origin = field.children.filterIsInstance<MetaOrigin>().firstOrNull()
-
-        if (origin != null) {
-            return when (origin) {
-                is PassthroughOrigin -> resolvePassthroughType(origin, loader, field)
-                is AggregateOrigin -> resolveAggregateType(origin, loader, field)
-                is CollectionOrigin -> resolveCollectionType(
-                    origin, loader, nestedPkg, outRoot, emittedNestedFqns, emittedEnumFqns, field, nameMap
-                )
-                // #195 origin.computed: a row-level value; its type is the field's own declared
-                // subType (validation pins the inferred root type == field subType). Conservative
-                // nullable — an expression's null-ness is expression-dependent.
-                is ComputedOrigin -> KotlinTypeMapper.payloadTypeName(field).copy(nullable = true)
-                // #195 origin.first: the @of source column's type, NULLABLE (an empty related set
-                // after @filter selects no row → null).
-                is FirstOrigin -> resolveFirstType(origin, loader, field)
-                else -> KotlinTypeMapper.payloadTypeName(field)
-            }
-        }
-
         // field.enum (incl. array-of-enum): type the strict payload field as the generated enum
         // class (the same `<EntityShort><FieldPascal>` / shared-super scheme the entity generator
         // uses), and emit that enum file (deduped per run). Single → `<Enum>`; array → `List<<Enum>>`.
@@ -215,9 +188,9 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             }
         }
 
-        // Naked `field.object @objectRef` (no origin child): emit the nested payload class
-        // and return its type (single, or List<TargetPayload> when isArray). Mirrors the
-        // Spring port's resolveObjectFieldType — needed so a nested-object payload compiles.
+        // Declared `field.object @objectRef`: emit the nested payload class and return
+        // its type (single, or List<TargetPayload> when isArray). Mirrors the Spring
+        // port's resolveObjectFieldType — needed so a nested-object payload compiles.
         if (field is ObjectField) {
             return resolveObjectFieldType(field, loader, nestedPkg, outRoot, emittedNestedFqns, emittedEnumFqns, nameMap)
         }
@@ -233,11 +206,22 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     }
 
     /**
-     * Naked `field.object @objectRef`: recursively emit `<TargetShortName>Payload` for the
-     * referenced value-object (deduped per run) and return that type — or
-     * `List<TargetPayload>` when `isArray: true`. Falls back to the scalar type mapping when
-     * the ref can't be resolved or the target is not an `object.value` (defensive — loader
-     * validation normally gates these).
+     * Declared `field.object @objectRef`: recursively emit `<TargetShortName>Payload` for
+     * the referenced value-object (deduped per run) and return that type — or
+     * `List<TargetPayload>` when `isArray: true`.
+     *
+     * BOTH "fallback" branches THROW, they do not degrade: `fallbackType()` is
+     * [KotlinTypeMapper.payloadTypeName], whose type mapping has NO `ObjectField` arm — an
+     * object field reaching it hits the `else -> throw IllegalArgumentException` arm and
+     * crashes the generator. That covers (a) an unresolvable ref (a dangling ref IS
+     * loader-gated first, `ERR_UNRESOLVED_OBJECT_REF`) and (b) a resolved target that is
+     * not an `object.value` — the latter is this port's own PRE-EXISTING gate, NOT a
+     * loader-enforced contract (no port's loader constrains a nested `@objectRef` target's
+     * subtype today; the TS/C# reference emitters and Python resolve and emit whatever the
+     * ref names). Note #270 WIDENED what reaches (b): an `ObjectField` carrying an origin
+     * child used to be consumed by the deleted origin dispatch; an entity-targeting one now
+     * throws here. The legal-target-set ruling (and whether this stays a throw) is #210's
+     * loader-validation call — do not copy this behavior to other ports meanwhile.
      */
     private fun resolveObjectFieldType(
         field: ObjectField,
@@ -279,141 +263,6 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             ClassName("kotlin.collections", "List").parameterizedBy(nestedType)
         } else {
             nestedType
-        }
-    }
-
-    /**
-     * `origin.passthrough @from "Entity.field"`: resolve to the source field's
-     * Kotlin TypeName. Falls back to the payload field's own type if the dotted
-     * ref can't be resolved (defensive — the loader's ValidationPhase already
-     * gates @from being present and well-formed).
-     */
-    private fun resolvePassthroughType(
-        origin: PassthroughOrigin,
-        loader: MetaDataLoader,
-        fallbackField: MetaField<*>,
-    ): TypeName {
-        val from = origin.from ?: return KotlinTypeMapper.payloadTypeName(fallbackField)
-        val sourceField = resolveDottedFieldRef(loader, from)
-            ?: return KotlinTypeMapper.payloadTypeName(fallbackField)
-        return KotlinTypeMapper.payloadTypeName(sourceField)
-    }
-
-    /**
-     * `origin.aggregate @agg X [@of "Entity.field"]`: type rule —
-     *  - count → Long
-     *  - avg → Double
-     *  - sum/min/max → type of the `@of` field
-     *  - any/all → Boolean (a predicate quantifier; empty set → false/true, never null — #195)
-     *  - collect → List<T> where T is the `@of` element type (array rollup; empty set → [] — #195)
-     */
-    private fun resolveAggregateType(
-        origin: AggregateOrigin,
-        loader: MetaDataLoader,
-        fallbackField: MetaField<*>,
-    ): TypeName {
-        return when (origin.agg) {
-            MetaOrigin.AGG_COUNT -> LONG
-            MetaOrigin.AGG_AVG -> DOUBLE
-            // #195 boolean rollup — a quantifier over the related row-set. Always Boolean,
-            // COALESCE-guaranteed non-null (the payload emits fields non-null by default).
-            MetaOrigin.AGG_ANY, MetaOrigin.AGG_ALL -> BOOLEAN
-            // #195 array rollup — List<element-of-@of>, non-null (empty set → []). The @of names
-            // the collected scalar column; payloadTypeName gives its element type.
-            MetaOrigin.AGG_COLLECT -> {
-                val of = origin.of ?: return KotlinTypeMapper.payloadTypeName(fallbackField)
-                val sourceField = resolveDottedFieldRef(loader, of)
-                    ?: return KotlinTypeMapper.payloadTypeName(fallbackField)
-                ClassName("kotlin.collections", "List")
-                    .parameterizedBy(KotlinTypeMapper.payloadTypeName(sourceField))
-            }
-            MetaOrigin.AGG_SUM, MetaOrigin.AGG_MIN, MetaOrigin.AGG_MAX -> {
-                val of = origin.of ?: return KotlinTypeMapper.payloadTypeName(fallbackField)
-                val sourceField = resolveDottedFieldRef(loader, of)
-                    ?: return KotlinTypeMapper.payloadTypeName(fallbackField)
-                KotlinTypeMapper.payloadTypeName(sourceField)
-            }
-            else -> KotlinTypeMapper.payloadTypeName(fallbackField)
-        }
-    }
-
-    /**
-     * `origin.first @of "Entity.field" @orderBy [...]`: type = the `@of` source column's Kotlin
-     * type, made NULLABLE — an empty related set (after `@filter`) selects no row, so the projected
-     * value can be null (#195). Falls back to the payload field's own (nullable) type when `@of`
-     * can't be resolved (defensive — the loader's ValidationPhase gates `@of` presence/shape).
-     */
-    private fun resolveFirstType(
-        origin: FirstOrigin,
-        loader: MetaDataLoader,
-        fallbackField: MetaField<*>,
-    ): TypeName {
-        val of = origin.of ?: return KotlinTypeMapper.payloadTypeName(fallbackField).copy(nullable = true)
-        val sourceField = resolveDottedFieldRef(loader, of)
-            ?: return KotlinTypeMapper.payloadTypeName(fallbackField).copy(nullable = true)
-        return KotlinTypeMapper.payloadTypeName(sourceField).copy(nullable = true)
-    }
-
-    /**
-     * `origin.collection @via "Parent.relName"`: walk Parent's relationship `relName`
-     * to its `@objectRef` target entity, recursively emit a nested payload class
-     * (`<TargetShortName>Payload`) into [nestedPkg], and return `List<TargetPayload>`.
-     * Dedupe across the whole run via [emittedNestedFqns].
-     */
-    private fun resolveCollectionType(
-        origin: CollectionOrigin,
-        loader: MetaDataLoader,
-        nestedPkg: String,
-        outRoot: Path,
-        emittedNestedFqns: MutableSet<String>,
-        emittedEnumFqns: MutableSet<String>,
-        fallbackField: MetaField<*>,
-        nameMap: Map<String, String>,
-    ): TypeName {
-        val fallbackType = { KotlinTypeMapper.payloadTypeName(fallbackField) }
-        val via = origin.via ?: return fallbackType()
-        val (parentName, relName) = KotlinGenUtil.splitDottedRef(via) ?: return fallbackType()
-        val parent = KotlinGenUtil.resolveObjectByShortOrFqn(loader, parentName) ?: return fallbackType()
-        // ADR-0039: relationships are inheritable — RESOLVE via parent.relationships;
-        // parent.children (own-only) would miss a relationship inherited via extends.
-        val relationship = parent.relationships
-            .firstOrNull { it.name == relName || it.name.substringAfterLast("::") == relName }
-            ?: return fallbackType()
-        val targetRef = relationship.objectRef ?: return fallbackType()
-        val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, targetRef) ?: return fallbackType()
-        // ADR-0044 — collision-scoped class name (see resolveObjectFieldType).
-        val nestedClassName = nameMap[target.name]
-            ?: (PackageMapping.splitFqn(target.name).second + "Payload")
-
-        if (emittedNestedFqns.add(target.name)) {
-            emitPayloadClass(
-                outPkg = nestedPkg,
-                className = nestedClassName,
-                kdoc = "GENERATED — nested payload for collection target `${target.name}`.\n",
-                voObject = target,
-                loader = loader,
-                outRoot = outRoot,
-                emittedNestedFqns = emittedNestedFqns,
-                emittedEnumFqns = emittedEnumFqns,
-                nameMap = nameMap,
-            )
-        }
-
-        val listType = ClassName("kotlin.collections", "List")
-        return listType.parameterizedBy(ClassName(nestedPkg, nestedClassName))
-    }
-
-    /**
-     * Resolve a dotted `"Entity.field"` ref to the MetaField on Entity (by short
-     * name OR FQN match). Returns null when either half can't be resolved.
-     */
-    private fun resolveDottedFieldRef(loader: MetaDataLoader, dottedRef: String): MetaField<*>? {
-        val (entityName, fieldName) = KotlinGenUtil.splitDottedRef(dottedRef) ?: return null
-        val obj = KotlinGenUtil.resolveObjectByShortOrFqn(loader, entityName) ?: return null
-        // Fields on a MetaObject are typically stored under their short name, but
-        // be defensive against an FQN-stored field-name (matches relationship lookup).
-        return obj.metaFields.firstOrNull {
-            it.name == fieldName || it.name.substringAfterLast("::") == fieldName
         }
     }
 

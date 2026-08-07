@@ -163,3 +163,21 @@ persistence-conformance roundtrip column first) and the Kotlin `field.string
 @dbColumnType=jsonb` open-bag PATCH (needs a kotlinx `parseToJsonElement` bridge).
 TPH entities with VO columns also remain out of scope (the TPH union skips
 `ObjectField`).
+
+## `SpringPayloadGenerator.resolveObjectByShortOrFqn` has zero in-repo callers
+
+**Status:** deliberately kept, not dead code — recorded here so it is not later
+rediscovered as live.
+
+#270 (payload typing is declared-type-authoritative) deleted the payload
+generator's `origin.*` type-dispatch and dotted-ref navigation, which held the
+last in-repo callers of the `protected static` `resolveObjectByShortOrFqn`
+(and its private `shortName` support). The helper stays because `protected`
+members of this deliberately-extensible generator are adopter subclass API —
+removing one is an API break out of proportion to the cleanup. Same
+keep-and-record policy as `KotlinGenUtil.splitDottedRef` in the sibling
+`codegen-kotlin` module's `KNOWN_GAPS.md`. Prune in a future MAJOR. (The other
+stranded origin helpers — `firstOriginChild`, `resolveDottedFieldRef`,
+`splitDottedRef` — were deleted: the private ones are not adopter-facing, and
+the `MetaOrigin` inspector had zero callers anywhere, the review's own
+delete-unless-genuinely-used-elsewhere rule.)

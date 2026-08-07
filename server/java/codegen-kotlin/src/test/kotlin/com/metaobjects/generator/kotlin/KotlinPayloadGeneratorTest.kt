@@ -80,20 +80,24 @@ class KotlinPayloadGeneratorTest {
     }
 
     // -----------------------------------------------------------------------
-    // origin.* coverage — FR-004 payload-VO field-value provenance
+    // origin.* coverage — #270: payload typing is DECLARED-TYPE-AUTHORITATIVE.
+    // A field carrying any `origin.*` child types exactly as if the origin
+    // child were absent (matching the origin-blind TS / C# reference emitters).
     // -----------------------------------------------------------------------
 
-    @Test fun originPassthroughResolvesSourceFieldType() {
-        // PayloadVo.title carries `origin.passthrough @from "Source.title"`.
-        // Expected: emitted property uses Source.title's type (String).
+    @Test fun originPassthroughIgnoredDeclaredTypeWins() {
+        // #270 — PayloadVo.title is DECLARED `field.int` but carries
+        // `origin.passthrough @from "Source.title"` to a STRING source
+        // (`@convert: true` acknowledges the deliberate type change, #185).
+        // Expected: emitted property uses the DECLARED type (Int), never the source's.
         val fx = """{
           "metadata.root": { "package": "acme::demo", "children": [
             { "object.entity": { "name": "Source", "children": [
                 { "field.string": { "name": "title" } }
             ] } },
             { "object.value": { "name": "ArticleSummary", "children": [
-                { "field.string": { "name": "title", "children": [
-                    { "origin.passthrough": { "@from": "Source.title" } }
+                { "field.int": { "name": "title", "children": [
+                    { "origin.passthrough": { "@from": "Source.title", "@convert": true } }
                 ] } }
             ] } },
             { "template.prompt": { "name": "Article",
@@ -111,15 +115,17 @@ class KotlinPayloadGeneratorTest {
             assertTrue(Files.exists(emitted),
                 "expected $emitted; files=${Files.walk(outDir).toList()}")
             val src = Files.readString(emitted)
-            assertTrue("val title: String" in src, src)
+            assertTrue("val title: Int" in src, src)
+            assertTrue("val title: String" !in src, src)
         } finally {
             outDir.toFile().deleteRecursively()
         }
     }
 
-    @Test fun originAggregateCountEmitsLong() {
-        // PayloadVo.postCount has `origin.aggregate @agg count @of "Post.id" @via "Author.posts"`.
-        // Expected: emitted property is Long regardless of the underlying field subtype.
+    @Test fun originAggregateCountIgnoredDeclaredTypeWins() {
+        // #270 — PayloadVo.postCount is DECLARED `field.int` but carries
+        // `origin.aggregate @agg count`. Expected: the DECLARED type (Int) —
+        // no more hardwired Long.
         val fx = """{
           "metadata.root": { "package": "acme::demo", "children": [
             { "object.entity": { "name": "Author", "children": [
@@ -151,15 +157,17 @@ class KotlinPayloadGeneratorTest {
             assertTrue(Files.exists(emitted),
                 "expected $emitted; files=${Files.walk(outDir).toList()}")
             val src = Files.readString(emitted)
-            assertTrue("val postCount: Long" in src, src)
+            assertTrue("val postCount: Int" in src, src)
+            assertTrue("val postCount: Long" !in src, src)
         } finally {
             outDir.toFile().deleteRecursively()
         }
     }
 
-    @Test fun originAggregateAvgEmitsDouble() {
-        // PayloadVo.avgScore has `origin.aggregate @agg avg @of "Post.score"`.
-        // Expected: emitted property is Double regardless of `@of` field's type.
+    @Test fun originAggregateAvgIgnoredDeclaredTypeWins() {
+        // #270 — PayloadVo.avgScore is DECLARED `field.float` but carries
+        // `origin.aggregate @agg avg`. Expected: the DECLARED type (Float) —
+        // no more hardwired Double.
         val fx = """{
           "metadata.root": { "package": "acme::demo", "children": [
             { "object.entity": { "name": "Author", "children": [
@@ -172,7 +180,7 @@ class KotlinPayloadGeneratorTest {
                 { "field.long":   { "name": "score" } }
             ] } },
             { "object.value": { "name": "AuthorSummary", "children": [
-                { "field.double": { "name": "avgScore", "children": [
+                { "field.float": { "name": "avgScore", "children": [
                     { "origin.aggregate": {
                         "@agg": "avg", "@of": "Post.score", "@via": "Author.posts" } }
                 ] } }
@@ -192,18 +200,19 @@ class KotlinPayloadGeneratorTest {
             assertTrue(Files.exists(emitted),
                 "expected $emitted; files=${Files.walk(outDir).toList()}")
             val src = Files.readString(emitted)
-            assertTrue("val avgScore: Double" in src, src)
+            assertTrue("val avgScore: Float" in src, src)
+            assertTrue("val avgScore: Double" !in src, src)
         } finally {
             outDir.toFile().deleteRecursively()
         }
     }
 
-    @Test fun originCollectionEmitsListOfNestedPayload() {
-        // PayloadVo.posts has `origin.collection @via "Author.posts"`.
-        // Expected:
-        //   - parent payload emits `val posts: List<PostPayload>`
-        //   - a separate file `PostPayload.kt` is also emitted in the same prompts/ package
-        //   - PostPayload contains Post's primitive fields
+    @Test fun originCollectionIgnoredNoNestedPayloadEmitted() {
+        // #270 — PayloadVo.posts is DECLARED `field.string` but carries
+        // `origin.collection @via "Author.posts"`. Expected:
+        //   - the DECLARED scalar type (`val posts: String`) — no List<PostPayload>
+        //   - NO PostPayload.kt is emitted (a non-object field contributes no
+        //     nested payload class; the @via target is never reached)
         val fx = """{
           "metadata.root": { "package": "acme::demo", "children": [
             { "object.entity": { "name": "Author", "children": [
@@ -235,35 +244,97 @@ class KotlinPayloadGeneratorTest {
             val nestedFile = outDir.resolve("acme/demo/prompts/PostPayload.kt")
             assertTrue(Files.exists(parentFile),
                 "expected $parentFile; files=${Files.walk(outDir).toList()}")
-            assertTrue(Files.exists(nestedFile),
-                "expected $nestedFile; files=${Files.walk(outDir).toList()}")
+            assertTrue(Files.notExists(nestedFile),
+                "PostPayload.kt must NOT be emitted (origin.collection is ignored); " +
+                    "files=${Files.walk(outDir).toList()}")
 
             val parentSrc = Files.readString(parentFile)
-            assertTrue("val posts: List<PostPayload>" in parentSrc, parentSrc)
-
-            val nestedSrc = Files.readString(nestedFile)
-            assertTrue("data class PostPayload" in nestedSrc, nestedSrc)
-            assertTrue("val id: Long" in nestedSrc, nestedSrc)
-            assertTrue("val title: String" in nestedSrc, nestedSrc)
-            assertTrue("package acme.demo.prompts" in nestedSrc, nestedSrc)
+            assertTrue("val posts: String" in parentSrc, parentSrc)
+            assertTrue("List<PostPayload>" !in parentSrc, parentSrc)
         } finally {
             outDir.toFile().deleteRecursively()
         }
     }
 
-    @Test fun `issue-195 new origins resolve native payload types (any-all Boolean, collect List, first nullable, computed nullable)`() {
-        // The four #195 projection read-model capabilities, hosted on a payload VO. The payload
-        // generator's origin dispatch must type each derived field from its origin (NOT the raw
-        // declared subType), matching the TS/other-port native-typing contract:
-        //   - origin.aggregate @agg:any|all → Boolean (a predicate quantifier over @filter; non-null)
-        //   - origin.aggregate @agg:collect → List<T> where T = the @of element type (non-null)
-        //   - origin.first                  → the @of source type, NULLABLE (empty set → null)
-        //   - origin.computed               → the field's own declared subType, NULLABLE (conservative)
+    @Test fun `disagreeing origin-collection is ignored — declared curated objectRef wins (issue-270)`() {
+        // #270 load-bearing disagreement test — the payload field DECLARES a curated
+        // value-object (`field.object @objectRef: Highlight, isArray: true`) AND carries an
+        // `origin.collection @via "Author.posts"` walking to a DIFFERENT, fuller entity (Post).
+        // Expected:
+        //   (a) `val posts: List<HighlightPayload>` — the DECLARATION wins;
+        //   (b) HighlightPayload.kt (the curated VO) is emitted, PostPayload.kt is NOT —
+        //       the silent payload-bloat leak the prompt pillar exists to prevent.
+        val fx = """{
+          "metadata.root": { "package": "acme::demo", "children": [
+            { "object.entity": { "name": "Author", "children": [
+                { "field.long": { "name": "id" } },
+                { "relationship.aggregation": { "name": "posts",
+                    "@objectRef": "Post", "@cardinality": "many" } }
+            ] } },
+            { "object.entity": { "name": "Post", "children": [
+                { "field.long":   { "name": "id" } },
+                { "field.string": { "name": "title" } },
+                { "field.string": { "name": "body" } },
+                { "field.string": { "name": "internalNotes" } }
+            ] } },
+            { "object.value": { "name": "Highlight", "children": [
+                { "field.string": { "name": "snippet" } }
+            ] } },
+            { "object.value": { "name": "AuthorDigest", "children": [
+                { "field.object": { "name": "posts", "@objectRef": "Highlight",
+                    "isArray": true, "children": [
+                    { "origin.collection": { "@via": "Author.posts" } }
+                ] } }
+            ] } },
+            { "template.prompt": { "name": "AuthorDigestView",
+                "@payloadRef": "AuthorDigest", "@textRef": "demo/digest" } }
+          ] }
+        }""".trimIndent()
+
+        val outDir = Files.createTempDirectory("kpay-disagree-")
+        try {
+            val gen = KotlinPayloadGenerator()
+            gen.setArgs(mapOf("outputDir" to outDir.toString()))
+            gen.execute(loadString("test-disagree", fx))
+
+            val parentFile = outDir.resolve("acme/demo/prompts/AuthorDigestViewPayload.kt")
+            val curatedFile = outDir.resolve("acme/demo/prompts/HighlightPayload.kt")
+            val entityFile = outDir.resolve("acme/demo/prompts/PostPayload.kt")
+            assertTrue(Files.exists(parentFile),
+                "expected $parentFile; files=${Files.walk(outDir).toList()}")
+            assertTrue(Files.exists(curatedFile),
+                "expected curated $curatedFile; files=${Files.walk(outDir).toList()}")
+            assertTrue(Files.notExists(entityFile),
+                "PostPayload.kt (the @via entity) must NOT be emitted; " +
+                    "files=${Files.walk(outDir).toList()}")
+
+            val parentSrc = Files.readString(parentFile)
+            // (a) DECLARED wins: @objectRef + isArray, not the @via walk.
+            assertTrue("val posts: List<HighlightPayload>" in parentSrc, parentSrc)
+            assertTrue("PostPayload" !in parentSrc, parentSrc)
+
+            val curatedSrc = Files.readString(curatedFile)
+            // (b) the closure emits the curated VO's shape, not the fuller entity's.
+            assertTrue("data class HighlightPayload" in curatedSrc, curatedSrc)
+            assertTrue("val snippet: String" in curatedSrc, curatedSrc)
+            assertTrue("internalNotes" !in curatedSrc, curatedSrc)
+        } finally {
+            outDir.toFile().deleteRecursively()
+        }
+    }
+
+    @Test fun `issue-195 origins hosted on a payload VO are ignored — declared types win (issue-270)`() {
+        // #270 — the four #195 origins, hosted on a payload VO, are IGNORED for typing:
+        // every field types from its DECLARED `field.<subType>` + `isArray`, non-null
+        // (the payload emitter's declared-path default — nullability never comes from
+        // origin semantics: no more "first is nullable" / "computed is conservatively
+        // nullable").
         //
-        // Shapes obey the #195 loader validation: any/all carry @filter + @via and FORBID @of;
-        // collect is isArray with a subtype-matching @of; first's field is non-@required; computed's
-        // @expr references the host VO's own field (`bio`). The Kotlin dispatch keys on @agg / the
-        // origin subtype, never on @filter/@orderBy.
+        // Shapes obey the #195 loader validation: any/all carry @filter + @via and FORBID @of
+        // (and must be field.boolean); collect is isArray with a subtype-matching @of; computed's
+        // @expr references the host VO's own field (`bio`). Note any/all/collect are cases where
+        // validation FORCES declared == derived, so their assertions are unchanged from the
+        // pre-#270 origin-dispatch era.
         val fx = """{
           "metadata.root": { "package": "acme::demo", "children": [
             { "object.entity": { "name": "Author", "children": [
@@ -312,20 +383,23 @@ class KotlinPayloadGeneratorTest {
                 "expected $emitted; files=${Files.walk(outDir).toList()}")
             val src = Files.readString(emitted)
 
-            // any / all → Boolean (non-null)
+            // any / all → declared field.boolean (non-null; declared==derived by validation)
             assertTrue("val hasAnyPost: Boolean" in src && "val hasAnyPost: Boolean?" !in src,
-                "origin.aggregate @agg:any must be non-null Boolean; saw:\n$src")
+                "declared field.boolean must emit non-null Boolean; saw:\n$src")
             assertTrue("val allPosts: Boolean" in src && "val allPosts: Boolean?" !in src,
-                "origin.aggregate @agg:all must be non-null Boolean; saw:\n$src")
-            // collect → List<String> (non-null), element = @of (Post.category) type
+                "declared field.boolean must emit non-null Boolean; saw:\n$src")
+            // collect → declared field.string isArray → List<String> (non-null;
+            // declared==derived by validation)
             assertTrue("val categories: List<String>" in src && "val categories: List<String>?" !in src,
-                "origin.aggregate @agg:collect must be non-null List<String>; saw:\n$src")
-            // first → the @of source type (String), NULLABLE
-            assertTrue("val latestCategory: String?" in src,
-                "origin.first must be nullable @of source type (String?); saw:\n$src")
-            // computed → declared subType (Boolean), NULLABLE (conservative)
-            assertTrue("val hasBio: Boolean?" in src,
-                "origin.computed must be nullable declared subType (Boolean?); saw:\n$src")
+                "declared field.string isArray must emit non-null List<String>; saw:\n$src")
+            // first → declared field.string, NON-NULL (#270: origin.first no longer
+            // forces nullability)
+            assertTrue("val latestCategory: String" in src && "val latestCategory: String?" !in src,
+                "declared field.string must emit non-null String (origin.first ignored); saw:\n$src")
+            // computed → declared field.boolean, NON-NULL (#270: origin.computed no
+            // longer forces nullability)
+            assertTrue("val hasBio: Boolean" in src && "val hasBio: Boolean?" !in src,
+                "declared field.boolean must emit non-null Boolean (origin.computed ignored); saw:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
         }

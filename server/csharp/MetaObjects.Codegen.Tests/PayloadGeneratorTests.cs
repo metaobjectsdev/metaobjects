@@ -156,4 +156,61 @@ public sealed class PayloadGeneratorTests
         Assert.Contains("public required AcmeBetaNote fromBeta { get; init; }", file.Content);
         Assert.DoesNotContain("public sealed record Note", file.Content);
     }
+
+    // #270 reference-emitter pin — C# is one of the two genuinely origin-blind REFERENCE
+    // payload emitters the Kotlin / Python / Java ports converged on, but nothing gated
+    // that: this pins that an `origin.*` child on a payload VO field is IGNORED for
+    // typing — the declared `field.<subType>` + `isArray` + `@objectRef` win — so a
+    // future change cannot drift this reference into origin dispatch (the drift that
+    // let three ports diverge in the first place). Test-only: product code untouched.
+    [Fact]
+    public void Origin_children_are_ignored_for_typing_declared_type_wins()
+    {
+        const string m = """
+        { "metadata.root": { "package": "acme::ai", "children": [
+          { "object.entity": { "name": "Source", "children": [
+            { "field.string": { "name": "displayName" } }
+          ]}},
+          { "object.entity": { "name": "Author", "children": [
+            { "field.long": { "name": "id" } },
+            { "relationship.aggregation": { "name": "posts", "@objectRef": "Post", "@cardinality": "many" } }
+          ]}},
+          { "object.entity": { "name": "Post", "children": [
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "internalNotes" } }
+          ]}},
+          { "object.value": { "name": "Highlight", "children": [
+            { "field.string": { "name": "snippet" } }
+          ]}},
+          { "object.value": { "name": "Digest", "children": [
+            { "field.int": { "name": "alias", "children": [
+              { "origin.passthrough": { "@from": "Source.displayName", "@convert": true } }
+            ]}},
+            { "field.string": { "name": "summary", "children": [
+              { "origin.collection": { "@via": "Author.posts" } }
+            ]}},
+            { "field.object": { "name": "posts", "@objectRef": "Highlight", "isArray": true, "children": [
+              { "origin.collection": { "@via": "Author.posts" } }
+            ]}}
+          ]}},
+          { "template.output": { "name": "DigestDoc",
+            "@payloadRef": "Digest", "@textRef": "ai/digest", "@format": "json" } }
+        ]}}
+        """;
+        var files = new PayloadGenerator().Generate(Ctx(Load(m))).ToList();
+        var file = Assert.Single(files);
+        Assert.Equal("Digest.payload.cs", file.Path);
+        // Declared `field.int` wins over the (`@convert`-acknowledged) string passthrough.
+        Assert.Contains("public required int alias { get; init; }", file.Content);
+        Assert.DoesNotContain("string alias", file.Content);
+        // Declared `field.string` wins over origin.collection — no list, no via-target type.
+        Assert.Contains("public required string summary { get; init; }", file.Content);
+        // Declared `field.object @objectRef` + isArray wins over the disagreeing @via walk.
+        Assert.Contains("public required IReadOnlyList<Highlight> posts { get; init; }", file.Content);
+        Assert.Contains("public sealed record Highlight", file.Content);
+        Assert.Contains("public required string snippet { get; init; }", file.Content);
+        // The ignored @via entity never enters the closure.
+        Assert.DoesNotContain("record Post", file.Content);
+        Assert.DoesNotContain("internalNotes", file.Content);
+    }
 }
