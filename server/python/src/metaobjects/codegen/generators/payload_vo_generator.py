@@ -316,7 +316,11 @@ def _nested_target_of(field: MetaField, root: MetaData) -> MetaObject | None:
     declared ``field.object`` ``@objectRef`` (#270 — an ``origin.*`` child never
     contributes an edge; a non-object field contributes nothing). Mirrors the
     resolution in :func:`_resolve_object_field_type` EXACTLY, so the ADR-0044
-    closure walk and the emission walk agree on the target set."""
+    closure walk and the emission walk agree on the target set. The target's
+    SUBTYPE is deliberately not constrained here — that matches the TS / C#
+    reference emitters and this port's own extract-tier closure
+    (``extract_delegate_emitter.reachable_vos``); the legal-target-set decision
+    is #210's loader-validation call, not a codegen-tier fallback."""
     if field.sub_type != fc.FIELD_SUBTYPE_OBJECT:
         return None
     ref = field.attrs().get(fc.FIELD_ATTR_OBJECT_REF)

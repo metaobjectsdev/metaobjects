@@ -19,8 +19,8 @@ This buys four guarantees:
 4. **Cross-language conformance** — a Python eval renders exactly what the Java
    production server sends.
 
-The vocabulary is `template.*` (the renderable unit) + `origin.*` (the projection
-fields that build the payload VO). Mustache is the chosen template engine — it has
+The vocabulary is `template.*` (the renderable unit) over a declared
+`object.value` payload shape. Mustache is the chosen template engine — it has
 the only published cross-language spec + conformance suite.
 
 ## Two template subtypes
@@ -41,21 +41,23 @@ Both carry the same generic attributes:
 | `@owner` | no | Governance attribute |
 | `@since` | no | Governance attribute |
 
-## Payload origins
+## Payload fields are declared
 
-A payload is an `object.value` view-object whose fields each declare an `origin.*`
-child. Three origin subtypes:
+A payload is an `object.value` view-object whose fields DECLARE the payload's
+shape — a prompt's payload is a typed projection you author, so payload bloat
+shows up as a diff. Every port's payload codegen is **declared-type-authoritative
+(#270)**: a field's generated type comes only from its declared `field.<subType>`
++ `isArray` + `@objectRef`, and a nested payload is a declared `field.object
+@objectRef` to another `object.value` (`isArray: true` for a list). An `origin.*`
+child on a payload field is **ignored for typing** — it never changes the
+generated type, nullability, or the nested-payload set. The caller supplies the
+field values at render time.
 
-| Origin | Behavior |
-|---|---|
-| `origin.passthrough @from "Entity.field"` | Payload property type matches the source field |
-| `origin.aggregate @agg <count\|sum\|avg\|min\|max>` | `count` → `Long`; `avg` → `Double`; others match source field |
-| `origin.collection @via "Parent.rel"` | `List<NestedPayload>` — assembled from a relationship |
-
-These are the payload-assembly origins. **Projection** read models (`object.projection` over an
-entity) carry a fuller origin vocabulary — the `@agg` quantifiers `any` / `all` and the `collect`
-array rollup, plus `origin.computed` (a closed `@expr` grammar) and `origin.first` (#195) — see
-[source-kinds.md](source-kinds.md).
+Derivation and assembly belong to **projection** read models (`object.projection`
+over an entity), which carry the origin vocabulary — `origin.passthrough`,
+`origin.aggregate` (incl. the `any` / `all` quantifiers and the `collect` array
+rollup), `origin.computed` (a closed `@expr` grammar) and `origin.first` (#195) —
+see [source-kinds.md](source-kinds.md).
 
 ## Authoring
 
@@ -73,13 +75,10 @@ their post count + the first 3 post titles.
         "object.value": {
           "name": "WelcomePayload",
           "children": [
-            { "field.string": { "name": "displayName",
-              "children": [ { "origin.passthrough": { "@from": "Author.name" } } ] } },
-            { "field.long":   { "name": "postCount",
-              "children": [ { "origin.aggregate": {
-                "@agg": "count", "@of": "Post.id", "@via": "Author.posts" } } ] } },
+            { "field.string": { "name": "displayName" } },
+            { "field.long":   { "name": "postCount" } },
             { "field.object": { "name": "posts", "@objectRef": "PostSummary",
-              "children": [ { "origin.collection": { "@via": "Author.posts" } } ] } }
+              "isArray": true } }
           ]
         }
       },
@@ -87,8 +86,7 @@ their post count + the first 3 post titles.
         "object.value": {
           "name": "PostSummary",
           "children": [
-            { "field.string": { "name": "title",
-              "children": [ { "origin.passthrough": { "@from": "Post.title" } } ] } }
+            { "field.string": { "name": "title" } }
           ]
         }
       },
@@ -117,28 +115,18 @@ metadata:
         children:
           - field.string:
               name: displayName
-              children:
-                - origin.passthrough: { from: Author.name }
           - field.long:
               name: postCount
-              children:
-                - origin.aggregate:
-                    agg: count
-                    of: Post.id
-                    via: Author.posts
           - field.object:
               name: posts
               objectRef: PostSummary
-              children:
-                - origin.collection: { via: Author.posts }
+              isArray: true
 
     - object.value:
         name: PostSummary
         children:
           - field.string:
               name: title
-              children:
-                - origin.passthrough: { from: Post.title }
 
     - template.prompt:
         name: WelcomePrompt
@@ -214,8 +202,8 @@ const out: string = await render({
 
 `metaobjects-render` ships `Renderer` + `Provider` (Classpath, Filesystem,
 InMemory) + `Verify`. `SpringPayloadGenerator` (in `metaobjects-codegen-spring`)
-emits a Java 21 `record` payload per template, resolving all three origin
-subtypes (matches the Kotlin reference). Host code may also pass a
+emits a Java 21 `record` payload per template, typing every component from its
+declared field (#270; matches the Kotlin reference). Host code may also pass a
 `Map<String,Object>` to the renderer if it doesn't want the generated type.
 
 ```java
@@ -235,17 +223,18 @@ String out = Renderer.render(RenderRequest.builder()
 public record WelcomePromptPayload(
     String displayName,
     Long postCount,
-    java.util.List<PostSummary> posts
+    java.util.List<PostSummaryPayload> posts
 ) {}
 
-public record PostSummary(String title) {}
+// generated/acme/blog/prompts/PostSummaryPayload.java
+public record PostSummaryPayload(String title) {}
 ```
 
 ### Kotlin
 
 `metaobjects-metadata-ktx` wraps `Renderer` in an idiomatic Kotlin builder.
 `KotlinPayloadGenerator` (in `codegen-kotlin`) emits a `@Serializable` payload data
-class per template, resolving all three origin subtypes.
+class per template, typing every property from its declared field (#270).
 
 ```kotlin
 import com.metaobjects.metadata.ktx.render
@@ -302,7 +291,8 @@ string output = Renderer.Render(new RenderRequest(
 
 `metaobjects.render` ships the Mustache engine + `Verify`. The Python loader
 recognizes `template.*` + `origin.*`. Payload-VO codegen **is** emitted (the
-`payload` generator emits a Pydantic `BaseModel` per template, origin-aware — see
+`payload` generator emits a Pydantic `BaseModel` per template, typed from the
+declared fields (#270) — see
 [Output parsing (FR-006)](#output-parsing-fr-006)), so a consumer can render from
 the generated payload type or from a plain `dict`.
 
@@ -491,13 +481,14 @@ The following conformance fixtures gate this feature's behavior across ports:
 - [`fixtures/conformance/error-template-prompt-missing-payload-ref/`](../../fixtures/conformance/error-template-prompt-missing-payload-ref/) — `template.prompt` requires `@payloadRef`
 - [`fixtures/conformance/error-template-required-slot-missing/`](../../fixtures/conformance/error-template-required-slot-missing/) — required slot declarations are checked
 
-**Payload origins (`origin.*`)**
+**Origins (`origin.*`) — loader vocabulary** (declares derivation lineage; ignored
+for payload typing per #270)
 
 - [`fixtures/conformance/origin-passthrough-simple/`](../../fixtures/conformance/origin-passthrough-simple/) — `origin.passthrough` cross-entity field reference
 - [`fixtures/conformance/origin-aggregate-count/`](../../fixtures/conformance/origin-aggregate-count/) — `origin.aggregate @agg=count`
 - [`fixtures/conformance/origin-aggregate-sum/`](../../fixtures/conformance/origin-aggregate-sum/) — `origin.aggregate @agg=sum`
 - [`fixtures/conformance/origin-multi-level-via/`](../../fixtures/conformance/origin-multi-level-via/) — dotted-path `@via` traversal across hops
-- [`fixtures/conformance/origin-collection-simple/`](../../fixtures/conformance/origin-collection-simple/) — `origin.collection` for repeated-row payloads
+- [`fixtures/conformance/origin-collection-simple/`](../../fixtures/conformance/origin-collection-simple/) — `origin.collection` loads on a repeated-row shape
 - [`fixtures/conformance/error-origin-bad-via-path/`](../../fixtures/conformance/error-origin-bad-via-path/) — unresolvable `@via` rejected
 - [`fixtures/conformance/error-origin-bad-aggregate-fn/`](../../fixtures/conformance/error-origin-bad-aggregate-fn/) — unknown `@agg` rejected
 - [`fixtures/conformance/error-origin-passthrough-type-mismatch/`](../../fixtures/conformance/error-origin-passthrough-type-mismatch/) — a `passthrough` field whose `field.<subType>` differs from its `@from` source fails with `ERR_PASSTHROUGH_TYPE_MISMATCH`

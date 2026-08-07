@@ -262,8 +262,10 @@ Two generators ship together for the full prompt+parse story:
 
 - `payload_vo_generator` emits one `<template_name>_payload.py` per declared
   `template.*` (prompt / output / toolcall) — a Pydantic v2 `<TemplateName>Payload`
-  `BaseModel` resolving all three origin subtypes (`passthrough` / `aggregate` /
-  `collection`). Mirrors the Kotlin reference shape.
+  `BaseModel` typed from the DECLARED fields only (#270 — any `origin.*` child a
+  payload field carries is ignored for typing; a nested payload is a declared
+  `field.object @objectRef` to another `object.value`). Mirrors the Kotlin
+  reference shape.
 - `output_parser_generator` emits one `<template_name>_output_parser.py` per
   `template.output`, importing the payload class from the sibling payload module.
 
@@ -326,8 +328,8 @@ design is at [ADR-0010](../../spec/decisions/ADR-0010-template-output-parser-cod
 the feature reference is at
 [`features/templates-and-payloads.md`](../features/templates-and-payloads.md#output-parsing-fr-006).
 
-**Per-file dedupe note.** When `origin.collection` references the same nested
-target across two templates, each template's payload file contains its own
+**Per-file dedupe note.** When two templates' payloads reference the same nested
+`field.object @objectRef` target, each template's payload file contains its own
 copy of the nested class (per-file, not per-run dedupe). This differs from
 Kotlin's cross-run dedupe (KotlinPoet → one class per `.kt` file). The Python
 choice keeps each generated payload module self-contained — see the
@@ -351,7 +353,7 @@ import lines are stable.
 | Source kinds (table / view / storedProc) | Loader-level yes; codegen for non-`table` kinds is in progress |
 | `field.currency` / `field.enum` / `field.object` + `@storage` | Loader-level yes; codegen for `field.object` `flattened` storage is in progress |
 | Templates + render (FR-004) | Yes (`metaobjects.render`) |
-| Payload-VO codegen | Yes (`payload_vo_generator` — Pydantic v2 `BaseModel` per template, origin-aware) |
+| Payload-VO codegen | Yes (`payload_vo_generator` — Pydantic v2 `BaseModel` per template, declared-type-authoritative per #270) |
 | Output parser codegen (FR-006) | Yes (`output_parser_generator` — Pydantic throw-only; imports the payload class from the sibling payload module) |
 | Declarative template-codegen | Yes — `metaobjects gen --template-spec` (scope perEntity/perPackage/perModel + outputPattern; the cross-port JSON contract shared with C#) |
 | Migrations | TS-only by design (ADR-0015) — no Python `migrate` command; consume the canonical `schema.postgres.sql` |

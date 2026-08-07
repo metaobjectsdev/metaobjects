@@ -206,8 +206,12 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * Declared `field.object @objectRef`: recursively emit `<TargetShortName>Payload` for
      * the referenced value-object (deduped per run) and return that type — or
      * `List<TargetPayload>` when `isArray: true`. Falls back to the scalar type mapping when
-     * the ref can't be resolved or the target is not an `object.value` (defensive — loader
-     * validation normally gates these).
+     * the ref can't be resolved (a dangling ref IS loader-gated, `ERR_UNRESOLVED_OBJECT_REF`)
+     * or when the target is not an `object.value` — the latter is this port's own
+     * PRE-EXISTING conservative filter, NOT a loader-enforced contract (no port's loader
+     * constrains a nested `@objectRef` target's subtype today; the TS/C# reference emitters
+     * and Python do not filter). The legal-target-set ruling is #210's loader-validation
+     * call — do not copy this filter to other ports meanwhile.
      */
     private fun resolveObjectFieldType(
         field: ObjectField,

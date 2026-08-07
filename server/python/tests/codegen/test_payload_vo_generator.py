@@ -433,6 +433,91 @@ def test_disagreeing_origin_collection_declared_object_ref_wins() -> None:
 
 
 # ---------------------------------------------------------------------------
+# #270 / ADR-0044 name-map closure gates — the closure walks ONLY declared
+# `field.object @objectRef` -> object.value edges. Positive: an origin child on
+# a field.object does NOT remove its declared edge from the closure. Negative:
+# a field carrying ONLY origin.collection contributes nothing to the map.
+# ---------------------------------------------------------------------------
+
+
+def test_origin_carrying_object_field_stays_in_name_map_closure() -> None:
+    """#270 / ADR-0044 gate (positive) — a ``field.object @objectRef`` that ALSO
+    carries an origin child still contributes its DECLARED edge to the name-map
+    closure: two same-short-named ``Note`` VOs (one reached through the
+    origin-carrying field, one plain) must BOTH be package-qualified. If the
+    origin-carrying edge were dropped, the collision would go undetected and both
+    would emit under a shadowed bare ``NotePayload``."""
+    alpha = _value_object("Note", [_field("alphaText", fc.FIELD_SUBTYPE_STRING)], package="acme::alpha")
+    beta = _value_object("Note", [_field("betaText", fc.FIELD_SUBTYPE_STRING)], package="acme::beta")
+    post = _entity(
+        "Post",
+        [_field("id", fc.FIELD_SUBTYPE_LONG), _field("internalNotes", fc.FIELD_SUBTYPE_STRING)],
+    )
+    author = _entity(
+        "Author",
+        [_field("id", fc.FIELD_SUBTYPE_LONG)],
+        relationships=[_relationship("posts", "Post")],
+    )
+    from_alpha = _object_field("fromAlpha", "acme::alpha::Note")
+    from_alpha.add_child(_collection("Author.posts"))
+    digest = _value_object(
+        "Digest",
+        [from_alpha, _object_field("fromBeta", "acme::beta::Note")],
+        package="acme::app",
+    )
+    tmpl = _template("DigestOut", "acme::app::Digest")
+    root = _root([alpha, beta, post, author, digest, tmpl])
+    out = render_payload_vo(tmpl, root)
+    assert out is not None
+    # Both colliding VOs package-qualify — the origin-carrying declared edge is
+    # still in the closure.
+    assert "class AcmeAlphaNotePayload(BaseModel):" in out
+    assert "class AcmeBetaNotePayload(BaseModel):" in out
+    assert "class NotePayload(BaseModel):" not in out
+    assert "fromAlpha: AcmeAlphaNotePayload | None = None" in out
+    assert "fromBeta: AcmeBetaNotePayload | None = None" in out
+    # The ignored @via entity contributes nothing.
+    assert "class PostPayload(BaseModel):" not in out
+    assert "internalNotes" not in out
+
+
+def test_origin_collection_only_field_contributes_nothing_to_name_map() -> None:
+    """#270 / ADR-0044 gate (negative) — a field carrying ONLY
+    ``origin.collection`` (a non-object field) contributes NOTHING to the
+    name-map closure. Its ``@via`` walk reaches ``acme::beta::Note``, which
+    shares a bare short name with the declared ``acme::alpha::Note``; were the
+    retired collection edge still in the closure, the two would collide and both
+    would qualify. Instead the declared Note stays BARE."""
+    alpha = _value_object("Note", [_field("alphaText", fc.FIELD_SUBTYPE_STRING)], package="acme::alpha")
+    beta = _value_object("Note", [_field("betaText", fc.FIELD_SUBTYPE_STRING)], package="acme::beta")
+    author = _entity(
+        "Author",
+        [_field("id", fc.FIELD_SUBTYPE_LONG)],
+        relationships=[_relationship("notes", "acme::beta::Note")],
+    )
+    digest = _value_object(
+        "Digest",
+        [
+            _object_field("fromAlpha", "acme::alpha::Note"),
+            _field_with_origin("posts", fc.FIELD_SUBTYPE_STRING, _collection("Author.notes")),
+        ],
+        package="acme::app",
+    )
+    tmpl = _template("DigestOut", "acme::app::Digest")
+    root = _root([alpha, beta, author, digest, tmpl])
+    out = render_payload_vo(tmpl, root)
+    assert out is not None
+    # No collision without the origin edge: the declared Note keeps its BARE name.
+    assert "class NotePayload(BaseModel):" in out
+    assert "alphaText: str" in out
+    assert "class AcmeAlphaNotePayload(BaseModel):" not in out
+    assert "class AcmeBetaNotePayload(BaseModel):" not in out
+    assert "betaText" not in out
+    # The origin-only field types as its declared scalar.
+    assert "posts: str" in out
+
+
+# ---------------------------------------------------------------------------
 # Plain field.object @objectRef (no origin) — the FQN must be stripped to the
 # bare name for BOTH the emitted field annotation AND the nested class
 # declaration. Cross-port regression guard: the TS payload generator once

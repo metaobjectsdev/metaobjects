@@ -155,3 +155,15 @@ specified the URL grammar for nested-jsonb sort. Materializing nested
 jsonb on read needs an `@Contextual` kotlinx.serialization round-trip
 plus a column-type wiring; both ship as a unit when a real consumer needs
 the path.
+
+## `KotlinGenUtil.splitDottedRef` has zero in-repo callers
+
+**Status:** deliberately kept, not dead code — recorded here so it is not later
+rediscovered as live.
+
+#270 (payload typing is declared-type-authoritative) deleted the payload
+generator's `origin.*` dotted-ref navigation, which was the last in-repo caller
+of [`KotlinGenUtil.splitDottedRef`](src/main/kotlin/com/metaobjects/generator/kotlin/KotlinGenUtil.kt).
+The helper stays because `KotlinGenUtil` is deliberately `public` for adopters
+subclassing a generator (see its class KDoc) — removing a public helper is an
+API break out of proportion to the cleanup. Prune it in a future MAJOR.
