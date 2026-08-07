@@ -205,11 +205,14 @@ function _isLegalPayloadTarget(obj: MetaData): boolean {
 // template-level widen (sourceless projections) deliberately does NOT extend
 // to nested targets. Dangling refs are NOT reported here — the registry-derived
 // @objectRef resolution check already owns that failure.
+// `visited` is shared across the WHOLE pass (all templates), so a bad nested
+// target reachable from two templates reports ONCE — matching Java's
+// throw-on-first single-error behavior.
 function _checkNestedPayloadRefsValueOnly(
   payload: MetaData,
   root: MetaData,
   errors: ParseError[],
-  visited: Set<MetaData> = new Set(),
+  visited: Set<MetaData>,
 ): void {
   if (visited.has(payload)) return;
   visited.add(payload);
@@ -243,6 +246,9 @@ function _checkNestedPayloadRefsValueOnly(
 
 export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
+  // #210 — one visited set for the whole pass: a payload shared by N templates
+  // is walked (and any bad nested target reported) exactly once.
+  const nestedVisited = new Set<MetaData>();
   for (const tmpl of allTemplates(root)) {
     // --- @kind / textRef / email part-ref cross-field rules ---
     // template.output is either a document (@kind absent/"document" → @textRef
@@ -324,7 +330,7 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
       continue;
     }
     // #210 — nested payload targets stay value-only (see the helper's doctrine).
-    _checkNestedPayloadRefsValueOnly(payload, root, errors);
+    _checkNestedPayloadRefsValueOnly(payload, root, errors, nestedVisited);
     // ADR-0039: resolving — a template may inherit @responseRef via extends.
     const responseRef = tmpl.attr(TEMPLATE_ATTR_RESPONSE_REF);
     if (typeof responseRef === "string") {
@@ -340,7 +346,7 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
         );
       } else {
         // #210 — the response closure's nested targets stay value-only too.
-        _checkNestedPayloadRefsValueOnly(resVo, root, errors);
+        _checkNestedPayloadRefsValueOnly(resVo, root, errors, nestedVisited);
       }
     }
     const fieldNames = new Set(

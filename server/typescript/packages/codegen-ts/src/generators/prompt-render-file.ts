@@ -1,7 +1,8 @@
 // Stock generator that wraps generatePayloadInterfaces() + generateRenderHandle()
 // from payload-codegen.ts into a Generator factory. Emits ONE file aggregating
-// typed payload interfaces (for object.value entities) and render handles (for
-// template.prompt nodes).
+// typed payload interfaces (for every object.value, plus any sourceless
+// object.projection a prompt's @payloadRef targets — #210) and render handles
+// (for template.prompt nodes).
 //
 // Consumer wiring (metaobjects.config.ts):
 //   generators: [..., promptRender()]

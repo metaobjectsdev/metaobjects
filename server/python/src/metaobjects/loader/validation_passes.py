@@ -3084,7 +3084,7 @@ def _check_nested_payload_refs_value_only(
     payload: MetaData,
     root: MetaData,
     errors: list[MetaError],
-    visited: set[int] | None = None,
+    visited: set[int],
 ) -> None:
     """#210 (carried forward from the #219/ADR-0044 adjudication) — NESTED
     payload targets stay value-only: every ``field.object @objectRef`` reachable
@@ -3092,9 +3092,9 @@ def _check_nested_payload_refs_value_only(
     template-level widen (sourceless projections) deliberately does NOT extend
     to nested targets. Dangling refs are NOT reported here — the registry-derived
     @objectRef resolution check already owns that failure. Mirrors the TS
-    ``_checkNestedPayloadRefsValueOnly``."""
-    if visited is None:
-        visited = set()
+    ``_checkNestedPayloadRefsValueOnly``. ``visited`` is shared across the WHOLE
+    pass (all templates), so a bad nested target reachable from two templates
+    reports ONCE — matching Java's throw-on-first single-error behavior."""
     if id(payload) in visited:
         return
     visited.add(id(payload))
@@ -3142,6 +3142,10 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
     # own package first, else a root-level object.value; an FQN resolves exactly.
     # No bare-name-anywhere fallback that would bind a same-named VO in another
     # package. Shares the single resolve_object_ref matcher.
+    #
+    # #210 — one visited set for the whole pass: a payload shared by N templates
+    # is walked (and any bad nested target reported) exactly once.
+    nested_visited: set[int] = set()
     for tpl in root.children():
         if tpl.type != TYPE_TEMPLATE:
             continue
@@ -3234,7 +3238,7 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
             continue
 
         # #210 — nested payload targets stay value-only (see the helper's doctrine).
-        _check_nested_payload_refs_value_only(payload, root, errors)
+        _check_nested_payload_refs_value_only(payload, root, errors, nested_visited)
 
         # R3 — required-slots membership
         if is_prompt:

@@ -83,6 +83,12 @@ describe("#210 — assembly origins are illegal on an object.value host", () => 
     first: { "origin.first": { "@of": "t::ai::Author.name", "@via": "t::ai::Author.posts", "@orderBy": ["name:desc"] } },
   };
 
+  test("the originNode table covers exactly the ASSEMBLY_ORIGIN_SUBTYPES set (drift guard)", () => {
+    // A fifth assembly origin added to the constant without a matching entry here
+    // would otherwise build `children: [undefined]` and pass for the wrong reason.
+    expect(new Set(Object.keys(originNode))).toEqual(new Set(ASSEMBLY_ORIGIN_SUBTYPES));
+  });
+
   for (const sub of ASSEMBLY_ORIGIN_SUBTYPES) {
     test(`origin.${sub} on a value-hosted field → ERR_SUBTYPE_RULE_VIOLATION`, async () => {
       const fieldDecl =

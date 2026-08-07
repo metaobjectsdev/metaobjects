@@ -18,26 +18,21 @@ import {
   outputPrompt,
   renderHelper,
 } from "@metaobjectsdev/codegen-ts/generators";
-import { OBJECT_SUBTYPE_VALUE, TYPE_SOURCE, type MetaObject } from "@metaobjectsdev/metadata";
+import { TYPE_SOURCE, type MetaObject } from "@metaobjectsdev/metadata";
 
-// `entityFile`/`queriesFile` already special-case a pure `object.value` (no
-// identity, no source — ADR-0028) as shape-only (interface + Zod, no Drizzle
-// table). `routesFile`/`formFile` do not yet make that distinction — they
-// assume every entity has a backing table / entity-constants object, which a
-// pure VO's `renderValueObjectFile` output doesn't emit. Filtering VOs out of
-// these two generators here is the config-level workaround (the `filter`
-// option exists for exactly this); it does not belong in this teaching
-// example as a code fix. SyllabusSection / InstructorProfile are used only as
-// embedded jsonb shapes — neither is independently CRUD-addressable or
-// form-submitted, so excluding them is also the semantically correct call for
-// this domain. ProgramDescriptionPayload is a SOURCELESS object.projection
-// since #210 (assembly origins live on projections; a template payloadRef may
-// target a sourceless projection) — it is a wire-assembled payload with no
-// backing store, so it is excluded the same way. The one predicate covering
-// all three: only a PERSISTED object (a declared/inherited source.* child —
-// the #248 persistability contract) is CRUD-addressable or form-submitted.
+// `entityFile`/`queriesFile`/`routesFile` derive DB participation from a
+// declared/inherited `source.*` child (the #248 persistability contract), so
+// they already skip the sourceless shapes here on their own: the pure
+// `object.value`s (SyllabusSection / InstructorProfile — a value can never
+// declare a source, loader-enforced) and the SOURCELESS `object.projection`
+// payload (ProgramDescriptionPayload, #210 — assembly origins live on
+// projections; a template payloadRef may target a sourceless projection).
+// `formFile` is the one generator that does NOT yet make that distinction —
+// it assumes every passing entity is form-submittable — so it alone needs the
+// config-level `filter` (the option exists for exactly this): only a PERSISTED
+// object is form-submitted in this domain.
 const isPersisted = (e: MetaObject): boolean =>
-  e.children().some((c) => c.type === TYPE_SOURCE) && e.subType !== OBJECT_SUBTYPE_VALUE;
+  e.children().some((c) => c.type === TYPE_SOURCE);
 
 export default defineConfig({
   outDir: "src/generated",
@@ -48,7 +43,7 @@ export default defineConfig({
   generators: [
     entityFile(),
     queriesFile(),
-    routesFile({ filter: isPersisted }),
+    routesFile(),
     formFile({ filter: isPersisted }),
     promptRender(),
     outputParser(),

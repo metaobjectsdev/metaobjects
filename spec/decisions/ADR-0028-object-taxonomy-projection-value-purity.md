@@ -140,7 +140,13 @@ this unambiguous). A *sourced* projection as a payload target stays
   entity-`extends`-entity view objects and stored-proc result shapes as entities
   fail to load. Own fixtures migrate to `object.projection`. FR-004
   `value`+`origin.*` payloads remain valid — values still carry origins for
-  assembly semantics; no migration is forced.
+  assembly semantics; no migration is forced. *(Superseded 2026-08-06,
+  [#210](https://github.com/metaobjectsdev/metaobjects/issues/210) — see the
+  assembly-origins amendment above: this clause now holds only for
+  `origin.passthrough` (FR-015 parameter lineage); a migration IS forced for
+  the assembly origins (`aggregate`/`computed`/`collection`/`first`), which
+  re-host on a sourceless `object.projection` —
+  [migration guide](../../docs/features/migrations/value-assembly-origins-and-source-role-shrink.md).)*
 - One projection serves multiple surfaces simultaneously (DB view via its source,
   wire contract via an operation's `outputRef`, grid via a layout) — they cannot
   disagree because they are the same node.

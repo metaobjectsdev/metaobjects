@@ -2912,6 +2912,9 @@ public static class ValidationPasses
     {
         var errors = new List<MetaError>();
 
+        // #210 — one visited set for the whole pass: a payload shared by N templates
+        // is walked (and any bad nested target reported) exactly once.
+        var nestedVisited = new HashSet<MetaData>();
         foreach (var tmpl in root.OwnChildren().Where(c => c.Type == TYPE_TEMPLATE))
         {
             // --- @kind / textRef / email part-ref cross-field rules ---
@@ -2977,7 +2980,7 @@ public static class ValidationPasses
             }
 
             // #210 — nested payload targets stay value-only (see the helper's doctrine).
-            CheckNestedPayloadRefsValueOnly(payload, root, errors, new HashSet<MetaData>());
+            CheckNestedPayloadRefsValueOnly(payload, root, errors, nestedVisited);
 
             // Use Children() (effective) so inherited payload fields are visible.
             var fieldNames = new HashSet<string>(
@@ -3034,7 +3037,9 @@ public static class ValidationPasses
     /// template-level widen (sourceless projections) deliberately does NOT extend
     /// to nested targets. Dangling refs are NOT reported here — the registry-derived
     /// @objectRef resolution check already owns that failure. Mirrors the TS
-    /// _checkNestedPayloadRefsValueOnly.
+    /// _checkNestedPayloadRefsValueOnly. <paramref name="visited"/> is shared across
+    /// the WHOLE pass (all templates), so a bad nested target reachable from two
+    /// templates reports ONCE — matching Java's throw-on-first single-error behavior.
     /// </summary>
     private static void CheckNestedPayloadRefsValueOnly(
         MetaData payload, MetaData root, List<MetaError> errors, HashSet<MetaData> visited)
