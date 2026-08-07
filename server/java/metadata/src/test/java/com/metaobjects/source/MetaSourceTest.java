@@ -349,10 +349,6 @@ public class MetaSourceTest extends SharedRegistryTestBase {
 
         assertEquals("ROLE_PRIMARY", "primary", MetaSource.ROLE_PRIMARY);
         assertEquals("ROLE_REPLICA", "replica", MetaSource.ROLE_REPLICA);
-        assertEquals("ROLE_INDEX", "index", MetaSource.ROLE_INDEX);
-        assertEquals("ROLE_CACHE", "cache", MetaSource.ROLE_CACHE);
-        assertEquals("ROLE_PUBLISH", "publish", MetaSource.ROLE_PUBLISH);
-        assertEquals("ROLE_MIRROR", "mirror", MetaSource.ROLE_MIRROR);
         assertEquals("DEFAULT_ROLE", "primary", MetaSource.DEFAULT_ROLE);
     }
 

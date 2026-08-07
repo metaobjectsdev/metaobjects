@@ -55,7 +55,7 @@ public abstract class MetaSource extends MetaData {
     /** Object kind: table / view / materializedView / storedProc / tableFunction. */
     public static final String ATTR_KIND = "kind";
 
-    /** Multi-source role: primary / replica / index / cache / publish / mirror. */
+    /** Multi-source role: primary / replica. */
     public static final String ATTR_ROLE = "role";
 
     /** DB schema / namespace (Postgres default "public"; SQLite rejects non-default values). */
@@ -129,17 +129,13 @@ public abstract class MetaSource extends MetaData {
 
     public static final String ROLE_PRIMARY = "primary";
     public static final String ROLE_REPLICA = "replica";
-    public static final String ROLE_INDEX   = "index";
-    public static final String ROLE_CACHE   = "cache";
-    public static final String ROLE_PUBLISH = "publish";
-    public static final String ROLE_MIRROR  = "mirror";
 
     /** Default role when {@code @role} is absent. */
     public static final String DEFAULT_ROLE = ROLE_PRIMARY;
 
     /** All valid {@code @role} values. Used by {@code ValidationPhase} for enum-membership checks. */
     public static final Set<String> VALID_ROLES = Set.of(
-        ROLE_PRIMARY, ROLE_REPLICA, ROLE_INDEX, ROLE_CACHE, ROLE_PUBLISH, ROLE_MIRROR
+        ROLE_PRIMARY, ROLE_REPLICA
     );
 
     // -----------------------------------------------------------------------

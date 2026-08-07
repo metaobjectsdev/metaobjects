@@ -103,8 +103,7 @@ public class RdbSource extends MetaSource {
             // @role — enum-constrained; withEnum also marks it as single.
             def.optionalAttributeWithConstraints(ATTR_ROLE)
                .ofType(StringAttribute.SUBTYPE_STRING)
-               .withEnum(ROLE_PRIMARY, ROLE_REPLICA, ROLE_INDEX,
-                         ROLE_CACHE, ROLE_PUBLISH, ROLE_MIRROR);
+               .withEnum(ROLE_PRIMARY, ROLE_REPLICA);
 
             // @schema — optional, string, single value.
             def.optionalAttributeWithConstraints(ATTR_SCHEMA)

@@ -165,13 +165,9 @@ export const DB_DEFINITION: ProviderDefinition = {
           "max": 1,
           "allowedValues": [
             "primary",
-            "replica",
-            "index",
-            "cache",
-            "publish",
-            "mirror"
+            "replica"
           ],
-          "description": "Role this source plays when an object has multiple sources: primary (default, system of record), replica, index, cache, publish, or mirror."
+          "description": "Role this source plays when an object has multiple sources: primary (default, system of record) or replica. The former members index, cache, publish and mirror are reserved-not-registered (ADR-0007 Amendment 2): a role member enters the registry only when a shipping consumer dispatches on it."
         },
         {
           "type": "attr",

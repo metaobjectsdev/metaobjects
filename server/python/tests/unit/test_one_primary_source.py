@@ -94,11 +94,11 @@ def test_write_through_one_primary_one_replica_ok() -> None:
 
 
 def test_no_primary_raises_err_source_no_primary() -> None:
-    """All sources are non-primary (replica/index/cache) → ERR_SOURCE_NO_PRIMARY."""
+    """All sources are non-primary (replica) → ERR_SOURCE_NO_PRIMARY."""
     codes = _load(
         _entity(
             {"source.rdb": {"@table": "v_products_a", "@kind": "view", "@role": "replica"}},
-            {"source.rdb": {"@table": "v_products_b", "@kind": "view", "@role": "cache"}},
+            {"source.rdb": {"@table": "v_products_b", "@kind": "view", "@role": "replica"}},
         )
     )
     assert "ERR_SOURCE_NO_PRIMARY" in codes, f"Expected ERR_SOURCE_NO_PRIMARY; got {codes}"

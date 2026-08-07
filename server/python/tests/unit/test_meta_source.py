@@ -76,8 +76,9 @@ def test_source_role_value_set() -> None:
     """@role value set — Tier-1 contract."""
     assert SOURCE_ROLE_PRIMARY == "primary"
     assert SOURCE_ROLE_REPLICA == "replica"
-    # Cross-language vocabulary fixed at six members; assert content not order
-    assert set(SOURCE_ROLES) == {"primary", "replica", "index", "cache", "publish", "mirror"}
+    # Cross-language vocabulary is two members (#212); index/cache/publish/mirror
+    # are reserved-not-registered. Assert content not order.
+    assert set(SOURCE_ROLES) == {"primary", "replica"}
 
 
 def test_source_defaults() -> None:

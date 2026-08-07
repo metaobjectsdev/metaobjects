@@ -114,18 +114,10 @@ export const SOURCE_READ_ONLY_KINDS: ReadonlySet<string> = new Set([
 
 export const SOURCE_ROLE_PRIMARY = "primary";
 export const SOURCE_ROLE_REPLICA = "replica";
-export const SOURCE_ROLE_INDEX   = "index";
-export const SOURCE_ROLE_CACHE   = "cache";
-export const SOURCE_ROLE_PUBLISH = "publish";
-export const SOURCE_ROLE_MIRROR  = "mirror";
 
 export const SOURCE_ROLES = [
   SOURCE_ROLE_PRIMARY,
   SOURCE_ROLE_REPLICA,
-  SOURCE_ROLE_INDEX,
-  SOURCE_ROLE_CACHE,
-  SOURCE_ROLE_PUBLISH,
-  SOURCE_ROLE_MIRROR,
 ] as const;
 export type SourceRole = (typeof SOURCE_ROLES)[number];
 

@@ -107,18 +107,10 @@ ALL_PHYSICAL_NAME_ALIASES: tuple[str, ...] = (
 # --- @role values + default -------------------------------------------------
 SOURCE_ROLE_PRIMARY = "primary"
 SOURCE_ROLE_REPLICA = "replica"
-SOURCE_ROLE_INDEX = "index"
-SOURCE_ROLE_CACHE = "cache"
-SOURCE_ROLE_PUBLISH = "publish"
-SOURCE_ROLE_MIRROR = "mirror"
 
 SOURCE_ROLES = (
     SOURCE_ROLE_PRIMARY,
     SOURCE_ROLE_REPLICA,
-    SOURCE_ROLE_INDEX,
-    SOURCE_ROLE_CACHE,
-    SOURCE_ROLE_PUBLISH,
-    SOURCE_ROLE_MIRROR,
 )
 
 # @role default when omitted (system of record).
