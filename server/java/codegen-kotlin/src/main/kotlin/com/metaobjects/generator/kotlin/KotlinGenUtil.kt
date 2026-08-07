@@ -10,7 +10,6 @@ import com.metaobjects.generator.GeneratorException
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.origin.AggregateOrigin
-import com.metaobjects.origin.CollectionOrigin
 import com.metaobjects.origin.MetaOrigin
 import com.metaobjects.source.RdbSource
 import com.metaobjects.template.MetaTemplate
@@ -321,7 +320,7 @@ public object KotlinGenUtil {
             // ADR-0042 — resolve @payloadRef under the loader's own package-local contract.
             val vo = resolveValueObjectRef(loader, payloadRef, tmpl.getPackage()) ?: continue
             val nestedPkg = KotlinNaming.promptsPackage(PackageMapping.splitFqn(tmpl.name).first)
-            collectNestedClosure(vo, loader, nestedPkg, voOutPkg, orderedFqns, mutableSetOf(vo.name))
+            collectNestedClosure(vo, nestedPkg, voOutPkg, orderedFqns, mutableSetOf(vo.name))
         }
         // Group by (output package, bare short name).
         val byPkgShort = LinkedHashMap<String, MutableList<String>>()
@@ -359,52 +358,40 @@ public object KotlinGenUtil {
     }
 
     /**
-     * ADR-0044 pass 1 — walk [vo]'s transitive nested-payload closure (plain
-     * `field.object @objectRef` + `origin.collection @via` edges), assigning each
-     * not-yet-seen target VO to [outPkg] (first reaching template wins) and recording it
-     * in [orderedFqns]. [seen] is seeded with the primary VO's FQN and is the cycle guard.
+     * ADR-0044 pass 1 — walk [vo]'s transitive nested-payload closure (declared
+     * `field.object @objectRef` edges ONLY, #270), assigning each not-yet-seen target VO
+     * to [outPkg] (first reaching template wins) and recording it in [orderedFqns].
+     * [seen] is seeded with the primary VO's FQN and is the cycle guard.
      */
     private fun collectNestedClosure(
         vo: MetaObject,
-        loader: MetaDataLoader,
         outPkg: String,
         voOutPkg: MutableMap<String, String>,
         orderedFqns: MutableList<String>,
         seen: MutableSet<String>,
     ) {
         for (field in vo.metaFields) {
-            val target = nestedTargetOf(field, loader) ?: continue
+            val target = nestedTargetOf(field) ?: continue
             val fqn = target.name
             if (!seen.add(fqn)) continue
             if (!voOutPkg.containsKey(fqn)) {
                 voOutPkg[fqn] = outPkg
                 orderedFqns.add(fqn)
             }
-            collectNestedClosure(target, loader, outPkg, voOutPkg, orderedFqns, seen)
+            collectNestedClosure(target, outPkg, voOutPkg, orderedFqns, seen)
         }
     }
 
     /**
      * The nested-payload target VO a [field] contributes to the closure, or `null` when it
-     * contributes no nested class. Passthrough / aggregate / computed / first origins yield
-     * scalar types (no nested class). NOTE: the `origin.collection @via` and `field.objectRef`
-     * navigation here uses [resolveObjectByShortOrFqn] / the loader-bound `objectRef` — the
-     * origin-navigation ref kind (#244's domain), intentionally NOT the ADR-0042 @payloadRef
-     * resolver (which is only for the template's own @payloadRef).
+     * contributes no nested class. The ONLY closure edge is a declared
+     * `field.object @objectRef` whose target is an `object.value` (#270 — an `origin.*`
+     * child never contributes an edge; a non-object field contributes nothing). NOTE: the
+     * `field.objectRef` navigation uses the loader-bound `objectRef` — the field-navigation
+     * ref kind (#244's domain), intentionally NOT the ADR-0042 @payloadRef resolver (which
+     * is only for the template's own @payloadRef).
      */
-    private fun nestedTargetOf(field: MetaField<*>, loader: MetaDataLoader): MetaObject? {
-        val origin = field.children.filterIsInstance<MetaOrigin>().firstOrNull()
-        if (origin is CollectionOrigin) {
-            val via = origin.via ?: return null
-            val (parentName, relName) = splitDottedRef(via) ?: return null
-            val parent = resolveObjectByShortOrFqn(loader, parentName) ?: return null
-            val rel = parent.relationships
-                .firstOrNull { it.name == relName || it.name.substringAfterLast("::") == relName }
-                ?: return null
-            val targetRef = rel.objectRef ?: return null
-            return resolveObjectByShortOrFqn(loader, targetRef)
-        }
-        if (origin != null) return null // passthrough / aggregate / computed / first -> scalar
+    private fun nestedTargetOf(field: MetaField<*>): MetaObject? {
         if (field is ObjectField) {
             val target = try { field.objectRef } catch (e: RuntimeException) { null } ?: return null
             if (target.subType != MetaObject.SUBTYPE_VALUE) return null

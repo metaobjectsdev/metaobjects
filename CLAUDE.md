@@ -552,5 +552,4 @@ See `spec/roadmap.md` for current and planned library work. (Consumer-adoption v
 
 - [TECHNICAL] Field-type → Drizzle-column-type mapping table (needed for complete TS codegen coverage).
 - [TECHNICAL] ObjectManagerDB further modernization. FR-003 Plan 4 (2026-05-27) closed the three engine-debt anti-patterns. The Spring Boot 3 starter + OMDB autoconfiguration + virtual-thread audit shipped 2026-05-30 (`metaobjects-spring-boot-starter`). **jOOQ migration is a closed non-goal**: jOOQ's OSS edition excludes Oracle/SQL Server/DB2 (commercial license required), which would paywall OMDB's commercial-DB drivers in a public OSS project, and jOOQ generates code *from* a schema — the inverse of MetaObjects' metadata-is-the-spine model.
-- [TECHNICAL] Payload `origin.*` resolution in `codegen-spring` (Day-1 deferral — see `server/java/codegen-spring/src/main/java/com/metaobjects/generator/spring/KNOWN_GAPS.md`). Kotlin's `KotlinPayloadGenerator` is the cross-port reference.
 - [TECHNICAL] WARN envelope-shape assertion on cross-port `expected-warnings.json` (closed 2026-05-27 — runners now assert envelope shape on warnings; legacy string-list path retired).

@@ -10,19 +10,18 @@ import-style emit so a single payload class is reused by both prompt rendering
 and output parsing (matches the Java payload-VO ↔ Java output-parser handoff).
 
 Each generated file declares a Pydantic v2 ``BaseModel`` per template. Field
-types are origin-aware: a payload-VO field may carry an ``origin.*`` child that
-declares how the value is derived, and the field's annotation is resolved as:
-
-* ``origin.passthrough`` (``@from "Entity.field"``) — type of the source field.
-* ``origin.aggregate``  (``@agg count``)              — ``int``.
-                        (``@agg avg``)                — ``float``.
-                        (``@agg sum``/``min``/``max``) — type of ``@of`` field.
-* ``origin.collection`` (``@via "Parent.relName"``)   — ``list[<TargetShortName>Payload]``,
-  and the nested ``<TargetShortName>Payload`` is emitted into the SAME file
-  (so callers ``from .<template>_payload import …`` once). Within one file,
-  the nested class is emitted exactly once even if multiple fields reference
-  the same target (per-file dedupe — see the Dedupe note below).
-* No origin child — fall back to ``type_map.py_type_for(field)``.
+typing is DECLARED-TYPE-AUTHORITATIVE (#270): a payload field's annotation
+comes ONLY from its declared ``field.<subType>`` + ``@isArray`` +
+``@objectRef``, and its optionality ONLY from the declared ``@required`` attr.
+Any ``origin.*`` child a field carries is IGNORED for typing — the field types
+exactly as if the origin child were absent (a prompt's payload is a typed
+projection the author DECLARES, so payload bloat shows up as a diff; matches
+the origin-blind TS / C# / Java payload emitters). The nested-payload closure
+edge is ONLY a declared ``field.object @objectRef``; the nested class is
+emitted into the SAME file (so callers ``from .<template>_payload import …``
+once), exactly once per target even if multiple fields reference it (per-file
+dedupe — see the Dedupe note below). Everything else falls back to
+``type_map.py_type_for(field)``.
 
 Generated file naming mirrors the output-parser convention:
 ``<snake_case(template_name)>_payload.py`` and the public model class is
@@ -31,7 +30,7 @@ Generated file naming mirrors the output-parser convention:
 
 Dedupe note: the nested-payload dedupe is **per-file**, not per-run. Each
 template's payload module is self-contained, so when two templates reference
-the same `origin.collection` target, both files emit `PostPayload`. This
+the same nested-object target, both files emit `PostPayload`. This
 differs from Kotlin's cross-run dedupe — Kotlin emits each class to its OWN
 `.kt` file (one-class-per-file via KotlinPoet), so a single `PostPayload.kt`
 is enough; subsequent templates merely import it. Python's per-template
@@ -56,19 +55,11 @@ from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_VALUE
-from metaobjects.meta.core.relationship.meta_relationship import MetaRelationship
 from metaobjects.meta.meta_data import MetaData
-from metaobjects.meta.persistence.origin.meta_origin import MetaOrigin
-from metaobjects.meta.persistence.origin.origin_constants import (
-    ORIGIN_ATTR_AGG,
-    ORIGIN_ATTR_FROM,
-    ORIGIN_ATTR_OF,
-    ORIGIN_ATTR_VIA,
-)
 from metaobjects.meta.template import template_constants as tc
 from metaobjects.meta.template.meta_template import MetaTemplate
 from metaobjects.naming_refs import resolve_object_ref
-from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_TEMPLATE
+from metaobjects.shared.base_types import TYPE_TEMPLATE
 from metaobjects.shared.separators import PACKAGE_SEP
 
 _GENERATOR_NAME = "payload-vo-generator"
@@ -109,7 +100,7 @@ def payload_module_name(template_name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Resolution helpers (lookup by short-name OR FQN — same contract as Kotlin).
+# Resolution helpers (ADR-0042 package-local — same contract as Kotlin).
 # ---------------------------------------------------------------------------
 
 
@@ -121,26 +112,6 @@ def _pkg_of(node: MetaData) -> str:
     key = node.resolution_key()
     i = key.rfind(PACKAGE_SEP)
     return "" if i == -1 else key[:i]
-
-
-def _resolve_object_by_short_or_fqn(root: MetaData, ref: str) -> MetaObject | None:
-    """Find a ``MetaObject`` child satisfying an (already-expanded) object ref.
-
-    FR-032 (ADR-0032): ``@payloadRef`` / ``@objectRef`` / ``origin.@from`` heads
-    are FULLY QUALIFIED after the desugar/corpus sweep (e.g. ``acme::shop::X``),
-    so the match is FQN-tolerant — the canonical ``resolution_key()`` OR the
-    bare ``fqn()`` / ``name`` (the latter covering legacy same-tree refs and
-    root-level/empty-package objects). Mirrors TS ``refMatchesObject`` /
-    ``KotlinGenUtil.resolveObjectByShortOrFqn``."""
-    # ADR-0039 sanctioned own: top-level object lookup on the loader ROOT
-    # (metadata.root is never extended, so own == effective) — mirrors the TS
-    # reference (``root.ownChildren()`` in naming-refs / validation-passes).
-    for child in root.own_children():
-        if child.type != TYPE_OBJECT or not isinstance(child, MetaObject):
-            continue
-        if child.resolution_key() == ref or child.fqn() == ref or child.name == ref:
-            return child
-    return None
 
 
 def resolve_payload_vo(root: MetaData, ref: str, referrer_pkg: str) -> MetaObject | None:
@@ -163,8 +134,8 @@ def resolve_payload_vo(root: MetaData, ref: str, referrer_pkg: str) -> MetaObjec
     on an ancestor, never stamped onto every node) — the bare expression would
     wrongly resolve those to ``""``, breaking existing byte-identical output.
 
-    #228 — this used to delegate to ``_resolve_object_by_short_or_fqn``, a flat,
-    package-BLIND bare-name-anywhere-at-root scan: a bare ``@payloadRef`` colliding
+    #228 — this used to delegate to a flat, package-BLIND
+    bare-name-anywhere-at-root scan: a bare ``@payloadRef`` colliding
     across packages resolved to whichever same-bare-named ``object.value`` happened
     to load first, regardless of which package the referencing template belonged
     to — a "wrong node" mismatch against the loader, which ALREADY validates this
@@ -173,33 +144,6 @@ def resolve_payload_vo(root: MetaData, ref: str, referrer_pkg: str) -> MetaObjec
     if not isinstance(obj, MetaObject) or obj.sub_type != OBJECT_SUBTYPE_VALUE:
         return None
     return obj
-
-
-def _split_dotted_ref(ref: str) -> tuple[str, str] | None:
-    """``"Entity.field"`` → ``("Entity", "field")``. Returns ``None`` for
-    no-dot / leading-dot / trailing-dot — same contract as Kotlin."""
-    dot = ref.find(".")
-    if dot <= 0 or dot >= len(ref) - 1:
-        return None
-    return ref[:dot], ref[dot + 1 :]
-
-
-def _resolve_dotted_field_ref(root: MetaData, dotted_ref: str) -> MetaField | None:
-    """Resolve ``"Entity.field"`` to the ``MetaField`` on ``Entity`` (by short
-    name OR FQN-trailing-segment match). Returns ``None`` if either half fails."""
-    parts = _split_dotted_ref(dotted_ref)
-    if parts is None:
-        return None
-    entity_name, field_name = parts
-    obj = _resolve_object_by_short_or_fqn(root, entity_name)
-    if obj is None:
-        return None
-    for f in obj.fields():
-        if not isinstance(f, MetaField):
-            continue
-        if f.name == field_name:
-            return f
-    return None
 
 
 def is_field_required(field: MetaField) -> bool:
@@ -227,7 +171,7 @@ def _resolve_object_field_type(
     emitted_nested_keys: set[str],
     name_map: dict[str, str],
 ) -> tuple[str, set[str]]:
-    """A plain ``field.object`` (``@objectRef``, no origin child) — resolve to the
+    """A declared ``field.object`` (``@objectRef``) — resolve to the
     nested payload class (single) or ``list[...]`` (array). The class name comes
     from the ADR-0044 *name_map* (bare ``<Short>Payload`` when unique in the module
     closure, package-qualified on a cross-package short-name collision). The target
@@ -310,121 +254,8 @@ def _enum_field_type(
     return ref, {"from typing import Literal"}
 
 
-def _find_origin_child(field: MetaField) -> MetaOrigin | None:
-    """First ``origin.*`` child of *field* (own children only — origins are
-    declared inline; there's no inheritance contract for them today).
-
-    ADR-0039 sanctioned own: origin.* NEVER inherits via extends (ADR-0029), so a
-    field's origin is read from its OWN children."""
-    for c in field.own_children():
-        if isinstance(c, MetaOrigin):
-            return c
-    return None
-
-
-def _find_relationship_on(obj: MetaObject, rel_name: str) -> MetaRelationship | None:
-    """Resolve a relationship by name on *obj*. Walks effective children so
-    inherited relationships are visible."""
-    for c in obj.children():
-        if isinstance(c, MetaRelationship) and c.name == rel_name:
-            return c
-    return None
-
-
-# ---------------------------------------------------------------------------
-# Origin-aware field-type resolution.
-# ---------------------------------------------------------------------------
-
-
-def _resolve_passthrough_type(
-    origin: MetaOrigin, root: MetaData, fallback: MetaField
-) -> tuple[str, set[str]]:
-    """``origin.passthrough @from "Entity.field"`` — resolve to source field's
-    Python type. Falls back to the payload field's own type when the dotted
-    ref can't be resolved (defensive — loader validation already gates ``@from``)."""
-    from_ref = origin.attr(ORIGIN_ATTR_FROM)  # ADR-0039 sanctioned own: origin.* never inherits (ADR-0029)
-    if not isinstance(from_ref, str) or not from_ref:
-        return _fallback_type(fallback)
-    source = _resolve_dotted_field_ref(root, from_ref)
-    if source is None:
-        return _fallback_type(fallback)
-    pt = py_type_for(source)
-    return pt.expr, set(pt.imports)
-
-
-def _resolve_aggregate_type(
-    origin: MetaOrigin, root: MetaData, fallback: MetaField
-) -> tuple[str, set[str]]:
-    """``origin.aggregate``: type rule —
-    - count → ``int``
-    - avg   → ``float``
-    - sum / min / max → type of the ``@of`` field
-    """
-    agg = origin.attr(ORIGIN_ATTR_AGG)  # ADR-0039 sanctioned own: origin.* never inherits (ADR-0029)
-    if agg == "count":
-        return "int", set()
-    if agg == "avg":
-        return "float", set()
-    if agg in ("sum", "min", "max"):
-        of_ref = origin.attr(ORIGIN_ATTR_OF)  # ADR-0039 sanctioned own: origin.* never inherits (ADR-0029)
-        if not isinstance(of_ref, str) or not of_ref:
-            return _fallback_type(fallback)
-        source = _resolve_dotted_field_ref(root, of_ref)
-        if source is None:
-            return _fallback_type(fallback)
-        pt = py_type_for(source)
-        return pt.expr, set(pt.imports)
-    return _fallback_type(fallback)
-
-
-def _resolve_collection_type(
-    origin: MetaOrigin,
-    root: MetaData,
-    fallback: MetaField,
-    nested_emit_queue: list[tuple[MetaObject, str]],
-    emitted_nested_keys: set[str],
-    name_map: dict[str, str],
-) -> tuple[str, set[str]]:
-    """``origin.collection @via "Parent.rel"`` — walk Parent's relationship to
-    its ``@objectRef`` target, schedule a nested payload class for in-file
-    emission, return ``list[<NestedClass>]``. The class name comes from the
-    ADR-0044 *name_map* (bare when unique in the module closure, package-qualified
-    on a cross-package short-name collision).
-
-    Dedupe is per-file via *emitted_nested_keys*, keyed by ``resolution_key()`` —
-    if the same target is referenced by two fields in the same payload module,
-    only one nested class is emitted; two same-short-name targets in DIFFERENT
-    packages are NOT collapsed (each keeps its own key + qualified name).
-    Cross-file dedupe would leave forward-references dangling (module docstring)."""
-    via = origin.attr(ORIGIN_ATTR_VIA)  # ADR-0039 sanctioned own: origin.* never inherits (ADR-0029)
-    if not isinstance(via, str) or not via:
-        return _fallback_type(fallback)
-    parts = _split_dotted_ref(via)
-    if parts is None:
-        return _fallback_type(fallback)
-    parent_name, rel_name = parts
-    parent = _resolve_object_by_short_or_fqn(root, parent_name)
-    if parent is None:
-        return _fallback_type(fallback)
-    rel = _find_relationship_on(parent, rel_name)
-    if rel is None:
-        return _fallback_type(fallback)
-    target_ref = rel.object_ref()
-    if not target_ref:
-        return _fallback_type(fallback)
-    target = _resolve_object_by_short_or_fqn(root, target_ref)
-    if target is None:
-        return _fallback_type(fallback)
-    target_key = target.resolution_key()
-    nested_class = name_map.get(target_key) or payload_class_name(target.name)
-    if target_key not in emitted_nested_keys:
-        emitted_nested_keys.add(target_key)
-        nested_emit_queue.append((target, nested_class))
-    return f"list[{nested_class}]", set()
-
-
 def _fallback_type(field: MetaField) -> tuple[str, set[str]]:
-    """Type-map fallback used by every origin path when resolution fails."""
+    """Type-map fallback used when a ``field.object`` ref can't be resolved."""
     pt = py_type_for(field)
     return pt.expr, set(pt.imports)
 
@@ -437,50 +268,33 @@ def _resolve_field_type(
     enum_aliases: dict[str, str],
     name_map: dict[str, str],
 ) -> tuple[str, set[str]]:
-    """Resolve the Python annotation for one payload-VO field, honoring any
-    ``origin.*`` child. Falls back to ``type_map.py_type_for`` when none.
-
-    Note: a payload-VO field declared as ``field.object`` (with ``@objectRef``)
-    but no origin child falls through to ``type_map.py_type_for``, which emits
-    the entity short-name as a forward-reference string. The entity model is
-    NOT auto-imported — payload modules and entity modules may live in
-    different output directories, and the consumer is expected to wire
-    cross-module imports explicitly. The metadata-driven path for "this VO
-    field is a foreign-object value" is ``origin.collection`` (nested payload)
-    or ``origin.passthrough`` (scalar projection)."""
-    origin = _find_origin_child(field)
-    if origin is None:
-        # A plain ``field.object`` (``@objectRef``, no origin) → nested payload class
-        # (single or list), emitted in the same file. This is the prompt-pillar
-        # nested-payload case the extract tier maps onto; without it the payload would
-        # reference an undefined bare entity name (Pydantic "not fully defined").
-        if field.sub_type == fc.FIELD_SUBTYPE_OBJECT:
-            return _resolve_object_field_type(
-                field, root, nested_emit_queue, emitted_nested_keys, name_map
-            )
-        # A ``field.enum`` → Literal[...] (inline) or a named module alias (shared).
-        enum_type = _enum_field_type(field, enum_aliases)
-        if enum_type is not None:
-            return enum_type
-        pt = py_type_for(field)
-        return pt.expr, set(pt.imports)
-    if origin.sub_type == "passthrough":
-        return _resolve_passthrough_type(origin, root, field)
-    if origin.sub_type == "aggregate":
-        return _resolve_aggregate_type(origin, root, field)
-    if origin.sub_type == "collection":
-        return _resolve_collection_type(
-            origin, root, field, nested_emit_queue, emitted_nested_keys, name_map
+    """Resolve the Python annotation for one payload-VO field from its
+    DECLARATION only (#270): ``field.<subType>`` + ``@isArray`` + ``@objectRef``.
+    Any ``origin.*`` child is IGNORED — the field types exactly as if the origin
+    child were absent (matching the origin-blind TS / C# / Java payload
+    emitters). Falls back to ``type_map.py_type_for``."""
+    # A declared ``field.object`` (``@objectRef``) → nested payload class
+    # (single or list), emitted in the same file. This is the prompt-pillar
+    # nested-payload case the extract tier maps onto; without it the payload would
+    # reference an undefined bare entity name (Pydantic "not fully defined").
+    if field.sub_type == fc.FIELD_SUBTYPE_OBJECT:
+        return _resolve_object_field_type(
+            field, root, nested_emit_queue, emitted_nested_keys, name_map
         )
-    return _fallback_type(field)
+    # A ``field.enum`` → Literal[...] (inline) or a named module alias (shared).
+    enum_type = _enum_field_type(field, enum_aliases)
+    if enum_type is not None:
+        return enum_type
+    pt = py_type_for(field)
+    return pt.expr, set(pt.imports)
 
 
 # ---------------------------------------------------------------------------
 # ADR-0044 — collision-scoped nested-payload naming (three-pass pipeline).
 #
-# A payload module is a SINGLE self-contained file, so its `@objectRef` /
-# `origin.collection` closure is the collision domain (ADR-0044's "closure of the
-# payload root(s) emitted into one artifact"). Two value-objects sharing a bare
+# A payload module is a SINGLE self-contained file, so its declared
+# `field.object @objectRef` closure is the collision domain (ADR-0044's "closure
+# of the payload root(s) emitted into one artifact"). Two value-objects sharing a bare
 # short name across packages (`acme::alpha::Note` + `acme::beta::Note`, both
 # reachable from one payload) must emit as DISTINCT classes — the pre-ADR-0044
 # code deduped by `fqn()` (which returns the BARE name here), collapsing them to
@@ -498,41 +312,19 @@ def _resolve_field_type(
 
 def _nested_target_of(field: MetaField, root: MetaData) -> MetaObject | None:
     """The nested-payload target VO a *field* contributes to the module closure,
-    or ``None`` when it contributes no nested class. Mirrors the resolution in
-    :func:`_resolve_object_field_type` (a plain ``field.object`` ``@objectRef``)
-    and :func:`_resolve_collection_type` (``origin.collection`` ``@via``) EXACTLY,
-    so the ADR-0044 closure walk and the emission walk agree on the target set.
-    ``origin.passthrough`` / ``origin.aggregate`` yield scalar types (no nested
-    class) and so contribute nothing."""
-    origin = _find_origin_child(field)
-    if origin is None:
-        if field.sub_type != fc.FIELD_SUBTYPE_OBJECT:
-            return None
-        ref = field.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
-        if not isinstance(ref, str) or not ref:
-            return None
-        referrer_pkg = _pkg_of(field.parent) if field.parent is not None else ""
-        target = resolve_object_ref(root, ref, referrer_pkg)
-        return target if isinstance(target, MetaObject) else None
-    if origin.sub_type == "collection":
-        via = origin.attr(ORIGIN_ATTR_VIA)  # ADR-0039 sanctioned own: origin.* never inherits
-        if not isinstance(via, str) or not via:
-            return None
-        parts = _split_dotted_ref(via)
-        if parts is None:
-            return None
-        parent_name, rel_name = parts
-        parent = _resolve_object_by_short_or_fqn(root, parent_name)
-        if parent is None:
-            return None
-        rel = _find_relationship_on(parent, rel_name)
-        if rel is None:
-            return None
-        target_ref = rel.object_ref()
-        if not target_ref:
-            return None
-        return _resolve_object_by_short_or_fqn(root, target_ref)
-    return None
+    or ``None`` when it contributes no nested class. The ONLY closure edge is a
+    declared ``field.object`` ``@objectRef`` (#270 — an ``origin.*`` child never
+    contributes an edge; a non-object field contributes nothing). Mirrors the
+    resolution in :func:`_resolve_object_field_type` EXACTLY, so the ADR-0044
+    closure walk and the emission walk agree on the target set."""
+    if field.sub_type != fc.FIELD_SUBTYPE_OBJECT:
+        return None
+    ref = field.attrs().get(fc.FIELD_ATTR_OBJECT_REF)
+    if not isinstance(ref, str) or not ref:
+        return None
+    referrer_pkg = _pkg_of(field.parent) if field.parent is not None else ""
+    target = resolve_object_ref(root, ref, referrer_pkg)
+    return target if isinstance(target, MetaObject) else None
 
 
 def _collect_nested_closure(
@@ -631,9 +423,9 @@ def render_payload_vo(
     ``object.value`` (defensive — the loader validation pass normally catches
     this first).
 
-    Nested-payload dedupe is per-file: if the same collection target appears
-    twice within one payload module (e.g. two fields both `origin.collection`
-    on the same relationship), only one nested class is emitted. Across
+    Nested-payload dedupe is per-file: if the same ``field.object`` target
+    appears twice within one payload module (two fields both ``@objectRef``-ing
+    the same VO), only one nested class is emitted. Across
     different templates, each file owns its full class graph independently —
     see the module docstring for the rationale."""
     payload_ref = template.get_meta_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
@@ -692,9 +484,10 @@ def render_payload_vo(
     if strict_extras:
         primary_block = _with_strict_extras(primary_block)
 
-    # NESTED classes scheduled by origin.collection. Drain the queue
-    # iteratively so nested-of-nested chains also get emitted (Kotlin behaves
-    # the same way — the recursive emit is queue-driven here for clarity).
+    # NESTED classes scheduled by declared `field.object @objectRef` fields.
+    # Drain the queue iteratively so nested-of-nested chains also get emitted
+    # (Kotlin behaves the same way — the recursive emit is queue-driven here
+    # for clarity).
     nested_blocks: list[list[str]] = []
     nested_class_names: list[str] = []
     while nested_emit_queue:
@@ -708,7 +501,7 @@ def render_payload_vo(
             extra_imports=extra_imports,
             enum_aliases=enum_aliases,
             docstring=(
-                f"GENERATED nested payload for collection target ``{target.name}``."
+                f"GENERATED nested payload for object field target ``{target.name}``."
             ),
             name_map=name_map,
         )
@@ -798,7 +591,7 @@ class PayloadVoGenerator:
         name_map: dict[str, str],
     ) -> list[str]:
         """EXTENSION SEAM — the source lines for one Pydantic ``BaseModel`` subclass
-        (primary OR a nested collection target). Defaults to the module-level
+        (primary OR a nested object-field target). Defaults to the module-level
         :func:`_emit_payload_class`; override to customize the emitted class body
         (e.g. inject ``model_config``, change optionality, add validators)."""
         return _emit_payload_class(
