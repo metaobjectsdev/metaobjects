@@ -141,9 +141,12 @@ data class WelcomePromptPayload(
 
 - Class name = `<TemplateShortName>Payload`
 - Package = entity-package + `.prompts` (kept separate from entity namespace)
-- For `origin.collection` children → `List<NestedPayload>` with `NestedPayload` recursively generated
-- For `origin.aggregate count/sum/avg/min/max` → numeric type from the agg semantics
-- For `origin.passthrough` → typed prop matching the source field
+- **Typing is declared-type-authoritative (#270):** a payload field's type comes
+  only from its declared `field.<subType>` + `isArray` + `@objectRef`; an
+  `origin.*` child is ignored for typing (the caller supplies the values at render
+  time). This superseded the original origin-based typing rules (`collection` →
+  `List<NestedPayload>`, `aggregate` → agg-derived numeric, `passthrough` → source
+  type) — see [`docs/features/templates-and-payloads.md`](../../features/templates-and-payloads.md).
 - Shared payload-VO referenced by multiple templates → generated once, imported by all
 
 ### 4.4 `KotlinValidatorGenerator` — runtime startup validation
