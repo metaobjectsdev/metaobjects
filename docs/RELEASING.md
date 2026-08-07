@@ -213,7 +213,7 @@ How to publish the `MetaObjects*` C# packages to nuget.org. We use **Trusted Pub
 
 ## What gets published
 
-Four packages, version-locked at the C# port version (currently `0.20.15`):
+Four packages, version-locked at the C# port version (currently `0.20.16`):
 
 | Package | Contents |
 |---|---|
@@ -280,9 +280,13 @@ lock the repo/owner IDs against resurrection attacks.)
 2. **Validate locally** (catches immutable-version mistakes before they're permanent):
    ```bash
    cd server/csharp
-   dotnet pack MetaObjects/MetaObjects.csproj MetaObjects.Render/MetaObjects.Render.csproj \
-     MetaObjects.Codegen/MetaObjects.Codegen.csproj MetaObjects.Cli/MetaObjects.Cli.csproj \
-     -c Release -o /tmp/mo-nupkg
+   # NOTE: pack ONE project per invocation. Passing all four to a single `dotnet pack`
+   # fails on modern SDKs (verified on 8.0.129) with `MSBUILD : error MSB1008: Only one
+   # project can be specified` — MSBuild treats the extra paths as switches.
+   for p in MetaObjects/MetaObjects.csproj MetaObjects.Render/MetaObjects.Render.csproj \
+            MetaObjects.Codegen/MetaObjects.Codegen.csproj MetaObjects.Cli/MetaObjects.Cli.csproj; do
+     dotnet pack "$p" -c Release -o /tmp/mo-nupkg || echo "PACK FAILED: $p"
+   done
    # inspect a nuspec — version, license, readme, deps:
    unzip -p /tmp/mo-nupkg/MetaObjects.Render.0.11.1.nupkg MetaObjects.Render.nuspec | grep -iE '<id>|<version>|<license|<readme>|<dependenc'
    # optional: install the tool from the local dir and smoke-test it
@@ -301,7 +305,7 @@ How to publish the **`metaobjects`** Python package to PyPI via **Trusted Publis
 ## What gets published
 
 One package, `metaobjects` (version in [`server/python/pyproject.toml`](../server/python/pyproject.toml),
-currently `0.20.15`), as an **sdist + a universal `py3-none-any` wheel** (pure Python).
+currently `0.20.16`), as an **sdist + a universal `py3-none-any` wheel** (pure Python).
 
 ## How we publish: Trusted Publishing (OIDC)
 
@@ -357,7 +361,7 @@ subsequent releases keyless.)
 # Releasing the Java/Kotlin modules to Maven Central
 
 The 18 `com.metaobjects:*` modules ship to **Maven Central via the Sonatype Central Portal**,
-versioned on the `7.x` line (currently `7.20.15`) in the parent + module poms. Signed with the
+versioned on the `7.x` line (currently `7.20.16`) in the parent + module poms. Signed with the
 maintainer's GPG key.
 
 ## Procedure
