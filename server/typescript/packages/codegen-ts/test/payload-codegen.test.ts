@@ -105,6 +105,93 @@ describe("payload-codegen — typed payload interface (types only, no class/VO)"
     expect(out).toContain("discretionary?: string | null;");
     expect(out).toContain("explicitlyOptional?: string | null;");
   });
+
+  test("origin.* children are ignored for typing — the declared type wins (#270 reference-emitter pin)", async () => {
+    // TS is one of the two genuinely origin-blind REFERENCE payload emitters the
+    // Kotlin / Python / Java ports converged on (#270), but nothing gated that: this
+    // pins that an `origin.*` child on a payload VO field is IGNORED for typing — the
+    // declared `field.<subType>` + `isArray` + `@objectRef` win — so a future change
+    // cannot drift this reference into origin dispatch (the drift that let three
+    // ports diverge in the first place). Test-only: product code untouched.
+    const root = await loadRoot([
+      {
+        "object.entity": {
+          name: "Source",
+          children: [{ "field.string": { name: "displayName" } }],
+        },
+      },
+      {
+        "object.entity": {
+          name: "Author",
+          children: [
+            { "field.long": { name: "id" } },
+            { "relationship.aggregation": { name: "posts", "@objectRef": "Post", "@cardinality": "many" } },
+          ],
+        },
+      },
+      {
+        "object.entity": {
+          name: "Post",
+          children: [
+            { "field.long": { name: "id" } },
+            { "field.string": { name: "internalNotes" } },
+          ],
+        },
+      },
+      {
+        "object.value": {
+          name: "Highlight",
+          children: [{ "field.string": { name: "snippet", "@required": true } }],
+        },
+      },
+      {
+        "object.value": {
+          name: "Digest",
+          children: [
+            // Declared field.int with a (`@convert`-acknowledged, #185) STRING passthrough.
+            {
+              "field.int": {
+                name: "alias",
+                "@required": true,
+                children: [{ "origin.passthrough": { "@from": "Source.displayName", "@convert": true } }],
+              },
+            },
+            // Declared field.string carrying origin.collection — stays a scalar string.
+            {
+              "field.string": {
+                name: "summary",
+                "@required": true,
+                children: [{ "origin.collection": { "@via": "Author.posts" } }],
+              },
+            },
+            // Declared curated @objectRef + isArray with a DISAGREEING @via at the fuller entity.
+            {
+              "field.object": {
+                name: "posts",
+                isArray: true,
+                "@objectRef": "Highlight",
+                "@required": true,
+                children: [{ "origin.collection": { "@via": "Author.posts" } }],
+              },
+            },
+          ],
+        },
+      },
+    ]);
+    const out = generatePayloadInterfaces(root, "Digest", "acme::ai");
+    // Declared field.int wins over the string passthrough.
+    expect(out).toContain("alias: number;");
+    expect(out).not.toContain("alias: string;");
+    // Declared field.string wins over origin.collection — no list, no via-target type.
+    expect(out).toContain("summary: string;");
+    // Declared curated @objectRef + isArray wins over the disagreeing @via walk.
+    expect(out).toContain("posts: Highlight[];");
+    expect(out).toContain("export interface Highlight {");
+    expect(out).toContain("snippet: string;");
+    // The ignored @via entity never enters the closure.
+    expect(out).not.toContain("export interface Post");
+    expect(out).not.toContain("internalNotes");
+  });
 });
 
 describe("payload-codegen — generatePayloadInterfacesBatch", () => {

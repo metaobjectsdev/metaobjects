@@ -3,8 +3,8 @@
 Mirrors the Kotlin ``KotlinPayloadGenerator`` test contract — one Pydantic
 ``BaseModel`` per declared ``template.*`` (prompt / output / toolcall),
 declared-type-authoritative field typing (#270 — any ``origin.*`` child is
-IGNORED for typing, matching the TS/C#/Java reference behavior), and in-file
-nested-payload emission for declared ``field.object @objectRef`` targets.
+IGNORED for typing, matching the origin-blind TS/C# reference emitters), and
+in-file nested-payload emission for declared ``field.object @objectRef`` targets.
 """
 from __future__ import annotations
 
@@ -228,8 +228,8 @@ def test_simple_field_projection_uses_type_map() -> None:
 #
 # A payload field's type comes ONLY from its declared ``field.<subType>`` +
 # ``@isArray`` + ``@objectRef``; a field carrying any ``origin.*`` child types
-# exactly as if the origin child were absent. Matches the origin-blind TS / C# /
-# Java payload emitters (the CORRECT reference behavior).
+# exactly as if the origin child were absent. Matches the origin-blind TS / C#
+# reference emitters (Java converged alongside this port, #270 fix round 1).
 # ---------------------------------------------------------------------------
 
 

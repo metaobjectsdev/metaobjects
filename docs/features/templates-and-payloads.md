@@ -270,22 +270,31 @@ data class PostSummaryPayload(val title: String)
 ### C#
 
 `MetaObjects.Render` ships the render engine + verify. `MetaObjects.Codegen`
-ships payload-VO codegen.
+ships payload-VO codegen for **`template.output`** parse targets — the strict
+record is named after the **value object**, not the template (for this model:
+`record WelcomePayload` / `record PostSummary`), with `required` init-only
+properties named verbatim after the metadata fields (`displayName`, `postCount`,
+`posts`). Nothing is emitted for a `template.prompt`; its render payload is a
+plain object/array graph you supply:
 
 ```csharp
 using MetaObjects.Render;
 
 var provider = new FilesystemProvider("./prompts");
-var payload = new WelcomePromptPayload(
-    DisplayName: "Ada",
-    PostCount: 12,
-    Posts: new[] { new PostSummaryPayload("Hello") });
+var payload = new Dictionary<string, object?>
+{
+    ["displayName"] = "Ada",
+    ["postCount"] = 12,
+    ["posts"] = new[] { new Dictionary<string, object?> { ["title"] = "Hello" } },
+};
 
-string output = Renderer.Render(new RenderRequest(
-    Ref: "lobby/welcome",
-    Payload: payload,
-    Provider: provider,
-    Format: "xml"));
+string output = Renderer.Render(new RenderRequest
+{
+    Ref = "lobby/welcome",
+    Payload = payload,
+    Provider = provider,
+    Format = "xml",
+});
 ```
 
 ### Python

@@ -31,10 +31,13 @@ import java.nio.file.Paths
  * <p>DECLARED-TYPE-AUTHORITATIVE (#270): a payload field's property type comes ONLY from
  * its declared `field.<subType>` + `isArray` + `@objectRef` — never from any `origin.*`
  * child it carries (an origin child is IGNORED for typing; the field types exactly as if
- * it were absent). Nullability likewise comes only from the declaration, never from
- * origin semantics. A prompt's payload is a typed projection the author DECLARES, so
- * payload bloat shows up as a diff — matching the origin-blind TS / C# / Java payload
- * emitters. The property's TypeName is resolved as:
+ * it were absent). Nullability is never derived from origin semantics (no more
+ * "computed/first are nullable"); this port does not read `@required` either — every
+ * emitted property is unconditionally non-null (only the TS and Python emitters
+ * consult `@required` for optionality). A prompt's payload is a typed projection the
+ * author DECLARES, so payload bloat shows up as a diff — matching the origin-blind
+ * TS / C# reference emitters (Java converged alongside this port, #270 fix round 1).
+ * The property's TypeName is resolved as:
  * <ul>
  *   <li>{@code field.enum} — the generated enum class (single, or {@code List<Enum>}).</li>
  *   <li>{@code field.object @objectRef} to an `object.value` — the nested
@@ -153,7 +156,7 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
      * Resolve the Kotlin TypeName of a single payload-VO field from its DECLARATION
      * only (#270): `field.<subType>` + `isArray` + `@objectRef`. Any `origin.*` child
      * the field carries is IGNORED — the field types exactly as if the origin child
-     * were absent (matching the origin-blind TS / C# / Java payload emitters). Falls
+     * were absent (matching the origin-blind TS / C# reference emitters). Falls
      * back to [KotlinTypeMapper.payloadTypeName] (parsed JSON value for a
      * `field.string @dbColumnType=jsonb` open bag, otherwise identical to
      * `kotlinTypeName`).
@@ -205,13 +208,20 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
     /**
      * Declared `field.object @objectRef`: recursively emit `<TargetShortName>Payload` for
      * the referenced value-object (deduped per run) and return that type — or
-     * `List<TargetPayload>` when `isArray: true`. Falls back to the scalar type mapping when
-     * the ref can't be resolved (a dangling ref IS loader-gated, `ERR_UNRESOLVED_OBJECT_REF`)
-     * or when the target is not an `object.value` — the latter is this port's own
-     * PRE-EXISTING conservative filter, NOT a loader-enforced contract (no port's loader
-     * constrains a nested `@objectRef` target's subtype today; the TS/C# reference emitters
-     * and Python do not filter). The legal-target-set ruling is #210's loader-validation
-     * call — do not copy this filter to other ports meanwhile.
+     * `List<TargetPayload>` when `isArray: true`.
+     *
+     * BOTH "fallback" branches THROW, they do not degrade: `fallbackType()` is
+     * [KotlinTypeMapper.payloadTypeName], whose type mapping has NO `ObjectField` arm — an
+     * object field reaching it hits the `else -> throw IllegalArgumentException` arm and
+     * crashes the generator. That covers (a) an unresolvable ref (a dangling ref IS
+     * loader-gated first, `ERR_UNRESOLVED_OBJECT_REF`) and (b) a resolved target that is
+     * not an `object.value` — the latter is this port's own PRE-EXISTING gate, NOT a
+     * loader-enforced contract (no port's loader constrains a nested `@objectRef` target's
+     * subtype today; the TS/C# reference emitters and Python resolve and emit whatever the
+     * ref names). Note #270 WIDENED what reaches (b): an `ObjectField` carrying an origin
+     * child used to be consumed by the deleted origin dispatch; an entity-targeting one now
+     * throws here. The legal-target-set ruling (and whether this stays a throw) is #210's
+     * loader-validation call — do not copy this behavior to other ports meanwhile.
      */
     private fun resolveObjectFieldType(
         field: ObjectField,

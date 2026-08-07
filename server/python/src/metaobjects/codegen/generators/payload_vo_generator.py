@@ -16,7 +16,7 @@ comes ONLY from its declared ``field.<subType>`` + ``@isArray`` +
 Any ``origin.*`` child a field carries is IGNORED for typing — the field types
 exactly as if the origin child were absent (a prompt's payload is a typed
 projection the author DECLARES, so payload bloat shows up as a diff; matches
-the origin-blind TS / C# / Java payload emitters). The nested-payload closure
+the origin-blind TS / C# reference emitters). The nested-payload closure
 edge is ONLY a declared ``field.object @objectRef``; the nested class is
 emitted into the SAME file (so callers ``from .<template>_payload import …``
 once), exactly once per target even if multiple fields reference it (per-file
@@ -148,12 +148,13 @@ def resolve_payload_vo(root: MetaData, ref: str, referrer_pkg: str) -> MetaObjec
 
 def is_field_required(field: MetaField) -> bool:
     """The single required-ness predicate the payload model uses to decide a field's
-    optionality (``T`` vs ``T | None = None``). A field is required iff its OWN
-    ``@required`` attr is the boolean ``True`` — matching the TS payload-codegen
-    ``isFieldRequired`` (``ownAttr === true``) so the extract-tier mapper that
-    constructs this payload can rely on the same boundary (no skew). A
-    ``@required: "true"`` string therefore types optional in BOTH the payload and the
-    mapper. The extractor generator imports THIS predicate.
+    optionality (``T`` vs ``T | None = None``). A field is required iff its EFFECTIVE
+    ``@required`` attr is the boolean ``True`` — ``attrs().get()`` RESOLVES through the
+    ``extends`` super chain (ADR-0039), matching the TS payload-codegen
+    ``isFieldRequired`` (whose ``field.attr(...)`` read is likewise resolving) so the
+    extract-tier mapper that constructs this payload can rely on the same boundary
+    (no skew). A ``@required: "true"`` string therefore types optional in BOTH the
+    payload and the mapper. The extractor generator imports THIS predicate.
 
     Note: this intentionally accepts ONLY the boolean ``True`` (matching the TS
     payload-codegen predicate), which DELIBERATELY differs from the runtime
@@ -271,7 +272,7 @@ def _resolve_field_type(
     """Resolve the Python annotation for one payload-VO field from its
     DECLARATION only (#270): ``field.<subType>`` + ``@isArray`` + ``@objectRef``.
     Any ``origin.*`` child is IGNORED — the field types exactly as if the origin
-    child were absent (matching the origin-blind TS / C# / Java payload
+    child were absent (matching the origin-blind TS / C# reference
     emitters). Falls back to ``type_map.py_type_for``."""
     # A declared ``field.object`` (``@objectRef``) → nested payload class
     # (single or list), emitted in the same file. This is the prompt-pillar

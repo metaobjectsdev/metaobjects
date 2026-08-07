@@ -82,7 +82,7 @@ class KotlinPayloadGeneratorTest {
     // -----------------------------------------------------------------------
     // origin.* coverage — #270: payload typing is DECLARED-TYPE-AUTHORITATIVE.
     // A field carrying any `origin.*` child types exactly as if the origin
-    // child were absent (matching the origin-blind TS / C# / Java emitters).
+    // child were absent (matching the origin-blind TS / C# reference emitters).
     // -----------------------------------------------------------------------
 
     @Test fun originPassthroughIgnoredDeclaredTypeWins() {
