@@ -7,6 +7,73 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.21.0] — npm `0.21.0` · PyPI `0.21.0` · NuGet `0.21.0` · Maven `7.21.0`
+
+> ### ⚠️ BREAKING FOR METADATA AUTHORS — three changes make previously-valid metadata fail to load
+>
+> This is the pre-1.0 breaking slot (MINOR), not a patch, **specifically so it is not
+> auto-adopted**: on a caret range `^0.20.x` resolves `<0.21.0`, so you pick this up only by
+> deliberately bumping your range. Read
+> **[the migration guide](docs/features/migrations/value-assembly-origins-and-source-role-shrink.md)**
+> before upgrading — it carries the exact loader errors and a rewrite rule for each change.
+>
+> 1. **Assembly origins are illegal on an `object.value`.** `origin.aggregate`, `origin.computed`,
+>    `origin.collection` and `origin.first` on a value-hosted field now fail with
+>    `ERR_SUBTYPE_RULE_VIOLATION`. **`origin.passthrough` is unaffected** and stays legal on a value.
+> 2. **`source.rdb @role` accepts only `primary | replica`.** `index`, `cache`, `publish` and
+>    `mirror` are retired to reserved-not-registered; a legacy use fails with `ERR_BAD_ATTR_VALUE`.
+> 3. **A payload's nested `field.object @objectRef` must target an `object.value`.** Previously
+>    TypeScript, C# and Python accepted a non-value target *and emitted code from it*; it now fails
+>    at load in all four loaders.
+
+### Changed — assembly origins live on projections, not on values (#210) — BREAKING
+
+**Generated-output change — regenerate to pick it up; three-way merge preserves hand edits.**
+
+The durable rule this encodes: **"passthrough on a value is lineage; assembly origins live on
+projections."** An `object.value` is pure shape — constructed by a caller or by embedding, never
+populated from a store. Deriving a field by rolling up, computing over, or collecting from a backing
+store is what an `object.projection` is *for*, and letting a value do it blurred the one distinction
+the taxonomy exists to draw (ADR-0028).
+
+`origin.passthrough` deliberately **stays legal** on a value. There it is FR-015 *parameter lineage*
+— it is how a stored-proc argument's type is bound to its source column — and the loaders already
+drew exactly that line via the FR-024 B5 value-host exemption. Retiring it would have silently
+dropped the `ERR_PASSTHROUGH_TYPE_MISMATCH` check on proc arguments.
+
+**The migration path is additive:** `@payloadRef` and `@responseRef` now accept a **sourceless
+`object.projection`** as well as an `object.value`. A payload that was assembling values re-hosts as
+a projection and keeps its origins. See the migration guide for the rewrite, including the caveat
+that adding an `extends` anchor can flip a field's optionality (`@required` inherits through it).
+
+Implemented as one named subtype set (`ASSEMBLY_ORIGIN_SUBTYPES`) hoisted above the origin dispatch
+in every loader, so cross-port coverage is a property of the constant rather than of four separate
+branches. No new vocabulary, no new error codes; `object.value`'s registry `rules` and `description`
+strings change to drop the retired "by assembly" construction mode.
+
+### Changed — `source.rdb @role` shrinks to `primary | replica` (#212) — BREAKING
+
+`index`, `cache`, `publish` and `mirror` are **reserved-not-registered** — documented on the axis,
+absent from the registry (the ADR-0040 treatment). The re-entry bar is recorded in ADR-0007
+Amendment 2: *a role member enters the registry only when a shipping consumer dispatches on it.*
+
+The justification is that **no port ever built the dispatch these members anticipated.** Across all
+five, every read of `@role` is an equality test against `primary`; Java's OMDB has zero role usage,
+and Kotlin's and Python's write-through read paths are explicitly role-agnostic, finding the replica
+by read-only `@kind`. The consumed information content was one bit, which makes the four unused
+members indistinguishable from `replica` to every consumer. An adopter scan across this repo, the
+public reference app and downstream consumer models found zero uses.
+
+Pruning now is the reversible direction: removing a registered member post-1.0 would be a 2.0 event,
+whereas re-adding a reserved one is additive.
+
+### Fixed — a raw `NUL` byte made a TypeScript source file invisible to search tooling
+
+`constraint-merge.ts` used a NUL as a composite-key join delimiter — sound technique, but written as
+a literal `0x00` byte rather than an escape, which made the whole file test as *binary*. `file(1)`
+reported it as `data` and binary-skipping search tools silently ignored it. Runtime-identical fix;
+the companion instance in the Java port shipped in `0.20.16`. These were the last two in the repo.
+
 ## [0.20.16] — npm `0.20.16` · PyPI `0.20.16` · NuGet `0.20.16` · Maven `7.20.16`
 
 **Coordinated across all four registries.** The fix below is Kotlin, Python and Java, so

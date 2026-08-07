@@ -47,7 +47,7 @@ what `object.projection` exists for. A payload that declares its fields'
 derivations is a *read model assembled on the wire* — which is exactly a
 sourceless projection.
 
-### The errors you'll see
+### The error you'll see
 
 ```
 ERR_SUBTYPE_RULE_VIOLATION: value object 'acme::ai::AuthorReport' field 'postCount'
@@ -57,7 +57,6 @@ never assembled from a backing store. Re-host this field on a sourceless
 object.projection; origin.passthrough (FR-015 parameter lineage) remains legal
 on a value (#210, ADR-0028)
 ```
-
 
 ### Rewrite rule
 
