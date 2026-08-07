@@ -54,11 +54,13 @@ public final class SpringTypeMapper {
      * fully-qualified type expression (e.g. {@code "Long"},
      * {@code "java.time.Instant"}, {@code "java.util.UUID"}).
      *
-     * <p>The returned string is inserted verbatim into the generated record
-     * component declaration. It never includes generic parameters — a future
-     * {@code List<String>} (i.e. {@code isArray=true}) arm will need a
-     * separate code path because Java records don't allow varargs-style
-     * component declarations.</p>
+     * <p>The returned string is the ELEMENT type, inserted verbatim into the
+     * generated record component declaration. Array-ness ({@code isArray=true})
+     * wrapping in {@code java.util.List<ElementType>} is the CALLER's concern —
+     * {@code SpringDtoGenerator.componentType} for DTO records and
+     * {@code SpringPayloadGenerator.resolveFieldType} for payload records both
+     * wrap; a Java record accepts a {@code List<String>} component fine (the
+     * earlier varargs rationale here was wrong).</p>
      *
      * <p>Currency: returns {@code "Long"} — the wire/storage contract is
      * integer minor units (cents for USD, yen for JPY). Float arithmetic for

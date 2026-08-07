@@ -212,7 +212,7 @@ import com.metaobjects.render.*;
 Provider provider = new FilesystemProvider(Path.of("./prompts"));
 String out = Renderer.render(RenderRequest.builder()
     .ref("lobby/welcome")
-    .payload(new WelcomePayload("Ada", 12L, List.of(new PostSummary("Hello"))))
+    .payload(new WelcomePromptPayload("Ada", 12L, List.of(new PostSummaryPayload("Hello"))))
     .provider(provider)
     .format("xml")
     .build());
@@ -243,10 +243,10 @@ import java.nio.file.Path
 
 val out = render {
     ref = "lobby/welcome"
-    payload = WelcomePayload(
+    payload = WelcomePromptPayload(
         displayName = "Ada",
         postCount = 12,
-        posts = listOf(PostSummary("Hello")),
+        posts = listOf(PostSummaryPayload("Hello")),
     )
     provider = FilesystemProvider(Path.of("./prompts"))
     format = "xml"
@@ -254,16 +254,17 @@ val out = render {
 ```
 
 ```kotlin
-// generated/acme/blog/WelcomePromptPayload.kt
+// generated/acme/blog/prompts/WelcomePromptPayload.kt
 @Serializable
-data class WelcomePayload(
+data class WelcomePromptPayload(
     val displayName: String,
     val postCount: Long,
-    val posts: List<PostSummary>,
+    val posts: List<PostSummaryPayload>,
 )
 
+// generated/acme/blog/prompts/PostSummaryPayload.kt
 @Serializable
-data class PostSummary(val title: String)
+data class PostSummaryPayload(val title: String)
 ```
 
 ### C#
@@ -275,10 +276,10 @@ ships payload-VO codegen.
 using MetaObjects.Render;
 
 var provider = new FilesystemProvider("./prompts");
-var payload = new WelcomePayload(
+var payload = new WelcomePromptPayload(
     DisplayName: "Ada",
     PostCount: 12,
-    Posts: new[] { new PostSummary("Hello") });
+    Posts: new[] { new PostSummaryPayload("Hello") });
 
 string output = Renderer.Render(new RenderRequest(
     Ref: "lobby/welcome",

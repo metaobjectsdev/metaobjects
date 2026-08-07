@@ -442,7 +442,18 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         if (field instanceof ObjectField of) {
             return resolveObjectFieldType(of, loader, nestedPkg, outRoot, emittedNestedFqns, nameMap);
         }
-        return SpringTypeMapper.javaTypeName(field);
+        // Scalar array (`isArray: true` on a non-object, non-enum field): the declared
+        // contract is field.<subType> + @isArray, so wrap the element type as
+        // java.util.List<ElementType> — matching Kotlin's scalar-array arm and Python's
+        // type_map list[...] wrap. Without this, javaTypeName returns the bare element
+        // type and the declared array-ness is silently dropped (#270 fix round 2).
+        String scalarType = SpringTypeMapper.javaTypeName(field);
+        // ADR-0039: resolving array-ness (isArrayType() is the effective flag; isArray()
+        // is the own-only native flag).
+        if (field.isArrayType()) {
+            return "java.util.List<" + scalarType + ">";
+        }
+        return scalarType;
     }
 
     /**

@@ -498,6 +498,102 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
     }
 
     @Test
+    public void scalarArrayFieldEmitsListComponent() throws Exception {
+        // #270 fix round 2 — the declared contract is field.<subType> + @isArray +
+        // @objectRef. A plain `field.string isArray:true` (no origin child) must emit
+        // `java.util.List<String>`, matching Kotlin (KotlinPayloadGenerator's scalar-array
+        // arm) and Python (type_map list[...] wrap). Previously the bare element type was
+        // emitted and the declared array-ness was silently dropped.
+        String fixture = """
+            {
+              "metadata.root": { "package": "acme::demo", "children": [
+                { "object.value": { "name": "TagList", "children": [
+                    { "field.string": { "name": "title" } },
+                    { "field.string": { "name": "tags", "isArray": true } }
+                ] } },
+                { "template.prompt": { "name": "TagView",
+                    "@payloadRef": "TagList", "@textRef": "demo/tags" } }
+              ] }
+            }
+            """;
+        Path outDir = tempFolder.newFolder("payload-scalar-array").toPath();
+        Path workspace = tempFolder.newFolder("payload-scalar-array-fx").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "payload-scalar-array", fixture);
+
+        SpringPayloadGenerator gen = new SpringPayloadGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
+        gen.setArgs(args);
+        gen.execute(loader);
+
+        Path emitted = outDir.resolve("acme/demo/prompts/TagViewPayload.java");
+        assertTrue("expected " + emitted, Files.exists(emitted));
+        String src = Files.readString(emitted);
+        assertTrue("declared @isArray scalar must emit `java.util.List<String> tags`; saw:\n" + src,
+            src.contains("java.util.List<String> tags"));
+        assertFalse("array-ness must not be dropped to a bare `String tags`; saw:\n" + src,
+            src.contains(" String tags"));
+        // The non-array sibling stays bare.
+        assertTrue("plain `String title` unchanged; saw:\n" + src, src.contains("String title"));
+        // hasFoo() routing: the List component takes the isEmpty form (not isBlank).
+        assertTrue("List component gets the isEmpty hasTags() helper; saw:\n" + src,
+            src.contains("public boolean hasTags()")
+                && src.contains("return tags != null && !tags.isEmpty();"));
+    }
+
+    @Test
+    public void scalarArrayWithDisagreeingOriginCollectionStillEmitsListOfElementType() throws Exception {
+        // #270 fix round 2 — pins the regression shape specifically: a `field.string
+        // isArray:true` carrying a disagreeing `origin.collection @via` previously took
+        // the collection arm (List<PostPayload>); post-#270 it must type from the
+        // DECLARATION as `java.util.List<String>` — never a bare `String` (the interim
+        // regression) and never the @via entity's payload.
+        String fixture = """
+            {
+              "metadata.root": { "package": "acme::demo", "children": [
+                { "object.entity": { "name": "Author", "children": [
+                    { "field.long": { "name": "id" } },
+                    { "relationship.aggregation": { "name": "posts",
+                        "@objectRef": "Post", "@cardinality": "many" } }
+                ] } },
+                { "object.entity": { "name": "Post", "children": [
+                    { "field.long":   { "name": "id" } },
+                    { "field.string": { "name": "internalNotes" } }
+                ] } },
+                { "object.value": { "name": "TagList", "children": [
+                    { "field.string": { "name": "tags", "isArray": true, "children": [
+                        { "origin.collection": { "@via": "Author.posts" } }
+                    ] } }
+                ] } },
+                { "template.prompt": { "name": "TagView",
+                    "@payloadRef": "TagList", "@textRef": "demo/tags" } }
+              ] }
+            }
+            """;
+        Path outDir = tempFolder.newFolder("payload-scalar-array-origin").toPath();
+        Path workspace = tempFolder.newFolder("payload-scalar-array-origin-fx").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "payload-scalar-array-origin", fixture);
+
+        SpringPayloadGenerator gen = new SpringPayloadGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
+        gen.setArgs(args);
+        gen.execute(loader);
+
+        Path emitted = outDir.resolve("acme/demo/prompts/TagViewPayload.java");
+        assertTrue("expected " + emitted, Files.exists(emitted));
+        String src = Files.readString(emitted);
+        assertTrue("declared List<String> wins over the ignored origin; saw:\n" + src,
+            src.contains("java.util.List<String> tags"));
+        assertFalse("must NOT drop to a bare String; saw:\n" + src,
+            src.contains(" String tags"));
+        assertFalse("must NOT take the @via entity's payload type; saw:\n" + src,
+            src.contains("PostPayload"));
+        assertFalse("PostPayload.java must NOT be emitted",
+            Files.exists(outDir.resolve("acme/demo/prompts/PostPayload.java")));
+    }
+
+    @Test
     public void disagreeingOriginCollectionDeclaredObjectRefWins() throws Exception {
         // #270 load-bearing disagreement test — the payload field DECLARES a curated
         // value-object (`field.object @objectRef: Highlight, isArray: true`) AND carries
