@@ -53,7 +53,7 @@ describe("diff — uuid-identity PK default is not diffed", () => {
     expect(r.changes).toEqual([]);
   });
 
-  test("regression guard: increment-identity PK still no-ops (it never had a DEFAULT)", async () => {
+  test("regression guard: increment-identity PK still no-ops (no live default at all)", async () => {
     const inc: ColumnDescriptor = {
       name: "id", sqlType: { kind: "integer", bits: 64 }, nullable: false, identity: "increment",
     };

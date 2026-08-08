@@ -37,7 +37,7 @@ const expectedIncrementPk: ColumnDescriptor = {
 };
 
 async function defaultChanges(expected: ColumnDescriptor, actual: ColumnDescriptor) {
-  const r = await diff(snap(expected), snap(actual));
+  const r = await diff(snap(expected), snap(actual), { dialect: "postgres" });
   return r.changes.filter((c) => c.kind === "change-column-default");
 }
 
@@ -56,7 +56,7 @@ describe("diff — legacy Postgres serial PK default is not diffed as drift", ()
       ...expectedIncrementPk,
       default: { kind: "expr", value: "nextval('work_item_id_seq'::regclass)" },
     };
-    const r = await diff(snap(expectedIncrementPk), snap(actual));
+    const r = await diff(snap(expectedIncrementPk), snap(actual), { dialect: "postgres" });
     expect(r.changes).toEqual([]);
   });
 

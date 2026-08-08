@@ -398,7 +398,7 @@ function diffTableColumns(
     // but a legacy Postgres `serial`/`bigserial` column is historical sugar for
     // `integer` + a sequence + a REAL `DEFAULT nextval(...)` clause — introspection
     // correctly reads that back as a live default even though the expected side
-    // correctly declares none. Left undiffed, that surfaced as
+    // correctly declares none. Left diffed, that surfaced as
     // `ALTER COLUMN … DROP DEFAULT` with no replacement generation mechanism —
     // destructive against a live table, since every insert that doesn't supply the
     // PK explicitly then starts failing. So an `increment` PK skips the default-diff
