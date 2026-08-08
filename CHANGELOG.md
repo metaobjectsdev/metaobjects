@@ -7,6 +7,111 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.21.1] — npm `0.21.1` · PyPI `0.21.1` · NuGet `0.21.1` · Maven `7.21.1`
+
+Coordinated PATCH. **Changed product code: Maven (`metadata`) and npm (`migrate-ts`, plus the
+`agent-context` docs bundled by `sdk`).** PyPI and NuGet are version-parity bumps — no Python or C#
+file changed, and neither port has an analogue of either fix (there is no C# `MetaObjectSerializer`,
+and schema migrations are TypeScript-owned per ADR-0015).
+
+### Fixed — `StackOverflowError` writing any date or timestamp through the Java object-JSON layer ([#275](https://github.com/metaobjectsdev/metaobjects/issues/275))
+
+`MetaObjectSerializer`'s `case DATE:` handed `context.serialize()` the **containing object** instead
+of the field value. Because the serializer is registered against that object's own class, it
+re-dispatched to itself without bound — `StackOverflowError` (an `Error`, so uncatchable by the usual
+`catch (Exception)` around a best-effort write) on **every** `field.date` / `field.timestamp` write,
+including when the value was `null`, since the branch never read the field at all.
+
+The blast radius was wider than the issue described: `TimestampField` is also `DataTypes.DATE`, so
+`field.timestamp` crashed too, and OMDB's typed-jsonb codec serializes through this same serializer —
+so a `field.object @storage: jsonb` value-object declaring any temporal field crashed an OMDB
+INSERT/UPDATE. It never surfaced in the conformance corpus only because the one jsonb fixture happens
+to carry no temporal field.
+
+**The wire form is now explicit and matches the cross-port contract** in
+`fixtures/persistence-conformance/normalization.md` rather than being reinvented:
+
+| Field | Wire form | Example |
+|---|---|---|
+| `field.date` | calendar date of the instant at UTC | `"2026-06-03"` |
+| `field.timestamp` + `@localTime: true` | wall clock at UTC, no `Z` | `"2026-06-03T14:30:00.123"` |
+| `field.timestamp` (default, tz-aware) | UTC instant, with `Z` | `"2026-06-03T14:30:00.123Z"` |
+
+Fraction is millisecond resolution, trailing zeros stripped, omitted entirely when zero. A `null`
+value writes JSON `null`. **Readers remain backward-compatible**: a JSON *number* is still read as
+legacy epoch milliseconds, so nothing that parsed before stops parsing; a JSON *string* is parsed
+tolerantly across all three forms above. This also removes a locale-dependent
+`setDefaultDateFormat()` / `DateFormat.FULL` call — evidence the branch had never been finished.
+
+Known, documented behavior: a hand-constructed `field.date` carrying a sub-day time component writes
+as the calendar date only (truncated on first write, stable thereafter), matching the shipped OMDB
+DATE codec, which anchors DATE columns at midnight UTC.
+
+### Fixed — array-valued fields round-tripped as corrupt data ([#275](https://github.com/metaobjectsdev/metaobjects/issues/275))
+
+Two halves, both now closed:
+
+- **Write.** `MetaObjectSerializer` ignored `@isArray` entirely, so an array field went through a
+  scalar accessor: a `List<String>` was written as the comma-joined string `"a,b"` instead of a JSON
+  array, and the numeric types fell to a bracketed `toString()`.
+- **Storage.** `MetaField.setObject` converted via the field's **scalar** `getDataType()` rather than
+  the array-aware `getEffectiveDataType()`, corrupting a `List` before storage — which also meant
+  `MetaObjectDeserializer`'s own array-read branches threw. And `DataConverter` had no `DATE_ARRAY`
+  implementation at all, so a `List<Date>` could not be stored by any entry point.
+
+`DataConverter.toDateArray` is added; `BYTE_ARRAY` / `SHORT_ARRAY` deliberately remain unsupported,
+since `field.byte` / `field.short` were cut from the metamodel as non-functional stubs. A null element
+inside a date array now round-trips: the serializer emits `JsonNull` at that position and the reader
+accepts it.
+
+> **Behavior change worth noting.** An `@isArray` field's JSON output changes shape — `"tags":"a,b"`
+> becomes `"tags":["a","b"]`. This is reachable at baseline by anything that populated such a field
+> and wrote it through `JsonObjectWriter`. Relatedly, an array-typed field that receives a *scalar*
+> value now converts (comma-splitting `"a,b"` into `["a","b"]`) where it previously threw
+> `InvalidValueException` — this converges `setObject` with the primary storage path, which already
+> converted against the effective type.
+
+### Fixed — two Gson adapter-wiring defects that masked each other ([#275](https://github.com/metaobjectsdev/metaobjects/issues/275))
+
+`JsonObjectReader` registered **serializers** where it needed deserializers, and
+`MetaObjectGsonInitializer`'s `addSerializer` / `addDeserializer` flags were commented out at both
+class-registration sites, so both kinds registered regardless. Fixing either alone would have broken
+the reader, so they land together.
+
+> **Behavior change worth noting.** `addSerializersToBuilder` no longer registers deserializers as a
+> side effect. A downstream caller that used its result for `fromJson` had an accidentally-working
+> path that now falls back to Gson's reflective adapter; use `getBuilderWithAdapters` (or
+> `addDeserializersToBuilder`) for read paths. All in-repo callers were audited and are unaffected.
+
+### Fixed — `meta migrate` dropped a legacy Postgres `serial` primary key's default (npm only)
+
+Adopting metadata onto an **existing** Postgres table whose PK was created as `serial` proposed
+`ALTER TABLE … ALTER COLUMN "id" DROP DEFAULT` with **no replacement generation mechanism** — leaving
+`id` `NOT NULL` with nothing to populate it, so every insert that did not supply `id` began failing.
+`serial` PKs are what Drizzle, Prisma, Rails and SQLAlchemy all produce, making this the most common
+pre-adoption shape; it also contradicted the documented adoption doctrine that metadata *follows*
+existing code, by modernizing `serial` → `IDENTITY` as a side effect of adoption.
+
+Introspection was already correct. The defect was in the *separate* column-default comparison, which
+was guarded only against `uuid` on the strength of a comment asserting that an autoincrement column
+has no `DEFAULT` — true of SQLite and of a modern `GENERATED … AS IDENTITY` column, and false of
+Postgres `serial`, which is historical sugar for `integer` + a sequence + a real
+`DEFAULT nextval(...)` clause. An `increment` PK now skips the default-diff **only** when the live
+default is that exact auto-sequence shape; a genuinely wrong default on an increment PK still reports
+as drift. No `serial` → `IDENTITY` modernization is introduced — that would need to be opt-in, never
+a side effect of adoption.
+
+### Added — the Java object-JSON layer is documented ([#273](https://github.com/metaobjectsdev/metaobjects/issues/273))
+
+`MetaObjectSerializer` / `JsonObjectWriter` / `JsonObjectReader` had no coverage in either the port
+docs or the agent-context skills, so there was no sanctioned answer to "how do I turn a
+MetaObject-backed instance into JSON?" — and the obvious guess (point a default Jackson mapper at it)
+fails confusingly on some shapes. Documenting it was deliberately gated on the crash above being
+fixed. Five surfaces now cover the write+read snippet, the wire form, both producing paths, and the
+explicit note that a default mapper over a `PojoObject` subtype fails on the `MetaObject`
+back-reference — expected, not a bug to work around. For plain Jackson-friendly types the answer is
+the `codegen-spring` record surface, never `pojoAware`.
+
 ## [0.21.0] — npm `0.21.0` · PyPI `0.21.0` · NuGet `0.21.0` · Maven `7.21.0`
 
 > ### ⚠️ BREAKING FOR METADATA AUTHORS — three changes make previously-valid metadata fail to load
