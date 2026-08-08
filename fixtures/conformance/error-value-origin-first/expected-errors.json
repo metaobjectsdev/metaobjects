@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_SUBTYPE_RULE_VIOLATION",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.demo.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.value'].children[1]['field.string'].children[0]['origin.first']"
+      }
+    }
+  ],
+  "warnings": []
+}

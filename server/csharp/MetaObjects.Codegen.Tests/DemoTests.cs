@@ -27,7 +27,7 @@ public class DemoTests
           { "object.value": { "name": "PostBrief", "children": [
             { "field.string": { "name": "title" } }
           ]}},
-          { "object.value": { "name": "AuthorBrief", "children": [
+          { "object.projection": { "name": "AuthorBrief", "children": [
             { "field.string": { "name": "displayName" } },
             { "field.int": { "name": "postCount" } },
             { "field.object": { "name": "posts", "isArray": true, "@objectRef": "PostBrief",

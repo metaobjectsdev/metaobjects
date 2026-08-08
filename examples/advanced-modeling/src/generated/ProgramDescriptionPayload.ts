@@ -4,7 +4,7 @@
 import { z } from "zod";
 
 export interface ProgramDescriptionPayload {
-  title?: string;
+  title: string;
   summary?: string;
   authorName?: string;
   lessonCount?: number;

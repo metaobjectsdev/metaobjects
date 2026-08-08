@@ -19,9 +19,10 @@ This buys four guarantees:
 4. **Cross-language conformance** — a Python eval renders exactly what the Java
    production server sends.
 
-The vocabulary is `template.*` (the renderable unit) over a declared
-`object.value` payload shape. Mustache is the chosen template engine — it has
-the only published cross-language spec + conformance suite.
+The vocabulary is `template.*` (the renderable unit) over a declared payload
+shape — an `object.value`, or (since #210) a **sourceless** `object.projection`.
+Mustache is the chosen template engine — it has the only published
+cross-language spec + conformance suite.
 
 ## Two template subtypes
 
@@ -34,7 +35,7 @@ Both carry the same generic attributes:
 
 | Attr | Required | Purpose |
 |---|---|---|
-| `@payloadRef` | yes | The `object.value` view-object declaring the payload shape |
+| `@payloadRef` | yes | The `object.value` — or sourceless `object.projection` (#210) — declaring the payload shape |
 | `@textRef` | yes | The 2-layer logical reference `group/source` resolved by a provider |
 | `@format` | no | `text` / `html` / `xml` / `csv` / `json` / `markdown` / `spreadsheet` — drives the escaper. Default: `text`. |
 | `@maxChars` | no | Build-time size budget |
@@ -43,9 +44,10 @@ Both carry the same generic attributes:
 
 ## Payload fields are declared
 
-A payload is an `object.value` view-object whose fields DECLARE the payload's
-shape — a prompt's payload is a typed projection you author, so payload bloat
-shows up as a diff. Every port's payload codegen is **declared-type-authoritative
+A payload is an `object.value` — or a **sourceless** `object.projection`
+(#210: no `source.*` child, own or inherited) — whose fields DECLARE the
+payload's shape; a prompt's payload is a typed projection you author, so
+payload bloat shows up as a diff. Every port's payload codegen is **declared-type-authoritative
 (#270)**: a field's generated type comes only from its declared `field.<subType>`
 + `isArray` + `@objectRef`, and a nested payload is a declared `field.object
 @objectRef` to another `object.value` (`isArray: true` for a list). An `origin.*`
@@ -53,11 +55,17 @@ child on a payload field is **ignored for typing** — it never changes the
 generated type, nullability, or the nested-payload set. The caller supplies the
 field values at render time.
 
-Derivation and assembly belong to **projection** read models (`object.projection`
-over an entity), which carry the origin vocabulary — `origin.passthrough`,
-`origin.aggregate` (incl. the `any` / `all` quantifiers and the `collect` array
-rollup), `origin.computed` (a closed `@expr` grammar) and `origin.first` (#195) —
-see [source-kinds.md](source-kinds.md).
+Derivation and assembly belong to **projections** (`object.projection`), which
+carry the origin vocabulary — `origin.passthrough`, `origin.aggregate` (incl.
+the `any` / `all` quantifiers and the `collect` array rollup), `origin.computed`
+(a closed `@expr` grammar) and `origin.first` (#195) — see
+[source-kinds.md](source-kinds.md). #210 draws the host line hard: a
+value-hosted field may carry **only `origin.passthrough`** (FR-015 parameter
+lineage); the assembly origins (`aggregate` / `computed` / `collection` /
+`first`) on an `object.value` fail load with `ERR_SUBTYPE_RULE_VIOLATION`. An
+origin-declared payload lives on a **sourceless projection** instead, and
+`@payloadRef` / `@responseRef` accept it at the template level. Nested payload
+targets (a payload field's `field.object @objectRef`) stay value-only.
 
 ## Authoring
 
@@ -184,7 +192,8 @@ For the `lobby/welcome` template:
 ### TypeScript
 
 `@metaobjectsdev/render` ships the render engine + verify. Payload-VO codegen is
-shared with the projection codegen path (the payload IS an `object.value`).
+shared with the projection codegen path (the payload is an `object.value` or a
+sourceless `object.projection`, #210).
 
 ```ts
 import { render } from "@metaobjectsdev/render";
@@ -531,8 +540,9 @@ for the per-port pass/skip ledger.
 
 ## See also
 
-- [entities.md](entities.md) — `object.value` is the payload's host type
+- [entities.md](entities.md) — `object.value` / sourceless `object.projection` are the payload host types (#210)
 - [field-types.md](field-types.md) — fields in payload VOs
 - [source-kinds.md](source-kinds.md) — `source.rdb` `@kind: "view"` for materialized payloads (FR-003)
 - [migrations-and-drift.md](migrations-and-drift.md) — the verify pillar
+- [migrations/value-assembly-origins-and-source-role-shrink.md](migrations/value-assembly-origins-and-source-role-shrink.md) — migrating a pre-#210 payload (assembly origins on a value; nested non-value targets)
 - FR-004 spec: [2026-05-22-fr-004-cross-language-prompt-construction-design.md](../superpowers/specs/2026-05-22-fr-004-cross-language-prompt-construction-design.md)

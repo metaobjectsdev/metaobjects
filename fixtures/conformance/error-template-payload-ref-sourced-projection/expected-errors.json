@@ -1,0 +1,17 @@
+{
+  "errors": [
+    {
+      "code": "ERR_INVALID_TEMPLATE",
+      "source": {
+        "format": "resolved",
+        "files": [
+          "meta.demo.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[2]['template.prompt']",
+        "referrer": "authorPrompt",
+        "target": "demo::AuthorView"
+      }
+    }
+  ],
+  "warnings": []
+}

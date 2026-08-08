@@ -116,10 +116,10 @@ open class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject
         // ADR-0042 — resolve @payloadRef under the loader's package-local contract (#228).
         val payloadVo = KotlinGenUtil.resolveValueObjectRef(loader, payloadRef, template.getPackage())
         if (payloadVo == null) {
-            // @payloadRef resolves to an object.entity (or nothing) — same contract
-            // as KotlinPayloadGenerator: payloads MUST be VOs.
+            // @payloadRef resolves to an entity / sourced projection (or nothing) — same
+            // contract as KotlinPayloadGenerator: a payload is a VO or sourceless projection (#210).
             LOG.warn(
-                "skipping output-parser for {} — @payloadRef '{}' does not resolve to an object.value",
+                "skipping output-parser for {} — @payloadRef '{}' does not resolve to an object.value or sourceless object.projection",
                 template.name, payloadRef
             )
             return

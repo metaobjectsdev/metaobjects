@@ -31,9 +31,21 @@ const VALUE_ONLY = [
 
 const ENTITY = [
   { "object.entity": { name: "User", children: [
+    { "source.rdb": { "@table": "users" } },
     { "field.long": { name: "id" } },
     { "field.string": { name: "email", "@required": true } },
     { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },
+  ] } },
+];
+
+// #210 — a sourceless object.projection (no source.rdb child) is now a first-class,
+// migration-recommended payload shape: assembly origins re-host onto it. Like a
+// value object it declares no source, so #248 R2 says it emits zero DB code — and
+// the source-based guard must NOT demand dialect/dbImport for it.
+const SOURCELESS_PROJECTION = [
+  { "object.projection": { name: "Report", children: [
+    { "field.string": { name: "title" } },
+    { "field.string": { name: "summary" } },
   ] } },
 ];
 
@@ -42,12 +54,21 @@ const ENTITY = [
 const configNoDb = (): MetaobjectsGenConfig =>
   ({ outDir: tmp, extStyle: "js", generators: [entityFile()] } as MetaobjectsGenConfig);
 
-describe("#194 item 3 — dbImport/dialect optional for value-object-only projects", () => {
+describe("#194 item 3 — dbImport/dialect optional for value-object-only and sourceless-projection models", () => {
   test("a value-object-only model generates with NO dbImport/dialect set (no throw)", async () => {
     const root = await load(VALUE_ONLY);
     const result = await runGen({ config: configNoDb(), metadata: root, projectRoot: tmp });
     // It runs to completion; a value object emits no query/route DB code, so the
     // absent dbImport/dialect are never read.
+    expect(result.warnings.some((w) => w.includes("missing"))).toBe(false);
+    expect(Array.isArray(result.files)).toBe(true);
+  });
+
+  test("a model whose only concrete object is a sourceless projection generates with NO dbImport/dialect (no throw)", async () => {
+    const root = await load(SOURCELESS_PROJECTION);
+    const result = await runGen({ config: configNoDb(), metadata: root, projectRoot: tmp });
+    // #210/#248 — a sourceless projection declares no source.rdb, so it emits zero
+    // DB code and must not demand database config; the guard keys on source, not subtype.
     expect(result.warnings.some((w) => w.includes("missing"))).toBe(false);
     expect(Array.isArray(result.files)).toBe(true);
   });

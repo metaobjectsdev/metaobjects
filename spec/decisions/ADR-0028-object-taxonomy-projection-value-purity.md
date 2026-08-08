@@ -31,8 +31,11 @@ semantic lie.
    Values may `extends` entity fields for shape (proc parameters, command inputs)
    with no identity/population/FK semantics.
 3. **Population doctrine:** `source` answers "where is this populated from?"
-   **Values are never populated — they are constructed** (by a caller, by assembly,
-   or by embedding; embedded VO storage belongs to the owning entity's field).
+   **Values are never populated — they are constructed** (by a caller or by
+   embedding; embedded VO storage belongs to the owning entity's field — the
+   original "by assembly" construction mode was retired on 2026-08-06,
+   [#210](https://github.com/metaobjectsdev/metaobjects/issues/210); see the
+   amendment below).
    Message topics/queues are *channels*, not sources — they live at the surface
    layer as `binding.*` on operations (AsyncAPI's model), never in `source.*`.
    *(Ratified over ADR-0007's conflicting `source.event` catalog entry on
@@ -101,6 +104,34 @@ extending an entity still reports one error at its root cause rather than two.
 Gated by `fixtures/conformance/error-projection-inherited-source` across all five
 ports.
 
+## Amendment (2026-08-06) — assembly origins leave `object.value` (#210)
+
+**Passthrough on a value is lineage; assembly origins live on projections.** A
+field hosted on an `object.value` may no longer carry `origin.aggregate`,
+`origin.computed`, `origin.collection` or `origin.first` — those are *assembly*
+origins: they describe deriving a value by rolling up, computing, or collecting
+from a backing store, which is exactly what a projection is for and exactly what
+a pure-shape value is not (decision 3: values are constructed, never populated —
+the "by assembly" construction mode is retired with this amendment). An assembly
+origin on a value-hosted field fails load with `ERR_SUBTYPE_RULE_VIOLATION` in
+all four loaders. `origin.passthrough` **stays legal on a value**: there it is
+FR-015 *parameter lineage* (the FR-024 B5 exemption in every port's
+`validateOriginPaths`), not an assembly path, and retiring it would silently
+drop the `ERR_PASSTHROUGH_TYPE_MISMATCH` check on stored-proc arguments. The
+displaced use case survives intact: an author who was assembling a payload with
+aggregate/collection origins declares a **sourceless** `object.projection`
+instead, and `@payloadRef`/`@responseRef` widen to accept one at the template
+level ("sourceless" per the #248 persistability contract — no declared/inherited
+`source.*` child; the concrete-projection-owns-its-source amendment above makes
+this unambiguous). A *sourced* projection as a payload target stays
+`ERR_INVALID_TEMPLATE`, and **nested** payload targets — a payload field's
+`field.object @objectRef` — stay value-only (also loader-enforced,
+`ERR_SUBTYPE_RULE_VIOLATION`). Gated by
+`fixtures/conformance/error-value-origin-{aggregate,computed,collection,first}`,
+`template-payload-ref-sourceless-projection`,
+`error-template-payload-ref-sourced-projection` and
+`error-payload-nested-object-ref-entity` across all five ports.
+
 ## Consequences
 
 - The two legacy spellings are REMOVED outright — hard cutover, no deprecation
@@ -109,7 +140,13 @@ ports.
   entity-`extends`-entity view objects and stored-proc result shapes as entities
   fail to load. Own fixtures migrate to `object.projection`. FR-004
   `value`+`origin.*` payloads remain valid — values still carry origins for
-  assembly semantics; no migration is forced.
+  assembly semantics; no migration is forced. *(Superseded 2026-08-06,
+  [#210](https://github.com/metaobjectsdev/metaobjects/issues/210) — see the
+  assembly-origins amendment above: this clause now holds only for
+  `origin.passthrough` (FR-015 parameter lineage); a migration IS forced for
+  the assembly origins (`aggregate`/`computed`/`collection`/`first`), which
+  re-host on a sourceless `object.projection` —
+  [migration guide](../../docs/features/migrations/value-assembly-origins-and-source-role-shrink.md).)*
 - One projection serves multiple surfaces simultaneously (DB view via its source,
   wire contract via an operation's `outputRef`, grid via a layout) — they cannot
   disagree because they are the same node.

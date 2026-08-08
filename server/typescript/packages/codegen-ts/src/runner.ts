@@ -6,6 +6,7 @@ import type { MetaData, MetaObject } from "@metaobjectsdev/metadata";
 import { MetaRoot, OBJECT_SUBTYPE_VALUE } from "@metaobjectsdev/metadata";
 import { assignEmittedNames } from "./naming/collision-names.js";
 import { isAbstract } from "./instance-artifacts.js";
+import { hasAnyRdbSource } from "./source-detect.js";
 import type { Generator, GenContext, EmittedFile } from "./generator.js";
 import type { MetaobjectsGenConfig } from "./metaobjects-config.js";
 import { normalizeConfig, DEFAULT_TARGET_NAME } from "./metaobjects-config.js";
@@ -149,15 +150,18 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     return { files: [], warnings, conflicts: [] };
   }
 
-  // #194 — dbImport / dialect are optional config, BUT a model that emits database
-  // artifacts (any concrete object that is not an object.value — entities and
-  // projections generate schema / query / route code) genuinely needs them. Guard
-  // BEFORE normalizeConfig fills its inert defaults, so a DB project that forgot
-  // either gets a clear error naming the objects, never silently-defaulted output
-  // (e.g. a Postgres project quietly emitting sqlite). A value-object-only project
-  // reaches normalizeConfig and gets the harmless placeholders.
+  // #194 — dbImport / dialect are optional config, BUT a model that declares a
+  // source.rdb genuinely needs them. Only a sourced object emits database
+  // artifacts (schema / query / route code), and every generator below gates
+  // that emission on hasAnyRdbSource — the #248 R2 source-based predicate — so a
+  // sourceless object (a value object, or a sourceless projection) emits zero DB
+  // code. Guard BEFORE normalizeConfig fills its inert defaults, so a DB project
+  // that forgot either gets a clear error naming the objects, never
+  // silently-defaulted output (e.g. a Postgres project quietly emitting sqlite).
+  // A model of only value objects and/or sourceless projections reaches
+  // normalizeConfig and gets the harmless placeholders.
   const dbEmittingObjects = safeEntities.filter(
-    (e) => !e.isAbstract && e.subType !== OBJECT_SUBTYPE_VALUE,
+    (e) => !e.isAbstract && hasAnyRdbSource(e),
   );
   if (dbEmittingObjects.length > 0) {
     const missing: string[] = [];
@@ -168,7 +172,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       throw new Error(
         `codegen config is missing ${missing.join(" and ")} — required because this model ` +
           `generates database code for: ${names}. Set ${missing.join(" and ")} in ` +
-          `metaobjects.config.ts. (Only a value-object-only model may omit them.)`,
+          `metaobjects.config.ts. (A model of only value objects and/or sourceless projections may omit them.)`,
       );
     }
   }

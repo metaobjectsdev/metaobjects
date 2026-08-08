@@ -103,7 +103,10 @@ function collectClosure(
 /** Resolve `ref`'s emitted TS interface name under the ADR-0044 naming rule,
  *  scoped to `ref`'s OWN reference closure (the same closure
  *  `generatePayloadInterfaces(root, ref, referrerPkg)` would emit). Returns
- *  undefined when `ref` does not resolve to an object.value. */
+ *  undefined only when `ref` resolves to nothing — this resolver is
+ *  SUBTYPE-BLIND (any resolved object gets a name); the legal template-level
+ *  target set (object.value or sourceless object.projection, #210) is
+ *  enforced by the loader, never re-checked here. */
 function resolveEmittedName(root: MetaData, ref: string, referrerPkg: string): string | undefined {
   const vo = findObject(root, ref, referrerPkg);
   if (!vo) return undefined;
@@ -213,7 +216,9 @@ function emitClosureDeclarations(
   }
 }
 
-/** Emit the payload `interface` (+ nested element interfaces) for an object.value view-object.
+/** Emit the payload `interface` (+ nested element interfaces) for a payload shape — an
+ *  object.value or sourceless object.projection (#210; the loader owns the target-set
+ *  constraint, this emitter is subtype-blind).
  *  `referrerPkg` (ADR-0042) is the package a bare `voName` resolves in; pass an FQN and it is ignored.
  *  ADR-0044: a short-name collision within `voName`'s reference closure emits EVERY colliding
  *  member under its package-qualified derived name; a non-colliding closure emits byte-identical

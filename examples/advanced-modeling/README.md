@@ -34,7 +34,7 @@ through the real CLI path. It does **not** re-prove the patterns' *behavior*
 | 1 | **Projections** (`object.projection`, `origin.*`) | `metaobjects/meta.catalog.yaml:127-165` — `ProgramSummary`: `origin.passthrough` (a join to `Author`, `:138`), `origin.aggregate @agg:count` (`:143-146`), `origin.aggregate @agg:sum` + `filter` (`:153-157`), `origin.computed @expr` (`:163-164`) | `src/generated/ProgramSummary.ts` (the `pgView` declaration + read schema), `src/generated/ProgramSummary.routes.ts` (read-only routes — no POST/PATCH/DELETE) |
 | 2 | **Entity views** (`view.*` control family) | `metaobjects/meta.catalog.yaml:25-93` — `Program`: `field.enum` (`:31-33`, → `<select>`), `view.textarea @rows` (`:40`), `field.currency` + `view.currency` (`:41-45`), `view.image` — all five attrs (`:53-58`) | `src/generated/Program.form.tsx` (select / `<textarea rows={6}>` / `<ImageUpload>` wrapped in `<Controller>`) |
 | 3 | **Value objects as jsonb columns** | `metaobjects/meta.catalog.yaml:80-92` — `Program.syllabus` (array-of-VO, `isArray: true` + `storage: jsonb`) and `Program.instructorProfile` (single VO); the VOs themselves in `metaobjects/meta.content.yaml:27-47` (`SyllabusSection`, `InstructorProfile` — pure `object.value`, ADR-0028: no identity, no source) | `src/generated/Program.ts` (`jsonb("syllabus").$type<SyllabusSection[]>()`, `jsonb("instructor_profile").$type<InstructorProfile>()`); `src/generated/Program.form.tsx` (a repeatable `useFieldArray` sub-form for `syllabus`, an embedded fieldset for `instructorProfile`) |
-| 4 | **Value objects as LLM/document payloads** | `metaobjects/meta.prompts.yaml` — `ProgramDescriptionPayload` (`:21-42`, an `object.value` projecting `Program`/`Author`/`Lesson` via `origin.passthrough`/`origin.aggregate`, no identity/source) + `template.output` (`:44-48`) | `src/generated/prompts.ts` (the payload interface), `src/generated/ProgramDescriptionOutput.output.ts` (tolerant parser), `src/generated/ProgramDescriptionOutput.render.ts` (typed `render<Name>()` wrapper); the mustache text lives at `templates/learn/program-description.mustache` |
+| 4 | **Sourceless projections as LLM/document payloads** | `metaobjects/meta.prompts.yaml` — `ProgramDescriptionPayload` (a SOURCELESS `object.projection` projecting `Program`/`Author`/`Lesson` via `origin.passthrough`/`origin.aggregate`, no source — #210: assembly origins live on projections, and a template-level `payloadRef` may target a sourceless projection) + `template.output` | `src/generated/ProgramDescriptionPayload.ts` (the payload shape), `src/generated/ProgramDescriptionOutput.output.ts` (tolerant parser), `src/generated/ProgramDescriptionOutput.render.ts` (typed `render<Name>()` wrapper); the mustache text lives at `templates/learn/program-description.mustache` |
 
 `metaobjects/meta.catalog.yaml` also declares `Author` and `Purchase` — the
 minimal supporting entities the four patterns above need (an FK to join
@@ -115,7 +115,10 @@ authoring pass would miss:
   generator's `filter` option (`metaobjects.config.ts`) rather than fixed in
   `codegen-ts`, since it's also the semantically correct call for this domain
   — none of `SyllabusSection`/`InstructorProfile`/`ProgramDescriptionPayload`
-  is independently CRUD-addressable or form-submitted.
+  is independently CRUD-addressable or form-submitted. (Since #210 the payload
+  is a SOURCELESS `object.projection`, so the config filter keys on
+  persistability — a declared/inherited `source.*` child — rather than on the
+  value subtype alone.)
 - **`render-helper`'s payload type wasn't package-stripped.** A resolved
   `@payloadRef` can arrive fully-qualified (`acme::learn::X`); every other TS-
   identifier-emitting generator (`payload-codegen.ts`, `entity-file.ts`, …)

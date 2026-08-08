@@ -1,4 +1,4 @@
-# acme::learn — prompts: PATTERN 4 (value objects as LLM/document payloads).
+# acme::learn — prompts: PATTERN 4 (sourceless projections as LLM/document payloads).
 # A payload projecting exactly the subset of Program a description generator
 # needs, plus a template.output declaring the render. See
 # docs/features/templates-and-payloads.md and (Unit 2)
@@ -13,16 +13,23 @@
 metadata:
   package: acme::learn
   children:
-    # object.value — NO identity, NO source (ADR-0028 purity). Every field
-    # declares an origin.* child; adding a field to Program does NOT bloat this
-    # payload — only an explicit origin.passthrough/aggregate here would. That
-    # is the "payload-bloat-is-a-diff" property: growing this payload is always
-    # a visible, reviewable diff to THIS file.
-    - object.value:
+    # object.projection, SOURCELESS — NO source child, so nothing persists it;
+    # it is assembled on the wire and handed to the renderer. #210: assembly
+    # origins (origin.aggregate/computed/collection/first) live on projections
+    # — an object.value may host only origin.passthrough (FR-015 parameter
+    # lineage) — and a template-level payloadRef may target a sourceless
+    # projection. Every field declares its derivation; adding a field to
+    # Program does NOT bloat this payload — only an explicit
+    # origin.passthrough/aggregate here would. That is the
+    # "payload-bloat-is-a-diff" property: growing this payload is always a
+    # visible, reviewable diff to THIS file. `title` extends-binds to
+    # Program.title so the no-via passthroughs can derive their base entity.
+    - object.projection:
         name: ProgramDescriptionPayload
         children:
           - field.string:
               name: title
+              extends: Program.title
               children:
                 - origin.passthrough: { from: Program.title }
           - field.string:

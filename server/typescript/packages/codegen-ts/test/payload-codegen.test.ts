@@ -26,7 +26,10 @@ async function loadMultiPackageRoot(files: { package: string; children: unknown[
 const model = [
   { "object.value": { name: "PostBrief", children: [{ "field.string": { name: "title", "@required": true } }] } },
   {
-    "object.value": {
+    // #210 — origin.collection is an ASSEMBLY origin: its host is a sourceless
+    // object.projection (a value may host only origin.passthrough); the nested
+    // element target (PostBrief) stays an object.value.
+    "object.projection": {
       name: "AuthorBrief",
       children: [
         { "field.string": { name: "displayName", "@required": true } },
@@ -145,9 +148,13 @@ describe("payload-codegen — typed payload interface (types only, no class/VO)"
         },
       },
       {
-        "object.value": {
+        // #210 — assembly origins (the two origin.collection fields) re-host the
+        // payload on a sourceless object.projection. `displayName` extends-binds to
+        // Source so the no-@via passthrough below can derive its base entity.
+        "object.projection": {
           name: "Digest",
           children: [
+            { "field.string": { name: "displayName", "@required": true, extends: "Source.displayName" } },
             // Declared field.int with a (`@convert`-acknowledged, #185) STRING passthrough.
             {
               "field.int": {

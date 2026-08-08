@@ -1,0 +1,19 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Country",
+          "children": [
+            { "source.rdb": { "@table": "countries" } },
+            { "source.rdb": { "@kind": "view", "@view": "v_countries", "@role": "publish" } },
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "name" } },
+            { "identity.primary": { "name": "id", "@fields": ["id"] } }
+          ]
+        }
+      }
+    ]
+  }
+}

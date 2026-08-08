@@ -134,6 +134,21 @@ public abstract class MetaOrigin extends MetaData {
         AGG_ANY, AGG_ALL, AGG_COLLECT
     );
 
+    /**
+     * #210 — the ASSEMBLY origins: they derive a value by rolling up, computing,
+     * or collecting from a backing store, which is what an {@code object.projection}
+     * is for. They are illegal on an {@code object.value}-hosted field
+     * ({@code ERR_SUBTYPE_RULE_VIOLATION}); {@code origin.passthrough} is NOT in
+     * this set — on a value it is FR-015 parameter lineage, not an assembly path
+     * (ADR-0028). Mirrors the TS {@code ASSEMBLY_ORIGIN_SUBTYPES}.
+     */
+    public static final Set<String> ASSEMBLY_ORIGIN_SUBTYPES = Set.of(
+        AggregateOrigin.SUBTYPE_AGGREGATE,
+        ComputedOrigin.SUBTYPE_COMPUTED,
+        CollectionOrigin.SUBTYPE_COLLECTION,
+        FirstOrigin.SUBTYPE_FIRST
+    );
+
     // -----------------------------------------------------------------------
     // Constructor
     // -----------------------------------------------------------------------

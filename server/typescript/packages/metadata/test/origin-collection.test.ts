@@ -11,7 +11,9 @@ async function load(children: unknown[]) {
 }
 
 // A nested view-object: a scalar key + an array field populated from a relationship.
-// Value objects carry no identity (that rule is for object.entity).
+// #210 — origin.collection is an ASSEMBLY origin, so its host is a sourceless
+// object.projection (a value may host only origin.passthrough); the nested
+// element target stays an object.value.
 const nested = (collectionChildren: unknown[]) => [
   {
     "object.value": {
@@ -20,7 +22,7 @@ const nested = (collectionChildren: unknown[]) => [
     },
   },
   {
-    "object.value": {
+    "object.projection": {
       name: "AuthorBrief",
       children: [
         { "field.string": { name: "displayName" } },

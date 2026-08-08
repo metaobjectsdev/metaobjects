@@ -31,7 +31,8 @@
 // so Renderer's runtime drift check matches the build-time gate that ran here.
 //
 // Skips (same contract as OutputParserGenerator / OutputPromptGenerator): missing
-// @payloadRef, or a @payloadRef that doesn't resolve to an object.value.
+// @payloadRef, or a @payloadRef that doesn't resolve to an object.value or
+// sourceless object.projection (#210).
 //
 // Mirrors the TS port (render-helper-file.ts + templates/render-helper.ts) and the
 // Java port (SpringRenderHelperGenerator). The drift message style matches exactly:
@@ -96,8 +97,9 @@ public class RenderHelperGenerator : IGenerator
                 ctx.Warn($"{Name}: template.output \"{tmpl.Name}\" missing @payloadRef — skipped.");
                 continue;
             }
-            // @payloadRef must resolve to an object.value (same contract as the
-            // parser/prompt generators). The VO record name == payloadRef (PayloadCodegen).
+            // @payloadRef must resolve to an object.value or sourceless
+            // object.projection (#210; same contract as the parser/prompt
+            // generators). The payload record name == payloadRef (PayloadCodegen).
             // ADR-0042: a bare @payloadRef resolves in the template's package.
             var vo = ResolveValueObject(ctx.Root, payloadRef, global::MetaObjects.NamingRefs.EffectivePackage(tmpl));
             if (vo is null) continue;
@@ -109,21 +111,31 @@ public class RenderHelperGenerator : IGenerator
         return files;
     }
 
-    /// <summary>The <c>object.value</c> a <c>@payloadRef</c> names, or null. ADR-0042:
+    /// <summary>The payload shape a <c>@payloadRef</c> names, or null. ADR-0042:
     /// package-local — an FQN binds the exact package; a bare ref binds
     /// <paramref name="referrerPkg"/> (the template's package) FIRST, else a root-level object.
-    /// Must resolve to an <c>object.value</c>.</summary>
+    /// #210 — a template-level payload target is an <c>object.value</c> OR a SOURCELESS
+    /// <c>object.projection</c> ("sourceless" per the #248 persistability contract: no
+    /// declared/inherited <c>source.*</c> child; nested <c>@objectRef</c> targets stay
+    /// value-only — <see cref="ResolveNestedObjectRef"/>).</summary>
     internal static MetaData? ResolveValueObject(MetaRoot root, string payloadRef, string referrerPkg = "")
     {
         var obj = global::MetaObjects.NamingRefs.ResolveObjectRef(root, payloadRef, referrerPkg);
-        return obj is not null && obj.SubType == OBJECT_SUBTYPE_VALUE ? obj : null;
+        if (obj is null) return null;
+        if (obj.SubType == OBJECT_SUBTYPE_VALUE) return obj;
+        if (obj.SubType != OBJECT_SUBTYPE_PROJECTION) return null;
+        // ADR-0039: resolving — a source anywhere in the extends chain binds the
+        // projection to a backing store, which disqualifies it as a payload shape.
+        return obj.Children().Any(c => c.Type == TYPE_SOURCE) ? null : obj;
     }
 
     /// <summary>
     /// True iff this generator emits a render helper for <paramref name="tmpl"/>: a
     /// <c>template.output</c> whose <c>@payloadRef</c> resolves to a root-level
-    /// <c>object.value</c>. Single source of truth shared by the generator loop AND the
-    /// api-docs builder (so docs never claim a suppressed symbol).
+    /// <c>object.value</c> or sourceless <c>object.projection</c> (#210 — delegates to
+    /// the widened <see cref="ResolveValueObject"/>). Single source of truth shared by
+    /// the generator loop AND the api-docs builder (so docs never claim a suppressed
+    /// symbol).
     /// </summary>
     public static bool AppliesTo(MetaData tmpl, MetaRoot root)
     {

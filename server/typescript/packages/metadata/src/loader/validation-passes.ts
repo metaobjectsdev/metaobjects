@@ -108,6 +108,7 @@ import {
   AGG_ANY,
   AGG_ALL,
   AGG_COLLECT,
+  ASSEMBLY_ORIGIN_SUBTYPES,
 } from "../persistence/origin/origin-constants.js";
 import {
   inferExprType,
@@ -185,8 +186,69 @@ function allTemplates(node: MetaData): MetaData[] {
   return out;
 }
 
+// #210 — a template-level payload target (@payloadRef / @responseRef) is an
+// object.value OR a SOURCELESS object.projection. "Sourceless" is the #248
+// persistability contract: no declared/inherited source.* child (a concrete
+// projection cannot inherit one — ERR_PROJECTION_INHERITED_SOURCE — so for a
+// concrete projection this is simply "no own source").
+function _isLegalPayloadTarget(obj: MetaData): boolean {
+  if (obj.subType === OBJECT_SUBTYPE_VALUE) return true;
+  if (obj.subType !== OBJECT_SUBTYPE_PROJECTION) return false;
+  // ADR-0039: resolving — a source anywhere in the extends chain binds the
+  // projection to a backing store, which disqualifies it as a payload shape.
+  return !obj.children().some((c) => c.type === TYPE_SOURCE);
+}
+
+// #210 (carried forward from the #219/ADR-0044 adjudication) — NESTED payload
+// targets stay value-only: every `field.object @objectRef` reachable from a
+// template-level payload target must resolve to an object.value. The
+// template-level widen (sourceless projections) deliberately does NOT extend
+// to nested targets. Dangling refs are NOT reported here — the registry-derived
+// @objectRef resolution check already owns that failure.
+// `visited` is shared across the WHOLE pass (all templates), so a bad nested
+// target reachable from two templates reports ONCE — matching Java's
+// throw-on-first single-error behavior.
+function _checkNestedPayloadRefsValueOnly(
+  payload: MetaData,
+  root: MetaData,
+  errors: ParseError[],
+  visited: Set<MetaData>,
+): void {
+  if (visited.has(payload)) return;
+  visited.add(payload);
+  // ADR-0039: resolving — a payload shape may inherit fields via extends.
+  for (const field of payload.children().filter((c) => c.type === TYPE_FIELD)) {
+    if (field.subType !== FIELD_SUBTYPE_OBJECT) continue;
+    // ADR-0039: resolving — @objectRef may be inherited via extends.
+    const ref = field.attr(FIELD_ATTR_OBJECT_REF);
+    if (typeof ref !== "string" || ref === "") continue;
+    // ADR-0042: a bare ref resolves in the DECLARING owner's package (an
+    // inherited field resolves in the package that declared it).
+    const owner = field.parent ?? payload;
+    const ownerPkg = owner.package ?? owner.fileDefaultPackage ?? "";
+    const target = resolveObjectRef(root, ref, ownerPkg).node;
+    if (target === undefined) continue; // dangling — reported by the @objectRef resolution check
+    if (target.subType !== OBJECT_SUBTYPE_VALUE) {
+      errors.push(
+        new ParseError(
+          `payload '${payload.fqn()}' field '${field.name}' @objectRef '${ref}' resolves to ` +
+            `${TYPE_OBJECT}.${target.subType} — a nested payload target must be an object.value ` +
+            `(template-level refs may also target a sourceless object.projection, nested refs may not) ` +
+            `(#210, ADR-0028, ADR-0044)`,
+          { code: "ERR_SUBTYPE_RULE_VIOLATION", source: field.source },
+        ),
+      );
+      continue;
+    }
+    _checkNestedPayloadRefsValueOnly(target, root, errors, visited);
+  }
+}
+
 export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
   const errors: ParseError[] = [];
+  // #210 — one visited set for the whole pass: a payload shared by N templates
+  // is walked (and any bad nested target reported) exactly once.
+  const nestedVisited = new Set<MetaData>();
   for (const tmpl of allTemplates(root)) {
     // --- @kind / textRef / email part-ref cross-field rules ---
     // template.output is either a document (@kind absent/"document" → @textRef
@@ -251,12 +313,14 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
     // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
     // ADR-0042: resolveObjectRef prefers the referrer's own package before a root-level object.
     const payload = resolveObjectRef(root, payloadRef, referrerPkg).node;
-    if (!payload || payload.subType !== OBJECT_SUBTYPE_VALUE) {
+    // #210 — a template-level payload target widened to object.value OR a
+    // sourceless object.projection (a SOURCED projection stays illegal).
+    if (!payload || !_isLegalPayloadTarget(payload)) {
       // FR5d — @payloadRef is a reference; emit format=resolved with
       // referrer=template FQN, target=the unresolved payloadRef string.
       errors.push(
         new ParseError(
-          `template "${tmpl.name}" @payloadRef "${payloadRef}" does not resolve to an object.value at root`,
+          `template "${tmpl.name}" @payloadRef "${payloadRef}" does not resolve to an object.value or sourceless object.projection at root`,
           {
             code: "ERR_INVALID_TEMPLATE",
             source: resolvedSource(tmpl.source, tmpl.fqn(), payloadRef),
@@ -265,19 +329,24 @@ export function validateTemplatePayloadRefs(root: MetaData): ParseError[] {
       );
       continue;
     }
+    // #210 — nested payload targets stay value-only (see the helper's doctrine).
+    _checkNestedPayloadRefsValueOnly(payload, root, errors, nestedVisited);
     // ADR-0039: resolving — a template may inherit @responseRef via extends.
     const responseRef = tmpl.attr(TEMPLATE_ATTR_RESPONSE_REF);
     if (typeof responseRef === "string") {
       // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
       // ADR-0042: resolveObjectRef prefers the referrer's own package before a root-level object.
       const resVo = resolveObjectRef(root, responseRef, referrerPkg).node;
-      if (!resVo || resVo.subType !== OBJECT_SUBTYPE_VALUE) {
+      if (!resVo || !_isLegalPayloadTarget(resVo)) {
         errors.push(
           new ParseError(
-            `template "${tmpl.name}" @responseRef "${responseRef}" does not resolve to an object.value at root`,
+            `template "${tmpl.name}" @responseRef "${responseRef}" does not resolve to an object.value or sourceless object.projection at root`,
             { code: "ERR_INVALID_TEMPLATE", source: resolvedSource(tmpl.source, tmpl.fqn(), responseRef) },
           ),
         );
+      } else {
+        // #210 — the response closure's nested targets stay value-only too.
+        _checkNestedPayloadRefsValueOnly(resVo, root, errors, nestedVisited);
       }
     }
     const fieldNames = new Set(
@@ -1031,11 +1100,34 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
     // cardinality checks — a value's origin.passthrough is FR-015 parameter
     // lineage (values are constructed, never assembled; spec §7), not an
     // assembly path. Their @from refs are still resolution-validated.
+    // #210: the assembly origins (aggregate/computed/collection/first) are
+    // rejected outright on a value host (ERR_SUBTYPE_RULE_VIOLATION below).
     const isValueHost = obj.subType === OBJECT_SUBTYPE_VALUE;
     // ADR-0039: own — origin validation operates on the OWN-declared field+origin
     // layer (the established cross-port contract; origin.* never inherits, ADR-0029).
     for (const field of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
       for (const origin of field.ownChildren().filter((c) => c.type === TYPE_ORIGIN)) {
+        // #210 — assembly origins live on projections. A value-hosted field may
+        // not carry origin.aggregate / origin.computed / origin.collection /
+        // origin.first: a value is constructed — by a caller or by embedding —
+        // never assembled from a backing store. origin.passthrough STAYS legal
+        // on a value (FR-015 parameter lineage; the B5 exemption below).
+        if (
+          isValueHost &&
+          (ASSEMBLY_ORIGIN_SUBTYPES as readonly string[]).includes(origin.subType)
+        ) {
+          errors.push(
+            new ParseError(
+              `value object '${obj.fqn()}' field '${field.name}' hosts origin.${origin.subType} — ` +
+                `assembly origins (${ASSEMBLY_ORIGIN_SUBTYPES.join(", ")}) live on object.projection; ` +
+                `a value is constructed by a caller or by embedding, never assembled from a backing ` +
+                `store. Re-host this field on a sourceless object.projection; origin.passthrough ` +
+                `(FR-015 parameter lineage) remains legal on a value (#210, ADR-0028)`,
+              { code: "ERR_SUBTYPE_RULE_VIOLATION", source: origin.source },
+            ),
+          );
+          continue;
+        }
         if (origin.subType === ORIGIN_SUBTYPE_PASSTHROUGH) {
           // ADR-0039: own — origin.* never inherits (ADR-0029).
           const from = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_FROM);
@@ -1188,18 +1280,10 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             continue;
           }
           // FR-024 §6 — no @via on an aggregate: inference applies only when
-          // @of targets a non-base entity from a non-value host; an aggregate
-          // over the base relation itself still requires an explicit path.
+          // @of targets a non-base entity; an aggregate over the base relation
+          // itself still requires an explicit path. (A value host never reaches
+          // here — the #210 assembly-origin check above already rejected it.)
           if (ofTarget === undefined) continue; // @of did not resolve — no inference to attempt
-          if (isValueHost) {
-            errors.push(
-              new ParseError(
-                `origin.aggregate on ${obj.name}.${field.name}: missing @via (aggregates require a relationship path).`,
-                { code: "ERR_INVALID_ORIGIN", source: src },
-              ),
-            );
-            continue;
-          }
           const base = _deriveBaseEntity(obj, root, field.name, src, errors);
           if (base === undefined) continue; // base underivable — error already pushed
           if (_isBaseRelationTarget(ofTarget.entity, base, obj)) {
@@ -1286,7 +1370,9 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           if (typeof via === "string" && via !== "") {
             const hops = _validateViaPath(via, root, obj, field.name, src, errors);
             if (hops !== undefined) _checkAggregateCardinality(hops, obj, field.name, src, errors);
-          } else if (ofTarget !== undefined && !isValueHost) {
+          } else if (ofTarget !== undefined) {
+            // (A value host never reaches here — the #210 assembly-origin
+            // check above already rejected origin.first on a value.)
             const base = _deriveBaseEntity(obj, root, field.name, src, errors);
             if (base !== undefined && !_isBaseRelationTarget(ofTarget.entity, base, obj)) {
               const hops = _inferViaSingleHop(

@@ -2,6 +2,7 @@
 
 **Status:** Design research (no code changed)
 **Date:** 2026-08-02
+**Amended 2026-08-06** ([#212](https://github.com/metaobjectsdev/metaobjects/issues/212), ADR-0007 Amendment 2): `@role`'s registered vocabulary has since shrunk to `primary | replica` — `index`/`cache`/`publish`/`mirror` are now **reserved-not-registered** (`SOURCE_ROLES` in every port carries only the two survivors), so §1's "already ships the full role vocabulary" claim and the worked `@role: index` / `@role: cache` examples describe the pre-shrink state and are not currently loadable.
 **Question:** #248 made persistability derive from "declares a writable `source.*` child" — but that check, the single `dialect`, and the migrate/codegen rails all assume ONE relational store. How should MetaObjects model an object persisted to multiple, heterogeneous backends at once (two RDBs, RDB + search index, document store, KV cache), and how do rails scope to a specific store?
 
 ---

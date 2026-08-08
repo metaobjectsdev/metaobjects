@@ -1,0 +1,65 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Author",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "authors"
+              }
+            },
+            {
+              "field.uuid": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@maxLength": 200
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "pk",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "AuthorPayload",
+          "children": [
+            {
+              "field.string": {
+                "name": "name",
+                "extends": "demo::Author.name",
+                "@maxLength": 200
+              }
+            },
+            {
+              "field.string": {
+                "name": "summary"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "template.prompt": {
+          "name": "authorPrompt",
+          "@format": "xml",
+          "@payloadRef": "demo::AuthorPayload",
+          "@textRef": "prompt/author"
+        }
+      }
+    ]
+  }
+}

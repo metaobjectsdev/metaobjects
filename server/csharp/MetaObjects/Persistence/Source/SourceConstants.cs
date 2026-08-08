@@ -167,19 +167,11 @@ public static class SourceConstants
 
     public const string SOURCE_ROLE_PRIMARY = "primary";
     public const string SOURCE_ROLE_REPLICA = "replica";
-    public const string SOURCE_ROLE_INDEX   = "index";
-    public const string SOURCE_ROLE_CACHE   = "cache";
-    public const string SOURCE_ROLE_PUBLISH = "publish";
-    public const string SOURCE_ROLE_MIRROR  = "mirror";
 
     public static readonly string[] SOURCE_ROLES =
     [
         SOURCE_ROLE_PRIMARY,
         SOURCE_ROLE_REPLICA,
-        SOURCE_ROLE_INDEX,
-        SOURCE_ROLE_CACHE,
-        SOURCE_ROLE_PUBLISH,
-        SOURCE_ROLE_MIRROR,
     ];
 
     /// <summary>Default @role when omitted (system of record).</summary>

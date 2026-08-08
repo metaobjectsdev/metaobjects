@@ -225,7 +225,8 @@ public static class PayloadCodegen
     /// <summary>Resolve <paramref name="reference"/>'s emitted C# record name under the
     /// ADR-0044 naming rule, scoped to its OWN reference closure (the same closure
     /// <see cref="GeneratePayloadRecords"/> would emit). Returns null when <paramref name="reference"/>
-    /// does not resolve to an object.value.</summary>
+    /// does not resolve to an object.value or sourceless object.projection (#210 — the loader
+    /// enforces the legal template-level target set; nested targets stay value-only).</summary>
     internal static string? ResolveEmittedName(MetaData root, string reference, string referrerPkg)
     {
         var vo = ResolveForEmission(root, reference, referrerPkg);
@@ -339,7 +340,9 @@ public static class PayloadCodegen
     }
 
     /// <summary>
-    /// Emit the payload record (+ nested element records) for an object.value view-object.
+    /// Emit the payload record (+ nested element records) for a payload shape — an
+    /// object.value or sourceless object.projection (#210; the loader owns the target-set
+    /// constraint, this emitter is subtype-blind).
     /// <paramref name="referrerPkg"/> (ADR-0042) is the package a bare <paramref name="voName"/>
     /// resolves in; pass an FQN and it is ignored. ADR-0044: a short-name collision within
     /// <paramref name="voName"/>'s reference closure emits EVERY colliding member under its

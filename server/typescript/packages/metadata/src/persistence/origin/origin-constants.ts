@@ -30,6 +30,18 @@ export const ORIGIN_SUBTYPES = [
 ] as const;
 export type OriginSubType = (typeof ORIGIN_SUBTYPES)[number];
 
+// #210 — the ASSEMBLY origins: they derive a value by rolling up, computing,
+// or collecting from a backing store, which is what an object.projection is
+// for. They are illegal on an object.value-hosted field
+// (ERR_SUBTYPE_RULE_VIOLATION); origin.passthrough is NOT in this set — on a
+// value it is FR-015 parameter lineage, not an assembly path (ADR-0028).
+export const ASSEMBLY_ORIGIN_SUBTYPES = [
+  ORIGIN_SUBTYPE_AGGREGATE,
+  ORIGIN_SUBTYPE_COMPUTED,
+  ORIGIN_SUBTYPE_COLLECTION,
+  ORIGIN_SUBTYPE_FIRST,
+] as const;
+
 // passthrough attrs
 export const ORIGIN_PASSTHROUGH_ATTR_FROM = "from";
 export const ORIGIN_PASSTHROUGH_ATTR_VIA  = "via";
