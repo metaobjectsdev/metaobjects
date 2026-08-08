@@ -65,6 +65,22 @@ try {
 taking a `QueryOptions` (built from an `Expression`). `ValueObject` is the
 map-backed runtime carrier.
 
+## Serializing a row
+
+A `ValueObject` **is** a `Map<String, Object>`, so a default Jackson
+`ObjectMapper` map-serializes it without special configuration — you may not
+hit a hard failure at all. The hard failure other shapes hit is the
+**`pojoAware`** codegen flavor's bean shape (a public `getMetaData()`
+back-reference a bean-style mapper walks into) and any direct Gson field walk
+over a `MetaObjectAware` instance — an OMDB `ValueObject` row sidesteps both.
+
+Even so, the MetaObjects JSON layer (`JsonObjectWriter`/`JsonObjectReader`, in
+the metadata module's streaming object-JSON IO package) is the sanctioned path
+for an OMDB row regardless of mapper friendliness — it's what applies the temporal wire form
+(`field.date`/`field.timestamp` render per the cross-port contract; a default
+mapper has no idea what shape those should take). See the codegen reference's
+"Serializing generated objects" section for the write+read snippet.
+
 ## Spring wiring
 
 `metaobjects-core-spring` (or the Spring Boot starter) declares an

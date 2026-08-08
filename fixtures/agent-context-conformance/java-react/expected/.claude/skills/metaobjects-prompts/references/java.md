@@ -53,6 +53,14 @@ rather than a throw. The payload record itself comes from `SpringPayloadGenerato
 — the parser is a companion to it, so the parser and payload VO can't silently
 drift.
 
+Both `parse()` and `extractLenient(...)` here return **plain Java 21 records** —
+safe with any mapper, nothing special needed. That's specific to this
+`codegen-spring` extract tier: the codegen-base flavored `<Name>Extractor` and the
+raw `MetaObjectExtractor` (the alternative extraction path, see the codegen
+reference) return `MetaObjectAware` instances instead, and those need
+`JsonObjectWriter`/`MetaObjectSerializer` — not a bare mapper — to serialize
+correctly (see the codegen reference's "Serializing generated objects" section).
+
 ## The output-format prompt fragment (FR-010)
 
 For every json/xml-format `template.output`, `codegen-spring`'s

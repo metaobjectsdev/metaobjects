@@ -264,12 +264,77 @@ into a Maven test (e.g. a JUnit assertion in the `test` phase).
 | `SpringControllerGenerator` | `metaobjects-codegen-spring` | One `<Entity>Controller.java` per writable entity (`source.rdb @kind="table"`). Spring Boot 3.x / Spring Web MVC. Five CRUD endpoints (GET list / GET by id / POST / PATCH + PUT / DELETE) matching the cross-port [REST API contract](../features/api-contract.md). `?sort`, `?limit/?offset`, `?withCount=1` envelope, 404 + 400 envelopes per the contract. Filter operators (`eq/ne/gt/gte/lt/lte/in/like/isNull`) ship via the generated `<Entity>FilterAllowlist` (`SpringFilterAllowlistGenerator`) + the runtime `FilterParser`, wired directly into the list handler. |
 | `SpringDtoGenerator` | `metaobjects-codegen-spring` | One `<Entity>Dto.java` per entity as a Java 21 `record`. Wrapped-primitive components (`Long`, `Integer`, `Boolean`) so missing JSON properties deserialise to `null`. Currency = `Long` (integer minor units cross-port invariant). Used as both request and response body. |
 | `SpringRepositoryGenerator` | `metaobjects-codegen-spring` | One `<Entity>Repository.java` per writable entity as a hand-stubbed Java `interface` the consumer implements with their preferred persistence layer (Spring Data JPA / jOOQ / plain JDBC — all out of MetaObjects' concern). Nests the `SortClause` record the controller calls into. |
+| `JavaObjectCodeGenerator` | `metaobjects-codegen-base` | Flavor-selected via the `flavor` generator arg (`com.metaobjects.generator.direct.object.javacode`). `flavor=pojoAware` emits `class <Name> extends PojoObject` — a concrete `MetaObjectAware` class whose inherited `getMetaData()` back-reference breaks a default Jackson/Gson mapper (see [Serializing generated objects](#serializing-generated-objects) below). `flavor=valueObject` emits a map-backed `class <Name> extends ValueObject` instead. Either flavor also emits a `<Name>Extractor` and a self-registering `ObjectClassBindingProvider`. For a plain default-Jackson-friendly type, use the `codegen-spring` record surface instead — never `pojoAware`. |
 
-Wire any of them via the Maven plugin's `<generator>` entry pointing at
-`com.metaobjects.generator.spring.SpringControllerGenerator` /
+Wire any of the three Spring generators via the Maven plugin's `<generator>`
+entry pointing at `com.metaobjects.generator.spring.SpringControllerGenerator` /
 `SpringDtoGenerator` / `SpringRepositoryGenerator`. The three are
 independently configurable; typical use is all three together (controller +
 DTO + repository).
+
+## Serializing generated objects
+
+Two paths hand you a `MetaObjectAware` instance: the `JavaObjectCodeGenerator`
+flavored codegen above (a `pojoAware` or `valueObject` class), and the OMDB
+runtime (`ObjectManagerDB.getObjects(...)` / `MetaObject.newInstance()`, see
+[Use](#use) above). Serialize either through the MetaObjects JSON layer
+(`com.metaobjects.io.object.json`) — `JsonObjectWriter` for the write side,
+`JsonObjectReader` for the read side — rather than a bare Jackson/Gson mapper:
+
+```java
+import com.metaobjects.io.object.json.JsonObjectWriter;
+import com.metaobjects.io.object.json.JsonObjectReader;
+import com.metaobjects.loader.MetaDataLoader;
+import com.metaobjects.object.MetaObject;
+
+import java.io.StringReader;
+import java.io.StringWriter;
+import java.nio.file.Path;
+
+MetaDataLoader loader = MetaDataLoader.fromDirectory("app", Path.of("src/main/metaobjects"));
+MetaObject mo = loader.getMetaObjectByName("acme::blog::Author");
+
+// pojoAware-flavor generated class: public Author(MetaObject mo) { super(mo); }
+Author author = new Author(mo);
+author.setName("Ada");
+
+StringWriter out = new StringWriter();
+JsonObjectWriter.writeObject(author, out);
+String json = out.toString();
+// {"@type":"acme::blog::Author","name":"Ada"}
+
+Author roundTripped = JsonObjectReader.readObject(Author.class, mo, new StringReader(json));
+```
+
+A default Jackson/Gson mapper pointed directly at a `pojoAware`-flavor class
+fails on the `MetaObject` back-reference every generated `PojoObject` subtype
+carries (the inherited `getMetaData()` getter leads a bean-style mapper into
+the metadata graph, and on a modular JVM into `InaccessibleObjectException`)
+— **this is expected, not a bug to work around.** If you want a type that
+serializes cleanly with a bare default mapper, generate the `codegen-spring`
+record surface instead (`SpringDtoGenerator` / `SpringPayloadGenerator` /
+`SpringValueObjectGenerator`) — never `pojoAware`.
+
+**Wire form** (`field.date` / `field.timestamp`):
+
+| Field | Wire form | Example |
+|---|---|---|
+| `field.date` | calendar date of the instant at UTC — `YYYY-MM-DD` | `"2026-06-03"` |
+| `field.timestamp` + `@localTime: true` | wall clock of the instant at UTC, no `Z` | `"2026-06-03T14:30:00.123"` |
+| `field.timestamp` (default, tz-aware) | UTC instant, with `Z` | `"2026-06-03T14:30:00.123Z"` |
+
+The fraction is millisecond resolution, trailing zeros stripped, and the `.`
+plus fraction omitted entirely when zero (`.123`→`.123`, `.120`→`.12`,
+`.100`→`.1`, `.000`→omitted). A `null` value writes JSON `null`. Readers stay
+tolerant and backward-compatible: a JSON **number** is still read as **legacy
+epoch milliseconds**; a JSON **string** is tried in order as an ISO instant
+(the `Z` form) → a local date-time (no `Z`) → a date-only form, and the error
+message names all three accepted forms if none match.
+
+A hand-constructed `field.date` value carrying a sub-day time component
+writes as the calendar date only (truncated on first write, stable
+thereafter) — this matches the shipped OMDB DATE codec, which anchors DATE
+columns at midnight UTC.
 
 ## Universal Angular 18 client
 
