@@ -13,15 +13,30 @@ verified at the baseline SHA but must be **re-derived from code** before acting 
 
 ## STATUS — update as you go (edit this file, commit the checkbox flips with the work)
 
-- [ ] Phase 0 — setup, premise recon
-- [ ] Unit A — wire-form implementation: serializer DATE branch + deserializer DATE split + streaming-reader split + `TemporalWireFormat` + gate tests (TDD)
-- [ ] Unit B — Gson wiring siblings: `JsonObjectReader` registers serializers-only; initializer's add-flags are dead code (fix TOGETHER — they mask each other)
-- [ ] Unit C — serializer write-side `@isArray` asymmetry (bounded; **maintainer checkpoint before widening**)
-- [ ] Unit D — #273 docs (5 files; gated on Unit A being merged-or-on-the-same-branch)
-- [ ] Free-text sweep (hazard discipline — member VALUES, spelling-agnostic)
-- [ ] Independent review (branch + `no-mistakes` gate) → merge to `main` → local-ci green
+- [x] Phase 0 — setup, premise recon
+- [x] Unit A — wire-form implementation: serializer DATE branch + deserializer DATE split + streaming-reader split + `TemporalWireFormat` + gate tests (TDD) — `94a9f400`
+- [x] Unit B — Gson wiring siblings: `JsonObjectReader` registers serializers-only; initializer's add-flags are dead code (fix TOGETHER — they mask each other) — `daa8d677`
+- [x] Unit C — serializer write-side `@isArray` asymmetry (bounded; **maintainer checkpoint before widening**) — `026bc342`, `0ba2e030`. Stayed inside its bound (3 files, zero `MetaField`/`DataConverter` change); the escalation clause fired as designed — see "Carry-forward" below.
+- [x] Unit D — #273 docs (5 files; gated on Unit A being merged-or-on-the-same-branch) — `30e8946c`, `7138e580`
+- [x] Free-text sweep (hazard discipline — member VALUES, spelling-agnostic) — two passes, code side + doc side, clean
+- [x] Independent review (branch) — final whole-branch review clean after one fix wave (`f8e10c39`); 25 deferred findings triaged, 1 parked
+- [ ] `no-mistakes` gate → merge to `main` → local-ci green
 - [ ] Release — coordinated PATCH: npm `0.21.1` · PyPI `0.21.1` · NuGet `0.21.1` · Maven `7.21.1` (**checkpoint with the maintainer first**)
 - [ ] Close #275 + #273 with receipts
+
+**Carry-forward out of this batch** (deliberately NOT fixed; Unit C's bounded-scope clause names both
+almost verbatim as scope-creep triggers). Recommended as ONE future unit, which would also close
+deferred findings A6/C1/C3/C4/C5 and the `Apple.worms` fixture question:
+1. `MetaField.setObject(Object,Object)` converts via the field's **scalar** `getDataType()` instead of
+   the array-aware `getEffectiveDataType()`, corrupting any `isArray` primitive before storage.
+2. `DataConverter` has **no `DATE_ARRAY` implementation** (`case DATE_ARRAY:` → `unsupported()`), so
+   no entry point can store a `List<Date>` on an `isArray` DATE field.
+   Net: Unit C fixed the array **write** side while array **storage** stays broken. Verified coherent
+   to ship — the read half already threw at baseline, so Unit C introduces no regression; it converts
+   silent write corruption into correct output, and leaves two unreachable-but-correct code paths.
+3. The OMDB jsonb-temporal gap — the motivating blast-radius claim for this whole fix still has no
+   test at any level. A metadata-local or omdb-local regression test is in-repo scope and does not
+   require touching the shared five-port `labels` fixture.
 
 ---
 
