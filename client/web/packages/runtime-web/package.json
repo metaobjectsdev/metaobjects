@@ -1,6 +1,6 @@
 {
   "name": "@metaobjectsdev/runtime-web",
-  "version": "0.20.16",
+  "version": "0.21.0",
   "description": "Pure framework-agnostic browser core for metaobjects: currency, filter URL serialization, fetcher contract types.",
   "type": "module",
   "main": "./dist/index.js",
