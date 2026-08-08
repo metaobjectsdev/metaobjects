@@ -8,6 +8,7 @@ import com.metaobjects.io.string.StringSerializationHandler;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.object.MetaObjectAware;
+import com.metaobjects.util.DataConverter;
 import com.google.gson.*;
 
 import static com.metaobjects.io.json.JsonIOUtil.*;
@@ -94,7 +95,13 @@ public class MetaObjectSerializer implements JsonSerializer<Object> {
                     } else {
                         JsonArray arr = new JsonArray();
                         for (Object o : dates) {
-                            java.util.Date d = (java.util.Date) o;
+                            // C1: route through the shared DataConverter.toDate(Object) rather
+                            // than a hard (Date) cast -- matches the non-array DATE branch below
+                            // (mf.getDate(vo) is itself backed by DataConverter.toDate), and
+                            // accepts the same scalar inputs that converter always has, instead
+                            // of throwing a bare ClassCastException for anything not already a
+                            // java.util.Date.
+                            java.util.Date d = DataConverter.toDate(o);
                             if (d == null) arr.add(JsonNull.INSTANCE);
                             else arr.add(TemporalWireFormat.format(mf, d));
                         }

@@ -47,9 +47,9 @@ public final class DataConverter
 
 			case BYTE_ARRAY://return toByteArray( val );
 			case SHORT_ARRAY: //return toShortArray( val );
-			case DATE_ARRAY: //toDateArray( val );
 				return unsupported(dataType,val);
 
+			case DATE_ARRAY: return toDateArray( val );
 			case STRING_ARRAY: return toStringArray( val );
 			case OBJECT_ARRAY: return toObjectArray( val );
 
@@ -752,6 +752,33 @@ public final class DataConverter
 			}
 		} else {
 			return java.util.Arrays.asList(toBoolean(val));
+		}
+	}
+
+	/**
+	 * Convert value to Date array (List&lt;Date&gt;)
+	 */
+	public static List<Date> toDateArray(Object val) {
+		if (val == null) return null;
+
+		if (val instanceof List<?>) {
+			List<?> list = (List<?>) val;
+			return list.stream()
+				.map(DataConverter::toDate)
+				.collect(java.util.stream.Collectors.toList());
+		} else if (val instanceof String) {
+			String s = (String) val;
+			if (s.trim().isEmpty()) return new java.util.ArrayList<>();
+
+			if (s.contains(",")) {
+				return java.util.Arrays.stream(s.split(","))
+					.map(item -> toDate(item.trim()))
+					.collect(java.util.stream.Collectors.toList());
+			} else {
+				return java.util.Arrays.asList(toDate(s.trim()));
+			}
+		} else {
+			return java.util.Arrays.asList(toDate(val));
 		}
 	}
 

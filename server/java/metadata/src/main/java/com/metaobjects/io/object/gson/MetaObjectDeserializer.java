@@ -126,14 +126,12 @@ public class MetaObjectDeserializer implements JsonDeserializer<Object> {
                     // nothing that parsed before stops parsing). String -> tolerant ISO parse
                     // (TemporalWireFormat). Array: element-wise into a List<Date> via
                     // setObjectArray, skipping context.deserialize(el, List.class), which yields a
-                    // type-losing List<Double>. setObjectArray only bypasses MetaField's OWN
-                    // DataConverter.toType call; setObjectAttribute still routes through
-                    // AbstractObjectRepresentation.setValue, which unconditionally applies
-                    // DataConverter.toType(effectiveDataType, value) -- and DataConverter's
-                    // DATE_ARRAY case is unimplemented (unsupported()). So today this branch
-                    // throws UnsupportedOperationException for a non-empty date array on the
-                    // default (non-proxy) representation path; it becomes correct once
-                    // DataConverter grows a DATE_ARRAY conversion.
+                    // type-losing List<Double>. setObjectArray routes through
+                    // AbstractObjectRepresentation.setValue, which applies
+                    // DataConverter.toType(effectiveDataType, value) -- backed, since the #275
+                    // carry-forward unit, by DataConverter.toDateArray. This branch genuinely
+                    // round-trips a date array end to end today (see
+                    // GsonArrayWriteRoundTripTest's Step 3b/A6 coverage).
                     if (mf.isArrayType() && el.isJsonArray()) {
                         List<Date> dates = new ArrayList<>();
                         for (JsonElement item : el.getAsJsonArray()) {

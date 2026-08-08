@@ -14,6 +14,8 @@
         { "field.double": { "name": "amount" } },
         { "field.date": { "name": "dates", "isArray": true } },
         { "field.date": { "name": "day" } },
+        { "field.timestamp": { "name": "timestamps", "isArray": true } },
+        { "field.timestamp": { "name": "localTimestamps", "isArray": true, "@localTime": true } },
         { "field.decimal": { "name": "price" } }
       ]}}
     ]
