@@ -347,6 +347,28 @@ public class GsonArrayWriteRoundTripTest {
     }
 
     @Test
+    public void dateArray_withNullElement_roundTripsThroughFullGsonPipeline() {
+        // Review fix round 1, Important #1: the write side (MetaObjectSerializer, pinned by
+        // dateArray_withNullElement_writesJsonNullAtThatPosition above) deliberately emits
+        // JsonNull.INSTANCE at a null element position. The read side must accept what the write
+        // side produces -- readDateElement checks isJsonNull() first (JsonNull is not a
+        // JsonPrimitive, so el.getAsString() would otherwise throw
+        // UnsupportedOperationException, naming no field).
+        Gson gson = MetaObjectGsonInitializer.getBuilderWithAdapters(arrayLoader).create();
+
+        ValueObject vo = newArrayThing();
+        List<Date> dates = Arrays.asList(utc(2026, 6, 3, 0, 0, 0, 0), null);
+        vo.put("dates", dates);
+
+        String json = gson.toJson(vo);
+        Assert.assertTrue("expected a null element in the wire array, was: " + json,
+                json.contains("\"2026-06-03\"") && json.contains("null"));
+
+        ValueObject result = (ValueObject) gson.fromJson(json, ValueObject.class);
+        Assert.assertEquals(dates, result.get("dates"));
+    }
+
+    @Test
     public void timestampArray_roundTripsThroughFullGsonPipeline() {
         Gson gson = MetaObjectGsonInitializer.getBuilderWithAdapters(arrayLoader).create();
 
@@ -453,5 +475,77 @@ public class GsonArrayWriteRoundTripTest {
         Assert.assertEquals(3.5, obj.get("amount").getAsDouble(), 0.0001);
         Assert.assertEquals("2026-06-03", obj.get("day").getAsString());
         Assert.assertEquals(new java.math.BigDecimal("19.99"), obj.get("price").getAsBigDecimal());
+    }
+
+    // -----------------------------------------------------------------------
+    // Step 7 — review fix round 1, Important #2: a SCALAR JSON value (not wrapped in an array)
+    // read onto an array-typed field. Before E2, MetaField.setObject converted via the field's
+    // scalar getDataType() -- e.g. toType(STRING, "a,b") -> "a,b" identity -- and
+    // setObjectAttribute's effective-class check (List required for an isArray field) rejected
+    // it with InvalidValueException: a loud failure. After E2, setObject converts via
+    // getEffectiveDataType() (the *_ARRAY variant), so the value is coerced into a single- (or,
+    // for STRING specifically, comma-split multi-) element List and stored WITHOUT error. This is
+    // not a new behavior invented by this task: DataObjectBase._setObjectAttribute (the
+    // vo.put()/ValueObject.Map path exercised throughout this file) already converted against the
+    // effective type before this task, and is exactly what made the RED evidence in this task's
+    // report (`vo.put("dates", list)` throwing before DataConverter.toDateArray existed) possible
+    // in the first place. E2 converges MetaObjectDeserializer's setObject-based read path with
+    // that pre-existing behavior rather than introducing a new rule. Pinned here per line, not
+    // asserted in prose only, since a live JSON read path (a scalar value where an array is
+    // expected -- e.g. a legacy or hand-written payload) can reach every one of these.
+    // -----------------------------------------------------------------------
+
+    private ValueObject deserializeArrayThing(String json) {
+        Gson gson = MetaObjectGsonInitializer.getBuilderWithAdapters(arrayLoader).create();
+        return (ValueObject) gson.fromJson(json, ValueObject.class);
+    }
+
+    @Test
+    public void stringArray_scalarJsonValue_commaSplitsIntoMultiElementList() {
+        // The headline case: a bare JSON string containing a comma is not merely wrapped, it is
+        // SPLIT -- DataConverter.toStringArray's String branch treats a comma-containing string
+        // as delimited. Silent, and worth a name of its own.
+        ValueObject result = deserializeArrayThing(
+                "{\"@type\":\"test::arrays::ArrayThing\",\"tags\":\"a,b\"}");
+        Assert.assertEquals(Arrays.asList("a", "b"), result.get("tags"));
+    }
+
+    @Test
+    public void booleanArray_scalarJsonValue_wrapsAsSingleElementList() {
+        ValueObject result = deserializeArrayThing(
+                "{\"@type\":\"test::arrays::ArrayThing\",\"flags\":true}");
+        Assert.assertEquals(Arrays.asList(true), result.get("flags"));
+    }
+
+    @Test
+    public void intArray_scalarJsonValue_wrapsAsSingleElementList() {
+        ValueObject result = deserializeArrayThing(
+                "{\"@type\":\"test::arrays::ArrayThing\",\"counts\":5}");
+        Assert.assertEquals(Arrays.asList(5), result.get("counts"));
+    }
+
+    @Test
+    public void longArray_scalarJsonValue_wrapsAsSingleElementList() {
+        ValueObject result = deserializeArrayThing(
+                "{\"@type\":\"test::arrays::ArrayThing\",\"bigCounts\":10}");
+        Assert.assertEquals(Arrays.asList(10L), result.get("bigCounts"));
+    }
+
+    @Test
+    public void doubleArray_scalarJsonValue_wrapsAsSingleElementList() {
+        ValueObject result = deserializeArrayThing(
+                "{\"@type\":\"test::arrays::ArrayThing\",\"amounts\":3.5}");
+        Assert.assertEquals(Arrays.asList(3.5), result.get("amounts"));
+    }
+
+    @Test
+    public void dateArray_scalarJsonNumber_wrapsAsSingleElementList() {
+        // DATE's "scalar value on an array field" branch is reached independently of the
+        // isArrayType() check that guards BOOLEAN/INT/LONG/DOUBLE/STRING above -- the DATE case's
+        // number/string arms run whenever the element isn't a JSON array, array-typed field or
+        // not (MetaObjectDeserializer.java's DATE case, the `else if isNumber` arm).
+        ValueObject result = deserializeArrayThing(
+                "{\"@type\":\"test::arrays::ArrayThing\",\"dates\":1749000000000}");
+        Assert.assertEquals(Arrays.asList(new Date(1749000000000L)), result.get("dates"));
     }
 }

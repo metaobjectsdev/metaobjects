@@ -130,8 +130,10 @@ public class MetaObjectDeserializer implements JsonDeserializer<Object> {
                     // AbstractObjectRepresentation.setValue, which applies
                     // DataConverter.toType(effectiveDataType, value) -- backed, since the #275
                     // carry-forward unit, by DataConverter.toDateArray. This branch genuinely
-                    // round-trips a date array end to end today (see
-                    // GsonArrayWriteRoundTripTest's Step 3b/A6 coverage).
+                    // round-trips a date array end to end today, INCLUDING a null element (see
+                    // readDateElement's isJsonNull() guard -- required because the write side,
+                    // MetaObjectSerializer, deliberately emits JsonNull.INSTANCE at a null element
+                    // position; see GsonArrayWriteRoundTripTest's Step 3b/A6 coverage).
                     if (mf.isArrayType() && el.isJsonArray()) {
                         List<Date> dates = new ArrayList<>();
                         for (JsonElement item : el.getAsJsonArray()) {
@@ -201,8 +203,15 @@ public class MetaObjectDeserializer implements JsonDeserializer<Object> {
         }
     }
 
-    /** Single JSON array element of a DATE-array field: number -> epoch millis, string -> tolerant ISO parse. */
+    /** Single JSON array element of a DATE-array field: null -> null (JsonNull.getAsString()
+     * throws UnsupportedOperationException, so this must be checked before isJsonPrimitive --
+     * JsonNull is not a JsonPrimitive), number -> epoch millis, string -> tolerant ISO parse.
+     * Mirrors what MetaObjectSerializer.writeField's DATE-array branch emits at a null element
+     * position (JsonNull.INSTANCE), so a null element round-trips instead of throwing. */
     private Date readDateElement(MetaField mf, JsonElement el) {
+        if (el.isJsonNull()) {
+            return null;
+        }
         if (el.isJsonPrimitive() && el.getAsJsonPrimitive().isNumber()) {
             return new Date(el.getAsLong());
         }
