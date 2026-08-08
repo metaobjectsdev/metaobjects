@@ -35,6 +35,7 @@ import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 import { parseFingerprintMarker } from "../view-fingerprint.js";
 import { MIGRATIONS_TABLE } from "../apply/ledger.js";
 import { stripCheckWrapper } from "../check-expr-compare.js";
+import { isPgAutoSequenceDefault } from "../pg-identity-default.js";
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -460,10 +461,11 @@ async function readColumns(k: Kysely<any>, schema: string, tableName: string): P
     if (def !== undefined) col.default = def;
 
     // Detect auto-increment (sequence) columns — real PG surfaces bigserial /
-    // serial as nextval(...) in column_default.  We also check udt_name for
+    // serial as nextval(...) in column_default (isPgAutoSequenceDefault, shared
+    // with the diff layer's identity-default guard). We also check udt_name for
     // explicit serial type names as a belt-and-suspenders guard.
     const isSerial =
-      (r.column_default !== null && /^nextval\(/i.test(r.column_default)) ||
+      isPgAutoSequenceDefault(r.column_default) ||
       /^(?:bigserial|serial8|serial4|serial|smallserial|serial2)$/i.test(r.udt_name);
     if (isSerial) col.identity = "increment";
 

@@ -13,6 +13,7 @@ import { detectColumnRenames, detectTableRenames } from "./rename-heuristic.js";
 import { viewSqlEquals } from "../view-sql-compare.js";
 import { viewReplaceIsLegal } from "../view-column-types.js";
 import { checkExprEquals, normalizeCheckExpr } from "../check-expr-compare.js";
+import { isPgAutoSequenceDefault } from "../pg-identity-default.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 
 export interface DiffArgs {
@@ -390,8 +391,26 @@ function diffTableColumns(
     // metadata changes. On SQLite/D1 the false positive is destructive rather than
     // merely noisy: there is no ALTER COLUMN, so the recreate-and-copy path rebuilds
     // the WHOLE table. Identity-driven values are not ordinary defaults — don't diff
-    // them (`increment` gets this implicitly: an AUTOINCREMENT column has no DEFAULT).
-    if (ec.identity !== "uuid" && !columnDefaultsEqual(ec.default, ac.default)) {
+    // them.
+    //
+    // `increment` is NOT automatically the same case: SQLite AUTOINCREMENT and a
+    // modern Postgres `GENERATED ... AS IDENTITY` column genuinely carry no DEFAULT,
+    // but a legacy Postgres `serial`/`bigserial` column is historical sugar for
+    // `integer` + a sequence + a REAL `DEFAULT nextval(...)` clause — introspection
+    // correctly reads that back as a live default even though the expected side
+    // correctly declares none. Left diffed, that surfaced as
+    // `ALTER COLUMN … DROP DEFAULT` with no replacement generation mechanism —
+    // destructive against a live table, since every insert that doesn't supply the
+    // PK explicitly then starts failing. So an `increment` PK skips the default-diff
+    // ONLY when the live default is that exact auto-sequence shape
+    // (isPgAutoSequenceDefault, shared with the introspector that already recognizes
+    // it) — a genuinely wrong, non-sequence default on an increment PK still reports
+    // as drift.
+    const liveIsAutoSequenceDefault =
+      ac.default !== undefined && ac.default.kind === "expr" && isPgAutoSequenceDefault(ac.default.value);
+    const skipIdentityDefaultDiff =
+      ec.identity === "uuid" || (ec.identity === "increment" && liveIsAutoSequenceDefault);
+    if (!skipIdentityDefaultDiff && !columnDefaultsEqual(ec.default, ac.default)) {
       const change: Change = {
         kind: "change-column-default", table, ...sx, column: name,
         status: ALLOWED,
