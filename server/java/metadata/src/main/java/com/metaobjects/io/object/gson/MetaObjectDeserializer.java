@@ -5,6 +5,7 @@ import com.metaobjects.field.MetaField;
 import com.metaobjects.io.MetaDataIOException;
 import com.metaobjects.io.json.JsonIOConstants;
 import com.metaobjects.io.json.JsonSerializationHandler;
+import com.metaobjects.io.json.TemporalWireFormat;
 import com.metaobjects.io.json.raw.GsonSerializationHandler;
 import com.metaobjects.io.string.StringSerializationHandler;
 import com.metaobjects.loader.MetaDataLoader;
@@ -16,6 +17,7 @@ import com.google.gson.*;
 import java.io.IOException;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 
@@ -107,7 +109,6 @@ public class MetaObjectDeserializer implements JsonDeserializer<Object> {
                     }
                     break;
 
-                case DATE:
                 case LONG:
                     // Check if this is an array field using universal @isArray support
                     if (mf.isArrayType()) {
@@ -115,6 +116,34 @@ public class MetaObjectDeserializer implements JsonDeserializer<Object> {
                         else mf.setLong(vo, el.getAsLong());
                     } else {
                         mf.setLong(vo, el.getAsLong());
+                    }
+                    break;
+
+                case DATE:
+                    // #275: DATE used to share LONG's branch unconditionally, which only ever
+                    // worked for the legacy epoch-millis form. Number -> epoch millis (kept, the
+                    // existing LONG coercion path -- this is what makes the release a PATCH:
+                    // nothing that parsed before stops parsing). String -> tolerant ISO parse
+                    // (TemporalWireFormat). Array: element-wise into a List<Date> via
+                    // setObjectArray, skipping context.deserialize(el, List.class), which yields a
+                    // type-losing List<Double>. setObjectArray only bypasses MetaField's OWN
+                    // DataConverter.toType call; setObjectAttribute still routes through
+                    // AbstractObjectRepresentation.setValue, which unconditionally applies
+                    // DataConverter.toType(effectiveDataType, value) -- and DataConverter's
+                    // DATE_ARRAY case is unimplemented (unsupported()). So today this branch
+                    // throws UnsupportedOperationException for a non-empty date array on the
+                    // default (non-proxy) representation path; it becomes correct once
+                    // DataConverter grows a DATE_ARRAY conversion.
+                    if (mf.isArrayType() && el.isJsonArray()) {
+                        List<Date> dates = new ArrayList<>();
+                        for (JsonElement item : el.getAsJsonArray()) {
+                            dates.add(readDateElement(mf, item));
+                        }
+                        mf.setObjectArray(vo, dates);
+                    } else if (el.isJsonPrimitive() && el.getAsJsonPrimitive().isNumber()) {
+                        mf.setLong(vo, el.getAsLong());
+                    } else {
+                        mf.setDate(vo, parseDate(mf, el.getAsString()));
                     }
                     break;
 
@@ -171,6 +200,24 @@ public class MetaObjectDeserializer implements JsonDeserializer<Object> {
                     throw new UnsupportedOperationException(
                             "DataType [" + mf.getDataType() + "] not supported [" + mf + "]");
             }
+        }
+    }
+
+    /** Single JSON array element of a DATE-array field: number -> epoch millis, string -> tolerant ISO parse. */
+    private Date readDateElement(MetaField mf, JsonElement el) {
+        if (el.isJsonPrimitive() && el.getAsJsonPrimitive().isNumber()) {
+            return new Date(el.getAsLong());
+        }
+        return parseDate(mf, el.getAsString());
+    }
+
+    /** TemporalWireFormat.parse has no MetaField context; add it here, matching this class's
+     * existing MetaDataException-with-field-name convention (see getObjectRefClass/readFieldObject). */
+    private Date parseDate(MetaField mf, String s) {
+        try {
+            return TemporalWireFormat.parse(s);
+        } catch (IllegalArgumentException e) {
+            throw new MetaDataException("Error reading MetaField [" + mf + "]: " + e.getMessage(), e);
         }
     }
 

@@ -89,9 +89,10 @@ concrete imports and signatures so you don't have to guess them.
 
 ## `codegen-spring` generators
 
-All live in `metaobjects-codegen-spring` under
+Most live in `metaobjects-codegen-spring` under
 `com.metaobjects.generator.spring.*`; wire any subset, typically all three of the
-first group together:
+first group together. (`JavaObjectCodeGenerator`, last row below, lives in the
+separate `metaobjects-codegen-base` module instead.)
 
 | Generator | Output |
 |---|---|
@@ -105,6 +106,7 @@ first group together:
 | `SpringRenderHelperGenerator` | the typed render helper for a `template.prompt` payload |
 | `LlmTraceHelperGenerator` | `<Entity>TraceHelper.java` per concrete entity — the LLM-trace helper |
 | `SpringFilterAllowlistGenerator` | per-entity filter allowlist |
+| `JavaObjectCodeGenerator` | module `metaobjects-codegen-base` (`com.metaobjects.generator.direct.object.javacode`), a separate module from the Spring generators above. Flavor-selected via the `flavor` generator arg. `flavor=pojoAware` → `class <Name> extends PojoObject` (a concrete `MetaObjectAware` class with a `(MetaObject)` constructor) — its inherited `getMetaData()` back-reference is what breaks a default Jackson/Gson mapper, see "Serializing generated objects" below. `flavor=valueObject` → `class <Name> extends ValueObject` (map-backed; less hostile to a default mapper, but still not the sanctioned serialization path). Either concrete flavor also emits a `<Name>Extractor` plus a self-registering `ObjectClassBindingProvider`. For a plain default-Jackson-friendly type, use the `codegen-spring` record surface instead — never `pojoAware`. |
 
 **Projections (read-only views).** An `object.projection` (read-only `source.rdb`
 `@kind: view` child) is served read-only through OMDB at the ObjectManager layer
@@ -153,3 +155,69 @@ polymorphic + per-subtype-scoped repository seam the consumer implements against
 Spring Data JPA / JDBC. Conformance-gated by `fixtures/api-contract-conformance/tph`
 (HTTP wire shape) and `fixtures/persistence-conformance/tph-*` (single-table
 runtime semantics).
+
+## Serializing generated objects
+
+Two paths hand you a `MetaObjectAware` instance: (a) `JavaObjectCodeGenerator`'s
+flavored codegen above (a `pojoAware` or `valueObject` class), and (b) the om/omdb
+runtime (`ObjectManager.getObjects(...)` / `MetaObject.newInstance()` — see the
+runtime-ui reference). **A default Jackson/Gson mapper over a `PojoObject` subtype
+fails on the `MetaObject` back-reference** — the inherited `getMetaData()` getter
+leads a bean-style mapper into the metadata graph, and on a modular JVM into
+`InaccessibleObjectException`. This is expected, not a bug to work around. If you
+want a type that serializes cleanly with a bare default mapper, use the
+`codegen-spring` record surface (`SpringDtoGenerator` / `SpringPayloadGenerator` /
+`SpringValueObjectGenerator`) instead — never `pojoAware`.
+
+Serialize any `MetaObjectAware` instance through the MetaObjects JSON layer's
+`JsonObjectWriter`/`JsonObjectReader`, not a bare mapper — it applies the temporal
+wire form below, and read/write round-trip through the same pair of calls:
+
+```java
+import com.metaobjects.io.object.json.JsonObjectWriter;
+import com.metaobjects.io.object.json.JsonObjectReader;
+import com.metaobjects.loader.MetaDataLoader;
+import com.metaobjects.object.MetaObject;
+
+import java.io.StringReader;
+import java.io.StringWriter;
+import java.nio.file.Path;
+
+MetaDataLoader loader = MetaDataLoader.fromDirectory("app", Path.of("src/main/metaobjects"));
+MetaObject mo = loader.getMetaObjectByName("acme::blog::Author");
+
+// pojoAware-flavor generated class: public Author(MetaObject mo) { super(mo); }
+Author author = new Author(mo);
+author.setName("Ada");
+author.setBirthDate(new java.util.Date());     // field.date
+
+// Write
+StringWriter out = new StringWriter();
+JsonObjectWriter.writeObject(author, out);
+String json = out.toString();
+// {"@type":"acme::blog::Author","name":"Ada","birthDate":"2026-06-03"}
+
+// Read
+Author roundTripped = JsonObjectReader.readObject(Author.class, mo, new StringReader(json));
+```
+
+**Wire form** (`field.date` / `field.timestamp`):
+
+| Field | Wire form | Example |
+|---|---|---|
+| `field.date` | calendar date of the instant at UTC — `YYYY-MM-DD` | `"2026-06-03"` |
+| `field.timestamp` + `@localTime: true` | wall clock of the instant at UTC, no `Z` | `"2026-06-03T14:30:00.123"` |
+| `field.timestamp` (default, tz-aware) | UTC instant, with `Z` | `"2026-06-03T14:30:00.123Z"` |
+
+Fraction is millisecond resolution, trailing zeros stripped, and the `.` plus
+fraction omitted entirely when zero (`.123`→`.123`, `.120`→`.12`, `.100`→`.1`,
+`.000`→omitted). A `null` value writes JSON `null`. Readers are tolerant and
+backward-compatible: a JSON **number** is still read as **legacy epoch
+milliseconds**; a JSON **string** is tried in order as an ISO instant (the `Z`
+form) → a local date-time (no `Z`) → a date-only form, failing with a message
+naming all three accepted forms.
+
+**Known bounded caveat:** a hand-constructed `field.date` value carrying a
+sub-day time component writes as the calendar date only (truncated on first
+write, stable thereafter) — this matches the shipped OMDB DATE codec, which
+anchors DATE columns at midnight UTC.

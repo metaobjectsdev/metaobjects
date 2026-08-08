@@ -5,11 +5,13 @@ import com.metaobjects.io.MetaDataIOException;
 import com.metaobjects.io.json.JsonMetaDataReader;
 import com.metaobjects.MetaDataNotFoundException;
 import com.metaobjects.io.json.JsonSerializationHandler;
+import com.metaobjects.io.json.TemporalWireFormat;
 import com.metaobjects.io.object.gson.MetaObjectGsonInitializer;
 import com.metaobjects.io.string.StringSerializationHandler;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 import com.google.gson.JsonIOException;
+import com.google.gson.stream.JsonToken;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -42,7 +44,7 @@ public class JsonObjectReader extends JsonMetaDataReader {
 
     public Object read(MetaObject mo ) throws IOException {
 
-        MetaObjectGsonInitializer.addSerializersToBuilder( getLoader(), builder());
+        MetaObjectGsonInitializer.addDeserializersToBuilder( getLoader(), builder());
 
         try {
             Class c = mo.getObjectClass();
@@ -156,7 +158,17 @@ public class JsonObjectReader extends JsonMetaDataReader {
                 case BYTE:
                 case SHORT:
                 case INT:           mf.setInt( vo, in().nextInt() ); break;
-                case DATE:
+                case DATE: {
+                    // #275: split from LONG -- a number is still the legacy epoch-millis form,
+                    // but a string is now the tolerant ISO wire form (TemporalWireFormat), not a
+                    // long parsed straight out of nextLong().
+                    if ( in().peek() == JsonToken.NUMBER ) {
+                        mf.setLong( vo, in().nextLong() );
+                    } else {
+                        mf.setDate( vo, TemporalWireFormat.parse( in().nextString() ) );
+                    }
+                    break;
+                }
                 case LONG:          mf.setLong( vo, in().nextLong() ); break;
                 case FLOAT:
                 case DOUBLE:        mf.setDouble( vo, in().nextDouble() ); break;
@@ -175,7 +187,10 @@ public class JsonObjectReader extends JsonMetaDataReader {
                     throw new MetaDataIOException( this, "DataType ["+mf.getDataType()+"] not supported ["+mf+"]");
             }
         }
-        catch (IOException e) {
+        catch (IOException | IllegalArgumentException e) {
+            // IllegalArgumentException: TemporalWireFormat.parse (#275) has no MetaField context
+            // of its own, so wrap it here the same way an IOException already is -- naming the
+            // field, consistent with this method's existing convention.
             throw new MetaDataIOException( this, "Error reading MetaField ["+mf+"]: "+e, e );
         }
     }

@@ -2,6 +2,7 @@ package com.metaobjects.io.object.gson;
 
 import com.metaobjects.field.MetaField;
 import com.metaobjects.io.json.JsonIOConstants;
+import com.metaobjects.io.json.TemporalWireFormat;
 import com.metaobjects.io.json.raw.GsonSerializationHandler;
 import com.metaobjects.io.string.StringSerializationHandler;
 import com.metaobjects.loader.MetaDataLoader;
@@ -64,26 +65,58 @@ public class MetaObjectSerializer implements JsonSerializer<Object> {
         switch (mf.getDataType()) {
 
             case BOOLEAN:
-                jsonObject.addProperty(name, mf.getBoolean(vo));
+                // #275 write-side isArray gap: mf.getBoolean(vo) is DataConverter.toBoolean(),
+                // which has no List case and falls through to a bracketed-toString-derived
+                // guess for an array-valued attribute. Mirror the deserializer's isArrayType()
+                // branch: Gson natively serializes a List<Boolean> as a JSON array.
+                if (mf.isArrayType()) jsonObject.add(name, context.serialize(mf.getObject(vo)));
+                else jsonObject.addProperty(name, mf.getBoolean(vo));
                 break;
 
             case BYTE:
             case SHORT:
             case INT:
-                jsonObject.addProperty(name, mf.getInt(vo));
+                if (mf.isArrayType()) jsonObject.add(name, context.serialize(mf.getObject(vo)));
+                else jsonObject.addProperty(name, mf.getInt(vo));
                 break;
 
-            case DATE:      // TODO: consider custom DATE serialization
-                jsonObject.add(name, context.serialize(vo));
+            case DATE: {
+                // #275: this branch used to hand back `vo` (the CONTAINING object, not the
+                // field value) to context.serialize(vo) -- MetaObjectGsonInitializer registers
+                // this serializer against the VO's own class, so that re-dispatched to the
+                // SAME serializer for the SAME instance: unbounded recursion, StackOverflowError,
+                // on every field.date/field.timestamp write, even when the value was null (the
+                // branch never read the field at all). Wire form: TemporalWireFormat.
+                if (mf.isArrayType()) {
+                    java.util.List<Object> dates = mf.getObjectArray(vo);
+                    if (dates == null) {
+                        jsonObject.add(name, JsonNull.INSTANCE);
+                    } else {
+                        JsonArray arr = new JsonArray();
+                        for (Object o : dates) {
+                            java.util.Date d = (java.util.Date) o;
+                            if (d == null) arr.add(JsonNull.INSTANCE);
+                            else arr.add(TemporalWireFormat.format(mf, d));
+                        }
+                        jsonObject.add(name, arr);
+                    }
+                } else {
+                    java.util.Date d = mf.getDate(vo);
+                    if (d == null) jsonObject.add(name, JsonNull.INSTANCE);
+                    else jsonObject.addProperty(name, TemporalWireFormat.format(mf, d));
+                }
                 break;
+            }
 
             case LONG:
-                jsonObject.addProperty(name, mf.getLong(vo));
+                if (mf.isArrayType()) jsonObject.add(name, context.serialize(mf.getObject(vo)));
+                else jsonObject.addProperty(name, mf.getLong(vo));
                 break;
 
             case FLOAT:
             case DOUBLE:
-                jsonObject.addProperty(name, mf.getDouble(vo));
+                if (mf.isArrayType()) jsonObject.add(name, context.serialize(mf.getObject(vo)));
+                else jsonObject.addProperty(name, mf.getDouble(vo));
                 break;
 
             case DECIMAL:
@@ -97,7 +130,8 @@ public class MetaObjectSerializer implements JsonSerializer<Object> {
                 break;
 
             case STRING:
-                jsonObject.addProperty(name, mf.getString(vo));
+                if (mf.isArrayType()) jsonObject.add(name, context.serialize(mf.getObject(vo)));
+                else jsonObject.addProperty(name, mf.getString(vo));
                 break;
 
             case OBJECT:

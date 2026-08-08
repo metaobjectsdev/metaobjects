@@ -59,9 +59,9 @@ public class MetaObjectGsonInitializer {
             if (hasMultipleClasses( nameClassMap, entry.getKey(), clazz)) {
 
                 if (!classList.contains( clazz)) {
-                    //if (addSerializer)
+                    if (addSerializer)
                         builder.registerTypeAdapter(clazz, new MetaObjectSerializer(loader, true));
-                    //if (addDeserializer)
+                    if (addDeserializer)
                         builder.registerTypeAdapter(clazz, new MetaObjectDeserializer(loader, true));
                     classList.add(clazz);
                 }
@@ -69,9 +69,9 @@ public class MetaObjectGsonInitializer {
 
             // Otherwise, add the specific class implementation
             else {
-                //if (addSerializer)
+                if (addSerializer)
                     builder.registerTypeAdapter( clazz, new MetaObjectSerializer( mo));
-                //if (addDeserializer)
+                if (addDeserializer)
                     builder.registerTypeAdapter( clazz, new MetaObjectDeserializer( mo));
             }
         }
