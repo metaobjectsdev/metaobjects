@@ -1089,7 +1089,11 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
     }
 
     public void setObject(Object obj, Object value) {
-        setObjectAttribute(obj, DataConverter.toType(getDataType(), value ));
+        // ADR-0039: use the RESOLVING, array-aware getEffectiveDataType() -- the field's SCALAR
+        // getDataType() corrupted a List for an isArray field (e.g. comma-joining a STRING array
+        // into a single string) before setObjectAttribute's own instanceof check rejected it.
+        // getEffectiveDataType() is a strict no-op for every non-array field (#275 carry-forward).
+        setObjectAttribute(obj, DataConverter.toType(getEffectiveDataType(), value ));
     }
 
     public void setObjectArray(Object obj, List<?> value) {

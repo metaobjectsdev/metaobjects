@@ -330,7 +330,55 @@ public class DataConverterTests {
         assertEquals(1, numberResult.size());
         assertEquals("42", numberResult.get(0));
     }
-    
+
+    /**
+     * #275 carry-forward: DATE_ARRAY had no DataConverter implementation at all (the
+     * unsupported() arm). Mirrors testToStringArray's shape, against toDate's epoch-millis
+     * String contract (not ISO -- TemporalWireFormat owns ISO parsing, out of scope here).
+     */
+    @Test
+    public void testToDateArray() {
+        // Test null input
+        assertNull(DataConverter.toDateArray(null));
+
+        // Test existing List<Date>
+        ArrayList<Date> existingList = new ArrayList<>();
+        existingList.add(new Date(5));
+        existingList.add(new Date(10));
+        List<Date> result = DataConverter.toDateArray(existingList);
+        assertEquals(existingList, result);
+
+        // Test comma-separated epoch-millis string
+        List<Date> csvResult = DataConverter.toDateArray("5,10,15");
+        assertEquals(3, csvResult.size());
+        assertEquals(new Date(5), csvResult.get(0));
+        assertEquals(new Date(10), csvResult.get(1));
+        assertEquals(new Date(15), csvResult.get(2));
+
+        // Test single epoch-millis string
+        List<Date> singleResult = DataConverter.toDateArray("23412341234");
+        assertEquals(1, singleResult.size());
+        assertEquals(new Date(23412341234L), singleResult.get(0));
+
+        // Test empty string
+        List<Date> emptyResult = DataConverter.toDateArray("");
+        assertTrue(emptyResult.isEmpty());
+
+        // Test non-List, non-String value (single element via toDate)
+        List<Date> longResult = DataConverter.toDateArray(5L);
+        assertEquals(1, longResult.size());
+        assertEquals(new Date(5), longResult.get(0));
+
+        // Test a List containing a null element (element-wise toDate(null) -> null, not dropped)
+        List<Date> withNull = new ArrayList<>();
+        withNull.add(new Date(5));
+        withNull.add(null);
+        List<Date> nullElementResult = DataConverter.toDateArray(withNull);
+        assertEquals(2, nullElementResult.size());
+        assertEquals(new Date(5), nullElementResult.get(0));
+        assertNull(nullElementResult.get(1));
+    }
+
     /**
      * CUSTOM type is opaque to the generic converter; values must pass through unchanged.
      * This allows per-type codecs (e.g. TimeCodec for TimeField) to handle their own
