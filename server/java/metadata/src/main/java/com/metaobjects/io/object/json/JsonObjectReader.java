@@ -44,7 +44,7 @@ public class JsonObjectReader extends JsonMetaDataReader {
 
     public Object read(MetaObject mo ) throws IOException {
 
-        MetaObjectGsonInitializer.addSerializersToBuilder( getLoader(), builder());
+        MetaObjectGsonInitializer.addDeserializersToBuilder( getLoader(), builder());
 
         try {
             Class c = mo.getObjectClass();
