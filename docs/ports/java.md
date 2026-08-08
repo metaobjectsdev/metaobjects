@@ -172,10 +172,13 @@ auto-create path was removed per ADR-0015.
 OMDB reads the same metadata at runtime and drives CRUD; no per-entity ORM
 boilerplate.
 
-The Java port generates **no typed entity POJO** — the only entity-shaped Java
-output is the immutable `<Entity>Dto` record (from `codegen-spring`). OMDB drives
-CRUD against the loaded metadata plus generic `ValueObject` instances, and its API
-is connection-first (you pass an `ObjectConnection` to each call):
+`codegen-spring`'s only entity-shaped output is the immutable `<Entity>Dto`
+record — it generates no typed entity POJO. (A typed `MetaObjectAware` class
+is available separately, from `JavaObjectCodeGenerator`'s flavored codegen —
+see [Serializing generated objects](#serializing-generated-objects) below.)
+OMDB drives CRUD against the loaded metadata plus generic `ValueObject`
+instances, and its API is connection-first (you pass an `ObjectConnection` to
+each call):
 
 ```java
 import com.metaobjects.loader.MetaDataLoader;

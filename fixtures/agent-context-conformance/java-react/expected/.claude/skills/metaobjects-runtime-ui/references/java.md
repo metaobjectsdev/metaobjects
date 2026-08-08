@@ -74,9 +74,9 @@ hit a hard failure at all. The hard failure other shapes hit is the
 back-reference a bean-style mapper walks into) and any direct Gson field walk
 over a `MetaObjectAware` instance — an OMDB `ValueObject` row sidesteps both.
 
-Even so, the MetaObjects JSON layer (`JsonObjectWriter`/`JsonObjectReader`, in
-the metadata module's streaming object-JSON IO package) is the sanctioned path
-for an OMDB row regardless of mapper friendliness — it's what applies the temporal wire form
+Even so, the MetaObjects JSON layer (`JsonObjectWriter`/`JsonObjectReader`,
+`com.metaobjects.io.object.json`) is the sanctioned path for an OMDB row
+regardless of mapper friendliness — it's what applies the temporal wire form
 (`field.date`/`field.timestamp` render per the cross-port contract; a default
 mapper has no idea what shape those should take). See the codegen reference's
 "Serializing generated objects" section for the write+read snippet.

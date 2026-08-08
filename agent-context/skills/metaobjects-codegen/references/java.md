@@ -106,7 +106,7 @@ separate `metaobjects-codegen-base` module instead.)
 | `SpringRenderHelperGenerator` | the typed render helper for a `template.prompt` payload |
 | `LlmTraceHelperGenerator` | `<Entity>TraceHelper.java` per concrete entity — the LLM-trace helper |
 | `SpringFilterAllowlistGenerator` | per-entity filter allowlist |
-| `JavaObjectCodeGenerator` | module `metaobjects-codegen-base` (a separate module from the Spring generators above). Flavor-selected via the `flavor` generator arg. `flavor=pojoAware` → `class <Name> extends PojoObject` (a concrete `MetaObjectAware` class with a `(MetaObject)` constructor) — its inherited `getMetaData()` back-reference is what breaks a default Jackson/Gson mapper, see "Serializing generated objects" below. `flavor=valueObject` → `class <Name> extends ValueObject` (map-backed; less hostile to a default mapper, but still not the sanctioned serialization path). Either concrete flavor also emits a `<Name>Extractor` plus a self-registering `ObjectClassBindingProvider`. For a plain default-Jackson-friendly type, use the `codegen-spring` record surface instead — never `pojoAware`. |
+| `JavaObjectCodeGenerator` | module `metaobjects-codegen-base` (`com.metaobjects.generator.direct.object.javacode`), a separate module from the Spring generators above. Flavor-selected via the `flavor` generator arg. `flavor=pojoAware` → `class <Name> extends PojoObject` (a concrete `MetaObjectAware` class with a `(MetaObject)` constructor) — its inherited `getMetaData()` back-reference is what breaks a default Jackson/Gson mapper, see "Serializing generated objects" below. `flavor=valueObject` → `class <Name> extends ValueObject` (map-backed; less hostile to a default mapper, but still not the sanctioned serialization path). Either concrete flavor also emits a `<Name>Extractor` plus a self-registering `ObjectClassBindingProvider`. For a plain default-Jackson-friendly type, use the `codegen-spring` record surface instead — never `pojoAware`. |
 
 **Projections (read-only views).** An `object.projection` (read-only `source.rdb`
 `@kind: view` child) is served read-only through OMDB at the ObjectManager layer
@@ -174,7 +174,8 @@ Serialize any `MetaObjectAware` instance through the MetaObjects JSON layer's
 wire form below, and read/write round-trip through the same pair of calls:
 
 ```java
-// JsonObjectWriter / JsonObjectReader — metadata module, streaming object-JSON IO
+import com.metaobjects.io.object.json.JsonObjectWriter;
+import com.metaobjects.io.object.json.JsonObjectReader;
 import com.metaobjects.loader.MetaDataLoader;
 import com.metaobjects.object.MetaObject;
 

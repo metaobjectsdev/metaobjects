@@ -45,7 +45,7 @@ describe("agent-context vocabulary drift", () => {
     const known = new Set<string>(FIELD_SUBTYPES as readonly string[]);
     const bad: string[] = [];
     for (const { f, text } of corpus) {
-      for (const m of text.matchAll(/\bfield\.([a-z][a-zA-Z0-9]*)\b/g)) {
+      for (const m of text.matchAll(/(?<![A-Za-z0-9_.])\bfield\.([a-z][a-zA-Z0-9]*)\b/g)) {
         if (!known.has(m[1]!)) bad.push(`${f} :: field.${m[1]}`);
       }
     }
@@ -58,9 +58,9 @@ describe("agent-context vocabulary drift", () => {
     const tmpls = new Set<string>(TEMPLATE_SUBTYPES as readonly string[]);
     const bad: string[] = [];
     for (const { f, text } of corpus) {
-      for (const m of text.matchAll(/\bobject\.([a-z][a-zA-Z0-9]*)\b/g)) if (!objs.has(m[1]!)) bad.push(`${f} :: object.${m[1]}`);
-      for (const m of text.matchAll(/\bsource\.([a-z][a-zA-Z0-9]*)\b/g)) if (!srcs.has(m[1]!)) bad.push(`${f} :: source.${m[1]}`);
-      for (const m of text.matchAll(/\btemplate\.([a-z][a-zA-Z0-9]*)\b/g)) if (!tmpls.has(m[1]!)) bad.push(`${f} :: template.${m[1]}`);
+      for (const m of text.matchAll(/(?<![A-Za-z0-9_.])\bobject\.([a-z][a-zA-Z0-9]*)\b/g)) if (!objs.has(m[1]!)) bad.push(`${f} :: object.${m[1]}`);
+      for (const m of text.matchAll(/(?<![A-Za-z0-9_.])\bsource\.([a-z][a-zA-Z0-9]*)\b/g)) if (!srcs.has(m[1]!)) bad.push(`${f} :: source.${m[1]}`);
+      for (const m of text.matchAll(/(?<![A-Za-z0-9_.])\btemplate\.([a-z][a-zA-Z0-9]*)\b/g)) if (!tmpls.has(m[1]!)) bad.push(`${f} :: template.${m[1]}`);
     }
     expect(bad).toEqual([]);
   });
