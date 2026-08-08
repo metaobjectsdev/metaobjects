@@ -1,0 +1,20 @@
+{ "metadata.root": {
+    "package": "test::arrays",
+    "children": [
+      { "object.value": { "name": "ArrayThing", "children": [
+        { "field.string": { "name": "tags", "isArray": true } },
+        { "field.string": { "name": "label" } },
+        { "field.int": { "name": "counts", "isArray": true } },
+        { "field.int": { "name": "count" } },
+        { "field.long": { "name": "bigCounts", "isArray": true } },
+        { "field.long": { "name": "bigCount" } },
+        { "field.boolean": { "name": "flags", "isArray": true } },
+        { "field.boolean": { "name": "flag" } },
+        { "field.double": { "name": "amounts", "isArray": true } },
+        { "field.double": { "name": "amount" } },
+        { "field.date": { "name": "dates", "isArray": true } },
+        { "field.date": { "name": "day" } },
+        { "field.decimal": { "name": "price" } }
+      ]}}
+    ]
+}}

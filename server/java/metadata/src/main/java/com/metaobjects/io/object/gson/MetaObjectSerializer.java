@@ -65,13 +65,19 @@ public class MetaObjectSerializer implements JsonSerializer<Object> {
         switch (mf.getDataType()) {
 
             case BOOLEAN:
-                jsonObject.addProperty(name, mf.getBoolean(vo));
+                // #275 write-side isArray gap: mf.getBoolean(vo) is DataConverter.toBoolean(),
+                // which has no List case and falls through to a bracketed-toString-derived
+                // guess for an array-valued attribute. Mirror the deserializer's isArrayType()
+                // branch: Gson natively serializes a List<Boolean> as a JSON array.
+                if (mf.isArrayType()) jsonObject.add(name, context.serialize(mf.getObject(vo)));
+                else jsonObject.addProperty(name, mf.getBoolean(vo));
                 break;
 
             case BYTE:
             case SHORT:
             case INT:
-                jsonObject.addProperty(name, mf.getInt(vo));
+                if (mf.isArrayType()) jsonObject.add(name, context.serialize(mf.getObject(vo)));
+                else jsonObject.addProperty(name, mf.getInt(vo));
                 break;
 
             case DATE: {
@@ -81,19 +87,36 @@ public class MetaObjectSerializer implements JsonSerializer<Object> {
                 // SAME serializer for the SAME instance: unbounded recursion, StackOverflowError,
                 // on every field.date/field.timestamp write, even when the value was null (the
                 // branch never read the field at all). Wire form: TemporalWireFormat.
-                java.util.Date d = mf.getDate(vo);
-                if (d == null) jsonObject.add(name, JsonNull.INSTANCE);
-                else jsonObject.addProperty(name, TemporalWireFormat.format(mf, d));
+                if (mf.isArrayType()) {
+                    java.util.List<Object> dates = mf.getObjectArray(vo);
+                    if (dates == null) {
+                        jsonObject.add(name, JsonNull.INSTANCE);
+                    } else {
+                        JsonArray arr = new JsonArray();
+                        for (Object o : dates) {
+                            java.util.Date d = (java.util.Date) o;
+                            if (d == null) arr.add(JsonNull.INSTANCE);
+                            else arr.add(TemporalWireFormat.format(mf, d));
+                        }
+                        jsonObject.add(name, arr);
+                    }
+                } else {
+                    java.util.Date d = mf.getDate(vo);
+                    if (d == null) jsonObject.add(name, JsonNull.INSTANCE);
+                    else jsonObject.addProperty(name, TemporalWireFormat.format(mf, d));
+                }
                 break;
             }
 
             case LONG:
-                jsonObject.addProperty(name, mf.getLong(vo));
+                if (mf.isArrayType()) jsonObject.add(name, context.serialize(mf.getObject(vo)));
+                else jsonObject.addProperty(name, mf.getLong(vo));
                 break;
 
             case FLOAT:
             case DOUBLE:
-                jsonObject.addProperty(name, mf.getDouble(vo));
+                if (mf.isArrayType()) jsonObject.add(name, context.serialize(mf.getObject(vo)));
+                else jsonObject.addProperty(name, mf.getDouble(vo));
                 break;
 
             case DECIMAL:
@@ -107,7 +130,8 @@ public class MetaObjectSerializer implements JsonSerializer<Object> {
                 break;
 
             case STRING:
-                jsonObject.addProperty(name, mf.getString(vo));
+                if (mf.isArrayType()) jsonObject.add(name, context.serialize(mf.getObject(vo)));
+                else jsonObject.addProperty(name, mf.getString(vo));
                 break;
 
             case OBJECT:
