@@ -274,9 +274,14 @@ public class GsonArrayWriteRoundTripTest {
             Assert.fail("Expected the pre-existing MetaField.setObject scalar-dataType bug to "
                     + "throw; if this now succeeds, that separate defect has been fixed and this "
                     + "test should be replaced with a real round-trip assertion.");
-        } catch (RuntimeException e) {
-            // NumberFormatException from DataConverter.toLong(list.toString()) -- see class Javadoc.
-            Assert.assertNotNull(e.getMessage());
+        } catch (NumberFormatException e) {
+            // DataConverter.toLong(list.toString()) -- see class Javadoc. The elements read
+            // ".0"-suffixed (Gson's context.deserialize(el, List.class) widens JSON numbers to
+            // Double by default, absent generic type info -- the pre-existing, separately
+            // out-of-scope numeric-widening wart the brief itself calls out) rather than the
+            // "[10, 20]" the ORIGINAL List<Long> above would stringify to; this asserts what the
+            // round trip actually produces, not what the write-side input looked like.
+            Assert.assertTrue(e.getMessage(), e.getMessage().contains("[10.0, 20.0]"));
         }
     }
 
