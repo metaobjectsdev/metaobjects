@@ -15,7 +15,33 @@
 - [x] Unit A (#270) — Java honors declared `@isArray` on plain scalars (`34705ce9`)
 - [x] Unit A (#270) — docs closure (CLAUDE.md open question, KNOWN_GAPS, roadmap) + doc-truth wave (`608f4217`)
 - [x] Unit A — independent review (review → adjudication → 2 fix rounds → final review → re-review): **SHIP**
-- [ ] Unit A — merge to `main` + local-ci green
+- [x] Unit A — merge to `main` + local-ci green — **PR #274, `18792e52`, 9/9 green**
+- [x] **Release 1 — `0.20.16` / `7.20.16` coordinated PATCH — SHIPPED to all four registries**
+- [x] Unit B — doctrine docs amendment — **verified already landed** (`91de3a85`, `d6e250f3`); roadmap marked with Unit C
+- [x] Unit C — `@role` shrink to `primary | replica` (+ closes #212) — `93955c35`, `cb991a25`
+- [x] Unit D — #210: assembly origins off `object.value`; `@payloadRef`/`@responseRef` widened — `6c73e77a`, `e0e561ab`, `9c4fbadd`
+- [x] Fixture-count + docs propagation — **262 → 270** (counted, not computed: the plan's 269 missed the nested-target fixture)
+- [x] Batch (Units C+D) — independent review + merge to `main` + local-ci green — **PR #276, `18fb4bbe`, 9/9 green**
+- [x] **Release 2 — `0.21.0` / `7.21.0` coordinated MINOR — SHIPPED to all four registries**
+- [x] Issues closed with receipts: **#270, #212, #210, #271** (#271 discharged — premise falsified by recon)
+
+## OUTCOME — batch complete 2026-08-08
+
+**Deviations from this plan, all deliberate and recorded:**
+1. **Unit A grew to include Java.** This plan recorded TS/C#/**Java** as origin-blind reference ports. False for Java — `SpringPayloadGenerator` carried the identical origin dispatch. Root cause: raw NUL bytes made the file test as *binary*, so the environment's `-I` grep wrapper silently returned nothing. Maintainer ruled fix-Java-too. See the NOTE on A's ruling above.
+2. **Three breaking changes, not two.** Final review found the nested-target rule (`field.object @objectRef` must target an `object.value`) is a genuine third break — TS/C#/Python previously accepted a non-value target *and emitted from it*.
+3. **Release 2 cut as MINOR, not the directed PATCH.** Pre-1.0 `^0.20.x` resolves `<0.21.0`, so a patch would be auto-adopted on a routine `npm update` and break adopters with no deliberate action. Maintainer left the call to the executor.
+4. **§4b (payload nested legal-target-set) implemented** as one fail-closed loader rule across four loaders, per the adjudication that overturned a per-port codegen filter.
+5. **`runner.ts` `dbImport`/`dialect` guard re-keyed** to `hasAnyRdbSource` — the release gate caught that it would false-positive on the very sourceless projections this release recommends.
+
+**The batch's recurring failure mode, five instances:** documentation asserting removed behavior as
+current, each surviving a sweep that was slightly narrower than the prose required — a false roadmap
+claim; a Java error message listing the rejected value as allowed (grepped constant *names*, not
+values); an ADR Consequences bullet contradicting its own amendment 35 lines above (grepped subtype
+names, not prose); **a skill shipped in `@metaobjectsdev/sdk` instructing agents to author
+now-illegal metadata** (grepped `origin.aggregate`; the file wrote `aggregate` bare); and `CLAUDE.md`
+listing 2 of 5 origin subtypes (never swept at all). **Lesson: sweep member VALUES as free text,
+spelling-agnostic, and read the hits rather than counting them.**
 - [ ] Release 1 — `0.20.16` / `7.20.16` coordinated PATCH (checkpoint with the maintainer first)
 - [ ] Unit B — doctrine docs amendment (ADR-0007 / FR-024 §7) — docs-only
 - [x] Unit C — Gate 0 adopter scan — **CLEARED 2026-08-06** (see C.0)
