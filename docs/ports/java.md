@@ -318,7 +318,7 @@ serializes cleanly with a bare default mapper, generate the `codegen-spring`
 record surface instead (`SpringDtoGenerator` / `SpringPayloadGenerator` /
 `SpringValueObjectGenerator`) — never `pojoAware`.
 
-**Wire form** (`field.date` / `field.timestamp`):
+**Wire form** (`field.date` / `field.timestamp`) — a Java rendering of the cross-port contract in [`normalization.md`](../../fixtures/persistence-conformance/normalization.md) (the single source of truth):
 
 | Field | Wire form | Example |
 |---|---|---|
