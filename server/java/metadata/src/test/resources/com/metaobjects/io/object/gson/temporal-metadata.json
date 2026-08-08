@@ -1,0 +1,10 @@
+{ "metadata.root": {
+    "package": "test::temporal",
+    "children": [
+      { "object.value": { "name": "TemporalThing", "children": [
+        { "field.date": { "name": "eventDate" } },
+        { "field.timestamp": { "name": "createdAt" } },
+        { "field.timestamp": { "name": "localCreatedAt", "@localTime": true } }
+      ]}}
+    ]
+}}

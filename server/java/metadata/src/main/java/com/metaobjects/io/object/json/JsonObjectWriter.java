@@ -22,8 +22,11 @@ public class JsonObjectWriter extends JsonMetaDataWriter {
 
     public static void writeObject(MetaDataAware o, Writer out) throws IOException {
 
+        // #275: setDefaultDateFormat() set Gson's locale-dependent DateFormat.FULL, evidence
+        // this call site was never finished -- superseded by the explicit TemporalWireFormat
+        // handling in MetaObjectSerializer. The setDefaultDateFormat/setDateFormat methods stay
+        // on JsonMetaDataWriter (public-ish surface, no other caller); only this call is removed.
         JsonObjectWriter writer = new JsonObjectWriter(o.getMetaData().getLoader(), out);
-        writer.setDefaultDateFormat();
         writer.write(o);
         writer.close();
     }

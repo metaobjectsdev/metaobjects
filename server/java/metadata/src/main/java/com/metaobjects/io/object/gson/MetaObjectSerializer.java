@@ -2,6 +2,7 @@ package com.metaobjects.io.object.gson;
 
 import com.metaobjects.field.MetaField;
 import com.metaobjects.io.json.JsonIOConstants;
+import com.metaobjects.io.json.TemporalWireFormat;
 import com.metaobjects.io.json.raw.GsonSerializationHandler;
 import com.metaobjects.io.string.StringSerializationHandler;
 import com.metaobjects.loader.MetaDataLoader;
@@ -73,9 +74,18 @@ public class MetaObjectSerializer implements JsonSerializer<Object> {
                 jsonObject.addProperty(name, mf.getInt(vo));
                 break;
 
-            case DATE:      // TODO: consider custom DATE serialization
-                jsonObject.add(name, context.serialize(vo));
+            case DATE: {
+                // #275: this branch used to hand back `vo` (the CONTAINING object, not the
+                // field value) to context.serialize(vo) -- MetaObjectGsonInitializer registers
+                // this serializer against the VO's own class, so that re-dispatched to the
+                // SAME serializer for the SAME instance: unbounded recursion, StackOverflowError,
+                // on every field.date/field.timestamp write, even when the value was null (the
+                // branch never read the field at all). Wire form: TemporalWireFormat.
+                java.util.Date d = mf.getDate(vo);
+                if (d == null) jsonObject.add(name, JsonNull.INSTANCE);
+                else jsonObject.addProperty(name, TemporalWireFormat.format(mf, d));
                 break;
+            }
 
             case LONG:
                 jsonObject.addProperty(name, mf.getLong(vo));
