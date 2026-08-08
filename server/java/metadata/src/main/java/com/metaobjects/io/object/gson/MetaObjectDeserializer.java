@@ -125,9 +125,15 @@ public class MetaObjectDeserializer implements JsonDeserializer<Object> {
                     // existing LONG coercion path -- this is what makes the release a PATCH:
                     // nothing that parsed before stops parsing). String -> tolerant ISO parse
                     // (TemporalWireFormat). Array: element-wise into a List<Date> via
-                    // setObjectArray (bypasses DataConverter.toType/DATE_ARRAY, which is
-                    // unsupported, and skips context.deserialize(el, List.class), which yields a
-                    // type-losing List<Double>).
+                    // setObjectArray, skipping context.deserialize(el, List.class), which yields a
+                    // type-losing List<Double>. setObjectArray only bypasses MetaField's OWN
+                    // DataConverter.toType call; setObjectAttribute still routes through
+                    // AbstractObjectRepresentation.setValue, which unconditionally applies
+                    // DataConverter.toType(effectiveDataType, value) -- and DataConverter's
+                    // DATE_ARRAY case is unimplemented (unsupported()). So today this branch
+                    // throws UnsupportedOperationException for a non-empty date array on the
+                    // default (non-proxy) representation path; it becomes correct once
+                    // DataConverter grows a DATE_ARRAY conversion.
                     if (mf.isArrayType() && el.isJsonArray()) {
                         List<Date> dates = new ArrayList<>();
                         for (JsonElement item : el.getAsJsonArray()) {

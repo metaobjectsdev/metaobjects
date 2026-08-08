@@ -16,6 +16,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.Locale;
 
 /**
  * #275 — {@code MetaObjectSerializer.writeField}'s {@code case DATE:} handed back the
@@ -130,6 +131,28 @@ public class GsonTemporalRoundTripTest {
 
         JsonObject obj = gson.toJsonTree(vo).getAsJsonObject();
         Assert.assertEquals("ms=" + ms, expected, obj.get("createdAt").getAsString());
+    }
+
+    // Regression pin: TemporalWireFormat.fractionalSuffix formatted the millisecond fraction
+    // with a locale-dependent String.format("%03d", ...), which java.util.Formatter renders
+    // through Locale.getDefault(Locale.Category.FORMAT)'s DecimalFormatSymbols.getZeroDigit() --
+    // under e.g. ar-EG that emits Eastern Arabic-Indic digits ("١٢٣" instead of
+    // "123"), producing a wire string TemporalWireFormat.parse itself cannot read back. This is
+    // the exact locale-hazard class JsonObjectWriter's deleted setDefaultDateFormat()/
+    // DateFormat.FULL call caused, re-entering through the new shared helper. Fixed by pinning
+    // Locale.ROOT in the String.format call.
+    @Test
+    public void timestampField_fractionIsAsciiDigits_regardlessOfDefaultFormatLocale() {
+        Locale previousFormatLocale = Locale.getDefault(Locale.Category.FORMAT);
+        Locale.setDefault(Locale.Category.FORMAT, Locale.forLanguageTag("ar-EG"));
+        try {
+            Gson gson = MetaObjectGsonInitializer.getBuilderWithAdapters(temporalLoader).create();
+            // Reuses the existing ms=123 fraction vector from
+            // timestampField_writesUtcInstant_withFractionRules above.
+            assertCreatedAt(gson, 123, "2026-06-03T14:30:00.123Z");
+        } finally {
+            Locale.setDefault(Locale.Category.FORMAT, previousFormatLocale);
+        }
     }
 
     @Test

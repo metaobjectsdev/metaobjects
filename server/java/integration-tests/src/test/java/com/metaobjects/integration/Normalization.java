@@ -148,7 +148,7 @@ public final class Normalization {
     private static String fractionalSuffix(int nanos) {
         long millis = nanos / 1_000_000L;
         if (millis == 0) return "";
-        String s = String.format("%03d", millis).replaceAll("0+$", "");
+        String s = String.format(java.util.Locale.ROOT, "%03d", millis).replaceAll("0+$", "");
         return "." + s;
     }
 
