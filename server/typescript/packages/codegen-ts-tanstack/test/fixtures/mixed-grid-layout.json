@@ -1,0 +1,57 @@
+{
+  "metadata.root": {
+    "children": [
+      {
+        "object.entity": {
+          "name": "Author",
+          "children": [
+            {
+              "field.long": {
+                "name": "id",
+                "children": [
+                  {
+                    "identity.primary": {
+                      "name": "id",
+                      "@fields": ["id"],
+                      "@generation": "increment"
+                    }
+                  }
+                ]
+              }
+            },
+            { "field.string": { "name": "name", "children": [{ "view.text": {} }] } },
+            {
+              "layout.dataGrid": {
+                "name": "default",
+                "@pageSize": 25,
+                "@columns": ["id", "name"]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Post",
+          "children": [
+            {
+              "field.long": {
+                "name": "id",
+                "children": [
+                  {
+                    "identity.primary": {
+                      "name": "id",
+                      "@fields": ["id"],
+                      "@generation": "increment"
+                    }
+                  }
+                ]
+              }
+            },
+            { "field.string": { "name": "title", "children": [{ "view.text": {} }] } }
+          ]
+        }
+      }
+    ]
+  }
+}

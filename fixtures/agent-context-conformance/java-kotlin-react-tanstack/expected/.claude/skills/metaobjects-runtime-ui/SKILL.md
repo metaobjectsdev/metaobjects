@@ -125,6 +125,24 @@ fetcher-provider at the tree root; every generated hook reads it from context. T
 generated grid and form components, filter-qs serializer, and cell renderers all
 sit on top of this one seam.
 
+## Grids are opt-in per entity
+
+Read/CRUD hooks are generated for **every** entity. Grids are the exception:
+wherever your stack generates them (the TanStack client today), an entity produces
+grid artifacts only when it declares a `layout.dataGrid` child. So wiring the grid
+generator and seeing no grid files is expected metadata, not a broken build — the
+run says so in its `meta gen` warnings. Opt an entity in with:
+
+```jsonc
+{ "layout.dataGrid": { "name": "default", "@columns": ["name", "email"] } }
+```
+
+Generated grid components are fully **controlled** — they need row-count and
+sort/pagination/filter state on top of the column definitions — so pair the columns
+generator with the grid-**hook** generator, which generates that state plumbing
+instead of leaving you to hand-write it. Your client's reference fragment has the
+generator names and a rendered example.
+
 ---
 
 For this project's runtime + web-client specifics, read every `references/*.md` file in this skill's directory (one per server language and client framework in this project's stack).

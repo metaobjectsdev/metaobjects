@@ -1,6 +1,16 @@
 # @metaobjectsdev/codegen-ts-tanstack
 
-TanStack codegen for MetaObjects. Provides `tanstackQuery()` (per-entity `<Entity>.hooks.ts` — 5 React Query hooks, plus a `use<Source><Relation>(sourceId, opts?)` collection hook per many-to-many relationship), `tanstackGrid()` (`<Entity>.columns.tsx` for `@tanstack/react-table`), and `tanstackGridHook()`.
+TanStack codegen for MetaObjects. Provides `tanstackQuery()` (per-entity `<Entity>.hooks.ts` — 5 React Query hooks, plus a `use<Source><Relation>(sourceId, opts?)` collection hook per many-to-many relationship), `tanstackGrid()` (`<Entity>.columns.tsx` for `@tanstack/react-table`), and `tanstackGridHook()` (`<Entity>.grid.ts` — the controlled grid state + query).
+
+### Grids are opt-in per entity
+
+`tanstackQuery()` emits hooks for **every** entity. `tanstackGrid()` and `tanstackGridHook()` emit **only for an entity that declares a `layout.dataGrid` child** — declaring one is how you say "this entity is displayed in a grid". If you wire the grid generators and get no `.columns.tsx`/`.grid.ts`, that is the reason, and `meta gen` says so in its warnings. Opt an entity in with:
+
+```jsonc
+{ "layout.dataGrid": { "name": "default", "@columns": ["name", "email"] } }
+```
+
+`@columns` is an ordered list; omit it to get every field. Each `layout.dataGrid` yields a `<entity><Grid>Columns` + `<entity><Grid>Grid` pair from `tanstackGrid()` and a `use<Entity><Grid>Grid()` from `tanstackGridHook()`.
 
 ### M:N collection hooks (FR-018)
 
@@ -18,11 +28,26 @@ In your `metaobjects.config.ts`:
 
 ```ts
 import { defineConfig } from "@metaobjectsdev/cli";
-import { tanstackQuery, tanstackGrid } from "@metaobjectsdev/codegen-ts-tanstack";
+import { tanstackQuery, tanstackGrid, tanstackGridHook } from "@metaobjectsdev/codegen-ts-tanstack";
 
 export default defineConfig({
-  generators: [tanstackQuery(), tanstackGrid()],
+  generators: [tanstackQuery(), tanstackGrid(), tanstackGridHook()],
 });
+```
+
+Then render. `<EntityGrid>` is fully controlled — beyond the columns it needs
+`rowCount`, a `state` object and three `onChange` callbacks — so pair it with the
+generated grid hook, which returns exactly that prop shape:
+
+```tsx
+import { EntityGrid } from "@metaobjectsdev/tanstack";
+import { authorDefaultColumns, authorDefaultGrid } from "./generated/Author.columns";
+import { useAuthorDefaultGrid } from "./generated/Author.grid";
+
+export function AuthorList() {
+  const grid = useAuthorDefaultGrid();   // owns sorting/pagination/filters + the query
+  return <EntityGrid {...grid} columns={authorDefaultColumns} grid={authorDefaultGrid} />;
+}
 ```
 
 `tanstackQuery`/`tanstackGrid`/`tanstackGridHook` each accept `{ target }` to route

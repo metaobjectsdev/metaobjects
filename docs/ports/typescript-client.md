@@ -61,7 +61,7 @@ React Native) will follow the same pattern.
 | Package | Generators | What it emits |
 |---|---|---|
 | `@metaobjectsdev/codegen-ts-react` | `formFile()` | `<Entity>.form.tsx` — a per-entity React form using `useEntityForm` + `<CurrencyInput>` |
-| `@metaobjectsdev/codegen-ts-tanstack` | `tanstackQuery()`, `tanstackGrid()`, `tanstackGridHook()` | `<Entity>.hooks.ts` (5 React Query hooks), `<Entity>.columns.tsx` (TanStack Table column defs), and `<Entity>.grid.tsx` (a wired grid hook) |
+| `@metaobjectsdev/codegen-ts-tanstack` | `tanstackQuery()`, `tanstackGrid()`, `tanstackGridHook()` | `<Entity>.hooks.ts` (5 React Query hooks) for every entity; `<Entity>.columns.tsx` (TanStack Table column defs) and `<Entity>.grid.ts` (the controlled grid state hook) for entities declaring a `layout.dataGrid` |
 
 Both codegen packages emit imports that target their matching runtime
 package. The framework-neutral `@metaobjectsdev/codegen-ts` engine remains the
@@ -84,7 +84,7 @@ import {
   barrel,
 } from "@metaobjectsdev/codegen-ts/generators";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
-import { tanstackQuery, tanstackGrid } from "@metaobjectsdev/codegen-ts-tanstack";
+import { tanstackQuery, tanstackGrid, tanstackGridHook } from "@metaobjectsdev/codegen-ts-tanstack";
 
 export default defineConfig({
   outDir: "packages/database/src/generated",
@@ -98,6 +98,7 @@ export default defineConfig({
     formFile(),
     tanstackQuery(),
     tanstackGrid(),
+    tanstackGridHook(),   // pairs with tanstackGrid — generates the controlled grid state
     barrel(),
   ],
 });
@@ -220,47 +221,42 @@ Each hook is React Query–native: query hooks return `UseQueryResult`,
 mutation hooks return `UseMutationResult`. Mutations aggressively
 invalidate `authorKeys.all()` so lists re-fetch after writes.
 
-`tanstackGrid()` emits `<Entity>.columns.tsx` — TanStack Table column
-defs derived from the entity's `layout.dataGrid` child. Each column
-carries `meta.view` so the renderer registry can look up its formatter.
+### Grids are opt-in per entity
 
-Consumer wiring:
+Hooks are emitted for every entity; grid artifacts are **not**. `tanstackGrid()`
+emits `<Entity>.columns.tsx` **only for an entity that declares a `layout.dataGrid`
+child** — declaring one is how you say "this entity is displayed in a grid". Wiring
+the grid generators and getting no grid files means exactly that, and `meta gen`
+reports it in its warnings.
+
+Each `layout.dataGrid` yields a `<entity><Grid>Columns` (TanStack Table column
+defs, each carrying `meta.view` so the renderer registry can look up its formatter)
+plus a `<entity><Grid>Grid` (the `GridConfig`). The grid's `name` capitalizes into
+both, so `"name": "default"` on `Author` gives `authorDefaultColumns` +
+`authorDefaultGrid`.
+
+### Consumer wiring — pair `tanstackGrid()` with `tanstackGridHook()`
+
+`<EntityGrid>` is fully controlled: beyond `columns`/`grid`/`data` it needs
+`rowCount`, a `state` object and three `onChange` callbacks. `tanstackGridHook()`
+generates that plumbing (state + the `withCount=1` query) as
+`use<Entity><Grid>Grid()`, returning exactly the prop shape `<EntityGrid>` wants —
+so wire all three generators and the page is three lines:
 
 ```tsx
-import { useAuthors } from "./generated/acme/blog/Author.hooks";
-import { authorColumns } from "./generated/acme/blog/Author.columns";
-import { EntityGrid, defaultCellRenderers } from "@metaobjectsdev/tanstack";
+import { EntityGrid } from "@metaobjectsdev/tanstack";
+import { authorDefaultColumns, authorDefaultGrid } from "./generated/acme/blog/Author.columns";
+import { useAuthorDefaultGrid } from "./generated/acme/blog/Author.grid";
 
 export function AuthorList() {
-  const [state, setState] = useState({
-    sorting: [{ id: "name", desc: false }],
-    pagination: { pageIndex: 0, pageSize: 25 },
-    columnFilters: [],
-  });
-  const { data } = useAuthors({
-    sort:   state.sorting[0] ? `${state.sorting[0].id}:${state.sorting[0].desc ? "desc" : "asc"}` : undefined,
-    limit:  state.pagination.pageSize,
-    offset: state.pagination.pageIndex * state.pagination.pageSize,
-    withCount: 1,
-  });
-  return (
-    <EntityGrid
-      columns={authorColumns}
-      grid={{ name: "default", pageSize: 25, filterable: true }}
-      data={data?.rows ?? []}
-      rowCount={data?.total ?? 0}
-      state={state}
-      onSortingChange={(s) => setState((p) => ({ ...p, sorting: typeof s === "function" ? s(p.sorting) : s }))}
-      onPaginationChange={(p2) => setState((p) => ({ ...p, pagination: typeof p2 === "function" ? p2(p.pagination) : p2 }))}
-      onColumnFiltersChange={(f) => setState((p) => ({ ...p, columnFilters: typeof f === "function" ? f(p.columnFilters) : f }))}
-    />
-  );
+  const grid = useAuthorDefaultGrid();   // owns sorting/pagination/filters + the query
+  return <EntityGrid {...grid} columns={authorDefaultColumns} grid={authorDefaultGrid} />;
 }
 ```
 
-`tanstackGridHook()` (optional third generator) wraps that boilerplate in
-a `useAuthorGrid()` hook so the consumer just renders
-`<EntityGrid {...useAuthorGrid()} />`.
+Owning that state yourself is supported — drive `useAuthors({ sort, limit, offset,
+withCount: 1 })` from your own `useState` and pass `data`, `rowCount`, `state` and
+the three `onChange` callbacks by hand — but the hook exists so you don't have to.
 
 ## `layout.dataGrid` metadata
 
@@ -303,13 +299,21 @@ Canonical JSON (on-disk):
 }}
 ```
 
-What `tanstackGrid()` emits per `layout.dataGrid`:
+What `tanstackGrid()` emits per `layout.dataGrid` (both in
+`<Entity>.columns.tsx`, both named from the entity + the grid's capitalized
+`name` — `authorDefaultColumns` / `authorDefaultGrid` for `"name": "default"`
+on `Author`):
 
-- `<Entity>.columns.tsx` — array of TanStack `ColumnDef<T>`, one per
+- `<entity><Grid>Columns` — array of TanStack `ColumnDef<T>`, one per
   column key, each carrying `meta.view` (resolved from the field's
-  `view.*` child) for the renderer registry.
-- A `gridConfig` const carrying `{ name, pageSize, defaultSort?, filterable }`
-  — shape declared as `GridConfig` in `@metaobjectsdev/runtime-web`.
+  `view.*` child) for the renderer registry. Omit `@columns` and every
+  field on the entity becomes a column.
+- `<entity><Grid>Grid` — the config const carrying
+  `{ name, pageSize, defaultSort?, filterable }` — shape declared as
+  `GridConfig` in `@metaobjectsdev/runtime-web`.
+
+`tanstackGridHook()` adds `<Entity>.grid.ts` with one
+`use<Entity><Grid>Grid()` per declared grid.
 
 ## Currency
 
@@ -416,7 +420,7 @@ import { queriesFile } from "./codegen/generators/queries";
 import { routesFile } from "./codegen/generators/routes";
 import { barrel } from "./codegen/generators/barrel";
 import { formFile } from "@metaobjectsdev/codegen-ts-react";
-import { tanstackQuery, tanstackGrid } from "@metaobjectsdev/codegen-ts-tanstack";
+import { tanstackQuery, tanstackGrid, tanstackGridHook } from "@metaobjectsdev/codegen-ts-tanstack";
 
 export default defineConfig({
   outDir: "packages/database/src/generated",            // implicit "default" (entity module)
@@ -434,6 +438,7 @@ export default defineConfig({
     formFile({         target: "web" }),                // web app
     tanstackQuery({    target: "web" }),                // web app
     tanstackGrid({     target: "web" }),                // web app
+    tanstackGridHook({ target: "web" }),                // web app (sibling of .columns)
     barrel(),
   ],
 });

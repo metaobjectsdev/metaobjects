@@ -43,9 +43,85 @@ constants barrel and a live demo that bundling the root barrel still fails — s
 ever becomes browser-safe, that is discovered deliberately rather than by someone
 "simplifying" the import back.
 
+**The same gate now runs on every other published browser package** — `@metaobjectsdev/tanstack`,
+`@metaobjectsdev/react` and `@metaobjectsdev/angular`. All three depend on `runtime-web`
+(the first two are what a generated `<Entity>.hooks.ts`, `<Entity>.grid.ts` and
+`<Entity>.form.tsx` import), so all three inherited the break, and all three were ungated.
+Verified by re-introducing the regression into `runtime-web`'s built output: each new gate
+fails with the original message verbatim. The Angular gate is run **by name** rather than
+via its package suite, because that suite cannot execute under Bun at all (`Standard
+Angular field decorators are not supported in JIT mode`) — a separate pre-existing gap in
+Angular test tooling that is why the package was gated by nothing.
+
+**And the lane that runs those gates now builds.** `ts-unit` — the only CI lane running the
+`client/web` suites — did `bun install` and no build, while the workspace build lives in
+`ts-fast`, a separate parallel job with its own checkout. So the gate failed its own
+`existsSync(dist)` precondition on every clean CI run while passing on any warm developer
+box; `main` was red for exactly that reason from the moment the gate landed. The lane now
+builds the packages the gates need (`metadata` for the `constants` subpath under test, plus
+the four browser packages) — ~3s cold, so it stays cheap.
+
+**And the lane now runs the suites that ran nowhere.** `gate_conf_ts` covers `migrate-ts` /
+`codegen-ts` / `cli` in full and only *named* conformance files elsewhere, so seven
+server-side packages were gated by nothing at all: `codegen-ts-tanstack`,
+`codegen-ts-react`, `codegen-ts-angular`, `sdk` (which owns the agent-context conformance
+corpus), `ai-runtime`, `conformance` and `docs-site`. A red agent-context corpus could
+therefore reach `main` unnoticed — and this release's own new codegen tests would have been
+ungated on arrival. All seven join the `ts-unit` loop; the whole lane is ~8s cold. A gate
+that cannot reach the thing it is for is the failure mode this whole issue is about, and it
+turned up three more times inside the fix for it.
+
 The second half of the report — `codegen-ts-tanstack` emitting no `<Entity>.columns.tsx`
-without a `layout.dataGrid` node — is real but separable, and is a documentation gap rather
-than a defect; not addressed here.
+— is addressed below.
+
+### Changed — a `meta gen` run now says why it emitted no grid artifacts ([#287](https://github.com/metaobjectsdev/metaobjects/issues/287), npm)
+
+`tanstackGrid()` / `tanstackGridHook()` emit only for an entity declaring a
+`layout.dataGrid` child. That is intended — a grid is a presentation decision about a
+particular entity — but **nothing said so**, and the package description promised "hooks
+**and column definitions**" unconditionally. An adopter who wired
+`tanstackQuery() + tanstackGrid()` got `<Entity>.hooks.ts` for every entity and
+`<Entity>.columns.tsx` for none, and reasonably concluded codegen was broken.
+
+The run itself now tells you, following the same tell-at-generation-time precedent as
+[#226](https://github.com/metaobjectsdev/metaobjects/issues/226) /
+[#258](https://github.com/metaobjectsdev/metaobjects/issues/258) rather than a doc line
+that gets missed the same way this one was. Each grid generator emits **one** warning per
+run naming every affected object, the artifact that was skipped, and the metadata that
+would enable it.
+
+It fires only when the generator emitted **nothing at all**, which is both the reported
+condition and what makes the note self-extinguishing: declare one `layout.dataGrid`
+anywhere in the model and it goes quiet forever, so a 50-entity model with 3 grids gets
+silence rather than a permanent 47-name nag. (`runner.ts` deleted an earlier
+`timestampMode` warning rather than let it cry wolf; this one is built not to earn the same
+fate.) It is likewise silent when no grid generator is configured — hooks-only is a
+legitimate wiring — silent for an object the caller's own `filter` already excluded, and it
+never names an `object.value`, which is a payload shape and not a grid candidate. Warnings
+only: the exit code is untouched, and `--dry-run` reports it too.
+
+### Fixed — a TPH subtype could get a grid hook with no columns file (npm)
+
+`tanstackGridHook()`'s filter was missing the TPH clause its sibling `tanstackGrid()` has.
+A TPH subtype inherits its base's `layout.dataGrid` through `extends`, so the layout check
+passes for it — but per-subtype **columns** are opt-IN (own `@emitGrid: true`), since the
+base's polymorphic grid is the single source of truth. The two predicates disagreeing meant
+a subtype got a `<Sub>.grid.ts` whose sibling `<Sub>.columns.tsx` is never emitted: a
+dangling `use<Sub>DefaultGrid()` with nothing to pair it with, and an outright **TS2307 in
+the consumer's build** when the inherited layout carries an `@filter` preset, because the
+hook then imports `<sub>DefaultFilter` from the missing module. Found reviewing the change
+above, which restructured and re-documented exactly these two predicates. Gated by a
+run-level invariant — every emitted `.grid.ts` has its `.columns.tsx` — asserted on real
+output rather than on the predicates.
+
+Docs corrected alongside, since they are what the reporter read: the package description,
+its README, `docs/ports/typescript-client.md`, and the `metaobjects-runtime-ui` agent skill.
+All four also now teach **`tanstackGridHook()`**, which appeared in no example — `<EntityGrid>`
+is fully controlled, needing `rowCount`, a `state` object and three `onChange` callbacks, so
+the documented `tanstackQuery() + tanstackGrid()` pair alone left the adopter hand-writing
+precisely what `tanstackGridHook()` generates. The old grid example was broken besides:
+it omitted half the required props and used export names codegen does not produce
+(`authorColumns` for `authorDefaultColumns`).
 
 ### Fixed — a SQLite table-rebuild migration could not be applied by the tool that emits it (npm)
 

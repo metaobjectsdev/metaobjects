@@ -4,14 +4,15 @@
 hooks + a TanStack Table grid component. Like the React client it is **universal**:
 it consumes any backend (TS / Java / Kotlin / C# / Python) that speaks the
 cross-port REST contract. It pairs with `codegen-ts-tanstack`, which emits
-`<Entity>.hooks.ts` and `<Entity>.columns.tsx` that import from this package.
+`<Entity>.hooks.ts`, `<Entity>.columns.tsx` and `<Entity>.grid.ts` that import from
+this package.
 
 ## Contents
 - Install
 - Key exports
 - The `EntityFetcher` contract
-- Generated hooks (`tanstackQuery()`)
-- Generated grid (`tanstackGrid()`)
+- Generated hooks (`tanstackQuery()`) — every entity
+- Generated grid (`tanstackGrid()` + `tanstackGridHook()`) — **opt-in per entity**
 - Cell renderer overrides
 
 ## Install
@@ -84,23 +85,68 @@ projections):
 Query hooks return `UseQueryResult`; mutation hooks return `UseMutationResult` and
 invalidate the entity's query keys so lists re-fetch after writes.
 
-## Generated grid (`tanstackGrid()`)
+## Generated grid (`tanstackGrid()`) — **opt-in per entity**
 
-Emits `<Entity>.columns.tsx` from the entity's `layout.dataGrid` child — TanStack
-`ColumnDef<T>[]`, each carrying `meta.view` for the renderer registry. Render with
-`<EntityGrid>`:
+Grid artifacts are the one generator pair that is **not** emitted for every entity.
+`tanstackGrid()` emits `<Entity>.columns.tsx` **only for an entity that declares a
+`layout.dataGrid` child**; an entity without one gets its `.hooks.ts` and no
+columns file at all. That is intended — a grid is a presentation decision about a
+particular entity, so declaring one is how you say "this entity is displayed in a
+grid"; emitting columns for every entity in the model would be noise. A run that
+skips grids for this reason says so in its `meta gen` warnings.
 
-```tsx
-import { useAuthors } from "./generated/Author.hooks";
-import { authorColumns } from "./generated/Author.columns";
-import { EntityGrid } from "@metaobjectsdev/tanstack";
+So the minimum to get a grid is a `layout.dataGrid` on the entity:
 
-const { data } = useAuthors({ sort: "name:asc", limit: 25, offset: 0, withCount: 1 });
-<EntityGrid columns={authorColumns} data={data?.rows ?? []} rowCount={data?.total ?? 0} />
+```jsonc
+{ "object.entity": { "name": "Author", "children": [
+  // ...fields...
+  { "layout.dataGrid": {
+      "name": "default",
+      "@columns": ["name", "email", "createdAt"],   // ordered; omit for every field
+      "@pageSize": 25,
+      "@defaultSortField": "createdAt",
+      "@defaultSortOrder": "desc"
+  }}
+]}}
 ```
 
-`tanstackGridHook()` (optional) wraps the sorting/pagination/filter state plumbing
-into a `useAuthorGrid()` so the consumer renders `<EntityGrid {...useAuthorGrid()} />`.
+One `layout.dataGrid` → one pair of generated consts, named
+`<entity><Grid>Columns` (the `ColumnDef<T>[]`, each carrying `meta.view` for the
+renderer registry) and `<entity><Grid>Grid` (the `GridConfig`). The grid's `name`
+is capitalized into both, so `"name": "default"` on `Author` yields
+`authorDefaultColumns` + `authorDefaultGrid`. Declare several named grids on one
+entity and you get several pairs.
+
+### Rendering: pair it with `tanstackGridHook()`
+
+`<EntityGrid>` is **fully controlled** — beyond `columns`/`grid`/`data` it also
+requires `rowCount`, a `state` object, and three `onChange` callbacks. Wiring that
+by hand (sorting + pagination + column filters + the `withCount=1` query and its
+`buildFilterQs` serialization) is a page of boilerplate that the metadata already
+describes, so **`tanstackGridHook()` generates it**: add it to the config and each
+grid gets a `use<Entity><Grid>Grid()` returning exactly the prop shape
+`<EntityGrid>` wants.
+
+```ts
+// metaobjects.config.ts
+generators: [entityFile(), tanstackQuery(), tanstackGrid(), tanstackGridHook()],
+```
+
+```tsx
+import { EntityGrid } from "@metaobjectsdev/tanstack";
+import { authorDefaultColumns, authorDefaultGrid } from "./generated/Author.columns";
+import { useAuthorDefaultGrid } from "./generated/Author.grid";
+
+export function AuthorList() {
+  const grid = useAuthorDefaultGrid();   // owns sorting/pagination/filters + the query
+  return <EntityGrid {...grid} columns={authorDefaultColumns} grid={authorDefaultGrid} />;
+}
+```
+
+`tanstackGridHook()` is optional only in the sense that you may own that state
+yourself; if you do, supply `data`, `rowCount`, `state`, `onSortingChange`,
+`onPaginationChange` and `onColumnFiltersChange` by hand — the hook exists so you
+don't have to.
 
 ## Cell renderer overrides
 

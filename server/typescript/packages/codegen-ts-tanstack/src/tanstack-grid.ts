@@ -1,16 +1,11 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjectsdev/metadata";
 import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, emitsInstanceArtifacts, isTphSubtype, CODEGEN_ATTR_EMIT_TANSTACK, CODEGEN_ATTR_EMIT_GRID } from "@metaobjectsdev/codegen-ts";
+import { hasDataGridLayout, warnMissingDataGridLayout } from "./data-grid-gate.js";
 import { renderColumnsFile } from "./templates/columns-file.js";
 
 export interface TanstackGridOpts {
   filter?: (entity: MetaObject) => boolean;
   target?: string;
-}
-
-function hasDataGridLayout(entity: MetaObject): boolean {
-  // layouts() is effective — own + inherited layouts (from extends:/super:).
-  return entity.layouts().some((l) => l.subType === LAYOUT_SUBTYPE_DATA_GRID);
 }
 
 /**
@@ -20,30 +15,36 @@ function hasDataGridLayout(entity: MetaObject): boolean {
  */
 export const tanstackGrid = function tanstackGrid(opts?: TanstackGridOpts): Generator {
   const userFilter = opts?.filter ?? (() => true);
+  // Every gate EXCEPT the dataGrid-layout opt-in: the framework instance-artifact
+  // guard (skips abstract types), the metadata opt-out, and the user filter.
+  // FR-017 Tier 3: a TPH discriminator base emits ONE polymorphic grid. Its
+  // subtypes inherit the base's dataGrid layout via extends, but per-subtype grids
+  // are opt-IN only (own `@emitGrid: true`) — otherwise the polymorphic grid is the
+  // single source of truth.
+  // Split out so the discoverability note can name exactly the entities the LAYOUT
+  // gate alone held back (#287) — an opted-out or abstract type is not a surprise.
+  const passesOtherGates = (e: MetaObject): boolean =>
+    emitsInstanceArtifacts(e)
+    // ADR-0039: resolving — a concrete entity may inherit its @emit* opt-out flag via extends.
+    && e.attr(CODEGEN_ATTR_EMIT_TANSTACK) !== false
+    && userFilter(e)
+    && (!isTphSubtype(e) || e.attr(CODEGEN_ATTR_EMIT_GRID) === true);
+  const emit = perEntity(async (entity: MetaObject, ctx) => {
+    if (!ctx.renderContext) {
+      throw new Error("tanstack-grid: renderContext is required (provided by runGen)");
+    }
+    return {
+      path: entityOutputPath(ctx.renderContext.outputLayout, entity.package, `${entity.name}.columns.tsx`),
+      content: await formatTs(renderColumnsFile(entity, ctx.renderContext)),
+    };
+  });
   const generator: Generator = {
     name: "tanstack-grid",
-    // Always set: AND-composes the framework instance-artifact guard (skips
-    // abstract types), opt-out, user filter, and dataGrid layout presence.
-    // FR-017 Tier 3: a TPH discriminator base emits ONE polymorphic grid. Its
-    // subtypes inherit the base's dataGrid layout via extends, but per-subtype
-    // grids are opt-IN only (own `@emitGrid: true`) — otherwise the polymorphic
-    // grid is the single source of truth.
-    filter: (e: MetaObject) =>
-      emitsInstanceArtifacts(e)
-      // ADR-0039: resolving — a concrete entity may inherit its @emit* opt-out flag via extends.
-      && e.attr(CODEGEN_ATTR_EMIT_TANSTACK) !== false
-      && userFilter(e)
-      && hasDataGridLayout(e)
-      && (!isTphSubtype(e) || e.attr(CODEGEN_ATTR_EMIT_GRID) === true),
-    generate: perEntity(async (entity, ctx) => {
-      if (!ctx.renderContext) {
-        throw new Error("tanstack-grid: renderContext is required (provided by runGen)");
-      }
-      return {
-        path: entityOutputPath(ctx.renderContext.outputLayout, entity.package, `${entity.name}.columns.tsx`),
-        content: await formatTs(renderColumnsFile(entity, ctx.renderContext)),
-      };
-    }),
+    filter: (e: MetaObject) => passesOtherGates(e) && hasDataGridLayout(e),
+    generate: async (ctx) => {
+      warnMissingDataGridLayout(ctx, passesOtherGates, "<Entity>.columns.tsx");
+      return emit(ctx);
+    },
   };
   if (opts?.target) {
     generator.target = opts.target;

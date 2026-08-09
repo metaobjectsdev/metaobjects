@@ -208,12 +208,44 @@ gate_conf_ts() {
 # is not the thing that failed — look at the bun runtime on the runner.
 gate_ts_unit() {
   bun_install || return 1
-  for p in metadata render runtime-ts; do
+  # The client/web browser-bundleability gates (#287) bundle each package's BUILT
+  # dist/ for target:browser — testing src/ would not reproduce the bug, because Bun's
+  # TEST runner resolves the `bun` export condition to TypeScript source and never
+  # bundles. This lane checks out clean, so it must produce that dist/ itself: the
+  # workspace build lives in ts-fast, which is a SEPARATE parallel job with its own
+  # workspace, so nothing else in this lane's checkout ever creates it. Without this
+  # the gates fail their own existsSync precondition on every CI run while passing on
+  # any warm developer box — which is exactly what happened the first time they ran.
+  # Scoped, not `--filter '*'`: metadata (its `constants` subpath is the fix under test)
+  # plus every published browser package. ~3s cold, so the lane stays cheap.
+  bun run --filter '@metaobjectsdev/metadata' \
+          --filter '@metaobjectsdev/runtime-web' \
+          --filter '@metaobjectsdev/react' \
+          --filter '@metaobjectsdev/tanstack' \
+          --filter '@metaobjectsdev/angular' build || return 1
+  # Every server-side TS package whose suite no other lane runs in full. The three
+  # originals (metadata/render/runtime-ts) plus, from 2026-08-09, the seven that were
+  # gated by NOTHING AT ALL: gate_conf_ts covers migrate-ts / codegen-ts / cli in full
+  # and only NAMED conformance files elsewhere, so the tanstack + react + angular
+  # codegen packages, sdk (which owns the agent-context conformance corpus), ai-runtime,
+  # conformance and docs-site never ran in CI. That is how a red agent-context corpus
+  # could reach `main` — and how this very lane's own new tests would have been ungated.
+  # ~2s for all seven. `forge` has no tests; `integration-tests` has its own ts-slow lane.
+  for p in metadata render runtime-ts \
+           codegen-ts-tanstack codegen-ts-react codegen-ts-angular \
+           sdk ai-runtime conformance docs-site; do
     ( cd "server/typescript/packages/$p" && bun test --timeout 30000 ) || return 1
   done
   for p in runtime-web react tanstack; do
     ( cd "client/web/packages/$p" && bun test --timeout 30000 ) || return 1
   done
+  # @metaobjectsdev/angular is a published browser package with the same runtime-web
+  # dependency, so it needs the same #287 bundle gate — but its OTHER test cannot run
+  # under Bun at all (`Standard Angular field decorators are not supported in JIT mode`),
+  # which is why the package is absent from the loop above. Running the gate BY NAME
+  # covers the browser package without pretending the rest of its suite is green; the
+  # decorator/JIT problem is a separate, pre-existing gap in Angular test tooling.
+  ( cd client/web/packages/angular && bun test --timeout 30000 test/browser-bundleable.test.ts ) || return 1
 }
 gate_conf_csharp() {
   ( cd server/csharp \
