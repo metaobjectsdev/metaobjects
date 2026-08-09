@@ -159,7 +159,7 @@ d("migrate-ts lifecycle against real Postgres", () => {
     expect(orders1.indexes.some((i) => i.unique && i.columns.includes("email"))).toBe(true);
     // enum + numeric checks present
     expect(checkExprs(orders1)).toEqual(
-      ["qty >= 1", "status in 'open', 'closed'"].sort(),
+      ["qty >= 1", "status in 'open','closed'"].sort(),
     );
 
     // ---- v2: evolve ---------------------------------------------------------
@@ -189,7 +189,7 @@ d("migrate-ts lifecycle against real Postgres", () => {
     expect(orders2.foreignKeys.some((f) => f.refTable === "lc_customers")).toBe(true);
     // evolved checks
     const c2 = checkExprs(orders2);
-    expect(c2).toContain("status in 'open', 'closed', 'cancelled'");
+    expect(c2).toContain("status in 'open','closed','cancelled'");
     expect(c2).toContain("qty >= 1 and qty <= 1000");
 
     // ---- rollback v2 → v1 (down) --------------------------------------------
@@ -203,7 +203,7 @@ d("migrate-ts lifecycle against real Postgres", () => {
     expect(colNames(ordersBack)).toEqual(["email", "id", "qty", "status"]); // note/customerId dropped
     expect(ordersBack.foreignKeys).toHaveLength(0);            // fk dropped
     expect(checkExprs(ordersBack)).toEqual(
-      ["qty >= 1", "status in 'open', 'closed'"].sort(),       // original checks restored
+      ["qty >= 1", "status in 'open','closed'"].sort(),       // original checks restored
     );
 
     // ---- idempotency: re-diff v1 against the live (rolled-back) DB ----------
@@ -326,7 +326,7 @@ d("migrate-ts lifecycle against real Postgres", () => {
       expect(posts.foreignKeys.some((f) => f.refTable === "gf_users")).toBe(true);
       expect(comments.foreignKeys.map((f) => f.refTable).sort()).toEqual(["gf_posts", "gf_users"]);
       // enum + numeric checks + unique indexes survived the round-trip
-      expect(checkExprs(gf.find((t) => t.name === "gf_users")!)).toContain("role in 'admin', 'editor', 'viewer'");
+      expect(checkExprs(gf.find((t) => t.name === "gf_users")!)).toContain("role in 'admin','editor','viewer'");
       expect(checkExprs(posts).some((e) => e.includes("views >= 0"))).toBe(true);
       expect(gf.find((t) => t.name === "gf_tags")!.indexes.some((i) => i.unique && i.columns.includes("name"))).toBe(true);
 

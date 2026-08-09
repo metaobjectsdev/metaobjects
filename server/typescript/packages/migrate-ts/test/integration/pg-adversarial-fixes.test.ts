@@ -39,6 +39,7 @@ const META = JSON.stringify({
         "object.entity": {
           name: "Reading",
           children: [
+            { "source.rdb": { "@table": "readings" } },
             { "field.long": { name: "id" } },
             // Bug 6 — the scalar @isArray fan-out beyond string/uuid.
             { "field.int": { name: "counts", isArray: true } },

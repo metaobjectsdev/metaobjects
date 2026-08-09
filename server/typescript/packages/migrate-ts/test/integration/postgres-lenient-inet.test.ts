@@ -35,6 +35,7 @@ const META = JSON.stringify({
         "object.entity": {
           name: "Endpoint",
           children: [
+            { "source.rdb": { "@table": "endpoints" } },
             { "field.long": { name: "id" } },
             { "field.inet": { name: "strictIp" } },
             { "field.inet": { name: "lenientIp", "@lenient": true } },
