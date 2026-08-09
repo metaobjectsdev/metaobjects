@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.21.4] — npm `0.21.4` · PyPI `0.21.4` · NuGet `0.21.4` · Maven `7.21.4`
+
+A coordinated PATCH across all four registries (the standing single-shared-patch-number
+policy). Ten fixes, most of them adopter-reported: two hard blockers that made the browser
+packages unbuildable and every sqlite table-rebuild un-appliable, the Hono-on-Postgres 500,
+a `--dry-run` that wrote every file, three silent-wrong-rows defects in the Java query
+lowering, and the grid-discoverability half of #287. PyPI and NuGet carry no changed
+product file and publish as **version-parity bumps**.
+
+A recurring theme runs through the whole cut, and is worth stating once: **six of these
+were invisible to a gate that existed for them.** A bundle that only ever ran under a test
+runner that never bundles; sqlite SQL proven correct statement-by-statement but never once
+through the tool that applies it; a conformance fixture whose seed data is case-aligned "so
+the test passes whether a port wires `LIKE` or `ILIKE`"; a CI lane that ran the browser
+suites without ever building them. Each fix below therefore says what *would* have caught
+it, and the gate that can now see it.
+
 ### Fixed — [#287](https://github.com/metaobjectsdev/metaobjects/issues/287): the browser packages could not be bundled at all (npm)
 
 `@metaobjectsdev/metadata`'s package root exports `MetaDataLoader`, which imports
@@ -226,6 +243,32 @@ never re-added an equivalent would also "converge"). Verified to fail without th
 pure rename into a single non-destructive statement instead of a drop/add pair. That needs
 the diff to model index renames, which it does not today; the drop/add pair is correct and
 converges, but rebuilds the index. Left as a separate improvement.
+
+### Fixed — three query-lowering defects in the Java runtime (Maven)
+
+Found by a design review of a proposed OMDB repository bridge; each verified against code
+before fixing, and each **invisible to the persistence-conformance corpus**, which is why
+all three survived.
+
+1. **`Expression` had no case-sensitive `LIKE`.** `CONTAIN` / `START_WITH` / `END_WITH` all
+   render `UPPER(col) LIKE UPPER(?)`, while the cross-port REST contract's `like` is
+   case-sensitive SQL `LIKE` with author-supplied wildcards — and an interior wildcard
+   (`"a%b"`) was not expressible at all. Adds `Expression.LIKE`: verbatim pattern, no
+   `%`-rewriting, no `UPPER` wrapping.
+2. **`in` was hand-composed as an OR-chain** on the stated but false belief that
+   `Expression` has no native `IN` (the driver already renders a `Collection` value on
+   `EQUAL` as a parameterized `IN` list). `ExpressionOperator` renders **without
+   parentheses**, so `in` plus any second predicate produced `a=1 OR a=2 AND b=3` —
+   regrouped by SQL as `a=1 OR (a=2 AND b=3)`, **silently returning wrong rows**.
+3. **`Range` was documented and implemented as 0-indexed** while the drivers emit
+   `OFFSET start-1` and skip `OFFSET` entirely when `start <= 1`, so `offset=1` returned
+   rows from the beginning.
+
+**Why the corpus cannot see any of them:** no query scenario uses a nonzero offset, none
+mixes `in` with a second filter, and the like/ne fixture deliberately case-aligns its seed
+data "so the test passes whether a port wires `LIKE` or `ILIKE`" — it cannot distinguish
+the two by construction. The pins therefore live in a unit test outside the corpus, each
+naming the blind spot it covers.
 
 ### Fixed — loading a `metaobjects.config.ts` could permanently corrupt error reporting for the rest of the process (npm)
 
