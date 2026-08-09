@@ -13,6 +13,7 @@ import {
   recordApplied,
 } from "./ledger.js";
 import { splitSqlStatements } from "../sql/split-statements.js";
+import { prepareForRunnerTransaction } from "./runner-transaction-pass.js";
 
 // Re-exported here for back-compat: `splitSqlStatements` historically lived in
 // this module. Its canonical home is now ../sql/split-statements.js (shared with
@@ -298,8 +299,14 @@ async function runSqlFileWithLedgerMutation(
   sqlText: string,
   mutateLedger: (trx: Transaction<Record<string, unknown>>) => Promise<void>,
 ): Promise<void> {
+  // Adapt the file to the transaction we are about to open. A SQLite rebuild script
+  // carries its own BEGIN/COMMIT (correct when piped to `sqlite3`, fatal here — SQLite
+  // rejects a nested BEGIN, which made table-rebuild migrations un-appliable on the
+  // scaffold's default dialect) and its own `PRAGMA foreign_keys = OFF`, which is a
+  // no-op inside a transaction. See runner-transaction-pass.ts for the full rationale.
+  const { statements } = prepareForRunnerTransaction(sqlText);
   await db.transaction().execute(async (trx) => {
-    for (const stmt of splitSqlStatements(sqlText)) {
+    for (const stmt of statements) {
       await sql.raw(stmt).execute(trx);
     }
     await mutateLedger(trx);

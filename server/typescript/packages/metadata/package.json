@@ -15,6 +15,11 @@
       "bun": "./src/core/index.ts",
       "types": "./dist/core/index.d.ts",
       "default": "./dist/core/index.js"
+    },
+    "./constants": {
+      "bun": "./src/constants.ts",
+      "types": "./dist/constants.d.ts",
+      "default": "./dist/constants.js"
     }
   },
   "files": [

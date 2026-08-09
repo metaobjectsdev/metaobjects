@@ -10,6 +10,11 @@
 // attrs from the dataGrid layout) so a runtime-built grid matches a generated
 // one. Browser-safe: depends only on @metaobjectsdev/metadata.
 import type { MetaObject, MetaField, MetaView } from "@metaobjectsdev/metadata";
+// #287: metamodel VALUES come from the browser-safe constants subpath, never the package
+// root. The root exports MetaDataLoader -> library-sources.ts -> `node:url`, so a single
+// constant import from it made every browser bundle fail ("Browser polyfill for module
+// node:url doesn't have a matching export named fileURLToPath"). The type import above is
+// fine on the root: `import type` is erased at build time and drags in no runtime dep.
 import {
   LAYOUT_SUBTYPE_DATA_GRID,
   LAYOUT_DATA_GRID_ATTR_COLUMNS,
@@ -17,7 +22,7 @@ import {
   LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_FIELD,
   LAYOUT_DATA_GRID_ATTR_DEFAULT_SORT_ORDER,
   LAYOUT_DATA_GRID_ATTR_FILTERABLE,
-} from "@metaobjectsdev/metadata";
+} from "@metaobjectsdev/metadata/constants";
 import type { GridConfig } from "./fetcher.js";
 
 const DEFAULT_PAGE_SIZE = 25;

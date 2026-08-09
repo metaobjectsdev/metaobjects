@@ -7,6 +7,75 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — [#287](https://github.com/metaobjectsdev/metaobjects/issues/287): the browser packages could not be bundled at all (npm)
+
+`@metaobjectsdev/metadata`'s package root exports `MetaDataLoader`, which imports
+`library/library-sources.ts`, which does `import { fileURLToPath } from "node:url"`. So a
+single **value** import from that root dragged the Node-only loader into a browser bundle:
+
+```
+error: Browser polyfill for module "node:url" doesn't have a matching export
+       named "fileURLToPath"   … metadata/dist/library/library-sources.js
+```
+
+`runtime-web` imported six `LAYOUT_*` constants that way for `buildGrid`, and every
+generated `<Entity>.hooks.ts` imports `buildFilterQs` from `runtime-web` — so **no client
+consuming the generated hooks could produce a production build**, unconditionally, on
+`0.21.3`. Reported by an adopting project.
+
+Fixed with a new **`@metaobjectsdev/metadata/constants`** subpath: a barrel of the fifteen
+pure `*-constants.ts` modules with no `node:*` anywhere in its graph. Browser packages
+import metamodel **values** from it; **types** may still come from the root, since
+`import type` is erased at build time and drags in no runtime dependency. Inlining the
+strings instead would have violated the project's constants discipline, so the fix is a
+safe import path rather than duplicated literals. The barrel also gives
+`packages/metadata/src/constants.ts` — the location CLAUDE.md has always documented as the
+home for metamodel constants — a real existence.
+
+**Why no test caught it:** this package's tests run under Bun's *test* runner, which
+resolves the `"bun"` export condition to TypeScript **source** and never bundles. The
+failure exists only on the `dist` path a published consumer resolves, under a
+browser-targeted bundler — so unit tests could pass forever while the package was
+unbuildable for its only audience. (The first reproduction attempt here missed for exactly
+that reason and had to be redone against `dist`.) Gated now by a real
+`Bun.build({ target: "browser" })` over the **built** output, plus a purity check on the
+constants barrel and a live demo that bundling the root barrel still fails — so if the root
+ever becomes browser-safe, that is discovered deliberately rather than by someone
+"simplifying" the import back.
+
+The second half of the report — `codegen-ts-tanstack` emitting no `<Entity>.columns.tsx`
+without a `layout.dataGrid` node — is real but separable, and is a documentation gap rather
+than a defect; not addressed here.
+
+### Fixed — a SQLite table-rebuild migration could not be applied by the tool that emits it (npm)
+
+`meta migrate --apply` / `apply-pending` failed on **every** table rebuild on sqlite — the
+scaffold's default dialect — with `SQLITE_ERROR: cannot start a transaction within a
+transaction`. The recreate-and-copy recipe (a column type change, a CHECK or FK change, an
+evolved `field.enum @values`) is emitted as a standalone-runnable script carrying its own
+`PRAGMA foreign_keys = OFF; BEGIN TRANSACTION; … COMMIT;`, while the apply runner already
+wraps a migration's statements in one Kysely transaction so the change and its ledger row
+commit together. SQLite rejects the nested `BEGIN` outright.
+
+The failure landed **mid-file**, so leading statements had already run: a fresh adopter who
+widened an enum ended up with a dependent view dropped and not recreated, and nothing
+recorded in the ledger. Found by a from-scratch adopter walkthrough.
+
+The runner now adapts the file to the transaction it already owns: transaction control is
+dropped, and `PRAGMA foreign_keys = OFF` is rewritten to `PRAGMA defer_foreign_keys = ON` —
+not cosmetic, since `foreign_keys` is a **no-op inside a transaction** and the rebuild would
+otherwise lose FK protection exactly where it needs it. This is the same division D1 already
+uses. The emitted file is deliberately left correct as a standalone script, because it is a
+committed artifact with other consumers (`sqlite3`, the ADR-0015 Flyway output adapter,
+hand-rolled deploy scripts).
+
+**Why no test caught it:** every existing sqlite rebuild test executes the emitted SQL
+statement-by-statement against the engine directly and never goes through `applyPending` —
+proving the SQL is correct cannot prove it is appliable by the tool that ships it. Gated now
+by three tests driving the real runner: the enum-widening regression, convergence (re-diff
+empty after apply), and atomicity (a failing rebuild leaves nothing applied and nothing in
+the ledger).
+
 ### Fixed — [#286](https://github.com/metaobjectsdev/metaobjects/issues/286): the Hono CRUD helpers 500'd on Postgres (npm)
 
 `runtime-ts`'s Hono `mountCrudRoutes` / `mountReadOnlyRoutes` called Drizzle's `.all()`
