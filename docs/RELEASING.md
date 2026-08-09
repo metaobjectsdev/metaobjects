@@ -251,7 +251,7 @@ How to publish the `MetaObjects*` C# packages to nuget.org. We use **Trusted Pub
 
 ## What gets published
 
-Four packages, version-locked at the C# port version (currently `0.21.0`):
+Four packages, version-locked at the C# port version (currently `0.21.3`):
 
 | Package | Contents |
 |---|---|
@@ -343,7 +343,7 @@ How to publish the **`metaobjects`** Python package to PyPI via **Trusted Publis
 ## What gets published
 
 One package, `metaobjects` (version in [`server/python/pyproject.toml`](../server/python/pyproject.toml),
-currently `0.21.0`), as an **sdist + a universal `py3-none-any` wheel** (pure Python).
+currently `0.21.3`), as an **sdist + a universal `py3-none-any` wheel** (pure Python).
 
 ## How we publish: Trusted Publishing (OIDC)
 
@@ -399,7 +399,7 @@ subsequent releases keyless.)
 # Releasing the Java/Kotlin modules to Maven Central
 
 The 18 `com.metaobjects:*` modules ship to **Maven Central via the Sonatype Central Portal**,
-versioned on the `7.x` line (currently `7.21.0`) in the parent + module poms. Signed with the
+versioned on the `7.x` line (currently `7.21.3`) in the parent + module poms. Signed with the
 maintainer's GPG key.
 
 ## Procedure
