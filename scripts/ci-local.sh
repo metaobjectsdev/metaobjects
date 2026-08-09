@@ -223,6 +223,12 @@ gate_ts_unit() {
           --filter '@metaobjectsdev/react' \
           --filter '@metaobjectsdev/tanstack' \
           --filter '@metaobjectsdev/angular' build || return 1
+  # sdk's suite asserts that `agent-context/` — the gitignored copy bundled INTO the
+  # package for publishing — exists. That copy is produced by sdk's build, so on a clean
+  # checkout the assertion fails; on a developer box it passes off a stale artifact. Run
+  # the bundle step alone rather than sdk's full `build`, which also runs tsc and would
+  # drag in every dependency's dist for no gain here.
+  bun run --filter '@metaobjectsdev/sdk' bundle-agent-context || return 1
   # Every server-side TS package whose suite no other lane runs in full. The three
   # originals (metadata/render/runtime-ts) plus, from 2026-08-09, the seven that were
   # gated by NOTHING AT ALL: gate_conf_ts covers migrate-ts / codegen-ts / cli in full
