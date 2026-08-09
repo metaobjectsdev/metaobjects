@@ -7,7 +7,37 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### Fixed — a POJO-bound temporal value in a jsonb column was written locale- and timezone-dependently (Java/Maven only)
+## [0.21.3] — npm `0.21.3` · PyPI `0.21.3` · NuGet `0.21.3` · Maven `7.21.3`
+
+Coordinated PATCH. **Changed product code: Maven and npm.** PyPI and NuGet are version-parity
+bumps — the Java fix is a Gson-reflection concern with no analogue in those ports, and schema/TS
+codegen is TS-owned (ADR-0015).
+
+Both fixes were found the same way, and it is worth stating once: a test that asserts on the
+*shape* of generated or serialized output cannot tell you the output is wrong. Each of these
+shipped behind a green suite that inspected code rather than running it.
+
+### Added — filtering a `timestampMode: "date"` timestamp (npm)
+
+`?filter[<timestamp>][gte]=…` threw at request time under `timestampMode: "date"`. The Drizzle pg
+column binds a JS `Date` and calls `.toISOString()` on any bound value, while `runtime-ts`'s filter
+parser passed the raw query-string value through — so `eq`/`ne`/`gt`/`gte`/`lt`/`lte`/`in` all died
+with `TypeError: value.toISOString is not a function`. Only `isNull` survived, because it coerces as
+a boolean regardless of subtype. `0.21.2` could only warn about this at generation time.
+
+The generated `FilterAllowlist` rule now carries `dateValues: true` for exactly those columns, and
+the parser coerces with `new Date(…)`; a malformed value is rejected as `filter.invalid_value`
+rather than bound as an Invalid Date, which would emit `NaN`-shaped SQL instead of a 400. The flag
+is optional, so an allowlist generated before this release behaves exactly as it did. Only
+`field.timestamp` is marked — Drizzle types `field.date` and `field.time` as strings under every
+dialect — and `timestampMode` is already normalized to `"string"` for sqlite/D1 upstream, so the
+emitter needs no dialect branching. Both the Fastify and Hono mounts share the one parser.
+
+The `0.21.2` generation-time warning is removed rather than left to cry wolf; its test now pins the
+warning's **absence** in all four mode/dialect combinations, so reverting the fix cannot quietly
+re-land the warning in place of the behavior.
+
+### Fixed — a POJO-bound temporal value in a jsonb column was written locale- and timezone-dependently (Maven)
 
 Closes the last carry-forward item from the #275 batch: the OMDB jsonb temporal path — the
 motivating blast radius for that whole fix — had **no test at any level**, and adding one surfaced

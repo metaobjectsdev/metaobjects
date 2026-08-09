@@ -25,11 +25,21 @@
 Run this **first**, before the CHANGELOG is even written:
 
 ```bash
-git fetch origin -q && git branch -a --no-merged origin/main
+git fetch origin -q
+for b in $(git branch -a --no-merged origin/main --format='%(refname)' | grep -v HEAD); do
+  d=$(git log -1 --format=%ct "$b" 2>/dev/null); [ -z "$d" ] && continue
+  age=$(( ( $(date +%s) - d ) / 86400 ))
+  [ "$age" -le 14 ] && printf "%3sd  %s  %s\n" "$age" "$(git log -1 --format=%h "$b")" "${b#refs/}"
+done | sort -n
 ```
 
+The recency filter is load-bearing: a bare `git branch -a --no-merged` returns ~100 branches here
+(abandoned spikes, `worktree-agent-*` artifacts, old release branches). A wall that size gets
+skimmed, which defeats the check — so bound it to what could plausibly belong in this cut.
+
 Decide explicitly for every branch the scan returns: merge it into this cut, or state why it waits.
-Do not skip past the list.
+Note that `no-mistakes/*` branches are usually gate replays of work already on `main` — confirm
+rather than assume. Do not skip past the list.
 
 **Why this is step 0 and not a nicety:** `0.21.1` shipped *without* a `timestampMode` fix that was
 already written and sitting on an unmerged branch. Because versions are immutable on all four
