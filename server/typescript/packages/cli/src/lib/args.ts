@@ -165,7 +165,12 @@ type Dialect = (typeof DIALECTS)[number];
 export const MIGRATE_FORMATS = ["default", "flyway"] as const;
 export type MigrateFormat = (typeof MIGRATE_FORMATS)[number];
 
-const ALLOW_TOKENS = [
+// Exported (not just module-local) so allow-tokens-pinned.test.ts can pin it
+// against sdk's AllowTokenEnum (config.json's static migrate.allow validator)
+// — the two lists drifted silently before that test existed: sdk's enum was
+// missing 5 of these 11 tokens, so a token that worked fine on the CLI was
+// REJECTED when set in .metaobjects/config.json.
+export const ALLOW_TOKENS = [
   "drop-column",
   "drop-table",
   "type-change",
@@ -187,6 +192,11 @@ const ALLOW_TOKENS = [
   // toolchain needs this exactly once, to stamp its existing views.
   "adopt-view",
   "nullable-to-not-null",
+  // drop-identity-default permits dropping a live Postgres auto-sequence
+  // default (a legacy `serial`/`bigserial` PK's `nextval(...)`) when the
+  // metadata declares no @generation at all — ambiguous between "never
+  // declared it" and "deliberately removing auto-increment".
+  "drop-identity-default",
 ] as const;
 type AllowToken = (typeof ALLOW_TOKENS)[number];
 

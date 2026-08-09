@@ -70,7 +70,7 @@ MIGRATE FLAGS:
   --allow <csv>         Comma-separated destructive-change permissions:
                         drop-column,drop-table,type-change,drop-index,drop-fk,
                         drop-check,drop-view,drop-view-cascade,
-                        adopt-view,nullable-to-not-null
+                        adopt-view,nullable-to-not-null,drop-identity-default
   --on-ambiguous abort|rename|drop-add   Default abort
   --d1 <binding>        D1 binding name from wrangler.toml (only with --dialect d1)
   --remote              Target remote D1 instead of local (only with --dialect d1)

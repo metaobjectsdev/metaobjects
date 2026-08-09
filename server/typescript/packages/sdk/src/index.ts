@@ -26,7 +26,7 @@ export type { ListOptions } from "./storage/index.js";
 export { recordPath, resolveMetaRoot } from "./paths.js";
 
 // Config
-export { ConfigSchema, DEFAULT_CONFIG, loadConfig, saveConfig } from "./config.js";
+export { ConfigSchema, DEFAULT_CONFIG, loadConfig, saveConfig, AllowTokenEnum } from "./config.js";
 export type { Config } from "./config.js";
 
 // Meta Forge metadata types + attribute name constants (registered into a

@@ -143,7 +143,7 @@ Flags:
 - `--dialect sqlite|postgres|d1` — auto-detected from URL scheme; use `d1` for Cloudflare D1
 - `--out-dir <path>` (default `./.metaobjects/migrations`)
 - `--slug <name>` — required when changes are pending (e.g., `add-user-shipping`)
-- `--allow <csv>` — destructive-change permissions: `drop-column,drop-table,type-change,drop-index,drop-fk,drop-check,drop-view,nullable-to-not-null`
+- `--allow <csv>` — destructive-change permissions: `drop-column,drop-table,type-change,drop-index,drop-fk,drop-check,drop-view,drop-view-cascade,adopt-view,nullable-to-not-null,drop-identity-default`
 - `--on-ambiguous abort|rename|drop-add` (default `abort`) — non-interactive
 - `--dry-run` — print SQL pair to stdout, write nothing
 - `--apply` — after writing migration files, immediately apply all pending migrations against the DB (runs `up.sql` for each unapplied entry, tracked in the migration ledger). Mutually exclusive with `--rollback`. Postgres and SQLite only (D1 uses `--apply` to invoke `wrangler d1 migrations apply` instead).

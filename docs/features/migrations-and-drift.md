@@ -123,6 +123,21 @@ preserves the PK through `RENAME COLUMN`) is not mistaken for a move. The read-o
 primary-key drift rather than throwing. Auto-migrating the move (adding the
 `add-primary-key` / `drop-primary-key` change kinds) is a documented future follow-up.
 
+#### A legacy `serial` primary key (adoption-time refusal)
+
+When migrating against a live Postgres database whose primary key is a legacy
+`serial` / `bigserial` column — one carrying a live `nextval(...)` default — and the
+metadata declares that `identity.primary` **without** `@generation`, the diff would
+otherwise emit `ALTER COLUMN … DROP DEFAULT`. That is destructive: every insert that
+omits the id starts failing. The missing `@generation` is genuinely ambiguous — it reads
+identically whether the author simply never declared it (and wants to keep
+auto-increment) or deliberately dropped it (to move the column onto app-assigned ids) —
+so `meta migrate` **refuses rather than guessing**, the same detect-and-refuse arc as the
+primary-key move above. Declare `@generation: increment` on the identity to keep the
+sequence, or pass `--allow drop-identity-default` if removing auto-increment is
+intentional. An identity that *does* declare `@generation: increment` never reaches this
+gate (its default diff is skipped), so only the undeclared case fires.
+
 ### Java
 
 Schema migrations for Java projects are owned by the **TypeScript toolchain**

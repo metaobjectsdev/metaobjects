@@ -5,7 +5,12 @@
 import type { AllowOptions, Change } from "@metaobjectsdev/migrate-ts";
 
 // Map CLI allow tokens → migrate-ts AllowOptions field names.
-const ALLOW_TOKEN_MAP: Record<string, keyof AllowOptions> = {
+// Exported (not just module-local) so allow-tokens-pinned.test.ts can pin its
+// key set against ALLOW_TOKENS (args.ts). ALLOW_TOKENS is the *validator* —
+// this map is what actually *grants* the permission; a token present in
+// ALLOW_TOKENS but missing here would pass validation and silently grant
+// nothing, on a destructive operation.
+export const ALLOW_TOKEN_MAP: Record<string, keyof AllowOptions> = {
   "drop-column": "dropColumn",
   "drop-table": "dropTable",
   "type-change": "typeChange",
@@ -23,6 +28,11 @@ const ALLOW_TOKEN_MAP: Record<string, keyof AllowOptions> = {
   // Gates overwriting an unfingerprinted (hand-written or pre-fingerprint) view.
   "adopt-view": "adoptView",
   "nullable-to-not-null": "nullableToNotNull",
+  // Gates dropping a live Postgres auto-sequence default (a legacy `serial`/
+  // `bigserial` PK's `nextval(...)`) when the metadata declares no
+  // @generation at all — ambiguous between "never declared it" and
+  // "deliberately removing auto-increment", so migrate refuses without it.
+  "drop-identity-default": "dropIdentityDefault",
 };
 
 /** Translate parsed `--allow` tokens into the migrate-ts `AllowOptions` shape. */
