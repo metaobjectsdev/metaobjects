@@ -186,6 +186,52 @@ describe("renderDrizzleSchema — Postgres", () => {
     expect(out).toContain("varchar(\"title\", { length: 200 }).notNull()");
   });
 
+  // Reported against an adopting project: @autoSet's $defaultFn ignored timestampMode and always
+  // returned a string, failing to typecheck against a "date"-mode column (Date-typed).
+  test("@autoSet field respects timestampMode: \"date\" — $defaultFn returns Date, not a string", () => {
+    const post = makePost();
+    const createdAt = metaField(FIELD_SUBTYPE_TIMESTAMP, "createdAt");
+    createdAt.setAttr("required", true);
+    createdAt.setAttr("autoSet", "onCreate");
+    post.addChild(createdAt);
+
+    const root = makeRoot([post]);
+    const ctx = makeRenderContext({
+      dialect: "postgres",
+      timestampMode: "date",
+      loadedRoot: root,
+      outDir: "/x",
+      dbImport: "~/db",
+      pkMap: buildPkMap(root),
+      relationMap: buildRelationMap(root),
+    });
+    const out = renderDrizzleSchema(root.findObject("Post")!, ctx).toString();
+    expect(out).toContain(".$defaultFn(() => new Date())");
+    expect(out).not.toContain(".toISOString()");
+    expect(out).toMatch(/timestamp\("created_at",\s*\{\s*mode:\s*"date"/);
+  });
+
+  test("@autoSet field defaults to timestampMode: \"string\" unchanged (no config set)", () => {
+    const post = makePost();
+    const createdAt = metaField(FIELD_SUBTYPE_TIMESTAMP, "createdAt");
+    createdAt.setAttr("required", true);
+    createdAt.setAttr("autoSet", "onCreate");
+    post.addChild(createdAt);
+
+    const root = makeRoot([post]);
+    const ctx = makeRenderContext({
+      dialect: "postgres",
+      loadedRoot: root,
+      outDir: "/x",
+      dbImport: "~/db",
+      pkMap: buildPkMap(root),
+      relationMap: buildRelationMap(root),
+    });
+    const out = renderDrizzleSchema(root.findObject("Post")!, ctx).toString();
+    expect(out).toContain(".$defaultFn(() =>");
+    expect(out).toContain("new Date().toISOString()");
+  });
+
   test("Postgres long PK emits bigserial, not serial", () => {
     const root = makeRoot([makePost()]);
     const ctx = makeRenderContext({
