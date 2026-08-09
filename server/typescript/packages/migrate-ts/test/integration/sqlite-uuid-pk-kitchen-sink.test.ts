@@ -221,7 +221,7 @@ describe("uuid-PK kitchen sink — SQLite/libsql", () => {
   test("VALUE SEMANTICS: the enum CHECK actually rejects a value outside @values", async () => {
     await migrate(original());
     await insertTakingDefaults("ok", "IMAGE");
-    expect(insertTakingDefaults("bad", "DOCUMENT")).rejects.toThrow();
+    await expect(insertTakingDefaults("bad", "DOCUMENT")).rejects.toThrow(/CHECK/i);
   });
 
   test("VALUE SEMANTICS: the partial UNIQUE index stays PARTIAL (its WHERE is not dropped)", async () => {
@@ -250,7 +250,7 @@ describe("uuid-PK kitchen sink — SQLite/libsql", () => {
     await migrate(original());
     await insertTakingDefaults("a", "IMAGE");
     // Before the change the CHECK must reject DOCUMENT.
-    expect(insertTakingDefaults("pre", "DOCUMENT")).rejects.toThrow();
+    await expect(insertTakingDefaults("pre", "DOCUMENT")).rejects.toThrow(/CHECK/i);
 
     // Widen @values on MediaAsset.kind.
     const json = JSON.parse(original());
@@ -282,7 +282,7 @@ describe("uuid-PK kitchen sink — SQLite/libsql", () => {
     expect(Number(n["c"])).toBe(1);
 
     // …a value still outside @values is STILL rejected (the CHECK was migrated, not dropped)…
-    expect(insertTakingDefaults("nope", "SPREADSHEET")).rejects.toThrow();
+    await expect(insertTakingDefaults("nope", "SPREADSHEET")).rejects.toThrow(/CHECK/i);
 
     // …and the schema converged.
     await assertConverged(expected, allow);

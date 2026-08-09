@@ -209,6 +209,19 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
     alias: aliasMap,
   });
 
+  // Global-hooks hygiene. When Bun's native import of the config fails (e.g. a config
+  // whose module body throws), jiti falls back to its bundled Babel transformer, whose
+  // rewrite-stack-trace PERMANENTLY replaces `Error.prepareStackTrace` with a wrapper
+  // delegating to whatever it captured. On Node that captured value is `undefined`, so
+  // Babel's own lenient fallback runs and nothing is harmed. On Bun it is Bun's NATIVE
+  // default, which throws `TypeError: First argument must be an Error object` for any
+  // target that is not a real ErrorInstance — so once the wrapper leaks, every later
+  // legacy-constructor error in the process (libsql's `SqliteError` is one:
+  // an ES5-style constructor calling `Error.captureStackTrace`) throws that TypeError
+  // *while being constructed*, replacing its real message. Snapshot and restore so
+  // loading a config can never mutate the process's error hooks.
+  const prepareStackTraceBefore = Error.prepareStackTrace;
+  const stackTraceLimitBefore = Error.stackTraceLimit;
   try {
     const raw = (await jiti.import(loadPath)) as MetaobjectsGenConfig | { default: MetaobjectsGenConfig };
     // jiti's interopDefault doesn't always unwrap the default export when accessed
@@ -221,6 +234,14 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
     }
     return cfg;
   } finally {
+    // Restoring is safe: Babel's installer self-neuters after the first call, so
+    // dropping its wrapper only costs cosmetic frame-hiding in later Babel diagnostics.
+    if (Error.prepareStackTrace !== prepareStackTraceBefore) {
+      Error.prepareStackTrace = prepareStackTraceBefore;
+    }
+    if (Error.stackTraceLimit !== stackTraceLimitBefore) {
+      Error.stackTraceLimit = stackTraceLimitBefore;
+    }
     if (tempCreated) {
       try { unlinkSync(loadPath); } catch { /* best-effort cleanup */ }
     }

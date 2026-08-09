@@ -7,6 +7,39 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — loading a `metaobjects.config.ts` could permanently corrupt error reporting for the rest of the process (npm)
+
+`loadMetaobjectsConfig` leaked a mutation of the process-global `Error.prepareStackTrace`.
+When Bun's native import of the config fails — a config whose module body throws, for
+instance — jiti falls back to its bundled Babel transformer, whose `rewrite-stack-trace`
+**permanently** installs a `prepareStackTrace` wrapper delegating to whatever value it
+captured. On Node that value is `undefined`, so Babel's own lenient fallback runs and
+nothing is harmed. On Bun it is Bun's **native default**, which throws
+`TypeError: First argument must be an Error object` for any target that is not a real
+`ErrorInstance`.
+
+Once that wrapper leaks, every subsequent *legacy-constructor* error in the process throws
+that `TypeError` **while being constructed**, destroying its real message. libsql's
+`SqliteError` is exactly that shape (an ES5-style constructor calling
+`Error.captureStackTrace`), so a genuine `CHECK constraint failed: …` surfaced as
+`First argument must be an Error object` instead.
+
+The loader now snapshots and restores `Error.prepareStackTrace` (and `stackTraceLimit`)
+around the jiti call. Restoring is safe — Babel's installer self-neuters after its first
+call, so dropping the wrapper costs only cosmetic frame-hiding in later Babel diagnostics.
+
+**How it stayed hidden, which is the more useful part:** the damage is cross-package, and
+every CI lane runs `bun test` **per package** (`scripts/ci-local.sh`, `conformance.yml`,
+`integration-tests.yml`), so `cli` and `migrate-ts` never shared a process. In a
+workspace-wide `bun test` — the run the contributor docs invite — four `migrate-ts`
+real-engine gates failed on their error-*message* assertions while the migrate engine was
+behaving correctly. Sibling tests using a bare, pattern-less `rejects.toThrow()` passed
+throughout, because the substituted `TypeError` still satisfies them.
+
+No migration-correctness defect was masked: in every case the constraint fired and the
+apply → introspect → re-diff-EMPTY loop completed. Gated by a loader-seam regression test
+that pins both the hook identity and the end-to-end consequence.
+
 ## [0.21.3] — npm `0.21.3` · PyPI `0.21.3` · NuGet `0.21.3` · Maven `7.21.3`
 
 Coordinated PATCH. **Changed product code: Maven and npm.** PyPI and NuGet are version-parity
