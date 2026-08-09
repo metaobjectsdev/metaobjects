@@ -7,6 +7,82 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.21.2] — npm `0.21.2` · PyPI `0.21.2` · NuGet `0.21.2` · Maven `7.21.2`
+
+Coordinated PATCH. **Changed product code: npm only** (`codegen-ts`, plus a comment-only note in
+`runtime-ts` and the `migrate-ts`/`cli` refusal below). PyPI, NuGet and Maven are version-parity
+bumps — schema and TypeScript codegen are TS-owned (ADR-0015), so no other port has an analogue.
+
+### Fixed — `timestampMode: "date"` generated code that did not compile
+
+`timestampMode: "date"` is the documented opt-in for consumers whose code works with JS `Date`
+rather than ISO strings. Several codegen paths ignored it and emitted string-shaped output, so the
+generated Drizzle column was `Date`-typed while the stamp and validators produced `string` — a hard
+compile failure (`TS2322: Type 'string' is not assignable to type 'Date | SQL<unknown>'`), cascading
+into every generated insert/update query touching the field. Reported by an adopting project.
+
+Five emitters now honor the mode: the `@autoSet` `$defaultFn` stamp, the three `@autoSet` Zod call
+sites, and `zodFieldExpr`'s general `field.timestamp` case — so a **plain, non-`@autoSet`** timestamp
+was affected too, not only stamped ones.
+
+Three further defects were caught by a pre-publish review before any of this shipped:
+
+- **Wire values were rejected.** The Insert/Update schemas validate raw JSON request bodies, where a
+  timestamp arrives as an ISO string, and `z.date()` rejects those outright — date mode would have
+  gone from *"doesn't compile"* to *"compiles, then 400s every write"*, with React form saves failing
+  silently. They now emit `z.coerce.date()`, which accepts wire strings and `datetime-local` values,
+  passes driver-supplied `Date`s through, and still short-circuits `null` so a present-null PATCH
+  clears as FR-035 requires.
+- **sqlite/D1 emitted non-compiling code.** Only the Postgres column mapper honors the mode, so
+  `dialect: "sqlite"` plus date mode produced a `text` column with a `Date`-returning `$defaultFn`.
+  `timestampMode` now normalizes to `"string"` for sqlite (which covers D1) at both configuration
+  choke points, making the option a documented safe no-op there instead of a trap.
+- **Projection and write-through read schemas were missed.** `zodTypeFor` hardcoded `z.string()`, so
+  a view-backed entity or projection carrying a timestamp kept the original type cascade. It is now
+  mode-aware and threads the same options object that types the view column, so the two cannot
+  diverge again.
+
+`field.date` and `field.time` deliberately remain string-shaped — Drizzle types both as strings under
+every dialect, so they are genuinely not governed by this option. Value-object timestamps are
+likewise excluded, since jsonb storage is always ISO string.
+
+**Known limitation, now surfaced at build time:** filtering a Date-mode timestamp
+(`?filter[field][gte]=…`) throws at request time, because the runtime filter parser does not yet
+carry the column mode. `meta gen` now warns when a `@filterable` timestamp is emitted under date
+mode, rather than leaving it to fail in production.
+
+Default `"string"` mode output is byte-identical — verified by a zero-diff golden corpus.
+
+### Fixed — `meta migrate` refused a destructive drop it could not disambiguate
+
+`0.21.1` stopped `meta migrate` dropping a live Postgres `serial` primary key's default during
+adoption, but only when the metadata explicitly declared `@generation: increment`. An adopter who
+declared `identity.primary` **without** `@generation` still got the destructive
+`ALTER COLUMN … DROP DEFAULT`, leaving `id` `NOT NULL` with nothing to populate it.
+
+Widening the guard was rejected as a fix: an undeclared `@generation` is genuinely ambiguous — it may
+mean "never declared it" or "removing auto-increment on purpose" — and silently keeping the sequence
+would break a deliberate migration off increment. So `migrate` now **refuses**, naming the table, the
+column, the live default, the consequence, and both remedies: declare `@generation: increment` to
+keep the sequence, or pass the new `--allow drop-identity-default` if removal is intended. This
+follows the same detect-and-refuse precedent as the primary-key-move refusal.
+
+### Fixed — `--allow` tokens were rejected by the config-file schema
+
+Three separate lists of `--allow` tokens had drifted: the CLI validator carried eleven, the
+`.metaobjects/config.json` schema six, and the CLI README eight. A user who set `adopt-view` in
+`migrate.allow` got a schema rejection **for a flag that has shipped since 0.20.4**. All three are
+synced, and a test now pins them together by importing each list rather than restating it.
+
+### Fixed — the release-tag integration lane was permanently red
+
+The `migrate-ts-pg` job had failed on every release tag going back to at least `v0.20.0` — the same
+six tests each time — so it provided no signal. Two test-side causes: fixtures declaring an entity
+with no `source.rdb` child (persistability derives from a declared source, so nothing was created),
+and CHECK-expression expectations that predated the normalizer's comma-spacing rule. The suite goes
+124 pass / 6 fail → 130 pass / 0 fail against a real Postgres. Its tag-only trigger is unchanged, so
+the lane can still rot unnoticed between releases.
+
 ## [0.21.1] — npm `0.21.1` · PyPI `0.21.1` · NuGet `0.21.1` · Maven `7.21.1`
 
 Coordinated PATCH. **Changed product code: Maven (`metadata`) and npm (`migrate-ts`, plus the
