@@ -208,7 +208,9 @@ function coerce(value: unknown, subType: string, field: string, op: string): unk
     // entity's `timestampMode` threaded from codegen into the generated
     // allowlist or mount options so this function can `new Date(s)` — deferred
     // as a separate, more invasive change; do not filter a "date"-mode timestamp
-    // field until that lands.
+    // field until that lands. `codegen-ts`'s `runGen` warns (once per run) at
+    // generation time when this combination is reachable — see the Important-4
+    // check in runner.ts — but does not refuse the build.
     case "datetime": return s;
     default: return s;
   }

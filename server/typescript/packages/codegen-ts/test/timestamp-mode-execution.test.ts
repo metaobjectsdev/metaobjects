@@ -9,7 +9,11 @@
 // dynamically `import()` it, then call the real `safeParse`/`parse` on the
 // real Zod object it exports — not a string match.
 //
-// Covers the three Criticals + Important 5 found by that review:
+// Covers the three Criticals + Important 5 found by that review, plus a
+// codegen-time WARNING for Important 4 (added on top after the initial fix
+// was reviewed clean — a cheap generation-time detect for the one runtime gap
+// left documented-not-fixed: filtering a date-mode timestamp throws at
+// request time; see runGen's warning + filter-parser.ts's limitation note):
 //   CRITICAL 1 — z.date() rejects every JSON wire value; fix is z.coerce.date().
 //   CRITICAL 2 — sqlite/D1 + date mode used to emit non-compiling code (a
 //                regression #281 itself introduced); fix normalizes the mode
@@ -19,9 +23,13 @@
 //                sweep missed and still hardcoded z.string().
 //   IMPORTANT 5 — a VO-hosted (object.value) timestamp must stay z.string()
 //                even in date mode: VO storage is inherently ISO-string jsonb.
+//   IMPORTANT 4 — a @filterable timestamp field under date mode warns once at
+//                `runGen` time (detect, don't fix the runtime threading —
+//                repo precedent: #226/#258 detect-and-refuse at gen time).
 
 import { describe, test, expect, afterEach } from "bun:test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -35,6 +43,7 @@ import { renderZodValidators, renderInsertSchemaOnly } from "../src/templates/zo
 import { renderProjectionDecl } from "../src/templates/projection-decl.js";
 import { makeRenderContext } from "../src/render-context.js";
 import { normalizeConfig, defineConfig } from "../src/metaobjects-config.js";
+import { runGen } from "../src/runner.js";
 import { buildPkMap } from "../src/pk-resolver.js";
 import { buildRelationMap } from "../src/relation-resolver.js";
 
@@ -198,5 +207,89 @@ describe('timestampMode: "date" — execution pins', () => {
     // must agree (documented lock-step), and VO jsonb storage is always string.
     expect(typeof ok.data.loggedAt).toBe("string");
     expect(ok.data.loggedAt).toBe("2026-08-08T10:00:00.000Z");
+  });
+});
+
+describe('IMPORTANT 4: runGen warns (once) when timestampMode: "date" meets a @filterable timestamp field', () => {
+  // Two entities, each with a @filterable timestamp field PLUS a non-filterable
+  // timestamp field — proves the warning is field-selective (only @filterable
+  // fields are named) and fires ONCE for the whole run (not once per field or
+  // per entity), naming every offender in that one line.
+  const TWO_FILTERABLE_TIMESTAMPS = JSON.stringify({
+    "metadata.root": {
+      package: "acme",
+      children: [
+        { "object.entity": { name: "Post", children: [
+          { "source.rdb": { "@table": "posts" } },
+          { "field.long": { name: "id" } },
+          { "field.timestamp": { name: "updatedAt", "@filterable": true } },
+          { "field.timestamp": { name: "archivedAt" } }, // NOT filterable — must not be named
+          { "identity.primary": { name: "primary", "@fields": ["id"], "@generation": "increment" } },
+        ] } },
+        { "object.entity": { name: "Comment", children: [
+          { "source.rdb": { "@table": "comments" } },
+          { "field.long": { name: "id" } },
+          { "field.timestamp": { name: "postedAt", "@filterable": true } },
+          { "identity.primary": { name: "primary", "@fields": ["id"], "@generation": "increment" } },
+        ] } },
+      ],
+    },
+  });
+
+  const NO_FILTERABLE_TIMESTAMP = JSON.stringify({
+    "metadata.root": {
+      package: "acme",
+      children: [
+        { "object.entity": { name: "Post", children: [
+          { "source.rdb": { "@table": "posts" } },
+          { "field.long": { name: "id" } },
+          { "field.timestamp": { name: "updatedAt" } }, // present, but NOT filterable
+          { "field.string": { name: "title", "@filterable": true } }, // filterable, but not a timestamp
+          { "identity.primary": { name: "primary", "@fields": ["id"], "@generation": "increment" } },
+        ] } },
+      ],
+    },
+  });
+
+  async function runWithMetadata(json: string, dialect: "postgres" | "sqlite", timestampMode?: "date" | "string") {
+    const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
+    expect(result.errors).toEqual([]);
+    const dir = mkdtempSync(join(tmpdir(), "codegen-runner-important4-"));
+    try {
+      return await runGen({
+        config: defineConfig({
+          outDir: dir, extStyle: "none", dbImport: "../db", dialect,
+          ...(timestampMode !== undefined && { timestampMode }),
+          generators: [],
+        }),
+        metadata: result.root,
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  test('warns exactly once, naming every offending entity+field, when dialect:"postgres" + timestampMode:"date"', async () => {
+    const { warnings } = await runWithMetadata(TWO_FILTERABLE_TIMESTAMPS, "postgres", "date");
+    const hits = warnings.filter((w) => w.includes('timestampMode: "date"'));
+    expect(hits.length).toBe(1); // once per run, not once per field/entity
+    expect(hits[0]).toContain("Post.updatedAt");
+    expect(hits[0]).toContain("Comment.postedAt");
+    expect(hits[0]).not.toContain("archivedAt"); // non-filterable — not named
+  });
+
+  test('silent in the default "string" mode (timestampMode omitted)', async () => {
+    const { warnings } = await runWithMetadata(TWO_FILTERABLE_TIMESTAMPS, "postgres");
+    expect(warnings.filter((w) => w.includes('timestampMode: "date"'))).toEqual([]);
+  });
+
+  test('silent when no field is both @filterable and a timestamp, even in date mode', async () => {
+    const { warnings } = await runWithMetadata(NO_FILTERABLE_TIMESTAMP, "postgres", "date");
+    expect(warnings.filter((w) => w.includes('timestampMode: "date"'))).toEqual([]);
+  });
+
+  test('silent under dialect:"sqlite" — timestampMode normalizes to "string" (Critical 2), so Important 4 never fires', async () => {
+    const { warnings } = await runWithMetadata(TWO_FILTERABLE_TIMESTAMPS, "sqlite", "date");
+    expect(warnings.filter((w) => w.includes('timestampMode: "date"'))).toEqual([]);
   });
 });

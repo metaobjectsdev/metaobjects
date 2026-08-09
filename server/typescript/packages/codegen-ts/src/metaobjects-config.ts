@@ -124,8 +124,10 @@ export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport"
    * Date-mode filtering (`?filter[<timestamp>][gte]=...`) is not yet supported —
    * `runtime-ts`'s filter parser keeps the qs value a string, which throws at
    * request time against a Date-mode Drizzle column. Known limitation; not
-   * enforced at codegen time. Track before recommending date mode for a
-   * filterable timestamp field.
+   * threaded through at runtime, but `runGen` DOES warn (once per run, naming
+   * every offending entity+field) when this mode meets a `@filterable`
+   * `field.timestamp` — see `runner.ts`'s Important-4 check. Track before
+   * recommending date mode for a filterable timestamp field.
    */
   timestampMode?: "date" | "string";
   /** Path prefix applied to generated route registrations + hook fetch URLs. Defaults to "". */
