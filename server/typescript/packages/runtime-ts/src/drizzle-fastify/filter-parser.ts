@@ -197,6 +197,18 @@ function coerce(value: unknown, subType: string, field: string, op: string): unk
       }
       return n;
     }
+    // KNOWN LIMITATION (codegen-ts's `timestampMode: "date"` config option,
+    // Important-4 assessment): this keeps the qs value a STRING unconditionally.
+    // Under codegen's Postgres-only "date" mode the Drizzle column is Date-typed
+    // and calls `value.toISOString()` on any bound value — comparing it against a
+    // string here throws `TypeError: value.toISOString is not a function` for
+    // every op except isNull (eq/ne/gt/gte/lt/lte/in all bind through the same
+    // typed column). Not reachable in the default "string" mode (the only mode
+    // this parser was originally designed against). A correct fix needs the
+    // entity's `timestampMode` threaded from codegen into the generated
+    // allowlist or mount options so this function can `new Date(s)` — deferred
+    // as a separate, more invasive change; do not filter a "date"-mode timestamp
+    // field until that lands.
     case "datetime": return s;
     default: return s;
   }

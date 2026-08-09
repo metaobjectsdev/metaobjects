@@ -28,6 +28,7 @@ import {
   VALIDATOR_ATTR_MAX, VALIDATOR_ATTR_MIN, VALIDATOR_ATTR_PATTERN,
   GENERATION_INCREMENT, GENERATION_UUID,
   OBJECT_ATTR_DISCRIMINATOR, OBJECT_ATTR_DISCRIMINATOR_VALUE,
+  OBJECT_SUBTYPE_VALUE,
 } from "@metaobjectsdev/metadata";
 import { enumValues, zodEnumExpr } from "../enum-meta.js";
 import { ZOD_INET_EXPR } from "./net-regex.js";
@@ -194,7 +195,11 @@ export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Co
     if (autoSet === AUTO_SET_ON_CREATE || autoSet === AUTO_SET_ON_UPDATE) {
       insertFieldLines.push(
         ctx?.timestampMode === "date"
-          ? code`  ${child.name}: z.date().optional().transform(() => new Date())`
+          // CRITICAL 1: these schemas validate raw JSON request bodies (wire
+          // timestamps are ISO strings), never a live `Date` — z.coerce.date()
+          // (not z.date()) so a string round-trips; z.date() rejects every JSON
+          // wire value outright (verified: z.date().safeParse(isoString) is false).
+          ? code`  ${child.name}: z.coerce.date().optional().transform(() => new Date())`
           : code`  ${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
       );
     } else {
@@ -341,7 +346,11 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
     if (autoSet === AUTO_SET_ON_CREATE || autoSet === AUTO_SET_ON_UPDATE) {
       insertFieldLines.push(
         ctx?.timestampMode === "date"
-          ? code`  ${child.name}: z.date().optional().transform(() => new Date())`
+          // CRITICAL 1: these schemas validate raw JSON request bodies (wire
+          // timestamps are ISO strings), never a live `Date` — z.coerce.date()
+          // (not z.date()) so a string round-trips; z.date() rejects every JSON
+          // wire value outright (verified: z.date().safeParse(isoString) is false).
+          ? code`  ${child.name}: z.coerce.date().optional().transform(() => new Date())`
           : code`  ${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
       );
       // Preserving schema: the @autoSet column is validated verbatim (its natural
@@ -359,7 +368,11 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
     } else if (autoSet === AUTO_SET_ON_UPDATE) {
       updateFieldLines.push(
         ctx?.timestampMode === "date"
-          ? code`  ${child.name}: z.date().optional().transform(() => new Date())`
+          // CRITICAL 1: these schemas validate raw JSON request bodies (wire
+          // timestamps are ISO strings), never a live `Date` — z.coerce.date()
+          // (not z.date()) so a string round-trips; z.date() rejects every JSON
+          // wire value outright (verified: z.date().safeParse(isoString) is false).
+          ? code`  ${child.name}: z.coerce.date().optional().transform(() => new Date())`
           : code`  ${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
       );
     } else {
@@ -519,13 +532,27 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
     case FIELD_SUBTYPE_TIME:
       baseStr = "z.string()"; // calendar date / time-of-day — always ISO-string-shaped, not governed by timestampMode
       break;
-    case FIELD_SUBTYPE_TIMESTAMP:
+    case FIELD_SUBTYPE_TIMESTAMP: {
       // Must agree with column-mapper.ts's mapColumnType, which already honors
       // ctx.timestampMode for the Drizzle column itself — z.string() here regardless would
       // disagree with a "date"-mode column (Date-typed) and fail to typecheck downstream
       // (reported against an adopting project).
-      baseStr = ctx?.timestampMode === "date" ? "z.date()" : "z.string()";
+      //
+      // IMPORTANT 5: a VO-hosted (object.value) timestamp is jsonb storage —
+      // inherently ISO-string JSON, never a live `Date` — so it stays z.string()
+      // regardless of ctx.timestampMode; that matches the VO structural interface
+      // (inferred-types.ts's SCALAR_TS_BY_SUBTYPE, deliberately NOT mode-aware —
+      // the two are documented as lock-step). An entity/TPH-subtype field (a real
+      // DB column) honors the mode.
+      const voHosted = owner?.subType === OBJECT_SUBTYPE_VALUE;
+      // CRITICAL 1: z.coerce.date() (not z.date()) — the ONE expression correct
+      // for both readers of zodFieldExpr's output: the TPH read schema parses DB
+      // rows (already a `Date` under pg date mode — z.coerce.date() passes a
+      // Date through unchanged) while insert/update/preserving parse wire JSON
+      // (an ISO string — z.coerce.date() parses it; z.date() would reject it).
+      baseStr = ctx?.timestampMode === "date" && !voHosted ? "z.coerce.date()" : "z.string()";
       break;
+    }
     case FIELD_SUBTYPE_ENUM: {
       const values = enumValues(field);
       if (values === undefined) {

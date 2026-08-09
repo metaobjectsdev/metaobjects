@@ -80,8 +80,17 @@ function defaultViewForSubType(subType: string): string {
 
 /**
  * Resolve the Zod validator expression for a field's storage type.
+ *
+ * `timestampMode` (default "string") mirrors zod-validators.ts's zodFieldExpr:
+ * a "date"-mode FIELD_SUBTYPE_TIMESTAMP column (view/projection read schemas —
+ * see view-decl.ts's renderViewReadZodObject, which sources its column TYPE from
+ * `mapColumnType(..., timestampMode)`) must agree with the Zod line built here or
+ * `z.infer<>` disagrees with the Drizzle column and callers fail to typecheck.
+ * FIELD_SUBTYPE_DATE / FIELD_SUBTYPE_TIME are NOT governed by timestampMode —
+ * calendar date / time-of-day stay ISO-string-shaped always (verified correct;
+ * see zodFieldExpr's identical DATE/TIME case).
  */
-export function zodTypeFor(field: MetaField): string {
+export function zodTypeFor(field: MetaField, timestampMode: "date" | "string" = "string"): string {
   switch (field.subType) {
     case FIELD_SUBTYPE_STRING: {
       // ADR-0036/0037 Wave 3: @stringFormat narrows a plain string. Codegen owns
@@ -108,9 +117,19 @@ export function zodTypeFor(field: MetaField): string {
       return "z.boolean()";
     case FIELD_SUBTYPE_DATE:
     case FIELD_SUBTYPE_TIME:
-    case FIELD_SUBTYPE_TIMESTAMP:
-      // Returned as ISO strings from SQLite/Postgres drivers.
+      // Calendar date / time-of-day — always ISO-string-shaped, not governed by
+      // timestampMode (verified correct; mirrors zodFieldExpr).
       return "z.string()";
+    case FIELD_SUBTYPE_TIMESTAMP:
+      // CRITICAL 3 (#281 sweep miss): must agree with the Drizzle view/projection
+      // column's mode (mapColumnType via ViewDeclOpts.timestampMode) — a
+      // hardcoded z.string() here disagreed with a "date"-mode column (Date-typed),
+      // producing the same TS2322 cascade Critical 1 fixed for insert/update.
+      // z.coerce.date() (not z.date()) for uniformity with zodFieldExpr: it
+      // passes a DB-driver Date through unchanged (the read case this function
+      // serves) and would equally accept an ISO string if ever reused for a
+      // wire-parsing schema.
+      return timestampMode === "date" ? "z.coerce.date()" : "z.string()";
     case FIELD_SUBTYPE_INT:
     case FIELD_SUBTYPE_LONG:
     case FIELD_SUBTYPE_CURRENCY:

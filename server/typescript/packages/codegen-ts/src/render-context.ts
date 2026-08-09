@@ -46,6 +46,10 @@ export interface RenderContext {
    * ISO-8601 strings (matching the generated Zod + cross-port wire contract);
    * "date" uses drizzle's native JS-Date mode (for consumers whose hand-written
    * code works with `Date`). Opt in via `codegen.timestampMode`.
+   *
+   * Postgres-only — normalized to "string" for `dialect === "sqlite"` (covers D1)
+   * at the `makeRenderContext` / `normalizeConfig` choke points; see the fuller
+   * doc comment on `MetaobjectsGenConfig.timestampMode` in metaobjects-config.ts.
    */
   timestampMode: "date" | "string";
   /** Path prefix applied to generated route registrations + hook fetch URLs. Defaults to "". */
@@ -175,7 +179,11 @@ export function makeRenderContext(opts: RenderContextInput): RenderContext {
     extStyle: opts.extStyle ?? "js",
     omImport: opts.omImport ?? "../index",
     columnNamingStrategy: opts.columnNamingStrategy ?? "snake_case",
-    timestampMode: opts.timestampMode ?? "string",
+    // "date" mode is Postgres-only — normalize to "string" on sqlite/D1 here too
+    // (the OTHER choke point besides normalizeConfig; a bare-context caller, e.g.
+    // a unit test or a generator invoked outside `runGen`, must get the same
+    // safe-no-op guarantee). See MetaobjectsGenConfig.timestampMode's doc comment.
+    timestampMode: opts.dialect === "sqlite" ? "string" : (opts.timestampMode ?? "string"),
     apiPrefix: opts.apiPrefix ?? "",
     emitAbstractShapes: opts.emitAbstractShapes ?? true,
     outputLayout,

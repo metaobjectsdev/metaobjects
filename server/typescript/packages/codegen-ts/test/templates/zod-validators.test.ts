@@ -17,7 +17,12 @@ describe("renderZodValidators", () => {
   // Reported against an adopting project: a plain field.timestamp (autoSet or not) always got
   // z.string() regardless of timestampMode, disagreeing with a "date"-mode Drizzle column
   // (Date-typed) and failing to typecheck downstream.
-  test("timestampMode: \"date\" — field.timestamp gets z.date(), @autoSet gets a Date-returning transform", () => {
+  //
+  // CRITICAL 1 (post-#281 pre-publish review): z.coerce.date(), not z.date() —
+  // these schemas parse raw JSON request bodies (ISO strings on the wire);
+  // z.date() rejects every JSON wire value outright. See the execution test
+  // below (safeParse against an ISO string) for the behavioral pin.
+  test("timestampMode: \"date\" — field.timestamp gets z.coerce.date(), @autoSet gets a Date-returning transform", () => {
     const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
     const id = metaField(FIELD_SUBTYPE_LONG, "id");
     post.addChild(id);
@@ -44,8 +49,9 @@ describe("renderZodValidators", () => {
       relationMap: buildRelationMap(root),
     });
     const out = renderZodValidators(post, ctx).toString();
-    expect(out).toContain("updatedAt: z.date()"); // plain field, general zodFieldExpr path
-    expect(out).toContain("z.date().optional().transform(() =>"); // @autoSet insert path
+    expect(out).toContain("updatedAt: z.coerce.date()"); // plain field, general zodFieldExpr path
+    expect(out).toContain("z.coerce.date().optional().transform(() =>"); // @autoSet insert path
+    expect(out).not.toContain("z.date()"); // never the bare (non-coercing) form
     expect(out).not.toContain("z.string()"); // no stale string-typed timestamp anywhere
     expect(out).not.toContain(".toISOString()");
   });
