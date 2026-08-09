@@ -7,6 +7,36 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — [#286](https://github.com/metaobjectsdev/metaobjects/issues/286): the Hono CRUD helpers 500'd on Postgres (npm)
+
+`runtime-ts`'s Hono `mountCrudRoutes` / `mountReadOnlyRoutes` called Drizzle's `.all()`
+and `.get()`. Those are **libsql / better-sqlite3-only**; the node-postgres builder is
+thenable but has neither, so every `GET` failed with
+`TypeError: q.all is not a function`. Shipped broken on Postgres through `0.21.2` and
+`0.21.3`. Reported from a real adoption.
+
+The Fastify adapter was already correct — it awaits the builder directly and carries a
+comment explaining exactly this. The fix simply never got ported to Hono. All six call
+sites now use the portable form (`await q` for lists, `.limit(1)` + `[0]` for single-row
+reads).
+
+**Why it survived, which matters more than the one-liner:** every adapter test in the
+package used libsql, where `.all()`/`.get()` exist and work — so no test could have caught
+the incompatibility for *either* adapter, and Fastify's fix was reasoned rather than
+gated. A per-adapter suite with a single dialect structurally cannot detect a dialect
+divergence.
+
+Closed with a **cross-adapter dialect matrix** against a real Postgres: the same read paths
+(list, get-by-id, 404, `withCount` envelope, filter+sort) asserted across Fastify *and*
+Hono, plus a payload-equality check between them. Adding a third adapter means adding a row,
+not a new file. Verified to reproduce the reported `q.all is not a function` on four tests
+with the fix reverted.
+
+`runtime-ts`'s own suite runs in CI's `ts-unit` lane, which has no database, so the matrix
+is wired into `ts-slow` (the lane with the Postgres sidecar) alongside the migrate-ts
+real-PG gate, with the same loud-skip sentinel — a lane that declares it intends Postgres
+and then fails to supply it now fails instead of silently skipping.
+
 ### Fixed — [#285](https://github.com/metaobjectsdev/metaobjects/issues/285): `meta migrate` emitted an un-appliable `DROP INDEX` for a constraint-backed index (npm)
 
 Postgres creates an index to enforce `UNIQUE` / `PRIMARY KEY` / `EXCLUDE`, then refuses to

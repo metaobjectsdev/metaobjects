@@ -134,13 +134,18 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
       if (result.orderBy) q = q.orderBy(...result.orderBy);
       if (result.limit !== undefined) q = q.limit(result.limit);
       if (result.offset !== undefined) q = q.offset(result.offset);
-      const rows = await q.all();
+      // Await the query directly rather than calling `.all()`: the drizzle-orm
+      // node-postgres builder is thenable but has no `.all()` (a libsql /
+      // better-sqlite3-only API). Awaiting works on BOTH dialects — this is what
+      // makes the Hono helpers genuinely Postgres-capable, matching the Fastify
+      // adapter, which carried this fix while Hono did not (#286).
+      const rows = await q;
 
       if (!withCount) return c.json(rows);
 
       let cq = db.select({ c: count() }).from(view);
       if (combinedWhere) cq = cq.where(combinedWhere);
-      const countRow = (await cq.all())[0] as { c: number } | undefined;
+      const countRow = (await cq)[0] as { c: number } | undefined;
       const total = countRow?.c ?? 0;
       return c.json({ rows, total });
     } catch (err) {
@@ -167,11 +172,14 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
     if (idValue === undefined) {
       return c.json({ error: "invalid_id" }, 400);
     }
-    const row = await db
+    // `.get()` is likewise libsql/better-sqlite3-only; `.limit(1)` + await + [0]
+    // is the portable single-row read (#286).
+    const rows = await db
       .select()
       .from(view)
       .where(colRef !== undefined ? eq(colRef, idValue) : undefined)
-      .get();
+      .limit(1);
+    const row = (rows as unknown[])[0];
     return row ? c.json(row) : c.json({ error: "not_found" }, 404);
   });
 

@@ -154,6 +154,17 @@ gate_ts_build() { bun_install && bun run --filter '*' build; }
 # vars (a local run with no Postgres) the PG describes self-skip exactly as before.
 gate_migrate_ts_pg() { bun_install && ( cd server/typescript/packages/migrate-ts && bun test ); }
 
+# runtime-ts real-Postgres dialect matrix — the generated CRUD helpers exercised through
+# BOTH the Fastify and Hono adapters against a real engine. runtime-ts's own suite runs in
+# the ts-unit lane, which has no database, and every adapter test there uses libsql — where
+# Drizzle's libsql-only `.all()`/`.get()` work. That is why Hono shipped 500ing on Postgres
+# while Fastify (fixed for the same thing) stayed green (#286). Runs here because ts-slow is
+# the lane with the sidecar; METAOBJECTS_TEST_PG_URL + RUNTIME_TS_PG_EXPECT=1 come from the
+# CI job, and without them the suite self-skips exactly as before.
+gate_runtime_ts_pg() {
+  bun_install && ( cd server/typescript/packages/runtime-ts && bun test test/dialect-matrix-pg.test.ts )
+}
+
 # ── conformance.yml — per-port conformance corpora (exact CI commands) ────────
 gate_conf_ts() {
   bun_install || return 1
@@ -356,6 +367,7 @@ else
     # Ordered BEFORE the docker integration step so a container-readiness flake there
     # can never prevent the migrate verdict from being produced.
     want_any ts ts-slow        && step_if bun "migrate-ts real-PG suite" gate_migrate_ts_pg
+    want_any ts ts-slow        && step_if bun "runtime-ts real-PG dialect matrix" gate_runtime_ts_pg
     want_any ts ts-slow        && run_integration_for ts     ts
     want_any java java-slow    && run_integration_for java   java kotlin
     want python                && run_integration_for python python

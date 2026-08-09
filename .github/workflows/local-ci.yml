@@ -150,6 +150,12 @@ jobs:
           # Makes the in-suite sentinel FAIL if the URL above ever rots away (renamed
           # variable, dropped sidecar) rather than describe.skip-ing in silence.
           MIGRATE_TS_PG_EXPECT: '1'
+          # Same, for runtime-ts's cross-adapter dialect matrix (#286). runtime-ts's own
+          # suite runs in ts-unit, which has no database, and every adapter test there uses
+          # libsql — where Drizzle's libsql-only .all()/.get() work. That is exactly how
+          # Hono shipped 500ing on Postgres while Fastify, fixed for the same thing,
+          # stayed green. METAOBJECTS_TEST_PG_URL above is the matrix's connection.
+          RUNTIME_TS_PG_EXPECT: '1'
         run: scripts/ci-local.sh --only ts-slow --strict-toolchains
 
   # Java FAST lane — java + kotlin conformance only (the quick correctness signal).

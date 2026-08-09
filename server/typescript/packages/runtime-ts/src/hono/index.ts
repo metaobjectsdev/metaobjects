@@ -137,14 +137,19 @@ export function mountListRoute(opts: VerbOptions): void {
         if (flat.offset !== undefined) q = q.offset(Number(flat.offset));
       }
 
-      const rows = await q.all();
+      // Await the query directly rather than calling `.all()`: the drizzle-orm
+      // node-postgres builder is thenable but has no `.all()` (a libsql /
+      // better-sqlite3-only API). Awaiting works on BOTH dialects — this is what
+      // makes the Hono helpers genuinely Postgres-capable, matching the Fastify
+      // adapter, which carried this fix while Hono did not (#286).
+      const rows = await q;
 
       if (!withCount) return c.json(rows);
 
       // Count query: same WHERE, no limit/offset/orderBy.
       let cq = opts.db.select({ c: count() }).from(opts.table).$dynamic();
       if (where) cq = cq.where(where);
-      const countRow = (await cq.all())[0] as { c: number } | undefined;
+      const countRow = (await cq)[0] as { c: number } | undefined;
       const total = countRow?.c ?? 0;
       return c.json({ rows, total });
     } catch (err) {
@@ -163,11 +168,14 @@ export function mountGetRoute(opts: VerbOptions): void {
     // must stay a string ('0123' ≠ '123'), or affinity matches the WRONG row.
     const idValue = coerceIdForColumn(opts.table.id, id);
     if (idValue === undefined) return c.json({ error: "invalid_id" }, 400);
-    const row = await opts.db
+    // `.get()` is likewise libsql/better-sqlite3-only; `.limit(1)` + await + [0]
+    // is the portable single-row read (#286).
+    const rows = await opts.db
       .select()
       .from(opts.table)
       .where(eq(opts.table.id, idValue))
-      .get();
+      .limit(1);
+    const row = (rows as unknown[])[0];
     return row ? c.json(row) : c.json({ error: "not_found" }, 404);
   });
 }
