@@ -36,6 +36,23 @@
               }
             },
             {
+              "field.object": {
+                "name": "moment",
+                "@column": "moment",
+                "@storage": "jsonb",
+                "@objectRef": "jsonbtest::Moment"
+              }
+            },
+            {
+              "field.object": {
+                "name": "moments",
+                "@column": "moments",
+                "@storage": "jsonb",
+                "@objectRef": "jsonbtest::Moment",
+                "isArray": true
+              }
+            },
+            {
               "identity.primary": {
                 "name": "primary",
                 "@fields": ["id"],
@@ -60,6 +77,33 @@
               "field.int": {
                 "name": "fontSize",
                 "@column": "fontSize"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "Moment",
+          "@object": "com.metaobjects.object.value.ValueObject",
+          "children": [
+            {
+              "field.timestamp": {
+                "name": "at",
+                "@column": "at"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "atLocal",
+                "@column": "atLocal",
+                "@localTime": true
+              }
+            },
+            {
+              "field.date": {
+                "name": "on",
+                "@column": "on"
               }
             }
           ]

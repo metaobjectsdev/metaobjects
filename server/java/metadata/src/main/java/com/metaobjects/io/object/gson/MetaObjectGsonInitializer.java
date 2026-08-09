@@ -31,6 +31,15 @@ public class MetaObjectGsonInitializer {
     private final static GsonBuilder addAdaptersToBuilder(MetaDataLoader loader, GsonBuilder builder,
                                                          boolean addSerializer, boolean addDeserializer) {
 
+        // Canonical java.util.Date wire form for every REFLECTIVELY-serialized Date — chiefly a
+        // temporal property on a registry-bound POJO, which never reaches MetaObjectSerializer
+        // and so used to take Gson's locale-, timezone-dependent and millisecond-lossy default.
+        // The metadata-driven path is unaffected (MetaObjectSerializer's DATE branch formats and
+        // addProperty's directly rather than delegating to context.serialize).
+        TemporalGsonAdapter temporal = new TemporalGsonAdapter();
+        if (addSerializer) builder.registerTypeAdapter(java.util.Date.class, (com.google.gson.JsonSerializer<java.util.Date>) temporal);
+        if (addDeserializer) builder.registerTypeAdapter(java.util.Date.class, (com.google.gson.JsonDeserializer<java.util.Date>) temporal);
+
         List<Class> classList = new ArrayList<>();
 
         Map<MetaObject,Class> nameClassMap = getMetaObjectToClassMap(loader);
