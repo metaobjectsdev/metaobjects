@@ -1059,6 +1059,12 @@ public class GenericSQLDriver implements DatabaseDriver {
                         set.append("<= ?");
                         break;
 
+                    // Case-sensitive, verbatim pattern — the column is NOT UPPER-wrapped
+                    // above for LIKE, so this is a plain SQL LIKE.
+                    case Expression.LIKE:
+                        set.append("LIKE ?");
+                        break;
+
                     case Expression.EQUALS_IGNORE_CASE:
                     case Expression.CONTAIN:
                     case Expression.START_WITH:
@@ -1084,7 +1090,9 @@ public class GenericSQLDriver implements DatabaseDriver {
                 if (c == Expression.EQUAL || c == Expression.NOT_EQUAL
                         || c == Expression.GREATER || c == Expression.LESSER
                         || c == Expression.EQUAL_GREATER
-                        || c == Expression.EQUAL_LESSER) {
+                        || c == Expression.EQUAL_LESSER
+                        // LIKE binds the pattern VERBATIM — no %-wrapping, no UPPER().
+                        || c == Expression.LIKE) {
                     args.add(new SQLArg(f, exp.getValue()));
                 } else if (c == Expression.CONTAIN
                         || c == Expression.NOT_CONTAIN

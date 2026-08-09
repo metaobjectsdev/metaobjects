@@ -35,6 +35,19 @@ public class Expression
     public final static int NOT_END_WITH    = 11;
     public final static int EQUALS_IGNORE_CASE = 12;
 
+    /**
+     * Case-sensitive SQL {@code LIKE} with the pattern passed through VERBATIM — the
+     * caller supplies its own {@code %} / {@code _} wildcards and controls anchoring.
+     *
+     * Distinct from {@link #CONTAIN} / {@link #START_WITH} / {@link #END_WITH}, which wrap
+     * both column and value in {@code UPPER(...)} (case-INsensitive) and add the wildcards
+     * themselves. Those cannot express the cross-port REST filter contract, whose
+     * {@code like} operator is case-sensitive full SQL LIKE with author-supplied wildcards
+     * — including interior ones ({@code "a%b"}) that the anchored conditions have no way
+     * to represent at all.
+     */
+    public final static int LIKE            = 13;
+
     ///**
     // * @deprecated Replaced with CONTAIN
     // */

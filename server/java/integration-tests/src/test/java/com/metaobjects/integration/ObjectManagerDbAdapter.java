@@ -330,19 +330,20 @@ final class ObjectManagerDbAdapter {
     }
 
     /**
-     * Java's Expression has no native IN — compose as OR'd EQUALs. Order
-     * is whatever the iteration order of the list gives; the SQL renderer
-     * still produces a logically-equivalent WHERE clause.
+     * Use the driver's NATIVE `IN (?,?,…)` rendering: GenericSQLDriver already emits a
+     * parameterized IN list when an EQUAL expression's value is a Collection.
+     *
+     * The previous comment here ("Java's Expression has no native IN") was wrong, and the
+     * OR-chain it justified was actively unsafe: ExpressionOperator renders WITHOUT
+     * parentheses (only an explicit ExpressionGroup adds them), so `in` combined with any
+     * second predicate produced `a=1 OR a=2 AND b=3`, which SQL regroups as
+     * `a=1 OR (a=2 AND b=3)` — silently returning wrong rows. Unexercised only because no
+     * corpus scenario mixes `in` with another filter.
      */
     private static Expression compileIn(String field, Object value) {
         if (!(value instanceof List<?> list) || list.isEmpty())
             throw new IllegalArgumentException("`in` op on field '" + field + "' requires a non-empty list");
-        Expression acc = null;
-        for (Object v : list) {
-            Expression eq = new Expression(field, v, Expression.EQUAL);
-            acc = acc == null ? eq : acc.or(eq);
-        }
-        return acc;
+        return new Expression(field, list, Expression.EQUAL);
     }
 
     /**
@@ -351,18 +352,20 @@ final class ObjectManagerDbAdapter {
      * END_WITH operator. Strips the {@code %} markers because Java's SQL
      * renderer re-adds them per operator (see GenericSQLDriver).
      */
+    /**
+     * Pass the pattern through VERBATIM via {@link Expression#LIKE}.
+     *
+     * This previously decomposed the `%` wildcards onto CONTAIN / START_WITH / END_WITH,
+     * which the driver renders as `UPPER(col) LIKE UPPER(?)` — i.e. case-INSENSITIVE,
+     * while the cross-port contract's `like` is case-sensitive SQL LIKE. It also could not
+     * express an interior wildcard ("a%b") at all, and stripping the outer `%` left any
+     * interior `%`/`_` live inside the re-wrapped pattern, so the behavior was neither
+     * strict nor correct. Expression.LIKE binds the author's pattern as written.
+     */
     private static Expression compileLike(String field, Object value) {
         if (!(value instanceof String pattern))
             throw new IllegalArgumentException("`like` op on field '" + field + "' requires a string value");
-        boolean prefix = pattern.startsWith("%");
-        boolean suffix = pattern.endsWith("%");
-        String core = pattern;
-        if (suffix) core = core.substring(0, core.length() - 1);
-        if (prefix) core = core.substring(1);
-        if (prefix && suffix) return new Expression(field, core, Expression.CONTAIN);
-        if (prefix)           return new Expression(field, core, Expression.END_WITH);
-        if (suffix)           return new Expression(field, core, Expression.START_WITH);
-        return new Expression(field, core, Expression.EQUAL);
+        return new Expression(field, pattern, Expression.LIKE);
     }
 
     private static Expression and(Expression a, Expression b) {
@@ -397,9 +400,17 @@ final class ObjectManagerDbAdapter {
         return head;
     }
 
-    /** {@link Range} is (start, end) 0-indexed inclusive. Offset defaults to 0 when absent. */
+    /**
+     * {@link Range} is **1-BASED and inclusive**, not 0-indexed — the drivers emit
+     * `OFFSET start-1` and `LIMIT end-start+1` (see PostgresDriver.getRangeString,
+     * DerbyDriver.getRangeString). This previously passed the REST offset straight
+     * through as `start`, so `offset=1` produced `start=1`, the driver's `start > 1`
+     * guard skipped OFFSET entirely, and the query returned rows from the beginning
+     * instead of skipping one. Latent because no persistence query scenario uses a
+     * nonzero offset.
+     */
     private static Range buildRange(Integer offset, int limit) {
-        int start = offset == null ? 0 : offset;
+        int start = (offset == null ? 0 : offset) + 1;
         return new Range(start, start + limit - 1);
     }
 
