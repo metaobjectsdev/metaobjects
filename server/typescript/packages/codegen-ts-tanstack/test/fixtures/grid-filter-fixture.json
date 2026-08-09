@@ -6,13 +6,20 @@
           "name": "Subscriber",
           "children": [
             {
+              "source.rdb": {
+                "@table": "subscribers"
+              }
+            },
+            {
               "field.long": {
                 "name": "id",
                 "children": [
                   {
                     "identity.primary": {
                       "name": "id",
-                      "@fields": ["id"],
+                      "@fields": [
+                        "id"
+                      ],
                       "@generation": "increment"
                     }
                   }
@@ -23,20 +30,32 @@
               "field.string": {
                 "name": "email",
                 "@filterable": true,
-                "children": [{ "view.text": {} }]
+                "children": [
+                  {
+                    "view.text": {}
+                  }
+                ]
               }
             },
             {
               "field.boolean": {
                 "name": "subscribed",
                 "@filterable": true,
-                "children": [{ "view.text": {} }]
+                "children": [
+                  {
+                    "view.text": {}
+                  }
+                ]
               }
             },
             {
               "field.timestamp": {
                 "name": "createdAt",
-                "children": [{ "view.date": {} }]
+                "children": [
+                  {
+                    "view.date": {}
+                  }
+                ]
               }
             },
             {
@@ -44,8 +63,13 @@
                 "name": "active",
                 "@pageSize": 25,
                 "@filterable": true,
-                "@filter": { "subscribed": true },
-                "@columns": ["email", "subscribed"]
+                "@filter": {
+                  "subscribed": true
+                },
+                "@columns": [
+                  "email",
+                  "subscribed"
+                ]
               }
             }
           ]

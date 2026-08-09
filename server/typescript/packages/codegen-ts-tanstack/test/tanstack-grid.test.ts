@@ -9,6 +9,7 @@ import { FileSource } from "@metaobjectsdev/metadata/core";
 const FIXTURE        = resolve(import.meta.dir, "fixtures", "single-entity.json");
 const MULTI_GRID     = resolve(import.meta.dir, "fixtures", "multi-grid-entity.json");
 const GRID_FILTER    = resolve(import.meta.dir, "fixtures", "grid-filter-fixture.json");
+const NO_GRID        = resolve(import.meta.dir, "fixtures", "no-grid-layout.json");
 
 async function ctxFor(fixturePath: string): Promise<GenContext> {
   const { root } = await new MetaDataLoader().load([new FileSource(fixturePath)]);
@@ -68,16 +69,14 @@ describe("tanstackGrid() factory", () => {
 
   test("entity with no data-grid view emits nothing (factory filter rejects)", async () => {
     // The factory's filter checks for data-grid presence; if absent, filter returns false.
-    const gen = tanstackGrid();
-    // Synthesize a fake entity without grids:
-    const fakeEntity = {
-      name: "X",
-      // ADR-0039: the filter now resolves @emit* via attr() (own + inherited).
-      attr: () => undefined,
-      ownAttr: () => undefined,
-      layouts: () => [] as any[],
-    } as any;
-    expect(gen.filter?.(fakeEntity)).toBe(false);
+    // Uses a REAL loaded entity (sourced, no layout.dataGrid) rather than a hand-rolled
+    // stub: the stub this replaced implemented only the three accessors the filter
+    // happened to call, so it silently broke the moment the filter began consulting a
+    // fourth (`children()`, via the #248 source gate) — a fake that has to be updated
+    // in lockstep with the code it tests is not testing much.
+    const { root } = await new MetaDataLoader().load([new FileSource(NO_GRID)]);
+    const author = root.objects().find((o) => o.name === "Author")!;
+    expect(tanstackGrid().filter?.(author)).toBe(false);
   });
 
   test("grid with @filter emits typed filter const", async () => {

@@ -7,10 +7,31 @@
           "package": "shop::commerce",
           "@emitForm": true,
           "children": [
-            { "field.long": { "name": "id", "children": [
-              { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
-            ] } },
-            { "field.string": { "name": "title", "@required": true } }
+            {
+              "source.rdb": {
+                "@table": "products"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "children": [
+                  {
+                    "identity.primary": {
+                      "name": "id",
+                      "@fields": "id",
+                      "@generation": "increment"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "field.string": {
+                "name": "title",
+                "@required": true
+              }
+            }
           ]
         }
       }

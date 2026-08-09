@@ -6,13 +6,20 @@
           "name": "Subscriber",
           "children": [
             {
+              "source.rdb": {
+                "@table": "subscribers"
+              }
+            },
+            {
               "field.long": {
                 "name": "id",
                 "children": [
                   {
                     "identity.primary": {
                       "name": "id",
-                      "@fields": ["id"],
+                      "@fields": [
+                        "id"
+                      ],
                       "@generation": "increment"
                     }
                   }
@@ -22,13 +29,21 @@
             {
               "field.string": {
                 "name": "email",
-                "children": [{ "view.text": {} }]
+                "children": [
+                  {
+                    "view.text": {}
+                  }
+                ]
               }
             },
             {
               "field.timestamp": {
                 "name": "createdAt",
-                "children": [{ "view.date": {} }]
+                "children": [
+                  {
+                    "view.date": {}
+                  }
+                ]
               }
             },
             {
@@ -38,7 +53,10 @@
                 "@defaultSortField": "createdAt",
                 "@defaultSortOrder": "desc",
                 "@filterable": true,
-                "@columns": ["email", "createdAt"]
+                "@columns": [
+                  "email",
+                  "createdAt"
+                ]
               }
             }
           ]

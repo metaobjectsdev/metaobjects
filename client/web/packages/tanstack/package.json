@@ -45,22 +45,15 @@
     "access": "public"
   },
   "dependencies": {
-    "@metaobjectsdev/runtime-web": "workspace:*",
-    "@metaobjectsdev/react": "workspace:*"
+    "@metaobjectsdev/runtime-web": "workspace:*"
   },
   "peerDependencies": {
-    "@tanstack/react-query": ">=5.90.0",
-    "@tanstack/react-table": ">=8.20.0",
-    "react": ">=18.0.0"
+    "@tanstack/react-query": "^5.90.0",
+    "@tanstack/react-table": "^8.20.0",
+    "react": ">=18.0.0 <20.0.0"
   },
   "peerDependenciesMeta": {
     "@tanstack/react-query": {
-      "optional": true
-    },
-    "@tanstack/react-table": {
-      "optional": true
-    },
-    "react": {
       "optional": true
     }
   },

@@ -1,7 +1,7 @@
 {
   "name": "@metaobjectsdev/codegen-ts-angular",
   "version": "0.6.0",
-  "description": "Angular 18 codegen for metaobjects — emits <Entity>.service.ts, <Entity>.form.component.ts, and <Entity>.grid.component.ts files targeting @metaobjectsdev/angular.",
+  "description": "Angular 18 codegen for metaobjects \u2014 emits <Entity>.service.ts, <Entity>.form.component.ts, and <Entity>.grid.component.ts files targeting @metaobjectsdev/angular.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -12,7 +12,12 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "src", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p .",
     "typecheck": "tsc -p tsconfig.typecheck.json",
@@ -21,21 +26,32 @@
   "license": "Apache-2.0",
   "author": "Doug Mealing <doug@dougmealing.com>",
   "homepage": "https://metaobjects.dev",
-  "bugs": { "url": "https://github.com/metaobjectsdev/metaobjects/issues" },
+  "bugs": {
+    "url": "https://github.com/metaobjectsdev/metaobjects/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/metaobjectsdev/metaobjects.git",
     "directory": "server/typescript/packages/codegen-ts-angular"
   },
-  "keywords": ["metaobjects", "codegen", "angular", "angular18", "forms", "data-grid"],
-  "publishConfig": { "access": "public" },
+  "keywords": [
+    "metaobjects",
+    "codegen",
+    "angular",
+    "angular18",
+    "forms",
+    "data-grid"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@metaobjectsdev/metadata": "workspace:*",
     "@metaobjectsdev/codegen-ts": "workspace:*",
     "ts-poet": "^6.10.0"
   },
   "peerDependencies": {
-    "@biomejs/biome": ">=1.9.0"
+    "@biomejs/biome": ">=1.9.0 <3.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",

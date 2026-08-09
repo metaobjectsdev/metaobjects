@@ -6,20 +6,36 @@
           "name": "Author",
           "children": [
             {
+              "source.rdb": {
+                "@table": "authors"
+              }
+            },
+            {
               "field.long": {
                 "name": "id",
                 "children": [
                   {
                     "identity.primary": {
                       "name": "id",
-                      "@fields": ["id"],
+                      "@fields": [
+                        "id"
+                      ],
                       "@generation": "increment"
                     }
                   }
                 ]
               }
             },
-            { "field.string": { "name": "name", "children": [{ "view.text": {} }] } }
+            {
+              "field.string": {
+                "name": "name",
+                "children": [
+                  {
+                    "view.text": {}
+                  }
+                ]
+              }
+            }
           ]
         }
       },
@@ -28,20 +44,36 @@
           "name": "Post",
           "children": [
             {
+              "source.rdb": {
+                "@table": "posts"
+              }
+            },
+            {
               "field.long": {
                 "name": "id",
                 "children": [
                   {
                     "identity.primary": {
                       "name": "id",
-                      "@fields": ["id"],
+                      "@fields": [
+                        "id"
+                      ],
                       "@generation": "increment"
                     }
                   }
                 ]
               }
             },
-            { "field.string": { "name": "title", "children": [{ "view.text": {} }] } }
+            {
+              "field.string": {
+                "name": "title",
+                "children": [
+                  {
+                    "view.text": {}
+                  }
+                ]
+              }
+            }
           ]
         }
       }
