@@ -150,14 +150,14 @@ function compileOp(
     throw new FilterParseError("filter.unsupported_op", `Op "${op}" not supported for field "${field}".`, { field, op, allowed: rule.ops });
   }
   switch (op as FilterOp) {
-    case "eq":  return eq(col as any, coerce(value, rule.subType, field, op));
-    case "ne":  return ne(col as any, coerce(value, rule.subType, field, op));
-    case "gt":  return gt(col as any, coerce(value, rule.subType, field, op));
-    case "gte": return gte(col as any, coerce(value, rule.subType, field, op));
-    case "lt":  return lt(col as any, coerce(value, rule.subType, field, op));
-    case "lte": return lte(col as any, coerce(value, rule.subType, field, op));
+    case "eq":  return eq(col as any, coerce(value, rule.subType, field, op, rule.dateValues));
+    case "ne":  return ne(col as any, coerce(value, rule.subType, field, op, rule.dateValues));
+    case "gt":  return gt(col as any, coerce(value, rule.subType, field, op, rule.dateValues));
+    case "gte": return gte(col as any, coerce(value, rule.subType, field, op, rule.dateValues));
+    case "lt":  return lt(col as any, coerce(value, rule.subType, field, op, rule.dateValues));
+    case "lte": return lte(col as any, coerce(value, rule.subType, field, op, rule.dateValues));
     case "in": {
-      const list = String(value).split(",").map((v) => coerce(v.trim(), rule.subType, field, op));
+      const list = String(value).split(",").map((v) => coerce(v.trim(), rule.subType, field, op, rule.dateValues));
       if (list.length > maxInList) {
         throw new FilterParseError("filter.in_too_large", `In-list size ${list.length} exceeds limit ${maxInList}.`, { field, limit: maxInList });
       }
@@ -180,7 +180,7 @@ function compileOp(
   }
 }
 
-function coerce(value: unknown, subType: string, field: string, op: string): unknown {
+function coerce(value: unknown, subType: string, field: string, op: string, dateValues?: boolean): unknown {
   if (value === null || value === undefined) return null;
   const s = typeof value === "string" ? value : String(value);
   switch (subType) {
@@ -197,21 +197,25 @@ function coerce(value: unknown, subType: string, field: string, op: string): unk
       }
       return n;
     }
-    // KNOWN LIMITATION (codegen-ts's `timestampMode: "date"` config option,
-    // Important-4 assessment): this keeps the qs value a STRING unconditionally.
-    // Under codegen's Postgres-only "date" mode the Drizzle column is Date-typed
-    // and calls `value.toISOString()` on any bound value — comparing it against a
-    // string here throws `TypeError: value.toISOString is not a function` for
-    // every op except isNull (eq/ne/gt/gte/lt/lte/in all bind through the same
-    // typed column). Not reachable in the default "string" mode (the only mode
-    // this parser was originally designed against). A correct fix needs the
-    // entity's `timestampMode` threaded from codegen into the generated
-    // allowlist or mount options so this function can `new Date(s)` — deferred
-    // as a separate, more invasive change; do not filter a "date"-mode timestamp
-    // field until that lands. `codegen-ts`'s `runGen` warns (once per run) at
-    // generation time when this combination is reachable — see the Important-4
-    // check in runner.ts — but does not refuse the build.
-    case "datetime": return s;
+    // Under codegen's Postgres-only `timestampMode: "date"` the Drizzle column is
+    // Date-typed and calls `value.toISOString()` on any bound value, so passing the
+    // raw qs string through threw `TypeError: value.toISOString is not a function`
+    // for every op except isNull. The generated allowlist now carries `dateValues`
+    // for exactly those columns (see FilterFieldRule), so the value is bound as a
+    // real Date. In the default "string" mode — and for field.date / field.time,
+    // which Drizzle types as strings under every dialect — the flag is absent and
+    // the value stays a string, unchanged.
+    case "datetime": {
+      if (dateValues !== true) return s;
+      const d = new Date(s);
+      // `new Date("garbage")` yields an Invalid Date rather than throwing; binding
+      // one would emit `NaN`-shaped SQL. Reject at the boundary, matching how the
+      // number and boolean cases report a malformed value.
+      if (Number.isNaN(d.getTime())) {
+        throw new FilterParseError("filter.invalid_value", `Field "${field}" op "${op}" requires a date, got "${s}".`, { field, op, expected: "date" });
+      }
+      return d;
+    }
     default: return s;
   }
 }

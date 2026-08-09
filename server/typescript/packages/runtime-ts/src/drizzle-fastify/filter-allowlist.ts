@@ -20,6 +20,18 @@ export interface FilterFieldRule {
   readonly ops: readonly FilterOp[];
   readonly subType: FilterSubType;
   readonly leadingWildcard: boolean;
+  /**
+   * `subType: "datetime"` only. Set by codegen when the column was emitted under
+   * `timestampMode: "date"`, i.e. the Drizzle column binds a JS `Date` rather than an
+   * ISO string. The filter parser then coerces the query-string value with `new Date(...)`
+   * instead of passing the raw string through — binding a string to a Date-typed column
+   * throws `value.toISOString is not a function` at request time.
+   *
+   * Optional and defaulting to false, so an allowlist generated before this existed keeps
+   * its exact previous behavior. `field.date` / `field.time` never set it: Drizzle types
+   * both as strings under every dialect, so they are not governed by `timestampMode`.
+   */
+  readonly dateValues?: boolean;
 }
 
 export type FilterAllowlist = Readonly<Record<string, FilterFieldRule>>;

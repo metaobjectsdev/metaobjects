@@ -121,13 +121,13 @@ export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport"
    * porting docs). This keeps the option a safe no-op on sqlite/D1 instead of
    * emitting a non-compiling column + a Zod schema disagreeing with it.
    *
-   * Date-mode filtering (`?filter[<timestamp>][gte]=...`) is not yet supported —
-   * `runtime-ts`'s filter parser keeps the qs value a string, which throws at
-   * request time against a Date-mode Drizzle column. Known limitation; not
-   * threaded through at runtime, but `runGen` DOES warn (once per run, naming
-   * every offending entity+field) when this mode meets a `@filterable`
-   * `field.timestamp` — see `runner.ts`'s Important-4 check. Track before
-   * recommending date mode for a filterable timestamp field.
+   * Date-mode filtering (`?filter[<timestamp>][gte]=...`) IS supported: a
+   * `@filterable` `field.timestamp` generated under this mode carries
+   * `dateValues: true` in its `FilterAllowlist` rule, and `runtime-ts`'s filter
+   * parser coerces the query-string value with `new Date(...)` rather than binding
+   * a string against a Date-typed column (a malformed value is rejected as
+   * `filter.invalid_value`). `field.date` / `field.time` are unaffected — Drizzle
+   * types both as strings under every dialect.
    */
   timestampMode?: "date" | "string";
   /** Path prefix applied to generated route registrations + hook fetch URLs. Defaults to "". */

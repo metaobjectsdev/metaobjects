@@ -16,6 +16,7 @@ import {
   opsForSubType,
 } from "@metaobjectsdev/metadata";
 import { sortableFields } from "./filter-shared.js";
+import type { RenderContext } from "../render-context.js";
 
 const NUMBER_SUBTYPES = new Set<string>([
   FIELD_SUBTYPE_INT,
@@ -52,8 +53,15 @@ function filterableFields(entity: MetaObject, exclude?: string): MetaField[] {
  * `exclude` (FR-017): drop a field from the allowlist. Used by per-subtype TPH
  * allowlists to omit the discriminator — it's pinned by the per-subtype route
  * path, so a client must not filter on it.
+ *
+ * `ctx` supplies `timestampMode`: under `"date"` a `field.timestamp` column binds a JS
+ * `Date`, so its rule carries `dateValues: true` and runtime-ts's filter parser coerces
+ * the query-string value with `new Date(...)` rather than binding a string against a
+ * Date-typed column (which threw at request time). `ctx.timestampMode` is already
+ * normalized to `"string"` for sqlite/D1 at both config choke points, so no dialect
+ * branching is needed here. Absent `ctx`, or in the default mode, output is unchanged.
  */
-export function renderFilterAllowlist(entity: MetaObject, exclude?: string): Code {
+export function renderFilterAllowlist(entity: MetaObject, exclude?: string, ctx?: RenderContext): Code {
   const fields = filterableFields(entity, exclude);
   if (fields.length === 0) {
     return code`
@@ -66,7 +74,12 @@ export const ${entity.name}FilterAllowlist = {} as const satisfies FilterAllowli
     .map((f) => {
       const ops = opsForSubType(f.subType).map((o) => JSON.stringify(o)).join(", ");
       const sub = filterSubTypeFor(f.subType);
-      return `  ${f.name}: { ops: [${ops}] as const, subType: ${JSON.stringify(sub)} as const, leadingWildcard: false }`;
+      // Only field.timestamp is governed by timestampMode — Drizzle types
+      // field.date / field.time as strings under every dialect.
+      const dateValues = ctx?.timestampMode === "date" && f.subType === FIELD_SUBTYPE_TIMESTAMP
+        ? ", dateValues: true as const"
+        : "";
+      return `  ${f.name}: { ops: [${ops}] as const, subType: ${JSON.stringify(sub)} as const, leadingWildcard: false${dateValues} }`;
     })
     .join(",\n");
   return code`
