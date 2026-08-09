@@ -1,7 +1,7 @@
 import { join, relative, resolve, isAbsolute, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import type { MetaData, MetaObject } from "@metaobjectsdev/metadata";
 import { MetaRoot, OBJECT_SUBTYPE_VALUE, FIELD_SUBTYPE_TIMESTAMP, FIELD_ATTR_FILTERABLE } from "@metaobjectsdev/metadata";
 import { assignEmittedNames } from "./naming/collision-names.js";
@@ -49,6 +49,17 @@ export interface RunGenOpts {
    *  different). "fresh" → overwrite and re-baseline (the `--baseline=fresh`
    *  CLI flag). */
   baseline?: BaselineMode;
+  /**
+   * Preview only — render and report, touching NOTHING on disk (no output files,
+   * no `.gen-state/` snapshot). Backs `meta gen --dry-run`.
+   *
+   * Until 0.21.x the flag existed only in the CLI's *display* object and was never
+   * passed here, so `--dry-run` wrote every file exactly like a real run — while the
+   * website, `meta init`'s next-steps and the CLI help all called it "preview without
+   * writing". A fresh adopter found it by deleting a generated file, running
+   * `--dry-run`, and watching it reappear.
+   */
+  dryRun?: boolean;
 }
 
 export interface RunGenResult {
@@ -352,6 +363,21 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // 5. Write phase.
   const writes: WriteResult[] = [];
   const conflicts: WriteResult[] = [];
+
+  // --dry-run: report what WOULD be written and touch nothing — no output files
+  // and no .gen-state/ snapshot (writing the snapshot would silently re-baseline
+  // the merge base, so a later real run could skip a genuinely-needed write).
+  if (opts.dryRun === true) {
+    for (const file of emitted) {
+      // Report the outcome faithfully rather than a placeholder: a path that does
+      // not exist yet would be created ("new"), one that does would be rewritten.
+      // Merge/conflict outcomes can't be known without doing the merge, so this
+      // deliberately reports the coarser truth instead of guessing.
+      writes.push({ path: file.fullPath, status: existsSync(file.fullPath) ? "overwrite" : "new" });
+    }
+    return { files: writes, warnings, conflicts };
+  }
+
   for (const file of emitted) {
     // Key the snapshot by project-relative path so multi-target projects keep
     // distinct entries (e.g. `database/Post.ts` vs `web/Post.queries.ts`).

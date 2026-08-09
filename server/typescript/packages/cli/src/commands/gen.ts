@@ -78,6 +78,9 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
       metadata,
       projectRoot,
       baseline: flags.baseline,
+      // --dry-run must actually preview. This was previously passed only to the
+      // display object below, so a "preview" run wrote every file.
+      dryRun: cliConfig.dryRun,
       ...(cliConfig.entities.length > 0 ? { entityFilter: cliConfig.entities } : {}),
     });
   } catch (err) {

@@ -101,7 +101,7 @@ Flags:
 Generates TS code (Drizzle schema, Zod validators, query helpers, TanStack Query hooks, etc.) from `metaobjects/` entity metadata. Generator wiring lives in `metaobjects.config.ts`; `meta gen` errors out if that file is missing.
 
 Flags:
-- `--dry-run` — informational; files still written (true no-write planned)
+- `--dry-run` — preview only: renders and reports what would be written, touching nothing on disk (no output files, no `.gen-state/` snapshot)
 - `--no-antipatterns` — suppress the advisory anti-pattern pass (see below)
 
 Positional args filter entities by name. All other knobs (`outDir`, `targets`, `dialect`, `dbImport`, `extStyle`, `apiPrefix`, generator list) live in `metaobjects.config.ts`.
