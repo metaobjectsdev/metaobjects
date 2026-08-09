@@ -165,7 +165,12 @@ type Dialect = (typeof DIALECTS)[number];
 export const MIGRATE_FORMATS = ["default", "flyway"] as const;
 export type MigrateFormat = (typeof MIGRATE_FORMATS)[number];
 
-const ALLOW_TOKENS = [
+// Exported (not just module-local) so allow-tokens-pinned.test.ts can pin it
+// against sdk's AllowTokenEnum (config.json's static migrate.allow validator)
+// — the two lists drifted silently before that test existed: sdk's enum was
+// missing 5 of these 11 tokens, so a token that worked fine on the CLI was
+// REJECTED when set in .metaobjects/config.json.
+export const ALLOW_TOKENS = [
   "drop-column",
   "drop-table",
   "type-change",

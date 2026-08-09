@@ -6,13 +6,30 @@ const DialectEnum = z.enum(["sqlite", "postgres", "d1"]);
 
 const OnAmbiguousEnum = z.enum(["abort", "rename", "drop-add"]);
 
-const AllowTokenEnum = z.enum([
+/**
+ * Kept in lockstep with the CLI's authoritative `ALLOW_TOKENS`
+ * (`cli/src/lib/args.ts`) by hand — `sdk` has no dependency on `cli` (the
+ * dependency runs the other way: `cli` depends on `sdk`), so this list
+ * cannot import that one. `cli`'s `allow-tokens-pinned.test.ts` is the
+ * drift guard: it imports BOTH `ALLOW_TOKENS` and this enum's `.options`
+ * and asserts they're the same set, so an out-of-sync edit here fails that
+ * test rather than silently rejecting a token the CLI itself accepts (as
+ * happened before `drop-check`/`drop-view`/`drop-view-cascade`/
+ * `adopt-view`/`drop-identity-default` were added to `cli` without a
+ * matching update here).
+ */
+export const AllowTokenEnum = z.enum([
   "drop-column",
   "drop-table",
   "type-change",
   "drop-index",
   "drop-fk",
+  "drop-check",
+  "drop-view",
+  "drop-view-cascade",
+  "adopt-view",
   "nullable-to-not-null",
+  "drop-identity-default",
 ]);
 
 const D1Block = z.object({
