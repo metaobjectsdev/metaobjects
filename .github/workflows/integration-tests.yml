@@ -116,8 +116,14 @@ jobs:
   # migrate-ts PG integration tests — the apply / lifecycle / rollback +
   # introspection suites that exercise REAL Postgres behavior (advisory locks,
   # multi-tenant ledger, down-migrations) that pg-mem cannot fake. They
-  # `describe.skip` unless MIGRATE_TS_PG_URL is set, so no workflow ran them
-  # until now. A `services: postgres` container supplies the URL.
+  # `describe.skip` unless MIGRATE_TS_PG_URL is set; a `services: postgres`
+  # container supplies the URL.
+  #
+  # The PRIMARY gate for these suites is local-ci.yml's ts-slow lane, on every push
+  # to main. This job is the cold-environment RELEASE BACKSTOP on the v* tag. Tags
+  # are pushed AFTER publish (docs/RELEASING.md), so red HERE means a broken release
+  # is already live on four immutable registries — treat it as an incident, never as
+  # noise. That inversion is exactly how this lane sat red for eight releases.
   migrate-ts-pg:
     runs-on: ubuntu-latest
     services:
@@ -150,4 +156,7 @@ jobs:
       - name: Run migrate-ts suite against real Postgres
         env:
           MIGRATE_TS_PG_URL: postgres://migrate:migrate@localhost:5432/migrate_test
+          # Arms the in-suite sentinel: if the URL above ever stops being set, the
+          # suite FAILS instead of silently skipping and reporting a green release gate.
+          MIGRATE_TS_PG_EXPECT: '1'
         run: cd server/typescript/packages/migrate-ts && bun test

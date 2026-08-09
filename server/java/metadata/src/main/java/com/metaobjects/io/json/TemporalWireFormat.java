@@ -77,6 +77,28 @@ public final class TemporalWireFormat {
     }
 
     /**
+     * Write-side without field context: the tz-aware instant form
+     * ({@code "YYYY-MM-DDTHH:MM:SS[.fff]Z"}), identical to what {@link #format} produces for a
+     * default {@code field.timestamp}.
+     *
+     * <p>Used where a {@link Date} is serialized with no owning {@link MetaField} to consult —
+     * notably a {@code java.util.Date} property on a registry-bound POJO, which Gson serializes
+     * by plain reflection and so never reaches {@link #format}. Absent field context the
+     * {@code field.date} (date-only) and {@code @localTime} (no {@code Z}) shapes are
+     * unknowable, so this always emits the fully-qualified instant — the one form that is
+     * lossless, locale- and timezone-independent, and parseable by every port (and by
+     * {@link #parse}).
+     *
+     * @param d the value to format, or {@code null}
+     * @return the wire string, or {@code null} if {@code d} is {@code null}
+     */
+    public static String formatInstant(Date d) {
+        if (d == null) return null;
+        LocalDateTime wallClock = Instant.ofEpochMilli(d.getTime()).atZone(ZoneOffset.UTC).toLocalDateTime();
+        return wallClock.format(TIMESTAMP_FMT) + fractionalSuffix(wallClock.getNano()) + "Z";
+    }
+
+    /**
      * Read-side: tolerant parse, tried in order: {@link Instant#parse} (the {@code Z} form),
      * {@link LocalDateTime#parse} anchored at UTC (the no-{@code Z} form), then
      * {@link LocalDate#parse} at midnight UTC (the date-only form).

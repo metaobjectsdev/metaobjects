@@ -9,11 +9,14 @@
 // dynamically `import()` it, then call the real `safeParse`/`parse` on the
 // real Zod object it exports — not a string match.
 //
-// Covers the three Criticals + Important 5 found by that review, plus a
-// codegen-time WARNING for Important 4 (added on top after the initial fix
-// was reviewed clean — a cheap generation-time detect for the one runtime gap
-// left documented-not-fixed: filtering a date-mode timestamp throws at
-// request time; see runGen's warning + filter-parser.ts's limitation note):
+// Covers the three Criticals + Important 5 found by that review. Important 4
+// (filtering a date-mode timestamp threw at request time) was originally shipped
+// as a generation-time WARNING because the runtime fix was deferred; that fix has
+// since landed — the generated allowlist carries `dateValues` and runtime-ts's
+// parser coerces with `new Date(...)` — so the warning was removed and the last
+// describe block below now pins its ABSENCE. The behavioral pins for the fix
+// itself live in runtime-ts's filter-parser-date-mode test and in
+// templates/filter-allowlist.test.ts.
 //   CRITICAL 1 — z.date() rejects every JSON wire value; fix is z.coerce.date().
 //   CRITICAL 2 — sqlite/D1 + date mode used to emit non-compiling code (a
 //                regression #281 itself introduced); fix normalizes the mode
@@ -269,27 +272,19 @@ describe('IMPORTANT 4: runGen warns (once) when timestampMode: "date" meets a @f
     }
   }
 
-  test('warns exactly once, naming every offending entity+field, when dialect:"postgres" + timestampMode:"date"', async () => {
-    const { warnings } = await runWithMetadata(TWO_FILTERABLE_TIMESTAMPS, "postgres", "date");
-    const hits = warnings.filter((w) => w.includes('timestampMode: "date"'));
-    expect(hits.length).toBe(1); // once per run, not once per field/entity
-    expect(hits[0]).toContain("Post.updatedAt");
-    expect(hits[0]).toContain("Comment.postedAt");
-    expect(hits[0]).not.toContain("archivedAt"); // non-filterable — not named
-  });
-
-  test('silent in the default "string" mode (timestampMode omitted)', async () => {
-    const { warnings } = await runWithMetadata(TWO_FILTERABLE_TIMESTAMPS, "postgres");
-    expect(warnings.filter((w) => w.includes('timestampMode: "date"'))).toEqual([]);
-  });
-
-  test('silent when no field is both @filterable and a timestamp, even in date mode', async () => {
-    const { warnings } = await runWithMetadata(NO_FILTERABLE_TIMESTAMP, "postgres", "date");
-    expect(warnings.filter((w) => w.includes('timestampMode: "date"'))).toEqual([]);
-  });
-
-  test('silent under dialect:"sqlite" — timestampMode normalizes to "string" (Critical 2), so Important 4 never fires', async () => {
-    const { warnings } = await runWithMetadata(TWO_FILTERABLE_TIMESTAMPS, "sqlite", "date");
-    expect(warnings.filter((w) => w.includes('timestampMode: "date"'))).toEqual([]);
+  test("no warning is emitted in any mode — the limitation it announced is fixed", async () => {
+    // The warning was correct while date-mode filtering threw at request time. Now
+    // that the allowlist carries `dateValues` and the parser coerces, it would be
+    // crying wolf, so it is gone. Pinned in all four combinations so a revert of
+    // the fix cannot quietly re-land the warning instead of the behavior.
+    for (const [json, dialect, mode] of [
+      [TWO_FILTERABLE_TIMESTAMPS, "postgres", "date"],
+      [TWO_FILTERABLE_TIMESTAMPS, "postgres", undefined],
+      [NO_FILTERABLE_TIMESTAMP, "postgres", "date"],
+      [TWO_FILTERABLE_TIMESTAMPS, "sqlite", "date"],
+    ] as const) {
+      const { warnings } = await runWithMetadata(json, dialect, mode);
+      expect(warnings.filter((w) => w.includes('timestampMode: "date"'))).toEqual([]);
+    }
   });
 });

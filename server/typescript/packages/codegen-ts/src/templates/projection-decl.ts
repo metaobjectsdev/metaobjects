@@ -176,7 +176,7 @@ ${constFieldLines.join("\n")}
 } as const;
 `,
     ...(allowlists
-      ? [renderFilterAllowlist(projection), renderSortAllowlist(projection)]
+      ? [renderFilterAllowlist(projection, undefined, ctx), renderSortAllowlist(projection)]
       : []),
     renderFilterType(projection),
   ];

@@ -140,6 +140,16 @@ jobs:
           persist-credentials: false
       - env:
           METAOBJECTS_TEST_PG_URL: postgres://metaobjects:metaobjects@localhost:${{ job.services.postgres.ports['5432'] }}/metaobjects_test
+          # Arms migrate-ts's real-Postgres suites (apply / lifecycle / rollback /
+          # introspection) on every push to main. They previously ran ONLY on the v* tag
+          # push — strictly AFTER the immutable four-registry publish — and so sat red for
+          # eight straight releases (v0.20.11 … v0.21.1) with nobody looking. Reuses this
+          # job's existing sidecar; the suite is proven to coexist in one database in a
+          # serial run (the hosted tag job runs it against a single migrate_test DB).
+          MIGRATE_TS_PG_URL: postgres://metaobjects:metaobjects@localhost:${{ job.services.postgres.ports['5432'] }}/metaobjects_test
+          # Makes the in-suite sentinel FAIL if the URL above ever rots away (renamed
+          # variable, dropped sidecar) rather than describe.skip-ing in silence.
+          MIGRATE_TS_PG_EXPECT: '1'
         run: scripts/ci-local.sh --only ts-slow --strict-toolchains
 
   # Java FAST lane — java + kotlin conformance only (the quick correctness signal).

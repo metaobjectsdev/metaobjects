@@ -180,36 +180,11 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // 2. Resolve targets + entity-module target.
   const config = normalizeConfig(opts.config);
 
-  // Important-4 (post-#281 pre-publish review) — a @filterable timestamp field
-  // under timestampMode:"date" throws at REQUEST time in runtime-ts's filter
-  // parser (documented limitation; see drizzle-fastify/filter-parser.ts's
-  // "datetime" coerce case). Detect-and-WARN at generation time instead of
-  // leaving it a silent build-time no-signal (repo precedent: #226/#258
-  // detect-and-refuse an un-appliable migration at gen time rather than fail
-  // at apply). Reading config.timestampMode AFTER normalizeConfig means this is
-  // naturally silent on sqlite/D1 (normalized to "string" there) and in the
-  // default "string" mode — no dialect/mode branching needed here. One warning
-  // for the whole run, naming every offending entity+field, not one per field.
-  if (config.timestampMode === "date") {
-    const offenders = safeEntities
-      .filter((e) => !e.isAbstract)
-      .map((e) => ({
-        entity: e.name,
-        fields: e.fields()
-          .filter((f) => f.subType === FIELD_SUBTYPE_TIMESTAMP && f.attr(FIELD_ATTR_FILTERABLE) === true)
-          .map((f) => f.name),
-      }))
-      .filter((o) => o.fields.length > 0);
-    if (offenders.length > 0) {
-      const named = offenders.map((o) => `${o.entity}.${o.fields.join(",")}`).join("; ");
-      warnings.push(
-        `timestampMode: "date" — @filterable timestamp field(s) [${named}] will throw at ` +
-          `request time when filtered (e.g. ?filter[field][gte]=...) — runtime-ts's filter ` +
-          `parser does not yet thread the Date-mode column type through. Not enforced; ` +
-          `remove @filterable from these fields or avoid filtering them until this is fixed.`,
-      );
-    }
-  }
+  // (Historical: a warning stood here for a @filterable timestamp under
+  // timestampMode:"date", which used to throw at REQUEST time in runtime-ts's
+  // filter parser. That limitation is fixed — the generated allowlist now carries
+  // `dateValues: true` for a Date-mode timestamp column and the parser coerces with
+  // `new Date(...)` — so the warning was removed rather than left to cry wolf.)
 
   const targets = config.targets;
   const targetOf = (g: Generator): ResolvedTarget => {

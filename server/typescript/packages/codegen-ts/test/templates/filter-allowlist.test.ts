@@ -3,6 +3,9 @@ import { renderFilterAllowlist, renderSortAllowlist } from "../../src/templates/
 import { resolve } from "node:path";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
+import { makeRenderContext } from "../../src/render-context.js";
+import { buildPkMap } from "../../src/pk-resolver.js";
+import { buildRelationMap } from "../../src/relation-resolver.js";
 
 const FIXTURE = resolve(import.meta.dir, "..", "fixtures", "filter-fixture.json");
 
@@ -71,5 +74,56 @@ describe("renderSortAllowlist", () => {
     const out = renderSortAllowlist(entity).toString();
     expect(out).toContain("export const ProductSortAllowlist");
     expect(out).toMatch(/price:\s*\{/);
+  });
+});
+
+describe("renderFilterAllowlist — timestampMode date-mode marking", () => {
+  // A date-mode timestamp column binds a JS Date, so the rule must carry
+  // `dateValues: true` for runtime-ts's parser to coerce with `new Date(...)`
+  // instead of binding a string (which threw at request time). The behavioral
+  // half of this contract is pinned in runtime-ts's filter-parser-date-mode test.
+  async function allowlistFor(mode?: "date" | "string") {
+    const { root } = await new MetaDataLoader().load([new FileSource(FIXTURE)]);
+    const entity = root.objects().find((c) => c.name === "Subscriber")!;
+    const ctx = makeRenderContext({
+      dialect: "postgres",
+      ...(mode !== undefined && { timestampMode: mode }),
+      loadedRoot: root,
+      outDir: "/x",
+      dbImport: "~/db",
+      pkMap: buildPkMap(root),
+      relationMap: buildRelationMap(root),
+    });
+    return renderFilterAllowlist(entity, undefined, ctx).toString();
+  }
+
+  test('timestampMode:"date" marks the timestamp field and ONLY the timestamp field', async () => {
+    const out = await allowlistFor("date");
+    expect(out).toMatch(/createdAt:\s*\{[^}]*dateValues: true/);
+    // Non-timestamp fields must not be marked — the flag is meaningless for them
+    // and would make the parser try to Date-coerce a string or boolean.
+    expect(out).not.toMatch(/email:\s*\{[^}]*dateValues/);
+    expect(out).not.toMatch(/subscribed:\s*\{[^}]*dateValues/);
+  });
+
+  test('the default "string" mode emits no dateValues at all', async () => {
+    expect(await allowlistFor()).not.toContain("dateValues");
+    expect(await allowlistFor("string")).not.toContain("dateValues");
+  });
+
+  test('dialect:"sqlite" never marks — timestampMode normalizes to "string" there', async () => {
+    const { root } = await new MetaDataLoader().load([new FileSource(FIXTURE)]);
+    const entity = root.objects().find((c) => c.name === "Subscriber")!;
+    const ctx = makeRenderContext({
+      dialect: "sqlite", timestampMode: "date", loadedRoot: root,
+      outDir: "/x", dbImport: "~/db",
+      pkMap: buildPkMap(root), relationMap: buildRelationMap(root),
+    });
+    expect(renderFilterAllowlist(entity, undefined, ctx).toString()).not.toContain("dateValues");
+  });
+
+  test("no ctx (bare call) is unchanged", async () => {
+    const entity = await loadEntity("Subscriber");
+    expect(renderFilterAllowlist(entity).toString()).not.toContain("dateValues");
   });
 });

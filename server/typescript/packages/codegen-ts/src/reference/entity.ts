@@ -100,7 +100,7 @@ function renderEntity(entity: MetaObject, ctx: RenderContext, opts?: RenderEntit
     ...(enumAliases !== null ? [enumAliases] : []),
     renderZodValidators(entity, ctx),
     renderEntityConstants(entity, ctx.apiPrefix),
-    ...(allowlists ? [renderFilterAllowlist(entity), renderSortAllowlist(entity)] : []),
+    ...(allowlists ? [renderFilterAllowlist(entity, undefined, ctx), renderSortAllowlist(entity)] : []),
     renderFilterType(entity),
     ...(tphBlock !== null ? [tphBlock] : []),
   ];

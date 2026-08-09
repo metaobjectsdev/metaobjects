@@ -95,6 +95,32 @@ public class JsonbFieldDBTest {
         public void setWeight(int weight) { this.weight = weight; }
     }
 
+    /**
+     * Public mutable POJO matching jsonbtest::Moment — the temporal value-object (#275).
+     * `at` is a default tz-aware field.timestamp, `atLocal` a field.timestamp @localTime,
+     * and `on` a field.date; together they cover all three TemporalWireFormat shapes.
+     */
+    public static class Moment {
+        private java.util.Date at;
+        private java.util.Date atLocal;
+        private java.util.Date on;
+
+        public Moment() {}
+
+        public Moment(java.util.Date at, java.util.Date atLocal, java.util.Date on) {
+            this.at = at;
+            this.atLocal = atLocal;
+            this.on = on;
+        }
+
+        public java.util.Date getAt() { return at; }
+        public void setAt(java.util.Date at) { this.at = at; }
+        public java.util.Date getAtLocal() { return atLocal; }
+        public void setAtLocal(java.util.Date atLocal) { this.atLocal = atLocal; }
+        public java.util.Date getOn() { return on; }
+        public void setOn(java.util.Date on) { this.on = on; }
+    }
+
     // ---------------------------------------------------------------------------
     // Static test infrastructure
     // ---------------------------------------------------------------------------
@@ -147,7 +173,9 @@ public class JsonbFieldDBTest {
                 "CREATE TABLE JSONB_ITEM (\n"
                     + "  id BIGINT GENERATED ALWAYS AS IDENTITY CONSTRAINT JSONB_ITEM_id_PK PRIMARY KEY,\n"
                     + "  prefs VARCHAR(4000),\n"
-                    + "  labels VARCHAR(4000)\n"
+                    + "  labels VARCHAR(4000),\n"
+                    + "  moment VARCHAR(4000),\n"
+                    + "  moments VARCHAR(4000)\n"
                     + ")");
         }
     }
@@ -366,5 +394,170 @@ public class JsonbFieldDBTest {
         Label only = (Label) soloLabels.get(0);
         assertEquals("solo", only.getKey());
         assertEquals(99, only.getWeight());
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test: TEMPORAL value-object through the jsonb codec (#275)
+    //
+    // #275 replaced three divergent DATE branches (Gson serializer, Gson
+    // deserializer, streaming JsonObjectReader) with one TemporalWireFormat. The
+    // motivating blast-radius claim for that fix was the OMDB jsonb path — a
+    // field.timestamp / field.date living inside a @storage:jsonb value object —
+    // and it shipped with NO test at any level. Before this, jsonbtest::Prefs and
+    // ::Label carried only string + int, so no temporal value had ever crossed
+    // the jsonb codec here.
+    //
+    // The instant-equality assertion alone is too weak: Gson's own default Date
+    // format round-trips within Java while emitting a locale-dependent,
+    // millisecond-lossy string that no other port can read. So these pin the
+    // COLUMN TEXT as well — the cross-port wire form from
+    // fixtures/persistence-conformance/normalization.md, which is what makes the
+    // jsonb value readable by the TS/Python/C# ports.
+    // ---------------------------------------------------------------------------
+
+    /** 2026-06-03T14:30:00.123Z — deliberately non-zero millis, to pin the fraction rule. */
+    private static java.util.Date fixedInstant() {
+        return java.util.Date.from(java.time.Instant.parse("2026-06-03T14:30:00.123Z"));
+    }
+
+    /** Read a column's raw stored text on the SAME connection the write used. */
+    private String rawColumn(String column) throws Exception {
+        Connection c = (Connection) ((ObjectConnectionDB) oc).getDatastoreConnection();
+        try (Statement s = c.createStatement();
+             ResultSet rs = s.executeQuery("SELECT " + column + " FROM JSONB_ITEM")) {
+            assertTrue("expected a row to read " + column + " from", rs.next());
+            return rs.getString(1);
+        }
+    }
+
+    @Test
+    public void testJsonbTemporalWireFormIsCrossPortCanonical() throws Exception {
+        // The metadata-driven path (no POJO binding) — this is the one #275 fixed,
+        // where MetaObjectSerializer delegates to TemporalWireFormat.
+        ObjectClassRegistry.resetGlobal();
+
+        MetaObject itemMo = registry.findMetaObjectByName("jsonbtest::Item");
+        MetaObject momentMo = registry.findMetaObjectByName("jsonbtest::Moment");
+
+        java.util.Date d = fixedInstant();
+        ValueObject moment = (ValueObject) momentMo.newInstance();
+        moment.setObject("at", d);
+        moment.setObject("atLocal", d);
+        moment.setObject("on", d);
+
+        ValueObject item = (ValueObject) itemMo.newInstance();
+        item.setObject("moment", moment);
+        omdb.createObject(oc, item);
+
+        String json = rawColumn("moment");
+        assertNotNull("moment column must hold JSON", json);
+        // field.timestamp (default, tz-aware) — UTC instant with a Z.
+        assertTrue("tz-aware timestamp must be the ISO instant form, got: " + json,
+            json.contains("\"2026-06-03T14:30:00.123Z\""));
+        // field.timestamp @localTime — naive wall clock at UTC, no Z.
+        assertTrue("@localTime timestamp must be the naive form (no Z), got: " + json,
+            json.contains("\"2026-06-03T14:30:00.123\""));
+        // field.date — calendar date of the instant at UTC.
+        assertTrue("field.date must be the date-only form, got: " + json,
+            json.contains("\"2026-06-03\""));
+        // Gson's default Date format ("Jun 3, 2026, ...") is locale-dependent and
+        // drops millis — its presence would mean the wire form regressed to it.
+        assertFalse("must not fall back to Gson's default Date format, got: " + json,
+            json.contains("Jun 3, 2026"));
+
+        // And the instant survives the full round-trip, to the millisecond.
+        Collection<?> items = omdb.getObjects(oc, itemMo);
+        assertFalse("Expected the temporal row", items.isEmpty());
+        ValueObject loadedMoment =
+            (ValueObject) ((ValueObject) items.iterator().next()).getObject("moment");
+        assertNotNull("moment must round-trip", loadedMoment);
+        assertEquals("tz-aware timestamp instant must survive",
+            d, loadedMoment.getObject("at"));
+        assertEquals("@localTime timestamp instant must survive",
+            d, loadedMoment.getObject("atLocal"));
+        // field.date is date-only on the wire by contract, so it reads back
+        // anchored at midnight UTC — the documented TemporalWireFormat truncation.
+        assertEquals("field.date must read back at midnight UTC",
+            java.util.Date.from(java.time.Instant.parse("2026-06-03T00:00:00Z")),
+            loadedMoment.getObject("on"));
+    }
+
+    @Test
+    public void testJsonbTemporalRoundTripThroughABoundPojo() throws Exception {
+        // The POJO-binding branch of the jsonb codec: with a jsonbtest::Moment ->
+        // Moment.class binding registered, serializeJsonb/deserializeJsonb use Gson's
+        // plain REFLECTION, so MetaObjectSerializer (and TemporalWireFormat with it) is
+        // never consulted. Until TemporalGsonAdapter this wrote Gson's default localized
+        // Date — "Jun 3, 2026, 10:30:00 AM": rendered in the JVM's local zone rather than
+        // UTC, varying with the default locale, silently dropping the .123 millis, and
+        // unreadable by the other four ports.
+        ObjectClassRegistry reg = new ObjectClassRegistry();
+        reg.register(new ObjectClassBindingProvider() {
+            @Override
+            public Map<String, Class<?>> bindings() {
+                Map<String, Class<?>> m = new LinkedHashMap<>();
+                m.put("jsonbtest::Moment", Moment.class);
+                return m;
+            }
+        });
+        ObjectClassRegistry.setGlobal(reg);
+
+        MetaObject itemMo = registry.findMetaObjectByName("jsonbtest::Item");
+        java.util.Date d = fixedInstant();
+
+        ValueObject item = (ValueObject) itemMo.newInstance();
+        item.setObject("moment", new Moment(d, d, d));
+        omdb.createObject(oc, item);
+
+        String json = rawColumn("moment");
+        assertNotNull("moment column must hold JSON", json);
+        assertFalse("must not emit Gson's locale/timezone-dependent default Date, got: " + json,
+            json.contains("Jun 3, 2026"));
+        assertTrue("a POJO-bound Date must serialize as the canonical UTC instant, got: " + json,
+            json.contains("\"2026-06-03T14:30:00.123Z\""));
+
+        Collection<?> items = omdb.getObjects(oc, itemMo);
+        assertFalse("Expected the POJO-bound temporal row", items.isEmpty());
+        Object loaded = ((ValueObject) items.iterator().next()).getObject("moment");
+        assertTrue("must read back as the bound POJO, got: "
+            + (loaded == null ? "null" : loaded.getClass().getName()), loaded instanceof Moment);
+        // The millisecond that Gson's default format used to discard.
+        assertEquals("instant must survive to the millisecond", d, ((Moment) loaded).getAt());
+    }
+
+    @Test
+    public void testJsonbTemporalArrayRoundTrip() throws Exception {
+        // The array-of-VO codec is a separate branch from the single-VO one
+        // (jsonbTargetType -> List<VO>); a temporal element must survive it too.
+        ObjectClassRegistry.resetGlobal();
+
+        MetaObject itemMo = registry.findMetaObjectByName("jsonbtest::Item");
+        MetaObject momentMo = registry.findMetaObjectByName("jsonbtest::Moment");
+
+        java.util.Date d = fixedInstant();
+        ValueObject moment = (ValueObject) momentMo.newInstance();
+        moment.setObject("at", d);
+
+        List<Object> moments = new ArrayList<>();
+        moments.add(moment);
+
+        ValueObject item = (ValueObject) itemMo.newInstance();
+        item.setObjectArray("moments", moments);
+        omdb.createObject(oc, item);
+
+        String json = rawColumn("moments");
+        assertNotNull("moments column must hold JSON", json);
+        assertTrue("array element timestamp must use the ISO instant form, got: " + json,
+            json.contains("\"2026-06-03T14:30:00.123Z\""));
+
+        Collection<?> items = omdb.getObjects(oc, itemMo);
+        assertFalse("Expected the temporal-array row", items.isEmpty());
+        Object loadedArr = ((ValueObject) items.iterator().next()).getObject("moments");
+        assertTrue("moments must read back as a List, got: "
+            + (loadedArr == null ? "null" : loadedArr.getClass().getName()), loadedArr instanceof List);
+        List<?> loaded = (List<?>) loadedArr;
+        assertEquals("array size", 1, loaded.size());
+        assertEquals("array element instant must survive",
+            d, ((ValueObject) loaded.get(0)).getObject("at"));
     }
 }

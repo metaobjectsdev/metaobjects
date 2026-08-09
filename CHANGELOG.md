@@ -7,6 +7,43 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — a POJO-bound temporal value in a jsonb column was written locale- and timezone-dependently (Java/Maven only)
+
+Closes the last carry-forward item from the #275 batch: the OMDB jsonb temporal path — the
+motivating blast radius for that whole fix — had **no test at any level**, and adding one surfaced
+a live defect on the adjacent branch.
+
+`MetaObjectGsonInitializer` registers the metadata-driven serializers against each `MetaObject`'s
+declared `@object` class. A value object bound to a hand-written POJO through `ObjectClassRegistry`
+is therefore serialized by Gson's **default reflection**, so its `java.util.Date` properties never
+reached `TemporalWireFormat` and took Gson's built-in adapter instead. A `@storage: jsonb` column
+holding such an object stored e.g. `"Jun 3, 2026, 10:30:00 AM"` — rendered in the JVM's **local
+zone rather than UTC**, varying with the default **locale**, silently dropping **milliseconds** (so
+even a Java-only round-trip did not return the original instant), and **unreadable by the other
+four ports**, which expect the ISO form in `fixtures/persistence-conformance/normalization.md`.
+Same defect class as #275, on the one path #275 did not reach.
+
+A new `TemporalGsonAdapter` is registered for `java.util.Date` on that builder: it writes
+`TemporalWireFormat.formatInstant` (the canonical `…Z` instant) and reads tolerantly —
+`TemporalWireFormat.parse` first, falling back to Gson's former localized default so rows already
+written in the legacy format still load. The metadata-driven path is provably unaffected:
+`MetaObjectSerializer`'s `DATE` branch formats and calls `addProperty` itself rather than
+delegating to `context.serialize`, so that output is byte-identical.
+
+**Bounded narrowing, deliberate:** without an owning `MetaField` there is no way to know whether a
+POJO property is a `field.date` (date-only) or a `@localTime` timestamp (no `Z`), so a POJO-bound
+temporal is written as a full instant. That is lossless and portable where the previous behavior
+was neither; a value object needing the exact per-field shape should stay on the metadata-driven
+path, which consults its `MetaField`.
+
+Gated by three new end-to-end tests in `JsonbFieldDBTest` (metadata-driven single, array, and
+POJO-bound), each asserting the **stored column text**, not just instant equality — Gson's default
+format round-trips within Java while being unportable, so an equality-only assertion would have
+passed against the bug. The `jsonbtest` fixture gained a `Moment` value object carrying all three
+temporal shapes; before this it held only `string` and `int`, which is why no temporal value had
+ever crossed this codec. Verified non-vacuous by mutation (dropping the `Z`, and dropping the
+millisecond fraction, each fail the new tests).
+
 ## [0.21.2] — npm `0.21.2` · PyPI `0.21.2` · NuGet `0.21.2` · Maven `7.21.2`
 
 Coordinated PATCH. **Changed product code: npm only** (`codegen-ts`, plus a comment-only note in
