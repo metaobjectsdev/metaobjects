@@ -32,6 +32,15 @@ Hono, plus a payload-equality check between them. Adding a third adapter means a
 not a new file. Verified to reproduce the reported `q.all is not a function` on four tests
 with the fix reverted.
 
+The matrix is also a matrix over **entry points**, which is less obvious and equally
+load-bearing: this package's `exports` map carries a `"bun"` condition pointing at
+`./src/**.ts` while everything else resolves `./dist/**.js`, so **Bun executes the
+TypeScript source and Node executes the build**. A fix applied to one tree and not the other
+would reach only half of adopters, and a suite importing a single tree could not tell. This
+is not hypothetical — immediately after `src` was fixed, `dist/hono/index.js` still carried
+the broken calls until a rebuild. Every row now runs against both resolved entry points, and
+a missing `dist/` fails the matrix rather than silently halving it.
+
 `runtime-ts`'s own suite runs in CI's `ts-unit` lane, which has no database, so the matrix
 is wired into `ts-slow` (the lane with the Postgres sidecar) alongside the migrate-ts
 real-PG gate, with the same loud-skip sentinel — a lane that declares it intends Postgres

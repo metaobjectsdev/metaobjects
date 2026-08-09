@@ -16,12 +16,22 @@
  * So this is a MATRIX: the same read paths, asserted across both adapters, against a
  * REAL Postgres. Adding a third adapter should mean adding a row here, not a new file.
  *
+ * It is also a matrix over ENTRY POINTS, which matters more than it looks. This package's
+ * `exports` map carries a `"bun"` condition pointing at `./src/**.ts` while everything else
+ * resolves `./dist/**.js` — so **Bun executes the TypeScript source and Node executes the
+ * build**. A fix applied to one tree and not the other reaches only half the adopters, and a
+ * suite importing just one tree cannot tell. (Confirmed live: immediately after fixing `src`,
+ * `dist/hono/index.js` still contained the broken calls until a rebuild.) Every row below
+ * therefore runs against both resolved entry points.
+ *
  * Gated on METAOBJECTS_TEST_PG_URL (CI's ts-slow lane supplies a Postgres sidecar);
  * skips loudly-but-harmlessly when absent, and the sentinel below fails if a lane
  * claims it intends Postgres and then does not provide it.
  */
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { Hono } from "hono";
 import Fastify, { type FastifyInstance } from "fastify";
 import { Pool } from "pg";
@@ -69,11 +79,29 @@ describe("#286 — CRUD helpers on real Postgres, both adapters", () => {
     return;
   }
 
+  // biome-ignore lint/suspicious/noExplicitAny: mount option bags are structurally typed
+  type HonoMount = (o: any) => void;
+  // biome-ignore lint/suspicious/noExplicitAny: mount option bags are structurally typed
+  type FastifyMount = (o: any) => void;
+
   let pool: Pool;
   // biome-ignore lint/suspicious/noExplicitAny: drizzle db handle, structurally typed by the mounts
   let db: any;
-  let hono: Hono;
-  let fastify: FastifyInstance;
+  const fastifies: FastifyInstance[] = [];
+  /** True when dist/ was absent — surfaced as a failing test rather than a silent half-matrix. */
+  let builtTreeMissing = false;
+
+  /** Every (adapter x entry-point) combination under test. Filled in beforeAll. */
+  const adapters: Array<{ name: string; get: (url: string) => Promise<{ status: number; body: unknown }> }> = [];
+
+  // describe() bodies register BEFORE beforeAll fills `adapters`, so the rows are named
+  // statically and resolved lazily inside each test.
+  const ADAPTER_NAMES = ["hono (src)", "fastify (src)", "hono (dist)", "fastify (dist)"] as const;
+  const use = (name: string) => {
+    const a = adapters.find((x) => x.name === name);
+    if (!a) throw new Error(`adapter row [${name}] was never mounted — the matrix is incomplete`);
+    return a;
+  };
 
   beforeAll(async () => {
     pool = new Pool({ connectionString: PG_URL });
@@ -92,71 +120,93 @@ describe("#286 — CRUD helpers on real Postgres, both adapters", () => {
        VALUES ('alice@x.com','Alice',true), ('bob@x.com','Bob',false), ('carol@y.com','Carol',true)`,
     );
 
-    hono = new Hono();
-    mountHono({
-      app: hono, path: "/subscribers", db, table: subscribers,
-      insertSchema: InsertSchema, updateSchema: UpdateSchema,
-      filterAllowlist, sortAllowlist, dialect: "postgres",
-    });
+    // src/** is what Bun runs (the `bun` export condition); dist/** is what Node runs.
+    // Exercise both — a fix in one tree only would otherwise pass here.
+    const entries: Array<{ tree: string; hono: HonoMount; fastify: FastifyMount }> = [
+      { tree: "src", hono: mountHono, fastify: mountFastify },
+    ];
+    if (existsSync(join(import.meta.dir, "..", "dist", "hono", "index.js"))) {
+      const dh = await import("../dist/hono/index.js");
+      const df = await import("../dist/drizzle-fastify/index.js");
+      entries.push({ tree: "dist", hono: dh.mountCrudRoutes, fastify: df.mountCrudRoutes });
+    } else {
+      builtTreeMissing = true;
+    }
 
-    fastify = Fastify();
-    mountFastify({
-      fastify, path: "/subscribers", db, table: subscribers,
-      insertSchema: InsertSchema, updateSchema: UpdateSchema,
-      filterAllowlist, sortAllowlist, dialect: "postgres",
-    });
-    await fastify.ready();
+    for (const e of entries) {
+      const h = new Hono();
+      e.hono({
+        app: h, path: "/subscribers", db, table: subscribers,
+        insertSchema: InsertSchema, updateSchema: UpdateSchema,
+        filterAllowlist, sortAllowlist, dialect: "postgres",
+      });
+      const f = Fastify();
+      e.fastify({
+        fastify: f, path: "/subscribers", db, table: subscribers,
+        insertSchema: InsertSchema, updateSchema: UpdateSchema,
+        filterAllowlist, sortAllowlist, dialect: "postgres",
+      });
+      await f.ready();
+      fastifies.push(f);
+      adapters.push(
+        {
+          name: `hono (${e.tree})`,
+          get: async (url) => {
+            const res = await h.request(url);
+            return { status: res.status, body: res.status === 204 ? null : await res.json() };
+          },
+        },
+        {
+          name: `fastify (${e.tree})`,
+          get: async (url) => {
+            const res = await f.inject({ method: "GET", url });
+            return { status: res.statusCode, body: res.statusCode === 204 ? null : res.json() };
+          },
+        },
+      );
+    }
   });
 
   afterAll(async () => {
-    await fastify?.close();
+    for (const f of fastifies) await f.close();
     await pool.query(`DROP TABLE IF EXISTS mo286_subscribers`);
     await pool.end();
   });
 
-  /** Uniform request surface so the same assertions run against both adapters. */
-  const adapters: Array<{ name: string; get: (url: string) => Promise<{ status: number; body: unknown }> }> = [
-    {
-      name: "hono",
-      get: async (url) => {
-        const res = await hono.request(url);
-        return { status: res.status, body: res.status === 204 ? null : await res.json() };
-      },
-    },
-    {
-      name: "fastify",
-      get: async (url) => {
-        const res = await fastify.inject({ method: "GET", url });
-        return { status: res.statusCode, body: res.statusCode === 204 ? null : res.json() };
-      },
-    },
-  ];
+  test("the BUILT tree is present, so Node's entry point is actually covered", () => {
+    // dist/ is what `exports.default` resolves to. If it is missing the matrix silently
+    // halves, which is the failure mode this whole file exists to prevent — so say so.
+    expect(builtTreeMissing).toBe(false);
+    expect(adapters.map((a) => a.name).sort()).toEqual([
+      "fastify (dist)", "fastify (src)", "hono (dist)", "hono (src)",
+    ]);
+  });
 
-  for (const a of adapters) {
-    describe(a.name, () => {
+  for (const a of ADAPTER_NAMES) {
+    describe(a, () => {
       test("list returns rows (the exact call that threw `q.all is not a function`)", async () => {
-        const { status, body } = await a.get("/subscribers");
+        const { status, body } = await use(a).get("/subscribers");
         expect(status).toBe(200);
         expect(Array.isArray(body)).toBe(true);
         expect((body as unknown[]).length).toBe(3);
       });
 
       test("get-by-id returns one row (the `.get()` path)", async () => {
-        const list = (await a.get("/subscribers")).body as Array<{ id: number; email: string }>;
+        const list = (await use(a).get("/subscribers")).body as Array<{ id: number; email: string }>;
         const target = list.find((r) => r.email === "bob@x.com");
         expect(target).toBeDefined();
-        const { status, body } = await a.get(`/subscribers/${target?.id}`);
+        const { status, body } = await use(a).get(`/subscribers/${target?.id}`);
         expect(status).toBe(200);
         expect((body as { email: string }).email).toBe("bob@x.com");
       });
 
       test("get-by-id 404s for a missing row rather than throwing", async () => {
-        const { status } = await a.get("/subscribers/99999");
+        const { status } = await use(a).get("/subscribers/99999");
         expect(status).toBe(404);
       });
 
       test("withCount returns the {rows,total} envelope (the count-query `.all()` path)", async () => {
-        const { status, body } = await a.get("/subscribers?withCount=1");
+        const { status, body } = await use(a).get("/subscribers?withCount=1");
         expect(status).toBe(200);
         const env = body as { rows: unknown[]; total: number };
         expect(Array.isArray(env.rows)).toBe(true);
@@ -164,7 +214,7 @@ describe("#286 — CRUD helpers on real Postgres, both adapters", () => {
       });
 
       test("filter + sort execute on Postgres", async () => {
-        const { status, body } = await a.get("/subscribers?filter[subscribed]=true&sort=email:desc");
+        const { status, body } = await use(a).get("/subscribers?filter[subscribed]=true&sort=email:desc");
         expect(status).toBe(200);
         const rows = body as Array<{ email: string }>;
         expect(rows.map((r) => r.email)).toEqual(["carol@y.com", "alice@x.com"]);
@@ -172,15 +222,14 @@ describe("#286 — CRUD helpers on real Postgres, both adapters", () => {
     });
   }
 
-  test("both adapters return the SAME list payload — the matrix's whole point", async () => {
-    const [h, f] = await Promise.all([
-      a0().get("/subscribers?sort=email:asc"),
-      a1().get("/subscribers?sort=email:asc"),
-    ]);
-    expect(h.status).toBe(f.status);
-    expect(h.body).toEqual(f.body);
+  test("every adapter x entry-point returns the SAME payload — the matrix's whole point", async () => {
+    const results = await Promise.all(
+      ADAPTER_NAMES.map(async (n) => ({ n, r: await use(n).get("/subscribers?sort=email:asc") })),
+    );
+    const [first, ...rest] = results;
+    for (const other of rest) {
+      expect(`${other.n}:${other.r.status}`).toBe(`${other.n}:${first!.r.status}`);
+      expect(other.r.body).toEqual(first!.r.body);
+    }
   });
-
-  function a0() { return adapters[0]!; }
-  function a1() { return adapters[1]!; }
 });
