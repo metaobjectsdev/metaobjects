@@ -123,7 +123,11 @@ app.MapAuthorRoutes();   // generated — GET/POST/PUT/DELETE on /api/authors
 app.Run();
 ```
 
-EF Core does the rest. The runtime has no MetaObjects dependency.
+EF Core does the rest — the generated entities and `AppDbContext` are plain EF Core with
+no MetaObjects types in them. Note the one exception: generated **routes** emit
+`using MetaObjects.Codegen.Runtime;` for the shared filter/sort helpers, so a project that
+generates routes references `MetaObjects.Codegen` at runtime. Entities-and-DbContext-only
+projects do not.
 
 **Consumer dependencies.** The generated `AppDbContext` and the `Program.cs`
 wiring above use EF Core (`AddDbContext`, `DbContext`, `UseNpgsql`), which

@@ -193,5 +193,5 @@ for the per-port pass/skip ledger.
 
 - [yaml-authoring.md](yaml-authoring.md) — how YAML lowers to canonical JSON
 - [entities.md](entities.md) — what the loader navigates
-- [migrations-and-drift.md](migrations-and-drift.md) — `meta:verify` runs the loader at build time
+- [migrations-and-drift.md](migrations-and-drift.md) — `metaobjects:verify` runs the loader at build time
 - [2026-05-25-cross-language-loader-architecture-unification.md](../superpowers/specs/2026-05-25-cross-language-loader-architecture-unification.md)

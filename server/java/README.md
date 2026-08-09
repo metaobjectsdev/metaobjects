@@ -8,7 +8,7 @@ For the standard itself (metamodel, conformance corpora, ADRs) see the [reposito
 
 All four MetaObjects pillars ship across all five language ports — TypeScript, Java, Kotlin, C#, Python. Java's contributions:
 
-- **Codegen** — Spring REST + DTO + JPA repository emit (`codegen-spring`), Mustache template engine (`codegen-mustache`), PlantUML diagrams (`codegen-plantuml`), and a Kotlin emit pipeline on KotlinPoet (`codegen-kotlin`). Output is hand-edit-preserving via three-way merge.
+- **Codegen** — Spring REST + DTO + repository-interface emit (you supply the impl) (`codegen-spring`), Mustache template engine (`codegen-mustache`), PlantUML diagrams (`codegen-plantuml`), and a Kotlin emit pipeline on KotlinPoet (`codegen-kotlin`). Output is hand-edit-preserving via three-way merge.
 - **Runtime metadata** — OMDB persistence layer over modernized JDBC with Spring-`@Transactional` integration. FR-003 fully shipped: binding registry, typed jsonb codec, source/origin metamodel, atomic mapping cache + JDBC codec registry + `inTransaction` template (Plan 4). Schema migrations are owned by the TypeScript toolchain (`@metaobjectsdev/cli migrate`); the `metaobjects:migrate` Maven goal was removed. Per the schema-authority consolidation the dev/test runtime auto-create path and `MetaClassDBValidatorService` were also removed — OMDB is now pure data-access (CRUD/query/codec/transactions only).
 - **Drift detection** — Template-drift: `Renderer.verify` checks `{{...}}` references against the payload VO at build time. The live-DB-schema mode of `metaobjects:verify` was removed; the goal now covers codegen drift (`mode=codegen`, the default) and template/prompt drift (`mode=templates`).
 - **Prompt construction** — `metaobjects-render` (Mustache + payload-VO + verify), FR-006 `template.output` parser-on-receipt codegen, render output byte-identical with the other four ports against the shared render-conformance corpus.
@@ -29,7 +29,7 @@ All published to Maven Central under `com.metaobjects:*` at `7.11.3`:
 | `metaobjects-metadata-ktx` | Kotlin facade over the Java metadata core |
 | `metaobjects-codegen-base` | Codegen engine — generator API, source paths, file emit |
 | `metaobjects-codegen-mustache` | Mustache template emit |
-| `metaobjects-codegen-spring` | Spring REST + DTO + JPA repositories + filter allowlists + payload records + output parsers |
+| `metaobjects-codegen-spring` | Spring REST + DTO + repository interfaces + filter allowlists + payload records + output parsers |
 | `metaobjects-codegen-kotlin` | KotlinPoet entity / Exposed table / Spring controller / payload / validator / stored-proc emit |
 | `metaobjects-codegen-plantuml` | PlantUML diagram emit |
 | `metaobjects-render` | Mustache render + payload-VO + `verify` (FR-004 / FR-006) |
@@ -52,7 +52,7 @@ The `archetype` and `examples` directories were removed in 7.1.0 (they had been 
 </dependency>
 ```
 
-Spring REST + JPA stack:
+Spring REST stack (repository interface is consumer-implemented):
 
 ```xml
 <dependency>

@@ -6,7 +6,7 @@ plus the `metaobjects-maven-plugin` for build-time codegen (`mvn metaobjects:gen
 
 Schema migrations are owned by the TypeScript toolchain (`@metaobjectsdev/cli migrate`);
 the Java diff-and-converge migration engine and its `meta:migrate` / live-DB-drift
-`meta:verify` Maven goals were removed. Per ADR-0015 the OMDB runtime auto-create
+`metaobjects:verify` Maven goals were removed. Per ADR-0015 the OMDB runtime auto-create
 path was also removed — OMDB is pure data-access (CRUD/query/codec/transactions).
 Prompt / template drift is still checked via the `metaobjects-render` `Verify` API.
 

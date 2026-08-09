@@ -8,10 +8,15 @@ command surface splits in two:
 
 - **Schema is language-agnostic** — it operates on the shared canonical metadata +
   a DB connection. It lives in **one canonical Node `meta` CLI** (`migrate`,
-  `verify --db`), used by any project regardless of backend language, shipped as a
-  standalone binary so non-TS adopters need no Node toolchain for schema ops. This
-  is the "Flyway/Atlas-style standalone tool" model — not re-implemented per
-  language.
+  `verify --db`), used by any project regardless of backend language. This is the
+  "Flyway/Atlas-style standalone tool" model — not re-implemented per language.
+
+  **A non-TS adopter needs Node (or Bun) to create or evolve a database.** No
+  pre-built binary is published today — releases carry no binaries, and a
+  self-built single-file executable still needs the `pg` peer resolvable for the
+  Postgres dialect (see the `@metaobjectsdev/cli` README). Plan for `npx meta …`
+  in your build, or vendor the CLI. Shipping a real release binary is tracked as
+  future work; until it exists, this doc will not claim one.
 - **Codegen is inherently language-specific** (`codegen-spring` is Java,
   `codegen-ts` is TS, …) — so it runs in **each language's own build tool**. There
   is no unified codegen binary, no proxying, and no `meta-ts`/`meta-java` names.
@@ -29,8 +34,8 @@ command surface splits in two:
 | **Vocabulary search** (`types`) | **Node `meta`** | `meta types [query]` | **any backend** — apropos/`kubectl explain` over the live metamodel registry (names + descriptions + when-to-use); the vocabulary is cross-port identical (registry-conformance) |
 | TS codegen | Node `meta` | `meta gen` | TS projects |
 | C# codegen | `dotnet meta` | `dotnet meta gen` / `verify --templates` / `verify --codegen` | a .NET tool (`ToolCommandName=dotnet-meta`); invoked `dotnet meta` so it never shadows the Node `meta`; ships the ADR-0021 D2 subverbs (`--db` rejected, exit 2; bare `verify` = `--templates`). `gen` also accepts `--template-spec <json>` (+ `--template-root <dir>`, default `templates`) — the declarative Mustache template-codegen surface (the cross-port JSON contract shared with Python); see [declarative template scopes](codegen-concepts.md#declarative-template-scopes) |
-| Java/Kotlin codegen | Maven plugin | `mvn metaobjects:generate` (`meta:gen`) | Kotlin generators run through the same goal — see below. The `generate`/`verify`/`docs` goals are declared `threadSafe` and support parallel multi-module reactor builds (`mvn -T`) (#233) |
-| Java/Kotlin verify | Maven plugin | `mvn metaobjects:verify -Dmeta.verify.mode=codegen\|templates` (`meta:verify`) | parameter-driven ADR-0021 D2 modes (one goal covers BOTH Java + Kotlin): `codegen` (default, back-compat — regen + fail on drift vs committed output, generator-neutral) / `templates` (`{{field}}`↔payload drift via the render `Verify` engine). `db` rejected ("schema verify is the migrate engine, ADR-0015") |
+| Java/Kotlin codegen | Maven plugin | `mvn metaobjects:generate` (`metaobjects:generate`) | Kotlin generators run through the same goal — see below. The `generate`/`verify`/`docs` goals are declared `threadSafe` and support parallel multi-module reactor builds (`mvn -T`) (#233) |
+| Java/Kotlin verify | Maven plugin | `mvn metaobjects:verify -Dmeta.verify.mode=codegen\|templates` (`metaobjects:verify`) | parameter-driven ADR-0021 D2 modes (one goal covers BOTH Java + Kotlin): `codegen` (default, back-compat — regen + fail on drift vs committed output, generator-neutral) / `templates` (`{{field}}`↔payload drift via the render `Verify` engine). `db` rejected ("schema verify is the migrate engine, ADR-0015") |
 | Python codegen | console-script | `metaobjects gen` / `verify --codegen` / `verify --templates` | `[project.scripts] metaobjects` — **not** `meta` (that's the Node schema CLI); ships the ADR-0021 D2 subverbs (`--db` rejected, exit 2). `gen` also accepts `--template-spec <json>` (+ `--templates <dir>`, default `templates`) — the declarative Mustache template-codegen surface (the cross-port JSON contract shared with C#); see [declarative template scopes](codegen-concepts.md#declarative-template-scopes) |
 
 ## `verify` is one verb with explicit subverbs (ADR-0021 D2)
@@ -74,7 +79,7 @@ historical template/prompt drift gate, the C# back-compat default), `verify
 --codegen` (regenerate the default generator suite to a temp dir and diff against
 the committed `--out` tree, never touching it), and a **clean `--db` rejection
 (exit 2)** — bare `dotnet meta verify` keeps `--templates` and prints the subverb
-note. The **Java/Kotlin `mvn meta:verify`** port expresses the same vocabulary as a
+note. The **Java/Kotlin `mvn metaobjects:verify`** port expresses the same vocabulary as a
 `mode` parameter (Maven goals are parameter-driven, not flag-driven): `-Dmeta.verify.mode=codegen`
 (default, byte-identical to the historical goal — regen-to-temp + diff vs committed
 output; drift is computed per **unique `outputDir`** over the whole `<generators>`
@@ -160,7 +165,7 @@ codegen surfaces do not run it.
 
 No port other than the Node `meta` exposes `migrate` or `verify --db`. The C#,
 Java, Python, and Kotlin command surfaces are **codegen only** (`gen` + codegen
-`verify`). The Java port's former `meta:migrate` / live-DB `meta:verify` Maven
+`verify`). The Java port's former `metaobjects:migrate` / live-DB `metaobjects:verify` Maven
 goals and the C#/Python migrate surfaces were removed in the schema-authority
 consolidation; the only schema entry point anywhere is the Node `meta`.
 
@@ -228,7 +233,7 @@ its message now points at `npx meta agent-docs --server <lang>`.
 ## Running Kotlin codegen via Maven
 
 `codegen-kotlin`'s generators extend `MultiFileDirectGeneratorBase` — the same
-generator SPI the `meta:gen` Mojo loads — so they run through the existing goal
+generator SPI the `metaobjects:generate` Mojo loads — so they run through the existing goal
 with no Kotlin-specific Mojo. Configure a Kotlin generator on the Maven plugin:
 
 ```xml

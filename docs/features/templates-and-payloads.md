@@ -470,8 +470,8 @@ and checks each one exists on the payload VO. If a template references
 | Port | Command |
 |---|---|
 | TypeScript | `meta verify` (CLI) |
-| Java | `mvn meta:verify` (Maven goal) |
-| Kotlin | `mvn meta:verify` (same Maven goal) |
+| Java | `mvn metaobjects:verify` (Maven goal) |
+| Kotlin | `mvn metaobjects:verify` (same Maven goal) |
 | C# | `dotnet meta verify <metadataDir> --templates <root>` |
 | Python | `python -m metaobjects.render.verify` |
 

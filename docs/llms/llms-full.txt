@@ -50,12 +50,12 @@ The pillars are views on the same metadata, not separate products. All four ship
 Emit idiomatic per-language code from a single metadata model.
 
 - TypeScript: Drizzle + Zod + Fastify integration (and React / TanStack on the client side)
-- Java: Spring REST + DTO + JPA repositories via `codegen-spring`
+- Java: Spring REST + DTO + repository interfaces (the persistence impl is consumer-supplied) via `codegen-spring`
 - Kotlin: KotlinPoet + Exposed + Spring via `codegen-kotlin`
 - C#: EF Core + ASP.NET
 - Python: Pydantic + FastAPI
 
-Hand-edit-preserving regeneration uses a three-way merge so engineers can extend generated entities without losing their work when metadata changes. M:N relationship codegen (FR-018) ships in all five ports: entity navigation, idiomatic ORM wiring (Drizzle m2m / EF Core `UsingEntity` / Spring repo+JPA / Exposed / Pydantic), and REST traversal (`GET /<source-plural>/{id}/<relation>`).
+Hand-edit-preserving regeneration uses a three-way merge so engineers can extend generated entities without losing their work when metadata changes. M:N relationship codegen (FR-018) ships in all five ports: entity navigation, idiomatic ORM wiring (Drizzle m2m / EF Core `UsingEntity` / Spring repo interface / Exposed / Pydantic), and REST traversal (`GET /<source-plural>/{id}/<relation>`).
 
 ### Runtime metadata
 
@@ -94,7 +94,7 @@ Because the render is conformance-gated, the determinism guarantee holds in ever
 | Language | Status | Notes |
 |---|---|---|
 | TypeScript | Reference implementation, npm `0.21.3` | All four pillars. 2500+ tests passing. Owns the canonical schema-migration toolchain used by every port (ADR-0015). Bun-first dev. |
-| Java | Maven Central `7.21.3` | Spring REST + JPA codegen, OMDB runtime persistence (pure data-access) with Spring-tx. Fully green across all conformance corpora. |
+| Java | Maven Central `7.21.3` | Spring REST + DTO + repository-interface codegen, OMDB runtime persistence (pure data-access) with Spring-tx. Fully green across all conformance corpora. |
 | Kotlin | Maven Central `7.21.3` | KotlinPoet codegen + Exposed runtime + `metadata-ktx` facade. Ships via the Java reactor. |
 | C# | NuGet `0.21.3` (.NET tool) | Loader + canonical serializer + EF Core + ASP.NET codegen + render/verify. `dotnet meta` tool. |
 | Python | PyPI `0.21.3` | Loader + serializer + render + verify + codegen + `ObjectManager` runtime. Fully green across all corpora. |

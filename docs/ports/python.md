@@ -152,8 +152,9 @@ The router conforms to the cross-port API contract
 ([`docs/features/api-contract.md`](../features/api-contract.md)):
 `?withCount=1` returns `{"rows", "total"}`; `?sort=field:asc|desc` uses
 a static per-entity allowlist (HTTP 400 envelope on unknown field); 404
-envelope is `{"error": "not_found"}`. Filter operators
-(`eq` / `ne` / ...) are a known gap — see
+envelope is `{"error": "not_found"}`. Filter operators (`eq` / `ne` / …) **do** ship —
+a per-entity filter allowlist is generated and the router parses `filter[field][op]`
+into typed predicates. Remaining gaps are tracked in
 [`server/python/src/metaobjects/codegen/KNOWN_GAPS.md`](../../server/python/src/metaobjects/codegen/KNOWN_GAPS.md).
 
 Wire the router into your consumer FastAPI app:

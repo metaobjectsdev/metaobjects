@@ -114,7 +114,9 @@ Loader errors now ship as structured envelopes with `errorCode`, `path`, `positi
 
 ### Step 5 — `verify` and prompt-construction (optional)
 
-`mvn meta:verify` extends drift detection beyond entity codegen to prompt templates, output parsers, and database schema. Adopt it where you ship typed prompts or want compile-time gates against schema/code divergence.
+`mvn metaobjects:verify` extends drift detection beyond entity codegen to prompt templates and output parsers. Adopt it where you ship typed prompts or want compile-time gates against code divergence.
+
+It does **not** check database schema — `-Dmeta.verify.mode=db` is rejected. Live-DB drift is `meta verify --db` in the Node CLI (ADR-0015), which is also what creates and evolves the schema for every port.
 
 The render pillar's payload-VO generator emits typed records for every `template.input` projection; FR-006 emits typed output parsers for every `template.output` schema. Both are opt-in additions — your existing entity codegen is unaffected.
 
