@@ -20,6 +20,23 @@
 > (identical content at the new version) rather than sitting the release out. The rest of this doc
 > is the per-registry procedure.
 
+## Step 0 (all registries): scan for unmerged work before you cut
+
+Run this **first**, before the CHANGELOG is even written:
+
+```bash
+git fetch origin -q && git branch -a --no-merged origin/main
+```
+
+Decide explicitly for every branch the scan returns: merge it into this cut, or state why it waits.
+Do not skip past the list.
+
+**Why this is step 0 and not a nicety:** `0.21.1` shipped *without* a `timestampMode` fix that was
+already written and sitting on an unmerged branch. Because versions are immutable on all four
+registries, the only correction was a full coordinated `0.21.2` within the hour — four publishes, an
+~11-minute Maven deploy, and a second round of adopter notification, to ship work that already
+existed. The single shared patch number makes an omission cost four publishes, not one.
+
 ## Releasing the TypeScript packages to npm
 
 How to publish the `@metaobjectsdev/*` TypeScript packages. Read the **Golden rules** first —
