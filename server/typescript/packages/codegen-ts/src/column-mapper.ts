@@ -396,6 +396,15 @@ export function mapColumnType(
         case FIELD_SUBTYPE_DATE:
         case FIELD_SUBTYPE_TIME:
         case FIELD_SUBTYPE_TIMESTAMP:
+          // FIELD_SUBTYPE_TIMESTAMP deliberately ignores `timestampMode` here —
+          // Drizzle's sqlite-core `text()` has no Date-typed column mode (only
+          // pg-core's `timestamp()` does), so a bare string column is the only
+          // correct output. Safe: `timestampMode` is normalized to "string" for
+          // dialect === "sqlite" upstream, at the config choke points
+          // (normalizeConfig / makeRenderContext) — this parameter is always
+          // "string" by the time it reaches here for this dialect.
+          fnName = "text";
+          break;
         case FIELD_SUBTYPE_STRING:
         case FIELD_SUBTYPE_ENUM:
         case FIELD_SUBTYPE_UUID:

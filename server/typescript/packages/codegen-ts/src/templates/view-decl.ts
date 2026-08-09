@@ -130,7 +130,9 @@ export function renderViewReadZodObject(fields: readonly MetaField[], opts: View
       return code`  ${f.name}: ${base}${nullable}`;
     }
     // #204 — an array passthrough reads as `T[]`; zodTypeFor returns the ELEMENT type.
-    const inner = code`${z}.${zodTypeFor(f).replace(/^z\./, "")}`;
+    // CRITICAL 3: thread timestampMode through so a FIELD_SUBTYPE_TIMESTAMP column
+    // agrees with the Drizzle view column's mode (both sourced from `opts` above).
+    const inner = code`${z}.${zodTypeFor(f, timestampMode).replace(/^z\./, "")}`;
     const zbase = f.resolvedIsArray() ? code`${z}.array(${inner})` : inner;
     return code`  ${f.name}: ${zbase}${nullable}`;
   });

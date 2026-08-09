@@ -113,6 +113,21 @@ export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport"
    * ISO-8601 strings (matches the generated Zod + cross-port wire contract); "date"
    * uses drizzle's native JS-Date mode (for consumers whose hand-written code works
    * with `Date`).
+   *
+   * **Postgres-only.** Drizzle's sqlite-core `text()` timestamp column has no
+   * Date-typed mode (only `pg-core`'s `timestamp()` does), so `"date"` is
+   * normalized to `"string"` whenever `dialect: "sqlite"` (which also covers
+   * Cloudflare D1 — D1 is sqlite-at-the-SQL-level, see the D1 note in the repo's
+   * porting docs). This keeps the option a safe no-op on sqlite/D1 instead of
+   * emitting a non-compiling column + a Zod schema disagreeing with it.
+   *
+   * Date-mode filtering (`?filter[<timestamp>][gte]=...`) is not yet supported —
+   * `runtime-ts`'s filter parser keeps the qs value a string, which throws at
+   * request time against a Date-mode Drizzle column. Known limitation; not
+   * threaded through at runtime, but `runGen` DOES warn (once per run, naming
+   * every offending entity+field) when this mode meets a `@filterable`
+   * `field.timestamp` — see `runner.ts`'s Important-4 check. Track before
+   * recommending date mode for a filterable timestamp field.
    */
   timestampMode?: "date" | "string";
   /** Path prefix applied to generated route registrations + hook fetch URLs. Defaults to "". */
@@ -275,15 +290,19 @@ export function resolveGenerators(specs: readonly GeneratorSpec[]): Generator[] 
 
 /** Apply defaults to a MetaobjectsGenConfig, returning a NormalizedMetaobjectsGenConfig. */
 export function normalizeConfig(config: MetaobjectsGenConfig): NormalizedMetaobjectsGenConfig {
+  const dialect = config.dialect ?? DEFAULT_DIALECT;
   return {
     ...config,
     dbImport: config.dbImport ?? DEFAULT_DB_IMPORT,
-    dialect: config.dialect ?? DEFAULT_DIALECT,
+    dialect,
     generators: resolveGenerators(config.generators),
     columnNamingStrategy: config.columnNamingStrategy ?? DEFAULT_COLUMN_NAMING_STRATEGY,
     pluralizeCollections: config.pluralizeCollections ?? true,
     collectionNameOverrides: config.collectionNameOverrides ?? {},
-    timestampMode: config.timestampMode ?? "string",
+    // "date" mode is Postgres-only (see the doc comment on timestampMode above) —
+    // normalize to "string" on sqlite/D1 at this one choke point so the option
+    // can never silently emit a non-compiling column + a disagreeing Zod schema.
+    timestampMode: dialect === "sqlite" ? "string" : (config.timestampMode ?? "string"),
     apiPrefix: config.apiPrefix ?? "",
     emitAbstractShapes: config.emitAbstractShapes ?? true,
     outputLayout: config.outputLayout ?? "flat",
