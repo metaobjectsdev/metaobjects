@@ -187,6 +187,11 @@ const ALLOW_TOKENS = [
   // toolchain needs this exactly once, to stamp its existing views.
   "adopt-view",
   "nullable-to-not-null",
+  // drop-identity-default permits dropping a live Postgres auto-sequence
+  // default (a legacy `serial`/`bigserial` PK's `nextval(...)`) when the
+  // metadata declares no @generation at all — ambiguous between "never
+  // declared it" and "deliberately removing auto-increment".
+  "drop-identity-default",
 ] as const;
 type AllowToken = (typeof ALLOW_TOKENS)[number];
 

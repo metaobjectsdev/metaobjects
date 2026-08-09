@@ -1,5 +1,6 @@
 import type { Change, AllowOptions } from "../types.js";
 import { isWidening } from "../sql-type.js";
+import { isPgAutoSequenceDefault } from "../pg-identity-default.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 
 /**
@@ -111,12 +112,42 @@ function blockedReasonFor(
       if (c.from === false && c.to === true) return null;
       return allow.nullableToNotNull ? null : "nullable→notnull requires existing data to satisfy (pass allow.nullableToNotNull)";
 
+    case "change-column-default": {
+      // Ordinary default changes (literal→literal, adding/removing a plain
+      // literal default, etc.) stay allowed unconditionally — only ONE narrow
+      // shape is gated here. `to === undefined` means the default is being
+      // DROPPED outright (see the ColumnDefault comment in types.ts), and
+      // when what's being dropped is a live Postgres auto-sequence default
+      // (`nextval(...)`, the shape a legacy `serial`/`bigserial` PK carries —
+      // isPgAutoSequenceDefault, shared with diff/index.ts and the
+      // introspector), reaching this point means the expected side declared
+      // NO identity at all: an `identity: "increment"` expected column never
+      // gets here, because diff/index.ts's skipIdentityDefaultDiff already
+      // suppressed the change for that exact live shape. So an undeclared
+      // `@generation` is the ONLY way this branch fires — and that silence is
+      // ambiguous (never-declared vs. deliberately-removed), so ask rather
+      // than guess. Anything else about change-column-default — including
+      // dropping a plain literal default — falls through to the unconditional
+      // `return null` below.
+      const droppingAutoSequence =
+        c.to === undefined && c.from?.kind === "expr" && isPgAutoSequenceDefault(c.from.value);
+      if (droppingAutoSequence && !allow.dropIdentityDefault) {
+        return `column "${c.table}"."${c.column}" has a live Postgres auto-increment default `
+          + `(${c.from!.value}) but its metadata declares no @generation — this is ambiguous: it `
+          + `could mean @generation was never declared, or that auto-increment is being removed on `
+          + `purpose. Dropping the default is destructive (every insert that omits the column starts `
+          + `failing), so this refuses rather than guessing. Declare @generation: increment on the `
+          + `identity to keep the sequence, or pass --allow drop-identity-default if removing it is `
+          + `intentional`;
+      }
+      return null;
+    }
+
     // Always-allowed kinds
     case "create-table":
     case "rename-table":
     case "add-column":
     case "rename-column":
-    case "change-column-default":
     case "add-index":
     case "add-fk":
     case "add-check":

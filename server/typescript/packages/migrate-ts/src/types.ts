@@ -315,6 +315,21 @@ export interface AllowOptions {
   adoptView?: boolean;
   /** Existing data must satisfy NOT NULL; diff cannot verify this. */
   nullableToNotNull?: boolean;
+  /**
+   * Gates dropping a live Postgres auto-sequence DEFAULT (the `nextval(...)`
+   * shape a legacy `serial`/`bigserial` column carries — see
+   * pg-identity-default.ts) when the expected side declares NO identity at
+   * all, i.e. `@generation` was never set. That silence is genuinely
+   * ambiguous: it reads identically whether the author simply never got
+   * around to declaring `@generation: increment`, or deliberately dropped it
+   * to move the column off auto-increment (e.g. onto app-assigned ULIDs).
+   * The diff cannot tell those apart, so it refuses instead of guessing —
+   * this flag is how the author confirms the second reading and lets the
+   * DROP DEFAULT through. (An expected side that DOES declare
+   * `@generation: increment` never reaches this gate at all — diff/index.ts
+   * skips the default-diff for a live auto-sequence default entirely.)
+   */
+  dropIdentityDefault?: boolean;
 }
 
 export type AmbiguousChange =

@@ -23,6 +23,11 @@ const ALLOW_TOKEN_MAP: Record<string, keyof AllowOptions> = {
   // Gates overwriting an unfingerprinted (hand-written or pre-fingerprint) view.
   "adopt-view": "adoptView",
   "nullable-to-not-null": "nullableToNotNull",
+  // Gates dropping a live Postgres auto-sequence default (a legacy `serial`/
+  // `bigserial` PK's `nextval(...)`) when the metadata declares no
+  // @generation at all — ambiguous between "never declared it" and
+  // "deliberately removing auto-increment", so migrate refuses without it.
+  "drop-identity-default": "dropIdentityDefault",
 };
 
 /** Translate parsed `--allow` tokens into the migrate-ts `AllowOptions` shape. */

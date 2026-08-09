@@ -81,7 +81,7 @@ MIGRATE FLAGS:
   --allow <csv>        Comma-separated destructive-change permissions:
                        drop-column,drop-table,type-change,drop-index,drop-fk,
                        drop-check,drop-view,drop-view-cascade,
-                       adopt-view,nullable-to-not-null
+                       adopt-view,nullable-to-not-null,drop-identity-default
   --on-ambiguous abort|rename|drop-add
                        How to handle ambiguous renames (default: abort)
   --from-db            Introspect live DB instead of using the committed snapshot
@@ -204,6 +204,7 @@ function allowFlagFor(kind: string): string {
     case "drop-fk": return "drop-fk";
     case "change-column-type": return "type-change";
     case "change-column-nullable": return "nullable-to-not-null";
+    case "change-column-default": return "drop-identity-default";
     default: return kind;
   }
 }
