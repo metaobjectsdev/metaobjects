@@ -91,6 +91,23 @@ export interface IndexDescriptor {
    * default and not rendered. Emitted as `USING <method>` before the key list.
    */
   using?: string;
+  /**
+   * INTROSPECTION-ONLY, Postgres. Set when the LIVE index is owned by a table
+   * constraint (`pg_constraint.conindid`), i.e. it was created as a side effect of
+   * `UNIQUE` / `PRIMARY KEY` / `EXCLUDE` rather than by `CREATE INDEX`. Postgres
+   * refuses `DROP INDEX` on such an index ("cannot drop index X because constraint
+   * X on table Y requires it"), so the emitter must drop the CONSTRAINT instead.
+   *
+   * Never authored in metadata and never present on the expected side — it describes
+   * how the database happens to hold an index, not what the model asks for. It is
+   * therefore deliberately NOT compared by `indexEquals`: a unique index and a unique
+   * constraint over the same columns are the same model-level thing.
+   *
+   * This matters far beyond an edge case: Drizzle's `unique()` produces constraints,
+   * so every adopter migrating from a Drizzle-managed schema has constraint-backed
+   * unique indexes (#285).
+   */
+  constraint?: "unique" | "primary" | "exclude";
 }
 
 export interface CheckDescriptor {

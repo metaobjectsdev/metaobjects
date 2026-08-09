@@ -7,6 +7,42 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — [#285](https://github.com/metaobjectsdev/metaobjects/issues/285): `meta migrate` emitted an un-appliable `DROP INDEX` for a constraint-backed index (npm)
+
+Postgres creates an index to enforce `UNIQUE` / `PRIMARY KEY` / `EXCLUDE`, then refuses to
+drop that index directly — `cannot drop index X because constraint X on table Y requires
+it`. `meta migrate` emitted a bare `DROP INDEX`, so `--apply` failed. Apply is
+transactional and all-or-nothing, so this also blocked **every other pending change in the
+same invocation**: an adopter could not create an unrelated new table while a cosmetic
+index rename was outstanding.
+
+Not a corner case — **Drizzle's `unique()` produces a CONSTRAINT rather than a bare unique
+index**, so any schema adopted from a Drizzle-managed database hits this on essentially
+every unique index. Reported from a real adoption.
+
+Postgres introspection now reads `pg_constraint.conindid` (the catalog's own back-pointer,
+so this is exact rather than a name heuristic) and marks the index descriptor with
+`constraint: "unique" | "primary" | "exclude"`. The emitter drops the **constraint**
+instead, and the down migration re-adds a constraint rather than recreating a bare index —
+otherwise a rollback would leave the database in a different shape than it started, and a
+second rollback would fail to find the constraint it expected.
+
+The marker is introspection-only: it is never authored in metadata, never present on the
+expected side, and deliberately not compared by `indexEquals` — a unique index and a unique
+constraint over the same columns are the same model-level thing, so it must not read as
+drift.
+
+Gated against a **real Postgres 16** per this package's doctrine — emitted-SQL inspection is
+what missed this, since the SQL looked perfectly reasonable. The gate builds the live shape
+the way Drizzle does, applies, re-introspects, requires the re-diff to be **empty**, and
+then proves uniqueness is *still enforced* (a migration that dropped the constraint and
+never re-added an equivalent would also "converge"). Verified to fail without the fix.
+
+**Not addressed:** the issue also notes that `ALTER TABLE … RENAME CONSTRAINT` would turn a
+pure rename into a single non-destructive statement instead of a drop/add pair. That needs
+the diff to model index renames, which it does not today; the drop/add pair is correct and
+converges, but rebuilds the index. Left as a separate improvement.
+
 ### Fixed — loading a `metaobjects.config.ts` could permanently corrupt error reporting for the rest of the process (npm)
 
 `loadMetaobjectsConfig` leaked a mutation of the process-global `Error.prepareStackTrace`.

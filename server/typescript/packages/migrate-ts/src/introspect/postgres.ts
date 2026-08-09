@@ -515,6 +515,7 @@ async function readPgIndexes(k: RawKysely, schema: string, table: string): Promi
       predicate: string | null;
       access_method: string;
       indexdef: string;
+      constraint_type: string | null;
     }>;
   };
   try {
@@ -528,6 +529,7 @@ async function readPgIndexes(k: RawKysely, schema: string, table: string): Promi
       predicate: string | null;
       access_method: string;
       indexdef: string;
+      constraint_type: string | null;
     }>`
       SELECT i.relname AS index_name,
              ix.indisunique AS is_unique,
@@ -537,7 +539,8 @@ async function readPgIndexes(k: RawKysely, schema: string, table: string): Promi
              (COALESCE(opt.option, 0) & 1) = 1 AS is_desc,
              pg_get_expr(ix.indpred, ix.indrelid) AS predicate,
              am.amname AS access_method,
-             pg_get_indexdef(ix.indexrelid) AS indexdef
+             pg_get_indexdef(ix.indexrelid) AS indexdef,
+             con.contype AS constraint_type
       FROM pg_index ix
       JOIN pg_class i ON i.oid = ix.indexrelid
       JOIN pg_class t ON t.oid = ix.indrelid
@@ -547,6 +550,11 @@ async function readPgIndexes(k: RawKysely, schema: string, table: string): Promi
       LEFT JOIN LATERAL unnest(ix.indoption) WITH ORDINALITY AS opt(option, oord)
         ON opt.oord = k.ord
       LEFT JOIN pg_attribute a ON a.attrelid = ix.indrelid AND a.attnum = k.attnum
+      -- #285: an index OWNED by a constraint (UNIQUE / PRIMARY KEY / EXCLUDE) cannot be
+      -- dropped with DROP INDEX; the constraint must be dropped instead. conindid is the
+      -- catalog's own back-pointer, so this is exact rather than a name heuristic.
+      LEFT JOIN pg_constraint con
+        ON con.conindid = ix.indexrelid AND con.contype IN ('u', 'p', 'x')
       WHERE n.nspname = ${schema}
         AND t.relname = ${table}
       ORDER BY i.relname, k.ord
@@ -567,6 +575,7 @@ async function readPgIndexes(k: RawKysely, schema: string, table: string): Promi
       hasExpressionKey: boolean;
       accessMethod: string;
       indexdef: string;
+      constraintType: string | null;
     }
   >();
   for (const r of rows.rows) {
@@ -581,6 +590,7 @@ async function readPgIndexes(k: RawKysely, schema: string, table: string): Promi
         hasExpressionKey: false,
         accessMethod: r.access_method,
         indexdef: r.indexdef,
+        constraintType: r.constraint_type,
       };
       byName.set(r.index_name, entry);
     }
@@ -592,22 +602,30 @@ async function readPgIndexes(k: RawKysely, schema: string, table: string): Promi
       entry.orders.push(r.is_desc ? "desc" : "asc");
     }
   }
+  // #285: map pg_constraint.contype onto the descriptor so the emitter knows a
+  // DROP INDEX would be refused and must become ALTER TABLE ... DROP CONSTRAINT.
+  const constraintKind = (t: string | null): IndexDescriptor["constraint"] =>
+    t === "u" ? "unique" : t === "p" ? "primary" : t === "x" ? "exclude" : undefined;
+
   return Array.from(byName.entries())
     .filter(([, v]) => !v.isPrimary) // PK index excluded — PK lives in TableDescriptor.primaryKey
     .map(([name, v]) => {
       const using = v.accessMethod !== "btree" ? v.accessMethod : undefined;
+      const constraint = constraintKind(v.constraintType);
       if (v.hasExpressionKey) {
         // Functional/expression index: lift the raw key expression out of the
         // index def (between `USING <am> (` and its matching `)`, before WHERE).
         const ix: IndexDescriptor = { name, columns: [], unique: v.isUnique, expr: indexDefKeyExpr(v.indexdef) };
         if (using) ix.using = using;
         if (v.predicate !== null) ix.where = v.predicate;
+        if (constraint) ix.constraint = constraint;
         return ix;
       }
       const ix: IndexDescriptor = { name, columns: v.cols, unique: v.isUnique };
       if (using) ix.using = using;
       if (v.orders.some((o) => o === "desc")) ix.orders = v.orders;
       if (v.predicate !== null) ix.where = v.predicate;
+      if (constraint) ix.constraint = constraint;
       return ix;
     });
 }

@@ -82,7 +82,18 @@ function renderUp(c: Change): string {
         ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} SET DEFAULT ${renderDefault(c.to)};`
         : `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} DROP DEFAULT;`;
     case "add-index":              return renderCreateIndex(c.table, c.schema, c.index);
-    case "drop-index":             return `DROP INDEX ${quoteIndexQualified(c.index, c.schema)};`;
+    // #285: an index OWNED by a UNIQUE / PRIMARY KEY / EXCLUDE constraint cannot be
+    // dropped with DROP INDEX — Postgres refuses with "cannot drop index X because
+    // constraint X on table Y requires it", failing the whole (transactional) apply and
+    // so blocking every other pending change in the same migration. Drop the constraint
+    // instead; it takes its backing index with it. `restore` is the ACTUAL introspected
+    // descriptor (both diff producers populate it), which is where the marker lives.
+    // Matters broadly, not marginally: Drizzle's `unique()` emits constraints, so every
+    // schema adopted from Drizzle has constraint-backed unique indexes.
+    case "drop-index":
+      return c.restore?.constraint !== undefined
+        ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.index)};`
+        : `DROP INDEX ${quoteIndexQualified(c.index, c.schema)};`;
     case "add-fk":                 return renderAddFk(c.table, c.schema, c.fk);
     case "drop-fk":                return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.fk)};`;
     // add-check / drop-check are declared but NOT yet produced by the diff —
@@ -135,6 +146,18 @@ function renderDown(c: Change): string {
         : `ALTER TABLE ${quoteQualified(c.table, c.schema)} ALTER COLUMN ${quote(c.column)} DROP DEFAULT;`;
     case "add-index":              return `DROP INDEX ${quoteIndexQualified(c.index.name, c.schema)};`;
     case "drop-index":
+      // #285: the up dropped a CONSTRAINT, so the down must add one back — recreating a
+      // bare unique index would leave the database in a different shape than it started
+      // (uniqueness still enforced, but by an index rather than the constraint), and the
+      // next down of THIS same migration would then fail to find the constraint.
+      if (c.restore?.constraint === "unique") {
+        return `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD CONSTRAINT ${quote(c.restore.name)} UNIQUE (${c.restore.columns.map(quote).join(", ")});`;
+      }
+      if (c.restore?.constraint === "exclude") {
+        // An EXCLUDE constraint's operator list is not recoverable from an
+        // IndexDescriptor; emit an honest warning rather than wrong SQL.
+        return `-- WARNING: down migration cannot restore EXCLUDE constraint ${c.restore.name}`;
+      }
       return c.restore
         ? renderCreateIndex(c.table, c.schema, c.restore)
         : `-- WARNING: down migration cannot restore the original index definition`;
