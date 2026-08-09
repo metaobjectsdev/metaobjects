@@ -342,8 +342,9 @@ columns at midnight UTC.
 ## Universal Angular 18 client
 
 The browser-side Angular 18 client (`@metaobjectsdev/angular` +
-`@metaobjectsdev/codegen-ts-angular`, both shipped on the TypeScript side per
-the [universal client recipe](typescript-client.md)) interoperates with the
+`@metaobjectsdev/codegen-ts-angular`, which live on the TypeScript side per
+the [universal client recipe](typescript-client.md) — **source-only, not
+published to npm**) interoperates with the
 generated Spring controllers out of the box — the cross-port URL grammar and
 JSON wire shape are identical. Consumers wire `EntityFetcherToken` to a
 `fetch` wrapper that targets their Spring backend's `apiPrefix` (default

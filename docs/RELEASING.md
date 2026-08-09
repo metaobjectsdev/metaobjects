@@ -63,6 +63,16 @@ isolated patch). **Enumerate the set each release — do not trust this count** 
 was **13** at 0.11.5); the lockstep set is "every non-`private` package at the
 previous version" (a sed/grep over `*/package.json`):
 
+> **Mind the gap in that rule.** A non-`private` package on its OWN version line is
+> at neither the previous lockstep version nor `private`, so it matches neither
+> branch and gets silently skipped by every release. That is exactly what happened
+> to `@metaobjectsdev/angular` + `@metaobjectsdev/codegen-ts-angular` (their own
+> `0.6.x` line): **never published**, while the README, `CLAUDE.md`, four port docs
+> and a full recipe described them as installable. `scripts/check-publish-intent.sh`
+> now fails the build on any non-private package that is neither at the lockstep
+> version nor declared source-only, so the decision has to be made out loud. It runs
+> in the `gates` lane; run it yourself before a cut.
+
 | Tier | Packages |
 |---|---|
 | 0 | `metadata`, `render` |

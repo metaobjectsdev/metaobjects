@@ -135,6 +135,14 @@ gate_pom_versions() { scripts/check-pom-versions.sh; }
 # lanes with no failing test name. See scripts/check-bun-version.sh.
 gate_bun_version() { scripts/check-bun-version.sh; }
 
+# ── publish intent: a non-private package must ride lockstep or be declared ───
+# source-only. RELEASING.md's lockstep set is "every non-private package at the
+# previous version"; a non-private package on its OWN version line matches neither
+# branch and is silently skipped by every release. That is how the two Angular
+# packages went unpublished while README/CLAUDE/port-docs/a whole recipe described
+# them as installable. Offline check; see scripts/check-publish-intent.sh.
+gate_publish_intent() { scripts/check-publish-intent.sh; }
+
 # ── conformance.yml — fixture lint + workspace typecheck ──────────────────────
 gate_fixture_lint() {
   bun_install && ( cd server/typescript/packages/conformance && bun bin/conformance.ts lint ../../../../fixtures/conformance )
@@ -352,6 +360,7 @@ fi
 if want gates; then step    "leak-scan (security)"             gate_leak_scan;             fi
 if want gates; then step    "pom-version parity"               gate_pom_versions;           fi
 if want gates; then step    "bun-version parity"               gate_bun_version;            fi
+if want gates; then step    "publish-intent parity"            gate_publish_intent;         fi
 if want gates; then step_if bun "fixture-lint"                 gate_fixture_lint;           fi
 # The ts port is split into two lanes so CI can run them as separate jobs (see
 # .github/workflows/local-ci.yml): a FAST lane (build+typecheck, conformance,
