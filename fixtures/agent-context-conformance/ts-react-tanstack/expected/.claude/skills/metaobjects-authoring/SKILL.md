@@ -719,8 +719,56 @@ Multi-source: multiple `source.rdb` children, each with a `@role`, exactly one
 ```
 
 **An entity's PRIMARY source must be writable** (`table`) — read-only kinds are
-legal only in non-primary roles (e.g. table `primary` + view `replica` for
-read-through). A derived read model over a view/proc is an **`object.projection`**
+legal only in non-primary roles.
+
+### Derived/computed columns: reach for an ENTITY READ-VIEW first
+
+**Do not default to `object.projection` for a list screen, grid, or "one extra
+column" read.** The usual need — an entity's own rows plus a joined display name or a
+per-row count, filterable and sortable like any other column — is an **entity
+read-view**, not a projection:
+
+```jsonc
+{ "object.entity": { "name": "Order", "children": [
+  { "source.rdb": { "@kind": "table", "@table": "orders" } },              // writes
+  { "source.rdb": { "@kind": "view", "@view": "v_order", "@role": "replica" } },  // reads
+  // …the entity's own fields stay as they are — you re-state NOTHING…
+  { "field.string": { "name": "customerName", "@filterable": true, "children": [
+    { "origin.passthrough": { "@from": "Customer.name" } } ]}},
+  { "field.int": { "name": "itemCount", "@filterable": true, "children": [
+    { "origin.aggregate": { "@agg": "count", "@of": "OrderItem.id", "@via": "Order.items" } } ]}}
+]}}
+```
+
+That is the whole change. Writes route to the table (derived fields are excluded from
+the write codecs); reads route to the view; `meta migrate` emits the `CREATE VIEW` from
+the **same assembly logic** a projection view uses — one emitter, two hosts (FR-024 §7,
+#213/#214). Filtering and sorting on `customerName` / `itemCount` work like any other
+column because the filter tier runs against the view.
+
+**Reach for a projection only when one of these is true** (from
+`docs/features/source-kinds.md`, which carries the full decision table):
+
+| Entity read-view | Projection |
+|---|---|
+| extras sit over the entity's **own** table | an independent **exposure contract** |
+| same trust domain — a new entity field showing up in the view is correct | a subset, **renamed** columns, versioned, or external consumers |
+| the base is still INSERTable and is the record of truth | keyless, multi-base, proc-backed, all-derived, or borrowed identity |
+
+Two things genuinely force a projection: **renamed base columns** (a field carries one
+`@column` per paradigm) and **row-filtered views** (soft-delete / `WHERE status='active'`
+— an entity read-view exposes the whole entity; only a projection carries a row-scope
+`@filter`, #207).
+
+Choosing a projection when a read-view would do costs a second URL, a second type, a
+second identity declaration, and re-stating every passthrough column — for no gain.
+
+> Historical note for anyone porting older advice: before 0.17.0 (2026-07-18) an entity
+> hosting a derived field silently produced no view and read the wrong table, so a
+> projection genuinely WAS the only way to get a grid with a derived column. That is
+> fixed; guidance written before then is stale.
+
+A derived read model that IS an independent exposure is an **`object.projection`**
 (FR-024): its fields `extends` entity fields (`extends: "Author.id"` — dotted
 child traversal, package only on the root segment) and/or carry `origin.*`
 children (`passthrough` / `aggregate` / `collection` / `computed` / `first`)
