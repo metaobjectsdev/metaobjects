@@ -146,6 +146,14 @@ gate_ts_build_typecheck() { bun_install && bun run --filter '*' build && bun run
 # integration tests, but the typecheck already runs in ts-fast, so don't repeat it.
 gate_ts_build() { bun_install && bun run --filter '*' build; }
 
+# migrate-ts real-Postgres suites — apply / lifecycle / rollback / introspection against a
+# real engine. ADR-0015 makes migrate-ts the project's ONLY migrate engine, so this is the
+# ONLY real-engine gate on migration correctness. The CI ts-slow job supplies
+# MIGRATE_TS_PG_URL (its Postgres sidecar) plus MIGRATE_TS_PG_EXPECT=1, which arms an
+# in-suite sentinel that fails loudly if that URL ever stops being set. Without those env
+# vars (a local run with no Postgres) the PG describes self-skip exactly as before.
+gate_migrate_ts_pg() { bun_install && ( cd server/typescript/packages/migrate-ts && bun test ); }
+
 # ── conformance.yml — per-port conformance corpora (exact CI commands) ────────
 gate_conf_ts() {
   bun_install || return 1
@@ -345,6 +353,9 @@ else
     # runs (umbrella `ts` / local full), its build already produced it — only build
     # here when ts-slow runs in isolation (the CI ts-slow job).
     if want_any ts ts-slow && ! want_any ts ts-fast; then step_if bun "ts build (for integration)" gate_ts_build; fi
+    # Ordered BEFORE the docker integration step so a container-readiness flake there
+    # can never prevent the migrate verdict from being produced.
+    want_any ts ts-slow        && step_if bun "migrate-ts real-PG suite" gate_migrate_ts_pg
     want_any ts ts-slow        && run_integration_for ts     ts
     want_any java java-slow    && run_integration_for java   java kotlin
     want python                && run_integration_for python python

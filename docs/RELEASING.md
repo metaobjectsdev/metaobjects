@@ -198,6 +198,17 @@ A red run here has caught real cross-port divergence (view-DDL identifier quotin
 strategy mismatches) that the unit suites missed.
 
 ### 3. Promote to `latest`
+
+**Before `bun publish`: confirm the `local-ci` run for the release commit is green.**
+Its `ts-slow` lane now carries the real-Postgres migrate gate. Publishing is irreversible on
+all four registries, and the `v*` tag is pushed *after* `bun publish` — so the tag-triggered
+`integration-tests` run can never be the pre-publish gate. This is the last gate that can
+precede the irreversible step.
+
+```bash
+gh run list --workflow local-ci.yml --limit 1 --json headSha,conclusion
+```
+
 ```bash
 # bump the candidate set to the final <version>
 rm bun.lock && bun install

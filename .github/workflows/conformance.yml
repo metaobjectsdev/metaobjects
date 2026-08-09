@@ -142,7 +142,8 @@ jobs:
           cd ../integration-tests && bun test test/validation-conformance.test.ts
           # migrate-ts — the sole cross-port schema-migration engine (ADR-0015).
           # Its unit + integrity suites need no DB; the PG integration tests
-          # (gated on MIGRATE_TS_PG_URL) self-skip here and run in integration-tests.yml.
+          # (gated on MIGRATE_TS_PG_URL) self-skip here and run in local-ci's ts-slow
+          # lane (every push to main) + integration-tests.yml (the v* tag backstop).
           cd ../migrate-ts && bun test
           # Doc-template + CLI suites: byte-identity template gate, embedded-template
           # gate, neutrality / collision guards, and the docs golden corpus +
