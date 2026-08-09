@@ -59,8 +59,21 @@ export interface CrudRoutesOptions {
   path: string;
   /** User's Drizzle instance. */
   db: AnyDrizzle;
-  /** Drizzle table const. Must expose an `id` column. */
+  /** Drizzle table const. Must expose an `id` column. WRITES always target this. */
   table: AnyTable;
+  /**
+   * Replica read view for a write-through entity (#214). When set, every READ —
+   * list, get-by-id, and the row echoed back from create/update — comes from here
+   * instead of `table`, so derived `origin.*` columns are actually present.
+   *
+   * Without it the Hono adapter silently returned rows missing every derived field
+   * the generated type and Zod schema promise, and a filter or sort on such a field
+   * — both of which the generated allowlists ALLOW — hit a column that does not
+   * exist on the table, producing a 500. Fastify had this from the start; the Hono
+   * adapter simply never got it, the same way it never got the `.all()`/`.get()`
+   * fix (#286).
+   */
+  readView?: AnyTable;
   /** Zod schema for create payloads (typically `<Entity>InsertSchema`). */
   insertSchema: ZodTypeAny;
   /** Zod schema for update payloads (typically `<Entity>UpdateSchema`). */
@@ -107,10 +120,36 @@ export function parseHonoFilterParams(c: Context): Record<string, unknown> {
   return qs.parse(queryString) as Record<string, unknown>;
 }
 
+/** READ source: the replica view when the entity is write-through, else the table.
+ *  Mirrors the Fastify adapter's `readSource()` — for a vanilla entity (no
+ *  `readView`) this is `opts.table`, so behaviour is unchanged. */
+function readSource(opts: VerbOptions): AnyTable {
+  return opts.readView ?? opts.table;
+}
+
+/** Re-read a just-written row through the replica view so the response carries the
+ *  derived columns. Writes always target the TABLE; only the echo changes. With no
+ *  `readView`, returns the write row unchanged. */
+async function reReadThroughView(
+  opts: VerbOptions,
+  writeRow: unknown,
+): Promise<unknown> {
+  if (opts.readView === undefined || writeRow == null) return writeRow;
+  const pk = (writeRow as Record<string, unknown>).id;
+  if (pk === undefined) return writeRow;
+  const rows = await opts.db
+    .select()
+    .from(opts.readView)
+    .where(eq(opts.readView.id, pk))
+    .limit(1);
+  return (rows as unknown[])[0] ?? writeRow;
+}
+
 export function mountListRoute(opts: VerbOptions): void {
   opts.app.get(opts.path, async (c) => {
     try {
-      let q = opts.db.select().from(opts.table).$dynamic();
+      const listSrc = readSource(opts);
+      let q = opts.db.select().from(listSrc).$dynamic();
       const qsParsed = parseHonoFilterParams(c);
       const withCount = isTruthyFlag(qsParsed.withCount);
 
@@ -118,7 +157,7 @@ export function mountListRoute(opts: VerbOptions): void {
       if (opts.filterAllowlist && opts.sortAllowlist) {
         const parsed = parseFilterParams({
           query: qsParsed,
-          table: opts.table,
+          table: listSrc,
           allowlist: opts.filterAllowlist,
           sortAllowlist: opts.sortAllowlist,
           dialect: opts.dialect ?? "sqlite",
@@ -147,7 +186,7 @@ export function mountListRoute(opts: VerbOptions): void {
       if (!withCount) return c.json(rows);
 
       // Count query: same WHERE, no limit/offset/orderBy.
-      let cq = opts.db.select({ c: count() }).from(opts.table).$dynamic();
+      let cq = opts.db.select({ c: count() }).from(listSrc).$dynamic();
       if (where) cq = cq.where(where);
       const countRow = (await cq)[0] as { c: number } | undefined;
       const total = countRow?.c ?? 0;
@@ -166,14 +205,15 @@ export function mountGetRoute(opts: VerbOptions): void {
     const id = c.req.param("id") ?? "";
     // Compare against the PK's real type — a numeric-LOOKING id on a TEXT pk
     // must stay a string ('0123' ≠ '123'), or affinity matches the WRONG row.
-    const idValue = coerceIdForColumn(opts.table.id, id);
+    const getSrc = readSource(opts);
+    const idValue = coerceIdForColumn(getSrc.id, id);
     if (idValue === undefined) return c.json({ error: "invalid_id" }, 400);
     // `.get()` is likewise libsql/better-sqlite3-only; `.limit(1)` + await + [0]
     // is the portable single-row read (#286).
     const rows = await opts.db
       .select()
-      .from(opts.table)
-      .where(eq(opts.table.id, idValue))
+      .from(getSrc)
+      .where(eq(getSrc.id, idValue))
       .limit(1);
     const row = (rows as unknown[])[0];
     return row ? c.json(row) : c.json({ error: "not_found" }, 404);
@@ -189,7 +229,8 @@ export function mountCreateRoute(opts: VerbOptions): void {
     }
     const result = await opts.db.insert(opts.table).values(parsed.data).returning();
     const row = (result as unknown[])[0];
-    return c.json(row, 201);
+    // Echo the row through the replica view so derived columns are present (#214).
+    return c.json(await reReadThroughView(opts, row), 201);
   });
 }
 
@@ -211,7 +252,7 @@ export function mountUpdateRoute(opts: VerbOptions): void {
       .where(eq(opts.table.id, idValue))
       .returning();
     const row = (result as unknown[])[0];
-    return row ? c.json(row) : c.json({ error: "not_found" }, 404);
+    return row ? c.json(await reReadThroughView(opts, row)) : c.json({ error: "not_found" }, 404);
   };
   const path = `${opts.path}/:id`;
   if (opts.updateMethod === "put") {
