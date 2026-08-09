@@ -96,7 +96,7 @@ describe("#286 — CRUD helpers on real Postgres, both adapters", () => {
   const adapters: Array<{
     name: string;
     get: (url: string) => Res;
-    send: (method: "POST" | "PATCH" | "DELETE", url: string, payload?: unknown) => Res;
+    send: (method: "POST" | "PATCH" | "DELETE", url: string, payload?: Record<string, unknown>) => Res;
   }> = [];
 
   // describe() bodies register BEFORE beforeAll fills `adapters`, so the rows are named
@@ -178,10 +178,9 @@ describe("#286 — CRUD helpers on real Postgres, both adapters", () => {
             return { status: res.statusCode, body: res.statusCode === 204 ? null : res.json() };
           },
           send: async (method, url, payload) => {
-            const res = await f.inject({
-              method: method as "POST" | "PATCH" | "DELETE", url,
-              ...(payload === undefined ? {} : { payload }),
-            });
+            const res = payload === undefined
+              ? await f.inject({ method, url })
+              : await f.inject({ method, url, payload });
             return { status: res.statusCode, body: res.statusCode === 204 ? null : res.json() };
           },
         },
