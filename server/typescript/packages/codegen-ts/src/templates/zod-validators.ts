@@ -193,7 +193,9 @@ export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Co
 
     if (autoSet === AUTO_SET_ON_CREATE || autoSet === AUTO_SET_ON_UPDATE) {
       insertFieldLines.push(
-        code`  ${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
+        ctx?.timestampMode === "date"
+          ? code`  ${child.name}: z.date().optional().transform(() => new Date())`
+          : code`  ${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
       );
     } else {
       insertFieldLines.push(code`  ${child.name}: ${zodFieldExpr(child, obj, ctx)}`);
@@ -338,7 +340,9 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
     // Insert schema: @autoSet fields use transform (always override client input).
     if (autoSet === AUTO_SET_ON_CREATE || autoSet === AUTO_SET_ON_UPDATE) {
       insertFieldLines.push(
-        code`  ${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
+        ctx?.timestampMode === "date"
+          ? code`  ${child.name}: z.date().optional().transform(() => new Date())`
+          : code`  ${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
       );
       // Preserving schema: the @autoSet column is validated verbatim (its natural
       // field expr) so an import/restore keeps the caller's original timestamp.
@@ -354,7 +358,9 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
       // Omit: creation timestamps cannot be changed after creation
     } else if (autoSet === AUTO_SET_ON_UPDATE) {
       updateFieldLines.push(
-        code`  ${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
+        ctx?.timestampMode === "date"
+          ? code`  ${child.name}: z.date().optional().transform(() => new Date())`
+          : code`  ${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
       );
     } else {
       // All non-autoSet fields are optional in the update schema (PATCH semantics).
@@ -511,8 +517,14 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
       break;
     case FIELD_SUBTYPE_DATE:
     case FIELD_SUBTYPE_TIME:
+      baseStr = "z.string()"; // calendar date / time-of-day — always ISO-string-shaped, not governed by timestampMode
+      break;
     case FIELD_SUBTYPE_TIMESTAMP:
-      baseStr = "z.string()";
+      // Must agree with column-mapper.ts's mapColumnType, which already honors
+      // ctx.timestampMode for the Drizzle column itself — z.string() here regardless would
+      // disagree with a "date"-mode column (Date-typed) and fail to typecheck downstream
+      // (reported against an adopting project).
+      baseStr = ctx?.timestampMode === "date" ? "z.date()" : "z.string()";
       break;
     case FIELD_SUBTYPE_ENUM: {
       const values = enumValues(field);

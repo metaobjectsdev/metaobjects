@@ -6,10 +6,49 @@ import { TypeId, TYPE_IDENTITY, TYPE_VALIDATOR,
          IDENTITY_SUBTYPE_PRIMARY, OBJECT_SUBTYPE_ENTITY,
          VALIDATOR_SUBTYPE_REGEX, VALIDATOR_SUBTYPE_LENGTH,
          MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
-import { meta, metaObject, metaField } from "../_meta-build.js";
+import { meta, metaObject, metaField, metaRoot } from "../_meta-build.js";
 import { renderZodValidators } from "../../src/templates/zod-validators.js";
+import { makeRenderContext } from "../../src/render-context.js";
+import { buildPkMap } from "../../src/pk-resolver.js";
+import { buildRelationMap } from "../../src/relation-resolver.js";
+import { FIELD_SUBTYPE_TIMESTAMP } from "@metaobjectsdev/metadata";
 
 describe("renderZodValidators", () => {
+  // Reported against an adopting project: a plain field.timestamp (autoSet or not) always got
+  // z.string() regardless of timestampMode, disagreeing with a "date"-mode Drizzle column
+  // (Date-typed) and failing to typecheck downstream.
+  test("timestampMode: \"date\" — field.timestamp gets z.date(), @autoSet gets a Date-returning transform", () => {
+    const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
+    const id = metaField(FIELD_SUBTYPE_LONG, "id");
+    post.addChild(id);
+    const updatedAt = metaField(FIELD_SUBTYPE_TIMESTAMP, "updatedAt"); // plain, not autoSet
+    post.addChild(updatedAt);
+    const createdAt = metaField(FIELD_SUBTYPE_TIMESTAMP, "createdAt");
+    createdAt.setAttr("required", true);
+    createdAt.setAttr("autoSet", "onCreate");
+    post.addChild(createdAt);
+    const primary = meta(new TypeId(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY), "primary");
+    primary.setAttr("fields", ["id"]);
+    primary.setAttr("generation", "increment");
+    post.addChild(primary);
+
+    const root = metaRoot();
+    root.addChild(post);
+    const ctx = makeRenderContext({
+      dialect: "postgres",
+      timestampMode: "date",
+      loadedRoot: root,
+      outDir: "/x",
+      dbImport: "~/db",
+      pkMap: buildPkMap(root),
+      relationMap: buildRelationMap(root),
+    });
+    const out = renderZodValidators(post, ctx).toString();
+    expect(out).toContain("updatedAt: z.date()"); // plain field, general zodFieldExpr path
+    expect(out).toContain("z.date().optional().transform(() =>"); // @autoSet insert path
+    expect(out).not.toContain("z.string()"); // no stale string-typed timestamp anywhere
+    expect(out).not.toContain(".toISOString()");
+  });
   test("emits InsertSchema with required fields and optional unset fields", () => {
     const post = metaObject(OBJECT_SUBTYPE_ENTITY, "Post");
     const id = metaField(FIELD_SUBTYPE_LONG, "id");

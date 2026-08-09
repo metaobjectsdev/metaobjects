@@ -372,12 +372,18 @@ function renderColumn(
     }
   }
 
-  // @autoSet fields: emit .$defaultFn(() => new Date().toISOString()) so Drizzle
-  // inserts stamp the server-side timestamp automatically. This means callers don't
-  // need to supply createdAt / updatedAt in INSERT calls — Drizzle fills them in.
+  // @autoSet fields: emit a $defaultFn so Drizzle inserts stamp the server-side timestamp
+  // automatically. This means callers don't need to supply createdAt / updatedAt in INSERT
+  // calls — Drizzle fills them in. The stamp's shape must match ctx.timestampMode — the base
+  // column type already does (mapColumnType, above) — or a "date" column ends up with a
+  // $defaultFn that hands Drizzle a string, which fails to typecheck (reported against an
+  // adopting project: TS2322 "Type 'string' is not assignable to type 'Date | SQL<unknown>'",
+  // cascading into every generated insert/update query touching the field).
   const autoSet = field.attr(FIELD_ATTR_AUTO_SET);
   const autoSetSuffix = (autoSet === "onCreate" || autoSet === "onUpdate")
-    ? `.$defaultFn(() => new Date().toISOString())`
+    ? ctx.timestampMode === "date"
+      ? `.$defaultFn(() => new Date())`
+      : `.$defaultFn(() => new Date().toISOString())`
     : "";
 
   // $type<E[]>() chain — emitted as Code (not a string modifier) so ts-poet can
