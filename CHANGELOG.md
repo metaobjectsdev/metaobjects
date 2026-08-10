@@ -7,6 +7,26 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.21.6] — npm `0.21.6` · PyPI `0.21.6` · NuGet `0.21.6` · Maven `7.21.6`
+
+A coordinated PATCH across all four registries. **Two changes alter runtime behaviour on
+an existing database — read these two before upgrading:**
+
+1. **`like` is now case-SENSITIVE on Postgres** (it was dispatching `ILIKE`). FR-009 always
+   specified SQL `LIKE`, and TS's own persistence drivers were already case-sensitive — only
+   one branch of one HTTP parser disagreed, so a query returning extra rows today will return
+   fewer after upgrading. Case-insensitive matching stays available via `?search`; an `ilike`
+   operator remains deliberately unadded (ADR-0049).
+2. **The first `meta migrate` after upgrading emits a migration ADDING `ON DELETE` actions to
+   live foreign keys.** A parent-side `relationship.composition` was silently contributing no
+   referential action; it now contributes its subtype default. This changes production delete
+   semantics — pin `@onDelete: "no-action"` on the reference to keep current DB behaviour
+   (ADR-0047).
+
+Both are corrections of previously-wrong behaviour rather than contract changes, which is why
+this is a PATCH — the same call, on the same class of defect, as the Java `LIKE` fix in 0.21.4.
+
+
 ### Fixed — parent-side `relationship.composition` reaches the child's FK (migrate-ts; ADR-0047)
 
 > **ADOPTER-VISIBLE MIGRATION — production delete semantics change.** After
