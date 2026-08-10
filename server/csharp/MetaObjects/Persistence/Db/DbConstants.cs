@@ -45,6 +45,10 @@ public static class DbConstants
     public const string IDENTITY_ATTR_USING            = "using";
     /// <summary>identity.reference: physical FK constraint-name override. Absent =&gt; the auto-derived default.</summary>
     public const string IDENTITY_ATTR_CONSTRAINT_NAME  = "constraintName";
+    /// <summary>identity.reference: referential action on parent delete — the explicit per-FK override (ADR-0047).</summary>
+    public const string IDENTITY_ATTR_ON_DELETE        = "onDelete";
+    /// <summary>identity.reference: referential action on key update — the explicit per-FK override (ADR-0047).</summary>
+    public const string IDENTITY_ATTR_ON_UPDATE        = "onUpdate";
 
     // -----------------------------------------------------------------------
     // R6 Plan 2b — @dbColumnType physical column-type attribute (ADR-0013).

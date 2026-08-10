@@ -245,6 +245,11 @@ schema without a rewrite:
 - **`identity.reference @constraintName`** pins a foreign-key constraint name so the
   metadata can match an existing DB's naming convention without a destructive
   rename.
+- **`identity.reference @onDelete` / `@onUpdate`** pin a foreign key's referential
+  actions directly on the FK (ADR-0047) — the way to match an adopted DB's existing
+  `ON DELETE`/`ON UPDATE` behavior when the model declares no `relationship.*` for
+  that FK (a relationship's explicit action or subtype default otherwise supplies
+  it, whichever side of the FK declares the relationship).
 
 ## Not yet shipped
 

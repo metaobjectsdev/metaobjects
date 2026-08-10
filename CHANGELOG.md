@@ -7,6 +7,57 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — parent-side `relationship.composition` reaches the child's FK (migrate-ts; ADR-0047)
+
+The authoring the docs and the `metaobjects-authoring` skill teach — declaring the
+relationship on the PARENT (`relationship.composition { @objectRef: "Post",
+@cardinality: "many" }` on `Author`, with the subtype implying the default action) —
+contributed **nothing** to the foreign key: `resolveReferentialActions` correlated only
+relationships declared on the FK-owning child, so the documented "composition ⇒
+`ON DELETE CASCADE` default" never fired and deleting a parent with children was a raw
+FK violation at runtime. The resolver now correlates the **reverse relationship on the
+target entity** as a third precedence tier (reference-level attr → child-side
+relationship → parent-side relationship; each relationship contributing its explicit
+action, else its subtype default). Guards, each failing closed: an M:N (`@through`)
+relationship never correlates with a direct FK; a reverse relationship contributes
+nothing when the child holds more than one enforced reference to the same target
+(it cannot say which FK carries the ownership edge); and an INFERRED set-null default
+(parent-side aggregation, no explicit `@onDelete`) on a NOT NULL FK contributes
+nothing rather than turning a previously-valid model into a hard
+`SetNullNotNullableError` (an explicit `set-null` still errors loudly). Models with no
+parent-side relationship are byte-identical. The Kotlin Exposed table generator's
+decorated `identity.reference` columns now resolve actions with the same precedence
+(they previously emitted raw relationship attrs only, and the canonical
+parent-relationship + child-reference shape lost the action entirely through the
+FK-dedup pass).
+
+### Added — `@onDelete` / `@onUpdate` registered on `identity.reference` (all five ports; ADR-0047)
+
+The migrate engine has long honored `@onDelete` / `@onUpdate` declared directly on
+`identity.reference` (highest precedence — the reference IS the FK), and
+`docs/features/relationships.md`'s own canonical example authored it — but the attrs
+were never registered, so a model `meta migrate` accepted and applied **failed strict
+`meta verify` outright** with `ERR_UNKNOWN_ATTR`. Those two must never disagree.
+[ADR-0047](spec/decisions/ADR-0047-referential-actions-on-identity-reference.md)
+rules the attrs REGISTERED (db-provider, like `@constraintName`; optional string,
+allowedValues `cascade | set-null | restrict | no-action`) in all five ports +
+`expected-registry.json`, with the written can't-be-computed justification ADR-0023
+requires: a reference-only FK (no relationship) and an M:N junction's FK sides have
+NO existing metadata implying any action, and the per-FK override is information the
+relationship layer does not carry. Recommended authoring stays relationship-level.
+Consequences: the legacy `"setnull"` alias is retired — `allowedValues` is enforced
+unconditionally at load, so it now fails BOTH migrate and verify with
+`ERR_BAD_ATTR_VALUE` (it was only ever reachable through the unregistered-attr hole);
+Java's `ReferenceIdentity` regains the accessors SP-G Unit 6a removed; and the JVM
+validation pass extends its referential-action value check to `identity.reference`.
+Gated by a new shared conformance fixture (`identity-reference-referential-actions`,
+strict-loaded by every port) exercising BOTH previously-untested shapes — the
+parent-side `many` composition relying on its subtype default, and the
+reference-level attrs — plus migrate emit tests asserting the action lands in the
+DDL, and the migrate referential-action test corpus now loads `strict: true`, pinning
+the durable invariant that **any model `meta migrate` accepts must load under strict
+`meta verify`**.
+
 ## [0.21.5] — npm `0.21.5` · PyPI `0.21.5` · NuGet `0.21.5` · Maven `7.21.5`
 
 A coordinated PATCH across all four registries. Ten fixes, every one reproduced before

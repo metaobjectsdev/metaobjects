@@ -30,6 +30,8 @@ from .db_constants import (
     FIELD_ATTR_DB_COLUMN_TYPE,
     FIELD_ATTR_LOCAL_TIME,
     IDENTITY_REFERENCE_ATTR_CONSTRAINT_NAME,
+    IDENTITY_REFERENCE_ATTR_ON_DELETE,
+    IDENTITY_REFERENCE_ATTR_ON_UPDATE,
     IDENTITY_SECONDARY_ATTR_ORDERS,
     IDENTITY_SECONDARY_ATTR_WHERE,
     IDENTITY_SECONDARY_ATTR_EXPR,
@@ -131,6 +133,33 @@ _CONSTRAINT_NAME_SCHEMA = AttrSchema(
         "db provider."
     ),
 )
+_REFERENCE_ON_DELETE_SCHEMA = AttrSchema(
+    name=IDENTITY_REFERENCE_ATTR_ON_DELETE,
+    value_type=ATTR_SUBTYPE_STRING,
+    required=False,
+    allowed_values=("cascade", "set-null", "restrict", "no-action"),
+    description=(
+        "Referential action on parent delete, declared directly on the FK-defining "
+        "reference — the explicit per-FK override (ADR-0047). Precedence: this attr "
+        "→ a correlated relationship's @onDelete (declared on either side of the FK) "
+        "→ the relationship's subtype default. Use for a reference-only FK (no "
+        "relationship), an M:N junction's FK sides, or a per-FK override; prefer "
+        "declaring the action on the relationship otherwise. RDB-physical — "
+        "contributed by the db provider."
+    ),
+)
+_REFERENCE_ON_UPDATE_SCHEMA = AttrSchema(
+    name=IDENTITY_REFERENCE_ATTR_ON_UPDATE,
+    value_type=ATTR_SUBTYPE_STRING,
+    required=False,
+    allowed_values=("cascade", "set-null", "restrict", "no-action"),
+    description=(
+        "Referential action on key update, declared directly on the FK-defining "
+        "reference — the explicit per-FK override (ADR-0047). Same precedence as "
+        "@onDelete; when only a correlated relationship is present, @onUpdate "
+        "defaults to cascade. RDB-physical — contributed by the db provider."
+    ),
+)
 
 
 def _register(registry: TypeRegistry) -> None:
@@ -155,7 +184,11 @@ def _register(registry: TypeRegistry) -> None:
     registry.extend(
         TYPE_IDENTITY,
         IDENTITY_SUBTYPE_REFERENCE,
-        attributes=[_CONSTRAINT_NAME_SCHEMA],
+        attributes=[
+            _CONSTRAINT_NAME_SCHEMA,
+            _REFERENCE_ON_DELETE_SCHEMA,
+            _REFERENCE_ON_UPDATE_SCHEMA,
+        ],
     )
     # index.lookup: same RDB physical attrs as identity.secondary (@orders/@where/@expr/@using).
     registry.extend(

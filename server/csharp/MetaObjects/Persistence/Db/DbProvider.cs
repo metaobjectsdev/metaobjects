@@ -65,7 +65,7 @@ public sealed class DbMetaDataProvider : IMetaDataTypeProvider
         registry.Extend(
             MetaObjects.Shared.BaseTypes.TYPE_IDENTITY,
             IdentityConstants.IDENTITY_SUBTYPE_REFERENCE,
-            attributes: [DbSchema.ConstraintNameSchema]);
+            attributes: [DbSchema.ConstraintNameSchema, DbSchema.ReferenceOnDeleteSchema, DbSchema.ReferenceOnUpdateSchema]);
 
         // Physical RDB index attrs on index.lookup — the db provider contributes
         // @orders / @expr / @where / @using (the same attrs as identity.secondary,

@@ -1423,8 +1423,47 @@ public final class ValidationPhase {
 
     private static void walkRelationshipReferentialActions(MetaData node) {
         validateRelationshipNode(node);
+        validateReferenceIdentityActions(node);
         for (MetaData child : node.getChildren(MetaData.class, false)) {
             walkRelationshipReferentialActions(child);
+        }
+    }
+
+    /**
+     * ADR-0047 — validate {@code @onDelete} / {@code @onUpdate} declared directly on an
+     * {@code identity.reference} (the explicit per-FK override). Same closed value set
+     * as the relationship-level attrs ({@link MetaRelationship#REFERENTIAL_ACTIONS});
+     * an out-of-set value throws {@code ERR_BAD_ATTR_VALUE}, matching the other ports'
+     * generic allowedValues enforcement.
+     */
+    private static void validateReferenceIdentityActions(MetaData node) {
+        if (!(node instanceof ReferenceIdentity)) {
+            return;
+        }
+        ReferenceIdentity ref = (ReferenceIdentity) node;
+
+        if (node.hasMetaAttr(MetaIdentity.ATTR_ON_DELETE, false)) {
+            String onDelete = ref.getOnDeleteRaw();
+            if (!MetaRelationship.REFERENTIAL_ACTIONS.contains(onDelete)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": identity.reference '" + node.getName()
+                        + "' @onDelete '" + onDelete
+                        + "' is not a valid value; allowed: cascade, set-null, restrict, no-action",
+                    ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+            }
+        }
+
+        if (node.hasMetaAttr(MetaIdentity.ATTR_ON_UPDATE, false)) {
+            String onUpdate = ref.getOnUpdateRaw();
+            if (!MetaRelationship.REFERENTIAL_ACTIONS.contains(onUpdate)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": identity.reference '" + node.getName()
+                        + "' @onUpdate '" + onUpdate
+                        + "' is not a valid value; allowed: cascade, set-null, restrict, no-action",
+                    ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+            }
         }
     }
 

@@ -58,6 +58,12 @@ public abstract class MetaIdentity extends MetaData {
     /** Reference identity: physical FK constraint-name override — db-provider attr (RDB-physical). */
     public final static String ATTR_CONSTRAINT_NAME = "constraintName";
 
+    /** Reference identity: referential action on parent delete — the explicit per-FK override (ADR-0047); db-provider attr (RDB-physical). */
+    public final static String ATTR_ON_DELETE = "onDelete";
+
+    /** Reference identity: referential action on key update — the explicit per-FK override (ADR-0047); db-provider attr (RDB-physical). */
+    public final static String ATTR_ON_UPDATE = "onUpdate";
+
     // === GENERATION STRATEGY CONSTANTS ===
     /** Auto-incrementing integer (database chooses implementation) */
     public static final String GENERATION_INCREMENT = "increment";

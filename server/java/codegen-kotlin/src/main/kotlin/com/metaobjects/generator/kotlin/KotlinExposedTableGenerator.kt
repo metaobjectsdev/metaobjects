@@ -1336,17 +1336,99 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 val targetTable = if (child.isEnforced)
                     PackageMapping.splitFqn(target.name).second + "Table" else null
                 val targetFqn = if (child.isEnforced) target.name else null
-                // SP-G Unit 6a: @onDelete / @onUpdate are NOT part of identity.reference in
-                // the cross-port canonical (referential actions live only on
-                // relationship.composition). A reference-identity FK therefore emits no
-                // referential-action suffix; declare a composition relationship to drive
-                // ReferenceOption emission (see lines ~700/728, which read the relationship).
-                val refSuffix = ""
+                // ADR-0047 — resolve the decorated FK's referential actions with the
+                // cross-port precedence (mirrors the TS migrate engine's
+                // resolveReferentialActions): (1) @onDelete / @onUpdate declared directly
+                // on the identity.reference (registered cross-port — the explicit per-FK
+                // override); (2) a correlated relationship on the FK-owning entity;
+                // (3) the reverse relationship on the TARGET entity (the documented
+                // parent-side authoring shape) — a relationship contributes its explicit
+                // action, else its subtype default (composition→cascade,
+                // aggregation→set-null, association→restrict; onUpdate default cascade).
+                // Guards: @through (M:N) relationships never correlate with a direct FK,
+                // and the reverse relationship contributes nothing when this entity holds
+                // more than one enforced reference to the same target.
+                val (resolvedOnDelete, resolvedOnUpdate) =
+                    resolveDecorationActions(loader, entity, child, target)
+                val refSuffix = referentialActionSuffix(resolvedOnDelete, resolvedOnUpdate)
                 acc.getOrPut(entity.name) { linkedMapOf() }[fieldName] =
                     RefDecoration(targetTable, primaryKeyProperty(target), refSuffix, targetFqn)
             }
         }
         return acc
+    }
+
+    /**
+     * ADR-0047 — resolve the referential actions for a decorated `identity.reference`
+     * FK column. Returns a (onDelete, onUpdate) pair of RAW kebab-case action values
+     * (null = no clause). Precedence: reference-level attr → correlated child-side
+     * relationship → correlated parent-side (reverse) relationship, the relationship
+     * tiers resolving explicit-action-else-subtype-default. See
+     * [buildIdentityReferenceDecorations] for the guard rationale.
+     */
+    private fun resolveDecorationActions(
+        loader: MetaDataLoader,
+        entity: MetaObject,
+        ref: ReferenceIdentity,
+        target: MetaObject,
+    ): Pair<String?, String?> {
+        val refOnDelete: String? = ref.onDeleteRaw
+        val refOnUpdate: String? = ref.onUpdateRaw
+        if (refOnDelete != null && refOnUpdate != null) return refOnDelete to refOnUpdate
+
+        // (2) child-side correlation, then (3) parent-side reverse correlation.
+        // ADR-0039: relationships are inheritable — RESOLVE via getRelationships(true).
+        val childSide = entity.relationships.firstOrNull { rel ->
+            rel.through == null && rel.objectRef != null &&
+                KotlinGenUtil.resolveObjectByShortOrFqn(loader, rel.objectRef) === target
+        }
+        var rel = childSide ?: findReverseRelationship(loader, entity, target)
+
+        // Tier-3 satisfiability guard (mirrors TS resolveReferentialActions): an
+        // INFERRED set-null default (parent-side aggregation, no explicit @onDelete)
+        // is unsatisfiable on a NOT NULL FK column — the correlation contributes
+        // nothing rather than emitting a ReferenceOption the database would reject.
+        // An EXPLICIT set-null still flows through (the author asked for it).
+        if (childSide == null && rel != null && rel.onDeleteRaw == null &&
+            MetaRelationship.ON_DELETE_DEFAULT_BY_SUBTYPE[rel.subType] == MetaRelationship.ACTION_SET_NULL
+        ) {
+            val fkField = ref.fields.singleOrNull()?.let { fn ->
+                entity.metaFields.firstOrNull { it.name == fn }
+            }
+            if (fkField != null && KotlinGenUtil.isRequiredField(fkField)) rel = null
+        }
+
+        val onDelete = refOnDelete
+            ?: rel?.let { it.onDeleteRaw ?: MetaRelationship.ON_DELETE_DEFAULT_BY_SUBTYPE[it.subType] }
+        val onUpdate = refOnUpdate
+            ?: rel?.let { it.onUpdateRaw ?: MetaRelationship.ON_UPDATE_DEFAULT }
+        return onDelete to onUpdate
+    }
+
+    /**
+     * ADR-0047 tier-3 correlation — the relationship declared on the TARGET (parent)
+     * entity pointing back at the FK-owning entity. Fails closed (null) when the
+     * relationship is M:N (`@through`), or when [entity] holds more than one enforced
+     * reference to [target] (the reverse relationship cannot say which FK carries the
+     * ownership edge). Mirrors the TS migrate engine's findReverseRelationship.
+     */
+    private fun findReverseRelationship(
+        loader: MetaDataLoader,
+        entity: MetaObject,
+        target: MetaObject,
+    ): MetaRelationship? {
+        // ADR-0039: identity.reference children are inheritable — RESOLVE via getIdentities(true).
+        val enforcedRefsToTarget = entity.getIdentities(true)
+            .filterIsInstance<ReferenceIdentity>()
+            .filter { r ->
+                r.isEnforced && r.targetEntity != null &&
+                    KotlinGenUtil.resolveObjectByShortOrFqn(loader, r.targetEntity) === target
+            }
+        if (enforcedRefsToTarget.size != 1) return null
+        return target.relationships.firstOrNull { rel ->
+            rel.through == null && rel.objectRef != null &&
+                KotlinGenUtil.resolveObjectByShortOrFqn(loader, rel.objectRef) === entity
+        }
     }
 
     /**

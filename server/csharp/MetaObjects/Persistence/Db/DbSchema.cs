@@ -99,4 +99,20 @@ public static class DbSchema
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
         Description: "Physical foreign-key constraint name override. Absent → the backend's auto-derived default (e.g. `<table>_<firstFkColumn>_fk`). Lets a model adopt an existing database whose FK constraints follow a different naming convention without a destructive rename. RDB-physical — contributed by the db provider.");
+
+    /// <summary><c>@onDelete</c> — referential action on parent delete, the explicit per-FK override; on identity.reference (ADR-0047).</summary>
+    public static readonly AttrSchema ReferenceOnDeleteSchema = new AttrSchema(
+        Name: DbConstants.IDENTITY_ATTR_ON_DELETE,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+        Required: false,
+        AllowedValues: ["cascade", "set-null", "restrict", "no-action"],
+        Description: "Referential action on parent delete, declared directly on the FK-defining reference — the explicit per-FK override (ADR-0047). Precedence: this attr → a correlated relationship's @onDelete (declared on either side of the FK) → the relationship's subtype default. Use for a reference-only FK (no relationship), an M:N junction's FK sides, or a per-FK override; prefer declaring the action on the relationship otherwise. RDB-physical — contributed by the db provider.");
+
+    /// <summary><c>@onUpdate</c> — referential action on key update, the explicit per-FK override; on identity.reference (ADR-0047).</summary>
+    public static readonly AttrSchema ReferenceOnUpdateSchema = new AttrSchema(
+        Name: DbConstants.IDENTITY_ATTR_ON_UPDATE,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+        Required: false,
+        AllowedValues: ["cascade", "set-null", "restrict", "no-action"],
+        Description: "Referential action on key update, declared directly on the FK-defining reference — the explicit per-FK override (ADR-0047). Same precedence as @onDelete; when only a correlated relationship is present, @onUpdate defaults to cascade. RDB-physical — contributed by the db provider.");
 }
