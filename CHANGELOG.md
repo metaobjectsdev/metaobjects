@@ -12,6 +12,12 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 A coordinated PATCH across all four registries. **Two changes alter runtime behaviour on
 an existing database — read these two before upgrading:**
 
+> **Who this reaches, and when.** Neither change is retroactive: nothing happens to a
+> running deployment until you deliberately install `0.21.6`. If you depend on
+> `^0.21.x`, a routine `npm update` will pick it up — that is the case to plan for. If
+> you pin exactly (`"0.21.5"`), you move only on purpose, and nothing below has already
+> happened to you.
+
 1. **`like` is now case-SENSITIVE on Postgres** (it was dispatching `ILIKE`). FR-009 always
    specified SQL `LIKE`, and TS's own persistence drivers were already case-sensitive — only
    one branch of one HTTP parser disagreed, so a query returning extra rows today will return
