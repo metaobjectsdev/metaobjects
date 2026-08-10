@@ -106,8 +106,20 @@ added cross-port later as a purely additive, non-breaking change):
 |---|---|
 | `?search=<term>` | ORs a `like` across the entity's `@filterable` string fields |
 | `filter[or][N]` / `filter[and][N]` | boolean combinators (recursive nesting) |
-| leading-wildcard gating | opt-in allow of `like` patterns starting with `%` |
+| leading-wildcard gating | a `like` pattern starting with `%` → HTTP 400 (`filter.leading_wildcard_disallowed`) |
 | filter nesting-depth cap | rejects deeply-nested `or`/`and` (tied to the combinators) |
+
+**Leading-wildcard gating is fail-closed with no metadata opt-in.** The
+generated `<Entity>FilterAllowlist` hardcodes `leadingWildcard: false` on every
+field — an unanchored LIKE (`"%@example.com"`) cannot use a btree index, so the
+generated TS routes reject it by default. The runtime honors
+`leadingWildcard: true` per field, but codegen never emits it: to opt a field
+in, hand-edit that field's entry in the generated allowlist (hand edits inside
+generated files survive regeneration via the three-way merge). There is
+deliberately no `@`-attribute for this (ADR-0037/ADR-0023: the gate is a
+TS-only generated-code behavior, not cross-port metamodel semantics — the other
+ports accept leading wildcards, which is exactly why it is listed here as a
+TS-only extension).
 
 The **`in`-list size cap** (reject an `in` list longer than 100 → HTTP 400) is a
 safety limit, not a feature — TS enforces it, the other ports currently do not.

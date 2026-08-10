@@ -279,14 +279,16 @@ The generated \`useSubscribers(filter)\` hook accepts a typed filter:
 
 \`\`\`tsx
 const { data } = useSubscribers({
-  email: { like: "%@example.com" },
+  email: { like: "amy@%" },
   subscribed: true,
   sort: "createdAt:desc",
   limit: 25,
 });
 \`\`\`
 
-URL sent: \`/subscribers?filter[email][like]=%25@example.com&filter[subscribed]=true&sort=createdAt:desc&limit=25\`
+URL sent: \`/subscribers?filter[email][like]=amy@%25&filter[subscribed]=true&sort=createdAt:desc&limit=25\`
+
+**Leading wildcards are rejected by default.** The generated \`<Entity>FilterAllowlist\` ships \`leadingWildcard: false\` on every field, so a \`like\` pattern starting with \`%\` (e.g. \`"%@example.com"\`) is a 400 \`filter.leading_wildcard_disallowed\` — an unanchored LIKE defeats index usage, so it is fail-closed. To opt a field in, hand-edit that field's entry in the generated allowlist to \`leadingWildcard: true\` (hand edits inside generated files survive regeneration via the three-way merge). This gate is TypeScript-only; other ports' generated APIs do not enforce it.
 
 **Operators by field subtype:**
 - String: \`eq, ne, in, like, isNull\`

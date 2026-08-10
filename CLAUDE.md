@@ -346,7 +346,7 @@ Generated CRUD endpoints support a typed, metadata-driven filter + sort layer:
 import { useSubscribers } from "./generated/Subscriber.hooks";
 
 const { data } = useSubscribers({
-  email: { like: "%@example.com" },
+  email: { like: "amy@%" },
   subscribed: true,
   sort: "createdAt:desc",
   limit: 25,
@@ -354,6 +354,8 @@ const { data } = useSubscribers({
 ```
 
 **Server validation:** every request validated against the allowlist. Unknown field / disallowed op / invalid value → 400 with structured error code.
+
+**Leading wildcards are rejected by default (TS generated routes):** the generated allowlist ships `leadingWildcard: false` on every field, so a `like` pattern starting with `%` (e.g. `"%@example.com"`) → 400 `filter.leading_wildcard_disallowed` — an unanchored LIKE defeats index usage, so it is fail-closed. Opt in per field by hand-editing that field's entry in the generated `<Entity>FilterAllowlist` to `leadingWildcard: true` (hand edits inside generated files are preserved by the three-way merge). This gate is a TS-only extension — the other ports do not enforce it (see `docs/features/api-contract.md`, "TS-only filter extensions").
 
 **Architecture:** `parseFilterParams` (in `@metaobjectsdev/runtime-ts/drizzle-fastify`) translates parsed qs into a Drizzle expression tree. `buildFilterQs` (in `@metaobjectsdev/runtime-web` and `@metaobjectsdev/tanstack`) serializes a typed filter object back to a bracketed qs URL.
 
