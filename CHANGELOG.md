@@ -7,6 +7,47 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### The Angular tier stays source-only — now by decision, not accident (ADR-0047)
+
+0.21.5 corrected the docs to say `@metaobjectsdev/angular` +
+`@metaobjectsdev/codegen-ts-angular` were never published, and gated the mechanism
+that had let them fall out of every release. That left the actual product question
+open: publish the tier, or keep it source-only? A code assessment settled it —
+**source-only, deliberately**, recorded in
+[ADR-0047](spec/decisions/ADR-0047-angular-tier-source-only.md) with the promotion
+checklist a future publish must meet. The short version: the runtime grid is well
+below the TanStack tier it claims to mirror (no sorting/pagination; the
+cell-renderer registry's lookup result was discarded), form codegen predates the
+0.18.0 view-kind and 0.19.0 image feature lines, the runtime behavioral suite
+cannot execute under Bun at all (Angular's standard decorators need the Angular
+linker — only the #287 browser-bundle gate runs in CI, by name), and no consumer
+has asked for the npm package. Publishing — including a `next`-tag preview — would
+manufacture exactly the "package promising a compatibility it never had" liability
+the last two cuts were spent paying down.
+
+Two defects found during the assessment are fixed in place rather than left to the
+promotion bar:
+
+- **The Angular generators now carry the 0.21.5 endpoint guards.** `angularServiceFile`
+  and `angularGridFile` gate on `servesReadApi`, `angularFormFile` on
+  `servesWriteApi && !isProjection`, and each of the barrel's re-export lines
+  mirrors its generator's filter — previously all four emitted artifacts (and
+  dangling barrel re-exports) for an `object.value`, a sourceless entity/projection
+  or an abstract object, output that could never compile. Same fix, same predicates,
+  same test model as the tanstack/react generators got in 0.21.5; the package
+  simply wasn't covered then. Pinned by `test/sourceless-objects.test.ts`.
+- **`@metaobjectsdev/angular`'s `@angular/*` peer ranges narrow to `>=18.0.0 <19.0.0`** —
+  the tier is built and tested on Angular 18.2 only, and the previous `<23.0.0`
+  bound promised four majors nothing has ever exercised. Widening back is earned by
+  testing (it is on the ADR's promotion bar). Unpublished, so no installed consumer
+  can be stranded by the change.
+
+Docs updated to state the decision wherever the tier is described: both package
+READMEs, `README.md`, `CLAUDE.md`, `docs/ports/typescript-client.md`,
+`docs/recipes/csharp-angular18.md`, `docs/RELEASING.md` (a release cut must not
+sweep the pair into lockstep), and the `SOURCE_ONLY` rationale in
+`scripts/check-publish-intent.sh`.
+
 ## [0.21.5] — npm `0.21.5` · PyPI `0.21.5` · NuGet `0.21.5` · Maven `7.21.5`
 
 A coordinated PATCH across all four registries. Ten fixes, every one reproduced before

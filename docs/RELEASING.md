@@ -72,6 +72,11 @@ previous version" (a sed/grep over `*/package.json`):
 > now fails the build on any non-private package that is neither at the lockstep
 > version nor declared source-only, so the decision has to be made out loud. It runs
 > in the `gates` lane; run it yourself before a cut.
+>
+> For the Angular pair the decision **has been made**: they stay source-only on
+> purpose ([ADR-0047](../spec/decisions/ADR-0047-angular-tier-source-only.md)).
+> A release cut must NOT sweep them into lockstep or publish them under any
+> dist-tag; they join the tier table only when the ADR's promotion bar is met.
 
 | Tier | Packages |
 |---|---|

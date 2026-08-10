@@ -5,6 +5,8 @@ import {
   type GeneratorFactory,
   formatTs,
   entityOutputPath,
+  servesWriteApi,
+  isProjection,
 } from "@metaobjectsdev/codegen-ts";
 import { renderFormFile } from "../templates/form-file.js";
 
@@ -27,8 +29,16 @@ export const angularFormFile = function angularFormFile(
   const userFilter = opts?.filter ?? (() => true);
   const generator: Generator = {
     name: "angular-form",
+    // A form is a client of generated WRITE endpoints — no writable source, no form
+    // (mirrors codegen-ts-react's formFile; see api-surface.ts). `!isProjection`
+    // stays explicit: a read-only view has nothing to submit even where write
+    // endpoints exist on the base entity.
     // ADR-0039: resolving — a concrete entity may inherit @emitAngular via extends.
-    filter: (e: MetaObject) => e.attr("emitAngular") !== false && userFilter(e),
+    filter: (e: MetaObject) =>
+      servesWriteApi(e)
+      && !isProjection(e)
+      && e.attr("emitAngular") !== false
+      && userFilter(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("angular-form: renderContext is required (provided by runGen)");

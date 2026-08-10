@@ -28,8 +28,10 @@ cd "$(dirname "$0")/.."
 # the entry: a bare list rots into "nobody remembers why".
 #
 #   @metaobjectsdev/angular / codegen-ts-angular — the Angular 18 browser tier.
-#   Builds and is versioned on its own 0.6.x line, but has never been released.
-#   Docs describe it as source-only. Remove from this list when it first publishes.
+#   Source-only BY DECISION (ADR-0047, spec/decisions/): below the published tier's
+#   bar (grid/form parity, a runner for its behavioral suite, TPH + meta-descriptor
+#   codegen). The ADR carries the promotion checklist; when it is met, remove both
+#   from this list, bump them to lockstep, and flip the docs it enumerates.
 SOURCE_ONLY=(
   "@metaobjectsdev/angular"
   "@metaobjectsdev/codegen-ts-angular"

@@ -13,9 +13,13 @@ Per-entity opt-out: `@emitAngular: false` on an entity skips all three Angular o
 
 ## Install
 
-> **NOT published to npm — source-only today.** This package builds in-repo and is
-> versioned on its own `0.6.x` line, but has never been released —
-> `npm i @metaobjectsdev/codegen-ts-angular` returns a 404. Consume it from source
+> **NOT published to npm — source-only by decision**
+> ([ADR-0047](../../../../spec/decisions/ADR-0047-angular-tier-source-only.md)).
+> This package builds in-repo on its own `0.6.x` line, but has never been released —
+> `npm i @metaobjectsdev/codegen-ts-angular` returns a 404, and that is deliberate:
+> the tier is not yet at the published tier's bar (the promotion checklist lives in
+> the ADR — notably view-kind form dispatch, TPH handling, and generated services
+> importing the DB-free `<Entity>.meta` descriptor). Consume it from source
 > (a workspace/file dependency, or `npm pack` + install the tarball) by building
 > from this directory; it is a dev-time codegen tool, so a `-D`/dev dependency.
 > The published browser-client tier is React + TanStack; see

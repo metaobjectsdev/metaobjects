@@ -5,6 +5,7 @@ import {
   type GeneratorFactory,
   formatTs,
   entityOutputPath,
+  servesReadApi,
 } from "@metaobjectsdev/codegen-ts";
 import { renderServiceFile } from "../templates/service-file.js";
 
@@ -26,8 +27,12 @@ export const angularServiceFile = function angularServiceFile(
   const userFilter = opts?.filter ?? (() => true);
   const generator: Generator = {
     name: "angular-service",
+    // A service is a client of a generated READ endpoint — no endpoint, no service
+    // (an `object.value`, a sourceless entity/projection or an abstract object has
+    // nothing to fetch, and its emitted output could never compile; see api-surface.ts).
     // ADR-0039: resolving — a concrete entity may inherit @emitAngular via extends.
-    filter: (e: MetaObject) => e.attr("emitAngular") !== false && userFilter(e),
+    filter: (e: MetaObject) =>
+      servesReadApi(e) && e.attr("emitAngular") !== false && userFilter(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("angular-service: renderContext is required (provided by runGen)");

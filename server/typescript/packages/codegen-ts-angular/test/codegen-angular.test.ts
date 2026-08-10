@@ -122,6 +122,8 @@ describe("angularGridFile() factory", () => {
       attr: () => undefined,
       ownAttr: () => undefined,
       layouts: () => [] as any[],
+      // servesReadApi walks children() looking for a source.rdb child.
+      children: () => [] as any[],
     } as any;
     expect(gen.filter?.(fake)).toBe(false);
   });

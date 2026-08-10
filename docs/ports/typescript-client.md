@@ -44,9 +44,9 @@ Two disjoint dependency trees. The codegen packages live under
 `meta gen`), even though their **output** targets the browser. The runtime
 packages live under `client/web/packages/` and have zero Node-only deps.
 
-Angular follows the same two-package pattern and has shipped — see
-["Angular 18"](#angular-18) below. Future framework integrations (Svelte,
-React Native) will follow the same pattern.
+Angular follows the same two-package pattern and exists in-repo, source-only
+by decision — see ["Angular 18"](#angular-18) below. Future framework
+integrations (Svelte, React Native) will follow the same pattern.
 
 ## Browser runtime packages
 
@@ -505,15 +505,21 @@ for the rare case where you need a shape the generator doesn't cover).
 
 ## Angular 18
 
-> **NOT PUBLISHED — source-only today.** The two `@metaobjectsdev/angular*`
-> packages build in-repo and are versioned on their own `0.6.x` line, deliberately
-> decoupled from the lockstep version the rest of the `@metaobjectsdev/*` packages
-> share, but **neither has ever been released to npm** — `npm i
-> @metaobjectsdev/angular` returns a 404. Everything documented below is accurate
-> about the code; it is reachable by building from
-> `client/web/packages/angular/` + `server/typescript/packages/codegen-ts-angular/`
-> and consuming them as local workspace packages, not by installing from the
-> registry. The React + TanStack tier is the published browser client.
+> **NOT PUBLISHED — source-only by decision**
+> ([ADR-0047](../../spec/decisions/ADR-0047-angular-tier-source-only.md)). The two
+> `@metaobjectsdev/angular*` packages build in-repo on their own `0.6.x` line, and
+> **neither has ever been released to npm** — `npm i @metaobjectsdev/angular`
+> returns a 404. This is a deliberate position, not a pending release: the tier is
+> below the published tier's bar — the runtime grid lacks the TanStack tier's
+> sorting/pagination and working cell-renderer dispatch, form codegen predates the
+> view-kind dispatch (0.18.0) and image (0.19.0) feature lines, and the runtime
+> behavioral suite cannot execute under the repo's Bun toolchain (Angular's
+> standard decorators need the Angular linker). The ADR carries the full promotion
+> checklist; until it is met, everything documented below is accurate about the
+> code and reachable by building from `client/web/packages/angular/` +
+> `server/typescript/packages/codegen-ts-angular/` and consuming them as local
+> workspace packages, not by installing from the registry. The React + TanStack
+> tier is the published browser client.
 
 Angular 18 ships as a **second universal browser-side client tier** alongside
 the React + TanStack pair. Same architecture — one runtime package
