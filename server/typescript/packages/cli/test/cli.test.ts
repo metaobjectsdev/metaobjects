@@ -28,7 +28,7 @@ describe("parseInitArgs", () => {
     expect(parseInitArgs(["--d1"])).toEqual({ ...defaultInitFlags, d1: true });
   });
   test("throws on unknown flag", () => {
-    expect(() => parseInitArgs(["--foo"])).toThrow();
+    expect(() => parseInitArgs(["--foo"])).toThrow(/Unknown option '--foo'/);
   });
 });
 

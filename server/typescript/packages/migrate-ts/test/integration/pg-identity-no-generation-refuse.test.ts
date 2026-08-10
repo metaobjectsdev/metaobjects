@@ -44,6 +44,7 @@ import { buildExpectedSchema } from "../../src/expected-schema.js";
 import { introspectPostgres } from "../../src/introspect/postgres.js";
 import { diff } from "../../src/diff/index.js";
 import { emit } from "../../src/emit/index.js";
+import { BlockedChangesError } from "../../src/errors.js";
 
 const PG_URL = process.env["MIGRATE_TS_PG_URL"];
 const realDescribe = PG_URL ? describe : describe.skip;
@@ -131,8 +132,13 @@ realDescribe("PG — undeclared @generation against a live serial PK refuses, no
     expect(reason).toContain("@generation: increment");
     expect(reason).toContain("--allow drop-identity-default");
 
-    // emit() must refuse to hand back applicable SQL for a blocked diff.
-    expect(() => emit(result.changes, { dialect: "postgres" })).toThrow();
+    // emit() must refuse to hand back applicable SQL for a blocked diff — and
+    // its hint must name the flag that actually enables this change, not the
+    // "(no flag enables this)" fallback (ENABLE_FLAG_BY_KIND regression pin).
+    expect(() => emit(result.changes, { dialect: "postgres" }))
+      .toThrow(BlockedChangesError);
+    expect(() => emit(result.changes, { dialect: "postgres" }))
+      .toThrow(/change-column-default on task\.id: pass allow\.dropIdentityDefault/);
   });
 
   test("allow.dropIdentityDefault lets the DROP DEFAULT through and it actually applies", async () => {
@@ -172,6 +178,6 @@ realDescribe("PG — undeclared @generation against a live serial PK refuses, no
     // deliberately chosen).
     await expect(
       sql`INSERT INTO "task" ("title") VALUES (${"no id supplied"})`.execute(k),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/null value in column "id"/i);
   });
 });

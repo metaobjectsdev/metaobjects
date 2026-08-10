@@ -168,7 +168,7 @@ describe("loadMemory — provider extension", () => {
           providers: [geoProvider()],
           replaceDefaults: true,
         }),
-      ).rejects.toThrow();
+      ).rejects.toThrow(/depends on "metaobjects-core-types", which is not in the provider set/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

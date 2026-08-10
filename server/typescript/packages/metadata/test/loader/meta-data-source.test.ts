@@ -37,6 +37,7 @@ describe("FileSource", () => {
 
   it("read() rejects for a missing file", async () => {
     const s = new FileSource("/no/such/file.json");
-    await expect(s.read()).rejects.toThrow();
+    // Raw fs error — the exact text is platform-owned, so pin the stable fragment.
+    await expect(s.read()).rejects.toThrow(/ENOENT|no such file/i);
   });
 });

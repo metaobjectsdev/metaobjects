@@ -22,7 +22,7 @@ describe("MetaDataLoader — lifecycle skeleton", () => {
 
   it("accessing .root before load throws", () => {
     const loader = new MetaDataLoader();
-    expect(() => loader.root).toThrow();
+    expect(() => loader.root).toThrow(/accessed before loading has completed \(state: "uninitialized"\)/);
   });
 
   it(".registry returns a TypeRegistry populated with core types", () => {
@@ -151,7 +151,7 @@ describe("MetaDataLoader.load() — one-shot guard", () => {
     expect(loader.state).toBe("loaded");
     await expect(
       loader.load([new InMemoryStringSource('{"metadata.root":{}}')]),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/cannot be reused after load completes/);
   });
 
   it("one-shot guard fires even after error state", async () => {
@@ -162,7 +162,7 @@ describe("MetaDataLoader.load() — one-shot guard", () => {
     expect(loader.state).toBe("error");
     await expect(
       loader.load([new InMemoryStringSource('{"metadata.root":{}}')]),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/cannot be reused after load completes/);
   });
 });
 
@@ -205,17 +205,17 @@ describe("MetaDataLoader.load() — multi-source merge", () => {
 describe("MetaDataLoader — accessor guards", () => {
   it("findByName throws before load", () => {
     const loader = new MetaDataLoader();
-    expect(() => loader.findByName("Foo")).toThrow();
+    expect(() => loader.findByName("Foo")).toThrow(/accessed before loading has completed/);
   });
 
   it("findByTypeAndName throws before load", () => {
     const loader = new MetaDataLoader();
-    expect(() => loader.findByTypeAndName(TYPE_OBJECT, "Foo")).toThrow();
+    expect(() => loader.findByTypeAndName(TYPE_OBJECT, "Foo")).toThrow(/accessed before loading has completed/);
   });
 
   it("childrenOfType throws before load", () => {
     const loader = new MetaDataLoader();
-    expect(() => loader.childrenOfType(TYPE_OBJECT)).toThrow();
+    expect(() => loader.childrenOfType(TYPE_OBJECT)).toThrow(/accessed before loading has completed/);
   });
 });
 

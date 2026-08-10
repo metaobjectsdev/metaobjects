@@ -55,7 +55,7 @@ describe("loadMemory — invalid-json", () => {
   test("surfaces parse error", async () => {
     const root = copyFixture("invalid-json");
     try {
-      await expect(loadMemory(root)).rejects.toThrow();
+      await expect(loadMemory(root)).rejects.toThrow(/Invalid JSON/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

@@ -43,7 +43,9 @@ describe("MetaData base", () => {
   it("freeze() blocks addChild", () => {
     const n = new TestNode(new TypeId("object", "entity"), "Widget");
     n.freeze();
-    expect(() => n.addChild(new TestNode(new TypeId("field", "string"), "x"))).toThrow();
+    expect(() => n.addChild(new TestNode(new TypeId("field", "string"), "x"))).toThrow(
+      /Cannot mutate frozen MetaData Widget/,
+    );
   });
 
 });
@@ -534,31 +536,31 @@ describe("MetaData — freeze()", () => {
   it("addChild throws after freeze", () => {
     const m = makeField("string", "f");
     m.freeze();
-    expect(() => m.addChild(makeField("string", "child"))).toThrow();
+    expect(() => m.addChild(makeField("string", "child"))).toThrow(/Cannot mutate frozen MetaData f/);
   });
 
   it("setPackage throws after freeze", () => {
     const m = makeField("string", "f");
     m.freeze();
-    expect(() => m.setPackage("pkg")).toThrow();
+    expect(() => m.setPackage("pkg")).toThrow(/Cannot mutate frozen MetaData f/);
   });
 
   it("setSuper throws after freeze", () => {
     const m = makeField("string", "f");
     m.freeze();
-    expect(() => m.setSuper("..::ref")).toThrow();
+    expect(() => m.setSuper("..::ref")).toThrow(/Cannot mutate frozen MetaData f/);
   });
 
   it("setIsArray throws after freeze", () => {
     const m = makeField("string", "f");
     m.freeze();
-    expect(() => m.setIsArray(true)).toThrow();
+    expect(() => m.setIsArray(true)).toThrow(/Cannot mutate frozen MetaData f/);
   });
 
   it("setIsAbstract throws after freeze", () => {
     const m = makeField("string", "f");
     m.freeze();
-    expect(() => m.setIsAbstract(true)).toThrow();
+    expect(() => m.setIsAbstract(true)).toThrow(/Cannot mutate frozen MetaData f/);
   });
 
   it("setSuperResolved throws after freeze with a message containing the fqn", () => {

@@ -122,7 +122,9 @@ describe("expandRef — relative '..::' parent traversal → FQN (migrated from 
   });
 
   it("'..::..::Anything' that exceeds package depth → throws", () => {
-    expect(() => expandRef("..::..::Anything", "singlelevel")).toThrow();
+    expect(() => expandRef("..::..::Anything", "singlelevel")).toThrow(
+      /over-drops: 2 parent level\(s\) but the package context 'singlelevel' has only 1 segment\(s\)/,
+    );
   });
 });
 

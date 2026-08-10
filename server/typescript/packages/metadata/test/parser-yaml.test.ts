@@ -2,6 +2,7 @@ import { test, expect } from "bun:test";
 import { TypeRegistry } from "../src/registry.js";
 import { registerCoreTypes } from "../src/core-types.js";
 import { parseYaml } from "../src/core/parser-yaml.js";
+import { ParseError } from "../src/errors.js";
 import { TYPE_METADATA, TYPE_FIELD } from "../src/index.js";
 
 function coreRegistry(): TypeRegistry {
@@ -49,7 +50,8 @@ metadata:
 });
 
 test("parseYaml: a YAML syntax error throws a ParseError", () => {
-  expect(() => parseYaml("metadata: [unclosed", { registry: coreRegistry() })).toThrow();
+  expect(() => parseYaml("metadata: [unclosed", { registry: coreRegistry() })).toThrow(ParseError);
+  expect(() => parseYaml("metadata: [unclosed", { registry: coreRegistry() })).toThrow(/Invalid YAML/);
 });
 
 test("parseYaml: a desugar error is collected, not thrown", () => {

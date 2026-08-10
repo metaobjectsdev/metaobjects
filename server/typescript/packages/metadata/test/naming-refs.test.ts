@@ -112,11 +112,15 @@ describe("expandRef — '..::' parent-relative", () => {
   });
 
   it("over-drop (more '..::' than segments) → throws", () => {
-    expect(() => expandRef("..::..::Anything", "singlelevel")).toThrow();
+    expect(() => expandRef("..::..::Anything", "singlelevel")).toThrow(
+      /over-drops: 2 parent level\(s\) but the package context 'singlelevel' has only 1 segment\(s\)/,
+    );
   });
 
   it("over-drop from empty package → throws", () => {
-    expect(() => expandRef("..::Anything", "")).toThrow();
+    expect(() => expandRef("..::Anything", "")).toThrow(
+      /over-drops: 1 parent level\(s\) but the package context '' has only 0 segment\(s\)/,
+    );
   });
 });
 

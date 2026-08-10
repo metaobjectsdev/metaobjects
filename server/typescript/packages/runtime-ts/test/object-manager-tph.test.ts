@@ -17,7 +17,7 @@ import { describe, test, expect, beforeEach } from "bun:test";
 import { MetaDataLoader, InMemoryStringSource, type MetaData } from "@metaobjectsdev/metadata";
 import { ObjectManager } from "../src/object-manager.js";
 import { inMemoryDriver } from "../src/drivers/in-memory-driver.js";
-import { NotFoundError } from "../src/errors.js";
+import { MetadataError, NotFoundError } from "../src/errors.js";
 
 const TPH_META = JSON.stringify({
   "metadata.root": {
@@ -122,7 +122,11 @@ describe("ObjectManager TPH — create injects the discriminator", () => {
   });
 
   test("a cross-subtype-only column is rejected (not a field of this subtype)", async () => {
-    await expect(om.create("BridgeAuth", { reference: "X", quantity: 1, copayAmount: "1.00" })).rejects.toThrow();
+    // Identity matters: create() has many other reachable throws (validation,
+    // unsafe-name, identity resolution) — the rejection must be about THIS column.
+    const attempt = om.create("BridgeAuth", { reference: "X", quantity: 1, copayAmount: "1.00" });
+    await expect(attempt).rejects.toThrow(MetadataError);
+    await expect(attempt).rejects.toThrow(/Unknown field 'copayAmount' on entity 'BridgeAuth'/);
   });
 });
 

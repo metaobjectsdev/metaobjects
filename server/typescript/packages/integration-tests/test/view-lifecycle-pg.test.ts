@@ -724,7 +724,7 @@ describe("view lifecycle — real Postgres", () => {
     await sql.raw(`INSERT INTO "orders" ("id","legacyId") VALUES (1, 1)`).execute(k);
     await expect(
       sql.raw(`INSERT INTO "orders" ("id","legacyId") VALUES (2, 999)`).execute(k),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/foreign key/i);
 
     await assertConverged(expected, {}, unmanagedNames);
   });

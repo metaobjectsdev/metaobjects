@@ -41,7 +41,7 @@ describe("writeMigration", () => {
     await expect(writeMigration(
       { up: "", down: "" },
       { dir: join(dir, "does", "not", "exist"), slug: "x" },
-    )).rejects.toThrow();
+    )).rejects.toThrow(/ENOENT|no such file/i);
   });
 
   test("slug is sanitized to safe filename (no slashes, lowercase)", async () => {

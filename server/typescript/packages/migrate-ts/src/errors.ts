@@ -40,6 +40,10 @@ const ENABLE_FLAG_BY_KIND: Partial<Record<ChangeKind, string>> = {
   "change-column-nullable": "allow.nullableToNotNull",
   "drop-index": "allow.dropIndex",
   "drop-fk": "allow.dropFk",
+  // change-column-default is blocked in exactly one shape — dropping a live
+  // Postgres auto-sequence default with no declared @generation (see
+  // diff/status.ts) — and allow.dropIdentityDefault is the flag that enables it.
+  "change-column-default": "allow.dropIdentityDefault",
 };
 
 function changeLocator(c: Change): string {

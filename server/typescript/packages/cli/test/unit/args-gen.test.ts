@@ -29,7 +29,9 @@ describe("parseGenArgs", () => {
   });
 
   test("--baseline=invalid throws", () => {
-    expect(() => parseGenArgs(["--baseline=nonsense"])).toThrow();
+    expect(() => parseGenArgs(["--baseline=nonsense"])).toThrow(
+      /invalid --baseline 'nonsense'; expected 'default' or 'fresh'/,
+    );
   });
 
   test("--dry-run", () => {
@@ -47,6 +49,6 @@ describe("parseGenArgs", () => {
   });
 
   test("unknown flag throws", () => {
-    expect(() => parseGenArgs(["--foo"])).toThrow();
+    expect(() => parseGenArgs(["--foo"])).toThrow(/Unknown option '--foo'/);
   });
 });

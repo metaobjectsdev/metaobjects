@@ -152,7 +152,9 @@ describe("F1 — sqlite table-rebuild applies through the runner", () => {
     // A rebuild whose final statement is invalid: the drop/rename must roll back with it.
     const broken = `${await emitFor(["IMAGE", "VIDEO", "DOCUMENT"], true)}\nSELECT this_column_does_not_exist FROM assets;`;
     writeMigration("20260101000001-broken", broken);
-    await expect(applyPending(db, migDir, { dryRun: false, dialect: "sqlite" })).rejects.toThrow();
+    await expect(applyPending(db, migDir, { dryRun: false, dialect: "sqlite" })).rejects.toThrow(
+      /no such column: this_column_does_not_exist/i,
+    );
 
     // The table is intact and still the ORIGINAL shape — no half-rebuild.
     await expect(

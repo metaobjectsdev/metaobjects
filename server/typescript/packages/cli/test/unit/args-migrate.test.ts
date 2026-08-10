@@ -80,7 +80,7 @@ describe("parseMigrateArgs", () => {
   });
 
   test("unknown flag throws", () => {
-    expect(() => parseMigrateArgs(["--foo"])).toThrow();
+    expect(() => parseMigrateArgs(["--foo"])).toThrow(/Unknown option '--foo'/);
   });
 });
 
