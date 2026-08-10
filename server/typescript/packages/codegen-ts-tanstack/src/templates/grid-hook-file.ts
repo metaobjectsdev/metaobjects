@@ -12,6 +12,17 @@ import { code, imp, joinCode, type Code } from "ts-poet";
 import type { MetaObject, MetaLayout } from "@metaobjectsdev/metadata";
 import { LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "@metaobjectsdev/codegen-ts";
+
+/** The DB-free descriptor sibling of an entity module: `./Author` → `./Author.meta`,
+ *  `./Author.js` → `./Author.meta.js`. The UI files take the `<Entity>` descriptor
+ *  from there so a browser bundle never pulls the Drizzle table in — it is the ONLY
+ *  value they import from the entity module; everything else is `import type`. */
+function metaModuleOf(entityModule: string): string {
+  return entityModule.endsWith(".js")
+    ? `${entityModule.slice(0, -3)}.meta.js`
+    : `${entityModule}.meta`;
+}
+
 import { GENERATED_HEADER, entityModuleSpecifier, siblingSpecifier } from "@metaobjectsdev/codegen-ts";
 
 interface GridSpec {
@@ -69,7 +80,7 @@ export function renderGridHookFile(entity: MetaObject, ctx: RenderContext): stri
   const buildFilterQsSym    = imp("buildFilterQs@@metaobjectsdev/runtime-web");
 
   const entityImports: Code = code`
-import { ${entityName} } from ${JSON.stringify(entityModule)};
+import { ${entityName} } from ${JSON.stringify(metaModuleOf(entityModule))};
 import type { ${entityName} as ${entityName}Row } from ${JSON.stringify(entityModule)};
 `;
 

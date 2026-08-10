@@ -1,5 +1,5 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, emitsInstanceArtifacts, isTphSubtype, CODEGEN_ATTR_EMIT_TANSTACK, CODEGEN_ATTR_EMIT_GRID } from "@metaobjectsdev/codegen-ts";
+import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, servesReadApi, isTphSubtype, CODEGEN_ATTR_EMIT_TANSTACK, CODEGEN_ATTR_EMIT_GRID } from "@metaobjectsdev/codegen-ts";
 import { hasDataGridLayout, warnMissingDataGridLayout } from "./data-grid-gate.js";
 import { renderColumnsFile } from "./templates/columns-file.js";
 
@@ -24,7 +24,7 @@ export const tanstackGrid = function tanstackGrid(opts?: TanstackGridOpts): Gene
   // Split out so the discoverability note can name exactly the entities the LAYOUT
   // gate alone held back (#287) — an opted-out or abstract type is not a surprise.
   const passesOtherGates = (e: MetaObject): boolean =>
-    emitsInstanceArtifacts(e)
+    servesReadApi(e)
     // ADR-0039: resolving — a concrete entity may inherit its @emit* opt-out flag via extends.
     && e.attr(CODEGEN_ATTR_EMIT_TANSTACK) !== false
     && userFilter(e)

@@ -1,5 +1,5 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, emitsInstanceArtifacts, isTphSubtype, CODEGEN_ATTR_EMIT_TANSTACK, CODEGEN_ATTR_EMIT_GRID } from "@metaobjectsdev/codegen-ts";
+import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, entityMetaFileName, renderEntityMetaFile, servesReadApi, isTphSubtype, CODEGEN_ATTR_EMIT_TANSTACK, CODEGEN_ATTR_EMIT_GRID } from "@metaobjectsdev/codegen-ts";
 import { hasDataGridLayout, warnMissingDataGridLayout } from "./data-grid-gate.js";
 import { renderGridHookFile } from "./templates/grid-hook-file.js";
 
@@ -31,7 +31,7 @@ export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHoo
   // TS2307 when the inherited layout carries an `@filter` preset (the hook then imports
   // `<sub>DefaultFilter` from the missing columns module).
   const passesOtherGates = (e: MetaObject): boolean =>
-    emitsInstanceArtifacts(e)
+    servesReadApi(e)
     // ADR-0039: resolving — a concrete entity may inherit its @emit* opt-out flag via extends.
     && e.attr(CODEGEN_ATTR_EMIT_TANSTACK) !== false
     && userFilter(e)
@@ -40,14 +40,23 @@ export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHoo
     if (!ctx.renderContext) {
       throw new Error("tanstack-grid-hook: renderContext is required (provided by runGen)");
     }
-    return {
+    // Also emit the DB-free descriptor module this file imports from. Each UI
+    // generator emits it rather than relying on the consumer wiring an extra one:
+    // the entity generator is scaffold-and-own (ADR-0034), so it cannot be changed
+    // from the package. Emissions are byte-identical between generators, which the
+    // runner collapses (#266).
+    return [{
+      path: entityOutputPath(ctx.renderContext.outputLayout, entity.package,
+        entityMetaFileName(entity.name)),
+      content: await formatTs(renderEntityMetaFile(entity, ctx.renderContext.apiPrefix)),
+    }, {
       path: entityOutputPath(
         ctx.renderContext.outputLayout,
         entity.package,
         `${entity.name}.grid.ts`,
       ),
       content: await formatTs(renderGridHookFile(entity, ctx.renderContext)),
-    };
+    }];
   });
   const generator: Generator = {
     name: "tanstack-grid-hook",

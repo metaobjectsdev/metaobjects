@@ -1,5 +1,5 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, emitsInstanceArtifacts, isTphSubtype, CODEGEN_ATTR_EMIT_TANSTACK } from "@metaobjectsdev/codegen-ts";
+import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, entityMetaFileName, renderEntityMetaFile, servesReadApi, isTphSubtype, CODEGEN_ATTR_EMIT_TANSTACK } from "@metaobjectsdev/codegen-ts";
 import { renderHooksFile } from "./templates/hooks-file.js";
 
 export interface TanstackQueryOpts {
@@ -25,17 +25,26 @@ export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): G
     // FR-017 Tier 3: TPH subtypes get no standalone hooks file — their per-subtype
     // hooks live in the discriminator base's hooks file (polymorphic + per-subtype).
     // ADR-0039: resolving — a concrete entity may inherit @emitTanstack via extends.
-    filter: (e: MetaObject) => emitsInstanceArtifacts(e) && e.attr(CODEGEN_ATTR_EMIT_TANSTACK) !== false && !isTphSubtype(e) && userFilter(e),
+    filter: (e: MetaObject) => servesReadApi(e) && e.attr(CODEGEN_ATTR_EMIT_TANSTACK) !== false && !isTphSubtype(e) && userFilter(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error(
           "tanstack-query: renderContext is required (provided by runGen)",
         );
-      }
-      return {
+      }      // Also emit the DB-free descriptor module this file imports from. Each UI
+      // generator emits it rather than relying on the consumer wiring an extra
+      // generator: the entity generator is scaffold-and-own (ADR-0034), so it cannot
+      // be changed from the package. Emissions are byte-identical between generators,
+      // which the runner collapses (#266).
+      const metaFile = {
+        path: entityOutputPath(ctx.renderContext.outputLayout, entity.package,
+          entityMetaFileName(entity.name)),
+        content: await formatTs(renderEntityMetaFile(entity, ctx.renderContext.apiPrefix)),
+      };
+      return [metaFile, {
         path: entityOutputPath(ctx.renderContext.outputLayout, entity.package, `${entity.name}.hooks.ts`),
         content: await formatTs(renderHooksFile(entity, ctx.renderContext)),
-      };
+      }];
     }),
   };
   if (opts?.target) {

@@ -1,6 +1,17 @@
 import { code, imp, joinCode, Import, type Code } from "ts-poet";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import type { RenderContext, RelationEntry } from "@metaobjectsdev/codegen-ts";
+
+/** The DB-free descriptor sibling of an entity module: `./Author` → `./Author.meta`,
+ *  `./Author.js` → `./Author.meta.js`. The UI files take the `<Entity>` descriptor
+ *  from there so a browser bundle never pulls the Drizzle table in — it is the ONLY
+ *  value they import from the entity module; everything else is `import type`. */
+function metaModuleOf(entityModule: string): string {
+  return entityModule.endsWith(".js")
+    ? `${entityModule.slice(0, -3)}.meta.js`
+    : `${entityModule}.meta`;
+}
+
 import {
   GENERATED_HEADER,
   isProjection,
@@ -170,8 +181,8 @@ function renderReadOnlyHooksFile(entity: MetaObject, entityModule: string, ctx: 
   const buildFilterQsSym = imp("buildFilterQs@@metaobjectsdev/runtime-web");
 
   const entityImports: Code = code`
+import { ${entityName} } from ${JSON.stringify(metaModuleOf(entityModule))};
 import {
-  ${entityName},
   type ${entityName} as ${entityName}Row,
   type ${entityName}Filter,
 } from ${JSON.stringify(entityModule)};
@@ -249,8 +260,8 @@ function renderFullHooksFile(entity: MetaObject, entityModule: string, ctx: Rend
   const buildFilterQsSym = imp("buildFilterQs@@metaobjectsdev/runtime-web");
 
   const entityImports: Code = code`
+import { ${entityName} } from ${JSON.stringify(metaModuleOf(entityModule))};
 import {
-  ${entityName},
   type ${entityName} as ${entityName}Row,
   type ${entityName}Insert,
   type ${entityName}Update,

@@ -88,6 +88,39 @@ function camelizeRow(row: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
+/**
+ * Execute a raw SQL read and return its rows, on EITHER dialect.
+ *
+ * There is no shared method: drizzle's `BaseSQLiteDatabase` has `.all()` and no
+ * `.execute()`; `PgDatabase` has `.execute()` and no `.all()` at all (verified
+ * against drizzle-orm's own `sqlite-core/db.d.ts` and `pg-core/db.d.ts`). So this
+ * must DISPATCH — unlike the #286 sites, where the query builder is thenable on
+ * both dialects and simply awaiting it was enough.
+ *
+ * That difference is exactly why the #286 sweep missed these. It hunted `.all()`
+ * on a query BUILDER; these are `.all()` on the top-level `db` HANDLE — the libsql
+ * raw-exec API, which node-postgres does not implement. BOTH read-only mounts
+ * carried three each, so the Fastify adapter was broken here too despite being the
+ * correct reference for the builder shape. Reported by an adopting project's code
+ * review of the 0.21.4 upgrade.
+ *
+ * Reachable whenever `useRawSql` is true — an opaque `@sql` view body (the ADR-0043
+ * escape hatch), where the view declares no columns for the query builder to select.
+ *
+ * The two Postgres drivers disagree on the result shape (node-postgres returns a
+ * QueryResult with `.rows`, postgres-js returns the array itself), so both are
+ * handled rather than betting on one.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: driver handle is consumer-provided
+async function rawRows(db: any, dialect: string | undefined, query: unknown): Promise<Record<string, unknown>[]> {
+  if (dialect === "postgres") {
+    const res: unknown = await db.execute(query);
+    if (Array.isArray(res)) return res as Record<string, unknown>[];
+    return (res as { rows?: Record<string, unknown>[] } | null)?.rows ?? [];
+  }
+  return (await db.all(query)) as Record<string, unknown>[];
+}
+
 export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
   const { fastify, path, db, view, filterAllowlist, sortAllowlist, dialect } = opts;
   const idCol = opts.idColumn ?? "id";
@@ -111,11 +144,11 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
         const offsetVal = Math.max(0, Number(typeof parsed["offset"] === "string" ? parsed["offset"] : 0));
         const withCount = isTruthyFlag(parsed["withCount"]);
         // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
-        const rows = await db.all(sql.raw(`SELECT * FROM "${viewName}" LIMIT ${limitVal} OFFSET ${offsetVal}`)) as any[];
+        const rows = await rawRows(db, dialect, sql.raw(`SELECT * FROM "${viewName}" LIMIT ${limitVal} OFFSET ${offsetVal}`)) as any[];
         const camelRows = rows.map((r: Record<string, unknown>) => camelizeRow(r));
         if (!withCount) return camelRows;
         // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
-        const countRows = await db.all(sql.raw(`SELECT COUNT(*) AS c FROM "${viewName}"`)) as any[];
+        const countRows = await rawRows(db, dialect, sql.raw(`SELECT COUNT(*) AS c FROM "${viewName}"`)) as any[];
         const total: number = Number(countRows[0]?.c ?? 0);
         return { rows: camelRows, total };
       }
@@ -168,7 +201,7 @@ export function mountReadOnlyCrudRoutes(opts: MountReadOnlyOptions): void {
     const { id } = req.params as { id: string };
     if (useRawSql) {
       // biome-ignore lint/suspicious/noExplicitAny: dynamic raw result
-      const rows = await db.all(sql.raw(`SELECT * FROM "${viewName}" WHERE "${idCol}" = ${rawIdLiteral(id)} LIMIT 1`)) as any[];
+      const rows = await rawRows(db, dialect, sql.raw(`SELECT * FROM "${viewName}" WHERE "${idCol}" = ${rawIdLiteral(id)} LIMIT 1`)) as any[];
       const row = rows[0] ? camelizeRow(rows[0]) : undefined;
       return row ?? reply.code(404).send({ error: "not_found" });
     }
