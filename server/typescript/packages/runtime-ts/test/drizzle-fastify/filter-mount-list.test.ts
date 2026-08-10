@@ -184,3 +184,73 @@ describe("mountListRoute with filter+sort allowlists", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// ADR-0049: the `like` op is case-SENSITIVE SQL LIKE on every dialect.
+// SQLite's native LIKE folds ASCII case by default, so the sqlite branch of
+// the parser lowers `like` to GLOB with an exactly-translated pattern. These
+// tests run the REAL engine (libsql) — not just the emitted SQL shape — with
+// a seed that pairs case-mismatched rows and a row full of GLOB
+// metacharacters, so a regression to native LIKE (case-folding) or a broken
+// pattern translation both fail.
+// ---------------------------------------------------------------------------
+
+const authors = sqliteTable("authors", {
+  id:   integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+});
+const AuthorInsert = z.object({ name: z.string() });
+const authorFilterAllowlist: FilterAllowlist = {
+  name: { ops: ["eq", "like"], subType: "string", leadingWildcard: true },
+};
+
+let likeApp: FastifyInstance;
+beforeAll(async () => {
+  const client = createClient({ url: ":memory:" });
+  await client.execute(`CREATE TABLE authors (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)`);
+  await client.execute(`INSERT INTO authors (name) VALUES ('Foundations'), ('foundations lab'), ('50% off [deal]*?')`);
+  likeApp = Fastify();
+  mountCrudRoutes({
+    fastify: likeApp, path: "/authors", db: drizzle(client), table: authors,
+    insertSchema: AuthorInsert, updateSchema: AuthorInsert.partial(),
+    filterAllowlist: authorFilterAllowlist, sortAllowlist: { name: {} },
+    dialect: "sqlite",
+  });
+  await likeApp.ready();
+});
+
+describe("like is case-sensitive on sqlite (ADR-0049, real engine)", () => {
+  async function names(likePattern: string): Promise<string[]> {
+    const r = await likeApp.inject({
+      method: "GET",
+      url: "/authors?sort=name:asc&filter[name][like]=" + encodeURIComponent(likePattern),
+    });
+    expect(r.statusCode).toBe(200);
+    return (JSON.parse(r.body) as Array<{ name: string }>).map((row) => row.name);
+  }
+
+  test("capitalized prefix matches only the capitalized row", async () => {
+    expect(await names("Found%")).toEqual(["Foundations"]);
+  });
+
+  test("lowercase prefix matches only the lowercase row — native sqlite LIKE would return both", async () => {
+    expect(await names("found%")).toEqual(["foundations lab"]);
+  });
+
+  test("`_` wildcard works and stays case-sensitive", async () => {
+    expect(await names("Found_tions")).toEqual(["Foundations"]);
+    expect(await names("found_tions%")).toEqual(["foundations lab"]);
+  });
+
+  test("GLOB metacharacters in the pattern match literally", async () => {
+    // `%` wildcards; `[deal]*?` must match the literal text, not act as a
+    // GLOB class/wildcards after translation.
+    expect(await names("%[deal]*?")).toEqual(["50% off [deal]*?"]);
+    // `*` as a literal must not match arbitrary runs.
+    expect(await names("%*x%")).toEqual([]);
+  });
+
+  test("no match returns an empty array, not an error", async () => {
+    expect(await names("zzz%")).toEqual([]);
+  });
+});

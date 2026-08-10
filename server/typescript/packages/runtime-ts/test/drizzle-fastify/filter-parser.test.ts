@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import qs from "qs";
-import { parseFilterParams, FilterParseError } from "../../src/drizzle-fastify/filter-parser.js";
+import { parseFilterParams, likePatternToGlob, FilterParseError } from "../../src/drizzle-fastify/filter-parser.js";
 import type { FilterAllowlist, SortAllowlist } from "../../src/drizzle-fastify/filter-allowlist.js";
 
 // Minimal fake table — drizzle-orm operators just need column refs. We use plain
@@ -157,30 +157,44 @@ describe("parseFilterParams — happy path", () => {
     expect(r.offset).toBe(50);
   });
 
-  test("like on postgres uses ilike (case-insensitive)", () => {
+  // Cross-port contract (ADR-0049): the `like` OP is case-SENSITIVE SQL LIKE
+  // on every dialect. These two pins previously asserted the opposite
+  // (ilike-on-postgres) — that dispatch was the divergence the de-blinded
+  // conformance corpora now catch.
+  test("like on postgres uses case-sensitive like — never ilike (ADR-0049)", () => {
     const r = parseFilterParams({
       query: parsedQs("?filter[email][like]=" + encodeURIComponent("@x.com")),
       table, allowlist, sortAllowlist, dialect: "postgres",
     });
     expect(r.where).toBeDefined();
-    // Structural check: Drizzle's ilike places " ilike " as a queryChunk value.
-    const sqlText = collectSqlText(r.where);
-    expect(sqlText).toContain("ilike");
-    expect(sqlText).not.toContain(" like ");
-  });
-
-  test("like on sqlite uses like (not ilike)", () => {
-    const r = parseFilterParams({
-      query: parsedQs("?filter[email][like]=" + encodeURIComponent("@x.com")),
-      table, allowlist, sortAllowlist, dialect: "sqlite",
-    });
-    expect(r.where).toBeDefined();
+    // Structural check: Drizzle's like places " like " as a queryChunk value.
     const sqlText = collectSqlText(r.where);
     expect(sqlText).toContain(" like ");
     expect(sqlText).not.toContain("ilike");
   });
 
-  test("search on postgres dispatches ilike for string fields", () => {
+  test("like on sqlite lowers to GLOB with a translated pattern (SQLite LIKE folds ASCII case) — ADR-0049", () => {
+    const r = parseFilterParams({
+      query: parsedQs("?filter[email][like]=" + encodeURIComponent("a%b_c")),
+      table, allowlist, sortAllowlist, dialect: "sqlite",
+    });
+    expect(r.where).toBeDefined();
+    const sqlText = collectSqlText(r.where);
+    expect(sqlText).toContain("GLOB");
+    expect(sqlText).not.toContain("ilike");
+    // The bound param carries the translated pattern.
+    expect(sqlText).toContain("a*b?c");
+  });
+
+  test("likePatternToGlob translates wildcards and escapes GLOB metacharacters", () => {
+    expect(likePatternToGlob("a%b_c")).toBe("a*b?c");
+    // Literal GLOB metacharacters must match literally: * ? [ get wrapped in
+    // single-char classes; ] is only special inside a class and passes through.
+    expect(likePatternToGlob("50*[x]_?%")).toBe("50[*][[]x]?[?]*");
+    expect(likePatternToGlob("")).toBe("");
+  });
+
+  test("search on postgres dispatches ilike for string fields (the TS-only ?search extension is deliberately case-insensitive)", () => {
     const r = parseFilterParams({
       query: { search: "term" },
       table, allowlist, sortAllowlist, dialect: "postgres",

@@ -93,6 +93,19 @@ subtype doesn't support → HTTP 400. The operator list is a Tier 1
 cross-port invariant — every port's parser must implement these nine
 and only these nine.
 
+**`like` is case-SENSITIVE SQL LIKE**
+([ADR-0049](../../spec/decisions/ADR-0049-filter-like-is-case-sensitive-sql-like.md)):
+the author-supplied pattern binds verbatim — `%` (any run) and `_` (any
+single character) are the only wildcards, there is no `%`-wrapping and no
+case folding — identically on every port and every engine. Engines whose
+native LIKE is not case-sensitive are lowered around, not deferred to: on
+SQLite/D1 (whose built-in LIKE folds ASCII case) the TS runtime lowers
+`like` to GLOB with an exactly-translated pattern. Case-insensitive
+matching is deliberately NOT in the operator vocabulary (FR-009 §7 /
+ADR-0036 reserve `ilike` as a future additive operator, gated on real
+consumer demand); until then, normalize case in the data or the pattern —
+or use the TS-only `?search` extension, which IS case-insensitive.
+
 ### TS-only filter extensions (not part of the cross-port contract)
 
 The TypeScript runtime parser ships five filter behaviors beyond the nine
@@ -104,7 +117,7 @@ added cross-port later as a purely additive, non-breaking change):
 
 | Extension | What it does |
 |---|---|
-| `?search=<term>` | ORs a `like` across the entity's `@filterable` string fields |
+| `?search=<term>` | ORs a case-INSENSITIVE substring match (`%term%`) across the entity's `@filterable` string fields — deliberately looser than the case-sensitive `like` operator (it is a human search box; ILIKE on Postgres, native LIKE on SQLite) |
 | `filter[or][N]` / `filter[and][N]` | boolean combinators (recursive nesting) |
 | leading-wildcard gating | a `like` pattern starting with `%` → HTTP 400 (`filter.leading_wildcard_disallowed`) |
 | filter nesting-depth cap | rejects deeply-nested `or`/`and` (tied to the combinators) |

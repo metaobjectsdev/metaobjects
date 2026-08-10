@@ -1,15 +1,19 @@
 name: filter-like-and-ne
 description: |
-  Filter Programs with `like` (SQL pattern match) and `ne` (not-equal). Both
-  ports must surface the same rows, in the same order. The `like` pattern is
-  case-aligned to the seed data (no case-fold dependency) so the test passes
-  whether a port wires LIKE or ILIKE under the hood.
+  Filter Programs with `like` (case-SENSITIVE SQL LIKE — verbatim pattern,
+  `%`/`_` wildcards; ADR-0047) and `ne` (not-equal). Both ports must surface
+  the same rows, in the same order. The seed deliberately carries a
+  case-mismatched pair ('Foundations' / 'foundations lab') and probes BOTH
+  casings: each prefix probe must match exactly one of the pair, so a port
+  that lowers `like` to any case-folding match (ILIKE, UPPER()-wrapping, or
+  SQLite's default ASCII-folding LIKE) returns two rows and fails.
 seed-data: |
   INSERT INTO "programs" ("id", "title", "priceCents", "status", "createdAt") VALUES
     (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00'),
     (2, 'Strength',    7999, 'PUBLISHED', '2026-05-02T10:00:00'),
     (3, 'Mobility',    2999, 'DRAFT',     '2026-05-03T10:00:00'),
-    (4, 'Archived',    1999, 'ARCHIVED',  '2026-05-04T10:00:00');
+    (4, 'Archived',    1999, 'ARCHIVED',  '2026-05-04T10:00:00'),
+    (5, 'foundations lab', 1499, 'PUBLISHED', '2026-05-05T10:00:00');
 queries:
   - name: title-like-prefix
     op: list
@@ -18,6 +22,14 @@ queries:
     sort: [{ field: id, dir: asc }]
     expect:
       - { id: "1", title: "Foundations", priceCents: "4999", status: "PUBLISHED", createdAt: "2026-05-01T10:00:00" }
+
+  - name: title-like-prefix-lowercase
+    op: list
+    entity: Program
+    filter: { title: { like: "found%" } }
+    sort: [{ field: id, dir: asc }]
+    expect:
+      - { id: "5", title: "foundations lab", priceCents: "1499", status: "PUBLISHED", createdAt: "2026-05-05T10:00:00" }
 
   - name: status-not-published
     op: list

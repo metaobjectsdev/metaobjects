@@ -42,9 +42,11 @@ import static org.junit.Assert.*;
  * <p>3. <b>{@link Expression#LIKE} is case-SENSITIVE with a verbatim pattern.</b> The older
  * {@code CONTAIN}/{@code START_WITH}/{@code END_WITH} wrap both sides in {@code UPPER(...)}.
  * The cross-port REST contract's {@code like} is case-sensitive SQL LIKE with author-supplied
- * wildcards. Undetected because the corpus deliberately case-aligns its seed data "so the test
- * passes whether a port wires LIKE or ILIKE" — it cannot tell the two apart by construction,
- * which is exactly why this pin has to exist outside it.
+ * wildcards (ADR-0049). Originally undetected because the corpus case-aligned its seed data
+ * "so the test passes whether a port wires LIKE or ILIKE"; the corpus has since been
+ * de-blinded (filter-like-and-ne seeds a case-mismatched pair and probes both casings), so
+ * it now catches a case-folding {@code like} — this pin stays as the unit-level guard on the
+ * driver's SQL shape itself.
  */
 public class ExpressionLoweringPinsTest {
 

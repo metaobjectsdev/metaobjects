@@ -298,13 +298,17 @@ public static class DbContextAdapter
             return Expression.Call(containsMethod, arrayExpr, propExpr);
         }
 
-        // `like` uses EF.Functions.Like (translated to SQL LIKE).
+        // `like` uses EF.Functions.Like (translated to SQL LIKE) — the SAME
+        // dispatch the PRODUCT ships (EfCoreFilterDispatch). This adapter
+        // previously preferred Npgsql's ILike via reflection, so the
+        // conformance gate was testing case-INSENSITIVE semantics the product
+        // never had; the cross-port contract's `like` is case-sensitive SQL
+        // LIKE (ADR-0049) and the de-blinded filter-like-and-ne fixture now
+        // fails an ILike dispatch.
         if (op == "like")
         {
-            var likeMethod = typeof(NpgsqlDbFunctionsExtensions)
-                .GetMethod(nameof(NpgsqlDbFunctionsExtensions.ILike), [typeof(DbFunctions), typeof(string), typeof(string)])
-                ?? typeof(DbFunctionsExtensions)
-                    .GetMethod(nameof(DbFunctionsExtensions.Like), [typeof(DbFunctions), typeof(string), typeof(string)])!;
+            var likeMethod = typeof(DbFunctionsExtensions)
+                .GetMethod(nameof(DbFunctionsExtensions.Like), [typeof(DbFunctions), typeof(string), typeof(string)])!;
             var functions = Expression.Constant(EF.Functions);
             return Expression.Call(likeMethod, functions, propExpr, Expression.Constant((string)rawValue!));
         }

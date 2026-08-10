@@ -72,7 +72,7 @@ export interface CrudRoutesOptions {
   updateMethod?: "patch" | "put";
   filterAllowlist?: FilterAllowlist;
   sortAllowlist?:   SortAllowlist;
-  /** Dialect — required if filterAllowlist or sortAllowlist is set (for like/ilike dispatch). */
+  /** Dialect — required if filterAllowlist or sortAllowlist is set (for dialect-specific `like` lowering: SQLite lowers to GLOB to stay case-sensitive; ADR-0049). */
   dialect?: "sqlite" | "postgres";
   /**
    * FR-017 TPH — scope this route set to a single subtype of a single-table-
