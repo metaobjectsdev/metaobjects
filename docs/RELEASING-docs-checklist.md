@@ -29,8 +29,13 @@ PyPI track the `0.x` line; Maven Central (Java + Kotlin) tracks the `7.x` line.
 - [ ] `docs/ports/kotlin.md` — Maven `<version>`.
 - [ ] `docs/ports/python.md` — PyPI version + `pip install`.
 - [ ] `docs/features/extending-with-providers.md` — the "parity status as of `<ver>`" marker.
-- [ ] `docs/RELEASING.md` / `docs/RELEASING-java.md` / `.github/workflows/publish-*.yml`
-      — the "currently `<ver>`" notes in the workflow-trigger comments.
+- [ ] `docs/RELEASING.md` / `docs/RELEASING-java.md` — the "currently `<ver>`" notes.
+- [ ] `.github/workflows/publish-*.yml` — **no version edits by design.** All four
+      publish workflows read the version from the committed manifest
+      (`package.json` / pom / `Directory.Build.props` / `pyproject.toml`), so none
+      hardcodes one. Re-check only if someone adds a version string back; the
+      `publish-csharp.yml` `workflow_dispatch` description carried one until
+      `0.21.6` and had silently drifted seven releases stale.
 - [ ] `agent-context/` — **NO version edits on a bump, by design.** The `meta init`
       LLM-context source is version-agnostic: Maven examples use
       `${metaobjects.version}` and there are no hardcoded npm versions. Only touch it
