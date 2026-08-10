@@ -48,6 +48,19 @@ export type { AttrValue } from "./shared/meta-data.js";
 // Shared node classes
 export { MetaRoot } from "./shared/meta-root.js";
 
+// Cross-realm node guards — identify a node by metamodel `type`, not `instanceof`.
+// Cross-package callers (codegen-ts / migrate-ts / runtime-ts) MUST use these:
+// `instanceof` silently fails when two physical copies of this package are
+// loaded. See shared/node-guards.ts for the mechanism.
+export {
+  isMetaRoot,
+  isMetaObject,
+  isMetaField,
+  isMetaSource,
+  isWritableSource,
+  isReadOnlySource,
+} from "./shared/node-guards.js";
+
 // Core node classes
 export { MetaObject } from "./core/object/meta-object.js";
 export { MetaField } from "./core/field/meta-field.js";

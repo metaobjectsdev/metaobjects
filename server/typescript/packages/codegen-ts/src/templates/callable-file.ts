@@ -21,7 +21,8 @@
 
 import {
   type MetaObject,
-  MetaSource,
+  type MetaSource,
+  isMetaSource,
   SOURCE_ATTR_PARAMETER_REF,
   SOURCE_KIND_STORED_PROC,
   SOURCE_KIND_TABLE_FUNCTION,
@@ -47,7 +48,9 @@ function callableSource(entity: MetaObject): MetaSource | undefined {
   // ADR-0039: resolving — an entity may inherit its callable source.rdb via extends.
   for (const child of entity.children()) {
     if (child.type !== TYPE_SOURCE) continue;
-    if (!(child instanceof MetaSource)) continue;
+    // isMetaSource, not `instanceof`: a split @metaobjectsdev/metadata tree would
+    // make the class check false and silently emit no callable wrapper.
+    if (!isMetaSource(child)) continue;
     if (CALLABLE_KINDS.has(child.effectiveKind)) return child;
   }
   return undefined;

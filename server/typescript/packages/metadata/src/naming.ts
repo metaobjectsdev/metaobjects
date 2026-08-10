@@ -6,7 +6,14 @@ import {
   SOURCE_ATTR_SCHEMA,
   SOURCE_ROLE_PRIMARY,
 } from "./persistence/source/source-constants.js";
-import { MetaSource } from "./persistence/source/meta-source.js";
+import type { MetaSource } from "./persistence/source/meta-source.js";
+// isMetaSource, not `instanceof`: unlike the loader-internal validators, these two
+// are EXPORTED helpers that run on a caller-supplied node — migrate-ts calls both
+// on nodes the CLI's loader built. Under a split @metaobjectsdev/metadata tree the
+// class check would be false for a real primary source, and resolveTableName would
+// silently fall through to the entity-name fallback: a DIFFERENT table name, which
+// migrate then emits as a rename against a live database.
+import { isMetaSource } from "./shared/node-guards.js";
 
 /**
  * Strip the package prefix from a metadata-qualified name
@@ -72,7 +79,7 @@ export function resolveTableName(entity: MetaData): string {
   // entity-name fallback. For an entity declaring its own source, own shadows
   // inherited, so the result is unchanged.
   const source = entity.children().find(
-    (c): c is MetaSource => c instanceof MetaSource && c.role === SOURCE_ROLE_PRIMARY,
+    (c): c is MetaSource => isMetaSource(c) && c.role === SOURCE_ROLE_PRIMARY,
   );
   if (source !== undefined) return source.physicalName;
   return pluralize(toSnakeCase(entity.name));
@@ -98,8 +105,7 @@ export function resolveColumnName(
 export function resolveTableSchema(entity: MetaData): string | undefined {
   // ADR-0039: resolving — a concrete entity may inherit its source.rdb via extends.
   const source = entity.children().find(
-    (c): c is MetaSource =>
-      c instanceof MetaSource && c.role === SOURCE_ROLE_PRIMARY,
+    (c): c is MetaSource => isMetaSource(c) && c.role === SOURCE_ROLE_PRIMARY,
   );
   if (!source) return undefined;
   // ADR-0039: resolving — an inherited source's @schema lives on the super node.

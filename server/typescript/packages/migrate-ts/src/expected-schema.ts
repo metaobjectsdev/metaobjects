@@ -10,7 +10,7 @@ import {
   TYPE_FIELD,
   OBJECT_ATTR_DISCRIMINATOR,
   OBJECT_ATTR_DISCRIMINATOR_VALUE,
-  MetaSource,
+  isWritableSource,
   IDENTITY_ATTR_GENERATION,
   IDENTITY_ATTR_ORDERS,
   IDENTITY_ATTR_WHERE,
@@ -150,9 +150,10 @@ export function buildExpectedSchema(
     // the resolving view) and the read-only-only projection skip (view pipeline
     // owns those); closes the fail-open where a sourceless object (custom
     // subtype or plain entity) got a phantom CREATE TABLE + fabricated FK name.
-    const hasWritableSource = child.children().some(
-      (c) => c instanceof MetaSource && c.isWritable(),
-    );
+    // isWritableSource, not `instanceof MetaSource`: a second physical copy of
+    // @metaobjectsdev/metadata would make the class check false for a real source
+    // and silently drop this entity's table from the expected schema.
+    const hasWritableSource = child.children().some(isWritableSource);
     if (!hasWritableSource) continue;
     const tableName = resolveTableName(child);
     // #208 §7 — an @unmanaged writable (table) source: emit no descriptor, but keep the
@@ -160,9 +161,7 @@ export function buildExpectedSchema(
     // detection (not resolving) to match collectUnmanagedNames, so the skip here and the
     // act-side drop-suppression there agree exactly — no split-brain where a table is not
     // created yet is still proposed for drop.
-    const writableSource = child.ownChildren().find(
-      (c): c is MetaSource => c instanceof MetaSource && c.isWritable(),
-    );
+    const writableSource = child.ownChildren().find(isWritableSource);
     if (writableSource?.isUnmanaged) {
       fkTargetOnly.push({ entity: child as MetaObject, tableName });
       continue;

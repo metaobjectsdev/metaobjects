@@ -9,7 +9,7 @@
 
 import { code, imp, joinCode, type Code } from "ts-poet";
 import {
-  MetaField, MetaObject, type MetaRoot,
+  MetaField, MetaObject, type MetaRoot, isMetaObject,
   FIELD_ATTR_OBJECT_REF, stripPackage,
 } from "@metaobjectsdev/metadata";
 import { projectionViewName } from "../projection/extract-view-spec.js";
@@ -126,7 +126,7 @@ export function renderProjectionDecl(
   const superName = superModel?.name ?? projection.superRef;
   if (superName) {
     const baseObj =
-      superModel instanceof MetaObject ? superModel : root.findObject(superName);
+      isMetaObject(superModel) ? superModel : root.findObject(superName);
     if (baseObj) {
       // fields() returns effective fields, so inherited fields (from extends:/super:) are included.
       for (const f of baseObj.fields()) allFields.push(f);

@@ -12,8 +12,11 @@ import {
   type AggregateFunction,
   type MetaData,
   MetaObject,
-  MetaRoot,
-  MetaSource,
+  type MetaRoot,
+  type MetaSource,
+  isMetaRoot,
+  isReadOnlySource,
+  isWritableSource,
   SOURCE_KIND_VIEW,
   TYPE_FIELD,
   TYPE_IDENTITY,
@@ -81,7 +84,9 @@ export function buildProjectionViews(
   root: MetaData,
   opts: BuildProjectionViewsOptions,
 ): ExpectedView[] {
-  if (!(root instanceof MetaRoot)) {
+  // isMetaRoot, not `instanceof`: under a split @metaobjectsdev/metadata tree the
+  // class check rejects a perfectly good root, turning a working build into a throw.
+  if (!isMetaRoot(root)) {
     throw new Error("buildProjectionViews: root must be a loaded MetaRoot.");
   }
   // D1 is SQLite at the SQL level.
@@ -164,9 +169,7 @@ type ReadOnlySourceClass =
   | { kind: "derive"; source: MetaSource };
 
 function classifyReadOnlySource(host: MetaObject): ReadOnlySourceClass {
-  const source = host.ownChildren().find(
-    (c): c is MetaSource => c instanceof MetaSource && c.isReadOnly(),
-  );
+  const source = host.ownChildren().find(isReadOnlySource);
   if (source === undefined) return { kind: "skip" };
   if (source.isUnmanaged) return { kind: "skip" }; // external — Flyway/hand-migration owns it
   if (source.sqlBody !== undefined) return { kind: "sql", source }; // author-supplied body
@@ -265,9 +268,7 @@ function collectSqlDependsOn(
 ): string[] {
   const tables = new Set<string>();
   // The write-through host's own writable table (keyed the way the diff keys descriptors).
-  const hasWritableSource = host.ownChildren().some(
-    (c) => c instanceof MetaSource && c.isWritable(),
-  );
+  const hasWritableSource = host.ownChildren().some(isWritableSource);
   if (hasWritableSource) {
     const t = joinTables[host.resolutionKey()];
     if (t !== undefined) tables.add(t);

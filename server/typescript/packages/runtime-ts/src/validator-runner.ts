@@ -1,7 +1,7 @@
 // Pure function: NEVER throws. ObjectManager wraps a non-ok result in a ValidationError on writes;
 // om.validate() returns the result directly.
 
-import { MetaRoot, type MetaData } from "@metaobjectsdev/metadata";
+import { isMetaRoot, type MetaData } from "@metaobjectsdev/metadata";
 import {
   TYPE_FIELD, TYPE_VALIDATOR,
   VALIDATOR_SUBTYPE_REQUIRED, VALIDATOR_SUBTYPE_LENGTH, VALIDATOR_SUBTYPE_REGEX,
@@ -220,7 +220,10 @@ function resolveVoRef(field: MetaData): MetaData | undefined {
   const ref = field.attr(FIELD_ATTR_OBJECT_REF);
   if (typeof ref !== "string" || ref.length === 0) return undefined;
   const root = field.root();
-  if (!(root instanceof MetaRoot)) return undefined;
+  // isMetaRoot, not `instanceof`: under a split @metaobjectsdev/metadata tree the
+  // class check fails for a real root and every VO reference silently stops
+  // resolving, skipping nested value-object validation with no error.
+  if (!isMetaRoot(root)) return undefined;
   let target = root.findObject(ref);
   if (target === undefined) {
     const sep = ref.lastIndexOf(PACKAGE_SEPARATOR);

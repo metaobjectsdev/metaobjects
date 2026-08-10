@@ -6,40 +6,20 @@
 // metadata-driven, not a typeId discriminator: any object subtype can opt out
 // of Drizzle table emission simply by omitting source.rdb.
 
-import { TYPE_SOURCE, SOURCE_SUBTYPE_RDB } from "@metaobjectsdev/metadata";
+// Cross-realm safety: identify a source by metamodel type/subType and read its
+// writability through the node, never by `instanceof MetaSource`. Two physical
+// copies of @metaobjectsdev/metadata make the class check false for a real
+// source, and here the consequence is SILENT — the entity reads as "not backed
+// by any store", so no Drizzle table, no queries and no routes are emitted for
+// it and nothing errors. Mechanism and blast radius: metadata's
+// shared/node-guards.ts. Gated by test/source-detect.test.ts ("survives a split
+// @metaobjectsdev/metadata tree").
+import { SOURCE_SUBTYPE_RDB, isMetaSource, isWritableSource } from "@metaobjectsdev/metadata";
 import type { MetaData, MetaObject } from "@metaobjectsdev/metadata";
 
-// Cross-realm safety: identify a source structurally (type/subType + the
-// writability surface), never by `instanceof MetaSource`.
-//
-// Two physical copies of @metaobjectsdev/metadata in one process give the
-// loader's nodes a different MetaSource class object than this module closes
-// over, so `instanceof` is false for a node that is a source.rdb in every
-// observable respect — the same class-identity defect that split ts-poet's Code
-// objects in 0.21.6. Here the consequence is silent: the entity reads as "not
-// backed by any store", so no Drizzle table, no queries and no routes are
-// emitted for it, and nothing errors.
-//
-// `meta gen` aliases @metaobjectsdev/metadata to the CLI's own copy
-// (load-metaobjects-config.ts CLI_PKG_PATHS), which closes the split for the CLI
-// path — but that alias map does not run when a consumer embeds runGen()
-// programmatically, so these helpers do not depend on it. Gated by
-// test/source-detect.test.ts ("survives a split @metaobjectsdev/metadata tree").
-
-/** True when the child is a source.rdb node, by structure rather than class identity. */
+/** True when the child is a source.rdb node (subType-scoped — the rdb paradigm only). */
 function isRdbSource(child: MetaData): boolean {
-  return child.type === TYPE_SOURCE && child.subType === SOURCE_SUBTYPE_RDB;
-}
-
-/**
- * True when the node reports itself writable. Reads the writability surface
- * structurally so a source built by a second copy of the package still answers.
- * A node that cannot answer is not counted as writable (fail-closed — the same
- * outcome the `instanceof` guard produced for a non-source node).
- */
-function reportsWritable(child: MetaData): boolean {
-  const probe = child as unknown as { isWritable?: () => boolean };
-  return typeof probe.isWritable === "function" && probe.isWritable();
+  return isMetaSource(child) && child.subType === SOURCE_SUBTYPE_RDB;
 }
 
 /**
@@ -55,7 +35,7 @@ export function hasWritableRdbSource(entity: MetaObject): boolean {
   // would suppress the Drizzle table for such an entity.
   for (const child of entity.children()) {
     if (!isRdbSource(child)) continue;
-    if (reportsWritable(child)) return true;
+    if (isWritableSource(child)) return true;
   }
   return false;
 }

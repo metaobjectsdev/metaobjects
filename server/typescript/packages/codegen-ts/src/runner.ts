@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { existsSync, readFileSync } from "node:fs";
 import type { MetaData, MetaObject } from "@metaobjectsdev/metadata";
-import { MetaRoot, OBJECT_SUBTYPE_VALUE, FIELD_SUBTYPE_TIMESTAMP, FIELD_ATTR_FILTERABLE } from "@metaobjectsdev/metadata";
+import { isMetaRoot, OBJECT_SUBTYPE_VALUE, FIELD_SUBTYPE_TIMESTAMP, FIELD_ATTR_FILTERABLE } from "@metaobjectsdev/metadata";
 import { assignEmittedNames } from "./naming/collision-names.js";
 import { isAbstract } from "./instance-artifacts.js";
 import { hasAnyRdbSource } from "./source-detect.js";
@@ -128,7 +128,10 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
 
   // loadMemory now returns MetaRoot; guard here also covers callers that pass a
   // plain MetaData (e.g. test helpers that build trees programmatically).
-  if (!(opts.metadata instanceof MetaRoot)) {
+  // isMetaRoot, not `instanceof`: a consumer embedding runGen() programmatically
+  // never runs the CLI's @metaobjectsdev/metadata alias, so a split tree would
+  // reject the very root the caller just loaded.
+  if (!isMetaRoot(opts.metadata)) {
     throw new Error("runGen: opts.metadata must be a loaded MetaRoot.");
   }
   const root = opts.metadata;

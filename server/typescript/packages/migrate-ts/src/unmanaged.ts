@@ -8,7 +8,7 @@
 // ACTUAL side so a declared-external object produces SILENCE, not a policy-gated drop.
 
 import {
-  MetaSource,
+  isMetaSource,
   resolveTableSchema,
   DEFAULT_DB_SCHEMA_POSTGRES,
   TYPE_OBJECT,
@@ -34,7 +34,10 @@ export function collectUnmanagedNames(root: MetaData): string[] {
   for (const obj of root.children()) {
     if (obj.type !== TYPE_OBJECT) continue;
     for (const src of obj.ownChildren()) {
-      if (!(src instanceof MetaSource) || !src.isUnmanaged) continue;
+      // isMetaSource, not `instanceof`: a split @metaobjectsdev/metadata tree would
+      // make the class check false and silently un-silence a declared-@unmanaged
+      // object, turning it back into a proposed drop.
+      if (!isMetaSource(src) || !src.isUnmanaged) continue;
       const schema = resolveTableSchema(obj) ?? DEFAULT_DB_SCHEMA_POSTGRES;
       out.push(`${schema}.${src.physicalName}`);
     }

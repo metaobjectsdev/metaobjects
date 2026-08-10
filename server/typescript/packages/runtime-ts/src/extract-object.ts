@@ -27,7 +27,7 @@
 import {
   MetaObject,
   MetaField,
-  MetaRoot,
+  isMetaRoot,
   type MetaData,
   TYPE_OBJECT,
   resolveObjectRef,
@@ -382,7 +382,10 @@ function resolveFieldObjectRef(field: MetaField): MetaObject | undefined {
   const ref = attrString(field, FIELD_ATTR_OBJECT_REF) ?? field.objectRef;
   if (ref === undefined || ref === null) return undefined;
   const root = field.root();
-  if (!(root instanceof MetaRoot)) return undefined;
+  // isMetaRoot, not `instanceof`: under a split @metaobjectsdev/metadata tree the
+  // class check fails for a real root, so every field.object @objectRef falls to
+  // the opaque-leaf guard and extraction silently stops descending.
+  if (!isMetaRoot(root)) return undefined;
   const referrerPkg = field.parent?.package ?? field.parent?.fileDefaultPackage ?? "";
   const { node } = resolveObjectRef(root, ref, referrerPkg);
   return node !== undefined && node.type === TYPE_OBJECT ? (node as MetaObject) : undefined;

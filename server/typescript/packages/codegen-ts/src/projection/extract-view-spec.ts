@@ -3,7 +3,8 @@ import {
   TYPE_IDENTITY,
   TYPE_ORIGIN,
   TYPE_RELATIONSHIP,
-  MetaSource,
+  isMetaObject,
+  isReadOnlySource,
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
   ORIGIN_SUBTYPE_COMPUTED,
@@ -252,9 +253,7 @@ function viewName(projection: MetaObject, ctx: ExtractContext): string {
   // ADR-0039: own — projection source classification (mirrors C# projection
   // OwnSources / IsReadOnlyProjection): the view name comes from the projection's
   // OWN read-only source, not one inherited via extends.
-  const viewSource = projection.ownChildren().find(
-    (c): c is MetaSource => c instanceof MetaSource && c.isReadOnly(),
-  );
+  const viewSource = projection.ownChildren().find(isReadOnlySource);
   const explicit = viewSource?.physicalName;
   // physicalName always returns a string; empty string means the source had
   // neither alias nor a name and the owning entity name was empty (impossible
@@ -317,7 +316,7 @@ function packageOf(obj: MetaData): string {
  */
 function resolveEntityRef(root: MetaRoot, ref: string, referrerPkg: string): MetaObject | undefined {
   const node = resolveObjectRef(root, ref, referrerPkg).node;
-  return node instanceof MetaObject ? node : undefined;
+  return isMetaObject(node) ? node : undefined;
 }
 
 function baseEntityFor(
