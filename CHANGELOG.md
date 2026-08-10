@@ -7,6 +7,197 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.21.5] — npm `0.21.5` · PyPI `0.21.5` · NuGet `0.21.5` · Maven `7.21.5`
+
+A coordinated PATCH across all four registries. Ten fixes, every one reproduced before
+being fixed; PyPI, NuGet and Maven carry no changed product file and publish as
+**version-parity bumps**.
+
+The theme is narrower than 0.21.4's and sharper: **a package promising a compatibility
+it never had.** Peer ranges that accepted majors the code had never seen; an "optional"
+peer that no bundler could omit; UI artifacts emitted for objects that had no endpoint
+to talk to; a scaffold whose own first `tsc` failed. Two came from an adopting project
+reading our code rather than trusting a grep, which is how the sharpest one was found.
+
+### Fixed — every peer range was unbounded (npm)
+
+`@metaobjectsdev/tanstack` shipped `@tanstack/react-table: ">=8.20.0"` while
+react-table's `latest` moved to **9.1.2** — a ground-up rewrite that DELETED
+`useReactTable` and `getCoreRowModel`, both imported by `entity-grid.tsx`. So a fresh
+`npm i @tanstack/react-table` produced a package that **could not be bundled at all**,
+with no peer warning, because 9.1.2 satisfies the range. Found from two directions
+independently: a clean external install failed to typecheck generated columns (TS2707 —
+v9's `ColumnDef` needs 2–3 type arguments), and an adopting project hit the harder
+`No matching export … "getCoreRowModel"`, which breaks the runtime package whether or
+not you use generated columns. They pinned `^8.21.3` by hand.
+
+Every peer range in every published package is now bounded — this was a systemic
+convention, not a one-off. `drizzle-orm: ">=0.36.0"` was the same trap one release from
+springing: `1.0.0-rc.4` is already on the registry. **Tightening cannot strand a working
+consumer** — no v9 build ever worked — so it converts a confusing bundler error into an
+install-time resolution error that names the conflict. Adopters already on v9 downgrade
+to `^8.21.3`; a genuine v9 port is a deliberate feature, since v9's v8-shaped API lives
+behind a new `/legacy` subpath that v8 does not have.
+
+Also corrected `peerDependenciesMeta.optional` across the browser packages, by the test
+"with the peer absent, does a bare `import` of the entry succeed?". **`react` was marked
+optional** on both React runtime packages while every entry hard-fails without it —
+which suppressed the very install warning that would have told an adopter what was
+missing. Same for `react-hook-form`, `@hookform/resolvers` and `@angular/*`. `zod`,
+`@tanstack/react-query` and `@tanstack/angular-table` are genuinely optional and stay so.
+
+**Gate:** `scripts/check-peer-ranges.ts` — a range is unbounded exactly when it accepts
+`9999.0.0`. It reads MANIFESTS, which is the only thing that can work: a peer range is
+only exercised when a fresh resolver walks the registry, and this workspace pins its
+devDependencies and freezes them in `bun.lock`, so every test runs against the version
+we chose rather than the one an adopter gets.
+
+### Fixed — `react-easy-crop` broke every non-Vite build (npm)
+
+`@metaobjectsdev/react` declared it an OPTIONAL peer and the docs promised "consumers
+without a `view.image` field never pay for it". Both were wrong. `ImageUpload` is a root
+export, so `image-upload.js` sits in every consumer's module graph, and bundlers resolve
+the whole graph before tree-shaking — an unresolvable dynamic `import()` is **fatal to
+webpack, Next.js (Turbopack and webpack), esbuild and Bun**; only Vite special-cases it.
+Every generated `<Entity>.form.tsx` imports from this package, so *any* consumer of
+generated forms failed to build with an error naming a package they had never heard of.
+
+It is a regular dependency now, still lazy-loaded so non-users never download it. The
+cleaner `@metaobjectsdev/react/image` subpath split is deferred to a MINOR: it removes
+root exports, and **a MINOR cannot reach the adopters a bug has already broken**, since
+`^0.21.x` will not resolve a `0.22.0`.
+
+**Gate:** written against EVERY peer declared optional, not this one name — bundle the
+built root entry with that specifier forced to fail resolution. "Uninstall it and try"
+was unavailable: the workspace needs it as a devDependency, and that installed copy is
+exactly what kept the old gate green while adopters were broken.
+
+### Fixed — instance artifacts for objects with no endpoint (npm)
+
+`tanstackQuery` / `tanstackGrid` / `tanstackGridHook` / `formFile` emitted hooks, grids
+and forms for an `object.value`, a sourceless entity, and a sourceless projection. That
+output **never compiled**: `<V>.hooks.ts` value-imported `<V>` plus
+`<V>Filter`/`<V>Insert`/`<V>Update` from a module that, for a value, exports only a
+type-only interface and an `InsertSchema` — TS2693 + TS2305 ×3, and a hard link error
+under native ESM. There was no working behaviour to regress, which is what makes
+removing it a PATCH (the #248 precedent, one tier down).
+
+Fixed in the central guards rather than four filters, and deliberately NOT as a subtype
+check — persistability-from-subtype is the family #248 spent two releases eradicating.
+View-backed projections keep their read-only hooks, because they have a source.
+
+**Gate:** a cross-file one, since the defect lived BETWEEN files and every existing test
+inspected one generator's output alone. It runs the whole pipeline over the shapes that
+tempt the bug, then reconciles every sibling import against the emitting module's
+exports, including value-vs-type. Reconciliation rather than `tsc`: a stub for
+drizzle/zod/react-query that happens to omit the export under test would turn a real
+break into stub noise nobody reads.
+
+### Fixed — `meta init` left a project whose first `tsc` produced 94 errors (npm)
+
+On the exact path the README and init's own next-steps prescribe. Two breakages: it
+never set `"type": "module"` (npm writes `"commonjs"` explicitly; TypeScript 7's
+`tsc --init` enables `verbatimModuleSyntax`), and it never declared the dependencies the
+ADR-0034 scaffolded generators import. 94 errors → **0**, verified end-to-end through
+the real binary. It deliberately REFUSES to convert a project that has real CommonJS
+sources, warning with the sub-directory escape hatch instead — changing a module system
+out from under working code is not ours to do.
+
+### Fixed — Hono routes for a TPH subtype returned other subtypes' rows (npm)
+
+Fastify excludes TPH subtypes and dispatches them to a discriminator-aware renderer;
+Hono's filter had no TPH clause, so it mounted VANILLA CRUD on a subtype — which shares
+its base's table, with no scoping anywhere. The list returned every subtype's rows;
+get/patch/delete by id read and mutated rows belonging to a different subtype. Now
+**fails closed** with a one-per-run note, because silently wrong data is worse than a
+missing endpoint. Discriminator scoping in the Hono runtime is follow-up work.
+
+### Fixed — Hono write-through ignored its replica read view (npm)
+
+Fastify passes `readView` so reads carry derived `origin.*` columns; Hono passed only
+the table. Every GET omitted fields the generated type and Zod schema promise, and a
+filter or sort on one — both ALLOWED by the generated allowlists — queried a column the
+table does not have and 500'd. Fixed properly with the same `readSource()` /
+`reReadThroughView()` split Fastify uses.
+
+**Gate for both:** the durable assertion is neither specific pin — it is that the two
+route generators must serve exactly the same entity set, which is what fails on the NEXT
+divergence, whatever it is.
+
+### Fixed — `db.all(sql.raw(...))` 500s on Postgres in BOTH read-only mounts (npm)
+
+Reported by an adopting project's code review of the 0.21.4 upgrade. `.all()` on the
+top-level db HANDLE is the libsql raw-exec API; drizzle's `PgDatabase` does not
+implement it, so an opaque `@sql` view (the ADR-0043 escape hatch) 500'd on Postgres
+exactly as `mountCrudRoutes` did before #286. Six call sites — **the Fastify adapter was
+broken here too**, despite having been the correct reference for the other `.all()`
+shape.
+
+Fixed by dispatch, not another portable-form swap: `BaseSQLiteDatabase` has `.all()` and
+no `.execute()`, `PgDatabase` has `.execute()` and no `.all()`. Both Postgres drivers'
+result shapes are handled. **Why the #286 sweep missed it:** that hunt was for `.all()`
+on a query BUILDER, where awaiting the thenable fixed every site — this is the same
+method name on a different receiver, and it sat two lines below a comment explaining
+that `.all()` is libsql-only.
+
+**Gate:** the read-only path had NO Postgres coverage whatsoever. Now both adapters,
+real Postgres, an opaque view built with an EMPTY column map so it genuinely takes the
+raw branch rather than silently testing the builder path.
+
+### Changed — the UI tier asks about endpoints, not about storage (npm)
+
+The UI generators gated on `hasAnyRdbSource`: a STORAGE predicate standing in for an
+ENDPOINT question. Right answer, wrong reason — routes are derived from sources today,
+so the two coincide. FR-024 declared `api.*` surfaces and #211 non-RDB materialization
+both end that, at which point a UI tier reaching through to storage starts refusing to
+generate hooks for entities that genuinely have endpoints.
+
+The reach-through now lives in one file named for what it means (`servesReadApi` /
+`servesWriteApi`). Behaviour is identical today — same truth table, same output. The
+durable gate is that **no UI generator source may name a storage predicate at all**.
+
+### Performance — Drizzle is out of browser bundles: 716 KB → 215 KB (npm)
+
+The generated UI value-imports exactly ONE thing from the entity module: the
+`<Entity>` descriptor, which is plain data whose `$table` is a *string*. Everything else
+is `import type` and erased. But `<Entity>.ts` also constructs the Drizzle table at
+module scope, so that single import dragged the whole ORM into every client bundle —
+measured at 716,203 bytes for one generated hook. A `/* @__PURE__ */` annotation does
+not help (measured).
+
+`<Entity>.meta.ts` now carries just the descriptor, with no database import of any kind.
+Measured after: hooks 215,325 bytes, grid 203,663 bytes, `drizzle` absent from both.
+**Additive** — `<Entity>.ts` is untouched and still exports the descriptor, so every
+existing import keeps working, which is what keeps this a PATCH.
+
+### Fixed — the Angular packages were documented as published (npm)
+
+`README.md`, `CLAUDE.md`, four port docs and an entire `csharp-angular18` recipe
+described `@metaobjectsdev/angular` and `@metaobjectsdev/codegen-ts-angular` as
+installable. The registry returns **404** for both; they have never been published. An
+adopter following that recipe failed on the first command.
+
+The mechanism is the part worth fixing: `RELEASING.md` defines the lockstep set as
+"every non-`private` package at the previous version", and a non-private package on its
+OWN version line matches neither branch, so it is skipped by every release, silently and
+forever. `scripts/check-publish-intent.sh` makes the intent a declared, offline,
+drift-checked fact.
+
+### Known, not fixed
+
+- The scaffolded queries generator emits `import { eq } from "drizzle-orm"` three times
+  into one file (four separate `.toString()` calls each render their own ts-poet import
+  preamble), so `npx tsc` reports TS2300 on a fresh project. Pre-existing in 0.21.4;
+  reproduced in a clean `npm init` → `meta init` → `npm i` → `meta gen`.
+- Cross-port `like` semantics contradict each other (TS dispatches ILIKE on Postgres;
+  Python emits plain LIKE; C#'s product code and its own conformance adapter disagree;
+  0.21.4 moved Java to case-sensitive). The shared corpus cannot see it — the fixture is
+  case-aligned by construction. Needs a ruling on which semantic the wire contract has.
+- Parent-side `relationship.composition` loses its cascade, and the `@onDelete` escape
+  hatch on `identity.reference` is honored by `migrate` but unregistered, so a model
+  that migrates cleanly fails strict `verify`.
+
+
 ## [0.21.4] — npm `0.21.4` · PyPI `0.21.4` · NuGet `0.21.4` · Maven `7.21.4`
 
 A coordinated PATCH across all four registries (the standing single-shared-patch-number
