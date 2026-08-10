@@ -59,7 +59,7 @@ describe("#287 — browser bundleability", () => {
   // whether or not they authored an image field. It is a real dependency now.
   //
   // This gate could not be written as "uninstall the package": the workspace needs
-  // react-easy-crop as a devDependency for the unit tests, and that installed copy is
+  // react-easy-crop as a dependency for the unit tests, and that installed copy is
   // exactly what made the old gate green while adopters were broken. Instead the
   // resolver is made to behave the way a consumer install does — which is also why
   // this is written against EVERY declared-optional peer rather than one hardcoded
