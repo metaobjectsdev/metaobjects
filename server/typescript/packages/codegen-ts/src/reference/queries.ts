@@ -16,7 +16,12 @@
 // (`renderQueriesFile`) — they're rarely customized. To own those too, copy their branches
 // out of the package source. The vanilla path here is byte-identical to the built-in.
 
-import { code, joinCode, type Code } from "ts-poet";
+// ts-poet combinators come from the engine package, NOT a bare "ts-poet" import: the
+// Code sections composed here must share ONE ts-poet instance with the render*
+// primitives below, or (with a globally-installed / linked CLI, where the project and
+// the CLI resolve ts-poet to different physical copies) every section renders
+// standalone with its own duplicate import header.
+import { code, joinCode, type Code } from "@metaobjectsdev/codegen-ts";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
   perEntity,

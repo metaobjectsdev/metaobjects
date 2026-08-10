@@ -7,6 +7,41 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — `meta gen` emitted duplicate imports under a split dependency tree (npm: `codegen-ts` + `cli`)
+
+With a **globally-installed or linked `meta` CLI** and a project-local ts-poet (which
+`meta init` itself added to devDependencies), `meta gen` emitted
+`import { eq } from "drizzle-orm";` **three times** into `<Entity>.queries.ts` — one at
+the top, one mid-file before `update<Entity>`, one before `delete<Entity>ById` — so the
+adopter's first `npx tsc` failed with TS2300 "Duplicate identifier 'eq'". A flat
+single-tree install (`npm i @metaobjectsdev/cli` inside the project) dedupes ts-poet
+and hides the bug, which is why the in-process single-import gate never reproduced it.
+
+Root cause: the scaffolded (ADR-0034 owned) generators compose ts-poet `Code` objects
+across a package boundary. The engine's `render*Fn` primitives build sections with the
+CLI tree's ts-poet, while the scaffold's own `joinCode` came from a bare
+`import { joinCode } from "ts-poet"` that resolves from the **project** tree. Two
+physical copies of ts-poet mean two module instances, ts-poet recognizes nested
+`Code`/`Import` placeholders by `instanceof`, and a cross-instance section fails that
+check — so it is stringified standalone **with its own import header**, once per
+`eq`-using section.
+
+Fixed in both directions: the reference templates now import the ts-poet combinators
+(`code` / `joinCode` / `imp` / `Code`) via `@metaobjectsdev/codegen-ts`, which
+re-exports them from its own ts-poet instance — single class identity by construction
+for every freshly scaffolded project — and the CLI's config loader now aliases bare
+`"ts-poet"` to the copy adjacent to the resolved `@metaobjectsdev/codegen-ts`
+(completing the existing `@metaobjectsdev/*` alias map), which repairs **existing**
+scaffolded projects without re-scaffolding. `meta init` no longer adds `ts-poet` to
+the consumer's devDependencies (the scaffold no longer imports it; an existing pin is
+never touched). In a flat single-tree install the alias resolves to the copy the
+project would load anyway — output is byte-identical there.
+
+Gated end-to-end by a new split-tree gate that scaffolds a consumer-shaped project,
+plants a second physical ts-poet copy in its `node_modules`, and runs the real
+`node <cli-bin> gen` — one lane per fix half (current templates; legacy bare-import
+scaffolds), each verified red without its half of the fix.
+
 ## [0.21.5] — npm `0.21.5` · PyPI `0.21.5` · NuGet `0.21.5` · Maven `7.21.5`
 
 A coordinated PATCH across all four registries. Ten fixes, every one reproduced before

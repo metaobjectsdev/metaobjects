@@ -35,8 +35,10 @@ const _require = createRequire(import.meta.url);
 // @metaobjectsdev/cli is this package itself, so it resolves directly from
 // _cliDir rather than through node_modules (which would be a non-existent
 // self-referential symlink).
+const CODEGEN_TS_PKG = "@metaobjectsdev/codegen-ts";
+const TS_POET_PKG = "ts-poet";
 const CLI_PKG_PATHS: Record<string, { dist: string; src: string }> = {
-  "@metaobjectsdev/codegen-ts": {
+  [CODEGEN_TS_PKG]: {
     dist: "node_modules/@metaobjectsdev/codegen-ts/dist/index.js",
     src: "node_modules/@metaobjectsdev/codegen-ts/src/index.ts",
   },
@@ -170,6 +172,26 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
   const aliasMap: Record<string, string> = {};
   for (const specifier of Object.keys(CLI_PKG_PATHS)) {
     aliasMap[specifier] = resolveCliPkg(specifier);
+  }
+
+  // ts-poet must resolve to the SAME physical copy @metaobjectsdev/codegen-ts uses.
+  // The scaffolded (ADR-0034 owned) generators compose ts-poet Code objects with the
+  // engine's render* primitives, and ts-poet recognizes nested Code/Import
+  // placeholders by `instanceof` — when the CLI tree and the project tree hold two
+  // physical ts-poet copies (globally-installed or linked CLI + the project-local
+  // devDependency `meta init` adds), a bare project-side `import ... from "ts-poet"`
+  // splits the class identity and every cross-boundary section renders standalone
+  // with its own import header (duplicate `import { eq } from "drizzle-orm"` —
+  // TS2300 on the adopter's first tsc). Newly scaffolded templates import the
+  // combinators from @metaobjectsdev/codegen-ts directly; this alias repairs
+  // EXISTING scaffolds that still import bare "ts-poet". In a flat single-tree
+  // install the alias resolves to the copy the project would load anyway (no-op).
+  // Gated by test/gen-split-tree-single-import.test.ts.
+  const codegenTsResolved = aliasMap[CODEGEN_TS_PKG];
+  if (codegenTsResolved !== undefined) {
+    try {
+      aliasMap[TS_POET_PKG] = createRequire(codegenTsResolved).resolve(TS_POET_PKG);
+    } catch { /* no ts-poet adjacent to codegen-ts — leave project resolution in place */ }
   }
 
   // Pre-process the config file content to rewrite @metaobjectsdev/* import

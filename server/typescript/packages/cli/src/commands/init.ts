@@ -523,13 +523,19 @@ async function ensureEsmPackageType(cwd: string, result: InitResult): Promise<vo
 
 /**
  * ADR-0034 scaffold-and-own hands the project real source files under
- * `codegen/generators/`, and those files import `@metaobjectsdev/codegen-ts`,
- * `@metaobjectsdev/metadata` and `ts-poet`. Installing `@metaobjectsdev/cli` alone
- * does not put any of them where the project can resolve them, so the scaffold
- * arrived un-typecheckable: ten TS2307s on files `meta init` had just written.
+ * `codegen/generators/`, and those files import `@metaobjectsdev/codegen-ts` and
+ * `@metaobjectsdev/metadata`. Installing `@metaobjectsdev/cli` alone does not put
+ * either of them where the project can resolve them, so the scaffold arrived
+ * un-typecheckable: ten TS2307s on files `meta init` had just written.
  *
  * Declaring them is the honest fix — they are dependencies of code that now lives in
- * the adopter's repo. Only ever ADDS a missing key: an existing pin is the user's.
+ * the adopter's repo. Deliberately NOT declared: `ts-poet`. The scaffolded templates
+ * import the ts-poet combinators via @metaobjectsdev/codegen-ts (re-exported from its
+ * own ts-poet instance) precisely so that the Code objects they compose share ONE
+ * ts-poet copy with the engine's render* primitives — a project-local ts-poet is the
+ * second physical copy that split the class identity under a globally-installed /
+ * linked CLI (duplicate imports in generated files, TS2300 on first tsc; see the
+ * gen-split-tree gate). Only ever ADDS a missing key: an existing pin is the user's.
  * Returns what it added so the caller can tell them to install.
  */
 function addScaffoldDevDependencies(pkg: Record<string, unknown>): string[] {
@@ -537,7 +543,6 @@ function addScaffoldDevDependencies(pkg: Record<string, unknown>): string[] {
   const wanted: Record<string, string> = {
     "@metaobjectsdev/codegen-ts": `^${version}`,
     "@metaobjectsdev/metadata": `^${version}`,
-    "ts-poet": "^6.10.0",
   };
   const dev = (pkg.devDependencies ?? {}) as Record<string, string>;
   const deps = (pkg.dependencies ?? {}) as Record<string, string>;

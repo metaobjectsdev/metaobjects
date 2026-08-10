@@ -1,30 +1,30 @@
-// A generated file must import each module ONCE.
+// A generated file must import each module ONCE — the fast in-process half of the
+// duplicate-import defense.
 //
-// OPEN BUG, NOT CLOSED BY THIS GATE — read before trusting it.
+// HISTORY: a real `meta gen` once emitted `import { eq } from "drizzle-orm";` THREE
+// times into `<Entity>.queries.ts` (TS2300 on the adopter's first `npx tsc`) while
+// this in-process render always produced ONE — because the bug was never in the
+// template's imp() usage (ts-poet dedupes by module+name). ROOT CAUSE: with a
+// globally-installed or linked CLI, the project tree and the CLI tree hold two
+// physical ts-poet copies; the scaffolded generator's bare `import { joinCode } from
+// "ts-poet"` bound the project copy while the engine's render*Fn built Code sections
+// with the CLI copy, and ts-poet's `instanceof Code` placeholder detection fails
+// across module instances — each section was stringified standalone WITH ITS OWN
+// import header. A single-instance render (this file) can never exhibit that, which
+// is exactly why the bug hid from it.
 //
-// A real `meta gen` in a clean project (npm init -y → meta init → npm i → meta gen,
-// against PUBLISHED packages) emits `import { eq } from "drizzle-orm";` THREE times
-// into `<Entity>.queries.ts`, so the first `npx tsc` reports TS2300 "Duplicate
-// identifier 'eq'". Reproduced on 0.21.5. That is a first-touch blocker.
+// The split-tree path is gated end-to-end (spawning `node <cli-bin> gen` against a
+// project with a planted second ts-poet copy) by
+// cli/test/gen-split-tree-single-import.test.ts, which pins both halves of the fix:
+// templates importing the ts-poet combinators via @metaobjectsdev/codegen-ts, and
+// the config loader aliasing bare "ts-poet" to the engine-adjacent copy for
+// already-scaffolded projects.
 //
-// This gate does NOT currently reproduce it. Rendering the same generator from local
-// source — before OR after hoisting the four `imp("eq@drizzle-orm")` calls to one
-// module-level symbol — yields exactly ONE import, so ts-poet dedupes by module+name
-// and the "separate symbol objects" theory is REFUTED. The scaffolded copy in the
-// project is byte-identical to src/reference/queries.ts, so it is not template drift
-// either. The cause is still unidentified; the difference is somewhere between this
-// in-process render and a real `meta gen` run resolving @metaobjectsdev/codegen-ts
-// from node_modules.
-//
-// The gate is kept because the invariant is right and cheap, and it is stated
-// GENERALLY (no module may be imported twice) rather than pinned to `eq`, so it will
-// catch the regression once someone renders through the path that actually exhibits
-// it. Next step: run the assertion against the output of a real `meta gen`, not an
-// in-process render.
-//
-// Note for whoever picks this up: the existing queries tests assert on SUBSTRINGS
-// ("does the output contain findAuthorById"), and a duplicate import is invisible to
-// a contains-check — you only see it by counting, or by compiling.
+// This gate stays because the invariant is right and cheap in-process: no module may
+// be imported twice in a rendered queries file, both dialects. Note the other queries
+// tests assert on SUBSTRINGS ("does the output contain findAuthorById"), and a
+// duplicate import is invisible to a contains-check — you only see it by counting,
+// or by compiling.
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { makeRenderContext } from "../src/render-context.js";

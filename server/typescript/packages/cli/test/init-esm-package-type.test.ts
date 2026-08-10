@@ -90,8 +90,12 @@ describe("meta init — the scaffold's own dependencies", () => {
     writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "x", type: "commonjs" }, null, 2) + "\n");
     const result = await init({ cwd: dir, quiet: true });
     const dev = readPkg().devDependencies as Record<string, string>;
+    // ts-poet is deliberately absent: the scaffolded templates import its combinators
+    // via @metaobjectsdev/codegen-ts so generated-code composition shares ONE ts-poet
+    // instance with the engine (see the gen-split-tree gate), and a project-local
+    // ts-poet is the second physical copy that used to split it.
     expect(Object.keys(dev).sort()).toEqual(
-      ["@metaobjectsdev/codegen-ts", "@metaobjectsdev/metadata", "ts-poet"],
+      ["@metaobjectsdev/codegen-ts", "@metaobjectsdev/metadata"],
     );
     expect(result.warnings.join("\n")).toContain("Run your package manager's install");
   });
