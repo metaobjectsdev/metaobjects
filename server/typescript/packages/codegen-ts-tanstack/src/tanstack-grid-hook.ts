@@ -1,5 +1,5 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, emitsInstanceArtifacts, isTphSubtype, CODEGEN_ATTR_EMIT_TANSTACK, CODEGEN_ATTR_EMIT_GRID } from "@metaobjectsdev/codegen-ts";
+import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, servesReadApi, isTphSubtype, CODEGEN_ATTR_EMIT_TANSTACK, CODEGEN_ATTR_EMIT_GRID } from "@metaobjectsdev/codegen-ts";
 import { hasDataGridLayout, warnMissingDataGridLayout } from "./data-grid-gate.js";
 import { renderGridHookFile } from "./templates/grid-hook-file.js";
 
@@ -31,7 +31,7 @@ export const tanstackGridHook = function tanstackGridHook(opts?: TanstackGridHoo
   // TS2307 when the inherited layout carries an `@filter` preset (the hook then imports
   // `<sub>DefaultFilter` from the missing columns module).
   const passesOtherGates = (e: MetaObject): boolean =>
-    emitsInstanceArtifacts(e)
+    servesReadApi(e)
     // ADR-0039: resolving — a concrete entity may inherit its @emit* opt-out flag via extends.
     && e.attr(CODEGEN_ATTR_EMIT_TANSTACK) !== false
     && userFilter(e)

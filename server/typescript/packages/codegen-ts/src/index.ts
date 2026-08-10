@@ -82,6 +82,8 @@ export type { DocPageNode, DocPagePlacement } from "./docs-paths.js";
 
 export { isProjection, isWriteThrough } from "./projection/projection-detector.js";
 export { isAbstract, emitsInstanceArtifacts, emitsWriteArtifacts } from "./instance-artifacts.js";
+// The UI tier asks THESE — "is there an endpoint?" — never the storage predicates.
+export { servesReadApi, servesWriteApi } from "./api-surface.js";
 // FR-017 TPH helpers — used by the per-framework codegen packages (tanstack,
 // react) to dispatch polymorphic/per-subtype emission and skip subtype files.
 export { isTphDiscriminatorBase, tphConcreteSubtypes, collectTphSubtypeFields, tphPlan, tphRouteSegment } from "./templates/tph-discriminator.js";

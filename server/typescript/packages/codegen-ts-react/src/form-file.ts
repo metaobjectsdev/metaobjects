@@ -1,6 +1,6 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { OBJECT_ATTR_DISCRIMINATOR } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory, entityOutputPath, emitsWriteArtifacts, isTphSubtype, CODEGEN_ATTR_EMIT_FORM } from "@metaobjectsdev/codegen-ts";
+import { perEntity, type Generator, type GeneratorFactory, entityOutputPath, servesWriteApi, isProjection, isTphSubtype, CODEGEN_ATTR_EMIT_FORM } from "@metaobjectsdev/codegen-ts";
 import { renderFormFile } from "./templates/form-file.js";
 
 export interface FormFileOpts {
@@ -33,7 +33,11 @@ export const formFile = function formFile(opts?: FormFileOpts): Generator {
       // ADR-0039: own — @discriminator identifies a TPH base level (read own so a
       // subtype isn't mistaken for a base); e is already known not to be a subtype.
       if (typeof e.ownAttr(OBJECT_ATTR_DISCRIMINATOR) === "string") return false;
-      return emitsWriteArtifacts(e);
+      // A form is a client of a WRITE endpoint. Ask whether one exists, not where the
+      // data is stored — see api-surface.ts. `!isProjection` stays explicit here: a
+      // read-only view is a UI-tier exclusion (nothing to submit), distinct from
+      // whether write endpoints exist at all.
+      return servesWriteApi(e) && !isProjection(e);
     },
     generate: perEntity((entity, ctx) => {
       if (!ctx.renderContext) {

@@ -1,5 +1,5 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, emitsInstanceArtifacts, isTphSubtype, CODEGEN_ATTR_EMIT_TANSTACK } from "@metaobjectsdev/codegen-ts";
+import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, servesReadApi, isTphSubtype, CODEGEN_ATTR_EMIT_TANSTACK } from "@metaobjectsdev/codegen-ts";
 import { renderHooksFile } from "./templates/hooks-file.js";
 
 export interface TanstackQueryOpts {
@@ -25,7 +25,7 @@ export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): G
     // FR-017 Tier 3: TPH subtypes get no standalone hooks file — their per-subtype
     // hooks live in the discriminator base's hooks file (polymorphic + per-subtype).
     // ADR-0039: resolving — a concrete entity may inherit @emitTanstack via extends.
-    filter: (e: MetaObject) => emitsInstanceArtifacts(e) && e.attr(CODEGEN_ATTR_EMIT_TANSTACK) !== false && !isTphSubtype(e) && userFilter(e),
+    filter: (e: MetaObject) => servesReadApi(e) && e.attr(CODEGEN_ATTR_EMIT_TANSTACK) !== false && !isTphSubtype(e) && userFilter(e),
     generate: perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error(
