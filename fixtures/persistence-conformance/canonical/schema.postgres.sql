@@ -126,7 +126,7 @@ CREATE UNIQUE INDEX "byTitle" ON "programs" ("title");
 
 CREATE INDEX "idx_programs_title_status" ON "programs" ("title", "status");
 
-ALTER TABLE "weeks" ADD CONSTRAINT "weeks_programId_fk" FOREIGN KEY ("programId") REFERENCES "programs" ("id");
+ALTER TABLE "weeks" ADD CONSTRAINT "weeks_programId_fk" FOREIGN KEY ("programId") REFERENCES "programs" ("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "nodes" ADD CONSTRAINT "nodes_parentId_fk" FOREIGN KEY ("parentId") REFERENCES "nodes" ("id");
 
