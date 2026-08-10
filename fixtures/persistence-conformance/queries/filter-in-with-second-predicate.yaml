@@ -1,0 +1,45 @@
+name: filter-in-with-second-predicate
+description: |
+  `in` combined with a second AND'd predicate — precedence-distinguishing. A
+  runtime that renders `in` as an unparenthesized OR-chain (the historical bug:
+  `a=v1 OR a=v2 AND b` regroups as `a=v1 OR (a=v2 AND b)` under SQL precedence)
+  returns wrong rows here and nowhere else in the corpus, because no other
+  scenario mixes `in` with another filter. Both regrouping arms are seeded:
+  row 5 (PUBLISHED, cheap) is wrongly INCLUDED when PUBLISHED is the bare OR
+  arm; row 3 (DRAFT, cheap) is wrongly INCLUDED when the rendering order is
+  reversed. Correct grouping `(status IN (...)) AND priceCents >= 3000`
+  returns exactly rows 1 and 2.
+seed-data: |
+  INSERT INTO "programs" ("id", "title", "priceCents", "status", "createdAt") VALUES
+    (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00'),
+    (2, 'Strength',    7999, 'PUBLISHED', '2026-05-02T10:00:00'),
+    (3, 'Mobility',    2999, 'DRAFT',     '2026-05-03T10:00:00'),
+    (4, 'Archived',    1999, 'ARCHIVED',  '2026-05-04T10:00:00'),
+    (5, 'Budget',      1500, 'PUBLISHED', '2026-05-05T10:00:00');
+queries:
+  - name: in-and-range-two-field-keys
+    op: list
+    entity: Program
+    # Two field keys in one filter object — the documented "multiple field
+    # filters compose with AND" form.
+    filter:
+      status: { in: ["PUBLISHED", "DRAFT"] }
+      priceCents: { gte: 3000 }
+    sort: [{ field: id, dir: asc }]
+    expect:
+      - { id: "1", title: "Foundations", priceCents: "4999", status: "PUBLISHED", createdAt: "2026-05-01T10:00:00" }
+      - { id: "2", title: "Strength",    priceCents: "7999", status: "PUBLISHED", createdAt: "2026-05-02T10:00:00" }
+
+  - name: in-under-explicit-and
+    op: list
+    entity: Program
+    # The same predicate through the explicit `and:` combinator — `in` must
+    # stay parenthesized as a child of an AND node too.
+    filter:
+      and:
+        - { status: { in: ["PUBLISHED", "DRAFT"] } }
+        - { priceCents: { gte: 3000 } }
+    sort: [{ field: id, dir: asc }]
+    expect:
+      - { id: "1", title: "Foundations", priceCents: "4999", status: "PUBLISHED", createdAt: "2026-05-01T10:00:00" }
+      - { id: "2", title: "Strength",    priceCents: "7999", status: "PUBLISHED", createdAt: "2026-05-02T10:00:00" }

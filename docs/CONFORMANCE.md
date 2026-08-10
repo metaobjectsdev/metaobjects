@@ -32,7 +32,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l`.
 | [`fixtures/render-conformance/`](../fixtures/render-conformance/) | 15 | ✓ | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/extract-conformance/`](../fixtures/extract-conformance/) | 33 | ✓ | ✓ | inherits the shared JVM engine | ✓ | ✓ |
 | [`fixtures/output-prompt-conformance/`](../fixtures/output-prompt-conformance/) | 14 | ✓ | ✓ | ✓ | ✓ | ✓ |
-| [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 30 (24 query + 6 migration) | all 30 | 24 query (migrations TS-only, ADR-0015) | 24 query (via Exposed) | 24 query | 24 query |
+| [`fixtures/persistence-conformance/`](../fixtures/persistence-conformance/) | 33 (27 query + 6 migration) | all 33 | 27 query (migrations TS-only, ADR-0015) | 27 query (via Exposed) | 27 query | 27 query |
 | [`fixtures/api-contract-conformance/`](../fixtures/api-contract-conformance/) | 41 (26 core + 8 tph + 3 m2m + 2 jsonb + 2 write-through) | ✓ (Fastify reference + generated lane) | ✓ (embedded HTTP + JDBC) | ✓ (embedded HTTP + Exposed) | ✓ (HttpListener + Npgsql) | ✓ (FastAPI + pg8000) |
 | [`fixtures/validation-conformance/`](../fixtures/validation-conformance/) | 16 cases | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/registry-conformance/`](../fixtures/registry-conformance/) | 1 canonical manifest | ✓ (reference emitter) | ✓ | ✓ | ✓ | ✓ |
@@ -114,10 +114,10 @@ trailing-newline preservation, and unicode multibyte handling.
 All 31 fixtures → [features/migrations-and-drift.md](features/migrations-and-drift.md)
 (template drift section — `Renderer.verify`).
 
-### `fixtures/persistence-conformance/` (29 — 24 query + 5 migration)
+### `fixtures/persistence-conformance/` (33 — 27 query + 6 migration)
 
 - `migrations/*` (6) → [features/migrations-and-drift.md](features/migrations-and-drift.md) (schema migration section)
-- `queries/*` (24) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
+- `queries/*` (27) → [features/source-kinds.md](features/source-kinds.md) (query semantics against `source.rdb`)
 
 ### `fixtures/api-contract-conformance/` (41)
 
@@ -141,7 +141,7 @@ the port's own GENERATED API artifact booted over HTTP.
 ## Orphaned fixtures (tested but not yet documented)
 
 The fixtures in the six corpora mapped above (metamodel 255 + yaml 15 + verify 31
-+ render 15 + persistence 30 + api-contract 41) each map to a feature doc. None
++ render 15 + persistence 33 + api-contract 41) each map to a feature doc. None
 are orphaned today. The remaining corpora in the totals table gate tooling
 contracts (registry manifests, provider composition, agent context, docs emit)
 rather than user-facing metamodel behaviour, so they have no feature-doc row.

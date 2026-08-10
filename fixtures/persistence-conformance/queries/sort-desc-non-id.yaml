@@ -1,0 +1,38 @@
+name: sort-desc-non-id
+description: |
+  Descending sort on NON-id fields. Every other sort in the corpus is
+  `[{ field: id, dir: asc }]` with seed rows inserted in ascending-id order, so
+  a port that drops `sort` entirely, hardcodes ascending, or sorts by the PK
+  instead of the requested field still passed the whole corpus. The seed data
+  here is deliberately misaligned: the expected priceCents-desc order (2,1,3,4)
+  differs from insertion order (1,2,3,4), from id desc (4,3,2,1), and from
+  priceCents asc (4,3,1,2) — each wrong behavior yields a different row order.
+seed-data: |
+  INSERT INTO "programs" ("id", "title", "priceCents", "status", "createdAt") VALUES
+    (1, 'Foundations', 4999, 'PUBLISHED', '2026-05-01T10:00:00'),
+    (2, 'Strength',    7999, 'PUBLISHED', '2026-05-02T10:00:00'),
+    (3, 'Mobility',    2999, 'DRAFT',     '2026-05-03T10:00:00'),
+    (4, 'Archived',    1999, 'ARCHIVED',  '2026-05-04T10:00:00');
+queries:
+  - name: price-desc
+    op: list
+    entity: Program
+    sort: [{ field: priceCents, dir: desc }]
+    expect:
+      - { id: "2", title: "Strength",    priceCents: "7999", status: "PUBLISHED", createdAt: "2026-05-02T10:00:00" }
+      - { id: "1", title: "Foundations", priceCents: "4999", status: "PUBLISHED", createdAt: "2026-05-01T10:00:00" }
+      - { id: "3", title: "Mobility",    priceCents: "2999", status: "DRAFT",     createdAt: "2026-05-03T10:00:00" }
+      - { id: "4", title: "Archived",    priceCents: "1999", status: "ARCHIVED",  createdAt: "2026-05-04T10:00:00" }
+
+  - name: title-desc
+    op: list
+    entity: Program
+    # ASCII-only titles — no case-fold or locale-collation dependency; the
+    # expected order (Strength, Mobility, Foundations, Archived) matches both
+    # binary and en collation.
+    sort: [{ field: title, dir: desc }]
+    expect:
+      - { id: "2", title: "Strength",    priceCents: "7999", status: "PUBLISHED", createdAt: "2026-05-02T10:00:00" }
+      - { id: "3", title: "Mobility",    priceCents: "2999", status: "DRAFT",     createdAt: "2026-05-03T10:00:00" }
+      - { id: "1", title: "Foundations", priceCents: "4999", status: "PUBLISHED", createdAt: "2026-05-01T10:00:00" }
+      - { id: "4", title: "Archived",    priceCents: "1999", status: "ARCHIVED",  createdAt: "2026-05-04T10:00:00" }

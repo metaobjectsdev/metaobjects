@@ -151,6 +151,19 @@ TS: `om.findMany(entityName, filter, opts)`).
 | `expect`   | row or row[] or integer                     | required unless `expect-error`; the normalized expected result |
 | `expect-error` | boolean                                  | optional; when true the op must FAIL (throw/reject). `expect` is ignored. Portable: each runner asserts "the op raised an error", not a message. |
 
+> **A documented DSL key must stay exercised.** For a long time every `sort:` in
+> this corpus was `[{ field: id, dir: asc }]` over seed rows inserted in
+> ascending-id order, and nothing used `dir: desc`, `limit`, `offset`, or `in`
+> combined with a second predicate — so a port that dropped sort, hardcoded
+> ascending, was off-by-one on offset, or rendered `in` as an unparenthesized
+> OR-chain passed the whole corpus (three real Java query-lowering defects
+> survived exactly this way). `sort-desc-non-id.yaml`,
+> `pagination-limit-offset.yaml` and `filter-in-with-second-predicate.yaml` now
+> pin those paths, each with seed data under which the wrong behavior provably
+> returns a different row set. When adding a DSL key, add a scenario whose
+> expected rows DIFFER when the key is ignored — a scenario that passes either
+> way gates nothing.
+
 ### `op: create` / `op: update` — runtime writes (FR-017 TPH)
 
 `create` inserts a row (`om.create(entity, data)`); `update` patches a row by id
@@ -170,13 +183,11 @@ removed the row is a follow-up `op: get` by the same PK asserting `expect: null`
 `delete` is exercised end-to-end by `update-delete-all-types.yaml` (seed a fixed
 PK → update every subtype → read back → delete → get-returns-null).
 
-> **`update` / `delete` of the AllTypes row are TS-only until the per-port
-> write-codec units land** — same status as `roundtrip`. A port's UPDATE codec is
-> a distinct path from its INSERT codec (PATCH paths frequently skip the type
-> coercion the INSERT path applies), so `update-delete-all-types.yaml` is the gate
-> that catches an UPDATE-only re-encode regression per subtype. The TS runner
-> ships the verbs; Java / Kotlin / Python / C# implement `op: delete` (and the
-> AllTypes `op: update`) in their SP-H units, then run the scenario green.
+> A port's UPDATE codec is a distinct path from its INSERT codec (PATCH paths
+> frequently skip the type coercion the INSERT path applies), so
+> `update-delete-all-types.yaml` is the gate that catches an UPDATE-only
+> re-encode regression per subtype. **All five ports run it green** (the SP-H
+> per-port write-codec units all landed; every port's skip list is empty).
 
 #### TPH (table-per-hierarchy) scenarios
 
@@ -226,13 +237,12 @@ native-uuid-write.
   without precision loss. A port routing these through a 64-bit-lossy numeric type
   (a JS `number`, a 32-bit int, a double) corrupts the low bits and fails.
 
-> **`roundtrip` is TS-only until the per-port write-codec units land.** The TS
-> runner (`runtime-ts` `ObjectManager.create` → Kysely insert) ships it; the
-> **Java / Kotlin / Python / C#** runners implement the verb in their SP-H units.
-> Those ports' integration runners will FAIL the `roundtrip-*` scenarios until
-> their unit is implemented — expected on the SP-H branch. When porting, implement
-> the verb (insert-via-ORM → read-back-by-PK → normalize → assert, PK excluded),
-> then run these scenarios green; do not delete them.
+> **All five ports run the `roundtrip-*` scenarios green** — the SP-H per-port
+> write-codec units landed everywhere (TS via `runtime-ts` `ObjectManager.create`
+> → Kysely insert; Java OMDB, Kotlin Exposed, Python ObjectManager, C# EF Core).
+> When adding a port, implement the verb (insert-via-ORM → read-back-by-PK →
+> normalize → assert, PK excluded), then run these scenarios green; do not
+> delete them.
 
 ### `op: relate` — relationship traversal (M:N)
 
@@ -247,22 +257,18 @@ Because M:N membership is a **set**, the runner compares `relate` results
 **order-independently** (rows sorted by canonical JSON on both sides) — a
 `relate` scenario does not need (or honor) `sort:`.
 
-> **M:N scenarios are TS-only until Units 6–9 land.** The `queries/m2n-*.yaml`
-> scenarios (`m2n-hetero`, `m2n-directed-self-join`, `m2n-symmetric-self-join`)
-> require the per-port runtime M:N resolver. **TypeScript** ships it (FR-017
-> Unit 5); the **Java / Kotlin / Python / C#** runtime resolvers land in Units
-> 6–9. Those ports' integration runners will FAIL the `m2n-*` scenarios until
-> their unit is implemented — expected on the FR-017 branch. When porting,
-> implement the resolver, then run these scenarios green; do not delete them.
+> **All five ports run the `m2n-*` scenarios green** — the FR-017 per-port
+> runtime M:N resolvers (Units 5–9) all landed, and every port's skip list is
+> empty. When adding a port, implement the resolver, then run these scenarios
+> green; do not delete them.
 
-> **Symmetric self-pair `(a,a)` divergence (Kotlin RED).** `m2n-symmetric-self-join.yaml`
+> **Symmetric self-pair `(a,a)` contract.** `m2n-symmetric-self-join.yaml`
 > seeds a self-edge (Alice is her own friend, `(1,1)`) and asserts Alice's friends
 > **include Alice**. The contract is that the runtime resolver KEEPS the self
 > endpoint. A generated query that filters `personAId = X OR personBId = X` and
 > then takes "the column that is NOT the source" silently DROPS the self-pair
-> (both columns equal X). The TS runtime resolver keeps it (green); the **Kotlin**
-> generated self-join query currently drops it and is RED on this scenario until
-> its unit fixes the generated query to retain the `(a,a)` row.
+> (both columns equal X) — the historical Kotlin failure mode this scenario
+> pins; all five ports now retain the `(a,a)` row.
 
 ### Filter operators
 
