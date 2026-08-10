@@ -1,0 +1,124 @@
+{
+  "metadata.root": {
+    "package": "acme::commerce",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Program",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "programs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "title"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "relationship.composition": {
+                "name": "weeks",
+                "@cardinality": "many",
+                "@objectRef": "acme::commerce::Week"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Week",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "weeks"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "programId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "programRef",
+                "@fields": [
+                  "programId"
+                ],
+                "@references": "acme::commerce::Program"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Note",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "notes"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.long": {
+                "name": "weekId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "weekRef",
+                "@fields": [
+                  "weekId"
+                ],
+                "@onDelete": "cascade",
+                "@onUpdate": "restrict",
+                "@references": "acme::commerce::Week"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

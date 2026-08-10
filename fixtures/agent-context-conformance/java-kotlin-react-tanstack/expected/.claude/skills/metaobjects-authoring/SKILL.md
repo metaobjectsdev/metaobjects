@@ -548,8 +548,13 @@ The `[]` key-suffix declares an array field: `field.long[]: weekIds` lowers to
 canonical JSON. `@enforce` on a reference (default `true`) controls whether the
 backend physically enforces it (a SQL FK constraint); set `false` for a logical
 reference for navigation/typing/codegen only. Referential actions
-(`@onDelete`/`@onUpdate`) are NOT on `identity.reference` — they live on the
-`relationship.*` node (see Relationships below).
+(`@onDelete`/`@onUpdate`) normally live on the `relationship.*` node (see
+Relationships below — the subtype carries the default), but `identity.reference`
+also registers them as the **explicit per-FK override** (ADR-0047): use them for
+a reference-only FK with no relationship, an M:N junction's FK sides (no
+relationship ever correlates with a junction FK), or a single FK that must
+deviate from its relationship's action. A reference-level action always wins
+over the correlated relationship's.
 
 `@references` resolves cross-package by **fully-qualified name**
 (`@references: "shared::billing::Account"`), the same rule as `extends`; a bare
@@ -657,6 +662,11 @@ The `PostTag` junction supplies the FK direction via its two references:
     { "identity.reference": { "name": "tagRef",  "@fields": "tagId",  "@references": "Tag" } }
 ] } }
 ```
+
+A junction's FK actions are declared on its `identity.reference` children
+directly (`"@onDelete": "cascade"` on `postRef`/`tagRef` above) — the M:N
+relationship's `@objectRef` names the far side, never the junction, so no
+relationship ever correlates with a junction FK (ADR-0047).
 
 **Adoption footgun — pin BOTH actions.** `@onDelete` defaults *per subtype* (above)
 and `@onUpdate` defaults to `cascade` — but a plain SQL foreign key is `NO ACTION` on

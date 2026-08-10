@@ -71,9 +71,17 @@ public class ReferenceIdentity extends MetaIdentity {
             // spec/metamodel/db.json by applySpecDescriptions.
             def.optionalAttributeWithConstraints(ATTR_CONSTRAINT_NAME).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
 
-            // NOTE: @onDelete / @onUpdate are NOT declared on identity.reference in the
-            // cross-port canonical — referential-action vocabulary lives only on
-            // relationship.composition. (Removed in SP-G Unit 6a to match the canonical.)
+            // ADR-0047 — @onDelete / @onUpdate: referential actions declared directly on
+            // the FK-defining reference (the explicit per-FK override; precedence over a
+            // correlated relationship's action / subtype default). RDB-physical, contributed
+            // by the db provider (db.json extends identity.reference); descriptions +
+            // allowedValues sourced from spec/metamodel/db.json by applySpecDescriptions.
+            // Value-set enforcement (ERR_BAD_ATTR_VALUE) lives in
+            // ValidationPhase.validateRelationshipReferentialActions, which also walks
+            // identity.reference nodes. (These were removed in SP-G Unit 6a to match the
+            // then-canonical; ADR-0047 registers them cross-port.)
+            def.optionalAttributeWithConstraints(ATTR_ON_DELETE).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_ON_UPDATE).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
 
             // ACCEPTS ANY ATTRIBUTES (for extensibility from service providers)
             def.optionalChild(MetaAttribute.TYPE_ATTR, "*", "*");
@@ -131,6 +139,29 @@ public class ReferenceIdentity extends MetaIdentity {
     public boolean isEnforced() {
         if (!hasMetaAttr(ATTR_ENFORCE)) return true;
         return Boolean.TRUE.equals(getMetaAttr(ATTR_ENFORCE).getValue());
+    }
+
+    /**
+     * Raw {@code @onDelete} attr value — the explicit per-FK referential-action
+     * override declared directly on the FK-defining reference (ADR-0047). Null when
+     * absent. Consumers apply the cross-port precedence: this value → a correlated
+     * relationship's {@code @onDelete} (declared on either side of the FK) → the
+     * relationship's subtype default. Default-derivation lives in consumer code
+     * (the TS migrate engine is the reference resolver).
+     */
+    public String getOnDeleteRaw() {
+        return hasMetaAttr(ATTR_ON_DELETE) ?
+               getMetaAttr(ATTR_ON_DELETE).getValueAsString() : null;
+    }
+
+    /**
+     * Raw {@code @onUpdate} attr value — the explicit per-FK referential-action
+     * override declared directly on the FK-defining reference (ADR-0047). Null when
+     * absent. Same precedence contract as {@link #getOnDeleteRaw()}.
+     */
+    public String getOnUpdateRaw() {
+        return hasMetaAttr(ATTR_ON_UPDATE) ?
+               getMetaAttr(ATTR_ON_UPDATE).getValueAsString() : null;
     }
 
     @Override

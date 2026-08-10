@@ -102,14 +102,42 @@ metadata:
 | `@cardinality` | `relationship.composition` | `one` / `many` | Multiplicity on the target side |
 | `@fields` | `identity.reference` | One field name or array | The FK column(s) on this entity |
 | `@references` | `identity.reference` | Entity name | The target entity (PK on the other side) |
-| `@onDelete` | `relationship.*` only | `cascade` / `set-null` / `restrict` / `no-action` | RDB referential action. Default derives from the subtype: composition -> `cascade`, aggregation -> `set-null`, association -> `restrict`. |
-| `@onUpdate` | `relationship.*` only | same as `@onDelete` (default `cascade`) | RDB referential action |
+| `@onDelete` | `relationship.*` and `identity.reference` | `cascade` / `set-null` / `restrict` / `no-action` | RDB referential action. Default derives from the relationship subtype: composition -> `cascade`, aggregation -> `set-null`, association -> `restrict`. |
+| `@onUpdate` | `relationship.*` and `identity.reference` | same as `@onDelete` (default `cascade` when a relationship correlates) | RDB referential action |
 
 `@onDelete` / `@onUpdate` are registered on `relationship.association` /
-`aggregation` / `composition`. They are **not** attributes of `identity.reference` —
-putting one there fails load with `ERR_UNKNOWN_ATTR`. Declare the action on the
-relationship; the reference stays a pure FK declaration (`@fields`, `@references`,
-`@constraintName`, `@enforce`).
+`aggregation` / `composition` **and** — as the explicit per-FK override
+([ADR-0047](../../spec/decisions/ADR-0047-referential-actions-on-identity-reference.md))
+— on `identity.reference` itself. Resolution precedence for the FK's emitted
+action, highest first:
+
+1. `@onDelete` / `@onUpdate` declared directly on the `identity.reference` —
+   the reference IS the FK, so the action may be declared right where the FK
+   is. This is the only way to put an action on a **reference-only FK** (no
+   relationship node) or on an **M:N junction's** FK sides (no relationship
+   ever correlates with a junction FK).
+2. A relationship declared on the FK-owning (child) entity targeting the
+   referenced entity (matched package-aware, so bare and FQN spellings pair
+   correctly; an M:N `@through` relationship never correlates with a direct
+   FK): its explicit action, else its subtype default.
+3. A relationship declared on the **referenced (parent) entity** pointing back
+   at the FK-owning entity — the canonical parent-side authoring above
+   (`Author` declares `posts`): its explicit action, else its subtype default.
+   Guards: the M:N exclusion again; when the child holds more than one FK to
+   the same parent the parent-side relationship contributes to none of them
+   (it cannot say which FK carries the ownership edge); and an inferred
+   set-null default (aggregation, no explicit `@onDelete`) on a NOT NULL FK
+   contributes nothing — SET NULL cannot fire there (an explicit `set-null`
+   instead fails migration generation loudly, telling you to make the FK
+   nullable).
+4. None of the above → the FK is emitted with no `ON DELETE` / `ON UPDATE`
+   clause (SQL `NO ACTION`).
+
+Prefer declaring the action on the relationship (the subtype carries the
+semantics and the default); reach for the reference-level attr only when no
+relationship exists or a single FK needs to deviate. The values are
+load-validated everywhere — a misspelling (e.g. the retired `setnull` alias)
+fails load with `ERR_BAD_ATTR_VALUE`.
 
 The kebab-case metamodel values map to the SCREAMING_SNAKE forms in Exposed / EF
 Core / the target ORM or DDL at codegen time.
@@ -248,6 +276,7 @@ The following conformance fixtures gate this feature's behavior across ports:
 - [`fixtures/conformance/relationship-one-to-many/`](../../fixtures/conformance/relationship-one-to-many/) — `relationship.composition` 1:N with the parent owning the collection
 - [`fixtures/conformance/identity-reference-simple/`](../../fixtures/conformance/identity-reference-simple/) — `identity.reference` declares the FK column-set on the child
 - [`fixtures/conformance/source-rdb-referential-actions/`](../../fixtures/conformance/source-rdb-referential-actions/) — `@onDelete` / `@onUpdate` on relationships
+- [`fixtures/conformance/identity-reference-referential-actions/`](../../fixtures/conformance/identity-reference-referential-actions/) — the parent-side `@cardinality: many` composition (subtype-default cascade) + `@onDelete` / `@onUpdate` declared directly on `identity.reference` (ADR-0047)
 - [`fixtures/conformance/error-unknown-relationship-subtype/`](../../fixtures/conformance/error-unknown-relationship-subtype/) — unknown `relationship.<subtype>` rejected
 
 Cross-port runner coverage: TS / Java / Kotlin / C# / Python all execute these

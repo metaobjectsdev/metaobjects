@@ -7,6 +7,76 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — parent-side `relationship.composition` reaches the child's FK (migrate-ts; ADR-0047)
+
+> **ADOPTER-VISIBLE MIGRATION — production delete semantics change.** After
+> upgrading, the first `meta migrate` against a live database emits a one-time
+> migration **adding `ON DELETE CASCADE` (or the relationship's declared/default
+> action) to FKs whose parent-side relationship was previously silently
+> ignored** — deleting a parent row then deletes its children instead of
+> failing. This is the documented semantic the metadata always declared, but it
+> was never enforced, so review that migration deliberately; pin
+> `@onDelete: "no-action"` on any relationship whose DB behavior you want kept.
+> The same applies to a child-side relationship authored with an FQN
+> `@objectRef`, which the old exact-string correlation silently missed.
+> Give this entry top billing at cut time.
+
+The authoring the docs and the `metaobjects-authoring` skill teach — declaring the
+relationship on the PARENT (`relationship.composition { @objectRef: "Post",
+@cardinality: "many" }` on `Author`, with the subtype implying the default action) —
+contributed **nothing** to the foreign key: `resolveReferentialActions` correlated only
+relationships declared on the FK-owning child, so the documented "composition ⇒
+`ON DELETE CASCADE` default" never fired and deleting a parent with children was a raw
+FK violation at runtime. The resolver now correlates the **reverse relationship on the
+target entity** as a third precedence tier (reference-level attr → child-side
+relationship → parent-side relationship; each relationship contributing its explicit
+action, else its subtype default). Tier-2 correlation is now **package-aware**
+(`refMatchesObject` / ADR-0042) and excludes M:N `@through` relationships — an FQN
+child-side `@objectRef` previously missed the exact-string match and contributed
+nothing (post-fix it would otherwise have been OVERRIDDEN by the parent side), and a
+`@through` relationship wrongly armed cascade on a sibling direct FK to the same
+target. Guards on the new reverse tier, each failing closed: the M:N exclusion; a
+reverse relationship contributes nothing unless the child holds exactly one enforced
+reference to the target (it cannot say which FK carries the ownership edge); and an
+INFERRED set-null default (parent-side aggregation, no explicit `@onDelete`) on a NOT
+NULL FK drops its inferred contributions rather than turning a previously-valid model
+into a hard `SetNullNotNullableError` — while an explicitly authored `set-null` still
+errors loudly and an explicitly authored `@onUpdate` on that same relationship is
+still honored. Models whose FKs already resolved an action are byte-identical; the
+two intentional output changes both restore declared intent that was silently
+dropped. The Kotlin Exposed table generator's
+decorated `identity.reference` columns now resolve actions with the same precedence
+(they previously emitted raw relationship attrs only, and the canonical
+parent-relationship + child-reference shape lost the action entirely through the
+FK-dedup pass).
+
+### Added — `@onDelete` / `@onUpdate` registered on `identity.reference` (all five ports; ADR-0047)
+
+The migrate engine has long honored `@onDelete` / `@onUpdate` declared directly on
+`identity.reference` (highest precedence — the reference IS the FK), and
+`docs/features/relationships.md`'s own canonical example authored it — but the attrs
+were never registered, so a model `meta migrate` accepted and applied **failed strict
+`meta verify` outright** with `ERR_UNKNOWN_ATTR`. Those two must never disagree.
+[ADR-0047](spec/decisions/ADR-0047-referential-actions-on-identity-reference.md)
+rules the attrs REGISTERED (db-provider, like `@constraintName`; optional string,
+allowedValues `cascade | set-null | restrict | no-action`) in all five ports +
+`expected-registry.json`, with the written can't-be-computed justification ADR-0023
+requires: a reference-only FK (no relationship) and an M:N junction's FK sides have
+NO existing metadata implying any action, and the per-FK override is information the
+relationship layer does not carry. Recommended authoring stays relationship-level.
+Consequences: the legacy `"setnull"` alias is retired — `allowedValues` is enforced
+unconditionally at load, so it now fails BOTH migrate and verify with
+`ERR_BAD_ATTR_VALUE` (it was only ever reachable through the unregistered-attr hole);
+Java's `ReferenceIdentity` regains the accessors SP-G Unit 6a removed; and the JVM
+validation pass extends its referential-action value check to `identity.reference`.
+Gated by a new shared conformance fixture (`identity-reference-referential-actions`,
+strict-loaded by every port) exercising BOTH previously-untested shapes — the
+parent-side `many` composition relying on its subtype default, and the
+reference-level attrs — plus migrate emit tests asserting the action lands in the
+DDL, and the migrate referential-action test corpus now loads `strict: true`, pinning
+the durable invariant that **any model `meta migrate` accepts must load under strict
+`meta verify`**.
+
 ### Fixed — `meta gen` emitted duplicate imports under a split dependency tree (npm: `codegen-ts` + `cli`)
 
 With a **globally-installed or linked `meta` CLI** and a project-local ts-poet (which
@@ -82,48 +152,6 @@ READMEs, `README.md`, `CLAUDE.md`, `docs/ports/typescript-client.md`,
 `docs/recipes/csharp-angular18.md`, `docs/RELEASING.md` (a release cut must not
 sweep the pair into lockstep), and the `SOURCE_ONLY` rationale in
 `scripts/check-publish-intent.sh`.
-
-||||||| ba88c0d9
-
-### Fixed — the `like` filter operator is case-sensitive SQL LIKE, uniformly (ADR-0049)
-
-Resolves the 0.21.5 known-issue: cross-port `like` semantics contradicted each other and
-the shared corpora were case-aligned **by construction**, so they could not see it. The
-ruling ([ADR-0049](spec/decisions/ADR-0049-filter-like-is-case-sensitive-sql-like.md)):
-`like` binds the author-supplied pattern **verbatim** — `%`/`_` wildcards, no case
-folding — identically on every port and engine. The written record already said so
-(FR-009 defines `like` as "SQL LIKE semantics" and lists case-insensitive `ilike` as
-explicitly out of scope; ADR-0036 reserves `ilike` as a future additive operator), and
-the reference implementation was not univocal the other way: TS's Kysely/Drizzle/
-in-memory persistence drivers were always verbatim LIKE — only the HTTP filter parser
-dispatched ILIKE, so the TS reference api-contract lane and the TS generated lane
-answered the same request differently.
-
-- **TS (`runtime-ts`, adopter-visible on Postgres)**: `parseFilterParams` no longer
-  lowers `like` to ILIKE on Postgres — every Fastify/Hono mount (CRUD + read-only) now
-  case-sensitive. On **sqlite/D1**, where the engine's native LIKE folds ASCII case,
-  `like` lowers to **GLOB** with an exactly-translated pattern (`%`→`*`, `_`→`?`,
-  GLOB's own metacharacters escaped), proven against a real sqlite engine — behavior,
-  not SQL spelling, is the contract. The TS-only `?search` extension stays deliberately
-  case-INSENSITIVE (it is a human search box, and is now documented as such).
-- **C# (test-only)**: the persistence-conformance adapter reflected Npgsql's `ILike`
-  while the product ships `EF.Functions.Like` — the gate was testing semantics the
-  product never had. The adapter now runs the product's dispatch. No C# product change.
-- **Java / Kotlin / Python**: already conformant (Java since 0.21.4's
-  `Expression.LIKE`); no product change.
-- **Corpora de-blinded** (the actual gate): `filter-like-and-ne`
-  (persistence-conformance) now seeds a case-mismatched pair
-  (`Foundations`/`foundations lab`) and probes both casings — each prefix probe must
-  match exactly one; `filter-like` (api-contract-conformance) adds lowercase `a%` and
-  `a_an%` probes that must match nothing against the capitalized seed. Before the port
-  fixes, the de-blinded corpus failed the TS generated lane (returned `[1, 2]` for
-  `a%` on real Postgres) and the C# persistence lane (`title-like-prefix` matched both
-  casings) — and passes all five ports after. The "case-aligned so the test passes
-  either way" comment is deleted.
-
-Adopters relying on the old TS-on-Postgres case-folding: normalize case in the data or
-the pattern, or use `?search`; a true case-insensitive operator remains chartered as a
-future additive extension gated on real consumer demand.
 
 ## [0.21.5] — npm `0.21.5` · PyPI `0.21.5` · NuGet `0.21.5` · Maven `7.21.5`
 

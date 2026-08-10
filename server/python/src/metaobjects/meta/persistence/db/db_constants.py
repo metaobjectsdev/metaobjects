@@ -76,3 +76,7 @@ IDENTITY_SECONDARY_ATTR_EXPR = "expr"
 IDENTITY_SECONDARY_ATTR_USING = "using"
 # identity.reference: physical FK constraint-name override.
 IDENTITY_REFERENCE_ATTR_CONSTRAINT_NAME = "constraintName"
+# identity.reference: referential action on parent delete — the explicit per-FK override (ADR-0047).
+IDENTITY_REFERENCE_ATTR_ON_DELETE = "onDelete"
+# identity.reference: referential action on key update — the explicit per-FK override (ADR-0047).
+IDENTITY_REFERENCE_ATTR_ON_UPDATE = "onUpdate"

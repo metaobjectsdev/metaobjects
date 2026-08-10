@@ -671,14 +671,12 @@ class KotlinExposedTableGeneratorTest {
     }
 
     /**
-     * SP-G Unit 6a: `@onDelete` / `@onUpdate` are NOT part of `identity.reference`
-     * in the cross-port canonical — referential actions live only on
-     * `relationship.composition`. A reference-identity FK therefore emits a PLAIN
-     * `.references(...)` with no `ReferenceOption` suffix, even if the (now
-     * non-schema) `@onDelete` / `@onUpdate` attrs are present on the node.
-     * Declare a `relationship.composition` to drive `ReferenceOption` emission.
+     * ADR-0047 (reverses SP-G Unit 6a): `@onDelete` / `@onUpdate` ARE registered on
+     * `identity.reference` in the cross-port canonical — the explicit per-FK
+     * override, highest precedence. A reference-identity FK carrying them emits
+     * the matching `ReferenceOption` suffix on its `.references(...)` decoration.
      */
-    @Test fun identityReferenceIgnoresOnDeletePerCanonical() {
+    @Test fun identityReferenceHonorsOnDeletePerAdr0047() {
         val refWithCascade = """{
           "metadata.root": { "package": "x", "children": [
             { "object.entity": { "name": "Program", "children": [
@@ -707,12 +705,11 @@ class KotlinExposedTableGeneratorTest {
             assertTrue(Files.exists(weekTable))
             val src = Files.readString(weekTable)
             assertTrue(
-                "val programId = long(\"program_id\").references(ProgramTable.id)" in src,
-                "expected plain FK reference with NO ReferenceOption suffix; saw:\n$src",
+                ("val programId = long(\"program_id\").references(ProgramTable.id, " +
+                    "onDelete = ReferenceOption.CASCADE, onUpdate = ReferenceOption.RESTRICT)") in src,
+                "expected the reference-level @onDelete/@onUpdate to emit ReferenceOption " +
+                    "arguments on the decorated FK (ADR-0047); saw:\n$src",
             )
-            assertTrue("ReferenceOption" !in src,
-                "reference-identity FK must NOT emit ReferenceOption (referential actions are " +
-                    "relationship.composition-only per the cross-port canonical); saw:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
         }
@@ -722,7 +719,10 @@ class KotlinExposedTableGeneratorTest {
      * Canonical-fixture shape: Program declares `relationship.composition many → Week`
      * AND Week declares `identity.reference → Program`. Both paths point at the same
      * programId FK on Week. The declared identity.reference must win; only ONE
-     * programId column with ONE `.references(ProgramTable.id)` call is emitted.
+     * programId column with ONE `.references(ProgramTable.id...)` call is emitted —
+     * and per ADR-0047 the decorated column carries the parent-side composition's
+     * subtype-default actions (cascade / cascade) instead of silently losing them
+     * through the dedup pass.
      */
     @Test fun identityReferenceWinsOverInverseManyComposition() {
         val both = """{
@@ -760,8 +760,10 @@ class KotlinExposedTableGeneratorTest {
             assertTrue(refCount == 1,
                 "expected exactly 1 references(ProgramTable.id), saw $refCount in:\n$src")
             assertTrue(
-                "val programId = long(\"program_id\").references(ProgramTable.id)" in src,
-                "expected decorated programId field column; saw:\n$src",
+                ("val programId = long(\"program_id\").references(ProgramTable.id, " +
+                    "onDelete = ReferenceOption.CASCADE, onUpdate = ReferenceOption.CASCADE)") in src,
+                "expected decorated programId field column carrying the parent-side " +
+                    "composition's default actions (ADR-0047); saw:\n$src",
             )
         } finally {
             outDir.toFile().deleteRecursively()
