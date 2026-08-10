@@ -344,6 +344,88 @@ describe("parent-side relationship correlation (reverse relationship on the FK t
     expect(resolveReferentialActions(week, ref)).toEqual({ onDelete: undefined, onUpdate: undefined });
   });
 
+  test("an FQN child-side relationship still wins over a parent-side one (package-aware tier 2)", async () => {
+    // Regression (review finding): tier 2 was an exact-string match, so a
+    // child-side @objectRef authored as an FQN (load-valid, ADR-0041) missed
+    // tier 2 — and the parent-side tier then OVERRODE the child's declaration
+    // (association restrict silently became composition cascade).
+    const { week, ref } = await loadParentSide(
+      { "relationship.composition": { name: "weeks", "@objectRef": "Week", "@cardinality": "many" } },
+      { childRel: { "relationship.association": { name: "program", "@objectRef": "acme::Program", "@cardinality": "one" } } },
+    );
+    expect(resolveReferentialActions(week, ref)).toEqual({ onDelete: "restrict", onUpdate: "cascade" });
+  });
+
+  test("an FQN child-side relationship correlates on its own (was silently uncorrelated)", async () => {
+    const { week, ref } = await loadParentSide(
+      undefined,
+      { childRel: { "relationship.composition": { name: "program", "@objectRef": "acme::Program", "@cardinality": "one" } } },
+    );
+    expect(resolveReferentialActions(week, ref)).toEqual({ onDelete: "cascade", onUpdate: "cascade" });
+  });
+
+  test("a child-side M:N @through relationship does NOT correlate to a direct FK (tier 2 guard)", async () => {
+    // Program declares an M:N to Tag through ProgramTag AND a direct FK to Tag.
+    // The M:N relationship describes the junction path — it must not arm
+    // cascade on the direct primaryTag FK (deleting a Tag would cascade-delete
+    // the Program).
+    const doc = { "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Tag", children: [
+        { "source.rdb": {} },
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+      ] } },
+      { "object.entity": { name: "Program", children: [
+        { "source.rdb": {} },
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "primaryTagId" } },
+        { "relationship.composition": { name: "tags", "@objectRef": "Tag", "@cardinality": "many", "@through": "ProgramTag" } },
+        { "identity.reference": { name: "primaryTagRef", "@fields": ["primaryTagId"], "@references": "Tag" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+      ] } },
+      { "object.entity": { name: "ProgramTag", children: [
+        { "source.rdb": {} },
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "programId" } },
+        { "field.long": { name: "tagId" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "identity.reference": { name: "programRef", "@fields": ["programId"], "@references": "Program" } },
+        { "identity.reference": { name: "tagRef", "@fields": ["tagId"], "@references": "Tag" } },
+      ] } },
+    ] } };
+    const { root, errors } = await loadDoc(doc);
+    expect(errors).toHaveLength(0);
+    const program = root.objects().find((o) => o.name === "Program")!;
+    const ref = program.referenceIdentities()[0]!;
+    expect(resolveReferentialActions(program, ref)).toEqual({ onDelete: undefined, onUpdate: undefined });
+  });
+
+  test("suppressed inferred set-null keeps the reverse relationship's AUTHORED @onUpdate", async () => {
+    // Parent-side aggregation with explicit @onUpdate but no @onDelete, on a
+    // @required FK: the inferred set-null default is unsatisfiable and drops,
+    // but the authored @onUpdate must not be silently discarded with it.
+    const doc = { "metadata.root": { package: "acme", children: [
+      { "object.entity": { name: "Program", children: [
+        { "source.rdb": {} },
+        { "field.long": { name: "id" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+        { "relationship.aggregation": { name: "weeks", "@objectRef": "Week", "@cardinality": "many", "@onUpdate": "restrict" } },
+      ] } },
+      { "object.entity": { name: "Week", children: [
+        { "source.rdb": {} },
+        { "field.long": { name: "id" } },
+        { "field.long": { name: "programId", "@required": true } },
+        { "identity.reference": { name: "ref_program", "@fields": ["programId"], "@references": "Program" } },
+        { "identity.primary": { "name": "id", "@fields": "id" } },
+      ] } },
+    ] } };
+    const { root, errors } = await loadDoc(doc);
+    expect(errors).toHaveLength(0);
+    const week = root.objects().find((o) => o.name === "Week")!;
+    const ref = week.referenceIdentities()[0]!;
+    expect(resolveReferentialActions(week, ref)).toEqual({ onDelete: undefined, onUpdate: "restrict" });
+  });
+
   test("INFERRED parent-side aggregation set-null on a @required FK contributes nothing (byte-compat)", async () => {
     // The set-null DEFAULT is unsatisfiable on a NOT NULL column. An inferred
     // default must never turn a previously-valid model into a hard error, so

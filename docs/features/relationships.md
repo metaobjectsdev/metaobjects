@@ -117,14 +117,19 @@ action, highest first:
    relationship node) or on an **M:N junction's** FK sides (no relationship
    ever correlates with a junction FK).
 2. A relationship declared on the FK-owning (child) entity targeting the
-   referenced entity: its explicit action, else its subtype default.
+   referenced entity (matched package-aware, so bare and FQN spellings pair
+   correctly; an M:N `@through` relationship never correlates with a direct
+   FK): its explicit action, else its subtype default.
 3. A relationship declared on the **referenced (parent) entity** pointing back
    at the FK-owning entity — the canonical parent-side authoring above
    (`Author` declares `posts`): its explicit action, else its subtype default.
-   Guards: an M:N (`@through`) relationship never correlates with a direct FK,
-   and when the child holds more than one FK to the same parent the parent-side
-   relationship contributes to none of them (it cannot say which FK carries the
-   ownership edge).
+   Guards: the M:N exclusion again; when the child holds more than one FK to
+   the same parent the parent-side relationship contributes to none of them
+   (it cannot say which FK carries the ownership edge); and an inferred
+   set-null default (aggregation, no explicit `@onDelete`) on a NOT NULL FK
+   contributes nothing — SET NULL cannot fire there (an explicit `set-null`
+   instead fails migration generation loudly, telling you to make the FK
+   nullable).
 4. None of the above → the FK is emitted with no `ON DELETE` / `ON UPDATE`
    clause (SQL `NO ACTION`).
 

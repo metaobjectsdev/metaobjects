@@ -9,6 +9,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed — parent-side `relationship.composition` reaches the child's FK (migrate-ts; ADR-0047)
 
+> **ADOPTER-VISIBLE MIGRATION — production delete semantics change.** After
+> upgrading, the first `meta migrate` against a live database emits a one-time
+> migration **adding `ON DELETE CASCADE` (or the relationship's declared/default
+> action) to FKs whose parent-side relationship was previously silently
+> ignored** — deleting a parent row then deletes its children instead of
+> failing. This is the documented semantic the metadata always declared, but it
+> was never enforced, so review that migration deliberately; pin
+> `@onDelete: "no-action"` on any relationship whose DB behavior you want kept.
+> The same applies to a child-side relationship authored with an FQN
+> `@objectRef`, which the old exact-string correlation silently missed.
+> Give this entry top billing at cut time.
+
 The authoring the docs and the `metaobjects-authoring` skill teach — declaring the
 relationship on the PARENT (`relationship.composition { @objectRef: "Post",
 @cardinality: "many" }` on `Author`, with the subtype implying the default action) —
@@ -18,14 +30,21 @@ relationships declared on the FK-owning child, so the documented "composition �
 FK violation at runtime. The resolver now correlates the **reverse relationship on the
 target entity** as a third precedence tier (reference-level attr → child-side
 relationship → parent-side relationship; each relationship contributing its explicit
-action, else its subtype default). Guards, each failing closed: an M:N (`@through`)
-relationship never correlates with a direct FK; a reverse relationship contributes
-nothing when the child holds more than one enforced reference to the same target
-(it cannot say which FK carries the ownership edge); and an INFERRED set-null default
-(parent-side aggregation, no explicit `@onDelete`) on a NOT NULL FK contributes
-nothing rather than turning a previously-valid model into a hard
-`SetNullNotNullableError` (an explicit `set-null` still errors loudly). Models with no
-parent-side relationship are byte-identical. The Kotlin Exposed table generator's
+action, else its subtype default). Tier-2 correlation is now **package-aware**
+(`refMatchesObject` / ADR-0042) and excludes M:N `@through` relationships — an FQN
+child-side `@objectRef` previously missed the exact-string match and contributed
+nothing (post-fix it would otherwise have been OVERRIDDEN by the parent side), and a
+`@through` relationship wrongly armed cascade on a sibling direct FK to the same
+target. Guards on the new reverse tier, each failing closed: the M:N exclusion; a
+reverse relationship contributes nothing unless the child holds exactly one enforced
+reference to the target (it cannot say which FK carries the ownership edge); and an
+INFERRED set-null default (parent-side aggregation, no explicit `@onDelete`) on a NOT
+NULL FK drops its inferred contributions rather than turning a previously-valid model
+into a hard `SetNullNotNullableError` — while an explicitly authored `set-null` still
+errors loudly and an explicitly authored `@onUpdate` on that same relationship is
+still honored. Models whose FKs already resolved an action are byte-identical; the
+two intentional output changes both restore declared intent that was silently
+dropped. The Kotlin Exposed table generator's
 decorated `identity.reference` columns now resolve actions with the same precedence
 (they previously emitted raw relationship attrs only, and the canonical
 parent-relationship + child-reference shape lost the action entirely through the

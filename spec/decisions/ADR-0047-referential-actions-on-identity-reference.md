@@ -58,8 +58,10 @@ reference, not core identity semantics. Registered in all five ports and in
 
 1. `@onDelete` / `@onUpdate` declared directly on the `identity.reference` — the
    explicit per-FK override; always wins.
-2. A correlated relationship on the FK-owning entity (matched on target): its
-   explicit action, else its subtype default.
+2. A correlated relationship on the FK-owning entity — matched **package-aware**
+   against the resolved `@references` target (`refMatchesObject` / ADR-0042, so
+   bare and FQN forms pair correctly); an M:N (`@through`) relationship never
+   correlates with a direct FK. Its explicit action, else its subtype default.
 3. A correlated **reverse** relationship on the target entity (the parent-side
    authoring shape — see Decision 2): its explicit action, else its subtype
    default.
@@ -79,13 +81,33 @@ the FK-owning entity. Guards, each failing closed to "no contribution":
 
 - An M:N relationship (`@through`) never correlates — it describes the junction
   path, not this direct FK (the junction's own FKs correlate through the
-  junction's own `identity.reference` children).
-- When the FK-owning entity holds **more than one** enforced reference to the
-  same target, the reverse relationship contributes to **none** of them — it
-  cannot say which FK carries the ownership edge, and arming all of them could
-  cascade through an edge the author never designated.
+  junction's own `identity.reference` children). The same guard applies at
+  tier 2.
+- When the FK-owning entity holds anything other than **exactly one** enforced
+  reference to the target — and that reference must be the one being resolved —
+  the reverse relationship contributes to **none** of them: it cannot say which
+  FK carries the ownership edge, and arming all of them could cascade through an
+  edge the author never designated (a soft `@enforce: false` reference never
+  correlates).
+- An **inferred** set-null default (parent-side aggregation with no explicit
+  `@onDelete`) on a NOT NULL FK is unsatisfiable: the inferred contributions
+  drop (the FK stays bare) so the smarter correlation never turns a
+  previously-valid model into a hard `SetNullNotNullableError` — while anything
+  explicitly authored survives (an explicit `set-null` flows through to the
+  loud nullability error; an explicit `@onUpdate` on that same relationship is
+  still honored).
 - A child-side relationship, when present, fully resolves at tier 2 (explicit or
-  default) — tier 3 is never consulted. Existing models are byte-identical.
+  default) — tier 3 is never consulted.
+
+**Output-compatibility contour:** models whose FKs previously received an action
+(reference-level attr or a correlating child-side relationship) are
+byte-identical. Two shapes intentionally change, both restoring declared
+intent that was previously silently dropped: (1) the parent-side relationship
+now contributes (the fix); (2) a child-side relationship authored with an FQN
+`@objectRef` (load-valid since ADR-0041) previously failed the exact-string
+tier-2 match and contributed nothing — the package-aware match now honors it
+(and prevents the parent-side tier from overriding a child-side declaration
+whose spelling merely differed).
 
 ### 3. The `"setnull"` alias is retired
 

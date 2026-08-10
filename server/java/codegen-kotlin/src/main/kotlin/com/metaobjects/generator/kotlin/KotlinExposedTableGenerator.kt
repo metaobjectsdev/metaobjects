@@ -1382,39 +1382,53 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             rel.through == null && rel.objectRef != null &&
                 KotlinGenUtil.resolveObjectByShortOrFqn(loader, rel.objectRef) === target
         }
-        var rel = childSide ?: findReverseRelationship(loader, entity, target)
-
-        // Tier-3 satisfiability guard (mirrors TS resolveReferentialActions): an
-        // INFERRED set-null default (parent-side aggregation, no explicit @onDelete)
-        // is unsatisfiable on a NOT NULL FK column — the correlation contributes
-        // nothing rather than emitting a ReferenceOption the database would reject.
-        // An EXPLICIT set-null still flows through (the author asked for it).
-        if (childSide == null && rel != null && rel.onDeleteRaw == null &&
-            MetaRelationship.ON_DELETE_DEFAULT_BY_SUBTYPE[rel.subType] == MetaRelationship.ACTION_SET_NULL
-        ) {
-            val fkField = ref.fields.singleOrNull()?.let { fn ->
-                entity.metaFields.firstOrNull { it.name == fn }
+        var rel = childSide
+        // When the tier-3 satisfiability guard fires, the reverse relationship's
+        // AUTHORED @onUpdate still applies (only the inferred contributions drop).
+        var suppressedReverseOnUpdate: String? = null
+        if (rel == null) {
+            val reverse = findReverseRelationship(loader, entity, ref, target)
+            if (reverse != null) {
+                // Tier-3 satisfiability guard (mirrors TS resolveReferentialActions):
+                // an INFERRED set-null default (parent-side aggregation, no explicit
+                // @onDelete) is unsatisfiable on a NOT NULL FK column — the INFERRED
+                // contributions drop rather than emitting a ReferenceOption the
+                // database would reject, while anything explicitly authored survives
+                // (an explicit set-null flows through; an explicit @onUpdate is
+                // honored rather than silently discarded with the guard).
+                val fkField = ref.fields.singleOrNull()?.let { fn ->
+                    entity.metaFields.firstOrNull { it.name == fn }
+                }
+                val unsatisfiableInferredSetNull = reverse.onDeleteRaw == null &&
+                    MetaRelationship.ON_DELETE_DEFAULT_BY_SUBTYPE[reverse.subType] == MetaRelationship.ACTION_SET_NULL &&
+                    fkField != null && KotlinGenUtil.isRequiredField(fkField)
+                if (unsatisfiableInferredSetNull) {
+                    suppressedReverseOnUpdate = reverse.onUpdateRaw
+                } else {
+                    rel = reverse
+                }
             }
-            if (fkField != null && KotlinGenUtil.isRequiredField(fkField)) rel = null
         }
 
         val onDelete = refOnDelete
             ?: rel?.let { it.onDeleteRaw ?: MetaRelationship.ON_DELETE_DEFAULT_BY_SUBTYPE[it.subType] }
         val onUpdate = refOnUpdate
-            ?: rel?.let { it.onUpdateRaw ?: MetaRelationship.ON_UPDATE_DEFAULT }
+            ?: (rel?.let { it.onUpdateRaw ?: MetaRelationship.ON_UPDATE_DEFAULT } ?: suppressedReverseOnUpdate)
         return onDelete to onUpdate
     }
 
     /**
      * ADR-0047 tier-3 correlation — the relationship declared on the TARGET (parent)
      * entity pointing back at the FK-owning entity. Fails closed (null) when the
-     * relationship is M:N (`@through`), or when [entity] holds more than one enforced
-     * reference to [target] (the reverse relationship cannot say which FK carries the
-     * ownership edge). Mirrors the TS migrate engine's findReverseRelationship.
+     * relationship is M:N (`@through`), or when [entity] does not hold exactly one
+     * enforced reference to [target] that is [ref] itself (the reverse relationship
+     * cannot say which FK carries the ownership edge; a soft `@enforce: false` ref
+     * never correlates). Mirrors the TS migrate engine's findReverseRelationship.
      */
     private fun findReverseRelationship(
         loader: MetaDataLoader,
         entity: MetaObject,
+        ref: ReferenceIdentity,
         target: MetaObject,
     ): MetaRelationship? {
         // ADR-0039: identity.reference children are inheritable — RESOLVE via getIdentities(true).
@@ -1424,7 +1438,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 r.isEnforced && r.targetEntity != null &&
                     KotlinGenUtil.resolveObjectByShortOrFqn(loader, r.targetEntity) === target
             }
-        if (enforcedRefsToTarget.size != 1) return null
+        if (enforcedRefsToTarget.singleOrNull() !== ref) return null
         return target.relationships.firstOrNull { rel ->
             rel.through == null && rel.objectRef != null &&
                 KotlinGenUtil.resolveObjectByShortOrFqn(loader, rel.objectRef) === entity
