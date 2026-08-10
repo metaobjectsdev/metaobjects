@@ -34,6 +34,8 @@ describe("dbProvider", () => {
   });
 
   it("dbProvider without core throws a missing-dependency error", () => {
-    expect(() => composeRegistry([dbProvider])).toThrow();
+    expect(() => composeRegistry([dbProvider])).toThrow(
+      /depends on .+, which is not in the provider set/,
+    );
   });
 });

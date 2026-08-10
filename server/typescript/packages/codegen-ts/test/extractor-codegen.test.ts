@@ -360,7 +360,9 @@ describe("Extractor codegen — import-and-RUN proof (bun dynamic import)", () =
     expect(noShipTo.shipTo).toBeUndefined();
 
     // missing required `customer` → throws
-    expect(() => ex.extractOrderOut(root, '{ "lines": [] }')).toThrow();
+    expect(() => ex.extractOrderOut(root, '{ "lines": [] }')).toThrow(
+      /lost required field\(s\):.*customer/,
+    );
 
     // extract re-exposed (nested-capable): clean JSON → no lost-required
     const clean =

@@ -103,7 +103,9 @@ describe("readPackageManifest", () => {
     const dir = mkdtempSync(join(tmpdir(), "pkg-manifest-bad-"));
     try {
       writeFileSync(join(dir, PACKAGE_MANIFEST_FILE), "{ not valid", "utf8");
-      await expect(readPackageManifest(dir)).rejects.toThrow();
+      // Raw JSON.parse failure — the exact text is engine-owned (JSC vs V8), so
+      // pin the stable "JSON" fragment both engines include.
+      await expect(readPackageManifest(dir)).rejects.toThrow(/JSON/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

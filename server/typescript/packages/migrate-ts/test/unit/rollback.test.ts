@@ -122,7 +122,9 @@ describe("rollbackTo — down.sql, reverse order, ledger unrecord (sqlite)", () 
     writeMig(migDir, "20260103000000-c", "CREATE TABLE c (id INTEGER PRIMARY KEY);", "DROP TABLE c;");
     await applyPending(db, migDir, { dryRun: false });
 
-    await expect(rollbackTo(db, migDir, "20260101000000-a", {})).rejects.toThrow();
+    await expect(rollbackTo(db, migDir, "20260101000000-a", {})).rejects.toThrow(
+      /no such table: nonexistent_xyz/i,
+    );
 
     // c rolled back fully (its tx committed before b's failed).
     expect(await tableExists(db, "c")).toBe(false);

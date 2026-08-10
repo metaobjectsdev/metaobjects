@@ -25,7 +25,7 @@ describe("parseTemplateSpec", () => {
       .toThrow(/outputPattern/i);
   });
   test("rejects a non-object", () => {
-    expect(() => parseTemplateSpec(null)).toThrow();
+    expect(() => parseTemplateSpec(null)).toThrow(/expected an object with a `generators` array/);
   });
   test("rejects an unknown format", () => {
     expect(() => parseTemplateSpec({

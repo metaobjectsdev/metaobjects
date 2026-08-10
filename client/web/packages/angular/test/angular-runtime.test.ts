@@ -27,7 +27,9 @@ describe("EntityFetcherToken — DI smoke", () => {
 
   test("EntityFetcherToken throws helpful error when not provided", () => {
     const injector = Injector.create({ providers: [] });
-    expect(() => injector.get(EntityFetcherToken)).toThrow();
+    // The token declares no factory, so Angular's stock NullInjectorError fires;
+    // its message carries the token description ("metaobjects.EntityFetcher").
+    expect(() => injector.get(EntityFetcherToken)).toThrow(/No provider for.*EntityFetcher/);
   });
 });
 

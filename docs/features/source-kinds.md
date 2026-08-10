@@ -278,8 +278,13 @@ export type AuthorView = z.infer<typeof AuthorViewSchema>;
 Read-schema nullability mirrors the view column: a field that is not `@required`
 (here `postCount`, a derived aggregate) is nullable in the view's SELECT type, so
 its Zod read field is emitted as `.nullable()` — matching what
-`db.select().from(view)` actually returns. A `@required` field (`id`, `name`) stays
-non-null.
+`db.select().from(view)` actually returns. A `@required` field (`name`) stays
+non-null, and so does every field of the projection's **primary identity** even
+without `@required` (`id` here): the base entity's PK sits on the `FROM` side of
+every synthesized view, so it can never be NULL — the view column gets
+`.notNull()` and the read schema stays non-nullable, matching the generated
+queries (`find<Projection>ById(db, id: string)`) and api-docs, which already
+treat the PK as non-null.
 
 ### Java
 

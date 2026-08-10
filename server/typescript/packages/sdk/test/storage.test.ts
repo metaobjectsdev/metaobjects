@@ -38,7 +38,10 @@ describe("writeRecord", () => {
   });
   test("throws on invalid record before any IO", async () => {
     const bad = { ...aDecision, confidence: 5 };
-    await expect(writeRecord(metaRoot, bad as never)).rejects.toThrow();
+    // The confidence-range Zod issue (confidence is z.number().min(0).max(1)).
+    await expect(writeRecord(metaRoot, bad as never)).rejects.toThrow(
+      /Number must be less than or equal to 1/,
+    );
   });
   test("writes to _pending when opts.pending is true", async () => {
     await writeRecord(metaRoot, aDecision, { pending: true });

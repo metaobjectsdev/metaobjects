@@ -15,9 +15,9 @@ describe("parsePromptSnapshotArgs", () => {
     });
   });
   test("throws on an unknown flag", () => {
-    expect(() => parsePromptSnapshotArgs(["--bogus"])).toThrow();
+    expect(() => parsePromptSnapshotArgs(["--bogus"])).toThrow(/Unknown option '--bogus'/);
   });
   test("throws on a positional argument", () => {
-    expect(() => parsePromptSnapshotArgs(["extra"])).toThrow();
+    expect(() => parsePromptSnapshotArgs(["extra"])).toThrow(/Unexpected argument 'extra'/);
   });
 });

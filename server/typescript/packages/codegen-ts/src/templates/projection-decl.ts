@@ -22,6 +22,7 @@ import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.j
 import { renderFilterType } from "./filter-type.js";
 import { inferViewKind, currencyMetaFor, labelFor } from "./field-meta.js";
 import { renderExistingViewDecl, renderViewReadZodObject } from "./view-decl.js";
+import { primaryIdentityFieldNames } from "./zod-validators.js";
 
 // ---------------------------------------------------------------------------
 // Public interface
@@ -152,15 +153,18 @@ export function renderProjectionDecl(
   const camelName = projName.charAt(0).toLowerCase() + projName.slice(1);
   const path = pathFromProjectionName(projName);
 
+  // The projection's primary-identity fields type non-null in the view decl +
+  // read schema even without @required (a PK is never NULL; see ViewDeclOpts).
+  const pkFieldNames: ReadonlySet<string> = new Set(primaryIdentityFieldNames(projection));
   const sections: Code[] = [
     ...(includeViewDecl
       ? [renderExistingViewDecl(allFields, viewName, `${camelName}View`, {
-          dialect, columnNamingStrategy, timestampMode, voRef,
+          dialect, columnNamingStrategy, timestampMode, voRef, pkFieldNames,
         })]
       : []),
     code`
 export const ${projName}Schema = ${renderViewReadZodObject(allFields, {
-  dialect, columnNamingStrategy, timestampMode, voRef,
+  dialect, columnNamingStrategy, timestampMode, voRef, pkFieldNames,
 })};
 `,
     code`

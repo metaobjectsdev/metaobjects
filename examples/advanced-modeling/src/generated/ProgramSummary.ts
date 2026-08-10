@@ -14,7 +14,7 @@ import { z } from "zod";
 // The SQL view is created/managed by migrate-ts; .existing() tells Drizzle
 // not to attempt DDL for this declaration.
 export const programSummaryView = pgView("v_program_summary", {
-  id: uuid("id"),
+  id: uuid("id").notNull(),
   title: varchar("title", { length: 200 }).notNull(),
   authorName: text("author_name"),
   lessonCount: bigint("lesson_count", { mode: "number" }),
@@ -22,7 +22,7 @@ export const programSummaryView = pgView("v_program_summary", {
   hasCoverArt: boolean("has_cover_art"),
 }).existing();
 export const ProgramSummarySchema = z.object({
-  id: z.string().nullable(),
+  id: z.string(),
   title: z.string(),
   authorName: z.string().nullable(),
   lessonCount: z.number().int().nullable(),

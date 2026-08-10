@@ -154,7 +154,9 @@ describe("TypeRegistry — duplicate registration", () => {
   it("throws when the same type+subType is registered a second time", () => {
     const registry = new TypeRegistry();
     registry.register(makeDef(TYPE_FIELD, FIELD_SUBTYPE_STRING));
-    expect(() => registry.register(makeDef(TYPE_FIELD, FIELD_SUBTYPE_STRING))).toThrow();
+    expect(() => registry.register(makeDef(TYPE_FIELD, FIELD_SUBTYPE_STRING))).toThrow(
+      /duplicate registration for "field\.string"/,
+    );
   });
 
   it("error message includes the duplicate type and subType", () => {

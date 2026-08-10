@@ -19,10 +19,10 @@ describe("parseExportArgs", () => {
   });
 
   test("unknown flag throws", () => {
-    expect(() => parseExportArgs(["--foo"])).toThrow();
+    expect(() => parseExportArgs(["--foo"])).toThrow(/Unknown option '--foo'/);
   });
 
   test("positionals are rejected", () => {
-    expect(() => parseExportArgs(["some-positional"])).toThrow();
+    expect(() => parseExportArgs(["some-positional"])).toThrow(/Unexpected argument 'some-positional'/);
   });
 });

@@ -52,7 +52,7 @@ describe("rename-heuristic — column", () => {
     await expect(diff({
       expected, actual,
       onAmbiguous: async () => "abort",
-    })).rejects.toThrow();
+    })).rejects.toThrow(/diff aborted by onAmbiguous: possible rename u\.firstname/);
   });
 
   test("no callback → defaults to drop+add (safer)", async () => {

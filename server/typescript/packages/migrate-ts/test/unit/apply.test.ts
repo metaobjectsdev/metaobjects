@@ -70,7 +70,9 @@ describe("applyPending — ordered, transactional, ledger-tracked", () => {
       "CREATE TABLE b (id INTEGER PRIMARY KEY);\nCREATE TABLE b (id INTEGER PRIMARY KEY);",
     );
 
-    await expect(applyPending(db, migDir, { dryRun: false })).rejects.toThrow();
+    await expect(applyPending(db, migDir, { dryRun: false })).rejects.toThrow(
+      /table b already exists/i,
+    );
 
     // a applied + recorded; bad rolled back (table b absent) + not recorded.
     expect(await tableExists(db, "a")).toBe(true);
@@ -82,7 +84,9 @@ describe("applyPending — ordered, transactional, ledger-tracked", () => {
 
   test("retries a previously-failed file on re-run", async () => {
     writeMig(migDir, "20260101000000-a", "CREATE TABLE a (id INTEGER PRIMARY KEY); INVALID SQL;");
-    await expect(applyPending(db, migDir, { dryRun: false })).rejects.toThrow();
+    await expect(applyPending(db, migDir, { dryRun: false })).rejects.toThrow(
+      /near "INVALID": syntax error/i,
+    );
     expect((await appliedNames(db)).has("20260101000000-a")).toBe(false);
 
     // Fix the file and re-run; it should now apply.

@@ -1,0 +1,49 @@
+name: pagination-limit-offset
+description: |
+  limit + offset paging where the offset is non-zero and LOAD-BEARING. The DSL
+  documented both since day one but no scenario ever used either, so a port
+  that ignored offset, treated it as 1-based, or dropped limit was structurally
+  unobservable (the historical bug: a Java `Range` documented 0-based while the
+  drivers emitted `OFFSET start-1` — pinned only by a Java-local unit test).
+  Five seed rows make every wrong behavior distinguishable: page 2 of size 2 is
+  exactly rows 3,4 — off-by-one yields (2,3) or (4,5), ignored offset yields
+  (1,2), ignored limit yields 3+ rows. priceCents is deliberately misaligned
+  with id so the desc+offset query cannot be satisfied by an id-ordered scan.
+seed-data: |
+  INSERT INTO "programs" ("id", "title", "priceCents", "status", "createdAt") VALUES
+    (1, 'Alpha',   3000, 'PUBLISHED', '2026-05-01T10:00:00'),
+    (2, 'Bravo',   1000, 'PUBLISHED', '2026-05-02T10:00:00'),
+    (3, 'Charlie', 5000, 'DRAFT',     '2026-05-03T10:00:00'),
+    (4, 'Delta',   2000, 'ARCHIVED',  '2026-05-04T10:00:00'),
+    (5, 'Echo',    4000, 'PUBLISHED', '2026-05-05T10:00:00');
+queries:
+  - name: page-2-of-size-2
+    op: list
+    entity: Program
+    sort: [{ field: id, dir: asc }]
+    limit: 2
+    offset: 2
+    expect:
+      - { id: "3", title: "Charlie", priceCents: "5000", status: "DRAFT",    createdAt: "2026-05-03T10:00:00" }
+      - { id: "4", title: "Delta",   priceCents: "2000", status: "ARCHIVED", createdAt: "2026-05-04T10:00:00" }
+
+  - name: partial-last-page
+    op: list
+    entity: Program
+    sort: [{ field: id, dir: asc }]
+    limit: 2
+    offset: 4
+    expect:
+      - { id: "5", title: "Echo", priceCents: "4000", status: "PUBLISHED", createdAt: "2026-05-05T10:00:00" }
+
+  - name: desc-sort-with-offset
+    op: list
+    entity: Program
+    # priceCents desc = ids 3,5,1,4,2 — skip one, take two → 5,1. An id-desc
+    # scan (5,4,3,2,1 → 4,3) or an ignored offset (3,5) both differ.
+    sort: [{ field: priceCents, dir: desc }]
+    limit: 2
+    offset: 1
+    expect:
+      - { id: "5", title: "Echo",  priceCents: "4000", status: "PUBLISHED", createdAt: "2026-05-05T10:00:00" }
+      - { id: "1", title: "Alpha", priceCents: "3000", status: "PUBLISHED", createdAt: "2026-05-01T10:00:00" }

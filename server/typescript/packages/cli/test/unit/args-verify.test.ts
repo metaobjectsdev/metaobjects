@@ -76,15 +76,17 @@ describe("parseVerifyArgs", () => {
     expect(f.anyExplicit).toBe(true);
   });
   test("throws on an invalid --dialect", () => {
-    expect(() => parseVerifyArgs(["--dialect", "oracle"])).toThrow();
+    expect(() => parseVerifyArgs(["--dialect", "oracle"])).toThrow(/invalid --dialect 'oracle'/);
   });
   test("throws on an invalid --allow token", () => {
-    expect(() => parseVerifyArgs(["--allow", "drop-everything"])).toThrow();
+    expect(() => parseVerifyArgs(["--allow", "drop-everything"])).toThrow(
+      /invalid --allow token 'drop-everything'/,
+    );
   });
   test("throws on an unknown flag", () => {
-    expect(() => parseVerifyArgs(["--bogus"])).toThrow();
+    expect(() => parseVerifyArgs(["--bogus"])).toThrow(/Unknown option '--bogus'/);
   });
   test("throws on a positional argument", () => {
-    expect(() => parseVerifyArgs(["extra"])).toThrow();
+    expect(() => parseVerifyArgs(["extra"])).toThrow(/Unexpected argument 'extra'/);
   });
 });

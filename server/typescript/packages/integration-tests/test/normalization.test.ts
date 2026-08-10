@@ -19,6 +19,8 @@ describe("canonicalFloat — out-of-band guard (not round-trippable)", () => {
   });
 
   test("normalizeValue(1.5e-10) propagates the throw", () => {
-    expect(() => normalizeValue(1.5e-10)).toThrow();
+    expect(() => normalizeValue(1.5e-10)).toThrow(
+      "canonicalFloat: 1.5e-10 is outside the plain-decimal band (exponential notation)",
+    );
   });
 });

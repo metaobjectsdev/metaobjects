@@ -48,9 +48,9 @@ describe("convertToDataType — convert toward a known DataType", () => {
   });
 
   it("rejects null, undefined, and nested arrays", () => {
-    expect(() => convertToDataType("string", null)).toThrow();
-    expect(() => convertToDataType("string", undefined)).toThrow();
-    expect(() => convertToDataType("string", [["nested"]])).toThrow();
+    expect(() => convertToDataType("string", null)).toThrow(/convertToDataType: null is not a valid attr value/);
+    expect(() => convertToDataType("string", undefined)).toThrow(/convertToDataType: undefined is not a valid attr value/);
+    expect(() => convertToDataType("string", [["nested"]])).toThrow(/array element at index 0 is a nested array/);
   });
 });
 
@@ -67,8 +67,8 @@ describe("toAttrValue — a structurally-valid AttrValue, no known type", () => 
   });
 
   it("rejects null, undefined, plain objects", () => {
-    expect(() => toAttrValue(null)).toThrow();
-    expect(() => toAttrValue(undefined)).toThrow();
-    expect(() => toAttrValue({ a: 1 })).toThrow();
+    expect(() => toAttrValue(null)).toThrow(/toAttrValue: null is not a valid attr value/);
+    expect(() => toAttrValue(undefined)).toThrow(/toAttrValue: undefined is not a valid attr value/);
+    expect(() => toAttrValue({ a: 1 })).toThrow(/toAttrValue: object is not a valid attr value/);
   });
 });
