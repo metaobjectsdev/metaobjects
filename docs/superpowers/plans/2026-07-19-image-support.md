@@ -1,5 +1,11 @@
 # Image support — Implementation Plan
 
+> **SUPERSEDED on one point (react-easy-crop).** This document was written when
+> `react-easy-crop` was an *optional peer* of `@metaobjectsdev/react`. It is now a
+> **regular runtime dependency** (still lazy-loaded) — the optional-peer form failed
+> to bundle on webpack/Next.js/esbuild/Bun. Current truth: `docs/features/image-upload.md`.
+> The historical body below is otherwise unchanged.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a metadata-driven `view.image` form control (upload/crop `<ImageUpload>` widget) to the shared library, backed by a TypeScript-applied `metaobjects-ui-web` concern provider that gives presentation-only view attributes a durable cross-port home — which also un-defers `@rows`.

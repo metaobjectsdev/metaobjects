@@ -1,5 +1,11 @@
 # Image support: `view.image` + `<ImageUpload>` + the `metaobjects-ui-web` provider
 
+> **SUPERSEDED on one point (react-easy-crop).** This document was written when
+> `react-easy-crop` was an *optional peer* of `@metaobjectsdev/react`. It is now a
+> **regular runtime dependency** (still lazy-loaded) — the optional-peer form failed
+> to bundle on webpack/Next.js/esbuild/Bun. Current truth: `docs/features/image-upload.md`.
+> The historical body below is otherwise unchanged.
+
 _Design — 2026-07-19_
 
 ## Summary
