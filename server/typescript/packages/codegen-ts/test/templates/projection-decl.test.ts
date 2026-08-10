@@ -486,4 +486,16 @@ describe("#195 projection read-schema nullability (any/all/collect non-null; fir
     expect(code).toContain("latestCategory: z.string().nullable(),");
     expect(code).toContain("categories: z.array(z.string()),");
   });
+
+  test("the projection's primary-identity field is non-null even without @required", async () => {
+    // The projection's identity.primary extends the base entity's PK. The base
+    // PK sits on the FROM side of every synthesized view, so it can never be
+    // NULL — typing it `.nullable()` was a wart every projection consumer
+    // inherited (and contradicted the generated api-docs + queries, which
+    // already treat the PK as non-null).
+    const code = await loadOrderView();
+    expect(code).toMatch(/id:\s*bigint\([^)]*\)\.notNull\(\)/);
+    expect(code).toContain("id: z.number().int(),");
+    expect(code).not.toContain("id: z.number().int().nullable()");
+  });
 });

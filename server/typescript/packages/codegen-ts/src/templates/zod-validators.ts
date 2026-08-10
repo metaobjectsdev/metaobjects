@@ -129,8 +129,9 @@ ${joinCode(fieldLines, { on: ",\n" })}
 }
 
 /** Field names participating in the object's PRIMARY identity, normalized to a
- *  list. Empty when the object has no primary identity. */
-function primaryIdentityFieldNames(obj: MetaObject): string[] {
+ *  list. Empty when the object has no primary identity. Exported for the
+ *  view-decl read-schema path, which must type PK columns non-null too. */
+export function primaryIdentityFieldNames(obj: MetaObject): string[] {
   const primary = obj.primaryIdentity();
   if (!primary) return [];
   const fields = primary.attr(IDENTITY_ATTR_FIELDS);

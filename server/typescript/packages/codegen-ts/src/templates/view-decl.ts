@@ -29,6 +29,15 @@ export interface ViewDeclOpts {
    * `RenderContext.resolveValueObjectName` + `valueObjectModuleSpecifier`.
    */
   readonly voRef: (field: MetaField) => { name: string; module: string };
+  /**
+   * Field names of the owning object's PRIMARY identity (see
+   * `primaryIdentityFieldNames` in zod-validators). A PK column sits on the FROM
+   * side of every synthesized view, so it is never NULL even when the field
+   * carries no `@required` — the view column gets `.notNull()` and the read
+   * schema stays non-nullable, matching the generated api-docs, queries and
+   * UpdateSchema, all of which already treat the PK as non-null.
+   */
+  readonly pkFieldNames: ReadonlySet<string>;
 }
 
 /**
@@ -49,9 +58,13 @@ function viewColumnLine(f: MetaField, opts: ViewDeclOpts): Code {
   // typing) and `.notNull()` (shapes the SELECT type) carry to an existing view;
   // `.primaryKey()`/`.default()`/`.references()`/`.unique()` are table-DDL concerns
   // and invalid on a `.existing()` view declaration. Preserve the canonical order.
-  const viewModifiers = spec.modifiers
-    .filter((m) => m === ".array()" || m === ".notNull()")
-    .join("");
+  // A primary-identity column additionally gains `.notNull()`: on the table side
+  // its non-null comes from `.primaryKey()` (which the view cannot carry), so
+  // without this the view SELECT type — and the Zod read schema derived from it —
+  // typed the PK `T | null` for a column that can never be NULL.
+  const kept = spec.modifiers.filter((m) => m === ".array()" || m === ".notNull()");
+  if (opts.pkFieldNames.has(f.name) && !kept.includes(".notNull()")) kept.push(".notNull()");
+  const viewModifiers = kept.join("");
   // Narrow the column to its resolved element/value type — `.$type<…>()` — mirroring
   // the entity column so the read row is typed (not `unknown`) and an array column
   // reads as `T[]`, not `T`.
@@ -113,10 +126,13 @@ export function renderViewReadZodObject(fields: readonly MetaField[], opts: View
   const { dialect, columnNamingStrategy, timestampMode } = opts;
   const z = imp("z@zod");
   const lines: Code[] = fields.map((f) => {
-    const nullable =
-      mapColumnType(f, dialect, columnNamingStrategy, timestampMode).modifiers.includes(".notNull()")
-        ? ""
-        : ".nullable()";
+    // Non-null when the column is `.notNull()` OR it is a primary-identity
+    // field — a PK is never NULL, but its table-side non-null is expressed via
+    // `.primaryKey()`, not a `.notNull()` modifier (see viewColumnLine above).
+    const nonNull =
+      mapColumnType(f, dialect, columnNamingStrategy, timestampMode).modifiers.includes(".notNull()") ||
+      opts.pkFieldNames.has(f.name);
+    const nullable = nonNull ? "" : ".nullable()";
     const hasObjectRef =
       f.subType === FIELD_SUBTYPE_OBJECT &&
       typeof f.attr(FIELD_ATTR_OBJECT_REF) === "string" &&

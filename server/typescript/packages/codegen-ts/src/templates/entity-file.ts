@@ -12,7 +12,7 @@ import { FIELD_ATTR_OBJECT_REF } from "@metaobjectsdev/metadata";
 import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
 import { renderDrizzleSchema } from "./drizzle-schema.js";
 import { renderInferredTypes, renderEnumTypeAliases } from "./inferred-types.js";
-import { renderZodValidators, isTphSubtype } from "./zod-validators.js";
+import { renderZodValidators, isTphSubtype, primaryIdentityFieldNames } from "./zod-validators.js";
 import { renderEntityConstants } from "./entity-constants.js";
 import { renderFilterAllowlist, renderSortAllowlist } from "./filter-allowlist.js";
 import { renderFilterType } from "./filter-type.js";
@@ -143,6 +143,9 @@ export function renderEntityFile(
     };
     const viewOpts = {
       dialect: ctx.dialect, columnNamingStrategy: ctx.columnNamingStrategy, timestampMode: ctx.timestampMode, voRef,
+      // PK fields type non-null in the replica-view decl + read schema even
+      // without @required (a PK is never NULL; see ViewDeclOpts.pkFieldNames).
+      pkFieldNames: new Set(primaryIdentityFieldNames(entity)) as ReadonlySet<string>,
     };
     const z = imp("z@zod");
     const docs = renderDocsFor(entity);
