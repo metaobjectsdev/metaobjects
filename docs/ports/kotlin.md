@@ -295,7 +295,8 @@ entity (`source.rdb @kind="table"`) conforming to the cross-port REST contract
 at [`docs/features/api-contract.md`](../features/api-contract.md). Any
 universal browser client built against that contract — including the
 `@metaobjectsdev/angular` runtime + the `@metaobjectsdev/codegen-ts-angular`
-codegen — consumes it directly: services, reactive forms, and grids point at
+codegen (source-only; not published to npm) — consumes it directly: services,
+reactive forms, and grids point at
 the same URL grammar (`/api/<entity-plural>`), the same `?withCount=1`
 envelope, and the same JSON wire format used by the C# .NET 8 + ASP.NET
 Minimal API backend.

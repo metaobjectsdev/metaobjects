@@ -12,7 +12,12 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "src", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.typecheck.json",
@@ -21,28 +26,37 @@
   "license": "Apache-2.0",
   "author": "Doug Mealing <doug@dougmealing.com>",
   "homepage": "https://metaobjects.dev",
-  "bugs": { "url": "https://github.com/metaobjectsdev/metaobjects/issues" },
+  "bugs": {
+    "url": "https://github.com/metaobjectsdev/metaobjects/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/metaobjectsdev/metaobjects.git",
     "directory": "client/web/packages/angular"
   },
-  "keywords": ["metaobjects", "angular", "angular18", "currency-input", "entity-grid"],
-  "publishConfig": { "access": "public" },
+  "keywords": [
+    "metaobjects",
+    "angular",
+    "angular18",
+    "currency-input",
+    "entity-grid"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@metaobjectsdev/runtime-web": "workspace:*"
   },
   "peerDependencies": {
-    "@angular/common": ">=18.0.0",
-    "@angular/core": ">=18.0.0",
-    "@angular/forms": ">=18.0.0",
-    "@tanstack/angular-table": ">=8.0.0"
+    "@angular/common": ">=18.0.0 <23.0.0",
+    "@angular/core": ">=18.0.0 <23.0.0",
+    "@angular/forms": ">=18.0.0 <23.0.0",
+    "@tanstack/angular-table": "^8.20.0"
   },
   "peerDependenciesMeta": {
-    "@angular/common": { "optional": true },
-    "@angular/core": { "optional": true },
-    "@angular/forms": { "optional": true },
-    "@tanstack/angular-table": { "optional": true }
+    "@tanstack/angular-table": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@angular/common": "^18.2.0",

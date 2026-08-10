@@ -5,6 +5,7 @@ import { hasAnyRdbSource } from "../source-detect.js";
 import { formatTs } from "../format.js";
 import { entityOutputPath } from "../import-path.js";
 import { CODEGEN_ATTR_EMIT_ROUTES } from "../constants.js";
+import { isTphSubtype } from "../templates/zod-validators.js";
 
 export interface RoutesFileHonoOpts {
   filter?: (entity: MetaObject) => boolean;
@@ -36,9 +37,39 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
     // `ctx.config.includeHonoRoutes` and api-docs auto-documents the Hono surface.
     emitsHonoRoutes: true,
     // ADR-0039: resolving — a concrete entity may inherit @emitRoutes via extends.
+    //
+    // TPH subtypes are EXCLUDED, matching the Fastify generator. A TPH subtype shares
+    // its base's table, so mounting vanilla CRUD for it produced routes with no
+    // discriminator scoping at all: the list returned EVERY subtype's rows, and
+    // get/patch/delete by id happily operated on rows belonging to a different
+    // subtype. Silently wrong data, which is worse than no route. Fastify dispatches
+    // these to a discriminator-aware renderer; the Hono runtime has no discriminator
+    // support yet, so this fails CLOSED and the run says so (see the warning below)
+    // rather than shipping an artifact that returns the wrong rows.
     filter: (e: MetaObject) =>
-      e.attr(CODEGEN_ATTR_EMIT_ROUTES) !== false && hasAnyRdbSource(e) && userFilter(e),
-    generate: perEntity(async (entity, ctx) => {
+      e.attr(CODEGEN_ATTR_EMIT_ROUTES) !== false
+      && hasAnyRdbSource(e)
+      && !isTphSubtype(e)
+      && userFilter(e),
+    generate: async (ctx) => {
+      // One note per run naming every TPH subtype held back, so the gap is visible at
+      // `meta gen` time rather than discovered as missing endpoints in production.
+      const skipped = ctx.entities.filter(
+        (e) => e.attr(CODEGEN_ATTR_EMIT_ROUTES) !== false
+          && hasAnyRdbSource(e) && isTphSubtype(e) && userFilter(e),
+      );
+      if (skipped.length > 0) {
+        ctx.warn(
+          `no Hono routes emitted for the TPH subtype(s) ${skipped.map((e) => e.name).join(", ")} — ` +
+          "the Hono adapter has no discriminator scoping yet, so per-subtype CRUD would " +
+          "return and mutate OTHER subtypes' rows. Use routesFile() (Fastify), which " +
+          "dispatches TPH correctly, or hand-write the scoped routes.",
+        );
+      }
+      return emit(ctx);
+    },
+  };
+  const emit = perEntity(async (entity, ctx) => {
       if (!ctx.renderContext) {
         throw new Error("routes-file-hono: renderContext is required (provided by runGen)");
       }
@@ -50,8 +81,7 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
         ),
         content: await formatTs(renderRoutesFileHono(entity, ctx.renderContext)),
       };
-    }),
-  };
+  });
   if (opts?.target) {
     generator.target = opts.target;
   }

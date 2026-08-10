@@ -92,7 +92,12 @@ describe("#286 — CRUD helpers on real Postgres, both adapters", () => {
   let builtTreeMissing = false;
 
   /** Every (adapter x entry-point) combination under test. Filled in beforeAll. */
-  const adapters: Array<{ name: string; get: (url: string) => Promise<{ status: number; body: unknown }> }> = [];
+  type Res = Promise<{ status: number; body: unknown }>;
+  const adapters: Array<{
+    name: string;
+    get: (url: string) => Res;
+    send: (method: "POST" | "PATCH" | "DELETE", url: string, payload?: Record<string, unknown>) => Res;
+  }> = [];
 
   // describe() bodies register BEFORE beforeAll fills `adapters`, so the rows are named
   // statically and resolved lazily inside each test.
@@ -155,11 +160,27 @@ describe("#286 — CRUD helpers on real Postgres, both adapters", () => {
             const res = await h.request(url);
             return { status: res.status, body: res.status === 204 ? null : await res.json() };
           },
+          send: async (method, url, payload) => {
+            const res = await h.request(url, {
+              method,
+              ...(payload === undefined ? {} : {
+                body: JSON.stringify(payload),
+                headers: { "content-type": "application/json" },
+              }),
+            });
+            return { status: res.status, body: res.status === 204 ? null : await res.json() };
+          },
         },
         {
           name: `fastify (${e.tree})`,
           get: async (url) => {
             const res = await f.inject({ method: "GET", url });
+            return { status: res.statusCode, body: res.statusCode === 204 ? null : res.json() };
+          },
+          send: async (method, url, payload) => {
+            const res = payload === undefined
+              ? await f.inject({ method, url })
+              : await f.inject({ method, url, payload });
             return { status: res.statusCode, body: res.statusCode === 204 ? null : res.json() };
           },
         },
@@ -218,6 +239,47 @@ describe("#286 — CRUD helpers on real Postgres, both adapters", () => {
         expect(status).toBe(200);
         const rows = body as Array<{ email: string }>;
         expect(rows.map((r) => r.email)).toEqual(["carol@y.com", "alice@x.com"]);
+      });
+
+      // The WRITE verbs. Until now this matrix was GET-only, so create/update/delete
+      // on Postgres ran nowhere — the only Hono write tests are libsql :memory:,
+      // which is the precise shape in which #286 shipped broken. `.returning()` and
+      // extractRowCount()'s duck-typing across three driver result shapes are exactly
+      // the things that misreport 201/404/204 rather than throwing, so they need a
+      // real engine to be believed.
+      test("create → read-back → update → delete round-trips on Postgres", async () => {
+        const email = `rt-${a.replace(/[^a-z]/g, "")}@x.com`;
+        const created = await use(a).send("POST", "/subscribers", {
+          email, firstName: "Round", subscribed: true,
+        });
+        expect(created.status).toBe(201);
+        const id = (created.body as { id: number }).id;
+        expect(typeof id).toBe("number");
+
+        // Read it back through the list path, proving the write actually committed.
+        const got = await use(a).get(`/subscribers/${id}`);
+        expect(got.status).toBe(200);
+        expect((got.body as { email: string }).email).toBe(email);
+
+        const patched = await use(a).send("PATCH", `/subscribers/${id}`, { firstName: "Patched" });
+        expect(patched.status).toBe(200);
+        expect((patched.body as { firstName: string }).firstName).toBe("Patched");
+
+        const deleted = await use(a).send("DELETE", `/subscribers/${id}`);
+        expect(deleted.status).toBe(204);
+        expect((await use(a).get(`/subscribers/${id}`)).status).toBe(404);
+      });
+
+      test("update and delete 404 on a missing row instead of reporting success", async () => {
+        // extractRowCount() duck-types the driver's result shape; misreading it turns
+        // "nothing matched" into a 200/204, which no GET-only matrix could ever see.
+        expect((await use(a).send("PATCH", "/subscribers/99999", { firstName: "X" })).status).toBe(404);
+        expect((await use(a).send("DELETE", "/subscribers/99999")).status).toBe(404);
+      });
+
+      test("create rejects an invalid payload with 400, not a 500", async () => {
+        const { status } = await use(a).send("POST", "/subscribers", { email: 42 });
+        expect(status).toBe(400);
       });
     });
   }

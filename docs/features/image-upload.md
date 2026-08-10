@@ -189,10 +189,27 @@ specificity so a host app's reset styles win, and resolves colors through
 `--mo-*` CSS custom properties with fallback hex values — themable with zero
 configuration, override any subset.
 
-`react-easy-crop` is an **optional, lazy-loaded peer dependency** — it's only
-imported (via `React.lazy`) when `<ImageUpload>` actually renders the crop UI,
-so consumers without a `view.image` field never pay for it. Install it only if
-you author one.
+`react-easy-crop` is a **regular dependency of `@metaobjectsdev/react`, lazy-loaded
+at runtime.** It is imported via `React.lazy` only when `<ImageUpload>` actually
+renders the crop UI, so it lands in its own chunk and a consumer without a
+`view.image` field never downloads it — but it IS installed for everyone, and
+nothing needs to be added by hand.
+
+> It was an *optional peer* through `0.21.4`, which was a bug rather than a saving.
+> `ImageUpload` is exported from the package root, so `image-upload.js` sits in
+> every consumer's module graph, and bundlers resolve the whole graph before
+> tree-shaking — a dynamic `import()` of a missing package is fatal to **webpack,
+> Next.js (Turbopack and webpack), esbuild and Bun** alike (only Vite special-cases
+> optional peers). So *any* consumer of the generated forms failed to build with a
+> "can't resolve `react-easy-crop`" error naming a package they had never heard of,
+> whether or not they authored an image field. Making it a real dependency fixes
+> that for every bundler with nothing for the adopter to configure.
+>
+> The cleaner long-term shape is a `@metaobjectsdev/react/image` subpath so the
+> crop dependency is pulled in only by consumers who import it. That removes
+> exports from the package root, which is breaking, so it belongs in a MINOR — and
+> a MINOR would not reach the adopters whose builds are broken today, since
+> `^0.21.x` will not resolve it.
 
 ## Storage & wire contract
 

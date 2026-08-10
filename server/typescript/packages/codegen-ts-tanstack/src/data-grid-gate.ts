@@ -1,5 +1,5 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { LAYOUT_SUBTYPE_DATA_GRID, OBJECT_SUBTYPE_VALUE } from "@metaobjectsdev/metadata";
+import { LAYOUT_SUBTYPE_DATA_GRID } from "@metaobjectsdev/metadata";
 import type { GenContext } from "@metaobjectsdev/codegen-ts";
 
 /** True when the entity declares (or inherits) at least one `layout.dataGrid`. */
@@ -31,17 +31,17 @@ export function hasDataGridLayout(entity: MetaObject): boolean {
  *
  * `passesOtherGates` is the generator's own filter MINUS the layout check, so the
  * named set is exactly "objects the layout gate — and nothing else — held back".
- * `object.value`s are excluded from it: a value object is a payload/DTO shape, never
- * a grid candidate, so naming one would be advice worth ignoring.
+ * It needs no explicit `object.value` exclusion: a value is sourceless by
+ * loader-enforced purity (ADR-0028), and `emitsInstanceArtifacts` now gates on a
+ * declared source, so values never reach here. Filtering them by SUBTYPE would be
+ * the persistability-from-subtype check #248 spent two releases eradicating.
  */
 export function warnMissingDataGridLayout(
   ctx: GenContext,
   passesOtherGates: (entity: MetaObject) => boolean,
   artifact: string,
 ): void {
-  const candidates = ctx.entities.filter(
-    (e) => e.subType !== OBJECT_SUBTYPE_VALUE && passesOtherGates(e),
-  );
+  const candidates = ctx.entities.filter(passesOtherGates);
   if (candidates.length === 0) return;
   if (candidates.some(hasDataGridLayout)) return;   // the model uses grids — say nothing
   ctx.warn(

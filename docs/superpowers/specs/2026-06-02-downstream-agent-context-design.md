@@ -1,5 +1,11 @@
 # Downstream agent context — design
 
+> **SUPERSEDED on one point (Angular packages).** This document was written when the
+> Angular client packages (`@metaobjectsdev/angular`, `@metaobjectsdev/codegen-ts-angular`)
+> were treated as installable from npm. They are **NOT published** — source-only today
+> (an install returns 404). Current truth: `docs/ports/typescript-client.md` (→ "Angular 18").
+> The historical body below is otherwise unchanged.
+
 **Date:** 2026-06-02
 **Status:** Design (pending review)
 **Relates to:**

@@ -1,7 +1,7 @@
 {
   "name": "@metaobjectsdev/codegen-ts",
   "version": "0.21.4",
-  "description": "TypeScript codegen engine for MetaObjects — emits Drizzle, Zod, and Fastify artifacts.",
+  "description": "TypeScript codegen engine for MetaObjects \u2014 emits Drizzle, Zod, and Fastify artifacts.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -118,8 +118,8 @@
     "ts-poet": "^6.10.0"
   },
   "peerDependencies": {
-    "drizzle-orm": ">=0.36.0",
-    "zod": ">=3.23.0"
+    "drizzle-orm": ">=0.36.0 <1.0.0",
+    "zod": ">=3.23.0 <5.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",

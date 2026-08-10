@@ -7,6 +7,11 @@
           "package": "shop::commerce",
           "children": [
             {
+              "source.rdb": {
+                "@table": "products"
+              }
+            },
+            {
               "field.long": {
                 "name": "id",
                 "children": [
@@ -23,20 +28,31 @@
             {
               "field.string": {
                 "name": "title",
-                "children": [{ "view.text": {} }]
+                "children": [
+                  {
+                    "view.text": {}
+                  }
+                ]
               }
             },
             {
               "field.int": {
                 "name": "priceCents",
-                "children": [{ "view.text": {} }]
+                "children": [
+                  {
+                    "view.text": {}
+                  }
+                ]
               }
             },
             {
               "layout.dataGrid": {
                 "name": "default",
                 "@pageSize": 25,
-                "@columns": ["title", "priceCents"]
+                "@columns": [
+                  "title",
+                  "priceCents"
+                ]
               }
             }
           ]

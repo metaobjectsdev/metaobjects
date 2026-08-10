@@ -6,20 +6,36 @@
           "name": "Author",
           "children": [
             {
+              "source.rdb": {
+                "@table": "authors"
+              }
+            },
+            {
               "field.long": {
                 "name": "id",
                 "children": [
                   {
                     "identity.primary": {
                       "name": "id",
-                      "@fields": ["id"],
+                      "@fields": [
+                        "id"
+                      ],
                       "@generation": "increment"
                     }
                   }
                 ]
               }
             },
-            { "field.string": { "name": "name", "children": [{ "view.text": {} }] } }
+            {
+              "field.string": {
+                "name": "name",
+                "children": [
+                  {
+                    "view.text": {}
+                  }
+                ]
+              }
+            }
           ]
         }
       },
@@ -27,7 +43,11 @@
         "object.value": {
           "name": "AuthorPayload",
           "children": [
-            { "field.string": { "name": "name" } }
+            {
+              "field.string": {
+                "name": "name"
+              }
+            }
           ]
         }
       }

@@ -29,7 +29,7 @@ import type { MetaObject } from "@metaobjectsdev/metadata";
 import { type RenderContext } from "../render-context.js";
 import { entityModuleSpecifier } from "../import-path.js";
 import { GENERATED_HEADER } from "../constants.js";
-import { isProjection } from "../projection/projection-detector.js";
+import { isProjection, isWriteThrough } from "../projection/projection-detector.js";
 
 export function renderRoutesFileHono(entity: MetaObject, ctx: RenderContext): string {
   const entityName = entity.name;
@@ -98,6 +98,16 @@ export function ${handlerName}(app: ${HonoSym}<any, any, any>, deps: { db: unkno
   // --- Vanilla / write-through entity path: full CRUD routes ---
   const tableVar = ctx.collectionName(entityName);
 
+  // #214: a write-through entity reads through its replica view so derived origin.*
+  // columns are present. Without this the Hono adapter returned rows missing every
+  // derived field the generated type and Zod schema promise, and a filter or sort on
+  // one — both ALLOWED by the generated allowlists — hit a column the table does not
+  // have, producing a 500. Fastify has done this since #214; Hono was simply never
+  // wired, exactly as it was never wired for #286's `.all()`/`.get()` fix.
+  const writeThrough = isWriteThrough(entity);
+  const camelName = entityName.charAt(0).toLowerCase() + entityName.slice(1);
+  const readViewLine = writeThrough ? `\n    readView: ${camelName}View,` : "";
+
   const HonoSym = imp("t:Hono@hono");
   const mountCrudRoutesSym = imp("mountCrudRoutes@@metaobjectsdev/runtime-ts/hono");
 
@@ -108,7 +118,7 @@ import {
   ${entityName}InsertSchema,
   ${entityName}UpdateSchema,
   ${entityName}FilterAllowlist,
-  ${entityName}SortAllowlist,
+  ${entityName}SortAllowlist,${writeThrough ? `\n  ${camelName}View,` : ""}
 } from ${JSON.stringify(entityFileSpec)};
 `;
 
@@ -127,7 +137,7 @@ export function ${handlerName}(app: ${HonoSym}<any, any, any>, deps: { db: unkno
     app,
     path: ${pathExpr},
     db: deps.db,
-    table: ${tableVar},
+    table: ${tableVar},${readViewLine}
     insertSchema: ${entityName}InsertSchema,
     updateSchema: ${entityName}UpdateSchema,
     filterAllowlist: ${entityName}FilterAllowlist,

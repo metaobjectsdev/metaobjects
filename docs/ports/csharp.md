@@ -267,7 +267,9 @@ the `@generated` header itself (the write path refuses to overwrite files lackin
 
 C# 12 / .NET 8 backends pair cleanly with an Angular 18 client built from
 the universal `@metaobjectsdev/angular` runtime + `@metaobjectsdev/codegen-ts-angular`
-codegen packages. The generated ASP.NET Minimal API routes (from
+codegen packages — which are **source-only today, not published to npm** (build
+them from the TS workspace; see the
+[recipe](../recipes/csharp-angular18.md)). The generated ASP.NET Minimal API routes (from
 `MetaObjects.Codegen` `RoutesGenerator`) speak the same URL grammar
 and wire format the Angular client expects — no special-casing.
 

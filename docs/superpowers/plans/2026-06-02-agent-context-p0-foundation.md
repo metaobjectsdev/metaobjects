@@ -1,5 +1,13 @@
 # Agent-Context P0 — Foundation (pipeline + gates) Implementation Plan
 
+> **SUPERSEDED on one point (Angular packages).** This document was written when the
+> Angular client packages (`@metaobjectsdev/angular`, `@metaobjectsdev/codegen-ts-angular`)
+> were treated as installable from npm — the `CLIENT_FRAMEWORKS = ["react", "tanstack", "angular"]`
+> constant and the `probe.hasDep("@metaobjectsdev/angular")` detection below treat them as a
+> detectable installed dependency. They are **NOT published** — source-only today (an install
+> returns 404). Current truth: `docs/ports/typescript-client.md` (→ "Angular 18").
+> The historical body below is otherwise unchanged.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the `agent-context/` content tree and the TypeScript assembler/stack-resolver/conformance machinery that turns it into the scaffolded surfaces (the slim always-on Markdown + the five Claude skills with only the project's language reference fragments), proven end-to-end against a real seed stack.

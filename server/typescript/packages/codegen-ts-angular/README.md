@@ -13,9 +13,13 @@ Per-entity opt-out: `@emitAngular: false` on an entity skips all three Angular o
 
 ## Install
 
-```bash
-pnpm add -D @metaobjectsdev/codegen-ts-angular
-```
+> **NOT published to npm — source-only today.** This package builds in-repo and is
+> versioned on its own `0.6.x` line, but has never been released —
+> `npm i @metaobjectsdev/codegen-ts-angular` returns a 404. Consume it from source
+> (a workspace/file dependency, or `npm pack` + install the tarball) by building
+> from this directory; it is a dev-time codegen tool, so a `-D`/dev dependency.
+> The published browser-client tier is React + TanStack; see
+> [`docs/ports/typescript-client.md`](../../../../docs/ports/typescript-client.md).
 
 ## License
 

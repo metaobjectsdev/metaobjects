@@ -1,7 +1,7 @@
 {
   "name": "@metaobjectsdev/codegen-ts-react",
   "version": "0.21.4",
-  "description": "React codegen for metaobjects — emits <Entity>.form.tsx files using react-hook-form and @metaobjectsdev/react helpers.",
+  "description": "React codegen for metaobjects \u2014 emits <Entity>.form.tsx files using react-hook-form and @metaobjectsdev/react helpers.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -50,7 +50,7 @@
     "ts-poet": "^6.10.0"
   },
   "peerDependencies": {
-    "@biomejs/biome": ">=1.9.0"
+    "@biomejs/biome": ">=1.9.0 <3.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",

@@ -1,4 +1,4 @@
-import { mkdir, writeFile, readFile, stat } from "node:fs/promises";
+import { mkdir, writeFile, readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { basename, dirname } from "node:path";
 import { existsSync as existsSyncWrap, readFileSync as readFileSyncWrap } from "node:fs";
@@ -102,6 +102,8 @@ Initialized metaobjects/ + .metaobjects/ + metaobjects.config.ts
 Codegen generators copied to codegen/generators/ — they're YOURS to edit (ADR-0034 scaffold-and-own).
 
 Next steps:
+  0. Everything here is ESM — package.json needs "type": "module" (init sets it
+     unless the project has CommonJS sources; without it the first tsc fails).
   1. Author entities under metaobjects/ (start from the scaffolded meta.common.json)
   2. meta gen              # generate idiomatic TypeScript from your entities
      meta gen --dry-run    #   ...preview without writing
@@ -442,7 +444,136 @@ export async function init(opts: InitOptions): Promise<InitResult> {
     result.preserved.push(".gitignore");
   }
 
+  await ensureEsmPackageType(opts.cwd, result);
+
   return result;
+}
+
+/**
+ * MetaObjects emits ESM only, and so does everything `meta init` scaffolds. If the
+ * project's `package.json` does not say so, the FIRST `tsc` a new adopter runs fails
+ * — not subtly:
+ *
+ *     codegen/generators/barrel.ts(14,3): error TS1295: ECMAScript imports and
+ *     exports cannot be written in a CommonJS file under 'verbatimModuleSyntax'.
+ *
+ * …ninety-odd times, across the scaffolded generators and every generated file, on
+ * the exact path the README and these next-steps prescribe. Two ecosystem defaults
+ * conspire: `npm init -y` now writes `"type": "commonjs"` explicitly, and a stock
+ * `tsc --init` on TypeScript 7 enables `verbatimModuleSyntax`.
+ *
+ * So set it — but never silently take a real CommonJS project with it. A project
+ * that has actual CJS sources gets a loud, specific warning instead of an edit,
+ * because changing a module system out from under working code is not ours to do.
+ */
+async function ensureEsmPackageType(cwd: string, result: InitResult): Promise<void> {
+  const pkgPath = join(cwd, "package.json");
+  if (!(await fileExists(pkgPath))) {
+    // No package.json at all: say what is needed rather than inventing a manifest
+    // (name/version/license are the user's to choose).
+    result.warnings.push(
+      'no package.json found — create one with `npm init -y`, then set `"type": "module"`: ' +
+        "MetaObjects scaffolds and generates ESM, which will not compile in a CommonJS project.",
+    );
+    return;
+  }
+
+  let pkg: Record<string, unknown>;
+  let raw: string;
+  try {
+    raw = await readFile(pkgPath, "utf8");
+    pkg = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    result.warnings.push(
+      'package.json could not be parsed — ensure it sets `"type": "module"` by hand ' +
+        "(MetaObjects scaffolds and generates ESM).",
+    );
+    return;
+  }
+
+  if (pkg.type === "module") return;   // already correct — nothing to do, nothing to say
+
+  if (await hasCommonJsSources(cwd)) {
+    result.warnings.push(
+      'this project has CommonJS sources, so `"type": "module"` was NOT set for you — ' +
+        "but the scaffolded generators and all generated code are ESM and will not " +
+        "compile without it. Either migrate the project to ESM, or keep the generated " +
+        "code in a sub-directory with its own package.json declaring `\"type\": \"module\"`.",
+    );
+    return;
+  }
+
+  pkg.type = "module";
+  const added = addScaffoldDevDependencies(pkg);
+  // Preserve the file's existing indentation rather than reformatting someone's manifest.
+  const indent = /\n(\s+)"/.exec(raw)?.[1] ?? "  ";
+  await writeFile(pkgPath, `${JSON.stringify(pkg, null, indent)}\n`, "utf8");
+  result.warnings.push(
+    'set `"type": "module"` in package.json — MetaObjects scaffolds and generates ESM, ' +
+      "which a CommonJS project cannot compile.",
+  );
+  if (added.length > 0) {
+    result.warnings.push(
+      `added ${added.join(" + ")} to devDependencies — the scaffolded ` +
+        "codegen/generators/ are YOUR source now (ADR-0034) and import them. " +
+        "Run your package manager's install before `meta gen`.",
+    );
+  }
+}
+
+/**
+ * ADR-0034 scaffold-and-own hands the project real source files under
+ * `codegen/generators/`, and those files import `@metaobjectsdev/codegen-ts`,
+ * `@metaobjectsdev/metadata` and `ts-poet`. Installing `@metaobjectsdev/cli` alone
+ * does not put any of them where the project can resolve them, so the scaffold
+ * arrived un-typecheckable: ten TS2307s on files `meta init` had just written.
+ *
+ * Declaring them is the honest fix — they are dependencies of code that now lives in
+ * the adopter's repo. Only ever ADDS a missing key: an existing pin is the user's.
+ * Returns what it added so the caller can tell them to install.
+ */
+function addScaffoldDevDependencies(pkg: Record<string, unknown>): string[] {
+  const version = cliVersion();
+  const wanted: Record<string, string> = {
+    "@metaobjectsdev/codegen-ts": `^${version}`,
+    "@metaobjectsdev/metadata": `^${version}`,
+    "ts-poet": "^6.10.0",
+  };
+  const dev = (pkg.devDependencies ?? {}) as Record<string, string>;
+  const deps = (pkg.dependencies ?? {}) as Record<string, string>;
+  const added: string[] = [];
+  for (const [name, range] of Object.entries(wanted)) {
+    if (dev[name] !== undefined || deps[name] !== undefined) continue;
+    dev[name] = range;
+    added.push(name);
+  }
+  if (added.length > 0) {
+    pkg.devDependencies = Object.fromEntries(Object.entries(dev).sort(([a], [b]) => a.localeCompare(b)));
+  }
+  return added;
+}
+
+/** True when the project has hand-written CommonJS at the root (excluding tooling dirs). */
+async function hasCommonJsSources(cwd: string): Promise<boolean> {
+  const SKIP = new Set(["node_modules", ".git", "dist", "build", ".metaobjects", "codegen"]);
+  const stack = [cwd];
+  let scanned = 0;
+  while (stack.length > 0 && scanned < 400) {
+    const dir = stack.pop()!;
+    let entries;
+    try { entries = await readdir(dir, { withFileTypes: true }); } catch { continue; }
+    for (const e of entries) {
+      if (e.isDirectory()) { if (!SKIP.has(e.name) && !e.name.startsWith(".")) stack.push(join(dir, e.name)); continue; }
+      if (e.name.endsWith(".cjs")) return true;
+      if (!e.name.endsWith(".js")) continue;
+      scanned++;
+      try {
+        const body = await readFile(join(dir, e.name), "utf8");
+        if (/\brequire\s*\(|\bmodule\.exports\b|\bexports\.\w/.test(body)) return true;
+      } catch { /* unreadable — not evidence of CJS */ }
+    }
+  }
+  return false;
 }
 
 function buildD1MigrateBlock(cwd: string): Record<string, unknown> {

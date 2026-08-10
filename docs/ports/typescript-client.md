@@ -505,11 +505,15 @@ for the rare case where you need a shape the generator doesn't cover).
 
 ## Angular 18
 
-> **Versioning.** The two `@metaobjectsdev/angular*` packages are on their own
-> `0.6.x` line, deliberately decoupled from the lockstep version the rest of the
-> `@metaobjectsdev/*` packages share. The Angular tier moves on its own cadence,
-> so a version mismatch against the React/TanStack packages is expected, not a
-> packaging error.
+> **NOT PUBLISHED — source-only today.** The two `@metaobjectsdev/angular*`
+> packages build in-repo and are versioned on their own `0.6.x` line, deliberately
+> decoupled from the lockstep version the rest of the `@metaobjectsdev/*` packages
+> share, but **neither has ever been released to npm** — `npm i
+> @metaobjectsdev/angular` returns a 404. Everything documented below is accurate
+> about the code; it is reachable by building from
+> `client/web/packages/angular/` + `server/typescript/packages/codegen-ts-angular/`
+> and consuming them as local workspace packages, not by installing from the
+> registry. The React + TanStack tier is the published browser client.
 
 Angular 18 ships as a **second universal browser-side client tier** alongside
 the React + TanStack pair. Same architecture — one runtime package

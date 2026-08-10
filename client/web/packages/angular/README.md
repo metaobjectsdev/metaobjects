@@ -6,9 +6,14 @@ Universal browser client — works with any backend that conforms to the cross-p
 
 ## Install
 
-```bash
-pnpm add @metaobjectsdev/angular @angular/core@^18 @angular/forms@^18 @angular/common@^18 @tanstack/angular-table@^8
-```
+> **NOT published to npm — source-only today.** This package builds in-repo and is
+> versioned on its own `0.6.x` line, but has never been released —
+> `npm i @metaobjectsdev/angular` returns a 404. Consume it from source (a
+> workspace/file dependency, or `npm pack` + install the tarball) by building from
+> this directory. The published browser-client tier is React + TanStack; see
+> [`docs/ports/typescript-client.md`](../../../../docs/ports/typescript-client.md). To
+> build locally you'll want these as workspace deps: `@angular/core@^18`,
+> `@angular/forms@^18`, `@angular/common@^18`, `@tanstack/angular-table@^8`.
 
 ## Wiring
 
