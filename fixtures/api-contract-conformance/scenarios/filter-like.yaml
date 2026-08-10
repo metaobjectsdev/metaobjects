@@ -1,8 +1,12 @@
 name: filter-like
 description: >
-  GET /api/authors?filter[name][like]=A%25 — `like` uses SQL LIKE semantics
-  with `%` as the wildcard. The pattern `A%` (URL-encoded `A%25`) matches
-  any name starting with `A`: Ada Lovelace (id=1) and Alan Turing (id=2).
+  GET /api/authors?filter[name][like]=A%25 — `like` is case-SENSITIVE SQL
+  LIKE (verbatim pattern; `%` and `_` wildcards; ADR-0047). `A%`
+  (URL-encoded `A%25`) matches names starting with capital `A`: Ada
+  Lovelace (id=1) and Alan Turing (id=2). The lowercase probes must match
+  NOTHING — every seeded name is capitalized — so a port that lowers
+  `like` to ILIKE or any other case-folding match returns rows here and
+  fails instead of passing by construction.
 requests:
   - id: r1
     method: GET
@@ -12,3 +16,23 @@ requests:
       body:
         ids: [1, 2]
         length: 2
+
+  # Case-mismatch probe: lowercase prefix. ILIKE would return [1, 2].
+  - id: r2
+    method: GET
+    path: /api/authors?filter[name][like]=a%25
+    expect:
+      status: 200
+      body:
+        ids: []
+        length: 0
+
+  # Case-mismatch probe exercising `_`: `a_an%` would be [2] under ILIKE.
+  - id: r3
+    method: GET
+    path: /api/authors?filter[name][like]=a_an%25
+    expect:
+      status: 200
+      body:
+        ids: []
+        length: 0

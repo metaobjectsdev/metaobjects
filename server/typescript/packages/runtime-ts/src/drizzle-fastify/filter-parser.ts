@@ -1,5 +1,5 @@
 import {
-  eq, ne, gt, gte, lt, lte, inArray, like, ilike, isNull, not, and, or, asc, desc,
+  eq, ne, gt, gte, lt, lte, inArray, like, ilike, isNull, not, and, or, asc, desc, sql,
   type SQL, type SQLWrapper,
 } from "drizzle-orm";
 import type { FilterAllowlist, FilterOp, FilterFieldRule, SortAllowlist } from "./filter-allowlist.js";
@@ -71,8 +71,11 @@ export function parseFilterParams(opts: ParseFilterOpts): ParseFilterResult {
       .filter(([, rule]) => (rule as FilterFieldRule).subType === "string")
       .map(([field]) => opts.table[field]);
     if (stringCols.length > 0) {
-      // Case-insensitive on Postgres (ilike), case-sensitive on SQLite (like) —
-      // matches the dispatch the existing [like] op uses (parseNode, below).
+      // `?search` is a TS-only extension (docs/features/api-contract.md) and is
+      // deliberately case-INSENSITIVE — it is a human search box, not the
+      // contract's `like` operator (which is case-sensitive SQL LIKE, ADR-0047).
+      // Postgres uses ILIKE; SQLite's native LIKE folds ASCII case by default,
+      // which is the intended behavior here.
       const matcher = opts.dialect === "postgres" ? ilike : like;
       const parts = stringCols.map((col) => matcher(col, term));
       // or() is defined as returning SQL | undefined but will always return
@@ -168,7 +171,15 @@ function compileOp(
       if (s.startsWith("%") && !rule.leadingWildcard) {
         throw new FilterParseError("filter.leading_wildcard_disallowed", `Leading wildcard not allowed for field "${field}".`, { field });
       }
-      return dialect === "postgres" ? ilike(col as any, s) : like(col as any, s);
+      // Cross-port contract (ADR-0047): `like` is case-SENSITIVE SQL LIKE —
+      // verbatim author-supplied pattern, `%`/`_` wildcards. Postgres LIKE is
+      // already case-sensitive. SQLite's built-in LIKE folds ASCII case by
+      // default (and `PRAGMA case_sensitive_like` is connection-global on a
+      // consumer-owned connection), so the sqlite branch lowers to GLOB with
+      // an exactly-translated pattern instead.
+      return dialect === "postgres"
+        ? like(col as any, s)
+        : sql`${col} GLOB ${likePatternToGlob(s)}`;
     }
     case "isNull": {
       // isNull's value is always coerced as boolean (true/false), regardless of the
@@ -178,6 +189,27 @@ function compileOp(
       return b ? isNull(col as any) : not(isNull(col as any));
     }
   }
+}
+
+/**
+ * Translate a SQL LIKE pattern into an equivalent SQLite GLOB pattern:
+ * `%` → `*`, `_` → `?`, and GLOB's own metacharacters (`*`, `?`, `[`) are
+ * wrapped in single-character classes so they match literally. `]` is only
+ * special inside a class, so it passes through. GLOB is case-sensitive,
+ * which is why the sqlite `like` branch uses it (ADR-0047) — SQLite's
+ * native LIKE folds ASCII case by default.
+ */
+export function likePatternToGlob(pattern: string): string {
+  let out = "";
+  for (const ch of pattern) {
+    if (ch === "%") out += "*";
+    else if (ch === "_") out += "?";
+    else if (ch === "*") out += "[*]";
+    else if (ch === "?") out += "[?]";
+    else if (ch === "[") out += "[[]";
+    else out += ch;
+  }
+  return out;
 }
 
 function coerce(value: unknown, subType: string, field: string, op: string, dateValues?: boolean): unknown {

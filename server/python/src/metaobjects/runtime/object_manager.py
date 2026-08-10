@@ -733,6 +733,8 @@ def _op_clause(col: str, op: str, value: Any) -> tuple[str, list[Any]]:
     if op == "gte":    return f"{qc} >= %s", [value]
     if op == "lt":     return f"{qc} < %s", [value]
     if op == "lte":    return f"{qc} <= %s", [value]
+    # `like` is case-SENSITIVE SQL LIKE — verbatim pattern, %/_ wildcards
+    # (ADR-0047; the de-blinded filter-like-and-ne fixture gates this).
     if op == "like":   return f"{qc} LIKE %s", [value]
     if op == "isNull":
         wants_null = bool(value) if not isinstance(value, str) else value.lower() == "true"

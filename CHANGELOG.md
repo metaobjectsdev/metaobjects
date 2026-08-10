@@ -7,6 +7,46 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — the `like` filter operator is case-sensitive SQL LIKE, uniformly (ADR-0047)
+
+Resolves the 0.21.5 known-issue: cross-port `like` semantics contradicted each other and
+the shared corpora were case-aligned **by construction**, so they could not see it. The
+ruling ([ADR-0047](spec/decisions/ADR-0047-filter-like-is-case-sensitive-sql-like.md)):
+`like` binds the author-supplied pattern **verbatim** — `%`/`_` wildcards, no case
+folding — identically on every port and engine. The written record already said so
+(FR-009 defines `like` as "SQL LIKE semantics" and lists case-insensitive `ilike` as
+explicitly out of scope; ADR-0036 reserves `ilike` as a future additive operator), and
+the reference implementation was not univocal the other way: TS's Kysely/Drizzle/
+in-memory persistence drivers were always verbatim LIKE — only the HTTP filter parser
+dispatched ILIKE, so the TS reference api-contract lane and the TS generated lane
+answered the same request differently.
+
+- **TS (`runtime-ts`, adopter-visible on Postgres)**: `parseFilterParams` no longer
+  lowers `like` to ILIKE on Postgres — every Fastify/Hono mount (CRUD + read-only) now
+  case-sensitive. On **sqlite/D1**, where the engine's native LIKE folds ASCII case,
+  `like` lowers to **GLOB** with an exactly-translated pattern (`%`→`*`, `_`→`?`,
+  GLOB's own metacharacters escaped), proven against a real sqlite engine — behavior,
+  not SQL spelling, is the contract. The TS-only `?search` extension stays deliberately
+  case-INSENSITIVE (it is a human search box, and is now documented as such).
+- **C# (test-only)**: the persistence-conformance adapter reflected Npgsql's `ILike`
+  while the product ships `EF.Functions.Like` — the gate was testing semantics the
+  product never had. The adapter now runs the product's dispatch. No C# product change.
+- **Java / Kotlin / Python**: already conformant (Java since 0.21.4's
+  `Expression.LIKE`); no product change.
+- **Corpora de-blinded** (the actual gate): `filter-like-and-ne`
+  (persistence-conformance) now seeds a case-mismatched pair
+  (`Foundations`/`foundations lab`) and probes both casings — each prefix probe must
+  match exactly one; `filter-like` (api-contract-conformance) adds lowercase `a%` and
+  `a_an%` probes that must match nothing against the capitalized seed. Before the port
+  fixes, the de-blinded corpus failed the TS generated lane (returned `[1, 2]` for
+  `a%` on real Postgres) and the C# persistence lane (`title-like-prefix` matched both
+  casings) — and passes all five ports after. The "case-aligned so the test passes
+  either way" comment is deleted.
+
+Adopters relying on the old TS-on-Postgres case-folding: normalize case in the data or
+the pattern, or use `?search`; a true case-insensitive operator remains chartered as a
+future additive extension gated on real consumer demand.
+
 ## [0.21.5] — npm `0.21.5` · PyPI `0.21.5` · NuGet `0.21.5` · Maven `7.21.5`
 
 A coordinated PATCH across all four registries. Ten fixes, every one reproduced before
@@ -193,6 +233,7 @@ drift-checked fact.
   Python emits plain LIKE; C#'s product code and its own conformance adapter disagree;
   0.21.4 moved Java to case-sensitive). The shared corpus cannot see it — the fixture is
   case-aligned by construction. Needs a ruling on which semantic the wire contract has.
+  *(Ruled + fixed post-0.21.5: case-sensitive, ADR-0047 — see Unreleased.)*
 - Parent-side `relationship.composition` loses its cascade, and the `@onDelete` escape
   hatch on `identity.reference` is honored by `migrate` but unregistered, so a model
   that migrates cleanly fails strict `verify`.
