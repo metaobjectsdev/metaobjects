@@ -6,9 +6,41 @@
 // metadata-driven, not a typeId discriminator: any object subtype can opt out
 // of Drizzle table emission simply by omitting source.rdb.
 
-import { MetaSource } from "@metaobjectsdev/metadata";
 import { TYPE_SOURCE, SOURCE_SUBTYPE_RDB } from "@metaobjectsdev/metadata";
-import type { MetaObject } from "@metaobjectsdev/metadata";
+import type { MetaData, MetaObject } from "@metaobjectsdev/metadata";
+
+// Cross-realm safety: identify a source structurally (type/subType + the
+// writability surface), never by `instanceof MetaSource`.
+//
+// Two physical copies of @metaobjectsdev/metadata in one process give the
+// loader's nodes a different MetaSource class object than this module closes
+// over, so `instanceof` is false for a node that is a source.rdb in every
+// observable respect — the same class-identity defect that split ts-poet's Code
+// objects in 0.21.6. Here the consequence is silent: the entity reads as "not
+// backed by any store", so no Drizzle table, no queries and no routes are
+// emitted for it, and nothing errors.
+//
+// `meta gen` aliases @metaobjectsdev/metadata to the CLI's own copy
+// (load-metaobjects-config.ts CLI_PKG_PATHS), which closes the split for the CLI
+// path — but that alias map does not run when a consumer embeds runGen()
+// programmatically, so these helpers do not depend on it. Gated by
+// test/source-detect.test.ts ("survives a split @metaobjectsdev/metadata tree").
+
+/** True when the child is a source.rdb node, by structure rather than class identity. */
+function isRdbSource(child: MetaData): boolean {
+  return child.type === TYPE_SOURCE && child.subType === SOURCE_SUBTYPE_RDB;
+}
+
+/**
+ * True when the node reports itself writable. Reads the writability surface
+ * structurally so a source built by a second copy of the package still answers.
+ * A node that cannot answer is not counted as writable (fail-closed — the same
+ * outcome the `instanceof` guard produced for a non-source node).
+ */
+function reportsWritable(child: MetaData): boolean {
+  const probe = child as unknown as { isWritable?: () => boolean };
+  return typeof probe.isWritable === "function" && probe.isWritable();
+}
 
 /**
  * True when the entity declares at least one writable source.rdb child.
@@ -22,10 +54,8 @@ export function hasWritableRdbSource(entity: MetaObject): boolean {
   // (the JVM port's "entity inheriting its source emitted NOTHING" bug); own-only
   // would suppress the Drizzle table for such an entity.
   for (const child of entity.children()) {
-    if (child.type !== TYPE_SOURCE) continue;
-    if (child.subType !== SOURCE_SUBTYPE_RDB) continue;
-    if (!(child instanceof MetaSource)) continue;
-    if (child.isWritable()) return true;
+    if (!isRdbSource(child)) continue;
+    if (reportsWritable(child)) return true;
   }
   return false;
 }
@@ -42,10 +72,7 @@ export function hasWritableRdbSource(entity: MetaObject): boolean {
 export function hasAnyRdbSource(entity: MetaObject): boolean {
   // ADR-0039: resolving — same rationale as hasWritableRdbSource.
   for (const child of entity.children()) {
-    if (child.type !== TYPE_SOURCE) continue;
-    if (child.subType !== SOURCE_SUBTYPE_RDB) continue;
-    if (!(child instanceof MetaSource)) continue;
-    return true;
+    if (isRdbSource(child)) return true;
   }
   return false;
 }
