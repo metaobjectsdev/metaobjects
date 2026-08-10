@@ -5,6 +5,9 @@ import {
   type GeneratorFactory,
   formatTs,
   packageToPath,
+  servesReadApi,
+  servesWriteApi,
+  isProjection,
 } from "@metaobjectsdev/codegen-ts";
 import {
   GENERATED_HEADER,
@@ -32,8 +35,9 @@ function hasDataGridLayout(entity: MetaObject): boolean {
 
 /**
  * Aggregate re-export barrel for all per-entity Angular outputs (service +
- * form + grid). Grid re-exports are skipped for entities lacking
- * `layout.dataGrid` (matches the angular-grid generator's filter).
+ * form + grid). Each re-export line mirrors its generator's filter: service +
+ * grid require a READ endpoint, the form a WRITE endpoint on a non-projection,
+ * and the grid additionally a `layout.dataGrid` child.
  *
  * Emits `index.ts` at the target's outDir root. Stable alphabetical order.
  */
@@ -50,9 +54,15 @@ export const barrel = function barrel(opts?: AngularBarrelOpts): Generator {
         .filter(isAngularEmittable)
         .sort((a, b) => a.name.localeCompare(b.name));
       for (const e of eligible) {
-        lines.push(`export * from ${JSON.stringify(specifierFor(layout, e.package, `${e.name}.service`))};`);
-        lines.push(`export * from ${JSON.stringify(specifierFor(layout, e.package, `${e.name}.form.component`))};`);
-        if (hasDataGridLayout(e)) {
+        // Each line mirrors its generator's filter exactly — a re-export of a file
+        // that was never emitted is a hard build break in the consumer app.
+        if (servesReadApi(e)) {
+          lines.push(`export * from ${JSON.stringify(specifierFor(layout, e.package, `${e.name}.service`))};`);
+        }
+        if (servesWriteApi(e) && !isProjection(e)) {
+          lines.push(`export * from ${JSON.stringify(specifierFor(layout, e.package, `${e.name}.form.component`))};`);
+        }
+        if (servesReadApi(e) && hasDataGridLayout(e)) {
           lines.push(`export * from ${JSON.stringify(specifierFor(layout, e.package, `${e.name}.grid.component`))};`);
         }
       }

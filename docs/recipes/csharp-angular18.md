@@ -31,7 +31,9 @@ same packages serve any backend that conforms to the API contract.
 > **Before you start: the Angular packages are NOT on npm.** `@metaobjectsdev/angular`
 > and `@metaobjectsdev/codegen-ts-angular` build in-repo and are versioned on their
 > own `0.6.x` line, but neither has ever been published — `npm i
-> @metaobjectsdev/angular` returns a 404. To follow this recipe today, build both
+> @metaobjectsdev/angular` returns a 404, deliberately
+> ([ADR-0048](../../spec/decisions/ADR-0048-angular-tier-source-only.md)). To
+> follow this recipe today, build both
 > from the workspace paths above and consume them locally (a file/workspace
 > dependency, or `npm pack` + install the tarball). The C# half of the recipe is
 > published and installs normally; only the Angular half is source-only. The

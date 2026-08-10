@@ -6,14 +6,19 @@ Universal browser client — works with any backend that conforms to the cross-p
 
 ## Install
 
-> **NOT published to npm — source-only today.** This package builds in-repo and is
-> versioned on its own `0.6.x` line, but has never been released —
-> `npm i @metaobjectsdev/angular` returns a 404. Consume it from source (a
-> workspace/file dependency, or `npm pack` + install the tarball) by building from
-> this directory. The published browser-client tier is React + TanStack; see
+> **NOT published to npm — source-only by decision**
+> ([ADR-0048](../../../../spec/decisions/ADR-0048-angular-tier-source-only.md)).
+> This package builds in-repo on its own `0.6.x` line, but has never been released —
+> `npm i @metaobjectsdev/angular` returns a 404, and that is deliberate: the tier is
+> not yet at the published tier's bar (grid parity with TanStack, view-kind form
+> dispatch, a runner that can execute its behavioral suite — the full promotion
+> checklist lives in the ADR). Consume it from source (a workspace/file dependency,
+> or `npm pack` + install the tarball) by building from this directory. The
+> published browser-client tier is React + TanStack; see
 > [`docs/ports/typescript-client.md`](../../../../docs/ports/typescript-client.md). To
 > build locally you'll want these as workspace deps: `@angular/core@^18`,
 > `@angular/forms@^18`, `@angular/common@^18`, `@tanstack/angular-table@^8`.
+> Angular 18 is the only tested major — the peer ranges say so on purpose.
 
 ## Wiring
 

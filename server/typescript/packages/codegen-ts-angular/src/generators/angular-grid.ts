@@ -6,6 +6,7 @@ import {
   type GeneratorFactory,
   formatTs,
   entityOutputPath,
+  servesReadApi,
 } from "@metaobjectsdev/codegen-ts";
 import { renderGridFile } from "../templates/grid-file.js";
 
@@ -33,8 +34,11 @@ export const angularGridFile = function angularGridFile(
   const generator: Generator = {
     name: "angular-grid",
     filter: (e: MetaObject) =>
+      // A grid renders what a generated READ endpoint returns — no endpoint, no grid
+      // (see api-surface.ts).
       // ADR-0039: resolving — a concrete entity may inherit its @emit* opt-out flag via extends.
-      e.attr("emitAngular") !== false
+      servesReadApi(e)
+      && e.attr("emitAngular") !== false
       && userFilter(e)
       && hasDataGridLayout(e),
     generate: perEntity(async (entity, ctx) => {

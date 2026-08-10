@@ -42,76 +42,46 @@ plants a second physical ts-poet copy in its `node_modules`, and runs the real
 `node <cli-bin> gen` — one lane per fix half (current templates; legacy bare-import
 scaffolds), each verified red without its half of the fix.
 
-||||||| ba88c0d9
+### The Angular tier stays source-only — now by decision, not accident (ADR-0048)
 
-### Added — the persistence corpus can now see a port that ignores `sort`, `limit` or `offset` (all five ports)
+0.21.5 corrected the docs to say `@metaobjectsdev/angular` +
+`@metaobjectsdev/codegen-ts-angular` were never published, and gated the mechanism
+that had let them fall out of every release. That left the actual product question
+open: publish the tier, or keep it source-only? A code assessment settled it —
+**source-only, deliberately**, recorded in
+[ADR-0048](spec/decisions/ADR-0048-angular-tier-source-only.md) with the promotion
+checklist a future publish must meet. The short version: the runtime grid is well
+below the TanStack tier it claims to mirror (no sorting/pagination; the
+cell-renderer registry's lookup result was discarded), form codegen predates the
+0.18.0 view-kind and 0.19.0 image feature lines, the runtime behavioral suite
+cannot execute under Bun at all (Angular's standard decorators need the Angular
+linker — only the #287 browser-bundle gate runs in CI, by name), and no consumer
+has asked for the npm package. Publishing — including a `next`-tag preview — would
+manufacture exactly the "package promising a compatibility it never had" liability
+the last two cuts were spent paying down.
 
-Every `sort:` in the query corpus was `[{ field: id, dir: asc }]` over seed rows
-inserted in ascending-id order, and no scenario used `dir: desc`, `limit`,
-`offset`, or `in` combined with a second predicate — so a port that dropped sort
-entirely, hardcoded ascending, was off-by-one on offset, or rendered `in` as an
-unparenthesized OR-chain passed the whole corpus (which is exactly how the three
-0.21.x Java query-lowering defects survived; their pins lived in a Java-only unit
-test, leaving the other four ports structurally unobservable). Three new
-scenarios close the blind spot for all five ports at once, each with seed data
-that distinguishes right from wrong: `sort-desc-non-id` (desc on `priceCents` /
-`title`, deliberately misaligned with insertion and id order),
-`pagination-limit-offset` (page 2 of size 2 — a 1-based offset, an ignored
-offset, and an ignored limit each produce a different row set; plus desc+offset
-combined), and `filter-in-with-second-predicate` (`in` AND'd with a range in
-both the two-field-key and explicit `and:` forms; both wrong-regrouping arms
-seeded). Proven able to fail: re-introducing the historical Java OR-chain and
-0-based `Range` in the conformance adapter fails exactly the two new scenarios
-(the 25 pre-existing ones stay green — the old blindness, demonstrated), and a
-forced-asc / off-by-one-offset mutation of the TS runtime fails the other.
+Two defects found during the assessment are fixed in place rather than left to the
+promotion bar:
 
-### Fixed — a projection's primary key is no longer typed nullable (codegen-ts)
+- **The Angular generators now carry the 0.21.5 endpoint guards.** `angularServiceFile`
+  and `angularGridFile` gate on `servesReadApi`, `angularFormFile` on
+  `servesWriteApi && !isProjection`, and each of the barrel's re-export lines
+  mirrors its generator's filter — previously all four emitted artifacts (and
+  dangling barrel re-exports) for an `object.value`, a sourceless entity/projection
+  or an abstract object, output that could never compile. Same fix, same predicates,
+  same test model as the tanstack/react generators got in 0.21.5; the package
+  simply wasn't covered then. Pinned by `test/sourceless-objects.test.ts`.
+- **`@metaobjectsdev/angular`'s `@angular/*` peer ranges narrow to `>=18.0.0 <19.0.0`** —
+  the tier is built and tested on Angular 18.2 only, and the previous `<23.0.0`
+  bound promised four majors nothing has ever exercised. Widening back is earned by
+  testing (it is on the ADR's promotion bar). Unpublished, so no installed consumer
+  can be stranded by the change.
 
-A generated projection's PK (`AuthorSummary.id`) came out `z.string().nullable()`
-with no `.notNull()` on the view column, even though it `extends` the entity's
-non-null PK — the view path decided nullability from `@required` alone, while a
-PK's table-side non-null is expressed via `.primaryKey()`, which an `.existing()`
-view declaration cannot carry. The base PK sits on the `FROM` side of every
-synthesized view and can never be NULL, and the generated queries
-(`find<Projection>ById(db, id: string)`), api-docs and UpdateSchema already
-treated it as non-null — the read schema was the one dissenter. The view decl +
-read schema now OR the owning object's primary-identity field names into the
-non-null decision (projections AND write-through replica views). Output changes
-only on projection/replica-view PK columns; everything else is byte-identical.
-
-### Fixed — `meta migrate`'s blocked-change hint for `change-column-default` named no flag (migrate-ts)
-
-`BlockedChangesError`'s hint map had no entry for `change-column-default`, so the
-refusal for dropping a live auto-sequence default read
-`change-column-default on task.id: pass (no flag enables this)` — actively
-misleading, since `--allow drop-identity-default` does enable exactly that (and
-the sibling test proves it). Found because the test asserting the refusal was a
-bare `.toThrow()`; it now pins the corrected hint.
-
-### Changed — docs stop showing a `like` example that can never succeed
-
-`like: "%@example.com"` — the canonical client-usage example in CLAUDE.md and the
-installed agent docs — is unconditionally a 400 against generated TS routes: the
-generated allowlist hardcodes `leadingWildcard: false` and the parser rejects any
-leading `%` (`filter.leading_wildcard_disallowed`). The restriction itself is
-deliberate (an unanchored LIKE defeats index usage; fail-closed) and stays; the
-docs now show a working anchored pattern, state the restriction and its error
-code, and document the existing opt-in — hand-edit the field's entry in the
-generated `<Entity>FilterAllowlist` to `leadingWildcard: true` (preserved by the
-three-way merge). No new metadata vocabulary (ADR-0037 step 0 / ADR-0023: the
-gate is TS-only generated-code behavior, not cross-port metamodel semantics —
-the other ports accept leading wildcards, now documented as such in
-`docs/features/api-contract.md`).
-
-### Tests — 55 vacuous no-argument `toThrow()` assertions tightened (all TS packages)
-
-Every bare `.toThrow()` / `.rejects.toThrow()` asserted only that *something*
-threw — passing even when the throw came from a typo in the test's own setup.
-All 55 (metadata 25, cli 13, migrate-ts 8, sdk 3, codegen-ts 2,
-integration-tests 2, runtime-ts 1, angular 1) now pin error identity (class
-and/or a distinctive message fragment); representative wrong-matcher probes
-confirmed each style of pin actually fails when the message differs. The sweep
-surfaced the `change-column-default` hint bug above.
+Docs updated to state the decision wherever the tier is described: both package
+READMEs, `README.md`, `CLAUDE.md`, `docs/ports/typescript-client.md`,
+`docs/recipes/csharp-angular18.md`, `docs/RELEASING.md` (a release cut must not
+sweep the pair into lockstep), and the `SOURCE_ONLY` rationale in
+`scripts/check-publish-intent.sh`.
 
 ## [0.21.5] — npm `0.21.5` · PyPI `0.21.5` · NuGet `0.21.5` · Maven `7.21.5`
 
