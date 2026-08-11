@@ -2351,6 +2351,24 @@ public static class ValidationPasses
         return errors.AsReadOnly();
     }
 
+    /// <summary>
+    /// The shared-enum super of <paramref name="field"/>, or null when it has none.
+    /// "Shared" (FR-019 / #246) means the immediate super is abstract AND declared at
+    /// metadata-root — a metadata.root child, not one nested under an object. Such a
+    /// declaration is materialized ONCE per port as a single named type, so anything a
+    /// consuming field re-declares that belongs to the shared TYPE's contract (its
+    /// @values member set, or the @intValueMap integer backing of that set) is a conflict.
+    /// Immediate-super-only, matching codegen's Fr019SharedEnum.ResolveSharedEnumDecl so
+    /// the validator and the shared-enum collapse agree on what "shared" means.
+    /// </summary>
+    private static MetaData? SharedEnumSuper(MetaField field)
+    {
+        var sup = field.SuperData;
+        return sup is not null && sup.IsAbstract && sup.Parent is { } p && p.Type == TYPE_METADATA
+            ? sup
+            : null;
+    }
+
     private static void WalkEnumValues(MetaData node, List<MetaError> errors)
     {
         if (node is MetaField { SubType: FIELD_SUBTYPE_ENUM } field)
@@ -2404,11 +2422,10 @@ public static class ValidationPasses
                 // collapse would silently drop this field's own @values in favor of the shared
                 // type's. Own-attrs-only (matches Rules 1-3 above): only fires when THIS node
                 // declares @values itself, not when it merely inherits.
-                var sup = field.SuperData;
-                if (sup is not null && sup.IsAbstract && sup.Parent is { } p && p.Type == TYPE_METADATA)
+                if (SharedEnumSuper(field) is { } sharedSuper)
                 {
                     errors.Add(new MetaError(
-                        $"field.enum '{field.Name}' extends shared abstract enum '{sup.Name}' AND declares its own " +
+                        $"field.enum '{field.Name}' extends shared abstract enum '{sharedSuper.Name}' AND declares its own " +
                         $"@{FIELD_ATTR_VALUES} — a shared enum's member set is owned by the shared declaration; " +
                         $"remove the own @{FIELD_ATTR_VALUES} to inherit it, or extend a non-shared enum instead.",
                         ErrorCode.ERR_ENUM_EXTENDS_VALUES_CONFLICT,
@@ -2453,6 +2470,22 @@ public static class ValidationPasses
             //      before this pass.)
             if (field.OwnAttr(FIELD_ATTR_INT_VALUE_MAP) is IReadOnlyDictionary<string, object?> intValueMap)
             {
+                // #246 (int-backed twin): the symbol→int mapping is a property of the enum
+                // VOCABULARY, not of one column that uses it — it is @values' numeric half.
+                // A shared enum is materialized once as a single type, so a per-field map
+                // would give one logical type N storage encodings (and, where a port emits
+                // per-TYPE codec artifacts, two same-named declarations). Same remedy as the
+                // @values half: declare it on the shared declaration and inherit it.
+                if (SharedEnumSuper(field) is { } sharedIntSuper)
+                {
+                    errors.Add(new MetaError(
+                        $"field.enum '{field.Name}' extends shared abstract enum '{sharedIntSuper.Name}' AND declares its own " +
+                        $"@{FIELD_ATTR_INT_VALUE_MAP} — a shared enum's integer backing is owned by the shared declaration; " +
+                        $"move @{FIELD_ATTR_INT_VALUE_MAP} onto '{sharedIntSuper.Name}' to inherit it, or extend a non-shared enum instead.",
+                        ErrorCode.ERR_ENUM_EXTENDS_VALUES_CONFLICT,
+                        Envelope: field.Source));
+                }
+
                 var effective = field.EffectiveEnumValues ?? new List<string>();
                 var memberSet = new HashSet<string>(effective, StringComparer.Ordinal);
                 var mapKeys = intValueMap.Keys.ToList();

@@ -310,6 +310,19 @@ function validateNode(
   // only own @values need checking here (mirrors the own-attrs-only policy of
   // Checks 2+3 above — inherited attrs were validated on the declaring node).
   if (node.type === TYPE_FIELD && node.subType === FIELD_SUBTYPE_ENUM) {
+    // #246: the shared-enum super, if any — a root-level abstract field.enum (one
+    // whose parent is the metadata root, not an object). FR-019 materializes such a
+    // declaration ONCE per port as a single named type, so anything a consuming
+    // field re-declares that is part of the shared TYPE's contract is a conflict.
+    // Immediate-super-only, matching codegen's resolveSharedEnumDecl (enum-shared.ts)
+    // so the validator and the collapse agree on what "shared" means.
+    const sharedSuper =
+      node.superData !== undefined &&
+      node.superData.isAbstract &&
+      node.superData.parent?.type === TYPE_METADATA
+        ? node.superData
+        : undefined;
+
     // ADR-0039: own — validates the @values DECLARED on this node; a concrete enum
     // extending an abstract one inherits already-validated @values (own-attrs-only).
     const rawValues = node.ownAttrs().get(FIELD_ATTR_VALUES);
@@ -348,18 +361,16 @@ function validateNode(
         }
       }
 
-      // #246: a field.enum extending a shared package-level abstract enum
-      // (a root-level abstract field — one whose parent is the metadata root,
-      // not an object) that ALSO declares its own @values is a conflict: one
-      // shared enum type has one member set, so codegen's shared-enum collapse
-      // would silently drop this field's own @values in favor of the shared
-      // type's. Own-attrs-only (matches the rest of Check 4): only fires when
-      // THIS node declares @values itself, not when it merely inherits.
-      const sup = node.superData;
-      if (sup !== undefined && sup.isAbstract && sup.parent?.type === TYPE_METADATA) {
+      // #246: a field.enum extending a shared package-level abstract enum that
+      // ALSO declares its own @values is a conflict: one shared enum type has one
+      // member set, so codegen's shared-enum collapse would silently drop this
+      // field's own @values in favor of the shared type's. Own-attrs-only
+      // (matches the rest of Check 4): only fires when THIS node declares
+      // @values itself, not when it merely inherits.
+      if (sharedSuper !== undefined) {
         errors.push(
           new ParseError(
-            `${nodeLabel(node)} extends shared abstract enum '${nodeLabel(sup)}' AND declares its own ` +
+            `${nodeLabel(node)} extends shared abstract enum '${nodeLabel(sharedSuper)}' AND declares its own ` +
               `'@${FIELD_ATTR_VALUES}' — a shared enum's member set is owned by the shared declaration; ` +
               `remove the own '@${FIELD_ATTR_VALUES}' to inherit it, or extend a non-shared enum instead.`,
             { code: "ERR_ENUM_EXTENDS_VALUES_CONFLICT", source: node.source },
@@ -410,6 +421,23 @@ function validateNode(
     // semantics: key-set-equals-@values, and no two members share a value.
     const rawIntValueMap = node.ownAttrs().get(FIELD_ATTR_INT_VALUE_MAP);
     if (rawIntValueMap !== undefined && typeof rawIntValueMap === "object" && rawIntValueMap !== null) {
+      // #246 (int-backed twin): the symbol→int mapping is a property of the enum
+      // VOCABULARY, not of one column that uses it — it is @values' numeric half.
+      // A shared enum is materialized once as a single type, so a per-field map
+      // would give one logical type N storage encodings (and, where a port emits
+      // per-TYPE codec artifacts, two same-named declarations). Same remedy as the
+      // @values half: declare it on the shared declaration and inherit it.
+      if (sharedSuper !== undefined) {
+        errors.push(
+          new ParseError(
+            `${nodeLabel(node)} extends shared abstract enum '${nodeLabel(sharedSuper)}' AND declares its own ` +
+              `'@${FIELD_ATTR_INT_VALUE_MAP}' — a shared enum's integer backing is owned by the shared ` +
+              `declaration; move '@${FIELD_ATTR_INT_VALUE_MAP}' onto '${nodeLabel(sharedSuper)}' to inherit it, ` +
+              `or extend a non-shared enum instead.`,
+            { code: "ERR_ENUM_EXTENDS_VALUES_CONFLICT", source: node.source },
+          ),
+        );
+      }
       const map = rawIntValueMap as Record<string, number>;
       const effectiveValues = node.attrs().get(FIELD_ATTR_VALUES);
       const declaredMembers: string[] = Array.isArray(effectiveValues) ? effectiveValues : [];

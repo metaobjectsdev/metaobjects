@@ -705,8 +705,8 @@ public final class ValidationPhase {
             // favor of the shared type's. Own-attrs-only (matches the check above):
             // only fires when THIS node declares @values itself, not when it merely
             // inherits.
-            MetaData sup = node.getSuperData();
-            if (sup != null && isAbstract(sup) && sup.getParent() instanceof MetaRoot) {
+            MetaData sup = sharedEnumSuper(node);
+            if (sup != null) {
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_ENUM_EXTENDS_VALUES_CONFLICT
                         + ": field.enum '" + node.getName()
@@ -750,9 +750,45 @@ public final class ValidationPhase {
      * validates the field.enum-SPECIFIC semantics: key-set-equals-effective-@values,
      * and no two members share the same int value.</p>
      */
+    /**
+     * The shared-enum super of {@code node}, or null when it has none.
+     *
+     * <p>"Shared" (FR-019 / #246) means the immediate super is abstract AND declared at
+     * metadata-root — its parent is the {@link MetaRoot}, not an object. Such a declaration
+     * is materialized ONCE per port as a single named type, so anything a consuming field
+     * re-declares that belongs to the shared TYPE's contract (its {@code @values} member
+     * set, or the {@code @intValueMap} integer backing of that set) is a conflict.
+     *
+     * <p>Immediate-super-only, matching codegen's {@code Fr019SharedEnum.resolveSharedEnumDecl}
+     * so the validator and the shared-enum collapse agree on what "shared" means.
+     */
+    private static MetaData sharedEnumSuper(MetaData node) {
+        MetaData sup = node.getSuperData();
+        return (sup != null && isAbstract(sup) && sup.getParent() instanceof MetaRoot) ? sup : null;
+    }
+
     private static void validateEnumIntValueMap(MetaData node) {
         if (!node.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP, false)) {
             return;
+        }
+
+        // #246 (int-backed twin): the symbol->int mapping is a property of the enum
+        // VOCABULARY, not of one column that uses it - it is @values' numeric half. A
+        // shared enum is materialized once as a single type, so a per-field map would give
+        // one logical type N storage encodings (and, where a port emits per-TYPE codec
+        // artifacts, two same-named declarations). Same remedy as the @values half:
+        // declare it on the shared declaration and inherit it.
+        MetaData sharedSuper = sharedEnumSuper(node);
+        if (sharedSuper != null) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_ENUM_EXTENDS_VALUES_CONFLICT
+                    + ": field.enum '" + node.getName()
+                    + "' extends shared abstract enum '" + sharedSuper.getName()
+                    + "' AND declares its own @" + EnumField.ATTR_INT_VALUE_MAP
+                    + " - a shared enum's integer backing is owned by the shared declaration;"
+                    + " move @" + EnumField.ATTR_INT_VALUE_MAP + " onto '" + sharedSuper.getName()
+                    + "' to inherit it, or extend a non-shared enum instead",
+                ErrorCode.ERR_ENUM_EXTENDS_VALUES_CONFLICT, node.getSource());
         }
 
         @SuppressWarnings("unchecked")

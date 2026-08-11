@@ -7,6 +7,11 @@
           "name": "Status",
           "package": "acme",
           "abstract": true,
+          "@intValueMap": {
+            "ARCHIVED": 9,
+            "DRAFT": 0,
+            "PUBLISHED": 5
+          },
           "@values": [
             "DRAFT",
             "PUBLISHED",
@@ -26,12 +31,7 @@
             {
               "field.enum": {
                 "name": "status",
-                "extends": "acme::Status",
-                "@intValueMap": {
-                  "ARCHIVED": 9,
-                  "DRAFT": 0,
-                  "PUBLISHED": 5
-                }
+                "extends": "acme::Status"
               }
             },
             {

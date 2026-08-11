@@ -86,12 +86,21 @@ def test_value_outside_32bit_range_is_rejected():
 def _model_inherited_values(extra: str) -> str:
     """An abstract field.enum owning @values, and a concrete field.enum on
     Order.status that `extends` it (inheriting @values) while owning its own
-    @intValueMap directly."""
+    @intValueMap directly.
+
+    The abstract enum is nested inside an abstract object.entity, NOT declared at
+    metadata-root: a root-level abstract enum is a SHARED enum (FR-019), and #246's
+    int-backed twin forbids a consuming field from owning an @intValueMap against
+    one. A non-root abstract super stays legal, so this is the shape that still
+    exercises "own @intValueMap validated against INHERITED @values".
+    """
     return f"""{{ "metadata.root": {{ "package": "acme", "children": [
-      {{ "field.enum": {{ "name": "Status", "abstract": true, "@values": ["DRAFT","PUBLISHED","ARCHIVED"] }} }},
+      {{ "object.entity": {{ "name": "Container", "abstract": true, "children": [
+        {{ "field.enum": {{ "name": "kind", "abstract": true, "@values": ["DRAFT","PUBLISHED","ARCHIVED"] }} }}
+      ]}} }},
       {{ "object.entity": {{ "name": "Order", "children": [
         {{ "field.long": {{ "name": "id" }} }},
-        {{ "field.enum": {{ "name": "status", "extends": "Status" {extra} }} }},
+        {{ "field.enum": {{ "name": "status", "extends": "acme::Container.kind" {extra} }} }},
         {{ "identity.primary": {{ "name": "pk", "@fields": ["id"] }} }}
       ]}} }}
     ]}} }}"""
@@ -128,5 +137,49 @@ def test_intvaluemap_on_node_with_inherited_values_valid_map_loads_clean():
         _model_inherited_values(
             ', "@intValueMap": {"DRAFT": 0, "PUBLISHED": 5, "ARCHIVED": 9}'
         )
+    )
+    assert result.errors == []
+
+
+def _model_shared_enum(extra: str) -> str:
+    """A ROOT-level abstract field.enum (a SHARED enum per FR-019) owning @values,
+    and a concrete Order.status that `extends` it."""
+    return f"""{{ "metadata.root": {{ "package": "acme", "children": [
+      {{ "field.enum": {{ "name": "Status", "abstract": true, "@values": ["DRAFT","PUBLISHED","ARCHIVED"] }} }},
+      {{ "object.entity": {{ "name": "Order", "children": [
+        {{ "field.long": {{ "name": "id" }} }},
+        {{ "field.enum": {{ "name": "status", "extends": "acme::Status" {extra} }} }},
+        {{ "identity.primary": {{ "name": "pk", "@fields": ["id"] }} }}
+      ]}} }}
+    ]}} }}"""
+
+
+def test_own_intvaluemap_against_shared_enum_is_rejected():
+    # #246 int-backed twin: a shared enum is materialized ONCE as a single type, so
+    # its integer backing belongs on the shared declaration. A consuming field that
+    # owns an @intValueMap would give one logical type N storage encodings.
+    result = _load(
+        _model_shared_enum(
+            ', "@intValueMap": {"DRAFT": 0, "PUBLISHED": 5, "ARCHIVED": 9}'
+        )
+    )
+    codes = [e.code for e in result.errors]
+    assert ErrorCode.ERR_ENUM_EXTENDS_VALUES_CONFLICT in codes
+
+
+def test_intvaluemap_on_the_shared_declaration_itself_loads_clean():
+    # The sanctioned shape: the shared declaration owns BOTH @values and the
+    # integer backing; the consuming field inherits both and declares neither.
+    result = _load(
+        """{ "metadata.root": { "package": "acme", "children": [
+          { "field.enum": { "name": "Status", "abstract": true,
+            "@values": ["DRAFT","PUBLISHED","ARCHIVED"],
+            "@intValueMap": {"DRAFT": 0, "PUBLISHED": 5, "ARCHIVED": 9} } },
+          { "object.entity": { "name": "Order", "children": [
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "status", "extends": "acme::Status" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+          ]} }
+        ]} }"""
     )
     assert result.errors == []
