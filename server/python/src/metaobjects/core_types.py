@@ -62,6 +62,19 @@ from .meta.core.object.object_constants import (
     OBJECT_SUBTYPES,
 )
 from .meta.core.relationship.meta_relationship import MetaRelationship
+from .meta.core.requirement.meta_requirement import MetaRequirement
+from .meta.core.requirement.requirement_constants import (
+    REQUIREMENT_ATTR_IMPLEMENTED_BY,
+    REQUIREMENT_ATTR_LEVEL,
+    REQUIREMENT_ATTR_STATEMENT,
+    REQUIREMENT_ATTR_STATUS,
+    REQUIREMENT_ATTR_SUPERSEDED_BY,
+    REQUIREMENT_ATTR_VERIFIED_BY,
+    REQUIREMENT_ATTR_VIOLATION,
+    REQUIREMENT_STATUSES,
+    REQUIREMENT_SUBTYPE_ARCHITECTURAL,
+    REQUIREMENT_SUBTYPE_FUNCTIONAL,
+)
 from .meta.core.relationship.relationship_constants import (
     REFERENTIAL_ACTIONS,
     RELATIONSHIP_ATTR_CARDINALITY,
@@ -134,6 +147,7 @@ from .shared.base_types import (
     TYPE_OBJECT,
     TYPE_ORIGIN,
     TYPE_RELATIONSHIP,
+    TYPE_REQUIREMENT,
     TYPE_SOURCE,
     TYPE_TEMPLATE,
     TYPE_VALIDATOR,
@@ -186,8 +200,9 @@ def _register_subtypes(
 # NOT declared in any spec/metamodel/*.json provider file; both this port and the TS
 # reference HAND-CODE the root (the single documented hand-coded exception to the
 # JSON-sourced model). Its STRUCTURAL children must byte-match the cross-port golden:
-# description "Root metadata document" and EXACTLY the four genuinely-open structural
-# wildcards a document root legitimately holds — field / object / template / validator
+# description "Root metadata document" and EXACTLY the five genuinely-open structural
+# wildcards a document root legitimately holds — field / object / requirement /
+# template / validator
 # (mirrors the TS core-types.ts root def and the Java MetaRoot registration). Because
 # it is undeclared in the JSON, the strict-children pass leaves it untouched, so the
 # children registered HERE are emitted verbatim. The any-attr wildcard is intentionally
@@ -201,6 +216,8 @@ core_provider.add(
         child_rules=[
             ChildRule(TYPE_FIELD, "*"),
             ChildRule(TYPE_OBJECT, "*"),
+            # Capability requirements are declared beside the entities they describe.
+            ChildRule(TYPE_REQUIREMENT, "*"),
             ChildRule(TYPE_TEMPLATE, "*"),
             ChildRule(TYPE_VALIDATOR, "*"),
         ],
@@ -544,6 +561,75 @@ for _idx_sub in INDEX_SUBTYPES:
             child_rules=[ChildRule(TYPE_ATTR, "*")],
         )
     )
+
+# requirement.* (functional, architectural) — the capability ledger IS a metadata
+# model (requirements-as-metadata ruling, amendment 3), so it is registered
+# vocabulary rather than a hand-parsed side file: @status is an allowedValues enum
+# the LOADER refuses a typo on. The axis is CHECK POLARITY, a genuine behaviour
+# difference (ADR-0037 §2): `functional` is checked by EXISTENCE (nothing
+# implements it -> fail), `architectural` by UNIVERSALITY (something violates it
+# -> fail). Architectural carries no @level and no @verifiedBy — levels come from
+# object-in-focus decomposition and an architectural requirement is
+# object-independent by definition.
+#
+# Hierarchy is NESTING, not a parent attr: requirement.functional admits nested
+# requirement children (the strict graph in spec/metamodel/requirement.json, which
+# _apply_strict_structural_children re-derives onto this registration).
+#
+# @implementedBy is deliberately NOT declared as a loader `references` descriptor.
+# That pass always ERRORS on an unresolved target, and a requirement with status
+# `abandoned`/`superseded` exists precisely to name nodes that are GONE — declaring
+# it here would make those entries fail to load. The loader owns what is
+# unconditional; `verify` owns @implementedBy resolution, whose severity depends on
+# @status.
+_REQUIREMENT_COMMON_ATTRS = [
+    AttrSchema(
+        name=REQUIREMENT_ATTR_STATUS,
+        value_type=ATTR_SUBTYPE_STRING,
+        required=True,
+        allowed_values=REQUIREMENT_STATUSES,
+    ),
+    AttrSchema(name=REQUIREMENT_ATTR_STATEMENT, value_type=ATTR_SUBTYPE_STRING, required=True),
+    AttrSchema(name=REQUIREMENT_ATTR_VIOLATION, value_type=ATTR_SUBTYPE_STRING, required=True),
+    AttrSchema(
+        name=REQUIREMENT_ATTR_IMPLEMENTED_BY,
+        value_type=ATTR_SUBTYPE_STRING,
+        required=False,
+        is_array=True,
+    ),
+    AttrSchema(name=REQUIREMENT_ATTR_SUPERSEDED_BY, value_type=ATTR_SUBTYPE_STRING, required=False),
+]
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_REQUIREMENT,
+        sub_type=REQUIREMENT_SUBTYPE_FUNCTIONAL,
+        factory=MetaRequirement,
+        attrs=[
+            AttrSchema(name=REQUIREMENT_ATTR_LEVEL, value_type=ATTR_SUBTYPE_INT, required=True),
+            *_REQUIREMENT_COMMON_ATTRS,
+            AttrSchema(
+                name=REQUIREMENT_ATTR_VERIFIED_BY,
+                value_type=ATTR_SUBTYPE_STRING,
+                required=False,
+                is_array=True,
+            ),
+        ],
+        child_rules=[
+            ChildRule(TYPE_ATTR, "*"),
+            # Hierarchy IS nesting — an L1 solution contains its L2 segments.
+            ChildRule(TYPE_REQUIREMENT, "*"),
+        ],
+    )
+)
+core_provider.add(
+    TypeDefinition(
+        type=TYPE_REQUIREMENT,
+        sub_type=REQUIREMENT_SUBTYPE_ARCHITECTURAL,
+        factory=MetaRequirement,
+        attrs=list(_REQUIREMENT_COMMON_ATTRS),
+        child_rules=[ChildRule(TYPE_ATTR, "*")],
+    )
+)
 
 # relationship.* (base, association, aggregation, composition).
 # @onDelete / @onUpdate are validated against REFERENTIAL_ACTIONS — kebab-case

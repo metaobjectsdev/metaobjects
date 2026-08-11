@@ -12,6 +12,7 @@ TYPE_LAYOUT = "layout"
 TYPE_SOURCE = "source"
 TYPE_ORIGIN = "origin"
 TYPE_TEMPLATE = "template"
+TYPE_REQUIREMENT = "requirement"
 
 SUBTYPE_BASE = "base"
 SUBTYPE_ROOT = "root"
