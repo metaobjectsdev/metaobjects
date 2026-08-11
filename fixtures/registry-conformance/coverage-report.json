@@ -1,5 +1,5 @@
 {
-  "registeredSubTypeCount": 67,
+  "registeredSubTypeCount": 69,
   "exercisedSubTypeCount": 45,
   "untestedSubTypes": [
     "attr.base",
@@ -16,6 +16,8 @@
     "object.base",
     "origin.base",
     "relationship.base",
+    "requirement.architectural",
+    "requirement.functional",
     "source.base",
     "template.base",
     "validator.atLeastOne",
@@ -313,12 +315,6 @@
         "expr",
         "using",
         "where"
-      ]
-    },
-    {
-      "key": "object.value",
-      "untestedAttrs": [
-        "normalize"
       ]
     },
     {

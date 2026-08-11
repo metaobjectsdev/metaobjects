@@ -313,7 +313,7 @@ describe("Public API surface — @metaobjectsdev/metadata index", () => {
   });
 
   test("BASE_TYPES array is exported and correct length", () => {
-    expect(BASE_TYPES).toHaveLength(13);
+    expect(BASE_TYPES).toHaveLength(14);
     expect(BASE_TYPES).toContain(TYPE_OBJECT);
     expect(BASE_TYPES).toContain(TYPE_FIELD);
     expect(BASE_TYPES).toContain(TYPE_LAYOUT);

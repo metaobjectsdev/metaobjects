@@ -56,6 +56,9 @@ import { TEMPLATE_SUBTYPES } from "./template/template-constants.js";
 import { MetaIndex } from "./core/index/meta-index.js";
 import { INDEX_DEFINITION } from "./core/index/index-definition.embedded.js";
 import { INDEX_SUBTYPES } from "./core/index/index-constants.js";
+import { MetaRequirement } from "./core/requirement/meta-requirement.js";
+import { REQUIREMENT_DEFINITION } from "./core/requirement/requirement-definition.embedded.js";
+import { REQUIREMENT_SUBTYPES } from "./core/requirement/requirement-constants.js";
 import {
   TYPE_METADATA,
   TYPE_OBJECT,
@@ -70,6 +73,7 @@ import {
   TYPE_ORIGIN,
   TYPE_TEMPLATE,
   TYPE_INDEX,
+  TYPE_REQUIREMENT,
   SUBTYPE_ROOT,
 } from "./shared/base-types.js";
 import { CHILD_RULE_WILDCARD } from "./shared/structural.js";
@@ -186,6 +190,8 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
       wildcard(TYPE_FIELD),
       wildcard(TYPE_VALIDATOR),
       wildcard(TYPE_TEMPLATE),
+      // Capability requirements are declared beside the entities they describe.
+      wildcard(TYPE_REQUIREMENT),
     ], MetaRoot),
   );
 
@@ -487,6 +493,23 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
     registry.register(indexDef);
   }
 
+  // requirement — 2 subtypes. The axis is CHECK POLARITY, a genuine behaviour
+  // difference (ADR-0037 §2): `functional` is checked by EXISTENCE (nothing
+  // implements it -> fail), `architectural` by UNIVERSALITY (something violates
+  // it -> fail). Registered rather than hand-parsed because the capability
+  // ledger IS a metadata model: a closed status enum and a list of FQN
+  // references to model nodes are exactly `allowedValues` plus reference
+  // resolution, both of which this registry already owns (ruling amendment 3).
+  const REQUIREMENT_FACTORIES: FactoryMap = Object.fromEntries(
+    REQUIREMENT_SUBTYPES.map((subType) => [
+      `${TYPE_REQUIREMENT}.${subType}`,
+      (typeId: TypeId, name: string) => new MetaRequirement(typeId, name),
+    ]),
+  );
+  for (const reqDef of defineProviderFromData(REQUIREMENT_DEFINITION, REQUIREMENT_FACTORIES)) {
+    registry.register(reqDef);
+  }
+
   // Declare the core cross-references ON their TypeDefinitions, so the loader's
   // registry-derived validation resolves them generically (a dangling target fails the
   // load). Set on the concrete subtypes the parser produces. (Production moves these into
@@ -499,6 +522,13 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
       ];
     }
   }
+  // NOTE: @implementedBy is deliberately NOT declared as a loader `references`
+  // descriptor. That pass always ERRORS on an unresolved target, and a
+  // requirement with status `abandoned`/`superseded` exists precisely to name
+  // nodes that are GONE — declaring it here would make the entries that carry
+  // the mechanism's only controlled evidence fail to load. The loader owns what
+  // is unconditional (the status enum, shape, levels); `meta verify` owns the
+  // status-conditional resolution, where the severity actually depends on data.
   const idRefDef = registry.find(TYPE_IDENTITY, IDENTITY_SUBTYPE_REFERENCE);
   if (idRefDef) {
     idRefDef.references = [

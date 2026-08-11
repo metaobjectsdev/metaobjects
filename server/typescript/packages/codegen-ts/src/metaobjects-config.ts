@@ -141,20 +141,6 @@ export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport"
    * governs the shape, mirroring the cross-port `emitAbstractShapes` option.
    */
   emitAbstractShapes?: boolean;
-  /**
-   * Path to the project's capability ledger, relative to the project root.
-   * Defaults to `"capabilities.yaml"`. Checked by `meta verify` when the file
-   * exists — the ledger is opt-in by existence, so pointing this at a missing
-   * file is silent, not an error.
-   *
-   * It must NOT live under `metaobjects/`: the loader treats every
-   * .json/.yaml/.yml there as metadata, and the ledger is deliberately not
-   * metadata (it registers no metamodel vocabulary — see
-   * `spec/capability-ledger.md`), so a ledger inside that tree fails the load.
-   * Validation itself runs POST-LOAD against the in-memory model, resolving
-   * every reference through the loader's own resolver.
-   */
-  capabilities?: string;
   /** Docs-output config consumed by the `meta docs` door. See {@link DocsConfig}. */
   docs?: DocsConfig;
   /** Named output destinations. Generators reference one via `target`. */

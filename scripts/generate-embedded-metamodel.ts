@@ -83,6 +83,7 @@ const CONCEPT_DIRS: Record<string, string> = {
   view: "presentation/view",
   ui: "presentation/ui",
   "ui-web": "presentation/ui-web",
+  requirement: "core/requirement",
   // depth-1
   template: "template",
   // FR-033 S1.5: the prompt concern provider lives in template/ (templateProvider

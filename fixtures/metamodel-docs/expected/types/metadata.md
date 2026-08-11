@@ -22,6 +22,7 @@ _No subtype-specific attributes._
 
 - `field.*` — 0..*
 - `object.*` — 0..*
+- `requirement.*` — 0..*
 - `template.*` — 0..*
 - `validator.*` — 0..*
 

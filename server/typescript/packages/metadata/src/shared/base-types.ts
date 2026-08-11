@@ -19,6 +19,9 @@ export const TYPE_ORIGIN = "origin";
 export const TYPE_TEMPLATE = "template";
 /** Non-unique lookup indexes — `index.lookup` is the only registered subtype. */
 export const TYPE_INDEX = "index";
+/** Capability / requirement records — `requirement.functional` (existence check)
+ *  and `requirement.architectural` (universality check). Ruling amendment 3. */
+export const TYPE_REQUIREMENT = "requirement";
 
 export const BASE_TYPES = [
   TYPE_METADATA,
@@ -34,6 +37,7 @@ export const BASE_TYPES = [
   TYPE_ORIGIN,
   TYPE_TEMPLATE,
   TYPE_INDEX,
+  TYPE_REQUIREMENT,
 ] as const;
 export type BaseType = (typeof BASE_TYPES)[number];
 
