@@ -15,6 +15,7 @@ using MetaObjects.Core.Validator;
 using MetaObjects.Core.Identity;
 using MetaObjects.Core.Index;
 using MetaObjects.Core.Relationship;
+using MetaObjects.Core.Requirement;
 using MetaObjects.Persistence.Origin;
 using MetaObjects.Persistence.Source;
 using MetaObjects.Presentation.View;
@@ -251,6 +252,8 @@ public static class CoreTypes
                     Wildcard(TYPE_ATTR),
                     Wildcard(TYPE_VALIDATOR),
                     Wildcard(TYPE_TEMPLATE),
+                    // Capability requirements are declared beside the entities they describe.
+                    Wildcard(TYPE_REQUIREMENT),
                 ],
                 (tid, n) => new MetaRoot(tid, n),
                 []));
@@ -572,6 +575,46 @@ public static class CoreTypes
                 : [],
             whenToUse:
                 "You need a DB index for query performance (fast lookups/sorts) but NOT uniqueness enforcement. @fields names the indexed columns; the db provider adds @orders / @expr / @where / @using for physical tuning."));
+
+        // requirement — 2 subtypes. The axis is CHECK POLARITY, a genuine behaviour
+        // difference (ADR-0037 §2): `functional` is checked by EXISTENCE (nothing
+        // implements it -> fail), `architectural` by UNIVERSALITY (something violates
+        // it -> fail). Registered rather than hand-parsed because the capability ledger
+        // IS a metadata model: a closed status enum and a list of FQN references to
+        // model nodes are exactly `allowedValues` plus reference resolution, both of
+        // which this registry already owns (requirements-as-metadata ruling amendment 3).
+        // A single MetaRequirement class backs both subtypes (mirrors source/template).
+        // Descriptions + whenToUse + the structural child graph come from the embedded
+        // spec/metamodel/requirement.json via ApplySpecDescriptions — the placeholder
+        // description below is overwritten there, never the shipped prose.
+        foreach (string subType in REQUIREMENT_SUBTYPES)
+        {
+            // Hierarchy IS nesting, not a parent attribute: an L1 solution CONTAINS its
+            // L2 segments. Only `functional` nests — an architectural requirement is
+            // object-independent and carries no level, so it has no tier to contain.
+            List<ChildRule> requirementRules = subType == REQUIREMENT_SUBTYPE_FUNCTIONAL
+                ? [Wildcard(TYPE_ATTR), Wildcard(TYPE_REQUIREMENT)]
+                : [Wildcard(TYPE_ATTR)];
+
+            registry.Register(
+                Def(
+                    TYPE_REQUIREMENT,
+                    subType,
+                    $"Requirement ({subType})",
+                    requirementRules,
+                    (tid, n) => new MetaRequirement(tid, n),
+                    RequirementSchema.RequirementAttrsMap.TryGetValue(subType, out var reqAttrs)
+                        ? reqAttrs.ToList()
+                        : []));
+        }
+
+        // NOTE: @implementedBy is deliberately NOT declared as a loader `references`
+        // descriptor. That pass always ERRORS on an unresolved target, and a
+        // requirement with status `abandoned`/`superseded` exists precisely to name
+        // nodes that are GONE — declaring it here would make the entries that carry
+        // the mechanism's only controlled evidence fail to load. The loader owns what
+        // is unconditional (the status enum, shape, levels); `meta verify` owns the
+        // status-conditional resolution, where the severity actually depends on data.
 
         // template — fourth-pillar metatype (FR-004). prompt + output; attr-only
         // children. A single MetaTemplate class backs both subtypes (mirrors source);

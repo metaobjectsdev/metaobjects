@@ -31,6 +31,13 @@ public static class BaseTypes
     public const string TYPE_TEMPLATE     = "template";
     /// <summary>Non-unique lookup indexes — <c>index.lookup</c> is the only registered subtype.</summary>
     public const string TYPE_INDEX        = "index";
+    /// <summary>
+    /// The capability ledger metatype: a violable claim about the model, declared beside
+    /// the entities it describes. Two subtypes, split on CHECK POLARITY —
+    /// <c>requirement.functional</c> (EXISTENCE) and <c>requirement.architectural</c>
+    /// (UNIVERSALITY).
+    /// </summary>
+    public const string TYPE_REQUIREMENT  = "requirement";
 
     public static readonly string[] BASE_TYPES =
     [
@@ -47,6 +54,7 @@ public static class BaseTypes
         TYPE_ORIGIN,
         TYPE_TEMPLATE,
         TYPE_INDEX,
+        TYPE_REQUIREMENT,
     ];
 
     // -----------------------------------------------------------------------

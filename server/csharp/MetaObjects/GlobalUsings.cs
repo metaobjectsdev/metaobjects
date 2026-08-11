@@ -20,6 +20,7 @@ global using static MetaObjects.Core.Validator.ValidatorConstants;
 global using static MetaObjects.Core.Identity.IdentityConstants;
 global using static MetaObjects.Core.Index.IndexConstants;
 global using static MetaObjects.Core.Relationship.RelationshipConstants;
+global using static MetaObjects.Core.Requirement.RequirementConstants;
 global using static MetaObjects.Persistence.Source.SourceConstants;
 global using static MetaObjects.Persistence.Origin.OriginConstants;
 global using static MetaObjects.Persistence.Db.DbConstants;
