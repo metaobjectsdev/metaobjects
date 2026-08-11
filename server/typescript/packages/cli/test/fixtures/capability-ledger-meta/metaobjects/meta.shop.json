@@ -1,0 +1,30 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            { "source.rdb": { "@table": "orders" } },
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "reference" } },
+            { "field.long": { "name": "totalCents" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Customer",
+          "children": [
+            { "source.rdb": { "@table": "customers" } },
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "email" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+          ]
+        }
+      }
+    ]
+  }
+}

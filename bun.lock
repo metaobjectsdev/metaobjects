@@ -148,6 +148,7 @@
         "@metaobjectsdev/sdk": "workspace:*",
         "@toon-format/toon": "^2.3.0",
         "jiti": "^2.4.0",
+        "yaml": "^2.9.0",
       },
       "devDependencies": {
         "@libsql/client": "^0.14.0",

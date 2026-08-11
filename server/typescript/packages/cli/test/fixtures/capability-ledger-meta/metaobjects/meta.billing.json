@@ -1,0 +1,18 @@
+{
+  "metadata.root": {
+    "package": "acme::billing",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            { "source.rdb": { "@table": "billing_orders" } },
+            { "field.uuid": { "name": "id" } },
+            { "field.string": { "name": "invoiceNo" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+          ]
+        }
+      }
+    ]
+  }
+}

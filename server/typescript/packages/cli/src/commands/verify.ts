@@ -16,6 +16,11 @@ import { FileProvider } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
 import { computeCodegenDrift } from "../lib/codegen-drift.js";
+import {
+  loadCapabilityLedger,
+  validateCapabilityLedger,
+  LEDGER_PATH,
+} from "../lib/capability-ledger.js";
 import { resolveD1Config } from "../lib/config.js";
 import {
   buildWranglerExecuteArgs,
@@ -158,6 +163,10 @@ export async function verifyCommand(
   const templateExit = runTemplates ? runTemplateVerify() : 0;
   const schemaExit = await runSchemaVerify();
   const codegenExit = runCodegen ? await runCodegenVerify() : 0;
+  // The capability ledger has no subverb: it is checked whenever the file is
+  // present, on every `meta verify`. It is opt-in by existence, so an absent
+  // ledger is silent — a project that has not adopted one is not in drift.
+  const ledgerExit = runLedgerVerify();
 
   // Advisory verify-as-teacher pass: surface hand-rolled work the metadata could
   // model. Warnings ONLY — never changes the exit code (bias to under-flagging).
@@ -165,7 +174,31 @@ export async function verifyCommand(
   // noisy project (both opt-outs work on `meta verify` and `meta gen`).
   if (!flags.noAntipatterns && process.env.META_NO_ANTIPATTERNS !== "1") runAntiPatternAdvisory();
 
-  return Math.max(templateExit, schemaExit, codegenExit);
+  return Math.max(templateExit, schemaExit, codegenExit, ledgerExit);
+
+  // -- capability ledger (#290) ----------------------------------------------
+  function runLedgerVerify(): number {
+    const ledger = loadCapabilityLedger(cwd);
+    if (!ledger.present) return 0;
+    const diags = validateCapabilityLedger(ledger, root);
+    const errors = diags.filter((d) => d.severity === "error");
+    const warns = diags.filter((d) => d.severity === "warn");
+    if (diags.length === 0) {
+      log.info(`meta verify — capability ledger OK (${ledger.entries.length} entries).`);
+      return 0;
+    }
+    const CAP = 20;
+    for (const d of errors) log.error(`  ${d.code}${d.id !== undefined ? ` [${d.id}]` : ""}: ${d.message}`);
+    for (const d of warns.slice(0, CAP)) {
+      log.warn(`  ${d.code}${d.id !== undefined ? ` [${d.id}]` : ""}: ${d.message}`);
+    }
+    if (warns.length > CAP) log.warn(`  …and ${warns.length - CAP} more.`);
+    if (errors.length > 0) {
+      log.error(`meta verify — capability ledger: ${errors.length} error(s) in ${LEDGER_PATH}.`);
+      return 1;
+    }
+    return 0;
+  }
 
   // -- verify-as-teacher (advisory) ------------------------------------------
   function runAntiPatternAdvisory(): void {

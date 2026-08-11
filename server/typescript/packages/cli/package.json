@@ -59,7 +59,8 @@
     "@metaobjectsdev/runtime-ts": "workspace:*",
     "@metaobjectsdev/sdk": "workspace:*",
     "@toon-format/toon": "^2.3.0",
-    "jiti": "^2.4.0"
+    "jiti": "^2.4.0",
+    "yaml": "^2.9.0"
   },
   "peerDependencies": {
     "kysely": ">=0.27.0 <0.30.0",
