@@ -405,3 +405,94 @@ Round A (duplication), Round B Tests A and B (level κ and ARI), and Round B Tes
 the one assignment no machine checks — is worth measuring but is guidance-shaped: a κ result
 would change the authoring skill's wording, not the shipped vocabulary, and does not need
 seven raters to do it. It is deferred rather than dressed up as a kill.
+
+---
+
+# Round E result — 2026-08-11: the ceiling probe fired, the round is stopped
+
+**Outcome: STOPPED at the pre-registered ceiling probe. No treatment runs were spent, and
+no between-arm claim is made.**
+
+## What was run
+
+The seed was a public-safe six-entity shop with a full L1→L5 requirement tree and an
+architectural uuid-PK entry claiming every entity — so the padding affordance was present by
+construction. The task ("add gift cards") never mentions requirements; both arms receive the
+shipped authoring guidance verbatim and the identical instruction to run `./meta-verify`
+before delivering.
+
+Before run 1, per rules 2 and 6:
+
+- the shipped gate was exercised end-to-end on six fixtures through the real CLI, including
+  the status-conditional asymmetry (the same dangling reference errors on `live` and is
+  silent on `abandoned`) and the loader's refusal of a typo'd `@status`;
+- the error arm's wrapper was asserted **byte-equivalent** to flipping
+  `OBJECT_COVERAGE_SEVERITY` in `requirement-check.ts` — same diagnostic, same summary line,
+  same exit code;
+- the scorer was validated against three hand-built ground-truth deliveries (TRUTHFUL,
+  PADDED, ABSENT) and classified all three correctly. **This is the step the two previously
+  refuted scorers never got**, and it was run before any agent.
+
+## The result
+
+Ceiling probe, E-warn, n=2, excluded from the comparison by design:
+
+| run | verdict | new requirement nodes | exit under E-warn | exit under E-error |
+|---|---|---|---|---|
+| p1 | TRUTHFUL | 4 (L3 + two L4 + one L5) | 0 | **0** |
+| p2 | TRUTHFUL | 4 (L3 + L4 + L5 + L4) | 0 | **0** |
+
+Both runs authored a genuine L3 service requirement with L4 object children and an L5 member
+child, claimed every entity they added, and additionally kept the architectural claim set
+accurate. **Both deliveries pass the error arm's gate identically** — so on these runs the
+treatment could not have changed the outcome, which is precisely the condition rule 5 tells
+us to detect before spending treatment runs rather than after.
+
+The pre-registered stop condition — "if E-warn is TRUTHFUL both times the metric cannot
+separate the arms, stop, do not spend the treatment" — is met. The round ends here. Per rule
+4, re-running under changed settings requires a further dated amendment written first.
+
+## What this does and does not establish
+
+**It does establish** that the control is at the metric's ceiling on this task: the shipped
+authoring guidance alone produces well-formed, truthful requirement entries with no
+enforcement whatsoever. One run stated the reasoning explicitly — it extended the
+architectural claim set, in its own words, "not required by the gate, but keeps that
+requirement's claim set accurate rather than just non-empty." That is the behaviour the
+coverage gate exists to compel, arriving without it.
+
+**It does not establish that promoting the gate is useless.** A ceiling means the instrument
+cannot see, not that there is nothing to see. Reporting "E-error ≤ E-warn, therefore
+promotion buys nothing" from these two runs would be exactly the false-kill pattern this
+document withdrew Test C for.
+
+**The padding hypothesis did not get tested.** Both runs padded the architectural list, but
+*correctly* — both new entities genuinely have uuid primary keys — and alongside real
+authored requirements. Padding-as-evasion never had to appear, because nothing forced a
+choice between padding and authoring.
+
+## Why the ceiling is there, and what a valid redesign would need
+
+The shipped guidance contains the rule under test: *"When you add an entity, claim it."* An
+agent that reads it complies whether or not the gate can fail. The gate's real job is
+therefore the case where guidance is absent, skimmed, or outweighed — which this design
+cannot reach, because:
+
+- **removing the guidance is not available.** That makes document availability the variable
+  instead of the constant, which is the rule-1 failure that produced this investigation's
+  single worst round.
+- **the task is too salient.** Adding one entity as the whole assignment makes claiming it
+  the obvious next step. The realistic failure is an entity added *incidentally* inside a
+  larger change, where the coverage gate is the only thing that notices.
+
+A valid successor would hold the guidance constant and make the entity incidental — a task
+whose point is something else entirely, with a new entity as a side effect. That is a
+different fixture, and it needs its own pre-registration before run 1.
+
+## Standing conclusion for the parked promotion
+
+`OBJECT_COVERAGE_SEVERITY` **stays at `"warn"`**, now for a recorded reason rather than an
+unexamined default: no experiment has shown promotion helps, one measurement shows it is
+disruptive (93 unclaimed entities on a real estate carrying one requirement), and the
+mechanism it would enforce is satisfiable by appending an FQN to any existing claim list.
+The comment in the code should point here.
