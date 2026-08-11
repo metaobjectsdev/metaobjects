@@ -196,3 +196,67 @@ found those load-bearing), or a shipping consumer that dispatches on `superseded
 Raw agent output is session-scratch and not preserved. The reproducible artifact from this
 work is the usage-evidence method in §3, which is committed in the adopter repo where it
 was developed, not here.
+
+## Amendment 3 (2026-08-11) — the owner's decision: `requirement.*` IS registered vocabulary
+
+**This amendment overturns ruling point 1 and the "reserved, not registered" clause of
+point 2.** Both were wrong, and the record shows they were already overturned in
+conversation before they were built on.
+
+The owner's position, stated plainly and repeatedly:
+
+> *"whatever that data model is, is what we would put in the metadata itself. so the ledger
+> is metadata, right? … i just think you're ignorant on how model driven development works."*
+
+> *"the ledger gets filled in if you require the attributes that reference it in order for
+> the metadata to be defined."*
+
+> *"the fields and views and validators are definitely going to map to requirements."*
+
+And the approval that settled it — *"yeah, do that"* — was given to this exact question:
+
+> *"Want me to fold this into the issue — `requirement.functional` /
+> `requirement.architectural` with existence-checking and universality-checking
+> respectively, plus the violability rule in the skill?"*
+
+**What went wrong afterwards.** That approval was recorded as a documentation amendment
+and an issue written as *reserved, not registered* — the opposite of what was approved —
+and an implementation was then built against the issue: a hand-written YAML parser with
+hand-written enum checking in the CLI. An independent design pass in the same session had
+already named that shape indefensible: *"the correct response to 'the ledger has a schema'
+is to declare and enforce that schema."* Declaring it in hand-written TypeScript is not
+declaring it.
+
+**The tier argument does not survive contact with the precedent.** It held that
+`template.prompt` is a *declaration* something dispatches on, while a capability is an
+*instance record* nothing dispatches on. But a repository has many `template.prompt` nodes
+and many `layout.dataGrid` nodes; those are instances too. "Many records of one shape" is
+the normal condition of a metamodel, not a disqualification from it. And the dispatch bar
+(ADR-0007 Amendment 2) exists to stop *speculative* vocabulary — it was never meant to
+block vocabulary the owner has asked for three times.
+
+**The corrected design.**
+
+- `requirement.functional` and `requirement.architectural` are **registered metamodel
+  types**, declared in `metaobjects/` beside the entities they describe and loaded by the
+  loader like everything else.
+- `status` is a real enum attribute with `allowedValues`, enforced by the loader — not by
+  a hand-written string comparison.
+- `implementedBy` resolves through the loader's existing reference machinery, so the
+  ADR-0042 package-local contract applies by construction.
+- **Hierarchy is nesting**, not a `parent` string: an L1 requirement contains its L2
+  children as `children`. `extends` addressing already walks child names to any depth, so
+  a requirement is addressable the way every other node is.
+- The two kinds keep their opposite checks — functional/existence, architectural/
+  universality — and the violability rule stays in the authoring skill.
+
+**What is still true from the original rounds.** Round 5 killed **node-side `satisfies:`**
+back-links: 11/24 with structured links against 12/24 without. That result is about which
+*direction* the reference points, and the owner accepted the direction — *"node side vs req
+side is a nit, we still enforce it, you just showed the reference the other way is
+better"* — while insisting enforcement remains. So links live on the requirement node, and
+the forcing function is the coverage gate. Nothing here reinstates `satisfies:` on a field.
+
+**Cost, stated honestly.** Registering a type means five ports, the byte-gated
+`expected-registry.json` manifest, and conformance fixtures. That is the price of it being
+metadata, and it was accepted when the vocabulary was approved.
