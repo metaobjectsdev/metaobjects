@@ -53,13 +53,23 @@ Levels are **organisational**. They come from object-in-focus decomposition: a c
 keeps one object family in focus, and its children refine that object without changing
 focus.
 
-| Level | What it is | Scale | Carries |
+| Level | What it is | Scale | May additionally carry |
 |---|---|---|---|
-| **L1 Solution** | the whole solution; at enterprise scale, one of several | enterprise | organisational only |
-| **L2 Segment** | a major segmentation — an application, a library, a deployable | app / library | `status`, `violation` |
-| **L3 Service** | a service-grain capability, as one testable statement | service | `status`, `violation`, `verifiedBy` |
-| **L4 Object** | the capability as it lands on a model **object** | object | `status`, `violation`, `implementedBy` |
-| **L5 Member** | the capability as it lands on a **field, view or identity** | member | `status`, `violation`, `implementedBy` |
+| **L1 Solution** | the whole solution; at enterprise scale, one of several | enterprise | — |
+| **L2 Segment** | a major segmentation — an application, a library, a deployable | app / library | — |
+| **L3 Service** | a service-grain capability, as one testable statement | service | `verifiedBy` |
+| **L4 Object** | the capability as it lands on a model **object** | object | `implementedBy` (object FQNs) |
+| **L5 Member** | the capability as it lands on a **field, view or identity** | member | `implementedBy` (dotted member refs) |
+
+`level`, `status`, `statement` and `violation` are **required at every level**, L1 included —
+the loader refuses a functional requirement missing any of them. The level changes only what
+is *additionally* legal. This is deliberate: "a requirement must be violable" is the rule
+that keeps the ledger from filling with descriptions, and a level-conditional carve-out
+would both be inexpressible in the registry (required-ness cannot depend on a sibling
+attribute's value) and would exempt the broadest entries from the discipline. An
+organisational entry states its violation at its own scale — an L1 whose violation is "there
+is no way to buy anything" is violable; one whose violation is "commerce does not work" is
+not, and should be rejected in review.
 
 **The link boundary is the rule that matters: nothing above L4 references the model.**
 `implementedBy` is legal on L4 and L5 only, and is an error on L1–L3 — that keeps the
@@ -72,9 +82,12 @@ side. **L5 is optional** — a ledger may stop at L4 and link only at object gra
 L4 from L5 exists so "this capability is about *this field*" does not have to masquerade as
 an object-level claim.
 
-Every entry has a **permanent `id`**, never reused and never renamed. Regrouping edits
-`parent` and nothing else, so a regroup commit shows diffs on `parent` and on the tiers above
-— never on a leaf's id, statement, status or links.
+**Hierarchy is nesting.** A requirement contains its child requirements, so an L1 solution
+contains its L2 segments, which contain L3 services. There is no `id` and no `parent`
+attribute: a requirement is addressed by the same dotted child-name path as every other node
+in the model, and regrouping *moves a subtree* rather than editing a pointer. Nesting must
+agree with the levels — a child sits strictly below its parent, or
+`ERR_REQUIREMENT_LEVEL_NESTING`.
 
 ## Two kinds, with opposite checks
 
@@ -88,10 +101,11 @@ built, applied uniformly across the model — a uuid primary key, an `@autoSet c
 audit column, tenant scoping. The discriminator is mechanical: did this exist because
 someone asked for something, or because every entity here looks like this?
 
-Architectural entries live under a separate `architectural:` list and carry **no level and
-no parent** — levels come from object-in-focus decomposition, and an architectural
-requirement is object-*independent* by definition. They carry `implementedBy` directly,
-because their claim set is the whole point.
+Architectural entries are `requirement.architectural` nodes and carry **no level and no
+nesting** — levels come from object-in-focus decomposition, and an architectural requirement
+is object-*independent* by definition. `@level` is not registered on the subtype at all, so
+declaring one is `ERR_UNKNOWN_ATTR` rather than a convention someone has to remember. They
+carry `implementedBy` directly, because their claim set is the whole point.
 
 This split also dissolves the field-grain ceremony objection. Plumbing fields collapse onto
 a handful of architectural requirements with very high fan-out — one uuid-PK requirement
@@ -102,61 +116,70 @@ field participates in architecture and product at once.
 
 ## Schema
 
-```yaml
-capabilities:
-  - id: SOLN                      # permanent, unique, never reused
-    level: 1
-    statement: "The commerce solution"
+Requirements are ordinary metadata. They live in `metaobjects/` beside the entities they
+describe — commonly `metaobjects/meta.requirements.json`, though any file the loader scans
+will do.
 
-  - id: APP-STOREFRONT
-    level: 2
-    parent: SOLN
-    status: live
-    statement: "Storefront application"
-    violation: "The storefront is unreachable while the API is up"
+```jsonc
+{ "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      { "requirement.functional": {
+          "name": "commerce", "@level": 1, "@status": "live",
+          "@statement": "The commerce solution",
+          "@violation": "There is no way to buy anything",
+          "children": [
+            { "requirement.functional": {
+                "name": "orders", "@level": 3, "@status": "live",
+                "@statement": "Every placed order is recorded before payment is attempted",
+                "@violation": "A payment attempted against an order that was never stored",
+                "@verifiedBy": ["OrderServiceTest"],
+                "children": [
+                  { "requirement.functional": {
+                      "name": "orderRecord", "@level": 4, "@status": "live",
+                      "@statement": "An order records what was bought, by whom, and for how much",
+                      "@violation": "An order row that cannot say who placed it",
+                      "@implementedBy": ["acme::shop::Order"],
+                      "children": [
+                        { "requirement.functional": {
+                            "name": "humanReference", "@level": 5, "@status": "live",
+                            "@statement": "An order carries a reference a customer can read down a phone line",
+                            "@violation": "A reference that is a raw uuid",
+                            "@implementedBy": ["acme::shop::Order.reference"]
+                        }}
+                      ]
+                  }}
+                ]
+            }}
+          ]
+      }},
 
-  - id: SVC-ORDERS
-    level: 3
-    parent: APP-STOREFRONT
-    status: live
-    statement: "Every placed order is recorded before payment is attempted"
-    violation: "A payment attempted against an order that was never stored"
-    verifiedBy: [OrderServiceTest]
-
-  - id: OBJ-ORDER
-    level: 4
-    parent: SVC-ORDERS
-    status: live
-    statement: "An order records what was bought, by whom, and for how much"
-    violation: "An order row that cannot say who placed it"
-    implementedBy: [acme::shop::Order]
-
-  - id: FLD-ORDER-REFERENCE
-    level: 5
-    parent: OBJ-ORDER
-    status: live
-    statement: "An order carries a reference a customer can read down a phone line"
-    violation: "A reference that is a raw uuid"
-    implementedBy: [acme::shop::Order.reference]
-
-architectural:
-  - id: ARCH-UUID-PK
-    status: live
-    statement: "Every entity has a uuid primary key"
-    violation: "An entity keyed by a composite string"
-    implementedBy: [acme::shop::Order, acme::shop::Customer]
+      { "requirement.architectural": {
+          "name": "uuidPrimaryKeys", "@status": "live",
+          "@statement": "Every entity has a uuid primary key",
+          "@violation": "An entity keyed by a composite string",
+          "@implementedBy": ["acme::shop::Order", "acme::shop::Customer"]
+      }}
+    ]
+}}
 ```
 
-| Field | Where | Meaning |
+Levels may be skipped — the example goes L1 → L3 — because nesting only has to *agree* with
+the levels, not enumerate them. What it may not do is stay level or go back up.
+
+| Attribute | Where | Meaning |
 |---|---|---|
-| `id` | all | Permanent and unique. Never reused, never renamed. |
-| `level` | functional | `1`–`5`. An error on an architectural entry. |
-| `parent` | functional | The id of the entry above. Required except on L1. |
-| `statement` | all | What the capability is. |
-| `violation` | any entry with a `status` | What breaking it looks like, in one sentence. |
-| `status` | L2–L5, architectural | Closed enum — see below. |
-| `implementedBy` | L4, L5, architectural | FQN references. An error above L4. |
-| `verifiedBy` | L3 | Named tests. |
+| `@level` | functional, **required** | `1`–`5`. Not registered on architectural. |
+| `@status` | both, **required** | Closed enum — see below. |
+| `@statement` | both, **required** | What the capability is, in one sentence. |
+| `@violation` | both, **required** | What breaking it looks like, in one sentence. |
+| `@implementedBy` | L4, L5, architectural | FQN references. An error above the link floor. |
+| `@verifiedBy` | functional | Named tests. Typically L3. |
+| `@supersededBy` | both | What replaced this. Expected on `status: superseded`. |
+| `description`, `notes` | any node | The common documentation attrs, as everywhere else. |
+
+The name is the node's identity and its address: nesting makes `commerce.orders.orderRecord`
+a dotted child-name path like any other, so no separate id scheme is needed.
 | `supersededBy` | any | What replaced this. |
 | `notes` | any | Free text. |
 
@@ -187,11 +210,23 @@ child names.
 
 ### Object coverage
 
-Every `object.entity` should be claimed by at least one capability, so adding an entity
-forces a ledger entry. The gate is **binary per entity, never a ratio** — a "% claimed"
-number measures what the schema can express, is biased against the hardest rules, and
-invites optimising the number. It ships as a **warning** until it runs clean on a real
-repository.
+Every `object.entity` should be claimed by at least one requirement, so adding an entity
+forces an entry. The gate is **binary per entity, never a ratio** — a "% claimed" number
+measures what the schema can express, is biased against the hardest rules, and invites
+optimising the number.
+
+It ships as a **warning**, and the reason is measured rather than cautious. Run against a
+real 120-file estate carrying a single requirement, the gate reports **93 unclaimed
+entities** — every entity in the repository. Promoting it to `error` today means a project
+that adopts requirements incrementally fails its first `meta verify` after authoring one
+entry, which trains people to delete the entry. Promotion therefore needs a completeness
+precondition or an explicit opt-in, not just a severity flip.
+
+The gate is also **satisfiable without being informative**: `claimedObjects` counts a claim
+from any requirement at any level and any status, so appending an entity to an existing
+architectural requirement's `implementedBy` clears it. That is by design — one uuid-PK
+requirement legitimately claims every entity — but it means a green coverage gate proves an
+entity is *named*, never that it is understood.
 
 ### Architectural universality, v1
 
@@ -200,19 +235,29 @@ a policy declared and applied to nothing. This is deliberately claim-set arithme
 a violation-predicate DSL — a predicate engine would be the metamodel registration this
 design forbade, arriving through the test suite.
 
-## Reserved, not registered
+## Registered vocabulary — and what stays dead
 
-The ledger adds **no metamodel vocabulary**: no `satisfies:` on a field or entity, no
-`capability.*` type, no registry entry, no cross-port fan-out. Two arms differing only in
-whether the ledger carried structured links scored 11/24 (with) and 12/24 (without) — the
-arm lacking the vocabulary scored *higher*, and the pre-registered kill fired. Links live on
-ledger entries, never on model nodes.
+`requirement.functional` and `requirement.architectural` are **registered in all five ports**
+and byte-gated by `fixtures/registry-conformance/expected-registry.json`. That is what makes
+`@status` a loader-enforced enum rather than a string one CLI happens to compare, and it is
+why a typo fails the *load* in every language rather than passing silently in four of them.
 
-It enters the metamodel registry only when a shipping consumer *dispatches* on capability
-records, per the ADR-0007 Amendment 2 bar (the ADR-0040 treatment). Nothing does today:
-`template.prompt` is a declaration that render, payload codegen and verify dispatch on; a
-capability entry is a record that is only read. This is TS-CLI-only, on the D1 /
-leading-wildcard precedent for single-port tooling.
+What stays dead is **node-side `satisfies:`** — a link attribute on a field or entity. Two
+arms differing only in whether the ledger carried structured node-side links scored 11/24
+(with) and 12/24 (without); the arm lacking them scored *higher* and the pre-registered kill
+fired. Links live on requirement entries, pointing at the model. The model never points back.
+
+The asymmetry is deliberate: a requirement is *about* the model, so it depends on the model;
+making the model depend on requirements would invert that and put a governance concern inside
+every entity declaration.
+
+### The verify gate is TypeScript-only, on purpose
+
+All five ports **load and validate** requirements. Only the TS CLI ships the `meta verify`
+gate, on the D1 / leading-wildcard precedent for single-port tooling: `verify --db` and
+schema migration are already TS-owned (ADR-0015), so the gate lives where the rest of the
+drift checking lives. A JVM or Python project declaring requirements gets the loader's
+guarantees today and would need `meta verify` from the Node CLI for the conditional layer.
 
 ## What a green check does not prove
 
