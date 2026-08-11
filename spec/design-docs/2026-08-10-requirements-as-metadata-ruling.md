@@ -74,9 +74,31 @@ resurrected. A ledger entry with `status: abandoned` does exactly that, in one l
 1. **No metamodel vocabulary.** No `satisfies:`, no `modelRef:`, no `requirement.*` type,
    no ADR-0037 proposal, no registry change, no cross-port fan-out. The kill condition was
    pre-registered and it fired.
-2. **A capability ledger is a project convention**, not a product feature: a flat YAML file,
-   `name` / `status` / `summary` / prose that names its own entities. Status values that
-   earned their place: `live`, `partial`, `abandoned`, `superseded`.
+2. **A capability ledger is a schema'd project artifact, not ad-hoc YAML.**
+   `metaobjects/capabilities.yaml`, with the schema **shipped by the CLI** and validated by
+   `meta verify` when the file is present:
+   - `status` is a **closed enum** — `live | partial | abandoned | superseded` — and an
+     unknown value is a hard error. This is the one payload with controlled evidence behind
+     it; leaving it as an unchecked string would let a typo silently disable it.
+   - `implementedBy` is optional, name-checked against the **loaded model**, with severity
+     **conditional on status**: a dangling reference on `live`/`partial` is an error (the
+     model moved and the ledger is stale); a dangling reference on `abandoned`/`superseded`
+     is **allowed**, because those nodes are supposed to be gone — that is the point of the
+     entry. Only the loader knows every FQN, which is why the product, not a convention,
+     has to be the validator.
+
+   The ledger's schema is **reserved, not registered** (the ADR-0040 treatment). It enters
+   the metamodel registry only when a shipping consumer *dispatches* on capability records,
+   per the ADR-0007 Amendment 2 bar. Nothing does today.
+
+   _Amended 2026-08-11._ As first written, this point said the ledger was a bare project
+   convention needing nothing from MetaObjects. That was wrong, and the objection is worth
+   recording because it is a better argument than the one it corrected: **the ledger has a
+   schema — a closed enum and a list of FQN references to model nodes — so hand-rolling it
+   reintroduces every failure this project exists to prevent.** The round-5 kill fired on
+   *node-level back-links* (`satisfies:` on fields and entities) and on the retrieval value
+   of structured links. It was never evidence against the ledger having a validated schema.
+   The original wording conflated the two.
 3. **Cleanup is a procedure, not a product.** Usage evidence — grep every declared table and
    field name across the source — found 15 dead objects where the best LLM analysis found 6.
    Ask the code, not the model, and never the requirements.
