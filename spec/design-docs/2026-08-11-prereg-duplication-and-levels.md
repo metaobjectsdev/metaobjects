@@ -229,3 +229,179 @@ are new and unproven, without touching the rest.
 The estate is private. Nothing identifying it — names, paths, domain vocabulary — appears
 in this repository. Harness, briefs, ledger and raw runs stay in session scratch; only
 findings are recorded here.
+
+---
+
+# Amendment 1 — 2026-08-11, before run 1
+
+_Written after the design under test changed and before any measured run, per protocol
+rules 4 and 6. No kill has fired; nothing here is a post-hoc rescope. Two independent
+design passes (one constructive, one adversarial) were run against the shipped code, and
+each of the findings below was verified against the artifact rather than accepted._
+
+## Why this amendment exists
+
+This pre-registration was written against a **hypothetical** design: a hand-parsed
+`capabilities.yaml` side-file, vocabulary "reserved, not registered". What shipped instead
+is `requirement.functional` / `requirement.architectural` as **registered metamodel
+vocabulary in all five ports**. Most of what these rounds proposed to measure is now either
+enforced by the product or impossible to express.
+
+## What the shipped design invalidates
+
+**Round B Test B rests on a premise that is now false.** It reads: "stable ids are what make
+regrouping cheap: it edits `parent` and nothing else." The shipped vocabulary has no `id`
+and no `parent` — hierarchy is a nested `requirement` child rule. Regrouping moves a
+subtree, and `ERR_REQUIREMENT_LEVEL_NESTING` constrains where it may land. Any scoring over
+parent-string diffs is invalid as written.
+
+**Most of Round B Test A's band κ is now vacuous, because the machine decides it.**
+`@implementedBy` above L3 is `ERR_REQUIREMENT_LINK_ABOVE_FLOOR`; an L4 ref naming a member
+is `ERR_REQUIREMENT_L4_NOT_OBJECT`; an L5 ref naming an object is
+`ERR_REQUIREMENT_L5_NOT_MEMBER`. The pre-registration called the band κ "the one the design
+depends on" — but for any linked entry the product now catches band confusion outright.
+Rule 6 says run the mechanical baseline first; here the mechanical baseline wins the whole
+question. The residual free choice is **functional vs architectural**, which flips the
+check's polarity and which nothing mechanical catches.
+
+**The pre-written ledger is illegal under the shipped design.** All 35 entries are `level: 3`
+*and* carry `implementedBy` — 35 × `ERR_REQUIREMENT_LINK_ABOVE_FLOOR`. It predates this
+document's own five-level correction. Its 98 references profile as 71 member-grain and 27
+object-grain, with **16 of 35 entries carrying both** — which is the measured argument for
+splitting L4 from L5, and also why converting it is not a formatting pass but exactly the
+assignment Round B set out to measure.
+
+## Round B Test C is withdrawn: it was a false-kill machine
+
+Test C reads: one brief against an abandoned entry, **3 reps, kill if any run proposes
+reviving it.** The baseline it must beat is this document's own headline number — ledger
+arms caught the retired capability **19 of 40**, a 47.5% catch rate. So under the null
+hypothesis that levelling changes nothing:
+
+> P(at least one miss in 3 reps) = 1 − 0.475³ ≈ **89%**
+
+The kill fires with ~89% probability **when the design is fine**. It also has no control
+arm — there is no arm pair in it at all — so a fired kill could never be attributed to
+levelling rather than to the ledger's ordinary ~50% miss rate. Run as written it would have
+produced a confident "levelling buries `status`" and driven a real regression on an
+artifact. Withdrawn, not rescheduled: a zero-tolerance tripwire against a coin-flip baseline
+is not a test, and the honest version (levelled vs flat arms at equal n) is not worth its
+cost against the questions below.
+
+## The NOT-BOUND scorer is refuted — the second scorer to fail before run 1
+
+The primary metric was already replaced once, when field-overlap was calibrated against
+known duplications and could not separate them from correct reuse. Its replacement fails
+too, and for a worse reason: it is blind to the estate's dominant reuse idiom.
+
+`parse.py` collects references **only** from `identity.reference` blocks. It has no
+`extends` scan and no `origin.*` scan. Measured across the estate:
+
+| binding idiom | uses | scorer sees it |
+|---|---|---|
+| `extends:` | 160 | **no** |
+| `references` / `objectRef` | 134 | yes |
+| `origin.*` | 44 | **no** |
+
+An agent that reuses an incumbent by **extending** it — the natural shape for several
+briefs, and the estate's most common binding idiom — scores NOT-BOUND, i.e. is recorded as
+evidence of duplication. There is a false-REUSED channel too: "modified" is decided by bare
+name presence with no content comparison, so rewriting a file that merely cohabits with an
+incumbent scores REUSED.
+
+Both error directions are plausibly **arm-correlated** — a ledger names incumbents and their
+files, favouring reference-style binding; a control discovers structure by search, favouring
+extends-style. The metric would then measure authoring style and report it as reuse. That is
+the signature of a real effect, which is what makes it dangerous rather than merely noisy.
+
+## Round A is parked, and the reason is the protocol's own final rule
+
+Round A is stood down. Three independent reasons, any one sufficient:
+
+1. **No outcome changes a decision.** This document already states it: "this round cannot
+   rescue or sink them." The feature's justification is resurrection, established with a
+   control. The protocol's cheapest check says an experiment no result of which changes
+   anything is a ritual and its agents are decoration.
+2. **Its treatment fixture does not exist.** The only pre-written ledger is illegal under the
+   shipped design and covers one domain of the ten the briefs span.
+3. **Its scorer is refuted** (above), and several briefs list hub entities as incumbents —
+   entities any correct design must reference regardless of reuse — so those briefs cannot
+   score NOT-BOUND under any realistic proposal.
+
+The harness, briefs and estate remain valid and are kept. The natural time to run this is
+after an adopter authors a real requirement tree for its own reasons, which also makes the
+treatment material realistic instead of curator-written with hindsight.
+
+## Round C is re-registered against the one decision the shipped code leaves open
+
+The original IV — "whether `meta verify` checks the ledger" — is now a counterfactual that
+cannot ship: the gate is wired unconditionally on `main` in all five ports' worth of
+loading, and the check is on by default. Worse, its metric embedded its treatment: the
+metric included a checker run and the treatment was "the checker fails the run", so the
+treatment arm is forced green and the kill is near-unreachable by construction.
+
+The genuinely open knob is written into the shipped code as a parked one-line decision:
+`OBJECT_COVERAGE_SEVERITY` in `requirement-check.ts`, held at `"warn"` with a comment saying
+promotion is a one-line flip. That becomes **Round E**.
+
+### Round E — does forcing coverage produce truthful entries, or padding?
+
+**IV, in one sentence: whether an unclaimed entity fails `meta verify` or merely warns.**
+
+Both arms are the shipped CLI built from the same commit, differing in exactly one
+constant. Both arms receive identical repositories, identical guidance, and the identical
+instruction to run `meta verify` before delivering — so document availability, the confound
+that wrecked the strongest-looking round of the prior investigation, is held constant by
+construction.
+
+- **E-warn** — `OBJECT_COVERAGE_SEVERITY = "warn"` (shipped).
+- **E-error** — `OBJECT_COVERAGE_SEVERITY = "error"` (the parked promotion).
+
+The task is to add an entity — the only path the constant governs. Retire and rename tasks
+are deliberately excluded: they trip `ERR_REQUIREMENT_DANGLING_REF`, which is already an
+error in both arms, so they carry no differential and would burn runs on identical arms.
+
+**Metric, mechanical, from the delivered diff plus a stock-CLI verify run:**
+
+| class | what it means |
+|---|---|
+| **TRUTHFUL** | a new requirement entry whose statement and violation describe the new entity |
+| **PADDED** | the entity appended to an existing unrelated claim list, no new entry authored |
+| **ABSENT** | entity added, nothing claims it |
+| **FAILED** | entity not added, or the tree does not load |
+
+The **padding rate is the headline number**, and it is measured in both arms. The coverage
+gate is satisfiable by appending an FQN to any existing requirement at any level and any
+status — including the architectural uuid-PK entry that legitimately claims every entity.
+So a green coverage gate proves an entity is *named*, never that it is understood, and
+forcing it can manufacture the appearance of coverage. That is the number worth buying.
+
+**Ceiling probe (rule 5).** Pilot E-warn at n=2, excluded from the comparison. If E-warn is
+TRUTHFUL both times the metric cannot separate the arms — stop, do not spend the treatment.
+This is a live risk: the shipped guidance already tells authors to claim new entities.
+
+**n and resolution.** n=6 per arm, 12 measured runs. Binary granularity ≈ 17 points; no
+claim below the pre-registered n, and within-arm spread reported next to any between-arm
+difference (rule 3).
+
+**Kills.**
+- **K1:** E-error TRUTHFUL ≤ E-warn TRUTHFUL → promotion buys nothing. `warn` is settled
+  permanently and the parked flip is closed with a comment recording why.
+- **K2 (abandonment-grade for the promotion):** E-error PADDED ≥ half its runs → forcing
+  coverage manufactures false coverage. Do not promote regardless of K1, and say so in the
+  doc: a gate that produces padding is worse than a gate that produces a warning, because
+  the padding reads as coverage to every later reader.
+
+**What would make us abandon more than the promotion.** If E-error produces material
+padding *and* the entries authored under E-warn are no better, the coverage gate is not
+carrying its weight in either configuration and should be reconsidered before 1.0 — the
+`@role` precedent, where registered vocabulary that nothing load-bearing dispatched on was
+shrunk in the pre-1.0 breaking slot.
+
+## What is not being run, stated plainly
+
+Round A (duplication), Round B Tests A and B (level κ and ARI), and Round B Test C
+(withdrawn above). Round B's residual live question — the functional-vs-architectural axis,
+the one assignment no machine checks — is worth measuring but is guidance-shaped: a κ result
+would change the authoring skill's wording, not the shipped vocabulary, and does not need
+seven raters to do it. It is deferred rather than dressed up as a kill.
