@@ -78,6 +78,15 @@
         }
       },
       {
+        "requirement.architectural": {
+          "name": "SoftDeleteEverywhere",
+          "@statement": "Every table carried a soft-delete flag rather than deleting rows",
+          "@status": "superseded",
+          "@supersededBy": "UuidPrimaryKeys",
+          "@violation": "A hard delete on a table that promised its rows were recoverable"
+        }
+      },
+      {
         "object.entity": {
           "name": "Order",
           "children": [

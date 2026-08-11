@@ -17,7 +17,9 @@
                 "@status": "live",
                 "@statement": "Every placed order is recorded before payment is attempted",
                 "@violation": "A payment attempted against an order that was never stored",
-                "@verifiedBy": ["OrderServiceTest"],
+                "@verifiedBy": [
+                  "OrderServiceTest"
+                ],
                 "children": [
                   {
                     "requirement.functional": {
@@ -26,7 +28,9 @@
                       "@status": "live",
                       "@statement": "An order records what was bought and for how much",
                       "@violation": "An order row that cannot say who placed it",
-                      "@implementedBy": ["acme::shop::Order"],
+                      "@implementedBy": [
+                        "acme::shop::Order"
+                      ],
                       "children": [
                         {
                           "requirement.functional": {
@@ -35,7 +39,9 @@
                             "@status": "live",
                             "@statement": "An order carries a reference a customer can read down a phone line",
                             "@violation": "A reference that is a raw uuid",
-                            "@implementedBy": ["acme::shop::Order.reference"]
+                            "@implementedBy": [
+                              "acme::shop::Order.reference"
+                            ]
                           }
                         },
                         {
@@ -46,7 +52,9 @@
                             "@statement": "An unpaid order expired on a wall-clock timer",
                             "@violation": "An order cancelled by elapsed time rather than by the customer",
                             "@supersededBy": "OrderRecord",
-                            "@implementedBy": ["acme::shop::Order.expiresAt"]
+                            "@implementedBy": [
+                              "acme::shop::Order.expiresAt"
+                            ]
                           }
                         }
                       ]
@@ -64,7 +72,18 @@
           "@status": "live",
           "@statement": "Every entity has a uuid primary key",
           "@violation": "An entity keyed by a composite string",
-          "@implementedBy": ["acme::shop::Order"]
+          "@implementedBy": [
+            "acme::shop::Order"
+          ]
+        }
+      },
+      {
+        "requirement.architectural": {
+          "name": "SoftDeleteEverywhere",
+          "@status": "superseded",
+          "@statement": "Every table carried a soft-delete flag rather than deleting rows",
+          "@violation": "A hard delete on a table that promised its rows were recoverable",
+          "@supersededBy": "UuidPrimaryKeys"
         }
       }
     ]
