@@ -52,6 +52,7 @@ import com.metaobjects.origin.FirstOrigin;
 import com.metaobjects.origin.MetaOrigin;
 import com.metaobjects.origin.PassthroughOrigin;
 import com.metaobjects.relationship.MetaRelationship;
+import com.metaobjects.requirement.MetaRequirement;
 import com.metaobjects.attr.MetaAttribute;
 import com.metaobjects.registry.ChildRequirement;
 import com.metaobjects.registry.MetaDataRegistry;
@@ -134,6 +135,8 @@ public final class ValidationPhase {
      *       per object that declares any sources.</li>
      *   <li>{@link #validateRelationshipReferentialActions(MetaRoot)} — {@code relationship.*}
      *       {@code @onDelete}/{@code @onUpdate} enum-membership rules.</li>
+     *   <li>{@link #validateRequirementStatus(MetaRoot)} — {@code requirement.*}
+     *       {@code @status} enum-membership rules.</li>
      *   <li>{@link #validateOrigins(MetaRoot)} — {@code origin.*} required-attr +
      *       {@code @from}/{@code @of} reference resolution + {@code @via} path traversal
      *       through declared relationships.</li>
@@ -227,6 +230,9 @@ public final class ValidationPhase {
         pass(collected, () -> validateEntityHasPrimaryIdentity(root, loader));
         pass(collected, () -> validateFilterableHasSupportedOps(root));
         pass(collected, () -> validateIndexLookupFields(root));
+        // The capability ledger's closed status enum (requirements-as-metadata
+        // ruling, Amendment 3) — the loader owns what is UNCONDITIONAL.
+        pass(collected, () -> validateRequirementStatus(root));
         warnFilterableWithoutIndex(root, loader); // warnings only — never throws
 
         // The SAME defect can be flagged by more than one pass (e.g. a missing required attr
@@ -4388,6 +4394,62 @@ public final class ValidationPhase {
                         ErrorCode.ERR_INVALID_INDEX, idx.getSource());
                 }
             }
+        }
+    }
+
+    // =========================================================================
+    // requirement.* @status enum validation
+    //
+    // Applied to every requirement.* node after the full tree is built (attrs are
+    // set post-placement, so the registered .withEnum() CustomConstraint cannot
+    // fire at addChild time — its applicability test sees the ATTR node's own
+    // type/subtype, not the container's; same reason source @kind/@role and
+    // relationship @onDelete/@onUpdate use post-load passes).
+    //
+    //   @status must be one of: live / partial / abandoned / superseded
+    //
+    // This is the mechanism the capability ledger was made registered vocabulary
+    // FOR (requirements-as-metadata ruling, Amendment 3): a typo'd status is
+    // refused by the LOADER, not by a hand-written string comparison in one CLI.
+    // ERR_BAD_ATTR_VALUE is the existing cross-port code for an out-of-set
+    // allowedValues member — no new error code.
+    // =========================================================================
+
+    /**
+     * Walk the full tree and validate {@code @status} on every {@code requirement.*} node.
+     *
+     * @param root the root node to walk
+     * @throws MetaDataException when {@code @status} carries a value outside the closed set
+     */
+    static void validateRequirementStatus(MetaRoot root) {
+        walkRequirementStatus(root);
+    }
+
+    private static void walkRequirementStatus(MetaData node) {
+        validateRequirementStatusNode(node);
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkRequirementStatus(child);
+        }
+    }
+
+    private static void validateRequirementStatusNode(MetaData node) {
+        if (!(node instanceof MetaRequirement)) {
+            return;
+        }
+        // Own attribute only — an inherited @status was already validated on its declaring
+        // node, matching the source @kind/@role and relationship @onDelete/@onUpdate passes.
+        if (!node.hasMetaAttr(MetaRequirement.ATTR_STATUS, false)) {
+            return;
+        }
+        String status = ((MetaRequirement) node).getStatus();
+        if (!MetaRequirement.STATUSES.contains(status)) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                    + ": requirement '" + node.getName()
+                    + "' @" + MetaRequirement.ATTR_STATUS + " '" + status
+                    + "' is not a valid value; allowed: "
+                    + String.join(", ", MetaRequirement.STATUSES),
+                ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
         }
     }
 

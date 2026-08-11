@@ -69,7 +69,7 @@ public class SpecMetamodelEmbedTest {
 
     @Test
     public void readerLoadsEveryEmbeddedFile() {
-        // Smoke: the reader parses all 16 files off the classpath without throwing
+        // Smoke: the reader parses all 18 files off the classpath without throwing
         // and exposes a non-trivial set of type docs + the common-attr docs.
         SpecMetamodelReader reader = SpecMetamodelReader.load();
         assertNotNull("documentation @description common-attr doc must resolve",

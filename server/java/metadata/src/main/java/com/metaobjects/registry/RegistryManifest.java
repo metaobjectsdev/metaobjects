@@ -240,6 +240,7 @@ public final class RegistryManifest {
                 new com.metaobjects.relationship.RelationshipTypesMetaDataProvider(),
                 new com.metaobjects.identity.IdentityTypesMetaDataProvider(),
                 new com.metaobjects.index.IndexTypesMetaDataProvider(),
+                new com.metaobjects.requirement.RequirementTypesMetaDataProvider(),
                 new com.metaobjects.database.CoreDBMetaDataProvider(),
                 new com.metaobjects.source.SourceTypesMetaDataProvider(),
                 new com.metaobjects.origin.OriginTypesMetaDataProvider(),

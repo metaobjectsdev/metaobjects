@@ -100,12 +100,14 @@ public class MetaRoot extends MetaData {
             // the TS reference HAND-CODE the root; it is the single documented
             // hand-coded exception to the JSON-sourced model). The manifest's
             // STRUCTURAL children block must byte-match the cross-port golden:
-            // description "Root metadata document" and EXACTLY the four genuinely-open
+            // description "Root metadata document" and EXACTLY the five genuinely-open
             // structural wildcards a document root legitimately holds — object / field
-            // / validator / template (mirrors the TS reference core-types.ts
-            // `def(TYPE_METADATA, SUBTYPE_ROOT, "Root metadata document",
+            // / validator / template / requirement (mirrors the TS reference
+            // core-types.ts `def(TYPE_METADATA, SUBTYPE_ROOT, "Root metadata document",
             // [wildcard(TYPE_OBJECT), wildcard(TYPE_FIELD), wildcard(TYPE_VALIDATOR),
-            // wildcard(TYPE_TEMPLATE)])`). The previously-registered
+            // wildcard(TYPE_TEMPLATE), wildcard(TYPE_REQUIREMENT)])`; capability
+            // requirements are declared beside the entities they describe). The
+            // previously-registered
             // view/identity/relationship/layout STRUCTURAL root wildcards are removed
             // to match the strict contract.
             //
@@ -123,6 +125,7 @@ public class MetaRoot extends MetaData {
                 .optionalChild(MetaField.TYPE_FIELD, "*", "*")
                 .optionalChild(MetaValidator.TYPE_VALIDATOR, "*", "*")
                 .optionalChild(com.metaobjects.template.TemplateConstants.TYPE_TEMPLATE, "*", "*")
+                .optionalChild(com.metaobjects.requirement.MetaRequirement.TYPE_REQUIREMENT, "*", "*")
                 .optionalChild(com.metaobjects.attr.MetaAttribute.TYPE_ATTR, "*", "*")
             );
             log.debug("Registered MetaRoot type (metadata.root) with unified registry");

@@ -32,7 +32,7 @@ import java.util.Map;
  * FR-033 — the Java reader for the shared {@code spec/metamodel/*.json}
  * provider-definition files.
  *
- * <p>The 16 JSON files (one per concern provider) are the cross-port single source
+ * <p>The 18 JSON files (one per concern provider) are the cross-port single source
  * of truth for every type / attr / common-attr <em>description</em> (+ optional
  * {@code rules}/{@code example}/{@code whenToUse}). They are byte-identical across
  * the ports by design, so each port READS them rather than hand-copying the prose —
@@ -66,12 +66,12 @@ public final class SpecMetamodelReader {
     /** Classpath directory the metadata jar embeds the spec files under. */
     public static final String EMBED_DIR = "spec/metamodel";
 
-    /** The 17 shared provider-definition file names (keep in lockstep with {@code spec/metamodel/}). */
+    /** The 18 shared provider-definition file names (keep in lockstep with {@code spec/metamodel/}). */
     public static final List<String> SPEC_FILES = List.of(
             "attr.json", "db.json", "documentation.json", "field.json", "identity.json",
             "index.json", "layout.json", "object.json", "origin.json", "prompt.json",
-            "relationship.json", "source.json", "template.json", "ui.json", "ui-web.json",
-            "validator.json", "view.json");
+            "relationship.json", "requirement.json", "source.json", "template.json",
+            "ui.json", "ui-web.json", "validator.json", "view.json");
 
     /** Wildcard token used in the JSON for "any type / any subType". */
     private static final String WILDCARD = "*";
