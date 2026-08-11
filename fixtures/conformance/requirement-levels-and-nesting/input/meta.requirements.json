@@ -1,0 +1,72 @@
+{
+  "metadata.root": {
+    "package": "acme::caps",
+    "children": [
+      {
+        "requirement.functional": {
+          "name": "Storefront",
+          "@level": 1,
+          "@status": "live",
+          "@statement": "The storefront solution",
+          "@violation": "Nothing can be sold",
+          "children": [
+            {
+              "requirement.functional": {
+                "name": "OrderService",
+                "@level": 3,
+                "@status": "live",
+                "@statement": "Every placed order is recorded before payment is attempted",
+                "@violation": "A payment attempted against an order that was never stored",
+                "@verifiedBy": ["OrderServiceTest"],
+                "children": [
+                  {
+                    "requirement.functional": {
+                      "name": "OrderRecord",
+                      "@level": 4,
+                      "@status": "live",
+                      "@statement": "An order records what was bought and for how much",
+                      "@violation": "An order row that cannot say who placed it",
+                      "@implementedBy": ["acme::shop::Order"],
+                      "children": [
+                        {
+                          "requirement.functional": {
+                            "name": "TranscribableReference",
+                            "@level": 5,
+                            "@status": "live",
+                            "@statement": "An order carries a reference a customer can read down a phone line",
+                            "@violation": "A reference that is a raw uuid",
+                            "@implementedBy": ["acme::shop::Order.reference"]
+                          }
+                        },
+                        {
+                          "requirement.functional": {
+                            "name": "OrderTimer",
+                            "@level": 5,
+                            "@status": "abandoned",
+                            "@statement": "An unpaid order expired on a wall-clock timer",
+                            "@violation": "An order cancelled by elapsed time rather than by the customer",
+                            "@supersededBy": "OrderRecord",
+                            "@implementedBy": ["acme::shop::Order.expiresAt"]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "requirement.architectural": {
+          "name": "UuidPrimaryKeys",
+          "@status": "live",
+          "@statement": "Every entity has a uuid primary key",
+          "@violation": "An entity keyed by a composite string",
+          "@implementedBy": ["acme::shop::Order"]
+        }
+      }
+    ]
+  }
+}
