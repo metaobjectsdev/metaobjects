@@ -90,10 +90,9 @@ rate is an honest upper bound, computed by a diff and a reference scan — no th
 judgment at scoring time. If the arms do not differ on the upper bound they do not differ
 on duplication.
 
-Validated against ground truth: the estate's actual historical duplicate
-(`WorldLocationAreaEdge`, which references the *area node* type but never the
-`AreaConnection` graph it duplicates) scores NOT-BOUND, while entities that correctly
-extend an incumbent score REUSED.
+Validated against ground truth: the estate's actual historical duplicate — a connection-graph
+entity that references the node type it joins but never the older graph it re-implements —
+scores NOT-BOUND, while entities that correctly extend an incumbent score REUSED.
 
 Field-overlap is still computed and reported per run as **secondary evidence, not
 scored**. Every NOT-BOUND case's raw diff goes into the report so the calls are auditable
