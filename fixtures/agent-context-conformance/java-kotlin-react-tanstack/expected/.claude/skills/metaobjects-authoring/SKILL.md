@@ -974,6 +974,70 @@ mapping).
       - field.int: { name: quantity, required: true }
 ```
 
+## The capability ledger — when the repo has a `capabilities.yaml`
+
+If `capabilities.yaml` sits at the repository root, the project keeps a **capability
+ledger**: a record of what the product does, checked by `meta verify`. Read it before
+designing anything. Two rules matter more than the rest.
+
+**1. When you retire something, record it — at that moment.** Set the entry's `status` to
+`abandoned` (it was built, then deliberately dropped) or `superseded` (something else does
+it now — name that in `supersededBy`). Do it in the same change that removes the code, not
+later.
+
+This is the one thing a ledger does that the model cannot. Given a brief that matches a
+retired feature, agents reading only the model proposed **reviving** it 24 times out of 24,
+each believing it was reusing. A retired feature is *more* attractive than a live one: it was
+purpose-built for exactly the request and never got complicated by production. One line of
+`status: abandoned` is what stops that, and it only works if somebody writes it down when
+the retirement happens.
+
+Leaving a dangling `implementedBy` on an `abandoned` or `superseded` entry is **correct** —
+those nodes are supposed to be gone, and `verify` deliberately allows it. On a `live` or
+`partial` entry the same dangling reference is an error, because it means the model moved
+and the ledger went stale.
+
+**2. When you add an entity, claim it.** Every `object.entity` should appear in some entry's
+`implementedBy`, or `verify` says so. Add it to the L4 entry for the capability it serves,
+or write a new one.
+
+**Every entry states its violation.** One sentence: what breaking it looks like. *"Every
+entity has a uuid primary key"* is violable — point at one with a composite string key.
+*"Things are persisted"* is not, and is therefore a description, not a requirement. Same rule
+kills *"the system is reliable"*. If you cannot say what breaking it looks like, delete it.
+
+**Levels are organisational; links live at the bottom.** L1 solution, L2 segment (an
+application or library), L3 service — these never reference the model. **L4** binds an
+object, **L5** binds a field, view or identity. `implementedBy` above L4 is an error. Ids
+are permanent: regrouping edits `parent` and nothing else, never an id.
+
+**Architectural entries are separate.** Under `architectural:`, with no level and no parent
+— a uuid-PK rule, a change-attribution rule, tenant scoping. Their check is universality
+rather than existence, so one that is `live` and claimed by nothing fails: a policy declared
+and applied to nothing.
+
+```yaml
+capabilities:
+  - id: SVC-PACING
+    level: 3
+    parent: APP-ENGINE
+    status: live
+    statement: "Scene pacing follows story beats"
+    violation: "A scene that advances on a clock rather than on the story"
+  - id: OBJ-TURN-TIMER
+    level: 4
+    parent: SVC-PACING
+    status: abandoned              # retired deliberately -- do NOT revive
+    statement: "Pacing was driven by a per-turn wall-clock timer"
+    violation: "Pacing driven by elapsed time instead of beat completion"
+    supersededBy: OBJ-BEAT-PROGRESSION
+    implementedBy: [game::turn::TurnTimer]   # gone, and that is the point
+```
+
+The ledger adds **no metamodel vocabulary**. There is no `satisfies:` on a field or entity
+and no `capability.*` type — links live on ledger entries, never on model nodes. Full schema:
+the repo's `spec/capability-ledger.md`.
+
 ---
 
 For non-trivial schema design, use `/superpowers:brainstorming` if installed;
