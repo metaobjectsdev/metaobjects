@@ -58,10 +58,27 @@ export const ERR_REQUIREMENT_L5_NOT_MEMBER = "ERR_REQUIREMENT_L5_NOT_MEMBER";
 export const ERR_REQUIREMENT_ARCH_NO_IMPLEMENTERS = "ERR_REQUIREMENT_ARCH_NO_IMPLEMENTERS";
 export const WARN_REQUIREMENT_OBJECT_UNCLAIMED = "WARN_REQUIREMENT_OBJECT_UNCLAIMED";
 
-/** Severity of the object-coverage gate. Ships as a warning until it runs clean
- *  on a real repository; promotion to `"error"` is a one-line flip here, which
- *  activates an already-written test rather than requiring new authoring under
- *  release pressure. */
+/** Severity of the object-coverage gate. Promotion to `"error"` is a one-line
+ *  flip here, which activates an already-written test rather than requiring new
+ *  authoring under release pressure.
+ *
+ *  It stays `"warn"`, and the reason is measured rather than cautious:
+ *
+ *  - On a real 120-file estate carrying a SINGLE requirement, this gate reports
+ *    93 unclaimed entities — every entity in the repository. At `"error"` a
+ *    project adopting requirements incrementally fails its first `verify` after
+ *    authoring one entry, which teaches people to delete the entry.
+ *  - The gate is satisfiable without being informative: `claimedObjects` below
+ *    counts a claim from any requirement at any level and any status, so
+ *    appending an FQN to an existing list clears it. Green proves an entity is
+ *    NAMED, never that it is understood.
+ *  - The experiment meant to settle whether forcing it yields real entries or
+ *    padding stopped at its ceiling probe: at `"warn"` agents already authored
+ *    proper L3/L4/L5 entries for what they added, so the arms could not differ.
+ *    That is not evidence promotion is useless — it is evidence that instrument
+ *    cannot see it.
+ *
+ *  spec/design-docs/2026-08-11-prereg-duplication-and-levels.md, "Round E result". */
 export const OBJECT_COVERAGE_SEVERITY: Severity = "warn";
 
 /**
