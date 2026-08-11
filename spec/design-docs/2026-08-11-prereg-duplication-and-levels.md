@@ -118,18 +118,47 @@ difference is one brief, 10 percentage points.
 
 ---
 
-## Round B — are three levels assignable consistently?
+## Round B — are the levels assignable consistently?
 
-Levels adapted from APQC PCF (stable permanent ids, so regrouping edits `parent` only),
-BIZBOK (**object-in-focus** decomposition; planning maps stop at L3 because L4–L5 map to
-deployed logic — and here the deployed logic *is* the model, addressable by FQN, so
-`implementedBy` **is** the L3→L4 edge) and SAFe (the testability floor).
+_Amended 2026-08-11, before run 1, on the owner's correction. The first draft of this
+section had **three** levels with `implementedBy` on L3, on the BIZBOK reading that
+planning maps stop at L3 because L4–L5 "map to deployed business logic" — and that in
+MetaObjects the deployed logic *is* the model, so `implementedBy` **is** the L3→L4 edge.
+That collapsed the organisational spine into the link layer and, in the owner's words,
+downplayed L1–L3. It is wrong. **L1–L3 are organisational and load-bearing in their own
+right**: services group into L3, and larger segmentations — libraries, applications —
+group by L2. The model links are not an edge hanging off L3; they are **L4 and L5
+entries**, which is what APQC's five levels were for. The corrected model is below._
 
-| Level | What it is | Carries |
-|---|---|---|
-| L1 Area | a family of domain objects; pure index | nothing |
-| L2 Capability | a user-recognisable ability, noun-phrase | `status`, a violation |
-| L3 Requirement | one testable statement | `status`, violation, `implementedBy`, `verifiedBy` |
+Levels adapted from APQC PCF (five levels, and permanent reference numbers so the
+hierarchy can be reorganised while references stay stable), BIZBOK (**object-in-focus**
+decomposition — a capability keeps one object family in focus and its children refine that
+object without changing focus) and SAFe (the testability floor at the smallest unit).
+
+| Level | What it is | Scale | Carries |
+|---|---|---|---|
+| **L1 Solution** | the whole solution; at enterprise scale, one of several | enterprise | organisational only |
+| **L2 Segment** | a major segmentation — an application, a library, a deployable | app / library | `status`, a violation |
+| **L3 Service** | a service-grain capability, stated as one testable statement | service | `status`, violation, `verifiedBy` |
+| **L4 Object** | the capability as it lands on a model **object** | object | `status`, `implementedBy` (object FQNs) |
+| **L5 Member** | the capability as it lands on a **field, view or identity** | member | `status`, `implementedBy` (dotted FQN refs) |
+
+**The link boundary is the rule that matters: nothing above L4 links into the model.**
+`implementedBy` is legal on L4 and L5 only, and is an error on L1–L3. That keeps the
+organisational tiers about organisation and puts every reference to an object, field or
+view where it can be resolved and checked. It also gives the loader two distinct checkable
+shapes: an **L4** reference must resolve to an object; an **L5** reference must be a dotted
+member reference *within* an object.
+
+**L1 is usually a single entry.** For one solution in one repository it is the root and
+carries nothing else; it earns its keep at enterprise scale, where several solutions sit
+side by side. **L5 is optional** — a ledger may stop at L4 and link only at object grain.
+Splitting L4 from L5 is a recommendation, not a requirement: it exists so that "this
+capability is about *this field*" does not have to masquerade as an object-level claim.
+
+None of this reinstates node-side `satisfies:`. The round-5 kill stands: links live on
+ledger entries, never on the model nodes. What changed is only *which* ledger entries
+carry them.
 
 Architectural entries have **no level and no parent** — a separate flat list. Levels come
 from object-in-focus decomposition, and an architectural requirement is object-*independent*
@@ -139,9 +168,14 @@ earlier "level = nesting depth" falsification actually killed. That falsificatio
 for the absence of a definition, the same error as the functional/non-functional
 discriminator.
 
-**Test A (the kill).** ~30 pre-written entries drawn from the estate — true L1/L2/L3, plus
+**Test A (the kill).** ~30 pre-written entries drawn from the estate — true L1–L5, plus
 4 planted non-violable garbage items and 4 architectural. **n=7** fresh-context agents,
 given only the authoring guidance, independently assign level / architectural / reject.
+
+Report κ **twice**: once over all five levels, and once over the two bands that carry
+different rules — organisational (L1–L3) versus linked (L4–L5). The band κ is the one the
+design depends on, because the band is what decides whether `implementedBy` is legal.
+Confusing L4 with L5 costs a granularity choice; confusing L3 with L4 breaks the link rule.
 
 - Pass: Fleiss' κ ≥ 0.6. **Kill: κ < 0.4.**
 - Between 0.4 and 0.6: **one** guidance revision and **one** re-run, declared here now so
@@ -149,9 +183,10 @@ given only the authoring guidance, independently assign level / architectural / 
 - Secondary: ≥6/7 must reject each planted garbage item. Majority-accept of any planted
   item is a kill.
 
-**Test B (measured, not killed).** The same agents cluster ~40 L3s into L2s; report
-pairwise Adjusted Rand Index. Variance is expected — it is the baseline cost of iterative
-regrouping, not a falsification.
+**Test B (measured, not killed).** The same agents cluster ~40 L3 service-grain entries
+into L2 segments; report pairwise Adjusted Rand Index. Variance is expected — it is the
+baseline cost of iterative regrouping, not a falsification, and stable ids are what make
+that regrouping cheap: it edits `parent` and nothing else.
 
 **Test C (protect the one proven win).** One brief targeting an abandoned L2, 3 reps
 against the leveled ledger. **Kill if any run proposes reviving it.** Leveling must not
