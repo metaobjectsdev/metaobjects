@@ -113,8 +113,8 @@ Recorded because the corrections were more useful than the confirmations.
 
 - **"Level is nesting depth."** Derivable but not meaningful — depth encodes the author's
   grouping, not importance. Falsified 3/3.
-- **"Functional vs non-functional is the subtype axis."** The discriminator collapses to
-  "did I find a number." Falsified 9/9.
+- **"Functional vs non-functional is the subtype axis."** Falsified 9/9 — but see the
+  amendment below; what failed was the *discriminator tested*, not the axis.
 - **"One subtype is enough."** Overturned by an agent citing ADR-0037 against it.
 - **A regex used to build a control** deleted sibling node headers; duplicate YAML keys
   parsed silently and two control runs were spent repairing the damage. Discarded and re-run.
@@ -125,6 +125,66 @@ Recorded because the corrections were more useful than the confirmations.
   point was *refuted on every tested claim, untested on the crux*.
 - **A pre-registered kill fired in round 3 and the response was to change the setting and
   re-run.** Naming it here because it is the failure mode most likely to recur.
+
+## Amendment 2 (2026-08-11) — the functional/architectural axis, and testing
+
+The reversal above ("functional vs non-functional is the wrong axis") is **too broad as
+written**. Nine runs falsified the discriminator I gave them — *"non-functional = carries a
+measurable target"* — which collapsed into "did I find a number." A different discriminator
+was never tested and is materially better:
+
+> **Functional** = what the product does for a user.
+> **Architectural** = how the system is built, applied uniformly across the model.
+
+A uuid primary key, an `@autoSet createdAt`, an `updatedBy` audit column, tenant scoping —
+these are not quality attributes with thresholds. They are **architectural policy**, and the
+discriminator is mechanical: did this exist because someone asked for something, or because
+every entity here looks like this?
+
+**Why the axis is real: the two halves need opposite checks.**
+
+| | check | fails when |
+|---|---|---|
+| functional | **existence** — ≥1 node implements it | nothing implements it |
+| architectural | **universality** — no node violates it | one entity lacks the uuid PK |
+
+That is a genuine child-licensing / behaviour difference, which is what ADR-0037 asks for.
+An architectural requirement needs no threshold and no test; it is proven structurally by
+`verify`. Proof already in hand: `BaseEntity` has 26 extenders, `BaseTenantEntity` 9, and
+**`BaseAuditedEntity` zero** — an architectural requirement with no implementers, which four
+independent analyses had to discover the hard way and a universality check would have failed
+the build on.
+
+**It also dissolves the field-grain ceremony objection.** Requiring 1,353 fields to cite a
+capability sounded like noise (`id` → "the system stores things"). Under this split the
+plumbing fields collapse onto a *handful* of architectural requirements with very high
+fan-out — one uuid-PK requirement claimed by 123 entities, one change-attribution
+requirement, one tenancy requirement. Roughly 120 functional plus ~12 architectural, not
+1,353 meaningless links.
+
+**Anti-garbage rule, for the authoring skill.** A requirement must be **violable**: state
+what breaking it looks like. *"Every entity has a uuid primary key"* is violable — point at
+one with a composite string key. *"Things are persisted"* is not, and is therefore a
+description, not a requirement. Same rule kills *"the system is reliable."*
+
+**Many-to-many is structural, not optional.** A node is claimed by whatever capabilities name
+it in `implementedBy`, so multi-claim needs no vocabulary — and the split makes it the normal
+case, since every field participates in architecture and product at once. `Council.id` is
+claimed both by the uuid-PK requirement and by a functional requirement about shareable,
+human-transcribable links.
+
+**Testing follows the same split, and shrinks by an order of magnitude.** Architectural
+requirements take **no tests** — `verify`'s universality check is the proof. Only functional
+requirements need one, so the surface is ~120 rather than ~1,350. A functional requirement
+carries `verifiedBy`, and `verify` checks the named test exists and is not skipped — a symbol
+lookup over an identifier index, the same mechanism the usage-evidence pass already performs
+across 3,700 files in seconds. This is the correct boundary for the case round 2 could not
+resolve: *"nothing in the metadata encodes 'the offer goes to the first row'; that is
+selection logic."* Metadata proves shape, `verify` proves architecture, a test proves
+behaviour.
+
+None of this reinstates node-side `satisfies:`. The round-5 kill stands: links live on the
+ledger, not on fields.
 
 ## Do not re-run
 
