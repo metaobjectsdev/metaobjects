@@ -19,7 +19,6 @@ import { computeCodegenDrift } from "../lib/codegen-drift.js";
 import {
   loadCapabilityLedger,
   validateCapabilityLedger,
-  LEDGER_PATH,
 } from "../lib/capability-ledger.js";
 import { resolveD1Config } from "../lib/config.js";
 import {
@@ -178,7 +177,7 @@ export async function verifyCommand(
 
   // -- capability ledger (#290) ----------------------------------------------
   function runLedgerVerify(): number {
-    const ledger = loadCapabilityLedger(cwd);
+    const ledger = loadCapabilityLedger(cwd, forgeConfig?.capabilities);
     if (!ledger.present) return 0;
     const diags = validateCapabilityLedger(ledger, root);
     const errors = diags.filter((d) => d.severity === "error");
@@ -194,7 +193,7 @@ export async function verifyCommand(
     }
     if (warns.length > CAP) log.warn(`  …and ${warns.length - CAP} more.`);
     if (errors.length > 0) {
-      log.error(`meta verify — capability ledger: ${errors.length} error(s) in ${LEDGER_PATH}.`);
+      log.error(`meta verify — capability ledger: ${errors.length} error(s) in ${ledger.rel}.`);
       return 1;
     }
     return 0;

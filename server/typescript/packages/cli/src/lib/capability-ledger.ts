@@ -1,7 +1,11 @@
-// The capability ledger — `metaobjects/capabilities.yaml` (issue #290).
+// The capability ledger — `capabilities.yaml` at the project root (issue #290).
 //
 // A record of what the product does, checked by `meta verify` when the file is
-// present. The ledger is RESERVED, NOT REGISTERED (the ADR-0040 treatment): it
+// present. Validation is a POST-LOAD pass: `verify` loads the metadata first,
+// then this runs against the in-memory model, resolving every reference through
+// the loader's own `resolveObjectRef`. The ledger file itself is read directly
+// because it is NOT metadata — it registers no metamodel vocabulary, so the
+// loader has no types for it. The ledger is RESERVED, NOT REGISTERED (the ADR-0040 treatment): it
 // adds no metamodel vocabulary, no `capability.*` type, no registry entry. It
 // enters the registry only when a shipping consumer *dispatches* on capability
 // records, per the ADR-0007 Amendment 2 bar. Nothing does today, so this is a
@@ -33,17 +37,19 @@ import {
   type MetaData,
 } from "@metaobjectsdev/metadata";
 
-// Repository ROOT, beside `metaobjects.config.ts` — deliberately NOT inside
-// `metaobjects/`. Issue #290 specified `metaobjects/capabilities.yaml`, and that
-// path cannot work: the loader treats every .json/.yaml/.yml under `metaobjects/`
-// as metadata (sdk `memory.ts` isMetadataFile), so a ledger there is parsed as a
-// metadata root and fails the load outright with `Unknown root type
-// "capabilities.base"`. Excluding it by filename would mean the metamodel loader
-// knowing about a CLI-only artifact, which is exactly the coupling the
-// reserved-not-registered ruling forbids. The root also keeps it discoverable —
-// an agent that lists the repository sees it, which is how a ledger gets read
-// unprompted.
-export const LEDGER_PATH = "capabilities.yaml";
+// Default location: repository ROOT, beside `metaobjects.config.ts` — and
+// deliberately NOT inside `metaobjects/`. Issue #290 specified
+// `metaobjects/capabilities.yaml`, and that path cannot work: the loader treats
+// every .json/.yaml/.yml under `metaobjects/` as metadata (sdk `memory.ts`
+// isMetadataFile), so a ledger there is parsed as a metadata root and fails the
+// load outright with `Unknown root type "capabilities.base"`. Excluding it by
+// filename would mean the metamodel loader knowing about a CLI-only artifact,
+// which is exactly the coupling the reserved-not-registered ruling forbids. The
+// root also keeps it discoverable — an agent that lists the repository sees it,
+// which is how a ledger gets read unprompted.
+//
+// Overridable via `capabilities` in `metaobjects.config.ts`.
+export const DEFAULT_LEDGER_PATH = "capabilities.yaml";
 
 /** Closed enum. An unknown value is a hard error — a typo must not silently
  *  disable the one field with controlled evidence behind it. */
@@ -110,7 +116,10 @@ export interface CapabilityEntry {
 
 export interface LoadedLedger {
   present: boolean;
+  /** Absolute path checked. */
   path: string;
+  /** Path as configured, relative to the project root — what diagnostics name. */
+  rel: string;
   entries: CapabilityEntry[];
   /** Set when the file exists but could not be parsed into the expected shape. */
   parseError?: string;
@@ -166,25 +175,26 @@ function readList(raw: unknown, architectural: boolean, out: CapabilityEntry[], 
  * corrupted a control arm during the investigation that produced this feature,
  * and a default is not a guarantee.
  */
-export function loadCapabilityLedger(cwd: string): LoadedLedger {
-  const path = join(cwd, LEDGER_PATH);
-  if (!existsSync(path)) return { present: false, path, entries: [] };
+export function loadCapabilityLedger(cwd: string, configuredPath?: string): LoadedLedger {
+  const rel = configuredPath ?? DEFAULT_LEDGER_PATH;
+  const path = join(cwd, rel);
+  if (!existsSync(path)) return { present: false, path, rel, entries: [] };
   let doc: unknown;
   try {
     doc = YAML.parse(readFileSync(path, "utf8"), { uniqueKeys: true });
   } catch (err) {
-    return { present: true, path, entries: [], parseError: (err as Error).message };
+    return { present: true, path, rel, entries: [], parseError: (err as Error).message };
   }
-  if (doc === null || doc === undefined) return { present: true, path, entries: [] };
+  if (doc === null || doc === undefined) return { present: true, path, rel, entries: [] };
   if (typeof doc !== "object" || Array.isArray(doc)) {
-    return { present: true, path, entries: [], parseError: "expected a mapping at the document root" };
+    return { present: true, path, rel, entries: [], parseError: "expected a mapping at the document root" };
   }
   const rec = doc as Record<string, unknown>;
   const entries: CapabilityEntry[] = [];
   const errs: string[] = [];
   readList(rec["capabilities"], false, entries, errs);
   readList(rec["architectural"], true, entries, errs);
-  const out: LoadedLedger = { present: true, path, entries };
+  const out: LoadedLedger = { present: true, path, rel, entries };
   if (errs.length > 0) out.parseError = errs.join("; ");
   return out;
 }
@@ -245,7 +255,7 @@ export function validateCapabilityLedger(ledger: LoadedLedger, root: MetaData): 
   const out: Diagnostic[] = [];
   if (!ledger.present) return out;
   if (ledger.parseError !== undefined) {
-    out.push({ severity: "error", code: ERR_LEDGER_PARSE, message: `${LEDGER_PATH}: ${ledger.parseError}` });
+    out.push({ severity: "error", code: ERR_LEDGER_PARSE, message: `${ledger.rel}: ${ledger.parseError}` });
     if (ledger.entries.length === 0) return out;
   }
 

@@ -2,9 +2,24 @@
 
 _A record of what the product does, checked by `meta verify`. Reserved, not registered._
 
-A capability ledger is a single YAML file at the repository root, `capabilities.yaml`,
-beside `metaobjects.config.ts`. It is **opt-in by existence**: `meta verify` checks it when
-the file is present and says nothing when it is absent.
+A capability ledger is a single YAML file, `capabilities.yaml` at the project root beside
+`metaobjects.config.ts`. It is **opt-in by existence**: `meta verify` checks it when the
+file is present and says nothing when it is absent. The location is configurable —
+`capabilities: "docs/ledger.yaml"` in `metaobjects.config.ts` — with one constraint below.
+
+## How it is checked
+
+Validation is a **post-load pass**, the same shape as the JVM port's database check: `verify`
+loads the metadata first, then the ledger is validated against the **in-memory model**. Every
+`implementedBy` reference resolves through the loader's own `resolveObjectRef`, so the
+package-local contract (ADR-0042) applies for free rather than being re-implemented — no
+parallel name scan, which is what made bare-name refs bind the wrong package elsewhere (#228).
+
+The ledger file itself is read directly, because it is **not metadata**: it registers no
+metamodel vocabulary, so the loader has no types for it. That is also the constraint on its
+location — **it must not live under `metaobjects/`**, where the loader treats every
+`.json`/`.yaml`/`.yml` as metadata and would fail the load with
+`Unknown root type "capabilities.base"` before any of this runs.
 
 ## Why it exists
 

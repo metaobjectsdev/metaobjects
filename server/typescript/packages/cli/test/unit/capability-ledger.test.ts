@@ -22,7 +22,7 @@ import {
   OBJECT_COVERAGE_SEVERITY,
   LINK_FLOOR_LEVEL,
   MAX_LEVEL,
-  LEDGER_PATH,
+  DEFAULT_LEDGER_PATH,
   ERR_LEDGER_PARSE,
   ERR_LEDGER_DUPLICATE_ID,
   ERR_LEDGER_BAD_STATUS,
@@ -95,7 +95,7 @@ async function check(yaml: string): Promise<Diagnostic[]> {
   const dir = mkdtempSync(join(tmpdir(), "cap-ledger-"));
   try {
     cpSync(FIXTURE, dir, { recursive: true });
-    const p = join(dir, LEDGER_PATH);
+    const p = join(dir, DEFAULT_LEDGER_PATH);
     mkdirSync(dirname(p), { recursive: true });
     writeFileSync(p, yaml);
     return validateCapabilityLedger(loadCapabilityLedger(dir), await fixtureRoot());
@@ -123,6 +123,38 @@ describe("capability ledger — presence", () => {
   test("a fully-claimed ledger is clean", async () => {
     const d = await check(`capabilities:${SPINE}${COVER}`);
     expect(d).toEqual([]);
+  });
+});
+
+describe("capability ledger — configured location", () => {
+  test("the path comes from metaobjects.config.ts, defaulting to the project root", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cap-ledger-cfg-"));
+    try {
+      cpSync(FIXTURE, dir, { recursive: true });
+      mkdirSync(join(dir, "docs"), { recursive: true });
+      writeFileSync(join(dir, "docs/ledger.yaml"), `capabilities:${SPINE}${COVER}`);
+
+      // Default path: nothing at the root, so the ledger reads as absent.
+      expect(loadCapabilityLedger(dir).present).toBe(false);
+
+      // Configured path: found, and diagnostics name the CONFIGURED location
+      // rather than the default, so the message points at the real file.
+      const configured = loadCapabilityLedger(dir, "docs/ledger.yaml");
+      expect(configured.present).toBe(true);
+      expect(configured.rel).toBe("docs/ledger.yaml");
+      expect(validateCapabilityLedger(configured, await fixtureRoot())).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the default path is outside the metadata scan tree", () => {
+    // Load-order fact, not taste: the loader treats every .json/.yaml/.yml under
+    // `metaobjects/` as metadata, so a ledger there is parsed as a metadata root
+    // and fails the load with `Unknown root type "capabilities.base"` before any
+    // of this code runs. Pinned so the default can never drift back inside.
+    expect(DEFAULT_LEDGER_PATH.startsWith("metaobjects/")).toBe(false);
+    expect(DEFAULT_LEDGER_PATH.includes("/")).toBe(false);
   });
 });
 

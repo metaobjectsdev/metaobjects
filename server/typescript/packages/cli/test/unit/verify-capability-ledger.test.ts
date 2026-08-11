@@ -10,7 +10,7 @@ import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { verifyCommand } from "../../src/commands/verify.js";
-import { LEDGER_PATH } from "../../src/lib/capability-ledger.js";
+import { DEFAULT_LEDGER_PATH } from "../../src/lib/capability-ledger.js";
 
 const FIXTURE = resolve(import.meta.dirname, "../fixtures/capability-ledger-meta");
 
@@ -67,12 +67,12 @@ describe("meta verify — capability ledger gate (#290)", () => {
   });
 
   test("a clean ledger passes", async () => {
-    writeFileSync(join(dir, LEDGER_PATH), CLEAN);
+    writeFileSync(join(dir, DEFAULT_LEDGER_PATH), CLEAN);
     expect(await verifyCommand([], dir)).toBe(0);
   });
 
   test("a dangling live reference fails the build", async () => {
-    writeFileSync(join(dir, LEDGER_PATH), CLEAN + `  - id: STALE
+    writeFileSync(join(dir, DEFAULT_LEDGER_PATH), CLEAN + `  - id: STALE
     level: 4
     parent: SVC
     status: live
@@ -87,7 +87,7 @@ describe("meta verify — capability ledger gate (#290)", () => {
     // The asymmetry, end to end: an abandoned capability's nodes are supposed to
     // be gone, so its dangling reference is the entry doing its job. Paired with
     // the test above so the inversion cannot be half-broken unnoticed.
-    writeFileSync(join(dir, LEDGER_PATH), CLEAN + `  - id: RETIRED
+    writeFileSync(join(dir, DEFAULT_LEDGER_PATH), CLEAN + `  - id: RETIRED
     level: 4
     parent: SVC
     status: abandoned
@@ -99,7 +99,7 @@ describe("meta verify — capability ledger gate (#290)", () => {
   });
 
   test("an unknown status fails the build", async () => {
-    writeFileSync(join(dir, LEDGER_PATH), CLEAN + `  - id: TYPO
+    writeFileSync(join(dir, DEFAULT_LEDGER_PATH), CLEAN + `  - id: TYPO
     level: 4
     parent: SVC
     status: abandonned
@@ -111,7 +111,7 @@ describe("meta verify — capability ledger gate (#290)", () => {
   });
 
   test("an unclaimed entity warns but does not fail, while the gate ships as a warning", async () => {
-    writeFileSync(join(dir, LEDGER_PATH), `capabilities:
+    writeFileSync(join(dir, DEFAULT_LEDGER_PATH), `capabilities:
   - id: SOLN
     level: 1
     statement: "The commerce solution"
