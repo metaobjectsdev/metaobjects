@@ -66,12 +66,21 @@ def resolve_shared_enum_decl(field: MetaField) -> MetaData | None:
 
 
 def is_provided(decl: MetaData) -> bool:
-    """Effective ``@provided`` truth of an enum declaration.
+    """``@provided`` truth of an enum DECLARATION.
 
-    ADR-0039 — resolves through ``extends`` (``get_meta_attr``): a concrete enum
-    extending an abstract ``@provided`` enum inherits the flag, so an own-only read
-    would misclassify it."""
-    return decl.get_meta_attr(fc.FIELD_ATTR_PROVIDED) is True
+    ADR-0039 sanctioned own (Python naming inversion: ``attr()`` is the OWN read,
+    ``get_meta_attr()`` resolves). ``@provided`` is a declaration-layer provenance
+    marker — "THIS type is supplied by hand-written/third-party code", like
+    ``is_abstract`` — and does not flow down an ``extends`` chain.
+
+    This is only ever called on the resolved declaration (see
+    ``shared_enum_for_field``), never on the consuming field, so own and resolving
+    agree for a plain ``field extends @provided decl``. They diverge on a CHAINED
+    declaration (root abstract ``B extends`` root abstract ``@provided A``): a
+    resolving read reports B provided and emits a reference to a hand-written ``B``
+    the adopter never declared, instead of materializing B. Matches the JVM ports.
+    """
+    return decl.attr(fc.FIELD_ATTR_PROVIDED) is True
 
 
 def _meta_package_of(decl: MetaData) -> str:

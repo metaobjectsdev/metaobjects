@@ -26,8 +26,15 @@ Two metamodel-internal siblings use the same *"emit only the declared-here layer
 - **Iterating members for runtime, validation, effective serialization, schema building, or extract** → resolve (`fields()`/`children()`/`attrs()`), because you need the *effective* set including inherited members.
 - **"Root scans that only work because root is never extended"** (`root.OwnChildren()`) → still resolve. Working-by-accident is the fragile pattern this ADR eliminates.
 
-### The physical exception
-`@dbColumnType` is **never inherited** by explicit policy (a physical column-type override is not a logical property). It stays own-only, documented as such at the read site. This is the *only* attribute deliberately read own-only outside the emit-declared-here cases.
+### The deliberately-own-only attributes
+Two attributes are read own-only by explicit policy, outside the emit-declared-here cases. Each is documented as such at every read site.
+
+- **`@dbColumnType`** — **never inherited**: a physical column-type override is not a logical property.
+- **`@provided`** (FR-019 / [ADR-0026](ADR-0026-shared-and-provided-named-types.md)) — a **declaration-layer provenance marker**, not a property of the values it carries. It asserts "*this* named type is supplied by hand-written / third-party code, so emit nothing and reference it", which is a fact about the declaration itself — like `abstract` — and does not flow down an `extends` chain.
+
+  The distinction is only observable on a **chained declaration**: a root-level abstract enum `B extends` a root-level abstract `@provided` enum `A`. `@provided` is read on the resolved *declaration*, never on the consuming field, so for the ordinary `field extends @provided decl` shape own and resolving agree. On the chained shape a resolving read reports `B` as provided and emits a reference to a hand-written `B` **the adopter never declared** (the marker was authored on `A`), instead of materializing `B` from its inherited `@values`. Own-only matches authored intent.
+
+  Note this is a *provenance* marker and not a value: the member set it accompanies (`@values`, and its numeric half `@intValueMap`) is a logical property and is still read **resolving**, so a declaration inheriting `@values` from its super materializes correctly.
 
 ### Naming
 Where a port's default-named accessor is own-only (Python `attr()` is own; TS `attr()` resolves — an inversion), the port SHOULD make the **resolving** form the default-named one and the own form explicitly `own*`, so "the obvious call" is the correct one. Any `own*()` call MUST carry a one-line comment stating which sanctioned case it is.
@@ -37,4 +44,4 @@ Where a port's default-named accessor is own-only (Python `attr()` is own; TS `a
 - A concrete field/entity that `extends` an abstract parent now correctly inherits its properties and members through codegen, runtime, serialization-effective, schema, and validation — in all five ports.
 - A **conformance fixture** (abstract field with `isArray`/`maxLength`/`precision`/`default`/`objectRef`/`storage` + a concrete field that `extends` it, plus an entity-level BaseEntity case) gates the class permanently; it fails on pre-fix code.
 - The rule is propagated to CLAUDE.md and the agent-context authoring/codegen/audit skills; the `metaobjects-audit` skill flags own-accessor value-reads/effective-iteration in codegen/runtime as a defect.
-- Each remaining `own*()` call is either the sanctioned emit-declared-here case (commented) or `@dbColumnType` (commented) — any other is a bug.
+- Each remaining `own*()` call is either the sanctioned emit-declared-here case (commented) or one of the two deliberately-own-only attributes, `@dbColumnType` / `@provided` (commented) — any other is a bug.
