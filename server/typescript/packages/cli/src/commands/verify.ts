@@ -17,6 +17,7 @@ import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
 import { computeCodegenDrift } from "../lib/codegen-drift.js";
 import { checkRequirements } from "../lib/requirement-check.js";
+import { checkVerifiedBy } from "../lib/verified-by-scan.js";
 import { resolveD1Config } from "../lib/config.js";
 import {
   buildWranglerExecuteArgs,
@@ -174,7 +175,9 @@ export async function verifyCommand(
 
   // -- requirements (#290) ---------------------------------------------------
   function runRequirementVerify(): number {
-    const diags = checkRequirements(root);
+    // `@verifiedBy` resolution needs the project on disk, so it is a separate
+    // scan; its diagnostics carry the same severities and share this reporter.
+    const diags = [...checkRequirements(root), ...checkVerifiedBy(root, cwd)];
     if (diags.length === 0) return 0;
     const errors = diags.filter((d) => d.severity === "error");
     const warns = diags.filter((d) => d.severity === "warn");
