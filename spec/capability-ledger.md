@@ -211,6 +211,27 @@ An **L4** reference must resolve to an object; an **L5** reference must be a dot
 reference *within* an object (`Order.reference`, `Order.total.display`), resolved by walking
 child names.
 
+### `verifiedBy` — the named tests must exist, and must not be skipped
+
+`verify` checks each name in `@verifiedBy` appears in the project's test sources and is not
+disabled. **It never runs them** — that is the test runner's job, and a requirement gate
+that shelled out to one would be slow, ecosystem-specific, and wrong in CI.
+
+| status | a named test that appears nowhere |
+|---|---|
+| `live`, `partial` | **error** — renamed, removed, or never true |
+| `abandoned`, `superseded` | **allowed** — same asymmetry as `implementedBy` |
+
+A test that exists but carries a skip marker is a **warning** naming the file and line: a
+skipped test proves nothing, and the requirement reads as verified while it is not.
+
+Two deliberate limits, because a nagging gate gets switched off. The scan **fails open** —
+a project with no test files it can see reports nothing rather than every name missing, so
+a monorepo whose tests live outside the working directory is not told its requirements are
+unverified. And matching is whole-word with `_` treated as a **separator**, so pytest's
+`def test_OrderServiceTest` satisfies a claim naming `OrderServiceTest`, while `Order` is
+still not satisfied by `OrderServiceTest`.
+
 ### Object coverage
 
 Every `object.entity` should be claimed by at least one requirement, so adding an entity
