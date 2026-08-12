@@ -75,6 +75,23 @@ a downstream provider that projects a required attr will now fail at composition
 A standing gate encodes the invariant: compose without each provider, assert no surviving
 type lost a required attribute.
 
+### Known and NOT fixed — unknown-attr enforcement on `template.*` differs by port
+
+An undeclared attribute on a `template.prompt` is rejected by TypeScript
+(`ERR_UNKNOWN_ATTR`) and **accepted silently by Java**, whose `MetaTemplate` still carries an
+any-attr wildcard child rule that FR-033 dropped in TypeScript. No conformance fixture
+probes an unknown attr on `template.*` or `requirement.*`, which is why the divergence
+survived.
+
+It is left unfixed deliberately, because the correct resolution is not obvious and is not a
+release-time decision: **ADR-0011 charters consumers extending `template.toolcall` with
+vendor-specific attributes**, and Java's wildcard may be the mechanism that honours it —
+in which case TypeScript's strictness has quietly broken a chartered feature rather than
+Java having a hole. ADR-0011 (consumer extension) and ADR-0023 (strict provenance) are in
+tension here and need a ruling, plus a shared fixture, before either port moves.
+
+This is pre-existing and unchanged by this release.
+
 ### Fixed — node identity across package boundaries
 
 `instanceof` against a metadata node from another package returns **false for a real node**
