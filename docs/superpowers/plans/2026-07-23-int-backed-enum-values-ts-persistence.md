@@ -12,8 +12,29 @@
 
 - Every TS-facing type (Zod schema output type, generated `EntityType`, the JSON wire payload) is BYTE-IDENTICAL between string-backed and int-backed enums — string in, string out, everywhere except the literal DB column.
 - `@intValueMap` presence alone is the trigger — no new codegen option, no new CLI flag.
-- Do not touch the metamodel/validation layer — that plan already shipped. If a step here tempts you to edit `attr-schema-validate.ts` or add a new attr constant, stop; it's already done.
+- Metamodel/validation changes need explicit justification, but are NOT forbidden. (This constraint originally read "do not touch the metamodel/validation layer — it's already done." That premise was falsified by #246 before this plan ever ran; see Amendment 1.) Prefer deriving from what's already registered; adding a new attr still requires the ADR-0023 can't-be-computed justification.
 - The migration-safety guard requires ZERO new gating code (see Architecture) — this plan's migration-safety task is a test, not an implementation.
+
+---
+
+## Amendments (2026-08-12)
+
+This plan was written 2026-07-23 against a pre-#246 / pre-FR-019-hardening tree. Everything below post-dates it and MUST be folded in before executing. Tasks 1-6 are otherwise still accurate — their file anchors were re-verified against the current tree and all resolve.
+
+**Amendment 1 — the metamodel layer moved under this plan's feet.** Three loader/codegen changes landed after this plan was authored:
+- **#246 int-backed twin** — a field may NOT declare its own `@intValueMap` when its immediate super is a root-level abstract (SHARED, FR-019) `field.enum`. The map lives on the SHARED DECLARATION and is inherited.
+- **`@provided` is declaration-layer** (ADR-0039 amended) — read own-only in all five ports.
+- **Chained abstract enum declarations** are legal and each materializes as its own type, named for its own declaration.
+
+**Consequence for Tasks 4 + 5, and it is the load-bearing one:** every read of `@intValueMap` in codegen MUST be a RESOLVING read (`field.attr(FIELD_ATTR_INT_VALUE_MAP)`), never `ownAttrs()`. Post-#246 the common authoring shape is the map on a shared abstract declaration with N consuming fields inheriting it — an own-only read sees `undefined` on every one of those fields and silently emits a STRING codec into an INTEGER column. That is a silent data-corruption path, not a compile error. ADR-0039 is the governing rule; the two deliberately-own-only attrs (`@dbColumnType`, `@provided`) do NOT include `@intValueMap`.
+
+**Also required:** the shared-enum path emits ONE materialized type per declaration. A per-TYPE codec artifact (a lookup const/table named for the enum type) must be emitted ONCE per shared declaration, not once per consuming field — the Kotlin plan's `${enumClassName}_TO_INT` shape collides under sharing. TS's per-entity `ENTITY_FIELD_TO_INT` naming is per-field and does NOT collide, so Task 5's naming is safe as written; keep it that way deliberately rather than by accident.
+
+**Amendment 2 — three persistence surfaces are missing from Tasks 1-6.** Each is a real, verified gap; they are added as Tasks 7-9 below.
+
+**Amendment 3 — Task 6 breaks the other four ports on landing.** It adds `intEnumVal` to the SHARED `persistence-conformance` corpus, which every port runs. Until each port's codec ships, their round-trip lanes go red. Run Task 6 LAST, and treat the resulting cross-port red as expected and tracked — or hold Task 6 until the C#/Java+Kotlin/Python plans are ready to land in the same train. Per the release ruling, `@intValueMap` must NOT reach a published registry while inert, so the whole program merges as one train anyway.
+
+**Amendment 4 — array-of-enum (`@isArray`) is under-specified.** D7 says an int-backed array is `integer[]`. Task 1 covers the column type, but Task 5's codec must encode/decode ELEMENT-WISE, and the existing enum `CHECK` is skipped for arrays (`buildChecks` returns early on `field.resolvedIsArray()`), so array membership stays app-level exactly as it is for string-backed arrays. Add an explicit array case to Task 5's tests rather than leaving it implied.
 
 ---
 
@@ -688,6 +709,67 @@ git commit -m "test(persistence-conformance): int-backed field.enum round-trips 
 
 ---
 
+### Task 7: migrate-ts + codegen-ts — `@default` must lower to the INT literal
+
+**Why (verified 2026-08-12):** `buildColumn` reads `@default` and, for a string, emits `col.default = { kind: "literal", value: "DRAFT" }` (`packages/migrate-ts/src/expected-schema.ts:943-949`). On an int-backed enum that produces `DEFAULT 'DRAFT'` on an `integer` column — un-appliable DDL, and permanent false drift on any DB that somehow has it. The enum-member `@default` is already validated as a member of `@values` (Check 5 / FR-011), so the mapping is always available.
+
+**Files:**
+- Modify: `packages/migrate-ts/src/expected-schema.ts` (`buildColumn`)
+- Modify: `packages/codegen-ts/src/column-mapper.ts` (Drizzle `.default(...)` emission — same defect, same fix)
+- Test: `packages/migrate-ts/test/unit/expected-schema-enum-intvaluemap.test.ts` (extend Task 1's file)
+
+- [ ] **Step 1: Failing test** — an int-backed enum with `@default: "DRAFT"` and `@intValueMap: {DRAFT: 0, …}` must yield `col.default === { kind: "literal", value: "0" }`, NOT `"DRAFT"`. Add the string-backed control asserting `"DRAFT"` is unchanged.
+- [ ] **Step 2:** In `buildColumn`, when the field is an int-backed enum, map the `@default` member symbol through the RESOLVING `@intValueMap` before building the descriptor. An authored default that is not a member is already a load-time error — do not re-validate, but do not silently pass an unmapped value through either; throw a codegen error naming the field if the lookup misses (defensive, unreachable).
+- [ ] **Step 3:** Same in `column-mapper.ts` so the Drizzle `.default()` and the DDL agree — a mismatch is exactly the class of drift `meta verify` exists to catch.
+- [ ] **Step 4:** Run `bun test packages/migrate-ts packages/codegen-ts`.
+- [ ] **Step 5: Commit** — `fix(migrate-ts,codegen-ts): int-backed enum @default lowers to its integer literal`
+
+---
+
+### Task 8: runtime-ts + codegen-ts — the filter path must encode symbol→int
+
+**Why (verified 2026-08-12):** generated CRUD endpoints filter on `@filterable` fields. `parseFilterParams` coerces by the allowlist rule's `subType` and binds the result (`packages/runtime-ts/src/drizzle-fastify/filter-parser.ts:156-186`, `coerce` at :215). An enum rule coerces as a plain string, so `?filter[status][eq]=DRAFT` binds `'DRAFT'` against an `integer` column — a Postgres type error at request time, and `in` lists likewise. Nothing in Tasks 1-6 touches this.
+
+**Follow the `dateValues` precedent exactly** (`filter-parser.ts:232-243` + `FilterFieldRule`): codegen already solved this identical problem for Date-typed columns by having the GENERATED allowlist carry a per-column flag the parser honours. Do the same — carry the symbol→int map (or a reference to the generated lookup) on the rule. Do NOT teach the parser to re-derive it from metadata; the parser is metadata-free by design.
+
+**Files:**
+- Modify: `packages/runtime-ts/src/drizzle-fastify/filter-parser.ts` (`FilterFieldRule` + `coerce`)
+- Modify: `packages/codegen-ts/src/templates/` — the filter-allowlist emitter
+- Test: `packages/runtime-ts/test/` filter-parser unit tests + a codegen allowlist emission test
+
+- [ ] **Step 1: Failing tests** — (a) parser: a rule carrying an int map coerces `"DRAFT"` → `0` for `eq`/`ne`, and `"DRAFT,PUBLISHED"` → `[0, 5]` for `in`; an unknown member is a `filter.invalid_value` `FilterParseError` naming the field (NOT a silent pass-through, NOT a 500). (b) codegen: the generated `<Entity>FilterAllowlist` for an int-backed enum field carries the map; a string-backed one is byte-identical to today.
+- [ ] **Step 2:** Extend `FilterFieldRule` with the optional map and honour it in `coerce`'s enum path.
+- [ ] **Step 3:** Emit it from the allowlist generator, reading `@intValueMap` RESOLVING (Amendment 1).
+- [ ] **Step 4:** `isNull` is unaffected (it coerces boolean); `like` must be REJECTED for an int-backed enum — a substring match against an integer column is meaningless. Confirm the existing per-subtype operator gating already excludes `like` for enums; if it does not, that is the fix.
+- [ ] **Step 5: Commit** — `fix(runtime-ts,codegen-ts): int-backed enum filters bind the integer, not the member symbol`
+
+---
+
+### Task 9: codegen-ts — TPH per-subtype read schemas must decode
+
+**Why (verified 2026-08-12):** `renderTphSubtypeReadSchema` (`packages/codegen-ts/src/templates/zod-validators.ts`) parses DB ROWS. For an int-backed enum the row holds an integer, which a string `z.enum([...])` read schema rejects outright. Task 5 wires the vanilla read path; the TPH per-subtype path is a SEPARATE code path — this is the same class of miss as #203/#229, where TPH per-subtype controllers each needed `@autoSet` stamping wired separately after the vanilla path already had it. The original plan hand-waved TPH as "a follow-up if discovered incomplete." It IS incomplete.
+
+Note `fixtures/conformance/tph-discriminator-enum-with-subtypes` exists: an int-backed enum used AS a TPH discriminator additionally needs its `HasValue`-equivalent literal comparisons encoded. If that proves to need its own design, the acceptable fallback is to REJECT `@intValueMap` on a discriminator field with a clear loader error — but decide it explicitly, do not leave it emitting broken code.
+
+**Files:**
+- Modify: `packages/codegen-ts/src/templates/zod-validators.ts`
+- Test: `packages/codegen-ts/test/templates/` TPH read-schema test
+
+- [ ] **Step 1: Failing test** — a TPH hierarchy whose base carries an int-backed enum: the generated per-subtype read schema accepts the integer row value and yields the member string.
+- [ ] **Step 2:** Wire the decode into the TPH read path, reusing Task 5's generated lookup — do not duplicate the codec.
+- [ ] **Step 3:** Decide and implement the discriminator case (support, or reject with a named error).
+- [ ] **Step 4: Commit** — `fix(codegen-ts): TPH per-subtype read schemas decode int-backed enums`
+
+---
+
 ## After this plan lands
 
 TS is the reference port; the same shape (DDL/column-type dispatch → runtime codec → persistence-conformance round-trip) repeats in the C#, Java+Kotlin, and Python persistence plans, each adapted to that port's own ORM/codec idiom (EF Core `HasConversion`, OMDB `JdbcFieldCodec`/Exposed `customEnumeration`, Python `ObjectManager` coercion). Only TS needed a genuinely new "wire type differs from storage type" pattern — the other ports' `MetaField`-level runtime access already made a symbol↔int translation point available without inventing new template plumbing.
+
+**The other three plans are deliberately NOT amended yet** (ruling, 2026-08-12). They are rewritten from what THIS execution actually learns, not from paper analysis — TS owns the schema layer (ADR-0015), so the hard questions (integer DDL, CHECK evolution, filter lowering, migration gating against a real engine) can only be *answered* here. Amending all four up front would bake speculation into three ports that would then be re-amended anyway.
+
+Known port-specific defects already identified, to fold in during that rewrite:
+- **C#** — the array branch emits `ElementType().HasConversion<string>()` unconditionally, ignoring `@intValueMap` (violates D7); and its per-entity `EnumTypeName` naming needs re-checking against FR-019's shared/provided materialization.
+- **Java/Kotlin** — Kotlin's per-package `${enumClassName}_TO_INT` support-file emission collides under a shared enum (two consuming fields → two same-named top-level `val`s, even with identical maps: the emitter iterates `(class, field)` pairs with no dedupe). Emit per TYPE, once. A `@provided` Kotlin enum additionally needs its class imported into the support file. Java's `hasMetaAttr(name)` defaults to `includeParentData=true` and DOES resolve through `extends` (verified) — so its codec read is correct by default, but keep it that way deliberately.
+- **Python** — the write branch's `int_value_map[value]` raises `KeyError` on a non-member (should be a clean validation error) and `TypeError` on an array-of-enum value (a list is unhashable); D7 array handling is absent entirely. The query/WHERE path is unaddressed (same class as Task 8).
+- **All ports** — `@provided` + `@intValueMap` is a REAL adopter case, not an edge case: ADR-0026's motivating example is literally a hand-written enum with int backing. Materialization is suppressed; the codec is NOT. Every port must map by member SYMBOL through the metadata map, never through the provided native type's own underlying integer values (a hand-written `ContactMethod.Email = 3` with `@intValueMap {Email: 1}` must store `1`). C#'s name-keyed dictionary gets this right by construction but has no test pinning it.
