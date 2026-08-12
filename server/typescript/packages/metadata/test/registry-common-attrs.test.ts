@@ -7,6 +7,20 @@ import { validateAttrSchema } from "../src/attr-schema-validate.js";
 import { parseJson } from "../src/parser-json.js";
 
 describe("TypeRegistry.registerCommonAttrs", () => {
+  // ADR-0050, the widest form of the projection defect. A common attr lands on EVERY
+  // registered type, so a required one would vanish from all of them the moment its
+  // provider is composed out. Java is immune by construction (its registerCommonAttribute
+  // takes no `required` parameter); here AttrSchema carries it, so it is guarded.
+  it("refuses a REQUIRED common attr, and fails closed", () => {
+    const r = new TypeRegistry();
+    expect(() =>
+      r.registerCommonAttrs([
+        { name: "mustBeThere", valueType: ATTR_SUBTYPE_STRING, required: true, description: "Nope." },
+      ]),
+    ).toThrow(/REQUIRED/);
+    expect(r.getCommonAttrs().map((a) => a.name)).not.toContain("mustBeThere");
+  });
+
   it("registers a common attr accessible on getCommonAttrs()", () => {
     const r = new TypeRegistry();
     const attrs: AttrSchema[] = [

@@ -41,6 +41,14 @@ class ErrorCode(str, Enum):
     ERR_PROVIDER_DUPLICATE_ID = "ERR_PROVIDER_DUPLICATE_ID"
     ERR_PROVIDER_MISSING_DEPENDENCY = "ERR_PROVIDER_MISSING_DEPENDENCY"
     ERR_PROVIDER_ATTR_CONFLICT = "ERR_PROVIDER_ATTR_CONFLICT"
+    # ADR-0050: a provider tried to PROJECT a REQUIRED attribute onto a type it does
+    # not own (via TypeRegistry.extend). Projection is optional-only — a required
+    # attr registered this way disappears silently whenever that provider is
+    # composed out, taking its required-attr validation rule with it. This is
+    # exactly how FR-033 broke template.*'s @payloadRef/@toolName in all five
+    # ports. If an attr is genuinely required it is OWN: declare it with the type,
+    # in the type's own provider.
+    ERR_EXTEND_REQUIRED_ATTR = "ERR_EXTEND_REQUIRED_ATTR"
     ERR_SUBTYPE_RULE_VIOLATION = "ERR_SUBTYPE_RULE_VIOLATION"
     ERR_OVERLAY_NO_TARGET = "ERR_OVERLAY_NO_TARGET"
     # FR5c — two contributing files set the same @attr to different non-empty

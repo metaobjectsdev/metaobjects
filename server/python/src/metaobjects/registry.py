@@ -216,6 +216,20 @@ class TypeRegistry:
         """
         self._check_not_sealed("register_common_attrs")
         for attr in attrs:
+            # ADR-0050, the second door. A common attr is projected onto EVERY registered
+            # type, so a required one is the same defect as a required extend() -- with the
+            # widest possible blast radius: drop the provider and every type silently loses
+            # a required-attr rule. Java is immune by construction (its
+            # registerCommonAttribute takes no required parameter); AttrSchema carries
+            # `required`, so this port needs the explicit guard.
+            if attr.required:
+                raise ParseError(
+                    f'TypeRegistry.register_common_attrs: attribute "{attr.name}" is '
+                    "REQUIRED. A common attr is projected onto every registered type, so a "
+                    "required one would vanish from all of them whenever its provider is "
+                    "composed out. Common attrs must be optional (ADR-0050).",
+                    ErrorCode.ERR_EXTEND_REQUIRED_ATTR,
+                )
             if any(existing.name == attr.name for existing in self._common_attrs):
                 continue  # first registration wins
             self._common_attrs.append(attr)
@@ -261,6 +275,17 @@ class TypeRegistry:
         :raises ParseError: ``ERR_PROVIDER_ATTR_CONFLICT`` if an attribute
             name already exists on the type (own-only check — common-attr
             collisions are still surfaced separately at validation time).
+        :raises ParseError: ``ERR_EXTEND_REQUIRED_ATTR`` if an attribute being
+            added is ``required`` (ADR-0050). ``extend`` is how a concern
+            provider PROJECTS an attr onto a type it does not own, and a
+            concern can be composed out of a registry composition. A required
+            attr arriving this way makes the target type's validity depend on
+            an optional provider — the failure is silent: drop the provider
+            and the type stays registered while its required-attr rule stops
+            firing, so invalid metadata begins loading clean. A genuinely
+            required attr is OWN and belongs with its type, in the type's own
+            provider — never via ``extend``. Fails CLOSED: the offending attr
+            is not appended before the raise.
 
         Note: providers calling ``extend`` MUST declare a dependency on the
         provider that originally registered the ``(type_, sub_type)`` so
@@ -288,6 +313,23 @@ class TypeRegistry:
                     f'TypeRegistry.extend: attribute "{attr.name}" is already declared '
                     f'on "{type_}.{sub_type}"',
                     ErrorCode.ERR_PROVIDER_ATTR_CONFLICT,
+                )
+            # ADR-0050: a REQUIRED attr may never be PROJECTED onto someone else's
+            # type. A provider may only project OPTIONAL attributes onto a type it
+            # does not own — a required attr registered this way disappears,
+            # silently, whenever that provider is composed out. If the attr is
+            # genuinely required, it is OWN: declare it with the type instead, in
+            # the type's own provider. Checked (and raised) before the attr is
+            # appended, so the offending attr is never half-applied.
+            if attr.required:
+                raise ParseError(
+                    f'TypeRegistry.extend: attribute "{attr.name}" being added to '
+                    f'"{type_}.{sub_type}" is REQUIRED. A provider may only project '
+                    f"OPTIONAL attributes onto a type it does not own — a required "
+                    f"attr registered this way disappears, silently, whenever that "
+                    f"provider is composed out. Declare it with the type instead "
+                    f"(ADR-0050).",
+                    ErrorCode.ERR_EXTEND_REQUIRED_ATTR,
                 )
             definition.attrs.append(attr)
             # #265 — stamp the extending provider as this attr's origin.

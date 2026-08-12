@@ -14,7 +14,7 @@ from metaobjects.documentation import (
     common_doc_attrs,
     doc_provider,
 )
-from metaobjects.errors import ErrorCode
+from metaobjects.errors import ErrorCode, ParseError
 from metaobjects.loader.validation_passes import run_validations
 from metaobjects.meta.core.attr.attr_constants import (
     ATTR_SUBTYPE_STRING,
@@ -88,8 +88,10 @@ def test_get_common_attrs_returns_defensive_copy() -> None:
 def test_register_common_attrs_first_wins_dedupe() -> None:
     """Registering the same attr name twice keeps only the first."""
     reg = TypeRegistry()
+    # Both optional: a REQUIRED common attr is refused outright (ADR-0050, see the test
+    # below), so the two registrations differ by value_type alone.
     first  = AttrSchema(name="description", value_type="string",  required=False)
-    second = AttrSchema(name="description", value_type="boolean", required=True)
+    second = AttrSchema(name="description", value_type="boolean", required=False)
     reg.register_common_attrs([first])
     reg.register_common_attrs([second])
     common = reg.get_common_attrs()
@@ -97,6 +99,20 @@ def test_register_common_attrs_first_wins_dedupe() -> None:
     assert len(descs) == 1
     assert descs[0].value_type == "string"   # first registration wins
     assert descs[0].required is False
+
+
+def test_register_common_attrs_refuses_a_required_attr() -> None:
+    """ADR-0050: a common attr is projected onto EVERY type, so a required one would
+    vanish from all of them when its provider is composed out. Widest blast radius of
+    the projection defect, so it is refused outright."""
+    reg = TypeRegistry()
+    with pytest.raises(ParseError) as exc:
+        reg.register_common_attrs(
+            [AttrSchema(name="mustBeThere", value_type="string", required=True)]
+        )
+    assert exc.value.code is ErrorCode.ERR_EXTEND_REQUIRED_ATTR
+    # fails closed -- the attr must not be half-registered
+    assert all(a.name != "mustBeThere" for a in reg.get_common_attrs())
 
 
 # ---------------------------------------------------------------------------

@@ -1,3 +1,4 @@
+using System.Linq;
 using MetaObjects;
 using Xunit;
 
@@ -37,6 +38,67 @@ public class RegistryTests
         var b = new DelegateProvider("b", new[] { "a" });
         var ex = Assert.Throws<MetaModelException>(() => Provider.ComposeRegistry(new[] { a, b }));
         Assert.Equal(ErrorCode.ERR_PROVIDER_DEPENDENCY_CYCLE, ex.Code);
+    }
+
+    // ADR-0050 — a concern provider may only PROJECT OPTIONAL attributes onto a
+    // type it does not own (via Extend). A required attr projected this way makes
+    // the target type's validity depend on a provider that can be composed out —
+    // exactly how FR-033 broke template.*'s @payloadRef in all five ports. Mirrors
+    // TS's "extends with a REQUIRED attr -> throws" test in provider-data.test.ts.
+
+    private static TypeRegistry RegistryWithFieldString()
+    {
+        var reg = new TypeRegistry();
+        reg.Register(new TypeDefinition(
+            new TypeId("field", "string"), "test field.string",
+            new List<ChildRule>(), (id, n) => throw new System.NotImplementedException(),
+            new List<AttrSchema>()));
+        return reg;
+    }
+
+    [Fact]
+    public void Extend_with_a_required_attr_throws_ERR_EXTEND_REQUIRED_ATTR()
+    {
+        var reg = RegistryWithFieldString();
+
+        var ex = Assert.Throws<MetaModelException>(() => reg.Extend(
+            "field",
+            "string",
+            attributes: new[]
+            {
+                new AttrSchema("mustBeThere", "string", Required: true,
+                    Description: "A required attr a concern has no business projecting."),
+            }));
+
+        Assert.Equal(ErrorCode.ERR_EXTEND_REQUIRED_ATTR, ex.Code);
+        // Fails CLOSED — the attr must not be half-applied.
+        Assert.DoesNotContain(
+            reg.Find("field", "string")!.Attributes,
+            a => a.Name == "mustBeThere");
+    }
+
+    [Fact]
+    public void Extend_with_an_optional_attr_applies_normally()
+    {
+        var reg = RegistryWithFieldString();
+
+        reg.Extend(
+            "field",
+            "string",
+            attributes: new[]
+            {
+                new AttrSchema("storage", "string", Required: false,
+                    Default: "jsonb",
+                    AllowedValues: new[] { "flattened", "jsonb", "subdocument" },
+                    Description: "Storage strategy."),
+            });
+
+        var attr = reg.Find("field", "string")!.Attributes.Single(a => a.Name == "storage");
+        Assert.False(attr.Required);
+        Assert.Equal("jsonb", attr.Default);
+        Assert.Equal(
+            new[] { "flattened", "jsonb", "subdocument" },
+            attr.AllowedValues!.Cast<string>());
     }
 }
 

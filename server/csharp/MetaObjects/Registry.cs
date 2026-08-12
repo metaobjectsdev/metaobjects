@@ -380,6 +380,22 @@ public sealed class TypeRegistry
                     $"Use no valueType (null) for a polymorphic/untyped attr.");
             }
 
+            // ADR-0050, the second door. A common attr is projected onto EVERY registered
+            // type, so a required one is the same defect as a required Extend() — with the
+            // widest possible blast radius: drop the provider and every type silently loses
+            // a required-attr rule. Java is immune by construction (its
+            // registerCommonAttribute takes no required parameter); AttrSchema carries
+            // Required, so this port needs the explicit guard.
+            if (attr.Required)
+            {
+                throw new MetaModelException(
+                    $"TypeRegistry.RegisterCommonAttrs: attribute \"{attr.Name}\" is REQUIRED. " +
+                    "A common attr is projected onto every registered type, so a required one " +
+                    "would vanish from all of them whenever its provider is composed out. " +
+                    "Common attrs must be optional (ADR-0050).",
+                    ErrorCode.ERR_EXTEND_REQUIRED_ATTR);
+            }
+
             if (_commonAttrs.Any(existing => existing.Name == attr.Name))
             {
                 continue; // first-wins dedupe; per-type conflicts handled at validation time
@@ -437,7 +453,12 @@ public sealed class TypeRegistry
     /// not registered, or if an attr's ValueType is SUBTYPE_BASE.
     /// Throws <see cref="MetaModelException"/> with
     /// <see cref="ErrorCode.ERR_PROVIDER_ATTR_CONFLICT"/> if an attr name
-    /// already exists on the type.
+    /// already exists on the type. Throws <see cref="MetaModelException"/> with
+    /// <see cref="ErrorCode.ERR_EXTEND_REQUIRED_ATTR"/> (ADR-0050) if an attr
+    /// being extended is REQUIRED — a concern provider may only PROJECT optional
+    /// attributes onto a type it does not own; a required attr belongs OWN, with
+    /// its type, in the type's own provider. Fails closed: the offending attr is
+    /// not applied.
     /// </summary>
     public void Extend(string type, string subType, IReadOnlyList<AttrSchema>? attributes = null, IReadOnlyList<ChildRule>? childRules = null)
     {
@@ -464,6 +485,27 @@ public sealed class TypeRegistry
                 throw new MetaModelException(
                     $"TypeRegistry.Extend: attribute \"{attr.Name}\" is already declared on \"{type}.{subType}\"",
                     ErrorCode.ERR_PROVIDER_ATTR_CONFLICT);
+            }
+
+            // ADR-0050: a REQUIRED attr may never be PROJECTED onto someone else's type.
+            // Extend is how a concern provider decorates a type another provider owns, and
+            // a concern can be composed out. A required attr arriving this way makes the
+            // target type's validity depend on an optional provider — and the failure is
+            // silent: drop the provider and the type stays registered while its required-attr
+            // rule simply stops firing, so invalid metadata begins loading clean.
+            //
+            // If the attr is genuinely required, it is OWN, not projected: declare it with the
+            // type, in the type's own provider. This is exactly how FR-033 broke template.*'s
+            // @payloadRef / @toolName, and this guard makes that class unrepresentable rather
+            // than merely fixed.
+            if (attr.Required)
+            {
+                throw new MetaModelException(
+                    $"TypeRegistry.Extend: attribute \"{attr.Name}\" being added to \"{type}.{subType}\" is REQUIRED. " +
+                    $"A provider may only project OPTIONAL attributes onto a type it does not own — a required " +
+                    $"attr registered this way disappears, silently, whenever that provider is composed out. " +
+                    $"Declare it with the type instead (ADR-0050).",
+                    ErrorCode.ERR_EXTEND_REQUIRED_ATTR);
             }
 
             def.AppendAttr(attr);

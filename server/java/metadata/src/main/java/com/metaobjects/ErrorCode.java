@@ -136,6 +136,14 @@ public enum ErrorCode {
     /** A provider extend redefines an attr another provider already declared. */
     ERR_PROVIDER_ATTR_CONFLICT,
 
+    /**
+     * ADR-0050: a provider tried to project a REQUIRED attribute onto a type it does
+     * not own (via extends). Projection is optional-only — a required attr registered
+     * this way disappears silently whenever that provider is composed out, taking its
+     * validation rule with it. Declare it with the type instead.
+     */
+    ERR_EXTEND_REQUIRED_ATTR,
+
     /** A node violates a subtype composition rule. */
     ERR_SUBTYPE_RULE_VIOLATION,
 

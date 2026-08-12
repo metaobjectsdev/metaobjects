@@ -252,6 +252,20 @@ export class TypeRegistry {
           `which is not valid for attrs. Use no valueType (omit the field) for a polymorphic/untyped attr.`,
         );
       }
+      // ADR-0050, the second door. A common attr is a projection onto EVERY type, so a
+      // required one is the same defect as a required `extend` — with the widest possible
+      // blast radius: drop the provider and every type in the registry silently loses a
+      // required-attr rule. Java makes this unrepresentable (its registerCommonAttribute
+      // takes no `required` parameter); TS's AttrSchema carries `required`, so it needs the
+      // explicit guard.
+      if (attr.required === true) {
+        throw new MetaModelError(
+          `TypeRegistry.registerCommonAttrs: attribute "${attr.name}" is REQUIRED. A common attr ` +
+            `is projected onto every registered type, so a required one would vanish from all of ` +
+            `them whenever its provider is composed out. Common attrs must be optional (ADR-0050).`,
+          { code: "ERR_EXTEND_REQUIRED_ATTR" },
+        );
+      }
       if (this._commonAttrs.some((existing) => existing.name === attr.name)) {
         continue; // dedupe same-name re-registration; conflict-with-per-type-attr is checked at validation time
       }

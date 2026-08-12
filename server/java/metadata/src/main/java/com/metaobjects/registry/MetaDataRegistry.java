@@ -367,6 +367,9 @@ public class MetaDataRegistry {
 
         // Update the registered type with extended definition
         TypeDefinition extendedDefinition = builder.build();
+        // ADR-0050: fails closed — checked BEFORE the commit below, so a violation
+        // never reaches typeDefinitions (see checkNoProjectedRequiredAttr).
+        checkNoProjectedRequiredAttr(typeIdToExtend, existing, extendedDefinition);
         typeDefinitions.put(typeIdToExtend, extendedDefinition);
         // #265 — extendType() rebuilds from `existing` and writes straight into
         // typeDefinitions WITHOUT going through register(), so it must stamp
@@ -450,8 +453,15 @@ public class MetaDataRegistry {
     /**
      * FR-033 helper — add a directive's attrs to one registered {@code (type, subType)}
      * via the builder DSL, then re-register the rebuilt definition.
+     *
+     * <p>Package-private (not {@code private}) so the ADR-0050 required-attr guard below
+     * can be exercised directly from a same-package test with a hand-built
+     * {@code List<ExtendsAttr>} — the Java analogue of the TS registry's unit tests
+     * calling {@code applyProviderDefinition} with a constructed {@code ProviderDefinition},
+     * without needing a throwaway classpath spec file just to drive {@link #applyProviderExtends}
+     * end-to-end.</p>
      */
-    private void applyExtendsAttrs(String type, String subType,
+    void applyExtendsAttrs(String type, String subType,
             List<com.metaobjects.registry.spec.SpecMetamodelReader.ExtendsAttr> attrs) {
         MetaDataTypeId typeId = new MetaDataTypeId(type, subType);
         TypeDefinition existing = typeDefinitions.get(typeId);
@@ -464,9 +474,30 @@ public class MetaDataRegistry {
         TypeDefinitionBuilder builder = TypeDefinitionBuilder.from(existing);
         builder.withRegistry(this); // so .asArray() cardinality constraints are registered
         for (com.metaobjects.registry.spec.SpecMetamodelReader.ExtendsAttr a : attrs) {
-            com.metaobjects.registry.AttributeConstraintBuilder acb = a.required()
-                    ? builder.requiredAttributeWithConstraints(a.name())
-                    : builder.optionalAttributeWithConstraints(a.name());
+            // ADR-0050: a REQUIRED attr may never be PROJECTED onto a type this
+            // provider does not own. applyProviderExtends is exactly the path a
+            // concern provider (metaobjects-ui / metaobjects-prompt) uses to decorate
+            // a type another provider registered, and a concern can be composed out.
+            // A required attr arriving this way makes the target type's validity
+            // depend on an optional provider — and the failure is silent: drop the
+            // provider and the type stays registered while its required-attr rule
+            // simply stops firing, so invalid metadata begins loading clean. This is
+            // exactly how FR-033 broke template.*'s @payloadRef / @toolName.
+            //
+            // Checked BEFORE touching `builder` and before this directive's other
+            // attrs (already added to `builder` but not yet committed via register())
+            // reach the registry, so a violation fails closed for the whole directive.
+            if (a.required()) {
+                throw new MetaDataException(
+                    "MetaDataRegistry.applyProviderExtends: attribute '" + a.name()
+                        + "' being projected onto " + typeId.toQualifiedName() + " is REQUIRED. "
+                        + "A provider may only project OPTIONAL attributes onto a type it does not "
+                        + "own — a required attr registered this way disappears, silently, whenever "
+                        + "that provider is composed out. Declare it with the type instead (ADR-0050).",
+                    com.metaobjects.ErrorCode.ERR_EXTEND_REQUIRED_ATTR);
+            }
+            com.metaobjects.registry.AttributeConstraintBuilder acb =
+                    builder.optionalAttributeWithConstraints(a.name());
             com.metaobjects.registry.AttributeConstraintBuilder.AttributeTypeBuilder atb =
                     acb.ofType(extendsValueTypeToAttrSubtype(a.valueType()));
             if (a.isArray()) {
@@ -1175,6 +1206,50 @@ public class MetaDataRegistry {
             }
             attrProvenance.computeIfAbsent(typeId, k -> new ConcurrentHashMap<>())
                     .put(req.getName(), providerId);
+        }
+    }
+
+    /**
+     * ADR-0050 — {@link #extendType}'s required-attr guard. A REQUIRED attr may never
+     * be PROJECTED onto a type another provider owns: {@code extendType} is exactly the
+     * path a concern provider (e.g. {@code metaobjects-db}) uses to decorate a type it
+     * does not own, and a concern can be composed out. A required attr arriving this way
+     * makes the target type's validity depend on an optional provider — and the failure
+     * is silent: drop the provider and the type stays registered while its required-attr
+     * rule simply stops firing, so invalid metadata begins loading clean. This is exactly
+     * how FR-033 broke {@code template.*}'s {@code @payloadRef} / {@code @toolName}.
+     *
+     * <p>If the attr is genuinely required, it is OWN, not projected: declare it with the
+     * type, in the type's own provider.</p>
+     *
+     * <p>Diffs {@code extended}'s named attr requirements against {@code existing}'s (the
+     * same base set {@link #stampNewAttrProvenance} diffs against, for the same reason —
+     * {@code existing}'s FULL direct+inherited requirements, since {@code extended}'s
+     * direct-only set would otherwise see every previously-inherited attr as "new") and
+     * throws on the first newly-added attr that is required. Callers MUST invoke this
+     * BEFORE committing {@code extended} into {@code typeDefinitions} so a violation
+     * fails closed — the projected attr is never applied.
+     */
+    private void checkNoProjectedRequiredAttr(MetaDataTypeId typeId, TypeDefinition existing, TypeDefinition extended) {
+        Set<String> existingNames = new HashSet<>();
+        for (ChildRequirement req : existing.getChildRequirements()) {
+            if (isNamedAttrRequirement(req)) {
+                existingNames.add(req.getName());
+            }
+        }
+        for (ChildRequirement req : extended.getDirectChildRequirements()) {
+            if (!isNamedAttrRequirement(req) || existingNames.contains(req.getName())) {
+                continue;
+            }
+            if (req.isRequired()) {
+                throw new MetaDataException(
+                    "MetaDataRegistry.extendType: attribute '" + req.getName() + "' being added to "
+                        + typeId.toQualifiedName() + " is REQUIRED. A provider may only project "
+                        + "OPTIONAL attributes onto a type it does not own — a required attr "
+                        + "registered this way disappears, silently, whenever that provider is "
+                        + "composed out. Declare it with the type instead (ADR-0050).",
+                    com.metaobjects.ErrorCode.ERR_EXTEND_REQUIRED_ATTR);
+            }
         }
     }
 

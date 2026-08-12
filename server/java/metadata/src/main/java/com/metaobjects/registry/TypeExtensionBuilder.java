@@ -57,14 +57,30 @@ public class TypeExtensionBuilder {
     /**
      * Add a required attribute to the type.
      *
+     * <p><strong>ADR-0050:</strong> this builder only ever reaches an already-registered
+     * type (it is constructed from {@link MetaDataRegistry#findType} against an
+     * {@code existingDefinition}), so anything added through it is, by construction, a
+     * PROJECTION onto a type this call site does not own. A concern provider can be
+     * composed out; a required attr arriving this way makes the target type's validity
+     * depend on that optional provider, and the failure is silent — the type stays
+     * registered while its required-attr rule simply stops firing. If the attr is
+     * genuinely required, it is OWN and belongs with the type, in the type's own
+     * provider (this is exactly how FR-033 broke {@code template.*}'s
+     * {@code @payloadRef} / {@code @toolName}). Always throws {@code ERR_EXTEND_REQUIRED_ATTR}.
+     *
      * @param name The attribute name
      * @param attributeType The attribute type (e.g., "string", "int", "boolean")
-     * @return This builder for method chaining
+     * @return never returns
+     * @throws com.metaobjects.MetaDataException always, with code {@code ERR_EXTEND_REQUIRED_ATTR}
      */
     public TypeExtensionBuilder requiredAttribute(String name, String attributeType) {
-        builder.requiredAttribute(name, attributeType);
-        updateRegistration();
-        return this;
+        throw new com.metaobjects.MetaDataException(
+            "TypeExtensionBuilder.requiredAttribute: attribute '" + name + "' being added to "
+                + typeId.toQualifiedName() + " is REQUIRED. A provider may only project OPTIONAL "
+                + "attributes onto a type it does not own — a required attr registered this way "
+                + "disappears, silently, whenever that provider is composed out. Declare it with the "
+                + "type instead (ADR-0050).",
+            com.metaobjects.ErrorCode.ERR_EXTEND_REQUIRED_ATTR);
     }
 
     /**

@@ -38,6 +38,14 @@ public enum ErrorCode
     ERR_PROVIDER_DUPLICATE_ID,
     ERR_PROVIDER_MISSING_DEPENDENCY,
     ERR_PROVIDER_ATTR_CONFLICT,
+    // ADR-0050 — a provider tried to project a REQUIRED attribute onto a type it
+    // does not own (via TypeRegistry.Extend). Projection is optional-only: a
+    // required attr registered this way disappears silently whenever that
+    // provider is composed out, taking its validation rule with it. Declare it
+    // with the type instead. This is exactly how FR-033 broke template.*'s
+    // @payloadRef / @toolName (fixed by re-homing them OWN into template's own
+    // provider); this guard makes the defect class unrepresentable.
+    ERR_EXTEND_REQUIRED_ATTR,
     ERR_SUBTYPE_RULE_VIOLATION,
     // FR-033 — a STRUCTURAL child (field/identity/source/validator/… — not an attr)
     // is placed under a parent whose registered childRules do not admit it (the
