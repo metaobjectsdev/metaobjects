@@ -41,8 +41,12 @@ best judgment call turned out to be available to the control too, as a **YAML co
 **Round 5 — retrieval needs no ledger at all.** Given eight feature briefs phrased in
 product language deliberately unlike the model's vocabulary, the model-only arm found
 every existing implementation on all three reps, and correctly built new for both novel
-controls with zero false reuse. There was no duplication problem to solve: **agents already
-reuse.** The motivating claim is refuted.
+controls with zero false reuse. There was no duplication problem to solve *under these
+conditions*: **agents already reuse.** The motivating claim — duplication as the
+mechanism's justification — is refuted. _(Scope note, 2026-08-11: measured with full-estate
+context, a 75% already-implemented base rate, and single-shot runs; it does not measure
+duplication under sustained partial-context authoring. See the pre-registration's Round A
+and its Amendment 2.)_
 
 **Round 5 — the links are worth nothing.** Arms differing only in whether the ledger
 carried a structured `implementedBy` list scored **11/24** (with links) and **12/24**

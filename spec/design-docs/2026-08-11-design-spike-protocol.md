@@ -75,6 +75,37 @@ model is the thing under test, never the ruler.
 > best LLM analysis had found 6 — and revealed that the analyses had produced confident
 > false positives on live tables carrying 38 and 333 references.
 
+### Corollary to rule 6 — a judged score confirms; it never headlines
+
+Model judgment is admissible only **behind** a mechanical result: to audit a sample, or to
+tighten a bound the mechanical scorer already established (converting an upper bound into a
+point estimate). It is never a round's primary metric, never a kill or stop condition, and
+never grounds for re-running a round a mechanical result stopped.
+
+Admission conditions, all of them, before any judged grading:
+
+- **Calibrate the judges blind, and mechanically check the key first.** The calibration set
+  must contain both classes; the one judged pilot run under this protocol was scored against
+  a wrong key until a mechanical endpoint-type check corrected it — the judges were right and
+  the curator was wrong, which is exactly why the key gets checked by something that is not a
+  judge.
+- **≥3 judges, a pre-registered agreement floor, and the subject arm blinded** — and blinding
+  must be real: an arm whose output necessarily touches arm-specific files is not blind, it
+  is labelled.
+- **The rubric must not be text one arm read and the other did not.** A rubric drawn from a
+  document available to a single arm recreates rule 1's availability confound inside the
+  instrument.
+- **The subject never grades itself**, and where the model family has a documented systematic
+  error on the question class, same-family judges are presumed to share it until the
+  calibration set demonstrates otherwise on that class.
+
+> _Failure it prevents:_ mechanical scorers fail loudly — categorical verdicts tie, the
+> ceiling probe fires, the round stops, as Round E's did. Judges fail quietly: continuous
+> scores essentially never tie, so rule 5's stop condition structurally cannot fire,
+> treatment runs get spent, and a delta always exists to write up. An instrument whose only
+> added power is the power to confirm must not be allowed to open questions — only to
+> sharpen answers.
+
 ## The cheapest check of all
 
 Before launching, write down **what result would make you abandon the feature**. If no

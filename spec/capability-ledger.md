@@ -23,9 +23,12 @@ mechanism's only controlled evidence fail to load.
 
 ## Why it exists
 
-Given a feature brief phrased in product language, agents working from the model alone find
-an existing implementation reliably — there is no duplication problem to solve. What they
-cannot see is that a capability was **deliberately retired**. Across a controlled round,
+Given a feature brief phrased in product language, agents working from the model alone
+found every existing implementation with zero false reuse — measured under conditions that
+favour retrieval (full-estate context, a high base rate of already-implemented briefs,
+single-shot runs). That refutes duplication as this mechanism's *justification*; it does
+not prove duplication never happens. What agents reliably cannot see is that a capability
+was **deliberately retired**. Across a controlled round,
 model-only runs flagged a retired capability **0 times out of 24**; every one of them
 proposed extending an abandoned feature, in near-identical words, each believing it was
 reusing rather than reviving. Ledger arms caught it **19 times out of 40**.

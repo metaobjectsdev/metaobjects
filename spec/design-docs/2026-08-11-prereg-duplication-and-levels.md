@@ -495,3 +495,47 @@ unexamined default: no experiment has shown promotion helps, one measurement sho
 disruptive (93 unclaimed entities on a real estate carrying one requirement), and the
 mechanism it would enforce is satisfiable by appending an FQN to any existing claim list.
 The comment in the code should point here.
+
+---
+
+# Amendment 2 — 2026-08-11: the scorer is repaired, the ground truth shrank, Round A stays parked
+
+_Written after a methodology dispute over whether rule 6 should admit judged evaluation as a
+primary metric and the parked duplication round be revived. Ruled: rule 6 stands with a
+corollary (see the protocol document); the round stays parked; no judged instrument is
+adopted as a primary metric._
+
+**Amendment 1's scorer refutation is repaired, and stands as a finding about the original
+parser.** The reference scan now covers `extends` and `origin.*` — the two idioms measured
+at 160 and 44 uses — in six lines. All six smoke checks pass, including the two directional
+controls: the estate's real historical duplicate still scores NOT-BOUND, and a real entity
+that reused an incumbent via `extends` alone, which the original parser mis-scored
+NOT-BOUND, now scores REUSED. The primary metric for any future duplication round is this
+mechanical scorer, not a judge.
+
+**A three-judge blind pilot corrected the ground-truth inventory downward.** Twelve
+confusable-band pairs, unlabelled, shuffled; all three judges unanimous on all twelve. They
+disagreed with the curator key on five pairs — and the key was wrong, not the judges: it had
+expanded a summary claim ("four parallel spatial-graph mechanisms") into all six pairwise
+combinations, while a mechanical check of endpoint node types shows only one pair connects
+the same node family. The corrected inventory holds **one** true duplicate pair.
+Consequences: the estate is less duplicate-saturated than this document's preamble states;
+the "known duplicate pairs (n=11)" calibration set is stale and must be re-audited before
+any future duplication round; judged specificity is measured at 11/11 on this sample while
+sensitivity is unmeasured — one positive, and it is the estate's canonical duplicate, whose
+own comments describe the model it replaced. A planted-positives calibration is the
+admission gate for any future judged audit layer; it is not run now because no scheduled
+round consumes it.
+
+**Round A stays parked.** Of Amendment 1's three reasons, the repair removes only the third.
+The first two stand — no outcome changes a decision, and the treatment fixture still does
+not exist — and the corrected inventory adds a fourth: the phenomenon is rarer than the
+pre-registration assumed, so n=10 per arm resolves even less than the one-brief floor
+already on record.
+
+**The committed claim is qualified in place, not defended by experiment.** "There is no
+duplication problem to solve" overstated what was measured; the qualification is editorial
+because this document already records why the conditions favoured that answer. The evidence
+since gathered — one true duplicate pair where six were assumed — moves the claim's
+substance toward true, not away; what it cannot become without new measurement is
+unconditional.
