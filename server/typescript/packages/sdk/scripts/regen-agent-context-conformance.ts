@@ -17,8 +17,9 @@ for (const name of readdirSync(CORPUS)) {
   const spec = JSON.parse(readFileSync(join(dir, "stack.json"), "utf8")) as {
     servers: string[];
     clients: string[];
+    concerns?: string[];
   };
-  const stack = makeStack(spec.servers as never, spec.clients as never);
+  const stack = makeStack(spec.servers as never, spec.clients as never, (spec.concerns ?? []) as never);
   const files = assemble({ contentRoot: CONTENT_ROOT, stack });
   const expDir = join(dir, "expected");
   rmSync(expDir, { recursive: true, force: true });

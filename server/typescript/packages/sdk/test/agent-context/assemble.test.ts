@@ -72,6 +72,15 @@ describe("assemble", () => {
     expect(() => assemble({ contentRoot: CONTENT_ROOT, stack })).not.toThrow();
   });
 
+  test("requirements concern: the gated fragment installs only when the token is present", () => {
+    const withReq = paths(assemble({ contentRoot: CONTENT_ROOT, stack: makeStack(["typescript"], [], ["requirements"]) }));
+    const withoutReq = paths(assemble({ contentRoot: CONTENT_ROOT, stack: makeStack(["typescript"], []) }));
+    expect(withReq).toContain(".claude/skills/metaobjects-authoring/references/requirements.md");
+    expect(withoutReq).not.toContain(".claude/skills/metaobjects-authoring/references/requirements.md");
+    // an unrelated stack-scoped fragment is unaffected by the concern axis:
+    expect(withoutReq).toContain(".claude/skills/metaobjects-codegen/references/typescript.md");
+  });
+
   test("output is deterministic (stable order + identical across runs)", () => {
     const stack = makeStack(["typescript"], ["react"]);
     const a = assemble({ contentRoot: CONTENT_ROOT, stack });

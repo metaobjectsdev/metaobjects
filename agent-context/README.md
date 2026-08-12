@@ -9,7 +9,7 @@ the slim always-on Markdown (`.metaobjects/AGENTS.md` + `CLAUDE.md`) and the six
 - `servers/<lang>.meta.json` — per-server install + codegen command (drives the always-on).
 - `templates/always-on.md.mustache` — the slim always-on body (`{{stackLine}}`, `{{codegenCommand}}`).
 - `skills/<skill>/SKILL.md` — universal skill body.
-- `skills/<skill>/references/<token>.md` — language fragment; installed iff `<token>` is in the stack.
+- `skills/<skill>/references/<token>.md` — language/framework or concern fragment; installed iff `<token>` is in the stack (`Stack.tokens`; concern tokens are OBSERVED from project state, e.g. `requirements` for a project declaring `requirement.*` nodes — see `SDK`'s `CONCERN_TOKENS`).
 
 The **scaffolded** set is exactly the six skills in the SDK's `SKILL_NAMES`
 (`src/agent-context/types.ts`) — the assembler emits only those. `skills/`

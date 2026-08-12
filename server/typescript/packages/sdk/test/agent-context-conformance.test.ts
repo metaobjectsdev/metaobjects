@@ -4,12 +4,12 @@ import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { assemble } from "../src/agent-context/assemble.js";
 import { makeStack } from "../src/agent-context/resolve.js";
-import type { ServerLang, ClientFramework } from "../src/agent-context/types.js";
+import type { ServerLang, ClientFramework, ConcernToken } from "../src/agent-context/types.js";
 
 const CONTENT_ROOT = join(import.meta.dir, "../../../../../agent-context");
 const CORPUS = join(import.meta.dir, "../../../../../fixtures/agent-context-conformance");
 
-interface StackSpec { servers: ServerLang[]; clients: ClientFramework[]; }
+interface StackSpec { servers: ServerLang[]; clients: ClientFramework[]; concerns?: ConcernToken[]; }
 
 function walkExpected(dir: string, base = dir, acc: Record<string, string> = {}): Record<string, string> {
   for (const name of readdirSync(dir)) {
@@ -30,7 +30,7 @@ describe("agent-context-conformance corpus", () => {
     test(name, () => {
       const dir = join(CORPUS, name);
       const spec = JSON.parse(readFileSync(join(dir, "stack.json"), "utf8")) as StackSpec;
-      const stack = makeStack(spec.servers, spec.clients);
+      const stack = makeStack(spec.servers, spec.clients, spec.concerns ?? []);
       const files = assemble({ contentRoot: CONTENT_ROOT, stack });
       const actual: Record<string, string> = {};
       for (const f of files) actual[f.path] = f.contents;

@@ -1,9 +1,10 @@
 import { test, expect, describe } from "bun:test";
-import { makeStack, detectStack, type ProjectProbe } from "../../src/agent-context/resolve.js";
+import { makeStack, detectStack, detectConcerns, type ProjectProbe } from "../../src/agent-context/resolve.js";
 
-const probe = (deps: string[], files: string[]): ProjectProbe => ({
+const probe = (deps: string[], files: string[], hasRequirementNodes = false): ProjectProbe => ({
   hasDep: (name) => deps.includes(name),
   hasFileMatching: (re) => files.some((f) => re.test(f)),
+  hasRequirementNodes: () => hasRequirementNodes,
 });
 
 describe("makeStack", () => {
@@ -15,6 +16,14 @@ describe("makeStack", () => {
   });
   test("empty stack still carries the migration token", () => {
     expect([...makeStack([], []).tokens]).toEqual(["migration"]);
+  });
+  test("an observed concern token folds into concerns + tokens", () => {
+    const s = makeStack(["typescript"], [], ["requirements"]);
+    expect(s.concerns).toEqual(["requirements"]);
+    expect([...s.tokens].sort()).toEqual(["migration", "requirements", "typescript"]);
+  });
+  test("concerns default to empty when omitted", () => {
+    expect(makeStack(["typescript"], []).concerns).toEqual([]);
   });
 });
 
@@ -33,5 +42,14 @@ describe("detectStack", () => {
     expect(detectStack(probe([], ["build.gradle.kts"])).servers).toEqual(["kotlin"]);
     expect(detectStack(probe([], ["Api.csproj"])).servers).toEqual(["csharp"]);
     expect(detectStack(probe([], ["pyproject.toml"])).servers).toEqual(["python"]);
+  });
+});
+
+describe("detectConcerns", () => {
+  test("detects the requirements concern when the probe finds a requirement node", () => {
+    expect(detectConcerns(probe([], [], true))).toEqual(["requirements"]);
+  });
+  test("no concerns when the probe finds none", () => {
+    expect(detectConcerns(probe([], [], false))).toEqual([]);
   });
 });
