@@ -37,6 +37,75 @@ unregistered id throws `ERR_PROVIDER_MISSING_DEPENDENCY`; a cycle throws
 `ERR_PROVIDER_DUPLICATE_ID`. All three codes are stable across ports — see
 [`../../fixtures/conformance/ERROR-CODES.json`](../../fixtures/conformance/ERROR-CODES.json).
 
+## The two rules that govern every provider
+
+Before the mechanics, the two rules a provider must obey. Both are machine-enforced —
+you will hit an error, not a review comment.
+
+### 1. Own vs projected attributes (ADR-0050)
+
+A provider is a **cluster of capabilities**. It may contribute new types, new subtypes,
+attributes intrinsic to its own types, and attributes projected onto types another
+provider owns — in any combination, and a projection may target only some subtypes.
+
+| | where it registers | required allowed? |
+|---|---|---|
+| **OWN** — the type is invalid or not meaningfully itself without it | **with the type**, in the type's own provider | yes |
+| **PROJECTED** — your concern applied to a type that is complete without it | in your concern provider, via `extend` | **no — must be optional** |
+
+The invariant: **removing a provider may remove types and optional vocabulary, but must
+never invalidate or silently weaken a type another provider registers.** Projecting a
+required attribute throws `ERR_EXTEND_REQUIRED_ATTR` at composition, in every port —
+because a required attribute registered that way *disappears* when your provider is
+composed out, taking its validation rule with it and letting invalid metadata load clean.
+
+The same rule applies, more strongly, to common attributes: those project onto *every*
+type, so a required one is refused outright.
+
+### 2. Extension is registration (ADR-0051)
+
+**An undeclared attribute is `ERR_UNKNOWN_ATTR`, on every type, in every port.** There is
+no wildcard that quietly accepts unknown attributes — one would also swallow a *typo'd*
+core attribute, which is worse than rejecting a valid extension.
+
+So vendor or domain vocabulary enters by **registration**:
+
+- new types or subtypes → `register()` in your own provider;
+- optional attributes on shipped types → `extend()` in your own provider;
+- arbitrary author-supplied data with no schema → the registered `attr.properties` bag;
+- consuming *foreign* models you do not control → loosen `strict`, never for authoring.
+
+"Declared" includes "declared by your provider" — that is what keeps strict provenance
+meaningful while still letting you extend the metamodel.
+
+## What modularity does and does not mean
+
+> **MetaObjects modularity is additive and behavioural, never subtractive: every port
+> ships the same vocabulary; a concern your model does not declare costs nothing,
+> generates nothing and diagnoses nothing; and downstream providers may add optional
+> vocabulary — so any model that loads under the default bundle loads identically in
+> every port.**
+
+Concretely, you opt in by **declaring**, not by configuring:
+
+| concern | how you opt in | what exists if you don't |
+|---|---|---|
+| database | declare a `source.*` child | no table, no queries, no routes |
+| UI | list the UI generators in your config | nothing — `meta init` scaffolds none |
+| prompts | declare `template.*` nodes | nothing |
+| requirements | declare `requirement.*` nodes | nothing — `verify` is silent |
+
+**Vocabulary is not subtractable, and that is deliberate.** You cannot compose a registry
+without `template.*` or `index.*`, because a model authored elsewhere would then *fail to
+load* rather than degrade — forking the interchange format into dialects, which is the
+exact failure a cross-language standard exists to prevent. Registered-but-undeclared
+vocabulary costs a model nothing: no generator, runtime or migration path reads a type you
+never declare.
+
+Reduced compositions remain available to **library embedders** (`composeRegistry` with a
+subset), and ADR-0050 guarantees any reduced composition is *coherent* — no silently
+weakened types. Anything a reduced registry loads, the full bundle loads identically.
+
 ## Two registration modes
 
 ### `register` — declare a new `(type, subType)`

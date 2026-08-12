@@ -259,6 +259,16 @@ a policy declared and applied to nothing. This is deliberately claim-set arithme
 a violation-predicate DSL — a predicate engine would be the metamodel registration this
 design forbade, arriving through the test suite.
 
+## Opting in
+
+You opt in by **declaring**: a model with no `requirement.*` nodes produces no diagnostics,
+and no codegen, migrate or runtime path reads the type. The vocabulary is registered in every
+port regardless — that is what lets the loader enforce `@status` and resolve `@implementedBy`
+— and costs a model that never declares one exactly nothing.
+
+Full rules for adding your own vocabulary, and what modularity does and does not mean:
+[extending with providers](../docs/features/extending-with-providers.md).
+
 ## Registered vocabulary — and what stays dead
 
 `requirement.functional` and `requirement.architectural` are **registered in all five ports**
