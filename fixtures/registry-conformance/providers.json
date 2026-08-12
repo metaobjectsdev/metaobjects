@@ -1,0 +1,65 @@
+{
+  "$comment": [
+    "Canonical LOGICAL provider vocabulary, derived from the `provider:` field in",
+    "spec/metamodel/*.json -- the source of truth. This file is its machine-readable index,",
+    "and a lint asserts the two agree.",
+    "",
+    "Conformance fixtures name LOGICAL ids. Each port maps them to its own PHYSICAL providers:",
+    "TypeScript/C#/Python map 1:1; Java splits one logical id across many SPI providers. That",
+    "asymmetry is deliberate -- physical packaging is idiomatic per ecosystem and is invisible",
+    "to expected-registry.json, which is provider-blind by design (ADR-0050).",
+    "",
+    "declaresTypes: registers types (an OWN-attr home). projectsOnto: types owned by another",
+    "provider that this one decorates -- those attrs MUST be optional (ADR-0050). '*.*' is the",
+    "common-attr projection onto every type, the widest blast radius of all."
+  ],
+  "providers": {
+    "metaobjects-core-types": {
+      "declaresTypes": true,
+      "projectsOnto": []
+    },
+    "metaobjects-db": {
+      "declaresTypes": false,
+      "projectsOnto": [
+        "field.*",
+        "field.date",
+        "field.object",
+        "field.time",
+        "field.timestamp",
+        "identity.reference",
+        "identity.secondary",
+        "index.lookup",
+        "source.rdb"
+      ]
+    },
+    "metaobjects-documentation": {
+      "declaresTypes": false,
+      "projectsOnto": [
+        "*.*"
+      ]
+    },
+    "metaobjects-prompt": {
+      "declaresTypes": false,
+      "projectsOnto": [
+        "field.*",
+        "field.enum",
+        "object.value"
+      ]
+    },
+    "metaobjects-ui": {
+      "declaresTypes": false,
+      "projectsOnto": [
+        "field.*",
+        "layout.dataGrid",
+        "view.currency"
+      ]
+    },
+    "metaobjects-ui-web": {
+      "declaresTypes": false,
+      "projectsOnto": [
+        "view.image",
+        "view.textarea"
+      ]
+    }
+  }
+}

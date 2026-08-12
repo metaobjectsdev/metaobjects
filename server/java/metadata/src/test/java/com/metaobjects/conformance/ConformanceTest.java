@@ -139,13 +139,27 @@ public class ConformanceTest {
                 "source-types",
                 "view-types",
                 "layout-types",
-                "template-types"
+                "template-types",
+                // Added 2026-08-12: these three shipped core providers were absent from
+                // this map and nothing failed, because the harness below composes the
+                // full SPI superset rather than the fixture's declared set. Incomplete
+                // AND unexercised. ProviderAliasCompletenessTest now gates it.
+                "index-types",
+                "origin-types",
+                "requirement-types"
             ),
             // The corpus's "metaobjects-db" provider maps to Java's
             // CoreDBMetaDataProvider (id "database-extensions"), which registers the
             // physical RDB attributes (@column / @dbType / @dbColumnType / ...).
             "metaobjects-db", List.of(
                 "database-extensions"
+            ),
+            // Java registers the documentation provider under the canonical name, so this
+            // is an identity mapping -- present so the map is COMPLETE, which is what
+            // ProviderAliasCompletenessTest gates. Its absence meant a fixture naming this
+            // logical id would not have composed on Java.
+            "metaobjects-documentation", List.of(
+                "metaobjects-documentation"
             ),
             // The corpus's "metaobjects-template" provider (TS/C#/Python expose it
             // under this canonical name — template.* / @responseRef / @xmlText, the
@@ -177,6 +191,15 @@ public class ConformanceTest {
         );
 
     /** Provider IDs available to the Java harness (via ServiceLoader auto-discovery). */
+    /**
+     * The logical-to-physical provider map, exposed for
+     * {@link ProviderAliasCompletenessTest}, which gates that every shipped metamodel
+     * provider is claimed by some logical id. Read-only view.
+     */
+    static java.util.Map<String, List<String>> providerAliases() {
+        return PROVIDER_ALIASES;
+    }
+
     private static final Set<String> AVAILABLE_PROVIDERS = discoverAvailableProviders();
 
     // ERR_* token in legacy message-only exceptions; e.g. "... ERR_BAD_ATTR_VALUE: ..."
