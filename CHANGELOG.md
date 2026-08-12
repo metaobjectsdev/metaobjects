@@ -75,22 +75,31 @@ a downstream provider that projects a required attr will now fail at composition
 A standing gate encodes the invariant: compose without each provider, assert no surviving
 type lost a required attribute.
 
-### Known and NOT fixed — unknown-attr enforcement on `template.*` differs by port
+### Fixed — `requirement.*` rejects undeclared attributes on every port
 
-An undeclared attribute on a `template.prompt` is rejected by TypeScript
-(`ERR_UNKNOWN_ATTR`) and **accepted silently by Java**, whose `MetaTemplate` still carries an
-any-attr wildcard child rule that FR-033 dropped in TypeScript. No conformance fixture
-probes an unknown attr on `template.*` or `requirement.*`, which is why the divergence
-survived.
+An undeclared attribute on a `requirement.*` node was rejected by TypeScript and accepted
+silently by Java, which carried an any-attr wildcard child rule. Fixed before this family
+ever shipped, and gated by a new shared fixture (`error-unknown-attr-requirement`).
 
-It is left unfixed deliberately, because the correct resolution is not obvious and is not a
-release-time decision: **ADR-0011 charters consumers extending `template.toolcall` with
-vendor-specific attributes**, and Java's wildcard may be the mechanism that honours it —
-in which case TypeScript's strictness has quietly broken a chartered feature rather than
-Java having a hole. ADR-0011 (consumer extension) and ADR-0023 (strict provenance) are in
-tension here and need a ruling, plus a shared fixture, before either port moves.
+Recorded as **[ADR-0051](spec/decisions/ADR-0051-extension-is-registration.md)**: ADR-0011
+(consumer vendor attributes) and ADR-0023 (strict provenance) were never in conflict —
+ADR-0011's own chartered mechanism is a consumer provider *declaring* its attributes, so
+extension is **registration**, and an undeclared attribute is an error everywhere. A wildcard
+is worse than a permissive extension point: it also swallows a **typo'd core attribute**,
+silently, on one port only.
 
-This is pre-existing and unchanged by this release.
+### Known and NOT fixed — ~13 Java types still accept undeclared attributes
+
+`object.*`, `source.*`, `identity.*`, `relationship.*`, `validator.*`, `layout.*`,
+`origin.*`, `index.lookup` and `template.*` still carry the any-attr wildcard on Java, so an
+undeclared attribute on those is an error in TypeScript and silent on Java. **Pre-existing
+and unchanged by this release**; `requirement.*` was fixed because it is new and tightening
+it was free, while the rest is a load-tightening that needs its own sweep, a fixture per type
+family, and its own release slot.
+
+Why it survived: the single existing unknown-attr fixture probes `field.string`, and
+`field.*` was already strict everywhere — the one type family everyone agreed on was the one
+type family tested.
 
 ### Fixed — node identity across package boundaries
 

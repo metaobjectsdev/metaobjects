@@ -84,8 +84,12 @@ public class FunctionalRequirement extends MetaRequirement {
             // spec/metamodel/requirement.json by applyStrictStructuralChildren.)
             def.optionalChild(TYPE_REQUIREMENT, "*", "*");
 
-            // ACCEPTS ANY CHILD ATTRIBUTES (for extensibility from service providers)
-            def.optionalChild(MetaAttribute.TYPE_ATTR, "*", "*");
+            // NO any-attr wildcard. ADR-0023 closed the open-attr policy "in all ports":
+            // an undeclared attribute is ERR_UNKNOWN_ATTR. Extensibility is by REGISTRATION
+            // -- a consumer ships its own provider and declares its attrs (ADR-0011's own
+            // chartered mechanism is registry.extend with declared attributes, never
+            // undeclared ones) -- or uses the registered attr.properties bag. A wildcard
+            // here would also swallow a TYPO'd core attr, silently, on this port only.
         });
     }
 }

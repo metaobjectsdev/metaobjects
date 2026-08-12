@@ -1,0 +1,14 @@
+{
+  "errors": [
+    {
+      "code": "ERR_UNKNOWN_ATTR",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.caps.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['requirement.functional']"
+      }
+    }
+  ]
+}

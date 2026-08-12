@@ -67,8 +67,8 @@ public class ArchitecturalRequirement extends MetaRequirement {
             def.optionalAttributeWithConstraints(ATTR_SUPERSEDED_BY)
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
 
-            // ACCEPTS ANY CHILD ATTRIBUTES (for extensibility from service providers)
-            def.optionalChild(MetaAttribute.TYPE_ATTR, "*", "*");
+            // NO any-attr wildcard -- see FunctionalRequirement. ADR-0023 closed the
+            // open-attr policy in all ports; extensibility is by registration.
         });
     }
 }

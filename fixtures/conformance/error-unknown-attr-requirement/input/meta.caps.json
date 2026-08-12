@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "acme::caps",
+    "children": [
+      {
+        "requirement.functional": {
+          "name": "Ordering",
+          "@level": 3,
+          "@status": "live",
+          "@statement": "Every placed order is recorded before payment is attempted.",
+          "@violation": "A payment attempted against an order that was never stored.",
+          "@madeUpAttr": "nope"
+        }
+      }
+    ]
+  }
+}
