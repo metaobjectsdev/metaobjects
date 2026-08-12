@@ -62,7 +62,13 @@ export function sharedEnumForField(field: MetaField): SharedEnum | undefined {
   return {
     name: toPascalCase(decl.name),
     values,
-    provided: decl.attr(FIELD_ATTR_PROVIDED) === true,
+    // ADR-0039 sanctioned own: @provided is a declaration-layer provenance marker
+    // ("THIS type is supplied by hand-written/third-party code"), like `abstract` —
+    // it does not flow down an extends chain. A resolving read misfires on a chained
+    // declaration (root abstract `B extends` root abstract `@provided A`): B would be
+    // reported provided and emit a reference to a hand-written `B` the adopter never
+    // declared, instead of materializing B. Matches the JVM ports.
+    provided: decl.ownAttrs().get(FIELD_ATTR_PROVIDED) === true,
   };
 }
 
