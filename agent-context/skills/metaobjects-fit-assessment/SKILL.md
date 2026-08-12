@@ -13,6 +13,35 @@ truth. Its sibling is `metaobjects-audit` (POST-adoption; scaffolded). Design +
 retro-test validation: `docs/superpowers/specs/2026-07-12-metaobjects-fit-assessment-design.md`.
 How to run it: point a high-end LLM at a target repo + this file (e.g. paste it, or
 fetch it from GitHub / metaobjects.dev) and let it produce the report below.
+
+DEFERRED, ON PURPOSE — capability requirements (`requirement.functional` /
+`requirement.architectural`). This skill deliberately says NOTHING about them, and that is a
+decision, not an omission.
+
+Why not now: (1) the grounding rule above requires every capability claim be verifiable
+against the CURRENT RELEASE, and `requirement.*` is not in one yet. (2) The signal->feature
+mapping is unvalidated against this skill's own kill criterion: the controlled evidence
+(0/24 model-only revivals) measures POST-adoption model-reading, and the feature's premise --
+that the disproof lives nowhere in the model -- cuts against pre-adoption detectability. If
+the reasoning was never written down, there is nothing for an evidence-cited assessment to
+cite. (3) Whether anyone fills the ledger in is itself untested; advertising it pre-adoption
+is the brochure failure this skill exists to avoid.
+
+TRIGGER to revisit — the release carrying `requirement.*` has shipped, AND either:
+  Arm A  a dogfooded project's `abandoned`/`superseded` entries are shown, retrospectively,
+         to have been discoverable PRE-adoption from repo evidence at file:line standard
+         (removal commit, dead flag, do-not-reintroduce comment);
+  Arm B  a team that adopted via this assessment hits a resurrection the ledger would have
+         caught, or asks why the assessment never mentioned it.
+
+ANTI-TRIGGER (defer -> never): if dogfooded entries trace only to tribal knowledge with no
+repo artifact, this assessment structurally cannot speak to the feature as a finding.
+
+SHAPE, pre-committed so it is not re-litigated as new machinery: ONE P7 hunt line in the
+existing grammar (observable signal -> vocabulary + metadata_sketch), gated like every other
+P7 line by "if a hunt line has hits, it must appear" -- so a repo with no retirement scar
+tissue produces zero requirements content. NOT a fifth pillar, NOT a P4 rubric row, NOT an
+R0 verdict line: no verdict may turn on it.
 -->
 
 # MetaObjects Fit & Migration Assessment
