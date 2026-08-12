@@ -4,6 +4,7 @@
     "children": [
       { "field.enum": { "name": "Priority", "abstract": true, "@values": ["LOW", "MEDIUM", "HIGH"] } },
       { "field.enum": { "name": "Currency", "abstract": true, "@provided": true, "@values": ["USD", "EUR", "GBP"] } },
+      { "field.enum": { "name": "Money", "abstract": true, "extends": "Currency" } },
       { "object.entity": { "name": "Ticket", "children": [
         { "field.long":  { "name": "id" } },
         { "field.enum":  { "name": "priority", "extends": "Priority" } },
@@ -15,6 +16,12 @@
         { "field.long":  { "name": "id" } },
         { "field.enum":  { "name": "priority", "extends": "Priority" } },
         { "source.rdb":  { "@table": "orders" } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+      ] } },
+      { "object.entity": { "name": "Invoice", "children": [
+        { "field.long":  { "name": "id" } },
+        { "field.enum":  { "name": "money", "extends": "Money" } },
+        { "source.rdb":  { "@table": "invoices" } },
         { "identity.primary": { "name": "pk", "@fields": ["id"] } }
       ] } }
     ]

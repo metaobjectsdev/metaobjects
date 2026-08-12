@@ -79,6 +79,40 @@ class KotlinFr019SharedProvidedConformanceTest {
         }
     }
 
+    /**
+     * A CHAINED declaration: root abstract `Money extends` root abstract `@provided Currency`.
+     *
+     * Per ADR-0026 §2 a materialized type is named for ITS OWN declaration, and ADR-0039 makes
+     * `@provided` declaration-layer (it does not flow down the chain), so `Money` is its own type,
+     * materialized from the members it inherits. #246 guarantees the chain can rename the
+     * vocabulary but never mutate it.
+     *
+     * Kotlin used to name a chained enum after the TOP-MOST root while its FR-019 arm decided
+     * materialize-vs-reference from the IMMEDIATE super — so it emitted a local `Currency.kt`
+     * that collided with the `com.acme.ext.Currency` reference asserted above. All five ports
+     * must agree here.
+     */
+    @Test
+    fun `chained abstract enum is materialized under its OWN name, not the roots`() {
+        val out = generate("com.acme.ext")
+        try {
+            val money = out.resolve("acme/shop/Money.kt")
+            assertTrue(Files.exists(money), "chained Money must be materialized under its own name")
+            val src = money.readText()
+            for (member in listOf("USD", "EUR", "GBP")) {
+                assertTrue(member in src, "Money must carry the inherited member $member; saw:\n$src")
+            }
+            // The chain must not drag the provided root into materialization.
+            assertFalse(Files.exists(out.resolve("acme/shop/Currency.kt")),
+                "provided Currency must still NOT be materialized")
+            val invoice = out.resolve("acme/shop/Invoice.kt").readText()
+            assertFalse("com.acme.ext.Money" in invoice,
+                "Money is materialized locally, not referenced externally; saw:\n$invoice")
+        } finally {
+            out.toFile().deleteRecursively()
+        }
+    }
+
     @Test
     fun `provided enum with no namespace config is a codegen error naming the enum`() {
         val ex = assertThrows<RuntimeException> { generate(null) }

@@ -196,12 +196,27 @@ object KotlinTypeMapper {
         // `splitFqn` collapsed to a root-package `Status` — colliding across every entity with a `status`.
         val immediateSuper = field.superField
         if (immediateSuper != null && runCatching { immediateSuper.declaringObject }.getOrNull() == null) {
-            // The DIRECT super is a package-level abstract enum → collapse onto the shared type. Name it
-            // for the top-most abstract root so a chain of abstract enums (abstract extends abstract) still
-            // collapses onto one type (resolveSuperRoot walks the abstract chain; == immediateSuper when
-            // there is no further super).
-            val superRoot = resolveSuperRoot(field) ?: immediateSuper
-            val (superPkg, superShort) = PackageMapping.splitFqn(superRoot.name)
+            // The DIRECT super is a package-level abstract enum → collapse onto the shared type, named
+            // for THAT declaration — the immediate super, NOT the top-most root of an abstract chain.
+            //
+            // Naming by the top-most root (the previous behaviour) contradicted this file's own FR-019
+            // arm, which resolves the shared declaration from the IMMEDIATE super
+            // ([Fr019SharedEnum.resolveSharedEnumDecl]) exactly as TS/C#/Java/Python do. On a CHAINED
+            // declaration (root abstract `Money extends` root abstract `@provided Currency`) the two
+            // halves disagreed: the materialize-vs-reference decision saw `Money` (own @provided absent
+            // → materialize) while the NAME collapsed to `Currency`, so Kotlin emitted a local
+            // `Currency.kt` that collided with the `com.acme.ext.Currency` reference emitted for fields
+            // extending `Currency` directly.
+            //
+            // Per ADR-0026 §2 a materialized type is named for ITS OWN declaration, so a chain yields one
+            // type per declaration, each carrying the member set it inherits ([KotlinEnumEmitter
+            // .readEnumValues] is inheritance-aware across any number of hops). #246 guarantees a chained
+            // declaration can never MUTATE the vocabulary it inherits — it may rename it, nothing more.
+            //
+            // Non-chained output is byte-identical: with no further super the root walk returned the
+            // immediate super anyway. The #259 two-hop projection guard is the `declaringObject == null`
+            // condition above, which is evaluated FIRST and is unaffected.
+            val (superPkg, superShort) = PackageMapping.splitFqn(immediateSuper.name)
             return ClassName(superPkg, superShort.replaceFirstChar { it.uppercase() })
         }
 
@@ -212,23 +227,6 @@ object KotlinTypeMapper {
             val (pkg, entityShort) = PackageMapping.splitFqn(entity.name)
             ClassName(pkg, entityShort + fieldPascal)
         }
-    }
-
-    /**
-     * Walk a field's `extends` (super-field) chain to the top-most ancestor, returning it, or
-     * `null` when the field has no super. The top-most super is an abstract enum declared at the
-     * metadata root (e.g. `field.enum Priority @abstract`); naming the generated enum class after
-     * it makes every extending field share one type. Defensive against cycles via a visited set.
-     */
-    private fun resolveSuperRoot(field: EnumField): MetaField<*>? {
-        var current: MetaField<*>? = field.superField ?: return null
-        val seen = HashSet<String>()
-        while (true) {
-            val next = current?.superField ?: break
-            if (!seen.add(current.name)) break // cycle guard
-            current = next
-        }
-        return current
     }
 
     /** Map a MetaField to its KotlinPoet data-class property TypeName. */

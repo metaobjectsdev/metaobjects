@@ -89,6 +89,24 @@ describe("FR-019 shared + provided enum conformance (TS)", () => {
     expect(t).toContain("currency IN ('USD', 'EUR', 'GBP')");
   });
 
+  // A CHAINED declaration: root abstract `Money extends` root abstract `@provided Currency`.
+  // Per ADR-0026 §2 a materialized type is named for ITS OWN declaration, and ADR-0039 makes
+  // @provided declaration-layer (it does not flow down the chain), so `Money` is its own type,
+  // materialized from the members it inherits — NOT a reference to a hand-written `Money` the
+  // adopter never declared. #246 guarantees the chain can rename the vocabulary but never
+  // mutate it. All five ports must agree here.
+  test("a root abstract enum extending a @provided enum is materialized under its OWN name", async () => {
+    const files = await gen(await loadSharedFixture(), "@acme/ext-enums");
+    const enums = files["enums.ts"]!;
+    expect(enums).toContain('export type Money = "USD" | "EUR" | "GBP";');
+    // Currency itself stays provided — the chain must not drag it into materialization.
+    expect(enums).not.toContain("export type Currency =");
+    const inv = files["Invoice.ts"]!;
+    expect(inv).toBeDefined();
+    expect(inv).toContain('from "./enums"');
+    expect(inv).not.toContain('from "@acme/ext-enums"');
+  });
+
   test("a @provided enum with no providedEnumModule config is a codegen-time error naming the enum", async () => {
     let err: unknown;
     try {
