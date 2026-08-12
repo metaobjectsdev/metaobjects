@@ -150,10 +150,15 @@ public class ConformanceTest {
             // The corpus's "metaobjects-template" provider (TS/C#/Python expose it
             // under this canonical name — template.* / @responseRef / @xmlText, the
             // AI prompt-construction vocab) maps to Java's TemplateTypesMetaDataProvider
-            // (id "template-types"). FR-033 re-homed the template/prompt ATTRS into the
-            // "metaobjects-prompt" concern provider, so the back-compat alias now also
-            // requires it. Java folds template-types into "metaobjects-core-types"; the
-            // checks are independent set memberships, so a fixture listing both resolves.
+            // (id "template-types") for the template.* TYPES + their OWN attrs
+            // (@payloadRef/@toolName/etc. — required attrs live WITH the type, never
+            // in a composable concern provider — a required attr in a provider that
+            // can be dropped from a build would silently stop enforcing it). It also
+            // requires "metaobjects-prompt", which still owns the attrs that PROJECT
+            // the prompt concern onto someone else's type (e.g. @xmlText on field.*)
+            // and may ride along with a "metaobjects-template" fixture. Java folds
+            // template-types into "metaobjects-core-types"; the checks are independent
+            // set memberships, so a fixture listing both resolves.
             "metaobjects-template", List.of(
                 "template-types",
                 "metaobjects-prompt"

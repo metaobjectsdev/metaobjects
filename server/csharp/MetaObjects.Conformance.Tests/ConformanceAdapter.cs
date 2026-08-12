@@ -125,9 +125,12 @@ public static class ConformanceAdapter
             ["metaobjects-db"]            = MetaObjects.Persistence.Db.DbMetaDataProvider.Instance,
             // FR-033 concern providers — the UI / query-surface attrs (@filterable / @sortable
             // / view.currency @locale / layout.dataGrid) and the prompt / extract attrs
-            // (@xmlText / @example / @instruction / enum overlays / object.value @normalize /
-            // template.* attrs) are re-homed out of core into dedicated data-driven providers
-            // (reading spec/metamodel/ui.json + prompt.json), matching the TS provider split.
+            // (@xmlText / @example / @instruction / enum overlays / object.value @normalize)
+            // are re-homed out of core into dedicated data-driven providers (reading
+            // spec/metamodel/ui.json + prompt.json), matching the TS provider split.
+            // template.*'s OWN attrs (@payloadRef / @textRef / @toolName / ...) are NOT
+            // among them — they register with the template type itself in core-types
+            // (TemplateSchema), never in a provider that can be composed out.
             ["metaobjects-ui"]            = MetaObjects.Presentation.Ui.UiMetaDataProvider.Instance,
             ["metaobjects-prompt"]        = MetaObjects.Template.PromptMetaDataProvider.Instance,
             // Back-compat alias: pre-rename fixtures (and other ports' fixtures) still name the

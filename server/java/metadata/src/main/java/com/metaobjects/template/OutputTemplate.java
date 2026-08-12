@@ -1,5 +1,7 @@
 package com.metaobjects.template;
 
+import com.metaobjects.attr.IntAttribute;
+import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 
 import static com.metaobjects.template.TemplateConstants.*;
@@ -25,14 +27,46 @@ public final class OutputTemplate extends MetaTemplate {
                .description("Template (non-LLM output) — FR-004")
                .inheritsFrom(TYPE_TEMPLATE, SUBTYPE_BASE);
 
-            // FR-033: the shared template attrs (@payloadRef [REQUIRED] / @textRef /
-            // @format / @maxChars / @owner / @since / @requiredTags) and the output
-            // overlay (@promptStyle / @kind / @subjectRef / @htmlBodyRef /
-            // @textBodyRef) are re-homed to the metaobjects-prompt concern provider
-            // (reads spec/metamodel/prompt.json's template.output extends). The
-            // closed-set + conditional-ref checks (@format / @promptStyle / @kind,
-            // email refs) remain enforced post-load in ValidationPhase. The any-attr
-            // wildcard is inherited from template.base.
+            // OWN attrs, registered here — never in a composable concern provider —
+            // because @payloadRef is REQUIRED (see MetaTemplate's note on why a
+            // required attr must never live somewhere that can be composed out).
+            // Matches spec/metamodel/template.json's template.output declaration
+            // exactly. The closed-set + conditional-ref checks (@format /
+            // @promptStyle / @kind, email refs) remain enforced post-load in
+            // ValidationPhase. The any-attr wildcard is inherited from template.base.
+
+            // Shared reference + governance attrs (peer of template.prompt's set).
+            def.requiredAttributeWithConstraints(ATTR_PAYLOAD_REF)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_TEXT_REF)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_FORMAT)
+               .ofType(StringAttribute.SUBTYPE_STRING)
+               .withEnum(FORMAT_TEXT, FORMAT_HTML, FORMAT_XML, FORMAT_CSV,
+                         FORMAT_JSON, FORMAT_MARKDOWN, FORMAT_SPREADSHEET);
+            def.optionalAttributeWithConstraints(ATTR_MAX_CHARS)
+               .ofType(IntAttribute.SUBTYPE_INT).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_OWNER)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_SINCE)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_REQUIRED_TAGS)
+               .ofType(StringAttribute.SUBTYPE_STRING).asArray();
+
+            // Output overlay (template.output only — FR-010 @promptStyle + @kind/email
+            // part-refs).
+            def.optionalAttributeWithConstraints(ATTR_PROMPT_STYLE)
+               .ofType(StringAttribute.SUBTYPE_STRING)
+               .withEnum(PROMPT_STYLE_GUIDE, PROMPT_STYLE_INLINE, PROMPT_STYLE_EXAMPLE_ONLY);
+            def.optionalAttributeWithConstraints(ATTR_KIND)
+               .ofType(StringAttribute.SUBTYPE_STRING)
+               .withEnum(KIND_DOCUMENT, KIND_EMAIL);
+            def.optionalAttributeWithConstraints(ATTR_SUBJECT_REF)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_HTML_BODY_REF)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_TEXT_BODY_REF)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
         });
     }
 

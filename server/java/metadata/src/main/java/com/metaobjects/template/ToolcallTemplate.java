@@ -1,5 +1,7 @@
 package com.metaobjects.template;
 
+import com.metaobjects.attr.IntAttribute;
+import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 
 import static com.metaobjects.template.TemplateConstants.*;
@@ -45,10 +47,22 @@ public final class ToolcallTemplate extends MetaTemplate {
                // Accept any attr child (vendor providers add their own).
                .optionalChild(com.metaobjects.attr.MetaAttribute.TYPE_ATTR, "*", "*");
 
-            // FR-033: the toolcall attrs (required @toolName + required @payloadRef +
-            // governance @owner/@since) are re-homed to the metaobjects-prompt concern
-            // provider (reads spec/metamodel/prompt.json's template.toolcall extends).
-            // The any-attr wildcard above keeps vendor extensibility.
+            // OWN attrs, registered here — never in a composable concern provider —
+            // because @toolName and @payloadRef are REQUIRED (see MetaTemplate's note
+            // on why a required attr must never live somewhere that can be composed
+            // out). Matches spec/metamodel/template.json's template.toolcall
+            // declaration exactly. The any-attr wildcard above keeps vendor
+            // extensibility.
+            def.requiredAttributeWithConstraints(ATTR_TOOL_NAME)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.requiredAttributeWithConstraints(ATTR_PAYLOAD_REF)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_OWNER)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_SINCE)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_MAX_TOKENS)
+               .ofType(IntAttribute.SUBTYPE_INT).asSingle();
         });
     }
 

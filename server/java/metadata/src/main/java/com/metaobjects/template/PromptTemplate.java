@@ -1,5 +1,7 @@
 package com.metaobjects.template;
 
+import com.metaobjects.attr.IntAttribute;
+import com.metaobjects.attr.StringAttribute;
 import com.metaobjects.registry.MetaDataRegistry;
 
 import java.util.ArrayList;
@@ -25,13 +27,39 @@ public final class PromptTemplate extends MetaTemplate {
                .description("Template (LLM prompt) — FR-004")
                .inheritsFrom(TYPE_TEMPLATE, SUBTYPE_BASE);
 
-            // FR-033: the shared template attrs (@payloadRef [REQUIRED] / @textRef /
-            // @format / @maxChars / @owner / @since / @requiredTags) and the prompt
-            // overlay (@maxTokens / @requiredSlots / @model / @responseRef) are
-            // re-homed to the metaobjects-prompt concern provider (reads
-            // spec/metamodel/prompt.json's template.prompt extends). The any-attr
-            // wildcard is inherited from template.base. Accessors below read the
-            // attr values at runtime, independent of where the schema is registered.
+            // OWN attrs, registered here — never in a composable concern provider —
+            // because @payloadRef is REQUIRED (see MetaTemplate's note on why a
+            // required attr must never live somewhere that can be composed out).
+            // Matches spec/metamodel/template.json's template.prompt declaration
+            // exactly. The any-attr wildcard is inherited from template.base.
+
+            // Shared reference + governance attrs (peer of template.output's set).
+            def.requiredAttributeWithConstraints(ATTR_PAYLOAD_REF)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_TEXT_REF)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_FORMAT)
+               .ofType(StringAttribute.SUBTYPE_STRING)
+               .withEnum(FORMAT_TEXT, FORMAT_HTML, FORMAT_XML, FORMAT_CSV,
+                         FORMAT_JSON, FORMAT_MARKDOWN, FORMAT_SPREADSHEET);
+            def.optionalAttributeWithConstraints(ATTR_MAX_CHARS)
+               .ofType(IntAttribute.SUBTYPE_INT).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_OWNER)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_SINCE)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_REQUIRED_TAGS)
+               .ofType(StringAttribute.SUBTYPE_STRING).asArray();
+
+            // LLM overlay (template.prompt only).
+            def.optionalAttributeWithConstraints(ATTR_MAX_TOKENS)
+               .ofType(IntAttribute.SUBTYPE_INT).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_REQUIRED_SLOTS)
+               .ofType(StringAttribute.SUBTYPE_STRING).asArray();
+            def.optionalAttributeWithConstraints(ATTR_MODEL)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+            def.optionalAttributeWithConstraints(ATTR_RESPONSE_REF)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
         });
     }
 

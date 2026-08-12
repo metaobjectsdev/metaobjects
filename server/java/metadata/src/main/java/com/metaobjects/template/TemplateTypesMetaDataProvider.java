@@ -20,10 +20,14 @@ public class TemplateTypesMetaDataProvider implements MetaDataTypeProvider {
 
     @Override
     public void registerTypes(MetaDataRegistry registry) {
-        // Register abstract base type first (declares the union of shared attrs).
+        // Register abstract base type first (template.base is attr-free — only the
+        // any-attr wildcard).
         MetaTemplate.registerTypes(registry);
 
-        // Register concrete template subtypes.
+        // Register concrete template subtypes. Each registers its OWN attrs inline
+        // (including the required @payloadRef / @toolName) — never in a composable
+        // concern provider, so a required-attr check can never be silently dropped
+        // by omitting an optional provider from a build.
         PromptTemplate.registerTypes(registry);
         OutputTemplate.registerTypes(registry);
         // ADR-0011 — toolcall is a sibling subtype that does NOT inherit
@@ -35,12 +39,9 @@ public class TemplateTypesMetaDataProvider implements MetaDataTypeProvider {
         // MetaRoot's static initializer alongside object/field/attr/validator/view/
         // identity/relationship — templates are a top-level metadata type.
 
-        // FR-033: the @xmlText field-extract marker (formerly extended onto every
-        // registered field subtype here) is re-homed to the metaobjects-prompt
-        // concern provider (reads spec/metamodel/prompt.json's field.* extends),
-        // alongside the rest of the prompt-construction attrs. This provider now
-        // registers ONLY the template TYPE definitions; their attrs are owned by
-        // metaobjects-prompt.
+        // The @xmlText field-extract marker (a PROJECTION of the prompt concern onto
+        // field.*, not intrinsic to template.*) stays homed in the metaobjects-prompt
+        // concern provider (reads spec/metamodel/prompt.json's field.* extends).
     }
 
     @Override

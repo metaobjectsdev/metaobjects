@@ -911,26 +911,94 @@ for _sub, _attrs in _VALIDATOR_ATTRS_BY_SUBTYPE.items():
         )
     )
 
-# template.* (FR-004) — base + prompt + output + toolcall. FR-033 — core registers
-# the four template TYPES (a single MetaTemplate backs every subtype; validation in
-# validation_passes.py) but carries NO own per-subtype attrs. The full per-subtype
-# template attr vocabulary (@payloadRef / @textRef / @format / @maxChars / @kind /
-# @promptStyle / @toolName / @responseRef / …) is re-homed to the prompt domain
-# provider (`prompt_provider`, metaobjects-prompt) via TypeRegistry.extend
-# (prompt.json declares them on template.prompt / output / toolcall), matching the TS
-# core-types→promptProvider split (where the template type is also attr-free in core).
-for _tmpl_sub in (
-    SUBTYPE_BASE,
-    tc.TEMPLATE_SUBTYPE_OUTPUT,
-    tc.TEMPLATE_SUBTYPE_PROMPT,
-    tc.TEMPLATE_SUBTYPE_TOOLCALL,
-):
+# template.* (FR-004) — base + prompt + output + toolcall. A single MetaTemplate
+# node class backs every subtype (validation lives in validation_passes.py); the
+# per-subtype attr vocabulary is registered HERE, WITH the type, in core — not in
+# the prompt domain provider (`prompt_provider`, metaobjects-prompt).
+#
+# Supersedes the prior FR-033 S2 homing, which put every template.* attr —
+# including the REQUIRED @payloadRef / @toolName — in prompt_provider. That made a
+# core type's validity depend on an OPTIONAL provider: compose coreProviders
+# without metaobjects-prompt and template.prompt stayed "registered" with zero
+# attrs, so the required-attr rule silently stopped firing (invalid metadata —
+# e.g. a template.prompt with no @payloadRef — loaded clean instead of erroring).
+#
+# THE RULE this corrects (ADR-0011 / FR-004): an attr the type is invalid or not
+# meaningfully itself without ("own") registers WITH the type, in a provider that
+# is always composed, never optional. An attr PROJECTING a different concern onto
+# a type that is complete without it ("projected") registers in the concern
+# provider and MUST stay optional — e.g. prompt.json's @xmlText/@example on every
+# field, @enumAlias on field.enum, @normalize on object.value; see
+# prompt_provider.py. template.base carries no attrs of its own (matches Java and
+# the cross-port canonical); the concrete subtypes below add their reference +
+# governance attrs exactly per spec/metamodel/template.json's "types" blocks.
+_TEMPLATE_GOVERNANCE_ATTRS = [
+    AttrSchema(name=tc.TEMPLATE_ATTR_OWNER, value_type=ATTR_SUBTYPE_STRING),
+    AttrSchema(name=tc.TEMPLATE_ATTR_SINCE, value_type=ATTR_SUBTYPE_STRING),
+]
+_TEMPLATE_ATTRS_BY_SUBTYPE: dict[str, list[AttrSchema]] = {
+    SUBTYPE_BASE: [],
+    tc.TEMPLATE_SUBTYPE_PROMPT: [
+        AttrSchema(name=tc.TEMPLATE_ATTR_PAYLOAD_REF, value_type=ATTR_SUBTYPE_STRING, required=True),
+        AttrSchema(name=tc.TEMPLATE_ATTR_TEXT_REF, value_type=ATTR_SUBTYPE_STRING),
+        AttrSchema(
+            name=tc.TEMPLATE_ATTR_FORMAT,
+            value_type=ATTR_SUBTYPE_STRING,
+            default=tc.TEMPLATE_FORMAT_DEFAULT,
+            allowed_values=tc.ALLOWED_FORMATS,
+        ),
+        AttrSchema(name=tc.TEMPLATE_ATTR_MAX_CHARS, value_type=ATTR_SUBTYPE_INT),
+        *_TEMPLATE_GOVERNANCE_ATTRS,
+        AttrSchema(name=tc.TEMPLATE_ATTR_REQUIRED_TAGS, value_type=ATTR_SUBTYPE_STRING, is_array=True),
+        AttrSchema(name=tc.TEMPLATE_ATTR_MAX_TOKENS, value_type=ATTR_SUBTYPE_INT),
+        AttrSchema(name=tc.TEMPLATE_ATTR_REQUIRED_SLOTS, value_type=ATTR_SUBTYPE_STRING, is_array=True),
+        AttrSchema(name=tc.TEMPLATE_ATTR_MODEL, value_type=ATTR_SUBTYPE_STRING),
+        AttrSchema(name=tc.TEMPLATE_ATTR_RESPONSE_REF, value_type=ATTR_SUBTYPE_STRING),
+    ],
+    tc.TEMPLATE_SUBTYPE_OUTPUT: [
+        AttrSchema(name=tc.TEMPLATE_ATTR_PAYLOAD_REF, value_type=ATTR_SUBTYPE_STRING, required=True),
+        AttrSchema(name=tc.TEMPLATE_ATTR_TEXT_REF, value_type=ATTR_SUBTYPE_STRING),
+        AttrSchema(
+            name=tc.TEMPLATE_ATTR_FORMAT,
+            value_type=ATTR_SUBTYPE_STRING,
+            default=tc.TEMPLATE_FORMAT_DEFAULT,
+            allowed_values=tc.ALLOWED_FORMATS,
+        ),
+        AttrSchema(name=tc.TEMPLATE_ATTR_MAX_CHARS, value_type=ATTR_SUBTYPE_INT),
+        *_TEMPLATE_GOVERNANCE_ATTRS,
+        AttrSchema(name=tc.TEMPLATE_ATTR_REQUIRED_TAGS, value_type=ATTR_SUBTYPE_STRING, is_array=True),
+        AttrSchema(
+            name=tc.TEMPLATE_ATTR_PROMPT_STYLE,
+            value_type=ATTR_SUBTYPE_STRING,
+            default=tc.PROMPT_STYLE_DEFAULT,
+            allowed_values=tc.PROMPT_STYLES,
+        ),
+        AttrSchema(
+            name=tc.TEMPLATE_ATTR_KIND,
+            value_type=ATTR_SUBTYPE_STRING,
+            default=tc.TEMPLATE_KIND_DEFAULT,
+            allowed_values=tc.ALLOWED_KINDS,
+        ),
+        AttrSchema(name=tc.TEMPLATE_ATTR_SUBJECT_REF, value_type=ATTR_SUBTYPE_STRING),
+        AttrSchema(name=tc.TEMPLATE_ATTR_HTML_BODY_REF, value_type=ATTR_SUBTYPE_STRING),
+        AttrSchema(name=tc.TEMPLATE_ATTR_TEXT_BODY_REF, value_type=ATTR_SUBTYPE_STRING),
+    ],
+    tc.TEMPLATE_SUBTYPE_TOOLCALL: [
+        # Does NOT inherit the generic prompt/output reference attrs — its own
+        # minimal set (ADR-0011): no renderable text body, so no @textRef/@format.
+        AttrSchema(name=tc.TEMPLATE_ATTR_TOOL_NAME, value_type=ATTR_SUBTYPE_STRING, required=True),
+        AttrSchema(name=tc.TEMPLATE_ATTR_PAYLOAD_REF, value_type=ATTR_SUBTYPE_STRING, required=True),
+        *_TEMPLATE_GOVERNANCE_ATTRS,
+        AttrSchema(name=tc.TEMPLATE_ATTR_MAX_TOKENS, value_type=ATTR_SUBTYPE_INT),
+    ],
+}
+for _tmpl_sub, _tmpl_attrs in _TEMPLATE_ATTRS_BY_SUBTYPE.items():
     core_provider.add(
         TypeDefinition(
             type=TYPE_TEMPLATE,
             sub_type=_tmpl_sub,
             factory=MetaTemplate,
-            attrs=[],
+            attrs=list(_tmpl_attrs),
             child_rules=[ChildRule(TYPE_ATTR, "*")],
         )
     )
@@ -945,8 +1013,11 @@ for _tmpl_sub in (
 # domain (`prompt_provider`) and UI / query-surface domain (`ui_provider`) then
 # EXTEND the core types via TypeRegistry.extend, and the documentation provider adds
 # the common doc attrs. FR-033 re-homed the field's filter/sort/teaching/extract +
-# view/layout + template attrs out of core into ui/prompt; the composed set is
-# unchanged. Spread to add more: `[*core_providers, my_provider]`.
+# view/layout attrs out of core into ui/prompt (all OPTIONAL vocabulary on types
+# that stay complete without them); template.* attrs are OWN and stay registered
+# with the type in core (see the template.* block above) — dropping a concern
+# provider must never invalidate a type another provider registers. The composed
+# set is unchanged. Spread to add more: `[*core_providers, my_provider]`.
 # ---------------------------------------------------------------------------
 from .meta.persistence.db.db_provider import db_provider  # noqa: E402
 from .meta.template.prompt_provider import prompt_provider  # noqa: E402

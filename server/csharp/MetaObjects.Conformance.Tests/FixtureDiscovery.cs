@@ -76,10 +76,13 @@ public static class FixtureDiscovery
 {
     // FR-033 — the default provider set for a fixture with no providers.json is the
     // FULL core bundle (core types + the four concern providers), NOT core-types alone.
-    // The field's filter/sort/teaching/extract attrs + the view/layout/template attrs
-    // were re-homed out of core-types into the db/ui/prompt concern providers (matching
-    // the TS provider split), so a fixture exercising @filterable / @example / @normalize
-    // / a template.* attr / a layout.dataGrid attr needs those providers composed. Mirrors
+    // The field's filter/sort/teaching/extract attrs + the view/layout attrs were
+    // re-homed out of core-types into the db/ui/prompt concern providers (matching the
+    // TS provider split), so a fixture exercising @filterable / @example / @normalize /
+    // a layout.dataGrid attr needs those providers composed. template.* attrs are NOT
+    // in that set — they are OWN to the template type and register with core-types
+    // (TemplateSchema), always present regardless of which concern providers a fixture
+    // composes; a required attr must never depend on an optional provider. Mirrors
     // the TS conformance DEFAULT_PROVIDERS (server/typescript/.../conformance/src/fixture.ts)
     // and the Python adapter, keeping the cross-port no-providers.json fixtures green.
     private static readonly IReadOnlyList<string> DefaultProviders =

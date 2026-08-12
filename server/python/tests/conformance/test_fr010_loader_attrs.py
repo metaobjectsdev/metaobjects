@@ -32,9 +32,11 @@ from metaobjects.shared.base_types import TYPE_FIELD, TYPE_OBJECT, TYPE_TEMPLATE
 
 
 def _registry():
-    # FR-033 — the FR-010 field-teaching + template attrs are re-homed to the
-    # prompt domain provider (metaobjects-prompt); compose the full core bundle so
-    # they are present (mirrors the conformance default provider set).
+    # FR-033 — the FR-010 field-teaching attrs (@example/@instruction/@enumAlias/
+    # @enumDoc) are re-homed to the prompt domain provider (metaobjects-prompt);
+    # compose the full core bundle so they are present (mirrors the conformance
+    # default provider set). @promptStyle below is a template.output OWN attr —
+    # registered by core_provider itself, present even without prompt_provider.
     return compose_registry(list(core_providers))
 
 

@@ -30,9 +30,9 @@ public abstract class MetaTemplate extends MetaData {
     }
 
     /**
-     * Register the abstract {@code template.base} type. Declares the union of attrs
-     * across all concrete subtypes as optional; per-subtype required-checks are
-     * enforced in {@code ValidationPhase} (post-load, own-only).
+     * Register the abstract {@code template.base} type. Carries zero attrs of its own
+     * (only the any-attr wildcard, for extensibility from service providers); every
+     * concrete subtype registers its own attrs directly (see below).
      *
      * <p>Called by {@link TemplateTypesMetaDataProvider}.
      */
@@ -53,12 +53,15 @@ public abstract class MetaTemplate extends MetaData {
         });
     }
 
-    // FR-033: the shared template attrs (@payloadRef / @textRef / @format / @maxChars /
-    // @owner / @since / @requiredTags) — along with the prompt/output/toolcall overlay
-    // attrs — are re-homed to the metaobjects-prompt concern provider (reads
-    // spec/metamodel/prompt.json's template.* extends). The template TYPE definitions
-    // (template.base/prompt/output/toolcall) are still registered here; only the ATTRS
-    // moved. The former registerSharedAttrs(...) helper is therefore removed.
+    // These are OWN attrs, registered directly on each concrete subtype's own
+    // registerTypes(...) (PromptTemplate / OutputTemplate / ToolcallTemplate) — never in
+    // a composable concern provider. @payloadRef and @toolName are REQUIRED there: an
+    // attribute a type is not meaningfully itself without belongs to the type's own
+    // provider, always. A required attr living in a provider that can be composed out of
+    // a build (e.g. metaobjects-prompt) would silently delete the required-attr rule
+    // along with the provider — compose without it and the type would stay registered
+    // with zero attrs, so ERR_MISSING_REQUIRED_ATTR would simply stop firing. See the
+    // TS reference fix (commit 4e701247) this Java port mirrors.
 
     // -----------------------------------------------------------------------
     // Accessors — resolving attr reads (ADR-0039 default)

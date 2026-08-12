@@ -7,13 +7,15 @@ from pathlib import Path
 
 # FR-033 — the default provider set for a fixture with no providers.json is the
 # FULL core bundle (core types + the four concern providers), NOT core-types alone.
-# The field's filter/sort/teaching/extract attrs + the view/layout/template attrs
-# were re-homed out of core-types into the db/ui/prompt concern providers (matching
-# the TS provider split), so a fixture exercising @filterable / @example / @normalize
-# / a template.* attr / a layout.dataGrid attr needs those providers composed. This
-# mirrors the TS conformance ``DEFAULT_PROVIDERS`` (server/typescript/packages/
-# conformance/src/fixture.ts) and keeps the cross-port corpus's no-providers.json
-# fixtures green.
+# The field's filter/sort/teaching/extract attrs + the view/layout attrs were
+# re-homed out of core-types into the db/ui/prompt concern providers (matching the
+# TS provider split) — all OPTIONAL vocabulary on types that stay complete without
+# it. So a fixture exercising @filterable / @example / @normalize / a
+# layout.dataGrid attr needs those providers composed. (template.* attrs are OWN —
+# registered with the type in core_provider itself, not re-homed; see
+# core_types.py.) This mirrors the TS conformance ``DEFAULT_PROVIDERS`` (server/
+# typescript/packages/conformance/src/fixture.ts) and keeps the cross-port
+# corpus's no-providers.json fixtures green.
 _DEFAULT_PROVIDERS: tuple[str, ...] = (
     "metaobjects-core-types",
     "metaobjects-db",

@@ -20,9 +20,11 @@ from metaobjects.shared.base_types import SUBTYPE_BASE, TYPE_TEMPLATE
 
 
 # ---------------------------------------------------------------------------
-# Registry — the toolcall SUBTYPE is shipped by core_provider; FR-033 re-homed its
-# ATTRS to the prompt domain provider (metaobjects-prompt), so attr assertions
-# compose the full core bundle.
+# Registry — both the toolcall SUBTYPE and its ATTRS are shipped by core_provider
+# (OWN, always registered — see the template.* block in core_types.py; a required
+# attr must never live in a provider that can be composed out). Attr assertions
+# below still compose the full core bundle for parity with the other template.*
+# tests, but core_provider alone is sufficient.
 # ---------------------------------------------------------------------------
 
 

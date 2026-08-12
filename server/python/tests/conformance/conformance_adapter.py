@@ -80,9 +80,10 @@ _PROVIDER_MAP: dict[str, Provider] = {
     # which maps "metaobjects-db" to the real dbProvider).
     db_provider.id: db_provider,                    # "metaobjects-db"
     # The prompt / AI + serialization domain provider — registers @xmlText / @example
-    # / @instruction (field), the field.enum tolerant-extract overlays, object.value
-    # @normalize, and the template.* per-subtype attrs (FR-033 re-home; mirrors the TS
-    # promptProvider, renamed from templateProvider).
+    # / @instruction (field), the field.enum tolerant-extract overlays, and
+    # object.value @normalize (FR-033 re-home; mirrors the TS promptProvider,
+    # renamed from templateProvider). The template.* per-subtype attrs are OWN and
+    # register with the type in core_provider instead — see core_types.py.
     prompt_provider.id: prompt_provider,            # "metaobjects-prompt"
     # The UI / query-surface domain provider — registers @filterable / @sortable /
     # @sortableDefaultOrder (field), view.currency @locale, layout.dataGrid attrs.

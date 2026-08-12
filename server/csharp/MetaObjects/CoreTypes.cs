@@ -59,10 +59,13 @@ public static class CoreTypes
         // DB-domain field attrs (@column / @db.indexed / @dbColumnType) — Extend over core
         // field types. Mirrors Java's CoreDBMetaDataProvider and TS's dbProvider.
         MetaObjects.Persistence.Db.DbMetaDataProvider.Instance,
-        // FR-033 concern providers — re-home the UI / prompt attrs out of the core type
-        // classes (read spec/metamodel/ui.json + prompt.json). The prompt provider absorbs
-        // the @xmlText marker the former TemplateTypesProvider registered. Mirrors the TS
-        // ui/prompt provider split (and Java/Python).
+        // FR-033 concern providers — re-home the UI / prompt PROJECTIONS out of the core
+        // type classes (read spec/metamodel/ui.json + prompt.json): field.* / field.enum /
+        // object.value vocabulary that is optional wherever it lands, including the
+        // @xmlText marker the former TemplateTypesProvider registered. template.*'s OWN
+        // attrs stay on the core template registration (CoreTypes "template" section) —
+        // a required attr must never live in a provider that can be composed out. Mirrors
+        // the TS ui/prompt provider split (and Java/Python).
         MetaObjects.Presentation.Ui.UiMetaDataProvider.Instance,
         MetaObjects.Template.PromptMetaDataProvider.Instance,
     ];
@@ -616,16 +619,26 @@ public static class CoreTypes
         // is unconditional (the status enum, shape, levels); `meta verify` owns the
         // status-conditional resolution, where the severity actually depends on data.
 
-        // template — fourth-pillar metatype (FR-004). prompt + output; attr-only
-        // children. A single MetaTemplate class backs both subtypes (mirrors source);
-        // per-subtype attr schemas drive validation (both require @payloadRef +
-        // @textRef; @format is a closed enum). Reference resolution (@payloadRef) is
+        // template — fourth-pillar metatype (FR-004). prompt + output + toolcall;
+        // attr-only children. A single MetaTemplate class backs every subtype (mirrors
+        // source/requirement); per-subtype attr schemas drive validation (prompt +
+        // output both require @payloadRef + @textRef; toolcall requires @payloadRef +
+        // @toolName; @format is a closed enum). Reference resolution (@payloadRef) is
         // render-time verify scope, NOT load-time — so no payload-resolution pass here.
-        // FR-033: the per-subtype template attrs (@payloadRef / @textRef / @format /
-        // @maxChars / @kind / @promptStyle / @toolName / …) are re-homed to the
-        // metaobjects-prompt concern provider (reads prompt.json's template.* extends).
-        // Core registers only the template TYPE definitions; their attrs are owned by
-        // metaobjects-prompt.
+        //
+        // These attrs are OWN to template, not a projection from elsewhere: a
+        // template.prompt with no @payloadRef can't render, a template.toolcall with
+        // no @toolName can't be wired to an LLM. They register HERE, in the core
+        // provider, always — never in the metaobjects-prompt concern provider, which
+        // is optional and composable OUT. An attribute a type cannot be meaningfully
+        // itself without must never live in a provider whose absence silently drops
+        // the rule; that is exactly what re-homing these to metaobjects-prompt did
+        // (dropping the provider took the required-attr check with it, silently).
+        // metaobjects-prompt keeps its legitimate PROJECTIONS onto field.* / field.enum
+        // / object.value — someone else's type, optional vocabulary, correctly
+        // composable out. See TemplateSchema for the per-subtype attr sets (mirrors
+        // RequirementSchema, the pre-existing correct pattern for an own-attr type in
+        // this port).
         foreach (string subType in TEMPLATE_SUBTYPES)
         {
             registry.Register(
@@ -635,7 +648,9 @@ public static class CoreTypes
                     $"Template ({subType})",
                     [Wildcard(TYPE_ATTR)],
                     (tid, n) => new MetaTemplate(tid, n),
-                    []));
+                    TemplateSchema.TemplateAttrsMap.TryGetValue(subType, out var tplAttrs)
+                        ? tplAttrs.ToList()
+                        : []));
         }
 
         // Default subTypes for authoring sugar.
