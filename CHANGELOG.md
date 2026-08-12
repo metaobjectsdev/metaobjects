@@ -7,6 +7,89 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+A **MINOR**: a new registered type family (new vocabulary in all five ports), plus a
+registry tightening that turns a previously-permitted provider shape into a hard error.
+Nothing here changes runtime behaviour on an existing database.
+
+### Capability requirements are metadata — `requirement.functional` / `requirement.architectural`
+
+Requirements are now **registered metamodel vocabulary in all five ports**, declared in
+`metaobjects/` beside the entities they describe and loaded by the same loader. There is no
+side file and no bespoke parser.
+
+- **Two kinds, opposite checks.** `functional` fails when NOTHING implements it (existence);
+  `architectural` fails when something VIOLATES it (universality — v1 is claim-set
+  arithmetic: a live policy claimed by nothing). Architectural carries no level, because a
+  policy is object-independent by definition.
+- **Hierarchy is nesting**, not a `parent` string: an L1 solution contains its L2 segments
+  contain its L3 services. Regrouping moves a subtree, and a requirement is addressable by
+  the same dotted child-name path as every other node.
+- **Five levels, link floor at L4.** L1 solution, L2 segment, L3 service, L4 object, L5
+  member. `@implementedBy` is legal at L4/L5 only — L1–L3 are organisational and never
+  reference the model (`ERR_REQUIREMENT_LINK_ABOVE_FLOOR`).
+- **`@status` is a closed enum the LOADER enforces** (`live | partial | abandoned |
+  superseded`), so a typo fails the load in every language rather than passing silently in
+  four of them.
+- **`meta verify` owns what the loader cannot.** A dangling `@implementedBy` is an ERROR on
+  `live`/`partial` and ALLOWED on `abandoned`/`superseded` — those nodes are *supposed* to be
+  gone. The severity depends on the status, and a loader `references` descriptor always
+  errors, which is why this check lives in verify.
+- **`@verifiedBy` checks each named test exists and is not skipped** — it never runs them.
+  Missing on a live requirement is an error; a skipped test is a warning naming file and
+  line. It fails OPEN when no test files are visible, so a monorepo whose tests live
+  elsewhere is not told its requirements are unverified.
+- **Object coverage ships as a WARNING**, deliberately: on a real 120-file repository
+  carrying one requirement, the gate reports 93 unclaimed entities. Promoting it to error
+  today would fail a project's first `verify` after authoring a single entry.
+
+Opt-in is by declaration: a model with no `requirement.*` nodes produces no diagnostics, and
+no codegen, migrate or runtime path reads the type.
+
+### Fixed — `template.*` owns its attributes (all five ports)
+
+FR-033 re-homed `template.*`'s attributes into the `metaobjects-prompt` concern provider,
+**including the required `@payloadRef` and `@toolName`**. That made a core type's validity
+depend on a provider that can be composed out, and the failure was silent: composing without
+it left `template.prompt` registered with ZERO attributes, and `ERR_MISSING_REQUIRED_ATTR`
+simply stopped firing — invalid metadata began loading clean.
+
+All fifteen template attributes now register with their types. `metaobjects-prompt` keeps
+exactly its legitimate projections onto `field.*`, `field.enum` and `object.value`, all
+optional. The cross-port registry manifest is **byte-identical** — this is where the
+attributes are registered, never which attributes exist.
+
+Recorded as **[ADR-0050](spec/decisions/ADR-0050-own-vs-projected-attributes.md)**: a
+provider is a cluster of capabilities; OWN attributes (the type is invalid without them)
+travel with the type, PROJECTED attributes (another concern applied to someone else's
+complete type) live in the concern provider and must be optional. Four of the five concern
+providers already obeyed this, so the rule was real and merely unwritten.
+
+### Added — `ERR_EXTEND_REQUIRED_ATTR` (registry tightening)
+
+**Potentially breaking for a downstream provider.** Projecting a REQUIRED attribute onto a
+type another provider owns now throws, in every port's registry. If an attribute is genuinely
+required it is OWN, and belongs with its type. No provider in this repository does this (a
+sweep of all 54 spec files across all ports found zero), so the change is preventative — but
+a downstream provider that projects a required attr will now fail at composition.
+
+A standing gate encodes the invariant: compose without each provider, assert no surviving
+type lost a required attribute.
+
+### Fixed — node identity across package boundaries
+
+`instanceof` against a metadata node from another package returns **false for a real node**
+when two physical copies of `@metaobjectsdev/metadata` are in one process. The failure is
+silent: `codegen-ts` reads the entity as unbacked and emits nothing; `migrate-ts` drops the
+table from the expected schema and proposes `DROP TABLE` against a live database. Node
+identification now goes through the exported guards, and `source.rdb` is detected
+structurally.
+
+### Fixed — composition FK lost its cascade in the canonical schema
+
+The conformance corpus's committed canonical schema is regenerated: a parent-side
+`relationship.composition` was contributing no referential action.
+
+
 ## [0.21.6] — npm `0.21.6` · PyPI `0.21.6` · NuGet `0.21.6` · Maven `7.21.6`
 
 A coordinated PATCH across all four registries. **Two changes alter runtime behaviour on
