@@ -1,0 +1,8 @@
+{
+  "errors": [
+    {
+      "code": "ERR_UNKNOWN_ATTR",
+      "source": { "format": "json", "files": [ "meta.probe.json" ], "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[1]['field.string'].children[0]['validator.required']" }
+    }
+  ]
+}

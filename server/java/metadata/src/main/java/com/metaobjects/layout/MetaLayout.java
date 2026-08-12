@@ -29,7 +29,9 @@ public abstract class MetaLayout extends MetaData {
                 .type(TYPE_LAYOUT).subType(SUBTYPE_BASE)
                 .description("Base layout metadata — attached to an object, describes UI shape")
                 .inheritsFrom(MetaData.TYPE_METADATA, MetaData.SUBTYPE_BASE)
-                .optionalChild(MetaAttribute.TYPE_ATTR, "*", "*")
+                // ADR-0051: NO any-attr wildcard. An undeclared attribute is ERR_UNKNOWN_ATTR in
+                // every port; extension is REGISTRATION -- a downstream provider declares its
+                // attrs. A wildcard would also swallow a TYPO'd core attr, silently.
             );
             log.debug("Registered MetaLayout type with unified registry");
         } catch (Exception e) {

@@ -51,8 +51,10 @@ public abstract class MetaValidator extends MetaData {
         registry.registerType(MetaValidator.class, def -> {
             def.type(TYPE_VALIDATOR).subType(SUBTYPE_BASE)
                .description("Base validator metadata with common validator attributes")
-               .inheritsFrom("metadata", "base")
-               .optionalChild(MetaAttribute.TYPE_ATTR, "*", "*");
+               .inheritsFrom("metadata", "base");
+               // ADR-0051: NO any-attr wildcard. An undeclared attribute is ERR_UNKNOWN_ATTR in
+               // every port; extension is REGISTRATION -- a downstream provider declares its
+               // attrs. A wildcard would also swallow a TYPO'd core attr, silently.
 
             // VALIDATOR-SPECIFIC ATTRIBUTES WITH FLUENT CONSTRAINTS
             def.optionalAttributeWithConstraints(ATTR_IS_ABSTRACT)

@@ -109,9 +109,11 @@ public abstract class MetaRelationship extends MetaData {
         registry.registerType(MetaRelationship.class, def -> {
             def.type(TYPE_RELATIONSHIP).subType(SUBTYPE_BASE)
                .description("Abstract base relationship metadata with model-driven patterns")
-               .inheritsFrom(MetaData.TYPE_METADATA, MetaData.SUBTYPE_BASE)
+               .inheritsFrom(MetaData.TYPE_METADATA, MetaData.SUBTYPE_BASE);
                // ACCEPTS ANY ATTRIBUTES (all relationship types inherit these)
-               .optionalChild(MetaAttribute.TYPE_ATTR, "*", "*");
+               // ADR-0051: NO any-attr wildcard. An undeclared attribute is ERR_UNKNOWN_ATTR in
+               // every port; extension is REGISTRATION -- a downstream provider declares its
+               // attrs. A wildcard would also swallow a TYPO'd core attr, silently.
 
             // RELATIONSHIP-SPECIFIC ATTRIBUTES WITH FLUENT CONSTRAINTS
             def.optionalAttributeWithConstraints(ATTR_IS_ABSTRACT)

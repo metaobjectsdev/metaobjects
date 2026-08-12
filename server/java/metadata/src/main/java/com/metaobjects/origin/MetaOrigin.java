@@ -172,9 +172,11 @@ public abstract class MetaOrigin extends MetaData {
         registry.registerType(MetaOrigin.class, def -> {
             def.type(TYPE_ORIGIN).subType(SUBTYPE_BASE)
                .description("Abstract base origin metadata — field-level provenance (passthrough / aggregate / collection)")
-               .inheritsFrom(MetaData.TYPE_METADATA, MetaData.SUBTYPE_BASE)
+               .inheritsFrom(MetaData.TYPE_METADATA, MetaData.SUBTYPE_BASE);
                // Accept any attr child (for extensibility from service providers)
-               .optionalChild(MetaAttribute.TYPE_ATTR, "*", "*");
+               // ADR-0051: NO any-attr wildcard. An undeclared attribute is ERR_UNKNOWN_ATTR in
+               // every port; extension is REGISTRATION -- a downstream provider declares its
+               // attrs. A wildcard would also swallow a TYPO'd core attr, silently.
 
             // SP-G Unit 6a: the per-subtype attrs (@from / @via / @agg / @of) are
             // declared on the CONCRETE subtypes (AggregateOrigin / CollectionOrigin /

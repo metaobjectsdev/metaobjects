@@ -41,7 +41,13 @@ public abstract class MetaTemplate extends MetaData {
             def.type(TYPE_TEMPLATE).subType(SUBTYPE_BASE)
                .description("Abstract base template metadata — FR-004 cross-language prompt construction")
                .inheritsFrom(MetaData.TYPE_METADATA, MetaData.SUBTYPE_BASE)
-               // Accept any attr child (extensibility from service providers)
+               // ADR-0051 EXCEPTION, deliberately retained. Removing this wildcard trips
+               // ERR_BAD_ATTR_VALUE on `abstract: true`: Java models isAbstract as an ATTR
+               // (declared on metadata.base) while applyStrictAttrScoping prunes each type
+               // to its spec-declared set, which for template.* does not include it. TS has
+               // no such problem because isAbstract is a NATIVE FIELD on MetaData there, so
+               // it never passes through attr scoping. Closing this door needs isAbstract
+               // homed consistently across ports first -- see ADR-0051's deferred section.
                .optionalChild(MetaAttribute.TYPE_ATTR, "*", "*");
 
             // SP-G Unit 6a: the shared template attrs (@payloadRef / @textRef / @format /

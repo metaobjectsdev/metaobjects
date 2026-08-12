@@ -158,9 +158,11 @@ public abstract class MetaSource extends MetaData {
         registry.registerType(MetaSource.class, def -> {
             def.type(TYPE_SOURCE).subType(SUBTYPE_BASE)
                .description("Abstract base source metadata — describes where an object's data lives")
-               .inheritsFrom(MetaData.TYPE_METADATA, MetaData.SUBTYPE_BASE)
+               .inheritsFrom(MetaData.TYPE_METADATA, MetaData.SUBTYPE_BASE);
                // Accept any attr child (for extensibility)
-               .optionalChild(MetaAttribute.TYPE_ATTR, "*", "*");
+               // ADR-0051: NO any-attr wildcard. An undeclared attribute is ERR_UNKNOWN_ATTR in
+               // every port; extension is REGISTRATION -- a downstream provider declares its
+               // attrs. A wildcard would also swallow a TYPO'd core attr, silently.
 
             // SP-G Unit 6a: the physical / structural source attrs (@table, @view,
             // @materializedView, @proc, @function, @kind, @role, @schema) are declared

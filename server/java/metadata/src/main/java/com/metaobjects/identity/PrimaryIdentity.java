@@ -52,7 +52,9 @@ public class PrimaryIdentity extends MetaIdentity {
             def.optionalAttributeWithConstraints(ATTR_DESCRIPTION).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
 
             // ACCEPTS ANY ATTRIBUTES (for extensibility from service providers)
-            def.optionalChild(MetaAttribute.TYPE_ATTR, "*", "*");
+            // ADR-0051: NO any-attr wildcard. An undeclared attribute is ERR_UNKNOWN_ATTR in
+            // every port; extension is REGISTRATION -- a downstream provider declares its
+            // attrs. A wildcard would also swallow a TYPO'd core attr, silently.
         });
     }
 

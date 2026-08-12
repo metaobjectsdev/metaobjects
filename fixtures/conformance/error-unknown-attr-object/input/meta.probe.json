@@ -1,0 +1,11 @@
+{
+  "metadata.root": {
+    "package": "acme::probe",
+    "children": [
+      { "object.entity": { "name": "Widget", "@madeUpAttr": "nope", "children": [
+        { "field.long": { "name": "id" } },
+        { "identity.primary": { "name": "pk", "@fields": ["id"] } }
+      ] } }
+    ]
+  }
+}

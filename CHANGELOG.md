@@ -88,18 +88,30 @@ extension is **registration**, and an undeclared attribute is an error everywher
 is worse than a permissive extension point: it also swallows a **typo'd core attribute**,
 silently, on one port only.
 
-### Known and NOT fixed — ~13 Java types still accept undeclared attributes
+### Fixed — undeclared attributes are rejected on 12 more types in Java
 
-`object.*`, `source.*`, `identity.*`, `relationship.*`, `validator.*`, `layout.*`,
-`origin.*`, `index.lookup` and `template.*` still carry the any-attr wildcard on Java, so an
-undeclared attribute on those is an error in TypeScript and silent on Java. **Pre-existing
-and unchanged by this release**; `requirement.*` was fixed because it is new and tightening
-it was free, while the rest is a load-tightening that needs its own sweep, a fixture per type
-family, and its own release slot.
+`object.*`, `source.*`, `identity.*` (all three), `relationship.*`, `validator.*` (base and
+required), `layout.*`, `origin.*` and `index.lookup` carried an any-attr wildcard on Java, so
+an undeclared attribute was an error in TypeScript and silent there. All twelve are now
+strict, gated by new shared fixtures (`error-unknown-attr-{object,validator,requirement}`
+alongside the pre-existing `field.string` probe).
 
-Why it survived: the single existing unknown-attr fixture probes `field.string`, and
-`field.*` was already strict everywhere — the one type family everyone agreed on was the one
-type family tested.
+Safe to tighten because TypeScript was **already** strict on these types with the shared
+corpus green — so nothing in the corpus could have depended on the permissiveness. Confirmed
+empirically: the full Java suite (1366 tests) passes with the wildcards gone.
+
+### Known and NOT fixed — `template.*` still accepts undeclared attributes on Java
+
+The one wildcard deliberately retained, because removing it surfaced a genuine cross-port
+modelling difference rather than a leftover. Java models `isAbstract` as an **attribute**
+(declared on `metadata.base`), and its strict attr-scoping pass prunes every type to its
+spec-declared set — which for `template.*` does not include it. So `abstract: true` on a
+template, exercised by a shipped conformance fixture, fails with `ERR_BAD_ATTR_VALUE` once
+the wildcard goes. TypeScript has no such problem: `isAbstract` is a **native field** on
+`MetaData` and never passes through attribute validation.
+
+Closing this door requires `isAbstract` homed consistently across the ports first. That is a
+metamodel decision, not a wildcard deletion, and it is out of scope for this release.
 
 ### Fixed — node identity across package boundaries
 
