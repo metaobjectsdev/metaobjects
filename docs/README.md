@@ -58,6 +58,7 @@ this tree is documentation, not the source of truth.
 | Understand what `object.entity`, `source.rdb`, `template.prompt` mean | [`features/`](features/) |
 | Compare what TS vs Java vs Kotlin vs C# vs Python emit for the same metadata | any [`features/*.md`](features/) — every feature shows all five ports side-by-side |
 | Author metadata in YAML instead of JSON | [`features/yaml-authoring.md`](features/yaml-authoring.md) |
+| Record what the system is supposed to do, and stop agents reviving retired features | [`features/requirements.md`](features/requirements.md) |
 | Wire prompt construction (FR-004) | [`features/templates-and-payloads.md`](features/templates-and-payloads.md) |
 | Share a metadata shape across multiple instances (abstracts, `extends:`) | [`features/abstracts-and-inheritance.md`](features/abstracts-and-inheritance.md) |
 | Add a custom metamodel subtype or attribute to a downstream project | [`features/extending-with-providers.md`](features/extending-with-providers.md) + [`recipes/extending-metaobjects-with-providers.md`](recipes/extending-metaobjects-with-providers.md) |

@@ -54,6 +54,21 @@ _(FR-032 was developed under the working number "FR-026" — see commit history;
 
 ## Shipped
 
+### Capability requirements (2026-08-12, unreleased)
+
+- **`requirement.functional` / `requirement.architectural`** — capabilities as registered
+  metamodel vocabulary in all five ports. Opt-in by declaration: a model with no
+  `requirement.*` nodes gets no diagnostics and no generated output. Loader owns the
+  `@status` enum and required attrs; `meta verify` (TS CLI) owns `@implementedBy` /
+  `@verifiedBy` resolution, whose severity depends on `@status` — a dangling reference is an
+  error on `live` and *expected* on `abandoned`. Justified by resurrection, not duplication:
+  model-only runs proposed reviving a deliberately-retired capability 24 times out of 24.
+  Docs: [`docs/features/requirements.md`](../docs/features/requirements.md), full reference
+  [`spec/capability-ledger.md`](capability-ledger.md).
+  Related: [ADR-0050](decisions/ADR-0050-own-vs-projected-attributes.md) (own vs projected
+  attributes) and [ADR-0051](decisions/ADR-0051-extension-is-registration.md) (extension is
+  registration), both surfaced by building it.
+
 ### Foundation
 
 - **H1 — Polyglot monorepo migration** (2026-05-14)
