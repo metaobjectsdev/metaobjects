@@ -66,6 +66,13 @@ paired with the advisory anti-pattern pass above, never all three subverbs. Trea
 bare run as a smoke test: the real done-check is running the subverbs your project
 uses explicitly — `verify --codegen`, and, where a DB exists, `verify --db <url>`.
 
+## Requirements are checked on every run
+
+If this project declares `requirement.functional` / `requirement.architectural` nodes, read
+`references/requirements.md`: requirements are metadata, so they are checked on **every**
+`meta verify` — there is no subverb — and the severity of a broken link depends on the
+requirement's `@status`, which is the part that surprises people reading a failure.
+
 ## The `verify` subverbs
 
 `verify` has three drift checks. Run them in CI.
