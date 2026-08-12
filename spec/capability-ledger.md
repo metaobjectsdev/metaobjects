@@ -252,6 +252,25 @@ architectural requirement's `implementedBy` clears it. That is by design — one
 requirement legitimately claims every entity — but it means a green coverage gate proves an
 entity is *named*, never that it is understood.
 
+### What object coverage does and does not mean
+
+The gate is **entity-grain**, and the scope is a decision rather than an oversight:
+
+| | claimed? |
+|---|---|
+| `object.entity` | **required** (warning today — see above) |
+| `object.value`, `object.projection` | exempt — a value is a shape, a projection derives from a claimable entity |
+| fields, views, validators, identities | **never required** |
+
+Member-grain coverage is the "thousands of meaningless links" failure this design rejects.
+Plumbing members are covered by **architectural** requirements with high fan-out — one
+uuid-PK rule claims every entity — not by a per-member entry. L5 exists so a claim about a
+specific member *can* be made where it carries real meaning, never so that every member
+must carry one.
+
+So a green run means **"every entity is claimed by something"**, not "every node is
+described". The stronger reading would be false, and `verify` does not check it.
+
 ### Architectural universality, v1
 
 An architectural entry that is `live` or `partial` with an **empty claim set** is an error:

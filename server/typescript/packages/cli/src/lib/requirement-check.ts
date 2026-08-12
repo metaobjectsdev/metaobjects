@@ -240,6 +240,23 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
   // Binary per entity, never a ratio: a "% claimed" number measures what the
   // schema can express, is biased against the hardest rules, and invites
   // optimising the number.
+  //
+  // SCOPE, stated because it is a decision and not an oversight:
+  //
+  //   ENTITIES ONLY. `object.value` and `object.projection` are exempt. A value is a
+  //   shape (a DTO, a payload, a message) and a projection is DERIVED from an entity
+  //   that is itself claimable — requiring both to carry their own capability claim
+  //   would multiply entries without adding information.
+  //
+  //   OBJECT GRAIN ONLY. Fields, views, validators and identities are never required
+  //   to be claimed. Member-grain coverage is the "thousands of meaningless links"
+  //   failure `spec/capability-ledger.md` argues against: plumbing members are covered
+  //   by ARCHITECTURAL requirements with high fan-out (one uuid-PK rule claims every
+  //   entity), not by a per-member entry. L5 exists so a claim about a specific member
+  //   CAN be made when it carries real meaning — never so that every member must.
+  //
+  // So a green run means "every entity is claimed by something", not "every node is
+  // described". The stronger reading would be false.
   for (const ent of root.children()) {
     if (ent.type !== TYPE_OBJECT || ent.subType !== OBJECT_SUBTYPE_ENTITY) continue;
     const key = ent.resolutionKey();
