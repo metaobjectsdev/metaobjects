@@ -297,6 +297,26 @@ export class TypeRegistry {
           { code: "ERR_PROVIDER_ATTR_CONFLICT" },
         );
       }
+      // ADR-0050: a REQUIRED attr may never be PROJECTED onto someone else's type.
+      // `extend` is how a concern provider decorates a type another provider owns, and
+      // a concern can be composed out. A required attr arriving this way makes the
+      // target type's validity depend on an optional provider — and the failure is
+      // silent: drop the provider and the type stays registered while its required-attr
+      // rule simply stops firing, so invalid metadata begins loading clean.
+      //
+      // If the attr is genuinely required, it is OWN, not projected: declare it with the
+      // type, in the type's own provider. This is exactly how FR-033 broke template.*'s
+      // @payloadRef / @toolName, and this guard makes that class unrepresentable rather
+      // than merely fixed.
+      if (attr.required === true) {
+        throw new MetaModelError(
+          `TypeRegistry.extend: attribute "${attr.name}" being added to "${type}.${subType}" is REQUIRED. ` +
+            `A provider may only project OPTIONAL attributes onto a type it does not own — a required ` +
+            `attr registered this way disappears, silently, whenever that provider is composed out. ` +
+            `Declare it with the type instead (ADR-0050).`,
+          { code: "ERR_EXTEND_REQUIRED_ATTR" },
+        );
+      }
       def.attributes.push(attr);
     }
     for (const rule of ext.childRules ?? []) {

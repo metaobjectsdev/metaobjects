@@ -359,7 +359,7 @@ test("extends single subType → targets exactly that one subtype", () => {
   expect(reg.find("field", "string")!.attributes.map((a) => a.name)).not.toContain("storage");
 });
 
-test("extends attrs lower correctly (name/valueType/required/default/allowedValues/description)", () => {
+test("extends attrs lower correctly (name/valueType/default/allowedValues/description)", () => {
   const reg = registryWithFields("string");
   const data: ProviderDefinition = {
     provider: "concern",
@@ -372,7 +372,9 @@ test("extends attrs lower correctly (name/valueType/required/default/allowedValu
             type: "attr",
             subType: "string",
             name: "storage",
-            min: 1,
+            // min: 0 — a PROJECTED attr must be optional (ADR-0050). The required
+            // case is covered by the guard test below, not here.
+            min: 0,
             max: 1,
             default: "jsonb",
             allowedValues: ["flattened", "jsonb", "subdocument"],
@@ -385,10 +387,40 @@ test("extends attrs lower correctly (name/valueType/required/default/allowedValu
   applyProviderDefinition(reg, data, {});
   const attr = reg.find("field", "string")!.attributes.find((a) => a.name === "storage")!;
   expect(attr.valueType).toBe("string");
-  expect(attr.required).toBe(true);
+  expect(attr.required).toBe(false);
   expect(attr.default).toBe("jsonb");
   expect(attr.allowedValues).toEqual(["flattened", "jsonb", "subdocument"]);
   expect(attr.description).toBe("Storage strategy.");
+});
+
+test("extends with a REQUIRED attr → throws (ADR-0050: projection is optional-only)", () => {
+  // A concern provider can be composed out. A required attr projected onto someone
+  // else's type therefore vanishes silently with it, taking its validation rule —
+  // exactly how FR-033 broke template.*'s @payloadRef. Required ⇒ OWN ⇒ declare it
+  // with the type, in the type's own provider.
+  const reg = registryWithFields("string");
+  const data: ProviderDefinition = {
+    provider: "concern",
+    extends: [
+      {
+        type: "field",
+        subType: "string",
+        children: [
+          {
+            type: "attr",
+            subType: "string",
+            name: "mustBeThere",
+            min: 1,
+            max: 1,
+            description: "A required attr a concern has no business projecting.",
+          },
+        ],
+      },
+    ],
+  };
+  expect(() => applyProviderDefinition(reg, data, {})).toThrow(/REQUIRED/);
+  // and it fails CLOSED — the attr must not be half-applied
+  expect(reg.find("field", "string")!.attributes.map((a) => a.name)).not.toContain("mustBeThere");
 });
 
 test("extends with a structural child → throws (concern providers add attrs only)", () => {
