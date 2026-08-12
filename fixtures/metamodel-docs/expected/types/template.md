@@ -40,18 +40,18 @@ An output / serialization template (FR-004): every rendered artifact other than 
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@format` | string | no | `text` | `text`, `html`, `xml`, `csv`, `json`, `markdown`, `spreadsheet` | metaobjects-prompt | Output format; drives the render engine's escaping/whitespace behavior. |
-| `@htmlBodyRef` | string | no |  |  | metaobjects-prompt | Email only: 2-layer logical reference (group/source) to the HTML body text. Required when @kind="email". |
-| `@kind` | string | no | `document` | `document`, `email` | metaobjects-prompt | Output shape: 'document' (renders @textRef in @format → one string) or 'email' (renders subject + html + optional text → a structured EmailDocument). |
-| `@maxChars` | int | no |  |  | metaobjects-prompt | Size budget for the rendered output, in characters. |
-| `@owner` | string | no |  |  | metaobjects-prompt | Governance: the owner of this template. |
-| `@payloadRef` | string | yes |  |  | metaobjects-prompt | Reference to the payload (a view-object / projection) this template renders against. |
-| `@promptStyle` | string | no | `guide` | `guide`, `inline`, `exampleOnly` | metaobjects-prompt | FR-010 output-format prompt presentation: 'guide' (prose list + example), 'inline' (inline placeholders / enum choices), or 'exampleOnly' (filled skeleton). Guidance is never emitted as comments. |
-| `@requiredTags` | string[] | no |  |  | metaobjects-prompt | Output tags the rendered text must contain (drives the verify output-tag check). |
-| `@since` | string | no |  |  | metaobjects-prompt | Governance: the version this template was introduced in. |
-| `@subjectRef` | string | no |  |  | metaobjects-prompt | Email only: 2-layer logical reference (group/source) to the subject-line text. Required when @kind="email". |
-| `@textBodyRef` | string | no |  |  | metaobjects-prompt | Email only: 2-layer logical reference (group/source) to the optional plain-text alternative body. |
-| `@textRef` | string | no |  |  | metaobjects-prompt | 2-layer logical reference (group/source) to the body text, resolved by a provider at render time. |
+| `@format` | string | no | `text` | `text`, `html`, `xml`, `csv`, `json`, `markdown`, `spreadsheet` | metaobjects-core-types | Output format; drives the render engine's escaping/whitespace behavior. |
+| `@htmlBodyRef` | string | no |  |  | metaobjects-core-types | Email only: 2-layer logical reference (group/source) to the HTML body text. Required when @kind="email". |
+| `@kind` | string | no | `document` | `document`, `email` | metaobjects-core-types | Output shape: 'document' (renders @textRef in @format → one string) or 'email' (renders subject + html + optional text → a structured EmailDocument). |
+| `@maxChars` | int | no |  |  | metaobjects-core-types | Size budget for the rendered output, in characters. |
+| `@owner` | string | no |  |  | metaobjects-core-types | Governance: the owner of this template. |
+| `@payloadRef` | string | yes |  |  | metaobjects-core-types | Reference to the payload (a view-object / projection) this template renders against. |
+| `@promptStyle` | string | no | `guide` | `guide`, `inline`, `exampleOnly` | metaobjects-core-types | FR-010 output-format prompt presentation: 'guide' (prose list + example), 'inline' (inline placeholders / enum choices), or 'exampleOnly' (filled skeleton). Guidance is never emitted as comments. |
+| `@requiredTags` | string[] | no |  |  | metaobjects-core-types | Output tags the rendered text must contain (drives the verify output-tag check). |
+| `@since` | string | no |  |  | metaobjects-core-types | Governance: the version this template was introduced in. |
+| `@subjectRef` | string | no |  |  | metaobjects-core-types | Email only: 2-layer logical reference (group/source) to the subject-line text. Required when @kind="email". |
+| `@textBodyRef` | string | no |  |  | metaobjects-core-types | Email only: 2-layer logical reference (group/source) to the optional plain-text alternative body. |
+| `@textRef` | string | no |  |  | metaobjects-core-types | 2-layer logical reference (group/source) to the body text, resolved by a provider at render time. |
 
 **Allowed children**
 
@@ -71,17 +71,17 @@ An LLM-targeted renderable prompt template (FR-004). Carries the generic referen
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@format` | string | no | `text` | `text`, `html`, `xml`, `csv`, `json`, `markdown`, `spreadsheet` | metaobjects-prompt | Output format; drives the render engine's escaping/whitespace behavior. |
-| `@maxChars` | int | no |  |  | metaobjects-prompt | Size budget for the rendered output, in characters. |
-| `@maxTokens` | int | no |  |  | metaobjects-prompt | Token budget for the rendered prompt (LLM-specific). |
-| `@model` | string | no |  |  | metaobjects-prompt | Target model id (LLM-specific). |
-| `@owner` | string | no |  |  | metaobjects-prompt | Governance: the owner of this template. |
-| `@payloadRef` | string | yes |  |  | metaobjects-prompt | Reference to the payload (a view-object / projection) this template renders against. |
-| `@requiredSlots` | string[] | no |  |  | metaobjects-prompt | Slots that must resolve at render time (drives the verify check). |
-| `@requiredTags` | string[] | no |  |  | metaobjects-prompt | Output tags the rendered text must contain (drives the verify output-tag check). |
-| `@responseRef` | string | no |  |  | metaobjects-prompt | Optional ref to the response value-object this prompt expects (peer of @payloadRef; drives typed LLM-call trace derivation). |
-| `@since` | string | no |  |  | metaobjects-prompt | Governance: the version this template was introduced in. |
-| `@textRef` | string | no |  |  | metaobjects-prompt | 2-layer logical reference (group/source) to the body text, resolved by a provider at render time. |
+| `@format` | string | no | `text` | `text`, `html`, `xml`, `csv`, `json`, `markdown`, `spreadsheet` | metaobjects-core-types | Output format; drives the render engine's escaping/whitespace behavior. |
+| `@maxChars` | int | no |  |  | metaobjects-core-types | Size budget for the rendered output, in characters. |
+| `@maxTokens` | int | no |  |  | metaobjects-core-types | Token budget for the rendered prompt (LLM-specific). |
+| `@model` | string | no |  |  | metaobjects-core-types | Target model id (LLM-specific). |
+| `@owner` | string | no |  |  | metaobjects-core-types | Governance: the owner of this template. |
+| `@payloadRef` | string | yes |  |  | metaobjects-core-types | Reference to the payload (a view-object / projection) this template renders against. |
+| `@requiredSlots` | string[] | no |  |  | metaobjects-core-types | Slots that must resolve at render time (drives the verify check). |
+| `@requiredTags` | string[] | no |  |  | metaobjects-core-types | Output tags the rendered text must contain (drives the verify output-tag check). |
+| `@responseRef` | string | no |  |  | metaobjects-core-types | Optional ref to the response value-object this prompt expects (peer of @payloadRef; drives typed LLM-call trace derivation). |
+| `@since` | string | no |  |  | metaobjects-core-types | Governance: the version this template was introduced in. |
+| `@textRef` | string | no |  |  | metaobjects-core-types | 2-layer logical reference (group/source) to the body text, resolved by a provider at render time. |
 
 **Allowed children**
 
@@ -99,11 +99,11 @@ A vendor-agnostic LLM tool-call envelope (ADR-0011). Unlike prompt/output it has
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@maxTokens` | int | no |  |  | metaobjects-prompt | Per-call token budget for the tool-call's structured response (LLM-specific). Vendor-agnostic config; peer of @maxTokens on template.prompt (#237). |
-| `@owner` | string | no |  |  | metaobjects-prompt | Governance: the owner of this toolcall. |
-| `@payloadRef` | string | yes |  |  | metaobjects-prompt | Output value-object the tool produces (resolved against the metamodel). |
-| `@since` | string | no |  |  | metaobjects-prompt | Governance: the version this toolcall was introduced in. |
-| `@toolName` | string | yes |  |  | metaobjects-prompt | Wire tool name surfaced to the LLM (vendor-specific format). |
+| `@maxTokens` | int | no |  |  | metaobjects-core-types | Per-call token budget for the tool-call's structured response (LLM-specific). Vendor-agnostic config; peer of @maxTokens on template.prompt (#237). |
+| `@owner` | string | no |  |  | metaobjects-core-types | Governance: the owner of this toolcall. |
+| `@payloadRef` | string | yes |  |  | metaobjects-core-types | Output value-object the tool produces (resolved against the metamodel). |
+| `@since` | string | no |  |  | metaobjects-core-types | Governance: the version this toolcall was introduced in. |
+| `@toolName` | string | yes |  |  | metaobjects-core-types | Wire tool name surfaced to the LLM (vendor-specific format). |
 
 **Allowed children**
 

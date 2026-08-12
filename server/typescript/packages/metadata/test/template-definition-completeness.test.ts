@@ -174,12 +174,29 @@ describe("template provider externalization — completeness", () => {
       }
     });
 
-    test(`template.${subType} — core registers NO own attrs (re-homed to prompt)`, () => {
-      // FR-033 S2: the template.* type attrs are re-homed to the prompt provider.
-      // Core itself registers NO own (non-doc-common) attr on any template subtype.
+    test(`template.${subType} — core registers its OWN attrs, without promptProvider`, () => {
+      // SUPERSEDES FR-033 S2, which re-homed these attrs to the prompt provider.
+      //
+      // They are OWN attrs, not a projected concern: `@payloadRef` is REQUIRED, the
+      // type's own registered description names the LLM overlay, and core's own
+      // validation passes enforce presence rules over `@textRef`/`@kind`. An attr a
+      // type cannot be valid without belongs to that type's provider.
+      //
+      // While they lived in promptProvider, composing without it left the type
+      // registered with ZERO attributes and silently deleted the required-attr rule
+      // — a surviving type losing a validation rule when an "optional" concern is
+      // dropped. Measured: `ERR_MISSING_REQUIRED_ATTR` simply stopped firing.
       const def = coreOnlyRegistry.find(TYPE_TEMPLATE, subType)!;
       const ownAttrs = def.attributes.filter((a) => !DOC_COMMON_ATTRS.has(a.name));
-      expect(ownAttrs.map((a) => a.name)).toEqual([]);
+      // `base` is the abstract root: attr-free by design, matching Java and the
+      // cross-port canonical. The CONCRETE subtypes must carry their own attrs in
+      // core, required-ness intact, with no concern provider composed.
+      if (subType === "base") {
+        expect(ownAttrs.map((a) => a.name)).toEqual([]);
+        return;
+      }
+      expect(ownAttrs.length).toBeGreaterThan(0);
+      expect(ownAttrs.some((a) => a.required === true)).toBe(true);
     });
 
     test(`template.${subType} — childRules == [] (no any-attr wildcard)`, () => {

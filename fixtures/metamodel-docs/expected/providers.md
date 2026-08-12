@@ -40,6 +40,9 @@ Core metaobjects metamodel types and subtypes.
 - `relationship.association`: `@cardinality`, `@objectRef`, `@onDelete`, `@onUpdate`, `@sourceRefField`, `@symmetric`, `@through`
 - `relationship.base`: `@cardinality`, `@objectRef`, `@onDelete`, `@onUpdate`, `@sourceRefField`, `@symmetric`, `@through`
 - `relationship.composition`: `@cardinality`, `@objectRef`, `@onDelete`, `@onUpdate`, `@sourceRefField`, `@symmetric`, `@through`
+- `template.output`: `@format`, `@htmlBodyRef`, `@kind`, `@maxChars`, `@owner`, `@payloadRef`, `@promptStyle`, `@requiredTags`, `@since`, `@subjectRef`, `@textBodyRef`, `@textRef`
+- `template.prompt`: `@format`, `@maxChars`, `@maxTokens`, `@model`, `@owner`, `@payloadRef`, `@requiredSlots`, `@requiredTags`, `@responseRef`, `@since`, `@textRef`
+- `template.toolcall`: `@maxTokens`, `@owner`, `@payloadRef`, `@since`, `@toolName`
 - `validator.array`: `@max`, `@min`
 - `validator.atLeastOne`: `@fields`
 - `validator.base`: `@max`, `@min`
@@ -110,9 +113,6 @@ Prompt / AI + serialization domain — @xmlText / @example / @instruction field 
 - `field.uri`: `@example`, `@instruction`, `@xmlText`
 - `field.uuid`: `@example`, `@instruction`, `@xmlText`
 - `object.value`: `@normalize`
-- `template.output`: `@format`, `@htmlBodyRef`, `@kind`, `@maxChars`, `@owner`, `@payloadRef`, `@promptStyle`, `@requiredTags`, `@since`, `@subjectRef`, `@textBodyRef`, `@textRef`
-- `template.prompt`: `@format`, `@maxChars`, `@maxTokens`, `@model`, `@owner`, `@payloadRef`, `@requiredSlots`, `@requiredTags`, `@responseRef`, `@since`, `@textRef`
-- `template.toolcall`: `@maxTokens`, `@owner`, `@payloadRef`, `@since`, `@toolName`
 
 ## metaobjects-ui
 

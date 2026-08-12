@@ -20,20 +20,284 @@ export const TEMPLATE_DEFINITION: ProviderDefinition = {
       "subType": "prompt",
       "description": "An LLM-targeted renderable prompt template (FR-004). Carries the generic reference + governance attrs plus the LLM overlay (@maxTokens / @requiredSlots / @model / @responseRef). Its renderable body is required via @textRef.",
       "whenToUse": "You are sending text to an LLM. Declare a prompt template with a typed payload so the prompt is versioned, drift-checked against its fields, and cache-stable — instead of string-building it in code.",
-      "rules": "prompt requires @payloadRef (the typed payload it renders against) AND @textRef (the body text, provider-resolved at render time — enforced in the loader's validateTemplatePayloadRefs pass, not at the attr layer where @textRef is relaxed to optional so template.output email can omit it). @format is a closed enum keyed by the render engine's escaper. @responseRef (optional) names the response value-object the prompt expects and drives typed LLM-call trace derivation."
+      "rules": "prompt requires @payloadRef (the typed payload it renders against) AND @textRef (the body text, provider-resolved at render time — enforced in the loader's validateTemplatePayloadRefs pass, not at the attr layer where @textRef is relaxed to optional so template.output email can omit it). @format is a closed enum keyed by the render engine's escaper. @responseRef (optional) names the response value-object the prompt expects and drives typed LLM-call trace derivation.",
+      "children": [
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "payloadRef",
+          "min": 1,
+          "max": 1,
+          "description": "Reference to the payload (a view-object / projection) this template renders against."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "textRef",
+          "min": 0,
+          "max": 1,
+          "description": "2-layer logical reference (group/source) to the body text, resolved by a provider at render time."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "format",
+          "min": 0,
+          "max": 1,
+          "default": "text",
+          "allowedValues": [
+            "text",
+            "html",
+            "xml",
+            "csv",
+            "json",
+            "markdown",
+            "spreadsheet"
+          ],
+          "description": "Output format; drives the render engine's escaping/whitespace behavior."
+        },
+        {
+          "type": "attr",
+          "subType": "int",
+          "name": "maxChars",
+          "min": 0,
+          "max": 1,
+          "description": "Size budget for the rendered output, in characters."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "owner",
+          "min": 0,
+          "max": 1,
+          "description": "Governance: the owner of this template."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "since",
+          "min": 0,
+          "max": 1,
+          "description": "Governance: the version this template was introduced in."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "requiredTags",
+          "isArray": true,
+          "min": 0,
+          "max": 1,
+          "description": "Output tags the rendered text must contain (drives the verify output-tag check)."
+        },
+        {
+          "type": "attr",
+          "subType": "int",
+          "name": "maxTokens",
+          "min": 0,
+          "max": 1,
+          "description": "Token budget for the rendered prompt (LLM-specific)."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "requiredSlots",
+          "isArray": true,
+          "min": 0,
+          "max": 1,
+          "description": "Slots that must resolve at render time (drives the verify check)."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "model",
+          "min": 0,
+          "max": 1,
+          "description": "Target model id (LLM-specific)."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "responseRef",
+          "min": 0,
+          "max": 1,
+          "description": "Optional ref to the response value-object this prompt expects (peer of @payloadRef; drives typed LLM-call trace derivation)."
+        }
+      ]
     },
     {
       "type": "template",
       "subType": "output",
       "description": "An output / serialization template (FR-004): every rendered artifact other than an LLM prompt — a document (email, export, docs, config) or an email. Carries the generic reference + governance attrs, the FR-010 @promptStyle, and the @kind + email part-refs.",
       "whenToUse": "You render a document/email/serialized output from typed data. Declare an output template so the {{fields}} are drift-checked against the payload VO at build time.",
-      "rules": "output is either a document (@kind=\"document\" or absent → renders @textRef in @format to one string) or an email (@kind=\"email\" → renders subject + html + optional text to a structured EmailDocument). The cross-field presence rule is enforced in the loader's validateTemplatePayloadRefs pass: document requires @textRef; email requires @subjectRef AND @htmlBodyRef (with @textBodyRef optional) and carries NO @textRef. @format is a closed enum keyed by the render engine's escaper; @promptStyle (FR-010) selects the output-format prompt presentation and is never emitted as comments."
+      "rules": "output is either a document (@kind=\"document\" or absent → renders @textRef in @format to one string) or an email (@kind=\"email\" → renders subject + html + optional text to a structured EmailDocument). The cross-field presence rule is enforced in the loader's validateTemplatePayloadRefs pass: document requires @textRef; email requires @subjectRef AND @htmlBodyRef (with @textBodyRef optional) and carries NO @textRef. @format is a closed enum keyed by the render engine's escaper; @promptStyle (FR-010) selects the output-format prompt presentation and is never emitted as comments.",
+      "children": [
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "payloadRef",
+          "min": 1,
+          "max": 1,
+          "description": "Reference to the payload (a view-object / projection) this template renders against."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "textRef",
+          "min": 0,
+          "max": 1,
+          "description": "2-layer logical reference (group/source) to the body text, resolved by a provider at render time."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "format",
+          "min": 0,
+          "max": 1,
+          "default": "text",
+          "allowedValues": [
+            "text",
+            "html",
+            "xml",
+            "csv",
+            "json",
+            "markdown",
+            "spreadsheet"
+          ],
+          "description": "Output format; drives the render engine's escaping/whitespace behavior."
+        },
+        {
+          "type": "attr",
+          "subType": "int",
+          "name": "maxChars",
+          "min": 0,
+          "max": 1,
+          "description": "Size budget for the rendered output, in characters."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "owner",
+          "min": 0,
+          "max": 1,
+          "description": "Governance: the owner of this template."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "since",
+          "min": 0,
+          "max": 1,
+          "description": "Governance: the version this template was introduced in."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "requiredTags",
+          "isArray": true,
+          "min": 0,
+          "max": 1,
+          "description": "Output tags the rendered text must contain (drives the verify output-tag check)."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "promptStyle",
+          "min": 0,
+          "max": 1,
+          "default": "guide",
+          "allowedValues": [
+            "guide",
+            "inline",
+            "exampleOnly"
+          ],
+          "description": "FR-010 output-format prompt presentation: 'guide' (prose list + example), 'inline' (inline placeholders / enum choices), or 'exampleOnly' (filled skeleton). Guidance is never emitted as comments."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "kind",
+          "min": 0,
+          "max": 1,
+          "default": "document",
+          "allowedValues": [
+            "document",
+            "email"
+          ],
+          "description": "Output shape: 'document' (renders @textRef in @format → one string) or 'email' (renders subject + html + optional text → a structured EmailDocument)."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "subjectRef",
+          "min": 0,
+          "max": 1,
+          "description": "Email only: 2-layer logical reference (group/source) to the subject-line text. Required when @kind=\"email\"."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "htmlBodyRef",
+          "min": 0,
+          "max": 1,
+          "description": "Email only: 2-layer logical reference (group/source) to the HTML body text. Required when @kind=\"email\"."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "textBodyRef",
+          "min": 0,
+          "max": 1,
+          "description": "Email only: 2-layer logical reference (group/source) to the optional plain-text alternative body."
+        }
+      ]
     },
     {
       "type": "template",
       "subType": "toolcall",
       "description": "A vendor-agnostic LLM tool-call envelope (ADR-0011). Unlike prompt/output it has NO renderable text body — the body IS the structured output schema resolved via @payloadRef. This is why toolcall is its own subtype rather than template.output + @toolName. Does NOT inherit the generic attrs.",
-      "rules": "toolcall requires @toolName (the wire tool name surfaced to the LLM) AND @payloadRef (the output value-object the tool produces). @textRef is intentionally absent — a tool-call has no renderable text. Core keeps toolcall vendor-agnostic; vendor wire details (retry semantics, fallback shapes, parallel invocation, cache hints) are added by consumer providers via registry.extend(TYPE_TEMPLATE, \"toolcall\", { attributes: [...] }). The LLM-facing tool description reuses the @description documentation common attr (added to every type by docProvider), so it is not redeclared here."
+      "rules": "toolcall requires @toolName (the wire tool name surfaced to the LLM) AND @payloadRef (the output value-object the tool produces). @textRef is intentionally absent — a tool-call has no renderable text. Core keeps toolcall vendor-agnostic; vendor wire details (retry semantics, fallback shapes, parallel invocation, cache hints) are added by consumer providers via registry.extend(TYPE_TEMPLATE, \"toolcall\", { attributes: [...] }). The LLM-facing tool description reuses the @description documentation common attr (added to every type by docProvider), so it is not redeclared here.",
+      "children": [
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "toolName",
+          "min": 1,
+          "max": 1,
+          "description": "Wire tool name surfaced to the LLM (vendor-specific format)."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "payloadRef",
+          "min": 1,
+          "max": 1,
+          "description": "Output value-object the tool produces (resolved against the metamodel)."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "owner",
+          "min": 0,
+          "max": 1,
+          "description": "Governance: the owner of this toolcall."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "since",
+          "min": 0,
+          "max": 1,
+          "description": "Governance: the version this toolcall was introduced in."
+        },
+        {
+          "type": "attr",
+          "subType": "int",
+          "name": "maxTokens",
+          "min": 0,
+          "max": 1,
+          "description": "Per-call token budget for the tool-call's structured response (LLM-specific). Vendor-agnostic config; peer of @maxTokens on template.prompt (#237)."
+        }
+      ]
     }
   ]
 };
