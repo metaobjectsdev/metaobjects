@@ -46,7 +46,7 @@ import {
   AGG_COLLECT,
 } from "@metaobjectsdev/metadata";
 import { columnNameFromField } from "./naming.js";
-import { enumValues } from "./enum-meta.js";
+import { enumValues, intValueMapOf, intValueForMember } from "./enum-meta.js";
 import { DEFAULT_COLUMN_NAMING_STRATEGY, stripPackage } from "@metaobjectsdev/metadata";
 import type { Dialect, ColumnNamingStrategy } from "./metaobjects-config.js";
 
@@ -405,8 +405,12 @@ export function mapColumnType(
           // "string" by the time it reaches here for this dialect.
           fnName = "text";
           break;
-        case FIELD_SUBTYPE_STRING:
         case FIELD_SUBTYPE_ENUM:
+          // An INT-BACKED enum stores the mapped integer on SQLite too — SQLite has
+          // one integer storage class, so this matches migrate-ts's integer{32}.
+          fnName = intValueMapOf(field) !== undefined ? "integer" : "text";
+          break;
+        case FIELD_SUBTYPE_STRING:
         case FIELD_SUBTYPE_UUID:
         case FIELD_SUBTYPE_URI:
         case FIELD_SUBTYPE_INET:
@@ -524,6 +528,12 @@ export function mapColumnType(
           fnName = "jsonb";
           break;
         case FIELD_SUBTYPE_ENUM:
+          // An INT-BACKED enum (@intValueMap, design D5/D7) stores the mapped
+          // integer, so the Drizzle column is integer / integer[] — matching
+          // migrate-ts's expected-schema. The TS-facing type stays the member-string
+          // union; the symbol<->int translation happens at the write/read boundary.
+          fnName = intValueMapOf(field) !== undefined ? "integer" : "text";
+          break;
         default:
           fnName = "text";
           break;
@@ -676,12 +686,22 @@ export function mapColumnType(
   if (subType === FIELD_SUBTYPE_ENUM && !isArray) {
     const values = enumValues(field);
     if (values !== undefined && values.length > 0) {
-      // Single-quote escaping is belt-and-suspenders: the loader's
-      // ENUM_MEMBER_PATTERN already rejects quote-bearing members (members are
-      // validated to be identifier-safe), so this never fires in practice.
-      const list = values
-        .map((v) => `'${v.replace(/'/g, "''")}'`)
-        .join(", ");
+      const intMap = intValueMapOf(field);
+      let list: string;
+      if (intMap !== undefined) {
+        // Int-backed: the column holds integers, so the CHECK lists them unquoted.
+        // Keyed BY MEMBER through the map (not Object.values) so the constraint can
+        // never disagree with @values, which stays the SSOT. Must match
+        // migrate-ts's buildChecks exactly or `meta verify` reports permanent drift.
+        list = values
+          .map((v) => String(intValueForMember(intMap, v, `CHECK for column '${dbName}'`)))
+          .join(", ");
+      } else {
+        // Single-quote escaping is belt-and-suspenders: the loader's
+        // ENUM_MEMBER_PATTERN already rejects quote-bearing members (members are
+        // validated to be identifier-safe), so this never fires in practice.
+        list = values.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ");
+      }
       result.checkConstraint = `${dbName} IN (${list})`;
     }
   }

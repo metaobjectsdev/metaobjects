@@ -2,6 +2,7 @@ import { describe, test, expect } from "bun:test";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import type { MetaData } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema } from "../src/expected-schema.js";
+import { diff } from "../src/diff/index.js";
 
 // Int-backed field.enum (@intValueMap, design D5): the column is `integer`, not
 // `text`. The wire/TS type is unchanged — only the physical column differs.
@@ -162,5 +163,50 @@ describe("buildExpectedSchema — int-backed field.enum (@intValueMap)", () => {
       ]),
     );
     expect(col.sqlType).toEqual({ kind: "array", element: { kind: "integer", bits: 32 } });
+  });
+});
+
+// Task 3 — the D8 migration-safety guard needs NO new gating code. Toggling
+// @intValueMap on a field that already has a column is a text<->integer
+// change-column-type, and `isWidening` returns false for ANY cross-kind pair
+// (sql-type.ts: `if (from.kind !== to.kind) return false`), so
+// `blockedReasonFor`'s change-column-type branch blocks it unless allow.typeChange
+// is passed. This proves that end-to-end through the real metadata path rather
+// than asserting it about hand-built snapshots.
+describe("int-backed enum — backing-mode change is blocked by the existing guard", () => {
+  const STRING_BACKED = entityModel({ name: "status", "@values": VALUES });
+  const INT_BACKED = entityModel({ name: "status", "@values": VALUES, "@intValueMap": INT_MAP });
+
+  async function backingModeDiff(expected: string, actual: string, allowTypeChange = false) {
+    const e = buildExpectedSchema(await loadJson(expected));
+    const a = buildExpectedSchema(await loadJson(actual));
+    return diff(e, a, allowTypeChange ? { allow: { typeChange: true } } : undefined);
+  }
+
+  test("ADDING @intValueMap (text → integer) is blocked without allow.typeChange", async () => {
+    const r = await backingModeDiff(INT_BACKED, STRING_BACKED);
+    const change = r.changes.find((c) => c.kind === "change-column-type");
+    expect(change).toBeDefined();
+    expect(change!.status.state).toBe("blocked");
+    expect(r.blocked).toContain(change!);
+  });
+
+  test("REMOVING @intValueMap (integer → text) is blocked too", async () => {
+    const r = await backingModeDiff(STRING_BACKED, INT_BACKED);
+    const change = r.changes.find((c) => c.kind === "change-column-type");
+    expect(change).toBeDefined();
+    expect(change!.status.state).toBe("blocked");
+  });
+
+  test("an explicit allow.typeChange unblocks it (the documented manual-recast path)", async () => {
+    const r = await backingModeDiff(INT_BACKED, STRING_BACKED, true);
+    const change = r.changes.find((c) => c.kind === "change-column-type");
+    expect(change!.status.state).toBe("allowed");
+    expect(r.blocked).toHaveLength(0);
+  });
+
+  test("no backing-mode change → no change-column-type at all", async () => {
+    const r = await backingModeDiff(INT_BACKED, INT_BACKED);
+    expect(r.changes.find((c) => c.kind === "change-column-type")).toBeUndefined();
   });
 });
