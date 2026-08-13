@@ -1,6 +1,6 @@
 {
   "name": "@metaobjectsdev/ai-runtime",
-  "version": "0.21.6",
+  "version": "0.22.0",
   "description": "LLM call loop + typed-trace recorder adapters for MetaObjects: provider-neutral LlmClient seam, callLlm bridge, Composite/Langfuse/OTel recorders.",
   "type": "module",
   "main": "./dist/index.js",
