@@ -12,13 +12,13 @@ Prompt / template drift is still checked via the `metaobjects-render` `Verify` A
 
 ## Install
 
-Set `${metaobjects.version}` to the current Maven Central release (`7.22.0`) — both
+Set `${metaobjects.version}` to the current Maven Central release (`7.22.1`) — both
 the dependency and plugin blocks below resolve it from one `<properties>` entry:
 
 ```xml
 <!-- pom.xml -->
 <properties>
-  <metaobjects.version>7.22.0</metaobjects.version>
+  <metaobjects.version>7.22.1</metaobjects.version>
 </properties>
 
 <dependencies>
