@@ -17,6 +17,16 @@ metadata-driven path today; they would have to hand-roll a converter outside the
 generated code, defeating the "declare once → idiomatic type + DB constraint in every
 language" payoff that is `field.enum`'s whole reason to exist.
 
+**Provenance (recorded 2026-08-13).** This is a **live requirement from a downstream
+consumer**, not a speculative feature — the adopter needs int-backed enum maps to model
+an existing integer-coded schema. Recorded here explicitly because the requirement was
+absent from this repo's issues and roadmap, which made the work look demand-less on
+review and nearly got it de-scoped. If the driving need is purely *storage size* rather
+than matching an existing integer encoding, note that native Postgres `CREATE TYPE …
+AS ENUM` is the better instrument (also 4 bytes, keeps string semantics, needs no codec
+in any port) — it is deferred for PG/SQLite parity reasons, see the enum design's D-list.
+Int-backing's unique value is matching an encoding you do not control.
+
 ## Goals
 
 1. Let a `field.enum` declare an explicit, possibly-sparse, per-member integer value for
