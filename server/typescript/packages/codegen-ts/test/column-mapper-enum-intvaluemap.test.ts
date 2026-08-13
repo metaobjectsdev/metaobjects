@@ -41,12 +41,27 @@ async function statusField(
 }
 
 describe("mapColumnType — int-backed field.enum (@intValueMap)", () => {
-  test("scalar int-backed enum → integer column, no literal-union enum option", async () => {
+  test("scalar int-backed enum → a generated customType column, no literal-union option", async () => {
     const spec = mapColumnType(await statusField({ name: "status", "@values": VALUES, "@intValueMap": INT_MAP }), "postgres");
-    expect(spec.fnName).toBe("integer");
+    // fnName names a LOCAL generated const, not a Drizzle export — the renderer
+    // must emit it rather than imp() it.
+    expect(spec.fnName).toBe("statusIntEnum");
+    expect(spec.enumIntCustomType).toEqual({
+      fnConstName: "statusIntEnum",
+      toIntConstName: "STATUS_TO_INT",
+      fromIntConstName: "STATUS_FROM_INT",
+      dataType: "integer",
+      members: VALUES,
+      intByMember: INT_MAP,
+    });
     // The `{ enum: [...] }` literal-union option is a TEXT-column affordance; on an
     // integer column it would type the column as a string union over a numeric value.
     expect(spec.fnOptions?.enum).toBeUndefined();
+  });
+
+  test("string-backed enum carries NO customType (byte-identical to today)", async () => {
+    const spec = mapColumnType(await statusField({ name: "status", "@values": VALUES }), "postgres");
+    expect(spec.enumIntCustomType).toBeUndefined();
   });
 
   test("string-backed enum is unchanged — text + literal union", async () => {
@@ -65,9 +80,10 @@ describe("mapColumnType — int-backed field.enum (@intValueMap)", () => {
     expect(spec.checkConstraint).toBe("status IN ('DRAFT', 'PUBLISHED', 'ARCHIVED')");
   });
 
-  test("sqlite int-backed enum is integer too", async () => {
+  test("sqlite int-backed enum gets the same customType (integer storage class)", async () => {
     const spec = mapColumnType(await statusField({ name: "status", "@values": VALUES, "@intValueMap": INT_MAP }), "sqlite");
-    expect(spec.fnName).toBe("integer");
+    expect(spec.fnName).toBe("statusIntEnum");
+    expect(spec.enumIntCustomType?.dataType).toBe("integer");
   });
 
   // Amendment 1 / #246 — the canonical authoring shape. An own-only read of
@@ -80,7 +96,8 @@ describe("mapColumnType — int-backed field.enum (@intValueMap)", () => {
       ]),
       "postgres",
     );
-    expect(spec.fnName).toBe("integer");
+    expect(spec.fnName).toBe("statusIntEnum");
+    expect(spec.enumIntCustomType?.intByMember).toEqual(INT_MAP);
     expect(spec.checkConstraint).toBe("status IN (0, 5, 9)");
   });
 
@@ -89,7 +106,7 @@ describe("mapColumnType — int-backed field.enum (@intValueMap)", () => {
       await statusField({ name: "status", isArray: true, "@values": VALUES, "@intValueMap": INT_MAP }),
       "postgres",
     );
-    expect(spec.fnName).toBe("integer");
+    expect(spec.fnName).toBe("statusIntEnum");
     // Membership on arrays stays app-level, exactly as for string-backed enum[].
     expect(spec.checkConstraint).toBeUndefined();
   });
