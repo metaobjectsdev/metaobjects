@@ -7,6 +7,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.22.0] — npm `0.22.0` · PyPI `0.22.0` · NuGet `0.22.0` · Maven `7.22.0`
+
 A **MINOR**: a new registered type family (new vocabulary in all five ports), plus a
 registry tightening that turns a previously-permitted provider shape into a hard error.
 Nothing here changes runtime behaviour on an existing database.
@@ -126,6 +128,35 @@ structurally.
 
 The conformance corpus's committed canonical schema is regenerated: a parent-side
 `relationship.composition` was contributing no referential action.
+
+### Fixed — an assigned primary key generated code that did not compile
+
+**Generated-output change — regenerate to pick it up; three-way merge preserves hand edits.**
+
+An entity whose primary key carries no `identity.primary @generation` — a natural key, or an
+id issued by something upstream — emitted a `<Entity>InsertSchema` that made the PK
+`.optional()`, because a PK's optionality was read off `@required` like any other field's.
+The Drizzle column for that same PK is `text("id").primaryKey()` with **no default**, so it
+is required on insert, and the generated `create<Entity>` pipes `InsertSchema.parse(data)`
+straight into `.values()`. The result did not typecheck (`TS2769`), and the schema also
+accepted a create payload carrying no primary key at all.
+
+An assigned PK with no `@default` is now required in the insert shape. Unchanged: a
+`@generation: increment|uuid` PK is still omitted from the schema entirely (the caller never
+supplies it), a PK with a `@default` stays optional (the column has that default), and the
+`UpdateSchema` keeps every field optional under PATCH semantics.
+
+Output is byte-identical for any model whose PKs are generated or `@required` — which is
+every model in this repository, and why nothing here caught it. Gated by a new compile test
+that runs the real TypeScript compiler over the entity **and** queries files together, since
+the defect was a mismatch *between* the two and no single-file gate could see it.
+
+### Fixed — `@metaobjectsdev/cli` no longer pulls a `yaml` package it never imports
+
+`yaml` entered the CLI's runtime `dependencies` while a requirement was still a YAML side
+file the CLI parsed itself. Requirements became registered vocabulary two commits later and
+the only file importing it was deleted; the dependency was not. Nothing in the package
+imports the module today, so an install of the CLI no longer resolves it.
 
 
 ## [0.21.6] — npm `0.21.6` · PyPI `0.21.6` · NuGet `0.21.6` · Maven `7.21.6`

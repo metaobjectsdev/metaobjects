@@ -159,6 +159,44 @@ function primaryKeyFieldNames(obj: MetaObject): Set<string> {
   return new Set(primaryIdentityFieldNames(obj));
 }
 
+/** PK field names the CALLER must supply on insert: an ASSIGNED primary key —
+ *  a natural key or an externally-issued id, i.e. a primary identity carrying no
+ *  @generation — that also has no @default to fill it.
+ *
+ *  These are insert-REQUIRED regardless of @required, and that is a typing
+ *  necessity rather than a policy choice: the Drizzle column for such a PK is
+ *  `text("id").primaryKey()` with no default, so its inferred insert type
+ *  requires the value. Deriving the PK's optionality from @required like any
+ *  other field emitted `id: z.string().optional()`, and the generated
+ *  `create<Entity>` — which pipes `InsertSchema.parse(data)` straight into
+ *  `.values()` — then failed to compile (TS2769). It was also a semantic hole:
+ *  the schema accepted a create payload with no primary key at all.
+ *
+ *  Excluded, because each is already insert-optional for a real reason:
+ *    • @generation increment|uuid PKs — omitted from the schema entirely
+ *      (autoGenPkFieldNames), the caller never supplies them;
+ *    • a PK carrying @default — the column gets that default, so omitting is
+ *      legal and forcing it required would make callers repeat the default.
+ *  Mirrors primaryKeyFieldNames' reasoning for the UpdateSchema: a PK column is
+ *  never NULL, so PK optionality can never be read off @required alone. */
+function assignedPkFieldNames(obj: MetaObject): Set<string> {
+  const autoGen = autoGenPkFieldNames(obj);
+  const out = new Set<string>();
+  for (const name of primaryIdentityFieldNames(obj)) {
+    if (autoGen.has(name)) continue;
+    out.add(name);
+  }
+  return out;
+}
+
+/** True when this field is an assigned PK with no @default — see
+ *  assignedPkFieldNames. Kept as one predicate so the emitters and the
+ *  documented-shape function (insertSchemaFields) cannot drift. */
+function isInsertRequiredPk(field: MetaField, assignedPk: Set<string>): boolean {
+  if (!assignedPk.has(field.name)) return false;
+  return field.attr(FIELD_ATTR_DEFAULT) === undefined;
+}
+
 /**
  * Emit ONLY the `<Name>InsertSchema`. Used by the value-object file emitter
  * for metaobjects with no writable source.rdb — those have no PATCH/update
@@ -171,6 +209,7 @@ function primaryKeyFieldNames(obj: MetaObject): Set<string> {
 export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Code {
   const z = imp("z@zod");
   const autoGenPkFields = autoGenPkFieldNames(obj);
+  const assignedPkFields = assignedPkFieldNames(obj);
   const tphPin = tphDiscriminatorPin(obj);
 
   const insertFieldLines: Code[] = [];
@@ -204,7 +243,9 @@ export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Co
           : code`  ${child.name}: z.string().optional().transform(() => new Date().toISOString())`,
       );
     } else {
-      insertFieldLines.push(code`  ${child.name}: ${zodFieldExpr(child, obj, ctx)}`);
+      insertFieldLines.push(
+        code`  ${child.name}: ${zodFieldExpr(child, obj, ctx, isInsertRequiredPk(child, assignedPkFields))}`,
+      );
     }
   }
 
@@ -246,11 +287,14 @@ export interface SchemaFieldShape {
  *   • @readOnly fields are omitted (DB / replication owns the write path);
  *   • a TPH subtype's @discriminator field is a pinned `z.literal(value)`;
  *   • @autoSet fields are present but optional (server fills them);
+ *   • an ASSIGNED primary key with no @default is required (see
+ *     assignedPkFieldNames — its Drizzle column has no default);
  *   • every other field's optionality is `fieldWillBeOptional` (not required, or
  *     carries a @default).
  */
 export function insertSchemaFields(obj: MetaObject): SchemaFieldShape[] {
   const autoGenPkFields = autoGenPkFieldNames(obj);
+  const assignedPkFields = assignedPkFieldNames(obj);
   const tphPin = tphDiscriminatorPin(obj);
   const out: SchemaFieldShape[] = [];
   for (const child of obj.fields()) {
@@ -266,7 +310,10 @@ export function insertSchemaFields(obj: MetaObject): SchemaFieldShape[] {
     if (autoSet === AUTO_SET_ON_CREATE || autoSet === AUTO_SET_ON_UPDATE) {
       out.push({ name: child.name, optional: true, autoSet: true });
     } else {
-      out.push({ name: child.name, optional: fieldWillBeOptional(child) });
+      out.push({
+        name: child.name,
+        optional: isInsertRequiredPk(child, assignedPkFields) ? false : fieldWillBeOptional(child),
+      });
     }
   }
   return out;
@@ -311,6 +358,7 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
   const z = imp("z@zod");
   const autoGenPkFields = autoGenPkFieldNames(obj);
   const pkFields = primaryKeyFieldNames(obj);
+  const assignedPkFields = assignedPkFieldNames(obj);
   const tphPin = tphDiscriminatorPin(obj);
 
   const insertFieldLines: Code[] = [];
@@ -358,7 +406,9 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
       // field expr) so an import/restore keeps the caller's original timestamp.
       preservingFieldLines.push(code`  ${child.name}: ${zodFieldExpr(child, obj, ctx)}`);
     } else {
-      const fieldLine = code`  ${child.name}: ${zodFieldExpr(child, obj, ctx)}`;
+      // The preserving schema is an INSERT shape (import / restore / replication),
+      // so an assigned PK is required there for the same typing reason.
+      const fieldLine = code`  ${child.name}: ${zodFieldExpr(child, obj, ctx, isInsertRequiredPk(child, assignedPkFields))}`;
       insertFieldLines.push(fieldLine);
       preservingFieldLines.push(fieldLine);
     }
@@ -452,7 +502,14 @@ function zodScalarFor(subType: string): string {
   return "z.string()"; // string/uuid/date/time/timestamp/decimal/enum on the wire
 }
 
-function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext): Code {
+function zodFieldExpr(
+  field: MetaField,
+  owner?: MetaObject,
+  ctx?: RenderContext,
+  /** Suppress the trailing `.optional()` — see assignedPkFieldNames. Set ONLY
+   *  by the insert-shape emitters; the update/read shapes must stay optional. */
+  forceRequired = false,
+): Code {
   // `@dbColumnType: jsonb` on a scalar (legal only on field.string) is the
   // sanctioned "open JSON bag" escape hatch — a genuinely untyped JSON column
   // with no value-object to reference. Its Drizzle column is a bare `jsonb()`,
@@ -465,7 +522,7 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
   if (field.attr(FIELD_ATTR_DB_COLUMN_TYPE) === DB_COLUMN_TYPE_JSONB) {
     let base: Code = code`z.unknown()`;
     if (field.resolvedIsArray()) base = code`z.array(${base})`;
-    return appendValidatorChain(base, field);
+    return appendValidatorChain(base, field, forceRequired);
   }
 
   // FIELD_SUBTYPE_OBJECT: emit z.array(<Ref>InsertSchema) / <Ref>InsertSchema
@@ -490,13 +547,13 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
       const refImp = imp(`${refName}InsertSchema@${moduleSpec}`);
       let base: Code = code`${refImp}`;
       if (field.resolvedIsArray()) base = code`z.array(${base})`;
-      return appendValidatorChain(base, field);
+      return appendValidatorChain(base, field, forceRequired);
     }
     // No resolvable @objectRef — fall through to z.unknown(); downstream code
     // can still pass a value through but loses validation.
     let base: Code = code`z.unknown()`;
     if (field.resolvedIsArray()) base = code`z.array(${base})`;
-    return appendValidatorChain(base, field);
+    return appendValidatorChain(base, field, forceRequired);
   }
 
   // field.map → z.record(z.string(), V): value is a VO's InsertSchema (@objectRef)
@@ -509,10 +566,10 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
         ? valueObjectModuleSpecifier(refName, ctx.packageOf, owner.package, ctx.outputLayout, ctx.extStyle)
         : `./${refName}.js`;
       const refImp = imp(`${refName}InsertSchema@${moduleSpec}`);
-      return appendValidatorChain(code`z.record(z.string(), ${refImp})`, field);
+      return appendValidatorChain(code`z.record(z.string(), ${refImp})`, field, forceRequired);
     }
     const vt = field.attr(FIELD_ATTR_VALUE_TYPE);
-    return appendValidatorChain(code`z.record(z.string(), ${zodScalarFor(typeof vt === "string" ? vt : "string")})`, field);
+    return appendValidatorChain(code`z.record(z.string(), ${zodScalarFor(typeof vt === "string" ? vt : "string")})`, field, forceRequired);
   }
 
   let baseStr: string;
@@ -573,7 +630,7 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
           const sharedConst = imp(`${constName}@${spec}`);
           let base: Code = code`${sharedConst}`;
           if (field.resolvedIsArray()) base = code`z.array(${base})`;
-          return appendValidatorChain(base, field);
+          return appendValidatorChain(base, field, forceRequired);
         }
       }
       baseStr = zodEnumExpr(values);
@@ -612,7 +669,7 @@ function zodFieldExpr(field: MetaField, owner?: MetaObject, ctx?: RenderContext)
   }
 
   if (field.resolvedIsArray()) baseStr = `z.array(${baseStr})`;
-  return appendValidatorChain(code`${baseStr}`, field);
+  return appendValidatorChain(code`${baseStr}`, field, forceRequired);
 }
 
 /** Mirrors the optional-or-not decision inside appendValidatorChain so the update-schema
@@ -635,7 +692,7 @@ const NUMERIC_FIELD_SUBTYPES = new Set<string>([
  *  - numeric (scalar)       → .min/.max = numeric value     (validator.numeric)
  *  - array (any element)    → .min/.max = element count     (validator.array)
  */
-function appendValidatorChain(base: Code, field: MetaField): Code {
+function appendValidatorChain(base: Code, field: MetaField, forceRequired = false): Code {
   let isRequired = field.attr(FIELD_ATTR_REQUIRED) === true;
   let maxLen: number | undefined = field.attr(FIELD_ATTR_MAX_LENGTH) as number | undefined;
   let minLen: number | undefined;
@@ -708,6 +765,12 @@ function appendValidatorChain(base: Code, field: MetaField): Code {
     if (numMin !== undefined) chain = code`${chain}.min(${numMin})`;
     if (numMax !== undefined) chain = code`${chain}.max(${numMax})`;
   }
+
+  // An assigned PK is insert-REQUIRED whatever @required says — its Drizzle
+  // column has no default, so an optional value cannot typecheck into
+  // `.values()`. Only the caller knows this (the update/read shapes must stay
+  // optional), hence the explicit opt-in. See assignedPkFieldNames.
+  if (forceRequired) return chain;
 
   // Fields with DB-level defaults are optional in the InsertSchema: the caller
   // can omit them and the DB will fill in. Otherwise required-with-default
