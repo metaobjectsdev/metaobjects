@@ -48,20 +48,20 @@ public sealed class ValidationConformanceTests
     [Fact]
     public void Discovers_all_validation_conformance_cases()
     {
-        Assert.Equal(40, Cases().Count());
+        Assert.Equal(42, Cases().Count());
     }
 
     [Theory]
     [MemberData(nameof(Cases))]
     public void Generated_dto_validation_matches_expected_verdict(string caseName)
     {
-        Type accountType = GeneratedAccountType.Value;
+        // A case may name a corpus entity other than Account (Ledger — an ASSIGNED
+        // primary key, a shape Account's @generation-backed key cannot express).
+        string entityName = TheCase(caseName).TryGetProperty("entity", out JsonElement e)
+            ? e.GetString()! : DefaultEntity;
+        Type accountType = GeneratedTypes.For(entityName);
 
-        using JsonDocument doc = JsonDocument.Parse(
-            File.ReadAllText(Path.Combine(CorpusDir(), "cases.json")));
-        JsonElement theCase = doc.RootElement.GetProperty("cases").EnumerateArray()
-            .Single(c => c.GetProperty("name").GetString() == caseName);
-
+        JsonElement theCase = TheCase(caseName);
         JsonElement payload = theCase.GetProperty("payload");
         bool expectValid = theCase.GetProperty("expectValid").GetBoolean();
 
@@ -90,12 +90,27 @@ public sealed class ValidationConformanceTests
             $"errors=[{string.Join("; ", results.Select(r => r.ErrorMessage))}]");
     }
 
-    // The compiled, generated Account type — compiled once for the whole test class.
-    private static class GeneratedAccountType
-    {
-        internal static readonly Type Value = Compile();
+    private const string DefaultEntity = "Account";
 
-        private static Type Compile()
+    /// <summary>The corpus case with this name, re-read from cases.json.</summary>
+    private static JsonElement TheCase(string caseName)
+    {
+        using JsonDocument doc = JsonDocument.Parse(
+            File.ReadAllText(Path.Combine(CorpusDir(), "cases.json")));
+        return doc.RootElement.GetProperty("cases").EnumerateArray()
+            .Single(c => c.GetProperty("name").GetString() == caseName).Clone();
+    }
+
+    // The compiled, generated corpus DTOs — compiled once for the whole test class.
+    private static class GeneratedTypes
+    {
+        private static readonly Assembly Asm = Compile();
+
+        internal static Type For(string entityName) =>
+            Asm.GetType($"Acme.Validation.Generated.{entityName}")
+            ?? throw new InvalidOperationException($"generated assembly has no type for {entityName}");
+
+        private static Assembly Compile()
         {
             var loadResult = new MetaDataLoader().Load(
             [
@@ -129,11 +144,10 @@ public sealed class ValidationConformanceTests
             var errors = emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)
                 .Select(d => $"{d.Id}: {d.GetMessage()}").ToList();
             Assert.True(errors.Count == 0,
-                "generated Account DTO should compile, got: " + string.Join("; ", errors));
+                "generated corpus DTOs should compile, got: " + string.Join("; ", errors));
 
             ms.Seek(0, SeekOrigin.Begin);
-            Assembly asm = Assembly.Load(ms.ToArray());
-            return asm.GetType("Acme.Validation.Generated.Account")!;
+            return Assembly.Load(ms.ToArray());
         }
     }
 }

@@ -38,23 +38,29 @@ def _corpus_dir() -> Path:
     return repo_root / "fixtures" / "validation-conformance"
 
 
-def _load_account_entity() -> MetaObject:
+DEFAULT_ENTITY = "Account"
+
+
+def _load_entity(name: str) -> MetaObject:
     meta = (_corpus_dir() / "meta.json").read_text()
     result = MetaDataLoader.from_string(meta)
     assert not result.errors, [str(e) for e in result.errors]
     for child in result.root.children():
-        if child.type == TYPE_OBJECT and getattr(child, "name", None) == "Account":
+        if child.type == TYPE_OBJECT and getattr(child, "name", None) == name:
             assert isinstance(child, MetaObject)
             return child
-    raise AssertionError("Account entity not found in corpus meta.json")
+    raise AssertionError(f"{name} entity not found in corpus meta.json")
 
 
-def _build_generated_model() -> type[BaseModel]:
-    """Generate the Account Pydantic wire-validation model source and exec it into a
-    module namespace. #224 — ``AccountCreate`` (the generated input-validation
-    artifact), not the plain ``Account`` read model: FR-036 Pin 1 lives on the wire
-    tier only."""
-    source = render_entity_model(_load_account_entity())
+def _build_generated_model(entity_name: str = DEFAULT_ENTITY) -> type[BaseModel]:
+    """Generate the ``<Entity>Create`` Pydantic wire-validation model source and exec it
+    into a module namespace. #224 — the CREATE model (the generated input-validation
+    artifact), not the plain read model: FR-036 Pin 1 lives on the wire tier only.
+
+    A case may name a different corpus entity (``Ledger`` — an ASSIGNED primary key,
+    a shape ``Account``'s ``@generation``-backed key cannot express).
+    """
+    source = render_entity_model(_load_entity(entity_name))
     # Import the generated source as a REAL module rather than exec'ing it into a
     # bare dict: under ``from __future__ import annotations`` Pydantic resolves
     # type annotations lazily via the class's module globals, so a non-builtin
@@ -63,14 +69,15 @@ def _build_generated_model() -> type[BaseModel]:
     # exec namespace has no ``__name__`` (forward refs fall back to builtins and
     # fail — #234); a proper module import mirrors the TS runner's temp-module.
     tmp_dir = tempfile.mkdtemp()
-    mod_path = Path(tmp_dir) / "generated_account.py"
+    mod_name = f"generated_{entity_name.lower()}"
+    mod_path = Path(tmp_dir) / f"{mod_name}.py"
     mod_path.write_text(source)
-    spec = importlib.util.spec_from_file_location("generated_account", mod_path)
+    spec = importlib.util.spec_from_file_location(mod_name, mod_path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
-    sys.modules["generated_account"] = module
+    sys.modules[mod_name] = module
     spec.loader.exec_module(module)
-    model = module.AccountCreate
+    model = getattr(module, f"{entity_name}Create")
     assert isinstance(model, type) and issubclass(model, BaseModel)
     return model
 
@@ -81,7 +88,7 @@ def _load_cases() -> list[dict]:
 
 @pytest.mark.parametrize("case", _load_cases(), ids=lambda c: c["name"])
 def test_validation_conformance(case: dict) -> None:
-    model = _build_generated_model()
+    model = _build_generated_model(case.get("entity", DEFAULT_ENTITY))
     try:
         model(**case["payload"])
         valid = True

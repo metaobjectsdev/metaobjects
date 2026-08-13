@@ -126,7 +126,6 @@ public class ValidationConformanceTest extends SharedRegistryTestBase {
                 new URL[]{ classes.toUri().toURL() }, getClass().getClassLoader());
              ValidatorFactory vf = Validation.buildDefaultValidatorFactory()) {
 
-            Class<?> dtoCls = cl.loadClass("acme.auth.AccountDto");
             Validator validator = vf.getValidator();
 
             int passed = 0;
@@ -135,6 +134,11 @@ public class ValidationConformanceTest extends SharedRegistryTestBase {
                 String name = String.valueOf(c.get("name"));
                 Object payload = c.get("payload");
                 boolean expectValid = Boolean.TRUE.equals(c.get("expectValid"));
+                // A case may name a corpus entity other than Account (Ledger — an
+                // ASSIGNED primary key, a shape Account's @generation-backed key
+                // cannot express).
+                String entity = c.get("entity") == null ? "Account" : String.valueOf(c.get("entity"));
+                Class<?> dtoCls = cl.loadClass("acme.auth." + entity + "Dto");
 
                 boolean actualValid;
                 String detail;

@@ -195,8 +195,12 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
             // keep the conservative nullable default. #214 overrides this to nullable on a
             // write-through entity (the create-body relaxation above; the view column stays non-null,
             // which maps safely into a nullable property).
+            // An ASSIGNED primary key is create-REQUIRED whatever @required says — the
+            // caller is its only source (KotlinGenUtil.isAssignedPrimaryKeyField), so the
+            // property stays non-null and a create body omitting it cannot bind.
             val nullable = tphBase || derivedReadOnly ||
-                (!KotlinGenUtil.isRequiredField(field) && !KotlinGenUtil.originGuaranteedNonNull(field))
+                (!KotlinGenUtil.isRequiredField(field) && !KotlinGenUtil.originGuaranteedNonNull(field)
+                    && !KotlinGenUtil.isAssignedPrimaryKeyField(field))
             val propType = if (nullable) baseType.copy(nullable = true) else baseType
             val propName = field.name
             val param = ParameterSpec.builder(propName, propType)
@@ -419,7 +423,8 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val isString = field is StringField
         val out = mutableListOf<AnnotationSpec>()
 
-        val required = KotlinGenUtil.isRequiredField(field) || hasValidator(field, RequiredValidator::class.java)
+        val required = KotlinGenUtil.isRequiredField(field) || hasValidator(field, RequiredValidator::class.java) ||
+            KotlinGenUtil.isAssignedPrimaryKeyField(field)
         if (required) {
             // FR-036 Pin 1: @required → @NotNull only. NO @NotBlank (it rejects whitespace-only,
             // which the cross-port owner ruling ACCEPTS). The non-empty floor for a required

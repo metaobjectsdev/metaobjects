@@ -7,6 +7,49 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.22.1] — npm `0.22.1` · PyPI `0.22.1` · NuGet `0.22.1` · Maven `7.22.1`
+
+A coordinated PATCH completing 0.22.0's assigned-primary-key fix in the ports that shared
+it. **npm and NuGet are version-parity bumps** — TypeScript shipped the fix in 0.22.0 and
+C# never had the defect; both gained only the corpus runner change.
+
+### Fixed — an assigned primary key is required on create (Python, Java, Kotlin)
+
+**Generated-output change — regenerate to pick it up; three-way merge preserves hand edits.**
+
+An entity whose primary key carries no `identity.primary @generation` — a natural key, or
+an id issued by something upstream — had its create shape read the key's optionality off
+`@required`, like any other field. A key not marked `@required` was therefore **optional in
+the generated create/validation artifact**, so a create body carrying no primary key at all
+was accepted and could only fail at the database.
+
+An assigned key with no `@default` is now required in Python's `<Entity>Create` Pydantic
+model, Java's `<Entity>Dto` (`@NotNull`) and Kotlin's generated data class (a non-null
+property, so a body omitting it cannot bind). Unchanged: an `increment`/`uuid` key stays
+optional or omitted entirely (the server supplies it), and a key carrying a `@default`
+stays optional (the column has that default).
+
+**C# was already correct** — its DTO predicate treats any primary-key field as required —
+and TypeScript was fixed in 0.22.0, where the same defect additionally broke *compilation*
+(`TS2769`: an `.optional()` schema field piped into a Drizzle column that has no default).
+
+### Added — the corpus can now see it
+
+`fixtures/validation-conformance/` gains a second entity, `Ledger`, whose primary key is
+assigned, plus `assigned-pk-present` / `assigned-pk-missing`. `cases.json` entries take an
+optional `entity` key (absent means `Account`, as every pre-existing case does), and all
+five runners dispatch on it.
+
+The corpus was structurally blind here: `Account`'s key is `@generation: increment`, which
+every port drops from the create shape entirely, so no existing case could express the
+opposite. More generally **every model in this repository generates its primary keys** —
+which is why a defect present in four of five ports survived every gate until an external
+smoke test authored a model the repo does not contain.
+
+The key is a `field.string` deliberately: a value-typed key (`Guid`, `Long`) cannot express
+"absent" distinctly from "default" in a DataAnnotations-style artifact, so that case belongs
+to `api-contract-conformance`, which sees raw JSON.
+
 ## [0.22.0] — npm `0.22.0` · PyPI `0.22.0` · NuGet `0.22.0` · Maven `7.22.0`
 
 A **MINOR**: a new registered type family (new vocabulary in all five ports), plus a

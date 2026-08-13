@@ -83,7 +83,6 @@ class ValidationConformanceTest {
                 "generated Account.kt failed to compile:\n${compileResult.messages}")
 
             // --- validate each corpus payload through a jakarta Validator ---
-            val accountClass = compileResult.classLoader.loadClass("acme.auth.Account")
             val mapper = ObjectMapper().registerKotlinModule()
             val validator: Validator = Validation.buildDefaultValidatorFactory().validator
 
@@ -96,6 +95,10 @@ class ValidationConformanceTest {
                 val name = caseNode.get("name").asText()
                 val expectValid = caseNode.get("expectValid").asBoolean()
                 val payloadJson = caseNode.get("payload").toString()
+                // A case may name a corpus entity other than Account (Ledger — an ASSIGNED
+                // primary key, a shape Account's @generation-backed key cannot express).
+                val entity = caseNode.get("entity")?.asText() ?: "Account"
+                val accountClass = compileResult.classLoader.loadClass("acme.auth.$entity")
 
                 // Two boundary stages, exactly as a real Spring controller sees them:
                 //   1. Jackson deserialization onto the generated data class. A missing

@@ -106,6 +106,9 @@
     { "name": "lenient-uri-accepts-valid",      "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "citationUrl": "https://a.com" }, "expectValid": true },
     { "name": "lenient-inet-accepts-hostname",  "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "reportedIp": "example.com" },    "expectValid": true },
     { "name": "lenient-inet-accepts-cidr",      "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "reportedIp": "192.168.0.1/24" },"expectValid": true },
-    { "name": "lenient-inet-accepts-valid",     "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "reportedIp": "10.0.0.1" },      "expectValid": true }
+    { "name": "lenient-inet-accepts-valid",     "payload": { "name": "Acme", "code": "ABC", "score": 50, "tags": ["x"], "note": "ok", "reportedIp": "10.0.0.1" },      "expectValid": true },
+
+    { "name": "assigned-pk-present", "entity": "Ledger", "payload": { "code": "L-1", "label": "ok" }, "expectValid": true },
+    { "name": "assigned-pk-missing", "entity": "Ledger", "payload": { "label": "ok" },                "expectValid": false }
   ]
 }

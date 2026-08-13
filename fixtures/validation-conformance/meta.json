@@ -30,6 +30,15 @@
           { "field.inet":       { "name": "reportedIp", "@lenient": true } },
           { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
         ]
+      }},
+      { "object.entity": {
+        "name": "Ledger",
+        "children": [
+          { "source.rdb":       { "@table": "ledgers" } },
+          { "field.string":     { "name": "code" } },
+          { "field.string":     { "name": "label", "@required": true } },
+          { "identity.primary": { "name": "pk", "@fields": "code" } }
+        ]
       }}
     ]
   }

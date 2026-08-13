@@ -19,45 +19,54 @@ import type { ZodTypeAny } from "zod";
 import { renderInsertSchemaOnly } from "@metaobjectsdev/codegen-ts/templates/zod-validators";
 import { VALIDATION_DIR } from "../src/paths.ts";
 import { loadMetadataFile } from "../src/load-metadata.ts";
-import { loadCases } from "../src/validation-cases.ts";
+import { loadCases, DEFAULT_VALIDATION_ENTITY } from "../src/validation-cases.ts";
 
-const ENTITY_NAME = "Account";
+type ParseFn = { safeParse(value: unknown): { success: boolean } };
 
-let insertSchema: { safeParse(value: unknown): { success: boolean } };
+/** Every corpus entity a case may name — each rendered through the real codegen
+ *  template, so the gate covers the generator and not a hand-written schema. */
+const ENTITY_NAMES = ["Account", "Ledger"] as const;
+
+const insertSchemas = new Map<string, ParseFn>();
 let tmpDir: string;
 
 beforeAll(async () => {
   const root = await loadMetadataFile(join(VALIDATION_DIR, "meta.json"));
-  const account = root.findObject(ENTITY_NAME);
-  if (!account) throw new Error(`corpus meta.json has no object named ${ENTITY_NAME}`);
-
-  // Render the GENERATED InsertSchema (ts-poet Code → source string with imports).
-  let generated = renderInsertSchemaOnly(account).toString();
-
-  // Emit to a temp module (outside the package tree, so it can't be picked up by
-  // a later test glob) and import it so we exercise the real generated code.
-  // Rewrite the bare `zod` import to an absolute resolved path so the module
-  // resolves regardless of where the temp dir lives.
   const zodPath = pathToFileURL(Bun.resolveSync("zod", import.meta.dir)).href;
-  generated = generated.replace(/(['"])zod\1/g, JSON.stringify(zodPath));
-
   tmpDir = mkdtempSync(join(tmpdir(), "validation-conformance-"));
-  const modulePath = join(tmpDir, `${ENTITY_NAME}.ts`);
-  writeFileSync(modulePath, generated, "utf8");
 
-  const mod = (await import(pathToFileURL(modulePath).href)) as Record<string, ZodTypeAny>;
-  const schema = mod[`${ENTITY_NAME}InsertSchema`];
-  if (!schema) throw new Error(`generated module did not export ${ENTITY_NAME}InsertSchema`);
-  insertSchema = schema as unknown as { safeParse(value: unknown): { success: boolean } };
+  for (const entityName of ENTITY_NAMES) {
+    const entity = root.findObject(entityName);
+    if (!entity) throw new Error(`corpus meta.json has no object named ${entityName}`);
+
+    // Render the GENERATED InsertSchema (ts-poet Code → source string with imports).
+    // Rewrite the bare `zod` import to an absolute resolved path so the module
+    // resolves regardless of where the temp dir lives.
+    let generated = renderInsertSchemaOnly(entity).toString();
+    generated = generated.replace(/(['"])zod\1/g, JSON.stringify(zodPath));
+
+    // Emit to a temp module (outside the package tree, so it can't be picked up by
+    // a later test glob) and import it so we exercise the real generated code.
+    const modulePath = join(tmpDir, `${entityName}.ts`);
+    writeFileSync(modulePath, generated, "utf8");
+
+    const mod = (await import(pathToFileURL(modulePath).href)) as Record<string, ZodTypeAny>;
+    const schema = mod[`${entityName}InsertSchema`];
+    if (!schema) throw new Error(`generated module did not export ${entityName}InsertSchema`);
+    insertSchemas.set(entityName, schema as unknown as ParseFn);
+  }
 });
 
 describe("validation conformance — TS Zod reference runner", () => {
   for (const c of loadCases()) {
     test(c.name, () => {
-      const result = insertSchema.safeParse(c.payload);
+      const entityName = c.entity ?? DEFAULT_VALIDATION_ENTITY;
+      const schema = insertSchemas.get(entityName);
+      if (!schema) throw new Error(`case "${c.name}" names unknown entity ${entityName}`);
+      const result = schema.safeParse(c.payload);
       expect(
         result.success,
-        `case "${c.name}": expected verdict valid=${c.expectValid} but generated AccountInsertSchema returned valid=${result.success}`,
+        `case "${c.name}": expected verdict valid=${c.expectValid} but generated ${entityName}InsertSchema returned valid=${result.success}`,
       ).toBe(c.expectValid);
     });
   }

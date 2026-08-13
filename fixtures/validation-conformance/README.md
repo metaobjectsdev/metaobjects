@@ -11,8 +11,10 @@ canonical accept/reject behavior so the ports cannot silently drift.
 ## Shape
 
 ```
-meta.json    # one entity `Account` (package acme::auth) exercising each constraint once
-cases.json   # [{ name, payload, expectValid }] — single-source boolean verdicts
+meta.json    # `Account` (package acme::auth) exercising each constraint once,
+             #   plus `Ledger` — an ASSIGNED primary key (see below)
+cases.json   # [{ name, entity?, payload, expectValid }] — single-source boolean verdicts
+             #   `entity` is optional and defaults to `Account`
 README.md
 ```
 
@@ -27,6 +29,37 @@ README.md
 | `tags`  | `field.string isArray` + `validator.array @min=1 @max=3` |
 | `label` | `field.string` + `@maxLength: 8` + `validator.length @max=4` (both length bounds on one field — see the strictest-wins pin below) |
 | `note`  | `field.string` `@required` + `validator.length @min=0` (an explicit opt-out of the FR-036 Pin 1 implicit floor — see the authority pin below) |
+
+## `Ledger` — the ASSIGNED primary key
+
+`Account`'s key is `@generation: increment`, which every port drops from the create
+shape entirely (the server supplies it). That makes `Account` structurally unable to
+express the opposite case, so a second entity carries it:
+
+| field   | constraint                                                        |
+|---------|-------------------------------------------------------------------|
+| `code`  | `field.string` + `identity.primary @fields=code` — **no `@generation`**, and deliberately NOT `@required` |
+| `label` | `field.string` `@required` (an ordinary field, so the PK cases keep violating exactly one thing) |
+
+An **assigned** primary key — a natural key, or an id issued by something upstream — is
+create-REQUIRED whatever `@required` says: nothing else can produce the value, so a
+create body omitting it can only fail at the database. A port that reads PK optionality
+off `@required` alone accepts `assigned-pk-missing` and fails this corpus.
+
+- `assigned-pk-present` (`{code, label}` → **true**)
+- `assigned-pk-missing` (`{label}` → **false**)
+
+The key is a **string** on purpose. A value-typed PK (`field.long`, `field.uuid` → C#
+`Guid`, Kotlin `Long`) cannot express "absent" distinctly from "default" in a
+DataAnnotations-style artifact, so an artifact-only corpus cannot gate it; presence of a
+value-typed key on the wire belongs to `api-contract-conformance`, which sees raw JSON.
+
+**Found by:** the 0.22.0 release smoke test, as a TS compile error — the InsertSchema made
+the PK optional while its Drizzle column `text("id").primaryKey()` has no default and is
+insert-required (TS2769). Three of the other four ports shared the semantic half and
+accepted a create body with no primary key: **Python, Java and Kotlin** (C# was already
+correct — its DTO predicate treats any PK field as required). Nothing in any corpus caught
+it because every other model in the repo generates its primary keys.
 
 ## Behavioral contract — payload → boolean verdict
 

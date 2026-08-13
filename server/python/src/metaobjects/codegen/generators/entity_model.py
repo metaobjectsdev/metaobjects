@@ -372,8 +372,25 @@ def _auto_gen_pk_field_names(entity: MetaObject) -> set[str]:
     return set(_primary_identity_field_names(entity))
 
 
+def _assigned_pk_field_names(entity: MetaObject) -> set[str]:
+    """Primary-key field names the CALLER must supply on create: an ASSIGNED primary key
+    — a natural key or an externally-issued id, i.e. an ``identity.primary`` carrying no
+    ``@generation`` (or an explicit ``assigned``).
+
+    These are create-REQUIRED regardless of ``@required``: nothing else can produce the
+    value, so a create body omitting one can only fail at the database. Excludes the
+    ``increment|uuid`` keys, which ``_auto_gen_pk_field_names`` already drops from the
+    create shape entirely. A PK carrying a ``@default`` stays optional (the column has
+    that default) — handled at the call site, which knows the field.
+
+    Mirrors the TS ``assignedPkFieldNames``; gated cross-port by the
+    ``assigned-pk-missing`` case in ``fixtures/validation-conformance``."""
+    auto_gen = _auto_gen_pk_field_names(entity)
+    return {n for n in _primary_identity_field_names(entity) if n not in auto_gen}
+
+
 def _create_field_line(
-    field: MetaField, imports: set[str], config: GenConfig
+    field: MetaField, imports: set[str], config: GenConfig, *, force_required: bool = False
 ) -> tuple[str, bool]:
     """A CREATE-model field line (FR-036): keyed by the WIRE name (``field.name``) and
     carrying the WIRE-TIER per-field constraints (#224 — includes FR-036 Pin 1
@@ -397,7 +414,9 @@ def _create_field_line(
     # ANY @default (literal or SQL-expr) or @autoSet means the DB fills it, so the wire
     # body may omit it (the FR-036 #1 regression fix).
     server_filled = default_raw is not None or is_auto_set
-    create_required = required and not server_filled
+    # An assigned PK is create-REQUIRED whatever @required says (see
+    # _assigned_pk_field_names) — unless it is server-filled by a @default.
+    create_required = (required or force_required) and not server_filled
 
     parts = _constraint_parts(_validator_constraints(field, wire=True))
     uses_field = bool(parts)
@@ -534,6 +553,7 @@ class EntityModelGenerator:
         add/transform create-model lines."""
         cfg = config if config is not None else GenConfig(out_dir="")
         auto_gen_pk = _auto_gen_pk_field_names(entity)
+        assigned_pk = _assigned_pk_field_names(entity)
         binding = tph_subtype_binding(entity)
         disc_field = binding[0] if binding is not None else None
         uses_field = False
@@ -550,7 +570,9 @@ class EntityModelGenerator:
                 continue  # FR-013 — a read-only column is DB/owner-written, not create input
             if f.is_derived():
                 continue  # FR-024 §7 (#214) — a derived (origin.*) field is view-computed, not create input
-            line, used = _create_field_line(f, imports, cfg)
+            line, used = _create_field_line(
+                f, imports, cfg, force_required=f.name in assigned_pk
+            )
             uses_field = uses_field or used
             lines.append(line)
         # FR-017 TPH: pin the inherited discriminator to this subtype's value (with a
