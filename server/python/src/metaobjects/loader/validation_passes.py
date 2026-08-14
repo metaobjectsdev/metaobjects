@@ -1036,6 +1036,45 @@ def ops_for_subtype(field_subtype: str) -> frozenset[str]:
     return frozenset()
 
 
+# The int-backed-enum band: the enum band minus `like`. Named so the narrowing is
+# one constant rather than a set rebuilt at every call.
+_OPS_ENUM_INT_BACKED: frozenset[str] = frozenset({"eq", "ne", "in", "isNull"})
+
+
+def ops_for_field(field: MetaData) -> frozenset[str]:
+    """The filter-operator band for a FIELD.
+
+    The entry point every consumer that has a field in hand must use (loader
+    validation, the codegen filter-allowlist generator, the cross-port
+    ``field.filter-ops`` capability).
+
+    Identical to :func:`ops_for_subtype` except for ONE case: an int-backed
+    ``field.enum`` (one declaring ``@intValueMap``, design D5) persists as an
+    INTEGER column, so ``like`` -- a substring match -- is dropped.
+    ``eq``/``ne``/``in`` survive because the member symbol encodes to its integer
+    before it reaches SQL; ``like`` has no such encoding, and an unencoded
+    ``LIKE 'DRAFT'`` against an integer column is a request-time type error.
+
+    ``ops_for_subtype`` cannot express this -- it only ever sees the subtype
+    ``"enum"`` -- and is deliberately left unchanged for the one caller that
+    genuinely has no field: the expression grammar's declared operand type.
+
+    ADR-0039: the ``@intValueMap`` read is RESOLVING (``attrs()``, NOT ``attr()``
+    -- Python inverts the TS naming, ``attr()`` here is own-only). Post-#246 the
+    map lives on a shared root-level abstract declaration and consuming fields
+    INHERIT it, so an own-only read would see it absent on exactly the shape
+    adopters are steered toward and wrongly keep ``like``.
+
+    Cross-port: ``fixtures/conformance/filter-ops-matrix`` pins ``fEnum`` vs
+    ``fEnumInt`` in all five ports.
+    """
+    if field.sub_type == FIELD_SUBTYPE_ENUM and isinstance(
+        field.attrs().get(FIELD_ATTR_INT_VALUE_MAP), dict
+    ):
+        return _OPS_ENUM_INT_BACKED
+    return ops_for_subtype(field.sub_type)
+
+
 # ---------------------------------------------------------------------------
 # #195 — attr.expression closed grammar (validate + infer)
 # ---------------------------------------------------------------------------
@@ -1218,8 +1257,10 @@ def _validate_datagrid_filter_values(
             continue
 
         # Build filterable map: field_name → allowed ops set
+        # ops_for_field, not ops_for_subtype — an int-backed field.enum
+        # (@intValueMap) stores as an integer, so `like` is not in its band.
         filterable: dict[str, frozenset[str]] = {
-            f.name: ops_for_subtype(f.sub_type)
+            f.name: ops_for_field(f)
             for f in node.fields()
             if f.attrs().get("filterable") is True
         }

@@ -149,7 +149,7 @@ final class ScriptRunner {
                 }
                 MetaField field = (MetaField) target;
                 List<String> got = new ArrayList<>(
-                    com.metaobjects.query.FilterOps.opsForSubType(field.getSubType()));
+                    com.metaobjects.query.FilterOps.opsForField(field));
                 assertStringNames(got, expect, index, invoke, failures);
                 return;
             }

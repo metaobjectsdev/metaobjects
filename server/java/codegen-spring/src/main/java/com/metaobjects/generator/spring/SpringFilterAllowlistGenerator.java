@@ -115,7 +115,7 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
         for (MetaField field : fields) {
             if (field instanceof ObjectField) continue;
             if (!isFilterable(field)) continue;
-            Set<String> ops = opsForSubtype(field.getSubType());
+            Set<String> ops = opsForField(field);
             if (ops.isEmpty()) continue;
             out.putIfAbsent(field.getName(), ops); // dedup base/subtype column names
         }
@@ -130,12 +130,15 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
         return Boolean.parseBoolean(String.valueOf(raw));
     }
 
-    private static Set<String> opsForSubtype(String subType) {
+    private static Set<String> opsForField(MetaField field) {
         // Single source of truth — com.metaobjects.query.FilterOps (the same
         // band the loader's validation path reads). Returns a canonical-ordered
         // set so the emitted source is stable; an unbanded subtype → empty set,
         // which computeFilterableOps drops.
-        return com.metaobjects.query.FilterOps.opsForSubType(subType);
+        //
+        // Field-level, not subtype-level: an int-backed field.enum (@intValueMap)
+        // stores as an integer, so `like` is not in its band.
+        return com.metaobjects.query.FilterOps.opsForField(field);
     }
 
     protected void emit(MetaObject entity, Path outRoot, MetaDataLoader loader) {

@@ -2772,8 +2772,10 @@ public final class ValidationPhase {
     }
 
     private static java.util.Set<String> allowedOpsFor(MetaField field) {
+        // opsForField, not opsForSubType — an int-backed field.enum (@intValueMap)
+        // stores as an integer, so `like` is not in its band.
         java.util.Set<String> band =
-            com.metaobjects.query.FilterOps.opsForSubType(field.getSubType());
+            com.metaobjects.query.FilterOps.opsForField(field);
         // Any subtype without a declared band (already rejected upstream by
         // validateFilterableHasSupportedOps) falls through to the string-shape
         // band, preserving the prior default.

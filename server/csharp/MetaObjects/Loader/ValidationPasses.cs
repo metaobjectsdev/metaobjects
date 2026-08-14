@@ -1476,7 +1476,9 @@ public static class ValidationPasses
                 // ADR-0039: resolving — a concrete field may inherit @filterable via extends (TS validation-passes.ts:1252).
                 if (f.Attr(FIELD_ATTR_FILTERABLE) is true)
                 {
-                    allow[f.Name] = OpsForSubType(f.SubType);
+                    // OpsForField, not OpsForSubType — an int-backed field.enum
+                    // (@intValueMap) stores as an integer, so `like` is not in its band.
+                    allow[f.Name] = OpsForField(f);
                 }
             }
 

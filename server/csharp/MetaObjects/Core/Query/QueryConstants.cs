@@ -71,6 +71,58 @@ public static class QueryConstants
     public static string[] OpsForSubType(string subType) =>
         OPS_BY_SUBTYPE.TryGetValue(subType, out string[]? ops) ? ops : [];
 
+    /// <summary>
+    /// The int-backed-<c>enum</c> band: the <c>enum</c> band minus <c>like</c>. Hoisted
+    /// so the narrowing is one named constant rather than an array filtered at every call.
+    /// </summary>
+    public static readonly string[] OPS_ENUM_INT_BACKED =
+        [FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_IN, FILTER_OP_IS_NULL];
+
+    /// <summary>
+    /// The filter-operator band for a FIELD — the entry point every consumer that has a
+    /// field in hand must use (loader validation, the codegen filter-allowlist generator,
+    /// the cross-port <c>field.filter-ops</c> capability).
+    /// <para>
+    /// Identical to <see cref="OpsForSubType"/> except for ONE case: an int-backed
+    /// <c>field.enum</c> (one declaring <c>@intValueMap</c>, design D5) persists as an
+    /// INTEGER column, so <c>like</c> — a substring match — is dropped.
+    /// <c>eq</c>/<c>ne</c>/<c>in</c> survive because the member symbol encodes to its
+    /// integer before it reaches SQL; <c>like</c> has no such encoding, and an unencoded
+    /// <c>LIKE 'DRAFT'</c> against an integer column is a request-time type error.
+    /// </para>
+    /// <para>
+    /// <see cref="OpsForSubType"/> cannot express this — it only ever sees the subtype
+    /// <c>"enum"</c> — and is deliberately left unchanged for the one caller that
+    /// genuinely has no field: <c>ExpressionGrammar</c>'s declared operand type.
+    /// </para>
+    /// <para>
+    /// ADR-0039: the <c>@intValueMap</c> read is RESOLVING (<c>Attr</c>, not
+    /// <c>OwnAttr</c>). Post-#246 the map lives on a shared root-level abstract
+    /// declaration and consuming fields INHERIT it, so an own-only read would see it
+    /// absent on exactly the shape adopters are steered toward and wrongly keep
+    /// <c>like</c>.
+    /// </para>
+    /// <para>
+    /// Cross-port: <c>fixtures/conformance/filter-ops-matrix</c> pins <c>fEnum</c> vs
+    /// <c>fEnumInt</c> in all five ports.
+    /// </para>
+    /// <para>
+    /// Takes <c>MetaData</c> rather than <c>MetaField</c> so the loader's dataGrid pass —
+    /// which iterates untyped children — can call it directly, mirroring the TS
+    /// structural parameter.
+    /// </para>
+    /// </summary>
+    public static string[] OpsForField(MetaObjects.Meta.MetaData field)
+    {
+        if (field is null) return [];
+        if (field.SubType == MetaObjects.Core.Field.FieldConstants.FIELD_SUBTYPE_ENUM &&
+            field.Attr(MetaObjects.Core.Field.FieldConstants.FIELD_ATTR_INT_VALUE_MAP) is not null)
+        {
+            return OPS_ENUM_INT_BACKED;
+        }
+        return OpsForSubType(field.SubType);
+    }
+
     // -----------------------------------------------------------------------
     // Sort order values (used by @sortableDefaultOrder on fields and
     // @defaultSortOrder on dataGrid layouts)
