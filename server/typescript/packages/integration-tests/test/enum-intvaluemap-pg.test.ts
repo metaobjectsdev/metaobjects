@@ -25,7 +25,7 @@ import {
   type SchemaSnapshot,
 } from "@metaobjectsdev/migrate-ts";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
-import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
+import { runGen, defineConfig, buildProjectionViews } from "@metaobjectsdev/codegen-ts";
 import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
 import { Kysely, PostgresDialect, sql } from "kysely";
 import pg, { Pool } from "pg";
@@ -345,5 +345,100 @@ describe("int-backed field.enum — generated codec against real Postgres", () =
       expect(String(e)).toContain("unmapped");
     }
     expect(threw).toBe(true);
+  }, 120_000);
+});
+
+/**
+ * A projection row-scope `@filter` (#207) on an int-backed enum.
+ *
+ * The view body is emitted as LITERAL SQL text and never touches Drizzle, so the
+ * customType that rescues the runtime query path does nothing here. Before the fix
+ * this emitted `WHERE p.status = 'PUBLISHED'` against an `integer` column, which
+ * Postgres rejects at CREATE VIEW time — `invalid input syntax for type integer` —
+ * aborting the migration. A unit assertion on the emitted string cannot show that;
+ * only applying it can.
+ */
+describe("int-backed field.enum in a projection view — real Postgres", () => {
+  function metaWithView(): string {
+    return `{
+      "metadata.root": {
+        "package": "acme",
+        "children": [
+          { "field.enum": { "name": "Status", "abstract": true,
+            "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"],
+            "@intValueMap": { "DRAFT": 0, "PUBLISHED": 5, "ARCHIVED": 9 } } },
+          { "object.entity": { "name": "Order", "children": [
+            { "source.rdb": {} },
+            { "field.long":   { "name": "id" } },
+            { "field.string": { "name": "title", "@required": true } },
+            { "field.enum":   { "name": "status", "extends": "Status", "@required": true } },
+            { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+          ] } },
+          { "object.projection": { "name": "PublishedOrders",
+            "@filter": { "status": { "eq": "PUBLISHED" } }, "children": [
+            { "source.rdb": { "@kind": "view", "@table": "v_published_orders" } },
+            { "identity.primary": { "name": "id", "extends": "Order.id", "@fields": "id" } },
+            { "field.long":   { "name": "id", "extends": "Order.id", "children": [
+              { "origin.passthrough": { "@from": "Order.id" } } ] } },
+            { "field.string": { "name": "title", "children": [
+              { "origin.passthrough": { "@from": "Order.title" } } ] } },
+            { "field.enum":   { "name": "status", "extends": "Status", "children": [
+              { "origin.passthrough": { "@from": "Order.status" } } ] } }
+          ] } }
+        ]
+      }
+    }`;
+  }
+
+  /** Views are NOT derived by buildExpectedSchema — they must be passed in
+   *  explicitly, so this block needs its own migrate helper rather than the
+   *  table-only one above. */
+  async function migrateWithViews(metaJson: string): Promise<SchemaSnapshot> {
+    const root = (await new MetaDataLoader().load([new InMemoryStringSource(metaJson)])).root;
+    const expected = buildExpectedSchema(root, {
+      columnNamingStrategy: "literal",
+      dialect: "postgres",
+      views: buildProjectionViews(root, {
+        dialect: "postgres", columnNamingStrategy: "literal",
+      }),
+    });
+    const result = await diff({
+      expected, actual: await introspectPostgres(k), dialect: "postgres",
+    });
+    expect(result.blocked).toEqual([]);
+    const { up } = result.changes.length === 0
+      ? { up: "" }
+      : emit(result.changes, { dialect: "postgres" });
+    if (up.trim().length > 0) await applyRaw(up);
+    return expected;
+  }
+
+  test("the filtered view APPLIES, converges, and selects by the INTEGER", async () => {
+    const expected = await migrateWithViews(metaWithView());
+    // The view exists — i.e. the CREATE VIEW did not blow up on a text-vs-integer
+    // comparison. This is the assertion the whole test exists for.
+    await assertConverged(expected);
+
+    await sql.raw(
+      `INSERT INTO "orders" ("title", "status") VALUES ('a', 0), ('b', 5), ('c', 9), ('d', 5);`,
+    ).execute(k);
+
+    const rows = await sql<{ title: string }>`
+      SELECT "title" FROM "v_published_orders" ORDER BY "title"
+    `.execute(k);
+    // Only the two PUBLISHED (5) rows — proving the WHERE compared 5, not 'PUBLISHED'.
+    expect(rows.rows.map((r) => r.title)).toEqual(["b", "d"]);
+  }, 120_000);
+
+  test("the emitted view body carries the integer literal, not the member symbol", async () => {
+    const root = (await new MetaDataLoader().load([
+      new InMemoryStringSource(metaWithView()),
+    ])).root;
+    const views = buildProjectionViews(root, {
+      dialect: "postgres", columnNamingStrategy: "literal",
+    });
+    const body = views.find((v) => v.name === "v_published_orders")?.sql ?? "";
+    expect(body).toMatch(/WHERE o\.status = 5/);
+    expect(body).not.toContain("'PUBLISHED'");
   }, 120_000);
 });
