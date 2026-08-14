@@ -138,9 +138,16 @@ class PostgresContainer:
     # finishes; mirrors the TS/Java two-phase wait).
     # -----------------------------------------------------------------------
 
+    # READINESS WINDOW. 30s was too tight: under a FULL local-CI run several ports
+    # spin their own Postgres concurrently, and a container that is merely slow to
+    # boot produces a red gate indistinguishable from a real failure -- it fires
+    # BEFORE any test logic. Raising the bound costs nothing when the container is
+    # ready quickly (the loop polls every 250ms and returns immediately) and only
+    # changes how long the pathological case takes to give up.
     def _wait_ready(self) -> None:
         import pg8000.dbapi  # local import — pg8000 lives in the `integration` extra
-        deadline = time.monotonic() + 30
+        timeout_s = int(os.environ.get("MO_PG_READY_TIMEOUT_S", "120"))
+        deadline = time.monotonic() + timeout_s
         last_err: Exception | None = None
         while time.monotonic() < deadline:
             ready = subprocess.run(
@@ -159,7 +166,7 @@ class PostgresContainer:
                     last_err = e
             time.sleep(0.25)
         raise RuntimeError(
-            f"postgres container '{self._name}' did not become ready within 30s; last err: {last_err}"
+            f"postgres container '{self._name}' did not become ready within {timeout_s}s; last err: {last_err}"
         )
 
 

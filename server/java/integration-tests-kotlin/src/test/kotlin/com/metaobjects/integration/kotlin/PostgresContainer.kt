@@ -100,7 +100,12 @@ class PostgresContainer : AutoCloseable {
     }
 
     private fun waitForReady() {
-        val deadline = System.currentTimeMillis() + 30_000
+        // READINESS WINDOW. 30s was too tight: under a FULL local-CI run several ports
+        // spin their own Postgres concurrently, and a container that is merely slow to
+        // boot produces a red gate indistinguishable from a real failure -- it fires
+        // BEFORE any test logic. Raising the bound costs nothing when the container is
+        // ready quickly (this polls every 250ms and returns immediately).
+        val deadline = System.currentTimeMillis() + (READY_TIMEOUT_S * 1000L)
         while (System.currentTimeMillis() < deadline) {
             try {
                 val p = ProcessBuilder("docker", "exec", name, "pg_isready", "-U", PG_USER)
@@ -117,7 +122,7 @@ class PostgresContainer : AutoCloseable {
                 return
             }
         }
-        throw RuntimeException("postgres container '$name' did not become ready within 30s")
+        throw RuntimeException("postgres container '$name' did not become ready within ${READY_TIMEOUT_S}s")
     }
 
     private fun canConnect(): Boolean = try {
@@ -132,6 +137,10 @@ class PostgresContainer : AutoCloseable {
         private const val IMAGE = "postgres:16-alpine"
         private const val PG_USER = "postgres"
         private const val PG_PASSWORD = "test"
+
+        /** Container readiness bound, seconds. Overridable so a loaded CI box can widen it. */
+        private val READY_TIMEOUT_S: Int =
+            (System.getenv("MO_PG_READY_TIMEOUT_S") ?: "120").toInt()
 
         private fun pickFreePort(): Int = ServerSocket(0).use { it.localPort }
 

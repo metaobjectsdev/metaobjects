@@ -133,14 +133,22 @@ function runDocker(args: string[]): string {
 // Postgres' first-boot entrypoint starts the server twice (initial init, then
 // the real boot). `pg_isready` can return success during the first window, so
 // we additionally verify a real client connection from the host succeeds.
+// READINESS WINDOW. 30s was too tight: under a FULL local-CI run several ports spin
+// their own Postgres concurrently, and a container that is merely slow to boot
+// produces a red gate indistinguishable from a real failure -- it fires BEFORE any
+// test logic. Raising the bound costs nothing when the container is ready quickly
+// (this polls every 250ms and returns immediately) and only changes how long the
+// pathological case takes to give up.
+const PG_READY_TIMEOUT_S = Number(process.env["MO_PG_READY_TIMEOUT_S"] ?? "120");
+
 async function waitForPgReady(name: string, uri: string): Promise<void> {
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + PG_READY_TIMEOUT_S * 1000;
   while (Date.now() < deadline) {
     const r = spawnSync("docker", ["exec", name, "pg_isready", "-U", "postgres"], { encoding: "utf8" });
     if (r.status === 0 && (await canConnect(uri))) return;
     await new Promise((res) => setTimeout(res, 250));
   }
-  throw new Error(`postgres container '${name}' did not become ready within 30s`);
+  throw new Error(`postgres container '${name}' did not become ready within ${PG_READY_TIMEOUT_S}s`);
 }
 
 async function canConnect(uri: string): Promise<boolean> {

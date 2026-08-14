@@ -148,8 +148,17 @@ public final class PostgresContainer implements AutoCloseable {
      * the first window, so we also verify a real JDBC client connection from
      * the host succeeds before returning. Mirrors the TS port's two-phase wait.
      */
+    // READINESS WINDOW. 30s was too tight: under a FULL local-CI run several ports spin
+    // their own Postgres concurrently, and a container that is merely slow to boot
+    // produces a red gate indistinguishable from a real failure -- it fires BEFORE any
+    // test logic. Raising the bound costs nothing when the container is ready quickly
+    // (this polls every 250ms and returns immediately) and only changes how long the
+    // pathological case takes to give up.
+    private static final int READY_TIMEOUT_S =
+        Integer.parseInt(System.getenv().getOrDefault("MO_PG_READY_TIMEOUT_S", "120"));
+
     private void waitForReady() {
-        long deadline = System.currentTimeMillis() + 30_000;
+        long deadline = System.currentTimeMillis() + (READY_TIMEOUT_S * 1000L);
         while (System.currentTimeMillis() < deadline) {
             try {
                 Process p = new ProcessBuilder("docker", "exec", name, "pg_isready", "-U", PG_USER)
@@ -160,7 +169,7 @@ public final class PostgresContainer implements AutoCloseable {
                 Thread.currentThread().interrupt(); return;
             }
         }
-        throw new RuntimeException("postgres container '" + name + "' did not become ready within 30s");
+        throw new RuntimeException("postgres container '" + name + "' did not become ready within " + READY_TIMEOUT_S + "s");
     }
 
     private boolean canConnect() {
