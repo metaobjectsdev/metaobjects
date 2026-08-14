@@ -72,6 +72,16 @@ public abstract class MetaRequirement extends MetaData {
     /** Lifecycle state — a closed enum ({@link #STATUSES}). */
     public static final String ATTR_STATUS = "status";
 
+    /** What was DECIDED about the outstanding work -- a different question from
+     *  whether the work is done, which is what {@code @status} answers. ABSENT means
+     *  UNDECIDED, a real state and the one a review exists to find. */
+    public static final String ATTR_DISPOSITION = "disposition";
+
+    /** Issue/ticket references for outstanding work. Free-form and NEVER resolved:
+     *  verify has no network, so unlike {@code @verifiedBy} nothing here is checked
+     *  to exist. Its job is to stop a deferred gap becoming invisible. */
+    public static final String ATTR_TRACKED_BY = "trackedBy";
+
     /** What the capability / policy is, in one sentence. */
     public static final String ATTR_STATEMENT = "statement";
 
@@ -92,6 +102,11 @@ public abstract class MetaRequirement extends MetaData {
     // ------------------------------------------------------------------
 
     /** Implemented and in use. */
+    /** Intended but not built. Its references may legitimately dangle, and it never
+     *  contributes to object coverage -- planning a capability must not silence the
+     *  warning that nothing implements it. */
+    public static final String STATUS_PLANNED = "planned";
+
     public static final String STATUS_LIVE = "live";
 
     /** Implemented with known gaps. */
@@ -105,7 +120,7 @@ public abstract class MetaRequirement extends MetaData {
 
     /** The closed status set, in declaration order (load-bearing — the manifest emits it). */
     public static final List<String> STATUSES = Collections.unmodifiableList(
-            Arrays.asList(STATUS_LIVE, STATUS_PARTIAL, STATUS_ABANDONED, STATUS_SUPERSEDED));
+            Arrays.asList(STATUS_PLANNED, STATUS_LIVE, STATUS_PARTIAL, STATUS_ABANDONED, STATUS_SUPERSEDED));
 
     /**
      * Statuses whose implementing nodes are supposed to STILL EXIST. A dangling
@@ -115,6 +130,22 @@ public abstract class MetaRequirement extends MetaData {
      */
     public static final List<String> STATUSES_REQUIRING_LIVE_NODES =
             Collections.unmodifiableList(Arrays.asList(STATUS_LIVE, STATUS_PARTIAL));
+
+    /** Statuses with outstanding work, so a {@code @disposition} is meaningful on
+     *  them. On any other status the decision IS the status, and recording a second
+     *  one can only agree with it or contradict it. */
+    public static final List<String> STATUSES_WITH_OUTSTANDING_WORK =
+            Collections.unmodifiableList(Arrays.asList(STATUS_PLANNED, STATUS_PARTIAL));
+
+    /** Disposition -- what was DECIDED about the outstanding work. Orthogonal to
+     *  status, which says whether the work is done. Declaration order is contractual
+     *  (the manifest emits allowedValues in this order, never sorted). */
+    public static final String DISPOSITION_ACCEPTED = "accepted";
+
+    public static final String DISPOSITION_DEFERRED = "deferred";
+
+    public static final List<String> DISPOSITIONS =
+            Collections.unmodifiableList(Arrays.asList(DISPOSITION_ACCEPTED, DISPOSITION_DEFERRED));
 
     // ------------------------------------------------------------------
     // Levels — organisational above the link floor, model-referencing at or below.
@@ -225,6 +256,26 @@ public abstract class MetaRequirement extends MetaData {
     /** Names of the tests proving the behaviour; empty when absent. */
     public List<String> getVerifiedBy() {
         return stringList(ATTR_VERIFIED_BY);
+    }
+
+    /** What was DECIDED about the outstanding work; {@code null} means UNDECIDED. */
+    public String getDisposition() {
+        return hasMetaAttr(ATTR_DISPOSITION) ? getMetaAttr(ATTR_DISPOSITION).getValueAsString() : null;
+    }
+
+    /** Issue/ticket references for outstanding work. Never resolved. */
+    public List<String> getTrackedBy() {
+        return stringList(ATTR_TRACKED_BY);
+    }
+
+    /** Intended but not built -- exempt from the checks that assume a built thing. */
+    public boolean isPlanned() {
+        return STATUS_PLANNED.equals(getStatus());
+    }
+
+    /** True when there is outstanding work, so a {@code @disposition} says something. */
+    public boolean hasOutstandingWork() {
+        return STATUSES_WITH_OUTSTANDING_WORK.contains(getStatus());
     }
 
     /** The requirement that replaced this one, or {@code null} when absent. */

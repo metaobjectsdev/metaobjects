@@ -53,15 +53,42 @@ public static class RequirementSchema
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false);
 
-    /// <summary>@level — functional-only: levels come from object-in-focus decomposition,
-    /// and an architectural requirement is object-independent by definition.</summary>
+    /// <summary>@disposition — what was DECIDED about the outstanding work, which is a
+    /// different question from whether the work is done (that is @status). ABSENT means
+    /// UNDECIDED, a real state and the one a review exists to find.</summary>
+    private static readonly AttrSchema DispositionAttr = new AttrSchema(
+        Name: RequirementConstants.REQUIREMENT_ATTR_DISPOSITION,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+        Required: false,
+        AllowedValues: [.. RequirementConstants.REQUIREMENT_DISPOSITIONS]);
+
+    /// <summary>@trackedBy — issue/ticket references for outstanding work. Free-form and
+    /// never resolved: verify has no network, so unlike @verifiedBy nothing here is
+    /// checked to exist.</summary>
+    private static readonly AttrSchema TrackedByAttr = new AttrSchema(
+        Name: RequirementConstants.REQUIREMENT_ATTR_TRACKED_BY,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+        Required: false,
+        IsArray: true);
+
+    /// <summary>@level on functional — REQUIRED. Levels are the object-in-focus
+    /// decomposition and a functional requirement always sits at one.</summary>
     private static readonly AttrSchema LevelAttr = new AttrSchema(
         Name: RequirementConstants.REQUIREMENT_ATTR_LEVEL,
         ValueType: AttrConstants.ATTR_SUBTYPE_INT,
         Required: true);
 
-    /// <summary>@verifiedBy — functional-only: an architectural requirement's proof is the
-    /// universality check over the model, not a named behaviour test.</summary>
+    /// <summary>@level on architectural — OPTIONAL. Absent means a flat, object-independent
+    /// policy (the original and still the default form); present opts the node into a
+    /// levelled tree, e.g. a quality taxonomy over the non-functional set. Levelling is
+    /// opt-in precisely so adding a taxonomy cannot invalidate existing flat policies.</summary>
+    private static readonly AttrSchema OptionalLevelAttr = new AttrSchema(
+        Name: RequirementConstants.REQUIREMENT_ATTR_LEVEL,
+        ValueType: AttrConstants.ATTR_SUBTYPE_INT,
+        Required: false);
+
+    /// <summary>@verifiedBy — names of the tests proving the behaviour or the policy. Legal
+    /// on both subtypes; verify checks each exists and is not skipped, never runs them.</summary>
     private static readonly AttrSchema VerifiedByAttr = new AttrSchema(
         Name: RequirementConstants.REQUIREMENT_ATTR_VERIFIED_BY,
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
@@ -72,6 +99,8 @@ public static class RequirementSchema
     [
         LevelAttr,
         StatusAttr,
+        DispositionAttr,
+        TrackedByAttr,
         StatementAttr,
         ViolationAttr,
         ImplementedByAttr,
@@ -81,16 +110,20 @@ public static class RequirementSchema
 
     private static readonly IReadOnlyList<AttrSchema> ArchitecturalAttrs =
     [
+        OptionalLevelAttr,
         StatusAttr,
+        DispositionAttr,
+        TrackedByAttr,
         StatementAttr,
         ViolationAttr,
         ImplementedByAttr,
+        VerifiedByAttr,
         SupersededByAttr,
     ];
 
     /// <summary>
-    /// Attrs per requirement subtype. functional adds @level + @verifiedBy; architectural
-    /// carries neither.
+    /// Attrs per requirement subtype. The sets are identical apart from @level, which is
+    /// REQUIRED on functional and OPTIONAL on architectural.
     /// </summary>
     public static readonly IReadOnlyDictionary<string, IReadOnlyList<AttrSchema>> RequirementAttrsMap =
         new Dictionary<string, IReadOnlyList<AttrSchema>>

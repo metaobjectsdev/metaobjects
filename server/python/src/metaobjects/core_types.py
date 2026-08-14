@@ -64,13 +64,16 @@ from .meta.core.object.object_constants import (
 from .meta.core.relationship.meta_relationship import MetaRelationship
 from .meta.core.requirement.meta_requirement import MetaRequirement
 from .meta.core.requirement.requirement_constants import (
+    REQUIREMENT_ATTR_DISPOSITION,
     REQUIREMENT_ATTR_IMPLEMENTED_BY,
     REQUIREMENT_ATTR_LEVEL,
     REQUIREMENT_ATTR_STATEMENT,
     REQUIREMENT_ATTR_STATUS,
     REQUIREMENT_ATTR_SUPERSEDED_BY,
+    REQUIREMENT_ATTR_TRACKED_BY,
     REQUIREMENT_ATTR_VERIFIED_BY,
     REQUIREMENT_ATTR_VIOLATION,
+    REQUIREMENT_DISPOSITIONS,
     REQUIREMENT_STATUSES,
     REQUIREMENT_SUBTYPE_ARCHITECTURAL,
     REQUIREMENT_SUBTYPE_FUNCTIONAL,
@@ -589,10 +592,33 @@ _REQUIREMENT_COMMON_ATTRS = [
         required=True,
         allowed_values=REQUIREMENT_STATUSES,
     ),
+    # What was DECIDED about the outstanding work -- a different question from
+    # whether the work is done, which is what @status answers. ABSENT means
+    # UNDECIDED, a real state and the one a review exists to find.
+    AttrSchema(
+        name=REQUIREMENT_ATTR_DISPOSITION,
+        value_type=ATTR_SUBTYPE_STRING,
+        required=False,
+        allowed_values=REQUIREMENT_DISPOSITIONS,
+    ),
+    # Issue/ticket references for outstanding work. Free-form and never resolved:
+    # verify has no network, so unlike @verifiedBy nothing here is checked to exist.
+    AttrSchema(
+        name=REQUIREMENT_ATTR_TRACKED_BY,
+        value_type=ATTR_SUBTYPE_STRING,
+        required=False,
+        is_array=True,
+    ),
     AttrSchema(name=REQUIREMENT_ATTR_STATEMENT, value_type=ATTR_SUBTYPE_STRING, required=True),
     AttrSchema(name=REQUIREMENT_ATTR_VIOLATION, value_type=ATTR_SUBTYPE_STRING, required=True),
     AttrSchema(
         name=REQUIREMENT_ATTR_IMPLEMENTED_BY,
+        value_type=ATTR_SUBTYPE_STRING,
+        required=False,
+        is_array=True,
+    ),
+    AttrSchema(
+        name=REQUIREMENT_ATTR_VERIFIED_BY,
         value_type=ATTR_SUBTYPE_STRING,
         required=False,
         is_array=True,
@@ -605,14 +631,10 @@ core_provider.add(
         sub_type=REQUIREMENT_SUBTYPE_FUNCTIONAL,
         factory=MetaRequirement,
         attrs=[
+            # REQUIRED on functional: levels are the object-in-focus decomposition
+            # and a functional requirement always sits at one.
             AttrSchema(name=REQUIREMENT_ATTR_LEVEL, value_type=ATTR_SUBTYPE_INT, required=True),
             *_REQUIREMENT_COMMON_ATTRS,
-            AttrSchema(
-                name=REQUIREMENT_ATTR_VERIFIED_BY,
-                value_type=ATTR_SUBTYPE_STRING,
-                required=False,
-                is_array=True,
-            ),
         ],
         child_rules=[
             ChildRule(TYPE_ATTR, "*"),
@@ -626,8 +648,22 @@ core_provider.add(
         type=TYPE_REQUIREMENT,
         sub_type=REQUIREMENT_SUBTYPE_ARCHITECTURAL,
         factory=MetaRequirement,
-        attrs=list(_REQUIREMENT_COMMON_ATTRS),
-        child_rules=[ChildRule(TYPE_ATTR, "*")],
+        attrs=[
+            # OPTIONAL on architectural: absent means a flat, object-independent
+            # policy (the original and still the default form); present opts the
+            # node into a levelled tree, e.g. a quality taxonomy over the
+            # non-functional set. Opt-in precisely so that adding a taxonomy over
+            # existing flat policies cannot invalidate them.
+            AttrSchema(name=REQUIREMENT_ATTR_LEVEL, value_type=ATTR_SUBTYPE_INT, required=False),
+            *_REQUIREMENT_COMMON_ATTRS,
+        ],
+        child_rules=[
+            ChildRule(TYPE_ATTR, "*"),
+            # BOTH subtypes nest. Declaring this on `functional` only was an
+            # omission, not a design: it made an architectural node nestable under
+            # a FUNCTIONAL parent but never under another architectural one.
+            ChildRule(TYPE_REQUIREMENT, "*"),
+        ],
     )
 )
 

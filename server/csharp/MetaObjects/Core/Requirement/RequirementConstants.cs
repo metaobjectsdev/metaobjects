@@ -42,6 +42,8 @@ public static class RequirementConstants
     /// <summary>1 solution · 2 segment (app/library) · 3 service · 4 object · 5 member.</summary>
     public const string REQUIREMENT_ATTR_LEVEL = "level";
     public const string REQUIREMENT_ATTR_STATUS = "status";
+    public const string REQUIREMENT_ATTR_DISPOSITION = "disposition";
+    public const string REQUIREMENT_ATTR_TRACKED_BY = "trackedBy";
     public const string REQUIREMENT_ATTR_STATEMENT = "statement";
     public const string REQUIREMENT_ATTR_VIOLATION = "violation";
     public const string REQUIREMENT_ATTR_IMPLEMENTED_BY = "implementedBy";
@@ -51,6 +53,11 @@ public static class RequirementConstants
     // -----------------------------------------------------------------------
     // Status — a closed enum, enforced by the registry via allowedValues.
     // -----------------------------------------------------------------------
+
+    /// <summary>Intended but not built. Its references may legitimately dangle, and it
+    /// never contributes to object coverage — planning a capability must not silence the
+    /// warning that nothing implements it.</summary>
+    public const string REQUIREMENT_STATUS_PLANNED = "planned";
 
     public const string REQUIREMENT_STATUS_LIVE = "live";
     public const string REQUIREMENT_STATUS_PARTIAL = "partial";
@@ -64,6 +71,7 @@ public static class RequirementConstants
     /// </summary>
     public static readonly string[] REQUIREMENT_STATUSES =
     [
+        REQUIREMENT_STATUS_PLANNED,
         REQUIREMENT_STATUS_LIVE,
         REQUIREMENT_STATUS_PARTIAL,
         REQUIREMENT_STATUS_ABANDONED,
@@ -80,6 +88,35 @@ public static class RequirementConstants
     [
         REQUIREMENT_STATUS_LIVE,
         REQUIREMENT_STATUS_PARTIAL,
+    ];
+
+    /// <summary>
+    /// Statuses with outstanding work, so a <c>@disposition</c> is meaningful on them. On
+    /// any other status the decision IS the status, and recording a second one can only
+    /// agree with it or contradict it.
+    /// </summary>
+    public static readonly string[] REQUIREMENT_STATUSES_WITH_OUTSTANDING_WORK =
+    [
+        REQUIREMENT_STATUS_PLANNED,
+        REQUIREMENT_STATUS_PARTIAL,
+    ];
+
+    // -----------------------------------------------------------------------
+    // Disposition — what was DECIDED about the outstanding work. Orthogonal to
+    // status, which says whether the work is done. ABSENT means UNDECIDED, and
+    // that is the state a review exists to find; collapsing it into the status
+    // enum would make "there is a gap" and "we chose to live with it" one fact.
+    // -----------------------------------------------------------------------
+
+    public const string REQUIREMENT_DISPOSITION_ACCEPTED = "accepted";
+    public const string REQUIREMENT_DISPOSITION_DEFERRED = "deferred";
+
+    /// <summary>The closed disposition set, in DECLARATION order (see REQUIREMENT_STATUSES
+    /// for why order is contractual).</summary>
+    public static readonly string[] REQUIREMENT_DISPOSITIONS =
+    [
+        REQUIREMENT_DISPOSITION_ACCEPTED,
+        REQUIREMENT_DISPOSITION_DEFERRED,
     ];
 
     // -----------------------------------------------------------------------

@@ -62,7 +62,14 @@ public class FunctionalRequirement extends MetaRequirement {
             // hand-written string comparison in one CLI.
             def.requiredAttributeWithConstraints(ATTR_STATUS)
                .ofType(StringAttribute.SUBTYPE_STRING)
-               .withEnum(STATUS_LIVE, STATUS_PARTIAL, STATUS_ABANDONED, STATUS_SUPERSEDED);
+               .withEnum(STATUS_PLANNED, STATUS_LIVE, STATUS_PARTIAL, STATUS_ABANDONED, STATUS_SUPERSEDED);
+
+            def.optionalAttributeWithConstraints(ATTR_DISPOSITION)
+               .ofType(StringAttribute.SUBTYPE_STRING)
+               .withEnum(DISPOSITION_ACCEPTED, DISPOSITION_DEFERRED);
+
+            def.optionalAttributeWithConstraints(ATTR_TRACKED_BY)
+               .ofType(StringAttribute.SUBTYPE_STRING).asArray();
 
             def.requiredAttributeWithConstraints(ATTR_STATEMENT)
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();

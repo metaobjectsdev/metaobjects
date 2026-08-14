@@ -7,6 +7,43 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — the 0.23.0 requirement vocabulary reaches C#, Java, Kotlin and Python
+
+**`main` was RED on four of five ports**, and had been since the commit that introduced
+`@disposition` / `@trackedBy` / `status: planned`. That change landed the vocabulary in
+TypeScript and in the byte-gated `fixtures/registry-conformance/expected-registry.json`
+without porting the registration, so every other port's `RegistryManifestConformanceTest`
+failed on the same diff (`disposition` vs `implementedBy`) and the
+`requirement-disposition-and-planned` conformance fixture failed with `ERR_UNKNOWN_ATTR` /
+`ERR_BAD_ATTR_VALUE`. Kotlin's `codegen-kotlin` failure was the same root cause reaching it
+through the shared JVM registry.
+
+Each port now registers, on **both** subtypes:
+
+- `@disposition` — optional, closed enum `accepted | deferred`
+- `@trackedBy` — optional string array, free-form and never resolved
+- `status: planned` — **first** in the value set (declaration order is contractual; the
+  manifest emits `allowedValues` unsorted)
+- `@verifiedBy` on `architectural`, which previously had it on `functional` only
+- `@level` — **required** on `functional`, **optional** on `architectural`, where absent
+  means a flat object-independent policy and present opts the node into a levelled tree
+- the `requirement.*` **child rule on `architectural`**, which had it on `functional` only —
+  an omission that made an architectural node nestable under a *functional* parent but never
+  under another architectural one, so a quality taxonomy could not be expressed at all
+
+The Java node class also gains the `getDisposition()` / `getTrackedBy()` / `isPlanned()` /
+`hasOutstandingWork()` accessors and the `STATUSES_WITH_OUTSTANDING_WORK` and `DISPOSITIONS`
+constants its TypeScript counterpart already had.
+
+**The gate did its job; nobody ran it.** These lanes do not run on PRs (hosted CI runs the
+non-TS ports on release tags and manual dispatch only), and the push-to-`main` local-ci run
+is affected-ports-only. Worth noting for anyone reading a green shell: `scripts/ci-local.sh`
+piped through `tail` reports the exit status of `tail`, so three lanes returned 0 while their
+own summaries said `LOCAL CI FAILED`.
+
+Verified per port after the fix: C# 872 conformance + 681 render/codegen/cli, Java + Kotlin
+conformance lane green, Python 390 conformance + 1571 unit.
+
 ### Changed — `description` and `notes` are split by CONTENT KIND, not by audience (all five ports)
 
 **Documentation-only: four registered attribute descriptions. No behaviour changes, no new

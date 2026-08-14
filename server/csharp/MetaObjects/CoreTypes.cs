@@ -593,11 +593,14 @@ public static class CoreTypes
         foreach (string subType in REQUIREMENT_SUBTYPES)
         {
             // Hierarchy IS nesting, not a parent attribute: an L1 solution CONTAINS its
-            // L2 segments. Only `functional` nests — an architectural requirement is
-            // object-independent and carries no level, so it has no tier to contain.
-            List<ChildRule> requirementRules = subType == REQUIREMENT_SUBTYPE_FUNCTIONAL
-                ? [Wildcard(TYPE_ATTR), Wildcard(TYPE_REQUIREMENT)]
-                : [Wildcard(TYPE_ATTR)];
+            // L2 segments. BOTH subtypes nest — an architectural requirement is flat by
+            // DEFAULT rather than by rule, and may opt into a levelled tree so a quality
+            // taxonomy can organise the non-functional set the same way a capability
+            // taxonomy organises the functional one. Declaring the child rule on
+            // `functional` only was an omission, not a design: it made an architectural
+            // node nestable under a FUNCTIONAL parent but never under another
+            // architectural one.
+            List<ChildRule> requirementRules = [Wildcard(TYPE_ATTR), Wildcard(TYPE_REQUIREMENT)];
 
             registry.Register(
                 Def(
