@@ -48,21 +48,45 @@ export async function startPostgres(image = "postgres:16-alpine"): Promise<Runni
   const sharedUrl = process.env[SHARED_PG_URL_ENV];
   if (sharedUrl) return startOnSharedPostgres(sharedUrl);
 
+  // PORT RACE. pickFreePort() closes its probe socket and hands the number to docker,
+  // which binds it LATER -- a check-then-act gap. Alone it never bites; under a full CI
+  // run several ports start containers at once and two can be handed the same number.
+  // The loser's container is created and then dies, and a readiness probe that only
+  // asks `docker exec` cannot tell that from a slow boot. Retry on a FRESH port.
+  //
+  // Deliberately NOT `--rm`: an auto-removed container takes its logs with it, so the
+  // one artefact explaining the failure vanishes exactly when it is needed. stop()
+  // force-removes, so nothing leaks.
   const name = `metaobjects-test-${randomUUID().slice(0, 8)}`;
-  const port = await pickFreePort();
-  runDocker([
-    "run", "-d", "--rm",
-    "--name", name,
-    "-e", "POSTGRES_PASSWORD=test",
-    "-p", `${port}:5432`,
-    image,
-  ]);
-  const connectionUri = `postgres://postgres:test@localhost:${port}/postgres`;
-  await waitForPgReady(name, connectionUri);
-  return {
-    connectionUri,
-    stop: async () => { runDocker(["rm", "-f", name]); },
-  };
+  const forceRemove = (): void => { try { runDocker(["rm", "-f", name]); } catch { /* already gone */ } };
+  let lastFailure: unknown;
+  for (let attempt = 1; attempt <= PG_START_ATTEMPTS; attempt++) {
+    const port = await pickFreePort();
+    try {
+      runDocker([
+        "run", "-d",
+        "--name", name,
+        "-e", "POSTGRES_PASSWORD=test",
+        "-p", `${port}:5432`,
+        image,
+      ]);
+    } catch (e) {
+      lastFailure = e;   // docker refused the bind outright — the cleanest form of the race
+      forceRemove();
+      continue;
+    }
+    const connectionUri = `postgres://postgres:test@localhost:${port}/postgres`;
+    try {
+      await waitForPgReady(name, connectionUri);
+      return { connectionUri, stop: async () => { forceRemove(); } };
+    } catch (e) {
+      lastFailure = e;
+      forceRemove();
+    }
+  }
+  throw new Error(
+    `postgres container '${name}' failed to start in ${PG_START_ATTEMPTS} attempts: ${String(lastFailure)}`,
+  );
 }
 
 // Shared-sidecar mode: create a fresh, uniquely-named database on the already
@@ -140,15 +164,43 @@ function runDocker(args: string[]): string {
 // (this polls every 250ms and returns immediately) and only changes how long the
 // pathological case takes to give up.
 const PG_READY_TIMEOUT_S = Number(process.env["MO_PG_READY_TIMEOUT_S"] ?? "120");
+/** Fresh-port retries before giving up — see the port-race note in startPostgres(). */
+const PG_START_ATTEMPTS = 3;
 
 async function waitForPgReady(name: string, uri: string): Promise<void> {
   const deadline = Date.now() + PG_READY_TIMEOUT_S * 1000;
   while (Date.now() < deadline) {
+    // FAIL FAST ON A DEAD CONTAINER. `docker exec` alone cannot tell "still booting"
+    // from "exited seconds ago" — both just fail — so a container that died on startup
+    // used to burn the whole window and report a TIMEOUT, which reads as slowness and
+    // is not. Ask docker for its state, and surface its logs: that is the real reason.
+    const state = inspectState(name);
+    if (state !== "running") {
+      throw new Error(
+        `postgres container '${name}' is '${state}', not running — it died during startup `
+        + `rather than being slow. docker logs:\n${tailLogs(name)}`,
+      );
+    }
     const r = spawnSync("docker", ["exec", name, "pg_isready", "-U", "postgres"], { encoding: "utf8" });
     if (r.status === 0 && (await canConnect(uri))) return;
     await new Promise((res) => setTimeout(res, 250));
   }
-  throw new Error(`postgres container '${name}' did not become ready within ${PG_READY_TIMEOUT_S}s`);
+  throw new Error(
+    `postgres container '${name}' did not become ready within ${PG_READY_TIMEOUT_S}s `
+    + `(state=${inspectState(name)}). docker logs:\n${tailLogs(name)}`,
+  );
+}
+
+/** The container's docker state, or "gone" when it cannot be determined. */
+function inspectState(name: string): string {
+  const r = spawnSync("docker", ["inspect", "-f", "{{.State.Status}}", name], { encoding: "utf8" });
+  return r.status === 0 ? r.stdout.trim() : "gone";
+}
+
+/** Last few log lines, for an error that would otherwise name only a symptom. */
+function tailLogs(name: string): string {
+  const r = spawnSync("docker", ["logs", "--tail", "40", name], { encoding: "utf8" });
+  return r.status === 0 ? `${r.stdout}${r.stderr}`.trim() : "(docker logs unavailable)";
 }
 
 async function canConnect(uri: string): Promise<boolean> {

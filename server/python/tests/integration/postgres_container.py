@@ -42,6 +42,9 @@ class PostgresContainer:
     """Context manager around ``docker run`` for a per-scenario Postgres."""
 
     IMAGE = "postgres:16-alpine"
+
+    #: Fresh-port retries before giving up -- see the port-race note in __init__.
+    START_ATTEMPTS = 3
     USER = "postgres"
     PASSWORD = "test"
     DATABASE = "postgres"
@@ -57,19 +60,45 @@ class PostgresContainer:
         self._shared = False
         self._admin_url = None
         self._name = f"metaobjects-test-{uuid.uuid4().hex[:8]}"
-        self._port = _pick_free_port()
-        self._info = PostgresInfo(
-            host="localhost", port=self._port, database=self.DATABASE,
-            user=self.USER, password=self.PASSWORD,
+        # PORT RACE. _pick_free_port() closes its probe socket and hands the number to
+        # docker, which binds it LATER -- a check-then-act gap. Alone it never bites;
+        # under a full CI run several ports start containers at once and two can be
+        # handed the same number. The loser's container is created and then dies, and a
+        # readiness probe that only asks `docker exec` cannot tell that from a slow
+        # boot. Retry on a FRESH port.
+        #
+        # Deliberately NOT `--rm`: an auto-removed container takes its logs with it, so
+        # the one artefact explaining the failure vanishes exactly when it is needed.
+        # close() force-removes, so nothing leaks.
+        last_failure: Exception | None = None
+        for _attempt in range(self.START_ATTEMPTS):
+            self._port = _pick_free_port()
+            self._info = PostgresInfo(
+                host="localhost", port=self._port, database=self.DATABASE,
+                user=self.USER, password=self.PASSWORD,
+            )
+            try:
+                _docker(
+                    "run", "-d",
+                    "--name", self._name,
+                    "-e", f"POSTGRES_PASSWORD={self.PASSWORD}",
+                    "-p", f"{self._port}:5432",
+                    self.IMAGE,
+                )
+            except Exception as e:  # noqa: BLE001 — docker refused the bind; retry on a new port
+                last_failure = e
+                self._force_remove()
+                continue
+            try:
+                self._wait_ready()
+                return
+            except Exception as e:  # noqa: BLE001 — died on startup; retry on a new port
+                last_failure = e
+                self._force_remove()
+        raise RuntimeError(
+            f"postgres container '{self._name}' failed to start in "
+            f"{self.START_ATTEMPTS} attempts; last err: {last_failure}"
         )
-        _docker(
-            "run", "-d", "--rm",
-            "--name", self._name,
-            "-e", f"POSTGRES_PASSWORD={self.PASSWORD}",
-            "-p", f"{self._port}:5432",
-            self.IMAGE,
-        )
-        self._wait_ready()
 
     # -- Shared-sidecar mode -------------------------------------------------
     # CREATE a fresh, uniquely-named database on the already-running Postgres
@@ -144,12 +173,44 @@ class PostgresContainer:
     # BEFORE any test logic. Raising the bound costs nothing when the container is
     # ready quickly (the loop polls every 250ms and returns immediately) and only
     # changes how long the pathological case takes to give up.
+    def _force_remove(self) -> None:
+        """Best-effort teardown between start attempts."""
+        try:
+            _docker("rm", "-f", self._name)
+        except Exception:  # noqa: BLE001 — already gone
+            pass
+
+    def _inspect_state(self) -> str:
+        """The container's docker state, or 'gone' when it cannot be determined."""
+        r = subprocess.run(
+            ["docker", "inspect", "-f", "{{.State.Status}}", self._name],
+            capture_output=True, text=True,
+        )
+        return r.stdout.strip() if r.returncode == 0 else "gone"
+
+    def _tail_logs(self) -> str:
+        """Last few log lines, for an error that would otherwise name only a symptom."""
+        r = subprocess.run(
+            ["docker", "logs", "--tail", "40", self._name], capture_output=True, text=True,
+        )
+        return (r.stdout + r.stderr).strip() if r.returncode == 0 else "(docker logs unavailable)"
+
     def _wait_ready(self) -> None:
         import pg8000.dbapi  # local import — pg8000 lives in the `integration` extra
         timeout_s = int(os.environ.get("MO_PG_READY_TIMEOUT_S", "120"))
         deadline = time.monotonic() + timeout_s
         last_err: Exception | None = None
         while time.monotonic() < deadline:
+            # FAIL FAST ON A DEAD CONTAINER. `docker exec` alone cannot tell "still
+            # booting" from "exited seconds ago" -- both just fail -- so a container that
+            # died on startup used to burn the whole window and report a TIMEOUT, which
+            # reads as slowness and is not. Ask docker for its state and surface its logs.
+            state = self._inspect_state()
+            if state != "running":
+                raise RuntimeError(
+                    f"postgres container '{self._name}' is '{state}', not running -- it died "
+                    f"during startup rather than being slow. docker logs:\n{self._tail_logs()}"
+                )
             ready = subprocess.run(
                 ["docker", "exec", self._name, "pg_isready", "-U", self.USER],
                 capture_output=True,
@@ -166,7 +227,9 @@ class PostgresContainer:
                     last_err = e
             time.sleep(0.25)
         raise RuntimeError(
-            f"postgres container '{self._name}' did not become ready within {timeout_s}s; last err: {last_err}"
+            f"postgres container '{self._name}' did not become ready within {timeout_s}s "
+            f"(state={self._inspect_state()}); last err: {last_err}. "
+            f"docker logs:\n{self._tail_logs()}"
         )
 
 

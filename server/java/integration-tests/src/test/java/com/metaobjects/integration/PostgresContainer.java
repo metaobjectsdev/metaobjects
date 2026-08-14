@@ -79,14 +79,47 @@ public final class PostgresContainer implements AutoCloseable {
         this.username = PG_USER;
         this.password = PG_PASSWORD;
         this.name = "metaobjects-test-" + UUID.randomUUID().toString().substring(0, 8);
-        int port = pickFreePort();
-        runDocker("run", "-d", "--rm",
-            "--name", name,
-            "-e", "POSTGRES_PASSWORD=" + PG_PASSWORD,
-            "-p", port + ":5432",
-            IMAGE);
-        this.jdbcUrl = "jdbc:postgresql://localhost:" + port + "/postgres";
-        waitForReady();
+        // PORT RACE. pickFreePort() opens a socket, closes it, and hands the number to
+        // docker, which binds it LATER -- a check-then-act gap. Alone that never bites;
+        // under a full CI run five ports start containers at once and two can be handed
+        // the same number. The loser's container is created and then dies, and because
+        // the readiness probe only ever asked `docker exec`, a dead container was
+        // indistinguishable from a slow one for the whole window. Retry on a FRESH port.
+        //
+        // Deliberately NOT `--rm`: an auto-removed container takes its logs with it, so
+        // the one artefact that explains the failure disappears exactly when it is
+        // needed. close() already force-removes, so nothing leaks.
+        String startedUrl = null;
+        RuntimeException lastFailure = null;
+        for (int attempt = 1; attempt <= START_ATTEMPTS && startedUrl == null; attempt++) {
+            int port = pickFreePort();
+            try {
+                runDocker("run", "-d",
+                    "--name", name,
+                    "-e", "POSTGRES_PASSWORD=" + PG_PASSWORD,
+                    "-p", port + ":5432",
+                    IMAGE);
+            } catch (RuntimeException e) {
+                // docker refused the bind outright -- the cleanest form of the race.
+                lastFailure = e;
+                forceRemove();
+                continue;
+            }
+            String candidate = "jdbc:postgresql://localhost:" + port + "/postgres";
+            try {
+                waitForReady(candidate);
+                startedUrl = candidate;
+            } catch (RuntimeException e) {
+                lastFailure = e;
+                forceRemove();
+            }
+        }
+        if (startedUrl == null) {
+            throw new RuntimeException(
+                "postgres container '" + name + "' failed to start in " + START_ATTEMPTS + " attempts",
+                lastFailure);
+        }
+        this.jdbcUrl = startedUrl;
     }
 
     public String jdbcUrl()  { return jdbcUrl; }
@@ -154,26 +187,60 @@ public final class PostgresContainer implements AutoCloseable {
     // test logic. Raising the bound costs nothing when the container is ready quickly
     // (this polls every 250ms and returns immediately) and only changes how long the
     // pathological case takes to give up.
+    /** Fresh-port retries before giving up -- see the port-race note in the constructor. */
+    private static final int START_ATTEMPTS = 3;
+
     private static final int READY_TIMEOUT_S =
         Integer.parseInt(System.getenv().getOrDefault("MO_PG_READY_TIMEOUT_S", "120"));
 
-    private void waitForReady() {
+    private void waitForReady(String url) {
         long deadline = System.currentTimeMillis() + (READY_TIMEOUT_S * 1000L);
         while (System.currentTimeMillis() < deadline) {
+            // FAIL FAST ON A DEAD CONTAINER. Polling `docker exec` alone cannot tell
+            // "still booting" from "exited seconds ago" -- both just fail -- so a
+            // container that died on startup used to burn the whole window and then
+            // report a TIMEOUT, which reads as slowness and is not. Ask docker whether
+            // it is still running, and if not, surface its logs: that is the actual
+            // reason, and without it the error names a symptom.
+            String state = inspectState();
+            if (state == null || !"running".equals(state)) {
+                throw new RuntimeException(
+                    "postgres container '" + name + "' is '" + (state == null ? "gone" : state) + "', not"
+                    + " running -- it died during startup rather than being slow. docker logs:\n" + tailLogs());
+            }
             try {
                 Process p = new ProcessBuilder("docker", "exec", name, "pg_isready", "-U", PG_USER)
                     .redirectErrorStream(true).start();
-                if (p.waitFor() == 0 && canConnect()) return;
+                if (p.waitFor() == 0 && canConnect(url)) return;
             } catch (Exception ignored) { /* try again */ }
             try { Thread.sleep(250); } catch (InterruptedException e) {
                 Thread.currentThread().interrupt(); return;
             }
         }
-        throw new RuntimeException("postgres container '" + name + "' did not become ready within " + READY_TIMEOUT_S + "s");
+        throw new RuntimeException(
+            "postgres container '" + name + "' did not become ready within " + READY_TIMEOUT_S + "s"
+            + " (state=" + inspectState() + "). docker logs:\n" + tailLogs());
     }
 
-    private boolean canConnect() {
-        try (Connection c = DriverManager.getConnection(jdbcUrl, PG_USER, PG_PASSWORD)) {
+    /** Best-effort teardown between start attempts. */
+    private void forceRemove() {
+        try { runDocker("rm", "-f", name); } catch (RuntimeException ignored) { /* already gone */ }
+    }
+
+    /** The container's docker state, or null when it cannot be determined. */
+    private String inspectState() {
+        try { return runDocker("inspect", "-f", "{{.State.Status}}", name); }
+        catch (RuntimeException e) { return null; }
+    }
+
+    /** Last few log lines, for an error that would otherwise name only a symptom. */
+    private String tailLogs() {
+        try { return runDocker("logs", "--tail", "40", name); }
+        catch (RuntimeException e) { return "(docker logs unavailable: " + e.getMessage() + ")"; }
+    }
+
+    private boolean canConnect(String url) {
+        try (Connection c = DriverManager.getConnection(url, PG_USER, PG_PASSWORD)) {
             return c.isValid(2);
         } catch (SQLException ignored) { return false; }
     }
