@@ -25,8 +25,15 @@ import {
   type SchemaSnapshot,
 } from "@metaobjectsdev/migrate-ts";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
+import { runGen, defineConfig } from "@metaobjectsdev/codegen-ts";
+import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
 import { Kysely, PostgresDialect, sql } from "kysely";
-import { Pool } from "pg";
+import pg, { Pool } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { eq, inArray } from "drizzle-orm";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { startPostgres, type RunningPg } from "../src/postgres-container.ts";
 
 // The map is deliberately SPARSE and non-ordinal (0/5/9) so any accidental
@@ -77,19 +84,23 @@ function metaStringBacked(): string {
   }`;
 }
 
-let pg: RunningPg;
+let runningPg: RunningPg;
 let pool: Pool;
 let k: Kysely<any>;
+/** Shared with the generated-codec block below, which needs its own Drizzle pool
+ *  against the SAME database the DDL was applied to. */
+let pg2Uri: string;
 
 beforeAll(async () => {
-  pg = await startPostgres();
-  pool = new Pool({ connectionString: pg.connectionUri });
+  runningPg = await startPostgres();
+  pg2Uri = runningPg.connectionUri;
+  pool = new Pool({ connectionString: runningPg.connectionUri });
   k = new Kysely<any>({ dialect: new PostgresDialect({ pool }) });
 }, 120_000);
 
 afterAll(async () => {
   await k?.destroy();
-  await pg?.stop();
+  await runningPg?.stop();
 });
 
 beforeEach(async () => {
@@ -209,5 +220,130 @@ describe("int-backed field.enum — real Postgres", () => {
     const typeChange = result.changes.find((c) => c.kind === "change-column-type");
     expect(typeChange).toBeDefined();
     expect(typeChange!.status.state).toBe("blocked");
+  }, 120_000);
+});
+
+// ---------------------------------------------------------------------------
+// The CODEC half. Everything above exercises the SCHEMA through raw SQL, so
+// customType's toDriver/fromDriver had still never run against a database. This
+// block emits the REAL entity file via runGen, imports it unmodified, and drives
+// Drizzle through it — the only way to prove the generated codec, as opposed to
+// a hand-written mirror of what we think it generates.
+// ---------------------------------------------------------------------------
+
+describe("int-backed field.enum — generated codec against real Postgres", () => {
+  // Emit INSIDE the package tree (.gen-tmp/, gitignored): the generated module
+  // resolves bare specifiers like `drizzle-orm/pg-core` by walking up to a
+  // node_modules chain, which the OS tmpdir never reaches.
+  let tmp: string;
+  let ordersTable: any;
+  let gdb: any;
+  let gpool: pg.Pool;
+
+  beforeAll(async () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const genTmpRoot = join(here, "..", ".gen-tmp");
+    mkdirSync(genTmpRoot, { recursive: true });
+    tmp = mkdtempSync(join(genTmpRoot, "enum-intmap-"));
+
+    const root = (await new MetaDataLoader().load([new InMemoryStringSource(meta())])).root;
+    const lr = await runGen({
+      config: defineConfig({
+        outDir: tmp,
+        extStyle: "none",
+        dbImport: "./db",
+        dialect: "postgres",
+        generators: [entityFile()],
+      }),
+      metadata: root,
+    });
+    if (lr.warnings.length > 0) throw new Error(`codegen warnings: ${lr.warnings.join("; ")}`);
+
+    // The emitted entity module, imported UNMODIFIED — codec included.
+    const entityUrl = pathToFileURL(join(tmp, "Order.ts")).href;
+    const mod: any = await import(entityUrl);
+    ordersTable = mod.orders;
+    expect(ordersTable).toBeDefined();
+
+    gpool = new pg.Pool({ connectionString: pg2Uri });
+    gdb = drizzle(gpool);
+  }, 180_000);
+
+  afterAll(async () => {
+    await gpool?.end();
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  beforeEach(async () => {
+    // Schema provisioned from the SAME metadata via migrate-ts, so the physical
+    // shape the codec writes into is the one the DDL pipeline produces.
+    await migrate(meta());
+  });
+
+  test("a member symbol written through Drizzle lands as the mapped INTEGER", async () => {
+    await gdb.insert(ordersTable).values({ title: "w", status: "PUBLISHED" });
+    // Read the PHYSICAL value with raw SQL — bypassing the codec entirely, so this
+    // asserts what is actually on disk rather than what the codec round-trips.
+    const raw = await sql<{ status: number }>`SELECT "status" FROM "orders" WHERE "title" = 'w'`.execute(k);
+    expect(raw.rows[0]?.status).toBe(5);
+  }, 120_000);
+
+  test("an integer already in the column reads back as its member symbol", async () => {
+    // Insert 9 (ARCHIVED) with raw SQL so the value never passes through toDriver —
+    // proving fromDriver decodes, not merely that the two directions cancel out.
+    await sql.raw(`INSERT INTO "orders" ("title", "status") VALUES ('r', 9);`).execute(k);
+    const rows = await gdb.select().from(ordersTable);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe("ARCHIVED");
+  }, 120_000);
+
+  test("round-trips every member, including the ZERO-valued one", async () => {
+    for (const m of ["DRAFT", "PUBLISHED", "ARCHIVED"]) {
+      await gdb.insert(ordersTable).values({ title: m, status: m });
+    }
+    const rows = await gdb.select().from(ordersTable);
+    const byTitle = new Map(rows.map((r: any) => [r.title, r.status]));
+    // DRAFT maps to 0 — falsy, and therefore the value any truthiness-based codec
+    // silently drops or coerces (the #235 bug class).
+    expect(byTitle.get("DRAFT")).toBe("DRAFT");
+    expect(byTitle.get("PUBLISHED")).toBe("PUBLISHED");
+    expect(byTitle.get("ARCHIVED")).toBe("ARCHIVED");
+    const raws = await sql<{ title: string; status: number }>`SELECT "title", "status" FROM "orders"`.execute(k);
+    expect(new Map(raws.rows.map((r) => [r.title, r.status])).get("DRAFT")).toBe(0);
+  }, 120_000);
+
+  // Task 8 — the filter path. This is the claim that customType makes the
+  // filter work "for free": Drizzle binds a WHERE comparison through the column
+  // type, so a member symbol encodes without the filter layer knowing anything.
+  test("a WHERE comparison on a member symbol encodes through the column type", async () => {
+    await sql.raw(`INSERT INTO "orders" ("title", "status") VALUES ('a', 0), ('b', 9);`).execute(k);
+    const archived = await gdb.select().from(ordersTable).where(eq(ordersTable.status, "ARCHIVED"));
+    expect(archived).toHaveLength(1);
+    expect(archived[0].title).toBe("b");
+    const drafts = await gdb.select().from(ordersTable).where(eq(ordersTable.status, "DRAFT"));
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0].title).toBe("a");
+  }, 120_000);
+
+  test("an `in` comparison encodes every member in the list", async () => {
+    await sql.raw(`INSERT INTO "orders" ("title", "status") VALUES ('a', 0), ('b', 5), ('c', 9);`).execute(k);
+    const some = await gdb.select().from(ordersTable)
+      .where(inArray(ordersTable.status, ["DRAFT", "ARCHIVED"]));
+    expect(some.map((r: any) => r.title).sort()).toEqual(["a", "c"]);
+  }, 120_000);
+
+  test("an unmapped stored integer throws on read instead of yielding undefined", async () => {
+    // The CHECK normally makes this unreachable; drop it to simulate data written
+    // before a member was removed, or by a hand-written migration.
+    await sql.raw(`ALTER TABLE "orders" DROP CONSTRAINT "orders_status_chk";`).execute(k);
+    await sql.raw(`INSERT INTO "orders" ("title", "status") VALUES ('bogus', 42);`).execute(k);
+    let threw = false;
+    try {
+      await gdb.select().from(ordersTable);
+    } catch (e) {
+      threw = true;
+      expect(String(e)).toContain("unmapped");
+    }
+    expect(threw).toBe(true);
   }, 120_000);
 });
