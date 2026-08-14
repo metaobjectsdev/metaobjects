@@ -1,0 +1,151 @@
+{
+  "metadata.root": {
+    "package": "acme::caps",
+    "children": [
+      {
+        "requirement.architectural": {
+          "name": "MoneyIsExactMinorUnits",
+          "@implementedBy": [
+            "acme::shop::Invoice"
+          ],
+          "@statement": "Monetary amounts are stored as exact integer minor units, never as floating point",
+          "@status": "live",
+          "@verifiedBy": [
+            "MoneyRoundingTest"
+          ],
+          "@violation": "A cent that disappears when a total is split three ways"
+        }
+      },
+      {
+        "requirement.architectural": {
+          "name": "Security",
+          "@level": 1,
+          "@statement": "The system protects the data it holds and the actions it permits",
+          "@status": "partial",
+          "@violation": "A record readable by someone with no claim to it",
+          "children": [
+            {
+              "requirement.architectural": {
+                "name": "Confidentiality",
+                "@level": 2,
+                "@statement": "Stored data is unreadable to anyone without an authorised key or session",
+                "@status": "partial",
+                "@violation": "A database copy that reads in plain text",
+                "children": [
+                  {
+                    "requirement.architectural": {
+                      "name": "InvoiceTotalsAreEncryptedAtRest",
+                      "@disposition": "deferred",
+                      "@implementedBy": [
+                        "acme::shop::Invoice"
+                      ],
+                      "@level": 4,
+                      "@statement": "Invoice monetary columns are encrypted at rest, in the primary store and in every backup",
+                      "@status": "planned",
+                      "@trackedBy": [
+                        "acme/platform#412"
+                      ],
+                      "@violation": "A restored backup that opens in a text editor"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "requirement.functional": {
+          "name": "Billing",
+          "@level": 1,
+          "@statement": "A customer is billed for what they bought and can see why",
+          "@status": "live",
+          "@violation": "A charge nobody can explain",
+          "children": [
+            {
+              "requirement.functional": {
+                "name": "InvoiceRecord",
+                "@implementedBy": [
+                  "acme::shop::Invoice"
+                ],
+                "@level": 4,
+                "@statement": "An invoice records its own reference and total",
+                "@status": "live",
+                "@violation": "A charge with no invoice behind it",
+                "children": [
+                  {
+                    "requirement.functional": {
+                      "name": "ReferenceIsHumanReadable",
+                      "@disposition": "accepted",
+                      "@implementedBy": [
+                        "acme::shop::Invoice.reference"
+                      ],
+                      "@level": 5,
+                      "@statement": "An invoice reference can be read down a phone line without ambiguity",
+                      "@status": "partial",
+                      "@violation": "A reference where a support agent cannot tell O from 0"
+                    }
+                  },
+                  {
+                    "requirement.functional": {
+                      "name": "TotalsCarryTheirCurrency",
+                      "@implementedBy": [
+                        "acme::shop::Invoice.totalCents"
+                      ],
+                      "@level": 5,
+                      "@statement": "An invoice total declares the currency it is denominated in",
+                      "@status": "planned",
+                      "@trackedBy": [
+                        "acme/platform#older-than-time",
+                        "PLAT-77"
+                      ],
+                      "@violation": "Two totals in different currencies summed as one"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Invoice",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "invoice"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "reference",
+                "@maxLength": 40
+              }
+            },
+            {
+              "field.long": {
+                "name": "totalCents"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "invoice_pk",
+                "@fields": [
+                  "id"
+                ],
+                "@generation": "increment"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+

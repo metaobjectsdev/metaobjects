@@ -53,9 +53,16 @@ Requirements live in `metaobjects/` beside the entities they describe:
 **Hierarchy is nesting** — an L1 solution contains L2 segments contain L3 services. There is
 no `id` and no `parent`: regrouping moves a subtree.
 
-**Five levels, and links only at the bottom two.** L1 solution, L2 segment (an application or
-library), L3 service, L4 object, L5 member. `@implementedBy` is legal at **L4 and L5 only** —
-L1–L3 are organisational and never reference the model.
+**Five levels, and links only at the bottom two.** L1 solution, L2 segment, L3 service,
+L4 object, L5 member. `@implementedBy` is legal at **L4 and L5 only** — L1–L3 are
+organisational and never reference the model.
+
+**L1–L3 are levels of abstraction and ownership in the problem domain** — whose need is this,
+and at what altitude — and are **never** a directory, package, deployable or module. Binding
+to technical constructs happens only at L4 and L5, which is the allocation step. The test to
+apply to every node: *if a refactor that changes no behaviour would force this node to move,
+its level is wrong.* Splitting a service, merging two packages or renaming a module must not
+touch the tree.
 
 **Every requirement states its violation.** *"Every entity has a uuid primary key"* is
 violable — point at one with a composite key. *"Things are persisted"* is not, and is a
@@ -67,26 +74,128 @@ it.
 | | check | fails when |
 |---|---|---|
 | `requirement.functional` (levelled) | **existence** | nothing implements it |
-| `requirement.architectural` (level-less) | **universality** | something violates it |
+| `requirement.architectural` (flat by default) | **universality** | something violates it |
 
 Architectural requirements are how plumbing stays out of the ledger: one uuid-primary-key
 rule claimed by every entity, rather than thousands of per-field entries.
+
+### Levelling architectural requirements is opt-in
+
+By default an architectural requirement is **flat** — object-independent, no level, and free
+to name the model directly. That is the original form and still the right one for a single
+platform-wide policy.
+
+Add a `@level` and the node opts into a **tree**, which is what you want when organising
+non-functional requirements under a quality taxonomy. From that point it behaves exactly like
+a functional node: nesting must agree with the level, and only L4/L5 may carry
+`@implementedBy`, so a grouping tier cannot quietly start naming entities.
+
+A workable shape, using an established taxonomy as the fixed upper structure so it is
+inherited rather than re-invented per project:
+
+```
+L1  Security                              (an ISO/IEC 25010 characteristic)
+ └ L2  Confidentiality                    (its sub-characteristic — or a control
+    │                                      catalogue's own category, e.g. a HIPAA
+    │                                      safeguard class, when one applies)
+    └ L4  invoiceTotalsAreEncryptedAtRest (the claim, bound to the model)
+```
+
+Levels may be skipped, so L1 → L2 → L4 is legal. Keep the upper tiers inherited and
+project-invariant; a project fills in the bottom.
+
+Two things worth knowing before you adopt a taxonomy wholesale: in ISO/IEC 25010, availability
+sits under *Reliability* rather than *Security*, which surprises anyone trained on the CIA
+triad; and cost has no home in any ISO quality model, so constraints of that kind need a
+branch of their own.
 
 ## What `meta verify` checks
 
 Requirements are metadata, so they are checked on **every** `meta verify` — no subverb.
 
 The rule worth knowing before you read a failure: **a dangling `@implementedBy` is an error
-on `live`/`partial` and allowed on `abandoned`/`superseded`.** Those nodes are *supposed* to
-be gone — that is the entry doing its job. Do not "fix" it by deleting the entry; that
-destroys the record the mechanism exists to preserve.
+on `live`/`partial` and allowed on `planned`/`abandoned`/`superseded`.** On `planned` the
+nodes do not exist *yet*; on the other two they are *supposed* to be gone — that is the entry
+doing its job. Do not "fix" the latter by deleting the entry; that destroys the record the
+mechanism exists to preserve.
 
-`@status` is a closed enum (`live | partial | abandoned | superseded`) enforced by the
-**loader**, so a typo fails the load in every language rather than silently disabling the
+`@status` is a closed enum (`planned | live | partial | abandoned | superseded`) enforced by
+the **loader**, so a typo fails the load in every language rather than silently disabling the
 entry.
 
 `@verifiedBy` names tests: `verify` checks each exists and is not skipped. It never runs
-them.
+them. `@trackedBy` names issues or tickets and is **not** resolved — `verify` has no network.
+
+**Every run prints a summary**, clean or not:
+
+```
+meta verify — requirements: 235 entries (226 functional, 9 architectural) —
+  173 live, 62 partial; 55/55 entities claimed.
+meta verify — requirements: 62 recorded gap(s) with no @disposition.
+```
+
+A gate that says nothing when it passes cannot be told apart from a gate that checked
+nothing — and a ledger that skipped an entire grain reads exactly like a complete one.
+
+## Recording gaps: `partial` is a feature, not a failure
+
+`partial` is the most valuable status in the enum, because it is the only one that says
+*"this works, and here is what is wrong with it."* A ledger with no `partial` entries is
+usually a ledger nobody has read carefully.
+
+But `partial` alone answers only half the question. It says **there is a gap**; it does not
+say **what we decided about it.** That second answer is `@disposition`:
+
+| `@disposition` | means |
+|---|---|
+| *(absent)* | **undecided** — nobody has ruled on this gap yet |
+| `accepted` | the gap is understood and deliberately **not** being closed |
+| `deferred` | it **will** be closed, but not now |
+
+These are deliberately kept apart from `@status`. Collapsing them would make "there is a gap"
+and "we chose to live with it" the same fact, and you would lose the ability to ask the most
+useful question a review can ask: *which gaps has nobody ruled on?* That is what the summary
+line counts.
+
+**`@disposition` is meaningful on `planned` and `partial` only.** On any other status the
+decision *is* the status, and a second one could only agree or contradict — so `verify` warns.
+
+**Deferring without a ticket is how a known problem becomes an unknown one.** `verify` warns
+on `deferred` with no `@trackedBy`; `accepted` needs no ticket, because the decision is that
+there will be no work.
+
+```jsonc
+{ "requirement.architectural": {
+    "name": "monetaryFieldsDeclareTheirCurrency",
+    "@status": "partial",
+    "@disposition": "deferred",
+    "@trackedBy": ["acme/platform#412", "PLAT-77"],
+    "@statement": "A field holding money declares that it holds money, and in which currency.",
+    "@violation": "A long summed with another long of a different currency, and nobody notices.",
+    "@implementedBy": ["acme::billing::Invoice"]
+}}
+```
+
+**What to do with a `partial` nobody intends to finish:** it is probably `abandoned`, not
+`partial`. `abandoned` means built then deliberately retired, and it is the one status where
+a dangling reference is *correct*. A feature that was declared, never wired and will never be
+wired is more honestly recorded as abandoned than as a gap that is perpetually about to close.
+
+## Locking in work you have not started
+
+`planned` records an intention: a roadmap item, or a placeholder you want fixed in the model
+before anyone builds it. Two rules make it safe.
+
+**Its references may dangle.** You can name nodes that do not exist yet, which is the point —
+you can write the requirement before the entity.
+
+**It never counts toward object coverage.** If planning silenced the unclaimed-entity
+warning, the cheapest way to clear coverage would be to declare an intention, and the gate
+would be measuring ambition rather than work. A planned architectural requirement is likewise
+exempt from the universality check — a policy that is not built yet is *supposed* to apply to
+nothing.
+
+Pair it with `@trackedBy` to link the ticket it will be built under.
 
 ### What a green run does not prove
 

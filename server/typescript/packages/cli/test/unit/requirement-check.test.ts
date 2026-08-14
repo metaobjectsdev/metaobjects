@@ -416,20 +416,149 @@ describe("requirement.architectural — universality", () => {
     expect(r.diags).toEqual([]);
   });
 
-  test("THE LOADER rejects a level on an architectural requirement", async () => {
-    // Architectural requirements are object-INDEPENDENT, so they have no place on
-    // a decomposition ladder. The registry enforces it: `level` is not among the
-    // subtype's declared children, so a strict load refuses it.
+  test("an architectural requirement MAY be levelled, and then obeys the link floor", async () => {
+    // Levelling is OPT-IN. Unlevelled, an architectural requirement is a flat
+    // object-independent policy that may name the model directly — the original
+    // form, and still the default. Adding a level opts the node into a tree
+    // (e.g. a quality taxonomy over non-functional claims), and from that point
+    // the same floor applies as to a functional node: an organisational tier
+    // cannot quietly start naming entities.
     const r = await run(caps(COVER) + `
     - requirement.architectural:
-        name: Levelled
-        level: 3
+        name: Security
+        level: 1
         status: live
-        statement: "Levelled architectural requirement"
-        violation: "An object-independent rule pretending to sit in the tree"
+        statement: "The system protects the data it holds"
+        violation: "A record readable by someone with no claim to it"
         implementedBy: ["acme::shop::Order"]
 `, OTHER);
-    expect(r.loadError ?? "").toMatch(/level/i);
+    expect(r.diags.map((d) => d.code)).toContain("ERR_REQUIREMENT_LINK_ABOVE_FLOOR");
+  });
+
+  test("a levelled architectural tree nests, which a flat one could never do", async () => {
+    // The whole point of the change: before it, `architectural` declared no
+    // requirement.* child rule while `functional` did, so an architectural node
+    // could nest under a FUNCTIONAL parent but never under another architectural
+    // one. That asymmetry was an omission, not a design.
+    const r = await run(caps(COVER) + `
+    - requirement.architectural:
+        name: Security
+        level: 1
+        status: live
+        statement: "The system protects the data it holds"
+        violation: "A record readable by someone with no claim to it"
+        children:
+          - requirement.architectural:
+              name: Confidentiality
+              level: 2
+              status: live
+              statement: "Stored data is unreadable without an authorised key"
+              violation: "A database copy that reads in plain text"
+              children:
+                - requirement.architectural:
+                    name: OrdersAreEncryptedAtRest
+                    level: 4
+                    status: live
+                    statement: "Order rows are encrypted at rest"
+                    violation: "A restored backup that opens in a text editor"
+                    implementedBy: ["acme::shop::Order"]
+`, OTHER);
+    expect(r.loadError).toBeUndefined();
+    expect(r.diags).toEqual([]);
+  });
+});
+
+describe("requirement.* — planned, disposition and tracking", () => {
+  test("a planned requirement may name nodes that do not exist yet", async () => {
+    // The point of `planned`: you can lock in an intention before the model has
+    // anywhere to hang it. On live/partial the same dangling ref is an error.
+    const r = await run(caps(COVER) + `
+    - requirement.functional:
+        name: FutureThing
+        level: 4
+        status: planned
+        statement: "Orders will carry a settlement reference"
+        violation: "A settled order with nothing to reconcile against"
+        implementedBy: ["acme::shop::DoesNotExistYet"]
+`, OTHER);
+    expect(r.diags.map((d) => d.code)).not.toContain("ERR_REQUIREMENT_DANGLING_REF");
+  });
+
+  test("a planned requirement does NOT count toward object coverage", async () => {
+    // The load-bearing rule. If planning counted, the cheapest way to clear an
+    // unclaimed-entity warning would be to declare an intention — and the gate
+    // would be measuring ambition rather than work.
+    // COVER claims Order and Customer but NOT acme::billing::Order, so the only
+    // thing standing between billing::Order and an unclaimed warning is the
+    // planned entry below. It must not be enough.
+    const COVER_MINUS_BILLING =
+      COVER.split("          - requirement.functional:\n              name: BillingOrders")[0] ?? COVER;
+    const r = await run(caps(COVER_MINUS_BILLING) + `
+    - requirement.functional:
+        name: OnlyPlanned
+        level: 4
+        status: planned
+        statement: "Billing orders will be recorded"
+        violation: "An invoice with no order behind it"
+        implementedBy: ["acme::billing::Order"]
+`, OTHER);
+    expect(r.loadError).toBeUndefined();
+    expect(r.diags.map((d) => d.code)).toContain("WARN_REQUIREMENT_OBJECT_UNCLAIMED");
+  });
+
+  test("a planned architectural requirement is exempt from the universality check", async () => {
+    const r = await run(caps(COVER) + `
+    - requirement.architectural:
+        name: NotBuiltYet
+        status: planned
+        statement: "Every table will carry a tenant column"
+        violation: "A row reachable from the wrong tenant"
+`, OTHER);
+    expect(r.diags.map((d) => d.code)).not.toContain("ERR_REQUIREMENT_ARCH_NO_IMPLEMENTERS");
+  });
+
+  test("a disposition on a status with no outstanding work warns", async () => {
+    const r = await run(caps(COVER) + `
+    - requirement.architectural:
+        name: AlreadyDone
+        status: live
+        disposition: accepted
+        statement: "Money is stored as integer minor units"
+        violation: "A rounding error in a split total"
+        implementedBy: ["acme::shop::Order"]
+`, OTHER);
+    expect(r.diags.map((d) => d.code)).toContain("WARN_REQUIREMENT_DISPOSITION_NOT_APPLICABLE");
+  });
+
+  test("deferring without a ticket warns; deferring with one does not", async () => {
+    const body = (tracked: string) => caps(COVER) + `
+    - requirement.architectural:
+        name: LaterProblem
+        status: partial
+        disposition: deferred
+        ${tracked}
+        statement: "Every money field declares its currency"
+        violation: "Two amounts in different currencies summed as one"
+        implementedBy: ["acme::shop::Order"]
+`;
+    const untracked = await run(body(""), OTHER);
+    expect(untracked.diags.map((d) => d.code)).toContain("WARN_REQUIREMENT_DEFERRED_UNTRACKED");
+
+    const tracked = await run(body(`trackedBy: ["acme/platform#412"]`), OTHER);
+    expect(tracked.diags.map((d) => d.code)).not.toContain("WARN_REQUIREMENT_DEFERRED_UNTRACKED");
+  });
+
+  test("accepted needs no ticket — the decision is that there will be no work", async () => {
+    const r = await run(caps(COVER) + `
+    - requirement.architectural:
+        name: KnownAndTolerated
+        status: partial
+        disposition: accepted
+        statement: "Every money field declares its currency"
+        violation: "Two amounts in different currencies summed as one"
+        implementedBy: ["acme::shop::Order"]
+`, OTHER);
+    expect(r.diags).toEqual([]);
   });
 });
 

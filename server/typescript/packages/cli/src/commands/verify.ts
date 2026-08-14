@@ -16,7 +16,7 @@ import { FileProvider } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
 import { computeCodegenDrift } from "../lib/codegen-drift.js";
-import { checkRequirements } from "../lib/requirement-check.js";
+import { checkRequirements, summariseRequirements } from "../lib/requirement-check.js";
 import { checkVerifiedBy } from "../lib/verified-by-scan.js";
 import { resolveD1Config } from "../lib/config.js";
 import {
@@ -178,6 +178,29 @@ export async function verifyCommand(
     // `@verifiedBy` resolution needs the project on disk, so it is a separate
     // scan; its diagnostics carry the same severities and share this reporter.
     const diags = [...checkRequirements(root), ...checkVerifiedBy(root, cwd)];
+
+    // Printed on EVERY run, clean or not — a gate that says nothing when it
+    // passes cannot be told apart from a gate that checked nothing, and the
+    // recorded-gap counts are the whole reason to keep a ledger.
+    const s = summariseRequirements(root);
+    if (s !== undefined) {
+      const order = ["planned", "live", "partial", "abandoned", "superseded"];
+      const parts = order
+        .filter((k) => (s.byStatus[k] ?? 0) > 0)
+        .map((k) => `${s.byStatus[k]} ${k}`);
+      log.info(
+        `meta verify — requirements: ${s.total} entries (${s.functional} functional, ` +
+        `${s.architectural} architectural) — ${parts.join(", ")}; ` +
+        `${s.entitiesClaimed}/${s.entitiesTotal} entities claimed.`,
+      );
+      if (s.undecided > 0) {
+        log.info(
+          `meta verify — requirements: ${s.undecided} recorded gap(s) with no @disposition. ` +
+          `These are known problems nobody has ruled on — set 'accepted' or 'deferred' to close the question.`,
+        );
+      }
+    }
+
     if (diags.length === 0) return 0;
     const errors = diags.filter((d) => d.severity === "error");
     const warns = diags.filter((d) => d.severity === "warn");

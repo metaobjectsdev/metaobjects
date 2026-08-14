@@ -1,0 +1,19 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Invoice",
+          "children": [
+            { "source.rdb": { "@table": "invoice" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "reference", "@maxLength": 40 } },
+            { "field.long": { "name": "totalCents" } },
+            { "identity.primary": { "name": "invoice_pk", "@fields": ["id"], "@generation": "increment" } }
+          ]
+        }
+      }
+    ]
+  }
+}

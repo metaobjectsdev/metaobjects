@@ -31,6 +31,7 @@ import {
   REQUIREMENT_MIN_LEVEL,
   REQUIREMENT_MAX_LEVEL,
   REQUIREMENT_LEVEL_MEMBER,
+  REQUIREMENT_DISPOSITION_DEFERRED,
   REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES,
   resolveObjectRef,
   didYouMeanHint,
@@ -57,6 +58,25 @@ export const ERR_REQUIREMENT_L4_NOT_OBJECT = "ERR_REQUIREMENT_L4_NOT_OBJECT";
 export const ERR_REQUIREMENT_L5_NOT_MEMBER = "ERR_REQUIREMENT_L5_NOT_MEMBER";
 export const ERR_REQUIREMENT_ARCH_NO_IMPLEMENTERS = "ERR_REQUIREMENT_ARCH_NO_IMPLEMENTERS";
 export const WARN_REQUIREMENT_OBJECT_UNCLAIMED = "WARN_REQUIREMENT_OBJECT_UNCLAIMED";
+export const WARN_REQUIREMENT_DISPOSITION_NOT_APPLICABLE = "WARN_REQUIREMENT_DISPOSITION_NOT_APPLICABLE";
+export const WARN_REQUIREMENT_DEFERRED_UNTRACKED = "WARN_REQUIREMENT_DEFERRED_UNTRACKED";
+
+/** Counts behind the summary line `meta verify` prints on every run, clean or
+ *  not. A clean run that says nothing cannot distinguish "checked, all good"
+ *  from "checked nothing" — and a ledger that skipped an entire grain reads
+ *  identically to a complete one. */
+export interface RequirementSummary {
+  total: number;
+  functional: number;
+  architectural: number;
+  byStatus: Record<string, number>;
+  /** partial or planned with NO disposition recorded — the unreviewed gaps. */
+  undecided: number;
+  /** deferred entries naming no ticket, so nobody will be reminded. */
+  deferredUntracked: number;
+  entitiesTotal: number;
+  entitiesClaimed: number;
+}
 
 /** Severity of the object-coverage gate. Promotion to `"error"` is a one-line
  *  flip here, which activates an already-written test rather than requiring new
@@ -183,7 +203,14 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
       const { node } = resolveObjectRef(root, owner, referrerPkg);
       const isObjectRef = path.length === 0;
 
-      if (node !== undefined && (isObjectRef || resolveMember(node, path) !== undefined)) {
+      // A PLANNED requirement never contributes to coverage. Otherwise the
+      // cheapest way to clear an unclaimed-entity warning would be to declare
+      // an intention — the gate would measure ambition rather than work.
+      if (
+        node !== undefined
+        && !req.isPlanned()
+        && (isObjectRef || resolveMember(node, path) !== undefined)
+      ) {
         claimedObjects.add(node.resolutionKey());
       }
 
@@ -227,11 +254,41 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
     const status = req.status();
     const live = status !== undefined
       && REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES.includes(status as RequirementStatus);
-    if (architectural && live && refs.length === 0) {
+    // Two exemptions, both structural rather than lenient.
+    //
+    // `planned` — a policy that is not built yet is SUPPOSED to be applied to
+    // nothing, so the check would fire on precisely the entries it should stay
+    // quiet about.
+    //
+    // An ORGANISATIONAL node in a levelled architectural tree — an "ISO 25010
+    // Security" at L1 delegates to its children and names nothing, exactly as
+    // an L1 functional node does. mayReferenceModel() is the right predicate
+    // because it already encodes "is this tier allowed to name the model at
+    // all": true for a flat policy (the original form), false for L1-L3 of a
+    // levelled one, true again at the link floor.
+    if (architectural && live && refs.length === 0 && req.mayReferenceModel()) {
       out.push({
         severity: "error", code: ERR_REQUIREMENT_ARCH_NO_IMPLEMENTERS, name: req.name,
         message: `architectural requirement is '${String(status)}' but nothing implements it. ` +
           `Its check is universality — a claim set of zero means the policy is declared and unapplied.`,
+      });
+    }
+
+    // -- disposition: the decision, not the state -----------------------------
+    const disposition = req.disposition();
+    if (disposition !== undefined && !req.hasOutstandingWork()) {
+      out.push({
+        severity: "warn", code: WARN_REQUIREMENT_DISPOSITION_NOT_APPLICABLE, name: req.name,
+        message: `carries @disposition '${disposition}' but its status is '${String(status)}', which has no ` +
+          `outstanding work to decide about. A disposition is meaningful on 'planned' and 'partial' only — ` +
+          `on any other status the decision IS the status.`,
+      });
+    }
+    if (disposition === REQUIREMENT_DISPOSITION_DEFERRED && req.trackedBy().length === 0) {
+      out.push({
+        severity: "warn", code: WARN_REQUIREMENT_DEFERRED_UNTRACKED, name: req.name,
+        message: `is deferred but names no @trackedBy issue. Deferring without a ticket is how a known gap ` +
+          `becomes an unknown one — nothing will raise it again.`,
       });
     }
   }
@@ -269,4 +326,63 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
   }
 
   return out;
+}
+
+/**
+ * Count what the ledger contains, for the line `meta verify` prints on EVERY
+ * run — including a clean one.
+ *
+ * This exists because silence is ambiguous. A run that prints nothing cannot be
+ * told apart from a run that checked nothing, and an entry that skipped a whole
+ * grain of the model looks exactly like one that covered it. The counts below
+ * are deliberately the ones an author would otherwise have to write a script to
+ * get: how many gaps are recorded, and how many of those nobody has ruled on.
+ */
+export function summariseRequirements(root: MetaData): RequirementSummary | undefined {
+  const reqs = collectRequirements(root);
+  if (reqs.length === 0) return undefined; // opt-in by declaration
+
+  const summary: RequirementSummary = {
+    total: reqs.length,
+    functional: 0,
+    architectural: 0,
+    byStatus: {},
+    undecided: 0,
+    deferredUntracked: 0,
+    entitiesTotal: 0,
+    entitiesClaimed: 0,
+  };
+
+  const claimed = new Set<string>();
+  for (const req of reqs) {
+    if (req.subType === REQUIREMENT_SUBTYPE_ARCHITECTURAL) summary.architectural++;
+    else summary.functional++;
+
+    const status = req.status();
+    if (status !== undefined) summary.byStatus[status] = (summary.byStatus[status] ?? 0) + 1;
+
+    if (req.hasOutstandingWork() && req.disposition() === undefined) summary.undecided++;
+    if (req.disposition() === REQUIREMENT_DISPOSITION_DEFERRED && req.trackedBy().length === 0) {
+      summary.deferredUntracked++;
+    }
+
+    if (req.isPlanned()) continue; // matches the coverage rule above
+    const referrerPkg = req.package ?? req.fileDefaultPackage ?? "";
+    for (const ref of req.implementedBy()) {
+      const { owner, path } = splitMemberRef(ref);
+      const { node } = resolveObjectRef(root, owner, referrerPkg);
+      if (node === undefined) continue;
+      if (path.length === 0 || resolveMember(node, path) !== undefined) {
+        claimed.add(node.resolutionKey());
+      }
+    }
+  }
+
+  for (const ent of root.children()) {
+    if (ent.type !== TYPE_OBJECT || ent.subType !== OBJECT_SUBTYPE_ENTITY) continue;
+    summary.entitiesTotal++;
+    if (claimed.has(ent.resolutionKey())) summary.entitiesClaimed++;
+  }
+
+  return summary;
 }

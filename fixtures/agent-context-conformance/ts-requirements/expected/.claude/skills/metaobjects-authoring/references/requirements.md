@@ -27,18 +27,43 @@ key. *"Things are persisted"* is not, and is a description rather than a require
 rule kills *"the system is reliable"*. If you cannot say what breaking it looks like,
 delete it.
 
-**Hierarchy is nesting, and links live at the bottom.** L1 solution, L2 segment (an
-application or library), L3 service — these never reference the model. **L4** binds an
-object, **L5** binds a field, view or identity. `implementedBy` above L4 is an error.
-Regrouping *moves* a node; it does not edit a parent string.
+**Hierarchy is nesting, and links live at the bottom.** L1 solution, L2 segment, L3
+service — these never reference the model. **L4** binds an object, **L5** binds a field,
+view or identity. `implementedBy` above L4 is an error. Regrouping *moves* a node; it does
+not edit a parent string.
 
-**Architectural requirements are the other kind.** `requirement.architectural` carries no
-level — a uuid-PK rule, change attribution, tenant scoping. Its check is *universality*
+**L1–L3 are levels of abstraction and ownership in the problem domain** — whose need is
+this, and at what altitude — and are NEVER a directory, package, deployable or module.
+Technical constructs appear only at L4/L5, which is the allocation step. Test every node:
+*if a refactor that changes no behaviour would force it to move, its level is wrong.*
+
+**Architectural requirements are the other kind.** `requirement.architectural` is flat by
+default — a uuid-PK rule, change attribution, tenant scoping. Its check is *universality*
 rather than existence, so one that is `live` and claimed by nothing fails: a policy
-declared and applied to nothing.
+declared and applied to nothing. A `@level` is OPTIONAL here and opts the node into a tree
+(for organising non-functional requirements under a quality taxonomy); once levelled, the
+same nesting and link-floor rules apply as to a functional node.
 
 `@status` is a closed enum enforced by the loader, so a typo fails the load rather than
 silently disabling the entry.
+
+**Record gaps rather than rounding them off.** `partial` says *this works and here is what
+is wrong with it*, and it is the most useful status in the enum — a ledger with none is
+usually one nobody read carefully. Then say what was DECIDED, which is a separate question:
+
+- `@disposition: accepted` — understood, deliberately not being closed
+- `@disposition: deferred` — will be closed, not now (name a ticket in `@trackedBy`, or
+  `verify` warns; deferring without one is how a known problem becomes an unknown one)
+- **absent** — undecided, and that is a real state. `verify` counts these, because
+  *"which gaps has nobody ruled on?"* is the question a review exists to answer.
+
+A `partial` nobody intends to finish is usually `abandoned` — built then deliberately
+retired, the one status where a dangling reference is correct.
+
+**`status: planned` locks in work you have not started.** Its references may dangle (write
+the requirement before the entity), and it never counts toward object coverage — otherwise
+declaring an intention would clear the unclaimed-entity warning and the gate would measure
+ambition rather than work.
 
 ```yaml
 - requirement.functional:

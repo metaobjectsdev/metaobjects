@@ -27,9 +27,12 @@ export type RequirementSubType = (typeof REQUIREMENT_SUBTYPES)[number];
 // Attrs
 // ---------------------------------------------------------------------------
 
-/** 1 solution · 2 segment (app/library) · 3 service · 4 object · 5 member. */
+/** 1 solution · 2 segment · 3 service · 4 object · 5 member — levels of
+ *  ABSTRACTION AND OWNERSHIP in the problem domain, never of code structure. */
 export const REQUIREMENT_ATTR_LEVEL = "level";
 export const REQUIREMENT_ATTR_STATUS = "status";
+export const REQUIREMENT_ATTR_DISPOSITION = "disposition";
+export const REQUIREMENT_ATTR_TRACKED_BY = "trackedBy";
 export const REQUIREMENT_ATTR_STATEMENT = "statement";
 export const REQUIREMENT_ATTR_VIOLATION = "violation";
 export const REQUIREMENT_ATTR_IMPLEMENTED_BY = "implementedBy";
@@ -43,12 +46,14 @@ export const REQUIREMENT_ATTR_SUPERSEDED_BY = "supersededBy";
 // disabled it would disable the whole mechanism.
 // ---------------------------------------------------------------------------
 
+export const REQUIREMENT_STATUS_PLANNED = "planned";
 export const REQUIREMENT_STATUS_LIVE = "live";
 export const REQUIREMENT_STATUS_PARTIAL = "partial";
 export const REQUIREMENT_STATUS_ABANDONED = "abandoned";
 export const REQUIREMENT_STATUS_SUPERSEDED = "superseded";
 
 export const REQUIREMENT_STATUSES = [
+  REQUIREMENT_STATUS_PLANNED,
   REQUIREMENT_STATUS_LIVE,
   REQUIREMENT_STATUS_PARTIAL,
   REQUIREMENT_STATUS_ABANDONED,
@@ -58,12 +63,36 @@ export type RequirementStatus = (typeof REQUIREMENT_STATUSES)[number];
 
 /** Statuses whose implementing nodes are supposed to still exist. A dangling
  *  `@implementedBy` on one of these means the model moved and the requirement is
- *  stale; on the other two the nodes are supposed to be GONE, which is the whole
- *  point of the entry. The asymmetry inverts as a pair. */
+ *  stale. On `planned` the nodes do not exist YET; on `abandoned`/`superseded`
+ *  they are supposed to be GONE — which is the whole point of those entries. */
 export const REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES: readonly RequirementStatus[] = [
   REQUIREMENT_STATUS_LIVE,
   REQUIREMENT_STATUS_PARTIAL,
 ];
+
+/** Statuses with outstanding work, so a `@disposition` is meaningful on them.
+ *  On any other status the decision IS the status, and recording a second one
+ *  can only agree with it or contradict it. */
+export const REQUIREMENT_STATUSES_WITH_OUTSTANDING_WORK: readonly RequirementStatus[] = [
+  REQUIREMENT_STATUS_PLANNED,
+  REQUIREMENT_STATUS_PARTIAL,
+];
+
+// ---------------------------------------------------------------------------
+// Disposition — what was DECIDED about the outstanding work. Orthogonal to
+// status, which says whether the work is done. Absent means UNDECIDED, and that
+// is the state a review exists to find; collapsing it into the status enum
+// would make "there is a gap" and "we chose to live with it" the same fact.
+// ---------------------------------------------------------------------------
+
+export const REQUIREMENT_DISPOSITION_ACCEPTED = "accepted";
+export const REQUIREMENT_DISPOSITION_DEFERRED = "deferred";
+
+export const REQUIREMENT_DISPOSITIONS = [
+  REQUIREMENT_DISPOSITION_ACCEPTED,
+  REQUIREMENT_DISPOSITION_DEFERRED,
+] as const;
+export type RequirementDisposition = (typeof REQUIREMENT_DISPOSITIONS)[number];
 
 // ---------------------------------------------------------------------------
 // Levels — organisational above the link floor, model-referencing at or below.

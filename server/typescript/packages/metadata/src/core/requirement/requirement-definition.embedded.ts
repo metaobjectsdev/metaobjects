@@ -13,7 +13,7 @@ export const REQUIREMENT_DEFINITION: ProviderDefinition = {
       "type": "requirement",
       "subType": "functional",
       "description": "What the product does for a user, stated as one violable claim. Its check is EXISTENCE: it fails when nothing implements it. Hierarchy is nesting — an L1 solution contains its L2 segments, which contain L3 services, and so on down to the levels that reference the model.",
-      "whenToUse": "Something exists because someone asked for it. Levels: 1 solution, 2 segment (an application or library), 3 service, 4 object, 5 member. Only L4 and L5 carry @implementedBy — L1-L3 are organisational and never reference the model.",
+      "whenToUse": "Something exists because someone asked for it. L1-L3 are levels of ABSTRACTION AND OWNERSHIP in the problem domain — whose need is this, and at what altitude — and are never a directory, package, deployable or module. Binding to technical constructs happens only at L4 (an object) and L5 (a member), which is the allocation step. Test every node: if a refactor that changes no behaviour would force it to move, its level is wrong.",
       "children": [
         {
           "type": "attr",
@@ -21,7 +21,7 @@ export const REQUIREMENT_DEFINITION: ProviderDefinition = {
           "name": "level",
           "min": 1,
           "max": 1,
-          "description": "1 solution, 2 segment (application/library), 3 service, 4 object, 5 member. Nesting depth must agree with it."
+          "description": "1 solution, 2 segment, 3 service, 4 object, 5 member. L1-L3 are levels of abstraction and ownership in the problem domain, NOT of code structure. Nesting depth must agree with it; skipping a level is legal, going back up is not."
         },
         {
           "type": "attr",
@@ -30,12 +30,34 @@ export const REQUIREMENT_DEFINITION: ProviderDefinition = {
           "min": 1,
           "max": 1,
           "allowedValues": [
+            "planned",
             "live",
             "partial",
             "abandoned",
             "superseded"
           ],
-          "description": "live implemented and in use; partial implemented with known gaps; abandoned built then deliberately retired; superseded replaced by a different mechanism. A dangling @implementedBy is an ERROR on live/partial (the model moved, the requirement is stale) and ALLOWED on abandoned/superseded (those nodes are meant to be gone — that is the entry doing its job)."
+          "description": "planned intended but not built yet; live implemented and in use; partial implemented with known gaps; abandoned built then deliberately retired; superseded replaced by a different mechanism. A dangling @implementedBy is an ERROR on live/partial (the model moved, the requirement is stale) and ALLOWED on planned/abandoned/superseded — on planned the nodes do not exist YET, on the other two they are meant to be gone, and that is the entry doing its job. A planned requirement also never contributes to object coverage: planning a capability must not silence the warning that nothing implements it."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "disposition",
+          "min": 0,
+          "max": 1,
+          "allowedValues": [
+            "accepted",
+            "deferred"
+          ],
+          "description": "What has been DECIDED about outstanding work — a different question from whether the work is done, which is what @status answers. accepted: the gap is understood and deliberately not being closed. deferred: it will be closed, but not now. ABSENT MEANS UNDECIDED, which is a real and useful state — it is what an unreviewed gap looks like, and it is the one a review should be able to find. Meaningful on planned and partial only; on a status with no outstanding work it is a WARNING. Deliberately NOT a workflow vocabulary: which sprint, who owns it and whether it is in progress belong in the tracker named by @trackedBy, because two systems holding that answer will drift and only one of them is refreshed daily."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "trackedBy",
+          "isArray": true,
+          "min": 0,
+          "max": 1,
+          "description": "Issue or ticket references for outstanding work — a URL, an owner/repo#123 shorthand, or a tracker key. Free-form and NOT resolved by verify, which does not reach the network; unlike @verifiedBy, nothing here is checked to exist. Its job is to stop a deferred gap becoming invisible, so verify warns when a deferred requirement names no ticket. Also the right place to link the ticket that a planned requirement will be built under."
         },
         {
           "type": "attr",
@@ -92,9 +114,17 @@ export const REQUIREMENT_DEFINITION: ProviderDefinition = {
     {
       "type": "requirement",
       "subType": "architectural",
-      "description": "How the system is built, applied uniformly across the model. Its check is UNIVERSALITY: it fails when something VIOLATES it, which is the opposite polarity to a functional requirement. Carries no level and no parent — levels come from object-in-focus decomposition and an architectural requirement is object-independent by definition.",
-      "whenToUse": "Something exists because every entity here looks like this — a uuid primary key, an @autoSet createdAt, a change-attribution column, tenant scoping. The discriminator is mechanical: did this exist because someone asked for something, or because it is the architecture?",
+      "description": "How the system is built, applied uniformly across the model. Its check is UNIVERSALITY: it fails when something VIOLATES it, which is the opposite polarity to a functional requirement. Flat by default and object-independent; it may optionally sit in a levelled tree when a quality taxonomy is being used to organise non-functional requirements.",
+      "whenToUse": "Something exists because every entity here looks like this — a uuid primary key, an @autoSet createdAt, a change-attribution column, tenant scoping. The discriminator is mechanical: did this exist because someone asked for something, or because it is the architecture? For a non-functional tree, an established quality taxonomy makes a good fixed upper structure (e.g. an ISO/IEC 25010 characteristic at L1, its sub-characteristic or a control-catalogue category at L2), with the model-binding claims at L4 and L5 as usual.",
       "children": [
+        {
+          "type": "attr",
+          "subType": "int",
+          "name": "level",
+          "min": 0,
+          "max": 1,
+          "description": "OPTIONAL here, unlike on a functional requirement where it is required. ABSENT means a flat, object-independent policy that may reference the model directly — the original and still the default form. PRESENT means this node sits in a levelled tree, and then the same rules as functional apply: nesting must agree with the level, and only L4/L5 may carry @implementedBy. Levelling is opt-in so that adding a taxonomy on top of existing flat policies does not invalidate them."
+        },
         {
           "type": "attr",
           "subType": "string",
@@ -102,12 +132,34 @@ export const REQUIREMENT_DEFINITION: ProviderDefinition = {
           "min": 1,
           "max": 1,
           "allowedValues": [
+            "planned",
             "live",
             "partial",
             "abandoned",
             "superseded"
           ],
-          "description": "As on requirement.functional. A live or partial architectural requirement claimed by NOTHING is an error: a policy declared and applied to nothing."
+          "description": "As on requirement.functional. A live or partial architectural requirement claimed by NOTHING is an error: a policy declared and applied to nothing. A planned one is exempt from that check — it is not applied yet by definition."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "disposition",
+          "min": 0,
+          "max": 1,
+          "allowedValues": [
+            "accepted",
+            "deferred"
+          ],
+          "description": "As on requirement.functional. On an architectural requirement, accepted is the common and important case: a policy that is genuinely not universal, where the exceptions are known and tolerated, is more honest as partial+accepted than as a live claim nobody audits."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "trackedBy",
+          "isArray": true,
+          "min": 0,
+          "max": 1,
+          "description": "As on requirement.functional. Issue or ticket references for outstanding work; free-form, not resolved."
         },
         {
           "type": "attr",
@@ -137,10 +189,27 @@ export const REQUIREMENT_DEFINITION: ProviderDefinition = {
         {
           "type": "attr",
           "subType": "string",
+          "name": "verifiedBy",
+          "isArray": true,
+          "min": 0,
+          "max": 1,
+          "description": "Names of the tests proving the policy holds. verify checks each exists and is not skipped; it never runs them."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
           "name": "supersededBy",
           "min": 0,
           "max": 1,
           "description": "The requirement that replaced this one. Expected on status=superseded."
+        },
+        {
+          "type": "requirement",
+          "subType": "*",
+          "name": "*",
+          "min": 0,
+          "max": null,
+          "description": "Nested child requirements. Present so a non-functional tree can be organised by a quality taxonomy the same way a functional tree is organised by capability — the absence of this rule, while requirement.functional had it, is what previously made an architectural node nestable UNDER a functional one but never under another architectural one."
         }
       ]
     }

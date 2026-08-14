@@ -1,6 +1,6 @@
 {
   "registeredSubTypeCount": 69,
-  "exercisedSubTypeCount": 45,
+  "exercisedSubTypeCount": 47,
   "untestedSubTypes": [
     "attr.base",
     "attr.boolean",
@@ -16,8 +16,6 @@
     "object.base",
     "origin.base",
     "relationship.base",
-    "requirement.architectural",
-    "requirement.functional",
     "source.base",
     "template.base",
     "validator.atLeastOne",
