@@ -97,18 +97,33 @@ agree with the levels — a child sits strictly below its parent, or
 |  | check | fails when |
 |---|---|---|
 | **functional** (levelled) | **existence** — something implements it | nothing implements it |
-| **architectural** (level-less) | **universality** — nothing violates it | one entity lacks the policy |
+| **architectural** (flat by default) | **universality** — nothing violates it | one entity lacks the policy |
 
 **Functional** is what the product does for a user. **Architectural** is how the system is
 built, applied uniformly across the model — a uuid primary key, an `@autoSet createdAt`, an
 audit column, tenant scoping. The discriminator is mechanical: did this exist because
 someone asked for something, or because every entity here looks like this?
 
-Architectural entries are `requirement.architectural` nodes and carry **no level and no
-nesting** — levels come from object-in-focus decomposition, and an architectural requirement
-is object-*independent* by definition. `@level` is not registered on the subtype at all, so
-declaring one is `ERR_UNKNOWN_ATTR` rather than a convention someone has to remember. They
-carry `implementedBy` directly, because their claim set is the whole point.
+Architectural entries are `requirement.architectural` nodes and are **flat by default** —
+no level, no nesting, and `implementedBy` carried directly, because an architectural
+requirement is object-*independent* by definition and its claim set is the whole point.
+That is the original form and still the one to reach for.
+
+**`@level` is OPTIONAL here**, unlike on a functional requirement where it is required.
+Adding one opts the node into a tree, which is worth doing only when a quality taxonomy is
+organising the non-functional set — an ISO/IEC 25010 characteristic at L1, its
+sub-characteristic or a control-catalogue category at L2, the model-binding claims at L4 and
+L5 as usual. Levelling is opt-in precisely so that adding a taxonomy over existing flat
+policies does not invalidate them.
+
+Once a level is present the tree rules apply exactly as they do to a functional node: the
+level must be `1`–`5`, nesting must agree with it, and only L4/L5 may carry `implementedBy`
+(`ERR_REQUIREMENT_LINK_ABOVE_FLOOR`). One rule is deliberately NOT extended: the L4-is-an-object
+and L5-is-a-member **grain** checks stay functional-only, because on a levelled architectural
+node the upper tiers are a quality taxonomy and L4/L5 retain only their link-floor meaning —
+a policy whose claim set legitimately mixes grains ("every money *field* declares its
+currency", claimed alongside the entities holding them) must not be forced to split by grain
+to say so.
 
 This split also dissolves the field-grain ceremony objection. Plumbing fields collapse onto
 a handful of architectural requirements with very high fan-out — one uuid-PK requirement
@@ -172,7 +187,7 @@ the levels, not enumerate them. What it may not do is stay level or go back up.
 
 | Attribute | Where | Meaning |
 |---|---|---|
-| `@level` | functional, **required** | `1`–`5`. Not registered on architectural. |
+| `@level` | functional **required**, architectural *optional* | `1`–`5`. Absent on architectural means a flat policy; present opts it into a tree and the same nesting and link-floor rules apply. |
 | `@status` | both, **required** | Closed enum — see below. |
 | `@statement` | both, **required** | What the capability is, in one sentence. |
 | `@violation` | both, **required** | What breaking it looks like, in one sentence. |

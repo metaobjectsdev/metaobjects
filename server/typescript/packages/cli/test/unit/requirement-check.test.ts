@@ -22,8 +22,10 @@ import {
 } from "@metaobjectsdev/metadata";
 import {
   checkRequirements,
+  summariseRequirements,
   collectRequirements,
   splitMemberRef,
+  type RequirementSummary,
   OBJECT_COVERAGE_SEVERITY,
   ERR_REQUIREMENT_LINK_ABOVE_FLOOR,
   ERR_REQUIREMENT_DANGLING_REF,
@@ -145,6 +147,31 @@ async function run(capsYaml: string, extraModel = ""): Promise<Loaded & { loadEr
       return { diags: [], loadError: (err as Error).message };
     }
     return { diags: checkRequirements(root) };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Same as `run`, but also returns the SUMMARY `meta verify` prints above the
+ *  diagnostics. The two are produced by separate walks over the same tree, so a
+ *  test that only reads the diagnostics cannot see them disagree. */
+async function runSummary(
+  capsYaml: string,
+  extraModel = "",
+): Promise<Loaded & { summary: RequirementSummary | undefined; loadError?: string }> {
+  const dir = mkdtempSync(join(tmpdir(), "req-sum-"));
+  try {
+    mkdirSync(join(dir, "metaobjects"));
+    writeFileSync(join(dir, "metaobjects/meta.shop.yaml"), MODEL);
+    if (extraModel) writeFileSync(join(dir, "metaobjects/meta.extra.yaml"), extraModel);
+    writeFileSync(join(dir, "metaobjects/meta.caps.yaml"), capsYaml);
+    let root;
+    try {
+      root = await loadMemory(dir, { strict: true });
+    } catch (err) {
+      return { diags: [], summary: undefined, loadError: (err as Error).message };
+    }
+    return { diags: checkRequirements(root), summary: summariseRequirements(root) };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -704,5 +731,124 @@ describe("requirement.* — object coverage", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Found by DOGFOODING the levelled-architectural feature on a real 245-entry
+// ledger: the level rules a levelled architectural node documents itself as
+// obeying are not the rules that run, and the summary line disagrees with the
+// gate that prints beneath it.
+// ---------------------------------------------------------------------------
+
+describe("requirement.architectural — a levelled node obeys the level rules", () => {
+  // The `@level` attr on requirement.architectural says, in its own registered
+  // description: "PRESENT means this node sits in a levelled tree, and then the
+  // same rules as functional apply: nesting must agree with the level, and only
+  // L4/L5 may carry @implementedBy." Only the second half was enforced.
+  test("a levelled architectural node cannot re-ascend the tree", async () => {
+    const r = await run(caps(COVER) + `
+    - requirement.architectural:
+        name: Security
+        level: 2
+        status: live
+        statement: "The system protects the data it holds"
+        violation: "A record readable by someone with no claim to it"
+        children:
+          - requirement.architectural:
+              name: Confidentiality
+              level: 1
+              status: live
+              statement: "Stored data is unreadable without an authorised key"
+              violation: "A database copy that reads in plain text"
+`, OTHER);
+    expect(codes(r.diags)).toContain(ERR_REQUIREMENT_LEVEL_NESTING);
+  });
+
+  test("a levelled architectural node cannot declare a level outside 1-5", async () => {
+    const r = await run(caps(COVER) + `
+    - requirement.architectural:
+        name: Security
+        level: 7
+        status: live
+        statement: "The system protects the data it holds"
+        violation: "A record readable by someone with no claim to it"
+`, OTHER);
+    expect(codes(r.diags)).toContain(ERR_REQUIREMENT_BAD_LEVEL);
+  });
+
+  test("an UNLEVELLED architectural node is still exempt — levelling is the opt-in", async () => {
+    // The whole point of the optionality: a flat policy predates levels and must
+    // not start failing because the tree rules were tightened.
+    const r = await run(caps(COVER) + `
+    - requirement.architectural:
+        name: UuidPrimaryKeys
+        status: live
+        statement: "Every entity has a uuid primary key"
+        violation: "An entity keyed by a composite string"
+        implementedBy: ["acme::shop::Order"]
+`, OTHER);
+    expect(codes(r.diags)).not.toContain(ERR_REQUIREMENT_BAD_LEVEL);
+    expect(codes(r.diags)).not.toContain(ERR_REQUIREMENT_LEVEL_NESTING);
+  });
+});
+
+describe("summariseRequirements — the printed summary agrees with the gate", () => {
+  // A summary that contradicts the diagnostics under it is worse than no summary:
+  // it reads as a measurement and cannot be reconciled with the run that produced
+  // it. Both divergences below make the summary UNDER-report coverage while the
+  // gate stays silent, so a clean run prints an alarming ratio for no reason.
+  const ABSTRACT_MODEL = `
+metadata:
+  package: acme::base
+  children:
+    - object.entity:
+        name: BaseEntity
+        abstract: true
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+    - object.entity:
+        name: Invoice
+        extends: BaseEntity
+        children:
+          - source.rdb: { table: invoices }
+`;
+
+  // Claims the two entities MODEL always declares, WITHOUT the billing claim
+  // COVER carries — this test loads ABSTRACT_MODEL as its extra file instead of
+  // OTHER, so a billing claim would dangle and put an unrelated error in the run.
+  const COVER_SHOP = `
+          - requirement.functional:
+              name: OrderRecording
+              level: 4
+              status: live
+              statement: "Orders are recorded"
+              violation: "An order placed and never stored"
+              implementedBy: ["acme::shop::Order"]
+          - requirement.functional:
+              name: CustomerRecording
+              level: 4
+              status: live
+              statement: "Customers are recorded"
+              violation: "A customer that cannot be found again"
+              implementedBy: ["acme::shop::Customer"]
+`;
+
+  test("an abstract entity is out of the denominator, as it is out of the gate", async () => {
+    const r = await runSummary(caps(COVER_SHOP) + `
+    - requirement.architectural:
+        name: EveryRowIsAddressable
+        status: live
+        statement: "Every persisted row declares its identity"
+        violation: "A row that can be inserted but never pointed at"
+        implementedBy: ["acme::base::BaseEntity"]
+`, ABSTRACT_MODEL);
+    expect(errors(r.diags)).toEqual([]);
+    // The gate exempts abstracts (shape, not data) and propagates an
+    // ARCHITECTURAL claim down the extends chain. So nothing is unclaimed...
+    expect(codes(r.diags)).not.toContain(WARN_REQUIREMENT_OBJECT_UNCLAIMED);
+    // ...and the summary must say the same thing.
+    expect(r.summary!.entitiesClaimed).toBe(r.summary!.entitiesTotal);
   });
 });

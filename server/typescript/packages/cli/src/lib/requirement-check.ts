@@ -174,6 +174,64 @@ export function collectRequirements(root: MetaData): MetaRequirement[] {
 }
 
 /**
+ * Resolution keys of every object claimed by a requirement.
+ *
+ * SHARED by the gate and the summary deliberately. The two used to compute this
+ * separately and drifted: the summary missed the extends-chain propagation the
+ * gate applies to an ARCHITECTURAL claim, so a project using the documented
+ * BaseEntity pattern got a summary reporting entities as unclaimed while the
+ * gate beneath it named none. A summary that contradicts its own diagnostics
+ * reads as a measurement and cannot be reconciled with the run that produced it.
+ */
+function claimedObjectKeys(root: MetaData, reqs: MetaRequirement[]): Set<string> {
+  const claimed = new Set<string>();
+  for (const req of reqs) {
+    // A PLANNED requirement never contributes to coverage. Otherwise the
+    // cheapest way to clear an unclaimed-entity warning would be to declare an
+    // intention — the gate would measure ambition rather than work.
+    if (req.isPlanned()) continue;
+    // referrerPkg is the requirement's own effective package, so a bare ref
+    // binds package-locally under the ADR-0042 contract — the loader's own
+    // resolver, never a parallel name scan (#228).
+    const referrerPkg = req.package ?? req.fileDefaultPackage ?? "";
+    for (const ref of req.implementedBy()) {
+      const { owner, path } = splitMemberRef(ref);
+      const { node } = resolveObjectRef(root, owner, referrerPkg);
+      if (node === undefined) continue;
+      if (path.length > 0 && resolveMember(node, path) === undefined) continue;
+      claimed.add(node.resolutionKey());
+      // ARCHITECTURAL claims propagate DOWN the extends chain; functional ones
+      // do not. A policy ("every row is addressable") claimed on an abstract
+      // BaseEntity genuinely holds for everything extending it — that is what
+      // universality means, and without this the documented BaseEntity pattern
+      // is worse than not using it. A functional claim is the opposite: it says
+      // this entity exists for a REASON, and inheriting a reason from a shared
+      // base would mean adding an entity no longer forces anyone to say what it
+      // is for. Same mechanism, opposite polarity — as everywhere else in the
+      // subtype split.
+      if (req.subType === REQUIREMENT_SUBTYPE_ARCHITECTURAL) {
+        for (const sub of subtypesOf(root, node)) claimed.add(sub);
+      }
+    }
+  }
+  return claimed;
+}
+
+/**
+ * The entities object coverage measures — and the same set for the gate and the
+ * summary, for the reason given on `claimedObjectKeys`.
+ *
+ * An ABSTRACT entity is shape, not data: there is no table and no rows, so
+ * demanding a capability claim for it is the same category error as demanding
+ * one for an object.value. It is exempt for the same reason.
+ */
+function coverableEntities(root: MetaData): MetaData[] {
+  return root.children().filter(
+    (n) => n.type === TYPE_OBJECT && n.subType === OBJECT_SUBTYPE_ENTITY && !n.isAbstract,
+  );
+}
+
+/**
  * Check the requirement tree against the loaded model.
  *
  * What a clean run proves: referential integrity — links sit at or below the
@@ -186,20 +244,31 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
   const reqs = collectRequirements(root);
   if (reqs.length === 0) return out; // opt-in by declaration — no requirements, nothing to say
 
-  const claimedObjects = new Set<string>();
+  const claimedObjects = claimedObjectKeys(root, reqs);
 
   for (const req of reqs) {
     const architectural = req.subType === REQUIREMENT_SUBTYPE_ARCHITECTURAL;
     const level = req.level();
     const refs = req.implementedBy();
 
-    if (!architectural) {
-      if (level === undefined || !Number.isInteger(level)
+    // -- the level rules -------------------------------------------------------
+    // A functional requirement MUST be levelled. An architectural one MAY be,
+    // and levelling is the OPT-IN: unlevelled it is the original flat,
+    // object-independent policy and these rules must not touch it. Once a level
+    // is present the node has joined a tree, and `@level`'s own registered
+    // description promises that "the same rules as functional apply: nesting
+    // must agree with the level". Enforcing that here is what makes the promise
+    // true — a levelled architectural node used to be exempt from BOTH checks,
+    // so an ISO-25010 tree could re-ascend or declare a level 7 in silence.
+    const levelled = level !== undefined;
+    if (!architectural || levelled) {
+      if (!levelled || !Number.isInteger(level)
           || level < REQUIREMENT_MIN_LEVEL || level > REQUIREMENT_MAX_LEVEL) {
         out.push({
           severity: "error", code: ERR_REQUIREMENT_BAD_LEVEL, name: req.name,
           message: `level must be an integer ${REQUIREMENT_MIN_LEVEL}-${REQUIREMENT_MAX_LEVEL} (got ${String(level)}). ` +
-            `L1 solution, L2 segment (app/library), L3 service, L4 object, L5 member.`,
+            `L1 solution, L2 segment (app/library), L3 service, L4 object, L5 member.` +
+            (architectural ? ` On an architectural requirement the level is optional — omit it for a flat policy.` : ``),
         });
       }
       // Nesting IS the hierarchy, so a child must sit strictly below its parent.
@@ -236,29 +305,16 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
       const { node } = resolveObjectRef(root, owner, referrerPkg);
       const isObjectRef = path.length === 0;
 
-      // A PLANNED requirement never contributes to coverage. Otherwise the
-      // cheapest way to clear an unclaimed-entity warning would be to declare
-      // an intention — the gate would measure ambition rather than work.
-      if (
-        node !== undefined
-        && !req.isPlanned()
-        && (isObjectRef || resolveMember(node, path) !== undefined)
-      ) {
-        claimedObjects.add(node.resolutionKey());
-        // ARCHITECTURAL claims propagate DOWN the extends chain; functional ones
-        // do not. A policy ("every row is addressable") claimed on an abstract
-        // BaseEntity genuinely holds for everything extending it — that is what
-        // universality means, and without this the documented BaseEntity pattern
-        // is worse than not using it. A functional claim is the opposite: it says
-        // this entity exists for a REASON, and inheriting a reason from a shared
-        // base would mean adding an entity no longer forces anyone to say what it
-        // is for. Same mechanism, opposite polarity — as everywhere else in the
-        // subtype split.
-        if (architectural) {
-          for (const sub of subtypesOf(root, node)) claimedObjects.add(sub);
-        }
-      }
-
+      // GRAIN, and it stays functional-only DELIBERATELY. On a functional
+      // requirement L4 and L5 MEAN "an object" and "a member" — that is what the
+      // allocation step allocates. On a levelled architectural one the upper
+      // tiers are a quality taxonomy and L4/L5 retain only their link-floor
+      // meaning, so a policy whose claim set legitimately mixes grains ("every
+      // money FIELD declares its currency", claimed alongside the entities that
+      // hold them) must not be forced to split by grain to say so. Extending
+      // this to architectural would be a new rule, not the missing half of an
+      // existing one — unlike the level checks above, which `@level` already
+      // promised.
       if (!architectural && level === REQUIREMENT_LINK_FLOOR_LEVEL && !isObjectRef) {
         out.push({
           severity: "error", code: ERR_REQUIREMENT_L4_NOT_OBJECT, name: req.name,
@@ -375,12 +431,7 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
   //
   // So a green run means "every entity is claimed by something", not "every node is
   // described". The stronger reading would be false.
-  for (const ent of root.children()) {
-    if (ent.type !== TYPE_OBJECT || ent.subType !== OBJECT_SUBTYPE_ENTITY) continue;
-    // An ABSTRACT entity is shape, not data — there is no table and no rows, so
-    // demanding a capability claim for it is the same category error as
-    // demanding one for an object.value. It is exempt for the same reason.
-    if (ent.isAbstract) continue;
+  for (const ent of coverableEntities(root)) {
     const key = ent.resolutionKey();
     if (!claimedObjects.has(key)) {
       out.push({
@@ -418,7 +469,6 @@ export function summariseRequirements(root: MetaData): RequirementSummary | unde
     entitiesClaimed: 0,
   };
 
-  const claimed = new Set<string>();
   for (const req of reqs) {
     if (req.subType === REQUIREMENT_SUBTYPE_ARCHITECTURAL) summary.architectural++;
     else summary.functional++;
@@ -430,21 +480,12 @@ export function summariseRequirements(root: MetaData): RequirementSummary | unde
     if (req.disposition() === REQUIREMENT_DISPOSITION_DEFERRED && req.trackedBy().length === 0) {
       summary.deferredUntracked++;
     }
-
-    if (req.isPlanned()) continue; // matches the coverage rule above
-    const referrerPkg = req.package ?? req.fileDefaultPackage ?? "";
-    for (const ref of req.implementedBy()) {
-      const { owner, path } = splitMemberRef(ref);
-      const { node } = resolveObjectRef(root, owner, referrerPkg);
-      if (node === undefined) continue;
-      if (path.length === 0 || resolveMember(node, path) !== undefined) {
-        claimed.add(node.resolutionKey());
-      }
-    }
   }
 
-  for (const ent of root.children()) {
-    if (ent.type !== TYPE_OBJECT || ent.subType !== OBJECT_SUBTYPE_ENTITY) continue;
+  // Both sides of the ratio come from the SAME helpers the gate uses, so the
+  // printed summary cannot disagree with the diagnostics printed beneath it.
+  const claimed = claimedObjectKeys(root, reqs);
+  for (const ent of coverableEntities(root)) {
     summary.entitiesTotal++;
     if (claimed.has(ent.resolutionKey())) summary.entitiesClaimed++;
   }

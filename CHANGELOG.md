@@ -7,6 +7,59 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — a levelled architectural requirement now obeys the level rules it documents (npm)
+
+`requirement.architectural` gained an **optional** `@level` in 0.22.0, opting a node into a
+tree so a quality taxonomy can organise the non-functional set. `@level`'s own registered
+description promises that "PRESENT means this node sits in a levelled tree, and then the same
+rules as functional apply: nesting must agree with the level". Only the link floor was
+actually enforced: `checkRequirements` gated the level-range and nesting checks behind
+`if (!architectural)`, so a levelled architectural node could declare a **level 7**, or
+**re-ascend** the tree by nesting an L1 under an L2, and `meta verify` said nothing.
+
+Both checks now run whenever a level is present, on either subtype. An **unlevelled**
+architectural requirement stays exempt — levelling is the opt-in, and enforcing the tree
+rules unconditionally would break every existing flat policy, which is the whole reason the
+attribute is optional.
+
+One rule is deliberately **not** extended: the L4-is-an-object / L5-is-a-member **grain**
+checks stay functional-only. On a functional requirement those levels *mean* those grains;
+on a levelled architectural one the upper tiers are a quality taxonomy and L4/L5 retain only
+their link-floor meaning, so a policy whose claim set legitimately mixes grains ("every money
+*field* declares its currency", claimed alongside the entities holding them) is not forced to
+split by grain to say so. That would be a new rule rather than the missing half of one
+`@level` already promised.
+
+### Fixed — the requirements summary no longer contradicts the gate printed beneath it (npm)
+
+`meta verify` prints a summary line (`… — N/M entities claimed`) above its diagnostics.
+`summariseRequirements` computed that ratio with its **own** walk, and 0.22.0's coverage fix
+was applied only to `checkRequirements`. The two therefore disagreed in two ways, both making
+the summary under-report while the gate stayed silent:
+
+- an **abstract** entity was counted in the denominator, though the gate exempts it (shape,
+  not data — no table, no rows);
+- an **architectural** claim on an abstract base did **not** propagate down the `extends`
+  chain in the summary, though the gate propagates it — so a project using the documented
+  `BaseEntity` pattern read as uncovered.
+
+A project declaring one architectural rule on its `BaseEntity` could see `1/12 entities
+claimed` above a diagnostic list naming **zero** unclaimed entities. Both sides of the ratio
+now come from the same two helpers the gate uses, so the arithmetic and the diagnostics
+cannot drift again. `summariseRequirements` had **no test coverage at all**, which is how the
+divergence survived; it has some now.
+
+### Fixed — `spec/capability-ledger.md` still said architectural requirements carry no level
+
+The spec asserted "**no level and no nesting** … `@level` is not registered on the subtype at
+all, so declaring one is `ERR_UNKNOWN_ATTR`" — true before 0.22.0, and directly contradicted
+by the shipped registry since. Corrected, including the attribute table, with the deliberate
+grain-check asymmetry stated. `docs/features/requirements.md` was already accurate.
+
+All three were found by dogfooding the feature: levelling a real 245-entry ledger's nine flat
+architectural requirements under an ISO/IEC 25010 tree, which is the shape the `@level`
+description recommends and the shape nothing had run against a model larger than a fixture.
+
 ## [0.22.1] — npm `0.22.1` · PyPI `0.22.1` · NuGet `0.22.1` · Maven `7.22.1`
 
 A coordinated PATCH completing 0.22.0's assigned-primary-key fix in the ports that shared
