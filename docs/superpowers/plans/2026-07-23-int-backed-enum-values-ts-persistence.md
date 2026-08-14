@@ -726,22 +726,48 @@ git commit -m "test(persistence-conformance): int-backed field.enum round-trips 
 
 ---
 
-### Task 8: runtime-ts + codegen-ts — the filter path must encode symbol→int
+### Task 8: runtime-ts + codegen-ts — the filter path must encode symbol→int — **DONE**
 
-**Why (verified 2026-08-12):** generated CRUD endpoints filter on `@filterable` fields. `parseFilterParams` coerces by the allowlist rule's `subType` and binds the result (`packages/runtime-ts/src/drizzle-fastify/filter-parser.ts:156-186`, `coerce` at :215). An enum rule coerces as a plain string, so `?filter[status][eq]=DRAFT` binds `'DRAFT'` against an `integer` column — a Postgres type error at request time, and `in` lists likewise. Nothing in Tasks 1-6 touches this.
+**Outcome (2026-08-14), and it diverged from the plan in both directions.**
 
-**Follow the `dateValues` precedent exactly** (`filter-parser.ts:232-243` + `FilterFieldRule`): codegen already solved this identical problem for Date-typed columns by having the GENERATED allowlist carry a per-column flag the parser honours. Do the same — carry the symbol→int map (or a reference to the generated lookup) on the rule. Do NOT teach the parser to re-derive it from metadata; the parser is metadata-free by design.
+**Steps 1-3 turned out to be unnecessary.** The premise — that `parseFilterParams` binds a
+raw member symbol against an integer column — is false once Task 5's Drizzle `customType`
+is in the column definition: the comparison value goes through `toDriver` and encodes for
+free (empirically confirmed). The `dateValues` precedent was NOT followed; `FilterFieldRule`
+is unchanged, and the parser stays metadata-free as intended.
 
-**Files:**
-- Modify: `packages/runtime-ts/src/drizzle-fastify/filter-parser.ts` (`FilterFieldRule` + `coerce`)
-- Modify: `packages/codegen-ts/src/templates/` — the filter-allowlist emitter
-- Test: `packages/runtime-ts/test/` filter-parser unit tests + a codegen allowlist emission test
+**Step 4 was the whole task, and its optimistic reading was wrong.** The existing gating
+does NOT exclude `like` and structurally cannot: `opsForSubType` is keyed by subtype and
+only ever sees `"enum"`, so the generated allowlist offered `like` on an int-backed field
+byte-identically to a string-backed one. The band is a property of the FIELD.
 
-- [ ] **Step 1: Failing tests** — (a) parser: a rule carrying an int map coerces `"DRAFT"` → `0` for `eq`/`ne`, and `"DRAFT,PUBLISHED"` → `[0, 5]` for `in`; an unknown member is a `filter.invalid_value` `FilterParseError` naming the field (NOT a silent pass-through, NOT a 500). (b) codegen: the generated `<Entity>FilterAllowlist` for an int-backed enum field carries the map; a string-backed one is byte-identical to today.
-- [ ] **Step 2:** Extend `FilterFieldRule` with the optional map and honour it in `coerce`'s enum path.
-- [ ] **Step 3:** Emit it from the allowlist generator, reading `@intValueMap` RESOLVING (Amendment 1).
-- [ ] **Step 4:** `isNull` is unaffected (it coerces boolean); `like` must be REJECTED for an int-backed enum — a substring match against an integer column is meaningless. Confirm the existing per-subtype operator gating already excludes `like` for enums; if it does not, that is the fix.
-- [ ] **Step 5: Commit** — `fix(runtime-ts,codegen-ts): int-backed enum filters bind the integer, not the member symbol`
+Fixed in `e8dca0b4d` as **one loader rule per port**, not five codegen filters — the #210 /
+`@objectRef` precedent — so an authored `attr.filter` / dataGrid `@filter` using `like` on
+an int-backed enum fails at LOAD, not later at the SQL layer:
+
+- TS `opsForField` (query-constants) · Java `FilterOps.opsForField` · C#
+  `QueryConstants.OpsForField` · Python `ops_for_field` + `ops_for_field_ordered` · Kotlin
+  reuses the JVM band through its own generator call site.
+- `opsForSubType` is deliberately KEPT for the one caller with no field in hand (the
+  expression grammar's declared operand type).
+- C#'s codegen carried its OWN duplicate per-subtype band table; it was **deleted** rather
+  than extended.
+- Gated cross-port by a new `fEnumInt` case in `fixtures/conformance/filter-ops-matrix`
+  (`field.filter-ops` was already a field-level capability in all five ports, so no runner
+  change was needed).
+
+**Task 8b (NOT in the original plan) — the view-DDL blocker.** Probing Step 4 surfaced a
+strictly worse bug: a projection row-scope `@filter` (#207) and an `origin.aggregate
+@filter` render as literal SQL TEXT and never touch Drizzle, so the customType does nothing
+for them. Both emitted `WHERE p.status = 'PUBLISHED'` against an `integer` column —
+rejected by Postgres at CREATE VIEW time, aborting the migration. A `meta migrate` blocker,
+affecting every operator rather than just `like`. Fixed in `2fd177f2d`; note it needed BOTH
+`resolveViewFilter` and the separate `resolveAggregateFilter`. Gated by 10 unit tests plus a
+real-Postgres apply-and-converge test, itself verified load-bearing by disabling the encode
+and confirming red.
+
+**Durable lesson for the other three port plans:** a column-level codec seam does not reach
+anywhere the port renders SQL text by hand. Each port needs the encoding in both places.
 
 ---
 
@@ -772,4 +798,8 @@ Known port-specific defects already identified, to fold in during that rewrite:
 - **C#** — the array branch emits `ElementType().HasConversion<string>()` unconditionally, ignoring `@intValueMap` (violates D7); and its per-entity `EnumTypeName` naming needs re-checking against FR-019's shared/provided materialization.
 - **Java/Kotlin** — Kotlin's per-package `${enumClassName}_TO_INT` support-file emission collides under a shared enum (two consuming fields → two same-named top-level `val`s, even with identical maps: the emitter iterates `(class, field)` pairs with no dedupe). Emit per TYPE, once. A `@provided` Kotlin enum additionally needs its class imported into the support file. Java's `hasMetaAttr(name)` defaults to `includeParentData=true` and DOES resolve through `extends` (verified) — so its codec read is correct by default, but keep it that way deliberately.
 - **Python** — the write branch's `int_value_map[value]` raises `KeyError` on a non-member (should be a clean validation error) and `TypeError` on an array-of-enum value (a list is unhashable); D7 array handling is absent entirely. The query/WHERE path is unaddressed (same class as Task 8).
+- **All ports** — a column-level codec seam (the TS `customType`, EF Core `HasConversion`,
+  `JdbcFieldCodec`, Exposed `customEnumeration`) does NOT reach anywhere the port renders
+  SQL **text** by hand — view bodies above all. TS needed the member→integer encoding in
+  BOTH places (see Task 8b); assume every port does.
 - **All ports** — `@provided` + `@intValueMap` is a REAL adopter case, not an edge case: ADR-0026's motivating example is literally a hand-written enum with int backing. Materialization is suppressed; the codec is NOT. Every port must map by member SYMBOL through the metadata map, never through the provided native type's own underlying integer values (a hand-written `ContactMethod.Email = 3` with `@intValueMap {Email: 1}` must store `1`). C#'s name-keyed dictionary gets this right by construction but has no test pinning it.
