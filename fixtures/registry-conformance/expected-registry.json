@@ -4545,14 +4545,14 @@
       "valueType": "string",
       "isArray": false,
       "required": false,
-      "description": "Free-form user-facing prose. Markdown allowed, multi-line via YAML '|' block scalar. Flows into doc-gen surfaces (JSDoc / XML-doc / Postgres COMMENT / Mermaid prose)."
+      "description": "What this element IS and COVERS, written for someone using it. Markdown allowed, multi-line via YAML '|' block scalar. Flows into doc-gen surfaces (JSDoc / XML-doc / Postgres COMMENT / Mermaid prose). State scope and boundary — what it covers, what it deliberately does NOT, and which sibling owns the rest — all of which is derivable from the model itself. Anything you had to read the implementation to learn belongs in @notes, not here."
     },
     {
       "name": "notes",
       "valueType": "string",
       "isArray": false,
       "required": false,
-      "description": "Internal-only rationale. Stays in metadata; never emitted to user-facing docs."
+      "description": "Internal-only rationale, never emitted to user-facing docs — the slot for what you had to look OUTSIDE the model to learn: evidence, measurements, citations, the control that proved an absence was real, and what breaks if this changes. It is NOT a longer @description, and restating the description here is the failure mode this slot invites. Mechanical test: a sentence belongs in @notes exactly when it would have to change because the IMPLEMENTATION changed while the model did not."
     },
     {
       "name": "replacedBy",
@@ -4573,14 +4573,14 @@
       "valueType": "string",
       "isArray": false,
       "required": false,
-      "description": "Short single-line tagline (OpenAPI `summary` pattern) — used in index tables, sidebar previews, and AI prompts where the full @description is too long. Optional supplement to @description; when @summary is unset, doc surfaces typically fall back to the first sentence of @description."
+      "description": "Short single-line SENTENCE (OpenAPI `summary` pattern) — used in index tables, sidebar previews, and AI prompts where the full @description is too long. Distinct from @title, which is a noun label rather than a sentence. When @summary is unset, doc surfaces typically fall back to the first sentence of @description."
     },
     {
       "name": "title",
       "valueType": "string",
       "isArray": false,
       "required": false,
-      "description": "Short single-line human label (e.g. 'Email' for a `field.string email`). Optional supplement to description."
+      "description": "Short single-line human label — a NOUN PHRASE naming the element (e.g. 'Email' for a `field.string email`), never a sentence. What a tab, an index row or a sidebar shows when the name is an identifier rather than a label. See @summary for the one-line sentence form."
     }
   ],
   "defaultSubTypes": {

@@ -5,9 +5,20 @@
 // exposes, via registry.getCommonAttrs(), EXACTLY the 8 universal doc common
 // attrs with matching name / valueType / isArray / required / description.
 //
-// The EXPECTED table below is hardcoded verbatim from the pre-FR-033 hand-coded
-// commonDocAttrs in core/documentation/doc-schema.ts (now deleted). It is the
-// safety net that proves the data-driven registration reproduces the old schema.
+// The EXPECTED table below started as a verbatim copy of the pre-FR-033
+// hand-coded commonDocAttrs in core/documentation/doc-schema.ts (now deleted) —
+// the safety net proving the data-driven registration reproduced the old schema.
+// That migration is long done, so the table is no longer a historical snapshot:
+// it pins the CURRENTLY REGISTERED text, and an unintended edit to the embedded
+// definition fails here. Drift between the embedded copy and the root
+// spec/metamodel/documentation.json is a different question, covered by
+// documentation-definition-embed.test.ts.
+//
+// Updating a description here is therefore expected and legitimate — but it is
+// one of SEVEN places the same string lives (root spec, three per-port spec
+// copies, the TS embedded definition, this pin, and the byte-gated
+// fixtures/registry-conformance/expected-registry.json), so change them together
+// and regenerate the manifest.
 
 import { describe, test, expect } from "bun:test";
 import { composeRegistry } from "../src/provider.js";
@@ -26,24 +37,25 @@ const EXPECTED: Record<string, ExpectedAttr> = {
     valueType: "string",
     required: false,
     description:
-      "Free-form user-facing prose. Markdown allowed, multi-line via YAML '|' block scalar. Flows into doc-gen surfaces (JSDoc / XML-doc / Postgres COMMENT / Mermaid prose).",
+      "What this element IS and COVERS, written for someone using it. Markdown allowed, multi-line via YAML '|' block scalar. Flows into doc-gen surfaces (JSDoc / XML-doc / Postgres COMMENT / Mermaid prose). State scope and boundary — what it covers, what it deliberately does NOT, and which sibling owns the rest — all of which is derivable from the model itself. Anything you had to read the implementation to learn belongs in @notes, not here.",
   },
   summary: {
     valueType: "string",
     required: false,
     description:
-      "Short single-line tagline (OpenAPI `summary` pattern) — used in index tables, sidebar previews, and AI prompts where the full @description is too long. Optional supplement to @description; when @summary is unset, doc surfaces typically fall back to the first sentence of @description.",
+      "Short single-line SENTENCE (OpenAPI `summary` pattern) — used in index tables, sidebar previews, and AI prompts where the full @description is too long. Distinct from @title, which is a noun label rather than a sentence. When @summary is unset, doc surfaces typically fall back to the first sentence of @description.",
   },
   title: {
     valueType: "string",
     required: false,
     description:
-      "Short single-line human label (e.g. 'Email' for a `field.string email`). Optional supplement to description.",
+      "Short single-line human label — a NOUN PHRASE naming the element (e.g. 'Email' for a `field.string email`), never a sentence. What a tab, an index row or a sidebar shows when the name is an identifier rather than a label. See @summary for the one-line sentence form.",
   },
   notes: {
     valueType: "string",
     required: false,
-    description: "Internal-only rationale. Stays in metadata; never emitted to user-facing docs.",
+    description:
+      "Internal-only rationale, never emitted to user-facing docs — the slot for what you had to look OUTSIDE the model to learn: evidence, measurements, citations, the control that proved an absence was real, and what breaks if this changes. It is NOT a longer @description, and restating the description here is the failure mode this slot invites. Mechanical test: a sentence belongs in @notes exactly when it would have to change because the IMPLEMENTATION changed while the model did not.",
   },
   deprecated: {
     valueType: "string",

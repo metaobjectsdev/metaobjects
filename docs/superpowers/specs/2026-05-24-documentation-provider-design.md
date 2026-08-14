@@ -39,13 +39,22 @@ This blocks three concrete consumers:
 
 | Attr | Value type | Required | Semantics |
 |---|---|---|---|
-| `description` | `string` (markdown allowed, multi-line via YAML `\|`) | no | User-facing prose. Flows into all doc-gen surfaces. |
-| `title` | `string` (single-line) | no | Short human label. Optional — `description` is the primary surface; `title` is for UI labels / doc headings. |
-| `notes` | `string` (markdown, multi-line) | no | **Internal-only** rationale. Stays in metadata; never emitted to user-facing docs. |
+| `description` | `string` (markdown allowed, multi-line via YAML `\|`) | no | What the element **is and covers**, for someone using it. Scope and boundary, derivable from the model itself. Flows into all doc-gen surfaces. |
+| `title` | `string` (single-line) | no | Short human label — a **noun phrase**, never a sentence. For UI labels / doc headings, where the element's `name` is an identifier. |
+| `notes` | `string` (markdown, multi-line) | no | **Internal-only** rationale. What you had to look **outside the model** to learn: evidence, citations, what breaks if this changes. Never emitted to user-facing docs. |
 | `deprecated` | `string` (text reason) | no | Presence ⇒ deprecated. The string is the reason. LinkML-style; cleaner than a bare boolean. |
 | `replacedBy` | `string` (FQN ref) | no | Pointer to the replacement element. Only meaningful with `deprecated`. |
 | `seeAlso` | `stringarray` (URLs) | no | External documentation links. |
 | `aliases` | `stringarray` | no | Alternate names. Aids AI authoring (disambiguation), search, migration. |
+
+**The `description` / `notes` split is by CONTENT KIND, not by audience.** Splitting them on
+who reads it ("user-facing prose" vs "internal-only rationale") is what the original wording
+did, and it invites writing the same content twice at two levels of politeness — `notes`
+becomes a longer `description` with citations bolted on. The rule that keeps them disjoint is
+mechanical: *a sentence belongs in `notes` exactly when it would have to change because the
+IMPLEMENTATION changed while the model did not.* A `description` is derivable from the model;
+a `notes` is not. Found by dogfooding — filling both slots across a 245-entry ledger produced
+visible overlap on every entry whose evidence was the interesting part.
 
 - **D2 — `commonAttrs` hook is the only new registry mechanism.** Today every attr is registered per `(type, subType)`. We add `registry.registerCommonAttrs(attrs)` (or per-port idiomatic equivalent — Java fluent `registry.registerCommonAttribute(...)`, Python `provider.register_common_attrs(...)`). The existing per-type attr-validation pass merges common + per-type attrs before checking a node's attrs. **Permissive scope:** every metatype accepts the doc attrs, including `attr` / `validator` / `origin` nodes themselves. Codegen consumers ignore them where they're meaningless. Less surprise than a per-type allowlist; smaller cross-port machinery.
 

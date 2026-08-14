@@ -194,7 +194,9 @@ the levels, not enumerate them. What it may not do is stay level or go back up.
 | `@implementedBy` | L4, L5, architectural | FQN references. An error above the link floor. |
 | `@verifiedBy` | functional | Named tests. Typically L3. |
 | `@supersededBy` | both | What replaced this. Expected on `status: superseded`. |
-| `description`, `notes` | any node | The common documentation attrs, as everywhere else. |
+| `title` | any node | Common doc attr. A short **noun-phrase** label — `name` is an identifier, this is what an index shows. |
+| `description` | any node | Common doc attr, narrowed here by `@statement` already being the claim: use it for **scope** — what the requirement covers, what it deliberately does not, which sibling owns the rest. A `description` that paraphrases the `@statement` is padding; leave it off instead. |
+| `notes` | any node | Common doc attr. The **evidence** behind `@status` — citations, vocabularies, the control run to prove an absence was real. A sentence belongs here exactly when it would have to change because the implementation changed while the model did not. |
 
 The name is the node's identity and its address: nesting makes `commerce.orders.orderRecord`
 a dotted child-name path like any other, so no separate id scheme is needed.

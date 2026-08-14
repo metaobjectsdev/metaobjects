@@ -69,6 +69,29 @@ violable — point at one with a composite key. *"Things are persisted"* is not,
 description rather than a requirement. If you cannot say what breaking it looks like, delete
 it.
 
+### Which slot does this sentence go in?
+
+A requirement can carry four prose slots, and they overlap badly if you do not decide the
+split up front. `@statement` already occupies the "what is this" role that a common
+`description` usually holds, so the other three narrow around it:
+
+| Slot | Holds | Test |
+|---|---|---|
+| `title` | A short noun-phrase label. `name` is an identifier; this is what an index shows. | Is it a phrase, not a sentence? |
+| `@statement` | **The claim**, in one sentence. This IS the description of what the requirement is. | Could someone disagree with it? |
+| `@violation` | **The counterexample** that makes the claim checkable. | Can you point at the thing that breaks it? |
+| `description` | **The scope**: what the claim covers, what it deliberately does not, and which sibling entry owns the rest. | Does it help someone decide whether their new field falls under this? |
+| `notes` | **The evidence**: how you know the `@status` is true — file/line citations, enum vocabularies, the control you ran to prove an absence was real. | Would this sentence have to change if the code changed but the model did not? |
+
+Two failure modes are worth naming because both look like diligence:
+
+- **A `description` that paraphrases the `@statement`.** Pure padding, and it makes every
+  later reader trust the ledger less. If the scope is genuinely obvious from the statement,
+  leave `description` off — it is optional.
+- **A `description` that narrates the evidence.** The tell is a fact you had to read the
+  implementation to learn — a file, a value, a count, a verified absence. That is `notes`.
+  Keep the two disjoint and neither has to hedge.
+
 ## Two kinds, opposite checks
 
 | | check | fails when |

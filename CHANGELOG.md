@@ -7,6 +7,46 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed — `description` and `notes` are split by CONTENT KIND, not by audience (all five ports)
+
+**Documentation-only: four registered attribute descriptions. No behaviour changes, no new
+vocabulary, no generated-output change.** The `commonAttrs` block of the byte-gated
+`fixtures/registry-conformance/expected-registry.json` moves, so all five ports carry it.
+
+The two slots were described by **who reads them** — `description` was "free-form user-facing
+prose", `notes` was "internal-only rationale". Neither said the *content* had to differ, so
+the honest way to fill both is to write the same thing twice at two levels of politeness, and
+`notes` becomes a longer `description` with citations bolted on. Dogfooding put a number on
+it: filling both across a 245-entry ledger produced overlap on **72 of 245 entries**, and the
+same overlap every time — the description opened with the disposition and then narrated the
+gap that `notes` already held.
+
+They are now split by content kind, with a mechanical test in the registered text itself:
+
+- **`description`** — what the element **is and covers**, for someone using it: scope and
+  boundary, what it deliberately does *not* cover, and which sibling owns the rest. Derivable
+  from the model.
+- **`notes`** — what you had to look **outside the model** to learn: evidence, measurements,
+  citations, the control that proved an absence was real, and what breaks if this changes.
+  *A sentence belongs in `notes` exactly when it would have to change because the
+  IMPLEMENTATION changed while the model did not.*
+
+`title` and `summary` had the same defect on a smaller scale — both read "short single-line",
+and nothing distinguished them. `title` is now explicitly a **noun phrase**, `summary` a
+**one-line sentence**, each pointing at the other.
+
+`docs/features/requirements.md` and the `metaobjects-authoring` skill gain the
+requirement-specific application, which is where the collision is sharpest: `@statement`
+already occupies the "what is this" role a common `description` usually holds, so on a
+requirement `description` narrows to scope or it is padding. Both name the two failure modes
+that look like diligence — a description that paraphrases the statement, and one that
+narrates the evidence.
+
+**Known duplication, unchanged here:** each of these strings lives in **seven** places (the
+root spec, three per-port spec copies, the TS embedded definition, a completeness pin, and
+the generated manifest). Changing one means changing all seven and regenerating; the pin now
+says so.
+
 ### Fixed — a levelled architectural requirement now obeys the level rules it documents (npm)
 
 `requirement.architectural` gained an **optional** `@level` in 0.22.0, opting a node into a

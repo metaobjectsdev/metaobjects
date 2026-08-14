@@ -27,6 +27,25 @@ key. *"Things are persisted"* is not, and is a description rather than a require
 rule kills *"the system is reliable"*. If you cannot say what breaking it looks like,
 delete it.
 
+**Four prose slots, and `statement` is the one that means "description".** A requirement can
+also carry the common `title`, `description` and `notes`, and they overlap badly unless you
+decide the split before writing any of them:
+
+- `title` — a short **noun-phrase** label (`name` is an identifier; this is what an index shows)
+- `statement` — **the claim**. This IS the description of what the requirement is
+- `violation` — **the counterexample** that makes the claim checkable
+- `description` — **the scope**: what the claim covers, what it deliberately does not, and
+  which sibling entry owns the rest
+- `notes` — **the evidence**: how you know the `status` is true — citations, vocabularies, the
+  control you ran to prove an absence was real
+
+Two failure modes, both of which look like diligence. A `description` that **paraphrases the
+statement** is padding, and it makes every later reader trust the ledger less — leave it off
+instead, it is optional. A `description` that **narrates the evidence** belongs in `notes`;
+the tell is a fact you had to read the implementation to learn. Mechanical test for the last
+line: *would this sentence have to change if the code changed but the model did not?* Then it
+is `notes`.
+
 **Hierarchy is nesting, and links live at the bottom.** L1 solution, L2 segment, L3
 service — these never reference the model. **L4** binds an object, **L5** binds a field,
 view or identity. `implementedBy` above L4 is an error. Regrouping *moves* a node; it does
