@@ -22,7 +22,8 @@ public class MetaRequirement(TypeId typeId, string name) : MetaData(typeId, name
 
     /// <summary>
     /// 1 solution · 2 segment · 3 service · 4 object · 5 member. Architectural
-    /// requirements carry none — they are object-independent by definition.
+    /// requirements carry it OPTIONALLY: absent means a flat, object-independent policy,
+    /// present opts the node into a levelled tree (e.g. a quality taxonomy).
     /// ADR-0039: resolving — @level may be inherited via extends.
     /// </summary>
     public int? Level
@@ -41,7 +42,7 @@ public class MetaRequirement(TypeId typeId, string name) : MetaData(typeId, name
     }
 
     /// <summary>
-    /// The lifecycle status (a closed enum: live / partial / abandoned / superseded).
+    /// The lifecycle status (a closed enum: planned / live / partial / abandoned / superseded).
     /// ADR-0039: resolving — inheritable via extends.
     /// </summary>
     public string? Status => Attr(REQUIREMENT_ATTR_STATUS) as string;

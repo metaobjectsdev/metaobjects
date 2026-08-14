@@ -4406,7 +4406,7 @@ public final class ValidationPhase {
     // type/subtype, not the container's; same reason source @kind/@role and
     // relationship @onDelete/@onUpdate use post-load passes).
     //
-    //   @status must be one of: live / partial / abandoned / superseded
+    //   @status must be one of: planned / live / partial / abandoned / superseded
     //
     // This is the mechanism the capability ledger was made registered vocabulary
     // FOR (requirements-as-metadata ruling, Amendment 3): a typo'd status is

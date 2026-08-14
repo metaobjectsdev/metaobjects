@@ -167,17 +167,29 @@ public class RequirementTest extends SharedRegistryTestBase {
         assertNotNull("requirement.architectural child found", req);
         assertEquals(MetaRequirement.SUBTYPE_ARCHITECTURAL, req.getSubType());
         assertTrue("isArchitectural()", req.isArchitectural());
-        assertEquals("architectural carries no level", null, req.getLevel());
+        assertEquals("a FLAT architectural node carries no level", null, req.getLevel());
         assertEquals(List.of("acme::shop::Order", "acme::shop::Customer"), req.getImplementedBy());
         assertTrue("architectural may always reference the model", req.mayReferenceModel());
     }
 
     // ---------------------------------------------------------------------------
-    // (3b) requirement.architectural declares NO nested-requirement child rule
+    // (3b) requirement.architectural DOES nest -- it declares the same
+    //      nested-requirement child rule as functional.
+    //
+    //      This test previously asserted the opposite, on the reasoning that an
+    //      architectural requirement is object-independent and so has no tier to
+    //      contain. That reasoning holds for a FLAT policy and stopped being the
+    //      whole story when `@level` became optional on architectural: levelling
+    //      is opt-in so a quality taxonomy (an ISO/IEC 25010 characteristic at
+    //      L1, its sub-characteristic at L2) can organise the non-functional set
+    //      the same way a capability taxonomy organises the functional one.
+    //      Declaring the child rule on `functional` only made an architectural
+    //      node nestable under a FUNCTIONAL parent but never under another
+    //      architectural one -- an omission rather than a design.
     // ---------------------------------------------------------------------------
 
     @Test
-    public void architecturalRequirement_doesNotNest() {
+    public void architecturalRequirement_nests() {
         String json = "{ \"metadata.root\": { \"package\": \"acme::test\", \"children\": ["
             + "  { \"requirement.architectural\": { \"name\": \"uuidPrimaryKeys\","
             + "      \"@status\": \"live\","
@@ -193,27 +205,77 @@ public class RequirementTest extends SharedRegistryTestBase {
             + "] } }";
 
         MetaDataLoader loader = strictLoader("test-requirement-architectural-nesting");
-        MetaDataException caught = null;
-        try {
-            load(loader, json);
-        } catch (MetaDataException e) {
-            caught = e;
-        }
+        MetaRoot root = load(loader, json);
 
         String messages = loader.getErrors().stream()
             .map(Throwable::getMessage).reduce("", (a, b) -> a + " | " + b);
-        if (caught != null) {
-            messages += " | THROWN: " + caught.getClass().getName() + ": " + caught.getMessage();
-        }
-        boolean refused = caught != null || !loader.getErrors().isEmpty();
-        assertTrue("architectural is object-independent by definition and declares no "
-            + "nested-requirement child rule in spec/metamodel/requirement.json; "
-            + "messages=" + messages, refused);
-        // The refusal must come from the REGISTRY's per-subtype child rule (sourced from
-        // the spec file), not from MetaData's blanket same-type ban — the latter is what
-        // MetaRequirement.checkValidChild deliberately lifts.
-        assertTrue("refused by the registered child rule; messages=" + messages,
-            messages.contains("requirement.architectural does not accept child"));
+        assertTrue("a nested requirement loads clean under architectural; messages=" + messages,
+            loader.getErrors().isEmpty());
+
+        MetaRequirement req = firstRequirement(root);
+        assertNotNull("requirement.architectural child found", req);
+        assertEquals(1, req.getChildren().stream()
+            .filter(c -> MetaRequirement.TYPE_REQUIREMENT.equals(c.getType())).count());
+    }
+
+    // ---------------------------------------------------------------------------
+    // (3c) A LEVELLED architectural tree -- the shape the optional @level exists
+    //      for, and the one that was inexpressible while only `functional`
+    //      declared the nested-requirement child rule.
+    // ---------------------------------------------------------------------------
+
+    @Test
+    public void architecturalRequirement_levelledTreeLoads() {
+        String json = "{ \"metadata.root\": { \"package\": \"acme::test\", \"children\": ["
+            + "  { \"requirement.architectural\": { \"name\": \"security\","
+            + "      \"@level\": 1,"
+            + "      \"@status\": \"live\","
+            + "      \"@statement\": \"The system protects the data it holds.\","
+            + "      \"@violation\": \"A record readable by someone with no claim to it.\","
+            + "      \"children\": ["
+            + "        { \"requirement.architectural\": { \"name\": \"integrity\","
+            + "            \"@level\": 2,"
+            + "            \"@status\": \"partial\","
+            + "            \"@disposition\": \"deferred\","
+            + "            \"@trackedBy\": [\"acme/platform#412\"],"
+            + "            \"@statement\": \"A stored value changes only under control.\","
+            + "            \"@violation\": \"A number that changed with nothing explaining it.\","
+            + "            \"children\": ["
+            + "              { \"requirement.architectural\": { \"name\": \"ordersAreAppendOnly\","
+            + "                  \"@level\": 4,"
+            + "                  \"@status\": \"live\","
+            + "                  \"@statement\": \"An order row is appended, never mutated.\","
+            + "                  \"@violation\": \"An order total edited in place.\","
+            + "                  \"@implementedBy\": [\"acme::shop::Order\"] } }"
+            + "            ] } }"
+            + "      ] } }"
+            + "] } }";
+
+        MetaDataLoader loader = strictLoader("test-requirement-architectural-levelled");
+        MetaRoot root = load(loader, json);
+
+        String messages = loader.getErrors().stream()
+            .map(Throwable::getMessage).reduce("", (a, b) -> a + " | " + b);
+        assertTrue("a levelled architectural tree loads clean; messages=" + messages,
+            loader.getErrors().isEmpty());
+
+        MetaRequirement l1 = firstRequirement(root);
+        assertNotNull("L1 architectural found", l1);
+        assertEquals(Integer.valueOf(1), l1.getLevel());
+        // An organisational tier may not reference the model, on either subtype,
+        // once it has opted into a tree by carrying a level.
+        assertTrue("L1 is organisational", !l1.mayReferenceModel());
+
+        MetaRequirement l2 = (MetaRequirement) l1.getChildren().stream()
+            .filter(c -> c instanceof MetaRequirement).findFirst().orElseThrow();
+        assertEquals("deferred", l2.getDisposition());
+        assertEquals(List.of("acme/platform#412"), l2.getTrackedBy());
+        assertTrue("partial has outstanding work", l2.hasOutstandingWork());
+
+        MetaRequirement l4 = (MetaRequirement) l2.getChildren().stream()
+            .filter(c -> c instanceof MetaRequirement).findFirst().orElseThrow();
+        assertTrue("the link floor may reference the model", l4.mayReferenceModel());
+        assertEquals(List.of("acme::shop::Order"), l4.getImplementedBy());
     }
 
     // ---------------------------------------------------------------------------

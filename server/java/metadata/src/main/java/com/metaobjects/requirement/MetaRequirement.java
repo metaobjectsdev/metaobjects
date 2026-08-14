@@ -181,10 +181,10 @@ public abstract class MetaRequirement extends MetaData {
      * be lifted here or the declared child rule is unreachable.</p>
      *
      * <p>WHICH subtypes may nest stays the registry's decision, not this method's: the
-     * spec declares the nested-{@code requirement} child rule on {@code functional} only
-     * ({@code architectural} is object-independent and carries none), and
-     * {@code applyStrictStructuralChildren} is what puts that rule on the type
-     * definition. Every other same-type combination still hits the base refusal.</p>
+     * spec declares the nested-{@code requirement} child rule on BOTH subtypes -- a
+     * functional tree nests by capability, an architectural one may nest under a quality
+     * taxonomy -- and {@code applyStrictStructuralChildren} is what puts that rule on the
+     * type definition. Every other same-type combination still hits the base refusal.</p>
      */
     @Override
     protected void checkValidChild(MetaData data) {
@@ -293,16 +293,20 @@ public abstract class MetaRequirement extends MetaData {
 
     /**
      * True when this requirement is permitted to reference the model at all.
-     * Architectural requirements always may (their claim set is the point); functional
-     * ones only at or below the link floor, so the organisational tiers stay
-     * organisational.
+     *
+     * <p>An UNLEVELLED architectural requirement always may -- its claim set is the whole
+     * point, and that is the original flat form. Once a level is PRESENT the node has
+     * opted into a tree, and the link floor applies to it exactly as it does to a
+     * functional one, so an "ISO 25010 Security" grouping node cannot quietly start
+     * naming entities. Levelling is the opt-in; enforcing the floor unconditionally would
+     * have broken every existing flat policy.</p>
      */
     public boolean mayReferenceModel() {
-        if (isArchitectural()) {
-            return true;
-        }
         Integer level = getLevel();
-        return level != null && level >= LINK_FLOOR_LEVEL;
+        if (level == null) {
+            return isArchitectural();
+        }
+        return level >= LINK_FLOOR_LEVEL;
     }
 
     /**

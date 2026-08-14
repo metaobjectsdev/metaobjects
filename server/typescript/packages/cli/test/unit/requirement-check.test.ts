@@ -219,7 +219,9 @@ describe("requirement.* — it is metadata", () => {
               implementedBy: ["acme::shop::Order"]
 `), OTHER);
     expect(r.loadError ?? "").toContain("not one of the allowed values");
-    expect(r.loadError ?? "").toContain("live, partial, abandoned, superseded");
+    // The FULL set, `planned` included. Asserting the tail alone passed by
+    // substring luck and would have stayed green if `planned` were dropped.
+    expect(r.loadError ?? "").toContain("planned, live, partial, abandoned, superseded");
   });
 
   test("THE LOADER rejects an undeclared attr on a requirement (ADR-0023)", async () => {
