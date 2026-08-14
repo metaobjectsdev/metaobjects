@@ -548,6 +548,98 @@ describe("requirement.* — planned, disposition and tracking", () => {
     expect(tracked.diags.map((d) => d.code)).not.toContain("WARN_REQUIREMENT_DEFERRED_UNTRACKED");
   });
 
+  test("a functional requirement whose whole subtree claims nothing warns", async () => {
+    const r = await run(caps(COVER) + `
+    - requirement.functional:
+        name: BuiltByNobody
+        level: 1
+        status: live
+        statement: "Customers can export their order history"
+        violation: "A customer who asks for their data and cannot be given it"
+`, OTHER);
+    expect(r.diags.map((d) => d.code)).toContain("WARN_REQUIREMENT_NOTHING_IMPLEMENTS");
+  });
+
+  test("an organisational tier that DELEGATES to children does not warn", async () => {
+    // The reason this check has to be subtree-scoped. An L1 implements nothing
+    // itself — it delegates — and that is the correct shape of every tree, so a
+    // node-local check would fire on all of them.
+    const r = await run(caps(COVER), OTHER);
+    expect(r.diags.map((d) => d.code)).not.toContain("WARN_REQUIREMENT_NOTHING_IMPLEMENTS");
+  });
+
+  test("an ARCHITECTURAL claim on an abstract base covers everything extending it", async () => {
+    // The documented BaseEntity pattern was previously WORSE than not using it:
+    // claiming the base covered none of its subtypes, and the abstract was itself
+    // demanded. Universality is exactly the polarity that should inherit.
+    const BASE = `
+metadata:
+  package: acme::common
+  children:
+    - object.entity:
+        name: BaseEntity
+        abstract: true
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+    - object.entity:
+        name: Widget
+        extends: acme::common::BaseEntity
+        children:
+          - source.rdb: { table: widgets }
+`;
+    const r = await run(caps(COVER) + `
+    - requirement.architectural:
+        name: EveryRowIsAddressable
+        status: live
+        statement: "Every persisted row declares the identity it is addressed by"
+        violation: "A row that can be inserted but never pointed at"
+        implementedBy: ["acme::common::BaseEntity"]
+`, BASE);
+    const unclaimed = r.diags
+      .filter((d) => d.code === "WARN_REQUIREMENT_OBJECT_UNCLAIMED")
+      .map((d) => d.message);
+    // The abstract base is exempt (shape, not data) and Widget inherits the claim.
+    expect(unclaimed.join(" ")).not.toContain("BaseEntity");
+    expect(unclaimed.join(" ")).not.toContain("Widget");
+  });
+
+  test("a FUNCTIONAL claim on a base does NOT cover its subtypes", async () => {
+    // Opposite polarity, deliberately. A functional claim says this entity exists
+    // for a reason; inheriting a reason would mean adding an entity no longer
+    // forces anyone to say what it is for.
+    const BASE = `
+metadata:
+  package: acme::common
+  children:
+    - object.entity:
+        name: BaseEntity
+        abstract: true
+        children:
+          - field.uuid: { name: id }
+          - identity.primary: { name: pk, fields: [id] }
+    - object.entity:
+        name: Widget
+        extends: acme::common::BaseEntity
+        children:
+          - source.rdb: { table: widgets }
+`;
+    const r = await run(caps(COVER) + `
+    - requirement.functional:
+        name: BaseThing
+        level: 4
+        status: live
+        statement: "Base entities are recorded"
+        violation: "A row nobody kept"
+        implementedBy: ["acme::common::BaseEntity"]
+`, BASE);
+    const unclaimed = r.diags
+      .filter((d) => d.code === "WARN_REQUIREMENT_OBJECT_UNCLAIMED")
+      .map((d) => d.message)
+      .join(" ");
+    expect(unclaimed).toContain("Widget");
+  });
+
   test("accepted needs no ticket — the decision is that there will be no work", async () => {
     const r = await run(caps(COVER) + `
     - requirement.architectural:

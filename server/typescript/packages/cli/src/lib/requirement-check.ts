@@ -60,6 +60,7 @@ export const ERR_REQUIREMENT_ARCH_NO_IMPLEMENTERS = "ERR_REQUIREMENT_ARCH_NO_IMP
 export const WARN_REQUIREMENT_OBJECT_UNCLAIMED = "WARN_REQUIREMENT_OBJECT_UNCLAIMED";
 export const WARN_REQUIREMENT_DISPOSITION_NOT_APPLICABLE = "WARN_REQUIREMENT_DISPOSITION_NOT_APPLICABLE";
 export const WARN_REQUIREMENT_DEFERRED_UNTRACKED = "WARN_REQUIREMENT_DEFERRED_UNTRACKED";
+export const WARN_REQUIREMENT_NOTHING_IMPLEMENTS = "WARN_REQUIREMENT_NOTHING_IMPLEMENTS";
 
 /** Counts behind the summary line `meta verify` prints on every run, clean or
  *  not. A clean run that says nothing cannot distinguish "checked, all good"
@@ -113,6 +114,38 @@ export function splitMemberRef(ref: string): { owner: string; path: string[] } {
   const dot = ref.indexOf(".", from);
   if (dot === -1) return { owner: ref, path: [] };
   return { owner: ref.slice(0, dot), path: ref.slice(dot + 1).split(".") };
+}
+
+/** Resolution keys of every root-level object whose `extends` chain reaches
+ *  `ancestor`. Walks the RESOLVED super pointer rather than the raw string, so a
+ *  cross-package or dotted reference resolves the same way the loader resolved
+ *  it — reading `superRef` here would be a second, divergent resolver. */
+function subtypesOf(root: MetaData, ancestor: MetaData): string[] {
+  const out: string[] = [];
+  for (const cand of root.children()) {
+    if (cand.type !== TYPE_OBJECT || cand === ancestor) continue;
+    const seen = new Set<MetaData>();
+    let cur = cand.superData;
+    while (cur !== undefined && !seen.has(cur)) {
+      seen.add(cur);
+      if (cur === ancestor) { out.push(cand.resolutionKey()); break; }
+      cur = cur.superData;
+    }
+  }
+  return out;
+}
+
+/** True when this requirement, or anything nested beneath it, names an
+ *  implementing node. Subtree-scoped deliberately: an L1 solution that delegates
+ *  everything to its children implements nothing directly, and flagging that
+ *  would fire on the correct shape of every tree. */
+function subtreeClaimsAnything(req: MetaRequirement): boolean {
+  if (req.implementedBy().length > 0) return true;
+  for (const child of req.children()) {
+    if (child.type !== TYPE_REQUIREMENT) continue;
+    if (subtreeClaimsAnything(child as MetaRequirement)) return true;
+  }
+  return false;
 }
 
 /** Walk dotted member segments by CHILD NAME from an object node. */
@@ -212,6 +245,18 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
         && (isObjectRef || resolveMember(node, path) !== undefined)
       ) {
         claimedObjects.add(node.resolutionKey());
+        // ARCHITECTURAL claims propagate DOWN the extends chain; functional ones
+        // do not. A policy ("every row is addressable") claimed on an abstract
+        // BaseEntity genuinely holds for everything extending it — that is what
+        // universality means, and without this the documented BaseEntity pattern
+        // is worse than not using it. A functional claim is the opposite: it says
+        // this entity exists for a REASON, and inheriting a reason from a shared
+        // base would mean adding an entity no longer forces anyone to say what it
+        // is for. Same mechanism, opposite polarity — as everywhere else in the
+        // subtype split.
+        if (architectural) {
+          for (const sub of subtypesOf(root, node)) claimedObjects.add(sub);
+        }
       }
 
       if (!architectural && level === REQUIREMENT_LINK_FLOOR_LEVEL && !isObjectRef) {
@@ -284,6 +329,22 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
           `on any other status the decision IS the status.`,
       });
     }
+    // -- functional existence, SUBTREE-scoped ---------------------------------
+    // A functional requirement's check is EXISTENCE: it fails when nothing
+    // implements it. But an organisational tier legitimately implements nothing
+    // ITSELF — it delegates to children, and that is the whole shape of the
+    // tree. So the question is not "does this node claim anything" but "does
+    // anything in this subtree claim anything". A live L1 whose entire subtree
+    // is empty is a capability declared and built by nobody.
+    if (!architectural && live && !subtreeClaimsAnything(req)) {
+      out.push({
+        severity: "warn", code: WARN_REQUIREMENT_NOTHING_IMPLEMENTS, name: req.name,
+        message: `is '${String(status)}' but neither it nor anything nested under it names an ` +
+          `implementing node. A functional requirement's check is existence — a subtree that claims ` +
+          `nothing is a capability nobody built.`,
+      });
+    }
+
     if (disposition === REQUIREMENT_DISPOSITION_DEFERRED && req.trackedBy().length === 0) {
       out.push({
         severity: "warn", code: WARN_REQUIREMENT_DEFERRED_UNTRACKED, name: req.name,
@@ -316,6 +377,10 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
   // described". The stronger reading would be false.
   for (const ent of root.children()) {
     if (ent.type !== TYPE_OBJECT || ent.subType !== OBJECT_SUBTYPE_ENTITY) continue;
+    // An ABSTRACT entity is shape, not data — there is no table and no rows, so
+    // demanding a capability claim for it is the same category error as
+    // demanding one for an object.value. It is exempt for the same reason.
+    if (ent.isAbstract) continue;
     const key = ent.resolutionKey();
     if (!claimedObjects.has(key)) {
       out.push({

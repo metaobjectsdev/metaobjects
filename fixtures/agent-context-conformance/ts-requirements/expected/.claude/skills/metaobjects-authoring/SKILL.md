@@ -976,7 +976,28 @@ mapping).
 
 ## Requirements — capability ledger (opt-in)
 
-If this project declares `requirement.functional` / `requirement.architectural` nodes, read `references/requirements.md` for the full authoring rules.
+**This capability exists whether or not the project uses it yet.** `requirement.functional` and `requirement.architectural` are registered metadata types, declared in `metaobjects/` beside the entities they describe and loaded by the same loader — no side file, no bespoke parser. They record *why* each part of the model exists, so a field with no reason to exist becomes visible as one.
+
+Reach for it when the project needs to answer any of:
+
+- **"Why is this field here?"** — an L5 requirement binds a claim to a specific member. Authoring these exhaustively is what surfaces columns nothing reads and vocabularies nobody documented.
+- **"What is broken but known?"** — `@status: partial` plus `@disposition: accepted | deferred`. Absent disposition means *undecided*, and `meta verify` counts those: the gaps nobody has ruled on.
+- **"What did we build and then retire?"** — `@status: abandoned` is the one status where a dangling `@implementedBy` is *correct*, so the record survives the deletion.
+- **"What have we committed to build?"** — `@status: planned`. Its references may dangle, and it never counts toward object coverage.
+- **"Which ticket covers this?"** — `@trackedBy`.
+
+Every requirement must be **violable**: if you cannot say what breaking it looks like, it is a description, not a requirement.
+
+If the project declares any `requirement.*` node, `references/requirements.md` is installed with the full authoring rules. If it does not and you are adding the first one, the shape is:
+
+```yaml
+- requirement.architectural:
+    name: everyStoredRowIsAddressable
+    status: live
+    statement: Every persisted row declares the identity by which it is addressed.
+    violation: A row that can be inserted but never pointed at.
+    implementedBy: [acme::shop::Order]
+```
 
 ---
 
