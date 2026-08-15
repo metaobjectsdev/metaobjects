@@ -26,7 +26,7 @@ import {
 } from "@metaobjectsdev/migrate-ts";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen, defineConfig, buildProjectionViews } from "@metaobjectsdev/codegen-ts";
-import { entityFile } from "@metaobjectsdev/codegen-ts/generators";
+import { entityFile, queriesFile } from "@metaobjectsdev/codegen-ts/generators";
 import { Kysely, PostgresDialect, sql } from "kysely";
 import pg, { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -106,6 +106,9 @@ afterAll(async () => {
 beforeEach(async () => {
   await sql.raw(`DROP TABLE IF EXISTS "orders" CASCADE;`).execute(k);
   await sql.raw(`DROP TABLE IF EXISTS orders CASCADE;`).execute(k);
+  // The TPH block below builds its own base table; CASCADE also clears any
+  // dependent view left by the projection block.
+  await sql.raw(`DROP TABLE IF EXISTS "auths" CASCADE;`).execute(k);
 });
 
 async function applyRaw(ddl: string): Promise<void> {
@@ -440,5 +443,171 @@ describe("int-backed field.enum in a projection view — real Postgres", () => {
     const body = views.find((v) => v.name === "v_published_orders")?.sql ?? "";
     expect(body).toMatch(/WHERE o\.status = 5/);
     expect(body).not.toContain("'PUBLISHED'");
+  }, 120_000);
+});
+
+/**
+ * TPH (single-table discriminator) + int-backed enums — Task 9.
+ *
+ * Two distinct questions, and the second is the one the plan flagged as possibly
+ * needing its own design:
+ *   1. a per-subtype read schema must tolerate an int-backed enum COLUMN;
+ *   2. an int-backed enum used AS the DISCRIMINATOR must still pin, filter and insert.
+ *
+ * Reading the generated source says both work: every TPH path goes through Drizzle
+ * (`db.select()`, `eq(auths.type, "Bridge")`, `.values()`), so the Task 5 customType
+ * encodes and decodes at the column, and the schemas only ever see member symbols.
+ * But #203/#229 is the precedent for TPH being a separate code path that everyone
+ * assumes is covered — and this repo's 0.15.21 line is what "the source looks right"
+ * is worth. So: run it.
+ *
+ * If this had needed its own design, the documented fallback was to REJECT
+ * @intValueMap on a discriminator with a named loader error. It does not — the
+ * discriminator case is SUPPORTED, and these tests are what pins that.
+ */
+describe("int-backed field.enum under TPH — real Postgres", () => {
+  // The discriminator (`type`) is int-backed 1/2, and there is ALSO a non-
+  // discriminator int-backed enum (`status`, 0/7) so both questions are live in one
+  // model. Both maps are non-ordinal so an accidental index-of-@values correspondence
+  // shows up as a wrong number rather than passing by coincidence.
+  const TPH_META = `{
+    "metadata.root": { "package": "demo", "children": [
+      { "object.entity": { "name": "Auth", "@discriminator": "type", "children": [
+        { "source.rdb": { "@table": "auths" } },
+        { "field.enum": { "name": "type", "@values": ["Bridge", "Copay"],
+          "@intValueMap": { "Bridge": 1, "Copay": 2 } } },
+        { "field.long": { "name": "id" } },
+        { "field.string": { "name": "title" } },
+        { "field.enum": { "name": "status", "@values": ["OPEN", "SHUT"],
+          "@intValueMap": { "OPEN": 0, "SHUT": 7 } } },
+        { "identity.primary": { "name": "id", "@fields": "id", "@generation": "increment" } }
+      ] } },
+      { "object.entity": { "name": "BridgeAuth", "extends": "demo::Auth",
+        "@discriminatorValue": "Bridge", "children": [
+        { "field.int": { "name": "quantity" } } ] } },
+      { "object.entity": { "name": "CopayAuth", "extends": "demo::Auth",
+        "@discriminatorValue": "Copay", "children": [
+        { "field.int": { "name": "amount" } } ] } }
+    ] } }`;
+
+  let tphTmp: string;
+  let q: any;          // the generated Auth.queries module
+  let tphDb: any;      // Drizzle handle against the same database
+  let tphPool: pg.Pool;
+
+  beforeAll(async () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const genTmpRoot = join(here, "..", ".gen-tmp");
+    mkdirSync(genTmpRoot, { recursive: true });
+    tphTmp = mkdtempSync(join(genTmpRoot, "enum-tph-"));
+
+    const root = (await new MetaDataLoader().load([new InMemoryStringSource(TPH_META)])).root;
+    const lr = await runGen({
+      config: defineConfig({
+        outDir: tphTmp, extStyle: "none", dbImport: "./db", dialect: "postgres",
+        generators: [entityFile(), queriesFile()],
+      }),
+      metadata: root,
+    });
+    if (lr.warnings.length > 0) throw new Error(`codegen warnings: ${lr.warnings.join("; ")}`);
+
+    // The queries module takes its Db as a PARAMETER, so it needs no db module —
+    // it is imported exactly as emitted.
+    q = await import(pathToFileURL(join(tphTmp, "Auth.queries.ts")).href);
+    tphPool = new pg.Pool({ connectionString: pg2Uri });
+    tphDb = drizzle(tphPool);
+  }, 180_000);
+
+  afterAll(async () => {
+    await tphPool?.end();
+    rmSync(tphTmp, { recursive: true, force: true });
+  });
+
+  beforeEach(async () => {
+    await migrate(TPH_META);
+  });
+
+  test("the TPH base table DDL applies and a second migrate converges", async () => {
+    const expected = await expectedFor(TPH_META);
+    await assertConverged(expected);
+  }, 120_000);
+
+  test("the discriminator column is integer with an INTEGER check", async () => {
+    const col = await sql<{ data_type: string }>`
+      SELECT data_type FROM information_schema.columns
+      WHERE table_name = 'auths' AND column_name = 'type'
+    `.execute(k);
+    expect(col.rows[0]?.data_type).toBe("integer");
+
+    const chk = await sql<{ def: string }>`
+      SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint
+      WHERE conname = 'auths_type_chk'
+    `.execute(k);
+    // Unquoted integers, not 'Bridge'/'Copay' — the discriminator's CHECK is
+    // subject to the same int-backing as any other enum column.
+    expect(chk.rows[0]?.def).toContain("1");
+    expect(chk.rows[0]?.def).toContain("2");
+    expect(chk.rows[0]?.def).not.toContain("Bridge");
+  }, 120_000);
+
+  test("create through the generated per-subtype fn stores BOTH enums as integers", async () => {
+    // `type` is required by BridgeAuthInsertSchema (z.literal("Bridge")) — that is
+    // pre-existing TPH behaviour, identical for a string-backed discriminator; the
+    // ROUTES layer is what omits it and re-adds it from the URL.
+    await q.createBridgeAuth(tphDb, {
+      type: "Bridge", title: "a", status: "SHUT", quantity: 3,
+    });
+    // Raw SQL, bypassing the codec — this is what is actually on disk.
+    const raw = await sql<{ type: number; status: number }>`
+      SELECT "type", "status" FROM "auths" WHERE "title" = 'a'
+    `.execute(k);
+    expect(raw.rows[0]?.type).toBe(1);      // Bridge, not 'Bridge'
+    expect(raw.rows[0]?.status).toBe(7);    // SHUT
+  }, 120_000);
+
+  test("the per-subtype read schema decodes an int-backed enum column", async () => {
+    // Insert with raw SQL so neither value passes through toDriver — proving the
+    // read path decodes rather than the two directions cancelling out.
+    await sql.raw(
+      `INSERT INTO "auths" ("type", "title", "status", "quantity") VALUES (1, 'b', 0, 9);`,
+    ).execute(k);
+    const rows = await q.listBridgeAuths(tphDb);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].type).toBe("Bridge");   // z.literal("Bridge") accepted the decoded value
+    expect(rows[0].status).toBe("OPEN");   // the ZERO-valued member
+    expect(rows[0].quantity).toBe(9);
+  }, 120_000);
+
+  test("the per-subtype filter compares the INTEGER discriminator", async () => {
+    await sql.raw(
+      `INSERT INTO "auths" ("type", "title", "status") VALUES (1, 'b', 0), (2, 'c', 7), (1, 'd', 7);`,
+    ).execute(k);
+    const bridges = await q.listBridgeAuths(tphDb);
+    expect(bridges.map((r: any) => r.title).sort()).toEqual(["b", "d"]);
+    const copays = await q.listCopayAuths(tphDb);
+    expect(copays.map((r: any) => r.title)).toEqual(["c"]);
+  }, 120_000);
+
+  test("the polymorphic read dispatches on the DECODED discriminator", async () => {
+    await sql.raw(
+      `INSERT INTO "auths" ("type", "title", "status", "amount") VALUES (2, 'c', 7, 42);`,
+    ).execute(k);
+    const all = await q.listAuths(tphDb);
+    expect(all).toHaveLength(1);
+    // parseAuth read `type` as "Copay" and dispatched to CopayAuthSchema — a raw 2
+    // would have thrown on the z.enum head parse.
+    expect(all[0].type).toBe("Copay");
+    expect(all[0].amount).toBe(42);
+  }, 120_000);
+
+  test("find-by-id is scoped by the integer discriminator, not just the PK", async () => {
+    await sql.raw(
+      `INSERT INTO "auths" ("type", "title", "status") VALUES (2, 'c', 7);`,
+    ).execute(k);
+    const [{ id }] = (await sql<{ id: string }>`SELECT "id" FROM "auths"`.execute(k)).rows as any;
+    // The row IS a Copay, so asking for it as a Bridge must miss — proving the AND'd
+    // discriminator predicate encoded to 1 rather than binding 'Bridge'.
+    expect(await q.findBridgeAuthById(tphDb, Number(id))).toBeNull();
+    expect((await q.findCopayAuthById(tphDb, Number(id)))?.title).toBe("c");
   }, 120_000);
 });
