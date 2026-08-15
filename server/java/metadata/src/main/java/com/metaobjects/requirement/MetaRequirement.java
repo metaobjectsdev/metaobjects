@@ -91,7 +91,7 @@ public abstract class MetaRequirement extends MetaData {
     /** FQN references to the model nodes realising this requirement. */
     public static final String ATTR_IMPLEMENTED_BY = "implementedBy";
 
-    /** Names of the tests proving the behaviour. */
+    /** Names of tests that ASSERT the behaviour (existence evidence, not proof). */
     public static final String ATTR_VERIFIED_BY = "verifiedBy";
 
     /** The requirement that replaced this one. Expected on {@code status=superseded}. */
@@ -253,7 +253,7 @@ public abstract class MetaRequirement extends MetaData {
         return stringList(ATTR_IMPLEMENTED_BY);
     }
 
-    /** Names of the tests proving the behaviour; empty when absent. */
+    /** Names of tests that ASSERT the behaviour; empty when absent. */
     public List<String> getVerifiedBy() {
         return stringList(ATTR_VERIFIED_BY);
     }

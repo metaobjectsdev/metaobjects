@@ -91,7 +91,7 @@ export const REQUIREMENT_DEFINITION: ProviderDefinition = {
           "isArray": true,
           "min": 0,
           "max": 1,
-          "description": "Names of the tests proving the behaviour. verify checks each exists and is not skipped; it never runs them."
+          "description": "OPTIONAL — omit unless you have opened the test and read what it asserts. Names of tests that assert the behaviour. verify checks each name EXISTS and is not skipped; it never runs them, and it cannot tell whether the named test verifies this requirement — any occurrence in the test corpus satisfies it."
         },
         {
           "type": "attr",
@@ -193,7 +193,7 @@ export const REQUIREMENT_DEFINITION: ProviderDefinition = {
           "isArray": true,
           "min": 0,
           "max": 1,
-          "description": "Names of the tests proving the policy holds. verify checks each exists and is not skipped; it never runs them."
+          "description": "OPTIONAL — omit unless you have opened the test and read what it asserts. Names of tests that assert the policy holds. verify checks each name EXISTS and is not skipped; it never runs them, and it cannot tell whether the named test verifies this requirement — any occurrence in the test corpus satisfies it."
         },
         {
           "type": "attr",

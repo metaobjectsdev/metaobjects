@@ -61,7 +61,7 @@ public class MetaRequirement(TypeId typeId, string name) : MetaData(typeId, name
     }
 
     /// <summary>
-    /// Names of the tests proving the behaviour. <c>verify</c> checks each exists and is
+    /// Names of tests that ASSERT the behaviour. <c>verify</c> checks each exists and is
     /// not skipped; it never runs them.
     /// ADR-0039: resolving — inheritable via extends.
     /// </summary>

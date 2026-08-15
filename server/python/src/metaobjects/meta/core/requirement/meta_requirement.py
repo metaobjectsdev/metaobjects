@@ -54,7 +54,8 @@ class MetaRequirement(MetaData):
         return [str(x) for x in v] if isinstance(v, list) else []
 
     def verified_by(self) -> list[str]:
-        """ADR-0039: resolving. Names of the tests proving the behaviour."""
+        """ADR-0039: resolving. Names of tests that ASSERT the behaviour — existence
+        evidence only; verify cannot tell whether a named test verifies this."""
         v = self.get_meta_attr(REQUIREMENT_ATTR_VERIFIED_BY)
         return [str(x) for x in v] if isinstance(v, list) else []
 

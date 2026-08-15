@@ -87,7 +87,7 @@ public static class RequirementSchema
         ValueType: AttrConstants.ATTR_SUBTYPE_INT,
         Required: false);
 
-    /// <summary>@verifiedBy — names of the tests proving the behaviour or the policy. Legal
+    /// <summary>@verifiedBy — names of tests that ASSERT the behaviour or the policy. Legal
     /// on both subtypes; verify checks each exists and is not skipped, never runs them.</summary>
     private static readonly AttrSchema VerifiedByAttr = new AttrSchema(
         Name: RequirementConstants.REQUIREMENT_ATTR_VERIFIED_BY,
