@@ -7,6 +7,37 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — `@verifiedBy` decided what a test file is, and was wrong about a mainstream convention (npm)
+
+`@verifiedBy`'s scan carried one closed list of test-file patterns for the five ported
+ecosystems, with no way to extend it. **That list is a guess about someone else's repository,
+and it was wrong on a mainstream case from the day it shipped:** Maven Failsafe names
+integration tests `FooIT.java` / `FooIT.kt`, which matched nothing. Because the scan only fails
+OPEN at *zero* test files, a JVM project with unit tests (matched) and integration tests
+(unmatched) got a confident `ERR_REQUIREMENT_TEST_MISSING` — *"the claim was never true"* — for
+a test sitting in the repo. An adopter hit exactly this: every repository test in the project is
+an `*IT`, so `@verifiedBy` was unusable there and the honest workaround was to stop using the
+attribute.
+
+Three changes, of which only the first is a patch to the guess:
+
+- **Failsafe's own defaults are now built in** (`*IT`, `*ITCase`, `IT*` for `.java`; `*IT` /
+  `*ITCase` for `.kt`).
+- **`verify.testFiles` in `metaobjects.config.ts`** lets a project declare its own conventions
+  as globs, added to the built-ins. What counts as a test file is project-specific; a list
+  shipped by this repo cannot be authoritative about a convention it has never seen.
+- **An unrecognised convention is no longer reported as a broken claim.** When a name is absent
+  from the corpus, `verify` now searches the unclassified source files before deciding. If the
+  name is there, it emits `WARN_REQUIREMENT_TEST_UNCLASSIFIED` naming the file and pointing at
+  `verify.testFiles`; `ERR_REQUIREMENT_TEST_MISSING` is reserved for a name that appears
+  **nowhere**. The second pass runs only on the miss path, so the cost is per broken claim
+  rather than per run.
+
+The reusable lesson is the failure mode, not the regex: a gate that hardcodes another
+ecosystem's conventions will eventually tell a correct project that it is broken, and the
+default posture when the tool cannot classify something must be to say so rather than to
+convict. Gated by `cli/test/verified-by-corpus.test.ts`.
+
 ### Fixed — `verify` gates the committed schema snapshot, which nothing checked (npm) — [#292](https://github.com/metaobjectsdev/metaobjects/issues/292)
 
 `meta migrate` diffs metadata against `.metaobjects/migrations/.schema.<dialect>.json` by default

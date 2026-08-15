@@ -149,6 +149,24 @@ entry.
 `@verifiedBy` names tests: `verify` checks each exists and is not skipped. It never runs
 them. `@trackedBy` names issues or tickets and is **not** resolved — `verify` has no network.
 
+**What counts as a test file is your project's call.** The scan ships patterns for the
+conventions this repo ports to — jest/vitest/bun, JUnit, Maven Failsafe (`*IT`), xUnit/NUnit,
+pytest, Kotlin — and they are a *convenience, not an authority*: a built-in list is a guess
+about someone else's repository, and a wrong guess turns a real test into a "broken claim".
+Declare yours and they are added to the built-ins:
+
+```ts
+// metaobjects.config.ts
+export default defineConfig({
+  verify: { testFiles: ["**/*IT.kt", "**/*.feature"] },
+});
+```
+
+If a named test cannot be found in the corpus but *does* appear in some other source file,
+`verify` says so (`WARN_REQUIREMENT_TEST_UNCLASSIFIED`, naming the file) instead of claiming
+the requirement is broken — an unrecognised convention is the tool's ignorance, not your
+mistake. `ERR_REQUIREMENT_TEST_MISSING` is reserved for a name that appears **nowhere**.
+
 > **`@verifiedBy` is existence evidence, not proof — and the difference matters most to whoever
 > authored it.** The scan matches a name anywhere in the test corpus, as a whole word, in any
 > language; that generosity is deliberate (a "missing" verdict then means the name appears in no

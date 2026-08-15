@@ -35,8 +35,25 @@ mechanism exists to preserve.
 | `@implementedBy` above the L4 link floor | 1 |
 | live `requirement.architectural` claimed by nothing | 1 |
 | `@verifiedBy` naming a test that exists nowhere | 1 |
+| `@verifiedBy` naming a name found only in an **unrecognised** test file | 0 (warning) |
 | `@verifiedBy` naming a test that is **skipped** | 0 (warning) |
 | an entity no requirement claims | 0 (warning) |
+
+## What counts as a test file is YOUR project's call
+
+The scan ships patterns for jest/vitest/bun, JUnit, Maven Failsafe (`*IT`), xUnit/NUnit,
+pytest and Kotlin. Those are a convenience, **not an authority** — a built-in list is a guess
+about your repository, and a wrong guess reports a real test as a broken claim. Declare your
+conventions and they are added to the built-ins:
+
+```ts
+// metaobjects.config.ts
+export default defineConfig({ verify: { testFiles: ["**/*IT.kt", "**/*.feature"] } });
+```
+
+If a named test is missing from the corpus but present in some other source file, `verify`
+warns and names that file rather than failing — an unrecognised convention is the tool's
+ignorance, not your mistake.
 
 ## What a green run does NOT prove
 
