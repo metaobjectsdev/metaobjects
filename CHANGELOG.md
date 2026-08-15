@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.23.0] — npm `0.23.0` · PyPI `0.23.0` · NuGet `0.23.0` · Maven `7.23.0`
+
+A coordinated **MINOR** across all four registries, cut as MINOR because it adds registered
+metamodel vocabulary: pre-1.0 `^0.22.x` resolves `<0.23.0`, so a consumer adopts it
+deliberately. Everything in it is additive — a ledger written against 0.22.x loads unchanged
+and produces the same diagnostics — and the whole line is scoped to `requirement.*`, so a
+project declaring no requirements sees no behaviour change at all.
+
+Full lockstep across all 14 `@metaobjectsdev/*` publish candidates.
+
 ### Added — a requirement records the DECISION about a gap, not just the gap (all five ports)
 
 **New registered vocabulary on both `requirement.*` subtypes, which is why this line is a

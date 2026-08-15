@@ -1,7 +1,7 @@
 {
   "name": "@metaobjectsdev/codegen-ts-tanstack",
-  "version": "0.22.1",
-  "description": "TanStack codegen for metaobjects \u2014 TanStack Query hooks for every entity, plus TanStack Table column definitions and grid-state hooks for entities declaring a layout.dataGrid.",
+  "version": "0.23.0",
+  "description": "TanStack codegen for metaobjects — TanStack Query hooks for every entity, plus TanStack Table column definitions and grid-state hooks for entities declaring a layout.dataGrid.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
