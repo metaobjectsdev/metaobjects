@@ -771,20 +771,41 @@ anywhere the port renders SQL text by hand. Each port needs the encoding in both
 
 ---
 
-### Task 9: codegen-ts — TPH per-subtype read schemas must decode
+### Task 9: codegen-ts — TPH per-subtype read schemas must decode — **DONE (no product change)**
 
-**Why (verified 2026-08-12):** `renderTphSubtypeReadSchema` (`packages/codegen-ts/src/templates/zod-validators.ts`) parses DB ROWS. For an int-backed enum the row holds an integer, which a string `z.enum([...])` read schema rejects outright. Task 5 wires the vanilla read path; the TPH per-subtype path is a SEPARATE code path — this is the same class of miss as #203/#229, where TPH per-subtype controllers each needed `@autoSet` stamping wired separately after the vanilla path already had it. The original plan hand-waved TPH as "a follow-up if discovered incomplete." It IS incomplete.
+**Outcome (2026-08-14).** The premise is false, and for a structural reason worth
+recording: `renderTphSubtypeReadSchema` does NOT see raw DB rows. Every TPH path goes
+through Drizzle — `db.select()` for both the polymorphic and per-subtype reads,
+`eq(auths.type, "Bridge")` for the subtype predicate, `.values()` for the insert, and
+the routes tier's `discriminatorCond` (`runtime-ts/src/drizzle-fastify/index.ts:94`)
+likewise. So Task 5's `customType` encodes and decodes **at the column**, and every
+schema only ever sees member symbols. `z.literal("Bridge")` and `parseAuth`'s `z.enum`
+head parse are correct exactly as emitted; there is no decode to wire and no lookup to
+reuse.
 
-Note `fixtures/conformance/tph-discriminator-enum-with-subtypes` exists: an int-backed enum used AS a TPH discriminator additionally needs its `HasValue`-equivalent literal comparisons encoded. If that proves to need its own design, the acceptable fallback is to REJECT `@intValueMap` on a discriminator field with a clear loader error — but decide it explicitly, do not leave it emitting broken code.
+**Step 3 — the discriminator case is DECIDED: SUPPORTED, not rejected.** An int-backed
+enum used AS a TPH discriminator needs no special handling for the same reason: the
+discriminator column gets the same `customType`, its `CHECK` lists unquoted integers,
+and every comparison against it is a Drizzle `eq`. The documented fallback (reject
+`@intValueMap` on a discriminator with a named loader error) was NOT taken.
 
-**Files:**
-- Modify: `packages/codegen-ts/src/templates/zod-validators.ts`
-- Test: `packages/codegen-ts/test/templates/` TPH read-schema test
+**Verified by running it, not by reading it** (`da535f95d`) — #203/#229 is the precedent
+for TPH being a separate code path everyone assumes is covered, and the 0.15.21 line is
+what "the generated source looks right" is worth. Seven real-Postgres tests in
+`integration-tests/test/enum-intvaluemap-pg.test.ts` over a hierarchy whose discriminator
+is int-backed 1/2 and which carries a second int-backed enum (0/7, so the zero member is
+live): DDL applies + converges; the discriminator column is `integer` with an integer
+CHECK; a generated per-subtype create stores both enums as integers (asserted with raw
+SQL, bypassing the codec); the per-subtype read schema decodes a raw-SQL-inserted integer
+row; the per-subtype filter compares the integer; the polymorphic read dispatches on the
+decoded value; and find-by-id is discriminator-scoped (a Copay row asked for as a Bridge
+must MISS).
 
-- [ ] **Step 1: Failing test** — a TPH hierarchy whose base carries an int-backed enum: the generated per-subtype read schema accepts the integer row value and yields the member string.
-- [ ] **Step 2:** Wire the decode into the TPH read path, reusing Task 5's generated lookup — do not duplicate the codec.
-- [ ] **Step 3:** Decide and implement the discriminator case (support, or reject with a named error).
-- [ ] **Step 4: Commit** — `fix(codegen-ts): TPH per-subtype read schemas decode int-backed enums`
+**Two things the run surfaced, both pre-existing and both identical for a string-backed
+enum** — neither is int-backing-specific, neither was changed: migrate-ts names the check
+constraint `auths_type_chk` while codegen's Drizzle `check()` uses `chk_auths_type`; and a
+TPH `<Sub>InsertSchema` requires its `z.literal` discriminator (the ROUTES tier is what
+omits it and re-adds it from the URL).
 
 ---
 
@@ -798,6 +819,12 @@ Known port-specific defects already identified, to fold in during that rewrite:
 - **C#** — the array branch emits `ElementType().HasConversion<string>()` unconditionally, ignoring `@intValueMap` (violates D7); and its per-entity `EnumTypeName` naming needs re-checking against FR-019's shared/provided materialization.
 - **Java/Kotlin** — Kotlin's per-package `${enumClassName}_TO_INT` support-file emission collides under a shared enum (two consuming fields → two same-named top-level `val`s, even with identical maps: the emitter iterates `(class, field)` pairs with no dedupe). Emit per TYPE, once. A `@provided` Kotlin enum additionally needs its class imported into the support file. Java's `hasMetaAttr(name)` defaults to `includeParentData=true` and DOES resolve through `extends` (verified) — so its codec read is correct by default, but keep it that way deliberately.
 - **Python** — the write branch's `int_value_map[value]` raises `KeyError` on a non-member (should be a clean validation error) and `TypeError` on an array-of-enum value (a list is unhashable); D7 array handling is absent entirely. The query/WHERE path is unaddressed (same class as Task 8).
+- **Every port, from Task 9's result** — if a port's TPH surface (and its read/filter/insert
+  paths generally) goes through its ORM, a COLUMN-level codec seam makes int-backing work
+  with no TPH-specific code at all. Prefer that seam over a query-layer one and the TPH
+  fan-out cost drops to zero. Where a port instead hand-builds SQL for TPH (a raw
+  discriminator predicate, a hand-written `WHERE type = ?`), it needs the encoding
+  explicitly — the same split as Task 8b's view bodies.
 - **All ports** — a column-level codec seam (the TS `customType`, EF Core `HasConversion`,
   `JdbcFieldCodec`, Exposed `customEnumeration`) does NOT reach anywhere the port renders
   SQL **text** by hand — view bodies above all. TS needed the member→integer encoding in
