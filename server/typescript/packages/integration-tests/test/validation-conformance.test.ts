@@ -35,6 +35,12 @@ beforeAll(async () => {
   const zodPath = pathToFileURL(Bun.resolveSync("zod", import.meta.dir)).href;
   tmpDir = mkdtempSync(join(tmpdir(), "validation-conformance-"));
 
+  // Write EVERY module before importing ANY of them. Bun caches a directory's
+  // listing at the first import out of it, so a sibling written after that import
+  // is invisible to the resolver and fails with `Cannot find module <path>` even
+  // though the file is on disk — which is exactly what a write-then-import loop
+  // produced here (Account resolved, Ledger did not).
+  const modulePaths: Array<readonly [string, string]> = [];
   for (const entityName of ENTITY_NAMES) {
     const entity = root.findObject(entityName);
     if (!entity) throw new Error(`corpus meta.json has no object named ${entityName}`);
@@ -46,10 +52,14 @@ beforeAll(async () => {
     generated = generated.replace(/(['"])zod\1/g, JSON.stringify(zodPath));
 
     // Emit to a temp module (outside the package tree, so it can't be picked up by
-    // a later test glob) and import it so we exercise the real generated code.
+    // a later test glob).
     const modulePath = join(tmpDir, `${entityName}.ts`);
     writeFileSync(modulePath, generated, "utf8");
+    modulePaths.push([entityName, modulePath] as const);
+  }
 
+  for (const [entityName, modulePath] of modulePaths) {
+    // Import so we exercise the real generated code.
     const mod = (await import(pathToFileURL(modulePath).href)) as Record<string, ZodTypeAny>;
     const schema = mod[`${entityName}InsertSchema`];
     if (!schema) throw new Error(`generated module did not export ${entityName}InsertSchema`);
