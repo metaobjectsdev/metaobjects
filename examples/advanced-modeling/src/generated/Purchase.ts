@@ -32,7 +32,7 @@ export const purchases = pgTable(
   },
   (table) => [
     check(
-      "chk_purchases_status",
+      "purchases_status_chk",
       sql`status IN ('pending', 'completed', 'refunded')`,
     ),
   ],

@@ -42,7 +42,7 @@ export const programs = pgTable(
   },
   (table) => [
     check(
-      "chk_programs_status",
+      "programs_status_chk",
       sql`status IN ('draft', 'published', 'archived')`,
     ),
   ],

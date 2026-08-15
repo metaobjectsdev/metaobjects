@@ -149,6 +149,19 @@ entry.
 `@verifiedBy` names tests: `verify` checks each exists and is not skipped. It never runs
 them. `@trackedBy` names issues or tickets and is **not** resolved — `verify` has no network.
 
+> **`@verifiedBy` is existence evidence, not proof — and the difference matters most to whoever
+> authored it.** The scan matches a name anywhere in the test corpus, as a whole word, in any
+> language; that generosity is deliberate (a "missing" verdict then means the name appears in no
+> test file at all, which is broken in any ecosystem) but it means the check **cannot tell whether
+> the named test verifies the claim.** Auditing a real 19-name ledger found four that did not: one
+> matched a **comment**, one a **dependency-injection key** in test setup, one a **real test of a
+> different claim**, and one a test of the entry's *output* where the claim was about its *source
+> text*. `verify` reported clean throughout. A comment-only match now warns
+> (`WARN_REQUIREMENT_TEST_COMMENT_ONLY`); the other three are semantic and no scan will ever reach
+> them. **After authoring `@verifiedBy`, open each named test and read what it asserts.** If the
+> claim has no test, write one rather than pointing at a name that happens to exist — a property
+> about source text (no forbidden identifier, no unbounded call) is testable by reading the file.
+
 **Every run prints a summary**, clean or not:
 
 ```

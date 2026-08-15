@@ -83,7 +83,11 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
     if (spec.checkConstraint !== undefined) {
       checkConstraints.push({
-        name: `chk_${tableName}_${spec.dbName}`,
+        // #293 — migrate's `<table>_<col>_chk` is the shared convention, and it is the
+        // authority: its suffix form is systematic across five constraint kinds and those
+        // names are already in live databases, so flipping migrate instead would emit
+        // DROP/ADD CONSTRAINT churn against production for a cosmetic difference.
+        name: `${tableName}_${spec.dbName}_chk`,
         expr: spec.checkConstraint,
       });
     }
@@ -108,7 +112,11 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     // (not false), so other-subtype rows with NULL pass the check.
     if (spec.checkConstraint !== undefined) {
       checkConstraints.push({
-        name: `chk_${tableName}_${spec.dbName}`,
+        // #293 — migrate's `<table>_<col>_chk` is the shared convention, and it is the
+        // authority: its suffix form is systematic across five constraint kinds and those
+        // names are already in live databases, so flipping migrate instead would emit
+        // DROP/ADD CONSTRAINT churn against production for a cosmetic difference.
+        name: `${tableName}_${spec.dbName}_chk`,
         expr: spec.checkConstraint,
       });
     }

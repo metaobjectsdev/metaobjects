@@ -48,6 +48,8 @@ under **Shipped**; planned FRs under **Planned** + the **Release plan**. ✅ shi
 | FR-034 | Ecosystem tier — connected systems (`system`/`container`/`surface`/`environment`) | 📋 designed (**draft, deferred post-1.0**) | 1.1 | — |
 | FR-035 | Present-key PATCH tristate (mutation surface) | 🟢 shipped 5 ports (absent→untouched / present-null→clears / null-on-`@required`→400); coordinated **breaking** release held for FR-036 | 1.0 | — |
 | FR-036 | Constraint-validation enforcement + semantic pins | 🟢 shipped 5 ports in the coordinated `0.16.0`/`7.8.0` breaking release (required-string = non-empty·accept-whitespace · `@Pattern` = full-match · strictest-wins length; HTTP-tier enforcement all 5 ports; TPH tristate) | 1.0 | — |
+| FR-037 | Projection expressiveness (`origin.rank`) + field write-access modes (`@mutability`) | ⚪ requirements (pre-design), decisions resolved. Design: `docs/superpowers/specs/2026-08-10-fr-037-projection-expressiveness-and-write-once-design.md` | 1.1 | — |
+| FR-038 | Requirement-derived test stubs (inverts `@verifiedBy`) | ⚪ proposed. Generate the test from the requirement so the link is structural, not a name the author picks — an audit of one 19-name ledger found 4 names that did not verify their claim. Design: `docs/superpowers/specs/2026-08-15-fr-038-requirement-derived-test-stubs-design.md` | 1.1 | — |
 
 _(FR-001 was the original metamodel foundation — pre-dates the FR-numbered tracking.)_
 _(FR-032 was developed under the working number "FR-026" — see commit history; renumbered to avoid the FR-026=Forms collision. Design: `docs/superpowers/specs/2026-06-13-fr-032-canonical-fqn-refs-design.md`, ADR-0032.)_

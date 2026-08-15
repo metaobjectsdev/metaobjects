@@ -8,7 +8,7 @@
 // the text ships. Required-slot misses are warnings (don't fail the build).
 
 import { join, resolve as resolvePath } from "node:path";
-import { parseVerifyArgs } from "../lib/args.js";
+import { parseVerifyArgs, type MigrateFlags } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
@@ -18,7 +18,7 @@ import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
 import { computeCodegenDrift } from "../lib/codegen-drift.js";
 import { checkRequirements, summariseRequirements } from "../lib/requirement-check.js";
 import { checkVerifiedBy } from "../lib/verified-by-scan.js";
-import { resolveD1Config } from "../lib/config.js";
+import { resolveD1Config, resolveMigrateConfig } from "../lib/config.js";
 import {
   buildWranglerExecuteArgs,
   defaultWranglerRunner,
@@ -33,6 +33,11 @@ import {
   computeDrift,
   computeDriftFromActual,
   collectUnmanagedNames,
+  introspect,
+  diff,
+  readSnapshot,
+  snapshotPath,
+  type SchemaSnapshot,
   introspectD1,
   findWranglerConfig,
   parseWranglerConfig,
@@ -66,6 +71,19 @@ const DEFAULT_PROMPTS_DIR = "prompts";
 // ADR-0023 strict-attr check for an undeclared/typo'd own @attr. Not individually
 // exported by the package, so named here to avoid an inline literal at the use site.
 const ERR_UNKNOWN_ATTR = "ERR_UNKNOWN_ATTR";
+
+/**
+ * A no-flags MigrateFlags, so `resolveMigrateConfig` yields exactly what `meta migrate`
+ * would use with nothing passed on the command line — config value, else default. verify
+ * consumes only `outDir` from the result (#292); the other fields exist to satisfy the
+ * shared shape, and reading any of them here would be reaching into migrate's decisions.
+ */
+const EMPTY_MIGRATE_FLAGS = {
+  db: undefined, dialect: undefined, format: undefined, outDir: undefined, slug: undefined,
+  allow: [], onAmbiguous: undefined, dryRun: false, d1Binding: undefined, remote: false,
+  apply: false, rollback: undefined, yes: false, fromDb: false, baseline: false,
+  applyPending: false,
+} as const satisfies MigrateFlags;
 
 /** Coerce a string-array attr (array, or a single string) into a string[]. */
 function attrAsStringArray(attr: unknown): string[] {
@@ -398,14 +416,24 @@ export async function verifyCommand(
       const viewStrategy = forgeConfig?.columnNamingStrategy ?? "snake_case";
       const expectedViews = buildProjectionViews(root, { dialect: kysely.dialect, columnNamingStrategy: viewStrategy });
       let driftResult;
+      let actual: SchemaSnapshot;
       try {
-        driftResult = await computeDrift(kysely.db, kysely.dialect, root, { allow, views: expectedViews });
+        // Introspect once and keep the result: #292's snapshot check needs the same
+        // `actual` this drift comparison uses, and re-introspecting for it would both
+        // cost a second round trip and open a window where the two could disagree.
+        actual = await introspect(kysely.db, kysely.dialect);
+        driftResult = await computeDriftFromActual(actual, kysely.dialect, root, { allow, views: expectedViews });
       } catch (err) {
         log.error(`verify: failed to introspect ${kysely.displayUrl}: ${(err as Error).message}`);
         return 1;
       }
 
-      return reportSchemaDrift(driftResult, ledgerDrift, kysely.displayUrl);
+      const snapshotDrift =
+        driftResult.changes.length === 0
+          ? await checkCommittedSnapshot(actual, kysely.dialect, kysely.displayUrl)
+          : [];
+
+      return reportSchemaDrift(driftResult, [...ledgerDrift, ...snapshotDrift], kysely.displayUrl);
     } finally {
       try {
         await kysely.close();
@@ -489,6 +517,69 @@ export async function verifyCommand(
   // Shared drift-reporting + exit-code logic for BOTH schema-drift paths (sqlite/
   // postgres via computeDrift, D1 via computeDriftFromActual) — #225 requires the
   // D1 path to feed the SAME reporting, not a forked copy.
+  // #292 — the committed reference snapshot is itself checked, and this is the only
+  // place in the toolchain that can do it.
+  //
+  // `meta migrate` diffs metadata against `.metaobjects/migrations/.schema.<dialect>.json`
+  // by default (`--from-db` is the documented opt-out), so that file decides what DDL the
+  // next migration contains. Nothing verified it. A snapshot gone stale — an interrupted
+  // migrate, a rollback, a bad merge resolution — passed `verify` clean and then made the
+  // next `migrate --slug` emit DDL that fails at apply (`column ... already exists`), which
+  // surfaces as a migration that cannot be applied and a history that cannot be reproduced.
+  //
+  // THE GATE IS CONDITIONED ON metadata==DB, deliberately, and that is what makes it
+  // false-positive-free. The snapshot means "the schema the COMMITTED MIGRATIONS land you
+  // in" and it advances at GENERATION time, so between `migrate --slug` and applying that
+  // migration the snapshot legitimately leads the database. In exactly that window the
+  // metadata↔DB drift is non-empty and this check stays silent; when metadata and the DB
+  // agree there is no pending work left to explain a difference, so a snapshot that
+  // disagrees is stale, full stop.
+  //
+  // Keying on the drift result rather than on the migration ledger is the load-bearing
+  // choice. A ledger-based "are there unapplied migrations?" test looks equivalent and is
+  // not: a project that applies its migrations out of band — psql, a CI step, another
+  // tool — has no ledger rows at all, so every migration reads as pending and the gate
+  // would silently never fire. That is the same class of defect as the one being fixed.
+  //
+  // Fails OPEN when there is no snapshot on disk (a project that has never generated one
+  // offline is not in an error state) and when the file cannot be read or parsed (that is
+  // migrate's error to raise, with its own message, not a drift verdict).
+  async function checkCommittedSnapshot(
+    actual: SchemaSnapshot,
+    dialect: Dialect,
+    displayUrl: string,
+  ): Promise<string[]> {
+    if (dialect === "d1") return []; // d1 keeps migrations Wrangler-native; no offline snapshot
+    // Resolve the migrations dir through migrate's OWN precedence (flag > config >
+    // default) rather than re-deriving it, so verify can never look somewhere migrate
+    // does not write. Only `outDir` is consumed; the rest of the resolved config is
+    // migrate's business.
+    const migrateConfig = await resolveMigrateConfig(EMPTY_MIGRATE_FLAGS, cwd);
+    const dir = resolvePath(cwd, migrateConfig.outDir);
+    let snapshot: SchemaSnapshot | null;
+    try {
+      snapshot = await readSnapshot(snapshotPath(dir, dialect));
+    } catch {
+      return [];
+    }
+    if (snapshot === null) return [];
+
+    const result = await diff({
+      expected: snapshot,
+      actual,
+      allow: {},
+      unmanagedNames: collectUnmanagedNames(root),
+    });
+    if (result.changes.length === 0) return [];
+
+    return [
+      `the committed schema snapshot disagrees with ${displayUrl} ` +
+        `(${result.changes.length} difference(s)) — the next 'meta migrate' would emit DDL from it ` +
+        `and fail at apply. Re-derive it with 'meta migrate --from-db --db <url> --dialect ${dialect}'.`,
+      ...summarizeDrift(result.changes),
+    ];
+  }
+
   function reportSchemaDrift(driftResult: DiffResult, ledgerDrift: string[], displayUrl: string): number {
     // #208 §8 — make declared-external objects visible: they are excluded from the
     // drift comparison (computeDrift/computeDriftFromActual thread them out), so
@@ -506,8 +597,13 @@ export async function verifyCommand(
       return 0;
     }
 
-    log.error(`meta verify — schema drift vs ${displayUrl} (${changes.length} change(s)):`);
-    for (const line of summarizeDrift(changes)) log.error(`  ${line}`);
+    // The header is conditional: #292's snapshot findings arrive through `ledgerDrift`
+    // with the metadata↔DB comparison clean, and announcing "schema drift (0 change(s))"
+    // above them would contradict the very check that just passed.
+    if (changes.length > 0) {
+      log.error(`meta verify — schema drift vs ${displayUrl} (${changes.length} change(s)):`);
+      for (const line of summarizeDrift(changes)) log.error(`  ${line}`);
+    }
     for (const line of ledgerDrift) log.error(`  ${line}`);
     return 1;
   }

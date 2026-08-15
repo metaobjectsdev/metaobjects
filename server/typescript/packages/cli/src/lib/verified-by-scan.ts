@@ -32,6 +32,7 @@ import {
 
 export const ERR_REQUIREMENT_TEST_MISSING = "ERR_REQUIREMENT_TEST_MISSING";
 export const WARN_REQUIREMENT_TEST_SKIPPED = "WARN_REQUIREMENT_TEST_SKIPPED";
+export const WARN_REQUIREMENT_TEST_COMMENT_ONLY = "WARN_REQUIREMENT_TEST_COMMENT_ONLY";
 
 export interface VerifiedByDiagnostic {
   severity: "error" | "warn";
@@ -124,6 +125,23 @@ function collect(root: MetaData): MetaRequirement[] {
  * emit the confident false error this scan is built to avoid. Camel-case boundaries
  * stay strict, which is what actually prevents a short name matching a longer one.
  */
+/**
+ * Is this whole line a comment?
+ *
+ * WHOLE-LINE ONLY, deliberately. Stripping from the first `//` would truncate a code
+ * line containing one inside a string — a test titled with a URL is the obvious case —
+ * and turn a real match into a confident false error, which is the failure this scan is
+ * built to avoid. A trailing comment after code therefore still counts as code; that
+ * under-flags, which is the repo's standing bias for drift checks.
+ *
+ * `#` is Python-only: in TypeScript it opens a private field, not a comment.
+ */
+function isCommentLine(line: string, file: string): boolean {
+  const t = line.trimStart();
+  if (t.startsWith("//") || t.startsWith("/*") || t.startsWith("*")) return true;
+  return file.endsWith(".py") && t.startsWith("#");
+}
+
 function wordRx(name: string): RegExp {
   return new RegExp(`(?:^|[^A-Za-z0-9])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![A-Za-z0-9])`);
 }
@@ -149,15 +167,40 @@ export function checkVerifiedBy(root: MetaData, cwd: string): VerifiedByDiagnost
       const rx = wordRx(test);
       let foundIn: string | undefined;
       let skippedAt: string | undefined;
+      // #293-adjacent (the `verifiedBy` audit): a name that occurs ONLY in comments
+      // satisfied this scan, because the match is line-agnostic. That is how a claim
+      // came to name `mountCrudRoutes`, whose single occurrence in an entire corpus was
+      // inside a `// via mountCrudRoutes(...)` note. Tracked separately so the name can
+      // still be reported as found (it is) while saying what it was found in.
+      let commentOnlyAt: string | undefined;
       for (const [file, lines] of corpus.byFile) {
         for (let i = 0; i < lines.length; i++) {
           if (!rx.test(lines[i] ?? "")) continue;
+          if (isCommentLine(lines[i] ?? "", file)) {
+            commentOnlyAt ??= `${file}:${i + 1}`;
+            continue;
+          }
           foundIn ??= file;
           // a decorator/annotation sits above the declaration it disables
           const window = lines.slice(Math.max(0, i - 3), i + 1).join("\n");
           if (SKIP_MARKER.test(window)) skippedAt ??= `${file}:${i + 1}`;
         }
         if (foundIn !== undefined && skippedAt !== undefined) break;
+      }
+
+      // Found, but only ever in prose. Not an error — the scan's job is to catch a name
+      // that has gone missing, and this one has not — but a comment proves nothing, so
+      // the claim is reported rather than silently accepted.
+      if (foundIn === undefined && commentOnlyAt !== undefined) {
+        out.push({
+          severity: "warn",
+          code: WARN_REQUIREMENT_TEST_COMMENT_ONLY,
+          name: req.name,
+          message:
+            `'verifiedBy' names '${test}', which appears only in a comment (${commentOnlyAt}) ` +
+            `and in no test declaration. A comment proves nothing — name the test that asserts it.`,
+        });
+        continue;
       }
 
       if (foundIn === undefined) {

@@ -180,3 +180,83 @@ describe("meta verify --db — schema-drift gate", () => {
     }
   });
 });
+
+// -- #292: the committed snapshot is itself drift ---------------------------
+// `meta migrate` diffs metadata against `.metaobjects/migrations/.schema.<dialect>.json`
+// by default (`--from-db` is the documented opt-out). Nothing checked that file, so a
+// snapshot gone stale — an interrupted migrate, a rollback, a bad merge resolution —
+// passed verify clean and made the NEXT migrate emit DDL that fails at apply.
+describe("meta verify --db — the committed schema snapshot (#292)", () => {
+  const snapshotFile = (repo: string) =>
+    join(repo, ".metaobjects", "migrations", ".schema.sqlite.json");
+
+  /** Drop a column from the committed snapshot, standing in for any cause of staleness. */
+  function staleSnapshot(repo: string, table: string, column: string): void {
+    const path = snapshotFile(repo);
+    const doc = JSON.parse(readFileSync(path, "utf8"));
+    const t = doc.snapshot.tables.find((x: { name: string }) => x.name === table);
+    if (!t) throw new Error(`no table '${table}'; have: ${doc.snapshot.tables.map((x: {name:string}) => x.name).join(', ')}`);
+    const before = t.columns.length;
+    t.columns = t.columns.filter((c: { name: string }) => c.name !== column);
+    expect(t.columns.length).toBe(before - 1);
+    writeFileSync(path, JSON.stringify(doc, null, 2), "utf8");
+  }
+
+  test("a stale snapshot fails the gate and names the disagreement", async () => {
+    const { repo, dbUrl } = scaffold(true);
+    try {
+      await materialize(repo, dbUrl);
+      // Baseline: everything agrees.
+      expect(await run(["verify", "--cwd", repo, "--db", dbUrl, "--dialect", "sqlite"])).toBe(0);
+
+      staleSnapshot(repo, "widgets", "color");
+      out = [];
+      err = [];
+
+      const exit = await run(["verify", "--cwd", repo, "--db", dbUrl, "--dialect", "sqlite"]);
+      expect(exit).toBe(1);
+      const all = [...out, ...err].join("\n");
+      expect(all).toContain("snapshot");
+      expect(all).toContain("color");
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("no snapshot on disk → silent, not a failure (fail open)", async () => {
+    const { repo, dbUrl } = scaffold(true);
+    try {
+      await materialize(repo, dbUrl);
+      rmSync(snapshotFile(repo), { force: true });
+      out = [];
+      err = [];
+      const exit = await run(["verify", "--cwd", repo, "--db", dbUrl, "--dialect", "sqlite"]);
+      expect(exit).toBe(0);
+      expect([...out, ...err].join("\n")).not.toContain("snapshot");
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("an UNAPPLIED migration is not snapshot drift — the snapshot legitimately leads the DB", async () => {
+    const { repo, dbUrl } = scaffold(false);
+    try {
+      await materialize(repo, dbUrl);
+      // Metadata gains a column and a migration is GENERATED but never applied. The
+      // snapshot advances at generation time, so snapshot != DB on purpose here. The
+      // metadata-vs-DB gate must still fire; the snapshot gate must stay quiet.
+      writeFileSync(join(repo, "metaobjects", "meta.drift.json"), metaJson(true), "utf8");
+      expect(
+        await run(["migrate", "--cwd", repo, "--db", dbUrl, "--dialect", "sqlite", "--slug", "add-color"]),
+      ).toBe(0);
+      out = [];
+      err = [];
+
+      await run(["verify", "--cwd", repo, "--db", dbUrl, "--dialect", "sqlite"]);
+      const all = [...out, ...err].join("\n");
+      expect(all).not.toContain("snapshot disagrees");
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+});

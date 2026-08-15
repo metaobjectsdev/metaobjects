@@ -7,6 +7,79 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — `verify` gates the committed schema snapshot, which nothing checked (npm) — [#292](https://github.com/metaobjectsdev/metaobjects/issues/292)
+
+`meta migrate` diffs metadata against `.metaobjects/migrations/.schema.<dialect>.json` by default
+(`--from-db` is the documented opt-out), so **that file decides what DDL the next migration
+contains** — and nothing in the toolchain verified it. `meta verify --db` compares the live database
+against the *metadata* and never against the snapshot.
+
+A snapshot gone stale — an interrupted migrate, a rollback, a bad merge resolution — passed `verify`
+clean, and the next `migrate --slug` then emitted DDL that failed at apply. Reproduced end to end on
+a real Postgres: drop a column from the snapshot, `verify --db` still reports `schema in sync`,
+`migrate` emits `ALTER TABLE "contact" ADD COLUMN "notes" TEXT`, and applying it gives
+`column "notes" of relation "contact" already exists`. **The toolchain had everything it needed to
+know the snapshot was wrong and reported healthy.** An adopter had already been bitten and carried a
+manual "diff the snapshot after any migration-adjacent rollback" note in its traps list.
+
+`verify --db` now compares the committed snapshot against the live database and fails when they
+disagree, naming the differences and how to re-derive it.
+
+**The check is conditioned on metadata==DB, and that is what makes it false-positive-free.** The
+snapshot advances at migration-GENERATION time, so between `migrate --slug` and applying that
+migration it legitimately leads the database; in exactly that window the metadata↔DB drift is
+non-empty and this check stays silent. When metadata and the database agree there is no pending work
+left to explain a difference, so a snapshot that disagrees is stale.
+
+Keying on the drift result rather than on the migration **ledger** is deliberate. A ledger-based
+"are there unapplied migrations?" test looks equivalent and is not: a project that applies its
+migrations out of band — `psql`, a CI step, another tool — has no ledger rows at all, so every
+migration reads as pending and the gate would silently never fire. That is the same class of defect
+as the one being fixed, and the integration harness (which applies its SQL directly) surfaced it
+before the design shipped. Fails open when no snapshot exists or it cannot be parsed; d1 is
+unaffected (its migrations stay Wrangler-native).
+
+### Fixed — codegen and migrate named the same CHECK constraint two different ways (npm) — [#293](https://github.com/metaobjectsdev/metaobjects/issues/293)
+
+For one `field.enum`, the generated Drizzle table emitted `check("chk_order_items_status", …)` while
+the migration emitted `ADD CONSTRAINT "order_items_status_chk"` — prefix versus suffix, same
+metadata, same version, same dialect. So the constraint name in the generated source never matched
+the one in the database: a `DROP CONSTRAINT` written from the generated name fails, a Postgres error
+quotes a name that appears nowhere in the source anyone would grep, and any reconciliation between
+the two (drizzle-kit introspect/push, a schema diff run as a sanity check) reports a difference that
+is not real.
+
+**Codegen changed, not migrate**, and the direction is not arbitrary: migrate's suffix form is
+systematic across five constraint kinds (`_numeric_chk`, `_length_chk`, `_regex_chk`, `_cmp_chk`,
+`_chk`) and **those names are already in live databases**, so flipping migrate would emit DROP/ADD
+CONSTRAINT churn against production for a cosmetic fix. Codegen's prefix was two lines of one file,
+landing in regenerated source where changing it costs nothing.
+
+Gated by a new test that renders both emitters from the same metadata and asserts the names match —
+reading codegen's side off disk rather than from an internal, so it asserts the text an adopter
+receives. Nothing compared the two before; each was internally consistent and separately tested,
+which is exactly how the divergence survived.
+
+### Fixed — a `@verifiedBy` name found only in a comment now warns instead of passing (npm)
+
+`checkVerifiedBy` matches a name anywhere in the test corpus as a whole word, so **a name occurring
+only inside a comment satisfied it.** Auditing a real 19-name ledger found four claims that did not
+verify what they were attached to, one of them matching a `// via mountCrudRoutes(...)` note that was
+its single occurrence in the entire corpus. A comment-only match now emits
+`WARN_REQUIREMENT_TEST_COMMENT_ONLY`, naming the file and line.
+
+A **whole-line** comment test, deliberately, rather than stripping to end-of-line: a test titled with
+a URL contains `//`, and truncating there would turn a real match into a confident false error — the
+failure this scan exists to avoid. A trailing comment after code therefore still counts as code,
+which under-flags, matching the repo's standing bias for drift checks. `#` is treated as a comment
+only in Python files, where it is one.
+
+`docs/features/requirements.md` now states the boundary plainly: **`@verifiedBy` is existence
+evidence, not proof.** The other three audited failures — a dependency-injection key, a real test of
+a different claim, and a test of the entry's output where the claim was about its source text — are
+semantic, and no lexical rule reaches them. Inverting the relationship so the test is *generated
+from* the requirement is specified as **FR-038**.
+
 ## [0.23.0] — npm `0.23.0` · PyPI `0.23.0` · NuGet `0.23.0` · Maven `7.23.0`
 
 A coordinated **MINOR** across all four registries, cut as MINOR because it adds registered

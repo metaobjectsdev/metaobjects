@@ -7,6 +7,7 @@ import {
   checkVerifiedBy,
   ERR_REQUIREMENT_TEST_MISSING,
   WARN_REQUIREMENT_TEST_SKIPPED,
+  WARN_REQUIREMENT_TEST_COMMENT_ONLY,
 } from "../../src/lib/verified-by-scan.js";
 
 /** Build a project on disk: metadata + whatever test files the case needs. */
@@ -145,5 +146,60 @@ describe("checkVerifiedBy", () => {
     );
     // the only 'test file' is inside node_modules -> corpus empty -> fail open
     expect(checkVerifiedBy(await load(dir), dir)).toEqual([]);
+  });
+});
+
+// The audit that prompted this: a claim named `mountCrudRoutes`, whose only occurrence
+// in an entire corpus was inside a comment. The scan reported it found and said nothing.
+describe("a name found only in a comment is reported, not accepted", () => {
+  test("comment-only match → WARN; never a silent pass, and never an error", async () => {
+    const dir = project(
+      {
+        "test/order.test.ts": [
+          "// via mountCrudRoutes({ expose: ['list'] }) directly",
+          "test('something else', () => {});",
+        ].join("\n"),
+      },
+      req("live", ["mountCrudRoutes"]),
+    );
+    const d = checkVerifiedBy(await load(dir), dir);
+    expect(d).toHaveLength(1);
+    expect(d[0]!.code).toBe(WARN_REQUIREMENT_TEST_COMMENT_ONLY);
+    expect(d[0]!.severity).toBe("warn");
+    expect(d[0]!.message).toContain("order.test.ts:1");
+  });
+
+  test("a name in BOTH a comment and a real declaration still passes clean", async () => {
+    const dir = project(
+      {
+        "test/order.test.ts": [
+          "// see OrderServiceTest below",
+          "describe('OrderServiceTest', () => {});",
+        ].join("\n"),
+      },
+      req("live", ["OrderServiceTest"]),
+    );
+    expect(checkVerifiedBy(await load(dir), dir)).toEqual([]);
+  });
+
+  // Stripping from the first `//` would truncate this line and lose a real match —
+  // which is why the rule is whole-line-is-a-comment, not strip-to-EOL.
+  test("a URL inside a test title is code, not a comment", async () => {
+    const dir = project(
+      { "test/order.test.ts": "test('rejects https://evil.example for OrderServiceTest', () => {});" },
+      req("live", ["OrderServiceTest"]),
+    );
+    expect(checkVerifiedBy(await load(dir), dir)).toEqual([]);
+  });
+
+  test("a JSDoc continuation line is a comment too", async () => {
+    const dir = project(
+      {
+        "test/order.test.ts": ["/**", " * OrderServiceTest covers this.", " */", "test('other', () => {});"].join("\n"),
+      },
+      req("live", ["OrderServiceTest"]),
+    );
+    const d = checkVerifiedBy(await load(dir), dir);
+    expect(d[0]!.code).toBe(WARN_REQUIREMENT_TEST_COMMENT_ONLY);
   });
 });
