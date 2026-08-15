@@ -7,6 +7,59 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added — a requirement records the DECISION about a gap, not just the gap (all five ports)
+
+**New registered vocabulary on both `requirement.*` subtypes, which is why this line is a
+MINOR.** Purely additive: a ledger written against 0.22.x loads unchanged and produces the
+same diagnostics.
+
+`@status: partial` said there IS a gap. It never said what anyone DECIDED about it, so a
+known-and-tolerated gap and a gap nobody has looked at were the same value. Dogfooding a real
+235-entry adopter ledger is what surfaced it: **62 recorded gaps, and no way to ask which of
+them had been ruled on** without writing a script. Three additions close that:
+
+- **`@status: planned`** — intended, not built. Its `@implementedBy` **may dangle** (write the
+  requirement before the entity exists) and it is exempt from the architectural universality
+  check, which would otherwise fire on precisely the entries meant to apply to nothing yet. A
+  `planned` entry **never counts toward object coverage** — without that rule the cheapest way
+  to clear an unclaimed-entity warning would be to declare an intention, and the gate would
+  measure ambition rather than work.
+- **`@disposition`** — closed enum `accepted` (understood, deliberately not closing) or
+  `deferred` (will close, not now). **Absent means UNDECIDED**, and keeping that distinct is
+  the point: folding it into `@status` would make "there is a gap" and "we chose to live with
+  it" the same fact, and lose the question a review exists to ask.
+- **`@trackedBy`** — issue/ticket references, a string array. Free-form and deliberately
+  **never resolved** (`verify` has no network), and deliberately not a workflow vocabulary:
+  which sprint, who owns it and whether it is in progress live in the tracker, because two
+  systems holding that answer will drift and only one of them is refreshed daily.
+
+Two new warnings: a `@disposition` on a status with **no outstanding work** (there, the
+decision IS the status), and `deferred` naming **no ticket** — which is how a known problem
+becomes an unknown one.
+
+**`meta verify` now prints a requirements summary on EVERY run, clean or not** — entry counts
+by status, entities claimed, and the number of gaps carrying no disposition. A gate that says
+nothing when it passes cannot be told apart from a gate that checked nothing, and a ledger
+that skipped a whole grain read exactly like a complete one.
+
+**Architectural requirements can now nest.** `requirement.functional` declared a `requirement.*`
+child rule and `requirement.architectural` declared none — so an architectural node could nest
+under a *functional* parent but never under another architectural one, which made a quality
+taxonomy inexpressible. That asymmetry was an omission, not a design: flat-by-design would have
+rejected nesting under `functional` too. **`@level` is now OPTIONAL on `architectural`** —
+absent keeps the original flat, object-independent form (so every existing ledger stays valid),
+present opts the node into a tree, and from that point the same nesting and link-floor rules
+apply as to a functional node, so a grouping tier cannot quietly start naming entities. The
+first cut of that fired the universality check on levelled ORGANISATIONAL nodes, which name
+nothing by design; `mayReferenceModel()` is the right predicate, since it already encodes "is
+this tier allowed to name the model at all".
+
+Also corrects the levelling guidance in the spec, the feature doc and the `metaobjects-authoring`
+skill: **L1–L3 are levels of abstraction and ownership in the problem domain, never a directory,
+package, deployable or module** — with the test that if a behaviour-preserving refactor would
+force a node to move, its level is wrong. That text is byte-gated in `expected-registry.json`,
+which is why a wording correction is a cross-port change rather than a doc edit.
+
 ### Fixed — the 0.23.0 requirement vocabulary reaches C#, Java, Kotlin and Python
 
 **`main` was RED on four of five ports**, and had been since the commit that introduced
