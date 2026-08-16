@@ -40,6 +40,11 @@ expect:
     - 'CREATE TABLE "all_types"'
     - '"bVal" BOOLEAN'
     - 'CHECK ("enumVal" IN (''LOW'', ''MEDIUM'', ''HIGH''))'
+    # int-backed enum (@intValueMap): the column is INTEGER and the membership CHECK
+    # lists the mapped integers UNQUOTED. Emitting the member symbols here would be
+    # un-appliable DDL against an integer column, so this pins the lowering.
+    - '"intEnumVal" INTEGER'
+    - 'CHECK ("intEnumVal" IN (0, 5, 9))'
     - 'CREATE UNIQUE INDEX "byTitle" ON "programs" ("title");'
     - 'ALTER TABLE "weeks" ADD CONSTRAINT "weeks_programId_fk"'
     # Match both TS (`CREATE VIEW`) and C# (`CREATE OR REPLACE VIEW`, idempotent)

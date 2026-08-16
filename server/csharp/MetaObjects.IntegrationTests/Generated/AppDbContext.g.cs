@@ -33,6 +33,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<AllTypes>().OwnsOne(x => x.Settings, b => b.ToJson("settings"));
         modelBuilder.Entity<AllTypes>().OwnsMany(x => x.Labels, b => b.ToJson("labels"));
         modelBuilder.Entity<AllTypes>().Property(x => x.EnumVal).HasConversion<string>();
+        modelBuilder.Entity<AllTypes>().Property(x => x.IntEnumVal).HasConversion(v => v == AllTypes.AllTypesIntEnumVal.DRAFT ? 0 : v == AllTypes.AllTypesIntEnumVal.PUBLISHED ? 5 : 9, v => v == 0 ? AllTypes.AllTypesIntEnumVal.DRAFT : v == 5 ? AllTypes.AllTypesIntEnumVal.PUBLISHED : AllTypes.AllTypesIntEnumVal.ARCHIVED);
         modelBuilder.Entity<AllTypes>().Property(x => x.DecVal).HasPrecision(18, 6);
         modelBuilder.Entity<AllTypes>().Property(x => x.TsVal).HasColumnType("timestamp without time zone");
         modelBuilder.Entity<AllTypes>().Property(x => x.TsTzVal).HasColumnType("timestamp with time zone");
