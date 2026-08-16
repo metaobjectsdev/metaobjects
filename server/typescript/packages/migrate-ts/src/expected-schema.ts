@@ -866,11 +866,27 @@ function buildForeignKeys(
 
     // Target columns: prefer explicit multi-field dotted form, else delegate
     // to MetaReferenceIdentity.resolvedTargetPkField (single field → target's
-    // primary identity → "id" fallback).
+    // primary identity → "id" fallback). Each target FIELD name must resolve to
+    // its PHYSICAL column via the target entity's own @column override (e.g. a
+    // PK field `id` with `@column: "Id"`), exactly like fkCols above — the raw
+    // naming strategy alone would emit the logical name and phantom-diff every
+    // FK into that table (expected ["id"] vs actual ["Id"]).
+    // targetEntity may be package-qualified (FQN); findObject is keyed by bare
+    // name — same fallback as resolvedTargetPkField/resolveTargetTable.
+    const targetObj = root.findObject(targetEntity)
+      ?? (targetEntity.includes("::")
+        ? root.findObject(targetEntity.slice(targetEntity.lastIndexOf("::") + 2))
+        : undefined);
     const explicitTargetFields = refChild.targetFields;
-    const refColumns = explicitTargetFields.length > 1
-      ? explicitTargetFields.map((n) => applyColumnNamingStrategy(n, strategy))
-      : [applyColumnNamingStrategy(refChild.resolvedTargetPkField(root) ?? "id", strategy)];
+    const targetFieldNames = explicitTargetFields.length > 1
+      ? explicitTargetFields
+      : [refChild.resolvedTargetPkField(root) ?? "id"];
+    const refColumns = targetFieldNames.map((jsName) => {
+      const targetField = targetObj ? findField(targetObj, jsName) : undefined;
+      return targetField
+        ? resolveColumnName(targetField, strategy)
+        : applyColumnNamingStrategy(jsName, strategy);
+    });
 
     const { onDelete, onUpdate } = resolveReferentialActions(entity, refChild);
     // An explicit @constraintName adopts an existing FK name (e.g. a database
