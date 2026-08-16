@@ -3,3 +3,4 @@ bio: (none)
 sponsor: Guild
 companions: (none)
 abilities: Fireball[fire aoe ] Mend[untagged]
+details: present

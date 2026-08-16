@@ -183,6 +183,20 @@ function walk(
  * per run. Returns the first unclassified source file containing the name, which is
  * enough to tell the author which pattern they are missing.
  */
+/** Does this path or body look like a test the corpus definition simply did not match?
+ *  Deliberately narrow: living under a test directory, or containing an assertion/test
+ *  declaration. Without this, a name occurring anywhere in PRODUCTION source downgrades a
+ *  genuinely broken claim to a warning — the exact failure the comment-only check exists
+ *  to catch. */
+const TESTISH_PATH = /(^|\/)(tests?|spec|__tests__|src\/test)(\/|$)/i;
+const TESTISH_BODY = /\b(assert\w*|expect|should|@Test|def test_|it\(|test\(|describe\()/;
+
+/** Test by LOCATION or by CONTENT — either is enough. Production source with a matching
+ *  name satisfies neither, which is the case that must stay a hard error. */
+function looksLikeTest(rel: string, lines: string[]): boolean {
+  return TESTISH_PATH.test(rel) || lines.some((l) => TESTISH_BODY.test(l));
+}
+
 function findOutsideCorpus(name: string, root: string, files: string[]): string | undefined {
   const rx = wordRx(name);
   for (const rel of files) {
@@ -192,7 +206,7 @@ function findOutsideCorpus(name: string, root: string, files: string[]): string 
       const lines = readFileSync(abs, "utf8").split("\n");
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i] ?? "";
-        if (rx.test(line) && !isCommentLine(line, rel)) return rel;
+        if (rx.test(line) && !isCommentLine(line, rel) && looksLikeTest(rel, lines)) return rel;
       }
     } catch {
       /* unreadable file is not a finding */

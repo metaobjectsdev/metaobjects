@@ -128,3 +128,35 @@ describe("verify — accepts exactly what render resolves", () => {
     expect(verify("{{abilities.hasName}}", fields)).toHaveLength(1);
   });
 });
+
+// ── Regressions caught in review of the original change ──────────────────────
+//
+// The first draft rebuilt ANY non-array object from Object.entries(), which flattened
+// everything carrying its own prototype: a Date stringified to "[object Object]" and a
+// class instance lost its getters. Rendering is not allowed to reshape the payload; only
+// plain map-shaped values get derived keys, which is also what the other four ports do.
+describe("only PLAIN objects are rebuilt", () => {
+  test("a Date still renders as a Date", () => {
+    const out = r("{{when}}", { when: new Date("2020-01-02T03:04:05Z") });
+    expect(out).not.toContain("[object Object]");
+    expect(out).toContain("2020");
+  });
+
+  test("a class instance keeps its prototype getters", () => {
+    class P {
+      constructor(public a = 1) {}
+      get b(): number {
+        return 2;
+      }
+    }
+    expect(r("{{b}}", new P())).toBe("2");
+  });
+
+  test("a Date-valued field still derives its accessor", () => {
+    expect(r("{{#hasWhen}}Y{{/hasWhen}}", { when: new Date() })).toBe("Y");
+  });
+
+  test("plain nested objects still get accessors", () => {
+    expect(r("{{#inner}}{{#hasXs}}Y{{/hasXs}}{{/inner}}", { inner: { xs: [1] } })).toBe("Y");
+  });
+});

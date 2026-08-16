@@ -16,6 +16,7 @@ failing, silently dropping the section. Gated cross-port by the
 
 from __future__ import annotations
 
+import numbers
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -71,7 +72,7 @@ def accessor_value(value: Any) -> bool | None:
     if isinstance(value, str):
         return bool(value.strip())
     # bool before int — bool IS an int in Python, and a boolean field gets no accessor.
-    if isinstance(value, (bool, int, float, complex)):
+    if isinstance(value, numbers.Number):
         return None
     if isinstance(value, Mapping):
         return True

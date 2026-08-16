@@ -61,8 +61,11 @@ public final class PayloadAccessors {
         if (value == null) return Boolean.FALSE;
         if (value instanceof CharSequence cs) return !cs.toString().isBlank();
         if (value instanceof Boolean || value instanceof Number) return null;
+        if (value instanceof java.util.Map<?, ?>) return Boolean.TRUE;
         if (value instanceof java.util.Collection<?> c) return !c.isEmpty();
-        if (value instanceof Object[] a) return a.length > 0;
+        // getLength covers primitive arrays too; Object[] alone reported an empty
+        // int[] as present, where every other port reports absent.
+        if (value.getClass().isArray()) return java.lang.reflect.Array.getLength(value) > 0;
         return Boolean.TRUE;
     }
 
@@ -101,9 +104,17 @@ public final class PayloadAccessors {
             }
             return out;
         }
-        if (payload instanceof java.util.List<?> list) {
-            java.util.List<Object> out = new java.util.ArrayList<>(list.size());
-            for (Object item : list) out.add(withDerivedAccessors(item, depth + 1));
+        // Every Collection, not just List — a Set's elements are contexts too, which
+        // this method's own contract promises.
+        if (payload instanceof java.util.Collection<?> coll) {
+            java.util.List<Object> out = new java.util.ArrayList<>(coll.size());
+            for (Object item : coll) out.add(withDerivedAccessors(item, depth + 1));
+            return out;
+        }
+        if (payload.getClass().isArray() && !payload.getClass().getComponentType().isPrimitive()) {
+            int n = java.lang.reflect.Array.getLength(payload);
+            java.util.List<Object> out = new java.util.ArrayList<>(n);
+            for (int i = 0; i < n; i++) out.add(withDerivedAccessors(java.lang.reflect.Array.get(payload, i), depth + 1));
             return out;
         }
         return payload;

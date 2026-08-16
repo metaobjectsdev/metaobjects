@@ -77,6 +77,12 @@ export function withDerivedAccessors<T>(payload: T, depth = 0): T {
     return payload.map((v) => withDerivedAccessors(v, depth + 1)) as unknown as T;
   }
   if (payload === null || typeof payload !== "object") return payload;
+  // PLAIN objects only. Rebuilding from Object.entries() would flatten anything with
+  // its own prototype — a Date stringifies to "[object Object]" and a class instance
+  // loses its getters — and the other ports only rebuild map-shaped values, so
+  // rebuilding more here would be a divergence as well as a regression.
+  const proto = Object.getPrototypeOf(payload);
+  if (proto !== Object.prototype && proto !== null) return payload;
 
   const src = payload as Record<string, unknown>;
   const out: Record<string, unknown> = {};

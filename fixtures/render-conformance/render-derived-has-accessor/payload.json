@@ -2,9 +2,21 @@
   "title": "Party",
   "bio": "   ",
   "abilities": [
-    { "name": "Fireball", "tags": ["fire", "aoe"] },
-    { "name": "Mend", "tags": [] }
+    {
+      "name": "Fireball",
+      "tags": [
+        "fire",
+        "aoe"
+      ]
+    },
+    {
+      "name": "Mend",
+      "tags": []
+    }
   ],
   "companions": [],
-  "sponsor": { "name": "Guild" }
+  "sponsor": {
+    "name": "Guild"
+  },
+  "emptyDetails": {}
 }

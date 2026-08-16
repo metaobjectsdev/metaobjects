@@ -76,6 +76,9 @@ public static class PayloadAccessors
             case bool: return null;
             case sbyte or byte or short or ushort or int or uint or long or ulong
                 or float or double or decimal: return null;
+            // A dictionary IS IEnumerable, so it must be matched FIRST — otherwise an
+            // empty nested object reports absent here and present in every other port.
+            case System.Collections.IDictionary: return true;
             case System.Collections.IEnumerable seq:
             {
                 foreach (var _ in seq) return true;

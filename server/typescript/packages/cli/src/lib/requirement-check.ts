@@ -183,7 +183,9 @@ function resolveClaimTarget(root: MetaData, owner: string, referrerPkg: string):
   // at the wrong thing without anyone noticing.
   const local = referrerPkg === "" ? [] : candidates.filter((c) => c.resolutionKey() === `${referrerPkg}${PACKAGE_SEPARATOR}${owner}`);
   if (local.length === 1) return local[0];
-  const bare = candidates.filter((c) => c.name === owner);
+  // Root-level (unpackaged) only, matching resolveObjectRef's own bare fallback. A bare
+  // ref must not reach into an arbitrary package just because the name is unique there.
+  const bare = candidates.filter((c) => c.name === owner && c.resolutionKey() === owner);
   return bare.length === 1 ? bare[0] : undefined;
 }
 
