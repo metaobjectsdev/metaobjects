@@ -7,6 +7,44 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — `{{#hasField}}` rendered as absent on a populated payload, in every port (npm/PyPI/NuGet/Maven)
+
+A prompt's conditional section — *"include the abilities block only when there ARE
+abilities"* — is expressed as `{{#hasAbilities}}`, a **derived** boolean accessor over the
+declared field `abilities`. The JVM has emitted `has<Field>()` onto every generated payload
+record since 7.7.7 and accepts the section in its static drift check, sharing one naming
+rule so the two "can never drift apart".
+
+**No render engine implemented the other half.** Given the same payload *data* — a map, which
+is what the runtime and the conformance corpus actually pass — all five ports rendered the
+section as absent:
+
+```
+payload {"abilities":[{"name":"Fireball"}]}
+template "Abilities:{{#hasAbilities}} {{#abilities}}[{{name}}]{{/abilities}}{{/hasAbilities}}"
+before   "Abilities:"            ← content silently dropped, no error
+after    "Abilities: [Fireball]"
+```
+
+Silent wrong output, not a failure: the prompt shipped without its block. The JVM looked
+correct only because a *generated record* answers `hasFoo()` by its own method — so the same
+payload rendered differently depending on whether it arrived as a record or as a map.
+
+`PayloadAccessors` now exists in all five ports carrying one shared rule (`"has" +
+capitalize`, and presence semantics mirroring the JVM emitter exactly: string → non-blank,
+collection → non-empty, reference → non-null, **number/boolean → no accessor at all**, since
+`{{#hasCount}}` over an int is drift rather than a conditional). Render derives them
+non-mutatingly, recursing into nested objects and collection elements so a section sees the
+element it is iterating; an **authored** `hasFoo` always wins. `verify` accepts exactly what
+render resolves, mirroring the JVM's deliberate permissiveness (acceptance keys off the
+field existing, not its type), and still reports drift inside a has-section body.
+
+Found by an adopter with a JVM-authored prompt estate whose Node gate reported **157**
+`ERR_VAR_NOT_ON_PAYLOAD`, all `has`-prefixed, while its JVM gate reported none. Now 0 on
+both. Gated by the shared `render-derived-has-accessor` conformance case — **the corpus had
+no fixture using a derived accessor at all**, which is precisely why a divergence in the
+pillar that promises byte-identical rendering survived this long.
+
 ### Fixed — a requirement could not claim a prompt template (npm)
 
 `@implementedBy` is documented as naming "the model nodes realising this requirement", and

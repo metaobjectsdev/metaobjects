@@ -69,7 +69,11 @@ public final class Renderer {
             };
             Mustache compiled = factory.compile(new StringReader(expanded), refOrInline(req));
             StringWriter writer = new StringWriter();
-            compiled.execute(writer, req.payload()).flush();
+            // Derived `has<Field>` accessors are part of the payload contract, not of the
+            // caller's object — see PayloadAccessors. A generated record already answers
+            // hasFoo(); this fills the same contract for a map-shaped payload, so the two
+            // render identically.
+            compiled.execute(writer, PayloadAccessors.withDerivedAccessors(req.payload())).flush();
             rendered = writer.toString();
         } catch (MustacheException | IOException e) {
             throw new RenderException("Mustache compile/execute failed", e);
