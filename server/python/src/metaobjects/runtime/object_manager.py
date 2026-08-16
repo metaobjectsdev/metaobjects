@@ -311,6 +311,8 @@ class ObjectManager:
         }
         row = result.rows[0]
         mapped = {col_to_field.get(k, k): v for k, v in row.items()}
+        # int-backed enums come back as integers; hand the caller the symbol.
+        mapped = _decode_read_row({f.name: f for f in returning_fields}, mapped)
         # #214: a write-through entity's INSERT RETURNING covers only the table (non-derived)
         # columns; re-read the persisted row through the replica VIEW by PK so the returned row
         # carries the derived origin.* fields (read-your-writes). find_by_id routes to the view.
@@ -423,6 +425,8 @@ class ObjectManager:
         }
         row = result.rows[0]
         mapped = {col_to_field.get(k, k): v for k, v in row.items()}
+        # int-backed enums come back as integers; hand the caller the symbol.
+        mapped = _decode_read_row({f.name: f for f in returning_fields}, mapped)
         # #214: re-read the updated row through the replica VIEW by PK so the returned row
         # carries the derived origin.* fields (write targeted the table, which lacks them).
         if entity.is_write_through():
@@ -509,8 +513,11 @@ class ObjectManager:
         self.last_column_oids = {
             col_to_field.get(c, c): oid for c, oid in result.column_oids.items()
         }
+        # int-backed enums come back as integers; hand the caller the symbol.
+        fields_by_name = {f.name: f for f in entity.fields()}
         return [
-            {col_to_field.get(k, k): v for k, v in row.items()} for row in result.rows
+            _decode_read_row(fields_by_name, {col_to_field.get(k, k): v for k, v in row.items()})
+            for row in result.rows
         ]
 
     def count(self, entity_name: str, filter: Filter | None = None) -> int:
@@ -823,9 +830,57 @@ def _coerce_write_value(field: MetaField, value: Any) -> Any:
         storage = field.get_meta_attr(fc.FIELD_ATTR_STORAGE)  # ADR-0039 resolving
         if storage != "flattened":  # None / "jsonb" / "subdocument" → single jsonb column
             return _json.dumps(value)
+    # field.enum carrying @intValueMap: the column is an INTEGER while the native
+    # and wire contract stays the member SYMBOL (int-backing is a persistence-layer
+    # concern, invisible above this codec), so encode symbol -> declared int here.
+    #
+    # ADR-0039 resolving: the map is @values' numeric half — a logical property of
+    # the enum vocabulary that inherits through extends — so it is read with
+    # get_meta_attr, NOT the own-only accessor (contrast @dbColumnType above).
+    #
+    # An unmapped symbol is passed through untouched: membership is the column's
+    # CHECK constraint to enforce, and inventing a value here would hide the drift.
+    if sub == fc.FIELD_SUBTYPE_ENUM:
+        int_map = field.get_meta_attr(fc.FIELD_ATTR_INT_VALUE_MAP)
+        if isinstance(int_map, dict) and value in int_map:
+            return int_map[value]
+
     # Everything else (string / int / long / double / float / boolean / enum)
     # is already the native type pg8000 binds directly.
     return value
+
+
+def _decode_read_value(field: MetaField, value: Any) -> Any:
+    """Decode a stored value back to its authoring form on read.
+
+    The inverse of :func:`_coerce_write_value`'s int-backed-enum branch, and
+    today its only case: the column holds the member's integer, callers expect
+    the member SYMBOL. Every other field subtype is returned verbatim, keeping
+    ADR-0019's "runtime returns native in-process types" contract intact.
+
+    An int with no member is returned AS-IS rather than as ``None`` — a row
+    holding a value the model does not describe is real drift, and surfacing it
+    is honest where nulling it would hide it.
+    """
+    if value is None:
+        return None
+    if field.sub_type != fc.FIELD_SUBTYPE_ENUM:
+        return value
+    int_map = field.get_meta_attr(fc.FIELD_ATTR_INT_VALUE_MAP)  # ADR-0039 resolving
+    if not isinstance(int_map, dict):
+        return value
+    for symbol, stored in int_map.items():
+        if stored == value and isinstance(value, int) and not isinstance(value, bool):
+            return symbol
+    return value
+
+
+def _decode_read_row(fields_by_name: dict[str, MetaField], row: dict[str, Any]) -> dict[str, Any]:
+    """Apply :func:`_decode_read_value` to every field-keyed value in a mapped row."""
+    return {
+        k: (_decode_read_value(fields_by_name[k], v) if k in fields_by_name else v)
+        for k, v in row.items()
+    }
 
 
 # ----------------------------------------------------------------------------
