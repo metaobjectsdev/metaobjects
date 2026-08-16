@@ -27,7 +27,7 @@ How the system is built, applied uniformly across the model. Its check is UNIVER
 | `@status` | string | yes |  | `planned`, `live`, `partial`, `abandoned`, `superseded` | — | As on requirement.functional. A live or partial architectural requirement claimed by NOTHING is an error: a policy declared and applied to nothing. A planned one is exempt from that check — it is not applied yet by definition. |
 | `@supersededBy` | string | no |  |  | — | The requirement that replaced this one. Expected on status=superseded. |
 | `@trackedBy` | string[] | no |  |  | — | As on requirement.functional. Issue or ticket references for outstanding work; free-form, not resolved. |
-| `@verifiedBy` | string[] | no |  |  | — | Names of the tests proving the policy holds. verify checks each exists and is not skipped; it never runs them. |
+| `@verifiedBy` | string[] | no |  |  | — | OPTIONAL — omit unless you have opened the test and read what it asserts. Names of tests that assert the policy holds. verify checks each name EXISTS and is not skipped; it never runs them, and it cannot tell whether the named test verifies this requirement — any occurrence in the test corpus satisfies it. |
 | `@violation` | string | yes |  |  | — | What breaking it looks like — the node that would contradict it. This is what makes universality checkable. |
 
 **Allowed children**
@@ -51,7 +51,7 @@ What the product does for a user, stated as one violable claim. Its check is EXI
 | `@status` | string | yes |  | `planned`, `live`, `partial`, `abandoned`, `superseded` | — | planned intended but not built yet; live implemented and in use; partial implemented with known gaps; abandoned built then deliberately retired; superseded replaced by a different mechanism. A dangling @implementedBy is an ERROR on live/partial (the model moved, the requirement is stale) and ALLOWED on planned/abandoned/superseded — on planned the nodes do not exist YET, on the other two they are meant to be gone, and that is the entry doing its job. A planned requirement also never contributes to object coverage: planning a capability must not silence the warning that nothing implements it. |
 | `@supersededBy` | string | no |  |  | — | The requirement that replaced this one. Expected on status=superseded. |
 | `@trackedBy` | string[] | no |  |  | — | Issue or ticket references for outstanding work — a URL, an owner/repo#123 shorthand, or a tracker key. Free-form and NOT resolved by verify, which does not reach the network; unlike @verifiedBy, nothing here is checked to exist. Its job is to stop a deferred gap becoming invisible, so verify warns when a deferred requirement names no ticket. Also the right place to link the ticket that a planned requirement will be built under. |
-| `@verifiedBy` | string[] | no |  |  | — | Names of the tests proving the behaviour. verify checks each exists and is not skipped; it never runs them. |
+| `@verifiedBy` | string[] | no |  |  | — | OPTIONAL — omit unless you have opened the test and read what it asserts. Names of tests that assert the behaviour. verify checks each name EXISTS and is not skipped; it never runs them, and it cannot tell whether the named test verifies this requirement — any occurrence in the test corpus satisfies it. |
 | `@violation` | string | yes |  |  | — | What breaking it looks like, in one sentence. A requirement MUST be violable: 'every entity has a uuid primary key' is (point at one with a composite string key); 'things are persisted' is not, and is a description rather than a requirement. |
 
 **Allowed children**
