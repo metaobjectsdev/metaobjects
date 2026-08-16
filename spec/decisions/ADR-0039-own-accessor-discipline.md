@@ -34,7 +34,10 @@ Two attributes are read own-only by explicit policy, outside the emit-declared-h
 
   The distinction is only observable on a **chained declaration**: a root-level abstract enum `B extends` a root-level abstract `@provided` enum `A`. `@provided` is read on the resolved *declaration*, never on the consuming field, so for the ordinary `field extends @provided decl` shape own and resolving agree. On the chained shape a resolving read reports `B` as provided and emits a reference to a hand-written `B` **the adopter never declared** (the marker was authored on `A`), instead of materializing `B` from its inherited `@values`. Own-only matches authored intent.
 
-  Note this is a *provenance* marker and not a value: the member set it accompanies (`@values`, and its numeric half `@intValueMap`) is a logical property and is still read **resolving**, so a declaration inheriting `@values` from its super materializes correctly.
+  Note this is a *provenance* marker and not a value: the member set it accompanies (`@values`, and its numeric half `@intValueMap`)
+  is a logical property and is still read **resolving**, so a declaration inheriting `@values` from its super materializes correctly.
+  The `@intValueMap` attribute itself (registered on `field.enum` since 2026-08) is also read resolving, enabling inheritance through
+  `extends` chains.
 
 ### Naming
 Where a port's default-named accessor is own-only (Python `attr()` is own; TS `attr()` resolves — an inversion), the port SHOULD make the **resolving** form the default-named one and the own form explicitly `own*`, so "the obvious call" is the correct one. Any `own*()` call MUST carry a one-line comment stating which sanctioned case it is.

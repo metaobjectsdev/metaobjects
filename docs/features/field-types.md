@@ -66,9 +66,12 @@ must be a non-empty set of unique members matching `^[A-Za-z_][A-Za-z0-9_]*$`.
 ```
 
 The loader enforces members own-only and emits `ERR_BAD_ATTR_VALUE` on a bad
-member or `ERR_MISSING_REQUIRED_ATTR` on missing `@values`. Int-backed enums,
-display labels, and native Postgres `ENUM` types are deferred (see
-[enum-datatype-design.md](../superpowers/specs/2026-05-23-enum-datatype-design.md)).
+member or `ERR_MISSING_REQUIRED_ATTR` on missing `@values`.
+
+**Int-backed storage:** `@intValueMap` switches the DB column from string to integer while
+preserving the string wire format and generated enum type. Keys must match `@values` exactly;
+values must be unique integers. Display labels and native Postgres `ENUM` types remain
+deferred (see [enum-datatype-design.md](../superpowers/specs/2026-05-23-enum-datatype-design.md)).
 
 ### Sharing one enum — abstract `field.enum` + `extends`
 
@@ -292,4 +295,4 @@ for the per-port pass/skip ledger.
 - [entities.md](entities.md) — host node `object.entity`
 - [relationships.md](relationships.md) — relationships are separate from fields, despite sharing the column space
 - [yaml-authoring.md](yaml-authoring.md) — array-suffix sugar for repeated fields (`field.long[]: weekIds`)
-- [enum-datatype-design](../superpowers/specs/2026-05-23-enum-datatype-design.md) — enum design rationale + deferred capabilities
+- [enum-datatype-design](../superpowers/specs/2026-05-23-enum-datatype-design.md) — enum design rationale + int-backed storage
