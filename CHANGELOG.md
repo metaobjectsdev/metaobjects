@@ -7,6 +7,27 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.23.1] — npm `0.23.1` · PyPI `0.23.1` · NuGet `0.23.1` · Maven `7.23.1`
+
+A coordinated **PATCH** across all four registries. Every one of them carries a real changed
+product file, so none is a version-parity bump.
+
+**The theme is a check that was confidently wrong.** Not one of these fixes is a missing feature;
+each is a guarantee the toolchain already made and quietly failed to keep. A render pillar that
+promises byte-identical output across five ports dropped a conditional block's contents on four of
+them, silently, with no error. A `verify` gate told a correct project its tests did not exist,
+because it hardcoded another ecosystem's naming convention. A committed schema snapshot decided
+what DDL the next migration contained and nothing checked it, so `verify` reported healthy while
+`migrate` emitted DDL that failed at apply. Codegen and migrate named the same CHECK constraint
+two different ways, each internally consistent and separately tested. And `@provided` — a marker
+meaning "this type is hand-written, emit nothing" — was inherited down an `extends` chain in three
+ports, so those ports emitted a reference to a type the adopter never declared.
+
+The recurring shape is worth naming: **each survived because the thing that would have caught it
+did not exist.** The render conformance corpus had no fixture using a derived accessor at all;
+nothing ever compared codegen's constraint name to migrate's; no gate read the snapshot. Every fix
+below ships with the missing check, not just the corrected behaviour.
+
 ### Fixed — `{{#hasField}}` rendered as absent on a populated payload, in every port (npm/PyPI/NuGet/Maven)
 
 A prompt's conditional section — *"include the abilities block only when there ARE
@@ -44,6 +65,43 @@ Found by an adopter with a JVM-authored prompt estate whose Node gate reported *
 both. Gated by the shared `render-derived-has-accessor` conformance case — **the corpus had
 no fixture using a derived accessor at all**, which is precisely why a divergence in the
 pillar that promises byte-identical rendering survived this long.
+
+### Fixed — `@provided` flowed down an `extends` chain in TypeScript, C# and Python (npm/PyPI/NuGet)
+
+`@provided` marks a shared enum declaration as supplied by hand-written or third-party code
+([ADR-0026](spec/decisions/ADR-0026-shared-and-provided-named-types.md)): the port emits nothing and references
+the existing type. **TS, C# and Python read it RESOLVING; Java and Kotlin read it own-only and
+documented that as deliberate.** One of them had to be wrong.
+
+The JVM side is right. `@provided` is a provenance fact about the declaration *itself* — like
+`abstract` — not a property of the values it carries, so it must not be inherited. All five
+ports already read it on the resolved *declaration* and never on the consuming field, so for
+the ordinary `field extends @provided decl` shape own and resolving agree. The divergence is
+reachable only through a **chained** declaration — a root-level abstract enum `B extends` a
+root-level abstract `@provided A`. Verified against the real loader: that model loads clean,
+`B`'s own `@provided` is absent while its resolving read is `true`. So the resolving ports
+classified `B` as provided and **emitted a reference to a hand-written `B` the adopter never
+declared** (the marker was authored on `A`), instead of materialising `B` from its inherited
+`@values`.
+
+Neither resolving port held a reasoned position: Python's docstring justified it with "a
+concrete enum extending an abstract `@provided` enum inherits the flag, so an own-only read
+would misclassify it" — wrong about its own call graph, since `is_provided()` is only ever
+passed the declaration — and C#'s comment simply cited TypeScript.
+
+**Blast radius is nil on existing gated output:** every currently-pinned model shape yields the
+same answer under both reads, which is exactly why this survived. [ADR-0039](spec/decisions/ADR-0039-own-accessor-discipline.md)
+is amended — its "`@dbColumnType` is the *only* attribute deliberately read own-only" line was
+false as written no matter which way this ruled, since the JVM own-reads already existed.
+`@provided` is now chartered as the second, with an explicit note that the member set it
+accompanies (`@values`, and its numeric half `@intValueMap`) stays **resolving**.
+
+The pin is proven non-vacuous: reverting just the TypeScript half turns the chained-declaration
+case red and leaves the other six green. A shared conformance fixture is deliberately withheld —
+adding a chained-declaration case surfaced a *second*, deeper divergence (Kotlin names a chained
+abstract enum after the top-most root, so it holds that the alias **is** its parent while every
+other port holds it is its own type) that needs a design ruling of its own rather than pinning
+one port's accidental behaviour.
 
 ### Fixed — a requirement could not claim a prompt template (npm)
 
