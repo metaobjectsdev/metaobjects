@@ -23,9 +23,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-#: A ``{{var}}`` references a field the (contextual) payload does not declare.
 from .payload_accessors import is_boolean_accessor
 
+#: A ``{{var}}`` references a field the (contextual) payload does not declare.
 ERR_VAR_NOT_ON_PAYLOAD = "ERR_VAR_NOT_ON_PAYLOAD"
 #: A ``{{> ref}}`` partial does not resolve in the provider.
 ERR_PARTIAL_UNRESOLVED = "ERR_PARTIAL_UNRESOLVED"

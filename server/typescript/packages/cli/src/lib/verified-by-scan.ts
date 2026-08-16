@@ -176,13 +176,6 @@ function walk(
   }
 }
 
-/**
- * Where does this name live, if not in the test corpus?
- *
- * Only ever called on the miss path, so the cost is paid per BROKEN claim rather than
- * per run. Returns the first unclassified source file containing the name, which is
- * enough to tell the author which pattern they are missing.
- */
 /** Does this path or body look like a test the corpus definition simply did not match?
  *  Deliberately narrow: living under a test directory, or containing an assertion/test
  *  declaration. Without this, a name occurring anywhere in PRODUCTION source downgrades a
@@ -197,6 +190,13 @@ function looksLikeTest(rel: string, lines: string[]): boolean {
   return TESTISH_PATH.test(rel) || lines.some((l) => TESTISH_BODY.test(l));
 }
 
+/**
+ * Where does this name live, if not in the test corpus?
+ *
+ * Only ever called on the miss path, so the cost is paid per BROKEN claim rather than
+ * per run. Returns the first unclassified source file containing the name, which is
+ * enough to tell the author which pattern they are missing.
+ */
 function findOutsideCorpus(name: string, root: string, files: string[]): string | undefined {
   const rx = wordRx(name);
   for (const rel of files) {
