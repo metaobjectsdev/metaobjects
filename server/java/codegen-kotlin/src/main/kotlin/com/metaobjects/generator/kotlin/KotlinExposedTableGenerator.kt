@@ -607,18 +607,14 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 val nullable = !isPk && !KotlinGenUtil.isRequiredField(field) &&
                     !KotlinGenUtil.originGuaranteedNonNull(field)
                 val baseSpec = if (field is EnumField) {
-                    // field.enum → typed Exposed enumerationByName column referencing the
-                    // generated enum class. Length matches the historical VARCHAR fallback
-                    // (KotlinTypeMapper.ENUM_VARCHAR_LEN). #246: the enum may be a CROSS-PACKAGE
-                    // shared type (FR-019 collapse onto an abstract super in another package) — the
-                    // full ClassName is kept so its package is available; the import itself is
-                    // emitted (only when cross-package) via crossPackageEnumImports above. Column
-                    // name is snake_case-d for Postgres convention (matches the StringField/varchar
-                    // path).
-                    val enumCn = KotlinTypeMapper.enumTypeName(field, entity)
-                        ?: error("enumTypeName returned null for EnumField '${field.name}' on ${entity.name}")
-                    val colName = KotlinGenUtil.camelToSnake(field.name)
-                    "enumerationByName(\"$colName\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, ${enumCn.simpleName}::class)"
+                    // field.enum → a typed Exposed column referencing the generated enum
+                    // class: enumerationByName (VARCHAR) when string-backed, or
+                    // customEnumeration (INTEGER) when the enum declares @intValueMap.
+                    // #246: the enum may be a CROSS-PACKAGE shared type (FR-019 collapse
+                    // onto an abstract super in another package) — the full ClassName is
+                    // kept so its package is available; the import itself is emitted (only
+                    // when cross-package) via crossPackageEnumImports above.
+                    enumColumnSpec(field, entity)
                 } else {
                     KotlinTypeMapper.exposedColumnSpec(field)
                 }
@@ -647,11 +643,9 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 if (field is ObjectField || field is MapField) continue
                 val baseSpec = if (field is EnumField) {
                     // #246: same cross-package-aware handling as the base-column loop above — the
-                    // import (when cross-package) is emitted via crossPackageEnumImports.
-                    val enumCn = KotlinTypeMapper.enumTypeName(field, entity)
-                        ?: error("enumTypeName returned null for EnumField '${field.name}' on ${entity.name}")
-                    val colName = KotlinGenUtil.camelToSnake(field.name)
-                    "enumerationByName(\"$colName\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, ${enumCn.simpleName}::class)"
+                    // import (when cross-package) is emitted via crossPackageEnumImports. Int-backed
+                    // enums take the customEnumeration form here too.
+                    enumColumnSpec(field, entity)
                 } else {
                     KotlinTypeMapper.exposedColumnSpec(field)
                 }
@@ -1499,6 +1493,58 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         MetaRelationship.ACTION_RESTRICT   -> "RESTRICT"
         MetaRelationship.ACTION_NO_ACTION  -> "NO_ACTION"
         else -> null
+    }
+
+    /**
+     * Exposed column spec for a `field.enum`.
+     *
+     * String-backed (the default) → `enumerationByName`: a VARCHAR column holding the
+     * member symbol. Int-backed (`@intValueMap`) → `customEnumeration` over an INTEGER
+     * column, with the declared symbol↔int mapping inlined as `when` expressions.
+     *
+     * The mapping is emitted INLINE rather than through a generated lookup-map support
+     * file, for two reasons. A `when` over an enum is exhaustive, so a member with no
+     * mapping is a COMPILE error in the adopter's build rather than a runtime surprise;
+     * and it allocates nothing per row, where a `mapOf(...)` inside the lambda would
+     * rebuild the map on every read and every write.
+     *
+     * ADR-0039: `@values` and `@intValueMap` are both read RESOLVING, so a field that
+     * `extends` a shared abstract enum inherits the members AND their mapping.
+     */
+    private fun enumColumnSpec(field: EnumField, entity: MetaObject): String {
+        val enumCn = KotlinTypeMapper.enumTypeName(field, entity)
+            ?: error("enumTypeName returned null for EnumField '${field.name}' on ${entity.name}")
+        val colName = KotlinGenUtil.camelToSnake(field.name)
+        val simple = enumCn.simpleName
+        val intMap = readIntValueMap(field)
+            ?: return "enumerationByName(\"$colName\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, $simple::class)"
+
+        // `; ` separates the branches: this is a one-line `when`, and space-separated
+        // branches do not parse (`Foo.DRAFT 5 -> ...`).
+        val fromDb = intMap.entries.joinToString("; ") { (sym, i) -> "$i -> $simple.$sym" }
+        val toDb = intMap.entries.joinToString("; ") { (sym, i) -> "$simple.$sym -> $i" }
+        // An int with no member is corrupt data the model does not describe: fail loudly
+        // rather than substituting a member. The write side needs no `else` — it is
+        // exhaustive over the enum by construction, since @intValueMap's keys are
+        // validated to match @values exactly.
+        return "customEnumeration(\"$colName\", \"INTEGER\", " +
+            "{ v -> when ((v as Number).toInt()) { $fromDb; " +
+            "else -> error(\"unmapped stored value \$v for $simple\") } }, " +
+            "{ e -> when (e) { $toDb } })"
+    }
+
+    /** The declared symbol→int map (`@intValueMap`), or null when the enum is string-backed. */
+    private fun readIntValueMap(field: EnumField): Map<String, Int>? {
+        if (!field.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP)) return null
+        val raw = runCatching { field.getMetaAttr(EnumField.ATTR_INT_VALUE_MAP).value }.getOrNull()
+        val m = (raw as? Map<*, *>) ?: return null
+        val out = LinkedHashMap<String, Int>()
+        for ((k, v) in m) {
+            val key = k?.toString() ?: continue
+            val i = (v as? Number)?.toInt() ?: continue
+            out[key] = i
+        }
+        return out.ifEmpty { null }
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================
