@@ -57,6 +57,7 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -412,13 +413,75 @@ public final class JdbcCodecs {
      * explicitly so enum does not ride the generic {@link ObjectCodec} fallback. The DB
      * {@code CHECK (col IN (...))} (emitted from {@code @values}) enforces membership.
      */
+    /**
+     * {@code field.enum}, string- or int-backed.
+     *
+     * <p>A plain enum persists its member symbol as text. One declaring
+     * {@code @intValueMap} persists the member's declared INTEGER instead, while the
+     * caller's contract stays the SYMBOL in both directions — int-backing is a
+     * persistence-layer concern, invisible above this codec.</p>
+     *
+     * <p>The map is read RESOLVING ({@code getMetaAttr}, ADR-0039): it is
+     * {@code @values}' numeric half, a logical property of the enum vocabulary that
+     * inherits through {@code extends}, so a concrete field extending a shared
+     * abstract enum encodes with the inherited map.</p>
+     */
     static final class EnumCodec implements JdbcFieldCodec {
         @Override public void readInto(Object o, MetaField f, ResultSet rs, int j) throws SQLException {
-            f.setString(o, rs.getString(j));
+            Map<String, Integer> intMap = intValueMap(f);
+            if (intMap == null) {
+                f.setString(o, rs.getString(j));
+                return;
+            }
+            int stored = rs.getInt(j);
+            if (rs.wasNull()) {
+                f.setString(o, null);
+                return;
+            }
+            for (Map.Entry<String, Integer> e : intMap.entrySet()) {
+                if (e.getValue() != null && e.getValue() == stored) {
+                    f.setString(o, e.getKey());
+                    return;
+                }
+            }
+            // A stored int with no member is data the model does not describe.
+            // Surface it rather than nulling it — that would hide real drift.
+            f.setString(o, String.valueOf(stored));
         }
+
         @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {
-            if (v == null) s.setNull(j, Types.VARCHAR);
-            else s.setString(j, v.toString());
+            Map<String, Integer> intMap = intValueMap(f);
+            if (intMap == null) {
+                if (v == null) s.setNull(j, Types.VARCHAR);
+                else s.setString(j, v.toString());
+                return;
+            }
+            if (v == null) {
+                s.setNull(j, Types.INTEGER);
+                return;
+            }
+            Integer mapped = intMap.get(v.toString());
+            if (mapped != null) {
+                s.setInt(j, mapped);
+                return;
+            }
+            // Unmapped symbol: bind it unchanged so the column/CHECK rejects it.
+            // Membership is the database's to enforce; inventing a value here
+            // would turn a loud error into a silently wrong row.
+            s.setString(j, v.toString());
+        }
+
+        /** The declared symbol→int map, or null when the enum is string-backed. */
+        private static Map<String, Integer> intValueMap(MetaField f) {
+            if (!f.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP)) return null;
+            Object raw = f.getMetaAttr(EnumField.ATTR_INT_VALUE_MAP).getValue();
+            if (!(raw instanceof Map)) return null;
+            Map<String, Integer> out = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> e : ((Map<?, ?>) raw).entrySet()) {
+                if (e.getKey() == null || !(e.getValue() instanceof Number)) continue;
+                out.put(String.valueOf(e.getKey()), ((Number) e.getValue()).intValue());
+            }
+            return out.isEmpty() ? null : out;
         }
     }
 
