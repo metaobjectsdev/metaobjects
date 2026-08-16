@@ -178,7 +178,7 @@ Edit `spec/metamodel/attr.json` — insert alphabetically between the `int` and 
 
 - [ ] **Step 7: Regenerate the embedded attr definition**
 
-Run: `cd /Users/douglas.mealing/Development/metaobjects && bun scripts/generate-embedded-metamodel.ts`
+Run: `cd <repo-root> && bun scripts/generate-embedded-metamodel.ts`
 Expected: regenerates `server/typescript/packages/metadata/src/core/attr/attr-definition.embedded.ts` to include the new `intMap` block.
 
 - [ ] **Step 8: Run the test to verify it passes**
@@ -312,7 +312,7 @@ Edit `spec/metamodel/field.json` — add as a sibling of `values`/`provided` ins
 
 - [ ] **Step 5: Regenerate the embedded field definition**
 
-Run: `cd /Users/douglas.mealing/Development/metaobjects && bun scripts/generate-embedded-metamodel.ts`
+Run: `cd <repo-root> && bun scripts/generate-embedded-metamodel.ts`
 Expected: regenerates `field-definition.embedded.ts`.
 
 - [ ] **Step 6: Run tests again — confirm the ERR_UNKNOWN_ATTR failure is gone, new failures are the content-rule assertions**

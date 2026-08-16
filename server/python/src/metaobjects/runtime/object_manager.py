@@ -718,12 +718,13 @@ def _compile_filter(f: Filter | None, entity: MetaObject) -> tuple[str, list[Any
         mf = entity.find_field(field_name)
         col = _column_of(mf) if mf is not None else field_name
         if not isinstance(ops, dict):
-            # Shortcut: {field: value} → equality
+            # Shortcut: {field: value} → equality. Encoded like any other bound
+            # value (see _op_clause) so an int-backed enum reaches SQL as its int.
             parts.append(f"{_q(col)} = %s")
-            params.append(ops)
+            params.append(_coerce_write_value(mf, ops) if mf is not None else ops)
             continue
         for op, value in ops.items():
-            sql, p = _op_clause(col, op, value)
+            sql, p = _op_clause(col, op, value, mf)
             parts.append(sql)
             params.extend(p)
     if not parts:
@@ -731,9 +732,21 @@ def _compile_filter(f: Filter | None, entity: MetaObject) -> tuple[str, list[Any
     return " AND ".join(parts), params
 
 
-def _op_clause(col: str, op: str, value: Any) -> tuple[str, list[Any]]:
-    """Translate one operator → SQL + params. Mirrors TS/C#/Java semantics."""
+def _op_clause(col: str, op: str, value: Any, field: MetaField | None = None) -> tuple[str, list[Any]]:
+    """Translate one operator → SQL + params. Mirrors TS/C#/Java semantics.
+
+    Bound values go through the WRITE codec, exactly as an INSERT's do: the four
+    sibling ports all encode on this path (TS through the Drizzle customType, Java
+    through GenericSQLDriver.setStatementValue → EnumCodec.write, Kotlin through
+    Exposed's toDb, C# through the EF converter). Without it an int-backed enum's
+    filter binds the member SYMBOL against an INTEGER column — the filter band
+    keeps eq/ne/in for int-backed enums precisely BECAUSE the symbol is supposed
+    to encode to its integer before reaching SQL.
+    """
     qc = _q(col)
+    if field is not None and op != "isNull":
+        value = ([_coerce_write_value(field, v) for v in value]
+                 if op == "in" and value else _coerce_write_value(field, value))
     if op == "eq":     return f"{qc} = %s", [value]
     if op == "ne":     return f"{qc} <> %s", [value]
     if op == "gt":     return f"{qc} > %s", [value]

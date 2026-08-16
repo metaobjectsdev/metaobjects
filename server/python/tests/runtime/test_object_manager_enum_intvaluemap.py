@@ -129,3 +129,56 @@ def test_intvaluemap_inherited_through_extends_is_honoured():
     field = _field_of(json_str, "Order", "status")
     assert _coerce_write_value(field, "PUBLISHED") == 5
     assert _decode_read_value(field, 5) == "PUBLISHED"
+
+
+# --- filter encoding ------------------------------------------------------
+#
+# The filter band keeps eq/ne/in for an int-backed enum precisely BECAUSE the
+# member symbol is supposed to encode to its integer before reaching SQL. Python
+# was the only port not encoding on this path, so every query bound the SYMBOL
+# against an INTEGER column (pg 22P02). These pin the encoding at the SQL boundary.
+
+
+def _order_entity(extra: str):
+    json_str = f"""{{ "metadata.root": {{ "package": "acme", "children": [
+      {{ "object.entity": {{ "name": "Order", "children": [
+        {{ "source.rdb": {{ "name": "src", "@table": "orders", "@kind": "table" }} }},
+        {{ "field.long": {{ "name": "id" }} }},
+        {{ "field.enum": {{ "name": "status", "@values": ["DRAFT","PUBLISHED","ARCHIVED"] {extra} }} }},
+        {{ "identity.primary": {{ "name": "pk", "@fields": ["id"] }} }}
+      ]}} }}
+    ]}} }}"""
+    result = MetaDataLoader().load([InMemoryStringSource(json_str, "test.json")])
+    assert result.errors == []
+    return next(c for c in result.root.children() if c.name == "Order")
+
+
+def test_filter_eq_on_int_backed_enum_binds_the_int():
+    from metaobjects.runtime.object_manager import _compile_filter
+    _, params = _compile_filter({"status": {"eq": "PUBLISHED"}}, _order_entity(INT_MAP))
+    assert params == [5]
+
+
+def test_filter_shortcut_equality_on_int_backed_enum_binds_the_int():
+    from metaobjects.runtime.object_manager import _compile_filter
+    _, params = _compile_filter({"status": "DRAFT"}, _order_entity(INT_MAP))
+    assert params == [0]
+
+
+def test_filter_in_on_int_backed_enum_binds_each_int():
+    from metaobjects.runtime.object_manager import _compile_filter
+    _, params = _compile_filter({"status": {"in": ["DRAFT", "ARCHIVED"]}}, _order_entity(INT_MAP))
+    assert params == [0, 9]
+
+
+def test_filter_on_string_backed_enum_is_unchanged():
+    from metaobjects.runtime.object_manager import _compile_filter
+    _, params = _compile_filter({"status": {"eq": "PUBLISHED"}}, _order_entity(""))
+    assert params == ["PUBLISHED"]
+
+
+def test_filter_isnull_binds_no_param_and_is_not_coerced():
+    from metaobjects.runtime.object_manager import _compile_filter
+    sql, params = _compile_filter({"status": {"isNull": True}}, _order_entity(INT_MAP))
+    assert params == []
+    assert "IS NULL" in sql

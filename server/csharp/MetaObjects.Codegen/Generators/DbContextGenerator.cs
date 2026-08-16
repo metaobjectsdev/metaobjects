@@ -68,7 +68,7 @@ public class DbContextGenerator : IGenerator
             // so it takes the same custom converter pair the table side gets — reading it as
             // a string would fail materialization exactly as the ordinal default does here.
             foreach (var f in p.Fields().Where(f => f.SubType == FIELD_SUBTYPE_ENUM && !f.ResolvedIsArray()))
-                modelLines.Add($"        modelBuilder.Entity<{name}>().Property(x => x.{CSharpNaming.Pascal(f.Name)}).{EnumConversionCall(name, p, f)};");
+                modelLines.Add($"        modelBuilder.Entity<{name}>().Property(x => x.{CSharpNaming.Pascal(f.Name)}).{EnumConversionCall(name, p, f, ctx.Config)};");
         }
         foreach (var e in objects.Where(o => o.IsEntity() && !o.IsReadOnlyProjection()))
         {
@@ -355,7 +355,7 @@ public class DbContextGenerator : IGenerator
     /// may not contain a throw-expression (CS8188) — and the column's CHECK constrains it
     /// to the mapped ints anyway. Documented rather than papered over.</para>
     /// </remarks>
-    private static string EnumConversionCall(string owner, MetaObject entity, MetaField f)
+    private static string EnumConversionCall(string owner, MetaObject entity, MetaField f, GenConfig config)
     {
         var intMap = IntValueMapOf(f);
         if (intMap is null) return "HasConversion<string>()";
@@ -363,7 +363,17 @@ public class DbContextGenerator : IGenerator
         var members = f.EffectiveEnumValues ?? new List<string>();
         if (members.Count == 0) return "HasConversion<string>()";
 
-        var type = $"{owner}.{CSharpNaming.EnumTypeName(entity, f)}";
+        // FR-019: a SHARED (root-level abstract) or @provided enum is NOT nested inside the
+        // entity class — EntityGenerator references it instead (see its EnumPropertyTypeName)
+        // — so it must be named unqualified here. Qualifying it as {owner}.{Name} emits
+        // CS0426 ("the type name does not exist in the type"), which is not an edge case:
+        // ERR_ENUM_EXTENDS_VALUES_CONFLICT makes declaring @intValueMap on the CONSUMING
+        // field a load error, so hanging it on the shared declaration is the only legal way
+        // to int-back a shared enum. String-backed shared enums never showed this because
+        // HasConversion<string>() names no type at all.
+        var type = Fr019SharedEnum.SharedEnumForField(f) is { } shared
+            ? Fr019SharedEnum.SharedEnumTypeReference(shared, config)
+            : $"{owner}.{CSharpNaming.EnumTypeName(entity, f)}";
         // Read the ints THROUGH the map, keyed by member, so @values stays the SSOT and a
         // member with no mapping cannot silently vanish from the conversion.
         var ints = new List<string>(members.Count);
@@ -424,7 +434,7 @@ public class DbContextGenerator : IGenerator
             // member symbol, so it needs a custom converter pair rather than HasConversion<string>().
             // The generated C# `enum` declaration is byte-identical either way — int-backing is a
             // persistence concern, invisible in the entity's API.
-            var conversion = EnumConversionCall(className, entity, f);
+            var conversion = EnumConversionCall(className, entity, f, ctx.Config);
             // ADR-0039: resolving — array-ness inheritable via extends. Array-of-enum uses the
             // EF Core 8 primitive collection with a per-element conversion so members persist as
             // symbols (["DRAFT"]) — or as their declared ints — not as int ordinals ([0]).

@@ -48,6 +48,9 @@ public class DbContextCompileTests
     // (see the file-header comment for the field-by-field breakdown).
     private const string Model = """
     { "metadata.root": { "package": "acme", "children": [
+      { "field.enum": { "name": "Priority", "abstract": true,
+        "@values": ["LOW", "HIGH"],
+        "@intValueMap": { "LOW": 1, "HIGH": 9 } } },
       { "object.value": { "name": "Address", "children": [
         { "field.string": { "name": "street", "@required": true, "@maxLength": 120 } },
         { "field.string": { "name": "city",   "@maxLength": 80 } }
@@ -57,6 +60,8 @@ public class DbContextCompileTests
         { "field.long":   { "name": "id" } },
         { "field.enum":   { "name": "status",   "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"] } },
         { "field.enum":   { "name": "statuses", "isArray": true, "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"] } },
+        { "field.enum":   { "name": "priority",  "extends": "Priority" } },
+        { "field.enum":   { "name": "rank",      "@values": ["A", "B"], "@intValueMap": { "A": 0, "B": 7 } } },
         { "field.string": { "name": "tags",     "isArray": true } },
         { "field.object": { "name": "homeAddress", "@objectRef": "Address", "@storage": "flattened" } },
         { "field.object": { "name": "config",      "@objectRef": "Address" } },
