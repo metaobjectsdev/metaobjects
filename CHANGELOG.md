@@ -7,6 +7,30 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — a requirement could not claim a prompt template (npm)
+
+`@implementedBy` is documented as naming "the model nodes realising this requirement", and
+it resolved through the OBJECT resolver only. So a requirement could claim an entity, a
+value or a projection — and naming a `template.prompt` produced
+`ERR_REQUIREMENT_DANGLING_REF` ("the model moved and the requirement is stale") for a
+template sitting in the loaded tree.
+
+That excluded the estate with the **most** to gain from a status. A retired entity leaves a
+table behind; a retired prompt leaves nothing, which is exactly the invisibility
+`@status: abandoned` exists to fix. A project whose prompts are a first-class pillar could
+describe every table it owns and not one of its prompts.
+
+**L4 now means "a declared top-level model node"** — an `object.*` or a `template.*` — and
+L5 a member of one. Bare references bind package-locally and ambiguous ones bind nothing,
+the same fail-closed rule objects use. Requirements themselves are excluded: hierarchy is
+nesting, and a requirement claiming a requirement would be a second, contradictory parent
+mechanism. Object coverage is deliberately untouched and stays entity-grain — claiming a
+template must not silence the unclaimed-entity warning.
+
+Also verified rather than assumed, since the same report asked about them: **fields, views,
+validators and identities were already claimable at L5** and needed no change. They are now
+pinned by tests so that stays true. Gated by `cli/test/requirement-template-refs.test.ts`.
+
 ### Fixed — `@verifiedBy` decided what a test file is, and was wrong about a mainstream convention (npm)
 
 `@verifiedBy`'s scan carried one closed list of test-file patterns for the five ported

@@ -148,6 +148,45 @@ function subtreeClaimsAnything(req: MetaRequirement): boolean {
   return false;
 }
 
+/**
+ * Resolve the owner segment of an `@implementedBy` reference to the node it names.
+ *
+ * OBJECTS FIRST, through the loader's own resolver, so package-local binding stays the
+ * ADR-0042 contract and never a parallel name scan (#228).
+ *
+ * Then ROOT-LEVEL NON-OBJECT nodes — `template.prompt` and its siblings today. The
+ * attribute is documented as naming "the model nodes realising this requirement", and a
+ * declared prompt is one: it is the durable artifact a capability like "the game master
+ * is told what the party can see" actually lives in. Resolving only objects meant the
+ * prompt estate — the thing whose retirement is hardest to see in a model, since a
+ * removed prompt leaves no table behind — was the one part of a model that could not
+ * carry a status. So L4 means "a declared top-level model node", not "an object".
+ *
+ * Requirements themselves are excluded: hierarchy is nesting, and a requirement claiming
+ * a requirement would be a second, contradictory parent mechanism.
+ */
+function resolveClaimTarget(root: MetaData, owner: string, referrerPkg: string): MetaData | undefined {
+  const { node } = resolveObjectRef(root, owner, referrerPkg);
+  if (node !== undefined) return node;
+
+  const candidates = root
+    .children()
+    .filter((c) => c.type !== TYPE_OBJECT && c.type !== TYPE_REQUIREMENT);
+
+  // A fully-qualified reference binds exactly, like every other FQN in the model.
+  if (owner.includes(PACKAGE_SEPARATOR)) {
+    return candidates.find((c) => c.resolutionKey() === owner);
+  }
+  // A bare reference prefers the referrer's own package, then a root-level node of that
+  // bare name. An ambiguous bare name binds NOTHING — same fail-closed rule objects use,
+  // because silently picking one of two same-named nodes is how a claim ends up pointing
+  // at the wrong thing without anyone noticing.
+  const local = referrerPkg === "" ? [] : candidates.filter((c) => c.resolutionKey() === `${referrerPkg}${PACKAGE_SEPARATOR}${owner}`);
+  if (local.length === 1) return local[0];
+  const bare = candidates.filter((c) => c.name === owner);
+  return bare.length === 1 ? bare[0] : undefined;
+}
+
 /** Walk dotted member segments by CHILD NAME from an object node. */
 function resolveMember(obj: MetaData, path: string[]): MetaData | undefined {
   let cur: MetaData | undefined = obj;
@@ -196,7 +235,7 @@ function claimedObjectKeys(root: MetaData, reqs: MetaRequirement[]): Set<string>
     const referrerPkg = req.package ?? req.fileDefaultPackage ?? "";
     for (const ref of req.implementedBy()) {
       const { owner, path } = splitMemberRef(ref);
-      const { node } = resolveObjectRef(root, owner, referrerPkg);
+      const node = resolveClaimTarget(root, owner, referrerPkg);
       if (node === undefined) continue;
       if (path.length > 0 && resolveMember(node, path) === undefined) continue;
       claimed.add(node.resolutionKey());
@@ -302,7 +341,7 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
       // binds package-locally under the ADR-0042 contract — the loader's own
       // resolver, never a parallel name scan (#228).
       const referrerPkg = req.package ?? req.fileDefaultPackage ?? "";
-      const { node } = resolveObjectRef(root, owner, referrerPkg);
+      const node = resolveClaimTarget(root, owner, referrerPkg);
       const isObjectRef = path.length === 0;
 
       // GRAIN, and it stays functional-only DELIBERATELY. On a functional

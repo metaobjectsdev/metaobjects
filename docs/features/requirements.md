@@ -57,6 +57,21 @@ no `id` and no `parent`: regrouping moves a subtree.
 L4 object, L5 member. `@implementedBy` is legal at **L4 and L5 only** — L1–L3 are
 organisational and never reference the model.
 
+**What L4 and L5 may name.** L4 names a declared top-level node: an `object.*` **or a
+`template.*`**. A declared prompt is a model node realising a capability in the same sense
+an entity is — and it is the one most in need of a status, because a retired prompt leaves
+no table behind to notice. L5 names a member of one: a field, a view, a validator, an
+identity, or a template's child.
+
+```jsonc
+{ "requirement.functional": {
+    "name": "sceneBrief", "@level": 4, "@status": "live",
+    "@statement": "The game master is told what the party can currently see.",
+    "@violation": "A scene narrated from world state the party has no way to know.",
+    "@implementedBy": ["acme::play::sceneBrief"]   // a template.prompt
+}}
+```
+
 **L1–L3 are levels of abstraction and ownership in the problem domain** — whose need is this,
 and at what altitude — and are **never** a directory, package, deployable or module. Binding
 to technical constructs happens only at L4 and L5, which is the allocation step. The test to
