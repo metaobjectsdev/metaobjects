@@ -242,12 +242,14 @@ the metadata layer. The empty-`@values` fixture, surfaced during review, replace
 ## Remaining follow-ups
 
 - ~~Integer-backed enums (per-member symbol→value)~~ — **DONE via `@intValueMap` (2026-08)**.
-  TypeScript persistence layer complete; other ports pending. See int-backed enum plan docs.
+  TypeScript persistence layer complete; other ports pending. See "Int-backed enum storage" below.
 - Non-identifier-safe member strings (kebab-case, leading digit, etc.) needing a
   symbol↔stored-value mapping — no current consumer.
 - Display labels (presentation/view layer) — no current consumer.
 - Native Postgres `CREATE TYPE ... AS ENUM` (opt-in `@dbEnum`-style flag) — portable
   `varchar`+`CHECK` covers current needs.
+- Extend the EF Core compile-check to the **Routes/ASP.NET** surface (needs the
+  `Microsoft.AspNetCore.App` shared framework) — optional, lower priority.
 
 ## Int-backed enum storage (2026-08)
 
@@ -281,5 +283,3 @@ but the generated enum type and wire format should remain string-based for type 
 - Python: Metamodel registered, codecs pending
 
 See plan docs: `docs/superpowers/plans/2026-07-23-int-backed-enum-values-*.md`
-- Extend the EF Core compile-check to the **Routes/ASP.NET** surface (needs the
-  `Microsoft.AspNetCore.App` shared framework) — optional, lower priority.
