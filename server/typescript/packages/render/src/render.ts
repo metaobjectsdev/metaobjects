@@ -2,6 +2,7 @@ import Mustache from "mustache";
 import type { Provider } from "./provider.js";
 import { ESCAPERS, type RenderFormat } from "./escapers.js";
 import { verify, ERR_REQUIRED_SLOT_UNUSED, type PayloadField } from "./verify.js";
+import { withDerivedAccessors } from "./payload-accessors.js";
 
 const MAX_DEPTH = 32;
 const PARTIAL = /\{\{>\s*([^}\s]+)\s*\}\}/g;
@@ -68,7 +69,10 @@ export function render(o: RenderOptions): string {
   Mustache.escape = (v: unknown) => escaper(typeof v === "string" ? v : String(v));
   let result: string;
   try {
-    result = Mustache.render(expanded, o.payload, {});
+    // Derived `has<Field>` accessors are part of the payload contract, not of the
+    // caller's object — see payload-accessors.ts. Injected here so a `{{#hasFoo}}`
+    // section resolves the same way it does against a generated JVM payload record.
+    result = Mustache.render(expanded, withDerivedAccessors(o.payload), {});
   } finally {
     Mustache.escape = prev;
   }

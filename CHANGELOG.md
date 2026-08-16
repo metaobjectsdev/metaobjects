@@ -7,6 +7,157 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.23.1] — npm `0.23.1` · PyPI `0.23.1` · NuGet `0.23.1` · Maven `7.23.1`
+
+A coordinated **PATCH** across all four registries. Every one of them carries a real changed
+product file, so none is a version-parity bump.
+
+**The theme is a check that was confidently wrong.** Not one of these fixes is a missing feature;
+each is a guarantee the toolchain already made and quietly failed to keep. A render pillar that
+promises byte-identical output across five ports dropped a conditional block's contents on four of
+them, silently, with no error. A `verify` gate told a correct project its tests did not exist,
+because it hardcoded another ecosystem's naming convention. A committed schema snapshot decided
+what DDL the next migration contained and nothing checked it, so `verify` reported healthy while
+`migrate` emitted DDL that failed at apply. Codegen and migrate named the same CHECK constraint
+two different ways, each internally consistent and separately tested. And `@provided` — a marker
+meaning "this type is hand-written, emit nothing" — was inherited down an `extends` chain in three
+ports, so those ports emitted a reference to a type the adopter never declared.
+
+The recurring shape is worth naming: **each survived because the thing that would have caught it
+did not exist.** The render conformance corpus had no fixture using a derived accessor at all;
+nothing ever compared codegen's constraint name to migrate's; no gate read the snapshot. Every fix
+below ships with the missing check, not just the corrected behaviour.
+
+### Fixed — `{{#hasField}}` rendered as absent on a populated payload, in every port (npm/PyPI/NuGet/Maven)
+
+A prompt's conditional section — *"include the abilities block only when there ARE
+abilities"* — is expressed as `{{#hasAbilities}}`, a **derived** boolean accessor over the
+declared field `abilities`. The JVM has emitted `has<Field>()` onto every generated payload
+record since 7.7.7 and accepts the section in its static drift check, sharing one naming
+rule so the two "can never drift apart".
+
+**No render engine implemented the other half.** Given the same payload *data* — a map, which
+is what the runtime and the conformance corpus actually pass — all five ports rendered the
+section as absent:
+
+```
+payload {"abilities":[{"name":"Fireball"}]}
+template "Abilities:{{#hasAbilities}} {{#abilities}}[{{name}}]{{/abilities}}{{/hasAbilities}}"
+before   "Abilities:"            ← content silently dropped, no error
+after    "Abilities: [Fireball]"
+```
+
+Silent wrong output, not a failure: the prompt shipped without its block. The JVM looked
+correct only because a *generated record* answers `hasFoo()` by its own method — so the same
+payload rendered differently depending on whether it arrived as a record or as a map.
+
+`PayloadAccessors` now exists in all five ports carrying one shared rule (`"has" +
+capitalize`, and presence semantics mirroring the JVM emitter exactly: string → non-blank,
+collection → non-empty, reference → non-null, **number/boolean → no accessor at all**, since
+`{{#hasCount}}` over an int is drift rather than a conditional). Render derives them
+non-mutatingly, recursing into nested objects and collection elements so a section sees the
+element it is iterating; an **authored** `hasFoo` always wins. `verify` accepts exactly what
+render resolves, mirroring the JVM's deliberate permissiveness (acceptance keys off the
+field existing, not its type), and still reports drift inside a has-section body.
+
+Found by an adopter with a JVM-authored prompt estate whose Node gate reported **157**
+`ERR_VAR_NOT_ON_PAYLOAD`, all `has`-prefixed, while its JVM gate reported none. Now 0 on
+both. Gated by the shared `render-derived-has-accessor` conformance case — **the corpus had
+no fixture using a derived accessor at all**, which is precisely why a divergence in the
+pillar that promises byte-identical rendering survived this long.
+
+### Fixed — `@provided` flowed down an `extends` chain in TypeScript, C# and Python (npm/PyPI/NuGet)
+
+`@provided` marks a shared enum declaration as supplied by hand-written or third-party code
+([ADR-0026](spec/decisions/ADR-0026-shared-and-provided-named-types.md)): the port emits nothing and references
+the existing type. **TS, C# and Python read it RESOLVING; Java and Kotlin read it own-only and
+documented that as deliberate.** One of them had to be wrong.
+
+The JVM side is right. `@provided` is a provenance fact about the declaration *itself* — like
+`abstract` — not a property of the values it carries, so it must not be inherited. All five
+ports already read it on the resolved *declaration* and never on the consuming field, so for
+the ordinary `field extends @provided decl` shape own and resolving agree. The divergence is
+reachable only through a **chained** declaration — a root-level abstract enum `B extends` a
+root-level abstract `@provided A`. Verified against the real loader: that model loads clean,
+`B`'s own `@provided` is absent while its resolving read is `true`. So the resolving ports
+classified `B` as provided and **emitted a reference to a hand-written `B` the adopter never
+declared** (the marker was authored on `A`), instead of materialising `B` from its inherited
+`@values`.
+
+Neither resolving port held a reasoned position: Python's docstring justified it with "a
+concrete enum extending an abstract `@provided` enum inherits the flag, so an own-only read
+would misclassify it" — wrong about its own call graph, since `is_provided()` is only ever
+passed the declaration — and C#'s comment simply cited TypeScript.
+
+**Blast radius is nil on existing gated output:** every currently-pinned model shape yields the
+same answer under both reads, which is exactly why this survived. [ADR-0039](spec/decisions/ADR-0039-own-accessor-discipline.md)
+is amended — its "`@dbColumnType` is the *only* attribute deliberately read own-only" line was
+false as written no matter which way this ruled, since the JVM own-reads already existed.
+`@provided` is now chartered as the second, with an explicit note that the member set it
+accompanies (`@values`, and its numeric half `@intValueMap`) stays **resolving**.
+
+The pin is proven non-vacuous: reverting just the TypeScript half turns the chained-declaration
+case red and leaves the other six green. A shared conformance fixture is deliberately withheld —
+adding a chained-declaration case surfaced a *second*, deeper divergence (Kotlin names a chained
+abstract enum after the top-most root, so it holds that the alias **is** its parent while every
+other port holds it is its own type) that needs a design ruling of its own rather than pinning
+one port's accidental behaviour.
+
+### Fixed — a requirement could not claim a prompt template (npm)
+
+`@implementedBy` is documented as naming "the model nodes realising this requirement", and
+it resolved through the OBJECT resolver only. So a requirement could claim an entity, a
+value or a projection — and naming a `template.prompt` produced
+`ERR_REQUIREMENT_DANGLING_REF` ("the model moved and the requirement is stale") for a
+template sitting in the loaded tree.
+
+That excluded the estate with the **most** to gain from a status. A retired entity leaves a
+table behind; a retired prompt leaves nothing, which is exactly the invisibility
+`@status: abandoned` exists to fix. A project whose prompts are a first-class pillar could
+describe every table it owns and not one of its prompts.
+
+**L4 now means "a declared top-level model node"** — an `object.*` or a `template.*` — and
+L5 a member of one. Bare references bind package-locally and ambiguous ones bind nothing,
+the same fail-closed rule objects use. Requirements themselves are excluded: hierarchy is
+nesting, and a requirement claiming a requirement would be a second, contradictory parent
+mechanism. Object coverage is deliberately untouched and stays entity-grain — claiming a
+template must not silence the unclaimed-entity warning.
+
+Also verified rather than assumed, since the same report asked about them: **fields, views,
+validators and identities were already claimable at L5** and needed no change. They are now
+pinned by tests so that stays true. Gated by `cli/test/requirement-template-refs.test.ts`.
+
+### Fixed — `@verifiedBy` decided what a test file is, and was wrong about a mainstream convention (npm)
+
+`@verifiedBy`'s scan carried one closed list of test-file patterns for the five ported
+ecosystems, with no way to extend it. **That list is a guess about someone else's repository,
+and it was wrong on a mainstream case from the day it shipped:** Maven Failsafe names
+integration tests `FooIT.java` / `FooIT.kt`, which matched nothing. Because the scan only fails
+OPEN at *zero* test files, a JVM project with unit tests (matched) and integration tests
+(unmatched) got a confident `ERR_REQUIREMENT_TEST_MISSING` — *"the claim was never true"* — for
+a test sitting in the repo. An adopter hit exactly this: every repository test in the project is
+an `*IT`, so `@verifiedBy` was unusable there and the honest workaround was to stop using the
+attribute.
+
+Three changes, of which only the first is a patch to the guess:
+
+- **Failsafe's own defaults are now built in** (`*IT`, `*ITCase`, `IT*` for `.java`; `*IT` /
+  `*ITCase` for `.kt`).
+- **`verify.testFiles` in `metaobjects.config.ts`** lets a project declare its own conventions
+  as globs, added to the built-ins. What counts as a test file is project-specific; a list
+  shipped by this repo cannot be authoritative about a convention it has never seen.
+- **An unrecognised convention is no longer reported as a broken claim.** When a name is absent
+  from the corpus, `verify` now searches the unclassified source files before deciding. If the
+  name is there, it emits `WARN_REQUIREMENT_TEST_UNCLASSIFIED` naming the file and pointing at
+  `verify.testFiles`; `ERR_REQUIREMENT_TEST_MISSING` is reserved for a name that appears
+  **nowhere**. The second pass runs only on the miss path, so the cost is per broken claim
+  rather than per run.
+
+The reusable lesson is the failure mode, not the regex: a gate that hardcodes another
+ecosystem's conventions will eventually tell a correct project that it is broken, and the
+default posture when the tool cannot classify something must be to say so rather than to
+convict. Gated by `cli/test/verified-by-corpus.test.ts`.
+
 ### Fixed — `verify` gates the committed schema snapshot, which nothing checked (npm) — [#292](https://github.com/metaobjectsdev/metaobjects/issues/292)
 
 `meta migrate` diffs metadata against `.metaobjects/migrations/.schema.<dialect>.json` by default

@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from . import escapers
+from .payload_accessors import with_derived_accessors
 from .verify import InMemoryProvider, Provider
 
 MAX_DEPTH = 32
@@ -59,7 +60,10 @@ def render(req: RenderRequest) -> str:
     _validate(req)
     body = req.template if req.template is not None else _resolve_or_raise(req.provider, req.ref)
     expanded = _pre_expand_partials(body, req.provider, [])
-    out = _interpret(expanded, req.payload, req.format)
+    # Derived `has<Field>` accessors are part of the payload contract, not of the
+    # caller's object — see payload_accessors. Injected here so a `{{#hasFoo}}` section
+    # resolves the same way it does against a generated JVM payload record.
+    out = _interpret(expanded, with_derived_accessors(req.payload), req.format)
     # @maxChars is a fail-closed render budget: over-budget output RAISES (never
     # silently truncates). Canonical cross-port behavior — message shape matches
     # TS/C#/Java: "render exceeded maxChars budget: <len> > <cap>".

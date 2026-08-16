@@ -57,6 +57,21 @@ no `id` and no `parent`: regrouping moves a subtree.
 L4 object, L5 member. `@implementedBy` is legal at **L4 and L5 only** — L1–L3 are
 organisational and never reference the model.
 
+**What L4 and L5 may name.** L4 names a declared top-level node: an `object.*` **or a
+`template.*`**. A declared prompt is a model node realising a capability in the same sense
+an entity is — and it is the one most in need of a status, because a retired prompt leaves
+no table behind to notice. L5 names a member of one: a field, a view, a validator, an
+identity, or a template's child.
+
+```jsonc
+{ "requirement.functional": {
+    "name": "sceneBrief", "@level": 4, "@status": "live",
+    "@statement": "The game master is told what the party can currently see.",
+    "@violation": "A scene narrated from world state the party has no way to know.",
+    "@implementedBy": ["acme::play::sceneBrief"]   // a template.prompt
+}}
+```
+
 **L1–L3 are levels of abstraction and ownership in the problem domain** — whose need is this,
 and at what altitude — and are **never** a directory, package, deployable or module. Binding
 to technical constructs happens only at L4 and L5, which is the allocation step. The test to
@@ -148,6 +163,24 @@ entry.
 
 `@verifiedBy` names tests: `verify` checks each exists and is not skipped. It never runs
 them. `@trackedBy` names issues or tickets and is **not** resolved — `verify` has no network.
+
+**What counts as a test file is your project's call.** The scan ships patterns for the
+conventions this repo ports to — jest/vitest/bun, JUnit, Maven Failsafe (`*IT`), xUnit/NUnit,
+pytest, Kotlin — and they are a *convenience, not an authority*: a built-in list is a guess
+about someone else's repository, and a wrong guess turns a real test into a "broken claim".
+Declare yours and they are added to the built-ins:
+
+```ts
+// metaobjects.config.ts
+export default defineConfig({
+  verify: { testFiles: ["**/*IT.kt", "**/*.feature"] },
+});
+```
+
+If a named test cannot be found in the corpus but *does* appear in some other source file,
+`verify` says so (`WARN_REQUIREMENT_TEST_UNCLASSIFIED`, naming the file) instead of claiming
+the requirement is broken — an unrecognised convention is the tool's ignorance, not your
+mistake. `ERR_REQUIREMENT_TEST_MISSING` is reserved for a name that appears **nowhere**.
 
 > **`@verifiedBy` is existence evidence, not proof — and the difference matters most to whoever
 > authored it.** The scan matches a name anywhere in the test corpus, as a whole word, in any
