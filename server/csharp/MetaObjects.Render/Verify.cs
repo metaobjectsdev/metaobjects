@@ -163,7 +163,8 @@ public static class Verify
                     case VarTok v:
                         if (v.Value == ".") break; // implicit iterator — always valid
                         if (atRoot) referencedAtRoot.Add(v.Value.Split('.')[0]);
-                        if (Resolve(stack, v.Value) is null)
+                        if (Resolve(stack, v.Value) is null
+                            && !PayloadAccessors.IsBooleanAccessor(stack, v.Value))
                             errors.Add(new VerifyError(ERR_VAR_NOT_ON_PAYLOAD, v.Value));
                         break;
 
@@ -173,6 +174,14 @@ public static class Verify
                         var field = Resolve(stack, s.Value);
                         if (field is null)
                         {
+                            // A derived `has<Field>` gate is a BOOLEAN over the current
+                            // context: it resolves nothing and pushes nothing, so walk the
+                            // body in the SAME scope — what `{{#hasX}}{{#x}}…` depends on.
+                            if (PayloadAccessors.IsBooleanAccessor(stack, s.Value))
+                            {
+                                Walk(s.Children, stack, seen);
+                                break;
+                            }
                             // Unresolved section head is itself drift; skip the body
                             // (its context is unknowable; walking it cascades false errors).
                             errors.Add(new VerifyError(ERR_VAR_NOT_ON_PAYLOAD, s.Value));

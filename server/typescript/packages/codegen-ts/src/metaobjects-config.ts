@@ -154,6 +154,30 @@ export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport"
    * loader. Composed AFTER the default core+forge bundle.
    */
   providers?: readonly MetaDataTypeProvider[];
+  /** `meta verify` settings. Nothing here affects codegen. */
+  verify?: VerifyConfig;
+}
+
+/** `meta verify` settings. */
+export interface VerifyConfig {
+  /**
+   * Glob patterns naming this project's test files, for the `@verifiedBy` check.
+   *
+   * **What counts as a test file is the project's call.** The built-in patterns cover
+   * the conventions this repo ports to (jest/vitest/bun, JUnit, Maven Failsafe `*IT`,
+   * xUnit/NUnit, pytest, Kotlin) and are a CONVENIENCE, not an authority — a list of
+   * guesses about someone else's repository will always be incomplete, and when it is,
+   * a requirement naming a real test reads as a broken claim. Anything declared here is
+   * added to the built-ins.
+   *
+   * Matched against forward-slash paths relative to the project root: `**` spans
+   * separators, `*` does not.
+   *
+   * ```ts
+   * verify: { testFiles: ["**\/*IT.kt", "**\/*.feature"] }
+   * ```
+   */
+  testFiles?: string[];
 }
 
 /** MetaobjectsGenConfig after applying defaults. All fields required.

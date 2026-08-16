@@ -1,0 +1,22 @@
+{
+  "title": "Party",
+  "bio": "   ",
+  "abilities": [
+    {
+      "name": "Fireball",
+      "tags": [
+        "fire",
+        "aoe"
+      ]
+    },
+    {
+      "name": "Mend",
+      "tags": []
+    }
+  ],
+  "companions": [],
+  "sponsor": {
+    "name": "Guild"
+  },
+  "emptyDetails": {}
+}

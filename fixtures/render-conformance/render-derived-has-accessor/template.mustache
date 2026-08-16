@@ -1,0 +1,6 @@
+title:{{title}}
+bio:{{#hasBio}} {{bio}}{{/hasBio}}{{^hasBio}} (none){{/hasBio}}
+sponsor:{{#hasSponsor}} {{sponsor.name}}{{/hasSponsor}}
+companions:{{#hasCompanions}} some{{/hasCompanions}}{{^hasCompanions}} (none){{/hasCompanions}}
+abilities:{{#hasAbilities}}{{#abilities}} {{name}}{{#hasTags}}[{{#tags}}{{.}} {{/tags}}]{{/hasTags}}{{^hasTags}}[untagged]{{/hasTags}}{{/abilities}}{{/hasAbilities}}
+details:{{#hasEmptyDetails}} present{{/hasEmptyDetails}}{{^hasEmptyDetails}} absent{{/hasEmptyDetails}}

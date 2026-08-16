@@ -23,6 +23,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from .payload_accessors import is_boolean_accessor
+
 #: A ``{{var}}`` references a field the (contextual) payload does not declare.
 ERR_VAR_NOT_ON_PAYLOAD = "ERR_VAR_NOT_ON_PAYLOAD"
 #: A ``{{> ref}}`` partial does not resolve in the provider.
@@ -215,7 +217,9 @@ def verify(
                     continue  # implicit iterator — always valid
                 if at_root:
                     referenced_at_root.add(tok.value.split(".")[0])
-                if _resolve(stack, tok.value) is None:
+                if _resolve(stack, tok.value) is None and not is_boolean_accessor(
+                    stack, tok.value
+                ):
                     errors.append(VerifyError(ERR_VAR_NOT_ON_PAYLOAD, tok.value))
             elif isinstance(tok, _Section):
                 if tok.value == ".":
@@ -225,6 +229,12 @@ def verify(
                     referenced_at_root.add(tok.value.split(".")[0])
                 field = _resolve(stack, tok.value)
                 if field is None:
+                    # A derived `has<Field>` gate is a BOOLEAN over the current context:
+                    # it resolves nothing and pushes nothing, so walk the body in the SAME
+                    # scope — what `{{#hasAbilities}}{{#abilities}}…` depends on.
+                    if is_boolean_accessor(stack, tok.value):
+                        walk(tok.children, stack, seen)
+                        continue
                     # Unresolved section head is itself drift; skip the body (its
                     # context is unknowable, walking it would cascade false errors).
                     errors.append(VerifyError(ERR_VAR_NOT_ON_PAYLOAD, tok.value))

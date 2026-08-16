@@ -1,0 +1,1 @@
+{ "format": "text", "note": "Derived has<Field> boolean accessors: present/absent/blank across scalar, collection and nested scope" }

@@ -67,8 +67,13 @@ public static class Fr019SharedEnum
         return new SharedEnum(
             Name: CSharpNaming.Pascal(decl.Name),
             Values: values,
-            // ADR-0039: resolving — @provided may be inherited via extends (TS reads decl.attr).
-            Provided: decl.Attr(FIELD_ATTR_PROVIDED) is true,
+            // ADR-0039 sanctioned own: @provided is a declaration-layer provenance marker
+            // ("THIS type is supplied by hand-written/third-party code"), like IsAbstract —
+            // it does not flow down an extends chain. A resolving read misfires on a chained
+            // declaration (root abstract B extends root abstract @provided A): B would be
+            // reported provided and emit a reference to a hand-written B the adopter never
+            // declared, instead of materializing B. Matches the JVM ports.
+            Provided: decl.OwnAttr(FIELD_ATTR_PROVIDED) is true,
             Package: PackageOf(decl));
     }
 

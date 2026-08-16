@@ -47,9 +47,15 @@ line: *would this sentence have to change if the code changed but the model did 
 is `notes`.
 
 **Hierarchy is nesting, and links live at the bottom.** L1 solution, L2 segment, L3
-service — these never reference the model. **L4** binds an object, **L5** binds a field,
-view or identity. `implementedBy` above L4 is an error. Regrouping *moves* a node; it does
-not edit a parent string.
+service — these never reference the model. **L4** binds a declared top-level node — an
+`object.*` **or a `template.*`** — and **L5** binds a member of one: a field, view,
+validator, identity, or a template's child. `implementedBy` above L4 is an error.
+Regrouping *moves* a node; it does not edit a parent string.
+
+Claim your prompts. A `template.prompt` is a model node realising a capability exactly as
+an entity is, and it is the node whose retirement is hardest to see later — a removed
+prompt leaves no table behind. A prompt estate with no requirement entries is the same
+blind spot this whole mechanism exists to close.
 
 **L1–L3 are levels of abstraction and ownership in the problem domain** — whose need is
 this, and at what altitude — and are NEVER a directory, package, deployable or module.

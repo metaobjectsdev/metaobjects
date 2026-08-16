@@ -195,7 +195,13 @@ export async function verifyCommand(
   function runRequirementVerify(): number {
     // `@verifiedBy` resolution needs the project on disk, so it is a separate
     // scan; its diagnostics carry the same severities and share this reporter.
-    const diags = [...checkRequirements(root), ...checkVerifiedBy(root, cwd)];
+    // `verify.testFiles` lets a project name its own test-file conventions. What counts
+    // as a test is project-specific, and the built-in patterns are a convenience, not an
+    // authority — see the verified-by-scan header.
+    const diags = [
+      ...checkRequirements(root),
+      ...checkVerifiedBy(root, cwd, forgeConfig?.verify?.testFiles),
+    ];
 
     // Printed on EVERY run, clean or not — a gate that says nothing when it
     // passes cannot be told apart from a gate that checked nothing, and the

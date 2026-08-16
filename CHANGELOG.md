@@ -7,6 +7,99 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — `{{#hasField}}` rendered as absent on a populated payload, in every port (npm/PyPI/NuGet/Maven)
+
+A prompt's conditional section — *"include the abilities block only when there ARE
+abilities"* — is expressed as `{{#hasAbilities}}`, a **derived** boolean accessor over the
+declared field `abilities`. The JVM has emitted `has<Field>()` onto every generated payload
+record since 7.7.7 and accepts the section in its static drift check, sharing one naming
+rule so the two "can never drift apart".
+
+**No render engine implemented the other half.** Given the same payload *data* — a map, which
+is what the runtime and the conformance corpus actually pass — all five ports rendered the
+section as absent:
+
+```
+payload {"abilities":[{"name":"Fireball"}]}
+template "Abilities:{{#hasAbilities}} {{#abilities}}[{{name}}]{{/abilities}}{{/hasAbilities}}"
+before   "Abilities:"            ← content silently dropped, no error
+after    "Abilities: [Fireball]"
+```
+
+Silent wrong output, not a failure: the prompt shipped without its block. The JVM looked
+correct only because a *generated record* answers `hasFoo()` by its own method — so the same
+payload rendered differently depending on whether it arrived as a record or as a map.
+
+`PayloadAccessors` now exists in all five ports carrying one shared rule (`"has" +
+capitalize`, and presence semantics mirroring the JVM emitter exactly: string → non-blank,
+collection → non-empty, reference → non-null, **number/boolean → no accessor at all**, since
+`{{#hasCount}}` over an int is drift rather than a conditional). Render derives them
+non-mutatingly, recursing into nested objects and collection elements so a section sees the
+element it is iterating; an **authored** `hasFoo` always wins. `verify` accepts exactly what
+render resolves, mirroring the JVM's deliberate permissiveness (acceptance keys off the
+field existing, not its type), and still reports drift inside a has-section body.
+
+Found by an adopter with a JVM-authored prompt estate whose Node gate reported **157**
+`ERR_VAR_NOT_ON_PAYLOAD`, all `has`-prefixed, while its JVM gate reported none. Now 0 on
+both. Gated by the shared `render-derived-has-accessor` conformance case — **the corpus had
+no fixture using a derived accessor at all**, which is precisely why a divergence in the
+pillar that promises byte-identical rendering survived this long.
+
+### Fixed — a requirement could not claim a prompt template (npm)
+
+`@implementedBy` is documented as naming "the model nodes realising this requirement", and
+it resolved through the OBJECT resolver only. So a requirement could claim an entity, a
+value or a projection — and naming a `template.prompt` produced
+`ERR_REQUIREMENT_DANGLING_REF` ("the model moved and the requirement is stale") for a
+template sitting in the loaded tree.
+
+That excluded the estate with the **most** to gain from a status. A retired entity leaves a
+table behind; a retired prompt leaves nothing, which is exactly the invisibility
+`@status: abandoned` exists to fix. A project whose prompts are a first-class pillar could
+describe every table it owns and not one of its prompts.
+
+**L4 now means "a declared top-level model node"** — an `object.*` or a `template.*` — and
+L5 a member of one. Bare references bind package-locally and ambiguous ones bind nothing,
+the same fail-closed rule objects use. Requirements themselves are excluded: hierarchy is
+nesting, and a requirement claiming a requirement would be a second, contradictory parent
+mechanism. Object coverage is deliberately untouched and stays entity-grain — claiming a
+template must not silence the unclaimed-entity warning.
+
+Also verified rather than assumed, since the same report asked about them: **fields, views,
+validators and identities were already claimable at L5** and needed no change. They are now
+pinned by tests so that stays true. Gated by `cli/test/requirement-template-refs.test.ts`.
+
+### Fixed — `@verifiedBy` decided what a test file is, and was wrong about a mainstream convention (npm)
+
+`@verifiedBy`'s scan carried one closed list of test-file patterns for the five ported
+ecosystems, with no way to extend it. **That list is a guess about someone else's repository,
+and it was wrong on a mainstream case from the day it shipped:** Maven Failsafe names
+integration tests `FooIT.java` / `FooIT.kt`, which matched nothing. Because the scan only fails
+OPEN at *zero* test files, a JVM project with unit tests (matched) and integration tests
+(unmatched) got a confident `ERR_REQUIREMENT_TEST_MISSING` — *"the claim was never true"* — for
+a test sitting in the repo. An adopter hit exactly this: every repository test in the project is
+an `*IT`, so `@verifiedBy` was unusable there and the honest workaround was to stop using the
+attribute.
+
+Three changes, of which only the first is a patch to the guess:
+
+- **Failsafe's own defaults are now built in** (`*IT`, `*ITCase`, `IT*` for `.java`; `*IT` /
+  `*ITCase` for `.kt`).
+- **`verify.testFiles` in `metaobjects.config.ts`** lets a project declare its own conventions
+  as globs, added to the built-ins. What counts as a test file is project-specific; a list
+  shipped by this repo cannot be authoritative about a convention it has never seen.
+- **An unrecognised convention is no longer reported as a broken claim.** When a name is absent
+  from the corpus, `verify` now searches the unclassified source files before deciding. If the
+  name is there, it emits `WARN_REQUIREMENT_TEST_UNCLASSIFIED` naming the file and pointing at
+  `verify.testFiles`; `ERR_REQUIREMENT_TEST_MISSING` is reserved for a name that appears
+  **nowhere**. The second pass runs only on the miss path, so the cost is per broken claim
+  rather than per run.
+
+The reusable lesson is the failure mode, not the regex: a gate that hardcodes another
+ecosystem's conventions will eventually tell a correct project that it is broken, and the
+default posture when the tool cannot classify something must be to say so rather than to
+convict. Gated by `cli/test/verified-by-corpus.test.ts`.
+
 ### Fixed — `verify` gates the committed schema snapshot, which nothing checked (npm) — [#292](https://github.com/metaobjectsdev/metaobjects/issues/292)
 
 `meta migrate` diffs metadata against `.metaobjects/migrations/.schema.<dialect>.json` by default

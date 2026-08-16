@@ -11,6 +11,7 @@
 
 import Mustache from "mustache";
 import type { Provider } from "./provider.js";
+import { HAS_PREFIX, hasAccessorName } from "./payload-accessors.js";
 
 /** A `{{var}}` references a field the (contextual) payload does not declare. */
 export const ERR_VAR_NOT_ON_PAYLOAD = "ERR_VAR_NOT_ON_PAYLOAD";
@@ -61,6 +62,27 @@ type Token = readonly unknown[];
  * walk verify uses, guaranteeing the two surfaces agree.
  */
 export type ResolveStack<F extends PayloadField = PayloadField> = readonly F[][];
+
+/**
+ * True when `name` is a derived boolean accessor (`has<Field>`) over a field
+ * reachable on the current context stack — the same rule the payload emitter uses
+ * (payload-accessors.ts), so an accepted section and an emitted accessor can never
+ * drift apart. A `{{#hasX}}` with no field `x` on any scope is NOT an accessor and
+ * stays ERR_VAR_NOT_ON_PAYLOAD drift.
+ *
+ * Accessors are simple (undotted) names; a dotted path is never an accessor and is
+ * left to normal field resolution. Byte-identical to the JVM's
+ * `Verify.isBooleanAccessor`, including its deliberate permissiveness: acceptance
+ * keys off the FIELD EXISTING, not off its type.
+ */
+function isBooleanAccessor<F extends PayloadField>(stack: ResolveStack<F>, name: string): boolean {
+  if (name.includes(".")) return false;
+  if (!name.startsWith(HAS_PREFIX)) return false;
+  for (let i = stack.length - 1; i >= 0; i--) {
+    for (const f of stack[i]!) if (name === hasAccessorName(f.name)) return true;
+  }
+  return false;
+}
 
 function find<F extends PayloadField>(fields: F[], name: string): F | undefined {
   return fields.find((f) => f.name === name);
@@ -162,7 +184,8 @@ export function verify(
           // {{{x}}} (spec); mustache.js emits "&" for it too
           if (value === ".") break; // implicit iterator — always valid
           if (atRoot) referencedAtRoot.add(value.split(".")[0]!);
-          if (!resolve(stack, value)) errors.push({ code: ERR_VAR_NOT_ON_PAYLOAD, path: value });
+          if (!resolve(stack, value) && !isBooleanAccessor(stack, value))
+            errors.push({ code: ERR_VAR_NOT_ON_PAYLOAD, path: value });
           break;
         }
         case "#": // {{#x}}…{{/x}}
@@ -176,6 +199,13 @@ export function verify(
           if (atRoot) referencedAtRoot.add(value.split(".")[0]!);
           const field = resolve(stack, value);
           if (!field) {
+            // A derived `has<Field>` gate is a BOOLEAN over the current context, so it
+            // resolves nothing and pushes nothing — walk the body in the SAME scope,
+            // which is what `{{#hasAbilities}}{{#abilities}}…` depends on.
+            if (isBooleanAccessor(stack, value)) {
+              walk(sub, stack, seen);
+              break;
+            }
             // Unresolved section head is itself drift; skip the body (its
             // context is unknowable, walking it would cascade false errors).
             errors.push({ code: ERR_VAR_NOT_ON_PAYLOAD, path: value });

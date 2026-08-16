@@ -100,7 +100,10 @@ public static partial class Renderer
             .Configure(settings => settings.SetEncodingFunction(v => escaper(v)))
             .Build();
 
-        string result = stubble.Render(expanded, request.Payload);
+        // Derived `has<Field>` accessors are part of the payload contract, not of the
+        // caller's object — see PayloadAccessors. Injected here so a `{{#hasFoo}}` section
+        // resolves the same way it does against a generated JVM payload record.
+        string result = stubble.Render(expanded, PayloadAccessors.WithDerivedAccessors(request.Payload));
 
         if (request.MaxChars is int cap && result.Length > cap)
             throw new RenderException(
