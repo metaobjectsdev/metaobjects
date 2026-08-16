@@ -407,18 +407,16 @@ public final class JdbcCodecs {
     }
 
     /**
-     * {@code field.enum} ⇄ a text column. The enum is string-backed (its member symbol is the
-     * stored value — see {@code EnumField}); EnumField is backed by {@code DataTypes.STRING}, so
-     * this is bind-as-string / read-as-string, identical to {@link StringCodec} but registered
-     * explicitly so enum does not ride the generic {@link ObjectCodec} fallback. The DB
-     * {@code CHECK (col IN (...))} (emitted from {@code @values}) enforces membership.
-     */
-    /**
-     * {@code field.enum}, string- or int-backed.
+     * {@code field.enum} ⇄ a text OR integer column, string- or int-backed.
      *
-     * <p>A plain enum persists its member symbol as text. One declaring
-     * {@code @intValueMap} persists the member's declared INTEGER instead, while the
-     * caller's contract stays the SYMBOL in both directions — int-backing is a
+     * <p>A plain enum persists its member symbol as text (see {@code EnumField}, backed by
+     * {@code DataTypes.STRING}) — bind-as-string / read-as-string, identical to
+     * {@link StringCodec} but registered explicitly so enum does not ride the generic
+     * {@link ObjectCodec} fallback. The DB {@code CHECK (col IN (...))} (emitted from
+     * {@code @values}) enforces membership.</p>
+     *
+     * <p>One declaring {@code @intValueMap} persists the member's declared INTEGER instead,
+     * while the caller's contract stays the SYMBOL in both directions — int-backing is a
      * persistence-layer concern, invisible above this codec.</p>
      *
      * <p>The map is read RESOLVING ({@code getMetaAttr}, ADR-0039): it is

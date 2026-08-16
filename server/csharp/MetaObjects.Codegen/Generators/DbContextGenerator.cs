@@ -325,24 +325,6 @@ public class DbContextGenerator : IGenerator
             $"r => r.HasOne<{source}>().WithMany().HasForeignKey(nameof({through}.{sourceFkProp})));";
     }
 
-    // #214 [0] — the per-field EF TYPE-converter emission, factored out so the SAME set of
-    // converters configures BOTH the write entity (its derived-EXCLUDED field set) AND a
-    // write-through entity's <Entity>View read model (ALL fields, incl. the derived origin.*
-    // fields the replica view exposes). Emits, over modelBuilder.Entity<<paramref
-    // name="className"/>>(): owned-VO (OwnsOne/OwnsMany.ToJson or flattened per-column names);
-    // enum string-conversion (scalar HasConversion<string> + array PrimitiveCollection element
-    // conversion — else enum arrays persist as int ordinals); scalar PrimitiveCollection (EF
-    // Core 8 API — .ToJson does not exist on PropertyBuilder<List<T>>); field.decimal
-    // .HasPrecision (SP-A, precision-exact NUMERIC vs EF's default decimal(18,2)); field.timestamp
-    // .HasColumnType (ADR-0036 Wave 2 — timestamptz default / `timestamp without time zone` under
-    // @localTime, REQUIRED else Npgsql rejects a Kind=Unspecified DateTime); field.uri (Uri↔text
-    // converter) / field.inet (native `inet`) (ADR-0036 Wave 3); and @dbColumnType uuid/jsonb
-    // physical overrides (R6 Plan 2b). The WRITE-ONLY configs (@readOnly SetAfterSaveBehavior,
-    // M:N UsingEntity, TPH HasDiscriminator) stay on the caller — a read-only view is never
-    // written. <paramref name="jsonbObjectsOnly"/> restricts the owned-VO loop to non-flattened
-    // (single-jsonb-column) VO fields — the read model declares only those (a flattened VO's
-    // per-column spread is out of scope on the view; #214 note), so the emitted config never
-    // references a property the <Entity>View class does not declare.
     /// <summary>
     /// The declared symbol→int map (<c>@intValueMap</c>) for an int-backed
     /// <c>field.enum</c>, or <c>null</c> when the enum is string-backed.
@@ -407,6 +389,24 @@ public class DbContextGenerator : IGenerator
         return $"HasConversion({toProvider}, {fromProvider})";
     }
 
+    // #214 [0] — the per-field EF TYPE-converter emission, factored out so the SAME set of
+    // converters configures BOTH the write entity (its derived-EXCLUDED field set) AND a
+    // write-through entity's <Entity>View read model (ALL fields, incl. the derived origin.*
+    // fields the replica view exposes). Emits, over modelBuilder.Entity<<paramref
+    // name="className"/>>(): owned-VO (OwnsOne/OwnsMany.ToJson or flattened per-column names);
+    // enum string-conversion (scalar HasConversion<string> + array PrimitiveCollection element
+    // conversion — else enum arrays persist as int ordinals); scalar PrimitiveCollection (EF
+    // Core 8 API — .ToJson does not exist on PropertyBuilder<List<T>>); field.decimal
+    // .HasPrecision (SP-A, precision-exact NUMERIC vs EF's default decimal(18,2)); field.timestamp
+    // .HasColumnType (ADR-0036 Wave 2 — timestamptz default / `timestamp without time zone` under
+    // @localTime, REQUIRED else Npgsql rejects a Kind=Unspecified DateTime); field.uri (Uri↔text
+    // converter) / field.inet (native `inet`) (ADR-0036 Wave 3); and @dbColumnType uuid/jsonb
+    // physical overrides (R6 Plan 2b). The WRITE-ONLY configs (@readOnly SetAfterSaveBehavior,
+    // M:N UsingEntity, TPH HasDiscriminator) stay on the caller — a read-only view is never
+    // written. <paramref name="jsonbObjectsOnly"/> restricts the owned-VO loop to non-flattened
+    // (single-jsonb-column) VO fields — the read model declares only those (a flattened VO's
+    // per-column spread is out of scope on the view; #214 note), so the emitted config never
+    // references a property the <Entity>View class does not declare.
     private void EmitFieldTypeConfig(
         string className, MetaObject entity, IEnumerable<MetaField> fields,
         GenContext ctx, List<string> modelLines, bool jsonbObjectsOnly)

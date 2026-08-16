@@ -834,20 +834,32 @@ def _coerce_write_value(field: MetaField, value: Any) -> Any:
     # and wire contract stays the member SYMBOL (int-backing is a persistence-layer
     # concern, invisible above this codec), so encode symbol -> declared int here.
     #
-    # ADR-0039 resolving: the map is @values' numeric half — a logical property of
-    # the enum vocabulary that inherits through extends — so it is read with
-    # get_meta_attr, NOT the own-only accessor (contrast @dbColumnType above).
-    #
     # An unmapped symbol is passed through untouched: membership is the column's
     # CHECK constraint to enforce, and inventing a value here would hide the drift.
     if sub == fc.FIELD_SUBTYPE_ENUM:
-        int_map = field.get_meta_attr(fc.FIELD_ATTR_INT_VALUE_MAP)
-        if isinstance(int_map, dict) and value in int_map:
+        int_map = _int_value_map(field)
+        if int_map is not None and value in int_map:
             return int_map[value]
 
     # Everything else (string / int / long / double / float / boolean / enum)
     # is already the native type pg8000 binds directly.
     return value
+
+
+def _int_value_map(field: MetaField) -> dict[Any, Any] | None:
+    """The declared ``@intValueMap`` (symbol → int), or ``None`` when the enum is
+    string-backed.
+
+    ADR-0039 resolving: the map is ``@values``' numeric half — a logical property
+    of the enum vocabulary that inherits through ``extends`` — so it is read with
+    ``get_meta_attr``, NOT the own-only accessor (contrast ``@dbColumnType`` in
+    :func:`_coerce_write_value`, the one field attribute that is deliberately
+    own-only). Shared by the write and read halves of the enum codec, mirroring
+    the dedicated int-map helper each sibling port's codec keeps (Java
+    ``EnumCodec.intValueMap``, Kotlin ``readIntValueMap``, C# ``IntValueMapOf``).
+    """
+    m = field.get_meta_attr(fc.FIELD_ATTR_INT_VALUE_MAP)
+    return m if isinstance(m, dict) else None
 
 
 def _decode_read_value(field: MetaField, value: Any) -> Any:
@@ -866,11 +878,11 @@ def _decode_read_value(field: MetaField, value: Any) -> Any:
         return None
     if field.sub_type != fc.FIELD_SUBTYPE_ENUM:
         return value
-    int_map = field.get_meta_attr(fc.FIELD_ATTR_INT_VALUE_MAP)  # ADR-0039 resolving
-    if not isinstance(int_map, dict):
+    int_map = _int_value_map(field)
+    if int_map is None or not isinstance(value, int) or isinstance(value, bool):
         return value
     for symbol, stored in int_map.items():
-        if stored == value and isinstance(value, int) and not isinstance(value, bool):
+        if stored == value:
             return symbol
     return value
 
