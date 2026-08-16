@@ -224,3 +224,62 @@ describe("FR-019 inline enum unchanged", () => {
     expect(t).not.toContain('from "./enums"');
   });
 });
+
+// ── @provided is DECLARATION-LAYER, not inherited ────────────────────────────
+//
+// `@provided` says "THIS type is supplied by hand-written / third-party code". Like
+// `abstract`, it is a fact about the declaration, not about the values it carries, so
+// it must NOT flow down an extends chain. TS, C# and Python read it RESOLVING while
+// Java and Kotlin read it own-only; the JVM side was right, and the divergence is
+// reachable only through a CHAINED declaration — a root-level abstract enum `B extends`
+// a root-level abstract `@provided A`.
+//
+// Under a resolving read, B is classified provided and the ports emit an import of a
+// hand-written `B` THE ADOPTER NEVER DECLARED (the marker was authored on A), instead of
+// materializing B from its inherited @values. This test pins the own-only read; it did
+// not exist when the fix was written, so the behaviour was unguarded in three ports.
+
+/** Root abstract `@provided Base`, root abstract `Derived extends Base`, entity uses Derived. */
+function chainedProvidedModel(): unknown {
+  return {
+    "metadata.root": {
+      package: "acme",
+      children: [
+        { "field.enum": { name: "Base", abstract: true, "@provided": true, "@values": ["A", "B"] } },
+        { "field.enum": { name: "Derived", abstract: true, extends: "Base" } },
+        {
+          "object.entity": {
+            name: "Order",
+            children: [
+              { "field.long": { name: "id" } },
+              { "field.enum": { name: "kind", extends: "Derived" } },
+              { "source.rdb": { "@table": "orders" } },
+              { "identity.primary": { name: "id", "@fields": ["id"], "@generation": "increment" } },
+            ],
+          },
+        },
+      ],
+    },
+  };
+}
+
+describe("FR-019 @provided does not inherit (ADR-0039 own read)", () => {
+  test("a chained declaration MATERIALIZES rather than importing a type nobody declared", async () => {
+    const root = await loadRoot(chainedProvidedModel());
+    const { files } = await gen(root, "~/hand-written-enums");
+
+    // Derived is NOT provided, so it must be emitted...
+    expect(files["enums.ts"]).toBeDefined();
+    expect(files["enums.ts"]).toContain("Derived");
+    // ...and must NOT be imported from the provided module.
+    const all = Object.values(files).join("\n");
+    expect(all).not.toContain('Derived } from "~/hand-written-enums"');
+  });
+
+  test("the marked declaration itself is still provided", async () => {
+    const root = await loadRoot(sharedModel({ provided: true }));
+    const { files } = await gen(root, "~/hand-written-enums");
+    // Status carries @provided on its OWN declaration — nothing emitted for it.
+    expect(files["enums.ts"]).toBeUndefined();
+  });
+});
