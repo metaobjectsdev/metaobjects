@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import com.metaobjects.generator.util.GeneratedFileWriter;
 
 /**
  * Maven-wirable declarative Mustache template generator (SP-1b). Reads the
@@ -71,7 +72,7 @@ public class TemplateScopeGenerator extends GeneratorBase {
             Path target = outDir.toPath().resolve(f.path());
             try {
                 Files.createDirectories(target.getParent());
-                Files.writeString(target, f.content());
+                GeneratedFileWriter.write(target, f.content());
             } catch (IOException e) {
                 throw new GeneratorException(
                     "Failed to write template-codegen output [" + target + "]: " + e.getMessage(), e);

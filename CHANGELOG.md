@@ -9,8 +9,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [0.23.3] — npm `0.23.3` · PyPI `0.23.3` · NuGet `0.23.3` · Maven `7.23.3`
 
-A coordinated **PATCH** across all four registries. npm, PyPI and NuGet each carry real
-changed product files; Maven is a version-parity bump (see the known gap at the end).
+A coordinated **PATCH** across all four registries, and every one of them carries a real
+changed product file — the same defect had to be fixed four times, once per write path.
 
 **`meta gen` was silently destroying hand edits, and the case it happened in was the
 normal one.** A generated file that existed, differed from fresh output, and had no
@@ -115,15 +115,27 @@ precisely, before any write, tagged with the generator name.
 down with `Bun is not defined`. All four ADR-0034 reference templates now say so in their
 header. Output is unaffected.
 
-### Known and NOT fixed — Java and Kotlin have no write protection at all
+### Fixed — Java and Kotlin get the safety floor they never implemented (Maven)
 
-Their generators write output with a raw `Files.writeString` — no marker check, no hash,
-no refusal — across 31 call sites with no single choke point, so a hand edit inside a
-generated file is overwritten on the next `mvn metaobjects:generate` with no warning.
-That is worse than the marker rule Python and C# just replaced, and closing it needs a
-shared write policy plus every generator routed through it. Tracked as follow-on work;
-`docs/features/own-your-codegen.md` now states the per-port position honestly rather than
-promising a guarantee two ports do not keep.
+`docs/features/codegen-concepts.md` §7 has always stated a **product-wide** backstop —
+*"the generator will not silently eat your work"* — and these two ports were not
+implementing it at all: every generator called `Files.writeString` directly, across 32
+call sites with no choke point, so any file at a generated output path was overwritten
+unconditionally. That was weaker than the marker rule Python and C# just replaced.
+
+All 32 sites now write through one `GeneratedFileWriter`, which refuses an existing file
+carrying no `GENERATED` marker and logs why. Taking ownership of a generated file is an
+explicit gesture: **delete the marker line**, and regeneration never touches it again.
+
+**This is deliberately the marker floor, not the hash manifest.** The hash is strictly
+more accurate — it is the only thing that catches an edit to a file that *keeps* its
+marker — but it costs a committed state file, a migration, and a new class of merge
+conflict, and it buys that accuracy for a workflow these ports do not have: their
+customization model is build-config and template-spec, not editing emitted files in place.
+Sharing the *guarantee* while letting the *mechanism* differ per port is the same call
+ADR-0015 makes for schema migrations. Refusing warns rather than failing the reactor,
+because failing a Maven build over a file the user chose to own would punish exactly the
+person the guard protects.
 
 ## [0.23.2] — npm `0.23.2` · PyPI `0.23.2` · NuGet `0.23.2` · Maven `7.23.2`
 

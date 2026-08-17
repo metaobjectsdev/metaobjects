@@ -14,6 +14,7 @@ import java.io.PrintWriter
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import com.metaobjects.generator.util.GeneratedFileWriter
 
 /**
  * Generator: one `<Entity>FilterAllowlist.kt` per writable `object.entity`
@@ -144,8 +145,7 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
         }
 
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$className.kt")
-        outFile.parent?.let { Files.createDirectories(it) }
-        Files.writeString(outFile, src)
+        GeneratedFileWriter.write(outFile, src)
     }
 
     private companion object {

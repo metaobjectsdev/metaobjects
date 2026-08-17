@@ -35,6 +35,7 @@ import java.io.OutputStream
 import java.io.PrintWriter
 import java.nio.file.Path
 import java.nio.file.Paths
+import com.metaobjects.generator.util.GeneratedFileWriter
 
 /**
  * Generator: one plain Kotlin data class (Jackson-compatible) per `object.entity` and
@@ -133,8 +134,7 @@ open class KotlinEntityGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         val header = if (pkg.isEmpty()) "" else "package $pkg\n\n"
         val body = header + NET_JSON_SUPPORT_BODY
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$NET_JSON_SUPPORT.kt")
-        outFile.parent?.let { java.nio.file.Files.createDirectories(it) }
-        java.nio.file.Files.writeString(outFile, body)
+        GeneratedFileWriter.write(outFile, body)
     }
 
     protected open fun emit(obj: MetaObject, outRoot: Path, loader: MetaDataLoader, emittedEnumFqns: MutableSet<String>) {

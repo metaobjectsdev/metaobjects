@@ -10,6 +10,7 @@ import java.io.PrintWriter
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import com.metaobjects.generator.util.GeneratedFileWriter
 
 /**
  * Generator: emits two files per project:
@@ -100,8 +101,7 @@ open class KotlinValidatorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         }
 
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("MetadataStartupValidator.kt")
-        outFile.parent?.let { Files.createDirectories(it) }
-        Files.writeString(outFile, source)
+        GeneratedFileWriter.write(outFile, source)
     }
 
     protected open fun emitHelper(pkg: String, outRoot: Path) {
@@ -133,8 +133,7 @@ open class KotlinValidatorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         }
 
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("ExposedTableValidator.kt")
-        outFile.parent?.let { Files.createDirectories(it) }
-        Files.writeString(outFile, source)
+        GeneratedFileWriter.write(outFile, source)
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================

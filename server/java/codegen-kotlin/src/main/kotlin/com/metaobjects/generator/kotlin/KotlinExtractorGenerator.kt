@@ -22,6 +22,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import org.slf4j.LoggerFactory
+import com.metaobjects.generator.util.GeneratedFileWriter
 
 /**
  * Cross-port Extractor codegen (Kotlin port) — the `extract` tier over the existing tolerant
@@ -203,7 +204,7 @@ open class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
 
         val outFile = outRoot.resolve(outPkg.replace('.', '/')).resolve("$extractorClass.kt")
         outFile.parent?.let { Files.createDirectories(it) }
-        Files.writeString(outFile, src)
+        GeneratedFileWriter.write(outFile, src)
     }
 
     /**

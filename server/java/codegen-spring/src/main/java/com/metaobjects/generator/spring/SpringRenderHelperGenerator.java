@@ -28,6 +28,7 @@ import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import com.metaobjects.generator.util.GeneratedFileWriter;
 
 /**
  * Generator: one {@code <TemplateShortName>RenderHelper} Java class per
@@ -246,8 +247,7 @@ public class SpringRenderHelperGenerator extends MultiFileDirectGeneratorBase<Me
 
         try {
             Path outFile = outRoot.resolve(outPkg.replace('.', '/')).resolve(helperClass + ".java");
-            if (outFile.getParent() != null) Files.createDirectories(outFile.getParent());
-            Files.writeString(outFile, src.toString());
+            GeneratedFileWriter.write(outFile, src.toString());
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + helperClass + ".java for template " + template.getName() + ": " + e, e);

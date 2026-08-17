@@ -22,6 +22,7 @@ import java.util.Deque;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import com.metaobjects.generator.util.GeneratedFileWriter;
 
 /**
  * Generator: one Java 21 {@code record} per {@code object.value} reachable from an
@@ -147,8 +148,7 @@ public class SpringValueObjectGenerator extends MultiFileDirectGeneratorBase<Met
 
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(recordName + ".java");
-            if (outFile.getParent() != null) Files.createDirectories(outFile.getParent());
-            Files.writeString(outFile, src.toString());
+            GeneratedFileWriter.write(outFile, src.toString());
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing value object " + recordName + ".java for " + vo.getName() + ": " + e, e);

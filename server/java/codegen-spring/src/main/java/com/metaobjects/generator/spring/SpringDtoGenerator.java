@@ -33,6 +33,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import com.metaobjects.generator.util.GeneratedFileWriter;
 
 /**
  * Generator: one Java 21 {@code record} per {@code object.entity}, used as the
@@ -637,8 +638,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
     protected void writeJavaFile(MetaObject entity, Path outRoot, String pkg, String typeName, String body) {
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(typeName + ".java");
-            if (outFile.getParent() != null) Files.createDirectories(outFile.getParent());
-            Files.writeString(outFile, body);
+            GeneratedFileWriter.write(outFile, body);
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + typeName + ".java for entity " + entity.getName() + ": " + e, e);
@@ -920,8 +920,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
 
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("MetaNetBindings.java");
-            if (outFile.getParent() != null) Files.createDirectories(outFile.getParent());
-            Files.writeString(outFile, src.toString());
+            GeneratedFileWriter.write(outFile, src.toString());
         } catch (IOException e) {
             throw new GeneratorException("failed writing MetaNetBindings.java for package " + pkg + ": " + e, e);
         }
@@ -932,8 +931,7 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         try {
             Path outFile = outRoot.resolve(shared.javaPackage().replace('.', '/'))
                                   .resolve(shared.name() + ".java");
-            if (outFile.getParent() != null) Files.createDirectories(outFile.getParent());
-            Files.writeString(outFile, body);
+            GeneratedFileWriter.write(outFile, body);
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing shared enum " + shared.name() + ".java: " + e, e);

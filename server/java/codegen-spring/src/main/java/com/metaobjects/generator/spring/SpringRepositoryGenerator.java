@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collection;
 import java.util.List;
+import com.metaobjects.generator.util.GeneratedFileWriter;
 
 /**
  * Generator: one hand-stubbed Java {@code interface} per writable
@@ -171,8 +172,7 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
 
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(repoName + ".java");
-            if (outFile.getParent() != null) Files.createDirectories(outFile.getParent());
-            Files.writeString(outFile, src.toString());
+            GeneratedFileWriter.write(outFile, src.toString());
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + repoName + ".java for entity " + entity.getName() + ": " + e, e);
@@ -237,8 +237,7 @@ public class SpringRepositoryGenerator extends MultiFileDirectGeneratorBase<Meta
 
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(repoName + ".java");
-            if (outFile.getParent() != null) Files.createDirectories(outFile.getParent());
-            Files.writeString(outFile, src.toString());
+            GeneratedFileWriter.write(outFile, src.toString());
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing TPH " + repoName + ".java for entity " + base.getName() + ": " + e, e);

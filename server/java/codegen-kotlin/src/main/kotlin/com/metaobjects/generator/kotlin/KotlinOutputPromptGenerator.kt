@@ -13,6 +13,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import org.slf4j.LoggerFactory
+import com.metaobjects.generator.util.GeneratedFileWriter
 
 /**
  * Generator: one `<TemplateShortName>OutputPrompt.kt` per `template.output` declaration
@@ -153,8 +154,7 @@ open class KotlinOutputPromptGenerator : MultiFileDirectGeneratorBase<MetaObject
         }
 
         val outFile = outRoot.resolve(outPkg.replace('.', '/')).resolve("$promptClass.kt")
-        outFile.parent?.let { Files.createDirectories(it) }
-        Files.writeString(outFile, src)
+        GeneratedFileWriter.write(outFile, src)
     }
 
 

@@ -21,6 +21,7 @@ import java.io.OutputStream
 import java.io.PrintWriter
 import java.nio.file.Files
 import java.nio.file.Paths
+import com.metaobjects.generator.util.GeneratedFileWriter
 
 /**
  * Generator: one Kotlin `object` per `object.entity` that has a `source.rdb` child with
@@ -104,8 +105,7 @@ open class KotlinStoredProcGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         }
 
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$objectName.kt")
-        outFile.parent?.let { Files.createDirectories(it) }
-        Files.writeString(outFile, source)
+        GeneratedFileWriter.write(outFile, source)
     }
 
     /**

@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import com.metaobjects.generator.util.GeneratedFileWriter;
 
 /**
  * {@code metaobjects:docs} — emit the generated SDK api surface (the SP-1 {@code apiSurfaces}
@@ -186,8 +187,8 @@ public class DocsMojo extends AbstractMetaDataMojo {
         try {
             for (Map.Entry<String, String> e : emitted.entrySet()) {
                 Path dest = apiRoot.resolve(e.getKey());
-                Files.createDirectories(dest.getParent());
-                Files.writeString(dest, e.getValue(), StandardCharsets.UTF_8);
+                // The writer creates parents and writes UTF-8 itself.
+                GeneratedFileWriter.write(dest, e.getValue());
             }
         } catch (IOException ex) {
             throw new UncheckedIOException("metaobjects:docs — failed writing api pages into " + apiRoot, ex);

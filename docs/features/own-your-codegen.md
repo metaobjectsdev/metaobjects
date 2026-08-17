@@ -36,10 +36,16 @@ So on **TypeScript, Python and C#** the guarantee is *your edits are never silen
 destroyed*; automatic merging is the stronger behaviour you get where the snapshot
 exists (TypeScript only — the other two refuse rather than merge).
 
-**Java and Kotlin do not have this protection yet.** Their generators write output
-directly, so a hand edit inside a generated file is overwritten on the next
-`mvn metaobjects:generate` with no warning. Until that changes, treat generated output
-on those ports as disposable and keep hand-written code in separate files.
+**Java and Kotlin implement the floor, not the detection.** Every generator writes through
+one guard that refuses any existing file carrying no `GENERATED` marker, so a hand-written
+file at a generated path is never clobbered. Taking ownership of a generated file is an
+explicit gesture there: **delete the marker line**, and regeneration will not touch it
+again. What that cannot do is notice an edit to a file that still *has* its marker — that
+needs a record of what was written, which is what the committed hash manifest provides on
+the other three ports. It is deliberately not replicated here, because these ports'
+customization model is build-config and template-spec rather than editing emitted files in
+place (see "Per port" below); the accuracy would cost a committed state file, a migration
+and a new class of merge conflict on a workflow that does not ask for it.
 
 Keep `.gen-state/.hashes.json` committed. Ignoring it is what turns the second case into
 a silent overwrite, since a machine with neither a snapshot nor a hash cannot tell your

@@ -26,6 +26,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.metaobjects.generator.util.GeneratedFileWriter;
 
 /**
  * Generator: one {@code <TemplateShortName>Parser} Java class per
@@ -248,8 +249,7 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
 
         try {
             Path outFile = outRoot.resolve(outPkg.replace('.', '/')).resolve(parserClass + ".java");
-            if (outFile.getParent() != null) Files.createDirectories(outFile.getParent());
-            Files.writeString(outFile, src.toString());
+            GeneratedFileWriter.write(outFile, src.toString());
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + parserClass + ".java for template " + template.getName() + ": " + e, e);

@@ -28,6 +28,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import org.slf4j.LoggerFactory
+import com.metaobjects.generator.util.GeneratedFileWriter
 
 /**
  * Generator: one Spring `@RestController` Kotlin file per `object.entity` that has a
@@ -604,8 +605,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
         }
 
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("${shortName}Controller.kt")
-        outFile.parent?.let { Files.createDirectories(it) }
-        Files.writeString(outFile, source)
+        GeneratedFileWriter.write(outFile, source)
     }
 
     /**
@@ -1027,7 +1027,7 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
 
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("${shortName}Controller.kt")
         outFile.parent?.let { Files.createDirectories(it) }
-        Files.writeString(outFile, src)
+        GeneratedFileWriter.write(outFile, src)
     }
 
     /** Capitalize the first char (method-name suffix from a discriminator value). */

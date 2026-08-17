@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.metaobjects.generator.util.GeneratedFileWriter;
 
 /**
  * Generator: one {@code <Entity>FilterAllowlist.java} per writable
@@ -216,8 +217,7 @@ public class SpringFilterAllowlistGenerator extends MultiFileDirectGeneratorBase
 
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(className + ".java");
-            if (outFile.getParent() != null) Files.createDirectories(outFile.getParent());
-            Files.writeString(outFile, src.toString());
+            GeneratedFileWriter.write(outFile, src.toString());
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + className + ".java for entity " + entity.getName() + ": " + e, e);

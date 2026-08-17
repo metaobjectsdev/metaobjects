@@ -15,6 +15,7 @@ import java.io.PrintWriter
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import com.metaobjects.generator.util.GeneratedFileWriter
 
 /**
  * Generator: one `<Entity>Relations.kt` per `object.entity` carrying at least
@@ -227,7 +228,7 @@ open class KotlinRelationsGenerator : MultiFileDirectGeneratorBase<MetaObject>()
 
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(ownerShort + "Relations.kt")
         outFile.parent?.let { Files.createDirectories(it) }
-        Files.writeString(outFile, source)
+        GeneratedFileWriter.write(outFile, source)
     }
 
     /**

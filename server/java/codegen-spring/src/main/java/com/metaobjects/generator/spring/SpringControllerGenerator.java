@@ -22,6 +22,7 @@ import java.util.Collection;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.metaobjects.generator.util.GeneratedFileWriter;
 
 /**
  * Generator: one Spring Web MVC {@code @RestController} Java file per
@@ -385,8 +386,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
 
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(controllerName + ".java");
-            if (outFile.getParent() != null) Files.createDirectories(outFile.getParent());
-            Files.writeString(outFile, src.toString());
+            GeneratedFileWriter.write(outFile, src.toString());
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + controllerName + ".java for entity " + entity.getName() + ": " + e, e);
@@ -710,8 +710,7 @@ public class SpringControllerGenerator extends MultiFileDirectGeneratorBase<Meta
 
         try {
             Path outFile = outRoot.resolve(pkg.replace('.', '/')).resolve(controllerName + ".java");
-            if (outFile.getParent() != null) Files.createDirectories(outFile.getParent());
-            Files.writeString(outFile, src.toString());
+            GeneratedFileWriter.write(outFile, src.toString());
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing TPH " + controllerName + ".java for entity " + base.getName() + ": " + e, e);

@@ -14,6 +14,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import org.slf4j.LoggerFactory
+import com.metaobjects.generator.util.GeneratedFileWriter
 
 /**
  * FR-035 Phase 2 — one `open class <Entity>RepositoryBase` per concrete writable entity: the
@@ -356,8 +357,7 @@ open class KotlinRepositoryGenerator : MultiFileDirectGeneratorBase<MetaObject>(
         }
 
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$repoName.kt")
-        outFile.parent?.let { Files.createDirectories(it) }
-        Files.writeString(outFile, src)
+        GeneratedFileWriter.write(outFile, src)
     }
 
     /**

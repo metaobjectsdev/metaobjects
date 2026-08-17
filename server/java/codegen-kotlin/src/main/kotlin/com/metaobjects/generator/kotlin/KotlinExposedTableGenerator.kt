@@ -23,6 +23,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import org.slf4j.LoggerFactory
+import com.metaobjects.generator.util.GeneratedFileWriter
 
 /**
  * Generator: one Exposed Table `object` per `object.entity` that has a `source.rdb` child.
@@ -326,8 +327,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
             append("\n")
         }
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$fileName.kt")
-        outFile.parent?.let { Files.createDirectories(it) }
-        Files.writeString(outFile, body)
+        GeneratedFileWriter.write(outFile, body)
     }
 
     /**
@@ -698,8 +698,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         }
 
         val outFile = outRoot.resolve(pkg.replace('.', '/')).resolve("$tableObjectName.kt")
-        outFile.parent?.let { Files.createDirectories(it) }
-        Files.writeString(outFile, source)
+        GeneratedFileWriter.write(outFile, source)
         return needsInstantTzHelper
     }
 

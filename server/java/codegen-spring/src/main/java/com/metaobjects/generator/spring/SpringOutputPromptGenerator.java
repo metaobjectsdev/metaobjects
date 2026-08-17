@@ -18,6 +18,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import com.metaobjects.generator.util.GeneratedFileWriter;
 
 /**
  * Generator: one {@code <TemplateShortName>OutputPrompt} Java class per
@@ -164,8 +165,7 @@ public class SpringOutputPromptGenerator extends MultiFileDirectGeneratorBase<Me
 
         try {
             Path outFile = outRoot.resolve(outPkg.replace('.', '/')).resolve(promptClass + ".java");
-            if (outFile.getParent() != null) Files.createDirectories(outFile.getParent());
-            Files.writeString(outFile, src.toString());
+            GeneratedFileWriter.write(outFile, src.toString());
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + promptClass + ".java for template " + template.getName() + ": " + e, e);

@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collection;
 import java.util.Comparator;
+import com.metaobjects.generator.util.GeneratedFileWriter;
 
 /**
  * Generator: one {@code <Entity>TraceHelper} Java class per concrete
@@ -245,8 +246,7 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
             Path outFile = pkg.isEmpty()
                 ? outRoot.resolve(helperClass + ".java")
                 : outRoot.resolve(pkg.replace('.', '/')).resolve(helperClass + ".java");
-            if (outFile.getParent() != null) Files.createDirectories(outFile.getParent());
-            Files.writeString(outFile, src.toString());
+            GeneratedFileWriter.write(outFile, src.toString());
         } catch (IOException e) {
             throw new GeneratorException(
                 "failed writing " + helperClass + ".java for entity " + entity.getName() + ": " + e, e);
