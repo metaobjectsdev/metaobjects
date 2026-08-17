@@ -153,6 +153,7 @@ public class DbContextGenerator : IGenerator
         EmitUsings(sb, needsMetadataUsing, ctx);
         EmitDbSetDeclarations(sb, objects, ctx);
         EmitOnModelCreatingBody(sb, modelLines, ctx);
+        if (NeedsUnmappedEnumHelper(objects)) EmitUnmappedEnumHelper(sb);
         sb.AppendLine("}");
         return [new EmittedFile("AppDbContext.g.cs", sb.ToString())];
     }
@@ -339,6 +340,41 @@ public class DbContextGenerator : IGenerator
     private static IReadOnlyDictionary<string, object?>? IntValueMapOf(MetaField f) =>
         f.Attr(FIELD_ATTR_INT_VALUE_MAP) as IReadOnlyDictionary<string, object?>;
 
+    /// <summary>Name of the generated fail-fast helper the read converters end in.</summary>
+    private const string UnmappedEnumHelperName = "UnmappedEnumValue";
+
+    /// <summary>
+    /// Emits the fail-fast helper every int-backed enum's provider→model converter ends
+    /// in. Emitted only when at least one such converter was generated, so a model with
+    /// no <c>@intValueMap</c> produces byte-identical output.
+    /// </summary>
+    private static void EmitUnmappedEnumHelper(StringBuilder sb)
+    {
+        sb.AppendLine();
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine("    /// An int-backed field.enum column held a value that maps to no member: the");
+        sb.AppendLine("    /// database holds data the model says is impossible (a hand-written INSERT, or a");
+        sb.AppendLine("    /// member removed without a migration). Materializing the last member instead");
+        sb.AppendLine("    /// would hand the caller a wrong-but-valid value, silently.");
+        sb.AppendLine("    /// </summary>");
+        sb.AppendLine($"    private static T {UnmappedEnumHelperName}<T>(int stored, string field) =>");
+        // Fully qualified: the generated file's usings are a fixed set (EmitUsings), and
+        // adding `using System;` there would change byte-identical output for every model.
+        sb.AppendLine("        throw new System.InvalidOperationException(");
+        sb.AppendLine("            $\"field.enum '{field}' read stored value {stored} with no member in \" +");
+        sb.AppendLine("            \"@intValueMap — the database holds a value the model does not describe.\");");
+    }
+
+    /// <summary>
+    /// True when any emitted converter will reference <see cref="UnmappedEnumHelperName"/>
+    /// — i.e. the model carries at least one int-backed <c>field.enum</c>. Mirrors the
+    /// fields <see cref="EmitFieldTypeConfig"/> configures (enum fields of every emitted
+    /// object, plus a write-through entity's read-model view over the same field set).
+    /// </summary>
+    private static bool NeedsUnmappedEnumHelper(IEnumerable<MetaObject> objects) =>
+        objects.Any(o => o.Fields().Any(f =>
+            f.SubType == FIELD_SUBTYPE_ENUM && IntValueMapOf(f) is not null));
+
     /// <summary>
     /// The complete <c>HasConversion</c> call for an enum property: the generic
     /// <c>HasConversion&lt;string&gt;()</c> for a string-backed enum, or
@@ -349,11 +385,14 @@ public class DbContextGenerator : IGenerator
     /// <para>The mapping is emitted as a TERNARY CHAIN rather than a <c>switch</c>
     /// expression because EF converts these lambdas to EXPRESSION TREES, and a switch
     /// expression is not legal in one (CS8155). A conditional is.</para>
-    /// <para>KNOWN PORT ASYMMETRY, deliberate: the provider→model chain ends on the last
-    /// member rather than rejecting an int with no member, where Python, Java and Kotlin
-    /// surface the unmapped value instead. C# cannot match them here — an expression tree
-    /// may not contain a throw-expression (CS8188) — and the column's CHECK constrains it
-    /// to the mapped ints anyway. Documented rather than papered over.</para>
+    /// <para>The provider→model chain gives EVERY member its own branch and ends in a
+    /// call to the generated <c>UnmappedEnumValue&lt;T&gt;</c> helper, so a stored int
+    /// with no member THROWS rather than silently materializing as the last member —
+    /// matching all four sibling ports. CS8188 bans a throw-EXPRESSION inside an
+    /// expression tree, but a method CALL is legal there and the throw itself happens in
+    /// the helper's ordinary body. Only the read side needs this: the model→provider
+    /// chain is exhaustive over the enum by construction, since <c>@intValueMap</c>'s
+    /// keys are loader-validated to match <c>@values</c> exactly.</para>
     /// </remarks>
     private static string EnumConversionCall(string owner, MetaObject entity, MetaField f, GenConfig config)
     {
@@ -389,12 +428,13 @@ public class DbContextGenerator : IGenerator
         var toProvider = new System.Text.StringBuilder("v => ");
         var fromProvider = new System.Text.StringBuilder("v => ");
         for (var i = 0; i < members.Count - 1; i++)
-        {
             toProvider.Append($"v == {type}.{members[i]} ? {ints[i]} : ");
-            fromProvider.Append($"v == {ints[i]} ? {type}.{members[i]} : ");
-        }
         toProvider.Append(ints[^1]);
-        fromProvider.Append($"{type}.{members[^1]}");
+        // Every member gets its own branch here (no last-member fallthrough) so the
+        // final else can reject an int the model does not describe.
+        for (var i = 0; i < members.Count; i++)
+            fromProvider.Append($"v == {ints[i]} ? {type}.{members[i]} : ");
+        fromProvider.Append($"{UnmappedEnumHelperName}<{type}>(v, \"{f.Name}\")");
 
         return $"HasConversion({toProvider}, {fromProvider})";
     }

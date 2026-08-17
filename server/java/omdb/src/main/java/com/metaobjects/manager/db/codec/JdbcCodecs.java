@@ -442,9 +442,17 @@ public final class JdbcCodecs {
                     return;
                 }
             }
-            // A stored int with no member is data the model does not describe.
-            // Surface it rather than nulling it — that would hide real drift.
-            f.setString(o, String.valueOf(stored));
+            // A stored int with no member is data the model says is impossible — a
+            // hand-written INSERT, or a member removed without a migration. Throw:
+            // returning String.valueOf(stored) would hand the caller a "member" that is
+            // not one, and C#/Kotlin/TS type this property as a CLOSED enum, so a value
+            // like "7" is not even representable there. Nulling it would hide the
+            // corruption behind a nullable column. Matches every sibling port.
+            throw new SQLException(
+                "field.enum '" + f.getName() + "' read stored value " + stored
+                    + " with no member in @" + EnumField.ATTR_INT_VALUE_MAP
+                    + " (declared: " + intMap + ") — the database holds a value the model "
+                    + "does not describe.");
         }
 
         @Override public void write(PreparedStatement s, MetaField f, int j, Object v) throws SQLException {

@@ -293,6 +293,71 @@ public class JdbcCodecRoundTripTest {
     }
 
     /**
+     * An int-backed {@code field.enum} column holding an integer that maps to NO member is
+     * data the model says is impossible. The codec must THROW rather than surface the raw
+     * int as a pseudo-symbol: the sibling ports type this property as a CLOSED enum, so a
+     * value like {@code "7"} is not representable there, and returning null would hide the
+     * corruption behind a nullable column.
+     *
+     * <p>Written through OMDB with a legal member, then corrupted with raw SQL — the same
+     * shape as the drift this guards against (a hand-written INSERT, or a member removed
+     * without a migration).</p>
+     */
+    @Test
+    public void intBackedEnumThrowsOnAnUnmappedStoredValue() throws Exception {
+        MetaObject mo = registry.findMetaObjectByName("codectest::Sample");
+        assertNotNull(mo);
+
+        ObjectConnection oc = omdb.getConnection();
+        try {
+            ValueObject vo = (ValueObject) mo.newInstance();
+            String label = "unmapped-int-enum-" + System.currentTimeMillis();
+            vo.setString("label", label);
+            vo.setInt("count", 1);
+            vo.setLong("bignum", 1L);
+            vo.setBoolean("active", false);
+            vo.setDouble("ratio", 0d);
+            vo.setFloat("rate", 0f);
+            vo.setObject("amount", java.math.BigDecimal.ZERO);
+            vo.setDate("createdAt", new Date(0));
+            vo.setObject("startTime", LocalTime.of(0, 0, 0));
+            vo.setString("priority", "PUBLISHED");
+            omdb.createObject(oc, vo);
+
+            // 7 is in no member's @intValueMap (DRAFT=0, PUBLISHED=5, ARCHIVED=9).
+            try (Connection c = getConnection();
+                 PreparedStatement ps = c.prepareStatement(
+                         "UPDATE CODEC_SAMPLE SET priority = 7 WHERE label = ?")) {
+                ps.setString(1, label);
+                assertEquals("exactly one row corrupted", 1, ps.executeUpdate());
+            }
+
+            try {
+                omdb.getObjects(oc, mo,
+                        new QueryOptions(new Expression("label", label, Expression.EQUAL)));
+                fail("reading an unmapped int-backed enum value must throw, not surface it");
+            } catch (Exception e) {
+                assertTrue("the failure must name the unmapped value: " + messageChain(e),
+                        messageChain(e).contains("7"));
+                assertTrue("the failure must name the attribute: " + messageChain(e),
+                        messageChain(e).contains("intValueMap"));
+            }
+        } finally {
+            omdb.releaseConnection(oc);
+        }
+    }
+
+    /** Every message in a throwable's cause chain, joined — OMDB wraps driver exceptions. */
+    private static String messageChain(Throwable t) {
+        StringBuilder sb = new StringBuilder();
+        for (Throwable c = t; c != null; c = c.getCause()) {
+            sb.append(c.getMessage()).append(" | ");
+            if (c.getCause() == c) break;
+        }
+        return sb.toString();
+    }
+
+    /**
      * {@link UuidCodec} read-back-lowercase contract at the raw codec/JDBC boundary. The
      * native-uuid WRITE bind ({@code setObject(.., Types.OTHER)}) is Postgres-only (Derby
      * rejects {@code OTHER}), so seed a CHAR column with a verbatim (upper-case) UUID string

@@ -883,9 +883,13 @@ def _decode_read_value(field: MetaField, value: Any) -> Any:
     the member SYMBOL. Every other field subtype is returned verbatim, keeping
     ADR-0019's "runtime returns native in-process types" contract intact.
 
-    An int with no member is returned AS-IS rather than as ``None`` — a row
-    holding a value the model does not describe is real drift, and surfacing it
-    is honest where nulling it would hide it.
+    An int with no member RAISES. The database then holds a value the model says
+    is impossible — a hand-written INSERT, or a member removed without a
+    migration — and neither alternative is honest: returning the raw int hands
+    the caller a "member" that is not one (C#, Kotlin and TypeScript type this
+    property as a CLOSED enum, where ``7`` is not even representable), and
+    returning ``None`` hides the corruption behind a nullable column. Every port
+    throws here.
     """
     if value is None:
         return None
@@ -897,7 +901,11 @@ def _decode_read_value(field: MetaField, value: Any) -> Any:
     for symbol, stored in int_map.items():
         if stored == value:
             return symbol
-    return value
+    raise ValueError(
+        f"field.enum '{field.name}' read stored value {value} with no member in "
+        f"@{fc.FIELD_ATTR_INT_VALUE_MAP} (declared: {int_map}) — the database holds "
+        f"a value the model does not describe."
+    )
 
 
 def _decode_read_row(fields_by_name: dict[str, MetaField], row: dict[str, Any]) -> dict[str, Any]:

@@ -85,10 +85,18 @@ def test_none_stays_none_on_read():
     assert _decode_read_value(_status_field(INT_MAP), None) is None
 
 
-def test_unmapped_int_on_read_is_passed_through_not_silently_nulled():
-    """A row holding an int outside the map is data the model does not describe.
-    Surfacing it verbatim is honest; returning None would hide the drift."""
-    assert _decode_read_value(_status_field(INT_MAP), 7) == 7
+def test_unmapped_int_on_read_raises():
+    """A row holding an int outside the map is data the model says is impossible.
+
+    Neither alternative is honest: returning the raw int hands the caller a
+    "member" that is not one (C#, Kotlin and TypeScript type this as a CLOSED
+    enum, where 7 is unrepresentable), and returning None hides the corruption
+    behind a nullable column. Every port throws.
+    """
+    with pytest.raises(ValueError) as exc:
+        _decode_read_value(_status_field(INT_MAP), 7)
+    assert "7" in str(exc.value)
+    assert "intValueMap" in str(exc.value)
 
 
 def test_non_enum_field_read_is_untouched():
