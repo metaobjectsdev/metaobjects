@@ -46,7 +46,7 @@ import {
   AGG_COLLECT,
 } from "@metaobjectsdev/metadata";
 import { columnNameFromField } from "./naming.js";
-import { enumValues } from "./enum-meta.js";
+import { enumValues, intValueMapOf, intValueForMember } from "./enum-meta.js";
 import { DEFAULT_COLUMN_NAMING_STRATEGY, stripPackage } from "@metaobjectsdev/metadata";
 import type { Dialect, ColumnNamingStrategy } from "./metaobjects-config.js";
 
@@ -212,9 +212,42 @@ function canonicalizeSqlExpr(value: string): string {
   return value; // unrecognized — pass through (function calls etc.)
 }
 
+/**
+ * An int-backed `field.enum` column: a generated Drizzle `customType` whose
+ * `toDriver`/`fromDriver` translate member symbol <-> stored integer, so the
+ * codec lives in the COLUMN definition rather than in the query layer.
+ *
+ * This is the TS analogue of what every other port already does at its own
+ * `MetaField` codec seam (EF Core `HasConversion`, OMDB `JdbcFieldCodec`, Exposed
+ * `customEnumeration`, Python `ObjectManager` coercion) — which is why it was
+ * chosen over a Zod write-transform plus a bespoke read-decode: TS's generated
+ * queries hand back raw Drizzle rows and have no decode seam at all, so a
+ * query-layer codec would have meant inventing one and wrapping every generated
+ * read. Binding through the column type also makes filter values encode for free.
+ */
+export interface EnumIntCustomType {
+  /** Local const name for the customType column helper, e.g. `orderStatusEnumCol`. */
+  fnConstName: string;
+  /** Local const name for the symbol->int map, e.g. `ORDER_STATUS_TO_INT`. */
+  toIntConstName: string;
+  /** Local const name for the int->symbol map, e.g. `ORDER_STATUS_FROM_INT`. */
+  fromIntConstName: string;
+  /** Physical column type for `dataType()` — always integer for an int-backed enum. */
+  dataType: string;
+  /** Member symbols, in `@values` order (the TS union and the map key order). */
+  members: string[];
+  /** Member symbol -> stored integer. */
+  intByMember: Record<string, number>;
+}
+
 export interface ColumnSpec {
   /** Drizzle function name, e.g., "text", "integer", "varchar". */
   fnName: string;
+  /**
+   * When set, `fnName` names a LOCAL generated const (this spec's customType
+   * helper) rather than a Drizzle export — the renderer must NOT `imp()` it.
+   */
+  enumIntCustomType?: EnumIntCustomType;
   /** DB column name (snake_case from field name, or @column override). */
   dbName: string;
   /** Positional args after dbName (currently always empty; reserved). */
@@ -342,6 +375,48 @@ function objectRefBaseName(field: MetaField): string | undefined {
   return undefined;
 }
 
+/** SCREAMING_SNAKE_CASE for a generated map const name. */
+function screamingSnake(s: string): string {
+  return s
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[^A-Za-z0-9]+/g, "_")
+    .toUpperCase();
+}
+
+/**
+ * Build the customType descriptor for an int-backed `field.enum`, or undefined
+ * when `@values` is missing (the field then degrades to a plain integer column
+ * rather than emitting a codec over an unknown member set).
+ *
+ * Names are derived from the FIELD name, so the consts are per-entity-file and
+ * self-contained. A shared enum consumed by N entities therefore emits N small
+ * identical helpers rather than requiring a cross-module import — the same
+ * self-contained tradeoff the per-entity enum union already makes.
+ */
+function buildEnumIntCustomType(
+  field: MetaField,
+  intByMember: Record<string, number>,
+): EnumIntCustomType | undefined {
+  const members = enumValues(field);
+  if (members === undefined || members.length === 0) return undefined;
+  // Every member must map — the loader pins key-set-equals-@values (Check 5b), so a
+  // miss is unreachable; throwing beats emitting a codec with a hole in it.
+  for (const m of members) {
+    intValueForMember(intByMember, m, `customType codec for field '${field.name}'`);
+  }
+  const base = field.name.replace(/[^A-Za-z0-9]/g, "");
+  const camel = base.charAt(0).toLowerCase() + base.slice(1);
+  const screaming = screamingSnake(base);
+  return {
+    fnConstName: `${camel}IntEnum`,
+    toIntConstName: `${screaming}_TO_INT`,
+    fromIntConstName: `${screaming}_FROM_INT`,
+    dataType: "integer",
+    members,
+    intByMember,
+  };
+}
+
 export function mapColumnType(
   field: MetaField,
   dialect: Dialect,
@@ -355,6 +430,8 @@ export function mapColumnType(
 
   let fnName: string;
   let fnOptions: Record<string, unknown> | undefined;
+  // Set only for an int-backed field.enum — see EnumIntCustomType.
+  let enumIntCustomType: EnumIntCustomType | undefined;
 
   let leadingComment: string | undefined;
   if (dialect === "sqlite") {
@@ -405,8 +482,20 @@ export function mapColumnType(
           // "string" by the time it reaches here for this dialect.
           fnName = "text";
           break;
-        case FIELD_SUBTYPE_STRING:
         case FIELD_SUBTYPE_ENUM:
+          // An INT-BACKED enum stores the mapped integer on SQLite too — SQLite has
+          // one integer storage class, so this matches migrate-ts's integer{32}.
+          {
+            const im = intValueMapOf(field);
+            if (im !== undefined) {
+              enumIntCustomType = buildEnumIntCustomType(field, im);
+              fnName = enumIntCustomType?.fnConstName ?? "integer";
+            } else {
+              fnName = "text";
+            }
+          }
+          break;
+        case FIELD_SUBTYPE_STRING:
         case FIELD_SUBTYPE_UUID:
         case FIELD_SUBTYPE_URI:
         case FIELD_SUBTYPE_INET:
@@ -524,6 +613,22 @@ export function mapColumnType(
           fnName = "jsonb";
           break;
         case FIELD_SUBTYPE_ENUM:
+          // An INT-BACKED enum (@intValueMap, design D5) stores the mapped integer,
+          // so the Drizzle column is integer — matching migrate-ts's expected-schema.
+          // The TS-facing type stays the member-string union; the symbol<->int
+          // translation happens at the write/read boundary. Scalar only: D7 makes
+          // @intValueMap + isArray ERR_ENUM_INT_VALUE_MAP_ARRAY at load, so an array
+          // enum reaching here is always string-backed.
+          {
+            const im = intValueMapOf(field);
+            if (im !== undefined) {
+              enumIntCustomType = buildEnumIntCustomType(field, im);
+              fnName = enumIntCustomType?.fnConstName ?? "integer";
+            } else {
+              fnName = "text";
+            }
+          }
+          break;
         default:
           fnName = "text";
           break;
@@ -669,6 +774,7 @@ export function mapColumnType(
   };
   if (fnOptions !== undefined) result.fnOptions = fnOptions;
   if (defaultExpr !== undefined) result.defaultExpr = defaultExpr;
+  if (enumIntCustomType !== undefined) result.enumIntCustomType = enumIntCustomType;
   if (dollarTypeRef !== undefined) result.dollarTypeRef = dollarTypeRef;
   if (leadingComment !== undefined) result.leadingComment = leadingComment;
 
@@ -676,12 +782,22 @@ export function mapColumnType(
   if (subType === FIELD_SUBTYPE_ENUM && !isArray) {
     const values = enumValues(field);
     if (values !== undefined && values.length > 0) {
-      // Single-quote escaping is belt-and-suspenders: the loader's
-      // ENUM_MEMBER_PATTERN already rejects quote-bearing members (members are
-      // validated to be identifier-safe), so this never fires in practice.
-      const list = values
-        .map((v) => `'${v.replace(/'/g, "''")}'`)
-        .join(", ");
+      const intMap = intValueMapOf(field);
+      let list: string;
+      if (intMap !== undefined) {
+        // Int-backed: the column holds integers, so the CHECK lists them unquoted.
+        // Keyed BY MEMBER through the map (not Object.values) so the constraint can
+        // never disagree with @values, which stays the SSOT. Must match
+        // migrate-ts's buildChecks exactly or `meta verify` reports permanent drift.
+        list = values
+          .map((v) => String(intValueForMember(intMap, v, `CHECK for column '${dbName}'`)))
+          .join(", ");
+      } else {
+        // Single-quote escaping is belt-and-suspenders: the loader's
+        // ENUM_MEMBER_PATTERN already rejects quote-bearing members (members are
+        // validated to be identifier-safe), so this never fires in practice.
+        list = values.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ");
+      }
       result.checkConstraint = `${dbName} IN (${list})`;
     }
   }

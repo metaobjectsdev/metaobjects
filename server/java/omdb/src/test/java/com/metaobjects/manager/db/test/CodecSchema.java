@@ -53,7 +53,11 @@ public final class CodecSchema {
             + "  startTime TIME,\n"
             + "  tsVal TIMESTAMP,\n"
             + "  moneyVal BIGINT,\n"
-            + "  status VARCHAR(20)\n"
+            + "  status VARCHAR(20),\n"
+            // int-backed field.enum (@intValueMap): the member symbol persists as
+            // its declared INTEGER, so this column's type differs from `status`
+            // above even though both are field.enum.
+            + "  priority INTEGER\n"
             + ")";
 
     /** Executes the CODEC_SAMPLE DDL on a fresh connection from {@code connector}. */

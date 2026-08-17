@@ -66,9 +66,26 @@ must be a non-empty set of unique members matching `^[A-Za-z_][A-Za-z0-9_]*$`.
 ```
 
 The loader enforces members own-only and emits `ERR_BAD_ATTR_VALUE` on a bad
-member or `ERR_MISSING_REQUIRED_ATTR` on missing `@values`. Int-backed enums,
-display labels, and native Postgres `ENUM` types are deferred (see
-[enum-datatype-design.md](../superpowers/specs/2026-05-23-enum-datatype-design.md)).
+member or `ERR_MISSING_REQUIRED_ATTR` on missing `@values`.
+
+**Int-backed storage:** `@intValueMap` switches the DB column from string to integer while
+preserving the string wire format and generated enum type. Keys must match `@values` exactly;
+values must be unique integers. Display labels and native Postgres `ENUM` types remain
+deferred (see [enum-datatype-design.md](../superpowers/specs/2026-05-23-enum-datatype-design.md)).
+
+Two rules follow from int-backing being a **persistence-layer codec**:
+
+- **It is scalar-only.** `@intValueMap` together with `isArray: true` is a load error,
+  `ERR_ENUM_INT_VALUE_MAP_ARRAY`, in every port — no port implements the codec element-wise
+  over an array column, so the combination would silently persist member *symbols* into an
+  integer array. An array-of-enum stays string-backed.
+- **A stored integer that maps to no member throws on read**, in every port. The row holds
+  data the model says is impossible (a hand-written `INSERT`, or a member removed without a
+  migration); surfacing the raw integer would hand you a "member" that is not one — and is
+  not even representable in the ports that type the property as a closed enum — while
+  returning null would hide the corruption behind a nullable column. The write side is left
+  to the database: an unmapped symbol binds unchanged, so the column type and its `CHECK`
+  reject it.
 
 ### Sharing one enum — abstract `field.enum` + `extends`
 
@@ -292,4 +309,4 @@ for the per-port pass/skip ledger.
 - [entities.md](entities.md) — host node `object.entity`
 - [relationships.md](relationships.md) — relationships are separate from fields, despite sharing the column space
 - [yaml-authoring.md](yaml-authoring.md) — array-suffix sugar for repeated fields (`field.long[]: weekIds`)
-- [enum-datatype-design](../superpowers/specs/2026-05-23-enum-datatype-design.md) — enum design rationale + deferred capabilities
+- [enum-datatype-design](../superpowers/specs/2026-05-23-enum-datatype-design.md) — enum design rationale + int-backed storage

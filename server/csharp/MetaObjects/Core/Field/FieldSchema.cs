@@ -198,6 +198,13 @@ public static class FieldSchema
             "codegen references the type (resolved via per-port codegen config) instead of " +
             "materializing it. Default false. Not a field attr — it lives on the type declaration.");
 
+    /// <summary>The @intValueMap attr — only on field.enum. Optional object of integers.</summary>
+    public static readonly AttrSchema IntValueMapAttr = new AttrSchema(
+        Name: FieldConstants.FIELD_ATTR_INT_VALUE_MAP,
+        ValueType: AttrConstants.ATTR_SUBTYPE_INT_MAP,
+        Required: false,
+        Description: "Optional per-member int values ({member: int}) switching this enum field's DB persistence from string+CHECK to integer+CHECK. Keys must exactly match @values; values must be unique integers.");
+
     // FR-033 — the field.enum tolerant-extract overlays (@enumAlias / @enumDoc /
     // @coerceDefault / @normalize) and object.value's @normalize default are NO LONGER
     // declared here. They are re-homed to the metaobjects-prompt concern provider

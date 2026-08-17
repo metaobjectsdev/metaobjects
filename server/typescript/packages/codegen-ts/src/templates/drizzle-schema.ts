@@ -13,7 +13,7 @@ import {
 } from "@metaobjectsdev/metadata";
 import { fieldDeclaringPackage, type RenderContext } from "../render-context.js";
 import { crossEntitySpecifier, valueObjectModuleSpecifier } from "../import-path.js";
-import { mapColumnType, type ColumnSpec } from "../column-mapper.js";
+import { mapColumnType, type ColumnSpec, type EnumIntCustomType } from "../column-mapper.js";
 import { tableNameFromEntity, columnNameFromField } from "../naming.js";
 import { renderRelationsBlock } from "./relations-block.js";
 import { renderDocsFor } from "./jsdoc.js";
@@ -66,6 +66,9 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
   const columnLines: Code[] = [];
   // Collect CHECK constraints for enum columns; emitted as table-level check() callbacks.
   const checkConstraints: Array<{ name: string; expr: string }> = [];
+  // Int-backed field.enum customType helpers, emitted ahead of the table. Keyed by
+  // const name so a shared enum used by two fields of the SAME entity emits once.
+  const enumIntTypes = new Map<string, EnumIntCustomType>();
   for (const child of obj.fields()) {
     // #213 — a derived (origin-bearing) field is read-only, materialized on the
     // read (view) side, NOT a column on the entity's write table (FR-024 §7).
@@ -78,6 +81,9 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     // Compute the column spec once per field and reuse it for both the column
     // line and the CHECK collection.
     const spec = mapColumnType(child, ctx.dialect, ctx.columnNamingStrategy, ctx.timestampMode);
+    if (spec.enumIntCustomType !== undefined) {
+      enumIntTypes.set(spec.enumIntCustomType.fnConstName, spec.enumIntCustomType);
+    }
     const fieldDocs = renderDocsFor(child);
     const columnLine = renderColumn(spec, child, ctx, isPk, pkGeneration, fkInfo, isComposite, isUnique, obj.package, obj.name);
     columnLines.push(fieldDocs ? code`  ${fieldDocs}\n${columnLine}` : columnLine);
@@ -103,6 +109,9 @@ export function renderDrizzleSchema(obj: MetaObject, ctx: RenderContext): Code {
     // #213 — a TPH subtype's derived field is read-only too; never a table column.
     if (child.isDerived()) continue;
     const spec = mapColumnType(child, ctx.dialect, ctx.columnNamingStrategy, ctx.timestampMode);
+    if (spec.enumIntCustomType !== undefined) {
+      enumIntTypes.set(spec.enumIntCustomType.fnConstName, spec.enumIntCustomType);
+    }
     const fieldDocs = renderDocsFor(child);
     const columnLine = renderColumn(
       spec, child, ctx, false, undefined, fkMap.get(child.name), isComposite, false, obj.package, obj.name, true,
@@ -177,11 +186,60 @@ ${joinCode(columnLines, { on: ",\n", trim: false })}
   // Emit the relations() block (returns null if no relations).
   const relationsBlock = renderRelationsBlock(obj, ctx);
 
-  if (relationsBlock === null) {
-    return tableBlock;
-  }
+  // Int-backed enum codecs are declared BEFORE the table that references them.
+  // Sorted by const name so output is deterministic regardless of field order.
+  const enumIntBlocks = [...enumIntTypes.values()]
+    .sort((a, b) => a.fnConstName.localeCompare(b.fnConstName))
+    .map((t) => renderEnumIntCustomType(t, importModule));
 
-  return joinCode([tableBlock, relationsBlock], { on: "\n" });
+  const blocks: Code[] = [...enumIntBlocks, tableBlock];
+  if (relationsBlock !== null) blocks.push(relationsBlock);
+  return blocks.length === 1 ? blocks[0]! : joinCode(blocks, { on: "\n" });
+}
+
+/**
+ * Render an int-backed `field.enum`'s Drizzle `customType` helper plus its two
+ * lookup maps.
+ *
+ * The codec lives HERE, in the column definition, so nothing downstream needs to
+ * know about it: `db.insert().values()` encodes on bind, a selected row decodes on
+ * read, and a filter comparison encodes because Drizzle binds through the column
+ * type. That is why this shape was chosen over a Zod write-transform plus a
+ * generated read-decode — TS's generated queries return raw Drizzle rows and have
+ * no decode seam, so the query-layer approach meant inventing one and wrapping
+ * every generated read. It is also the direct analogue of what the other four
+ * ports already do (EF Core `HasConversion`, OMDB `JdbcFieldCodec`, Exposed
+ * `customEnumeration`, Python `ObjectManager` coercion).
+ *
+ * `fromDriver` throws on an unmapped integer rather than returning undefined: a
+ * value outside the map means the DB holds data the model says is impossible
+ * (a hand-written INSERT, or a member removed without a migration), and silently
+ * yielding `undefined` for a non-nullable field would surface far from the cause.
+ */
+function renderEnumIntCustomType(t: EnumIntCustomType, importModule: string): Code {
+  const customTypeSym = imp(`customType@${importModule}`);
+  const union = t.members.map((m) => JSON.stringify(m)).join(" | ");
+  const toEntries = t.members
+    .map((m) => `${JSON.stringify(m)}: ${t.intByMember[m]}`)
+    .join(", ");
+  const fromEntries = t.members
+    .map((m) => `${t.intByMember[m]}: ${JSON.stringify(m)}`)
+    .join(", ");
+  return code`
+const ${t.toIntConstName} = { ${toEntries} } as const satisfies Record<${union}, number>;
+const ${t.fromIntConstName}: Record<number, ${union}> = { ${fromEntries} };
+const ${t.fnConstName} = ${customTypeSym}<{ data: ${union}; driverData: number }>({
+  dataType: () => ${JSON.stringify(t.dataType)},
+  toDriver: (value) => ${t.toIntConstName}[value],
+  fromDriver: (value) => {
+    const member = ${t.fromIntConstName}[value];
+    if (member === undefined) {
+      throw new Error(\`unmapped ${t.fnConstName} value: \${value}\`);
+    }
+    return member;
+  },
+});
+`;
 }
 
 interface FkInfo {
@@ -266,7 +324,13 @@ function renderColumn(
   // and suppress any DB default (other-subtype rows must stay NULL here).
   forceNullable: boolean = false,
 ): Code {
-  const fnSym = imp(`${spec.fnName}@${spec.importModule}`);
+  // An int-backed field.enum's column function is a LOCAL generated const (the
+  // customType helper emitted into this same file), so it must not be imported
+  // from drizzle-orm/*-core like a built-in column type would be.
+  const fnSym =
+    spec.enumIntCustomType !== undefined
+      ? spec.enumIntCustomType.fnConstName
+      : imp(`${spec.fnName}@${spec.importModule}`);
 
   const dbNameLit = JSON.stringify(spec.dbName);
   let baseCall: Code;

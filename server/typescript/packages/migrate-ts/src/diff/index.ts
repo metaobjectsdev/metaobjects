@@ -148,9 +148,16 @@ export async function diff(
   // schemas it mentions), else null = no scoping (empty model → prior whole-DB
   // behavior). A table outside the scope is excluded from both sides, so a
   // co-located schema owned by another app is neither dropped nor reported.
-  const declaredSchemas = new Set(
-    args.expected.tables.map((t) => t.schema ?? DEFAULT_DB_SCHEMA_POSTGRES),
-  );
+  const declaredSchemas = new Set([
+    ...args.expected.tables.map((t) => t.schema ?? DEFAULT_DB_SCHEMA_POSTGRES),
+    // A model that declares views in a schema with no table of its own (e.g. an
+    // API/read-model schema like `p3_api` sitting alongside an all-`public`
+    // entity model) must still bring that schema into scope — otherwise its
+    // views are silently excluded from BOTH sides of the diff (never compared,
+    // so real drift in an opaque @sql body or a genuine missing/extra view goes
+    // undetected) rather than gated on it as an owned schema.
+    ...args.expected.views.map((v) => v.schema ?? DEFAULT_DB_SCHEMA_POSTGRES),
+  ]);
   const scopeSchemas: Set<string> | null =
     args.scopeSchemas !== undefined
       ? new Set(args.scopeSchemas)

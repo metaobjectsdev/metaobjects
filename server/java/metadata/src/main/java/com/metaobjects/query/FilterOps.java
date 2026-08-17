@@ -145,4 +145,47 @@ public final class FilterOps {
     public static boolean supportsFiltering(String subType) {
         return subType != null && OPS_BY_SUBTYPE.containsKey(subType);
     }
+
+    /**
+     * The int-backed-{@code enum} band: the {@code enum} band minus {@code like}.
+     * Hoisted so the narrowing is one named constant rather than a set filtered at
+     * every call site.
+     */
+    public static final Set<String> OPS_ENUM_INT_BACKED =
+        ordered(FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_IN, FILTER_OP_IS_NULL);
+
+    /**
+     * The filter-operator band for a FIELD — the entry point every consumer that has
+     * a field in hand must use (loader validation, the codegen-spring allowlist
+     * generator, the cross-port {@code field.filter-ops} capability).
+     *
+     * <p>Identical to {@link #opsForSubType} except for ONE case: an int-backed
+     * {@code field.enum} (one declaring {@code @intValueMap}, design D5) persists as
+     * an INTEGER column, so {@code like} — a substring match — is dropped.
+     * {@code eq}/{@code ne}/{@code in} survive because the member symbol encodes to
+     * its integer before it reaches SQL; {@code like} has no such encoding, and an
+     * unencoded {@code LIKE 'DRAFT'} against an integer column is a request-time
+     * type error.</p>
+     *
+     * <p>{@link #opsForSubType} cannot express this — it only ever sees the subtype
+     * {@code "enum"} — and is deliberately left unchanged for the one caller that
+     * genuinely has no field: {@code ExpressionAttribute}'s declared operand type.</p>
+     *
+     * <p>ADR-0039: {@code hasMetaAttr(String)} defaults to {@code includeParentData =
+     * true}, so this read RESOLVES through {@code extends}. That is load-bearing, not
+     * incidental: post-#246 the map lives on a shared root-level abstract declaration
+     * and consuming fields INHERIT it, so an own-only read would see it absent on
+     * exactly the shape adopters are steered toward and wrongly keep {@code like}.</p>
+     *
+     * <p>Cross-port: {@code fixtures/conformance/filter-ops-matrix} pins
+     * {@code fEnum} vs {@code fEnumInt} in all five ports.</p>
+     */
+    public static Set<String> opsForField(com.metaobjects.field.MetaField field) {
+        if (field == null) return Collections.emptySet();
+        if (EnumField.SUBTYPE_ENUM.equals(field.getSubType())
+                && field.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP)) {
+            return OPS_ENUM_INT_BACKED;
+        }
+        return opsForSubType(field.getSubType());
+    }
 }

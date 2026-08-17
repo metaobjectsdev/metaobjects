@@ -242,7 +242,8 @@ public class JdbcCodecRoundTripTest {
             // The SP-H subtypes under test.
             vo.setDate("tsVal", ts);                  // TimestampCodec
             vo.setLong("moneyVal", 199900L);          // CurrencyCodec (integer minor units)
-            vo.setString("status", "MEDIUM");         // EnumCodec
+            vo.setString("status", "MEDIUM");         // EnumCodec (string-backed)
+            vo.setString("priority", "PUBLISHED");    // EnumCodec (int-backed, @intValueMap)
 
             omdb.createObject(oc, vo);
 
@@ -266,9 +267,94 @@ public class JdbcCodecRoundTripTest {
                     Long.valueOf(199900L), read.getLong("moneyVal"));
             assertEquals("EnumCodec must round-trip the member symbol",
                     "MEDIUM", read.getString("status"));
+
+            // int-backed enum (@intValueMap): the caller's contract is the SYMBOL in
+            // both directions — int-backing is invisible above the codec.
+            assertEquals("EnumCodec must round-trip an int-backed member as its symbol",
+                    "PUBLISHED", read.getString("priority"));
+
+            // ...and ask the DATABASE what it actually stored. A round-trip alone
+            // cannot tell a working int codec from one that wrote the symbol both
+            // ways, because a symmetric bug is self-consistent. PUBLISHED is declared
+            // as 5, and the column is INTEGER.
+            try (Connection c = getConnection();
+                 PreparedStatement ps = c.prepareStatement(
+                         "SELECT priority FROM CODEC_SAMPLE WHERE label = ?")) {
+                ps.setString(1, label);
+                try (ResultSet rs = ps.executeQuery()) {
+                    assertTrue("row present for raw column read", rs.next());
+                    assertEquals("the column must hold the declared int, not the symbol",
+                            5, rs.getInt(1));
+                }
+            }
         } finally {
             omdb.releaseConnection(oc);
         }
+    }
+
+    /**
+     * An int-backed {@code field.enum} column holding an integer that maps to NO member is
+     * data the model says is impossible. The codec must THROW rather than surface the raw
+     * int as a pseudo-symbol: the sibling ports type this property as a CLOSED enum, so a
+     * value like {@code "7"} is not representable there, and returning null would hide the
+     * corruption behind a nullable column.
+     *
+     * <p>Written through OMDB with a legal member, then corrupted with raw SQL — the same
+     * shape as the drift this guards against (a hand-written INSERT, or a member removed
+     * without a migration).</p>
+     */
+    @Test
+    public void intBackedEnumThrowsOnAnUnmappedStoredValue() throws Exception {
+        MetaObject mo = registry.findMetaObjectByName("codectest::Sample");
+        assertNotNull(mo);
+
+        ObjectConnection oc = omdb.getConnection();
+        try {
+            ValueObject vo = (ValueObject) mo.newInstance();
+            String label = "unmapped-int-enum-" + System.currentTimeMillis();
+            vo.setString("label", label);
+            vo.setInt("count", 1);
+            vo.setLong("bignum", 1L);
+            vo.setBoolean("active", false);
+            vo.setDouble("ratio", 0d);
+            vo.setFloat("rate", 0f);
+            vo.setObject("amount", java.math.BigDecimal.ZERO);
+            vo.setDate("createdAt", new Date(0));
+            vo.setObject("startTime", LocalTime.of(0, 0, 0));
+            vo.setString("priority", "PUBLISHED");
+            omdb.createObject(oc, vo);
+
+            // 7 is in no member's @intValueMap (DRAFT=0, PUBLISHED=5, ARCHIVED=9).
+            try (Connection c = getConnection();
+                 PreparedStatement ps = c.prepareStatement(
+                         "UPDATE CODEC_SAMPLE SET priority = 7 WHERE label = ?")) {
+                ps.setString(1, label);
+                assertEquals("exactly one row corrupted", 1, ps.executeUpdate());
+            }
+
+            try {
+                omdb.getObjects(oc, mo,
+                        new QueryOptions(new Expression("label", label, Expression.EQUAL)));
+                fail("reading an unmapped int-backed enum value must throw, not surface it");
+            } catch (Exception e) {
+                assertTrue("the failure must name the unmapped value: " + messageChain(e),
+                        messageChain(e).contains("7"));
+                assertTrue("the failure must name the attribute: " + messageChain(e),
+                        messageChain(e).contains("intValueMap"));
+            }
+        } finally {
+            omdb.releaseConnection(oc);
+        }
+    }
+
+    /** Every message in a throwable's cause chain, joined — OMDB wraps driver exceptions. */
+    private static String messageChain(Throwable t) {
+        StringBuilder sb = new StringBuilder();
+        for (Throwable c = t; c != null; c = c.getCause()) {
+            sb.append(c.getMessage()).append(" | ");
+            if (c.getCause() == c) break;
+        }
+        return sb.toString();
     }
 
     /**

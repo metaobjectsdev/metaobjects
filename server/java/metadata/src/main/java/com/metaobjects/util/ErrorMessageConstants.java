@@ -256,6 +256,16 @@ public final class ErrorMessageConstants {
     public static final String ERR_ENUM_EXTENDS_VALUES_CONFLICT = "ERR_ENUM_EXTENDS_VALUES_CONFLICT";
 
     /**
+     * A {@code field.enum} carries {@code @intValueMap} together with {@code isArray=true}.
+     * Int-backing is a persistence-layer codec and no port implements it element-wise over
+     * an array column, so the combination would silently persist member SYMBOLS into an
+     * integer array. An array-of-enum stays string-backed.
+     *
+     * <p>Cross-language contract: {@code ERR_ENUM_INT_VALUE_MAP_ARRAY}.
+     */
+    public static final String ERR_ENUM_INT_VALUE_MAP_ARRAY = "ERR_ENUM_INT_VALUE_MAP_ARRAY";
+
+    /**
      * #208 (design doc §5 R6) warning: an {@code origin.*}-bearing (derived) own
      * field lives under a host object that declares an {@code @unmanaged} source.
      * {@code @unmanaged} acts on nothing, so documented-but-unacted-on lineage is

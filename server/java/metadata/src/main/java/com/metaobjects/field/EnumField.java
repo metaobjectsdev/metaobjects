@@ -79,6 +79,18 @@ public class EnumField extends PrimitiveField<String> {
     public static final String ATTR_PROVIDED = "provided";
 
     /**
+     * Name of the optional per-member explicit-integer-value attribute
+     * ({@code {member: int}}), switching this enum field's DB persistence from
+     * string+CHECK to integer+CHECK. Keys must exactly match the field's effective
+     * {@code @values}; values must be unique integers ({@code ERR_BAD_ATTR_VALUE}
+     * otherwise — enforced post-load in
+     * {@link com.metaobjects.loader.ValidationPhase}). The generic "is this an
+     * object of integers" shape check runs in {@link com.metaobjects.attr.IntMapAttribute}
+     * itself. Cross-language vocabulary: {@code @intValueMap} in canonical JSON.
+     */
+    public static final String ATTR_INT_VALUE_MAP = "intValueMap";
+
+    /**
      * Name of the optional per-member description map (properties).
      * Each key is an enum member symbol from {@code @values}; the value is a
      * human-readable (or LLM-facing) description of that member.
@@ -196,6 +208,13 @@ public class EnumField extends PrimitiveField<String> {
                 // Mirrors the @symmetric (relationship) boolean registration. See ADR-0026.
                 def.optionalAttributeWithConstraints(ATTR_PROVIDED)
                    .ofType(BooleanAttribute.SUBTYPE_BOOLEAN)
+                   .asSingle();
+
+                // Optional @intValueMap — an object-shaped attribute whose values
+                // are all integers. Key-set-matches-@values and uniqueness are
+                // validated post-load in ValidationPhase (own-only, same as @values).
+                def.optionalAttributeWithConstraints(ATTR_INT_VALUE_MAP)
+                   .ofType(com.metaobjects.attr.IntMapAttribute.SUBTYPE_INT_MAP)
                    .asSingle();
 
                 // FR-033: @enumDoc and @coerceDefault are re-homed to the

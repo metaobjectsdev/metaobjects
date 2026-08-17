@@ -70,12 +70,14 @@ public static class CapabilityBinding
             ["field.effective-tree"] = (node, _) =>
                 NormalizedResult.EffectiveTree(MetaObjects.SerializerJson.CanonicalSerialize(AsField(node))),
 
-            // field.filter-ops → the canonical per-subtype filter-operator band
-            // (QueryConstants.OPS_BY_SUBTYPE). Returns { names: [...] } in canonical
-            // operator order. Single source of truth — the same map the server
-            // allowlist + codegen consume.
+            // field.filter-ops → the canonical per-FIELD filter-operator band.
+            // Returns { names: [...] } in canonical operator order. Single source of
+            // truth — the same function the server allowlist + codegen consume.
+            //
+            // OpsForField, not OpsForSubType: the band is field-level because an
+            // int-backed field.enum (@intValueMap) stores as an integer, dropping `like`.
             ["field.filter-ops"] = (node, _) =>
-                NormalizedResult.Names(QueryConstants.OpsForSubType(AsField(node).SubType).ToList()),
+                NormalizedResult.Names(QueryConstants.OpsForField(AsField(node)).ToList()),
         };
 
     /// <summary>

@@ -1,0 +1,30 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            { "source.rdb": { "name": "src", "@table": "orders", "@kind": "table" } },
+            { "field.long": { "name": "id" } },
+            {
+              "field.enum": {
+                "name": "priority",
+                "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"],
+                "@intValueMap": { "DRAFT": 0, "PUBLISHED": 5, "ARCHIVED": 9 }
+              }
+            },
+            {
+              "field.enum": {
+                "name": "status",
+                "@values": ["LOW", "MEDIUM", "HIGH"]
+              }
+            },
+            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -7,6 +7,7 @@ import {
   resolveTableName, resolveColumnName,
 } from "@metaobjectsdev/metadata";
 import { MetadataError } from "./errors.js";
+import { intValueMapOf } from "./type-coercer.js";
 import type {
   WhereClause, OrderBy, PrimitiveValue, Row,
   SelectSpec, InsertSpec, UpdateSpec, DeleteSpec, CountSpec,
@@ -118,12 +119,20 @@ function compileEntry(
   const field = getField(entity, fieldName);
   const column = resolveColumnName(field, strategy);
 
+  // An int-backed field.enum (@intValueMap) stores an INTEGER while its filter value
+  // is the member SYMBOL, so every comparison value must be encoded before it is
+  // bound — otherwise Postgres rejects the statement outright ("invalid input syntax
+  // for type integer"). Applied at this ONE seam because every operator arrives here
+  // with the field in hand; `like` is not reachable for such a field (the loader's
+  // field-level operator band drops it), and `isNull` carries no value to encode.
+  const enc = <T,>(v: T): T => encodeFilterValue(field, v);
+
   if (value === null) return { kind: "isNull", column, not: false };
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return { kind: "eq", column, value };
+    return { kind: "eq", column, value: enc(value) };
   }
   if (Array.isArray(value)) {
-    return { kind: "in", column, values: value as PrimitiveValue[] };
+    return { kind: "in", column, values: (value as PrimitiveValue[]).map(enc) };
   }
 
   // If multiple operators are set on one field ({ $gte: 5, $lte: 10 }), the FIRST match wins
@@ -131,22 +140,37 @@ function compileEntry(
   const op = value;
   if ("$eq" in op && op.$eq !== undefined) {
     if (op.$eq === null) return { kind: "isNull", column, not: false };
-    return { kind: "eq", column, value: op.$eq };
+    return { kind: "eq", column, value: enc(op.$eq) };
   }
   if ("$ne" in op && op.$ne !== undefined) {
     if (op.$ne === null) return { kind: "isNull", column, not: true };
-    return { kind: "ne", column, value: op.$ne };
+    return { kind: "ne", column, value: enc(op.$ne) };
   }
-  if ("$gt" in op && op.$gt !== undefined) return { kind: "gt", column, value: op.$gt };
-  if ("$gte" in op && op.$gte !== undefined) return { kind: "gte", column, value: op.$gte };
-  if ("$lt" in op && op.$lt !== undefined) return { kind: "lt", column, value: op.$lt };
-  if ("$lte" in op && op.$lte !== undefined) return { kind: "lte", column, value: op.$lte };
+  if ("$gt" in op && op.$gt !== undefined) return { kind: "gt", column, value: enc(op.$gt) };
+  if ("$gte" in op && op.$gte !== undefined) return { kind: "gte", column, value: enc(op.$gte) };
+  if ("$lt" in op && op.$lt !== undefined) return { kind: "lt", column, value: enc(op.$lt) };
+  if ("$lte" in op && op.$lte !== undefined) return { kind: "lte", column, value: enc(op.$lte) };
   if ("$like" in op && op.$like !== undefined) return { kind: "like", column, pattern: op.$like };
-  if ("$in" in op && op.$in !== undefined) return { kind: "in", column, values: op.$in };
+  if ("$in" in op && op.$in !== undefined) return { kind: "in", column, values: op.$in.map(enc) };
   if ("$isNull" in op && op.$isNull !== undefined) {
     return { kind: "isNull", column, not: !op.$isNull };
   }
   throw new MetadataError(`No recognized operator on filter for field '${fieldName}'`);
+}
+
+/**
+ * Encode one filter comparison value for an int-backed `field.enum`: the member
+ * SYMBOL becomes its declared integer. Anything else — a string-backed enum, a
+ * non-string value, or a symbol with no mapping — passes through untouched. An
+ * unmapped symbol is deliberately NOT rejected here: a filter that matches nothing
+ * is the honest answer for a member that does not exist, and the loader already
+ * pins `@intValueMap`'s key set to `@values`.
+ */
+function encodeFilterValue<T>(field: MetaData, value: T): T {
+  const intMap = intValueMapOf(field);
+  if (intMap === undefined || typeof value !== "string") return value;
+  const stored = intMap[value];
+  return (typeof stored === "number" ? stored : value) as T;
 }
 
 function normalizeOrderBy(

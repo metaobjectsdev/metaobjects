@@ -200,6 +200,16 @@ public static class FieldConstants
     public const string FIELD_ATTR_PROVIDED = "provided";
 
     /// <summary>
+    /// Optional per-member int values (<c>{member: int}</c>) on a <c>field.enum</c>,
+    /// switching that field's DB persistence from string+CHECK to integer+CHECK.
+    /// <c>attr.intMap</c>-shaped. Keys must exactly match <see cref="FIELD_ATTR_VALUES"/>;
+    /// values must be unique integers (content-rule validated in
+    /// <c>ValidationPasses.ValidateEnumValues</c>, Rule 5). The generated native type
+    /// and wire format are unchanged in every language.
+    /// </summary>
+    public const string FIELD_ATTR_INT_VALUE_MAP = "intValueMap";
+
+    /// <summary>
     /// Regex pattern each enum member symbol must satisfy: must start with
     /// a letter or underscore, followed by letters, digits, or underscores.
     /// Keeps symbol == stored value with no name/value divergence.

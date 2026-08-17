@@ -20,6 +20,7 @@ import "./core/attr/meta-attr-stringarray.js";
 import "./core/attr/meta-attr-filter.js";
 import "./core/attr/meta-attr-properties.js";
 import "./core/attr/meta-attr-expression.js";
+import "./core/attr/meta-attr-int-map.js";
 import {
   MetaValidator,
   MetaRequiredValidator,

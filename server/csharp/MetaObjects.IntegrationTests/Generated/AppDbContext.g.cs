@@ -33,6 +33,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<AllTypes>().OwnsOne(x => x.Settings, b => b.ToJson("settings"));
         modelBuilder.Entity<AllTypes>().OwnsMany(x => x.Labels, b => b.ToJson("labels"));
         modelBuilder.Entity<AllTypes>().Property(x => x.EnumVal).HasConversion<string>();
+        modelBuilder.Entity<AllTypes>().Property(x => x.IntEnumVal).HasConversion(v => v == AllTypes.AllTypesIntEnumVal.DRAFT ? 0 : v == AllTypes.AllTypesIntEnumVal.PUBLISHED ? 5 : 9, v => v == 0 ? AllTypes.AllTypesIntEnumVal.DRAFT : v == 5 ? AllTypes.AllTypesIntEnumVal.PUBLISHED : v == 9 ? AllTypes.AllTypesIntEnumVal.ARCHIVED : UnmappedEnumValue<AllTypes.AllTypesIntEnumVal>(v, "intEnumVal"));
         modelBuilder.Entity<AllTypes>().Property(x => x.DecVal).HasPrecision(18, 6);
         modelBuilder.Entity<AllTypes>().Property(x => x.TsVal).HasColumnType("timestamp without time zone");
         modelBuilder.Entity<AllTypes>().Property(x => x.TsTzVal).HasColumnType("timestamp with time zone");
@@ -50,4 +51,15 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Program>().Property(x => x.Status).HasConversion<string>();
         modelBuilder.Entity<Program>().Property(x => x.CreatedAt).HasColumnType("timestamp without time zone");
     }
+
+    /// <summary>
+    /// An int-backed field.enum column held a value that maps to no member: the
+    /// database holds data the model says is impossible (a hand-written INSERT, or a
+    /// member removed without a migration). Materializing the last member instead
+    /// would hand the caller a wrong-but-valid value, silently.
+    /// </summary>
+    private static T UnmappedEnumValue<T>(int stored, string field) =>
+        throw new System.InvalidOperationException(
+            $"field.enum '{field}' read stored value {stored} with no member in " +
+            "@intValueMap — the database holds a value the model does not describe.");
 }

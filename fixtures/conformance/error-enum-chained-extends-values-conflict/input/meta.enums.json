@@ -1,0 +1,9 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      { "field.enum": { "name": "Currency", "abstract": true, "@values": ["USD", "EUR"] } },
+      { "field.enum": { "name": "Money", "abstract": true, "extends": "acme::Currency", "@values": ["USD", "EUR", "JPY"] } }
+    ]
+  }
+}

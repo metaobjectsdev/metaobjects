@@ -29,6 +29,7 @@ import org.jetbrains.exposed.sql.json.jsonb
  *   - default `field.timestamp` (instant/TZ-aware, ADR-0036 Wave 2) → `instantWithTimeZone("tsTzVal")` (TIMESTAMPTZ)
  *   - `field.currency` (@currency USD)                  → `long("moneyVal")` (BIGINT minor units)
  *   - `field.enum` (@values LOW/MEDIUM/HIGH)            → `varchar("enumVal", 64)` (text + CHECK in DDL)
+ *   - `field.enum` + `@intValueMap` (int-backed)        → `intBackedEnum("intEnumVal", …)` (INTEGER + int CHECK)
  *   - `field.uuid` (non-key, @required)                 → `uuid("uuidVal")` (Postgres native uuid)
  *   - `field.object` (@objectRef Settings, @storage jsonb) → `jsonb("settings", …)` (real Postgres JSONB)
  *   - `field.object` (@objectRef Label, @storage jsonb, isArray) → `jsonb("labels", …)` (JSONB array)
@@ -64,6 +65,13 @@ object AllTypesTable : Table("all_types") {
     val tsTzVal = instantWithTimeZone("tsTzVal")
     val moneyVal = long("moneyVal")
     val enumVal = varchar("enumVal", 64)
+    // INT-BACKED `field.enum` (@intValueMap): physically INTEGER (+ the canonical DDL's
+    // CHECK (… IN (0, 5, 9))), carrying the member SYMBOL in and out — storage changes, the
+    // wire format does not. Nullable to match the canonical DDL (`"intEnumVal" INTEGER`, no
+    // NOT NULL). See [IntBackedEnumColumnType] for why this is a Column<String> here while the
+    // GENERATED form binds a real enum through customEnumeration.
+    val intEnumVal =
+        intBackedEnum("intEnumVal", mapOf("DRAFT" to 0, "PUBLISHED" to 5, "ARCHIVED" to 9)).nullable()
     val uuidVal = uuid("uuidVal")
     // `field.uri` → plain `text` column carrying the verbatim URI string (Postgres has no uri
     // type). See [MetaUriColumnType] — round-trips the URI unchanged.

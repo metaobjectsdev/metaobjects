@@ -311,6 +311,8 @@ class ObjectManager:
         }
         row = result.rows[0]
         mapped = {col_to_field.get(k, k): v for k, v in row.items()}
+        # int-backed enums come back as integers; hand the caller the symbol.
+        mapped = _decode_read_row({f.name: f for f in returning_fields}, mapped)
         # #214: a write-through entity's INSERT RETURNING covers only the table (non-derived)
         # columns; re-read the persisted row through the replica VIEW by PK so the returned row
         # carries the derived origin.* fields (read-your-writes). find_by_id routes to the view.
@@ -423,6 +425,8 @@ class ObjectManager:
         }
         row = result.rows[0]
         mapped = {col_to_field.get(k, k): v for k, v in row.items()}
+        # int-backed enums come back as integers; hand the caller the symbol.
+        mapped = _decode_read_row({f.name: f for f in returning_fields}, mapped)
         # #214: re-read the updated row through the replica VIEW by PK so the returned row
         # carries the derived origin.* fields (write targeted the table, which lacks them).
         if entity.is_write_through():
@@ -509,8 +513,11 @@ class ObjectManager:
         self.last_column_oids = {
             col_to_field.get(c, c): oid for c, oid in result.column_oids.items()
         }
+        # int-backed enums come back as integers; hand the caller the symbol.
+        fields_by_name = {f.name: f for f in entity.fields()}
         return [
-            {col_to_field.get(k, k): v for k, v in row.items()} for row in result.rows
+            _decode_read_row(fields_by_name, {col_to_field.get(k, k): v for k, v in row.items()})
+            for row in result.rows
         ]
 
     def count(self, entity_name: str, filter: Filter | None = None) -> int:
@@ -711,12 +718,13 @@ def _compile_filter(f: Filter | None, entity: MetaObject) -> tuple[str, list[Any
         mf = entity.find_field(field_name)
         col = _column_of(mf) if mf is not None else field_name
         if not isinstance(ops, dict):
-            # Shortcut: {field: value} → equality
+            # Shortcut: {field: value} → equality. Encoded like any other bound
+            # value (see _op_clause) so an int-backed enum reaches SQL as its int.
             parts.append(f"{_q(col)} = %s")
-            params.append(ops)
+            params.append(_coerce_write_value(mf, ops) if mf is not None else ops)
             continue
         for op, value in ops.items():
-            sql, p = _op_clause(col, op, value)
+            sql, p = _op_clause(col, op, value, mf)
             parts.append(sql)
             params.extend(p)
     if not parts:
@@ -724,9 +732,21 @@ def _compile_filter(f: Filter | None, entity: MetaObject) -> tuple[str, list[Any
     return " AND ".join(parts), params
 
 
-def _op_clause(col: str, op: str, value: Any) -> tuple[str, list[Any]]:
-    """Translate one operator → SQL + params. Mirrors TS/C#/Java semantics."""
+def _op_clause(col: str, op: str, value: Any, field: MetaField | None = None) -> tuple[str, list[Any]]:
+    """Translate one operator → SQL + params. Mirrors TS/C#/Java semantics.
+
+    Bound values go through the WRITE codec, exactly as an INSERT's do: the four
+    sibling ports all encode on this path (TS through the Drizzle customType, Java
+    through GenericSQLDriver.setStatementValue → EnumCodec.write, Kotlin through
+    Exposed's toDb, C# through the EF converter). Without it an int-backed enum's
+    filter binds the member SYMBOL against an INTEGER column — the filter band
+    keeps eq/ne/in for int-backed enums precisely BECAUSE the symbol is supposed
+    to encode to its integer before reaching SQL.
+    """
     qc = _q(col)
+    if field is not None and op != "isNull":
+        value = ([_coerce_write_value(field, v) for v in value]
+                 if op == "in" and value else _coerce_write_value(field, value))
     if op == "eq":     return f"{qc} = %s", [value]
     if op == "ne":     return f"{qc} <> %s", [value]
     if op == "gt":     return f"{qc} > %s", [value]
@@ -823,9 +843,77 @@ def _coerce_write_value(field: MetaField, value: Any) -> Any:
         storage = field.get_meta_attr(fc.FIELD_ATTR_STORAGE)  # ADR-0039 resolving
         if storage != "flattened":  # None / "jsonb" / "subdocument" → single jsonb column
             return _json.dumps(value)
+    # field.enum carrying @intValueMap: the column is an INTEGER while the native
+    # and wire contract stays the member SYMBOL (int-backing is a persistence-layer
+    # concern, invisible above this codec), so encode symbol -> declared int here.
+    #
+    # An unmapped symbol is passed through untouched: membership is the column's
+    # CHECK constraint to enforce, and inventing a value here would hide the drift.
+    if sub == fc.FIELD_SUBTYPE_ENUM:
+        int_map = _int_value_map(field)
+        if int_map is not None and value in int_map:
+            return int_map[value]
+
     # Everything else (string / int / long / double / float / boolean / enum)
     # is already the native type pg8000 binds directly.
     return value
+
+
+def _int_value_map(field: MetaField) -> dict[Any, Any] | None:
+    """The declared ``@intValueMap`` (symbol → int), or ``None`` when the enum is
+    string-backed.
+
+    ADR-0039 resolving: the map is ``@values``' numeric half — a logical property
+    of the enum vocabulary that inherits through ``extends`` — so it is read with
+    ``get_meta_attr``, NOT the own-only accessor (contrast ``@dbColumnType`` in
+    :func:`_coerce_write_value`, the one field attribute that is deliberately
+    own-only). Shared by the write and read halves of the enum codec, mirroring
+    the dedicated int-map helper each sibling port's codec keeps (Java
+    ``EnumCodec.intValueMap``, Kotlin ``readIntValueMap``, C# ``IntValueMapOf``).
+    """
+    m = field.get_meta_attr(fc.FIELD_ATTR_INT_VALUE_MAP)
+    return m if isinstance(m, dict) else None
+
+
+def _decode_read_value(field: MetaField, value: Any) -> Any:
+    """Decode a stored value back to its authoring form on read.
+
+    The inverse of :func:`_coerce_write_value`'s int-backed-enum branch, and
+    today its only case: the column holds the member's integer, callers expect
+    the member SYMBOL. Every other field subtype is returned verbatim, keeping
+    ADR-0019's "runtime returns native in-process types" contract intact.
+
+    An int with no member RAISES. The database then holds a value the model says
+    is impossible — a hand-written INSERT, or a member removed without a
+    migration — and neither alternative is honest: returning the raw int hands
+    the caller a "member" that is not one (C#, Kotlin and TypeScript type this
+    property as a CLOSED enum, where ``7`` is not even representable), and
+    returning ``None`` hides the corruption behind a nullable column. Every port
+    throws here.
+    """
+    if value is None:
+        return None
+    if field.sub_type != fc.FIELD_SUBTYPE_ENUM:
+        return value
+    int_map = _int_value_map(field)
+    if int_map is None or not isinstance(value, int) or isinstance(value, bool):
+        return value
+    for symbol, stored in int_map.items():
+        if stored == value:
+            return symbol
+    raise ValueError(
+        f"field.enum '{field.name}' read stored value {value} with no member in "
+        f"@{fc.FIELD_ATTR_INT_VALUE_MAP} (declared: {int_map}) — the database holds "
+        f"a value the model does not describe."
+    )
+
+
+def _decode_read_row(fields_by_name: dict[str, MetaField], row: dict[str, Any]) -> dict[str, Any]:
+    """Apply :func:`_decode_read_value` to every field-keyed value in a mapped row."""
+    return {
+        k: (_decode_read_value(fields_by_name[k], v) if k in fields_by_name else v)
+        for k, v in row.items()
+    }
 
 
 # ----------------------------------------------------------------------------

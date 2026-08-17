@@ -75,6 +75,7 @@ queries:
       tsTzVal: "2026-06-03T14:30:00.123Z"
       moneyVal: 250000
       enumVal: "HIGH"
+      intEnumVal: "PUBLISHED"
       uuidVal: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"
       uriVal: "https://example.com/after?x=1"
       inetVal: "192.168.10.20"
@@ -95,6 +96,7 @@ queries:
       tsTzVal: "2026-06-03T14:30:00.123Z"
       moneyVal: "250000"
       enumVal: "HIGH"
+      intEnumVal: "PUBLISHED"
       uuidVal: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
       uriVal: "https://example.com/after?x=1"
       inetVal: "192.168.10.20"
@@ -123,6 +125,7 @@ queries:
       tsTzVal: "2026-06-03T14:30:00.123Z"
       moneyVal: "250000"
       enumVal: "HIGH"
+      intEnumVal: "PUBLISHED"
       uuidVal: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
       uriVal: "https://example.com/after?x=1"
       inetVal: "192.168.10.20"

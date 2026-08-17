@@ -1,7 +1,7 @@
 # Design: `field.enum` — first-class enum datatype
 
 **Date:** 2026-05-23
-**Status:** Implemented across TS, C#, Java, Python (2026-05-23)
+**Status:** Implemented across TS, C#, Java, Python, Kotlin (TypeScript int-backed in progress)
 **Author:** Doug Mealing (with Claude)
 
 ## Problem
@@ -33,9 +33,7 @@ metamodel-as-spine payoff. A per-language regex is strictly worse output.
 
 ## Non-goals (out of scope)
 
-- **Integer-backed enums** (where a member's symbol name differs from a stored number).
-  This needs per-member symbol→value assignment and is materially more complex; deferred
-  to a later design. v1 members are symbols stored as their own string.
+- **Integer-backed enums** — Now supported via the `@intValueMap` attribute. See "Int-backed enum storage" below.
 - **Display labels.** Human-facing labels for members (e.g. `DRAFT` → "Draft") belong to
   the presentation/view layer, not the enum datatype. The enum stays a pure domain concept.
 - **Native Postgres `CREATE TYPE ... AS ENUM`.** Breaks PG/SQLite parity and is a
@@ -68,9 +66,11 @@ metamodel-as-spine payoff. A per-language regex is strictly worse output.
 - **D3 — Members declared via `@values`.** A required string array on the `field.enum`.
   Declaration order is significant (it is the canonical member order for every port).
 
-- **D4 — v1 is string-backed; int-backed deferred.** Each member's symbol *is* its stored
-  and transmitted string value. No `@backing` knob. Int-backed enums are a future codegen
-  mapping of the *same* subtype, not a new datatype — the model already accommodates them.
+- **D4 — v1 is string-backed; int-backed via `@intValueMap`.** Each member's symbol *is* its stored
+  and transmitted string value by default. The optional `@intValueMap` attribute switches a field to
+  integer storage while preserving the string wire format and generated enum type. Keys must match
+  `@values` exactly; values must be unique integers. The generated type and wire format are unchanged
+  in every language.
 
 - **D5 — DB representation: `varchar` + `CHECK`.** Portable across Postgres and SQLite;
   adding/removing a member is a cheap CHECK swap. Native PG enum is explicitly out (see
@@ -241,7 +241,8 @@ the metadata layer. The empty-`@values` fixture, surfaced during review, replace
 
 ## Remaining follow-ups
 
-- Integer-backed enums (per-member symbol→value) — no current consumer.
+- ~~Integer-backed enums (per-member symbol→value)~~ — **DONE via `@intValueMap` (2026-08)**.
+  TypeScript persistence layer complete; other ports pending. See "Int-backed enum storage" below.
 - Non-identifier-safe member strings (kebab-case, leading digit, etc.) needing a
   symbol↔stored-value mapping — no current consumer.
 - Display labels (presentation/view layer) — no current consumer.
@@ -249,3 +250,36 @@ the metadata layer. The empty-`@values` fixture, surfaced during review, replace
   `varchar`+`CHECK` covers current needs.
 - Extend the EF Core compile-check to the **Routes/ASP.NET** surface (needs the
   `Microsoft.AspNetCore.App` shared framework) — optional, lower priority.
+
+## Int-backed enum storage (2026-08)
+
+**Problem:** Some databases (especially legacy schemas) store enums as integers rather than strings,
+but the generated enum type and wire format should remain string-based for type safety.
+
+**Solution:** The `@intValueMap` attribute on `field.enum`:
+
+```json
+{ "field.enum": {
+    "name": "status",
+    "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"],
+    "@intValueMap": { "DRAFT": 0, "PUBLISHED": 1, "ARCHIVED": 2 }
+}}
+```
+
+**Behavior:**
+
+- **Loader validation:** Keys must exactly match `@values`; values must be unique integers.
+- **Generated type:** Unchanged — still a union/enum of string symbols.
+- **Wire format:** Unchanged — members still transmit as strings.
+- **Database column:** Integer instead of `varchar`; CHECK constraint enforces valid integers.
+- **ORM mapping:** Custom codec/convertor layer translates between in-memory enum and DB integer.
+- **Filter operators:** `like` is unsupported on int-backed enum fields (meaningless against integers).
+
+**Cross-port status:**
+
+- TypeScript: Complete (Drizzle customType, Zod, migrate, filter bands, TPH discriminators)
+- Java/Kotlin: Metamodel registered, codecs pending
+- C#: Metamodel registered, EF Core converters pending
+- Python: Metamodel registered, codecs pending
+
+See plan docs: `docs/superpowers/plans/2026-07-23-int-backed-enum-values-*.md`

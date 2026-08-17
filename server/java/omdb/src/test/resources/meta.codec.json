@@ -96,6 +96,14 @@
               }
             },
             {
+              "field.enum": {
+                "name": "priority",
+                "@column": "priority",
+                "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"],
+                "@intValueMap": {"DRAFT": 0, "PUBLISHED": 5, "ARCHIVED": 9}
+              }
+            },
+            {
               "identity.primary": {
                 "name": "primary",
                 "@fields": ["id"],

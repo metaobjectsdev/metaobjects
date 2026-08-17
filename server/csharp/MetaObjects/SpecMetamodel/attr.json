@@ -21,6 +21,12 @@
     },
     {
       "type": "attr",
+      "subType": "intMap",
+      "dataType": "object",
+      "description": "An object-shaped attribute whose values are all integers (e.g. field.enum's @intValueMap: {memberSymbol: int}). Generic shape check only; a consumer field type layers its own semantic rules (key-set membership, uniqueness) in its own content-rule validation."
+    },
+    {
+      "type": "attr",
       "subType": "long",
       "dataType": "long",
       "description": "A 64-bit-integer-valued metadata attribute. Coerces to and validates as a number."

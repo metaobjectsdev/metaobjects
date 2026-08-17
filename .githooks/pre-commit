@@ -18,7 +18,9 @@
 set -uo pipefail
 
 # Generic, non-sensitive structural patterns — safe to commit (name no project):
-PATTERNS='/home/[A-Za-z0-9._-]+/|~/Development'
+# /Users/ is the macOS home shape. It was missing until a plan doc authored on a Mac
+# committed an absolute developer home path that this hook scanned and passed.
+PATTERNS='/home/[A-Za-z0-9._-]+/|/Users/[A-Za-z0-9._-]+/|~/Development'
 
 # Legitimate matches to ignore (e.g. the published npm author email).
 ALLOW='doug@dougmealing\.com'

@@ -64,8 +64,11 @@ public class DbContextGenerator : IGenerator
             // column as Int32 at materialization — an InvalidCastException. Mirror the
             // entity-side HasConversion<string>() so a projection that passes an enum
             // through (e.g. ProgramView.status over v_program) round-trips.
+            // An int-backed enum (@intValueMap) column in the view holds the declared INTEGER,
+            // so it takes the same custom converter pair the table side gets — reading it as
+            // a string would fail materialization exactly as the ordinal default does here.
             foreach (var f in p.Fields().Where(f => f.SubType == FIELD_SUBTYPE_ENUM && !f.ResolvedIsArray()))
-                modelLines.Add($"        modelBuilder.Entity<{name}>().Property(x => x.{CSharpNaming.Pascal(f.Name)}).HasConversion<string>();");
+                modelLines.Add($"        modelBuilder.Entity<{name}>().Property(x => x.{CSharpNaming.Pascal(f.Name)}).{EnumConversionCall(name, p, f, ctx.Config)};");
         }
         foreach (var e in objects.Where(o => o.IsEntity() && !o.IsReadOnlyProjection()))
         {
@@ -150,6 +153,7 @@ public class DbContextGenerator : IGenerator
         EmitUsings(sb, needsMetadataUsing, ctx);
         EmitDbSetDeclarations(sb, objects, ctx);
         EmitOnModelCreatingBody(sb, modelLines, ctx);
+        if (NeedsUnmappedEnumHelper(objects)) EmitUnmappedEnumHelper(sb);
         sb.AppendLine("}");
         return [new EmittedFile("AppDbContext.g.cs", sb.ToString())];
     }
@@ -322,6 +326,119 @@ public class DbContextGenerator : IGenerator
             $"r => r.HasOne<{source}>().WithMany().HasForeignKey(nameof({through}.{sourceFkProp})));";
     }
 
+    /// <summary>
+    /// The declared symbol→int map (<c>@intValueMap</c>) for an int-backed
+    /// <c>field.enum</c>, or <c>null</c> when the enum is string-backed.
+    /// </summary>
+    /// <remarks>
+    /// ADR-0039 RESOLVING (<c>Attr</c>, not <c>OwnAttr</c>): the map is <c>@values</c>'
+    /// numeric half — a logical property of the enum vocabulary that inherits through
+    /// <c>extends</c> — so a field extending a shared abstract enum is int-backed too.
+    /// The loader's validation reads it own-only, which is correct there: it validates
+    /// what a declaration itself declares.
+    /// </remarks>
+    private static IReadOnlyDictionary<string, object?>? IntValueMapOf(MetaField f) =>
+        f.Attr(FIELD_ATTR_INT_VALUE_MAP) as IReadOnlyDictionary<string, object?>;
+
+    /// <summary>Name of the generated fail-fast helper the read converters end in.</summary>
+    private const string UnmappedEnumHelperName = "UnmappedEnumValue";
+
+    /// <summary>
+    /// Emits the fail-fast helper every int-backed enum's provider→model converter ends
+    /// in. Emitted only when at least one such converter was generated, so a model with
+    /// no <c>@intValueMap</c> produces byte-identical output.
+    /// </summary>
+    private static void EmitUnmappedEnumHelper(StringBuilder sb)
+    {
+        sb.AppendLine();
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine("    /// An int-backed field.enum column held a value that maps to no member: the");
+        sb.AppendLine("    /// database holds data the model says is impossible (a hand-written INSERT, or a");
+        sb.AppendLine("    /// member removed without a migration). Materializing the last member instead");
+        sb.AppendLine("    /// would hand the caller a wrong-but-valid value, silently.");
+        sb.AppendLine("    /// </summary>");
+        sb.AppendLine($"    private static T {UnmappedEnumHelperName}<T>(int stored, string field) =>");
+        // Fully qualified: the generated file's usings are a fixed set (EmitUsings), and
+        // adding `using System;` there would change byte-identical output for every model.
+        sb.AppendLine("        throw new System.InvalidOperationException(");
+        sb.AppendLine("            $\"field.enum '{field}' read stored value {stored} with no member in \" +");
+        sb.AppendLine("            \"@intValueMap — the database holds a value the model does not describe.\");");
+    }
+
+    /// <summary>
+    /// True when any emitted converter will reference <see cref="UnmappedEnumHelperName"/>
+    /// — i.e. the model carries at least one int-backed <c>field.enum</c>. Mirrors the
+    /// fields <see cref="EmitFieldTypeConfig"/> configures (enum fields of every emitted
+    /// object, plus a write-through entity's read-model view over the same field set).
+    /// </summary>
+    private static bool NeedsUnmappedEnumHelper(IEnumerable<MetaObject> objects) =>
+        objects.Any(o => o.Fields().Any(f =>
+            f.SubType == FIELD_SUBTYPE_ENUM && IntValueMapOf(f) is not null));
+
+    /// <summary>
+    /// The complete <c>HasConversion</c> call for an enum property: the generic
+    /// <c>HasConversion&lt;string&gt;()</c> for a string-backed enum, or
+    /// <c>HasConversion(model→provider, provider→model)</c> built from
+    /// <c>@intValueMap</c> for an int-backed one.
+    /// </summary>
+    /// <remarks>
+    /// <para>The mapping is emitted as a TERNARY CHAIN rather than a <c>switch</c>
+    /// expression because EF converts these lambdas to EXPRESSION TREES, and a switch
+    /// expression is not legal in one (CS8155). A conditional is.</para>
+    /// <para>The provider→model chain gives EVERY member its own branch and ends in a
+    /// call to the generated <c>UnmappedEnumValue&lt;T&gt;</c> helper, so a stored int
+    /// with no member THROWS rather than silently materializing as the last member —
+    /// matching all four sibling ports. CS8188 bans a throw-EXPRESSION inside an
+    /// expression tree, but a method CALL is legal there and the throw itself happens in
+    /// the helper's ordinary body. Only the read side needs this: the model→provider
+    /// chain is exhaustive over the enum by construction, since <c>@intValueMap</c>'s
+    /// keys are loader-validated to match <c>@values</c> exactly.</para>
+    /// </remarks>
+    private static string EnumConversionCall(string owner, MetaObject entity, MetaField f, GenConfig config)
+    {
+        var intMap = IntValueMapOf(f);
+        if (intMap is null) return "HasConversion<string>()";
+
+        var members = f.EffectiveEnumValues ?? new List<string>();
+        if (members.Count == 0) return "HasConversion<string>()";
+
+        // FR-019: a SHARED (root-level abstract) or @provided enum is NOT nested inside the
+        // entity class — EntityGenerator references it instead (see its EnumPropertyTypeName)
+        // — so it must be named unqualified here. Qualifying it as {owner}.{Name} emits
+        // CS0426 ("the type name does not exist in the type"), which is not an edge case:
+        // ERR_ENUM_EXTENDS_VALUES_CONFLICT makes declaring @intValueMap on the CONSUMING
+        // field a load error, so hanging it on the shared declaration is the only legal way
+        // to int-back a shared enum. String-backed shared enums never showed this because
+        // HasConversion<string>() names no type at all.
+        var type = Fr019SharedEnum.SharedEnumForField(f) is { } shared
+            ? Fr019SharedEnum.SharedEnumTypeReference(shared, config)
+            : $"{owner}.{CSharpNaming.EnumTypeName(entity, f)}";
+        // Read the ints THROUGH the map, keyed by member, so @values stays the SSOT and a
+        // member with no mapping cannot silently vanish from the conversion.
+        var ints = new List<string>(members.Count);
+        foreach (var m in members)
+        {
+            if (!intMap.TryGetValue(m, out var raw) || raw is null)
+                throw new InvalidOperationException(
+                    $"field.enum '{f.Name}' @{FIELD_ATTR_INT_VALUE_MAP} has no integer for member '{m}' — " +
+                    "cannot build the EF value conversion.");
+            ints.Add(Convert.ToInt64(raw).ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        var toProvider = new System.Text.StringBuilder("v => ");
+        var fromProvider = new System.Text.StringBuilder("v => ");
+        for (var i = 0; i < members.Count - 1; i++)
+            toProvider.Append($"v == {type}.{members[i]} ? {ints[i]} : ");
+        toProvider.Append(ints[^1]);
+        // Every member gets its own branch here (no last-member fallthrough) so the
+        // final else can reject an int the model does not describe.
+        for (var i = 0; i < members.Count; i++)
+            fromProvider.Append($"v == {ints[i]} ? {type}.{members[i]} : ");
+        fromProvider.Append($"{UnmappedEnumHelperName}<{type}>(v, \"{f.Name}\")");
+
+        return $"HasConversion({toProvider}, {fromProvider})";
+    }
+
     // #214 [0] — the per-field EF TYPE-converter emission, factored out so the SAME set of
     // converters configures BOTH the write entity (its derived-EXCLUDED field set) AND a
     // write-through entity's <Entity>View read model (ALL fields, incl. the derived origin.*
@@ -353,13 +470,18 @@ public class DbContextGenerator : IGenerator
         foreach (var f in fieldList.Where(f => f.SubType == FIELD_SUBTYPE_ENUM))
         {
             var prop = CSharpNaming.Pascal(f.Name);
+            // An int-backed enum (@intValueMap) persists the declared INTEGER instead of the
+            // member symbol, so it needs a custom converter pair rather than HasConversion<string>().
+            // The generated C# `enum` declaration is byte-identical either way — int-backing is a
+            // persistence concern, invisible in the entity's API.
+            var conversion = EnumConversionCall(className, entity, f, ctx.Config);
             // ADR-0039: resolving — array-ness inheritable via extends. Array-of-enum uses the
-            // EF Core 8 primitive collection with a per-element string conversion so members
-            // persist as symbols (["DRAFT"]), not int ordinals ([0]).
+            // EF Core 8 primitive collection with a per-element conversion so members persist as
+            // symbols (["DRAFT"]) — or as their declared ints — not as int ordinals ([0]).
             if (f.ResolvedIsArray())
-                modelLines.Add($"        modelBuilder.Entity<{className}>().PrimitiveCollection(x => x.{prop}).ElementType().HasConversion<string>();");
+                modelLines.Add($"        modelBuilder.Entity<{className}>().PrimitiveCollection(x => x.{prop}).ElementType().{conversion};");
             else
-                modelLines.Add($"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).HasConversion<string>();");
+                modelLines.Add($"        modelBuilder.Entity<{className}>().Property(x => x.{prop}).{conversion};");
         }
 
         foreach (var f in fieldList.Where(f => f.ResolvedIsArray() && CSharpNaming.ScalarFor(f.SubType) is not null))

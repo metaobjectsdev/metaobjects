@@ -651,10 +651,31 @@ public final class CanonicalJsonSerializer {
 
         // OBJECT-datatype attr with a Map value: emit as a JSON object.
         // Guard: DataTypes.OBJECT ensures only attrs that explicitly declare object
-        // semantics (e.g. FilterAttribute) take this path. Gson.toJsonTree handles
-        // nested Maps/Lists/primitives natively, so the full desugared filter
-        // structure ({field: {op: value}, ...}) round-trips correctly.
+        // semantics (e.g. FilterAttribute, IntMapAttribute) take this path.
+        // Gson.toJsonTree handles nested Maps/Lists/primitives natively, so the full
+        // desugared filter structure ({field: {op: value}, ...}) round-trips correctly.
+        //
+        // Cross-port value-shape heuristic (mirrors TS's sortAttrValue / C#'s
+        // AttrObjectToJsonNode): the schema-free serializer distinguishes canonical
+        // key order by value SHAPE, not by attribute subtype —
+        //   • a flat scalar-valued map (e.g. attr.intMap's @intValueMap: {member: int})
+        //     sorts its keys alphabetically in canonical form (matches the Java
+        //     PropertiesAttribute-style sorted-object precedent below).
+        //   • a map carrying at least one nested object/array value (e.g. attr.filter's
+        //     desugared {field: {op: value}} clauses, or/and composition arrays, or
+        //     attr.expression's expression tree) preserves declaration order — that
+        //     order is semantically significant and must not be reordered.
         if (attr.getDataType() == DataTypes.OBJECT && value instanceof Map) {
+            Map<?, ?> map = (Map<?, ?>) value;
+            boolean allScalar = map.values().stream().allMatch(v ->
+                v == null || v instanceof String || v instanceof Boolean || v instanceof Number);
+            if (allScalar) {
+                Map<String, Object> sorted = new java.util.TreeMap<>();
+                for (Map.Entry<?, ?> e : map.entrySet()) {
+                    sorted.put(String.valueOf(e.getKey()), e.getValue());
+                }
+                return GSON.toJsonTree(sorted);
+            }
             return GSON.toJsonTree(value);
         }
 

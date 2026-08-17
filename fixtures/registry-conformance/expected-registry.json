@@ -52,6 +52,13 @@
     },
     {
       "type": "attr",
+      "subType": "intMap",
+      "description": "An object-shaped attribute whose values are all integers (e.g. field.enum's @intValueMap: {memberSymbol: int}). Generic shape check only; a consumer field type layers its own semantic rules (key-set membership, uniqueness) in its own content-rule validation.",
+      "attrs": [],
+      "children": []
+    },
+    {
+      "type": "attr",
       "subType": "long",
       "description": "A 64-bit-integer-valued metadata attribute. Coerces to and validates as a number.",
       "attrs": [],
@@ -1013,6 +1020,13 @@
           "isArray": false,
           "required": false,
           "description": "FR-010: a short instruction for this field, shown in the generated output-format prompt fragment."
+        },
+        {
+          "name": "intValueMap",
+          "valueType": "intMap",
+          "isArray": false,
+          "required": false,
+          "description": "Optional per-member int values ({member: int}) switching this enum field's DB persistence from string+CHECK to integer+CHECK. Keys must exactly match @values; values must be unique integers. The generated native type and wire format are unchanged in every language."
         },
         {
           "name": "normalize",

@@ -202,6 +202,12 @@ export const ERROR_CODES = [
   // own @values would be silently dropped in codegen. Remove the own @values
   // to inherit the shared set, or extend a concrete (non-shared) enum instead.
   "ERR_ENUM_EXTENDS_VALUES_CONFLICT",
+  // A field.enum carries @intValueMap together with isArray=true. Int-backing is
+  // a persistence-layer codec and no port implements it element-wise over an
+  // array column, so the combination would silently persist member SYMBOLS into
+  // an integer array. An array-of-enum stays string-backed: drop @intValueMap,
+  // or make the field scalar.
+  "ERR_ENUM_INT_VALUE_MAP_ARRAY",
   "ERR_UNKNOWN",
 ] as const;
 
