@@ -2526,6 +2526,32 @@ public static class ValidationPasses
                     }
                 }
             }
+
+            // Design D7, narrowed: @intValueMap is scalar-only. Int-backing is a
+            // persistence-layer CODEC and no port implements it element-wise over an
+            // array column: OMDB's EnumCodec and Kotlin's customEnumeration are scalar
+            // by construction, Python would bind the symbol LIST into an integer[], and
+            // TypeScript's sqlite branch serializes an array as JSON text before the enum
+            // case is reached. Two ports that happen to compose (this one, via
+            // PrimitiveCollection().ElementType(), and TS/Postgres) are not a feature —
+            // shipping a claim four ports silently get wrong is the
+            // field.byte/short/class mistake.
+            //
+            // BOTH halves are read RESOLVING, unlike the content rules above: the illegal
+            // thing is the EFFECTIVE combination. Post-#246 the map must live on the
+            // shared abstract declaration, so the field that inherits it is exactly where
+            // isArray gets declared — an own-only read would see the two halves on
+            // different nodes and never fire.
+            if (field.Attr(FIELD_ATTR_INT_VALUE_MAP) is IReadOnlyDictionary<string, object?>
+                && field.ResolvedIsArray())
+            {
+                errors.Add(new MetaError(
+                    $"field.enum '{field.Name}' declares '@{FIELD_ATTR_INT_VALUE_MAP}' with isArray=true; " +
+                    "int-backing is scalar-only — an array-of-enum persists its member symbols. " +
+                    $"Remove '@{FIELD_ATTR_INT_VALUE_MAP}', or make the field scalar.",
+                    ErrorCode.ERR_ENUM_INT_VALUE_MAP_ARRAY,
+                    Envelope: field.Source));
+            }
         }
 
         foreach (var child in node.OwnChildren())

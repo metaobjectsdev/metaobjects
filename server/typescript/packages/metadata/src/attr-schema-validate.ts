@@ -412,6 +412,33 @@ function validateNode(
       }
     }
 
+    // --- Check 5a: @intValueMap is scalar-only (design D7) ---
+    //
+    // Int-backing is a persistence-layer CODEC, and no port implements it
+    // element-wise over an array column: OMDB's EnumCodec and Kotlin's
+    // customEnumeration are scalar by construction, Python would bind the symbol
+    // list straight into an integer[], and TS's sqlite branch serializes an array
+    // as JSON text before the enum case is ever reached. Two ports that DO compose
+    // (TS/Postgres via .array(), C# via PrimitiveCollection) are not a feature —
+    // shipping a claim four ports silently get wrong is the field.byte/short/class
+    // mistake. Rejected at LOAD so it fails identically everywhere.
+    //
+    // BOTH reads are RESOLVING, unlike Check 5b below: the illegal thing is the
+    // EFFECTIVE combination. Post-#246 the map must live on the shared abstract
+    // declaration, so the field that inherits it is exactly where isArray gets
+    // declared — an own-only read would see the two halves on different nodes and
+    // never fire.
+    if (node.attrs().get(FIELD_ATTR_INT_VALUE_MAP) !== undefined && node.resolvedIsArray()) {
+      errors.push(
+        new ParseError(
+          `${nodeLabel(node)} declares '@${FIELD_ATTR_INT_VALUE_MAP}' with isArray=true; ` +
+            `int-backing is scalar-only — an array-of-enum persists its member symbols. ` +
+            `Remove '@${FIELD_ATTR_INT_VALUE_MAP}', or make the field scalar.`,
+          { code: "ERR_ENUM_INT_VALUE_MAP_ARRAY", source: node.source },
+        ),
+      );
+    }
+
     // --- Check 5b: field.enum @intValueMap content rules ---
     //
     // Optional. Own-only (mirrors Checks 4/5's own-attrs-only policy) — an

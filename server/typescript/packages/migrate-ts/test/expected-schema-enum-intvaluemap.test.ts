@@ -58,13 +58,10 @@ describe("buildExpectedSchema — int-backed field.enum (@intValueMap)", () => {
     expect(col.sqlType).toEqual({ kind: "text" });
   });
 
-  test("array-of-enum int-backed maps to integer[] (D7)", async () => {
-    const col = await statusColumn(
-      entityModel({ name: "status", isArray: true, "@values": VALUES, "@intValueMap": INT_MAP }),
-    );
-    expect(col.sqlType).toEqual({ kind: "array", element: { kind: "integer", bits: 32 } });
-  });
-
+  // D7, narrowed: int-backing is scalar-only — @intValueMap with isArray is
+  // ERR_ENUM_INT_VALUE_MAP_ARRAY at LOAD, so no int-backed array column shape exists
+  // to assert. The rejection is gated by the loader tests + the cross-port
+  // error-enum-intvaluemap-array fixtures.
   test("array-of-enum string-backed stays text[]", async () => {
     const col = await statusColumn(entityModel({ name: "status", isArray: true, "@values": VALUES }));
     expect(col.sqlType).toEqual({ kind: "array", element: { kind: "text" } });
@@ -117,9 +114,7 @@ describe("buildExpectedSchema — int-backed field.enum (@intValueMap)", () => {
 
   test("array-of-enum still gets NO field-level CHECK (membership stays app-level)", async () => {
     const snapshot = buildExpectedSchema(
-      await loadJson(
-        entityModel({ name: "status", isArray: true, "@values": VALUES, "@intValueMap": INT_MAP }),
-      ),
+      await loadJson(entityModel({ name: "status", isArray: true, "@values": VALUES })),
     );
     const table = snapshot.tables.find((t) => t.name === "orders")!;
     expect((table.checks ?? []).find((c) => c.name === "orders_status_chk")).toBeUndefined();
@@ -148,21 +143,19 @@ describe("buildExpectedSchema — int-backed field.enum (@intValueMap)", () => {
     expect(col.default).toEqual({ kind: "literal", value: "0" });
   });
 
-  test("array-ness and the map may BOTH be inherited from the shared declaration", async () => {
+  // Array-ness inherited from a shared declaration still resolves here. This
+  // replaced a test that inherited array-ness AND @intValueMap together, which is
+  // now ERR_ENUM_INT_VALUE_MAP_ARRAY at load (D7, narrowed) — that rejection is
+  // gated by the loader tests and the error-enum-intvaluemap-array-inherited
+  // fixture. What remains worth pinning at THIS layer is the resolving read of
+  // array-ness itself, since an own-only read would emit a scalar column.
+  test("array-ness inherited from the shared declaration still yields an array column", async () => {
     const col = await statusColumn(
       entityModel({ name: "status", extends: "Status" }, [
-        {
-          "field.enum": {
-            name: "Status",
-            abstract: true,
-            isArray: true,
-            "@values": VALUES,
-            "@intValueMap": INT_MAP,
-          },
-        },
+        { "field.enum": { name: "Status", abstract: true, isArray: true, "@values": VALUES } },
       ]),
     );
-    expect(col.sqlType).toEqual({ kind: "array", element: { kind: "integer", bits: 32 } });
+    expect(col.sqlType).toEqual({ kind: "array", element: { kind: "text" } });
   });
 });
 

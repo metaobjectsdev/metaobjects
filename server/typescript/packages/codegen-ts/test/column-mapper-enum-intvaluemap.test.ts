@@ -101,12 +101,22 @@ describe("mapColumnType — int-backed field.enum (@intValueMap)", () => {
     expect(spec.checkConstraint).toBe("status IN (0, 5, 9)");
   });
 
-  test("array-of-enum int-backed gets a native integer array, no CHECK", async () => {
+  // Design D7, narrowed: int-backing is scalar-only, so there is no array codegen
+  // shape to assert — the combination never reaches a generator. This test replaced
+  // one that asserted `statusIntEnum(...).array()`, which composed on Postgres while
+  // four ports silently got it wrong (Python bound the symbol list into an integer[],
+  // Java and Kotlin emitted a scalar codec, and the sqlite branch stored symbols as
+  // JSON text). The rejection itself is gated by the loader tests + the cross-port
+  // error-enum-intvaluemap-array fixtures; this pins the CODEGEN-side consequence:
+  // an array enum reaching a generator is always string-backed.
+  test("an array-of-enum reaching codegen is string-backed — @intValueMap cannot load with isArray", async () => {
     const spec = mapColumnType(
-      await statusField({ name: "status", isArray: true, "@values": VALUES, "@intValueMap": INT_MAP }),
+      await statusField({ name: "status", isArray: true, "@values": VALUES }),
       "postgres",
     );
-    expect(spec.fnName).toBe("statusIntEnum");
+    expect(spec.fnName).toBe("text");
+    expect(spec.enumIntCustomType).toBeUndefined();
+    expect(spec.modifiers).toContain(".array()");
     // Membership on arrays stays app-level, exactly as for string-backed enum[].
     expect(spec.checkConstraint).toBeUndefined();
   });

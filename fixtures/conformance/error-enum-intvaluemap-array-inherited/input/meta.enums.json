@@ -1,0 +1,25 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      {
+        "field.enum": {
+          "name": "Status",
+          "abstract": true,
+          "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"],
+          "@intValueMap": { "DRAFT": 0, "PUBLISHED": 5, "ARCHIVED": 9 }
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Order",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "status", "extends": "acme::Status", "isArray": true } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

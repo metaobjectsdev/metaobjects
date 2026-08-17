@@ -688,6 +688,11 @@ public final class ValidationPhase {
         // (own or inherited via extends), mirroring the TS/C# port structure exactly.
         validateEnumIntValueMap(node);
 
+        // --- @intValueMap is scalar-only (design D7, narrowed) ---
+        // Separate from the content check above because it must fire on the node that
+        // combines the two halves, which is NOT necessarily the node declaring the map.
+        validateEnumIntValueMapNotArray(node);
+
         // --- Own @values content check ---
         if (node.hasMetaAttr(EnumField.ATTR_VALUES, false)) {
             MetaAttribute<?> valuesAttr = node.getMetaAttr(EnumField.ATTR_VALUES, false);
@@ -765,6 +770,36 @@ public final class ValidationPhase {
     private static MetaData sharedEnumSuper(MetaData node) {
         MetaData sup = node.getSuperData();
         return (sup != null && isAbstract(sup) && sup.getParent() instanceof MetaRoot) ? sup : null;
+    }
+
+    /**
+     * {@code @intValueMap} is scalar-only (design D7, narrowed).
+     *
+     * <p>Int-backing is a persistence-layer CODEC, and no port implements it element-wise
+     * over an array column: OMDB's {@code EnumCodec} and Kotlin's {@code customEnumeration}
+     * are scalar by construction, Python would bind the symbol LIST straight into an
+     * {@code integer[]}, and TypeScript's sqlite branch serializes an array as JSON text
+     * before the enum case is reached. Two ports that happen to compose (TS/Postgres, C#)
+     * are not a feature — shipping a claim four ports silently get wrong is the
+     * {@code field.byte}/{@code short}/{@code class} mistake.</p>
+     *
+     * <p>BOTH halves are read RESOLVING, unlike {@link #validateEnumIntValueMap}: the
+     * illegal thing is the EFFECTIVE combination. Post-#246 the map must live on the shared
+     * abstract declaration, so the field that inherits it is exactly where {@code isArray}
+     * gets declared — an own-only read would see the two halves on different nodes and
+     * never fire.</p>
+     */
+    private static void validateEnumIntValueMapNotArray(MetaData node) {
+        // hasMetaAttr defaults to includeParentData=true → RESOLVING.
+        if (!node.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP)) return;
+        if (!(node instanceof MetaField) || !((MetaField) node).isArrayType()) return;
+        throw new MetaDataException(
+            ErrorMessageConstants.ERR_ENUM_INT_VALUE_MAP_ARRAY
+                + ": field.enum '" + node.getName() + "' declares @"
+                + EnumField.ATTR_INT_VALUE_MAP + " with isArray=true; int-backing is"
+                + " scalar-only - an array-of-enum persists its member symbols."
+                + " Remove @" + EnumField.ATTR_INT_VALUE_MAP + ", or make the field scalar.",
+            ErrorCode.ERR_ENUM_INT_VALUE_MAP_ARRAY, node.getSource());
     }
 
     private static void validateEnumIntValueMap(MetaData node) {

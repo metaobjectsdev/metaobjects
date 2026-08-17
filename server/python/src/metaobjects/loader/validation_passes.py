@@ -614,6 +614,11 @@ def _validate_enum_values(
         # `extends` but declares its own @intValueMap is still validated.
         _validate_enum_int_value_map(node, errors)
 
+        # Design D7, narrowed: int-backing is scalar-only. Separate from the content
+        # rules above because it must fire on the node that combines the two halves,
+        # which is NOT necessarily the node that declares the map.
+        _validate_enum_int_value_map_not_array(node, errors)
+
         # ADR-0039 sanctioned own: validates the AUTHORED @values membership on THIS
         # node (mirrors the TS attr-schema-validate `node.ownAttrs()`); an inherited
         # @values yields None here and is validated on its declaring node.
@@ -679,6 +684,38 @@ def _validate_enum_values(
                     envelope=node.source,
                 )
             )
+
+
+def _validate_enum_int_value_map_not_array(node: MetaData, errors: list[MetaError]) -> None:
+    """``@intValueMap`` is scalar-only (design D7, narrowed).
+
+    Int-backing is a persistence-layer CODEC, and no port implements it
+    element-wise over an array column: this port's ``ObjectManager`` would bind the
+    symbol LIST straight into an ``integer[]``, OMDB's ``EnumCodec`` and Kotlin's
+    ``customEnumeration`` are scalar by construction, and TypeScript's sqlite branch
+    serializes an array as JSON text before the enum case is reached. Two ports that
+    happen to compose (TS/Postgres, C#) are not a feature — shipping a claim four
+    ports silently get wrong is the ``field.byte``/``short``/``class`` mistake.
+
+    BOTH halves are read RESOLVING, unlike the content rules: the illegal thing is
+    the EFFECTIVE combination. Post-#246 the map must live on the shared abstract
+    declaration, so the field that inherits it is exactly where ``isArray`` gets
+    declared — an own-only read would see the two halves on different nodes and
+    never fire.
+    """
+    if not isinstance(node.get_meta_attr(FIELD_ATTR_INT_VALUE_MAP), dict):
+        return
+    if not node.resolved_is_array():
+        return
+    errors.append(
+        MetaError(
+            f"{_node_label(node)} declares '@{FIELD_ATTR_INT_VALUE_MAP}' with isArray=true; "
+            f"int-backing is scalar-only — an array-of-enum persists its member symbols. "
+            f"Remove '@{FIELD_ATTR_INT_VALUE_MAP}', or make the field scalar.",
+            ErrorCode.ERR_ENUM_INT_VALUE_MAP_ARRAY,
+            envelope=node.source,
+        )
+    )
 
 
 def _validate_enum_int_value_map(node: MetaData, errors: list[MetaError]) -> None:

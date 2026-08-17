@@ -613,10 +613,12 @@ export function mapColumnType(
           fnName = "jsonb";
           break;
         case FIELD_SUBTYPE_ENUM:
-          // An INT-BACKED enum (@intValueMap, design D5/D7) stores the mapped
-          // integer, so the Drizzle column is integer / integer[] — matching
-          // migrate-ts's expected-schema. The TS-facing type stays the member-string
-          // union; the symbol<->int translation happens at the write/read boundary.
+          // An INT-BACKED enum (@intValueMap, design D5) stores the mapped integer,
+          // so the Drizzle column is integer — matching migrate-ts's expected-schema.
+          // The TS-facing type stays the member-string union; the symbol<->int
+          // translation happens at the write/read boundary. Scalar only: D7 makes
+          // @intValueMap + isArray ERR_ENUM_INT_VALUE_MAP_ARRAY at load, so an array
+          // enum reaching here is always string-backed.
           {
             const im = intValueMapOf(field);
             if (im !== undefined) {
