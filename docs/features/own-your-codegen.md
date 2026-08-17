@@ -32,8 +32,14 @@ are in:
   is **refused with its path named** rather than overwritten. Move the edit into a
   non-generated file, or pass `--baseline=fresh` to discard it deliberately.
 
-So the guarantee is *your edits are never silently destroyed*, everywhere; automatic
-merging is the stronger behaviour you get where the snapshot exists.
+So on **TypeScript, Python and C#** the guarantee is *your edits are never silently
+destroyed*; automatic merging is the stronger behaviour you get where the snapshot
+exists (TypeScript only — the other two refuse rather than merge).
+
+**Java and Kotlin do not have this protection yet.** Their generators write output
+directly, so a hand edit inside a generated file is overwritten on the next
+`mvn metaobjects:generate` with no warning. Until that changes, treat generated output
+on those ports as disposable and keep hand-written code in separate files.
 
 Keep `.gen-state/.hashes.json` committed. Ignoring it is what turns the second case into
 a silent overwrite, since a machine with neither a snapshot nor a hash cannot tell your
