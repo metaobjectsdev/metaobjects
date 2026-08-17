@@ -38,10 +38,13 @@ inherits the members *and* their mapping — and an own `@intValueMap` declared 
 shared enum is rejected for the same reason an own `@values` is (#246's twin: one shared enum
 type has one mapping).
 
-Persistence ships in every port: Drizzle `customType` codecs (TS), EF Core `HasConversion`
-(C#), OMDB's `JdbcFieldCodec` (Java), Exposed `customEnumeration` (Kotlin) and
-`ObjectManager` coercion (Python), gated cross-port by the `AllTypes` round-trip corpus
-against real Postgres.
+Persistence ships in every port: EF Core `HasConversion` (C#), OMDB's `JdbcFieldCodec`
+(Java), Exposed `customEnumeration` (Kotlin), `ObjectManager` coercion (Python), and — in
+TypeScript — **both** seams, since TS has two: a Drizzle `customType` for generated code and
+`ObjectManager` read/write/filter coercion for the metadata-driven runtime. The second was
+missing until the corpus caught it: generated code worked while `om.create()` bound the member
+symbol straight into the integer column and Postgres rejected the statement. All gated
+cross-port by the `AllTypes` round-trip corpus against real Postgres.
 
 Two decisions are worth naming because each closes a way the feature could have shipped
 half-true:
