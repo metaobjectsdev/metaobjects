@@ -121,8 +121,6 @@ CREATE TABLE "all_types" (
   "labels" JSONB,
   CONSTRAINT "all_types_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "all_types_enumVal_chk" CHECK ("enumVal" IN ('LOW', 'MEDIUM', 'HIGH')),
-  -- int-backed enum (@intValueMap): the column stores the mapped INTEGER, so the
-  -- membership CHECK lists the integers unquoted, not the member symbols.
   CONSTRAINT "all_types_intEnumVal_chk" CHECK ("intEnumVal" IN (0, 5, 9))
 );
 
