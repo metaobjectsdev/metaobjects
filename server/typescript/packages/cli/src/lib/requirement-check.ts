@@ -34,6 +34,11 @@ import {
   REQUIREMENT_DISPOSITION_DEFERRED,
   REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES,
   resolveObjectRef,
+  // One shared resolver (FR-038): codegen's requirement-test fan-out needs the same
+  // ADR-0042 package-local binding, so these moved to @metaobjectsdev/metadata rather
+  // than being reimplemented there.
+  resolveClaimTarget,
+  resolveMember,
   didYouMeanHint,
   type MetaData,
   type MetaRequirement,
@@ -148,56 +153,6 @@ function subtreeClaimsAnything(req: MetaRequirement): boolean {
   return false;
 }
 
-/**
- * Resolve the owner segment of an `@implementedBy` reference to the node it names.
- *
- * OBJECTS FIRST, through the loader's own resolver, so package-local binding stays the
- * ADR-0042 contract and never a parallel name scan (#228).
- *
- * Then ROOT-LEVEL NON-OBJECT nodes — `template.prompt` and its siblings today. The
- * attribute is documented as naming "the model nodes realising this requirement", and a
- * declared prompt is one: it is the durable artifact a capability like "the game master
- * is told what the party can see" actually lives in. Resolving only objects meant the
- * prompt estate — the thing whose retirement is hardest to see in a model, since a
- * removed prompt leaves no table behind — was the one part of a model that could not
- * carry a status. So L4 means "a declared top-level model node", not "an object".
- *
- * Requirements themselves are excluded: hierarchy is nesting, and a requirement claiming
- * a requirement would be a second, contradictory parent mechanism.
- */
-function resolveClaimTarget(root: MetaData, owner: string, referrerPkg: string): MetaData | undefined {
-  const { node } = resolveObjectRef(root, owner, referrerPkg);
-  if (node !== undefined) return node;
-
-  const candidates = root
-    .children()
-    .filter((c) => c.type !== TYPE_OBJECT && c.type !== TYPE_REQUIREMENT);
-
-  // A fully-qualified reference binds exactly, like every other FQN in the model.
-  if (owner.includes(PACKAGE_SEPARATOR)) {
-    return candidates.find((c) => c.resolutionKey() === owner);
-  }
-  // A bare reference prefers the referrer's own package, then a root-level node of that
-  // bare name. An ambiguous bare name binds NOTHING — same fail-closed rule objects use,
-  // because silently picking one of two same-named nodes is how a claim ends up pointing
-  // at the wrong thing without anyone noticing.
-  const local = referrerPkg === "" ? [] : candidates.filter((c) => c.resolutionKey() === `${referrerPkg}${PACKAGE_SEPARATOR}${owner}`);
-  if (local.length === 1) return local[0];
-  // Root-level (unpackaged) only, matching resolveObjectRef's own bare fallback. A bare
-  // ref must not reach into an arbitrary package just because the name is unique there.
-  const bare = candidates.filter((c) => c.name === owner && c.resolutionKey() === owner);
-  return bare.length === 1 ? bare[0] : undefined;
-}
-
-/** Walk dotted member segments by CHILD NAME from an object node. */
-function resolveMember(obj: MetaData, path: string[]): MetaData | undefined {
-  let cur: MetaData | undefined = obj;
-  for (const seg of path) {
-    if (cur === undefined) return undefined;
-    cur = cur.children().find((c) => c.name === seg);
-  }
-  return cur;
-}
 
 /** Every `requirement.*` node in the tree, at any nesting depth. Hierarchy IS
  *  nesting — an L1 solution contains its L2 segments — so this is a walk, not a
