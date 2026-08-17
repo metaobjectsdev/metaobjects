@@ -219,3 +219,8 @@ export type {
 } from "./requirement-walk.js";
 export { renderRequirementTest } from "./templates/requirement-test.js";
 export type { RequirementTestArgs } from "./templates/requirement-test.js";
+
+// FR-038 §8 — deletion integrity. Pure decision logic: which no-longer-generated
+// files may be removed, and which were hand-edited and must be refused instead.
+export { reconcileOrphans, refusedOrphanMessage } from "./reconcile-orphans.js";
+export type { OrphanDecision, ReconcileOrphansArgs } from "./reconcile-orphans.js";
