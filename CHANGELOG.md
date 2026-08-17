@@ -7,6 +7,30 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.23.2] — npm `0.23.2` · PyPI `0.23.2` · NuGet `0.23.2` · Maven `7.23.2`
+
+A coordinated **PATCH** across all four registries.
+
+**It is a PATCH because the versioning rule changed in this cut, and that is the headline.**
+The old policy said any registry addition forces a MINOR, which had spent `0.22.0` and
+`0.23.0` on changes a project could not observe at all. `expected-registry.json` is an
+internal gate — five ports byte-matching one manifest is how we stop the ports drifting from
+each other — and it says nothing about whether an adopter's project changes. Vocabulary now
+sorts by consumer impact: **attribute ⇒ PATCH, top-level type ⇒ MINOR, subtype ⇒ PATCH when
+inert.** This line adds one attribute and one inert attr subtype, so it lands as a patch.
+
+**The feature is int-backed `field.enum` storage**, and its own lesson is about seams. The
+`@intValueMap` codec had to be written five times, once per port, and the corpus caught two
+ports that looked finished and were not: Kotlin's cross-port oracle is a hand-written Exposed
+table nobody added the column to, and TypeScript has **two** persistence seams — generated
+Drizzle code and the metadata-driven `ObjectManager` — of which only the first had a codec, so
+generated code worked while `om.create()` bound the member symbol into an integer column and
+Postgres rejected the statement. Both were invisible until a shared fixture existed to run.
+Also in the cut: a design decision reversed after the ports disagreed with it (`@isArray` +
+`@intValueMap` is now a load error, because four of five ports got it silently wrong), a
+uniform throw on a stored integer that maps to no member (previously four different behaviours
+across five ports), and three unrelated fixes that were riding on the branch.
+
 ### Added — int-backed `field.enum` storage via `@intValueMap` (all five ports)
 
 **This is a PATCH, not a MINOR** — and the reasoning is itself a change, so it is worth
