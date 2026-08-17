@@ -66,6 +66,12 @@ done
 actually on npm (`npm view <pkg> dist-tags`). Patch bump unless a public API
 changed; this repo bumps the whole set in lockstep (pre-1.0).
 
+**Registry vocabulary does not force a MINOR** — a new *attribute* is a PATCH, a new
+top-level *type* is a MINOR, and a new *subtype* is a PATCH when inert. See
+`docs/RELEASING.md` → "The vocabulary rule" before choosing the level; the old
+"any registry addition ⇒ MINOR" reading spent two minors on changes no adopter
+could observe.
+
 ## Phase 2 — Build fresh (the stale-`dist` trap)
 
 `dist/` is gitignored, `bun publish` does NOT rebuild, and `main` points at `dist/`

@@ -165,7 +165,9 @@ still want, then freeze. Before cutting 1.0:
   (§2) fixes the underlying churn: most releases stop being metamodel events. Apply
   the semver rule strictly — the trigger is *new public surface, not code size*: a
   **package MINOR** adds surface a consumer can newly depend on (codegen output, a CLI
-  flag, a newly-supported vocab member); a **package PATCH** is a bugfix/refactor with
+  flag, a newly-supported vocab member — **but see Amendment 1: "vocab member" is too
+  coarse, and taking it literally re-created exactly the minor churn this bullet was
+  written to stop**); a **package PATCH** is a bugfix/refactor with
   no new surface (e.g. the `0.15.2` output-prompt fix — one-port, no surface); the
   **Metamodel spec version** bumps only when the shared vocabulary/wire contract
   itself changes. A run of minors for non-additive changes is the "minor churn"
@@ -174,6 +176,44 @@ still want, then freeze. Before cutting 1.0:
   api-contract jsonb gate fully wired (TS/Python/Java/Kotlin/C#).
 - **Migration + policy docs:** a `0.x → 1.0` migration guide and a published
   compatibility policy (this ADR's §1, consumer-facing).
+
+## Amendment 1 (2026-08-17) — "a newly-supported vocab member" splits three ways
+
+The cadence-discipline bullet above lists "a newly-supported vocab member" among the
+triggers for a package MINOR. Applied literally it became a rule that **any** registry
+addition is a MINOR — and that rule produced the churn this ADR exists to prevent:
+`0.22.0` and `0.23.0` were both cut MINOR for additions a project declaring no
+`requirement.*` nodes could not observe at all, each changelog saying so in its own
+opening paragraph. Four registries move per cut here, so a wasted minor is not free.
+
+The error is treating `expected-registry.json` as consumer surface. It is an **internal**
+gate: five ports byte-matching one manifest is how we stop the ports drifting from each
+other. Its churn is evidence about *us*, not about an adopter's project. "New public
+surface, not code size" was the right instinct; "vocab member" was the wrong unit.
+Vocabulary sorts by what it can do to a consumer:
+
+- **A new ATTRIBUTE ⇒ PATCH.** Reachable only by authoring it; every existing document
+  loads unchanged and emits byte-identical output. Nothing to adopt deliberately.
+- **A new top-level TYPE ⇒ MINOR.** A new modeling concept with its own children,
+  validation, and usually tooling surface (`requirement.*` brought a `verify` pass and
+  summary output). Genuinely new surface to depend on.
+- **A new SUBTYPE ⇒ either, and the test is whether it is INERT.** PATCH when only
+  authoring it can reach it: no existing valid document changes meaning or output,
+  nothing previously permitted is narrowed, nothing reserved is consumed. MINOR when
+  any of those fails — closing a wildcard, promoting a reserved-not-registered member
+  (ADR-0007 Amendment 2 / ADR-0040), or shifting what the recommended shape for an
+  existing field is — or when it headlines a release and you want the range bump on
+  purpose.
+
+The caret rule is not to be inverted. "Pre-1.0 `^0.22.x` resolves `<0.23.0`, so a
+consumer adopts a MINOR deliberately" is a reason to **choose** MINOR when that gate is
+wanted; it is not a reason additive vocabulary must be MINOR. A minor spent on a change
+nobody can observe is a gate you no longer have when something real needs it.
+
+This amendment changes cadence policy only. It does not touch §1's post-1.0 compat
+promise: after 1.0, a **breaking** change to the metamodel vocabulary still requires a
+MAJOR, whether the break is an attribute, a subtype, or a type. Operational form of the
+rule (with worked rows): `docs/RELEASING.md` → "Versioning policy (pre-1.0)".
 
 ## Consequences
 

@@ -9,9 +9,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added — int-backed `field.enum` storage via `@intValueMap` (all five ports)
 
-**New registered vocabulary, so the line carrying this is a MINOR.** Purely additive: a
-`field.enum` that declares no `@intValueMap` is byte-identical to before, string-backed as
-always.
+**This is a PATCH, not a MINOR** — and the reasoning is itself a change, so it is worth
+stating. The old policy read "any registry addition ⇒ MINOR", which spent `0.22.0` and
+`0.23.0` on changes a project could not observe at all. `expected-registry.json` is an
+**internal** gate: five ports byte-matching one manifest is how we stop the ports drifting
+from each other, and it says nothing about whether an adopter's project changes. Vocabulary
+now sorts by what it can do to a consumer — a new **attribute** is a PATCH, a new top-level
+**type** is a MINOR, and a new **subtype** is a PATCH when nothing but authoring it can reach
+it. This line adds one attribute (`@intValueMap`) and one inert attr subtype (`attr.intMap`),
+so: PATCH. See `docs/RELEASING.md` → "The vocabulary rule" and ADR-0035 Amendment 1.
+
+Purely additive on its own terms too: a `field.enum` that declares no `@intValueMap` is
+byte-identical to before, string-backed as always.
 
 `@intValueMap` is an optional `{memberSymbol: int}` map on `field.enum` that declares each
 member's **stored integer**. The column becomes `integer` with an integer `CHECK` instead of
@@ -79,6 +88,61 @@ backing-mode change needs.
 
 Design: `docs/superpowers/specs/2026-07-23-int-backed-enum-values-design.md`. Adopter view:
 [`docs/features/field-types.md`](docs/features/field-types.md).
+
+### Changed — registry vocabulary no longer forces a MINOR (policy)
+
+`docs/RELEASING.md`'s versioning table said "PATCH (MINOR if it adds registry vocabulary —
+cross-port conformance surface)", and ADR-0035's cadence bullet listed "a newly-supported
+vocab member" among the MINOR triggers. Read literally, that made **any** registry addition a
+MINOR — the exact churn ADR-0035 was written to prevent. `0.22.0` and `0.23.0` were both cut
+MINOR for additions a project declaring no `requirement.*` nodes could not observe at all,
+each changelog saying so in its own opening paragraph. Four registries move per cut here, so a
+wasted minor is not free — and a minor spent on an unobservable change is a gate you no longer
+have when something real needs it. Corrected to sort by consumer impact: **attribute ⇒ PATCH,
+top-level type ⇒ MINOR, subtype ⇒ PATCH when inert** (nothing but authoring it can reach it;
+MINOR when it narrows something previously permitted, changes existing metadata's meaning, or
+headlines a release on purpose). Recorded as ADR-0035 Amendment 1; the post-1.0 compat promise
+is untouched — a *breaking* vocabulary change still requires a MAJOR.
+
+### Fixed — an FK into a table whose key carries `@column` phantom-diffed forever (npm)
+
+`buildForeignKeys` resolved a target FK field's PHYSICAL column by applying the naming
+strategy to its raw logical name, so a target primary key with an explicit `@column` override
+(`id` → `"Id"`) made **every** foreign key into that table diff on every run — expected the
+naming-strategy name, actual the override, nothing an adopter could do to converge. It now
+resolves through the target entity's own field, which is how `fkCols` already handled the
+source side; the two halves simply disagreed.
+
+### Fixed — views in a table-less schema were excluded from the diff entirely (npm)
+
+**Generated-output change — the first `meta migrate` after upgrading may emit view changes
+that were always due.** `declaredSchemas` was built from `expected.tables` only, so a model
+declaring views in a schema with no table of its own (an API/read-model schema beside an
+all-`public` entity model) never brought that schema into scope — and a schema out of scope is
+excluded from *both* sides of the diff. Its views were never compared, so a genuine missing or
+extra view, or real drift inside an opaque `@sql` body, went undetected rather than reported.
+View schemas now join the scope set. Same shape as 0.21.6's `ON DELETE` fix: a PATCH that
+surfaces drift which was already there.
+
+### Fixed — a chained abstract `field.enum` emitted a broken Kotlin type (Maven)
+
+`KotlinTypeMapper.enumTypeName` named a chained abstract enum after the TOP-MOST root of the
+`extends` chain (via `resolveSuperRoot`) while its own FR-019 arm resolved the shared
+declaration from the IMMEDIATE super — the rule TS, C#, Java and Python all use. Not a rival
+model, a split-brain: the two halves disagreed about which declaration is "the type", and on a
+chained declaration (a root abstract `Money extends` a root abstract `@provided Currency`)
+that produced a flatly broken emit. Naming now uses the immediate super per ADR-0026 §2 (a
+materialized type is named for its own declaration), so a chain yields one type per
+declaration, each carrying the members it inherits. Non-chained output is byte-identical —
+with no further super, the root walk already returned the immediate super. `resolveSuperRoot`
+had exactly one caller and is deleted. The chained alias stays LEGAL rather than being
+rejected: it cannot mutate the vocabulary it inherits (a chained declaration carrying its own
+`@values` — or its own `@intValueMap` — already errors `ERR_ENUM_EXTENDS_VALUES_CONFLICT`),
+and banning it would carve an enum-only hole in ADR-0029's general `extends` grammar to delete
+a provably harmless construct. Newly gated by `enum-abstract-chained-extends` (positive) and
+`error-enum-chained-extends-values-conflict` (negative), plus the chained declaration restored
+to the `shared-provided-enum` codegen corpus all five ports load — the decl-level #246 check
+had been code-only in every port with no fixture behind it.
 
 ## [0.23.1] — npm `0.23.1` · PyPI `0.23.1` · NuGet `0.23.1` · Maven `7.23.1`
 
