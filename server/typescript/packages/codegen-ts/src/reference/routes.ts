@@ -2,6 +2,11 @@
 // Then import it LOCALLY in metaobjects.config.ts:
 //   import { routesFile } from "./codegen/generators/routes.js";
 //
+//
+// RUNTIME: this file executes under whatever runs `meta gen`, and the published CLI's
+// shebang is `#!/usr/bin/env node` — so it runs under NODE even in a Bun project. Do not
+// reach for `Bun.*` globals here; they are undefined and take the whole run down with
+// `Bun is not defined`. Use `node:` builtins instead.
 // use-when:      you want generated Fastify REST routes per entity. Drop it and hand-write routes
 //                if you need bespoke endpoints — or keep it and add handlers via <Entity>.extra.ts.
 // emits:         <target>/<Entity>.routes.ts — full CRUD for write-through entities, read-only

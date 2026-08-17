@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { runGen } from "../src/runner.js";
 import { defineConfig } from "../src/metaobjects-config.js";
 import { perEntity, oncePerRun, type Generator } from "../src/generator.js";
+import { entityModuleSpecifier } from "../src/import-path.js";
 import { MetaDataLoader } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
 
@@ -178,11 +179,29 @@ describe("runGen — multi-target", () => {
     })).rejects.toThrow(/unknown target "nope".*default/);
   });
 
-  test("cross-target without importBase on entity-module target → throws", async () => {
+  test("a generator that ACTUALLY resolves a cross-target import without importBase → throws", async () => {
     const loader = new MetaDataLoader();
     const { root } = await loader.load([new FileSource(FIXTURE)]);
     const entity: Generator = { name: "entity-file", emitsEntityModule: true, generate: perEntity((e) => ({ path: `${e.name}.ts`, content: "" })) };
-    const routes: Generator = { name: "routes-file", target: "api", generate: perEntity((e) => ({ path: `${e.name}.routes.ts`, content: "" })) };
+    // De-blinding: this generator RESOLVES the specifier, which is the only thing
+    // importBase is for. The previous version of this test emitted `content: ""`
+    // — it imported nothing, so it could not tell "importBase is genuinely
+    // needed" from "a second target exists", and it passed against a check that
+    // only ever asked the latter.
+    const routes: Generator = {
+      name: "routes-file",
+      target: "api",
+      generate: perEntity((e, ctx) => ({
+        path: `${e.name}.routes.ts`,
+        content: `import { x } from "${entityModuleSpecifier(
+          ctx.renderContext!.selfTarget,
+          ctx.renderContext!.entityModuleTarget,
+          e.package,
+          e.name,
+          "none",
+        )}";\n`,
+      })),
+    };
     await expect(runGen({
       config: defineConfig({
         outDir: tmp, extStyle: "none", dbImport: "../index", dialect: "sqlite",
@@ -191,5 +210,29 @@ describe("runGen — multi-target", () => {
       }),
       metadata: root,
     })).rejects.toThrow(/importBase/);
+  });
+
+  test("a second target whose generator imports NOTHING does not need importBase", async () => {
+    // The false positive an adopter hit: a requirement-test target imports no
+    // entity modules, yet the run failed demanding a value that is provably inert.
+    // importBase is required when something resolves a cross-target import — not
+    // because a second target exists.
+    const loader = new MetaDataLoader();
+    const { root } = await loader.load([new FileSource(FIXTURE)]);
+    const entity: Generator = { name: "entity-file", emitsEntityModule: true, generate: perEntity((e) => ({ path: `${e.name}.ts`, content: "" })) };
+    const standalone: Generator = {
+      name: "standalone",
+      target: "extra",
+      generate: () => [{ path: "note.txt", content: "no imports here\n" }],
+    };
+    const result = await runGen({
+      config: defineConfig({
+        outDir: tmp, extStyle: "none", dbImport: "../index", dialect: "sqlite",
+        targets: { extra: { outDir: join(tmp, "extra") } }, // no importBase anywhere
+        generators: [entity, standalone],
+      }),
+      metadata: root,
+    });
+    expect(result.files.some((f) => f.path.endsWith("note.txt"))).toBe(true);
   });
 });

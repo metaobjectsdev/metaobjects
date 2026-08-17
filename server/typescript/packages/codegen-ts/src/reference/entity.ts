@@ -2,6 +2,11 @@
 // Then import it LOCALLY in metaobjects.config.ts:
 //   import { entityFile } from "./codegen/generators/entity.js";
 //
+//
+// RUNTIME: this file executes under whatever runs `meta gen`, and the published CLI's
+// shebang is `#!/usr/bin/env node` — so it runs under NODE even in a Bun project. Do not
+// reach for `Bun.*` globals here; they are undefined and take the whole run down with
+// `Bun is not defined`. Use `node:` builtins instead.
 // use-when:      ALWAYS — this is the entity-module generator. It owns the shape of each
 //                generated <Entity>.ts (the Drizzle table, Zod schemas, inferred types,
 //                constants, filter allowlists). Start here and adapt the assembly.

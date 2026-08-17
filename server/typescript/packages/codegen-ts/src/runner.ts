@@ -220,16 +220,25 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   const entityGen = config.generators.find((g) => g.emitsEntityModule);
   const entityModuleTarget = entityGen ? targetOf(entityGen) : targets[DEFAULT_TARGET_NAME]!;
 
-  const needsCrossTarget = config.generators.some(
-    (g) => (g.target ?? DEFAULT_TARGET_NAME) !== entityModuleTarget.name,
-  );
-  if (needsCrossTarget && entityModuleTarget.importBase === undefined) {
-    throw new Error(
-      `Target "${entityModuleTarget.name}" holds the entity modules that other ` +
-      `targets import, but has no importBase. Set importBase on it (e.g. ` +
-      `"@your-pkg/database/generated").`,
-    );
-  }
+  // NO eager importBase check here, deliberately.
+  //
+  // There used to be one: "any generator on a non-entity target ⇒ the entity
+  // target must have importBase". It asked the wrong question — target placement,
+  // not whether anything actually imports across targets — so it convicted every
+  // multi-target project whose second target imports nothing, and the only way
+  // out was to set a value that is provably inert. An adopter hit this with a
+  // requirement-test target that imports no entity modules at all.
+  //
+  // `crossTargetEntityPath` (import-path.ts) is the SOLE consumer of importBase
+  // and already throws when it is missing, naming the resolution that needed it —
+  // and every cross-target entry point (`entityModuleSpecifier`,
+  // `barrelModuleSpecifier`) routes through it. That throw happens inside phase 4,
+  // before the write phase, and the runner tags it with the generator name, so
+  // the diagnostic is strictly better than the one removed here.
+  //
+  // The trade, stated: a generator whose cross-target import is CONDITIONAL now
+  // fails when a model change first makes it real, rather than at config time.
+  // That is the correct moment — it is also the only moment the answer is known.
 
   // 3. Build shared render state once.
   const pkMap = buildPkMap(root);
