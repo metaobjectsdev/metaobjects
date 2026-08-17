@@ -32,6 +32,8 @@ import {
   FILTER_OP_LT,
   FILTER_OP_LTE,
   FILTER_OP_IS_NULL,
+  FILTER_OP_LIKE,
+  FIELD_SUBTYPE_ENUM,
   FILTER_COMPOSE_AND,
   FILTER_COMPOSE_OR,
   SORT_ORDER_DESC,
@@ -47,6 +49,7 @@ import {
   type AggregateFunction,
 } from "@metaobjectsdev/metadata";
 import { type MetaData, type MetaField, type MetaRoot, MetaObject } from "@metaobjectsdev/metadata";
+import { intValueMapOf } from "../enum-meta.js";
 import {
   columnNameFromField,
   viewNameFromProjection,
@@ -126,11 +129,82 @@ function resolveAggregateFilter(
       kind: "cmp",
       ref: `${alias}.${sourceColumnNameFor(field, ctx)}`,
       op,
-      value: opObj[op],
+      // Same int-backed-enum encoding as the row-scope @filter below: this scoping
+      // filter renders as a SQL literal too (FILTER (WHERE …) / CASE WHEN), so a
+      // member symbol would land unencoded in an integer comparison.
+      value: encodeIntEnumFilterValue(
+        opObj[op],
+        op,
+        field.subType === FIELD_SUBTYPE_ENUM ? intValueMapOf(field) : undefined,
+        key,
+        entity.name,
+      ),
     });
   }
   if (clauses.length === 0) return undefined;
   return clauses.length === 1 ? clauses[0]! : { kind: "and", clauses };
+}
+
+/**
+ * The `@intValueMap` of every int-backed `field.enum` the projection declares, keyed
+ * by field name. Only int-backed enums appear, so a lookup miss means "no encoding".
+ *
+ * `fields()` (effective) and `intValueMapOf` (which reads `attr`, RESOLVING) — a
+ * projection's fields are bound through `extends` to the base entity's, and post-#246
+ * the map itself commonly lives one hop further up on a shared abstract declaration.
+ * Own-only at either hop would silently emit the member symbol into an integer column
+ * (ADR-0039).
+ */
+function intEnumMapsOf(projection: MetaObject): ReadonlyMap<string, Record<string, number>> {
+  const out = new Map<string, Record<string, number>>();
+  for (const f of projection.fields()) {
+    if (f.subType !== FIELD_SUBTYPE_ENUM) continue;
+    const map = intValueMapOf(f);
+    if (map !== undefined) out.set(f.name, map);
+  }
+  return out;
+}
+
+/**
+ * Lower a filter value for an int-backed `field.enum` from its member SYMBOL to the
+ * INTEGER it persists as. A no-op for every other field (`intMap` undefined), so a
+ * string-backed enum's SQL is byte-identical.
+ *
+ * `isNull` is skipped — its value is a boolean, not a member. `like` is unreachable:
+ * `opsForField` removes it from an int-backed enum's band, so the loader rejects it
+ * before codegen; the explicit throw makes that a loud failure rather than a
+ * `LIKE NaN`. An unmapped member is likewise loader-unreachable (the key set is
+ * pinned equal to `@values`) and throws for the same reason — silently emitting the
+ * symbol would produce DDL that fails only at apply time, against a live database.
+ */
+function encodeIntEnumFilterValue(
+  value: unknown,
+  op: string,
+  intMap: Record<string, number> | undefined,
+  fieldName: string,
+  projectionName: string,
+): unknown {
+  if (intMap === undefined) return value;
+  if (op === FILTER_OP_IS_NULL) return value;
+  if (op === FILTER_OP_LIKE) {
+    throw new Error(
+      `Projection ${projectionName}: view @filter uses "like" on "${fieldName}", an ` +
+        `int-backed field.enum (@intValueMap) — it stores as an integer column, so a ` +
+        `substring match is not expressible. Use eq/ne/in.`,
+    );
+  }
+  const encode = (v: unknown): unknown => {
+    if (typeof v !== "string") return v;
+    const n = intMap[v];
+    if (typeof n !== "number") {
+      throw new Error(
+        `Projection ${projectionName}: view @filter value "${v}" for "${fieldName}" has no ` +
+          `entry in @intValueMap.`,
+      );
+    }
+    return n;
+  };
+  return Array.isArray(value) ? value.map(encode) : encode(value);
 }
 
 /**
@@ -152,13 +226,14 @@ function resolveViewFilter(
   filter: unknown,
   columnsByField: ReadonlyMap<string, SelectColumn>,
   projectionName: string,
+  intMapsByField: ReadonlyMap<string, Record<string, number>>,
 ): ViewFilterClause | undefined {
   if (typeof filter !== "object" || filter === null || Array.isArray(filter)) return undefined;
   const clauses: ViewFilterClause[] = [];
   for (const [key, val] of Object.entries(filter as Record<string, unknown>)) {
     if (key === FILTER_AND || key === FILTER_OR) {
       const subs = (Array.isArray(val) ? val : [])
-        .map((s) => resolveViewFilter(s, columnsByField, projectionName))
+        .map((s) => resolveViewFilter(s, columnsByField, projectionName, intMapsByField))
         .filter((c): c is ViewFilterClause => c !== undefined);
       if (subs.length > 0) clauses.push({ kind: key === FILTER_AND ? "and" : "or", clauses: subs });
       continue;
@@ -177,7 +252,14 @@ function resolveViewFilter(
     // becomes its own comparison, AND-composed (dropping all-but-the-first would silently
     // widen the exposed row set). The loader has already validated every op for this
     // field's subtype.
-    for (const [op, value] of Object.entries(desugarClause(val))) {
+    for (const [op, rawValue] of Object.entries(desugarClause(val))) {
+      // An INT-BACKED field.enum (@intValueMap, design D5) stores as an INTEGER
+      // column, so the authored member SYMBOL must become its integer before it is
+      // rendered as a SQL literal. The Drizzle customType handles the runtime query
+      // path, but view DDL is emitted as literal SQL text and never touches Drizzle.
+      const value = encodeIntEnumFilterValue(
+        rawValue, op, intMapsByField.get(key), key, projectionName,
+      );
       if (col.kind === "passthrough") {
         clauses.push({ kind: "cmp", ref: `${col.sourceAlias}.${col.sourceColumn}`, op, value });
       } else if (col.kind === "computed") {
@@ -990,7 +1072,9 @@ export function extractViewSpec(
       const columnsByField = new Map<string, SelectColumn>(
         selectSpec.columns.map((c) => [c.fieldName, c] as const),
       );
-      where = resolveViewFilter(rawFilter, columnsByField, projection.name);
+      where = resolveViewFilter(
+        rawFilter, columnsByField, projection.name, intEnumMapsOf(projection),
+      );
     }
   }
 

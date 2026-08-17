@@ -69,6 +69,7 @@ import com.metaobjects.util.ErrorMessageConstants;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -681,6 +682,17 @@ public final class ValidationPhase {
             return;
         }
 
+        // --- Own @intValueMap content check (optional) ---
+        // Independent of the @values own/inherited branching below — an @intValueMap
+        // owned by this node is validated here against the node's EFFECTIVE @values
+        // (own or inherited via extends), mirroring the TS/C# port structure exactly.
+        validateEnumIntValueMap(node);
+
+        // --- @intValueMap is scalar-only (design D7, narrowed) ---
+        // Separate from the content check above because it must fire on the node that
+        // combines the two halves, which is NOT necessarily the node declaring the map.
+        validateEnumIntValueMapNotArray(node);
+
         // --- Own @values content check ---
         if (node.hasMetaAttr(EnumField.ATTR_VALUES, false)) {
             MetaAttribute<?> valuesAttr = node.getMetaAttr(EnumField.ATTR_VALUES, false);
@@ -698,8 +710,8 @@ public final class ValidationPhase {
             // favor of the shared type's. Own-attrs-only (matches the check above):
             // only fires when THIS node declares @values itself, not when it merely
             // inherits.
-            MetaData sup = node.getSuperData();
-            if (sup != null && isAbstract(sup) && sup.getParent() instanceof MetaRoot) {
+            MetaData sup = sharedEnumSuper(node);
+            if (sup != null) {
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_ENUM_EXTENDS_VALUES_CONFLICT
                         + ": field.enum '" + node.getName()
@@ -728,6 +740,128 @@ public final class ValidationPhase {
         // FR-011 own-attr checks still apply (a concrete enum can own @coerceDefault while
         // inheriting @values).
         validateEnumFr011Attrs(node);
+    }
+
+    /**
+     * Own {@code @intValueMap} content validation for a {@code field.enum} node.
+     *
+     * <p>Optional. Own-only (mirrors the {@code @values}/FR-011 own-attrs-only policy)
+     * — an inherited {@code @intValueMap} is validated on its declaring node. The
+     * generic "is this an object of integers" shape check already ran via
+     * {@link com.metaobjects.attr.IntMapAttribute} at parse time (its
+     * {@code setValueAsString}/{@code setValueAsObject} reject a non-integer member
+     * with {@link com.metaobjects.attr.InvalidAttributeValueException}, which the
+     * parser's strict-mode catch re-wraps as {@code ERR_BAD_ATTR_VALUE}); this method
+     * validates the field.enum-SPECIFIC semantics: key-set-equals-effective-@values,
+     * and no two members share the same int value.</p>
+     */
+    /**
+     * The shared-enum super of {@code node}, or null when it has none.
+     *
+     * <p>"Shared" (FR-019 / #246) means the immediate super is abstract AND declared at
+     * metadata-root — its parent is the {@link MetaRoot}, not an object. Such a declaration
+     * is materialized ONCE per port as a single named type, so anything a consuming field
+     * re-declares that belongs to the shared TYPE's contract (its {@code @values} member
+     * set, or the {@code @intValueMap} integer backing of that set) is a conflict.
+     *
+     * <p>Immediate-super-only, matching codegen's {@code Fr019SharedEnum.resolveSharedEnumDecl}
+     * so the validator and the shared-enum collapse agree on what "shared" means.
+     */
+    private static MetaData sharedEnumSuper(MetaData node) {
+        MetaData sup = node.getSuperData();
+        return (sup != null && isAbstract(sup) && sup.getParent() instanceof MetaRoot) ? sup : null;
+    }
+
+    /**
+     * {@code @intValueMap} is scalar-only (design D7, narrowed).
+     *
+     * <p>Int-backing is a persistence-layer CODEC, and no port implements it element-wise
+     * over an array column: OMDB's {@code EnumCodec} and Kotlin's {@code customEnumeration}
+     * are scalar by construction, Python would bind the symbol LIST straight into an
+     * {@code integer[]}, and TypeScript's sqlite branch serializes an array as JSON text
+     * before the enum case is reached. Two ports that happen to compose (TS/Postgres, C#)
+     * are not a feature — shipping a claim four ports silently get wrong is the
+     * {@code field.byte}/{@code short}/{@code class} mistake.</p>
+     *
+     * <p>BOTH halves are read RESOLVING, unlike {@link #validateEnumIntValueMap}: the
+     * illegal thing is the EFFECTIVE combination. Post-#246 the map must live on the shared
+     * abstract declaration, so the field that inherits it is exactly where {@code isArray}
+     * gets declared — an own-only read would see the two halves on different nodes and
+     * never fire.</p>
+     */
+    private static void validateEnumIntValueMapNotArray(MetaData node) {
+        // hasMetaAttr defaults to includeParentData=true → RESOLVING.
+        if (!node.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP)) return;
+        if (!(node instanceof MetaField) || !((MetaField) node).isArrayType()) return;
+        throw new MetaDataException(
+            ErrorMessageConstants.ERR_ENUM_INT_VALUE_MAP_ARRAY
+                + ": field.enum '" + node.getName() + "' declares @"
+                + EnumField.ATTR_INT_VALUE_MAP + " with isArray=true; int-backing is"
+                + " scalar-only - an array-of-enum persists its member symbols."
+                + " Remove @" + EnumField.ATTR_INT_VALUE_MAP + ", or make the field scalar.",
+            ErrorCode.ERR_ENUM_INT_VALUE_MAP_ARRAY, node.getSource());
+    }
+
+    private static void validateEnumIntValueMap(MetaData node) {
+        if (!node.hasMetaAttr(EnumField.ATTR_INT_VALUE_MAP, false)) {
+            return;
+        }
+
+        // #246 (int-backed twin): the symbol->int mapping is a property of the enum
+        // VOCABULARY, not of one column that uses it - it is @values' numeric half. A
+        // shared enum is materialized once as a single type, so a per-field map would give
+        // one logical type N storage encodings (and, where a port emits per-TYPE codec
+        // artifacts, two same-named declarations). Same remedy as the @values half:
+        // declare it on the shared declaration and inherit it.
+        MetaData sharedSuper = sharedEnumSuper(node);
+        if (sharedSuper != null) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_ENUM_EXTENDS_VALUES_CONFLICT
+                    + ": field.enum '" + node.getName()
+                    + "' extends shared abstract enum '" + sharedSuper.getName()
+                    + "' AND declares its own @" + EnumField.ATTR_INT_VALUE_MAP
+                    + " - a shared enum's integer backing is owned by the shared declaration;"
+                    + " move @" + EnumField.ATTR_INT_VALUE_MAP + " onto '" + sharedSuper.getName()
+                    + "' to inherit it, or extend a non-shared enum instead",
+                ErrorCode.ERR_ENUM_EXTENDS_VALUES_CONFLICT, node.getSource());
+        }
+
+        @SuppressWarnings("unchecked")
+        Map<String, Integer> intValueMap = (Map<String, Integer>)
+            node.getMetaAttr(EnumField.ATTR_INT_VALUE_MAP, false).getValue();
+        if (intValueMap == null) {
+            return;
+        }
+
+        List<String> effective = effectiveEnumValues(node);
+        Set<String> memberSet = new HashSet<>(effective);
+        Set<String> keySet = intValueMap.keySet();
+
+        List<String> missing = effective.stream().filter(m -> !keySet.contains(m)).toList();
+        List<String> extra = keySet.stream().filter(k -> !memberSet.contains(k)).toList();
+        if (!missing.isEmpty() || !extra.isEmpty()) {
+            throw new MetaDataException(
+                ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                    + ": field.enum '" + node.getName() + "' attribute '@" + EnumField.ATTR_INT_VALUE_MAP
+                    + "' keys must exactly match '@" + EnumField.ATTR_VALUES + "' members"
+                    + (missing.isEmpty() ? "" : " (missing: " + String.join(", ", missing) + ")")
+                    + (extra.isEmpty() ? "" : " (unknown: " + String.join(", ", extra) + ")") + ".",
+                ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+        }
+
+        Map<Integer, String> seenValues = new HashMap<>();
+        for (Map.Entry<String, Integer> entry : intValueMap.entrySet()) {
+            Integer value = entry.getValue();
+            String owner = seenValues.putIfAbsent(value, entry.getKey());
+            if (owner != null) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": field.enum '" + node.getName() + "' attribute '@" + EnumField.ATTR_INT_VALUE_MAP
+                        + "' members '" + owner + "' and '" + entry.getKey()
+                        + "' share the same value " + value + "; every member must have a unique int.",
+                    ErrorCode.ERR_BAD_ATTR_VALUE, node.getSource());
+            }
+        }
     }
 
     /**
@@ -2673,8 +2807,10 @@ public final class ValidationPhase {
     }
 
     private static java.util.Set<String> allowedOpsFor(MetaField field) {
+        // opsForField, not opsForSubType — an int-backed field.enum (@intValueMap)
+        // stores as an integer, so `like` is not in its band.
         java.util.Set<String> band =
-            com.metaobjects.query.FilterOps.opsForSubType(field.getSubType());
+            com.metaobjects.query.FilterOps.opsForField(field);
         // Any subtype without a declared band (already rejected upstream by
         // validateFilterableHasSupportedOps) falls through to the string-shape
         // band, preserving the prior default.

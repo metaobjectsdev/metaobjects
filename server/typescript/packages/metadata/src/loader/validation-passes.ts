@@ -130,6 +130,7 @@ import {
   FILTER_COMPOSE_OR,
   FILTER_COMPOSE_AND,
   opsForSubType,
+  opsForField,
 } from "../core/query/query-constants.js";
 
 // ---------------------------------------------------------------------------
@@ -1684,7 +1685,9 @@ export function validateDataGridFilterValues(root: MetaData): ParseError[] {
     for (const f of effective.filter((c) => c.type === TYPE_FIELD)) {
       // ADR-0039: resolving — a concrete field may inherit @filterable via extends.
       if (f.attr(FIELD_ATTR_FILTERABLE) === true) {
-        allow.set(f.name, opsForSubType(f.subType));
+        // opsForField, not opsForSubType — an int-backed field.enum (@intValueMap)
+        // stores as an integer, so `like` is not in its band.
+        allow.set(f.name, opsForField(f));
       }
     }
     for (const layout of effective.filter(
@@ -2034,7 +2037,9 @@ export function validateProjectionFilter(root: MetaData): ParseError[] {
         origin !== undefined &&
         origin.subType !== ORIGIN_SUBTYPE_PASSTHROUGH &&
         origin.subType !== ORIGIN_SUBTYPE_COMPUTED;
-      fields.set(f.name, { derived, ops: opsForSubType(f.subType) });
+      // opsForField, not opsForSubType — an int-backed field.enum (@intValueMap)
+      // stores as an integer, so `like` is not in its band.
+      fields.set(f.name, { derived, ops: opsForField(f) });
     }
     checkProjectionFilterRefs(filter as Record<string, unknown>, fields, obj.name, obj.source, errors);
   }

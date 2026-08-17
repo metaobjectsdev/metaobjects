@@ -14,6 +14,7 @@ namespace MetaObjects.IntegrationTests.Generated;
 public class AllTypes
 {
     public enum AllTypesEnumVal { LOW, MEDIUM, HIGH }
+    public enum AllTypesIntEnumVal { DRAFT, PUBLISHED, ARCHIVED }
     [Key]
     [Column("id")]
     public Guid Id { get; set; }
@@ -46,6 +47,8 @@ public class AllTypes
     public long MoneyVal { get; set; }
     [Column("enumVal")]
     public AllTypesEnumVal EnumVal { get; set; }
+    [Column("intEnumVal")]
+    public AllTypesIntEnumVal? IntEnumVal { get; set; }
     [Column("uuidVal")]
     public Guid UuidVal { get; set; }
     [Column("uriVal")]

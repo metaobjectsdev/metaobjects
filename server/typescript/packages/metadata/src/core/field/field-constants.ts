@@ -167,6 +167,16 @@ export const FIELD_ATTR_CURRENCY_DEFAULT = "USD";
 export const FIELD_ATTR_VALUES = "values";
 
 /**
+ * Optional per-member explicit integer value ({memberSymbol: int}) switching
+ * this enum field's DB persistence from string+CHECK to integer+CHECK. Keys
+ * must exactly match @values; values must be unique integers. The generated
+ * native type and wire format are UNCHANGED in every language — this is a
+ * persistence-layer-only concern (docs/superpowers/specs/2026-07-23-int-backed-
+ * enum-values-design.md).
+ */
+export const FIELD_ATTR_INT_VALUE_MAP = "intValueMap";
+
+/**
  * Pattern every enum member must satisfy: a legal identifier in all target
  * languages (TS union member, Java/C#/Python enum member). Ensures symbol ==
  * stored string with no name↔value divergence.

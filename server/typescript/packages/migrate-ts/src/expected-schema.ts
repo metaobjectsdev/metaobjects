@@ -43,6 +43,7 @@ import {
   FIELD_SUBTYPE_INET,
   FIELD_SUBTYPE_ENUM,
   FIELD_ATTR_VALUES,
+  FIELD_ATTR_INT_VALUE_MAP,
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_STORAGE,
   FIELD_ATTR_DB_COLUMN_TYPE,
@@ -698,12 +699,35 @@ function buildChecks(
     if (field.resolvedIsArray()) continue;
     const col = resolveColumnName(field, strategy);
     const qcol = quoteCheckCol(col);
-    // Enum membership check.
+    // Enum membership check. An INT-BACKED enum (@intValueMap, design D5) stores
+    // the mapped integers, so the CHECK lists those integers unquoted rather than
+    // the member strings — `IN (0, 5, 9)`, not `IN ('DRAFT', …)`. The members are
+    // still the SSOT: the integers are read THROUGH the map, keyed by member, so a
+    // member with no mapping cannot silently vanish from the constraint.
     if (field.subType === FIELD_SUBTYPE_ENUM) {
       const raw = field.attr(FIELD_ATTR_VALUES);
       if (Array.isArray(raw) && raw.length > 0) {
         const values = raw.map((v) => String(v));
-        const expression = `${qcol} IN (${values.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ")})`;
+        const intMap = intValueMapOf(field);
+        let expression: string;
+        if (intMap !== undefined) {
+          // The loader pins key-set-equals-@values (Check 5b) in every port, so every
+          // member resolves. Guard anyway: emitting a partial IN list would silently
+          // reject rows the model considers valid.
+          const ints = values.map((v) => {
+            const n = intMap[v];
+            if (typeof n !== "number") {
+              throw new Error(
+                `field.enum '${field.name}' @intValueMap has no integer for member '${v}' — ` +
+                  `cannot build the CHECK constraint for column '${col}'.`,
+              );
+            }
+            return String(n);
+          });
+          expression = `${qcol} IN (${ints.join(", ")})`;
+        } else {
+          expression = `${qcol} IN (${values.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ")})`;
+        }
         checks.push({ name: `${tableName}_${col}_chk`, expression });
       }
     }
@@ -842,11 +866,27 @@ function buildForeignKeys(
 
     // Target columns: prefer explicit multi-field dotted form, else delegate
     // to MetaReferenceIdentity.resolvedTargetPkField (single field → target's
-    // primary identity → "id" fallback).
+    // primary identity → "id" fallback). Each target FIELD name must resolve to
+    // its PHYSICAL column via the target entity's own @column override (e.g. a
+    // PK field `id` with `@column: "Id"`), exactly like fkCols above — the raw
+    // naming strategy alone would emit the logical name and phantom-diff every
+    // FK into that table (expected ["id"] vs actual ["Id"]).
+    // targetEntity may be package-qualified (FQN); findObject is keyed by bare
+    // name — same fallback as resolvedTargetPkField/resolveTargetTable.
+    const targetObj = root.findObject(targetEntity)
+      ?? (targetEntity.includes("::")
+        ? root.findObject(targetEntity.slice(targetEntity.lastIndexOf("::") + 2))
+        : undefined);
     const explicitTargetFields = refChild.targetFields;
-    const refColumns = explicitTargetFields.length > 1
-      ? explicitTargetFields.map((n) => applyColumnNamingStrategy(n, strategy))
-      : [applyColumnNamingStrategy(refChild.resolvedTargetPkField(root) ?? "id", strategy)];
+    const targetFieldNames = explicitTargetFields.length > 1
+      ? explicitTargetFields
+      : [refChild.resolvedTargetPkField(root) ?? "id"];
+    const refColumns = targetFieldNames.map((jsName) => {
+      const targetField = targetObj ? findField(targetObj, jsName) : undefined;
+      return targetField
+        ? resolveColumnName(targetField, strategy)
+        : applyColumnNamingStrategy(jsName, strategy);
+    });
 
     const { onDelete, onUpdate } = resolveReferentialActions(entity, refChild);
     // An explicit @constraintName adopts an existing FK name (e.g. a database
@@ -925,12 +965,29 @@ function buildColumn(
   };
 
   if (typeof defaultRaw === "string") {
-    // #235: an EMPTY-string default (`@default: ""`) is a real literal default —
-    // codegen emits `.default("")` and the DB gets `DEFAULT ''`, so dropping it here
-    // (a falsy `.length > 0` check) made the column drift forever on sqlite/d1 and
-    // disagree with codegen. Keep it as a literal; only `undefined` means "no default".
-    const isExpr = defaultRaw.length > 0 && EXPR_DEFAULT_PATTERNS.some((re) => re.test(defaultRaw));
-    col.default = { kind: isExpr ? "expr" : "literal", value: defaultRaw };
+    // An INT-BACKED enum's @default names a MEMBER SYMBOL, but the column holds the
+    // mapped integer — emitting `DEFAULT 'DRAFT'` on an `integer` column is
+    // un-appliable DDL. Lower it through the map. The member is already validated
+    // against @values by the loader (FR-011 Check 5), so a miss here is unreachable;
+    // throw rather than silently emit the symbol, which would fail only at apply time.
+    const enumIntMap = field.subType === FIELD_SUBTYPE_ENUM ? intValueMapOf(field) : undefined;
+    if (enumIntMap !== undefined) {
+      const mapped = enumIntMap[defaultRaw];
+      if (typeof mapped !== "number") {
+        throw new Error(
+          `field.enum '${field.name}' @default '${defaultRaw}' has no entry in @intValueMap — ` +
+            `cannot lower the column default for '${col.name}'.`,
+        );
+      }
+      col.default = { kind: "literal", value: String(mapped) };
+    } else {
+      // #235: an EMPTY-string default (`@default: ""`) is a real literal default —
+      // codegen emits `.default("")` and the DB gets `DEFAULT ''`, so dropping it here
+      // (a falsy `.length > 0` check) made the column drift forever on sqlite/d1 and
+      // disagree with codegen. Keep it as a literal; only `undefined` means "no default".
+      const isExpr = defaultRaw.length > 0 && EXPR_DEFAULT_PATTERNS.some((re) => re.test(defaultRaw));
+      col.default = { kind: isExpr ? "expr" : "literal", value: defaultRaw };
+    }
   } else if (typeof defaultRaw === "boolean" || typeof defaultRaw === "number") {
     col.default = { kind: "literal", value: String(defaultRaw) };
   } else {
@@ -978,8 +1035,10 @@ function buildColumn(
  */
 function arrayElementSqlType(field: MetaData): SqlType | undefined {
   switch (field.subType) {
+    // enum[] stores as text[] — membership is app-level (no CHECK — see buildChecks).
+    // An INT-BACKED enum[] (@intValueMap, design D7) stores as integer[] instead.
+    case FIELD_SUBTYPE_ENUM:      return isIntBackedEnum(field) ? { kind: "integer", bits: 32 } : { kind: "text" };
     case FIELD_SUBTYPE_STRING:
-    case FIELD_SUBTYPE_ENUM:      // enum[] stores as text[]; membership is app-level (no CHECK — see buildChecks)
     case FIELD_SUBTYPE_URI:       return { kind: "text" };
     case FIELD_SUBTYPE_UUID:      return { kind: "uuid" };
     case FIELD_SUBTYPE_INT:       return { kind: "integer", bits: 32 };
@@ -1078,7 +1137,33 @@ function subtypeToSqlType(field: MetaData): SqlType {
     // stores as text (the native inet column would reject a not-strictly-valid
     // value at INSERT). ADR-0039: resolving — @lenient may be inherited via extends.
     case FIELD_SUBTYPE_INET:      return field.attr(FIELD_ATTR_LENIENT) === true ? { kind: "text" } : { kind: "inet" };
+    // A string-backed field.enum is a text column with a membership CHECK; an
+    // INT-BACKED one (@intValueMap, design D5) stores the mapped integer instead.
+    // The TS/wire type is the member string either way — only the column differs.
+    case FIELD_SUBTYPE_ENUM:      return isIntBackedEnum(field) ? { kind: "integer", bits: 32 } : { kind: "text" };
     default:                      return { kind: "text" }; // unknown → text fallback
   }
+}
+
+/**
+ * True when this `field.enum` persists as an integer — i.e. it carries an
+ * `@intValueMap` (design D5).
+ *
+ * ADR-0039: RESOLVING (`attr`, not `ownAttr`). Post-#246 a shared (root-level
+ * abstract) enum OWNS the map and consuming fields inherit it — declaring an own
+ * `@intValueMap` against a shared super is `ERR_ENUM_EXTENDS_VALUES_CONFLICT`. So
+ * the inherited case is not an edge case, it is the CANONICAL authoring shape, and
+ * an own-only read here would emit a `text` column for an integer-encoded value on
+ * every consuming field of every shared enum.
+ */
+function isIntBackedEnum(field: MetaData): boolean {
+  return intValueMapOf(field) !== undefined;
+}
+
+/** The resolved `@intValueMap` as a plain record, or undefined when absent. */
+export function intValueMapOf(field: MetaData): Record<string, number> | undefined {
+  const raw = field.attr(FIELD_ATTR_INT_VALUE_MAP);
+  if (raw === undefined || raw === null || typeof raw !== "object") return undefined;
+  return raw as Record<string, number>;
 }
 

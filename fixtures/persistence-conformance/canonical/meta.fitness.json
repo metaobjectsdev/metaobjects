@@ -241,6 +241,8 @@
           { "field.timestamp": { "name": "tsTzVal", "@required": true } },
           { "field.currency":  { "name": "moneyVal", "@required": true, "@currency": "USD" } },
           { "field.enum":      { "name": "enumVal", "@required": true, "@values": ["LOW", "MEDIUM", "HIGH"] } },
+          { "field.enum":      { "name": "intEnumVal", "@values": ["DRAFT", "PUBLISHED", "ARCHIVED"],
+                                 "@intValueMap": { "DRAFT": 0, "PUBLISHED": 5, "ARCHIVED": 9 } } },
           { "field.uuid":      { "name": "uuidVal", "@required": true } },
           { "field.uri":       { "name": "uriVal",   "@required": true } },
           { "field.inet":      { "name": "inetVal",  "@required": true } },

@@ -1,0 +1,19 @@
+{
+  "metadata.root": {
+    "package": "acme",
+    "children": [
+      { "field.enum": { "name": "Currency", "abstract": true, "@values": ["USD", "EUR"] } },
+      { "field.enum": { "name": "Money", "abstract": true, "extends": "acme::Currency" } },
+      {
+        "object.entity": {
+          "name": "Invoice",
+          "children": [
+            { "field.long": { "name": "id" } },
+            { "field.enum": { "name": "amount", "extends": "acme::Money" } },
+            { "identity.primary": { "name": "id", "@fields": "id" } }
+          ]
+        }
+      }
+    ]
+  }
+}

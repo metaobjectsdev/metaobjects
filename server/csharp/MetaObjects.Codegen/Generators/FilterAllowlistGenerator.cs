@@ -28,21 +28,6 @@ public class FilterAllowlistGenerator : PerEntityGenerator
 {
     public override string Name => "filter-allowlist-generator";
 
-    /// <summary>Operator set for string-shaped subtypes.</summary>
-    internal static readonly string[] OpsString =
-        { "eq", "ne", "in", "like", "isNull" };
-
-    /// <summary>Operator set for uuid — identity comparison only, no <c>like</c> (not a substring type) and no ordering.</summary>
-    internal static readonly string[] OpsUuid =
-        { "eq", "ne", "in", "isNull" };
-
-    /// <summary>Operator set for numeric / date / timestamp / currency subtypes.</summary>
-    internal static readonly string[] OpsNumeric =
-        { "eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull" };
-
-    /// <summary>Operator set for boolean subtype.</summary>
-    internal static readonly string[] OpsBoolean = { "eq", "isNull" };
-
     // Read-only projections (views/etc.) are not filterable in the routes
     // generator today — skip them here to match.
     protected override bool Filter(MetaObject entity) => AppliesTo(entity);
@@ -119,7 +104,7 @@ public class FilterAllowlistGenerator : PerEntityGenerator
         {
             if (field.SubType == FIELD_SUBTYPE_OBJECT) continue;
             if (!IsFilterable(field)) continue;
-            var ops = OpsForSubtype(field.SubType);
+            var ops = OpsForField(field);
             if (ops.Count == 0) continue;
             out_[field.Name] = ops;
         }
@@ -135,18 +120,20 @@ public class FilterAllowlistGenerator : PerEntityGenerator
         _ => false,
     };
 
-    /// <summary>Operator set for <paramref name="subType"/>, or empty for unsupported subtypes.</summary>
-    internal static IReadOnlyList<string> OpsForSubtype(string? subType) => subType switch
-    {
-        // ADR-0036 Wave 3 — field.uri is string-like (eq/ne/in/like/isNull); field.inet is
-        // uuid-like (eq/ne/in/isNull — no like / ordering on an opaque address value).
-        FIELD_SUBTYPE_STRING or FIELD_SUBTYPE_ENUM or FIELD_SUBTYPE_URI => OpsString,
-        FIELD_SUBTYPE_UUID or FIELD_SUBTYPE_INET => OpsUuid,
-        FIELD_SUBTYPE_INT or FIELD_SUBTYPE_LONG
-            or FIELD_SUBTYPE_FLOAT or FIELD_SUBTYPE_DOUBLE or FIELD_SUBTYPE_DECIMAL
-            or FIELD_SUBTYPE_CURRENCY
-            or FIELD_SUBTYPE_DATE or FIELD_SUBTYPE_TIMESTAMP or FIELD_SUBTYPE_TIME => OpsNumeric,
-        FIELD_SUBTYPE_BOOLEAN => OpsBoolean,
-        _ => System.Array.Empty<string>(),
-    };
+    /// <summary>
+    /// Operator set for <paramref name="field"/>, or empty for unsupported subtypes.
+    /// <para>
+    /// Delegates wholesale to <c>QueryConstants.OpsForField</c> — the cross-port single
+    /// source of truth, pinned by <c>fixtures/conformance/filter-ops-matrix</c>. This
+    /// generator used to carry its OWN copy of the per-subtype band table; that copy was
+    /// removed rather than extended, because two tables is exactly how the bands drift.
+    /// </para>
+    /// <para>
+    /// Field-level, not subtype-level: an int-backed <c>field.enum</c>
+    /// (<c>@intValueMap</c>, design D5) persists as an INTEGER column, so <c>like</c> —
+    /// a substring match — is dropped.
+    /// </para>
+    /// </summary>
+    internal static IReadOnlyList<string> OpsForField(MetaField field) =>
+        MetaObjects.Core.Query.QueryConstants.OpsForField(field);
 }

@@ -1,5 +1,5 @@
 {
-  "registeredSubTypeCount": 69,
+  "registeredSubTypeCount": 70,
   "exercisedSubTypeCount": 47,
   "untestedSubTypes": [
     "attr.base",
@@ -9,6 +9,7 @@
     "attr.expression",
     "attr.filter",
     "attr.int",
+    "attr.intMap",
     "attr.long",
     "attr.string",
     "field.base",

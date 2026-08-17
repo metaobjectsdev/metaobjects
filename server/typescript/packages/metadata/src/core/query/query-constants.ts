@@ -1,4 +1,4 @@
-import { FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET } from "../field/field-constants.js";
+import { FIELD_SUBTYPE_UUID, FIELD_SUBTYPE_CURRENCY, FIELD_SUBTYPE_ENUM, FIELD_SUBTYPE_URI, FIELD_SUBTYPE_INET, FIELD_ATTR_INT_VALUE_MAP } from "../field/field-constants.js";
 
 // Query concern constants — filter operators, sort order values.
 //
@@ -65,6 +65,52 @@ export const OPS_BY_SUBTYPE: Readonly<Record<string, readonly FilterOp[]>> = {
 
 export function opsForSubType(subType: string): readonly FilterOp[] {
   return OPS_BY_SUBTYPE[subType] ?? [];
+}
+
+/** The int-backed-enum band: the enum band minus `like`. Hoisted so the narrowing
+ *  is one named constant rather than a filter re-derived at every call. */
+const OPS_ENUM_INT_BACKED: readonly FilterOp[] = [
+  FILTER_OP_EQ, FILTER_OP_NE, FILTER_OP_IN, FILTER_OP_IS_NULL,
+];
+
+/**
+ * The structural shape `opsForField` needs. Declared here rather than importing
+ * `MetaField`: `query-constants` is foundational and `core/field` imports it, so a
+ * type import back the other way would close a cycle.
+ */
+export interface FilterOpBandField {
+  readonly subType: string;
+  attr(name: string): unknown;
+}
+
+/**
+ * The filter-operator band for a FIELD — the entry point every consumer that has a
+ * field in hand must use (loader validation, generated allowlists, generated client
+ * filter types, the cross-port `field.filter-ops` capability).
+ *
+ * Identical to {@link opsForSubType} except for ONE case: an int-backed `field.enum`
+ * (one declaring `@intValueMap`, design D5) persists as an INTEGER column, so `like`
+ * — a substring match — is dropped. `eq`/`ne`/`in` survive because the member symbol
+ * encodes to its integer before it reaches SQL; `like` has no such encoding, and an
+ * unencoded `LIKE 'DRAFT'` against an integer column is a request-time type error.
+ *
+ * `opsForSubType` cannot express this: it only ever sees the subtype `"enum"`. It is
+ * deliberately left unchanged for the one caller that genuinely has no field — the
+ * expression grammar's declared operand type.
+ *
+ * ADR-0039: the `@intValueMap` read is RESOLVING. Post-#246 the map lives on a shared
+ * root-level abstract declaration and consuming fields INHERIT it, so an own-only read
+ * would see `undefined` on exactly the shape adopters are steered toward and wrongly
+ * keep `like` in the band.
+ */
+export function opsForField(field: FilterOpBandField): readonly FilterOp[] {
+  if (field.subType === FIELD_SUBTYPE_ENUM && isIntBacked(field)) return OPS_ENUM_INT_BACKED;
+  return opsForSubType(field.subType);
+}
+
+function isIntBacked(field: FilterOpBandField): boolean {
+  const raw = field.attr(FIELD_ATTR_INT_VALUE_MAP);
+  return raw !== undefined && raw !== null && typeof raw === "object";
 }
 
 // ---------------------------------------------------------------------------

@@ -33,6 +33,7 @@ import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.statements.InsertStatement
 import org.jetbrains.exposed.sql.transactions.transaction
 import com.metaobjects.integration.kotlin.tables.AllTypesTable
+import com.metaobjects.integration.kotlin.tables.IntBackedEnumColumnType
 import java.math.BigDecimal
 import java.net.URI
 import java.sql.DriverManager
@@ -418,6 +419,9 @@ object QueryScenarioRunner {
      */
     private fun coerceForWrite(raw: Any?, col: Column<*>): Any? {
         if (raw == null) return null
+        // Int-backed field.enum: bind the member SYMBOL and let the column's codec encode it to
+        // the stored int (see the same guard in `coerce`).
+        if (col.columnType is IntBackedEnumColumnType) return raw.toString()
         val type = col.columnType.sqlType().lowercase()
         return when {
             type == "uuid" -> if (raw is UUID) raw else UUID.fromString(raw.toString().lowercase())
@@ -607,6 +611,10 @@ object QueryScenarioRunner {
      */
     private fun coerce(raw: Any?, col: Column<*>): Any? {
         if (raw == null) return null
+        // An int-backed field.enum is a Column<String> over INTEGER: the authoring value is the
+        // member SYMBOL and the column's own codec maps it to the stored int. Checked BEFORE the
+        // sqlType dispatch, whose `int` branch would try "PUBLISHED".toInt().
+        if (col.columnType is IntBackedEnumColumnType) return raw.toString()
         val type = col.columnType.sqlType().lowercase()
         return when {
             // uuid columns compare against java.util.UUID — the YAML supplies a string

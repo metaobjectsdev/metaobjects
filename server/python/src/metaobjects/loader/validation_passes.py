@@ -23,6 +23,7 @@ from ..meta.core.field.field_constants import (
     ENUM_MEMBER_PATTERN,
     FIELD_ATTR_COERCE_DEFAULT,
     FIELD_ATTR_DEFAULT,
+    FIELD_ATTR_INT_VALUE_MAP,
     FIELD_ATTR_OBJECT_REF,
     FIELD_ATTR_REQUIRED,
     FIELD_ATTR_STORAGE,
@@ -60,6 +61,7 @@ from ..meta.persistence.source.source_constants import (
     SOURCE_ROLE_PRIMARY,
 )
 from ..meta.core.attr.attr_constants import (
+    ATTR_SUBTYPE_INT_MAP,
     ATTR_SUBTYPE_PROPERTIES,
     ATTR_SUBTYPE_STRINGARRAY,
 )
@@ -281,6 +283,26 @@ def _type_ok(value: object, value_type: str) -> bool:
         # fails here → ERR_BAD_ATTR_VALUE, matching TS + Java (fail-closed); an object
         # @expr then flows to the closed-grammar check in the origin pass.
         return isinstance(value, dict)
+    if value_type == ATTR_SUBTYPE_INT_MAP:
+        # attr.intMap (int-backed-enum-values plan): an object whose every member
+        # value is an integer (e.g. field.enum's @intValueMap). This port has no
+        # per-attr-class validateValue dispatch (that's TS's architecture); the
+        # generic shape check lives here, mirroring C#'s ValueMatchesType
+        # ATTR_SUBTYPE_INT_MAP case. field.enum's own key-set/uniqueness content
+        # rules run separately in _validate_enum_values (Rule 4), which skips
+        # re-reporting a non-integer member already caught here.
+        #
+        # Final-review fix: also bound every value to the 32-bit signed int range
+        # (inclusive) — the eventual DB column for an int-backed enum is a 32-bit
+        # Postgres/SQLite `integer` (design doc D5), matching Java's
+        # IntMapAttribute#setValueAsString bound check exactly. Python ints have
+        # no fixed width, so this is the only place that boundary is enforced.
+        return isinstance(value, dict) and all(
+            isinstance(v, int)
+            and not isinstance(v, bool)
+            and -2147483648 <= v <= 2147483647
+            for v in value.values()
+        )
     # Unknown value types (e.g. "class") — allow anything.
     return True
 
@@ -544,6 +566,32 @@ def _validate_attr_schema(
 _ENUM_MEMBER_RE = re.compile(ENUM_MEMBER_PATTERN)
 
 
+def _shared_enum_super(node: MetaData) -> MetaData | None:
+    """The shared-enum super of ``node``, or ``None`` when it has none.
+
+    "Shared" (FR-019 / #246) means the immediate super is abstract AND declared at
+    metadata-root — its parent is the ``metadata.root`` node, not an object. Such a
+    declaration is materialized ONCE per port as a single named type, so anything a
+    consuming field re-declares that belongs to the shared TYPE's contract (its
+    ``@values`` member set, or the ``@intValueMap`` integer backing of that set) is a
+    conflict. A concrete super, or a non-root abstract super (e.g. one nested inside
+    an object), is legal and not flagged.
+
+    Immediate-super-only, matching codegen's ``resolve_shared_enum_decl``
+    (``codegen/generators/fr019_shared_enum.py``) so the validator and the
+    shared-enum collapse agree on what "shared" means.
+    """
+    sup = node.super_data
+    if (
+        sup is not None
+        and sup.is_abstract
+        and sup.parent is not None
+        and sup.parent.type == TYPE_METADATA
+    ):
+        return sup
+    return None
+
+
 def _validate_enum_values(
     root: MetaData,
     errors: list[MetaError],
@@ -555,6 +603,21 @@ def _validate_enum_values(
         # FR-011 own-attr checks apply to every enum node (a concrete enum can own
         # @coerceDefault / @default / @normalize while inheriting @values).
         _validate_enum_fr011_attrs(node, errors)
+
+        # Rule 4 (@intValueMap content rules) is independent of whether @values is
+        # own or inherited on THIS node — it must run whenever this node owns
+        # @intValueMap, using the EFFECTIVE @values (own-or-inherited) as the
+        # membership set. Mirrors TS/C#/Java, which all check this unconditionally
+        # (Java's `validateEnumIntValueMap` is a standalone call at the top of
+        # `validateEnumNode`). Deliberately called BEFORE the `own_values is None:
+        # continue` gate below so a concrete field.enum that inherits @values via
+        # `extends` but declares its own @intValueMap is still validated.
+        _validate_enum_int_value_map(node, errors)
+
+        # Design D7, narrowed: int-backing is scalar-only. Separate from the content
+        # rules above because it must fire on the node that combines the two halves,
+        # which is NOT necessarily the node that declares the map.
+        _validate_enum_int_value_map_not_array(node, errors)
 
         # ADR-0039 sanctioned own: validates the AUTHORED @values membership on THIS
         # node (mirrors the TS attr-schema-validate `node.ownAttrs()`); an inherited
@@ -607,19 +670,9 @@ def _validate_enum_values(
 
         # #246: own @values AND extends a shared package-level abstract enum —
         # one shared enum type has one member set, so the own @values would be
-        # silently dropped by the shared-enum codegen collapse. "Shared" means
-        # the resolved super is abstract AND declared at metadata-root (its
-        # parent is the metadata.root node, not nested inside an object) — a
-        # concrete super, or a non-root abstract super (e.g. nested inside an
-        # object), is legal and not flagged. Mirrors the TS reference
-        # (attr-schema-validate.ts).
-        sup = node.super_data
-        if (
-            sup is not None
-            and sup.is_abstract
-            and sup.parent is not None
-            and sup.parent.type == TYPE_METADATA
-        ):
+        # silently dropped by the shared-enum codegen collapse. Mirrors the TS
+        # reference (attr-schema-validate.ts).
+        if _shared_enum_super(node) is not None:
             errors.append(
                 MetaError(
                     f"{label} declares its own '@{FIELD_ATTR_VALUES}' but extends "
@@ -631,6 +684,113 @@ def _validate_enum_values(
                     envelope=node.source,
                 )
             )
+
+
+def _validate_enum_int_value_map_not_array(node: MetaData, errors: list[MetaError]) -> None:
+    """``@intValueMap`` is scalar-only (design D7, narrowed).
+
+    Int-backing is a persistence-layer CODEC, and no port implements it
+    element-wise over an array column: this port's ``ObjectManager`` would bind the
+    symbol LIST straight into an ``integer[]``, OMDB's ``EnumCodec`` and Kotlin's
+    ``customEnumeration`` are scalar by construction, and TypeScript's sqlite branch
+    serializes an array as JSON text before the enum case is reached. Two ports that
+    happen to compose (TS/Postgres, C#) are not a feature — shipping a claim four
+    ports silently get wrong is the ``field.byte``/``short``/``class`` mistake.
+
+    BOTH halves are read RESOLVING, unlike the content rules: the illegal thing is
+    the EFFECTIVE combination. Post-#246 the map must live on the shared abstract
+    declaration, so the field that inherits it is exactly where ``isArray`` gets
+    declared — an own-only read would see the two halves on different nodes and
+    never fire.
+    """
+    if not isinstance(node.get_meta_attr(FIELD_ATTR_INT_VALUE_MAP), dict):
+        return
+    if not node.resolved_is_array():
+        return
+    errors.append(
+        MetaError(
+            f"{_node_label(node)} declares '@{FIELD_ATTR_INT_VALUE_MAP}' with isArray=true; "
+            f"int-backing is scalar-only — an array-of-enum persists its member symbols. "
+            f"Remove '@{FIELD_ATTR_INT_VALUE_MAP}', or make the field scalar.",
+            ErrorCode.ERR_ENUM_INT_VALUE_MAP_ARRAY,
+            envelope=node.source,
+        )
+    )
+
+
+def _validate_enum_int_value_map(node: MetaData, errors: list[MetaError]) -> None:
+    """``@intValueMap`` content rules (optional), independent of whether ``@values``
+    is own or inherited on this node. Mirrors TS/C#/Java, which all run this check
+    unconditionally against the node's EFFECTIVE ``@values`` — a concrete
+    ``field.enum`` that inherits ``@values`` via ``extends`` but declares its own
+    ``@intValueMap`` locally must still have that map validated.
+
+      a. Key set must exactly match the EFFECTIVE ``@values`` (own or inherited).
+      b. No two members may share the same int (protobuf's stance — no alias
+         opt-in). Every-value-is-an-integer is already enforced by ``_type_ok``'s
+         ATTR_SUBTYPE_INT_MAP case at parse time.
+    """
+    int_value_map = node.attr(FIELD_ATTR_INT_VALUE_MAP)
+    if not isinstance(int_value_map, dict):
+        return
+
+    label = _node_label(node)
+
+    # #246 (int-backed twin): the symbol->int mapping is a property of the enum
+    # VOCABULARY, not of one column that uses it -- it is @values' numeric half. A
+    # shared enum is materialized once as a single type, so a per-field map would
+    # give one logical type N storage encodings (and, where a port emits per-TYPE
+    # codec artifacts, two same-named declarations). Same remedy as the @values
+    # half: declare it on the shared declaration and inherit it.
+    shared_super = _shared_enum_super(node)
+    if shared_super is not None:
+        errors.append(
+            MetaError(
+                f"{label} declares its own '@{FIELD_ATTR_INT_VALUE_MAP}' but extends "
+                f"a shared package-level abstract enum — a shared enum's integer "
+                f"backing is owned by the shared declaration. Move "
+                f"'@{FIELD_ATTR_INT_VALUE_MAP}' onto the shared declaration to "
+                f"inherit it, or extend a concrete (non-shared) enum instead",
+                ErrorCode.ERR_ENUM_EXTENDS_VALUES_CONFLICT,
+                envelope=node.source,
+            )
+        )
+    effective_values = _effective_enum_values(node)
+    member_set = set(effective_values)
+    key_set = set(int_value_map.keys())
+    missing = [m for m in effective_values if m not in key_set]
+    extra = [k for k in int_value_map if k not in member_set]
+    if missing or extra:
+        parts = []
+        if missing:
+            parts.append(f"missing: {', '.join(missing)}")
+        if extra:
+            parts.append(f"unknown: {', '.join(extra)}")
+        errors.append(
+            MetaError(
+                f"{label} attribute '@{FIELD_ATTR_INT_VALUE_MAP}' keys must exactly match "
+                f"'@{FIELD_ATTR_VALUES}' members ({'; '.join(parts)}).",
+                ErrorCode.ERR_BAD_ATTR_VALUE,
+                envelope=node.source,
+            )
+        )
+
+    seen_values: dict[int, str] = {}
+    for member, value in int_value_map.items():
+        if not isinstance(value, int) or isinstance(value, bool):
+            continue  # _type_ok already reported this
+        owner = seen_values.get(value)
+        if owner is not None:
+            errors.append(
+                MetaError(
+                    f"{label} attribute '@{FIELD_ATTR_INT_VALUE_MAP}' members {owner!r} and {member!r} "
+                    f"share the same value {value}; every member must have a unique int.",
+                    ErrorCode.ERR_BAD_ATTR_VALUE,
+                    envelope=node.source,
+                )
+            )
+        else:
+            seen_values[value] = member
 
 
 def _effective_enum_values(node: MetaData) -> list[str]:
@@ -913,6 +1073,45 @@ def ops_for_subtype(field_subtype: str) -> frozenset[str]:
     return frozenset()
 
 
+# The int-backed-enum band: the enum band minus `like`. Named so the narrowing is
+# one constant rather than a set rebuilt at every call.
+_OPS_ENUM_INT_BACKED: frozenset[str] = frozenset({"eq", "ne", "in", "isNull"})
+
+
+def ops_for_field(field: MetaData) -> frozenset[str]:
+    """The filter-operator band for a FIELD.
+
+    The entry point every consumer that has a field in hand must use (loader
+    validation, the codegen filter-allowlist generator, the cross-port
+    ``field.filter-ops`` capability).
+
+    Identical to :func:`ops_for_subtype` except for ONE case: an int-backed
+    ``field.enum`` (one declaring ``@intValueMap``, design D5) persists as an
+    INTEGER column, so ``like`` -- a substring match -- is dropped.
+    ``eq``/``ne``/``in`` survive because the member symbol encodes to its integer
+    before it reaches SQL; ``like`` has no such encoding, and an unencoded
+    ``LIKE 'DRAFT'`` against an integer column is a request-time type error.
+
+    ``ops_for_subtype`` cannot express this -- it only ever sees the subtype
+    ``"enum"`` -- and is deliberately left unchanged for the one caller that
+    genuinely has no field: the expression grammar's declared operand type.
+
+    ADR-0039: the ``@intValueMap`` read is RESOLVING (``attrs()``, NOT ``attr()``
+    -- Python inverts the TS naming, ``attr()`` here is own-only). Post-#246 the
+    map lives on a shared root-level abstract declaration and consuming fields
+    INHERIT it, so an own-only read would see it absent on exactly the shape
+    adopters are steered toward and wrongly keep ``like``.
+
+    Cross-port: ``fixtures/conformance/filter-ops-matrix`` pins ``fEnum`` vs
+    ``fEnumInt`` in all five ports.
+    """
+    if field.sub_type == FIELD_SUBTYPE_ENUM and isinstance(
+        field.attrs().get(FIELD_ATTR_INT_VALUE_MAP), dict
+    ):
+        return _OPS_ENUM_INT_BACKED
+    return ops_for_subtype(field.sub_type)
+
+
 # ---------------------------------------------------------------------------
 # #195 — attr.expression closed grammar (validate + infer)
 # ---------------------------------------------------------------------------
@@ -1095,8 +1294,10 @@ def _validate_datagrid_filter_values(
             continue
 
         # Build filterable map: field_name → allowed ops set
+        # ops_for_field, not ops_for_subtype — an int-backed field.enum
+        # (@intValueMap) stores as an integer, so `like` is not in its band.
         filterable: dict[str, frozenset[str]] = {
-            f.name: ops_for_subtype(f.sub_type)
+            f.name: ops_for_field(f)
             for f in node.fields()
             if f.attrs().get("filterable") is True
         }

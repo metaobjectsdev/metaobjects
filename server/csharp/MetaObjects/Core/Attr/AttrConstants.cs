@@ -8,7 +8,7 @@ using MetaObjects.Shared;
 namespace MetaObjects.Core.Attr;
 
 /// <summary>
-/// Attr concern constants — the 9 attr subtypes (plus the universal base).
+/// Attr concern constants — the 10 attr subtypes (plus the universal base).
 /// Wire-format identifiers; do not rename.
 /// </summary>
 public static class AttrConstants
@@ -24,6 +24,12 @@ public static class AttrConstants
     // #195 — a structured expression tree over a base entity's own fields (backs
     // origin.computed). Object-shaped (a closed node grammar); mirrors attr.filter.
     public const string ATTR_SUBTYPE_EXPRESSION  = "expression";
+    // Int-backed-enum-values plan, Task 6 — an object-shaped attr whose values are
+    // all integers (e.g. field.enum's @intValueMap). No shape reuse of `properties`
+    // — that would silently stringify ints in some ports. Generic shape check only;
+    // a consumer field type layers its own semantic rules (key-set membership,
+    // uniqueness) in its own content-rule validation.
+    public const string ATTR_SUBTYPE_INT_MAP     = "intMap";
 
     /// <summary>
     /// The retired <c>stringarray</c> array attr subtype. It is NO LONGER a
@@ -47,5 +53,6 @@ public static class AttrConstants
         ATTR_SUBTYPE_PROPERTIES,
         ATTR_SUBTYPE_FILTER,
         ATTR_SUBTYPE_EXPRESSION,
+        ATTR_SUBTYPE_INT_MAP,
     ];
 }

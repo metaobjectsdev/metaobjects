@@ -12,7 +12,7 @@
 //       decimal  → @precision, @scale
 //       object   → @objectRef
 //       currency → @currency
-//       enum     → @values, @provided
+//       enum     → @values, @provided, @intValueMap
 //       int/long/double/float/boolean/date/time/timestamp/uuid → none
 //   - the "any attr" wildcard is gone; a misplaced attr is now ERR_UNKNOWN_ATTR.
 //
@@ -103,6 +103,7 @@ const MAP_EXTRA: Record<string, AttrExp> = {
 const ENUM_CORE_EXTRA: Record<string, AttrExp> = {
   values: { valueType: "string", required: true },
   provided: { valueType: "boolean", required: false },
+  intValueMap: { valueType: "intMap", required: false },
 };
 
 /** Scoped concern attrs (db / prompt). */

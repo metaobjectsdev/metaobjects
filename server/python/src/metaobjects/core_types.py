@@ -9,6 +9,7 @@ from .meta.core.attr.attr_constants import (
     ATTR_SUBTYPE_EXPRESSION,
     ATTR_SUBTYPE_FILTER,
     ATTR_SUBTYPE_INT,
+    ATTR_SUBTYPE_INT_MAP,
     ATTR_SUBTYPE_STRING,
     ATTR_SUBTYPES,
 )
@@ -19,6 +20,7 @@ from .meta.core.field.field_constants import (
     FIELD_ATTR_AUTO_SET,
     FIELD_ATTR_CURRENCY,
     FIELD_ATTR_DEFAULT,
+    FIELD_ATTR_INT_VALUE_MAP,
     FIELD_ATTR_PROVIDED,
     FIELD_ATTR_MAX_LENGTH,
     FIELD_ATTR_OBJECT_REF,
@@ -470,6 +472,17 @@ core_provider.add(
             AttrSchema(
                 name=FIELD_ATTR_PROVIDED,
                 value_type=ATTR_SUBTYPE_BOOLEAN,
+                required=False,
+            ),
+            # int-backed-enum-values plan — @intValueMap: optional per-member int
+            # values ({member: int}) switching this enum field's DB persistence
+            # from string+CHECK to integer+CHECK. Keys must exactly match @values;
+            # values must be unique integers (enforced in _validate_enum_values,
+            # Rule 4). Structural (core), like @values / @provided — not a
+            # TS-web-only / prompt-domain overlay.
+            AttrSchema(
+                name=FIELD_ATTR_INT_VALUE_MAP,
+                value_type=ATTR_SUBTYPE_INT_MAP,
                 required=False,
             ),
             # FR-033 — the field.enum tolerant-extract overlays (@enumAlias / @enumDoc /

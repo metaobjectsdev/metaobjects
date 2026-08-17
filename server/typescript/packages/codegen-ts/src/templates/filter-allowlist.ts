@@ -13,7 +13,7 @@ import {
   FIELD_SUBTYPE_TIME,
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_CURRENCY,
-  opsForSubType,
+  opsForField,
 } from "@metaobjectsdev/metadata";
 import { sortableFields } from "./filter-shared.js";
 import type { RenderContext } from "../render-context.js";
@@ -72,7 +72,9 @@ export const ${entity.name}FilterAllowlist = {} as const satisfies FilterAllowli
   }
   const rows = fields
     .map((f) => {
-      const ops = opsForSubType(f.subType).map((o) => JSON.stringify(o)).join(", ");
+      // opsForField, not opsForSubType — an int-backed field.enum (@intValueMap)
+      // stores as an integer, so `like` (a substring match) is not in its band.
+      const ops = opsForField(f).map((o) => JSON.stringify(o)).join(", ");
       const sub = filterSubTypeFor(f.subType);
       // Only field.timestamp is governed by timestampMode — Drizzle types
       // field.date / field.time as strings under every dialect.

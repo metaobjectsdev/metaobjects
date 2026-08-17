@@ -11,7 +11,7 @@ import {
   FIELD_SUBTYPE_LONG,
   FIELD_SUBTYPE_DOUBLE,
   FIELD_SUBTYPE_FLOAT,
-  opsForSubType,
+  opsForField,
 } from "@metaobjectsdev/metadata";
 import { isSortableField } from "./filter-shared.js";
 
@@ -34,7 +34,11 @@ function tsNameFor(fieldSubType: string): string {
 }
 
 function renderFieldUnion(field: MetaField): string {
-  const ops = opsForSubType(field.subType);
+  // opsForField, not opsForSubType — an int-backed field.enum (@intValueMap) stores
+  // as an integer, so `like` is not in its band. The client type and the server
+  // allowlist MUST agree: offering `like` here that the allowlist 400s is a
+  // client/server mismatch of exactly the kind filter-shared.ts exists to prevent.
+  const ops = opsForField(field);
   const tsName = tsNameFor(field.subType);
   const opEntries = ops.map((op) => {
     if (op === "in") return `in?: ${tsName}[]`;

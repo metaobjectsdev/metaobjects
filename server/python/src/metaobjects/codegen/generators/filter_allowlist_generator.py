@@ -53,6 +53,11 @@ _OPS_STRING: tuple[str, ...] = ("eq", "ne", "in", "like", "isNull")
 # uuid: identity-comparison only — no `like` (not a substring type), no ordering.
 _OPS_UUID: tuple[str, ...] = ("eq", "ne", "in", "isNull")
 _OPS_NUMERIC: tuple[str, ...] = ("eq", "ne", "gt", "gte", "lt", "lte", "in", "isNull")
+# int-backed enum (@intValueMap, design D5): the enum band minus `like` — the column
+# is an integer, and a substring match against an integer is meaningless. Distinct
+# constant from _OPS_UUID despite the identical members: they narrow for different
+# reasons and would diverge independently.
+_OPS_ENUM_INT_BACKED: tuple[str, ...] = ("eq", "ne", "in", "isNull")
 _OPS_BOOLEAN: tuple[str, ...] = ("eq", "isNull")
 
 
@@ -118,6 +123,36 @@ def ops_for_subtype_ordered(sub_type: str | None) -> tuple[str, ...]:
     return ()
 
 
+def ops_for_field_ordered(field: MetaField) -> tuple[str, ...]:
+    """The operator tuple for a FIELD, in canonical operator order.
+
+    The ordered counterpart of ``validation_passes.ops_for_field``, and the entry
+    point for every consumer that has a field in hand: the codegen allowlist emit
+    and the cross-port ``field.filter-ops`` conformance capability.
+
+    Identical to :func:`ops_for_subtype_ordered` except for ONE case: an int-backed
+    ``field.enum`` (one declaring ``@intValueMap``, design D5) persists as an INTEGER
+    column, so ``like`` -- a substring match -- is dropped. ``eq``/``ne``/``in``
+    survive because the member symbol encodes to its integer before it reaches SQL;
+    ``like`` has no such encoding, and an unencoded ``LIKE 'DRAFT'`` against an integer
+    column is a request-time type error.
+
+    ADR-0039: the ``@intValueMap`` read is RESOLVING (``attrs()``, NOT ``attr()`` --
+    Python inverts the TS naming, ``attr()`` here is own-only). Post-#246 the map lives
+    on a shared root-level abstract declaration and consuming fields INHERIT it, so an
+    own-only read would see it absent on exactly the shape adopters are steered toward
+    and wrongly keep ``like``.
+
+    Cross-port: ``fixtures/conformance/filter-ops-matrix`` pins ``fEnum`` vs
+    ``fEnumInt`` in all five ports.
+    """
+    if field.sub_type == fc.FIELD_SUBTYPE_ENUM and isinstance(
+        field.attrs().get(fc.FIELD_ATTR_INT_VALUE_MAP), dict
+    ):
+        return _OPS_ENUM_INT_BACKED
+    return ops_for_subtype_ordered(field.sub_type)
+
+
 def _is_filterable(field: MetaField) -> bool:
     """True iff ``field`` carries ``@filterable: true`` as a metadata attribute.
 
@@ -166,10 +201,10 @@ class FilterAllowlistGenerator:
     name = "filter-allowlist-generator"
 
     def _ops_for_field(self, field: MetaField) -> tuple[str, ...]:
-        """The operator tuple allowed for ``field`` (FR-009 §5 per-subtype matrix by
-        default). Override to customize the per-field operator vocabulary; returning
-        an empty tuple excludes the field from the allowlist."""
-        return ops_for_subtype_ordered(field.sub_type)
+        """The operator tuple allowed for ``field`` (FR-009 §5 matrix by default).
+        Override to customize the per-field operator vocabulary; returning an empty
+        tuple excludes the field from the allowlist."""
+        return ops_for_field_ordered(field)
 
     def _compute_filterable_ops(
         self, entity: MetaObject, object_index: dict[str, MetaObject] | None = None

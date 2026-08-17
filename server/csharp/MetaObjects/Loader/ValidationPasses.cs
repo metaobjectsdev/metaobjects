@@ -1476,7 +1476,9 @@ public static class ValidationPasses
                 // ADR-0039: resolving — a concrete field may inherit @filterable via extends (TS validation-passes.ts:1252).
                 if (f.Attr(FIELD_ATTR_FILTERABLE) is true)
                 {
-                    allow[f.Name] = OpsForSubType(f.SubType);
+                    // OpsForField, not OpsForSubType — an int-backed field.enum
+                    // (@intValueMap) stores as an integer, so `like` is not in its band.
+                    allow[f.Name] = OpsForField(f);
                 }
             }
 
@@ -1934,6 +1936,27 @@ public static class ValidationPasses
                 // an object @expr then flows to the closed-grammar check in the origin pass.
                 value is IReadOnlyDictionary<string, object?>,
 
+            // Int-backed-enum-values plan, Task 6 — attr.intMap: object-shaped AND every
+            // member value must be an integer (JSON integral numbers parse as `long`/`int`
+            // in this port's DataConverter; a fractional number parses as `double` and fails
+            // here). Mirrors TS's generic IntMapAttr.validateValue per-member type check —
+            // in this port that generic check lives here rather than in a per-subtype class.
+            // field.enum's own key-set/uniqueness content rules run separately (Pass 10).
+            //
+            // Final-review fix: also bound every value to the 32-bit signed int range
+            // (inclusive) — the eventual DB column for an int-backed enum is a 32-bit
+            // Postgres/SQLite `integer` (design doc D5), matching Java's
+            // IntMapAttribute#setValueAsString bound check exactly. A `long` here can
+            // exceed Int32 range even though it's a whole number.
+            ATTR_SUBTYPE_INT_MAP =>
+                value is IReadOnlyDictionary<string, object?> intMap
+                && intMap.Values.All(v => v switch
+                {
+                    int => true,
+                    long l => l >= int.MinValue && l <= int.MaxValue,
+                    _ => false,
+                }),
+
             _ => true, // SUBTYPE_BASE or unknown → accept anything
         };
     }
@@ -2303,15 +2326,21 @@ public static class ValidationPasses
 
     // =========================================================================
     // Pass 10: ValidateEnumValues
-    //   Enforces the three cross-language @values rules on every field.enum node:
+    //   Enforces the cross-language @values / @intValueMap rules on every
+    //   field.enum node:
     //     1. @values must be non-empty.
     //     2. Every member must match ENUM_MEMBER_PATTERN (identifier-safe).
     //     3. No duplicate members.
-    //   Error: ERR_BAD_ATTR_VALUE for all three.
+    //     4. FR-011: @coerceDefault / @default (when set) must name a @values member.
+    //     5. Int-backed-enum-values plan: @intValueMap (when set) keys must exactly
+    //        match @values, and no two members may share the same int.
+    //   Error: ERR_BAD_ATTR_VALUE for all five.
     //
     //   Note: Pass 6 (ValidateAttrSchema) already enforces that @values is
     //   present (Required: true → ERR_MISSING_REQUIRED_ATTR) and that it is a
-    //   stringarray. This pass runs after that and handles the content rules.
+    //   stringarray, and that @intValueMap (when present) is intMap-shaped with
+    //   every member value an integer. This pass runs after that and handles the
+    //   content rules.
     // =========================================================================
 
     private static readonly Regex EnumMemberRegex =
@@ -2322,6 +2351,24 @@ public static class ValidationPasses
         var errors = new List<MetaError>();
         WalkEnumValues(root, errors);
         return errors.AsReadOnly();
+    }
+
+    /// <summary>
+    /// The shared-enum super of <paramref name="field"/>, or null when it has none.
+    /// "Shared" (FR-019 / #246) means the immediate super is abstract AND declared at
+    /// metadata-root — a metadata.root child, not one nested under an object. Such a
+    /// declaration is materialized ONCE per port as a single named type, so anything a
+    /// consuming field re-declares that belongs to the shared TYPE's contract (its
+    /// @values member set, or the @intValueMap integer backing of that set) is a conflict.
+    /// Immediate-super-only, matching codegen's Fr019SharedEnum.ResolveSharedEnumDecl so
+    /// the validator and the shared-enum collapse agree on what "shared" means.
+    /// </summary>
+    private static MetaData? SharedEnumSuper(MetaField field)
+    {
+        var sup = field.SuperData;
+        return sup is not null && sup.IsAbstract && sup.Parent is { } p && p.Type == TYPE_METADATA
+            ? sup
+            : null;
     }
 
     private static void WalkEnumValues(MetaData node, List<MetaError> errors)
@@ -2377,11 +2424,10 @@ public static class ValidationPasses
                 // collapse would silently drop this field's own @values in favor of the shared
                 // type's. Own-attrs-only (matches Rules 1-3 above): only fires when THIS node
                 // declares @values itself, not when it merely inherits.
-                var sup = field.SuperData;
-                if (sup is not null && sup.IsAbstract && sup.Parent is { } p && p.Type == TYPE_METADATA)
+                if (SharedEnumSuper(field) is { } sharedSuper)
                 {
                     errors.Add(new MetaError(
-                        $"field.enum '{field.Name}' extends shared abstract enum '{sup.Name}' AND declares its own " +
+                        $"field.enum '{field.Name}' extends shared abstract enum '{sharedSuper.Name}' AND declares its own " +
                         $"@{FIELD_ATTR_VALUES} — a shared enum's member set is owned by the shared declaration; " +
                         $"remove the own @{FIELD_ATTR_VALUES} to inherit it, or extend a non-shared enum instead.",
                         ErrorCode.ERR_ENUM_EXTENDS_VALUES_CONFLICT,
@@ -2415,6 +2461,96 @@ public static class ValidationPasses
                             Envelope: field.Source));
                     }
                 }
+            }
+
+            // Rule 5 (int-backed-enum-values plan, Task 6): @intValueMap content rules
+            // (optional attr — nothing to check when absent).
+            //   a. Key set must exactly match @values.
+            //   b. No two members may share the same int (protobuf's stance — no alias
+            //      opt-in). (Every-value-is-an-integer is already enforced by
+            //      ValueMatchesType's ATTR_SUBTYPE_INT_MAP case in Pass 6, which runs
+            //      before this pass.)
+            if (field.OwnAttr(FIELD_ATTR_INT_VALUE_MAP) is IReadOnlyDictionary<string, object?> intValueMap)
+            {
+                // #246 (int-backed twin): the symbol→int mapping is a property of the enum
+                // VOCABULARY, not of one column that uses it — it is @values' numeric half.
+                // A shared enum is materialized once as a single type, so a per-field map
+                // would give one logical type N storage encodings (and, where a port emits
+                // per-TYPE codec artifacts, two same-named declarations). Same remedy as the
+                // @values half: declare it on the shared declaration and inherit it.
+                if (SharedEnumSuper(field) is { } sharedIntSuper)
+                {
+                    errors.Add(new MetaError(
+                        $"field.enum '{field.Name}' extends shared abstract enum '{sharedIntSuper.Name}' AND declares its own " +
+                        $"@{FIELD_ATTR_INT_VALUE_MAP} — a shared enum's integer backing is owned by the shared declaration; " +
+                        $"move @{FIELD_ATTR_INT_VALUE_MAP} onto '{sharedIntSuper.Name}' to inherit it, or extend a non-shared enum instead.",
+                        ErrorCode.ERR_ENUM_EXTENDS_VALUES_CONFLICT,
+                        Envelope: field.Source));
+                }
+
+                var effective = field.EffectiveEnumValues ?? new List<string>();
+                var memberSet = new HashSet<string>(effective, StringComparer.Ordinal);
+                var mapKeys = intValueMap.Keys.ToList();
+                var keySet = new HashSet<string>(mapKeys, StringComparer.Ordinal);
+
+                var missing = effective.Where(m => !keySet.Contains(m)).ToList();
+                var extra = mapKeys.Where(k => !memberSet.Contains(k)).ToList();
+                if (missing.Count > 0 || extra.Count > 0)
+                {
+                    errors.Add(new MetaError(
+                        $"field.enum '{field.Name}' attribute '@{FIELD_ATTR_INT_VALUE_MAP}' keys must exactly match '@{FIELD_ATTR_VALUES}' members" +
+                        (missing.Count > 0 ? $" (missing: {string.Join(", ", missing)})" : "") +
+                        (extra.Count > 0 ? $" (unknown: {string.Join(", ", extra)})" : "") + ".",
+                        ErrorCode.ERR_BAD_ATTR_VALUE,
+                        Envelope: field.Source));
+                }
+
+                var seenValues = new Dictionary<long, string>();
+                foreach (var key in mapKeys)
+                {
+                    // Skip a non-integer member value here — ValueMatchesType (Pass 6)
+                    // already reported it; avoid a redundant/misleading double-report.
+                    if (intValueMap[key] is not (long or int)) continue;
+                    long value = System.Convert.ToInt64(intValueMap[key]);
+                    if (seenValues.TryGetValue(value, out var owner))
+                    {
+                        errors.Add(new MetaError(
+                            $"field.enum '{field.Name}' attribute '@{FIELD_ATTR_INT_VALUE_MAP}' members '{owner}' and '{key}' " +
+                            $"share the same value {value}; every member must have a unique int.",
+                            ErrorCode.ERR_BAD_ATTR_VALUE,
+                            Envelope: field.Source));
+                    }
+                    else
+                    {
+                        seenValues[value] = key;
+                    }
+                }
+            }
+
+            // Design D7, narrowed: @intValueMap is scalar-only. Int-backing is a
+            // persistence-layer CODEC and no port implements it element-wise over an
+            // array column: OMDB's EnumCodec and Kotlin's customEnumeration are scalar
+            // by construction, Python would bind the symbol LIST into an integer[], and
+            // TypeScript's sqlite branch serializes an array as JSON text before the enum
+            // case is reached. Two ports that happen to compose (this one, via
+            // PrimitiveCollection().ElementType(), and TS/Postgres) are not a feature —
+            // shipping a claim four ports silently get wrong is the
+            // field.byte/short/class mistake.
+            //
+            // BOTH halves are read RESOLVING, unlike the content rules above: the illegal
+            // thing is the EFFECTIVE combination. Post-#246 the map must live on the
+            // shared abstract declaration, so the field that inherits it is exactly where
+            // isArray gets declared — an own-only read would see the two halves on
+            // different nodes and never fire.
+            if (field.Attr(FIELD_ATTR_INT_VALUE_MAP) is IReadOnlyDictionary<string, object?>
+                && field.ResolvedIsArray())
+            {
+                errors.Add(new MetaError(
+                    $"field.enum '{field.Name}' declares '@{FIELD_ATTR_INT_VALUE_MAP}' with isArray=true; " +
+                    "int-backing is scalar-only — an array-of-enum persists its member symbols. " +
+                    $"Remove '@{FIELD_ATTR_INT_VALUE_MAP}', or make the field scalar.",
+                    ErrorCode.ERR_ENUM_INT_VALUE_MAP_ARRAY,
+                    Envelope: field.Source));
             }
         }
 

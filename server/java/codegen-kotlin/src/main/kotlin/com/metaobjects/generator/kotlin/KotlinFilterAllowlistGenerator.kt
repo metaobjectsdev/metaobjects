@@ -173,7 +173,7 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
                 // excluded from the filter allowlist (no filter dispatch).
                 if (field is ObjectField || field is MapField) continue
                 if (!isFilterable(field)) continue
-                val ops = opsForSubtype(field.subType)
+                val ops = opsForField(field)
                 if (ops.isEmpty()) continue
                 out.putIfAbsent(field.name, ops) // dedup base/subtype column names
             }
@@ -195,8 +195,13 @@ open class KotlinFilterAllowlistGenerator : MultiFileDirectGeneratorBase<MetaObj
         // the loader's validation path + the Java codegen-spring generator read).
         // Returns a canonical-ordered set so the emitted source is stable; an
         // unbanded subtype → empty set, which computeFilterableOps drops.
-        private fun opsForSubtype(subType: String?): Set<String> =
-            com.metaobjects.query.FilterOps.opsForSubType(subType)
+        //
+        // Field-level, not subtype-level: an int-backed field.enum (@intValueMap,
+        // design D5) stores as an INTEGER column, so `like` — a substring match —
+        // is not in its band. Pinned cross-port by
+        // fixtures/conformance/filter-ops-matrix (fEnum vs fEnumInt).
+        private fun opsForField(field: MetaField<*>): Set<String> =
+            com.metaobjects.query.FilterOps.opsForField(field)
     }
 
     // === MultiFileDirectGeneratorBase abstract-method stubs ====================

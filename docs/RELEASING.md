@@ -139,10 +139,48 @@ bytes**, not "did output change."
 | Public API **breaking** (required param, removed/renamed export, changed CLI semantics) | `relativeModuleSpecifier` +required param | **MINOR** | MAJOR |
 | Output change = **pure bugfix** (wrong output corrected; correct output byte-identical) | 0.19.3 payload naming, 0.19.4 TPH stamping | **PATCH** | PATCH |
 | Output change alters **shape/default of *correct* output** (renamed generated export, changed default, dropped artifact) | `extStyle` `"none"→"js"` default flip | **MINOR** + a "Generated-output change" changelog flag + an opt-out where feasible | MAJOR if consumer code referencing the output breaks; else MINOR |
-| New **opt-in** codegen feature, default output byte-identical | new generator defaulting off | PATCH (MINOR if it adds registry vocabulary — cross-port conformance surface) | MINOR |
+| New **opt-in** codegen feature, default output byte-identical | new generator defaulting off | PATCH | MINOR |
+| New **attribute** on an existing type/subtype | `@intValueMap`, `@lenient`, `@maxTokens` | **PATCH** | MINOR |
+| New **subtype** of an existing type | `field.uri`, `index.lookup`, `attr.intMap` | **PATCH** when inert (see the vocabulary rule below); **MINOR** when it changes existing metadata's meaning/output, narrows something previously permitted, or headlines a feature | MINOR |
+| New top-level metadata **type** | `requirement.*`, `index.*`, `api.*` | **MINOR** | MINOR |
 | Wire-contract / conformance behavior change of already-valid deployments | FR-036 enforcement | **MINOR**, loud notice (pre-1.0 MINOR *is* the breaking slot) | MAJOR |
 | Wire behavior fixed to match the documented/conformance contract | 0.19.1 `@min` clamp | PATCH | PATCH |
 | No changed product file in a port | PyPI/NuGet/Maven at 0.20.14 | **Version-parity bump at the shared patch number** — publish identical content at the new version; never skip a registry (single-shared-patch policy, standing since 0.20.13) | same |
+
+### The vocabulary rule (corrected 2026-08-17)
+
+**Adding registry vocabulary does NOT, by itself, force a MINOR.** The rule used to read
+"PATCH (MINOR if it adds registry vocabulary — cross-port conformance surface)", and that was
+wrong on its own terms: `expected-registry.json` is an **internal** gate. Every port
+byte-matching one manifest is how we stop the five ports drifting from each other — it says
+nothing about whether an *adopter's* project changes. Treating an internal gate's churn as an
+adopter-facing event is what burned the minors: `0.22.0` and `0.23.0` were both cut MINOR for
+changes that a project declaring no `requirement.*` nodes could not observe at all, which each
+changelog says out loud in its own opening paragraph. Sort vocabulary by what it can do to a
+consumer, which splits three ways:
+
+- **A new ATTRIBUTE is a PATCH.** You get it only by authoring it. Every existing document
+  loads unchanged and emits byte-identical output, so there is nothing for a consumer to adopt
+  deliberately.
+- **A new TOP-LEVEL TYPE is a MINOR.** A type is a new modeling concept with its own children,
+  validation and (usually) tooling surface — `requirement.*` brought its own `verify` pass and
+  summary output. That is a thing a consumer newly depends on, and it deserves a deliberate
+  range bump.
+- **A new SUBTYPE goes either way, and the test is whether it is INERT.** PATCH when nothing
+  but authoring it can reach it: no existing valid document changes meaning or output, nothing
+  previously permitted is narrowed, nothing reserved is consumed. MINOR when any of those
+  fails — a subtype that closes a wildcard, promotes a reserved-not-registered member
+  (ADR-0007 Amendment 2 / ADR-0040), or shifts what the recommended shape for an existing
+  field *is* — or when you deliberately want it behind a range bump because it headlines a
+  release. Most subtypes carry a native type and behavior (that is ADR-0037's very test for
+  making something a subtype), so read them carefully; but "it appears in the registry
+  manifest" is not the deciding fact.
+
+**Do not invert the caret rule.** "Pre-1.0 `^0.22.x` resolves `<0.23.0`, so a consumer adopts
+a MINOR deliberately" is a reason to *choose* MINOR when you want that gate. It is not a
+reason additive vocabulary *must* be MINOR. The gate exists to be used on purpose, not by
+reflex — and a minor spent on a change nobody can observe is a gate you no longer have when
+something real needs it.
 
 **The `extStyle` 0.20.0 case, for calibration:** it was correctly MINOR — but for the
 *API break* (`relativeModuleSpecifier` gained a required param — a public export) **and**

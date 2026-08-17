@@ -52,6 +52,7 @@ import {
   FIELD_ATTR_VALUES,
   FIELD_ATTR_COERCE_DEFAULT,
   FIELD_ATTR_DEFAULT,
+  FIELD_ATTR_INT_VALUE_MAP,
   ENUM_MEMBER_PATTERN,
 } from "./core/field/field-constants.js";
 import {
@@ -309,6 +310,19 @@ function validateNode(
   // only own @values need checking here (mirrors the own-attrs-only policy of
   // Checks 2+3 above — inherited attrs were validated on the declaring node).
   if (node.type === TYPE_FIELD && node.subType === FIELD_SUBTYPE_ENUM) {
+    // #246: the shared-enum super, if any — a root-level abstract field.enum (one
+    // whose parent is the metadata root, not an object). FR-019 materializes such a
+    // declaration ONCE per port as a single named type, so anything a consuming
+    // field re-declares that is part of the shared TYPE's contract is a conflict.
+    // Immediate-super-only, matching codegen's resolveSharedEnumDecl (enum-shared.ts)
+    // so the validator and the collapse agree on what "shared" means.
+    const sharedSuper =
+      node.superData !== undefined &&
+      node.superData.isAbstract &&
+      node.superData.parent?.type === TYPE_METADATA
+        ? node.superData
+        : undefined;
+
     // ADR-0039: own — validates the @values DECLARED on this node; a concrete enum
     // extending an abstract one inherits already-validated @values (own-attrs-only).
     const rawValues = node.ownAttrs().get(FIELD_ATTR_VALUES);
@@ -347,18 +361,16 @@ function validateNode(
         }
       }
 
-      // #246: a field.enum extending a shared package-level abstract enum
-      // (a root-level abstract field — one whose parent is the metadata root,
-      // not an object) that ALSO declares its own @values is a conflict: one
-      // shared enum type has one member set, so codegen's shared-enum collapse
-      // would silently drop this field's own @values in favor of the shared
-      // type's. Own-attrs-only (matches the rest of Check 4): only fires when
-      // THIS node declares @values itself, not when it merely inherits.
-      const sup = node.superData;
-      if (sup !== undefined && sup.isAbstract && sup.parent?.type === TYPE_METADATA) {
+      // #246: a field.enum extending a shared package-level abstract enum that
+      // ALSO declares its own @values is a conflict: one shared enum type has one
+      // member set, so codegen's shared-enum collapse would silently drop this
+      // field's own @values in favor of the shared type's. Own-attrs-only
+      // (matches the rest of Check 4): only fires when THIS node declares
+      // @values itself, not when it merely inherits.
+      if (sharedSuper !== undefined) {
         errors.push(
           new ParseError(
-            `${nodeLabel(node)} extends shared abstract enum '${nodeLabel(sup)}' AND declares its own ` +
+            `${nodeLabel(node)} extends shared abstract enum '${nodeLabel(sharedSuper)}' AND declares its own ` +
               `'@${FIELD_ATTR_VALUES}' — a shared enum's member set is owned by the shared declaration; ` +
               `remove the own '@${FIELD_ATTR_VALUES}' to inherit it, or extend a non-shared enum instead.`,
             { code: "ERR_ENUM_EXTENDS_VALUES_CONFLICT", source: node.source },
@@ -396,6 +408,97 @@ function validateNode(
               { code: "ERR_BAD_ATTR_VALUE", source: node.source },
             ),
           );
+        }
+      }
+    }
+
+    // --- Check 5a: @intValueMap is scalar-only (design D7) ---
+    //
+    // Int-backing is a persistence-layer CODEC, and no port implements it
+    // element-wise over an array column: OMDB's EnumCodec and Kotlin's
+    // customEnumeration are scalar by construction, Python would bind the symbol
+    // list straight into an integer[], and TS's sqlite branch serializes an array
+    // as JSON text before the enum case is ever reached. Two ports that DO compose
+    // (TS/Postgres via .array(), C# via PrimitiveCollection) are not a feature —
+    // shipping a claim four ports silently get wrong is the field.byte/short/class
+    // mistake. Rejected at LOAD so it fails identically everywhere.
+    //
+    // BOTH reads are RESOLVING, unlike Check 5b below: the illegal thing is the
+    // EFFECTIVE combination. Post-#246 the map must live on the shared abstract
+    // declaration, so the field that inherits it is exactly where isArray gets
+    // declared — an own-only read would see the two halves on different nodes and
+    // never fire.
+    if (node.attrs().get(FIELD_ATTR_INT_VALUE_MAP) !== undefined && node.resolvedIsArray()) {
+      errors.push(
+        new ParseError(
+          `${nodeLabel(node)} declares '@${FIELD_ATTR_INT_VALUE_MAP}' with isArray=true; ` +
+            `int-backing is scalar-only — an array-of-enum persists its member symbols. ` +
+            `Remove '@${FIELD_ATTR_INT_VALUE_MAP}', or make the field scalar.`,
+          { code: "ERR_ENUM_INT_VALUE_MAP_ARRAY", source: node.source },
+        ),
+      );
+    }
+
+    // --- Check 5b: field.enum @intValueMap content rules ---
+    //
+    // Optional. Own-only (mirrors Checks 4/5's own-attrs-only policy) — an
+    // inherited @intValueMap is validated on its declaring node. The generic
+    // "is this an object of integers" shape check already ran via IntMapAttr
+    // (attr subtype `intMap`); this validates the field.enum-SPECIFIC
+    // semantics: key-set-equals-@values, and no two members share a value.
+    const rawIntValueMap = node.ownAttrs().get(FIELD_ATTR_INT_VALUE_MAP);
+    if (rawIntValueMap !== undefined && typeof rawIntValueMap === "object" && rawIntValueMap !== null) {
+      // #246 (int-backed twin): the symbol→int mapping is a property of the enum
+      // VOCABULARY, not of one column that uses it — it is @values' numeric half.
+      // A shared enum is materialized once as a single type, so a per-field map
+      // would give one logical type N storage encodings (and, where a port emits
+      // per-TYPE codec artifacts, two same-named declarations). Same remedy as the
+      // @values half: declare it on the shared declaration and inherit it.
+      if (sharedSuper !== undefined) {
+        errors.push(
+          new ParseError(
+            `${nodeLabel(node)} extends shared abstract enum '${nodeLabel(sharedSuper)}' AND declares its own ` +
+              `'@${FIELD_ATTR_INT_VALUE_MAP}' — a shared enum's integer backing is owned by the shared ` +
+              `declaration; move '@${FIELD_ATTR_INT_VALUE_MAP}' onto '${nodeLabel(sharedSuper)}' to inherit it, ` +
+              `or extend a non-shared enum instead.`,
+            { code: "ERR_ENUM_EXTENDS_VALUES_CONFLICT", source: node.source },
+          ),
+        );
+      }
+      const map = rawIntValueMap as Record<string, number>;
+      const effectiveValues = node.attrs().get(FIELD_ATTR_VALUES);
+      const declaredMembers: string[] = Array.isArray(effectiveValues) ? effectiveValues : [];
+      const memberSet = new Set(declaredMembers);
+      const mapKeys = Object.keys(map);
+      const keySet = new Set(mapKeys);
+
+      const missing = declaredMembers.filter((m) => !keySet.has(m));
+      const extra = mapKeys.filter((k) => !memberSet.has(k));
+      if (missing.length > 0 || extra.length > 0) {
+        errors.push(
+          new ParseError(
+            `${nodeLabel(node)} attribute '@${FIELD_ATTR_INT_VALUE_MAP}' keys must exactly match '@${FIELD_ATTR_VALUES}' members` +
+              (missing.length > 0 ? ` (missing: ${missing.join(", ")})` : "") +
+              (extra.length > 0 ? ` (unknown: ${extra.join(", ")})` : "") + ".",
+            { code: "ERR_BAD_ATTR_VALUE", source: node.source },
+          ),
+        );
+      }
+
+      const seenValues = new Map<number, string>();
+      for (const [member, value] of Object.entries(map)) {
+        if (typeof value !== "number" || !Number.isInteger(value)) continue; // IntMapAttr already reported this
+        const owner = seenValues.get(value);
+        if (owner !== undefined) {
+          errors.push(
+            new ParseError(
+              `${nodeLabel(node)} attribute '@${FIELD_ATTR_INT_VALUE_MAP}' members '${owner}' and '${member}' ` +
+                `share the same value ${value}; every member must have a unique int.`,
+              { code: "ERR_BAD_ATTR_VALUE", source: node.source },
+            ),
+          );
+        } else {
+          seenValues.set(value, member);
         }
       }
     }

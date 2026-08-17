@@ -19,6 +19,7 @@
             { "field.time":      { "name": "fTime",      "@filterable": true } },
             { "field.timestamp": { "name": "fTimestamp", "@filterable": true } },
             { "field.enum":      { "name": "fEnum",      "@values": ["a", "b", "c"], "@filterable": true } },
+            { "field.enum":      { "name": "fEnumInt",   "@values": ["a", "b", "c"], "@intValueMap": { "a": 0, "b": 1, "c": 2 }, "@filterable": true } },
             { "field.uuid":      { "name": "fUuid",      "@filterable": true } },
             { "source.rdb":      { "@table": "matrix" } },
             { "identity.primary":   { "name": "pk",         "@fields": ["id"] } },
@@ -34,6 +35,7 @@
             { "identity.secondary": { "name": "byTime",      "@fields": ["fTime"] } },
             { "identity.secondary": { "name": "byTimestamp", "@fields": ["fTimestamp"] } },
             { "identity.secondary": { "name": "byEnum",      "@fields": ["fEnum"] } },
+            { "identity.secondary": { "name": "byEnumInt",   "@fields": ["fEnumInt"] } },
             { "identity.secondary": { "name": "byUuid",      "@fields": ["fUuid"] } }
           ]
         }

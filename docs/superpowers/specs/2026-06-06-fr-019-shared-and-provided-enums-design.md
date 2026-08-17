@@ -145,4 +145,4 @@ The corpus is the oracle: TS reference green first, then each port matches.
 ## Cross-references
 - [ADR-0026](../../../spec/decisions/ADR-0026-shared-and-provided-named-types.md) — `@provided` as a cross-type provenance flag (enums + value objects); shared vs provided orthogonal; Option 2 upgrade path.
 - [ADR-0001](../../../spec/decisions/ADR-0001-cross-language-type-binding.md) — metadata→native type binding is per-port build-time config, not metadata.
-- [enum datatype design](2026-05-23-enum-datatype-design.md) — D6 abstract-enum reuse; deferred int-backed/display-label/native-PG-enum.
+- [enum datatype design](2026-05-23-enum-datatype-design.md) — D6 abstract-enum reuse; int-backed now supported via `@intValueMap`.

@@ -12,7 +12,7 @@ import type { MetaData } from "../../src/shared/meta-data.js";
 import { MetaObject } from "../../src/core/object/meta-object.js";
 import { MetaField } from "../../src/core/field/meta-field.js";
 import { canonicalSerialize } from "../../src/serializer-json.js";
-import { opsForSubType } from "../../src/core/query/query-constants.js";
+import { opsForField } from "../../src/core/query/query-constants.js";
 
 type CapabilityArgs = Record<string, string | number | boolean>;
 type CapabilityFn = (node: MetaData, args: CapabilityArgs) => NormalizedResult;
@@ -85,12 +85,14 @@ export const binding: Readonly<Record<string, CapabilityFn>> = {
     "effective-tree": canonicalSerialize(asField(node)),
   }),
 
-  // field.filter-ops → the canonical per-subtype filter-operator band
-  // (query-constants OPS_BY_SUBTYPE). Returns `{ names: [...] }` in canonical
-  // operator order so the cross-port matrix fixture compares order-sensitively.
-  // The single source of truth for the band is opsForSubType — the same map
-  // the server allowlist + codegen consume.
+  // field.filter-ops → the canonical per-FIELD filter-operator band. Returns
+  // `{ names: [...] }` in canonical operator order so the cross-port matrix
+  // fixture compares order-sensitively. The single source of truth for the band
+  // is opsForField — the same function the server allowlist + codegen consume.
+  //
+  // opsForField, not opsForSubType: the band is field-level because an int-backed
+  // field.enum (@intValueMap) stores as an integer and so drops `like`.
   "field.filter-ops": (node) => ({
-    names: [...opsForSubType(asField(node).subType)],
+    names: [...opsForField(asField(node))],
   }),
 };

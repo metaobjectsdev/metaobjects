@@ -52,15 +52,19 @@ def invoke(node: MetaData, capability: str, args: dict[str, Any]) -> dict[str, A
         return {"subtype": identity.sub_type}
 
     if capability == "field.filter-ops":
-        # The canonical per-subtype filter-operator band (in canonical operator
+        # The canonical per-FIELD filter-operator band (in canonical operator
         # order). Single source of truth — the same ordered helper the codegen
         # filter-allowlist generator consumes. Returns {"names": [...]}.
+        #
+        # ops_for_field_ordered, not ops_for_subtype_ordered: the band is
+        # field-level because an int-backed field.enum (@intValueMap) stores as
+        # an integer and so drops `like`.
         from metaobjects.meta.core.field.meta_field import MetaField
         from metaobjects.codegen.generators.filter_allowlist_generator import (
-            ops_for_subtype_ordered,
+            ops_for_field_ordered,
         )
         if not isinstance(node, MetaField):
             raise TypeError(f"field.filter-ops requires a MetaField, got {type(node)}")
-        return {"names": list(ops_for_subtype_ordered(node.sub_type))}
+        return {"names": list(ops_for_field_ordered(node))}
 
     raise ValueError(f"Unknown capability: {capability!r}")
