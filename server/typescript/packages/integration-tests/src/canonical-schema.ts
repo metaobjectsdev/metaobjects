@@ -81,3 +81,41 @@ export async function generateCanonicalSchemaSql(root: MetaRoot): Promise<string
 export function readCanonicalSchemaSql(): string {
   return readFileSync(CANONICAL_SCHEMA_SQL_PATH, "utf8");
 }
+
+/**
+ * What regeneration is about to replace, or undefined when it replaces nothing of
+ * interest (no file yet, or the artifact is already current).
+ *
+ * WHY THIS IS NOT THE OVERWRITE POLICY. `meta gen` refuses to overwrite a generated file
+ * that has diverged, because for adopter code the divergence is someone's work. Applying
+ * that rule here would be actively wrong: this artifact's contract is generated-wins, and
+ * refusing would block the very command that repairs a red drift gate. It is also
+ * committed, so `git diff` already records what changed.
+ *
+ * What was actually missing is smaller: the replacement happened without a word. In
+ * `553782a97` two hand-added lines explaining an int-backed enum's CHECK were discarded by
+ * a regeneration, and the explanation was real content that belonged in the design doc.
+ * Saying so at the moment of replacement is the whole fix.
+ *
+ * The line count is what distinguishes "I edited this file" from "the metadata moved on",
+ * without pretending to diff semantically.
+ */
+export function describeRegenReplacement(
+  existing: string | undefined,
+  fresh: string,
+): string | undefined {
+  if (existing === undefined || existing === fresh) return undefined;
+
+  const freshLines = new Set(fresh.split("\n"));
+  const lost = existing.split("\n").filter((l) => !freshLines.has(l) && l.trim() !== "");
+  const n = lost.length;
+  const noun = n === 1 ? "1 line" : `${n} lines`;
+  const sample = lost.slice(0, 3).map((l) => `    ${l}`).join("\n");
+
+  return (
+    `NOTE: the file on disk differed from freshly generated output — ${noun} replaced:\n` +
+    `${sample}${n > 3 ? `\n    …and ${n - 3} more` : ""}\n` +
+    `  If that content was deliberate, it does not survive here: this artifact is\n` +
+    `  regenerated from metadata. Move the reasoning into the design doc or CHANGELOG.`
+  );
+}
