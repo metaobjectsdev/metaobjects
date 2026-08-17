@@ -267,21 +267,33 @@ just golden-snapshot codegen.
 
 - Safe backing-mode migration (varchar↔integer recast with data preservation) — no
   current consumer; D8's manual path covers the only known need.
-- **RE-mapping an existing member's integer is not detected, and one shape of it is
-  silent.** D8 covers ADDING or REMOVING `@intValueMap`; it does not cover changing a
-  value inside a map that stays present. Two cases, only one of which is safe by
-  accident: changing a member to an integer not already in the set (`DRAFT: 0` → `1`)
-  alters the `CHECK`, so the migration applies a constraint every existing `0` row
-  violates and the database refuses it — loud, at apply time. But **swapping two members'
-  integers** (`DRAFT: 0, PUBLISHED: 5` → `DRAFT: 5, PUBLISHED: 0`) leaves the value SET
-  identical, so the `CHECK` is byte-identical, the diff is EMPTY, no migration is emitted
-  at all — and every stored row silently changes meaning. Nothing in the pipeline can see
-  it: the column holds bare integers, and neither the introspected schema nor the
-  committed schema snapshot records which member an integer stood for. Closing it needs
-  the mapping itself carried in gen-state or the snapshot so a diff can compare
-  member→int pairs rather than the value set — a design decision, not a patch. No current
-  consumer remaps; documented here rather than left implied by D8's "migration safety"
-  heading.
+- **RE-mapping an existing member's integer is not understood by anything; what saves you
+  is incidental.** D8 covers ADDING or REMOVING `@intValueMap`, not changing a value inside
+  a map that stays present. Measured against the real diff rather than reasoned about:
+
+  - **A remap that changes the rendered `CHECK` list** — which is every remap, since the
+    list renders in `@values` order — emits `drop-check` + `add-check`, and the `drop-check`
+    is **BLOCKED by default** (`allow.dropCheck`). So `meta migrate` refuses. That refusal
+    is a happy accident: it fires because dropping a `CHECK` is destructive, not because
+    anything recognises that the meaning of stored data just changed.
+  - **Once allowed, the migration only refreshes the constraint — it never touches the
+    data.** Moving a member to an int not already in the set (`DRAFT: 0` → `1`) then applies
+    a `CHECK` every existing `0` row violates, and the database refuses it: loud, at apply
+    time. But **swapping** two members' ints (`DRAFT: 0, PUBLISHED: 5` → `5, 0`) leaves the
+    admitted SET identical, so the new `CHECK` applies cleanly and every stored row has
+    quietly changed meaning.
+  - **One shape is invisible even to the diff:** a remap combined with a compensating
+    `@values` reorder renders a byte-identical `CHECK`, so the diff is EMPTY and no
+    migration is emitted at all.
+
+  Nothing in the pipeline can see the meaning change in any of these: the column holds bare
+  integers, and neither introspection nor the committed schema snapshot records which member
+  an integer stood for. Closing it needs the mapping itself carried in gen-state or the
+  snapshot so a diff can compare member→int PAIRS rather than the value set — a design
+  decision, not a patch. No current consumer remaps; documented here rather than left
+  implied by D8's "migration safety" heading, and pinned by
+  `expected-schema-enum-intvaluemap.test.ts` so the accident that currently protects the
+  common case cannot be removed silently.
 - Value aliasing (`allow_alias`-style opt-out of the duplicate-value rejection) — no
   current consumer.
 - Native Postgres `CREATE TYPE ... AS ENUM` — unrelated to this design, still deferred

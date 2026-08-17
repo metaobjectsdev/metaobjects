@@ -203,3 +203,51 @@ describe("int-backed enum — backing-mode change is blocked by the existing gua
     expect(r.changes.find((c) => c.kind === "change-column-type")).toBeUndefined();
   });
 });
+
+// RE-mapping a member inside a map that stays present is a different animal from D8's
+// add/remove, and nothing in the pipeline understands it: the column holds bare integers,
+// and neither introspection nor the committed snapshot records which member an integer
+// stood for. What currently protects the common case is an ACCIDENT — dropping a CHECK is
+// destructive, so the remap trips `allow.dropCheck` on its way past. These tests pin that
+// accident (so it cannot be relaxed silently) and pin the one shape it does not cover.
+describe("int-backed enum — re-mapping a member's integer", () => {
+  const MAP_SWAPPED = { DRAFT: 5, PUBLISHED: 0, ARCHIVED: 9 };
+  const MAP_MOVED = { DRAFT: 1, PUBLISHED: 5, ARCHIVED: 9 };
+
+  async function remapDiff(afterMap: Record<string, number>, afterValues = VALUES) {
+    const before = buildExpectedSchema(
+      await loadJson(entityModel({ name: "status", "@values": VALUES, "@intValueMap": INT_MAP })),
+    );
+    const after = buildExpectedSchema(
+      await loadJson(
+        entityModel({ name: "status", "@values": afterValues, "@intValueMap": afterMap }),
+      ),
+    );
+    return diff(after, before, { dialect: "postgres" });
+  }
+
+  // The CHECK list renders in @values order, so ANY remap changes its text — which is the
+  // only reason migrate sees a remap at all.
+  test("a swap trips the blocked drop-check rather than passing silently", async () => {
+    const r = await remapDiff(MAP_SWAPPED);
+    const drop = r.changes.find((c) => c.kind === "drop-check");
+    expect(drop).toBeDefined();
+    expect(drop!.status.state).toBe("blocked");
+    expect(r.changes.find((c) => c.kind === "add-check")).toBeDefined();
+  });
+
+  test("moving a member to an unused int behaves the same way", async () => {
+    const r = await remapDiff(MAP_MOVED);
+    expect(r.changes.find((c) => c.kind === "drop-check")!.status.state).toBe("blocked");
+  });
+
+  // The gap the two tests above do NOT cover: reorder @values to compensate for the swap
+  // and the rendered CHECK is byte-identical, so there is no diff to block. Every stored
+  // row changes meaning with no migration emitted at all. Pinned as KNOWN, not as desired
+  // — if a future change makes this produce a diff, this test should be updated, not the
+  // behaviour reverted.
+  test("KNOWN GAP: a compensating @values reorder makes the remap invisible to the diff", async () => {
+    const r = await remapDiff(MAP_SWAPPED, ["PUBLISHED", "DRAFT", "ARCHIVED"]);
+    expect(r.changes).toEqual([]);
+  });
+});

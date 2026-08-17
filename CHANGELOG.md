@@ -67,6 +67,16 @@ that already has a column is a cross-kind `change-column-type`, which `meta migr
 blocks by default and requires an explicit `allow.typeChange` to pass. There is no
 auto-recast — the tool will not rewrite your data behind a metadata edit.
 
+**Do not RE-map a member's integer on a populated table.** Nothing understands that change:
+the column holds bare integers, and neither introspection nor the committed snapshot records
+which member an integer stood for. A remap changes the rendered `CHECK` list, so it trips the
+blocked `drop-check` and `meta migrate` refuses — but that refusal is incidental (dropping a
+`CHECK` is destructive), and once allowed the migration only refreshes the constraint and
+never touches your rows. Swap two members' integers and the new `CHECK` admits the same set,
+applies cleanly, and every stored row has quietly changed meaning. Reorder `@values` to
+compensate and the diff is empty outright. Treat a remap as the same two-step backfill a
+backing-mode change needs.
+
 Design: `docs/superpowers/specs/2026-07-23-int-backed-enum-values-design.md`. Adopter view:
 [`docs/features/field-types.md`](docs/features/field-types.md).
 
