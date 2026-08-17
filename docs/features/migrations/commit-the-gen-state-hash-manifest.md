@@ -81,6 +81,30 @@ That means those files differ from fresh output and there is no hash recording t
 Run it once, commit the manifest, and the refusals stop: from then on every machine can
 tell your edits from its own output.
 
+## When two branches both regenerated: resolving a `.hashes.json` conflict
+
+Now that the manifest is committed, two people who both ran `meta gen` on different
+branches will conflict on it. This is expected and harmless — both sides are just
+records of generated content — but resolve it the right way:
+
+```bash
+git checkout --ours .metaobjects/.gen-state/.hashes.json   # either side will do
+meta gen                                                    # rewrites every entry
+git add .metaobjects/.gen-state/.hashes.json
+```
+
+Take **either** side, then re-run `meta gen`. It rewrites the entry for every path it
+emits, so the merged result is correct regardless of which side you started from.
+
+**Do not configure `merge=union` for this file.** Union concatenates both sides' lines,
+which for JSON produces duplicate keys and a syntactically broken file — and a
+manifest that fails to parse reads as *no manifest*, which is precisely the state that
+silently overwrote hand edits in the first place. If you want a `.gitattributes` entry
+at all, `-merge` (take one side, always conflict) is honest; union is not.
+
+Keys are written **sorted**, so the diff reflects real content changes rather than
+whichever entity happened to generate first.
+
 ## If you deliberately do not commit generated output
 
 Nothing changes for you. Output that is not committed does not exist on a fresh clone, so

@@ -8,6 +8,7 @@ import { formatGenResultJson } from "../lib/output-json.js";
 import type { OutputFormat } from "../lib/format.js";
 import { log } from "../lib/log.js";
 import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
+import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
 import { loadMemory, DEFAULT_METADATA_DIR } from "@metaobjectsdev/sdk";
 import { runGen, listGenerators } from "@metaobjectsdev/codegen-ts";
@@ -42,6 +43,9 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
 
   // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
   warnIfAgentContextStale(cwd);
+  // Advisory: the committed hash manifest is what makes hand-edit detection work
+  // on a machine that did not generate the output. Silent unless it is ignored.
+  warnIfManifestIgnored(cwd);
 
   const projectRoot = cwd;
   const cliConfig = resolveGenConfig(flags);

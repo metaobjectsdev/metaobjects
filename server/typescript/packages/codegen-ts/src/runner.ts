@@ -18,6 +18,8 @@ import { sweepOrphans, type OrphanJob } from "./orphan-sweep.js";
 import { refusedOrphanMessage } from "./reconcile-orphans.js";
 import {
   decideAndWrite,
+  previewWriteStatus,
+  hasHashManifest,
   loadEngineVersion,
   saveEngineVersion,
   type WriteResult,
@@ -114,6 +116,12 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // since the last gen, note it (generated output may legitimately differ). Purely
   // informational — the version file is separate from `.hashes.json` and never
   // affects the merge. Only fires when a prior stamp exists AND differs.
+  // Captured BEFORE any write, because the first write creates the manifest — read
+  // it afterwards and every project looks migrated.
+  const hadHashManifest = hasHashManifest(genStateDir);
+  const relativeForDisplay = (p: string): string =>
+    projectRoot !== undefined ? relative(projectRoot, p) : p;
+
   const hasPersistentGenState = opts.projectRoot !== undefined || opts.genStateDir !== undefined;
   const installedEngine = hasPersistentGenState ? engineVersion() : undefined;
   const recordedEngine = hasPersistentGenState ? loadEngineVersion(genStateDir) : undefined;
@@ -397,6 +405,44 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // reconciliation has nothing to reason about. That gate is also what keeps
   // `verify --codegen` inert — it runs against a throwaway root whose gen-state is
   // empty — and what keeps programmatic/test callers from ever deleting a file.
+  // Refusals are reported ONE of two ways, and which one matters more than the
+  // wording. A project with no manifest at all predates the manifest being
+  // committed: every refusal in it has the SAME single cause and the same one-line
+  // fix, so N per-file warnings would be a wall that buries the instruction — the
+  // hostile-first-contact outcome that gets a tool switched off. A project that DOES
+  // have a manifest is refusing because specific files were edited, and there the
+  // per-file naming is the actionable part.
+  //
+  // Self-extinguishing: once the manifest is committed, the aggregate never fires
+  // again.
+  const MAX_NAMED = 5;
+  const reportRefusals = (): void => {
+    const refused = writes.filter((w) => w.status === "refused");
+    if (refused.length === 0) return;
+
+    if (!hadHashManifest) {
+      const names = refused.slice(0, MAX_NAMED).map((w) => relativeForDisplay(w.path));
+      const more = refused.length > MAX_NAMED ? `, and ${refused.length - MAX_NAMED} more` : "";
+      warnings.push(
+        `Refused to overwrite ${refused.length} existing file(s), and this project has ` +
+        `no codegen hash manifest — so 'meta gen' cannot tell your edits from its own ` +
+        `stale output, and it will not guess. This is the expected first run for a ` +
+        `project created before the manifest was committed. ` +
+        `ONE-TIME FIX: commit '.metaobjects/.gen-state/.hashes.json' (un-ignore it in ` +
+        `.metaobjects/.gitignore with '.gen-state/*' + '!.gen-state/.hashes.json'), ` +
+        `then re-run. To adopt fresh output and DISCARD any hand edits in these files ` +
+        `instead, re-run with --baseline=fresh. Files: ${names.join(", ")}${more}.`,
+      );
+      return;
+    }
+
+    for (const w of refused) {
+      warnings.push(
+        `Refused to overwrite ${w.path}: ${w.conflictHint ?? "content differs and could not be verified as generated."}`,
+      );
+    }
+  };
+
   const sweep = (dryRun: boolean): void => {
     if (projectRoot === undefined || orphanJobs.length === 0) return;
     const result = sweepOrphans({
@@ -428,12 +474,25 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   // the merge base, so a later real run could skip a genuinely-needed write).
   if (opts.dryRun === true) {
     for (const file of emitted) {
-      // Report the outcome faithfully rather than a placeholder: a path that does
-      // not exist yet would be created ("new"), one that does would be rewritten.
-      // Merge/conflict outcomes can't be known without doing the merge, so this
-      // deliberately reports the coarser truth instead of guessing.
-      writes.push({ path: file.fullPath, status: existsSync(file.fullPath) ? "overwrite" : "new" });
+      // Ask the same policy the real run asks, in a read-only mode. This used to be
+      // `existsSync(...) ? "overwrite" : "new"`, which previewed a hand-edited file
+      // as "overwrite" while the real run refused it — the one case the preview most
+      // needs to be right about. A merge outcome is still coarse (see
+      // previewWriteStatus), because clean-vs-conflicted is unknowable without merging.
+      const policyOpts: import("./overwrite-policy.js").DecideAndWriteOpts = {
+        strategy,
+        genStateDir,
+        baseline,
+      };
+      if (projectRoot !== undefined) {
+        policyOpts.outputRelPath = relative(projectRoot, file.fullPath);
+      }
+      writes.push({
+        path: file.fullPath,
+        status: previewWriteStatus(file.fullPath, file.content, policyOpts),
+      });
     }
+    reportRefusals();
     // A preview that hides a pending deletion is worse than no preview at all, so
     // the sweep still runs — in decide-and-report mode, touching nothing.
     sweep(true);
@@ -462,16 +521,11 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
         `'meta gen' to advance the canonical state.`,
       );
     }
-    if (result.status === "refused") {
-      // The old message here described a marker-based policy removed long ago
-      // ("file exists without @generated header"), which was misleading in every
-      // case it actually fired. `decideAndWrite` now supplies the real reason,
-      // which differs between "edited since generated" and "no record of it".
-      warnings.push(
-        `Refused to overwrite ${file.fullPath}: ${result.conflictHint ?? "content differs and could not be verified as generated."}`,
-      );
-    }
+    // Refusals are reported together after the loop (see reportRefusals) so a
+    // whole-project cause can be stated once instead of once per file.
   }
+
+  reportRefusals();
 
   // Sweep AFTER the writes: writing is the primary job, and a deletion that runs
   // first would be unrecoverable if a later write threw. Ordering cannot change

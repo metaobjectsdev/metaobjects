@@ -7,6 +7,14 @@ from dataclasses import dataclass, field
 @dataclass
 class GenConfig:
     out_dir: str
+    # Where the codegen hash manifest lives (``<gen_state_dir>/.hashes.json``), which
+    # records what this generator wrote so a later run can tell its own output from a
+    # hand edit. None disables that detection and falls back to the legacy
+    # @generated-marker rule — mirroring TS, where a runGen with no projectRoot also
+    # gets weaker guarantees. The CLI always sets it to
+    # ``<project>/.metaobjects/.gen-state``. COMMIT the manifest: it is the only thing
+    # that makes hand-edit detection work on a machine that did not generate the code.
+    gen_state_dir: str | None = None
     output_layout: str = "flat"  # "flat" only in sub-project A
     emit_abstract_shapes: bool = True  # Python concretes subclass the abstract base model
     emit_package_init: bool = True  # emit an @generated __init__.py so the out dir imports as a package

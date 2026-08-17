@@ -400,6 +400,67 @@ function defaultOutputRelPath(outputPath: string): string {
   return sha256(resolve(outputPath)).slice(0, 32);
 }
 
+/** Where this call's gen-state lives. Shared by the write path and the preview so
+ *  the two cannot resolve it differently — a preview that consults a different
+ *  manifest than the write would be the same disagreement-between-two-answers bug
+ *  this whole change exists to remove. */
+function resolveGenStateDir(opts: DecideAndWriteOpts): string {
+  if (opts.genStateDir === undefined) return join(tmpdir(), "meta-gen-state-fallback");
+  return isAbsolute(opts.genStateDir) ? opts.genStateDir : resolve(opts.genStateDir);
+}
+
+/** True when this project has a hash manifest at all — as opposed to a manifest
+ *  that simply has no entry for some path.
+ *
+ *  The distinction drives the upgrade message: a project with NO manifest predates
+ *  the manifest being committed, so its refusals are one fixable configuration
+ *  problem rather than N independent hand edits, and it deserves one instruction
+ *  instead of a wall of per-file warnings. */
+export function hasHashManifest(genStateDir: string): boolean {
+  return existsSync(join(genStateDir, HASHES_FILE));
+}
+
+/**
+ * What `decideAndWrite` WOULD do, touching nothing. Backs `meta gen --dry-run`.
+ *
+ * Exact for every outcome the hash manifest decides, because those are pure
+ * comparisons. Deliberately COARSE in one place: with a snapshot body present the
+ * result depends on whether `git merge-file` comes back clean or conflicted, which
+ * cannot be known without performing the merge — so that case reports `overwrite`,
+ * meaning "this file will be rewritten", which is true either way.
+ *
+ * The reason this exists as its own function rather than a flag on
+ * `decideAndWrite`: a preview must be incapable of writing, and the cheapest way to
+ * guarantee that is to give it no write in its body at all.
+ */
+export function previewWriteStatus(
+  path: string,
+  content: string,
+  optsOrStrategy: DecideAndWriteOpts | MergeStrategy = {},
+): WriteStatus {
+  const opts: DecideAndWriteOpts =
+    typeof optsOrStrategy === "string" ? { strategy: optsOrStrategy } : optsOrStrategy;
+  if (!existsSync(path)) return "new";
+  if ((opts.strategy ?? "overwrite") === "skip-existing") return "skipped";
+
+  const genStateDir = resolveGenStateDir(opts);
+  const relPath = opts.outputRelPath ?? defaultOutputRelPath(path);
+  const current = readFileSync(path, "utf-8");
+
+  if ((opts.baseline ?? "default") === "fresh") {
+    return current === content ? "unchanged" : "overwrite";
+  }
+
+  // Snapshot body present → a real merge runs. Clean vs conflicted is unknowable
+  // from here, so report the coarse truth rather than guess.
+  if (readSnapshotChecked(genStateDir, relPath) !== undefined) {
+    return current === content ? "unchanged" : "overwrite";
+  }
+
+  if (current === content) return "unchanged";
+  return isPristineGenerated(genStateDir, relPath, current) ? "overwrite" : "refused";
+}
+
 /**
  * The main entry point. Backward-compatible with the rc.11 signature: passing
  * a `MergeStrategy` string as the third argument continues to work; passing
@@ -416,12 +477,7 @@ export function decideAndWrite(
       : optsOrStrategy;
   const strategy: MergeStrategy = opts.strategy ?? "overwrite";
   const baseline: BaselineMode = opts.baseline ?? "default";
-  const genStateDir =
-    opts.genStateDir !== undefined
-      ? (isAbsolute(opts.genStateDir)
-          ? opts.genStateDir
-          : resolve(opts.genStateDir))
-      : join(tmpdir(), "meta-gen-state-fallback");
+  const genStateDir = resolveGenStateDir(opts);
   const relPath = opts.outputRelPath ?? defaultOutputRelPath(path);
 
   // 1. First-time write — file doesn't exist.

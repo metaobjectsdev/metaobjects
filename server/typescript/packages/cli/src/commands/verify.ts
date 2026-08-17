@@ -11,6 +11,7 @@ import { join, resolve as resolvePath } from "node:path";
 import { parseVerifyArgs, type MigrateFlags } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
+import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
 import { FileProvider } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
@@ -109,6 +110,9 @@ export async function verifyCommand(
 
   // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
   warnIfAgentContextStale(cwd);
+  // Advisory: the committed hash manifest is what makes hand-edit detection work
+  // on a machine that did not generate the output. Silent unless it is ignored.
+  warnIfManifestIgnored(cwd);
 
   // ADR-0021 D2 — explicit verify subverbs. Each flag selects one drift mode;
   // any combination runs each and the overall exit code is the MAX (non-zero on

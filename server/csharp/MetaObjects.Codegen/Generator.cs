@@ -15,6 +15,24 @@ public sealed record GenConfig
 {
     /// <summary>Directory generated files are written under.</summary>
     public required string OutDir { get; init; }
+
+    /// <summary>
+    /// Where the codegen hash manifest lives (<c>&lt;GenStateDir&gt;/.hashes.json</c>),
+    /// recording what this generator wrote so a later run can tell its own output from a
+    /// hand edit.
+    /// <para>
+    /// <c>null</c> disables that detection and falls back to the legacy
+    /// <c>&lt;auto-generated/&gt;</c>-marker rule — which cannot distinguish an edited
+    /// generated file from a pristine one, because an edited file keeps its marker.
+    /// Mirrors codegen-ts, where a <c>runGen</c> with no <c>projectRoot</c> likewise gets
+    /// weaker guarantees; the CLI always supplies a value.
+    /// </para>
+    /// <para>
+    /// COMMIT the manifest. It is one hash per generated path, and the only thing that
+    /// makes hand-edit detection work on a machine that did not generate the output.
+    /// </para>
+    /// </summary>
+    public string? GenStateDir { get; init; }
     /// <summary>C# namespace for generated types.</summary>
     public required string Namespace { get; init; }
     /// <summary>

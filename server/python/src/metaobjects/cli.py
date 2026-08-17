@@ -308,6 +308,7 @@ def _run_suite(
     generators: list[Generator] | None = None,
     entity_filter: list[str] | None = None,
     emit_package_init: bool = True,
+    gen_state_dir: str | None = None,
 ) -> list[str]:
     """Run a generator suite against an ALREADY-LOADED ``root`` into ``out_dir``.
 
@@ -322,9 +323,25 @@ def _run_suite(
     carry the ``@generated`` header). Accepted marginal limitation (requires user
     misconfiguration).
     """
-    config = GenConfig(out_dir=out_dir, emit_package_init=emit_package_init)
+    # The hash manifest gives `metaobjects gen` hand-edit detection: without it the
+    # write path falls back to the legacy @generated-marker rule, which cannot tell an
+    # edited generated file from a pristine one (an edited file keeps its marker).
+    # COMMIT `.gen-state/.hashes.json`.
+    #
+    # Anchored on the caller's project, NEVER on `Path.cwd()`. cwd is whatever directory
+    # the process happens to sit in, so a cwd default leaks a `.metaobjects/` into any
+    # package that merely runs a test through this function — the exact leak codegen-ts's
+    # runner refuses, for the same reason. No project ⇒ no manifest ⇒ documented weaker
+    # guarantees, rather than state scattered somewhere arbitrary.
+    config = GenConfig(
+        out_dir=out_dir,
+        emit_package_init=emit_package_init,
+        gen_state_dir=gen_state_dir,
+    )
     suite = generators if generators is not None else _default_generators()
     result = run_gen(config, root, generators=suite, entity_filter=entity_filter)
+    for warning in result.warnings:
+        print(f"warning: {warning}")
     return [path for path, status in result.files if status != "refused"]
 
 
@@ -354,7 +371,15 @@ def _generate(
     root, errors = _load_root(metadata_dir, strict=strict, providers=providers)
     if root is None:
         return [], errors
-    return _run_suite(root, out_dir, generators, entity_filter, emit_package_init), []
+    # The project root is the metadata dir's parent — the directory holding
+    # `metaobjects/`, which is where `.metaobjects/` belongs beside it.
+    gen_state_dir = str(Path(metadata_dir).resolve().parent / ".metaobjects" / ".gen-state")
+    return (
+        _run_suite(
+            root, out_dir, generators, entity_filter, emit_package_init, gen_state_dir
+        ),
+        [],
+    )
 
 
 #: The default api-surface subdir (the cross-port contract's ``api/python``).

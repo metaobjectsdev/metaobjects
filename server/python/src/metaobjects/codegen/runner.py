@@ -13,7 +13,7 @@ from metaobjects.shared.base_types import TYPE_OBJECT
 from .config import GenConfig
 from .constants import generated_package_init
 from .generator import GenContext, Generator
-from .overwrite_policy import decide_and_write
+from .overwrite_policy import decide_and_write, has_hash_manifest
 
 _VALID_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -122,11 +122,44 @@ def run_gen(
             if init_full not in emitted:
                 emitted[init_full] = (generated_package_init(), "package-init")
 
+    # Captured BEFORE any write, because the first write creates the manifest — read
+    # it afterwards and every project looks migrated.
+    had_manifest = (
+        has_hash_manifest(config.gen_state_dir) if config.gen_state_dir is not None else True
+    )
+
+    refused: list[str] = []
     for full, (content, _by) in emitted.items():
-        status = decide_and_write(full, content, merge_strategy)
+        rel = os.path.relpath(full, config.out_dir)
+        status = decide_and_write(
+            full,
+            content,
+            merge_strategy,
+            gen_state_dir=config.gen_state_dir,
+            rel_path=rel,
+        )
         result.files.append((full, status))
         if status == "refused":
+            refused.append(rel)
+
+    if refused:
+        if not had_manifest:
+            # Every refusal here has the SAME cause and the same one-line fix, so
+            # stating it once beats a wall of per-file warnings that buries the
+            # instruction. Self-extinguishing: once the manifest exists, never again.
+            shown = ", ".join(refused[:5])
+            more = f", and {len(refused) - 5} more" if len(refused) > 5 else ""
             result.warnings.append(
-                f"Refused to overwrite {full}: file exists without the @generated header."
+                f"Refused to overwrite {len(refused)} existing file(s), and this project "
+                f"has no codegen hash manifest — so codegen cannot tell your edits from "
+                f"its own stale output, and will not guess. Commit "
+                f"'.metaobjects/.gen-state/.hashes.json' and re-run. Files: {shown}{more}."
             )
+        else:
+            for rel in refused:
+                result.warnings.append(
+                    f"Refused to overwrite {rel}: it has been edited since it was "
+                    f"generated, or there is no record of generating it. Move your edits "
+                    f"into a non-generated file, or delete it to accept fresh output."
+                )
     return result
