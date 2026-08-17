@@ -41,12 +41,14 @@ describe(".gen-state integrity", () => {
       outputRelPath: "User.ts",
     });
 
-    // Tampered snapshot is ignored — falls back to first-time-existing:
-    // existing content (userEdit) differs from fresh → overwrite.
-    expect(result.status).toBe("overwrite");
-    expect(readFileSync(path, "utf-8")).toBe(fresh);
-    // Snapshot is re-seeded with fresh + fresh hash.
-    expect(readFileSync(join(state, "User.ts"), "utf-8")).toBe(fresh);
+    // The tampered snapshot body is unusable, so the decision falls to the hash
+    // manifest — which still records v1. The file holds userEdit, so it is NOT
+    // what we wrote, and the user's edit is kept.
+    //
+    // This assertion used to be `overwrite`, with userEdit destroyed. Corrupt
+    // tooling state is the last circumstance in which to start discarding work.
+    expect(result.status).toBe("refused");
+    expect(readFileSync(path, "utf-8")).toBe(userEdit);
   });
 
   test("hashes file present + intact → real three-way merge runs", () => {

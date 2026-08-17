@@ -463,9 +463,12 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       );
     }
     if (result.status === "refused") {
+      // The old message here described a marker-based policy removed long ago
+      // ("file exists without @generated header"), which was misleading in every
+      // case it actually fired. `decideAndWrite` now supplies the real reason,
+      // which differs between "edited since generated" and "no record of it".
       warnings.push(
-        `Refused to overwrite ${file.fullPath}: file exists without @generated header. ` +
-        `Move to a different outDir, delete the file, or add the header to opt in.`,
+        `Refused to overwrite ${file.fullPath}: ${result.conflictHint ?? "content differs and could not be verified as generated."}`,
       );
     }
   }

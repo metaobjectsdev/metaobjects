@@ -68,10 +68,18 @@ export interface ReconcileOrphansArgs {
    *  never delete another generator's output just because it stopped emitting its
    *  own. */
   readonly owns: (relPath: string) => boolean;
-  /** Current on-disk content, or undefined when the file is gone. */
-  readonly readCurrent: (relPath: string) => string | undefined;
-  /** The `.gen-state` snapshot of what we last wrote, or undefined when absent. */
-  readonly readSnapshot: (relPath: string) => string | undefined;
+  /** Whether the file is still on disk at all. */
+  readonly exists: (relPath: string) => boolean;
+  /**
+   * Whether the file is byte-for-byte what we recorded writing.
+   *
+   * MUST fail closed — false when it cannot be proven. This is deliberately the
+   * same question the write path asks (`isPristineGenerated`), of the same
+   * evidence: the committed hash manifest. Before they were unified, one feature
+   * refused to DELETE a hand-edited file while silently OVERWRITING one, which is
+   * the same uncertainty answered two opposite ways.
+   */
+  readonly isUntouched: (relPath: string) => boolean;
 }
 
 export function reconcileOrphans(args: ReconcileOrphansArgs): OrphanDecision {
@@ -84,16 +92,14 @@ export function reconcileOrphans(args: ReconcileOrphansArgs): OrphanDecision {
     if (emitted.has(relPath)) continue;
     if (!args.owns(relPath)) continue;
 
-    const current = args.readCurrent(relPath);
-    if (current === undefined) {
+    if (!args.exists(relPath)) {
       vanished.push(relPath);
       continue;
     }
 
-    // Fail closed on a missing snapshot: with no baseline we cannot prove the file
-    // is untouched, and guessing wrong deletes someone's work.
-    const snapshot = args.readSnapshot(relPath);
-    if (snapshot === undefined || current !== snapshot) {
+    // Fail closed: unless we can prove the file is untouched, guessing wrong
+    // deletes someone's work.
+    if (!args.isUntouched(relPath)) {
       refused.push(relPath);
       continue;
     }

@@ -17,8 +17,27 @@ port** — this is intentional (ADR-0035 §3, ratified), not a parity gap:
    template-codegen surface (`--template-spec` / Mustache) and the generator-selection
    SPI.
 
-Either way, hand-edits inside a generated file survive regeneration: the TS toolchain
-three-way-merges against a committed merge base, so your edits are preserved.
+Either way, hand-edits inside a generated file survive regeneration — but *how* they
+survive depends on what the toolchain can see, and it is worth knowing which case you
+are in:
+
+- **On the machine that generated the file**, `.metaobjects/.gen-state/` holds a full
+  snapshot of what was last written, and `meta gen` does a real three-way merge: your
+  edit and the new generated content are combined, and you only see a conflict when
+  they touch the same lines.
+- **Anywhere else** — a fresh clone, a teammate's checkout, CI — the snapshot bodies are
+  gitignored and absent, so there is nothing to merge against. What *is* committed is
+  `.gen-state/.hashes.json`, one hash per generated path. That is enough to tell a file
+  nobody has touched (safe to regenerate) from one carrying an edit, and an edited file
+  is **refused with its path named** rather than overwritten. Move the edit into a
+  non-generated file, or pass `--baseline=fresh` to discard it deliberately.
+
+So the guarantee is *your edits are never silently destroyed*, everywhere; automatic
+merging is the stronger behaviour you get where the snapshot exists.
+
+Keep `.gen-state/.hashes.json` committed. Ignoring it is what turns the second case into
+a silent overwrite, since a machine with neither a snapshot nor a hash cannot tell your
+edit from its own output.
 
 ## Per port
 

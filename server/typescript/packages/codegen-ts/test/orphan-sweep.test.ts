@@ -147,9 +147,33 @@ describe("sweepOrphans", () => {
     expect(listGeneratedPaths(genStateDir)).toEqual([]);
   });
 
-  test("refuses when the SNAPSHOT was tampered with, even if the file looks pristine", () => {
+  test("works with the snapshot BODY gone — the hash manifest is the evidence", () => {
+    // The fresh-clone shape, and the reason the decision moved off the body: the
+    // bodies are gitignored, so if cleanup needed one it could never prove a file
+    // untouched on a clean checkout and would refuse forever.
     generate(STUB_A, "// stub a\n");
-    writeFileSync(join(genStateDir, STUB_A), "// something else\n");
+    rmSync(join(genStateDir, STUB_A), { force: true });
+
+    const result = sweepOrphans({
+      genStateDir,
+      projectRoot: root,
+      emittedRelPaths: [],
+      jobs: [reqJob()],
+      dryRun: false,
+    });
+
+    expect(result.removed).toEqual([STUB_A]);
+    expect(existsSync(join(root, STUB_A))).toBe(false);
+  });
+
+  test("refuses when the manifest entry does not match the file", () => {
+    // The manifest is the trust root. An entry that disagrees with the file on
+    // disk means the file is not what we wrote, whatever the reason.
+    generate(STUB_A, "// stub a\n");
+    const hashesPath = join(genStateDir, ".hashes.json");
+    const hashes = JSON.parse(readFileSync(hashesPath, "utf-8")) as Record<string, string>;
+    hashes[STUB_A] = "0".repeat(64);
+    writeFileSync(hashesPath, JSON.stringify(hashes, null, 2) + "\n");
 
     const result = sweepOrphans({
       genStateDir,

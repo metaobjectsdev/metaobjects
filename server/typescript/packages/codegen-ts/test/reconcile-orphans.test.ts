@@ -6,8 +6,13 @@
 // REFUSES what a human changed, naming it — the detect-and-refuse doctrine (#258),
 // which is recoverable where deletion is not.
 //
-// Pure decision logic, no filesystem: the caller supplies readers. That keeps the
-// rule itself testable without staging directories.
+// Pure decision logic, no filesystem: the caller supplies the predicates. That
+// keeps the rule itself testable without staging directories.
+//
+// "Untouched" is proven from the COMMITTED hash manifest, not the snapshot body —
+// the bodies are gitignored, so a body-based check could never prove anything on a
+// fresh clone and cleanup would refuse everything forever. It is the same question,
+// asked of the same evidence, as the overwrite decision.
 
 import { describe, test, expect } from "bun:test";
 import { reconcileOrphans } from "../src/reconcile-orphans.js";
@@ -26,8 +31,13 @@ function reconcile(args: {
     previouslyGenerated: args.previouslyGenerated,
     emitted: args.emitted,
     owns: args.owns ?? ((p) => p.startsWith("requirements/")),
-    readCurrent: (p) => args.current?.[p],
-    readSnapshot: (p) => args.snapshot?.[p],
+    exists: (p) => args.current?.[p] !== undefined,
+    // Derived here exactly as the real caller derives it: does the file's content
+    // still match what we recorded writing?
+    isUntouched: (p) => {
+      const recorded = args.snapshot?.[p];
+      return recorded !== undefined && recorded === args.current?.[p];
+    },
   });
 }
 
@@ -91,9 +101,10 @@ describe("reconcileOrphans", () => {
     expect(d.refused).toEqual([]);
   });
 
-  test("a missing snapshot is REFUSED rather than assumed untouched", () => {
-    // Fail closed: with no baseline we cannot prove the file is untouched, and
-    // guessing wrong deletes someone's work.
+  test("no record of ever writing it is REFUSED, not assumed untouched", () => {
+    // Fail closed: with nothing to compare against we cannot prove the file is
+    // untouched, and guessing wrong deletes someone's work. The write path answers
+    // this identical uncertainty the identical way.
     const d = reconcile({
       previouslyGenerated: ["requirements/gone.test.ts"],
       emitted: [],

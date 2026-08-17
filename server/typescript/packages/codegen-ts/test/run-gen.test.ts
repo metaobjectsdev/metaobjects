@@ -107,13 +107,14 @@ describe("runGen — two entities with FK, Postgres", () => {
 });
 
 describe("runGen — first-time regen on a pre-existing file", () => {
-  // Per the three-way merge policy (replacing rc.11's marker-based refusal):
-  // a file at the codegen output path with no .gen-state snapshot is treated
-  // as the canonical baseline (caveat 3). Identical fresh content → unchanged
-  // and seed the snapshot. Different fresh content → overwrite + seed.
-  // Adopters who want hand-written code adjacent to a generated module use
-  // the `<Entity>.extra.ts` sibling-file convention (never touched by gen).
-  test("pre-existing file with different content → overwrite + .gen-state seeded", async () => {
+  // A file at a codegen output path that we have NO record of writing is refused,
+  // not overwritten. This assertion was the reverse until the hash manifest made
+  // "did we write this?" answerable without the gitignored snapshot body.
+  //
+  // The `<Entity>.extra.ts` sibling convention is still the right way to keep
+  // hand-written code near a generated module — but it is advice, and advice is
+  // not a reason to destroy the file of someone who did not follow it.
+  test("pre-existing file with different content → REFUSED, content preserved", async () => {
     const loader = new MetaDataLoader();
     const result = await loader.load([new FileSource(join(FIXTURE_DIR, "single-entity.json"))]);
 
@@ -134,9 +135,10 @@ describe("runGen — first-time regen on a pre-existing file", () => {
     });
 
     const postFile = out.files.find((f) => f.path.endsWith("Post.ts"));
-    expect(postFile?.status).toBe("overwrite");
-    // Fresh codegen content lands; "sacred" sentinel is gone.
-    expect(readFileSync(handPath, "utf-8")).not.toContain("sacred = true");
+    expect(postFile?.status).toBe("refused");
+    // The sentinel survives — and the run says why rather than staying silent.
+    expect(readFileSync(handPath, "utf-8")).toContain("sacred = true");
+    expect(out.warnings.some((w) => w.includes("Post.ts"))).toBe(true);
 
     // Post.queries.ts likewise generated normally.
     expect(existsSync(join(tmp, "Post.queries.ts"))).toBe(true);

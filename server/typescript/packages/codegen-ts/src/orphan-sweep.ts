@@ -24,7 +24,7 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import {
   listGeneratedPaths,
-  readGeneratedSnapshot,
+  isPristineGenerated,
   forgetGeneratedPath,
 } from "./overwrite-policy.js";
 import { reconcileOrphans, type OrphanPolicy } from "./reconcile-orphans.js";
@@ -107,11 +107,19 @@ export function sweepOrphans(args: SweepOrphansArgs): SweepOrphansResult {
         }
         return job.policy.owns(toPosix(inTarget));
       },
-      readCurrent: (relPath) => {
+      exists: (relPath) => existsSync(resolve(args.projectRoot, relPath)),
+      // The committed hash manifest, NOT the snapshot body — the bodies are
+      // gitignored, so on a fresh clone a body-based check could never prove a
+      // file untouched and orphan cleanup would refuse everything forever.
+      isUntouched: (relPath) => {
         const full = resolve(args.projectRoot, relPath);
-        return existsSync(full) ? readFileSync(full, "utf-8") : undefined;
+        if (!existsSync(full)) return false;
+        return isPristineGenerated(
+          args.genStateDir,
+          relPath,
+          readFileSync(full, "utf-8"),
+        );
       },
-      readSnapshot: (relPath) => readGeneratedSnapshot(args.genStateDir, relPath),
     });
 
     for (const relPath of decision.remove) {

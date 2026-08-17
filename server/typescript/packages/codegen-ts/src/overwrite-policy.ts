@@ -14,14 +14,23 @@
 //      (current, .gen-state snapshot, fresh tmpfile). Exit 0 → clean merge,
 //      advance .gen-state to fresh content. Exit > 0 → leave conflict markers
 //      in the output file, do NOT advance .gen-state; status "conflict".
-//   4. If .gen-state/<relPath> is absent but the file exists ("first-time
-//      regen on an existing file") → write-if-different against the existing
-//      file as the baseline (no merge, no clobber). The `baseline: "fresh"`
-//      flag opts into "overwrite from fresh and re-baseline".
+//   4. If the .gen-state BODY is absent but the file exists, consult the
+//      committed hash manifest: identical fresh content → "unchanged"; the file
+//      still hashes to what we recorded writing → safe to overwrite; anything
+//      else (edited, or no record at all) → "refused", naming the file. The
+//      `baseline: "fresh"` flag opts into "overwrite from fresh and re-baseline".
 //
 // Integrity (caveat 2 from the spike): we keep a sha-256 of each canonical
-// snapshot at `.gen-state/.hashes.json`. On load, mismatch → fall back to
-// first-time semantics and warn naming the file so the user can investigate.
+// snapshot at `.gen-state/.hashes.json`.
+//
+// THE MANIFEST IS COMMITTED; THE BODIES ARE NOT. That split is what makes step 4
+// possible. A hash per path is small and reviewable, where a second full copy of
+// all generated output is neither — and a hash is already sufficient to tell
+// "nobody touched this" from "somebody edited this", which is the only thing
+// steps 4 and the orphan-delete path need to know. The cost, stated: without a
+// body there is no base to merge against, so a diverged file on a fresh clone is
+// REFUSED rather than merged. That is a smaller loss than it sounds, because the
+// behaviour it replaces was a silent overwrite.
 
 import {
   existsSync,
@@ -82,8 +91,9 @@ export interface DecideAndWriteOpts {
 export interface WriteResult {
   path: string;
   status: WriteStatus;
-  /** Present when status is "conflict" — human-readable hint identifying the
-   *  file the user must resolve. */
+  /** Present when status is "conflict" or "refused" — human-readable reason,
+   *  naming what the user must do. A refusal nobody can act on gets the file
+   *  deleted by hand, which is the outcome refusing exists to prevent. */
   conflictHint?: string;
 }
 
@@ -112,7 +122,13 @@ function loadHashes(genStateDir: string): HashesFile {
 
 function saveHashes(genStateDir: string, hashes: HashesFile): void {
   mkdirSync(genStateDir, { recursive: true });
-  writeFileSync(join(genStateDir, HASHES_FILE), JSON.stringify(hashes, null, 2) + "\n");
+  // Keys SORTED, because this file is committed. Insertion order would make the
+  // diff — and any merge conflict between two people who both regenerated —
+  // depend on which entity happened to generate first, which is noise nobody can
+  // review.
+  const sorted: HashesFile = {};
+  for (const key of Object.keys(hashes).sort()) sorted[key] = hashes[key]!;
+  writeFileSync(join(genStateDir, HASHES_FILE), JSON.stringify(sorted, null, 2) + "\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -135,6 +151,52 @@ function saveHashes(genStateDir: string, hashes: HashesFile): void {
  */
 export function listGeneratedPaths(genStateDir: string): string[] {
   return Object.keys(loadHashes(genStateDir));
+}
+
+/**
+ * sha-256 of `content`, hex — the same function that produces `.hashes.json`.
+ *
+ * Exported so a caller can ask the one question the manifest exists to answer
+ * ("is this file byte-for-byte what we recorded writing?") without needing the
+ * snapshot body, which is what makes the answer available on a fresh clone.
+ */
+export function contentHash(content: string): string {
+  return sha256(content);
+}
+
+/**
+ * The hash we recorded when we last wrote `relPath`, or undefined if we have no
+ * record of ever writing it.
+ *
+ * This is the COMMITTED half of `.gen-state`. The snapshot bodies stay ignored —
+ * they are a second full copy of all generated output — but a hash per path is
+ * small enough to commit and review, and it is sufficient to distinguish "nobody
+ * touched this" from "somebody edited this", which is the only distinction the
+ * overwrite and delete decisions actually need.
+ */
+export function readGeneratedHash(
+  genStateDir: string,
+  relPath: string,
+): string | undefined {
+  return loadHashes(genStateDir)[relPath];
+}
+
+/**
+ * True when the file at `relPath` is byte-for-byte what we recorded writing.
+ *
+ * FAILS CLOSED: with no recorded hash we cannot prove anything, so the answer is
+ * false. Both the write path and the orphan-delete path ask this one question of
+ * this one piece of evidence — before this existed they answered the same
+ * uncertainty in opposite directions inside a single feature, refusing to DELETE
+ * a hand-edited file while silently OVERWRITING one.
+ */
+export function isPristineGenerated(
+  genStateDir: string,
+  relPath: string,
+  current: string,
+): boolean {
+  const recorded = readGeneratedHash(genStateDir, relPath);
+  return recorded !== undefined && recorded === sha256(current);
 }
 
 /**
@@ -392,20 +454,49 @@ export function decideAndWrite(
       return { path, status: "overwrite" };
     }
 
-    // Default: write-if-different. The EXISTING file is treated as the
-    // canonical baseline so subsequent runs do real three-way merges. If
-    // fresh output is identical, just seed the snapshot. If different, write
-    // the fresh content + seed snapshot — there's no marker policy left to
-    // refuse on, but this is the contract documented in the runbook (no
-    // marker check; users with hand-written files should never have the
-    // codegen output path colliding with them).
+    // No snapshot BODY. That is the normal state, not an edge case: the bodies
+    // are gitignored, so every fresh clone and every CI runner arrives here.
+    //
+    // Previously this branch wrote the fresh content unconditionally, which meant
+    // the documented promise that hand edits survive regeneration was false in
+    // precisely the situation adopters spend most of their time in — and the CLI
+    // labelled the replacement `NEW`.
+    //
+    // The committed hash manifest answers the only question that matters. Note
+    // this is the SAME question, asked of the same evidence, as the orphan-delete
+    // path: see `isPristineGenerated`.
     if (current === content) {
       advanceSnapshot(genStateDir, relPath, current);
       return { path, status: "unchanged" };
     }
-    writeFileSync(path, content);
-    advanceSnapshot(genStateDir, relPath, content);
-    return { path, status: "overwrite" };
+
+    if (isPristineGenerated(genStateDir, relPath, current)) {
+      // Byte-for-byte what we last wrote, so replacing it loses nothing. This is
+      // the common fresh-clone case (a formatter or engine bump moved the output)
+      // and it must not refuse, or a clean checkout would stall on every file.
+      writeFileSync(path, content);
+      advanceSnapshot(genStateDir, relPath, content);
+      return { path, status: "overwrite" };
+    }
+
+    // Either somebody edited it (hash mismatch) or we have no record of writing
+    // it at all (no hash). Both are unprovable, so fail closed and say so.
+    //
+    // Deliberately does NOT advance the snapshot or the hash: a refusal that
+    // records the current content would make the file look pristine next run and
+    // turn this into a silent overwrite one run later.
+    return {
+      path,
+      status: "refused",
+      conflictHint:
+        readGeneratedHash(genStateDir, relPath) === undefined
+          ? "no record of generating this file, and its content differs from fresh " +
+            "output — it was NOT overwritten. Move it aside, or re-run with " +
+            "--baseline=fresh to overwrite it and adopt fresh output as the baseline."
+          : "this file has been edited since it was generated — it was NOT " +
+            "overwritten. Move your edits into a non-generated file, or re-run " +
+            "with --baseline=fresh to discard them and adopt fresh output.",
+    };
   }
 
   // 4. Snapshot exists — real three-way merge.
