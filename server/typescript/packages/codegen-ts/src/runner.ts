@@ -14,6 +14,8 @@ import type { ResolvedTarget } from "./import-path.js";
 import { buildPkMap } from "./pk-resolver.js";
 import { buildRelationMap } from "./relation-resolver.js";
 import { makeRenderContext } from "./render-context.js";
+import { sweepOrphans, type OrphanJob } from "./orphan-sweep.js";
+import { refusedOrphanMessage } from "./reconcile-orphans.js";
 import {
   decideAndWrite,
   loadEngineVersion,
@@ -272,6 +274,10 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
 
   // 4. Run each generator with a per-target render context; collect with full path.
   const emitted: { fullPath: string; content: string; generatedBy: string }[] = [];
+  // FR-038 §8 — generators that opted into orphan reconciliation, paired with the
+  // directory their policy's relative paths are measured from. Collected here
+  // because `writeOutDir` is resolved per generator inside this loop.
+  const orphanJobs: OrphanJob[] = [];
   for (const generator of config.generators) {
     // ADR-0025: `meta docs` is the single docs door. A `meta gen` config that
     // still lists a deprecated doc generator is warned + skipped, not run — the
@@ -294,6 +300,13 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     const writeOutDir = projectRoot !== undefined && !isAbsolute(selfTarget.outDir)
       ? resolve(projectRoot, selfTarget.outDir)
       : selfTarget.outDir;
+    if (generator.orphanPolicy !== undefined) {
+      orphanJobs.push({
+        generatorName: generator.name,
+        writeOutDir,
+        policy: generator.orphanPolicy,
+      });
+    }
     const renderContext = makeRenderContext({
       dialect: config.dialect,
       loadedRoot: root,
@@ -367,6 +380,40 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   const writes: WriteResult[] = [];
   const conflicts: WriteResult[] = [];
 
+  // FR-038 §8 — reconcile files a previous run generated that this run does not.
+  //
+  // Gated on a real `projectRoot` for a load-bearing reason, not caution: without
+  // one, `decideAndWrite` keys each snapshot by a hash of its absolute path
+  // instead of a project-relative path, so gen-state holds no path to resolve and
+  // reconciliation has nothing to reason about. That gate is also what keeps
+  // `verify --codegen` inert — it runs against a throwaway root whose gen-state is
+  // empty — and what keeps programmatic/test callers from ever deleting a file.
+  const sweep = (dryRun: boolean): void => {
+    if (projectRoot === undefined || orphanJobs.length === 0) return;
+    const result = sweepOrphans({
+      genStateDir,
+      projectRoot,
+      emittedRelPaths: emitted.map((f) => relative(projectRoot, f.fullPath)),
+      jobs: orphanJobs,
+      dryRun,
+    });
+    // Both kinds are the same file outcome — gone. What differs is what it cost,
+    // which is what the warning below is for.
+    for (const relPath of [...result.removed, ...result.forced]) {
+      writes.push({ path: join(projectRoot, relPath), status: "removed" });
+    }
+    if (result.refused.length > 0) {
+      warnings.push(refusedOrphanMessage(result.refused));
+    }
+    if (result.forced.length > 0) {
+      warnings.push(
+        `Deleted ${result.forced.length} hand-edited generated file(s) because a ` +
+        `generator's orphanPolicy sets force: ${result.forced.join(", ")}. ` +
+        `Hand-written content in them is gone — recover from version control.`,
+      );
+    }
+  };
+
   // --dry-run: report what WOULD be written and touch nothing — no output files
   // and no .gen-state/ snapshot (writing the snapshot would silently re-baseline
   // the merge base, so a later real run could skip a genuinely-needed write).
@@ -378,6 +425,9 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       // deliberately reports the coarser truth instead of guessing.
       writes.push({ path: file.fullPath, status: existsSync(file.fullPath) ? "overwrite" : "new" });
     }
+    // A preview that hides a pending deletion is worse than no preview at all, so
+    // the sweep still runs — in decide-and-report mode, touching nothing.
+    sweep(true);
     return { files: writes, warnings, conflicts };
   }
 
@@ -410,6 +460,11 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       );
     }
   }
+
+  // Sweep AFTER the writes: writing is the primary job, and a deletion that runs
+  // first would be unrecoverable if a later write threw. Ordering cannot change
+  // the decision — a path this run emitted is never an orphan either way.
+  sweep(false);
 
   // #232 — stamp the engine version that produced this snapshot, so the NEXT gen can
   // detect an engine change. Written after a successful run only.

@@ -14,7 +14,7 @@ export interface FormatOptions {
 // gen
 // ---------------------------------------------------------------------------
 
-export type GenFileStatus = "new" | "merged" | "conflict" | "unchanged" | "refused";
+export type GenFileStatus = "new" | "merged" | "conflict" | "unchanged" | "refused" | "removed";
 
 export interface GenFileEntry {
   path: string;
@@ -37,6 +37,7 @@ const GEN_GLYPHS: Record<GenFileStatus, string> = {
   conflict: "✗",
   unchanged: "=",
   refused: "⚠",
+  removed: "−",
 };
 
 const GEN_WORDS: Record<GenFileStatus, string> = {
@@ -45,6 +46,7 @@ const GEN_WORDS: Record<GenFileStatus, string> = {
   conflict: "CONFLICT",
   unchanged: "UNCHANGED",
   refused: "REFUSED",
+  removed: "REMOVED",
 };
 
 export function formatGenResult(result: GenResultShape, opts: FormatOptions): string {
@@ -74,7 +76,7 @@ export function formatGenResult(result: GenResultShape, opts: FormatOptions): st
       acc[f.status] = (acc[f.status] ?? 0) + 1;
       return acc;
     },
-    { new: 0, merged: 0, conflict: 0, unchanged: 0, refused: 0 },
+    { new: 0, merged: 0, conflict: 0, unchanged: 0, refused: 0, removed: 0 },
   );
   const parts: string[] = [];
   if (counts.new > 0) parts.push(`${counts.new} written`);
@@ -82,6 +84,7 @@ export function formatGenResult(result: GenResultShape, opts: FormatOptions): st
   if (counts.conflict > 0) parts.push(`${counts.conflict} conflict`);
   if (counts.unchanged > 0) parts.push(`${counts.unchanged} unchanged`);
   if (counts.refused > 0) parts.push(`${counts.refused} refused`);
+  if (counts.removed > 0) parts.push(`${counts.removed} removed`);
   lines.push("", `  ${parts.join(", ")}`, "");
 
   if (result.warnings.length > 0) {
@@ -180,7 +183,7 @@ export function genResultToData(result: GenResultShape): {
 } {
   const counts = result.files.reduce<Record<GenFileStatus, number>>(
     (a, f) => ((a[f.status] = (a[f.status] ?? 0) + 1), a),
-    { new: 0, merged: 0, conflict: 0, unchanged: 0, refused: 0 },
+    { new: 0, merged: 0, conflict: 0, unchanged: 0, refused: 0, removed: 0 },
   );
   const parts: string[] = [];
   if (counts.new) parts.push(`${counts.new} written`);
@@ -188,6 +191,7 @@ export function genResultToData(result: GenResultShape): {
   if (counts.conflict) parts.push(`${counts.conflict} conflict`);
   if (counts.unchanged) parts.push(`${counts.unchanged} unchanged`);
   if (counts.refused) parts.push(`${counts.refused} refused`);
+  if (counts.removed) parts.push(`${counts.removed} removed`);
   const summary = result.files.length === 0
     ? `no entities to generate in ${result.outDir}`
     : parts.join(", ");

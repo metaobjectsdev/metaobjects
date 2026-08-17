@@ -222,5 +222,18 @@ export type { RequirementTestArgs } from "./templates/requirement-test.js";
 
 // FR-038 §8 — deletion integrity. Pure decision logic: which no-longer-generated
 // files may be removed, and which were hand-edited and must be refused instead.
+// `OrphanPolicy` is the Generator field an app sets to opt in; `sweepOrphans` is
+// the filesystem binding, exported so an app composing its own generator can
+// reconcile the same way the runner does instead of hand-rolling the walk.
 export { reconcileOrphans, refusedOrphanMessage } from "./reconcile-orphans.js";
-export type { OrphanDecision, ReconcileOrphansArgs } from "./reconcile-orphans.js";
+export type {
+  OrphanDecision,
+  ReconcileOrphansArgs,
+  OrphanPolicy,
+} from "./reconcile-orphans.js";
+export { sweepOrphans } from "./orphan-sweep.js";
+export type {
+  OrphanJob,
+  SweepOrphansArgs,
+  SweepOrphansResult,
+} from "./orphan-sweep.js";

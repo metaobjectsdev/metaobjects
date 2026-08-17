@@ -22,6 +22,10 @@ function mapStatus(s: WriteStatus): GenFileStatus {
     case "unchanged":
     case "skipped":   return "unchanged";
     case "refused":   return "refused";
+    // FR-038 §8 — a generated file deleted because it is no longer generated.
+    // Shown as its own outcome, not folded into "unchanged": a run summary that
+    // lists writes but hides deletions is how a silent deletion happens.
+    case "removed":   return "removed";
   }
 }
 

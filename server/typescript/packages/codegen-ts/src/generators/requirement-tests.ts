@@ -50,7 +50,33 @@ export interface RequirementTestsOpts {
   target?: string;
   /** Name requirements no filter covered. Default true; never fails the build. */
   warnUncovered?: boolean;
+  /**
+   * FR-038 §8 — which emitted paths this generator is the sole producer of, so
+   * the runner may remove a stub whose requirement was deleted. Given a path
+   * relative to this generator's output directory, `/`-separated.
+   *
+   * Defaults to the namespace `defaultPath` writes into. Supply this whenever you
+   * supply `path`: the two describe the same namespace from opposite directions
+   * and only you can keep them in agreement.
+   */
+  owns?: (relPathInTarget: string) => boolean;
+  /**
+   * Delete a hand-edited orphan rather than refusing it. Default false.
+   *
+   * A refusal already names the file and tells you the two ways out; this makes
+   * the destructive one automatic. It exists so the decision is yours, not
+   * because it is a good default.
+   */
+  forceOrphanDelete?: boolean;
+  /** Turn orphan reconciliation off entirely. Default true — a stub whose
+   *  requirement is gone is drift, and leaving it is how a deleted claim keeps a
+   *  green test. */
+  reconcileOrphans?: boolean;
 }
+
+/** The directory `defaultPath` writes into — and therefore the namespace the
+ *  default policy claims. Kept beside it so the pair cannot drift. */
+const DEFAULT_STUB_DIR = "requirements/";
 
 /**
  * RECOMMENDATION, not a rule: functional requirements at or below the link floor.
@@ -65,8 +91,8 @@ const defaultFilter = (r: RequirementView): boolean =>
 
 const defaultPath = (view: RequirementView, concern: string): string =>
   concern === NO_CONCERN
-    ? `requirements/${view.path}.test.ts`
-    : `requirements/${view.path}.${concern}.test.ts`;
+    ? `${DEFAULT_STUB_DIR}${view.path}.test.ts`
+    : `${DEFAULT_STUB_DIR}${view.path}.${concern}.test.ts`;
 
 /** Exact concern → `type.*` → `*` → the built-in renderer. */
 function pickRenderer(
@@ -88,12 +114,25 @@ function attrString(node: { attr: (n: string) => unknown }, name: string): strin
 export function requirementTests(opts: RequirementTestsOpts = {}): Generator {
   const filter = opts.filter ?? defaultFilter;
   const toPath = opts.path ?? defaultPath;
+  // A custom `path` with no custom `owns` leaves the default namespace pointing
+  // somewhere the generator no longer writes, so reconciliation matches nothing.
+  // That degrades safely — it can only ever delete less — but silently, and a
+  // policy nobody can tell isn't running is the failure mode §5 is about.
+  const namespaceUnknown = opts.path !== undefined && opts.owns === undefined;
 
   const generator: Generator = {
     name: opts.name ?? "requirement-tests",
     generate: (ctx: GenContext): EmittedFile[] => {
       const files: EmittedFile[] = [];
       const uncovered: string[] = [];
+
+      if (namespaceUnknown && opts.reconcileOrphans !== false) {
+        ctx.warn(
+          `a custom 'path' was supplied without a matching 'owns', so a stub left ` +
+            `behind by a deleted requirement will NOT be cleaned up. Supply 'owns' ` +
+            `to describe where 'path' writes, or set reconcileOrphans: false.`,
+        );
+      }
 
       for (const walked of walkRequirements(ctx.loadedRoot)) {
         if (!filter(walked.view)) {
@@ -133,5 +172,16 @@ export function requirementTests(opts: RequirementTestsOpts = {}): Generator {
   };
 
   if (opts.target !== undefined) generator.target = opts.target;
+  if (opts.reconcileOrphans !== false) {
+    generator.orphanPolicy = {
+      // With a custom `path` and no `owns`, claim NOTHING rather than guess: the
+      // default namespace would be a claim over a directory this generator does
+      // not write to, and a wrong claim deletes another generator's files.
+      owns: opts.owns ?? (namespaceUnknown
+        ? () => false
+        : (relPath) => relPath.startsWith(DEFAULT_STUB_DIR)),
+      ...(opts.forceOrphanDelete === true && { force: true }),
+    };
+  }
   return generator;
 }

@@ -15,6 +15,37 @@
 // worth testing, and threading a filesystem through it would make the rule harder
 // to exercise than the plumbing around it.
 
+/**
+ * A generator's opt-in to orphan reconciliation, and the namespace it applies to.
+ *
+ * Declaring this is the ONLY way in: `.gen-state/.hashes.json` records paths, not
+ * which generator produced each one, so the runner genuinely cannot work out who
+ * owns what. Deriving ownership from the output directory instead would be worse
+ * than useless — every generator in a single-target project writes to the same
+ * `outDir`, so one generator narrowing its output would delete its siblings'
+ * files. The generator has to say.
+ */
+export interface OrphanPolicy {
+  /**
+   * True when `relPathInTarget` — a path relative to this generator's own output
+   * directory, always `/`-separated — is inside the namespace this generator is
+   * the sole producer of.
+   *
+   * Be narrow. This predicate is the blast radius: every previously-generated
+   * path it accepts and this run did not re-emit is a deletion candidate.
+   */
+  readonly owns: (relPathInTarget: string) => boolean;
+  /**
+   * Delete a hand-edited orphan instead of refusing it. Default false.
+   *
+   * The seam exists because §6 requires every default to have one, not because
+   * it is advisable: the refusal already names the file and deleting it by hand
+   * is a one-line answer, whereas this flag makes the destructive outcome the
+   * automatic one.
+   */
+  readonly force?: boolean;
+}
+
 export interface OrphanDecision {
   /** No longer emitted, on disk, and byte-identical to the snapshot we wrote.
    *  Safe to delete — the generator is removing only its own untouched output. */

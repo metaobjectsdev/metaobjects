@@ -805,17 +805,47 @@ git commit -m "feat(codegen-ts): warn once on requirements no generator covers"
 
 ---
 
+---
+
+### Task 8: Deletion integrity, wired (spec §8) — LANDED
+
+Originally deferred below as a separate plan. It came back into this slice because the alternative was shipping a decision function that decides nothing: `reconcileOrphans` was committed with 7 tests and no caller, which is the "a gate existed but did not fire" shape §9 is written against.
+
+**Files:**
+- Modify: `codegen-ts/src/overwrite-policy.ts` — `listGeneratedPaths` / `readGeneratedSnapshot` (hash-checked) / `forgetGeneratedPath`; `WriteStatus` gains `"removed"`
+- Modify: `codegen-ts/src/reconcile-orphans.ts` — the `OrphanPolicy` opt-in interface
+- Modify: `codegen-ts/src/generator.ts` — `Generator.orphanPolicy?: OrphanPolicy`
+- Create: `codegen-ts/src/orphan-sweep.ts` — the filesystem binding
+- Modify: `codegen-ts/src/runner.ts` — collect jobs in the emit loop; sweep after the write phase and in the `--dry-run` branch
+- Modify: `codegen-ts/src/generators/requirement-tests.ts` — `owns` / `forceOrphanDelete` / `reconcileOrphans` seams
+- Modify: `cli/src/lib/output.ts`, `cli/src/commands/gen.ts` — print the `removed` outcome
+- Tests: `gen-state-readers.test.ts` (7), `orphan-sweep.test.ts` (10), `requirement-orphans-e2e.test.ts` (10)
+
+**The load-bearing decisions:**
+
+- **The generator declares its own namespace; the runner cannot infer it.** `.gen-state/.hashes.json` records paths, not which generator produced each one. Deriving ownership from the output directory would be actively harmful — every generator in a single-target project shares one `outDir`, so one generator narrowing its output would delete `entityFile`'s. Hence `OrphanPolicy.owns`, and presence of the field IS the opt-in: every existing generator keeps today's behaviour (stale file simply stays).
+- **The snapshot read is hash-checked.** A snapshot failing its own hash cannot answer "is this output still exactly what I wrote?", so it reads as absent and reconciliation refuses. Returning the stale text would let it delete a file it cannot vouch for.
+- **A refused path keeps its gen-state record; a removed or vanished one loses it.** Forgetting a refusal would make the next run blind to the orphan — a refusal that degrades into permanent silence. Keeping a settled orphan would re-decide it forever.
+- **Gated on a real `projectRoot`.** Without one, `decideAndWrite` keys snapshots by a hash of the absolute path, so there is no path to resolve. That same gate is why `verify --codegen` can never delete a real file: it runs against a throwaway root with an empty gen-state (`codegen-drift.ts` passes `projectRoot: tempRoot`). Its existing `"committed but regen would not emit it"` line is the verify-side half of §8, so the two compose.
+- **`removed` is a first-class `WriteStatus`, not a warning.** A deletion is as consequential as a write; a run summary listing writes and hiding deletions is how a silent deletion happens. `--dry-run` reports pending removals and performs none.
+- **A custom `path` with no `owns` claims NOTHING and warns.** Guessing the namespace would be a claim over a directory the generator does not write to, and a wrong claim deletes someone else's files. Claiming nothing can only ever delete less — but silently, so it warns.
+
+**Proven able to fail:** with `sweep(false)` commented out, 6 of the 10 end-to-end tests go red; with only `sweep(true)` commented out, the `--dry-run` test goes red alone. Both arms are independently gated.
+
+**Still not solved, per §8:** renames. A requirement renamed at L4 changes its stubs' identity, three-way merge cannot follow it, and the hand-written body orphans. The refusal makes that visible and names the file — the message says "renamed" explicitly — but visible is not solved.
+
+---
+
 ## Deferred to later plans (explicitly NOT this slice)
 
-- **Deletion integrity** (spec §8): refuse-on-filled-stub needs a runner change (the runner writes, it does not reconcile deletions). Separate plan — it touches `runner.ts`, which every generator shares.
-- **Vocabulary retirement** (spec §4): breaking, five ports, byte-gated manifest, migration guide. Rides a coordinated pre-1.0 breaking slot with FR-037.
+- **Vocabulary retirement** (spec §4): breaking, five ports, byte-gated manifest, migration guide. Rides a coordinated pre-1.0 breaking slot with FR-037. **Trap recorded:** the `verify`-never-runs-tests contract is byte-gated INSIDE `@verifiedBy`'s own attr description in `expected-registry.json` (once per subtype). Retiring the attribute deletes the only gated statement of it — rehome first.
 - **Dogfood renderers** (spec §9): depends on this slice landing.
 - **`meta init` scaffolding** of an owned `codegen/generators/requirement-tests.ts`.
 - **Non-TS ports.**
 
 ## Self-review
 
-- **Spec coverage:** §2 inversion → Tasks 2–5. §4 emission table → Task 4 (vocabulary retirement deferred, noted). §5 policy/filter/warning → Tasks 5, 7. §6 contract + seams → Task 5 (`filter`, `renderers`, `resolveRenderer`, `path`, `target`; `groupBy` seam deferred with a note). §7 fan-out + naming → Tasks 2, 3, 5. §8 deletion → deferred, stated. §9 dogfood → deferred. §12 verification → Task 6.
+- **Spec coverage:** §2 inversion → Tasks 2–5. §4 emission table → Task 4 (vocabulary retirement deferred, noted). §5 policy/filter/warning → Tasks 5, 7. §6 contract + seams → Task 5 (`filter`, `renderers`, `resolveRenderer`, `path`, `target`; `groupBy` seam deferred with a note) plus Task 8's `owns` / `forceOrphanDelete` — which closes the last row of §6's seam table ("refuse to delete a filled stub / a force flag"). §7 fan-out + naming → Tasks 2, 3, 5. §8 deletion → **Task 8, both directions** (the dangling-`@implementedBy` half already exists in `verify`). §9 dogfood → deferred. §12 verification → Tasks 6, 8.
 - **Gap accepted:** the `groupBy` seam from §6's table is not in Task 5's options — `groupByConcern` is exported as a primitive so an app can compose its own generator, which serves the same need without a second seam to maintain. Recorded rather than silently dropped.
 - **Type consistency:** `RequirementView`, `ResolvedTarget`, `WalkedRequirement`, `RequirementTestArgs`, `RequirementTestRenderer` used identically across Tasks 2–7. `NO_CONCERN` is `"*"` in both the grouping and the renderer-lookup fallback — deliberate: a no-target requirement falls through to the same catch-all renderer.
 - **Placeholders:** none.

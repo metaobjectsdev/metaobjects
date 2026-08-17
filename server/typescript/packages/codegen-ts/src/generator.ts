@@ -1,6 +1,7 @@
 import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
 import type { RenderContext } from "./render-context.js";
 import type { ResolvedGenConfig } from "./metaobjects-config.js";
+import type { OrphanPolicy } from "./reconcile-orphans.js";
 import { effectivePackage } from "./docs-paths.js";
 
 export interface EmittedFile {
@@ -48,6 +49,14 @@ export interface Generator {
   /** Marks the generator that produces entity modules — the runner uses its
    *  target as the entity-module target for cross-target import resolution. */
   emitsEntityModule?: boolean;
+  /** FR-038 §8 — OPT IN to orphan reconciliation by declaring the output
+   *  namespace this generator exclusively owns. When set, the runner removes
+   *  files inside that namespace which a previous run generated and this run did
+   *  not, REFUSING any that have been edited by hand. Absent (the default for
+   *  every existing generator) means the runner never deletes anything, which is
+   *  why this is additive: output stops being generated and the stale file simply
+   *  stays, exactly as before. */
+  orphanPolicy?: OrphanPolicy;
   /** Marks the OPT-IN Hono routes generator (routesFileHono). The runner
    *  aggregates this across the active suite into `ctx.config.includeHonoRoutes`,
    *  so a generator that documents the API surface (api-docs) can AUTO-DETECT
