@@ -193,3 +193,29 @@ export type {
 export { buildEntityDocData } from "./generators/docs-data-builder.js";
 export type { TemplateDocData, TemplateOutputPart } from "./generators/template-doc-data.js";
 export { buildTemplateDocData } from "./generators/template-doc-builder.js";
+
+// FR-038 — requirement-derived test stubs.
+//
+// Both the factory AND its primitives are exported deliberately. Scaffold-and-own
+// means the application owns its generator file, but that is only a real escape
+// hatch if it can compose one from parts — otherwise an app needing one different
+// behaviour must reimplement the requirement walk, and reimplementing it badly is
+// worse than the bug report this is meant to avoid.
+export { requirementTests } from "./generators/requirement-tests.js";
+export type {
+  RequirementTestsOpts,
+  RequirementTestRenderer,
+} from "./generators/requirement-tests.js";
+export {
+  walkRequirements,
+  groupByConcern,
+  concernOf,
+  NO_CONCERN,
+} from "./requirement-walk.js";
+export type {
+  RequirementView,
+  ResolvedClaim,
+  WalkedRequirement,
+} from "./requirement-walk.js";
+export { renderRequirementTest } from "./templates/requirement-test.js";
+export type { RequirementTestArgs } from "./templates/requirement-test.js";

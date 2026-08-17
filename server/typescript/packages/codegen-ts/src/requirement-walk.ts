@@ -29,7 +29,7 @@ export interface RequirementView {
   readonly implementedByTypes: readonly string[];
 }
 
-export interface ResolvedTarget {
+export interface ResolvedClaim {
   /** The reference exactly as authored, for the doc comment. */
   readonly ref: string;
   readonly node: MetaData;
@@ -39,7 +39,7 @@ export interface ResolvedTarget {
 export interface WalkedRequirement {
   readonly node: MetaRequirement;
   readonly view: RequirementView;
-  readonly targets: readonly ResolvedTarget[];
+  readonly targets: readonly ResolvedClaim[];
 }
 
 /** `<type>.<subType>` — the key a renderer map is looked up by. */
@@ -74,7 +74,7 @@ export function walkRequirements(root: MetaData): WalkedRequirement[] {
     // package-locally under the ADR-0042 contract.
     const referrerPkg = node.package ?? node.fileDefaultPackage ?? "";
 
-    const targets: ResolvedTarget[] = [];
+    const targets: ResolvedClaim[] = [];
     for (const ref of req.implementedBy()) {
       const target = resolveClaim(root, ref, referrerPkg);
       if (target === undefined) continue;
@@ -112,8 +112,8 @@ export function walkRequirements(root: MetaData): WalkedRequirement[] {
  * so every L1–L3 requirement resolves nothing — and an application that chooses to
  * cover L3 would otherwise get silence instead of a stub.
  */
-export function groupByConcern(w: WalkedRequirement): Map<string, ResolvedTarget[]> {
-  const groups = new Map<string, ResolvedTarget[]>();
+export function groupByConcern(w: WalkedRequirement): Map<string, ResolvedClaim[]> {
+  const groups = new Map<string, ResolvedClaim[]>();
   for (const t of w.targets) {
     const existing = groups.get(t.concern);
     if (existing === undefined) groups.set(t.concern, [t]);

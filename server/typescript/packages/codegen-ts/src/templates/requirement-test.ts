@@ -11,14 +11,14 @@
 // claim — the original defect recreated in a new place.
 
 import { GENERATED_HEADER } from "../constants.js";
-import type { RequirementView, ResolvedTarget } from "../requirement-walk.js";
+import type { RequirementView, ResolvedClaim } from "../requirement-walk.js";
 
 export interface RequirementTestArgs {
   readonly view: RequirementView;
   readonly concern: string;
   readonly statement: string;
   readonly violation: string;
-  readonly targets: readonly ResolvedTarget[];
+  readonly targets: readonly ResolvedClaim[];
   readonly disposition?: string | undefined;
   readonly trackedBy?: readonly string[] | undefined;
 }
@@ -27,7 +27,7 @@ export interface RequirementTestArgs {
  *  for something deliberately unbuilt is noise the app will silence wholesale. */
 const STATUS_PLANNED = "planned";
 
-function claimLines(targets: readonly ResolvedTarget[]): string {
+function claimLines(targets: readonly ResolvedClaim[]): string {
   if (targets.length === 0) {
     return " *   (none — this requirement names no model nodes)";
   }

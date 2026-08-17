@@ -44,3 +44,12 @@ export type {
 export { buildEntityDocData } from "./docs-data-builder.js";
 export type { TemplateDocData, TemplateOutputPart } from "./template-doc-data.js";
 export { buildTemplateDocData } from "./template-doc-builder.js";
+
+// FR-038 — requirement-derived test stubs. The factory is a convenience; the
+// primitives beside it are the real escape hatch, so an app needing different
+// behaviour composes its own generator instead of filing an issue here.
+export { requirementTests } from "./requirement-tests.js";
+export type {
+  RequirementTestsOpts,
+  RequirementTestRenderer,
+} from "./requirement-tests.js";
