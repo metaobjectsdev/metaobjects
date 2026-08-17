@@ -1,5 +1,16 @@
 # Int-Backed Enum Values — Metamodel Implementation Plan
 
+> **STATUS — SUPERSEDED, kept for provenance.** This plan is IMPLEMENTED; the shipped
+> behaviour is in
+> [`docs/superpowers/specs/2026-07-23-int-backed-enum-values-design.md`](../specs/2026-07-23-int-backed-enum-values-design.md),
+> which is the source of truth. Two things below are now WRONG and must not be followed:
+> **(1) D7 is reversed** — int-backing is scalar-only, and `@intValueMap` with `isArray`
+> is a load error (`ERR_ENUM_INT_VALUE_MAP_ARRAY`) in every port, so every array-of-enum
+> fixture, column shape and element-wise codec sketched here describes vocabulary that
+> cannot load. **(2) Some sketched tests call APIs that do not exist** (e.g.
+> `MetaRoot.find_object`, `MetaObject.field(name)`) or assume test libraries a module does
+> not depend on. Read the shipped code and its tests, not these snippets.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add the `@intValueMap` attribute to `field.enum` — an optional `{memberSymbol: int}` map that, when present, is the metadata author's declaration of each member's stored integer — across all five ports (TypeScript, C#, Java, Python, Kotlin-via-Java), gated by load-time validation and the `registry-conformance` + `fixtures/conformance/` corpora. This plan covers **vocabulary + validation + conformance only** — it does NOT touch codegen (already proven unchanged, since no port's enum-type emitter reads `@intValueMap`) or persistence (DB DDL, EF Core/JDBC/Exposed/ObjectManager codecs, migrate-ts's migration-safety guard). Those are covered by follow-on plans, one per port/group, written after this one lands.

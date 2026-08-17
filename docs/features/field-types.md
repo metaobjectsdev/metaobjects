@@ -73,6 +73,20 @@ preserving the string wire format and generated enum type. Keys must match `@val
 values must be unique integers. Display labels and native Postgres `ENUM` types remain
 deferred (see [enum-datatype-design.md](../superpowers/specs/2026-05-23-enum-datatype-design.md)).
 
+Two rules follow from int-backing being a **persistence-layer codec**:
+
+- **It is scalar-only.** `@intValueMap` together with `isArray: true` is a load error,
+  `ERR_ENUM_INT_VALUE_MAP_ARRAY`, in every port — no port implements the codec element-wise
+  over an array column, so the combination would silently persist member *symbols* into an
+  integer array. An array-of-enum stays string-backed.
+- **A stored integer that maps to no member throws on read**, in every port. The row holds
+  data the model says is impossible (a hand-written `INSERT`, or a member removed without a
+  migration); surfacing the raw integer would hand you a "member" that is not one — and is
+  not even representable in the ports that type the property as a closed enum — while
+  returning null would hide the corruption behind a nullable column. The write side is left
+  to the database: an unmapped symbol binds unchanged, so the column type and its `CHECK`
+  reject it.
+
 ### Sharing one enum — abstract `field.enum` + `extends`
 
 Reuse a constraint set across entities by declaring one **abstract** `field.enum`

@@ -7,6 +7,69 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added — int-backed `field.enum` storage via `@intValueMap` (all five ports)
+
+**New registered vocabulary, so the line carrying this is a MINOR.** Purely additive: a
+`field.enum` that declares no `@intValueMap` is byte-identical to before, string-backed as
+always.
+
+`@intValueMap` is an optional `{memberSymbol: int}` map on `field.enum` that declares each
+member's **stored integer**. The column becomes `integer` with an integer `CHECK` instead of
+`varchar` with a string one — while the wire format, the generated enum type, and every
+runtime return value stay the **member symbol**, unchanged. The provenance is an
+integer-coded column an adopter already has: the map is how you say "1 means LOW here",
+rather than accepting whatever ordinal a language happens to assign. This is why it is a map
+and not a second array parallel to `@values` — a positional array would silently re-map every
+member the day someone reorders `@values`.
+
+The loader enforces the map's content identically everywhere: keys must equal `@values`
+exactly (no missing, no extra), every value must be a 32-bit integer, and no two members may
+share one. Both halves are read RESOLVING, so a field that `extends` a shared abstract enum
+inherits the members *and* their mapping — and an own `@intValueMap` declared against a
+shared enum is rejected for the same reason an own `@values` is (#246's twin: one shared enum
+type has one mapping).
+
+Persistence ships in every port: Drizzle `customType` codecs (TS), EF Core `HasConversion`
+(C#), OMDB's `JdbcFieldCodec` (Java), Exposed `customEnumeration` (Kotlin) and
+`ObjectManager` coercion (Python), gated cross-port by the `AllTypes` round-trip corpus
+against real Postgres.
+
+Two decisions are worth naming because each closes a way the feature could have shipped
+half-true:
+
+- **Int-backing is scalar-only.** `@intValueMap` together with `isArray: true` is a load
+  error — `ERR_ENUM_INT_VALUE_MAP_ARRAY`, in every port. The original design said an
+  array-of-enum composed unchanged; it does not. Int-backing is a persistence-layer CODEC and
+  every port's codec seam is scalar by construction: Python bound the symbol LIST into an
+  `integer[]`, Java and Kotlin emitted a scalar codec, and TypeScript's sqlite branch
+  serialized the array as JSON text before the enum case was ever reached — storing symbols.
+  Only TS/Postgres and C# composed, and **two ports composing while four silently get it
+  wrong is not a feature** — it is the `field.byte`/`short`/`class` mistake, vocabulary that
+  reads as supported and is not. Rejecting it at LOAD delivers the guarantee that was
+  actually missing: identical behaviour in every port. An array-of-enum stays string-backed.
+- **A stored integer that maps to no member THROWS on read**, in every port. The row holds
+  data the model says is impossible — a hand-written `INSERT`, or a member removed without a
+  migration — and neither alternative is honest: surfacing the raw integer hands the caller a
+  "member" that is not one, and is not even representable in C#, Kotlin or TypeScript, which
+  type the property as a closed enum; returning null hides the corruption behind a nullable
+  column. C# reaches this through a generated static helper called from the provider→model
+  lambda — CS8188 bans a throw-*expression* inside an expression tree, but a method CALL is
+  legal there. The WRITE side is deliberately left to the database: an unmapped symbol binds
+  unchanged, so the column type and its `CHECK` reject it.
+
+**Adopter-visible beyond the new attribute:** the filter-operator band is now decided
+**per field**, not per subtype, so an int-backed `field.enum` no longer offers `like` — the
+column holds integers, and `LIKE` against one is a type error, not a query. A projection's
+`@filter` over an int-backed enum lowers to the integer literal rather than the symbol.
+
+Migration safety is unchanged and deliberate: adding or removing `@intValueMap` on a field
+that already has a column is a cross-kind `change-column-type`, which `meta migrate` already
+blocks by default and requires an explicit `allow.typeChange` to pass. There is no
+auto-recast — the tool will not rewrite your data behind a metadata edit.
+
+Design: `docs/superpowers/specs/2026-07-23-int-backed-enum-values-design.md`. Adopter view:
+[`docs/features/field-types.md`](docs/features/field-types.md).
+
 ## [0.23.1] — npm `0.23.1` · PyPI `0.23.1` · NuGet `0.23.1` · Maven `7.23.1`
 
 A coordinated **PATCH** across all four registries. Every one of them carries a real changed

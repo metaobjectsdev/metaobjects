@@ -1,5 +1,16 @@
 # Int-Backed Enum Values — Java + Kotlin Persistence Implementation Plan
 
+> **STATUS — SUPERSEDED, kept for provenance.** This plan is IMPLEMENTED; the shipped
+> behaviour is in
+> [`docs/superpowers/specs/2026-07-23-int-backed-enum-values-design.md`](../specs/2026-07-23-int-backed-enum-values-design.md),
+> which is the source of truth. Two things below are now WRONG and must not be followed:
+> **(1) D7 is reversed** — int-backing is scalar-only, and `@intValueMap` with `isArray`
+> is a load error (`ERR_ENUM_INT_VALUE_MAP_ARRAY`) in every port, so every array-of-enum
+> fixture, column shape and element-wise codec sketched here describes vocabulary that
+> cannot load. **(2) Some sketched tests call APIs that do not exist** (e.g.
+> `MetaRoot.find_object`, `MetaObject.field(name)`) or assume test libraries a module does
+> not depend on. Read the shipped code and its tests, not these snippets.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Wire `field.enum`'s `@intValueMap` (metamodel layer already shipped) into Java's OMDB JDBC persistence and Kotlin's Exposed table generation. Java's generated Java `enum` type and Kotlin's generated Kotlin `enum class` are completely unchanged — only the runtime codec (Java/OMDB) and the generated table-column DSL call (Kotlin/codegen-kotlin) differ.

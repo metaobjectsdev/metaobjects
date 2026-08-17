@@ -132,9 +132,40 @@ This is why `@intValueMap` is a map, not a second array parallel to `@values`.
   payloads) is the member string in both modes, unchanged from the original design's
   cross-language contract.
 
-- **D7 — Array-of-enum composes unchanged.** `field.enum @isArray` + `@intValueMap`
-  follows the same pattern as today's array-of-enum: an `integer[]` column instead of
-  `text[]`, element membership validated against `@intValueMap`'s value set.
+  **A stored integer that maps to no member THROWS, in all five ports.** The row holds
+  data the model says is impossible — a hand-written INSERT, or a member removed without a
+  migration — and neither alternative is honest. Surfacing the raw value hands the caller a
+  "member" that is not one, and it is not even representable in C#, Kotlin or TypeScript,
+  which type the property as a closed enum; returning null hides the corruption behind a
+  nullable column. C# reaches this through a generated static helper called from the
+  provider→model lambda: CS8188 bans a throw-EXPRESSION inside an expression tree, but a
+  method CALL is legal there and the throw happens in the helper's ordinary body. The
+  WRITE side is the mirror case and is deliberately left to the database: an unmapped
+  symbol binds unchanged, so the column type and its `CHECK` reject it.
+
+- **D7 — Int-backing is scalar-only; `@isArray` + `@intValueMap` is a LOAD ERROR.**
+  `ERR_ENUM_INT_VALUE_MAP_ARRAY`, in all five ports. An array-of-enum stays
+  string-backed.
+
+  This reverses D7 as originally written ("array-of-enum composes unchanged"), which
+  assumed the element codec would fall out of the scalar one. It does not. Int-backing is
+  a persistence-layer CODEC, and each port's codec seam is scalar by construction: OMDB's
+  `EnumCodec` and Kotlin's `customEnumeration` bind one value; Python's `ObjectManager`
+  tests `value in int_map`, which is false for a list, so it binds the symbol LIST into an
+  `integer[]`; and TypeScript's sqlite branch serializes an array as JSON text before the
+  enum case is reached, storing symbols. Only TS/Postgres (`customType(...).array()`) and
+  C# (`PrimitiveCollection().ElementType()`) compose — and two ports composing while four
+  silently get it wrong is not a feature, it is the `field.byte`/`field.short`/
+  `field.class` mistake: vocabulary that reads as supported and is not.
+
+  Rejected at LOAD rather than fixed per-port because there is no consumer need for the
+  array form (the provenance is a scalar integer-coded column), and because the guarantee
+  a load error gives — *identical behaviour in every port* — is the one that was missing.
+  Both halves are read RESOLVING in every loader: post-#246 the map must live on the
+  shared abstract declaration while `isArray` is declared by the consuming field, so an
+  own-only read would see the two halves on different nodes and never fire. Gated by
+  `error-enum-intvaluemap-array` (own map) and `error-enum-intvaluemap-array-inherited`
+  (the canonical shared-enum shape).
 
 - **D8 — Migration safety: no auto-recast.** Adding `@intValueMap` to a *new* field (no
   existing column) is a normal create. Adding or removing `@intValueMap` on a field that
@@ -199,8 +230,11 @@ original `field.enum` rollout).
 1. **`enum-int-backed`** — a `field.enum` with `@values` + `@intValueMap`; asserts DB
    column is `integer` + int `CHECK`, and the native type in every port is unchanged from
    the string-backed case.
-2. **`enum-int-backed-array`** — `field.enum[]` + `@intValueMap`; array-of-int-backed-enum
-   DDL and element-membership semantics.
+2. **`error-enum-intvaluemap-array`** (negative) — `field.enum[]` + an own `@intValueMap`
+   → `ERR_ENUM_INT_VALUE_MAP_ARRAY` (D7: int-backing is scalar-only).
+2b. **`error-enum-intvaluemap-array-inherited`** (negative) — the same rejection where the
+   map is INHERITED from a shared abstract enum and only `isArray` is declared locally.
+   This is the canonical authoring shape post-#246, and the case an own-only read misses.
 3. **`error-enum-intvaluemap-key-mismatch`** (negative) — `@intValueMap` keys don't
    exactly match `@values` members → load error.
 4. **`error-enum-intvaluemap-non-int`** (negative) — a non-integer value in
@@ -233,6 +267,21 @@ just golden-snapshot codegen.
 
 - Safe backing-mode migration (varchar↔integer recast with data preservation) — no
   current consumer; D8's manual path covers the only known need.
+- **RE-mapping an existing member's integer is not detected, and one shape of it is
+  silent.** D8 covers ADDING or REMOVING `@intValueMap`; it does not cover changing a
+  value inside a map that stays present. Two cases, only one of which is safe by
+  accident: changing a member to an integer not already in the set (`DRAFT: 0` → `1`)
+  alters the `CHECK`, so the migration applies a constraint every existing `0` row
+  violates and the database refuses it — loud, at apply time. But **swapping two members'
+  integers** (`DRAFT: 0, PUBLISHED: 5` → `DRAFT: 5, PUBLISHED: 0`) leaves the value SET
+  identical, so the `CHECK` is byte-identical, the diff is EMPTY, no migration is emitted
+  at all — and every stored row silently changes meaning. Nothing in the pipeline can see
+  it: the column holds bare integers, and neither the introspected schema nor the
+  committed schema snapshot records which member an integer stood for. Closing it needs
+  the mapping itself carried in gen-state or the snapshot so a diff can compare
+  member→int pairs rather than the value set — a design decision, not a patch. No current
+  consumer remaps; documented here rather than left implied by D8's "migration safety"
+  heading.
 - Value aliasing (`allow_alias`-style opt-out of the duplicate-value rejection) — no
   current consumer.
 - Native Postgres `CREATE TYPE ... AS ENUM` — unrelated to this design, still deferred

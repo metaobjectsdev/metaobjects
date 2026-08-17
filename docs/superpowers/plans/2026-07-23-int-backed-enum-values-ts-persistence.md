@@ -1,5 +1,16 @@
 # Int-Backed Enum Values — TypeScript Persistence Implementation Plan
 
+> **STATUS — SUPERSEDED, kept for provenance.** This plan is IMPLEMENTED; the shipped
+> behaviour is in
+> [`docs/superpowers/specs/2026-07-23-int-backed-enum-values-design.md`](../specs/2026-07-23-int-backed-enum-values-design.md),
+> which is the source of truth. Two things below are now WRONG and must not be followed:
+> **(1) D7 is reversed** — int-backing is scalar-only, and `@intValueMap` with `isArray`
+> is a load error (`ERR_ENUM_INT_VALUE_MAP_ARRAY`) in every port, so every array-of-enum
+> fixture, column shape and element-wise codec sketched here describes vocabulary that
+> cannot load. **(2) Some sketched tests call APIs that do not exist** (e.g.
+> `MetaRoot.find_object`, `MetaObject.field(name)`) or assume test libraries a module does
+> not depend on. Read the shipped code and its tests, not these snippets.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Wire `field.enum`'s `@intValueMap` (metamodel layer already shipped in `docs/superpowers/plans/2026-07-23-int-backed-enum-values-metamodel.md`) into TypeScript's persistence stack: migrate-ts emits `integer` + a numeric `CHECK` instead of `text` + a string `CHECK`, codegen-ts's Drizzle column mapper follows suit, and the generated entity/query code translates symbol↔int at the DB boundary while every TS-facing type (Zod schema, `EntityType`, wire JSON) stays exactly the string union it is today.
