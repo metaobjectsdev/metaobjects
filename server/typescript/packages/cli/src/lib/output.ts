@@ -192,7 +192,7 @@ export function genResultToData(result: GenResultShape): {
     ? `no entities to generate in ${result.outDir}`
     : parts.join(", ");
   const help = result.files.length === 0
-    ? ["author entities under metaobjects/ then re-run `meta gen`"]
+    ? ["author entities in this project's metadata sources then re-run `meta gen`"]
     : ["typecheck the generated code with `npx tsc`", "create your database tables with `meta migrate --from-db --db <url> --dialect <sqlite|postgres> --slug init --apply`"];
   return { gen: result.files.map((f) => ({ file: f.path, status: f.status })), summary, help };
 }
