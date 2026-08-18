@@ -10,7 +10,7 @@ import type { OutputFormat } from "../lib/format.js";
 import { toonEncode } from "../lib/format.js";
 import { buildKyselyFromUrl, redactUrl } from "../lib/kysely.js";
 import { log } from "../lib/log.js";
-import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
+import { findConfigDir, loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
 import { migrateScopeMismatch, toObjectScope } from "../lib/migrate-scope.js";
 import {
@@ -272,7 +272,28 @@ export async function migrateCommand(
     return 2;
   }
 
-  const metaRoot = cwd;
+  // The project root is the directory whose `.metaobjects/config.json` governs
+  // this run — the same directory `resolveCollection` resolves the metadata
+  // from, found the same way (design §4.6.1: "Per-port generator config is then
+  // read from that same directory"). Everything below is relative to it: the
+  // `.metaobjects/config.json` operational block, `metaobjects.config.ts`'s
+  // `columnNamingStrategy`, the migrations `outDir`, `wrangler.toml` discovery.
+  //
+  // Read from ambient cwd instead, as this did, they DIVERGE the moment the two
+  // differ: run `meta migrate` from a subdirectory of a project whose root
+  // declares `columnNamingStrategy: "literal"` and the metadata resolves from
+  // the ancestor while the strategy silently defaults to snake_case — emitting a
+  // migration that renames every column. Newly reachable, too: before metadata
+  // sources were resolvable that invocation just failed with "no metaobjects/
+  // found".
+  //
+  // `findConfigDir` rather than `resolveCollection` deliberately: this must not
+  // require metadata to EXIST. `migrate apply-pending` and `--rollback` replay
+  // committed SQL and load no metadata at all, and making them fail on a project
+  // with no model would be a regression. Falls back to cwd when no config is
+  // found anywhere, which is exactly what `resolveCollection` does, so the two
+  // agree by construction.
+  const metaRoot = (await findConfigDir(cwd)) ?? resolvePath(cwd);
   const config = await resolveMigrateConfig(flags, metaRoot);
 
   try {

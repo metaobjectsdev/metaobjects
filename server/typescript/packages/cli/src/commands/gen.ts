@@ -38,16 +38,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
   warnIfAgentContextStale(cwd);
 
-  const projectRoot = cwd;
   const cliConfig = resolveGenConfig(flags);
-
-  let forgeConfig;
-  try {
-    forgeConfig = await loadMetaobjectsConfig(projectRoot);
-  } catch (err) {
-    log.error((err as Error).message);
-    return 2;
-  }
 
   // Discovery and load are two separate failure modes, kept in separate try
   // blocks deliberately: a broad catch around both previously swallowed
@@ -55,9 +46,28 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   // "y" on X`) as "no metaobjects/ found", masking the real failure.
   // `resolveCollection` raises `ERR_COLLECTION_NOT_FOUND` with its own
   // message when nothing is discovered and no default directory exists.
+  //
+  // Discovery runs BEFORE the config read, deliberately: the project root is
+  // whichever directory `resolveCollection` decided the metadata belongs to,
+  // and everything project-relative — `metaobjects.config.ts`, the `outDir`
+  // its generators name, `.metaobjects/.gen-state/` — has to come from that
+  // same directory. Reading the config from ambient cwd while the metadata
+  // came from an ancestor is the config-half of the very divergence this
+  // design exists to remove (design §4.6.1: "Per-port generator config is then
+  // read from that same directory"). For a run from the project root the two
+  // are the same path, which is the only invocation that worked before.
   let collection;
   try {
-    collection = await resolveCollection(projectRoot);
+    collection = await resolveCollection(cwd);
+  } catch (err) {
+    log.error((err as Error).message);
+    return 2;
+  }
+  const projectRoot = collection.configDir;
+
+  let forgeConfig;
+  try {
+    forgeConfig = await loadMetaobjectsConfig(projectRoot);
   } catch (err) {
     log.error((err as Error).message);
     return 2;

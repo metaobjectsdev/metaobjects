@@ -129,20 +129,6 @@ export async function verifyCommand(
     );
   }
 
-  // Best-effort load of metaobjects.config.ts. Two consumers:
-  //  1) consumer-supplied providers (e.g. a `template.toolcall` subtype) threaded
-  //     into loadMemory — verify doesn't REQUIRE codegen config for templates/db;
-  //  2) the full config object, which `--codegen` needs to locate outDir/targets.
-  // If absent/invalid we fall back to defaults; `--codegen` then reports a clear
-  // error (it can't diff without knowing where the committed output lives).
-  let forgeConfig: MetaobjectsGenConfig | undefined;
-  try {
-    forgeConfig = await loadMetaobjectsConfig(cwd);
-  } catch {
-    forgeConfig = undefined;
-  }
-  const configProviders = forgeConfig?.providers;
-
   // Where the metadata lives is `resolveCollection`'s decision, not a hardcoded
   // directory. It also carries the per-command `migrate.scope` the schema gate below
   // honours — `verify --db` and `migrate` govern the identical object set — and the
@@ -159,6 +145,32 @@ export async function verifyCommand(
     log.error((err as Error).message);
     return 2;
   }
+
+  // The project root is whichever directory `resolveCollection` decided the
+  // metadata belongs to (design §4.6.1: "Per-port generator config is then read
+  // from that same directory"). The line this draws, applied throughout this
+  // command: anything named BY the metadata or its config resolves against
+  // `projectRoot` — `metaobjects.config.ts`, `.metaobjects/config.json`, the
+  // `outDir` and `wranglerConfigPath` they carry, the `prompts/` a `@textRef`
+  // resolves in, the test files a `@verifiedBy` names. Anything that is merely
+  // "the tree the user is standing in" stays on `cwd` — the agent-context
+  // staleness nudge and the advisory anti-pattern scan, both warnings-only.
+  // Identical paths for a run from the project root.
+  const projectRoot = collection.configDir;
+
+  // Best-effort load of metaobjects.config.ts. Two consumers:
+  //  1) consumer-supplied providers (e.g. a `template.toolcall` subtype) threaded
+  //     into loadMemory — verify doesn't REQUIRE codegen config for templates/db;
+  //  2) the full config object, which `--codegen` needs to locate outDir/targets.
+  // If absent/invalid we fall back to defaults; `--codegen` then reports a clear
+  // error (it can't diff without knowing where the committed output lives).
+  let forgeConfig: MetaobjectsGenConfig | undefined;
+  try {
+    forgeConfig = await loadMetaobjectsConfig(projectRoot);
+  } catch {
+    forgeConfig = undefined;
+  }
+  const configProviders = forgeConfig?.providers;
 
   // ADR-0023 strict-by-default (#96): verify loads strict unless --lax is passed,
   // so an undeclared/typo'd own @attr fails verify (matching Java's Maven goal).
@@ -192,7 +204,7 @@ export async function verifyCommand(
   // loaded, which is every project that declares no scope.
   const schemaScope = toObjectScope(collection.migrateScope);
 
-  const promptsDir = join(cwd, flags.prompts ?? DEFAULT_PROMPTS_DIR);
+  const promptsDir = join(projectRoot, flags.prompts ?? DEFAULT_PROMPTS_DIR);
   const provider = new FileProvider(promptsDir);
 
   // Exit-code composition: the overall result is the MAX across every selected
@@ -223,7 +235,7 @@ export async function verifyCommand(
     // authority — see the verified-by-scan header.
     const diags = [
       ...checkRequirements(root),
-      ...checkVerifiedBy(root, cwd, forgeConfig?.verify?.testFiles),
+      ...checkVerifiedBy(root, projectRoot, forgeConfig?.verify?.testFiles),
     ];
 
     // Printed on EVERY run, clean or not — a gate that says nothing when it
@@ -498,14 +510,14 @@ export async function verifyCommand(
   // computeDriftFromActual and the SAME reportSchemaDrift the sqlite/postgres
   // path uses — no forked reporting/exit-code logic.
   async function runD1SchemaVerify(ledgerDrift: string[]): Promise<number> {
-    const d1Config = await resolveD1Config({ d1Binding: flags.d1, remote: flags.remote }, cwd);
+    const d1Config = await resolveD1Config({ d1Binding: flags.d1, remote: flags.remote }, projectRoot);
 
     const wranglerConfigPath = d1Config.wranglerConfigPath
-      ? resolvePath(cwd, d1Config.wranglerConfigPath)
-      : findWranglerConfig(cwd);
+      ? resolvePath(projectRoot, d1Config.wranglerConfigPath)
+      : findWranglerConfig(projectRoot);
 
     if (wranglerConfigPath === undefined && d1Config.binding === undefined) {
-      log.error(`verify: no wrangler.toml found in ${cwd} or parents; pass --d1 <binding> to bypass`);
+      log.error(`verify: no wrangler.toml found in ${projectRoot} or parents; pass --d1 <binding> to bypass`);
       return 2;
     }
 
@@ -531,7 +543,7 @@ export async function verifyCommand(
         command: sql,
         configPath: wranglerConfigPath,
       });
-      const { stdout } = await activeWranglerRunner(wranglerArgs, cwd);
+      const { stdout } = await activeWranglerRunner(wranglerArgs, projectRoot);
       return stdout;
     };
 
@@ -603,8 +615,8 @@ export async function verifyCommand(
     // default) rather than re-deriving it, so verify can never look somewhere migrate
     // does not write. Only `outDir` is consumed; the rest of the resolved config is
     // migrate's business.
-    const migrateConfig = await resolveMigrateConfig(EMPTY_MIGRATE_FLAGS, cwd);
-    const dir = resolvePath(cwd, migrateConfig.outDir);
+    const migrateConfig = await resolveMigrateConfig(EMPTY_MIGRATE_FLAGS, projectRoot);
+    const dir = resolvePath(projectRoot, migrateConfig.outDir);
     let snapshot: SchemaSnapshot | null;
     try {
       snapshot = await readSnapshot(snapshotPath(dir, dialect));
@@ -709,7 +721,7 @@ export async function verifyCommand(
     // files should exist, reporting every out-of-scope entity as drift.
     let result;
     try {
-      result = await computeCodegenDrift(forgeConfig, root, cwd, (fqn) => matchesScope(fqn, collection.scope));
+      result = await computeCodegenDrift(forgeConfig, root, projectRoot, (fqn) => matchesScope(fqn, collection.scope));
     } catch (err) {
       log.error(`verify --codegen: regeneration failed: ${(err as Error).message}`);
       return 1;
