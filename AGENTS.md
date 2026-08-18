@@ -200,7 +200,7 @@ import { EntityFetcherProvider, EntityGrid } from "@metaobjectsdev/tanstack";
 - **Codegen substrate**: ts-poet for greenfield emit, ts-morph for in-place edits, Biome for format pass, `git merge-file --diff3` for hand-edit-preserving regen.
 - **Runtime substrate**: Kysely for TS (user-provided connection, async-only).
 - **Migration substrate**: Postgres + SQLite for TS v0.3.
-- **Metadata location**: resolved via `resolveCollection()` (`@metaobjectsdev/sdk`) — the single authority. The directory name lives in ONE literal, `DEFAULT_METADATA_DIR` in `sdk/src/memory.ts`; every other site (`meta init`'s scaffold included) imports it. No code path may write the literal again. See [docs/features/metadata-sources.md](docs/features/metadata-sources.md).
+- **Metadata location**: resolved via `resolveCollection()` (`@metaobjectsdev/sdk`) — the single authority. `metaobjects/` is the **default value of `sources`** and nothing else: no other module, command or user-facing message may assert that a directory of that name exists or is where metadata lives. Exactly four sites may name it — `sdk/src/metadata-files.ts` (`DEFAULT_METADATA_DIR`, its single definition), `sdk/src/sources.ts` (`DEFAULT_SOURCES`, **the** default), `sdk/src/collection.ts` (inside `resolveCollection`, *applying* that default), and `cli/src/commands/init.ts` (the scaffolder **writing** the layout). Enforced by `sdk/test/no-hardcoded-metadata-dir.test.ts`, whose allowlist demands a written reason per entry. See [docs/features/metadata-sources.md](docs/features/metadata-sources.md).
 
 ## Explicitly out of scope
 

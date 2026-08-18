@@ -3,8 +3,15 @@
 **Where does my metadata come from?** From the `sources` set in
 `.metaobjects/config.json`. When that key is absent or empty, `sources` takes its
 default value — the `metaobjects/` directory sitting beside the `.metaobjects/`
-folder that holds the config. Nothing else in the toolchain assumes that directory
-name.
+folder that holds the config.
+
+**`metaobjects/` is that default value, and nothing more.** It is not a requirement,
+and it is not a convention any part of the toolchain is allowed to assume: a project
+that declares `sources` may put its metadata anywhere — a sibling module, a shared
+model repository, a single file — and need not have a directory of that name at all.
+Every command answers "where is the metadata?" by reading the config, so pointing
+`sources` elsewhere moves *all* of them together. Nothing greps for the directory,
+tests for its existence, or mentions it in a message.
 
 **How do I point it somewhere else?** Declare it:
 
@@ -104,6 +111,11 @@ root's.
    the boundary check within each directory, so a config at the repository root —
    sharing its directory with `.git` — is still reachable from any subdirectory.
 4. If nothing is found, the starting directory is used with the default `sources`.
+
+That config file is the **only** thing the walk looks for. A directory holding a
+`metaobjects/` directory but no config is not a project root — see
+[A project boundary is a `.metaobjects/config.json`](#a-project-boundary-is-a-metaobjectsconfigjson)
+under Upgrading.
 
 Collections are **never auto-discovered**. Nothing globs the tree for directories
 that merely look like metadata homes; a collection exists only where a config names
@@ -420,8 +432,25 @@ type) surfaces as the config load error and stops the command.
 ## Upgrading
 
 A project with one config at its root, no `sources` and no `scope` resolves the same
-files it always did and generates the same code. Six changes are still worth knowing
+files it always did and generates the same code. Seven changes are still worth knowing
 about before you upgrade.
+
+### A project boundary is a `.metaobjects/config.json`
+
+Discovery walks up for that file and stops at nothing else. A directory holding a
+`metaobjects/` directory but no config of its own is **not** a project root, so a
+command run inside it resolves the nearest ancestor config — including that config's
+`sources`, which may point somewhere neither directory contains.
+
+This is the rule rather than a caveat: `metaobjects/` is the default *value* of
+`sources`, so a directory of that name says nothing about whether a project lives
+there. Treating it as a second marker would put a second answer to "where does
+metadata live?" back into the toolchain, and would be silently wrong for every
+project that declares `sources` elsewhere.
+
+If a subdirectory should own its metadata, give it a config — `meta init` writes
+one, and a `"sources": []` config is enough to claim the directory and take the
+default.
 
 ### The workspace `extends:` walk is retired
 
@@ -431,10 +460,10 @@ could be discovered (`pnpm-workspace.yaml`, or `package.json` `workspaces`), it
 walked that dependency graph and loaded each peer package's `metaobjects/` directory
 first, in topological order.
 
-Every CLI read path now resolves its files through `sources`, which does no such
-walk. Two ways to find metadata, one of them implicit and reachable only from a
-particular repository layout, is precisely the divergence this feature exists to
-remove — and one of them was undocumented.
+Every read path — `loadMemory` itself included — now resolves its files through
+`sources`, which does no such walk. Two ways to find metadata, one of them implicit
+and reachable only from a particular repository layout, is precisely the divergence
+this feature exists to remove — and one of them was undocumented.
 
 **It fails loudly, not silently.** A model that depended on a peer package's
 declarations now fails to load with `ERR_UNRESOLVED_SUPER` naming the `extends:`
