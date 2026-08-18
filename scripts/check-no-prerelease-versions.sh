@@ -44,7 +44,8 @@ Version declarations only; unrelated WIP under those trees is not touched:
 
     git checkout -- 'server/typescript/packages/*/package.json' \
                     'client/web/packages/*/package.json' \
-                    'server/java/**/pom.xml' 'server/python/pyproject.toml' \
+                    'server/java/pom.xml' 'server/java/**/pom.xml' \
+                    'server/python/pyproject.toml' \
                     'server/csharp/Directory.Build.props' 'bun.lock'
 MSG
   exit 1

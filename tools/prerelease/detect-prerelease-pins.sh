@@ -59,7 +59,7 @@ PRERELEASE_RE='[0-9]+\.[0-9]+\.[0-9]+(-(rc|alpha|beta|SNAPSHOT)[.0-9]*|rc[0-9]+|
 # awk builds its regex from a string, so every backslash has to survive one more round.
 PRERELEASE_RE_AWK='[0-9]+\\.[0-9]+\\.[0-9]+(-(rc|alpha|beta|SNAPSHOT)[.0-9]*|rc[0-9]+|\\.dev[0-9]+)'
 # NS_RE with every backslash doubled for the same reason (see the proximity check below).
-NS_RE_AWK='@metaobjectsdev/|com\\.metaobjects|(^|[^A-Za-z])MetaObjects(\\.|\\"|<|$)|(^|[^A-Za-z-])metaobjects([^A-Za-z-]|$)'
+NS_RE_AWK='@metaobjectsdev/|com\\.metaobjects|(^|[^A-Za-z])MetaObjects(\\.|\"|<|$)|(^|[^A-Za-z-])metaobjects([^A-Za-z-]|$)'
 
 # Only DEPENDENCY DECLARATIONS are scanned. A source file that starts an HTTP server on
 # 127.0.0.1, or a design doc quoting an old -SNAPSHOT version, is not a dependency on
