@@ -83,7 +83,10 @@ const taken = (await Promise.all(set.map(async (p) => {
   try {
     const r = await fetch(`https://registry.npmjs.org/${p.pkg.name.replace("/", "%2f")}`,
       { headers: { accept: "application/vnd.npm.install-v1+json" }, signal: AbortSignal.timeout(15_000) });
-    if (!r.ok) return null;                        // 404 = never published = free
+    if (r.status === 404) return null;             // never published = free
+    // Any other non-OK status is fatal, not "free": failing open here re-creates the
+    // irreversible mid-publish partial failure this preflight exists to prevent.
+    if (!r.ok) die(`npm answered HTTP ${r.status} for ${p.pkg.name} — cannot verify ${VERSION} is free`);
     return (await r.json()).versions?.[VERSION] ? p.pkg.name : null;
   } catch { die(`could not reach npm to verify ${VERSION} is free (${p.pkg.name})`); }
 }))).filter(Boolean);

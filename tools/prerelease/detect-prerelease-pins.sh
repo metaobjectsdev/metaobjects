@@ -58,6 +58,8 @@ PRIVATE_HOST_RE='https?://(localhost|127\.[0-9]+\.[0-9]+\.[0-9]+|0\.0\.0\.0|10\.
 PRERELEASE_RE='[0-9]+\.[0-9]+\.[0-9]+(-(rc|alpha|beta|SNAPSHOT)[.0-9]*|rc[0-9]+|\.dev[0-9]+)'
 # awk builds its regex from a string, so every backslash has to survive one more round.
 PRERELEASE_RE_AWK='[0-9]+\\.[0-9]+\\.[0-9]+(-(rc|alpha|beta|SNAPSHOT)[.0-9]*|rc[0-9]+|\\.dev[0-9]+)'
+# NS_RE with every backslash doubled for the same reason (see the proximity check below).
+NS_RE_AWK='@metaobjectsdev/|com\\.metaobjects|(^|[^A-Za-z])MetaObjects(\\.|\\"|<|$)|(^|[^A-Za-z-])metaobjects([^A-Za-z-]|$)'
 
 # Only DEPENDENCY DECLARATIONS are scanned. A source file that starts an HTTP server on
 # 127.0.0.1, or a design doc quoting an old -SNAPSHOT version, is not a dependency on
@@ -110,7 +112,31 @@ scan "project points at a private-network or loopback package registry" -- "$PRI
 scan "vendor dependency pinned to a pre-release version" -- "($NS_RE).*$PRERELEASE_RE"
 # XML is deliberately excluded here and handled by check 5 instead: a pom's own
 # <version>1.0.0-SNAPSHOT</version> is normal and must not be flagged.
-scan "vendor dependency pinned to a pre-release version" -- "\"$PRERELEASE_RE\"|==$PRERELEASE_RE|Version=\"$PRERELEASE_RE"
+#
+# 3b — a bare quoted pre-release version, which is how it appears in LOCKFILES (name and
+# version on different lines, so the same-line arm above cannot see them). Flagged only
+# when a vendor namespace token appears within a few lines of the version: a naked
+# version-anywhere match would also flag every third-party rc/beta a project legitimately
+# depends on, and a check that cries wolf is a check people learn to ignore.
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  bad=$(awk -v ns="$NS_RE_AWK" -v re="$PRERELEASE_RE_AWK" '
+    { lines[NR] = $0 }
+    END {
+      pat = "\"" re "\"" "|==" re "|Version=\"" re
+      for (i = 1; i <= NR; i++) {
+        if (lines[i] !~ pat) continue
+        for (j = i - 4; j <= i + 4; j++)
+          if (j >= 1 && j <= NR && lines[j] ~ ns) { print i": "lines[i]; break }
+      }
+    }
+  ' "$f")
+  if [ -n "$bad" ]; then
+    hit "vendor dependency pinned to a pre-release version"
+    echo "$bad" | sed "s|^|      $f:|" >&2
+  fi
+done < <(grep -rIlE --binary-files=without-match "${MANIFESTS[@]}" "${EXCLUDES[@]}" \
+           -- "\"$PRERELEASE_RE\"|==$PRERELEASE_RE|Version=\"$PRERELEASE_RE" "$ROOT" 2>/dev/null)
 
 # 4 — a bare npm dist-tag specifier: floats, and does not exist on the public registry.
 scan "npm dependency declared as a bare dist-tag" \

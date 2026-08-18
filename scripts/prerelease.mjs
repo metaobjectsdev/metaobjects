@@ -205,10 +205,17 @@ const dirty = sh(`git status --porcelain -- ${VERSION_FILES.map((f) => `'${f}'`)
 if (dirty) die(`version-bearing files are dirty — commit or stash first:\n${dirty}`);
 ok("version-bearing files clean");
 
+// Only the files this run actually wrote are reverted — never whole trees, or a maintainer's
+// unrelated unstaged WIP anywhere under them would be silently destroyed on exit (even on a
+// clean --dry-run). GATE 6 guarantees each of these was clean before the run, so restoring
+// from the index is unambiguous.
 let restored = false;
+const touched = [];
+const touch = (...files) => touched.push(...files);
 const restore = () => {
   if (restored) return; restored = true;
-  try { sh(`git checkout -- server/typescript server/java server/python server/csharp client/web bun.lock`); } catch {}
+  if (!touched.length) return;
+  try { sh(`git checkout -- ${touched.map((f) => `'${f}'`).join(" ")}`); } catch {}
 };
 process.on("exit", restore);
 process.on("SIGINT", () => { restore(); process.exit(130); });
@@ -224,13 +231,16 @@ if (wants("npm")) {
   const set = [];
   for (const { dir, pkg } of LOCKSTEP) {   // same lockstep rule as scripts/release.mjs
     const p = { ...pkg, version: V.npm };
-    writeFileSync(join(ROOT, dir, "package.json"), JSON.stringify(p, null, 2) + "\n");
+    const f = join(dir, "package.json");
+    writeFileSync(join(ROOT, f), JSON.stringify(p, null, 2) + "\n");
+    touch(f);
     set.push({ dir, short: p.name.replace("@metaobjectsdev/", "") });
   }
   if (!set.length) die("no packages matched the lockstep set");
   ok(`npm lockstep set: ${set.length} packages → ${V.npm}`);
 
   sh("rm -f bun.lock && bun install");                  // re-pins workspace:* to V.npm
+  touch("bun.lock");
   sh("bun run clean && bun run build");
   ok("relocked + clean rebuild");
 
@@ -268,6 +278,7 @@ if (wants("npm")) {
 if (wants("python")) {
   const f = "server/python/pyproject.toml";
   writeFileSync(join(ROOT, f), readFileSync(join(ROOT, f), "utf8").replace(/^version = ".*"$/m, `version = "${V.pypi}"`));
+  touch(f);
   const dist = scratch("pydist");
   sh(`cd server/python && uv build --out-dir ${dist}`);
   ok(`python built ${V.pypi}`);
@@ -297,7 +308,9 @@ if (wants("java")) {
   // Tree-wide sed, NOT `mvn versions:set` — versions:set walks only the reactor and
   // silently skips the two reactor-EXCLUDED integration-test modules, whose parent
   // version then lags (see scripts/check-pom-versions.sh, docs/RELEASING.md).
-  sh(`grep -rl '${javaReleased}' --include=pom.xml server/java | xargs sed -i 's/${javaReleased.replace(/\./g, "\\.")}/${V.maven}/g'`);
+  const poms = sh(`grep -rl '${javaReleased}' --include=pom.xml server/java`).trim().split("\n").filter(Boolean);
+  sh(`sed -i 's/${javaReleased.replace(/\./g, "\\.")}/${V.maven}/g' ${poms.map((f) => `'${f}'`).join(" ")}`);
+  touch(...poms);
   sh("scripts/check-pom-versions.sh");
   ok(`java poms → ${V.maven}`);
   const settings = join(scratch("m2"), "settings.xml");

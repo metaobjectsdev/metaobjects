@@ -39,9 +39,13 @@ if [ "$fail" -ne 0 ]; then
   cat >&2 <<'MSG'
 
 Pre-release version(s) found in committed version declarations.
-Fix — restore them (scripts/prerelease.mjs does this automatically; a crashed run may not have):
+Fix — restore them (scripts/prerelease.mjs does this automatically; a crashed run may not have).
+Version declarations only; unrelated WIP under those trees is not touched:
 
-    git checkout -- server/typescript server/java server/python server/csharp client/web bun.lock
+    git checkout -- 'server/typescript/packages/*/package.json' \
+                    'client/web/packages/*/package.json' \
+                    'server/java/**/pom.xml' 'server/python/pyproject.toml' \
+                    'server/csharp/Directory.Build.props' 'bun.lock'
 MSG
   exit 1
 fi

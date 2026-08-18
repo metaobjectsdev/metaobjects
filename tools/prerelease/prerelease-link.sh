@@ -86,7 +86,15 @@ maven_version() { echo "$1" | sed -E 's/^[0-9]+\./7./'; }
 # ── ecosystem detection ───────────────────────────────────────────────────────────────
 has_npm()   { [ -f "$PROJECT/package.json" ]; }
 has_py()    { [ -f "$PROJECT/pyproject.toml" ] || ls "$PROJECT"/requirements*.txt >/dev/null 2>&1; }
-has_nuget() { ls "$PROJECT"/*.csproj "$PROJECT"/*.sln "$PROJECT"/**/*.csproj >/dev/null 2>&1; }
+# Any .NET project/solution file at ANY depth — a single `ls a b c` would require ALL its
+# arguments to exist (ls exits non-zero when ANY one is missing) and so essentially never
+# fire for a real layout like MyApp.sln + src/MyApp/MyApp.csproj. obj/bin/node_modules are
+# build output and vendored deps, not this project's choice of ecosystem.
+has_nuget() {
+  [ -n "$(find "$PROJECT" \( -name '*.csproj' -o -name '*.fsproj' -o -name '*.vbproj' -o -name '*.sln' \) \
+             -not -path '*/obj/*' -not -path '*/bin/*' -not -path '*/node_modules/*' \
+             -print -quit 2>/dev/null)" ]
+}
 has_mvn()   { [ -f "$PROJECT/pom.xml" ]; }
 
 detected() {
@@ -160,7 +168,8 @@ repin_nuget() {  # repin_nuget <version|"">
   local v="$1"; [ -n "$v" ] || return 0
   while IFS= read -r f; do
     sed -i -E "s|(<PackageReference[^>]*Include=\"${NUGET_PREFIX}[^\"]*\"[^>]*Version=\")[^\"]*(\")|\\1${v}\\2|g" "$f"
-  done < <(find "$PROJECT" -name '*.csproj' -o -name '*.fsproj' -o -name 'Directory.Packages.props' 2>/dev/null)
+  done < <(find "$PROJECT" \( -name '*.csproj' -o -name '*.fsproj' -o -name 'Directory.Packages.props' \) \
+             -not -path '*/obj/*' -not -path '*/bin/*' 2>/dev/null)
   say "repinned ${NUGET_PREFIX}* package references to $v"
 }
 
