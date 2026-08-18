@@ -361,3 +361,51 @@ describe("loadMemory — cross-package loading via workspace", () => {
     }
   });
 });
+
+describe("loadMemory with an explicit file set", () => {
+  test("loads exactly the supplied files, ignoring any metaobjects/ dir", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "metaobjects-memory-files-"));
+    try {
+      mkdirSync(join(dir, "model"), { recursive: true });
+      mkdirSync(join(dir, "metaobjects"), { recursive: true });
+      writeFileSync(join(dir, "model/meta.a.json"), JSON.stringify({
+        "metadata.root": { package: "acme", children: [
+          { "object.entity": { name: "Order", children: [{ "field.string": { name: "id" } }] } }] },
+      }), "utf8");
+      writeFileSync(join(dir, "metaobjects/meta.decoy.json"), JSON.stringify({
+        "metadata.root": { package: "acme", children: [
+          { "object.entity": { name: "Decoy", children: [{ "field.string": { name: "id" } }] } }] },
+      }), "utf8");
+      const root = await loadMemory(dir, { files: [join(dir, "model/meta.a.json")] });
+      const names = root.children().map((c) => c.name);
+      expect(names).toContain("Order");
+      expect(names).not.toContain("Decoy");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("with no `files` option, a project with a metaobjects/ tree still loads exactly as before", async () => {
+    const root = makeMetaRoot();
+    try {
+      writeFileSync(
+        join(root, "metaobjects", "domain.json"),
+        JSON.stringify({
+          "metadata.root": {
+            package: "acme",
+            children: [
+              { "object.entity": { name: "Order", children: [{ "field.string": { name: "id" } }] } },
+            ],
+          },
+        }),
+        "utf8",
+      );
+
+      const meta = await loadMemory(root);
+      const names = meta.children().map((c) => c.name);
+      expect(names).toEqual(["Order"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

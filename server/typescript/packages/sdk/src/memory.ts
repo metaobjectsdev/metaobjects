@@ -64,6 +64,14 @@ export interface LoadMemoryOptions {
    * the `meta verify` command opts in to `true` (strict-by-default, #96).
    */
   strict?: boolean;
+  /**
+   * An already-resolved, absolute metadata file list — e.g. from
+   * `resolveCollection(...).files` in `collection.ts`. When supplied,
+   * `loadMemory` loads exactly these files and performs no directory
+   * discovery at all (no `metaobjects/` scan, no workspace `extends:`
+   * walk). Omit to keep the default discovery behavior unchanged.
+   */
+  files?: readonly string[];
 }
 
 /** Default provider bundle threaded by {@link loadMemory} when no options
@@ -80,6 +88,8 @@ export const defaultLoadMemoryProviders: readonly MetaDataTypeProvider[] = [
  * MetaData. If `<repoRoot>/.meta/package.meta.json` declares `extends:` deps
  * and a workspace can be discovered (pnpm-workspace.yaml or package.json
  * workspaces), peer packages are loaded too in topological dep-first order.
+ * Pass {@link LoadMemoryOptions.files} to bypass this discovery entirely and
+ * load an already-resolved file list instead (e.g. from `resolveCollection`).
  *
  * Excludes `_pending/`. Registers metaobjects core types plus Meta Forge's
  * descriptive top-level types (decision, principle, etc.) so mixed content
@@ -87,7 +97,8 @@ export const defaultLoadMemoryProviders: readonly MetaDataTypeProvider[] = [
  * {@link LoadMemoryOptions.providers}) are composed AFTER the defaults so
  * they may depend on core/forge ids.
  *
- * Throws if `metaobjects/` doesn't exist (callers should run `meta init`).
+ * Throws if `metaobjects/` doesn't exist (callers should run `meta init`),
+ * unless `options.files` is supplied.
  *
  * @param repoRoot The project's working-directory root (e.g. process.cwd()).
  *   `loadMemory` resolves `metaobjects/` and (if workspace-aware) the
@@ -116,7 +127,11 @@ export async function loadMemory(
   // Collect all metadata file paths to load. Order matters for the parser's
   // deferred-resolution pass (it parses in array order, then resolves supers
   // against the merged tree afterwards) — dep packages first, current last.
-  const paths = await collectMetadataPaths(repoRoot);
+  // An explicit `files` list (already resolved, e.g. by `resolveCollection`)
+  // wins outright and skips discovery entirely.
+  const paths = options?.files !== undefined
+    ? [...options.files]
+    : await collectMetadataPaths(repoRoot);
 
   const loader = new MetaDataLoader({
     registry,
