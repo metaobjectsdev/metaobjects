@@ -10,7 +10,8 @@
     "typecheck": "bun run --filter '*' typecheck",
     "test": "cd server/typescript && bun test",
     "clean": "rm -rf server/typescript/packages/*/dist server/typescript/packages/*/*.tsbuildinfo client/web/packages/*/dist client/web/packages/*/*.tsbuildinfo",
-    "release": "bun scripts/release.mjs"
+    "release": "bun scripts/release.mjs",
+    "prerelease": "bun scripts/prerelease.mjs"
   },
   "devDependencies": { "typescript": "^5.6.0" },
   "engines": { "bun": ">=1.3.0", "node": ">=22.0.0" },

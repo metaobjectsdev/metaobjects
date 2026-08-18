@@ -43,6 +43,21 @@ hits=$(git diff --cached --diff-filter=ACM -U0 --no-color 2>/dev/null | awk '
   /^\+/ && !/^\+\+\+/     { if (f !~ /^\.githooks\//) print f "\t" substr($0,2) }
 ' | grep -Ei "$PATTERNS" | grep -vEi "$ALLOW")
 
+# A pre-release version must never be committed: scripts/release.mjs derives the lockstep
+# set from the CLI's CURRENT version, so a stray -rc.N silently shrinks the next release.
+# Only runs when a version-bearing file is actually staged.
+if git diff --cached --name-only --diff-filter=ACM 2>/dev/null | grep -qE \
+     '(package\.json|pom\.xml|pyproject\.toml|Directory\.Build\.props)$'; then
+  if [ -x "$ROOT/scripts/check-no-prerelease-versions.sh" ]; then
+    if ! "$ROOT/scripts/check-no-prerelease-versions.sh" >/dev/null 2>&1; then
+      echo "" >&2
+      "$ROOT/scripts/check-no-prerelease-versions.sh" >&2 || true
+      echo "  commit blocked — see above. Bypass (discouraged):  git commit --no-verify" >&2
+      exit 1
+    fi
+  fi
+fi
+
 if [ -n "$hits" ]; then
   echo "" >&2
   echo "  commit blocked — possible private/other-project or local-path leak (metaobjects is PUBLIC):" >&2

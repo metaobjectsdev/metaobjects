@@ -1,0 +1,44 @@
+# OPTIONAL self-contained registry, for someone who does not already have one.
+#
+# The project's own pre-release registry is https://gitea.mealing.com (public hostname,
+# anonymous reads) and is the default the tooling uses. This file exists so that a fork,
+# a different team, or an offline machine can stand up an equivalent in one command.
+#
+# The pre-release toolchain is registry-AGNOSTIC: scripts/prerelease.mjs and
+# tools/prerelease/prerelease-link.sh read the address from tools/prerelease/registry.env
+# (or the environment), so any Gitea instance works — this compose file just gives you one.
+#
+#   docker compose -f tools/prerelease/docker-compose.yml up -d
+#   tools/prerelease/bootstrap.sh                    # owner + token -> registry.env
+#   docker compose -f tools/prerelease/docker-compose.yml down       # stop
+#   docker compose -f tools/prerelease/docker-compose.yml down -v    # stop + wipe
+#
+# One Gitea instance serves all four ecosystems from one host:
+#   npm    <base>/api/packages/<owner>/npm/
+#   PyPI   <base>/api/packages/<owner>/pypi
+#   NuGet  <base>/api/packages/<owner>/nuget/index.json
+#   Maven  <base>/api/packages/<owner>/maven
+#
+# This one binds to 127.0.0.1. That is a convenience, NOT the safety model — the project's
+# own registry is a public HTTPS endpoint, and that is fine. What keeps a pre-release from
+# becoming a release is the publish-target gate in scripts/prerelease.mjs plus the pin
+# detector in tools/prerelease/detect-prerelease-pins.sh, never where the socket listens.
+services:
+  registry:
+    image: gitea/gitea:1.27
+    container_name: mo-prerelease-registry
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - GITEA__server__ROOT_URL=http://localhost:3939/
+      - GITEA__server__HTTP_PORT=3000
+      - GITEA__security__INSTALL_LOCK=true
+      - GITEA__service__DISABLE_REGISTRATION=true
+      - GITEA__database__DB_TYPE=sqlite3
+    volumes:
+      - registry-data:/data
+    ports:
+      - "127.0.0.1:3939:3000"
+    restart: unless-stopped
+volumes:
+  registry-data:
