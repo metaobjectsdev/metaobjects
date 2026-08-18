@@ -5,19 +5,41 @@
 // declared source SET, so the order sources are declared in carries no
 // information. That is why the design has no ordered-list semantics, no
 // topological sort, no cycle detection, and no diamond-dependency problem.
-// This file is what turns that premise from a belief into an enforced
-// property, at two tiers:
-//   1. resolveSources() itself (T4 already documents this contract; this
-//      re-asserts it across all six permutations of three specs, on the
-//      FULL ResolvedSource[] — .spec included, not just .file).
-//   2. The loaded MODEL — resolveSources() feeding MetaDataLoader, its
-//      canonical (own-mode) serialization byte-identical across the same
-//      six permutations.
 //
-// The fixture shape — a base declaration, an overlay onto it, and an
-// independent third file — is deliberately the one whose merge is most
-// order-sensitive if anything is: an overlay must find its base regardless
-// of which file the loader saw first.
+// The premise splits into THREE layers, and this file is the design's
+// documentation of record on how each one is satisfied — deliberately not
+// collapsed into one over-broad assertion, because two earlier drafts of
+// this gate got that collapse wrong in opposite directions:
+//   1. `resolveSources` CANONICALIZES file order — it sorts its output by
+//      absolute path (sources.ts:127), so every permutation of a declared
+//      source SET collapses to the same file list before the loader ever
+//      runs. Test 1 pins this directly.
+//   2. The LOADER resolves CONTENT order-independently, given whatever file
+//      list it's handed — including an overlay arriving before its base.
+//      `_partitionOverlayLast` is the mechanism (stable-partitions
+//      overlay-only sources to the end before the parse loop runs); test 2
+//      proves it by permuting FILE PATHS directly into `FileSource[]`,
+//      bypassing `resolveSources` entirely (routing through it would erase
+//      all order variation before the loader ever saw it, and reach
+//      overlay-before-base in zero of the six permutations — an earlier
+//      draft of this test did exactly that and passed vacuously). Test 2
+//      compares CONTENT — each top-level object's own serialization, keyed
+//      by name — not the whole tree, for the reason in point 3.
+//   3. SIBLING ORDER of unrelated top-level nodes (e.g. which of two
+//      unrelated entities appears first in `MetaRoot`'s `children` array)
+//      follows raw input order and is DELIBERATELY NOT asserted here. It is
+//      not a design claim: `canonicalSerialize`'s own contract
+//      (serializer-json.ts:159-167) promises exactly two normalizations —
+//      alphabetical `@`-attr keys and a trailing newline — and says nothing
+//      about sibling ordering; `serializeNodeInner` emits `ownChildren()` in
+//      whatever order the tree holds them. It also doesn't need to be a
+//      claim: production never hands the loader a permuted list — layer 1
+//      sorts first. A prior draft of test 2 asserted whole-tree
+//      `canonicalSerialize` equality across all six permutations and failed
+//      on unmodified code for exactly this reason (Order vs Customer swap),
+//      even though content resolution was correct in every case — that was
+//      the amended test inventing a bar the design never set, not a real
+//      defect.
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -65,10 +87,10 @@ describe("permutations helper", () => {
     // Sanity-check the helper itself, not just its output length: 6 entries
     // that were secretly duplicates would let both gates below pass
     // vacuously without ever exercising a real reordering.
-    const specs: SourceSpec[] = [{ path: "a" }, { path: "b" }, { path: "c" }];
-    const perms = permutations(specs);
+    const items = ["a", "b", "c"];
+    const perms = permutations(items);
     expect(perms).toHaveLength(6);
-    const distinct = new Set(perms.map((p) => p.map((s) => (s as { path: string }).path).join(",")));
+    const distinct = new Set(perms.map((p) => p.join(",")));
     expect(distinct.size).toBe(6);
   });
 });
@@ -96,29 +118,71 @@ describe("order independence", () => {
     }
   });
 
-  test("the loaded model serializes byte-identically across every permutation", async () => {
+  test("the loader resolves content order-independently given a permuted file list, including overlay-before-base", async () => {
     const { MetaDataLoader, composeRegistry, coreProviders, canonicalSerialize } =
       await import("@metaobjectsdev/metadata");
     const { FileSource } = await import("@metaobjectsdev/metadata/core");
-    const specs: SourceSpec[] = [{ path: "a" }, { path: "b" }, { path: "c" }];
-    const perms = permutations(specs);
+
+    // Permute the FILE PATHS directly — deliberately bypassing
+    // resolveSources(), whose own sort would erase all order variation
+    // before the loader ever saw it (see the file header). Building
+    // FileSource[] straight from these paths is what actually reaches an
+    // overlay-before-base ordering.
+    const basePath = join(root, "a/meta.base.json");
+    const overlayPath = join(root, "b/meta.overlay.json");
+    const otherPath = join(root, "c/meta.other.json");
+    const perms = permutations([basePath, overlayPath, otherPath]);
     expect(perms).toHaveLength(6);
 
-    const serialized: string[] = [];
-    for (const p of perms) {
-      const resolved = await resolveSources(root, p);
-      const loader = new MetaDataLoader({ registry: composeRegistry(coreProviders) });
-      const result = await loader.load(resolved.map((r) => new FileSource(r.file)));
-      expect(result.errors).toHaveLength(0);
-      serialized.push(canonicalSerialize(result.root));
-    }
-    expect(serialized).toHaveLength(6);
+    // Confirm the permutation actually reaches the shape this test exists
+    // to cover: half of the six orderings must place the overlay-only file
+    // before its base, or this gate would be no stronger than test 1 above.
+    const overlayBeforeBase = perms.filter(
+      (p) => p.indexOf(overlayPath) < p.indexOf(basePath),
+    ).length;
+    expect(overlayBeforeBase).toBe(3);
 
-    for (let i = 1; i < serialized.length; i++) {
+    const label = (p: string[]): string =>
+      JSON.stringify(p.map((f) => f.replace(root + "/", "")));
+
+    // Per permutation: a name-keyed map of each top-level object's OWN
+    // canonical serialization. Keying by NAME rather than comparing the
+    // whole root (or relying on array position) makes the comparison
+    // insensitive to sibling order by construction — see point 3 in the
+    // file header — while still catching any real content difference,
+    // which is the property this test exists to prove.
+    const perObject: Map<string, string>[] = [];
+    for (const p of perms) {
+      const loader = new MetaDataLoader({ registry: composeRegistry(coreProviders) });
+      const result = await loader.load(p.map((file) => new FileSource(file)));
+      expect(result.errors, `permutation ${label(p)} errored`).toHaveLength(0);
+
+      const byName = new Map<string, string>();
+      for (const child of result.root.ownChildren()) {
+        byName.set(child.name, canonicalSerialize(child));
+      }
+      perObject.push(byName);
+
+      // The overlay's contribution must have actually landed on Order in
+      // EVERY permutation — this is the assertion that disabling
+      // `_partitionOverlayLast` breaks (3 of 6 permutations throw
+      // ERR_OVERLAY_NO_TARGET without it, dropping this field entirely; see
+      // the break-and-revert evidence in the task report). The empty-errors
+      // check above already catches the hard-failure case; this confirms
+      // the MERGE actually happened, not merely that nothing errored.
       expect(
-        serialized[i],
-        `permutation ${i} (${JSON.stringify(perms[i])}) serialized differently than permutation 0 (${JSON.stringify(perms[0])})`,
-      ).toBe(serialized[0]!);
+        byName.get("Order"),
+        `permutation ${label(p)} — Order is missing the overlay's note field`,
+      ).toContain('"name": "note"');
+    }
+    expect(perObject).toHaveLength(6);
+
+    const expected = perObject[0]!;
+    for (let i = 1; i < perObject.length; i++) {
+      expect(
+        perObject[i],
+        `permutation ${i} (${label(perms[i]!)}) resolved different CONTENT than permutation 0 (${label(perms[0]!)})`,
+      ).toEqual(expected);
     }
   });
 });
