@@ -18,7 +18,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import com.metaobjects.generator.util.GeneratedFileWriter;
 
 /**
  * {@code metaobjects:docs} — emit the generated SDK api surface (the SP-1 {@code apiSurfaces}
