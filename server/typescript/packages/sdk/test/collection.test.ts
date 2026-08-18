@@ -95,4 +95,22 @@ describe("resolveCollection", () => {
       "ERR_COLLECTION_NOT_FOUND",
     );
   });
+
+  test("a malformed config.json rejects rather than silently falling back to metaobjects/", async () => {
+    write("metaobjects/meta.a.json", "{}");
+    // Truncated JSON — config.json EXISTS but cannot be parsed. Must surface
+    // as a real load failure, never a silent DEFAULT_SOURCES fallback: a
+    // typo'd config that quietly generates from a possibly-stale
+    // `metaobjects/` with no diagnostic is worse than the status quo this
+    // design set out to fix.
+    write(".metaobjects/config.json", '{ "schema_version": 1, ');
+    await expect(resolveCollection(root)).rejects.toThrow(SyntaxError);
+  });
+
+  test("a .metaobjects/ directory with no config.json still falls back to metaobjects/", async () => {
+    write("metaobjects/meta.a.json", "{}");
+    mkdirSync(join(root, ".metaobjects"), { recursive: true }); // dir exists, file does not
+    const c = await resolveCollection(root);
+    expect(c.files.map((f) => f.replace(root + "/", ""))).toEqual(["metaobjects/meta.a.json"]);
+  });
 });

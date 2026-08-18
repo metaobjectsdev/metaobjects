@@ -42,6 +42,20 @@ async function isDir(p: string): Promise<boolean> {
   }
 }
 
+/** `config.json`'s own basename — kept local rather than imported, matching
+ *  `discovery.ts`'s own private `CONFIG_FILE` constant (the string is not
+ *  exported from `config.js`). */
+const CONFIG_FILE = "config.json";
+
+async function fileExists(p: string): Promise<boolean> {
+  try {
+    await stat(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Narrow the zod-inferred `Config["scope"]` (whose `.optional()` fields are
  *  typed `T | undefined` even when present) down to `Scope`'s
  *  exactOptionalPropertyTypes-safe shape — a key is omitted entirely rather
@@ -62,12 +76,15 @@ function toScope(spec: Config["scope"]): Scope {
  * `findConfigDir` walks up from `startDir` for the nearest
  * `.metaobjects/config.json`, falling back to `startDir` itself when none is
  * found. When the resolved directory carries a config, its declared
- * `sources`/`scope`/`migrate.scope` govern; an absent or malformed config
- * (no `.metaobjects/config.json`, or one `loadConfig` cannot read) falls
- * through to `DEFAULT_SOURCES` — the same `metaobjects/` directory the
- * pre-source-resolution toolchain always read. Throws
- * `ERR_COLLECTION_NOT_FOUND` only when BOTH have failed: no `sources` were
- * declared AND the default `metaobjects/` directory does not exist either.
+ * `sources`/`scope`/`migrate.scope` govern. Only a genuinely ABSENT
+ * `config.json` falls through to `DEFAULT_SOURCES` — the same `metaobjects/`
+ * directory the pre-source-resolution toolchain always read; a config.json
+ * that EXISTS but fails to load (malformed JSON, schema violation) is the
+ * author's error and propagates rather than silently degrading — a source
+ * that fails to resolve must never look like one that was never declared.
+ * Throws `ERR_COLLECTION_NOT_FOUND` only when BOTH have failed: no
+ * `sources` were declared AND the default `metaobjects/` directory does not
+ * exist either.
  *
  * A declared source that fails to resolve is a different, louder failure —
  * `resolveSources` throws `ERR_SOURCE_UNRESOLVED` for that case; only the
@@ -85,21 +102,20 @@ export async function resolveCollection(
   let scopeSpec: Config["scope"];
   let migrateSpec: string[] | undefined;
 
-  if (await isDir(join(configDir, DEFAULT_METAOBJECTS_DIR))) {
-    try {
-      const cfg = await loadConfig(join(configDir, DEFAULT_METAOBJECTS_DIR));
-      if (cfg.sources.length > 0) specs = cfg.sources;
-      scopeSpec = cfg.scope;
-      migrateSpec = cfg.migrate?.scope;
-    } catch {
-      // `.metaobjects/` exists but `config.json` is absent or unreadable —
-      // fall through to the default source set, matching the no-config
-      // case below. A genuinely MALFORMED config.json (present, readable,
-      // but failing ConfigSchema.parse) takes the same path here, since
-      // loadConfig's current signature gives no way to tell "absent" apart
-      // from "malformed" without re-implementing its read+parse. See the
-      // task report for why that's flagged rather than fixed in place.
-    }
+  // Check the FILE, not the `.metaobjects/` directory: a directory that
+  // exists but holds no `config.json` is the ordinary "no config" case and
+  // must fall through silently, same as no `.metaobjects/` at all.
+  if (await fileExists(join(configDir, DEFAULT_METAOBJECTS_DIR, CONFIG_FILE))) {
+    // No try/catch here: a config.json that EXISTS but fails to load
+    // (malformed JSON, a ConfigSchema violation) propagates. Swallowing it
+    // would make a typo'd config behave identically to no config at all —
+    // silently generating from a possibly-stale `metaobjects/` with no
+    // diagnostic, which is a worse failure than the one this design exists
+    // to remove.
+    const cfg = await loadConfig(join(configDir, DEFAULT_METAOBJECTS_DIR));
+    if (cfg.sources.length > 0) specs = cfg.sources;
+    scopeSpec = cfg.scope;
+    migrateSpec = cfg.migrate?.scope;
   }
 
   // Only the DEFAULT is allowed to be absent — an explicitly declared source
