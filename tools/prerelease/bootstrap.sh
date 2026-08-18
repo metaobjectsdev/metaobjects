@@ -44,7 +44,10 @@ fi
 
 echo "waiting for $HOST ..."
 for _ in $(seq 1 60); do
-  curl -fsS -o /dev/null "$HOST/" && break || sleep 1
+  if curl -fsS -o /dev/null "$HOST/"; then
+    break
+  fi
+  sleep 1
 done
 
 if ! curl -fsS -o /dev/null -u "$OWNER:$PASS" "$HOST/api/v1/user" 2>/dev/null; then

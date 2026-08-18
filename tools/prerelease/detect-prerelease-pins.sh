@@ -42,6 +42,7 @@ NS_RE='@metaobjectsdev/|com\.metaobjects|(^|[^A-Za-z])MetaObjects(\.|"|<|$)|(^|[
 # publisher's config. MO_REGISTRY_BASE overrides it for a different registry.
 DEFAULT_REGISTRY_HOST='gitea.mealing.com'
 CFG="$(cd "$(dirname "$0")" && pwd)/registry.env"
+# shellcheck source=/dev/null
 [ -f "$CFG" ] && . "$CFG"
 REGISTRY_HOST="$DEFAULT_REGISTRY_HOST"
 if [ -n "${MO_REGISTRY_BASE:-}" ]; then
@@ -114,6 +115,7 @@ scan() {  # scan <label> <grep-args...>
   out=$(grep -rInE --binary-files=without-match "${MANIFESTS[@]}" "${EXCLUDES[@]}" "$@" "$ROOT" 2>/dev/null | head -20) || return 0
   [ -n "$out" ] || return 0
   hit "$label"
+  # shellcheck disable=SC2001
   echo "$out" | sed 's/^/      /' >&2
 }
 
@@ -147,6 +149,7 @@ while IFS= read -r f; do
   ' "$f")
   if [ -n "$bad" ]; then
     hit "vendor dependency pinned to a pre-release version"
+    # shellcheck disable=SC2001
     echo "$bad" | sed "s|^|      $f:|" >&2
   fi
 done < <(grep -rIlE --binary-files=without-match "${LOCKFILES[@]}" "${EXCLUDES[@]}" \
@@ -168,6 +171,7 @@ while IFS= read -r pom; do
   ' "$pom")
   if [ -n "$bad" ]; then
     hit "pom pins a pre-release version (dependency or version property)"
+    # shellcheck disable=SC2001
     echo "$bad" | sed "s|^|      $pom:|" >&2
   fi
 done < <(grep -rIl --exclude-dir=.git --include=pom.xml 'com\.metaobjects' "$ROOT" 2>/dev/null)

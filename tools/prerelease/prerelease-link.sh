@@ -69,6 +69,7 @@ die()  { printf '\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 #
 #     MO_REGISTRY_OWNER=<owner> tools/prerelease/prerelease-link.sh link --version <ver>
 DEFAULT_REGISTRY='https://gitea.mealing.com'
+# shellcheck source=/dev/null
 [ -f "$HERE/registry.env" ] && . "$HERE/registry.env"
 BASE="${MO_REGISTRY_BASE:-$DEFAULT_REGISTRY}"; OWNER="${MO_REGISTRY_OWNER:-}"; TOKEN="${MO_REGISTRY_TOKEN:-}"
 BASE="${BASE%/}"
