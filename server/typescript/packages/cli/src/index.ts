@@ -14,7 +14,7 @@ USAGE:
   meta <command> [flags]
 
 COMMANDS:
-  init                  Scaffold metaobjects/ + .metaobjects/ in the current repo
+  init                  Scaffold a MetaObjects project in the current repo
   init --refresh-docs   Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
   agent-docs            Scaffold only the agent-context (.metaobjects/ + .claude/skills/) — canonical redirect target for all language ports
   gen [<entity>...]     Codegen TS targets from your declared metadata
@@ -165,7 +165,7 @@ FLAGS:
                         live outside the metadata sources or templates/ (e.g. data/templates/)
   --help, -h            Print this help
 `,
-  init: `meta init — scaffold metaobjects/ + .metaobjects/ in the current repo
+  init: `meta init — scaffold a MetaObjects project in the current repo
 
 USAGE:
   meta init [flags]
