@@ -10,11 +10,10 @@
 // today (`DEFAULT_SOURCES` in `sources.ts`); a project that declares
 // `sources` can point anywhere. No other call site may assume the directory
 // name — this is where that assumption is allowed to live, exactly once.
-import { stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { ParseError, codeSource } from "@metaobjectsdev/metadata";
 import { CONFIG_FILE, loadConfig, type Config } from "./config.js";
-import { exists, findConfigDir } from "./discovery.js";
+import { discoverCollectionRoot, exists, isDir } from "./discovery.js";
 import { compileScope, type CompiledScope, type Scope } from "./scope.js";
 import { DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR } from "./memory.js";
 import { DEFAULT_SOURCES, resolveSources, type ResolvedSource, type SourceSpec } from "./sources.js";
@@ -43,20 +42,6 @@ export interface Collection {
   readonly migrateScopePatterns: readonly string[] | undefined;
 }
 
-// Deliberately NOT deduped with `exists` (imported from `./discovery.js`)
-// even though both wrap a bare stat/catch: this predicate exists to produce
-// the friendlier `ERR_COLLECTION_NOT_FOUND` diagnostic below rather than the
-// raw `ERR_SOURCE_UNRESOLVED` `resolveSources` would throw on a genuinely
-// missing default directory — trading that clearer error for one syscall is
-// a bad trade, so the redundant `stat` here is intentional, not an oversight.
-async function isDir(p: string): Promise<boolean> {
-  try {
-    return (await stat(p)).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
 /** Narrow the zod-inferred `Config["scope"]` (whose `.optional()` fields are
  *  typed `T | undefined` even when present) down to `Scope`'s
  *  exactOptionalPropertyTypes-safe shape — a key is omitted entirely rather
@@ -74,9 +59,11 @@ function toScope(spec: Config["scope"]): Scope {
  * assumption baked into a call site.
  *
  * Resolution order: an explicit `opts.explicitDir` wins outright; otherwise
- * `findConfigDir` walks up from `startDir` for the nearest
- * `.metaobjects/config.json`, falling back to `startDir` itself when none is
- * found. When the resolved directory carries a config, its declared
+ * `discoverCollectionRoot` walks up from `startDir` for the nearest directory
+ * carrying `.metaobjects/config.json` OR a `metaobjects/` directory (see
+ * `discovery.ts` — the second marker is what keeps a nested project reading
+ * its OWN metadata), falling back to `startDir` itself when neither is found.
+ * When the resolved directory carries a config, its declared
  * `sources`/`scope`/`migrate.scope` govern. Only a genuinely ABSENT
  * `config.json` falls through to `DEFAULT_SOURCES` — the same `metaobjects/`
  * directory the pre-source-resolution toolchain always read; a config.json
@@ -98,23 +85,20 @@ export async function resolveCollection(
   const explicit = opts?.explicitDir;
 
   // Whether `configDir` carries a `config.json` — threaded through rather
-  // than re-`stat`'d below. On the non-explicit path, `findConfigDir`
-  // already proved this: it returns a directory ONLY after confirming
-  // `.metaobjects/config.json` exists there (discovery.ts's own `exists`
-  // check), and returns undefined only after confirming the same file is
-  // absent at every directory it examined, `resolve(startDir)` included. A
-  // second `stat` of the identical file would just re-prove what discovery
-  // already established. The check is only load-bearing on the
-  // `explicitDir` path, where `findConfigDir` never runs at all.
+  // than re-`stat`'d below. On the non-explicit path, `discoverCollectionRoot`
+  // already proved it either way: it reports `hasConfig` from the same
+  // `.metaobjects/config.json` probe that decided where to stop, and reports
+  // false only after confirming that file is absent at every directory it
+  // examined, `resolve(startDir)` included. A second `stat` of the identical
+  // file would just re-prove what discovery established. The check is only
+  // load-bearing on the `explicitDir` path, where discovery never runs at all.
   let configDir: string;
   let hasConfig: boolean;
   if (explicit !== undefined) {
     configDir = resolve(explicit);
     hasConfig = await exists(join(configDir, DEFAULT_METAOBJECTS_DIR, CONFIG_FILE));
   } else {
-    const found = await findConfigDir(startDir);
-    configDir = found ?? resolve(startDir);
-    hasConfig = found !== undefined;
+    ({ dir: configDir, hasConfig } = await discoverCollectionRoot(startDir));
   }
 
   let specs: readonly SourceSpec[] = DEFAULT_SOURCES;
@@ -136,6 +120,15 @@ export async function resolveCollection(
 
   // Only the DEFAULT is allowed to be absent — an explicitly declared source
   // that does not resolve is `resolveSources`'s ERR_SOURCE_UNRESOLVED, not this.
+  //
+  // This re-`stat`s a directory the non-explicit discovery walk may already
+  // have probed, and that redundancy is intentional: it exists to produce the
+  // friendlier `ERR_COLLECTION_NOT_FOUND` diagnostic below rather than the raw
+  // `ERR_SOURCE_UNRESOLVED` `resolveSources` would throw on a genuinely missing
+  // default directory. Trading that clearer error for one syscall is a bad
+  // trade. It is also load-bearing outright on the `explicitDir` path and
+  // whenever a discovered config declares no `sources`, where nothing has
+  // probed it at all.
   if (specs === DEFAULT_SOURCES && !(await isDir(join(configDir, DEFAULT_METADATA_DIR)))) {
     throw new ParseError(
       `no metadata sources declared in ${configDir} and no default "${DEFAULT_METADATA_DIR}" directory found. ` +

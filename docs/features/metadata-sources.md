@@ -420,8 +420,8 @@ type) surfaces as the config load error and stops the command.
 ## Upgrading
 
 A project with one config at its root, no `sources` and no `scope` resolves the same
-files it always did and generates the same code. Three changes are still worth
-knowing about before you upgrade.
+files it always did and generates the same code. Six changes are still worth knowing
+about before you upgrade.
 
 ### The workspace `extends:` walk is retired
 
@@ -478,6 +478,52 @@ declaring object's fully-qualified name — is now **required** rather than opti
 because `migrate.scope` decides on that name and a view arriving without one cannot
 be scoped at all. Code that builds `ExpectedView` values by hand (the normal path,
 `buildProjectionViews`, already supplies it) has to add the field.
+
+### `meta export` walks one tree, and skips `_pending/`
+
+`meta export` used to scan a directory through `DirectorySource`; it now serializes
+the file set `resolveCollection` resolved, which is the same walk every other command
+uses. Two things change in its output, for every project — declared `sources` or not:
+
+- **Sibling order is files-before-subdirectories**, not a flat basename sort. A
+  directory whose subdirectory name sorts before a sibling file (`admin/` before
+  `user.json`) therefore emits in a different order than it used to. This is the
+  order the loader has always been given, and it is the overlay-safe one — a base
+  file must load before an overlay nested under it — so `export` and the loader now
+  agree instead of disagreeing.
+- **`_pending/` is excluded.** Those files are staged, not active metadata; every
+  other read path already skipped them, and `export` was the one that did not.
+
+The canonical JSON *content* is unchanged. If you diff a committed export against a
+freshly generated one, expect a reordering and the loss of any `_pending/` entries.
+
+### The migrations directory follows the project root, not the shell
+
+`.metaobjects/migrations` (and the schema snapshot beside it) is resolved from the
+directory whose `.metaobjects/config.json` governs the run, discovered by walking up
+from the working directory. It used to come from the working directory
+unconditionally for `meta migrate apply-pending` and `meta migrate --rollback`, which
+load no metadata at all.
+
+The ledger belongs with the config that declares it, so this is the intended
+behaviour — but it moves the ledger for one layout: a subdirectory holding
+`.metaobjects/migrations` with **no** `.metaobjects/config.json` of its own, sitting
+under a project root that has both. Running `apply-pending` there now replays the
+root's history.
+
+It is not silent. When the resolved migrations directory differs from
+`<cwd>/.metaobjects/migrations` **and** that local directory exists, the command
+prints which one it is using and how to override:
+
+```
+migrate: using the migrations directory /repo/.metaobjects/migrations, not the
+/repo/apps/api/.metaobjects/migrations in this working directory — the ledger belongs
+to the project root that declares it. Pass --out-dir … to use the local one.
+```
+
+`--out-dir` (or `migrate.outDir` in the config) selects the directory explicitly, and
+adding a `.metaobjects/config.json` to that subdirectory makes it a project root in
+its own right — which is what a directory holding its own ledger almost always wants.
 
 ---
 

@@ -16,7 +16,7 @@
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader, InMemoryStringSource, type MetaRoot } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema, buildExpectedSchemaWithProvenance } from "../src/expected-schema.js";
-import { scopeExpectedSchema } from "../src/scope.js";
+import { scopeExpectedSchema, scopedDiffInputs } from "../src/scope.js";
 import { diff } from "../src/diff/index.js";
 import { planOffline } from "../src/snapshot/plan.js";
 import { serializeSnapshot, SNAPSHOT_FORMAT_VERSION } from "../src/snapshot/serialize.js";
@@ -150,6 +150,103 @@ describe("scopeExpectedSchema", () => {
     const scoped = scopeExpectedSchema(withStranger, platformOnly);
     expect(scoped.snapshot.tables.map((t) => t.name)).toEqual(["jobs", "stranger"]);
     expect(scoped.outOfScope).toEqual(["public.matches"]);
+  });
+});
+
+/**
+ * A scope narrows which OBJECTS the run governs — never which SCHEMAS it may see.
+ *
+ * This is the consequence of pinning `scopeSchemas` to the UNSCOPED model, and it is
+ * easy to read the other way round, so it is pinned here rather than left in a review
+ * transcript. Excluding every declared object in a schema does NOT hand that schema
+ * over: it stays in scope, so an UNDECLARED table sitting in it is still a drop
+ * candidate — exactly as it would be on an unscoped run of the same model.
+ *
+ * The alternative (deriving the schema set from the survivors) reintroduces the
+ * inversion the pin exists to close: a scope matching nothing empties `expected`,
+ * `diff` reads that as "no model, govern the whole database", and every table in
+ * every schema becomes a drop candidate. Narrowing must never widen.
+ *
+ * The way to stop managing a schema is to remove its objects from the MODEL, or to
+ * declare them `@unmanaged` — both of which change what the model claims. A
+ * `migrate.scope` says who runs the migration, not what the model describes.
+ */
+const REPORTING = JSON.stringify({
+  "metadata.root": {
+    package: "arena",
+    children: [
+      {
+        "object.entity": {
+          name: "Standing",
+          children: [
+            { "source.rdb": { name: "src", "@table": "standings", "@schema": "reporting" } },
+            { "field.long": { name: "id" } },
+            { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },
+          ],
+        },
+      },
+    ],
+  },
+});
+
+describe("scope narrows objects, never schemas", () => {
+  test("a schema whose every declared object is excluded STAYS in scope", async () => {
+    const loaded = await new MetaDataLoader().load([
+      new InMemoryStringSource(PLATFORM),
+      new InMemoryStringSource(REPORTING),
+    ]);
+    const built = buildExpectedSchemaWithProvenance(loaded.root, { dialect: "postgres" });
+    const scoped = scopeExpectedSchema(built, platformOnly);
+
+    // `reporting` lost its only declared object, and is still pinned.
+    expect(scoped.snapshot.tables.map((t) => t.name)).toEqual(["jobs"]);
+    expect(scoped.declaredSchemas).toEqual(["public", "reporting"]);
+
+    // A table nobody declared, living in that schema. It has no provenance, so it
+    // never reaches `outOfScope` and nothing suppresses it on the actual side.
+    const actual: SchemaSnapshot = {
+      tables: [
+        ...built.snapshot.tables,
+        { name: "legacy_stats", schema: "reporting", columns: [], indexes: [], foreignKeys: [], checks: [], primaryKey: [] },
+      ],
+      views: [],
+    };
+    const result = await diff({
+      ...scopedDiffInputs(scoped, []),
+      actual,
+      dialect: "postgres",
+      allow: { dropTable: true },
+    });
+
+    // It IS a drop candidate — the same verdict an unscoped run of this model gives.
+    const drops = result.changes.filter((c) => c.kind === "drop-table");
+    expect(drops).toHaveLength(1);
+    if (drops[0]?.kind !== "drop-table") throw new Error("expected a drop-table");
+    expect(drops[0].table).toBe("legacy_stats");
+  });
+
+  test("a schema the model never declares at all is untouched (the pin is not a widening)", async () => {
+    const loaded = await new MetaDataLoader().load([
+      new InMemoryStringSource(PLATFORM),
+      new InMemoryStringSource(REPORTING),
+    ]);
+    const built = buildExpectedSchemaWithProvenance(loaded.root, { dialect: "postgres" });
+    const scoped = scopeExpectedSchema(built, platformOnly);
+
+    const actual: SchemaSnapshot = {
+      tables: [
+        ...built.snapshot.tables,
+        { name: "events", schema: "analytics", columns: [], indexes: [], foreignKeys: [], checks: [], primaryKey: [] },
+      ],
+      views: [],
+    };
+    const result = await diff({
+      ...scopedDiffInputs(scoped, []),
+      actual,
+      dialect: "postgres",
+      allow: { dropTable: true },
+    });
+    expect(result.changes).toEqual([]);
   });
 });
 

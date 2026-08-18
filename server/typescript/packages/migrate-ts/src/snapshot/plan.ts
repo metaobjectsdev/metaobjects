@@ -3,7 +3,7 @@ import type { ColumnNamingStrategy, MetaData } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema, buildExpectedSchemaWithProvenance } from "../expected-schema.js";
 import { diff, type DiffArgs } from "../diff/index.js";
 import { collectUnmanagedNames } from "../unmanaged.js";
-import { carryForwardOutOfScope, scopeExpectedSchema, type ObjectScopePredicate } from "../scope.js";
+import { carryForwardOutOfScope, scopeExpectedSchema, scopedDiffInputs, type ObjectScopePredicate } from "../scope.js";
 import type { Dialect, DiffResult, SchemaSnapshot } from "../types.js";
 import type { ExpectedViewInput } from "../expected-schema.js";
 
@@ -66,25 +66,18 @@ export async function planOffline(args: PlanOfflineArgs): Promise<PlanOfflineRes
   // for an unscoped run (`outOfScope` empty ⇒ the same object).
   const nextSnapshot = carryForwardOutOfScope(scoped.snapshot, args.snapshot, scoped.outOfScope);
   const result = await diff({
-    expected: scoped.snapshot,
+    // The three scoped-diff obligations as one value (see scope.ts's header). The
+    // `unmanagedNames` merge matters as much on the OFFLINE path as anywhere: an
+    // out-of-scope table already recorded in the snapshot must not be dropped just
+    // because the scope excludes it, and neither must a declared-@unmanaged one a
+    // `baseline --from-db` captured (#208 §7).
+    ...scopedDiffInputs(scoped, collectUnmanagedNames(args.metadata)),
     actual: args.snapshot,
     dialect: args.dialect,
     // #258 — migration generation refuses a primary-key MOVE (there is no primary-key
     // change kind to express it; it would otherwise silently drop the constraint). The
     // read-only verify/drift path does NOT set this, so `meta verify` still reports drift.
     refusePrimaryKeyChange: true,
-    // #208 §7 — exclude declared-@unmanaged objects from the actual (snapshot) side too,
-    // so the OFFLINE generate path never proposes DROP for an external table that a
-    // `baseline --from-db` captured into the snapshot (parity with the online/verify paths).
-    // Out-of-scope objects join them, for the same reason: an out-of-scope table already
-    // recorded in the snapshot must not be dropped just because the scope excludes it.
-    unmanagedNames: [...collectUnmanagedNames(args.metadata), ...scoped.outOfScope],
-    // Pin the schema scope to the UNSCOPED model's schemas (see scope.ts's header):
-    // a `migrate.scope` matching nothing would otherwise empty `expected`, which
-    // `diff` reads as "no model, govern the whole database" — turning the
-    // declaration that exists to protect another owner's tables into a proposed DROP
-    // for them. Absent when no scope was given, so an unscoped run is unchanged.
-    ...(scoped.declaredSchemas !== undefined ? { scopeSchemas: scoped.declaredSchemas } : {}),
     ...(args.allow ? { allow: args.allow } : {}),
     ...(args.onAmbiguous ? { onAmbiguous: args.onAmbiguous } : {}),
     ...(args.ignoreTables ? { ignoreTables: args.ignoreTables } : {}),

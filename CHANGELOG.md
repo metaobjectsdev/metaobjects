@@ -119,6 +119,26 @@ the same migrations. Three changes are visible even to that project. Adopter gui
   `migrate.scope` decides ownership on that name, and a view arriving without one
   cannot be scoped at all. `buildProjectionViews` already supplies it; only
   hand-built `ExpectedView` values need the field added.
+- **`meta export` output order changed, and `_pending/` is excluded.** `export` now
+  serializes the file set `resolveCollection` resolved rather than scanning a
+  directory through `DirectorySource`, so siblings emit files-before-subdirectories
+  (the overlay-safe order the loader has always been given) instead of a flat
+  basename sort, and staged `_pending/` files — skipped by every other read path —
+  are no longer exported. The canonical JSON content is unchanged; a committed
+  export diffed against a fresh one shows a reordering.
+- **The migrations directory follows the project root.** `.metaobjects/migrations`
+  and the schema snapshot resolve from the directory whose `.metaobjects/config.json`
+  governs the run, found by walking up from the working directory. `meta migrate
+  apply-pending` and `--rollback` load no metadata and previously used the working
+  directory unconditionally, so a subdirectory holding a ledger but no config of its
+  own now replays the project root's history. `migrate` says so out loud when the
+  resolved directory differs from `<cwd>/.metaobjects/migrations` and that local
+  directory exists; `--out-dir` overrides, and giving the subdirectory its own
+  `.metaobjects/config.json` makes it a project root.
+- **Discovery stops at a `metaobjects/` directory, not only at a config.** A nested
+  project holding its own `metaobjects/` and no `.metaobjects/config.json` keeps
+  reading its own metadata, as it always did, rather than adopting an ancestor's
+  model and `outDir`.
 
 ## [0.23.2] — npm `0.23.2` · PyPI `0.23.2` · NuGet `0.23.2` · Maven `7.23.2`
 

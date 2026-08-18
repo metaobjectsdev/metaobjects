@@ -35,9 +35,6 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     return listGeneratorsCommand();
   }
 
-  // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
-  warnIfAgentContextStale(cwd);
-
   const cliConfig = resolveGenConfig(flags);
 
   // Discovery and load are two separate failure modes, kept in separate try
@@ -64,6 +61,14 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     return 2;
   }
   const projectRoot = collection.configDir;
+
+  // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
+  // Rooted at `projectRoot`, not ambient cwd — the scaffolded agent context sits
+  // with the project that declares the metadata, so a run from a subdirectory
+  // would find no manifest there and silently skip the nudge. `meta verify` makes
+  // the same call for the same reason; the two commands describe this and the
+  // anti-pattern scan below as one advisory pass, so they must scan one tree.
+  warnIfAgentContextStale(projectRoot);
 
   let forgeConfig;
   try {

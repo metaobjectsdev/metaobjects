@@ -1,6 +1,6 @@
 import { mkdtempSync, readdirSync, rmSync, statSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { MetaDataLoader, composeRegistry, coreTypesProvider, dbProvider, docProvider, promptProvider, uiProvider } from "@metaobjectsdev/metadata";
 import type { MetaData, MetaRoot, MetaDataTypeProvider } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
@@ -26,14 +26,19 @@ export async function loadModel(
 ): Promise<LoadedModel> {
   const staging = mkdtempSync(join(tmpdir(), "metadocs-"));
   try {
-    const usedBasenames = new Set<string>();
+    // Source groups are keyed by the staging entry's name, so two source dirs
+    // sharing a basename need distinct names — `metaobjects/` plus a shared
+    // model's `../shared-model/metaobjects` is the ordinary shape of a
+    // multi-source project, and refusing it would make the feature unusable
+    // with `--site`. Collisions are qualified by their parent directory (the
+    // name a reader recognises) before falling back to a counter.
+    const used = new Set<string>();
+    const groupNames: string[] = [];
     for (const dir of sourceDirs) {
-      const baseName = basename(dir);
-      if (usedBasenames.has(baseName)) {
-        throw new Error(`duplicate source dir basename: ${baseName}`);
-      }
-      usedBasenames.add(baseName);
-      symlinkSync(resolve(dir), join(staging, baseName));
+      const name = uniqueGroupName(dir, used);
+      used.add(name);
+      groupNames.push(name);
+      symlinkSync(resolve(dir), join(staging, name));
     }
     const registry = composeRegistry([coreTypesProvider, dbProvider, docProvider, promptProvider, uiProvider, ...extraProviders]);
     // Feed files in files-before-subdirs order (the same order the sdk's loadMemory
@@ -53,10 +58,32 @@ export async function loadModel(
     return {
       root: result.root,
       warnings: result.warnings.map((w) => w.message),
-      sourceDirs: sourceDirs.map((d) => basename(resolve(d))),
+      // The staging entry names, NOT raw basenames: `treeOf` matches a node's
+      // source path segment against this list, and a collision-qualified name
+      // is what that segment actually is.
+      sourceDirs: groupNames,
     };
   } finally {
     rmSync(staging, { recursive: true, force: true });
+  }
+}
+
+/**
+ * A staging-directory entry name for `dir` that no earlier source dir already
+ * took. The basename when it is free (so a single-source project's group name
+ * is unchanged); otherwise `<parent>-<basename>`, then a counter — deterministic
+ * for a given source list, which keeps the emitted site byte-stable.
+ */
+function uniqueGroupName(dir: string, used: ReadonlySet<string>): string {
+  const abs = resolve(dir);
+  const base = basename(abs);
+  if (!used.has(base)) return base;
+  const parent = basename(dirname(abs));
+  const qualified = parent === "" || parent === base ? base : `${parent}-${base}`;
+  if (!used.has(qualified)) return qualified;
+  for (let n = 2; ; n++) {
+    const candidate = `${qualified}-${n}`;
+    if (!used.has(candidate)) return candidate;
   }
 }
 

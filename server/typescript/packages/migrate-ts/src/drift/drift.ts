@@ -20,7 +20,7 @@ import { buildExpectedSchemaWithProvenance } from "../expected-schema.js";
 import { introspect } from "../introspect/index.js";
 import { diff } from "../diff/index.js";
 import { collectUnmanagedNames } from "../unmanaged.js";
-import { scopeExpectedSchema, type ObjectScopePredicate } from "../scope.js";
+import { scopeExpectedSchema, scopedDiffInputs, type ObjectScopePredicate } from "../scope.js";
 import type { AllowOptions, Dialect, DiffResult, SchemaSnapshot } from "../types.js";
 
 export interface ComputeDriftOptions {
@@ -67,6 +67,16 @@ export interface DriftResult extends DiffResult {
    * comparison is indistinguishable from one that was checked and found clean.
    */
   outOfScope: readonly string[];
+  /**
+   * The schemas this comparison governed (`ScopedExpectedSchema.declaredSchemas`),
+   * `undefined` when no scope was given and `diff` derived its own.
+   *
+   * Reported so a SECOND comparison over the same run — `verify`'s committed-snapshot
+   * gate — can govern exactly the same schemas instead of re-deriving them from a
+   * different expected side. Together with `outOfScope` this pair is a
+   * `GovernedScope`, which is what `excludeFromSnapshot` takes.
+   */
+  declaredSchemas: readonly string[] | undefined;
 }
 
 /**
@@ -98,24 +108,21 @@ export async function computeDriftFromActual(
     opts?.inScope,
   );
   const result = await diff({
-    expected: scoped.snapshot,
+    // The three scoped-diff obligations as one value (see scope.ts's header):
+    // the narrowed expected side, `unmanagedNames` merging @unmanaged with the
+    // out-of-scope names so neither is proposed for drop, and the schema scope
+    // pinned to the UNSCOPED model so a narrow scope can never widen the run.
+    ...scopedDiffInputs(scoped, collectUnmanagedNames(metadata)),
     actual,
     dialect,
     allow: opts?.allow ?? {},
-    // #208 §7 — a declared-@unmanaged object is external, so it is not drift: exclude it
-    // from the actual side (same as `meta migrate`) rather than surface a false drop-*.
-    // Out-of-scope objects join it: dropping them from `expected` alone would turn each
-    // one that EXISTS in the database into a spurious drop-* drift.
-    unmanagedNames: [...collectUnmanagedNames(metadata), ...scoped.outOfScope],
-    // Pin the schema scope to the UNSCOPED model's schemas (see scope.ts's header):
-    // a scope matching nothing would otherwise empty `expected`, which `diff` reads
-    // as "no model, govern the whole database" — reporting phantom drift for every
-    // table another owner has in a schema this model never mentions. Absent when no
-    // scope was given, so an unscoped run is unchanged.
-    ...(scoped.declaredSchemas !== undefined ? { scopeSchemas: scoped.declaredSchemas } : {}),
     ...(opts?.ignoreTables !== undefined ? { ignoreTables: opts.ignoreTables } : {}),
   });
-  return { ...result, outOfScope: scoped.outOfScope };
+  return {
+    ...result,
+    outOfScope: scoped.outOfScope,
+    declaredSchemas: scoped.declaredSchemas,
+  };
 }
 
 /**

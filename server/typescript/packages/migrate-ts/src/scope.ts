@@ -23,8 +23,22 @@
 // WIDEN. `declaredSchemas` below reports the UNSCOPED model's schemas so callers can
 // pin `diff`'s `scopeSchemas` to a property of the whole model, which `migrate.scope`
 // then cannot move in either direction.
+//
+// THE RULE THAT FOLLOWS FROM THAT, stated once because it is easy to read the other
+// way: **a scope narrows which OBJECTS the tool governs, never which SCHEMAS it is
+// allowed to see.** Pinning `scopeSchemas` to the unscoped model means a scope that
+// excludes every declared object in schema `X` leaves `X` in scope, so another
+// owner's UNDECLARED table in `X` stays a drop candidate — exactly as it would be on
+// an unscoped run of the same model. That is deliberate: a schema this model
+// declares into is a schema this model manages, and deriving the schema set from the
+// survivors instead is precisely the inversion above. Declaring a scope is not a way
+// to hand a schema over; removing the objects from the model is.
+//
+// `scopedDiffInputs` exists so no caller has to remember any of this: it returns all
+// three obligations as one object, and every scoped `diff` call goes through it.
 
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
+import type { DiffArgs } from "./diff/index.js";
 import type { ExpectedSchemaWithProvenance } from "./expected-schema.js";
 import { qualifiedDbName } from "./qualified-name.js";
 import type { SchemaSnapshot } from "./types.js";
@@ -43,16 +57,16 @@ export interface ScopedExpectedSchema {
   snapshot: SchemaSnapshot;
   /**
    * Qualified physical names (`<schema>.<name>`) of the tables and views removed
-   * above. MUST be threaded into `diff`'s `unmanagedNames` (merged with
-   * `collectUnmanagedNames`, never replacing it) so the actual side is suppressed
-   * too — see the module header.
+   * above. Reaches `diff`'s `unmanagedNames` (MERGED with `collectUnmanagedNames`,
+   * never replacing it) so the actual side is suppressed too — `scopedDiffInputs`
+   * does that merge; see the module header for why omitting it inverts the feature.
    */
   outOfScope: string[];
   /**
    * The database schemas the UNSCOPED model declares, for `diff`'s `scopeSchemas`.
-   * MUST be threaded there by every caller that narrows — see the module header:
-   * without it a scope matching nothing hands `diff` an empty expected side, which
-   * it reads as "no model, govern the whole database".
+   * `scopedDiffInputs` threads it — see the module header: without it a scope
+   * matching nothing hands `diff` an empty expected side, which it reads as "no
+   * model, govern the whole database".
    *
    * `undefined` when no predicate was supplied (so `diff` derives its own set from
    * an untouched `expected`, exactly as before — an unscoped project's arguments are
@@ -83,12 +97,102 @@ export function carryForwardOutOfScope(
 ): SchemaSnapshot {
   if (outOfScope.length === 0) return next;
   const excluded = new Set(outOfScope);
-  const keep = <T extends { name: string; schema?: string }>(objs: readonly T[]): T[] =>
-    objs.filter((o) => excluded.has(qualifiedDbName(o)));
   return {
     ...next,
-    tables: [...next.tables, ...keep(prior.tables)],
-    views: [...next.views, ...keep(prior.views)],
+    tables: [...next.tables, ...splitOnName(prior.tables, excluded).named],
+    views: [...next.views, ...splitOnName(prior.views, excluded).named],
+  };
+}
+
+/**
+ * Drop the out-of-scope entries from a COMMITTED SNAPSHOT, producing the same
+ * three-part shape `scopeExpectedSchema` produces so the result can go straight
+ * through {@link scopedDiffInputs}.
+ *
+ * `verify`'s committed-snapshot gate (#292) needs this: `unmanagedNames` suppresses
+ * only the ACTUAL side, which is right when the expected side is the metadata (it is
+ * already scoped) and wrong here, where the expected side IS the snapshot — a
+ * snapshot written before the scope was declared still carries the other owner's
+ * tables, and leaving them in reports a phantom disagreement about an object this
+ * consumer does not manage.
+ *
+ * `governed` is the scope decision the caller's drift comparison already made — pass
+ * the `DriftResult` itself, which satisfies this shape. Taking `declaredSchemas`
+ * from there rather than re-deriving it from the snapshot is what closes the last
+ * whole-database door: a snapshot that is present but EMPTY (a never-migrated
+ * project) declares no schemas at all, so deriving from it hands `diff` nothing and
+ * reaches its "no model, govern the whole database" fallback — the very inversion
+ * this module exists to prevent, at the one call site that was still re-deriving.
+ *
+ * An empty `outOfScope` returns the SAME snapshot object with no schema pin, so an
+ * unscoped project's `diff` arguments are byte-for-byte what they always were.
+ */
+export function excludeFromSnapshot(
+  snapshot: SchemaSnapshot,
+  governed: GovernedScope,
+): ScopedExpectedSchema {
+  if (governed.outOfScope.length === 0) return { snapshot, outOfScope: [] };
+  const excluded = new Set(governed.outOfScope);
+  const declared = governed.declaredSchemas ?? declaredSchemasOf(snapshot);
+  return {
+    snapshot: {
+      ...snapshot,
+      tables: splitOnName(snapshot.tables, excluded).rest,
+      views: splitOnName(snapshot.views, excluded).rest,
+    },
+    outOfScope: [...governed.outOfScope],
+    declaredSchemas: [...declared],
+  };
+}
+
+/** The scope decision a run made, as `DriftResult` reports it. */
+export interface GovernedScope {
+  /** Qualified physical names (`<schema>.<name>`) the run does not govern. */
+  readonly outOfScope: readonly string[];
+  /** The schemas the run governs — `ScopedExpectedSchema.declaredSchemas`. */
+  readonly declaredSchemas?: readonly string[] | undefined;
+}
+
+/**
+ * Partition `objs` on whether `qualifiedDbName(o)` is in `names`.
+ *
+ * `carryForwardOutOfScope` wants the `named` half (carry the excluded entries
+ * forward) and `excludeFromSnapshot` wants the `rest` half (drop them). They are
+ * exact complements over the same key function, so they share one traversal rather
+ * than two filters that could come to key differently.
+ */
+function splitOnName<T extends { name: string; schema?: string }>(
+  objs: readonly T[],
+  names: ReadonlySet<string>,
+): { named: T[]; rest: T[] } {
+  const named: T[] = [];
+  const rest: T[] = [];
+  for (const o of objs) (names.has(qualifiedDbName(o)) ? named : rest).push(o);
+  return { named, rest };
+}
+
+/**
+ * The three `diff` arguments a scoped run owes, as ONE value.
+ *
+ * The module header lists them as three separate obligations, and five call sites
+ * re-derived them by hand — one of which had already drifted into its own guard.
+ * Every scoped `diff` call is now
+ * `diff({ ...scopedDiffInputs(scoped, collectUnmanagedNames(metadata)), actual, ... })`,
+ * so the rule is enforced by the type rather than by the comment.
+ *
+ * `unmanaged` is the `@unmanaged`-declared set (`collectUnmanagedNames`); it is
+ * MERGED with `outOfScope`, never replaced by it — both must reach `diff`.
+ * `scopeSchemas` is omitted entirely when the run narrowed nothing, so an unscoped
+ * project's arguments are unchanged.
+ */
+export function scopedDiffInputs(
+  scoped: ScopedExpectedSchema,
+  unmanaged: readonly string[],
+): Pick<DiffArgs, "expected" | "unmanagedNames" | "scopeSchemas"> {
+  return {
+    expected: scoped.snapshot,
+    unmanagedNames: [...unmanaged, ...scoped.outOfScope],
+    ...(scoped.declaredSchemas !== undefined ? { scopeSchemas: scoped.declaredSchemas } : {}),
   };
 }
 

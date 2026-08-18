@@ -1,5 +1,6 @@
 import { resolve as resolvePath } from "node:path";
 import { mkdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { parseMigrateArgs } from "../lib/args.js";
 import { resolveMigrateConfig, MIGRATE_DEFAULT_OUT_DIR } from "../lib/config.js";
@@ -10,12 +11,13 @@ import type { OutputFormat } from "../lib/format.js";
 import { toonEncode } from "../lib/format.js";
 import { buildKyselyFromUrl, redactUrl } from "../lib/kysely.js";
 import { log } from "../lib/log.js";
-import { findConfigDir, loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
+import { loadMemory, resolveCollection, resolveConfigDir } from "@metaobjectsdev/sdk";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
 import { migrateScopeMismatch, toObjectScope } from "../lib/migrate-scope.js";
 import {
   buildExpectedSchemaWithProvenance,
   scopeExpectedSchema,
+  scopedDiffInputs,
   introspect,
   diff,
   collectUnmanagedNames,
@@ -123,6 +125,35 @@ function resolveFormatOutDir(config: ResolvedMigrateConfig, metaRoot: string): s
     return resolvePath(metaRoot, FLYWAY_DEFAULT_OUT_DIR);
   }
   return resolvePath(metaRoot, config.outDir);
+}
+
+/**
+ * Say so when the migrations directory this run will use is NOT the one sitting
+ * in the working directory.
+ *
+ * `metaRoot` is now the discovered project root rather than ambient cwd, and the
+ * migrations directory follows it. That is the right call — the ledger belongs
+ * with the config that declares it — but it is a behaviour change for the two
+ * subcommands that load no metadata at all: `apply-pending` and `--rollback`
+ * used cwd unconditionally, so a subdirectory holding `.metaobjects/migrations`
+ * under a project root that also has one now replays the ROOT's ledger.
+ * Replaying somebody else's migration history silently is the worst outcome
+ * available here, so it is announced.
+ *
+ * Conditioned on the local directory EXISTING, so the ordinary case — a run from
+ * anywhere inside a project with one ledger at its root — says nothing.
+ * `--out-dir` (and a `migrate.outDir` in the config) is honoured: the caller
+ * passes the RESOLVED directory, so a deliberate redirection is compared, not
+ * the default that was overridden.
+ */
+function warnIfLedgerRelocated(cwd: string, resolvedOutDir: string): void {
+  const local = resolvePath(cwd, MIGRATE_DEFAULT_OUT_DIR);
+  if (resolvedOutDir === local || !existsSync(local)) return;
+  log.warn(
+    `migrate: using the migrations directory ${resolvedOutDir}, not the ${local} ` +
+      `in this working directory — the ledger belongs to the project root that declares it. ` +
+      `Pass --out-dir ${local} to use the local one.`,
+  );
 }
 
 /**
@@ -296,14 +327,16 @@ export async function migrateCommand(
   // sources were resolvable that invocation just failed with "no metaobjects/
   // found".
   //
-  // `findConfigDir` rather than `resolveCollection` deliberately: this must not
-  // require metadata to EXIST. `migrate apply-pending` and `--rollback` replay
-  // committed SQL and load no metadata at all, and making them fail on a project
-  // with no model would be a regression. Falls back to cwd when no config is
-  // found anywhere, which is exactly what `resolveCollection` does, so the two
-  // agree by construction.
-  const metaRoot = (await findConfigDir(cwd)) ?? resolvePath(cwd);
+  // `resolveConfigDir` rather than `resolveCollection` deliberately: this must
+  // not require metadata to EXIST. `migrate apply-pending` and `--rollback`
+  // replay committed SQL and load no metadata at all, and making them fail on a
+  // project with no model would be a regression. It is the SAME walk
+  // `resolveCollection` runs (one exported definition in the sdk's
+  // `discovery.ts`, not two that agree by construction), so the directory this
+  // resolves and the directory the metadata comes from cannot diverge.
+  const metaRoot = await resolveConfigDir(cwd);
   const config = await resolveMigrateConfig(flags, metaRoot);
+  warnIfLedgerRelocated(cwd, resolvePath(metaRoot, config.outDir));
 
   try {
   // #192 — Flyway owns apply + history (flyway_schema_history). We generate the
@@ -525,7 +558,12 @@ export async function migrateCommand(
     let diffResult;
     try {
       diffResult = await diff({
-        expected,
+        // The three scoped-diff obligations as one value (migrate-ts's scope.ts
+        // header has the mechanism): the narrowed expected side, `unmanagedNames`
+        // merging #208 §7's declared-@unmanaged set with the out-of-scope names so
+        // neither is created or dropped, and the schema scope pinned to the
+        // UNSCOPED model so narrowing can never widen the run.
+        ...scopedDiffInputs(scoped, collectUnmanagedNames(metadata)),
         actual,
         dialect: kysely.dialect,
         allow: tokensToAllowOptions(config.allow),
@@ -533,15 +571,6 @@ export async function migrateCommand(
         // has no expressible migration; refuse loudly instead of emitting SQL that drops
         // the constraint and breaks referencing FKs at apply.
         refusePrimaryKeyChange: true,
-        // #208 §7 — declared-@unmanaged objects are external: exclude them from the
-        // actual side so migrate proposes neither create nor drop for them. Objects
-        // outside `migrate.scope` ride the same seam, for the same reason.
-        unmanagedNames: [...collectUnmanagedNames(metadata), ...scoped.outOfScope],
-        // Pin the schema scope to the UNSCOPED model's schemas (see migrate-ts's
-        // scope.ts header): a `migrate.scope` matching nothing would otherwise empty
-        // `expected`, which `diff` reads as "no model, govern the whole database".
-        // Absent when no scope was given, so an unscoped run is unchanged.
-        ...(scoped.declaredSchemas !== undefined ? { scopeSchemas: scoped.declaredSchemas } : {}),
         onAmbiguous: async (a) => {
           collectedAmbiguous.push(a);
           return onAmbiguousResolution;
@@ -692,6 +721,15 @@ export async function migrateCommand(
         // out-of-scope entries come from `actual` — they are in the database, which
         // is the same thing `baseline --from-db` records. Identical object, and so a
         // byte-identical snapshot, for an unscoped run.
+        //
+        // The trade-off, stated so it is not rediscovered: those carried entries are
+        // INTROSPECTED descriptors, not metadata-built ones, so they can differ
+        // cosmetically from what this model would have emitted for the same table
+        // (column order, a default's rendered form). Removing the scope later can
+        // therefore produce one round of alter churn. That is strictly better than
+        // the alternative it replaced — a `CREATE TABLE` for a table that exists,
+        // which fails at apply — and it is the same mixed-provenance snapshot
+        // `baseline --from-db` writes for every table it adopts.
         const committed = carryForwardOutOfScope(expected, actual, scoped.outOfScope);
         await writeSnapshot(
           snapshotPath(resolvePath(metaRoot, config.outDir), kysely.dialect),
@@ -1276,7 +1314,8 @@ async function runD1Migrate(
   let diffResult;
   try {
     diffResult = await diff({
-      expected,
+      // The three scoped-diff obligations, exactly as on the online path above.
+      ...scopedDiffInputs(scoped, collectUnmanagedNames(metadata)),
       actual,
       // D1 is SQLite at the SQL level — the dialect activates the sqlite diff
       // semantics (structural FK matching: SQLite stores no FK names; CHECK
@@ -1288,12 +1327,6 @@ async function runD1Migrate(
       // has no expressible migration; refuse loudly instead of emitting SQL that drops
       // the constraint and breaks referencing FKs at apply (same failure as the online path).
       refusePrimaryKeyChange: true,
-      // #208 §7 — declared-@unmanaged objects are external (see the online path above),
-      // and so are objects outside `migrate.scope`.
-      unmanagedNames: [...collectUnmanagedNames(metadata), ...scoped.outOfScope],
-      // Schema scope pinned to the UNSCOPED model's schemas — same reasoning as the
-      // online path above (migrate-ts's scope.ts header has the mechanism).
-      ...(scoped.declaredSchemas !== undefined ? { scopeSchemas: scoped.declaredSchemas } : {}),
       onAmbiguous: async (a) => {
         collectedAmbiguous.push(a);
         return onAmbiguousResolution;

@@ -15,7 +15,7 @@ import { resolve as resolvePath, basename, isAbsolute } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { log } from "../lib/log.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
-import { loadMemory, resolveCollection, type Collection } from "@metaobjectsdev/sdk";
+import { loadMemory, resolveCollection, resolveConfigDir, type Collection } from "@metaobjectsdev/sdk";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -206,16 +206,41 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
 
   // `--scaffold-site`: copy the docs-site templates + assets into codegen/docs-site/
   // so the consumer owns them (ADR-0034 scaffold-and-own). Scaffold and return —
-  // it does not also generate.
+  // it does not also generate. `resolveConfigDir` rather than `resolveCollection`:
+  // scaffolding needs no metadata, but it must write where `emitSite` will READ
+  // (below, under the resolved project root), and that is the same walk.
   if (flags.scaffoldSite) {
-    return scaffoldSiteCommand(metaRoot);
+    return scaffoldSiteCommand(await resolveConfigDir(metaRoot));
+  }
+
+  // Discovery and load are two separate failure modes, kept in separate try
+  // blocks deliberately — same reasoning as `meta gen` (gen.ts): a broad
+  // catch around both would swallow a genuine ParseError as "no metaobjects/
+  // found", masking the real failure.
+  //
+  // Discovery runs BEFORE the config read, deliberately, and `meta gen` calls
+  // out the same ordering as the thing it fixed: the project root is whichever
+  // directory `resolveCollection` decided the metadata belongs to, so
+  // everything project-relative — `metaobjects.config.ts` and its providers,
+  // the `docs.outDir` it names, the adopter `templates/` overrides, the owned
+  // `codegen/docs-site/` theme — has to come from that same directory. Reading
+  // the config from the ambient `<metadata>` argument while the metadata came
+  // from an ancestor renders the ancestor's model with the subdirectory's
+  // (absent) providers. For a run at the project root the two are the same path.
+  let collection: Awaited<ReturnType<typeof resolveCollection>>;
+  try {
+    collection = await resolveCollection(metaRoot);
+  } catch (err) {
+    log.error(`docs: ${(err as Error).message}`);
+    return 2;
   }
 
   // The project root used to resolve adopter `templates/` overrides; the
-  // framework defaults sit underneath via projectProvider's chain.
+  // framework defaults sit underneath via projectProvider's chain. `--templates`
+  // is the one explicit override.
   const projectRoot = flags.templates !== undefined
     ? resolvePath(cwd, flags.templates)
-    : metaRoot;
+    : collection.configDir;
 
   // Best-effort load of metaobjects.config.ts to pick up consumer-supplied
   // providers (e.g. a project's custom field/object subtypes). Unlike `gen`,
@@ -228,9 +253,10 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   // hasConfig gates the api surface: api docs describe the GENERATED REST
   // surface, which only exists when there is a (loadable) gen config. A config
   // that EXISTS but fails to load degrades to model-only with a warning.
-  const hasConfig = existsSync(join(metaRoot, "metaobjects.config.ts"));
-  // The config lives alongside metaobjects/ at the metadata root (metaRoot);
-  // projectRoot only diverges when --templates overrides the template lookup.
+  const hasConfig = existsSync(join(collection.configDir, "metaobjects.config.ts"));
+  // The config lives beside the `.metaobjects/` that declared this collection —
+  // `collection.configDir`, never ambient cwd. `projectRoot` only diverges from
+  // it when --templates overrides the template lookup.
   // Only attempt the load when the file is actually present: absence is the
   // expected config-less case (stay silent), but a config that EXISTS yet fails
   // to load is surfaced as a warning rather than silently degrading to
@@ -238,7 +264,7 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   // cryptic unknown-subtype error instead of the real config error.
   if (hasConfig) {
     try {
-      loadedConfig = await loadMetaobjectsConfig(metaRoot);
+      loadedConfig = await loadMetaobjectsConfig(collection.configDir);
       configProviders = loadedConfig.providers;
     } catch (err) {
       log.warn(
@@ -269,7 +295,7 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
     cliOverrides,
     loadedConfig?.outputLayout ?? "flat",
   );
-  const outDir = resolvePath(metaRoot, docsCfg.outDir);
+  const outDir = resolvePath(collection.configDir, docsCfg.outDir);
 
   // SITE surface has its OWN model loader (docs-site's loadModel — NOT the sdk
   // loadMemory below) and needs no gen config. When the site is the ONLY
@@ -277,19 +303,7 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   // WITHOUT building the markdown GenContext — decoupled and one fewer failure
   // surface. Combined with --model/--api it is emitted after them (below).
   if (flags.site && docsCfg.surfaces.length === 0) {
-    return emitSite(metaRoot, outDir, configProviders, promptsDir);
-  }
-
-  // Discovery and load are two separate failure modes, kept in separate try
-  // blocks deliberately — same reasoning as `meta gen` (gen.ts): a broad
-  // catch around both would swallow a genuine ParseError as "no metaobjects/
-  // found", masking the real failure.
-  let collection;
-  try {
-    collection = await resolveCollection(metaRoot);
-  } catch (err) {
-    log.error(`docs: ${(err as Error).message}`);
-    return 2;
+    return emitSite(collection, projectRoot, outDir, configProviders, promptsDir);
   }
 
   // Load metadata standalone — same loader path as migrate/gen. Threads any
@@ -452,7 +466,7 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
 
   // SITE surface (additive) — emit after the markdown surfaces so both coexist.
   if (flags.site) {
-    const siteRc = await emitSite(metaRoot, outDir, configProviders, promptsDir);
+    const siteRc = await emitSite(collection, projectRoot, outDir, configProviders, promptsDir);
     if (siteRc !== 0) return siteRc;
   }
 
@@ -479,9 +493,9 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
  * into `<root>/codegen/docs-site/{templates,assets}`, writing each file ONLY if
  * absent so a re-run never clobbers a hand-edited file.
  */
-async function scaffoldSiteCommand(metaRoot: string): Promise<number> {
-  const tplDir = join(metaRoot, "codegen/docs-site/templates");
-  const astDir = join(metaRoot, "codegen/docs-site/assets");
+async function scaffoldSiteCommand(projectRoot: string): Promise<number> {
+  const tplDir = join(projectRoot, "codegen/docs-site/templates");
+  const astDir = join(projectRoot, "codegen/docs-site/assets");
   const created: string[] = [];
   const preserved: string[] = [];
   try {
@@ -507,7 +521,7 @@ async function scaffoldSiteCommand(metaRoot: string): Promise<number> {
   }
   log.info(
     `meta docs --scaffold-site — ${created.length} created, ${preserved.length} preserved ` +
-      `→ ${join(metaRoot, "codegen/docs-site")} (edit these to own your theme)`,
+      `→ ${join(projectRoot, "codegen/docs-site")} (edit these to own your theme)`,
   );
   return 0;
 }
@@ -540,11 +554,16 @@ function collectionSourceDirs(collection: Collection): string[] {
  * this is independent of the sdk loadMemory path used for the markdown
  * surfaces. Writes under `<outDir>/site` so it can coexist with the markdown
  * output. Scaffold-and-own: when the consumer has copied templates/assets
- * into `<metaRoot>/codegen/docs-site/` (via `--scaffold-site`), those win
+ * into `<projectRoot>/codegen/docs-site/` (via `--scaffold-site`), those win
  * over the bundled defaults.
+ *
+ * Takes the ALREADY-RESOLVED collection: `docsCommand` resolved it to read the
+ * config from the right directory, and resolving a second time here made the
+ * combined `--model --site` path do the whole discovery-and-config walk twice.
  */
 async function emitSite(
-  metaRoot: string,
+  collection: Collection,
+  projectRoot: string,
   outDir: string,
   configProviders?: readonly MetaDataTypeProvider[],
   promptsDir?: string,
@@ -555,35 +574,36 @@ async function emitSite(
   // additionally searched in the conventional <root>/templates/ and any
   // explicit --prompts dir (for a project whose templates live elsewhere,
   // e.g. data/templates/) — else the site can't show the prompt TEXT and
-  // prints a "source missing" note. Only existing dirs are added, and dirs are
-  // deduped by BASENAME (the site keys source groups by basename, and rejects a dup).
-  let collection;
-  try {
-    collection = await resolveCollection(metaRoot);
-  } catch (err) {
-    log.error(`docs: ${(err as Error).message}`);
-    return 2;
-  }
+  // prints a "source missing" note. Only existing dirs are added.
+  //
+  // Deduped by resolved PATH, not by basename. Two DIFFERENT directories that
+  // happen to share a basename are a legitimate multi-source project (`metaobjects`
+  // plus `../shared-model/metaobjects`); `loadModel` disambiguates their site
+  // group names, so refusing the pair here — which a basename key did, by
+  // dropping the second — would break the feature this branch exists to ship.
+  // The same directory named twice is the real hazard: it would be symlinked
+  // and loaded twice.
   const sourceDirs = collectionSourceDirs(collection);
-  const seenBasenames = new Set(sourceDirs.map((d) => basename(d)));
+  const seenDirs = new Set(sourceDirs);
   if (promptsDir !== undefined && !existsSync(promptsDir)) {
     log.warn(`docs: --prompts dir does not exist: ${promptsDir}`);
   }
-  for (const d of [join(metaRoot, "templates"), ...(promptsDir !== undefined ? [promptsDir] : [])]) {
-    if (existsSync(d) && !seenBasenames.has(basename(d))) {
-      sourceDirs.push(d);
-      seenBasenames.add(basename(d));
+  for (const d of [join(projectRoot, "templates"), ...(promptsDir !== undefined ? [promptsDir] : [])]) {
+    const abs = resolvePath(d);
+    if (existsSync(abs) && !seenDirs.has(abs)) {
+      sourceDirs.push(abs);
+      seenDirs.add(abs);
     }
   }
   // Scaffold-and-own: when the consumer has copied templates/assets into
   // codegen/docs-site/ (via --scaffold-site), use those; else the bundled defaults.
-  const ownedTemplates = join(metaRoot, "codegen/docs-site/templates");
-  const ownedAssets = join(metaRoot, "codegen/docs-site/assets");
+  const ownedTemplates = join(projectRoot, "codegen/docs-site/templates");
+  const ownedAssets = join(projectRoot, "codegen/docs-site/assets");
   try {
     const r = await generateSite({
       sourceDirs,
       outDir: siteOutDir,
-      title: basename(metaRoot) || "Metadata",
+      title: basename(collection.configDir) || "Metadata",
       stamp: new Date().toISOString().slice(0, 10),
       commit: "",
       core: { n: 15 },

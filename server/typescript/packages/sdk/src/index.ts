@@ -95,8 +95,10 @@ export type { Scope, CompiledScope } from "./scope.js";
 export { resolveSources, DEFAULT_SOURCES } from "./sources.js";
 export type { SourceSpec, ResolvedSource } from "./sources.js";
 
-// Discovery — nearest-ancestor `.metaobjects/config.json`, bounded by the repo root
-export { findConfigDir } from "./discovery.js";
+// Discovery — nearest-ancestor project root (a `.metaobjects/config.json` OR a
+// `metaobjects/` directory), bounded by the repo root
+export { discoverCollectionRoot, resolveConfigDir } from "./discovery.js";
+export type { DiscoveredRoot } from "./discovery.js";
 
 // Collection — the single authority on where a project's metadata lives
 export { resolveCollection } from "./collection.js";

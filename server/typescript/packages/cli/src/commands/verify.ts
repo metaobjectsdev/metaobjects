@@ -33,8 +33,9 @@ import {
   computeDrift,
   computeDriftFromActual,
   collectUnmanagedNames,
-  declaredSchemasOf,
-  qualifiedDbName,
+  excludeFromSnapshot,
+  scopedDiffInputs,
+  type GovernedScope,
   introspect,
   diff,
   readSnapshot,
@@ -110,9 +111,6 @@ export async function verifyCommand(
     return 2;
   }
 
-  // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
-  warnIfAgentContextStale(cwd);
-
   // ADR-0021 D2 — explicit verify subverbs. Each flag selects one drift mode;
   // any combination runs each and the overall exit code is the MAX (non-zero on
   // any drift). A bare `verify` (no explicit subverb) keeps its documented
@@ -152,11 +150,18 @@ export async function verifyCommand(
   // command: anything named BY the metadata or its config resolves against
   // `projectRoot` — `metaobjects.config.ts`, `.metaobjects/config.json`, the
   // `outDir` and `wranglerConfigPath` they carry, the `prompts/` a `@textRef`
-  // resolves in, the test files a `@verifiedBy` names. Anything that is merely
-  // "the tree the user is standing in" stays on `cwd` — the agent-context
-  // staleness nudge and the advisory anti-pattern scan, both warnings-only.
-  // Identical paths for a run from the project root.
+  // resolves in, the test files a `@verifiedBy` names. Identical paths for a run
+  // from the project root.
+  //
+  // The two advisory passes — the agent-context staleness nudge and the
+  // anti-pattern scan — are rooted here too, matching `meta gen`. Both commands
+  // describe them as the same pass, and scanning two different trees for it made
+  // that false: a `verify` run from a subdirectory scanned only that subtree and
+  // found no agent-context manifest at all, so the nudge silently never fired.
   const projectRoot = collection.configDir;
+
+  // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
+  warnIfAgentContextStale(projectRoot);
 
   // Best-effort load of metaobjects.config.ts. Two consumers:
   //  1) consumer-supplied providers (e.g. a `template.toolcall` subtype) threaded
@@ -280,7 +285,7 @@ export async function verifyCommand(
   function runAntiPatternAdvisory(): void {
     let findings;
     try {
-      findings = scanSourceForAntiPatterns(cwd);
+      findings = scanSourceForAntiPatterns(projectRoot);
     } catch {
       return; // never let an advisory scan break verify
     }
@@ -486,7 +491,7 @@ export async function verifyCommand(
 
       const snapshotDrift =
         driftResult.changes.length === 0
-          ? await checkCommittedSnapshot(actual, kysely.dialect, kysely.displayUrl, driftResult.outOfScope)
+          ? await checkCommittedSnapshot(actual, kysely.dialect, kysely.displayUrl, driftResult)
           : [];
 
       return reportSchemaDrift(driftResult, [...ledgerDrift, ...snapshotDrift], kysely.displayUrl);
@@ -608,7 +613,7 @@ export async function verifyCommand(
     actual: SchemaSnapshot,
     dialect: Dialect,
     displayUrl: string,
-    outOfScope: readonly string[],
+    governed: GovernedScope,
   ): Promise<string[]> {
     if (dialect === "d1") return []; // d1 keeps migrations Wrangler-native; no offline snapshot
     // Resolve the migrations dir through migrate's OWN precedence (flag > config >
@@ -625,33 +630,19 @@ export async function verifyCommand(
     }
     if (snapshot === null) return [];
 
-    // Out-of-scope objects leave BOTH sides of this comparison. `unmanagedNames`
-    // suppresses the actual side only, which is right for the metadata↔DB diff (the
-    // expected side is already scoped) but not here: the committed snapshot is the
-    // expected side, and a snapshot written before the scope was declared still
-    // carries the other owner's tables — leaving them in would report a phantom
-    // "snapshot disagrees" for an object this consumer does not manage.
-    const excluded = new Set(outOfScope);
-    const scopedSnapshot: SchemaSnapshot = excluded.size === 0 ? snapshot : {
-      ...snapshot,
-      tables: snapshot.tables.filter((t) => !excluded.has(qualifiedDbName(t))),
-      views: snapshot.views.filter((v) => !excluded.has(qualifiedDbName(v))),
-    };
-
-    // Pin the schema scope to the UNFILTERED snapshot's schemas whenever the filter
-    // above removed anything (migrate-ts's scope.ts header has the mechanism):
-    // filtering `expected` down to empty would otherwise reach `diff`'s "no model,
-    // govern the whole database" fallback and report every table another owner has
-    // as a snapshot disagreement. Nothing filtered ⇒ nothing passed ⇒ an unscoped
-    // project's arguments are unchanged.
-    const snapshotSchemas = excluded.size === 0 ? [] : declaredSchemasOf(snapshot);
-
+    // Out-of-scope objects leave BOTH sides of this comparison, and the schema pin
+    // comes from the scope decision the DRIFT comparison already made — one door
+    // (migrate-ts's `excludeFromSnapshot` + `scopedDiffInputs`), not a fifth
+    // hand-rolled copy of the three-part contract. `unmanagedNames` suppresses the
+    // actual side only, which is right for the metadata↔DB diff (its expected side
+    // is already scoped) but not here: the committed snapshot IS the expected side,
+    // and a snapshot written before the scope was declared still carries the other
+    // owner's tables. Re-deriving the pin from the snapshot is what left an empty
+    // (never-migrated) snapshot reaching `diff`'s whole-database fallback.
     const result = await diff({
-      expected: scopedSnapshot,
+      ...scopedDiffInputs(excludeFromSnapshot(snapshot, governed), collectUnmanagedNames(root)),
       actual,
       allow: {},
-      unmanagedNames: [...collectUnmanagedNames(root), ...outOfScope],
-      ...(snapshotSchemas.length > 0 ? { scopeSchemas: snapshotSchemas } : {}),
     });
     if (result.changes.length === 0) return [];
 

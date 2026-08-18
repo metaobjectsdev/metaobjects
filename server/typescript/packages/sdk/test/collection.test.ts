@@ -93,4 +93,31 @@ describe("resolveCollection", () => {
     const c = await resolveCollection(root);
     expect(c.files.map((f) => f.replace(root + "/", ""))).toEqual(["metaobjects/meta.a.json"]);
   });
+
+  test("BACK-COMPAT: a LOCAL metaobjects/ stops the walk, even under an ancestor config", async () => {
+    // The pre-branch layout: a nested project holding its own `metaobjects/` and
+    // no config of its own read ITS OWN metadata. Walking past it to an ancestor
+    // config silently loads the ancestor's model AND writes generated output to
+    // the ancestor's outDir — a silent regression on a layout that worked.
+    config(".", {});
+    write("metaobjects/meta.root.json", "{}");
+    write("apps/ui/metaobjects/meta.ui.json", "{}");
+    const c = await resolveCollection(join(root, "apps/ui"));
+    expect(c.configDir).toBe(join(root, "apps/ui"));
+    expect(c.files.map((f) => f.replace(root + "/", ""))).toEqual([
+      "apps/ui/metaobjects/meta.ui.json",
+    ]);
+  });
+
+  test("a nearer config still wins over a further-down metaobjects/ in an ancestor", async () => {
+    // The stop condition is per-DIRECTORY, first-match-wins: the nearest ancestor
+    // holding EITHER marker stops the walk, so a config beside the start dir is
+    // not skipped just because an ancestor also has a `metaobjects/`.
+    write("metaobjects/meta.root.json", "{}");
+    write("model/meta.a.json", "{}");
+    config("apps/ui", { sources: [{ path: "../../model" }] });
+    const c = await resolveCollection(join(root, "apps/ui/src"));
+    expect(c.configDir).toBe(join(root, "apps/ui"));
+    expect(c.files.map((f) => f.replace(root + "/", ""))).toEqual(["model/meta.a.json"]);
+  });
 });
