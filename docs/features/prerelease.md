@@ -32,7 +32,17 @@ One canonical internal string, normalized per ecosystem in exactly one place
 | form | `<base>-rc.<N>` | `0.24.0-rc.3` | `0.24.0rc3` | `0.24.0-rc.3` | `7.24.0-rc.3` |
 | why | | SemVer2 verbatim | PEP 440 canonical form | SemVer2 verbatim | same `minor.patch` on the historical major `7` |
 
-`<base>` is the in-development version — the next minor by default — and `<N>` is a
+`<base>` is the in-development version, read from **CHANGELOG.md's topmost `## [x.y.z]`
+header** — the repository's own declaration of what is being worked on, written when the
+work lands and therefore ahead of the `package.json` bump, which still carries the last
+*released* version. It falls back to the next minor only when that top entry is already
+released, i.e. when nobody has declared a next version yet; `--base` overrides both, and
+the run prints which of the three it used. Deriving it as minor+1 unconditionally was
+wrong on every PATCH line — `0.23.3` after `0.23.2` is an ordinary outcome, and the tool
+would say `0.24.0` while the changelog said `0.23.3`, so every invocation needed `--base`
+to be talked out of it. One forgotten flag burns a version number permanently.
+
+`<N>` is a
 **monotonic iteration counter**, derived from what the registry already holds across all
 four ecosystems so that `--only npm` today and `--only csharp` tomorrow cannot collide.
 

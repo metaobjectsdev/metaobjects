@@ -7,7 +7,11 @@
 //   bun run prerelease --only npm,csharp     # pick ports
 //   bun run prerelease --only all            # all four
 //   bun run prerelease --iter 5              # pin the iteration number
-//   bun run prerelease --base 0.25.0         # target a different in-development version
+//   bun run prerelease --base 0.25.0         # override the in-development version
+//
+// The base version is read from CHANGELOG.md's topmost `## [x.y.z]` header — the
+// repository's own declaration of what is being worked on — falling back to minor+1 when
+// that entry is already released. `--base` overrides both.
 //   bun run prerelease --dry-run             # build + normalize + gate, publish nothing
 //
 // Registry address and token come from tools/prerelease/registry.env (gitignored) or the
@@ -119,7 +123,35 @@ const MAVEN_URL = assertTarget(`${BASE}/api/packages/${OWNER}/maven`, "maven");
 // ── version scheme ────────────────────────────────────────────────────────────────────
 const cliPkg = JSON.parse(readFileSync(join(ROOT, "server/typescript/packages/cli/package.json"), "utf8"));
 const RELEASED = cliPkg.version;
-const BASEVER = flag("base", (() => {
+
+const cmpVer = (a, b) => {
+  const [x, y] = [a, b].map((v) => v.split(".").map(Number));
+  return x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
+};
+
+/**
+ * The version this cut is FOR, read from the repository's own declaration of it.
+ *
+ * `package.json` still carries the last RELEASED version — versions bump at release time —
+ * so it cannot answer "what is being worked on". CHANGELOG.md can: its topmost `## [x.y.z]`
+ * header is written when the work lands, ahead of the bump. Guessing minor+1 instead had a
+ * standing cost, because a PATCH line is a normal outcome (0.23.3 after 0.23.2): the tool
+ * derived 0.24.0 while the changelog said 0.23.3, and every single invocation needed
+ * `--base` to talk it out of the wrong answer. One forgotten flag burns a version number on
+ * the registry, permanently.
+ *
+ * Falls back to minor+1 when the changelog's top entry is already released — i.e. nobody
+ * has declared the next version yet, which is exactly the case the old guess was written
+ * for. `--base` still overrides both.
+ */
+const declaredBase = (() => {
+  const m = readFileSync(join(ROOT, "CHANGELOG.md"), "utf8").match(/^## \[(\d+\.\d+\.\d+)\]/m);
+  return m && cmpVer(m[1], RELEASED) > 0 ? m[1] : null;
+})();
+const BASE_SOURCE = flag("base", null) !== null ? "--base"
+  : declaredBase !== null ? "CHANGELOG.md"
+  : `guessed from released ${RELEASED}`;
+const BASEVER = flag("base", declaredBase ?? (() => {
   const [maj, min] = RELEASED.split(".").map(Number);
   return `${maj}.${min + 1}.0`;
 })());
@@ -192,7 +224,9 @@ if (unknown.length) die(`--only expects ${ALL.join("|")}|all, got '${unknown.joi
 const wants = (p) => ONLY.includes(p);
 
 console.log(`\n── pre-release ${CANON}${DRY ? "  (DRY RUN)" : ""} → ${expectedHost} ──\n`);
-info(`released: ${RELEASED}   base: ${BASEVER}   iteration: ${ITER}`);
+// Name where the base came from. A version number is spent permanently the moment it is
+// published, so the one value worth reading before the run is the one that was inferred.
+info(`released: ${RELEASED}   base: ${BASEVER} (from ${BASE_SOURCE})   iteration: ${ITER}`);
 info(`npm ${V.npm}  ·  pypi ${V.pypi}  ·  nuget ${V.nuget}  ·  maven ${V.maven}`);
 info(`ports: ${ONLY.join(", ")}\n`);
 ok(`publish target verified: ${expectedHost} (configured registry; not a public one)`);

@@ -42,6 +42,15 @@ iterate, and switch back with one verified command.
   check **announces that it did not run** rather than passing in silence — a guard that is
   quiet when it skips cannot be told apart from one that looked and found nothing. `link`
   passes the address through, so a linked consumer has it.
+- The **base version is read from CHANGELOG.md's topmost `## [x.y.z]` header**, not guessed
+  as minor+1. `package.json` carries the last *released* version, because versions bump at
+  release time, so it cannot answer "what is being worked on" — the changelog entry is
+  written when the work lands and therefore leads it. The guess was wrong on every PATCH
+  line, which is an ordinary outcome: the tool said `0.24.0` while the changelog said
+  `0.23.3`, so every invocation needed `--base` to be talked out of it, and one forgotten
+  flag burns a version number permanently. Falls back to minor+1 only when the changelog's
+  top entry is already released; `--base` still overrides both, and the run prints which of
+  the three it used.
 - **`scripts/check-no-prerelease-versions.sh`** — wired into `.githooks/pre-commit` and the
   `gates` lane. A committed `-rc.N` is not cosmetic: `scripts/release.mjs` derives the
   lockstep set from the CLI's *current* version, so one stray pre-release version silently
