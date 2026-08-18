@@ -224,11 +224,52 @@ output can, wrongly scoped, become the silent-staleness bug it was added to prev
   app-composed generator, an uncapped warning in the one generator meant to be a feature's
   first contact, and an O(n·k) manifest rewrite.
 
+**A second review pass closed three more, all of the same shape — a fix that stopped one
+line short of the hole it was closing.** The escaping above covered `@statement` and
+`@violation` and left the requirement path, the concern, `@disposition`, the claimed refs
+and `@trackedBy` interpolating raw into the same two literals and the same JSDoc block;
+`@trackedBy` is the sharp one, because it is registered free-form *on purpose* — `verify`
+never resolves it, since which sprint owns a gap belongs in the tracker — so its contract
+invites arbitrary text, and a `*/` in one entry reopens the exact defect. Every
+interpolated value now escapes, and six hostile-input cases EXECUTE the generated stub.
+The filtered-run warning fired on every `meta gen <entity>`, including projects where the
+sweep would provably find nothing; a warning that cries on the no-op case teaches the
+reader to skim it, which is how the real one gets skimmed, so it now fires only when the
+manifest holds a path the run did not emit. And the per-path `forgetGeneratedPath` was
+dead from the moment the batched version landed, leaving its doc comment stranded above a
+function that then carried two.
+
 **One doc claim is retracted.** `HashManifest.cs` and `overwrite_policy.py` both stated
 that a conformance fixture could compare two ports' manifests directly. It cannot:
 TypeScript keys project-relative (it has multiple output targets), C# and Python key
 out-dir-relative. The hash ALGORITHM matches everywhere; the keys deliberately do not, and
 a manifest is not portable between ports.
+
+### Fixed — `meta verify --db` ran a different diff than `meta migrate` ([#297](https://github.com/metaobjectsdev/metaobjects/issues/297), npm)
+
+The committed-snapshot check added in `0.23.1` (#292) received `dialect`, used it twice —
+the `d1` early return, and to pick the snapshot file — and then left it out of the `diff()`
+that does the work. `DiffArgs.dialect` is optional, so the wrong call was accepted silently
+rather than rejected, and the gate answered a different question than the one it reported
+on. In both directions at once:
+
+- **Every Postgres view drifted, forever.** With no dialect, `diffViews` skips the
+  fingerprint comparison and falls through to comparing our emitter's view body against
+  `pg_get_viewdef`'s deparse — which drops `AS <same-name>` aliases, rewrites `INNER JOIN`
+  to `JOIN` and reindents, so the two strings can never be equal. That is precisely the
+  failure the view fingerprint was introduced to end, and `diffViews`' own header comment
+  says so. `verify --db` therefore exited 1 unconditionally for any Postgres project with a
+  projection, so it could not be used as a pass/fail gate at all — and on the project where
+  this was found, 36 of 44 reported lines were this bug, twelve of them as `- view X` /
+  `+ view X` pairs that read like a destructive proposal.
+- **CHECK constraints were never diffed.** `diffTables` gates that pass on the dialect being
+  known, so `verify --db` printed "schema in sync" over a database whose constraints had
+  moved — a false NEGATIVE, the dangerous direction for a gate.
+
+`meta migrate` passed the dialect and was always correct; only `verify` did not, on the one
+command whose whole job is the drift verdict. Pinned by a regression test on the CHECK arm,
+which needs no Postgres container and covers the silent half: before the fix its failure
+output *is* the bug, verbatim.
 
 ### Fixed — Java and Kotlin get the safety floor they never implemented (Maven)
 
