@@ -579,6 +579,12 @@ export async function verifyCommand(
       actual,
       allow: {},
       unmanagedNames: collectUnmanagedNames(root),
+      // #297 — the SAME pipeline `meta migrate` runs, or this gate answers a different
+      // question than the one it reports on. `DiffArgs.dialect` is optional, so omitting
+      // it was silently accepted: views fell through to comparing our emitted body
+      // against the deparser's (never equal, so permanent drift on Postgres), CHECK
+      // constraints were skipped entirely, and SQLite type canonicalization no-opped.
+      dialect,
     });
     if (result.changes.length === 0) return [];
 

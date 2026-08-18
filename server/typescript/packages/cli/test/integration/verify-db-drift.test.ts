@@ -260,3 +260,92 @@ describe("meta verify --db — the committed schema snapshot (#292)", () => {
     }
   });
 });
+
+// -- #297: the snapshot check must run the same dialect-aware pipeline migrate runs --
+// `checkCommittedSnapshot` receives `dialect`, uses it to pick the snapshot file, then
+// omitted it from the `diff()` that does the work. `DiffArgs.dialect` is optional, so the
+// wrong call was silently accepted rather than rejected.
+//
+// The two costs run in opposite directions. On Postgres every view reported drift
+// forever: an undefined dialect skips the fingerprint comparison and falls through to
+// comparing our emitter's view body against `pg_get_viewdef`'s deparse — two strings that
+// can never be equal, which is the exact failure the fingerprint was introduced to end.
+// And CHECK constraints were never diffed at all, because `diffTables` gates that pass on
+// the dialect being known — a false NEGATIVE, the dangerous direction for a gate.
+//
+// Pinned here on the CHECK arm, which needs no Postgres container and is the false
+// NEGATIVE — a gate reporting "in sync" over a schema whose constraints have moved.
+describe("meta verify --db — the snapshot check is dialect-aware (#297)", () => {
+  /** metaJson's shape plus a `field.enum`, whose `@values` become a CHECK constraint. */
+  function metaJsonEnum(): string {
+    return JSON.stringify({
+      "metadata.root": {
+        package: "acme::drift",
+        children: [
+          {
+            "object.entity": {
+              name: "Widget",
+              children: [
+                { "source.rdb": {} },
+                { "field.long": { name: "id" } },
+                { "field.string": { name: "name", "@column": "name" } },
+                { "field.enum": { name: "status", "@column": "status", "@values": ["DRAFT", "LIVE"] } },
+                { "identity.primary": { name: "pk", "@fields": ["id"] } },
+              ],
+            },
+          },
+        ],
+      },
+    });
+  }
+
+  /**
+   * Move the committed snapshot's CHECK expression away from the one the DB enforces.
+   *
+   * Stands in for any cause of constraint staleness — an interrupted migrate, a bad merge
+   * resolution — exactly as `staleSnapshot` above does for a column. Only the SNAPSHOT is
+   * touched: metadata and DB still agree, which is the precondition that lets the snapshot
+   * pass run at all.
+   */
+  function staleSnapshotCheck(repo: string): void {
+    const path = join(repo, ".metaobjects", "migrations", ".schema.sqlite.json");
+    const doc = JSON.parse(readFileSync(path, "utf8"));
+    const t = doc.snapshot.tables.find((x: { name: string }) => x.name === "widgets");
+    if (!t) throw new Error(`no table 'widgets'; have: ${doc.snapshot.tables.map((x: {name:string}) => x.name).join(", ")}`);
+    // Asserted, not assumed: with no check to make stale the test would pass vacuously.
+    expect(t.checks.length).toBeGreaterThan(0);
+    t.checks = t.checks.map((c: { expression: string }) => ({
+      ...c,
+      expression: c.expression.replace("DRAFT", "RETIRED"),
+    }));
+    writeFileSync(path, JSON.stringify(doc, null, 2), "utf8");
+  }
+
+  test("a stale CHECK in the snapshot fails the gate rather than passing silently", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "metaobjects-verify-297-"));
+    const dbUrl = `file:${join(repo, "local.db")}`;
+    try {
+      mkdirSync(join(repo, "metaobjects"), { recursive: true });
+      writeFileSync(join(repo, "metaobjects", "meta.drift.json"), metaJsonEnum(), "utf8");
+      expect(
+        await run(["migrate", "--from-db", "--cwd", repo, "--db", dbUrl, "--dialect", "sqlite", "--slug", "initial"]),
+      ).toBe(0);
+      const migrationsRoot = join(repo, ".metaobjects", "migrations");
+      const dir = readdirSync(migrationsRoot).find((s) => s.endsWith("-initial"))!;
+      await applyMigration(dbUrl, join(migrationsRoot, dir, "up.sql"));
+      // Baseline: everything agrees, including the constraint.
+      expect(await run(["verify", "--cwd", repo, "--db", dbUrl, "--dialect", "sqlite"])).toBe(0);
+
+      staleSnapshotCheck(repo);
+      out = [];
+      err = [];
+
+      const exit = await run(["verify", "--cwd", repo, "--db", dbUrl, "--dialect", "sqlite"]);
+      const all = [...out, ...err].join("\n");
+      expect(all).toContain("snapshot");
+      expect(exit).toBe(1);
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+});
