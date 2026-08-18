@@ -70,6 +70,22 @@ describe("resolveSources", () => {
     expect(out).toHaveLength(1);
   });
 
+  test("the spec attributed to an overlapping file is order-independent, not just the file list", async () => {
+    write("model/meta.a.json");
+    const forward = await resolveSources(root, [{ path: "model" }, { path: "model/meta.a.json" }]);
+    const reverse = await resolveSources(root, [{ path: "model/meta.a.json" }, { path: "model" }]);
+    // Deep-equal on the FULL ResolvedSource[] — .spec included, not just .file.
+    // A first-spec-wins tie-break would pass the two `de-duplicates` /
+    // `canonically sorted` tests above yet fail here, because which spec is
+    // attributed would flip between forward and reverse.
+    expect(forward).toEqual(reverse);
+    // Pin the actual deterministic winner: content-only comparison picks
+    // whichever spec's JSON.stringify sorts first, regardless of which was
+    // declared (or processed) first.
+    expect(forward).toHaveLength(1);
+    expect(forward[0]?.spec).toEqual({ path: "model" });
+  });
+
   test("paths resolve against the config dir, not process.cwd()", async () => {
     write("apps/ui/.keep");
     write("model/meta.a.json");

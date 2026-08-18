@@ -3,12 +3,15 @@
 // Phase-1 metadata-source-resolution — source spec resolution.
 //
 // Turns a declared source SET (`.metaobjects/config.json`'s `sources`) into a
-// canonically-sorted, de-duplicated list of metadata file paths. The result is
-// a pure function of the source SET, never of declaration order: permuting
-// `specs` cannot change the output. A later phase-1 task pins this with a
-// permutation test, so the sort-by-absolute-path + de-dup step is load-bearing.
+// canonically-sorted, de-duplicated list of metadata file paths. The FULL
+// result — including which spec each entry attributes to — is a pure
+// function of the source SET, never of declaration order: permuting `specs`
+// cannot change the output, even when two specs overlap on the same file. A
+// later phase-1 task pins this with a permutation test (the design's
+// linchpin), so both the sort-by-absolute-path step and the content-based
+// overlap tie-break below are load-bearing.
 import { readdir, stat } from "node:fs/promises";
-import { isAbsolute, join, resolve } from "node:path";
+import { extname, isAbsolute, join, resolve } from "node:path";
 import { ParseError, codeSource } from "@metaobjectsdev/metadata";
 
 /** Tagged union of source kinds. `resource` and `package` are declared now so
@@ -33,8 +36,14 @@ export const DEFAULT_SOURCES: readonly SourceSpec[] = [{ path: "metaobjects" }];
 
 const PENDING_DIR = "_pending";
 
+/** Recognized metadata file extensions, matched case-insensitively — mirrors
+ *  `DirectorySource` in `@metaobjectsdev/metadata`, which checks
+ *  `extname().toLowerCase()`. Without this, `meta.JSON` would be picked up by
+ *  the loader and silently skipped here. */
+const METADATA_EXTENSIONS = new Set([".json", ".yaml", ".yml"]);
+
 function isMetadataFile(name: string): boolean {
-  return name.endsWith(".json") || name.endsWith(".yaml") || name.endsWith(".yml");
+  return METADATA_EXTENSIONS.has(extname(name).toLowerCase());
 }
 
 /** Recursively collect metadata files under `dir`, excluding `_pending/` at any
@@ -57,10 +66,15 @@ async function collectDir(dir: string, out: string[]): Promise<void> {
 /**
  * Resolve a declared source SET to a canonically-sorted list of metadata files.
  *
- * The result is sorted by absolute path and de-duplicated by file, so it is a
- * pure function of the SET of `specs` — permuting `specs` cannot change the
- * output. Declared order carries no information (the loader derives whatever
- * order it needs from the files themselves).
+ * The full result — each entry's `.file` AND its `.spec` — is a pure function
+ * of the SET of `specs`: permuting `specs` cannot change the output. Two parts
+ * make that hold: entries are sorted by absolute path (so file ORDER carries no
+ * declaration-order information), and when two specs overlap on the same file,
+ * the one attributed is chosen by comparing `JSON.stringify(spec)` — a
+ * content-only tie-break, so which spec "wins" never depends on which was
+ * processed first. Declared order carries no information anywhere in this
+ * function (the loader derives whatever order it needs from the files
+ * themselves).
  *
  * Only `path` specs resolve in phase 1: a directory is walked recursively, a
  * file is taken as-is. An unresolvable `path` throws `ERR_SOURCE_UNRESOLVED`
@@ -100,7 +114,14 @@ export async function resolveSources(
     const found: string[] = [];
     if (stats.isDirectory()) await collectDir(target, found);
     else found.push(target);
-    for (const file of found) if (!byFile.has(file)) byFile.set(file, spec);
+    for (const file of found) {
+      const existing = byFile.get(file);
+      // Content-only tie-break: never "first spec processed wins", or the
+      // attributed `.spec` would depend on declaration order.
+      if (existing === undefined || JSON.stringify(spec) < JSON.stringify(existing)) {
+        byFile.set(file, spec);
+      }
+    }
   }
 
   return [...byFile.keys()].sort().map((file) => ({ file, spec: byFile.get(file)! }));
