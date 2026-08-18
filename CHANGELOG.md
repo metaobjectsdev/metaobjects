@@ -236,7 +236,6 @@ ADR-0015 makes for schema migrations. Refusing warns rather than failing the rea
 because failing a Maven build over a file the user chose to own would punish exactly the
 person the guard protects.
 
-||||||| 545ea2070
 ## [0.23.2] — npm `0.23.2` · PyPI `0.23.2` · NuGet `0.23.2` · Maven `7.23.2`
 
 A coordinated **PATCH** across all four registries.
