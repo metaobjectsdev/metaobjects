@@ -66,3 +66,7 @@ server/java/.claude/
 
 # Serena MCP project cache (local tooling scratch)
 .serena/
+
+# Private pre-release registry address + token (docs/features/prerelease.md).
+# Never committed: this repository is PUBLIC.
+tools/prerelease/registry.env

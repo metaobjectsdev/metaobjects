@@ -143,6 +143,13 @@ gate_bun_version() { scripts/check-bun-version.sh; }
 # them as installable. Offline check; see scripts/check-publish-intent.sh.
 gate_publish_intent() { scripts/check-publish-intent.sh; }
 
+# ── release hygiene: no pre-release version may be committed ──────────────────
+# scripts/prerelease.mjs bumps every version declaration in place and restores them on
+# exit; a crashed run (or a hand-run sed) can leave an -rc.N behind. That is not cosmetic:
+# scripts/release.mjs derives the lockstep set from the CLI's CURRENT version, so a stray
+# pre-release version silently shrinks the set the next real release publishes.
+gate_no_prerelease_versions() { scripts/check-no-prerelease-versions.sh; }
+
 # ── peer ranges must have a finite upper bound ────────────────────────────────
 # An open `>=` peer silently accepts a future breaking major. `@tanstack/react-table:
 # ">=8.20.0"` accepted v9 — a rewrite that deleted useReactTable/getCoreRowModel, both
@@ -370,6 +377,7 @@ if want gates; then step    "leak-scan (security)"             gate_leak_scan;  
 if want gates; then step    "pom-version parity"               gate_pom_versions;           fi
 if want gates; then step    "bun-version parity"               gate_bun_version;            fi
 if want gates; then step    "publish-intent parity"            gate_publish_intent;         fi
+if want gates; then step    "no committed pre-release version" gate_no_prerelease_versions; fi
 if want gates; then step_if bun "peer-range bounds"            gate_peer_ranges;            fi
 if want gates; then step_if bun "fixture-lint"                 gate_fixture_lint;           fi
 # The ts port is split into two lanes so CI can run them as separate jobs (see

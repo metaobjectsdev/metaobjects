@@ -567,7 +567,7 @@ PRs welcome. When contributing:
 
 For significant new features or architectural changes, open an issue first to discuss the approach.
 
-**Publishing to npm:** see [docs/RELEASING.md](docs/RELEASING.md) — the procedure (RC → smoke-test → promote) plus the non-obvious gotchas (publish with `bun`, regen the lockfile after every version bump, runtime imports must be `dependencies`, verify a real external install in npm *and* pnpm).
+**Publishing:** To iterate an unreleased change against a downstream project, use [docs/features/prerelease.md](docs/features/prerelease.md) — publish to the private registry (`bun run prerelease`), consume it, iterate, and revert with one verified command. For full public releases, see [docs/RELEASING.md](docs/RELEASING.md) — the procedure (RC → smoke-test → promote) plus the non-obvious gotchas (publish with `bun`, regen the lockfile after every version bump, runtime imports must be `dependencies`, verify a real external install in npm *and* pnpm).
 
 ## Roadmap pointer
 

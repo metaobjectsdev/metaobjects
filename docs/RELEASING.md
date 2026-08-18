@@ -112,8 +112,14 @@ Publish in tier order so a dependent never lands before its dependency. **`forge
    pnpm** (pnpm's strict, non-nested `node_modules` exposes resolution bugs npm/bun hide). Install
    the cli into a throwaway dir, run `meta --version`, `meta init`, `meta gen`.
 
-5. **npm versions are immutable.** You can never re-publish a version, and unpublish is a
-   restricted 72-hour escape hatch. That's why we go RC-first.
+5. **npm versions are immutable, and a burned one never comes back.** You can never
+   re-publish a version. Unpublish is not a reliable escape hatch: it is *refused* (`E405`)
+   once anything depends on the version, and deprecating it does not free the number.
+   `@metaobjectsdev/metadata@0.24.0-rc.1` is burned that way and no other package in the set
+   carries it — so a lockstep RC at `0.24.0-rc.1` would publish thirteen packages and then
+   fail irreversibly on the fourteenth. `scripts/release.mjs` now preflights the target
+   version against **every** package in the set (it used to check only the cli), and
+   `bun run prerelease` skips burned numbers when choosing an iteration.
 
 ## Versioning policy (pre-1.0)
 
@@ -224,6 +230,20 @@ bun run clean && bun run build
 Spot-check `dist` reflects the change (a deleted source's `.js` is gone, new code present).
 
 ### 1. Release candidate → `next`
+
+> **Most changes do not need this.** To try an unreleased change against a downstream
+> project, publish a PRE-RELEASE to the private registry instead —
+> [`docs/features/prerelease.md`](features/prerelease.md), `bun run prerelease`. It is
+> reversible, invisible to the public registries, and costs no version number.
+>
+> A **public** RC is for the one case a private registry cannot cover: **dependencies or
+> package layout changed**, so the thing being tested IS a real external install from the
+> real registry — a misclassified `dependencies`/`devDependencies` entry, a peer range, a
+> new package name, an `exports` map. Rule 4 below only means something against npmjs.org.
+>
+> Remember what it costs: an RC version is permanent. Once anything depends on it,
+> `npm unpublish` is refused outright and deprecating it does not free the number.
+
 ```bash
 # bump the candidate set to <version>-rc.N (sed the "version" field in each publish-candidate package.json)
 rm bun.lock && bun install                       # CRITICAL — re-pins workspace versions

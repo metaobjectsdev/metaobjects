@@ -7,6 +7,63 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added — pre-release publishing to a private registry (no more real releases just to test a change)
+
+Trying an unreleased change against a downstream project required cutting a real release on
+npm / PyPI / NuGet / Maven Central. All four are immutable, so every experiment spent a
+version number, moved `latest`, and was visible to every consumer on a caret range. There is
+now a private path: publish a **pre-release** to a separate registry, consume it downstream,
+iterate, and switch back with one verified command.
+
+- **`bun run prerelease`** (`scripts/prerelease.mjs`) — publishes the in-development version
+  to a registry configured in `tools/prerelease/registry.env` (gitignored). One canonical
+  version string `<base>-rc.<N>`, normalized in exactly one place: `0.24.0-rc.3` (npm,
+  NuGet), `0.24.0rc3` (PEP 440), `7.24.0-rc.3` (Maven). npm by default, `--only all` for the
+  four ports. The collision-breaker is a **counter, not a commit sha**, because npm strips
+  SemVer build metadata — `0.24.0-rc.1+aaa` and `+bbb` are the same version to it.
+- **`tools/prerelease/prerelease-link.sh link|unlink|check`** — points a downstream project
+  at the registry, and takes it back off. It detects the project's ecosystems, writes only
+  namespace-scoped config (`@metaobjectsdev/*`, `metaobjects`, `MetaObjects*`,
+  `com.metaobjects` — everything else keeps resolving publicly), and on `unlink` repins
+  **every** vendor dependency, drops the lockfile, and runs the detector to prove the
+  project is clean. Repinning only the dependency you installed is not enough: `meta init`
+  writes `@metaobjectsdev/codegen-ts` and `@metaobjectsdev/metadata` into a consumer's
+  devDependencies too, and missing them fails the next clean install with `notarget`.
+- **`tools/prerelease/detect-prerelease-pins.sh`** — the guard a consumer commits and runs
+  in CI. The registry is a public HTTPS endpoint with anonymous reads, so no network
+  boundary is doing safety work; this check *is* the containment. It scans dependency
+  declarations only (a test server bound to `127.0.0.1` is not a dependency on anything) and
+  knows the registry host by default, so a consumer repo that has never seen the publisher's
+  config still catches a leak.
+- **`scripts/check-no-prerelease-versions.sh`** — wired into `.githooks/pre-commit` and the
+  `gates` lane. A committed `-rc.N` is not cosmetic: `scripts/release.mjs` derives the
+  lockstep set from the CLI's *current* version, so one stray pre-release version silently
+  drops that package from the next real release.
+- `tools/prerelease/docker-compose.yml` + `bootstrap.sh` stand up an equivalent registry for
+  a fork or an offline machine; the publisher is registry-agnostic either way.
+- Adopter-facing guide: [`docs/features/prerelease.md`](docs/features/prerelease.md).
+
+**Config is per-project and never machine-global**, deliberately. A user-level `~/.npmrc` is
+invisible to the detector, switches every project at once, and — the reason this is a rule
+rather than a preference — a silent fall-back to user-level config is the exact mechanism
+that published a pre-release to public npm while this was being built: `bun publish` ignores
+`npm_config_userconfig`, found `~/.npmrc`, and shipped for real. Every publish path now
+asserts its target equals the configured registry, checks it against a deny-list of the
+public registries, **parses `bun publish --dry-run`** rather than trusting bun, and runs with
+`HOME` redirected so a fall-back has no credential to use.
+
+### Fixed — `scripts/release.mjs` preflighted only one package
+
+The target-version check ran `npm view @metaobjectsdev/cli@<version>` and nothing else, so a
+version already published for any *other* package in the lockstep set was discovered
+mid-publish — after its dependencies had shipped irreversibly. That is not hypothetical:
+`@metaobjectsdev/metadata@0.24.0-rc.1` exists on public npm and no other package in the set
+carries it, so a lockstep RC at `0.24.0-rc.1` would publish thirteen packages and then fail
+on the fourteenth. npm versions cannot be reclaimed — `unpublish` is *refused* (`E405`) once
+anything depends on the version, and deprecation does not free the number. The preflight now
+checks every package in the set (in parallel, so it stays fast), and `bun run prerelease`
+skips numbers already burned on public npm when choosing an iteration.
+
 ## [0.23.3] — npm `0.23.3` · PyPI `0.23.3` · NuGet `0.23.3` · Maven `7.23.3`
 
 A coordinated **PATCH** across all four registries, and every one of them carries a real
@@ -115,6 +172,48 @@ precisely, before any write, tagged with the generator name.
 down with `Bun is not defined`. All four ADR-0034 reference templates now say so in their
 header. Output is unaffected.
 
+### Fixed — what a branch review caught before any of this shipped
+
+Every item above was reviewed before release, and the review found defects in the fixes
+themselves. They are listed because the pattern is worth knowing: a guard that protects
+output can, wrongly scoped, become the silent-staleness bug it was added to prevent.
+
+- **`metaobjects:docs` and `--template-spec` output would have frozen.** Both were routed
+  through the marker guard, but API pages and user Mustache templates emit no `GENERATED`
+  token and are under no obligation to. First run wrote, every run after refused: the
+  artifact stops updating while the build stays green. The guard now fits only output
+  whose header we control, and says so. The docs freeze shipped past two existing tests
+  because each ran the mojo ONCE — only a second run tells "writes" from "keeps writing".
+- **The Python manifest was wired to `verify --codegen`, not `gen`.** So `metaobjects gen`
+  still overwrote hand edits, while a read-only drift check wrote a manifest into the
+  user's project keyed to a temp directory deleted seconds later.
+- **Java's marker match failed open.** `contains("GENERATED")` treated a hand-written file
+  containing `// NOT GENERATED - hand-maintained`, an enum member `GENERATED`, or a
+  javadoc sentence using the word as generator output, and clobbered it. Now anchored to
+  the header shape, keeping the per-generator phrasing tolerance that was the point.
+- **Orphan cleanup could delete a file and report it as kept**, when two generators'
+  `owns` namespaces overlapped and the second forced. And it reconciled deletions on a
+  FILTERED run (`meta gen <entity>`), where the emitted set is a subset by construction,
+  so an app generator honouring the entity filter would have wiped every unselected
+  entity's output. Filtered runs now skip cleanup and say why.
+- **Author prose broke the generated stub.** `@statement` / `@violation` went unescaped
+  into a string literal and a JSDoc block, so a quote, backslash, newline or comment
+  terminator emitted a stub that does not parse — reported as written, discovered by the
+  application's test runner.
+- **A retired requirement reddened the suite forever.** `abandoned` / `superseded` are
+  supposed to dangle; they now skip like `planned` instead of emitting a failing stub for
+  a capability nobody intends to build.
+- Plus: a wrong refusal message in Python's no-state mode, a "0 lines replaced" note on a
+  purely additive regeneration, a hardcoded generator name in a message reachable by any
+  app-composed generator, an uncapped warning in the one generator meant to be a feature's
+  first contact, and an O(n·k) manifest rewrite.
+
+**One doc claim is retracted.** `HashManifest.cs` and `overwrite_policy.py` both stated
+that a conformance fixture could compare two ports' manifests directly. It cannot:
+TypeScript keys project-relative (it has multiple output targets), C# and Python key
+out-dir-relative. The hash ALGORITHM matches everywhere; the keys deliberately do not, and
+a manifest is not portable between ports.
+
 ### Fixed — Java and Kotlin get the safety floor they never implemented (Maven)
 
 `docs/features/codegen-concepts.md` §7 has always stated a **product-wide** backstop —
@@ -137,6 +236,7 @@ ADR-0015 makes for schema migrations. Refusing warns rather than failing the rea
 because failing a Maven build over a file the user chose to own would punish exactly the
 person the guard protects.
 
+||||||| 545ea2070
 ## [0.23.2] — npm `0.23.2` · PyPI `0.23.2` · NuGet `0.23.2` · Maven `7.23.2`
 
 A coordinated **PATCH** across all four registries.
