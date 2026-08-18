@@ -11,8 +11,8 @@
 // canonical spec ordering below is load-bearing.
 //
 // Canonical is NOT the same as "flat-sorted". Within one directory spec the
-// order is `listMetadataFiles`'s (memory.ts) — files at a level, then that
-// level's subdirectories, depth-first — because that is the order production
+// order is `listMetadataFiles`'s (metadata-files.ts) — files at a level, then
+// that level's subdirectories, depth-first — because that is the order production
 // has always handed the loader, and declaration order survives into generated
 // output (the barrel's export list, the shared `enums.ts`, `meta docs` page
 // order, `meta export`'s sibling order). A flat sort of absolute paths
@@ -23,7 +23,7 @@
 import { stat } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { ParseError, codeSource } from "@metaobjectsdev/metadata";
-import { DEFAULT_METADATA_DIR, listMetadataFiles } from "./memory.js";
+import { DEFAULT_METADATA_DIR, listMetadataFiles } from "./metadata-files.js";
 
 /** Tagged union of source kinds. `resource` and `package` are declared now so
  *  the config shape is stable across phases; only `path` resolves in phase 1 —
@@ -42,9 +42,9 @@ export interface ResolvedSource {
 
 /** Used when `sources` is absent or empty in `.metaobjects/config.json`. A
  *  DEFAULT, never a requirement — a project that declares `sources` explicitly
- *  need not include `metaobjects/` at all. Built from `DEFAULT_METADATA_DIR`
- *  (`memory.ts`'s own default-directory constant) rather than restating the
- *  literal "metaobjects" here: a second independent encoding of the same
+ *  need not include the default directory at all. Built from
+ *  `DEFAULT_METADATA_DIR` (`metadata-files.ts`'s single definition) rather than
+ *  restating that name here: a second independent encoding of the same
  *  default would let `resolveCollection`'s "does the default dir exist"
  *  check (`collection.ts`) desync from what `resolveSources` actually
  *  resolves the moment the default ever changed — silently reproducing the

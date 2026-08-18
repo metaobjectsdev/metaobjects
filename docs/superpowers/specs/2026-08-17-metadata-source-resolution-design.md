@@ -304,16 +304,16 @@ from the same root cause — so routing every read through one authority closes 
 
 Running a CLI inside an app must find that app's configuration.
 
-- **Walk up from cwd** for the nearest project root. Nearest wins. Per-port generator config is
-  then read from that same directory.
-- **A directory is a project root when it carries EITHER `.metaobjects/config.json` OR a
-  `metaobjects/` directory.** The config is checked first, so a directory carrying both resolves
-  as declared. The second marker is a back-compat obligation, not a convenience: before source
-  resolution existed, a nested project holding its own `metaobjects/` and no config of its own
-  read its own metadata. A config-only stop condition walks straight past it and silently loads
-  the ANCESTOR's model, then writes generated output to the ancestor's `outDir` — a silent
-  regression on a layout that worked. Stopping there with no config found means the default
-  sources apply, which is exactly the pre-branch behaviour for that directory.
+- **Walk up from cwd** for the nearest `.metaobjects/config.json`. Nearest wins. Per-port
+  generator config is then read from that same directory.
+- **That file is the ONLY project marker.** A directory that merely *holds* metadata is not a
+  project boundary. Where metadata lives is the `sources` key's answer, and the default
+  directory name is only that key's default *value* — so stopping the walk on a directory of
+  that name would put a second definition of "where metadata lives" back into the toolchain,
+  which is the exact duplication §4.6 exists to remove. It would also be wrong on its own
+  terms: a project whose config points `sources` at a sibling module has no such directory at
+  all, and one that has both would be governed by whichever the walk noticed first. A
+  subdirectory that should own its metadata declares a config — `meta init` writes one.
 - **Stop at a repository boundary** (`.git`) or the filesystem root, so a monorepo can never
   silently adopt a parent checkout's configuration.
 - **Explicit override wins** — the existing `--cwd` / `-C` flag and project-root positional are

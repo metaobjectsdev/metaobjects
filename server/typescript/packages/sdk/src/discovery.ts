@@ -8,26 +8,27 @@
 //
 // Three properties are load-bearing.
 //
-// 1. **Two markers, not one.** A directory is a project root when it carries
-//    `.metaobjects/config.json` OR a `metaobjects/` directory. The config half
-//    is the declared form; the `metaobjects/` half is the pre-source-resolution
-//    convention, and skipping past it would silently load an ANCESTOR's model
-//    (and write generated output to the ancestor's `outDir`) for a nested
-//    project that has always read its own — a back-compat regression on a
-//    layout that worked. The config is checked first so a directory carrying
-//    both resolves as declared. See design §4.6.1.
-// 2. **Nearest wins** — the walk returns on the FIRST directory carrying either
+// 1. **One marker.** A directory is a project root when it carries
+//    `.metaobjects/config.json`, and on no other evidence. A directory that
+//    merely *holds* metadata is not a project boundary: where metadata lives is
+//    the `sources` key's answer, and `metaobjects/` is only that key's default
+//    value. Stopping on a bare `metaobjects/` directory would put a second
+//    definition of "where metadata lives" back into the walk — the exact
+//    duplication `resolveCollection` exists to be the only instance of — and it
+//    would ignore a project whose config points its `sources` somewhere else
+//    entirely. See design §4.6.1.
+// 2. **Nearest wins** — the walk returns on the FIRST directory carrying the
 //    marker, so a config in a subdirectory beats one in an ancestor.
 // 3. **The walk stops at a repository boundary** (`.git`), so a monorepo
 //    checkout can never silently adopt a *parent checkout's* configuration. The
-//    marker checks run BEFORE the `.git` check within each directory —
+//    marker check runs BEFORE the `.git` check within each directory —
 //    reversed, a root-level project (where `.git` also lives) would be
 //    unreachable from any subdirectory, since the boundary would stop the walk
 //    one directory too early.
 import { stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { CONFIG_FILE } from "./config.js";
-import { DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR } from "./memory.js";
+import { DEFAULT_METAOBJECTS_DIR } from "./metadata-files.js";
 
 const GIT_DIR = ".git";
 
@@ -42,10 +43,11 @@ export async function exists(path: string): Promise<boolean> {
   }
 }
 
-/** `exists`, narrowed to directories. A plain FILE named `metaobjects` is not a
- *  metadata home, so it must not stop the walk below — and `collection.ts`'s
- *  default-directory probe needs the same distinction to raise its friendlier
- *  `ERR_COLLECTION_NOT_FOUND`. */
+/** `exists`, narrowed to directories — `collection.ts`'s default-source probe
+ *  needs that distinction to raise its friendlier `ERR_COLLECTION_NOT_FOUND`
+ *  (a plain FILE where the default source directory should be is not a
+ *  metadata home). Lives here beside `exists` so there is one filesystem
+ *  predicate pair in the package rather than a copy per caller. */
 export async function isDir(path: string): Promise<boolean> {
   try {
     return (await stat(path)).isDirectory();
@@ -59,22 +61,20 @@ export interface DiscoveredRoot {
   /** The project root the walk settled on. Always absolute; falls back to the
    *  resolved start directory when the walk found no marker at all. */
   readonly dir: string;
-  /** Whether `dir` carries `.metaobjects/config.json`. False both for a
-   *  `metaobjects/`-only directory and for the no-marker fallback — in either
-   *  case the DEFAULT sources apply, which is the pre-branch behaviour. */
+  /** Whether `dir` carries `.metaobjects/config.json`. False only on the
+   *  no-marker fallback, where the DEFAULT sources apply. */
   readonly hasConfig: boolean;
 }
 
 /**
  * Walk up from `startDir` for the nearest project root — a directory holding
- * `.metaobjects/config.json` or a `metaobjects/` directory (see the file
- * header for why both count). The walk stops after examining a directory that
- * contains `.git`, so a monorepo can never silently adopt a parent checkout's
- * configuration.
+ * `.metaobjects/config.json`, and nothing else (see the file header). The walk
+ * stops after examining a directory that contains `.git`, so a monorepo can
+ * never silently adopt a parent checkout's configuration.
  *
- * Never fails: with no marker anywhere below the boundary it reports the
+ * Never fails: with no config anywhere below the boundary it reports the
  * resolved `startDir` with `hasConfig: false`, which is what
- * `resolveCollection` turns into either the default `metaobjects/` source or
+ * `resolveCollection` turns into either the default source or
  * `ERR_COLLECTION_NOT_FOUND`.
  */
 export async function discoverCollectionRoot(startDir: string): Promise<DiscoveredRoot> {
@@ -84,8 +84,7 @@ export async function discoverCollectionRoot(startDir: string): Promise<Discover
     if (await exists(join(dir, DEFAULT_METAOBJECTS_DIR, CONFIG_FILE))) {
       return { dir, hasConfig: true };
     }
-    if (await isDir(join(dir, DEFAULT_METADATA_DIR))) return { dir, hasConfig: false };
-    // Boundary check AFTER the marker checks: a repo-root project (sharing its
+    // Boundary check AFTER the marker check: a repo-root project (sharing its
     // directory with `.git`) is still findable from any subdirectory.
     if (await exists(join(dir, GIT_DIR))) break;
     const parent = dirname(dir);

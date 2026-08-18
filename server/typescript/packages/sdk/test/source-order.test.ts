@@ -11,7 +11,7 @@
 // order.
 //
 // The pre-source-resolution toolchain read every file through
-// `listMetadataFiles` (memory.ts), which visits FILES at a level before
+// `listMetadataFiles` (metadata-files.ts), which visits FILES at a level before
 // descending into that level's subdirectories. A flat lexicographic sort of
 // absolute paths disagrees with it the moment a subdirectory name sorts before
 // a sibling file — `metaobjects/common/…` before `metaobjects/meta.users.json`
@@ -28,7 +28,8 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { DEFAULT_METADATA_DIR, listMetadataFiles, loadMemory } from "../src/memory.js";
+import { loadMemory } from "../src/memory.js";
+import { DEFAULT_METADATA_DIR, listMetadataFiles } from "../src/metadata-files.js";
 import { resolveSources, type SourceSpec } from "../src/sources.js";
 import { resolveCollection } from "../src/collection.js";
 

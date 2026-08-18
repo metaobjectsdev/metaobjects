@@ -102,25 +102,28 @@ describe("resolveCollection", () => {
     expect(c.files.map((f) => f.replace(root + "/", ""))).toEqual(["metaobjects/meta.a.json"]);
   });
 
-  test("BACK-COMPAT: a LOCAL metaobjects/ stops the walk, even under an ancestor config", async () => {
-    // The pre-branch layout: a nested project holding its own `metaobjects/` and
-    // no config of its own read ITS OWN metadata. Walking past it to an ancestor
-    // config silently loads the ancestor's model AND writes generated output to
-    // the ancestor's outDir — a silent regression on a layout that worked.
+  test("a bare metaobjects/ is NOT a project boundary — the ancestor config governs", async () => {
+    // A project boundary is a `.metaobjects/config.json`, nothing else. A
+    // subdirectory holding only a `metaobjects/` directory declares no project,
+    // so the nearest ancestor config governs it — including its `sources`, which
+    // may point nowhere near either directory. The alternative (treating a bare
+    // directory as a second stop marker) puts a second definition of "where
+    // metadata lives" back into the walk, which is exactly what
+    // `resolveCollection` exists to be the only one of. A subdirectory that
+    // should own its metadata declares a config; `meta init` writes one.
     config(".", {});
     write("metaobjects/meta.root.json", "{}");
     write("apps/ui/metaobjects/meta.ui.json", "{}");
     const c = await resolveCollection(join(root, "apps/ui"));
-    expect(c.configDir).toBe(join(root, "apps/ui"));
+    expect(c.configDir).toBe(root);
     expect(c.files.map((f) => f.replace(root + "/", ""))).toEqual([
-      "apps/ui/metaobjects/meta.ui.json",
+      "metaobjects/meta.root.json",
     ]);
   });
 
-  test("a nearer config still wins over a further-down metaobjects/ in an ancestor", async () => {
-    // The stop condition is per-DIRECTORY, first-match-wins: the nearest ancestor
-    // holding EITHER marker stops the walk, so a config beside the start dir is
-    // not skipped just because an ancestor also has a `metaobjects/`.
+  test("a nearer config wins over an ancestor's", async () => {
+    // Nearest-ancestor, first-match-wins: a config beside the start dir governs,
+    // and a `metaobjects/` sitting in an ancestor changes nothing.
     write("metaobjects/meta.root.json", "{}");
     write("model/meta.a.json", "{}");
     config("apps/ui", { sources: [{ path: "../../model" }] });

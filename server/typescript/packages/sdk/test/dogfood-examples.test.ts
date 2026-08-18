@@ -16,7 +16,8 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { resolveCollection } from "../src/collection.js";
-import { DEFAULT_METADATA_DIR, listMetadataFiles, loadMemory } from "../src/memory.js";
+import { loadMemory } from "../src/memory.js";
+import { DEFAULT_METADATA_DIR, listMetadataFiles } from "../src/metadata-files.js";
 import { compileScope, matchesScope } from "../src/scope.js";
 
 // Located relative to this test file (never a hardcoded absolute home path —

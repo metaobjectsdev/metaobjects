@@ -15,7 +15,7 @@ import { ParseError, codeSource } from "@metaobjectsdev/metadata";
 import { CONFIG_FILE, loadConfig, type Config } from "./config.js";
 import { discoverCollectionRoot, exists, isDir } from "./discovery.js";
 import { compileScope, matchesScope, type Scope } from "./scope.js";
-import { DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR } from "./memory.js";
+import { DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR } from "./metadata-files.js";
 import {
   DEFAULT_SOURCES,
   orderedPathSpecs,
@@ -86,19 +86,18 @@ function toScope(spec: Config["scope"]): Scope {
  *
  * Resolution order: an explicit `opts.explicitDir` wins outright; otherwise
  * `discoverCollectionRoot` walks up from `startDir` for the nearest directory
- * carrying `.metaobjects/config.json` OR a `metaobjects/` directory (see
- * `discovery.ts` — the second marker is what keeps a nested project reading
- * its OWN metadata), falling back to `startDir` itself when neither is found.
- * When the resolved directory carries a config, its declared
- * `sources`/`scope`/`migrate.scope` govern. Only a genuinely ABSENT
- * `config.json` falls through to `DEFAULT_SOURCES` — the same `metaobjects/`
+ * carrying `.metaobjects/config.json` — the ONLY project marker (`discovery.ts`
+ * says why a directory that merely holds metadata is not one) — falling back to
+ * `startDir` itself when none is found. When the resolved directory carries a
+ * config, its declared `sources`/`scope`/`migrate.scope` govern. Only a
+ * genuinely ABSENT `config.json` falls through to `DEFAULT_SOURCES` — the same
  * directory the pre-source-resolution toolchain always read; a config.json
  * that EXISTS but fails to load (malformed JSON, schema violation) is the
  * author's error and propagates rather than silently degrading — a source
  * that fails to resolve must never look like one that was never declared.
  * Throws `ERR_COLLECTION_NOT_FOUND` only when BOTH have failed: no
- * `sources` were declared AND the default `metaobjects/` directory does not
- * exist either.
+ * `sources` were declared AND the default source directory does not exist
+ * either.
  *
  * A declared source that fails to resolve is a different, louder failure —
  * `resolveSources` throws `ERR_SOURCE_UNRESOLVED` for that case; only the

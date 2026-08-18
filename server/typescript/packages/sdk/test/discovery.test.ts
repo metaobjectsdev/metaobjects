@@ -56,16 +56,21 @@ describe("discoverCollectionRoot — config marker", () => {
   });
 });
 
-describe("discoverCollectionRoot — metaobjects/ marker", () => {
-  test("a LOCAL metaobjects/ stops the walk, reported as config-less", async () => {
+describe("discoverCollectionRoot — a metadata directory is not a marker", () => {
+  // `.metaobjects/config.json` is the ONLY stop condition (plus the `.git`
+  // boundary). A directory that merely holds metadata declares no project, so
+  // the walk goes straight past it. Anything else would be a second definition
+  // of "where metadata lives" living outside `resolveCollection`.
+  test("a LOCAL metaobjects/ does not stop the walk — the ancestor config governs", async () => {
     cfg("."); meta("."); meta("apps/ui"); mk("apps/ui/src");
     expect(await discoverCollectionRoot(join(root, "apps/ui"))).toEqual({
-      dir: join(root, "apps/ui"), hasConfig: false,
+      dir: root, hasConfig: true,
     });
   });
-  test("the walk reaches a metaobjects/ marker from a subdirectory", async () => {
+  test("with no config anywhere, a metaobjects/ up the tree is passed over", async () => {
     meta("apps/ui"); mk("apps/ui/src/deep");
-    expect(await resolveConfigDir(join(root, "apps/ui/src/deep"))).toBe(join(root, "apps/ui"));
+    const start = join(root, "apps/ui/src/deep");
+    expect(await resolveConfigDir(start)).toBe(start);
   });
   test("a config in the SAME directory wins — hasConfig is true", async () => {
     cfg("apps/ui"); meta("apps/ui");
@@ -78,10 +83,5 @@ describe("discoverCollectionRoot — metaobjects/ marker", () => {
     expect(await discoverCollectionRoot(join(root, "apps/ui/src"))).toEqual({
       dir: join(root, "apps/ui"), hasConfig: true,
     });
-  });
-  test("a FILE named metaobjects is not a metadata home", async () => {
-    cfg("."); mk("apps/ui");
-    writeFileSync(join(root, "apps/ui/metaobjects"), "not a directory", "utf8");
-    expect(await resolveConfigDir(join(root, "apps/ui"))).toBe(root);
   });
 });
