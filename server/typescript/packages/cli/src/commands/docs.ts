@@ -580,8 +580,11 @@ async function emitSite(
   }
   // Scaffold-and-own: when the consumer has copied templates/assets into
   // codegen/docs-site/ (via --scaffold-site), use those; else the bundled defaults.
-  const ownedTemplates = join(projectRoot, "codegen/docs-site/templates");
-  const ownedAssets = join(projectRoot, "codegen/docs-site/assets");
+  // Keyed on `configDir`, NOT `projectRoot`: `--templates` redirects the adopter
+  // RENDER template chain (the `templates/` above), and letting it also move the
+  // docs-site theme would read it from somewhere `--scaffold-site` never writes.
+  const ownedTemplates = join(collection.configDir, "codegen/docs-site/templates");
+  const ownedAssets = join(collection.configDir, "codegen/docs-site/assets");
   try {
     const r = await generateSite({
       sourceDirs,
