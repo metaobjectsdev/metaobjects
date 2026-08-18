@@ -192,7 +192,7 @@ function warnIfMonorepoSubdir(opts: InitOptions, result: InitResult): void {
  * string[]s (or nothing) straight through is safe — no need to special-case an empty
  * or absent prior.
  */
-function stackForAgentContext(opts: InitOptions, prior: Manifest | undefined): Stack {
+async function stackForAgentContext(opts: InitOptions, prior: Manifest | undefined): Promise<Stack> {
   const hasOverride = (opts.servers?.length ?? 0) > 0 || (opts.clients?.length ?? 0) > 0;
   const overrides = hasOverride
     ? { servers: opts.servers ?? [], clients: opts.clients ?? [] }
@@ -203,7 +203,7 @@ function stackForAgentContext(opts: InitOptions, prior: Manifest | undefined): S
 async function writeAgentContext(opts: InitOptions, result: InitResult): Promise<void> {
   warnIfMonorepoSubdir(opts, result);
   const prior = await readManifest(opts.cwd);
-  const stack = stackForAgentContext(opts, prior);
+  const stack = await stackForAgentContext(opts, prior);
   let assembled = assemble({ contentRoot: resolveAgentContextRoot(), stack });
   if (opts.noSkills) assembled = assembled.filter((f) => !f.path.startsWith(".claude/skills/"));
 
