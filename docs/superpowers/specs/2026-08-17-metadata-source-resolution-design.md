@@ -65,6 +65,25 @@ Order still matters in exactly three places, and only one concerns the source li
 
 **Therefore the declared source order carries no information the loader needs. Sources are a set.**
 
+**Order-independence is three layers, not one, and they are not redundant.** Implementation
+confirmed this empirically, and the sharper statement belongs here because two readers in a row
+conflated the layers and wrote a vacuous test as a result:
+
+1. **`resolveSources` canonicalizes.** It sorts resolved absolute paths, so in production the
+   loader never sees a permuted file list at all.
+2. **The loader resolves CONTENT order-independently.** `_partitionOverlayLast` stable-partitions
+   overlay-only sources to merge last, so an overlay reaching a base declared in another file
+   resolves the same regardless of which arrived first. Disabling it throws `ERR_OVERLAY_NO_TARGET`
+   on half of the permutations of a two-file overlay set and silently drops the overlay's fields on
+   the rest.
+3. **SIBLING ORDER of unrelated top-level nodes still follows load order, and that is *not* a
+   contract** — `canonicalSerialize` only ever promised attr-key alphabetization. A test that
+   demands byte-identical whole-tree serialization across permuted loader inputs is asserting a bar
+   the design never set, and it will fail on correct code.
+
+Layers 1 and 2 are pinned by `server/typescript/packages/sdk/test/order-independence.test.ts` — the
+executable form of this statement.
+
 What this deletes, rather than adds:
 
 - No ordered-list semantics to specify, document, or port.
@@ -328,6 +347,11 @@ Two new corpora, plus one gate that is the linchpin of the whole design.
    the canonical serialization must be **byte-identical** across all of them, in all five ports.
    Without this, set semantics is an aspiration that decays the first time someone adds an
    order-sensitive code path. With it, the property is enforced rather than believed.
+   **Corrected during implementation — see §3's three-layer statement:** whole-tree byte-identity
+   is too strong a bar, because sibling order of unrelated top-level nodes legitimately follows
+   load order and was never a contract. The gate asserts layers 1 and 2 (identical `resolveSources`
+   output across permutations; identical resolved CONTENT across permuted loader inputs), which is
+   the property this item was reaching for.
 2. **Scope-pattern corpus.** A matrix of patterns × fully-qualified names → expected match/no-match,
    byte-matched across all five ports. This is what stops `*` and `**` from meaning five different
    things — the failure mode that produced the `like`/`ILIKE` divergence.

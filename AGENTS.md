@@ -200,6 +200,7 @@ import { EntityFetcherProvider, EntityGrid } from "@metaobjectsdev/tanstack";
 - **Codegen substrate**: ts-poet for greenfield emit, ts-morph for in-place edits, Biome for format pass, `git merge-file --diff3` for hand-edit-preserving regen.
 - **Runtime substrate**: Kysely for TS (user-provided connection, async-only).
 - **Migration substrate**: Postgres + SQLite for TS v0.3.
+- **Metadata location**: resolved via `resolveCollection()` (`@metaobjectsdev/sdk`) — the single authority. No code path may hardcode the `metaobjects/` directory name except `meta init`, which scaffolds it. See [docs/features/metadata-sources.md](docs/features/metadata-sources.md).
 
 ## Explicitly out of scope
 
@@ -223,6 +224,8 @@ import { EntityFetcherProvider, EntityGrid } from "@metaobjectsdev/tanstack";
 ## File organization
 
 **Default convention**: one file per domain concept under `metaobjects/`. Multiple objects per file when they share a domain. Projections (`source.dbView`) live inline with their base entity.
+
+`metaobjects/` is the **default value** of `sources` in `.metaobjects/config.json` — never a requirement. A project declaring `sources` explicitly can point anywhere (and need not have such a directory at all); `"sources": []`, which is what `meta init` scaffolds, takes the default.
 
 ```
 project-root/
