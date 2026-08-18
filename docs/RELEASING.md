@@ -96,7 +96,7 @@ node scripts/publish-set.mjs --check    # the set + its tier order, and the inva
 | Tier | Packages |
 |---|---|
 | 0 | `metadata`, `render` |
-| 1 | `codegen-ts`, `runtime-ts`, `migrate-ts`, `sdk`, `runtime-web`, `docs-site` |
+| 1 | `codegen-ts`, `runtime-ts`, `migrate-ts`, `sdk`, `docs-site`, `runtime-web` |
 | 2 | `codegen-ts-react`, `codegen-ts-tanstack`, `react` |
 | 3 | `tanstack` |
 | 4 | `cli`, `ai-runtime` (leaves — nothing depends on them; publish last) |
