@@ -32,14 +32,24 @@
 //   MISSED   join(d, "meta" + "objects")       any computed spelling
 //   MISSED   const N = "meta"; N + "objects"   the same, through a variable
 //   MISSED   "author under metaobjects"        the word with no trailing `/`
+//   MISSED   /https:\/\//metaobjects/          a regex literal containing `//`
 //
-// The last is deliberate, not an oversight: `metaobjects` followed by a space
+// The third is deliberate, not an oversight: `metaobjects` followed by a space
 // is the PRODUCT name far more often than a path ("the metaobjects ledger",
 // the `metaobjects:` error prefix), and three such lines were the guard's first
 // false positives. No lexical rule separates them. The computed-spelling misses
 // are the honest ceiling of a source-text check — this catches the way the
 // violation is actually written, which is how all eight original ones were
 // written, and it will not catch someone evading it on purpose.
+//
+// The fourth is a real blind spot in `stripComments`, not a deliberate
+// tradeoff: a regex literal containing `//` (e.g. `/https:\/\//`) drives the
+// stripper into line-comment state, same as a real `//`, and blanks the rest
+// of that physical line — so a violation sitting to its right on the same
+// line is silently missed. The stripper has no regex-literal-vs-division
+// disambiguation (that requires knowing the preceding token, which a
+// character-at-a-time scan does not track). No such construct exists in
+// either scanned tree today.
 //
 // It also scans TypeScript SOURCE only: the four other language ports, the
 // `docs/` tree, and JSON/YAML fixtures are outside it.

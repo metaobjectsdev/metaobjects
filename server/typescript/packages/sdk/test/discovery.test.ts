@@ -10,7 +10,9 @@ const cfg = (rel: string) => {
   mk(join(rel, ".metaobjects"));
   writeFileSync(join(root, rel, ".metaobjects/config.json"), '{"schema_version":1}', "utf8");
 };
-/** The second stop marker: a `metaobjects/` directory, no config. */
+/** A `metaobjects/` directory with no config — used below to prove it is
+ *  NOT a stop marker; the walk stops on `.metaobjects/config.json` and the
+ *  `.git` boundary only. */
 const meta = (rel: string) => mk(join(rel, "metaobjects"));
 
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), "metaobjects-discovery-")); mk(".git"); });

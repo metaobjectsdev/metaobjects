@@ -10,8 +10,10 @@ and it is not a convention any part of the toolchain is allowed to assume: a pro
 that declares `sources` may put its metadata anywhere — a sibling module, a shared
 model repository, a single file — and need not have a directory of that name at all.
 Every command answers "where is the metadata?" by reading the config, so pointing
-`sources` elsewhere moves *all* of them together. Nothing greps for the directory,
-tests for its existence, or mentions it in a message.
+`sources` elsewhere moves *all* of them together. Outside `resolveCollection`'s own
+default-applies check, nothing greps for the directory or assumes it exists — and the
+only place that names it in a message is the `meta init` scaffolded agent-docs prose,
+which is documentation content, not a resolution path.
 
 **How do I point it somewhere else?** Declare it:
 
@@ -432,7 +434,7 @@ type) surfaces as the config load error and stops the command.
 ## Upgrading
 
 A project with one config at its root, no `sources` and no `scope` resolves the same
-files it always did and generates the same code. Seven changes are still worth knowing
+files it always did and generates the same code. Six changes are still worth knowing
 about before you upgrade.
 
 ### A project boundary is a `.metaobjects/config.json`
@@ -468,6 +470,14 @@ this feature exists to remove — and one of them was undocumented.
 **It fails loudly, not silently.** A model that depended on a peer package's
 declarations now fails to load with `ERR_UNRESOLVED_SUPER` naming the `extends:`
 target it cannot find; nothing generates from a half-resolved model.
+
+**A caller invoking `loadMemory` directly, not through the CLI, changes too.** With no
+`options.files`, `loadMemory` now resolves its own file list via `resolveCollection` —
+so a project with nothing to resolve (no declared `sources`, no default
+`metaobjects/`) used to reject with a plain `Error("cannot read metadata directory
+…")` and now rejects with a `ParseError` carrying `code: "ERR_COLLECTION_NOT_FOUND"`
+(`sdk/src/collection.ts:158-163`) — the same structured code every other command
+reports. A `catch` matching the old message text stops matching, silently.
 
 **The replacement is a declared source**, which is explicit and works in any layout,
 workspace or not:

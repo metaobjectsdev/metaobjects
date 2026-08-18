@@ -129,6 +129,22 @@ function resolveFormatOutDir(config: ResolvedMigrateConfig, metaRoot: string): s
 }
 
 /**
+ * D1's OWN directory convention — `--out-dir` > `wrangler.toml`'s
+ * `migrations_dir` > `"migrations"` — kept apart from `resolveFormatOutDir`
+ * because the middle term is not knowable until a wrangler binding has been
+ * resolved (`runD1Migrate` step 1), while every other dialect can answer
+ * immediately from `config` alone.
+ */
+function resolveD1OutDir(
+  config: ResolvedMigrateConfig,
+  metaRoot: string,
+  migrationsDirHint: string | undefined,
+): string {
+  const isDefaultOutDir = config.outDir === MIGRATE_DEFAULT_OUT_DIR;
+  return resolvePath(metaRoot, isDefaultOutDir ? (migrationsDirHint ?? "migrations") : config.outDir);
+}
+
+/**
  * Say so when the migrations directory this run will use is NOT the one sitting
  * in the working directory.
  *
@@ -143,10 +159,15 @@ function resolveFormatOutDir(config: ResolvedMigrateConfig, metaRoot: string): s
  *
  * Conditioned on the local directory EXISTING, so the ordinary case — a run from
  * anywhere inside a project with one ledger at its root — says nothing.
- * `--out-dir` (and a `migrate.outDir` in the config) is honoured, as is the
- * active output format's own convention: the caller passes the directory this
- * run will actually WRITE to (`resolveFormatOutDir`), so a deliberate
- * redirection is compared rather than a default that was overridden.
+ * `--out-dir` (and a `migrate.outDir` in the config) is honoured: the caller
+ * must pass the directory THIS run will actually WRITE to, never a default
+ * that was overridden — a deliberate redirection is compared, not a stale
+ * guess. That answer comes from **two** call sites, because there are two
+ * directory conventions: every dialect but d1 resolves via
+ * `resolveFormatOutDir` before the format/dialect dispatch below; d1 has its
+ * own convention (`resolveD1OutDir`, wrangler.toml's `migrations_dir`) that is
+ * unknowable until its binding resolves, so it calls this again for itself
+ * from inside `runD1Migrate`, once that binding is in hand.
  */
 function warnIfLedgerRelocated(cwd: string, resolvedOutDir: string): void {
   const local = resolvePath(cwd, MIGRATE_DEFAULT_OUT_DIR);
@@ -359,7 +380,17 @@ export async function migrateCommand(
   // `--migration-format flyway` with a default outDir the run writes to
   // Flyway's conventional location instead, so the unredirected path names a
   // directory this invocation will never touch.
-  warnIfLedgerRelocated(cwd, resolveFormatOutDir(config, metaRoot));
+  //
+  // Skipped for a plain `--dialect d1` run (format !== flyway): d1 resolves
+  // its OWN directory from wrangler.toml, unknowable until its binding
+  // resolves, so it issues this warning for itself from inside
+  // `runD1Migrate` instead — `resolveFormatOutDir` here would name the
+  // Kysely-path default, a directory that run never writes to. A d1 +
+  // `--migration-format flyway` run is refused just below before either
+  // directory is ever touched, so THAT combination still wants this one.
+  if (config.dialect !== "d1" || config.format === "flyway") {
+    warnIfLedgerRelocated(cwd, resolveFormatOutDir(config, metaRoot));
+  }
 
   try {
   // #192 — Flyway owns apply + history (flyway_schema_history). We generate the
@@ -442,7 +473,7 @@ export async function migrateCommand(
       );
       return 2;
     }
-    return await runD1Migrate(config, metaRoot, wranglerRunner ?? defaultWranglerRunner, fmt);
+    return await runD1Migrate(config, metaRoot, cwd, wranglerRunner ?? defaultWranglerRunner, fmt);
   }
 
   // `migrate baseline` — seed the committed reference snapshot, emit no migration.
@@ -1216,6 +1247,7 @@ async function runRollback(
 async function runD1Migrate(
   config: ResolvedMigrateConfig,
   metaRoot: string,
+  cwd: string,
   runner: WranglerRunner,
   fmt: OutputFormat = "text",
 ): Promise<number> {
@@ -1242,6 +1274,12 @@ async function runD1Migrate(
     // No wrangler config but explicit binding — let wrangler discover the DB itself.
     binding = { binding: config.d1.binding!, database_name: "", database_id: "", migrations_dir: undefined };
   }
+
+  // The binding — and with it wrangler.toml's `migrations_dir` — is only now
+  // known, so this is the earliest point d1 can honestly answer "where will
+  // this run write?" (the caller skipped its own generic check for exactly
+  // this reason; see the guard around that call).
+  warnIfLedgerRelocated(cwd, resolveD1OutDir(config, metaRoot, binding.migrations_dir));
 
   // 2. Build a D1Runner closure over the wrangler runner.
   const d1Runner: D1Runner = async (sql) => {
@@ -1396,14 +1434,9 @@ async function runD1Migrate(
   const combinedUp = emitResult.up;
   const combinedDown = emitResult.down;
 
-  // Migration dir resolution: --out-dir > wrangler.toml's migrations_dir > "migrations".
-  // The default outDir (./.metaobjects/migrations) is the Kysely-path default; for D1
-  // we fall back to wrangler conventions when the caller hasn't overridden it.
-  const isDefaultOutDir = config.outDir === MIGRATE_DEFAULT_OUT_DIR;
-  const migrationsDir = resolvePath(
-    metaRoot,
-    isDefaultOutDir ? (binding.migrations_dir ?? "migrations") : config.outDir,
-  );
+  // Migration dir resolution — same convention `warnIfLedgerRelocated` was
+  // just given above, so the two cannot drift apart.
+  const migrationsDir = resolveD1OutDir(config, metaRoot, binding.migrations_dir);
 
   if (config.dryRun) {
     log.info(`-- UP --\n${combinedUp}\n\n-- DOWN --\n${combinedDown}`);

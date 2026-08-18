@@ -231,3 +231,42 @@ describe("the relocated-ledger warning under the flyway layout", () => {
     expect(warning).not.toContain(join(root, ".metaobjects", "migrations"));
   });
 });
+
+describe("the relocated-ledger warning under a plain d1 run", () => {
+  // A default (non-flyway) `--dialect d1` run has its OWN directory
+  // convention — wrangler.toml's `migrations_dir`, falling back to
+  // `"migrations"` — which the Kysely-path `resolveFormatOutDir` knows
+  // nothing about. Before the fix, this case named the Kysely-path default
+  // (`.metaobjects/migrations`), a directory a d1 run never writes to.
+  test("names d1's own migrations directory, not the Kysely-path default", async () => {
+    const root = await mkdtemp(join(tmpdir(), "mts-d1-warn-"));
+    dirs.push(root);
+    // The project root declares the config; the subdirectory the command runs
+    // from holds a ledger of its own but no config — the exact layout the
+    // warning was written for.
+    await mkdir(join(root, ".metaobjects"), { recursive: true });
+    await writeFile(join(root, ".metaobjects", "config.json"), '{"schema_version":1}', "utf8");
+    const sub = join(root, "apps", "api");
+    await mkdir(join(sub, ".metaobjects", "migrations"), { recursive: true });
+
+    const stderr: string[] = [];
+    const spy = spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      stderr.push(args.map(String).join(" "));
+    });
+    try {
+      // No wrangler.toml and no `metaobjects/` directory: an explicit --d1
+      // binding bypasses the wrangler.toml requirement, so the run reaches
+      // the warning (issued right after the binding resolves) and then fails
+      // cleanly at metadata resolution (ERR_COLLECTION_NOT_FOUND, exit 2) —
+      // exercising the warning without needing a real D1 database.
+      await run(["migrate", "--cwd", sub, "--dialect", "d1", "--d1", "DB"]);
+    } finally {
+      spy.mockRestore();
+    }
+
+    const warning = stderr.find((l) => l.includes("using the migrations directory"));
+    expect(warning).toBeDefined();
+    expect(warning).toContain(join(root, "migrations"));
+    expect(warning).not.toContain(join(root, ".metaobjects", "migrations"));
+  });
+});
