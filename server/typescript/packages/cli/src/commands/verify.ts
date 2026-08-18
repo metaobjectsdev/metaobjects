@@ -50,8 +50,8 @@ import {
   type D1Runner,
   type DriftResult,
 } from "@metaobjectsdev/migrate-ts";
-import { loadMemory, resolveCollection, matchesScope } from "@metaobjectsdev/sdk";
-import { migrateScopeMismatch, toObjectScope } from "../lib/migrate-scope.js";
+import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
+import { migrateScopeMismatch, outOfScopeNote } from "../lib/migrate-scope.js";
 import {
   TYPE_TEMPLATE,
   TEMPLATE_SUBTYPE_PROMPT,
@@ -207,7 +207,7 @@ export async function verifyCommand(
   // declaration (`migrate.scope`), not a second key: a drift gate that fails on
   // tables migrate deliberately does not own is incoherent. Undefined ⇒ everything
   // loaded, which is every project that declares no scope.
-  const schemaScope = toObjectScope(collection.migrateScope);
+  const schemaScope = collection.inMigrateScope;
 
   const promptsDir = join(projectRoot, flags.prompts ?? DEFAULT_PROMPTS_DIR);
   const provider = new FileProvider(promptsDir);
@@ -666,12 +666,10 @@ export async function verifyCommand(
     }
 
     // Same reasoning for the per-command scope: an object `migrate.scope` excluded
-    // was NOT checked, and silence would misreport it as checked-and-clean.
+    // was NOT checked, and silence would misreport it as checked-and-clean. Shared
+    // wording with `meta migrate` — one declaration, one sentence about it.
     if (driftResult.outOfScope.length > 0) {
-      log.info(
-        `meta verify — ${driftResult.outOfScope.length} object(s) out-of-scope ` +
-          `(outside migrate.scope, governed elsewhere): ${driftResult.outOfScope.join(", ")}`,
-      );
+      log.info(outOfScopeNote("verify", driftResult.outOfScope));
     }
 
     const changes = driftResult.changes;
@@ -712,7 +710,7 @@ export async function verifyCommand(
     // files should exist, reporting every out-of-scope entity as drift.
     let result;
     try {
-      result = await computeCodegenDrift(forgeConfig, root, projectRoot, (fqn) => matchesScope(fqn, collection.scope));
+      result = await computeCodegenDrift(forgeConfig, root, projectRoot, collection.inScope);
     } catch (err) {
       log.error(`verify --codegen: regeneration failed: ${(err as Error).message}`);
       return 1;

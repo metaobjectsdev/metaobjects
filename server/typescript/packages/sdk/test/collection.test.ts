@@ -3,7 +3,6 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveCollection } from "../src/collection.js";
-import { matchesScope } from "../src/scope.js";
 import { rejectedCode } from "./support/error-code.js";
 
 let root: string;
@@ -39,26 +38,35 @@ describe("resolveCollection", () => {
     expect(c.files.map((f) => f.replace(root + "/", ""))).toEqual(["model/meta.a.json"]);
   });
 
-  test("scope compiles and is applied by matchesScope", async () => {
+  test("scope compiles into a predicate the caller passes straight through", async () => {
     write("model/meta.a.json", "{}");
     config("apps/ui", { sources: [{ path: "../../model" }], scope: { include: ["acme::**"] } });
     const c = await resolveCollection(join(root, "apps/ui"));
-    expect(matchesScope("acme::Order", c.scope)).toBe(true);
-    expect(matchesScope("other::Order", c.scope)).toBe(false);
+    expect(c.inScope("acme::Order")).toBe(true);
+    expect(c.inScope("other::Order")).toBe(false);
+  });
+
+  test("an undeclared scope admits everything — the predicate is always defined", async () => {
+    write("metaobjects/meta.a.json", "{}");
+    config(".", {});
+    expect((await resolveCollection(root)).inScope("anything::at::All")).toBe(true);
   });
 
   test("migrateScope is undefined when not declared", async () => {
     write("metaobjects/meta.a.json", "{}");
     config(".", {});
-    expect((await resolveCollection(root)).migrateScope).toBeUndefined();
+    expect((await resolveCollection(root)).inMigrateScope).toBeUndefined();
   });
 
   test("migrateScope compiles when declared", async () => {
     write("metaobjects/meta.a.json", "{}");
     config(".", { migrate: { scope: ["acme::platform::**"] } });
     const c = await resolveCollection(root);
-    expect(matchesScope("acme::platform::Job", c.migrateScope!)).toBe(true);
-    expect(matchesScope("arena::Match", c.migrateScope!)).toBe(false);
+    expect(c.inMigrateScope!("acme::platform::Job")).toBe(true);
+    // `**` spans any number of segments — `matchesScope` decides, here as
+    // everywhere: there is exactly one implementation of the pattern grammar.
+    expect(c.inMigrateScope!("acme::platform::billing::Invoice")).toBe(true);
+    expect(c.inMigrateScope!("arena::Match")).toBe(false);
   });
 
   test("an explicit dir overrides discovery", async () => {

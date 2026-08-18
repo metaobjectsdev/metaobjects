@@ -8,7 +8,7 @@ import type { OutputFormat } from "../lib/format.js";
 import { log } from "../lib/log.js";
 import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
-import { loadMemory, resolveCollection, matchesScope } from "@metaobjectsdev/sdk";
+import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
 import { runGen, listGenerators } from "@metaobjectsdev/codegen-ts";
 import type { WriteStatus } from "@metaobjectsdev/codegen-ts";
 
@@ -101,10 +101,9 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
       dryRun: cliConfig.dryRun,
       // Collection-level `scope` (Task 12b) — the output filter over
       // GENERATED entities, never over what the collection loads. Always
-      // passed: an unconfigured project's `collection.scope` compiles to an
-      // empty include/exclude, and `matchesScope` treats that as "everything"
-      // — so this is a no-op for the common case, not a behavior change.
-      scope: (fqn) => matchesScope(fqn, collection.scope),
+      // passed: an unconfigured project's predicate admits everything, so this
+      // is a no-op for the common case, not a behavior change.
+      scope: collection.inScope,
       ...(cliConfig.entities.length > 0 ? { entityFilter: cliConfig.entities } : {}),
     });
   } catch (err) {

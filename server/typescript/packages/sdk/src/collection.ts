@@ -14,9 +14,16 @@ import { join, resolve } from "node:path";
 import { ParseError, codeSource } from "@metaobjectsdev/metadata";
 import { CONFIG_FILE, loadConfig, type Config } from "./config.js";
 import { discoverCollectionRoot, exists, isDir } from "./discovery.js";
-import { compileScope, type CompiledScope, type Scope } from "./scope.js";
+import { compileScope, matchesScope, type Scope } from "./scope.js";
 import { DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR } from "./memory.js";
-import { DEFAULT_SOURCES, resolveSources, type ResolvedSource, type SourceSpec } from "./sources.js";
+import {
+  DEFAULT_SOURCES,
+  orderedPathSpecs,
+  resolveSpecPath,
+  resolveSources,
+  type ResolvedSource,
+  type SourceSpec,
+} from "./sources.js";
 
 export interface Collection {
   /** Directory whose config declared this collection (or the resolved start
@@ -29,16 +36,35 @@ export interface Collection {
   readonly files: readonly string[];
   /** Same set, carrying the contributing spec for provenance. */
   readonly sources: readonly ResolvedSource[];
-  /** Output filter for codegen. Empty include => everything. */
-  readonly scope: CompiledScope;
-  /** Output filter for migrate/verify --db. Undefined => the command governs
-   *  everything in scope. */
-  readonly migrateScope: CompiledScope | undefined;
-  /** The patterns `migrateScope` was compiled FROM, for diagnostics only —
+  /** The distinct roots the declared source specs resolve to, absolute, in the
+   *  same canonical (content) order `files` uses. Derived from the DECLARED
+   *  specs, not from the resolved files, so a source directory that legitimately
+   *  holds no metadata still appears — a consumer listing "where this model
+   *  comes from" (`meta docs --site` groups its pages by source root) must not
+   *  silently lose a declared source because it happens to be empty today. */
+  readonly sourceRoots: readonly string[];
+  /**
+   * Output filter for codegen: does this fully-qualified name survive the
+   * collection's `scope`? Always defined — an unconfigured project compiles to
+   * an empty include/exclude, which admits everything, so callers pass this
+   * through unconditionally rather than branching.
+   *
+   * A PREDICATE rather than the `CompiledScope` it closes over, because nothing
+   * consumes a compiled scope as a compiled scope: every consumer immediately
+   * wrapped it in exactly this lambda, and `migrateScopePatterns` exists
+   * precisely because the compiled form cannot be shown to a human.
+   * `compileScope`/`matchesScope` stay exported for the conformance corpus.
+   */
+  readonly inScope: (fqn: string) => boolean;
+  /** Output filter for migrate/verify --db (`migrate.scope`). Undefined => the
+   *  command governs everything loaded, and that undefined is load-bearing: it
+   *  is what leaves the expected schema untouched (migrate-ts `scope.ts`). */
+  readonly inMigrateScope: ((fqn: string) => boolean) | undefined;
+  /** The patterns `inMigrateScope` was compiled FROM, for diagnostics only —
    *  `compileScope` produces RegExps, and a regex source is not something to
    *  show an author who wrote `acme::platform::**`. Carried so the "your scope
    *  matched nothing" refusal can name the patterns that missed. Always in
-   *  lockstep with `migrateScope`: both undefined, or both present. */
+   *  lockstep with `inMigrateScope`: both undefined, or both present. */
   readonly migrateScopePatterns: readonly string[] | undefined;
 }
 
@@ -138,12 +164,21 @@ export async function resolveCollection(
   }
 
   const sources = await resolveSources(configDir, specs);
+  const scope = compileScope(toScope(scopeSpec));
+  const migrateScope =
+    migrateSpec === undefined ? undefined : compileScope({ include: migrateSpec });
   return {
     configDir,
     files: sources.map((s) => s.file),
     sources,
-    scope: compileScope(toScope(scopeSpec)),
-    migrateScope: migrateSpec === undefined ? undefined : compileScope({ include: migrateSpec }),
+    // Canonical (content) order, from `resolveSources`'s own ordering — so this
+    // list is a pure function of the source SET, exactly like `files`.
+    sourceRoots: [
+      ...new Set(orderedPathSpecs(specs).map((spec) => resolveSpecPath(configDir, spec))),
+    ],
+    inScope: (fqn: string): boolean => matchesScope(fqn, scope),
+    inMigrateScope:
+      migrateScope === undefined ? undefined : (fqn: string): boolean => matchesScope(fqn, migrateScope),
     migrateScopePatterns: migrateSpec,
   };
 }

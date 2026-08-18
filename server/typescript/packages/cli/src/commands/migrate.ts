@@ -11,9 +11,10 @@ import type { OutputFormat } from "../lib/format.js";
 import { toonEncode } from "../lib/format.js";
 import { buildKyselyFromUrl, redactUrl } from "../lib/kysely.js";
 import { log } from "../lib/log.js";
-import { loadMemory, resolveCollection, resolveConfigDir } from "@metaobjectsdev/sdk";
+import { loadMemory, resolveCollection, resolveConfigDir, type Collection } from "@metaobjectsdev/sdk";
+import type { MetaRoot } from "@metaobjectsdev/metadata";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
-import { migrateScopeMismatch, toObjectScope } from "../lib/migrate-scope.js";
+import { migrateScopeMismatch, outOfScopeNote } from "../lib/migrate-scope.js";
 import {
   buildExpectedSchemaWithProvenance,
   scopeExpectedSchema,
@@ -157,22 +158,18 @@ function warnIfLedgerRelocated(cwd: string, resolvedOutDir: string): void {
 }
 
 /**
- * Say what a declared `migrate.scope` left out. An excluded object produces neither
- * a create nor a drop, so without this line "no changes" and "no changes to the half
- * of the model this run governs" read identically.
+ * Report what a declared `migrate.scope` left out (wording: `outOfScopeNote`).
  *
  * STDOUT in text format, STDERR otherwise. `--format json` / `--format toon` put a
  * single machine-readable document on stdout, and a prose line ahead of it breaks
- * `| jq` outright — the same split `emitStructuredError` makes two functions down.
+ * `| jq` outright — the same split `emitStructuredError` makes just below.
  * Routed to stderr rather than dropped, because the non-TTY default format is toon
  * (`resolveFormat`): suppressing it outright would silence the note for every
  * piped and CI run, which is most of them.
  */
 function logOutOfScope(names: readonly string[], fmt: OutputFormat): void {
   if (names.length === 0) return;
-  const msg =
-    `meta migrate — ${names.length} object(s) out-of-scope (outside migrate.scope, ` +
-    `governed elsewhere): ${names.join(", ")}`;
+  const msg = outOfScopeNote("migrate", names);
   if (fmt === "text") log.info(msg);
   else log.warn(msg);
 }
@@ -185,6 +182,27 @@ function emitStructuredError(error: string, hint: string, fmt: OutputFormat): vo
     log.info(toonEncode(payload));
   }
   // text format: errors go to stderr via log.error() — the caller handles that path
+}
+
+/**
+ * The refusal for a `migrate.scope` that matches nothing, as all three of migrate's
+ * pipelines (online, offline, D1) issue it.
+ *
+ * Returns the exit code to return, or `undefined` when there is nothing to refuse.
+ * Three byte-identical copies of the report-and-exit differed only in a local
+ * variable name; the hint string and the exit code are one decision, recorded once
+ * — a configuration error, so exit 2.
+ */
+function refuseScopeMismatch(
+  collection: Collection,
+  root: MetaRoot,
+  fmt: OutputFormat,
+): number | undefined {
+  const mismatch = migrateScopeMismatch(collection, root);
+  if (mismatch === undefined) return undefined;
+  log.error(`migrate: ${mismatch}`);
+  emitStructuredError(`migrate: ${mismatch}`, "fix or remove migrate.scope in .metaobjects/config.json", fmt);
+  return 2;
 }
 
 /**
@@ -491,12 +509,8 @@ export async function migrateCommand(
     return 2;
   }
 
-  const scopeMismatch = migrateScopeMismatch(collection, metadata);
-  if (scopeMismatch !== undefined) {
-    log.error(`migrate: ${scopeMismatch}`);
-    emitStructuredError(`migrate: ${scopeMismatch}`, "fix or remove migrate.scope in .metaobjects/config.json", fmt);
-    return 2;
-  }
+  const scopeRc = refuseScopeMismatch(collection, metadata, fmt);
+  if (scopeRc !== undefined) return scopeRc;
 
   let kysely;
   try {
@@ -539,7 +553,7 @@ export async function migrateCommand(
         columnNamingStrategy,
         views: expectedViews,
       }),
-      toObjectScope(collection.migrateScope),
+      collection.inMigrateScope,
     );
     const expected = scoped.snapshot;
     logOutOfScope(scoped.outOfScope, fmt);
@@ -1024,12 +1038,8 @@ export async function runOfflineGenerate(
     return 2;
   }
 
-  const offlineScopeMismatch = migrateScopeMismatch(collection, metadata);
-  if (offlineScopeMismatch !== undefined) {
-    log.error(`migrate: ${offlineScopeMismatch}`);
-    emitStructuredError(`migrate: ${offlineScopeMismatch}`, "fix or remove migrate.scope in .metaobjects/config.json", fmt);
-    return 2;
-  }
+  const scopeRc = refuseScopeMismatch(collection, metadata, fmt);
+  if (scopeRc !== undefined) return scopeRc;
 
   const outDir = resolvePath(metaRoot, config.outDir);
   const path = snapshotPath(outDir, config.dialect);
@@ -1059,7 +1069,7 @@ export async function runOfflineGenerate(
   const onAmbiguousResolution = mapOnAmbiguous(config.onAmbiguous);
 
   const offlineViews = buildProjectionViews(metadata, { dialect: config.dialect, columnNamingStrategy: offlineStrategy });
-  const offlineScope = toObjectScope(collection.migrateScope);
+  const offlineScope = collection.inMigrateScope;
 
   let plan;
   try {
@@ -1272,12 +1282,8 @@ async function runD1Migrate(
     return 2;
   }
 
-  const d1ScopeMismatch = migrateScopeMismatch(collection, metadata);
-  if (d1ScopeMismatch !== undefined) {
-    log.error(`migrate: ${d1ScopeMismatch}`);
-    emitStructuredError(`migrate: ${d1ScopeMismatch}`, "fix or remove migrate.scope in .metaobjects/config.json", fmt);
-    return 2;
-  }
+  const scopeRc = refuseScopeMismatch(collection, metadata, fmt);
+  if (scopeRc !== undefined) return scopeRc;
 
   // 4. Build expected schema + introspect actual.
   let columnNamingStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
@@ -1291,7 +1297,7 @@ async function runD1Migrate(
   // Per-command scope — both-sided, exactly as on the Kysely path above.
   const scoped = scopeExpectedSchema(
     buildExpectedSchemaWithProvenance(metadata, { dialect: "d1", columnNamingStrategy, views: expectedViews }),
-    toObjectScope(collection.migrateScope),
+    collection.inMigrateScope,
   );
   const expected = scoped.snapshot;
   logOutOfScope(scoped.outOfScope, fmt);

@@ -11,7 +11,7 @@
 // output is therefore guaranteed — it is byte-for-byte the same generator the
 // `meta gen` pipeline runs (gated by the docs conformance fixture).
 
-import { resolve as resolvePath, basename, isAbsolute } from "node:path";
+import { resolve as resolvePath, basename } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { log } from "../lib/log.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
@@ -527,32 +527,11 @@ async function scaffoldSiteCommand(projectRoot: string): Promise<number> {
 }
 
 /**
- * Distinct directories declared by the collection's source specs, resolved
- * absolute against `collection.configDir`. The site's own loader
- * (`@metaobjectsdev/docs-site`) wants whole directories — each becomes a
- * symlinked, basename-keyed source group — unlike the per-file list
- * `resolveCollection` produces for the sdk `loadMemory` path.
- */
-function collectionSourceDirs(collection: Collection): string[] {
-  const dirs = new Map<string, string>();
-  for (const { spec } of collection.sources) {
-    if (!("path" in spec)) continue; // phase 1 resolves "path" specs only
-    const key = JSON.stringify(spec);
-    if (dirs.has(key)) continue;
-    dirs.set(
-      key,
-      isAbsolute(spec.path) ? spec.path : resolvePath(collection.configDir, spec.path),
-    );
-  }
-  return [...dirs.values()];
-}
-
-/**
  * Emit the browsable HTML documentation site via `@metaobjectsdev/docs-site`.
- * The site loads the model with its OWN loader from the resolved metadata
- * source directories (see `resolveCollection`/`collectionSourceDirs`), so
- * this is independent of the sdk loadMemory path used for the markdown
- * surfaces. Writes under `<outDir>/site` so it can coexist with the markdown
+ * The site loads the model with its OWN loader from the collection's declared
+ * source ROOTS (whole directories, one page group each) rather than from the
+ * per-file list the sdk `loadMemory` path takes, so this is independent of the
+ * markdown surfaces. Writes under `<outDir>/site` so it can coexist with the markdown
  * output. Scaffold-and-own: when the consumer has copied templates/assets
  * into `<projectRoot>/codegen/docs-site/` (via `--scaffold-site`), those win
  * over the bundled defaults.
@@ -583,7 +562,11 @@ async function emitSite(
   // dropping the second — would break the feature this branch exists to ship.
   // The same directory named twice is the real hazard: it would be symlinked
   // and loaded twice.
-  const sourceDirs = collectionSourceDirs(collection);
+  // The DECLARED source roots, not directories re-derived from the resolved
+  // files: a declared source directory holding no metadata yet would otherwise
+  // vanish from the site's group list entirely, and `sourceDirs` could come back
+  // empty where the pre-branch code always passed `<root>/metaobjects`.
+  const sourceDirs = [...collection.sourceRoots];
   const seenDirs = new Set(sourceDirs);
   if (promptsDir !== undefined && !existsSync(promptsDir)) {
     log.warn(`docs: --prompts dir does not exist: ${promptsDir}`);

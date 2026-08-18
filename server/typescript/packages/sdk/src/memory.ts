@@ -101,6 +101,12 @@ export const defaultLoadMemoryProviders: readonly MetaDataTypeProvider[] = [
  * @param repoRoot The project's working-directory root (e.g. process.cwd()).
  *   `loadMemory` resolves `metaobjects/` and (if workspace-aware) the
  *   transitive `extends:` graph automatically.
+ *   **Ignored entirely when `options.files` is supplied** — that list has
+ *   already been resolved (by `resolveCollection`, which owns the decision), so
+ *   no discovery runs and nothing reads this path. Every routed CLI command
+ *   passes both, and the argument is inert at all of them; a caller that copies
+ *   that shape but omits `files` silently loads `<repoRoot>/metaobjects/`
+ *   instead, which is the divergence this design exists to close.
  * @param options Optional {@link LoadMemoryOptions} — supply additional
  *   providers or replace the default bundle entirely.
  */

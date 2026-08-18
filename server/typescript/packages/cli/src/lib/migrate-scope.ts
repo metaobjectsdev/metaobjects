@@ -1,27 +1,35 @@
-// The one adapter between a declared `migrate.scope` and migrate-ts's scope seam.
+// What `meta migrate` and `meta verify --db` SAY about a declared `migrate.scope`.
 //
-// `resolveCollection` compiles `.metaobjects/config.json`'s `migrate.scope` into a
-// `CompiledScope`; migrate-ts takes a plain predicate over an object's
-// fully-qualified name so it never carries a second implementation of the pattern
-// grammar. `matchesScope` (@metaobjectsdev/sdk) is THE pattern engine — there is no
-// other, and adding one would let `migrate` and `gen` disagree about what
-// `acme::platform::**` means.
+// The scope itself needs no adapter: `resolveCollection` hands back
+// `inMigrateScope` already in migrate-ts's predicate shape, so the pattern grammar
+// lives in exactly one place (`matchesScope`, @metaobjectsdev/sdk) and `migrate` and
+// `gen` cannot come to disagree about what `acme::platform::**` means.
 //
-// Both `meta migrate` and `meta verify --db` import this: the two commands govern
-// the identical object set, so they share the one declaration rather than each
-// growing a key of its own.
+// What DOES need one home is the user-facing language, and both commands import it
+// from here: they govern the identical object set from one declaration, so a note
+// or a refusal that drifted between them would be drift the user reads.
 
-import { matchesScope, type Collection, type CompiledScope } from "@metaobjectsdev/sdk";
+import type { Collection } from "@metaobjectsdev/sdk";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
-import type { ObjectScopePredicate } from "@metaobjectsdev/migrate-ts";
 
 /**
- * Adapt a compiled `migrate.scope` to migrate-ts's predicate seam. Undefined in,
- * undefined out — a project that declared no scope governs everything it loaded,
- * and the undefined predicate is what keeps its expected schema untouched.
+ * Say what a declared `migrate.scope` left out, for `migrate` and `verify --db`
+ * alike.
+ *
+ * An excluded object produces neither a create nor a drop and is neither checked
+ * nor reported as drift, so without this line "no changes" and "no changes to the
+ * half of the model this run governs" read identically — and an unchecked table is
+ * indistinguishable from a checked-and-clean one.
+ *
+ * One sentence, one definition: the two commands say the same thing about the same
+ * declaration, and this is a string a user reads, so drift between two copies of it
+ * is drift the user sees.
  */
-export function toObjectScope(scope: CompiledScope | undefined): ObjectScopePredicate | undefined {
-  return scope === undefined ? undefined : (fqn: string): boolean => matchesScope(fqn, scope);
+export function outOfScopeNote(command: string, names: readonly string[]): string {
+  return (
+    `meta ${command} — ${names.length} object(s) out-of-scope ` +
+    `(outside migrate.scope, governed elsewhere): ${names.join(", ")}`
+  );
 }
 
 /** How many loaded FQNs to name in the refusal below — enough to show the shape
@@ -53,8 +61,8 @@ export function migrateScopeMismatch(
   collection: Collection,
   root: MetaRoot,
 ): string | undefined {
-  const { migrateScope, migrateScopePatterns } = collection;
-  if (migrateScope === undefined) return undefined;
+  const { inMigrateScope, migrateScopePatterns } = collection;
+  if (inMigrateScope === undefined) return undefined;
 
   // ADR-0039: `objects()` is the resolving accessor — the loaded object set, which
   // is exactly what `migrate.scope` claims to be a subset of.
@@ -62,7 +70,7 @@ export function migrateScopeMismatch(
   // No objects at all is not a scope error: there is nothing for a pattern to miss,
   // and an empty model has its own (much louder) failure modes downstream.
   if (fqns.length === 0) return undefined;
-  if (fqns.some((fqn) => matchesScope(fqn, migrateScope))) return undefined;
+  if (fqns.some(inMigrateScope)) return undefined;
 
   const patterns = JSON.stringify(migrateScopePatterns ?? []);
   const examples = fqns.slice(0, EXAMPLE_FQN_CAP).join(", ");

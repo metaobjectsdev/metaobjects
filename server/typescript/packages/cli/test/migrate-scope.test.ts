@@ -15,9 +15,7 @@ import { describe, test, expect, afterAll } from "bun:test";
 import { mkdtemp, rm, mkdir, writeFile, readdir, readFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { compileScope } from "@metaobjectsdev/sdk";
 import { runBaseline, runOfflineGenerate } from "../src/commands/migrate.js";
-import { toObjectScope } from "../src/lib/migrate-scope.js";
 
 const dirs: string[] = [];
 afterAll(async () => { for (const d of dirs) await rm(d, { recursive: true, force: true }); });
@@ -82,19 +80,6 @@ const cfg = () =>
 
 const migrationDirs = async (root: string): Promise<string[]> =>
   (await readdir(join(root, ".metaobjects/migrations"))).filter((e) => !e.startsWith("."));
-
-describe("toObjectScope", () => {
-  test("matchesScope drives the decision — no second pattern implementation", () => {
-    const inScope = toObjectScope(compileScope({ include: ["acme::platform::**"] }))!;
-    expect(inScope("acme::platform::Job")).toBe(true);
-    expect(inScope("acme::platform::billing::Invoice")).toBe(true);
-    expect(inScope("arena::Match")).toBe(false);
-  });
-
-  test("no declared scope → no predicate (the command governs everything loaded)", () => {
-    expect(toObjectScope(undefined)).toBeUndefined();
-  });
-});
 
 describe("meta migrate — migrate.scope", () => {
   test("an out-of-scope table is neither altered nor dropped", async () => {

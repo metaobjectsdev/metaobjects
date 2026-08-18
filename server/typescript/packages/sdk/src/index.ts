@@ -92,7 +92,7 @@ export { compileScope, matchesScope } from "./scope.js";
 export type { Scope, CompiledScope } from "./scope.js";
 
 // Source resolution — a declared source SET to a canonically-sorted file list
-export { resolveSources, DEFAULT_SOURCES } from "./sources.js";
+export { resolveSources, resolveSpecPath, orderedPathSpecs, DEFAULT_SOURCES } from "./sources.js";
 export type { SourceSpec, ResolvedSource } from "./sources.js";
 
 // Discovery — nearest-ancestor project root (a `.metaobjects/config.json` OR a

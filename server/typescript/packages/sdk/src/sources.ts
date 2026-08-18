@@ -53,17 +53,54 @@ export interface ResolvedSource {
 export const DEFAULT_SOURCES: readonly SourceSpec[] = [{ path: DEFAULT_METADATA_DIR }];
 
 /** Narrows `spec` to its `path` arm, throwing `ERR_SOURCE_KIND_UNSUPPORTED`
- *  for `resource`/`package` — phase 1 resolves `path` only. Called in two
- *  separate passes by {@link resolveSources} (see the comment there): an
- *  unsupported kind must be reported regardless of where it sits in the
- *  declared list. */
-function assertPathSpec(spec: SourceSpec): asserts spec is { readonly path: string } {
-  if ("path" in spec) return;
+ *  for `resource`/`package` — phase 1 resolves `path` only. Returns rather than
+ *  asserting so one call both validates and narrows: an `asserts` signature has
+ *  to be re-invoked wherever TypeScript's control-flow analysis cannot carry the
+ *  narrowing, which is a language workaround masquerading as a second check. */
+function toPathSpec(spec: SourceSpec): { readonly path: string } {
+  if ("path" in spec) return spec;
   const kind = "resource" in spec ? "resource" : "package";
   throw new ParseError(
     `source kind "${kind}" is not supported by this toolchain yet; use a "path" source`,
     { code: "ERR_SOURCE_KIND_UNSUPPORTED", source: codeSource("resolveSources") },
   );
+}
+
+/**
+ * The declared source SET in CANONICAL order — kind-validated, then sorted by
+ * spec CONTENT rather than by declaration order.
+ *
+ * This is the ONE place declaration order is discarded, and the module's "pure
+ * function of the SET" invariant rests on it: the emitted file order, the spec
+ * attributed to a file two specs both reach, and which of several unresolvable
+ * paths reports its `ERR_SOURCE_UNRESOLVED` first are all decided here.
+ * Validation runs across the WHOLE list before any sorting or filesystem I/O —
+ * interleaved with resolution, which error code came back would depend on
+ * declaration order, contradicting that same invariant.
+ *
+ * Exported because `resolveCollection` derives `sourceRoots` from the declared
+ * specs and must use this identical ordering; a second sort would be a second
+ * definition of "canonical".
+ */
+export function orderedPathSpecs(specs: readonly SourceSpec[]): { readonly path: string }[] {
+  return specs.map(toPathSpec).sort((a, b) => {
+    const [ja, jb] = [JSON.stringify(a), JSON.stringify(b)];
+    return ja < jb ? -1 : ja > jb ? 1 : 0;
+  });
+}
+
+/**
+ * Where a declared `path` source lives on disk: absolute as written, otherwise
+ * relative to the DECLARING config's directory — never to ambient
+ * `process.cwd()`.
+ *
+ * One definition, because this expression *is* the rule for where a declared
+ * source lives, which is the single piece of knowledge this module exists to
+ * own. A caller that needs a source's root directory (rather than its files)
+ * calls this rather than restating it.
+ */
+export function resolveSpecPath(configDir: string, spec: { readonly path: string }): string {
+  return isAbsolute(spec.path) ? spec.path : resolve(configDir, spec.path);
 }
 
 /**
@@ -95,23 +132,8 @@ export async function resolveSources(
   configDir: string,
   specs: readonly SourceSpec[],
 ): Promise<ResolvedSource[]> {
-  // Validate every spec's KIND up front, before any filesystem I/O. Without
-  // this separate pass, kind-validation and path resolution were
-  // interleaved in one loop, so which error code came back depended on
-  // DECLARATION ORDER: an unsupported-kind spec placed after an
-  // unresolvable path spec never got reached (the path spec's
-  // ERR_SOURCE_UNRESOLVED fired first) — contradicting this module's own
-  // "pure function of the SET" invariant (see the file header).
-  for (const spec of specs) assertPathSpec(spec);
-
-  // Content order, computed once. This is the ONLY place declaration order is
-  // discarded, and everything below depends on it: the output file order, the
-  // spec attributed to an overlapping file, and which of several unresolvable
-  // paths reports its ERR_SOURCE_UNRESOLVED first.
-  const ordered = [...specs].sort((a, b) => {
-    const [ja, jb] = [JSON.stringify(a), JSON.stringify(b)];
-    return ja < jb ? -1 : ja > jb ? 1 : 0;
-  });
+  // Kind-validated and content-ordered in one pass — see `orderedPathSpecs`.
+  const ordered = orderedPathSpecs(specs);
 
   // Insertion order IS output order — a Map preserves it, so the per-spec walk
   // order above survives to the caller. First contributor wins a shared file,
@@ -119,9 +141,7 @@ export async function resolveSources(
   const byFile = new Map<string, SourceSpec>();
 
   for (const spec of ordered) {
-    assertPathSpec(spec); // already validated above; narrows `spec.path` for TS below.
-
-    const target = isAbsolute(spec.path) ? spec.path : resolve(configDir, spec.path);
+    const target = resolveSpecPath(configDir, spec);
     const stats = await stat(target).catch(() => undefined);
     if (stats === undefined) {
       throw new ParseError(

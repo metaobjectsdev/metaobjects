@@ -195,13 +195,22 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     // children" for a scoped-out model, or "...entityFilter" for a scope
     // that admitted everything entityFilter then excluded, are both false
     // statements that send the reader to the wrong file.
-    const reason = scope === undefined
-      ? (entityFilter ? "no object children match the provided entityFilter" : "root has no object children")
-      : (allObjects.length === 0
-          ? "root has no object children"
-          : afterEntityFilter.length === 0
-            ? "no object children match the provided entityFilter"
-            : "no object children match the configured scope");
+    let reason: string;
+    if (scope === undefined) {
+      // Byte-identical to the pre-scope branch, quirk included: an EMPTY root
+      // with an entityFilter set still blames the filter. Wrong, and untouched
+      // — changing what an unscoped project reads is a behaviour change, and
+      // this is a shape change.
+      reason = entityFilter
+        ? "no object children match the provided entityFilter"
+        : "root has no object children";
+    } else if (allObjects.length === 0) {
+      reason = "root has no object children";
+    } else if (afterEntityFilter.length === 0) {
+      reason = "no object children match the provided entityFilter";
+    } else {
+      reason = "no object children match the configured scope";
+    }
     warnings.push(`No entities to generate — ${reason}.`);
     return { files: [], warnings, conflicts: [] };
   }
