@@ -33,6 +33,7 @@ import {
   computeDrift,
   computeDriftFromActual,
   collectUnmanagedNames,
+  qualifiedDbName,
   introspect,
   diff,
   readSnapshot,
@@ -45,9 +46,10 @@ import {
   type Change,
   type D1Binding,
   type D1Runner,
-  type DiffResult,
+  type DriftResult,
 } from "@metaobjectsdev/migrate-ts";
-import { loadMemory } from "@metaobjectsdev/sdk";
+import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
+import { toObjectScope } from "../lib/migrate-scope.js";
 import {
   TYPE_TEMPLATE,
   TEMPLATE_SUBTYPE_PROMPT,
@@ -140,20 +142,28 @@ export async function verifyCommand(
   }
   const configProviders = forgeConfig?.providers;
 
+  // Where the metadata lives is `resolveCollection`'s decision, not a hardcoded
+  // directory. It also carries the per-command `migrate.scope` the schema gate below
+  // honours — `verify --db` and `migrate` govern the identical object set.
+  let collection;
+  try {
+    collection = await resolveCollection(cwd);
+  } catch (err) {
+    log.error((err as Error).message);
+    return 2;
+  }
+
   // ADR-0023 strict-by-default (#96): verify loads strict unless --lax is passed,
   // so an undeclared/typo'd own @attr fails verify (matching Java's Maven goal).
   let root: Awaited<ReturnType<typeof loadMemory>>;
   try {
-    root = await loadMemory(cwd, {
+    root = await loadMemory(collection.configDir, {
+      files: collection.files,
       ...(configProviders !== undefined ? { providers: configProviders } : {}),
       strict: !flags.lax,
     });
   } catch (err) {
     const msg = (err as Error).message;
-    if (msg.includes("ENOENT") || msg.includes("no such") || msg.includes("cannot read")) {
-      log.error(`no metaobjects/ found in ${cwd}; run 'meta init' to scaffold`);
-      return 2;
-    }
     log.error(`failed to load metadata: ${msg}`);
     // Strict-load rejection (ADR-0023): give the author the three exits — register
     // the attr on a provider, stash it in the `attr.properties` bag, or pass --lax.
@@ -168,6 +178,12 @@ export async function verifyCommand(
     }
     return 1;
   }
+
+  // The schema gate governs exactly the objects `meta migrate` governs — ONE
+  // declaration (`migrate.scope`), not a second key: a drift gate that fails on
+  // tables migrate deliberately does not own is incoherent. Undefined ⇒ everything
+  // loaded, which is every project that declares no scope.
+  const schemaScope = toObjectScope(collection.migrateScope);
 
   const promptsDir = join(cwd, flags.prompts ?? DEFAULT_PROMPTS_DIR);
   const provider = new FileProvider(promptsDir);
@@ -428,7 +444,11 @@ export async function verifyCommand(
         // `actual` this drift comparison uses, and re-introspecting for it would both
         // cost a second round trip and open a window where the two could disagree.
         actual = await introspect(kysely.db, kysely.dialect);
-        driftResult = await computeDriftFromActual(actual, kysely.dialect, root, { allow, views: expectedViews });
+        driftResult = await computeDriftFromActual(actual, kysely.dialect, root, {
+          allow,
+          views: expectedViews,
+          ...(schemaScope !== undefined ? { inScope: schemaScope } : {}),
+        });
       } catch (err) {
         log.error(`verify: failed to introspect ${kysely.displayUrl}: ${(err as Error).message}`);
         return 1;
@@ -436,7 +456,7 @@ export async function verifyCommand(
 
       const snapshotDrift =
         driftResult.changes.length === 0
-          ? await checkCommittedSnapshot(actual, kysely.dialect, kysely.displayUrl)
+          ? await checkCommittedSnapshot(actual, kysely.dialect, kysely.displayUrl, driftResult.outOfScope)
           : [];
 
       return reportSchemaDrift(driftResult, [...ledgerDrift, ...snapshotDrift], kysely.displayUrl);
@@ -510,7 +530,11 @@ export async function verifyCommand(
     const expectedViews = buildProjectionViews(root, { dialect: "d1", columnNamingStrategy: viewStrategy });
     let driftResult;
     try {
-      driftResult = await computeDriftFromActual(actual, "d1", root, { allow, views: expectedViews });
+      driftResult = await computeDriftFromActual(actual, "d1", root, {
+        allow,
+        views: expectedViews,
+        ...(schemaScope !== undefined ? { inScope: schemaScope } : {}),
+      });
     } catch (err) {
       log.error(`verify: ${(err as Error).message}`);
       return 1;
@@ -554,6 +578,7 @@ export async function verifyCommand(
     actual: SchemaSnapshot,
     dialect: Dialect,
     displayUrl: string,
+    outOfScope: readonly string[],
   ): Promise<string[]> {
     if (dialect === "d1") return []; // d1 keeps migrations Wrangler-native; no offline snapshot
     // Resolve the migrations dir through migrate's OWN precedence (flag > config >
@@ -570,11 +595,24 @@ export async function verifyCommand(
     }
     if (snapshot === null) return [];
 
+    // Out-of-scope objects leave BOTH sides of this comparison. `unmanagedNames`
+    // suppresses the actual side only, which is right for the metadata↔DB diff (the
+    // expected side is already scoped) but not here: the committed snapshot is the
+    // expected side, and a snapshot written before the scope was declared still
+    // carries the other owner's tables — leaving them in would report a phantom
+    // "snapshot disagrees" for an object this consumer does not manage.
+    const excluded = new Set(outOfScope);
+    const scopedSnapshot: SchemaSnapshot = excluded.size === 0 ? snapshot : {
+      ...snapshot,
+      tables: snapshot.tables.filter((t) => !excluded.has(qualifiedDbName(t))),
+      views: snapshot.views.filter((v) => !excluded.has(qualifiedDbName(v))),
+    };
+
     const result = await diff({
-      expected: snapshot,
+      expected: scopedSnapshot,
       actual,
       allow: {},
-      unmanagedNames: collectUnmanagedNames(root),
+      unmanagedNames: [...collectUnmanagedNames(root), ...outOfScope],
     });
     if (result.changes.length === 0) return [];
 
@@ -586,7 +624,7 @@ export async function verifyCommand(
     ];
   }
 
-  function reportSchemaDrift(driftResult: DiffResult, ledgerDrift: string[], displayUrl: string): number {
+  function reportSchemaDrift(driftResult: DriftResult, ledgerDrift: string[], displayUrl: string): number {
     // #208 §8 — make declared-external objects visible: they are excluded from the
     // drift comparison (computeDrift/computeDriftFromActual thread them out), so
     // annotate them as external (declared) rather than let them vanish silently.
@@ -594,6 +632,15 @@ export async function verifyCommand(
     if (externalDeclared.length > 0) {
       log.info(
         `meta verify — ${externalDeclared.length} object(s) external (declared @unmanaged, managed elsewhere): ${externalDeclared.join(", ")}`,
+      );
+    }
+
+    // Same reasoning for the per-command scope: an object `migrate.scope` excluded
+    // was NOT checked, and silence would misreport it as checked-and-clean.
+    if (driftResult.outOfScope.length > 0) {
+      log.info(
+        `meta verify — ${driftResult.outOfScope.length} object(s) out-of-scope ` +
+          `(outside migrate.scope, governed elsewhere): ${driftResult.outOfScope.join(", ")}`,
       );
     }
 

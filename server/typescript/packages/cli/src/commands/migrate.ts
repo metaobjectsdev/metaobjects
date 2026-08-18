@@ -10,10 +10,12 @@ import type { OutputFormat } from "../lib/format.js";
 import { toonEncode } from "../lib/format.js";
 import { buildKyselyFromUrl, redactUrl } from "../lib/kysely.js";
 import { log } from "../lib/log.js";
-import { loadMemory } from "@metaobjectsdev/sdk";
+import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
+import { toObjectScope } from "../lib/migrate-scope.js";
 import {
-  buildExpectedSchema,
+  buildExpectedSchemaWithProvenance,
+  scopeExpectedSchema,
   introspect,
   diff,
   collectUnmanagedNames,
@@ -120,6 +122,19 @@ function resolveFormatOutDir(config: ResolvedMigrateConfig, metaRoot: string): s
     return resolvePath(metaRoot, FLYWAY_DEFAULT_OUT_DIR);
   }
   return resolvePath(metaRoot, config.outDir);
+}
+
+/**
+ * Say what a declared `migrate.scope` left out. An excluded object produces neither
+ * a create nor a drop, so without this line "no changes" and "no changes to the half
+ * of the model this run governs" read identically.
+ */
+function logOutOfScope(names: readonly string[]): void {
+  if (names.length === 0) return;
+  log.info(
+    `meta migrate — ${names.length} object(s) out-of-scope (outside migrate.scope, ` +
+      `governed elsewhere): ${names.join(", ")}`,
+  );
 }
 
 function emitStructuredError(error: string, hint: string, fmt: OutputFormat): void {
@@ -389,18 +404,27 @@ export async function migrateCommand(
     postgresConfigProviders = undefined;
   }
 
+  // Discovery and load are two separate failure modes, kept in separate try blocks
+  // (the `meta gen` pattern): a broad catch around both reports a genuine ParseError
+  // as "no metadata found", masking the real failure. `resolveCollection` raises
+  // ERR_COLLECTION_NOT_FOUND with its own message — the same exit 2 the hand-rolled
+  // ENOENT sniff used to produce.
+  let collection;
+  try {
+    collection = await resolveCollection(metaRoot);
+  } catch (err) {
+    log.error((err as Error).message);
+    return 2;
+  }
+
   let metadata;
   try {
-    metadata = await loadMemory(metaRoot, {
+    metadata = await loadMemory(collection.configDir, {
+      files: collection.files,
       ...(postgresConfigProviders !== undefined ? { providers: postgresConfigProviders } : {}),
     });
   } catch (err) {
-    const msg = (err as Error).message;
-    if (msg.includes("ENOENT") || msg.includes("no such") || msg.includes("cannot read")) {
-      log.error(`no metaobjects/ found in ${metaRoot}; run 'meta init' to scaffold`);
-    } else {
-      log.error(`failed to load metadata: ${msg}`);
-    }
+    log.error(`failed to load metadata: ${(err as Error).message}`);
     return 2;
   }
 
@@ -435,11 +459,20 @@ export async function migrateCommand(
     // view DDL (create/drop/replace + dependency-recreate) and emit() renders it —
     // there is no separate view-migration emitter.
     const expectedViews = buildProjectionViews(metadata, { dialect: kysely.dialect, columnNamingStrategy });
-    const expected = buildExpectedSchema(metadata, {
-      dialect: kysely.dialect,
-      columnNamingStrategy,
-      views: expectedViews,
-    });
+    // Per-command scope: objects outside `migrate.scope` are another owner's. They
+    // leave the expected schema here and are suppressed on the actual side below —
+    // dropping them from `expected` ALONE would propose DROP TABLE for every one of
+    // them that exists in the database.
+    const scoped = scopeExpectedSchema(
+      buildExpectedSchemaWithProvenance(metadata, {
+        dialect: kysely.dialect,
+        columnNamingStrategy,
+        views: expectedViews,
+      }),
+      toObjectScope(collection.migrateScope),
+    );
+    const expected = scoped.snapshot;
+    logOutOfScope(scoped.outOfScope);
     let actual;
     try {
       actual = await introspect(kysely.db, kysely.dialect);
@@ -464,8 +497,9 @@ export async function migrateCommand(
         // the constraint and breaks referencing FKs at apply.
         refusePrimaryKeyChange: true,
         // #208 §7 — declared-@unmanaged objects are external: exclude them from the
-        // actual side so migrate proposes neither create nor drop for them.
-        unmanagedNames: collectUnmanagedNames(metadata),
+        // actual side so migrate proposes neither create nor drop for them. Objects
+        // outside `migrate.scope` ride the same seam, for the same reason.
+        unmanagedNames: [...collectUnmanagedNames(metadata), ...scoped.outOfScope],
         onAmbiguous: async (a) => {
           collectedAmbiguous.push(a);
           return onAmbiguousResolution;
@@ -745,8 +779,15 @@ export async function runBaseline(
     } catch {
       // config absent — no custom providers, default snake_case
     }
+    // `baseline` records a STARTING POINT, so it is deliberately NOT scoped: the
+    // `--from-db` arm captures whatever the database holds (there is no provenance
+    // for an introspected table), and an offline baseline that recorded less would
+    // disagree with it. An out-of-scope table sitting in the snapshot is harmless —
+    // every later run suppresses it on both sides.
     try {
-      metadata = await loadMemory(metaRoot, {
+      const collection = await resolveCollection(metaRoot);
+      metadata = await loadMemory(collection.configDir, {
+        files: collection.files,
         ...(baselineConfigProviders !== undefined ? { providers: baselineConfigProviders } : {}),
       });
     } catch (err) {
@@ -880,8 +921,11 @@ export async function runOfflineGenerate(
   }
 
   let metadata;
+  let collection;
   try {
-    metadata = await loadMemory(metaRoot, {
+    collection = await resolveCollection(metaRoot);
+    metadata = await loadMemory(collection.configDir, {
+      files: collection.files,
       ...(offlineConfigProviders !== undefined ? { providers: offlineConfigProviders } : {}),
     });
   } catch (err) {
@@ -917,6 +961,7 @@ export async function runOfflineGenerate(
   const onAmbiguousResolution = mapOnAmbiguous(config.onAmbiguous);
 
   const offlineViews = buildProjectionViews(metadata, { dialect: config.dialect, columnNamingStrategy: offlineStrategy });
+  const offlineScope = toObjectScope(collection.migrateScope);
 
   let plan;
   try {
@@ -926,6 +971,8 @@ export async function runOfflineGenerate(
       snapshot,
       columnNamingStrategy: offlineStrategy,
       views: offlineViews,
+      // Per-command scope — narrows BOTH sides of the offline diff (see planOffline).
+      ...(offlineScope !== undefined ? { inScope: offlineScope } : {}),
       allow: tokensToAllowOptions(config.allow),
       onAmbiguous: async (a) => {
         collectedAmbiguous.push(a);
@@ -947,6 +994,7 @@ export async function runOfflineGenerate(
   }
 
   const { diff: diffResult, nextSnapshot } = plan;
+  logOutOfScope(plan.outOfScope);
 
   if (diffResult.blocked.length > 0) {
     log.error(`migrate: ${diffResult.blocked.length} destructive change(s) blocked; re-run with --allow <tokens>`);
@@ -1101,18 +1149,25 @@ async function runD1Migrate(
     d1ConfigProviders = undefined;
   }
 
+  // Discovery and load are separate failure modes (the `meta gen` pattern);
+  // `resolveCollection`'s own ERR_COLLECTION_NOT_FOUND replaces the hand-rolled
+  // ENOENT sniff, with the same exit 2.
+  let collection;
+  try {
+    collection = await resolveCollection(metaRoot);
+  } catch (err) {
+    log.error((err as Error).message);
+    return 2;
+  }
+
   let metadata;
   try {
-    metadata = await loadMemory(metaRoot, {
+    metadata = await loadMemory(collection.configDir, {
+      files: collection.files,
       ...(d1ConfigProviders !== undefined ? { providers: d1ConfigProviders } : {}),
     });
   } catch (err) {
-    const msg = (err as Error).message;
-    if (msg.includes("ENOENT") || msg.includes("no such") || msg.includes("cannot read")) {
-      log.error(`no metaobjects/ found in ${metaRoot}; run 'meta init' to scaffold`);
-    } else {
-      log.error(`migrate: failed to load metadata: ${msg}`);
-    }
+    log.error(`migrate: failed to load metadata: ${(err as Error).message}`);
     return 2;
   }
 
@@ -1125,7 +1180,13 @@ async function runD1Migrate(
     // metaobjects.config.ts absent or invalid — use default snake_case
   }
   const expectedViews = buildProjectionViews(metadata, { dialect: "d1", columnNamingStrategy });
-  const expected = buildExpectedSchema(metadata, { dialect: "d1", columnNamingStrategy, views: expectedViews });
+  // Per-command scope — both-sided, exactly as on the Kysely path above.
+  const scoped = scopeExpectedSchema(
+    buildExpectedSchemaWithProvenance(metadata, { dialect: "d1", columnNamingStrategy, views: expectedViews }),
+    toObjectScope(collection.migrateScope),
+  );
+  const expected = scoped.snapshot;
+  logOutOfScope(scoped.outOfScope);
   let actual;
   try {
     actual = await introspectD1({
@@ -1157,8 +1218,9 @@ async function runD1Migrate(
       // has no expressible migration; refuse loudly instead of emitting SQL that drops
       // the constraint and breaks referencing FKs at apply (same failure as the online path).
       refusePrimaryKeyChange: true,
-      // #208 §7 — declared-@unmanaged objects are external (see the online path above).
-      unmanagedNames: collectUnmanagedNames(metadata),
+      // #208 §7 — declared-@unmanaged objects are external (see the online path above),
+      // and so are objects outside `migrate.scope`.
+      unmanagedNames: [...collectUnmanagedNames(metadata), ...scoped.outOfScope],
       onAmbiguous: async (a) => {
         collectedAmbiguous.push(a);
         return onAmbiguousResolution;

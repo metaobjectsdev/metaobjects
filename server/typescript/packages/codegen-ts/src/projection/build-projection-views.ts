@@ -54,6 +54,14 @@ export interface ExpectedView {
   schema?: string;
   sql: string;
   /**
+   * `resolutionKey()` of the object that declared this view — the projection, or the
+   * write-through entity hosting its own read view. migrate-ts records it as
+   * PROVENANCE (never onto the view descriptor, never into the committed snapshot) so
+   * a per-command `migrate.scope` can decide ownership on the declaring FQN rather
+   * than on the physical view name, which no naming strategy can reverse.
+   */
+  fqn: string;
+  /**
    * Physical tables this view reads (base + every joined table). The migrate-ts
    * diff uses this to recreate the view when one of its source tables undergoes a
    * column-altering change — postgres blocks ALTER on a column a view depends on,
@@ -199,6 +207,7 @@ function emitViewFor(
     sql: body,
     dependsOn,
     columns,
+    fqn: host.resolutionKey(),
     ...(schema !== undefined ? { schema } : {}),
   });
 }
@@ -240,6 +249,7 @@ function emitSqlView(
     name: source.physicalName, // FR-016 four-step physical name
     sql: source.sqlBody!, // verbatim — never parsed, never re-wrapped
     dependsOn,
+    fqn: host.resolutionKey(),
     // columns OMITTED → "unknown" → gated drop+create fail-safe.
     ...(schema !== undefined ? { schema } : {}),
   });

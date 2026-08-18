@@ -16,10 +16,11 @@
 import type { Kysely } from "kysely";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
 import type { ColumnNamingStrategy } from "@metaobjectsdev/metadata";
-import { buildExpectedSchema } from "../expected-schema.js";
+import { buildExpectedSchemaWithProvenance } from "../expected-schema.js";
 import { introspect } from "../introspect/index.js";
 import { diff } from "../diff/index.js";
 import { collectUnmanagedNames } from "../unmanaged.js";
+import { scopeExpectedSchema, type ObjectScopePredicate } from "../scope.js";
 import type { AllowOptions, Dialect, DiffResult, SchemaSnapshot } from "../types.js";
 
 export interface ComputeDriftOptions {
@@ -46,6 +47,26 @@ export interface ComputeDriftOptions {
    * itself; pass these so view drift is detected. Defaults to none.
    */
   views?: readonly import("../expected-schema.js").ExpectedViewInput[];
+  /**
+   * Per-command scope (`migrate.scope`): objects whose declaring FQN this predicate
+   * rejects are governed by somebody else. They leave the expected side AND are
+   * suppressed on the actual side, so their divergence is neither drift nor a
+   * proposed drop — `verify` reports them as out-of-scope instead (see
+   * `DriftResult.outOfScope`). Omit to govern everything loaded (unchanged behavior).
+   *
+   * `verify --db` and `migrate` deliberately share ONE declaration: a drift gate
+   * failing on tables migrate does not own is incoherent.
+   */
+  inScope?: ObjectScopePredicate;
+}
+
+export interface DriftResult extends DiffResult {
+  /**
+   * Qualified physical names excluded by `inScope` — empty when no scope was
+   * given. The caller REPORTS these: an object silently dropped from the
+   * comparison is indistinguishable from one that was checked and found clean.
+   */
+  outOfScope: readonly string[];
 }
 
 /**
@@ -65,24 +86,30 @@ export async function computeDriftFromActual(
   dialect: Dialect,
   metadata: MetaRoot,
   opts?: ComputeDriftOptions,
-): Promise<DiffResult> {
-  const expected = buildExpectedSchema(metadata, {
-    dialect,
-    ...(opts?.columnNamingStrategy !== undefined
-      ? { columnNamingStrategy: opts.columnNamingStrategy }
-      : {}),
-    ...(opts?.views !== undefined ? { views: opts.views } : {}),
-  });
-  return diff({
-    expected,
+): Promise<DriftResult> {
+  const scoped = scopeExpectedSchema(
+    buildExpectedSchemaWithProvenance(metadata, {
+      dialect,
+      ...(opts?.columnNamingStrategy !== undefined
+        ? { columnNamingStrategy: opts.columnNamingStrategy }
+        : {}),
+      ...(opts?.views !== undefined ? { views: opts.views } : {}),
+    }),
+    opts?.inScope,
+  );
+  const result = await diff({
+    expected: scoped.snapshot,
     actual,
     dialect,
     allow: opts?.allow ?? {},
     // #208 §7 — a declared-@unmanaged object is external, so it is not drift: exclude it
     // from the actual side (same as `meta migrate`) rather than surface a false drop-*.
-    unmanagedNames: collectUnmanagedNames(metadata),
+    // Out-of-scope objects join it: dropping them from `expected` alone would turn each
+    // one that EXISTS in the database into a spurious drop-* drift.
+    unmanagedNames: [...collectUnmanagedNames(metadata), ...scoped.outOfScope],
     ...(opts?.ignoreTables !== undefined ? { ignoreTables: opts.ignoreTables } : {}),
   });
+  return { ...result, outOfScope: scoped.outOfScope };
 }
 
 /**
@@ -97,7 +124,7 @@ export async function computeDrift(
   dialect: Dialect,
   metadata: MetaRoot,
   opts?: ComputeDriftOptions,
-): Promise<DiffResult> {
+): Promise<DriftResult> {
   const actual = await introspect(db, dialect);
   return computeDriftFromActual(actual, dialect, metadata, opts);
 }

@@ -15,6 +15,7 @@ import { viewReplaceIsLegal } from "../view-column-types.js";
 import { checkExprEquals, normalizeCheckExpr } from "../check-expr-compare.js";
 import { isPgAutoSequenceDefault } from "../pg-identity-default.js";
 import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
+import { qualifiedDbName } from "../qualified-name.js";
 
 export interface DiffArgs {
   expected: SchemaSnapshot;
@@ -90,10 +91,12 @@ const DEFAULT_IGNORE_TABLES: string[] = [
  *
  * For SQLite (no schema concept), every table has schema=undefined, so this maps
  * all tables to the same "public." prefix — harmless and preserves existing behavior.
+ *
+ * `qualifiedDbName` is THE definition (qualified-name.ts): the act-side exclusion
+ * sets — declared-`@unmanaged` and out-of-scope — are matched against these keys, so
+ * a second spelling here would silently un-suppress an object and propose its drop.
  */
-function tableIdentity(table: { name: string; schema?: string }): string {
-  return (table.schema ?? DEFAULT_DB_SCHEMA_POSTGRES) + "." + table.name;
-}
+const tableIdentity = qualifiedDbName;
 
 /**
  * Build the optional-schema spread used when constructing Change records.
@@ -590,9 +593,7 @@ function diffTableChecks(
   }
 }
 
-function viewIdentity(v: { name: string; schema?: string }): string {
-  return (v.schema ?? DEFAULT_DB_SCHEMA_POSTGRES) + "." + v.name;
-}
+const viewIdentity = qualifiedDbName;
 
 /**
  * Decide, per view, whether the DB matches the model.
