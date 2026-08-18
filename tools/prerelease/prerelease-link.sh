@@ -363,9 +363,9 @@ install_detector() {
 }
 
 run_detector() {
-  local d="$PROJECT/tools/prerelease/detect-prerelease-pins.sh"
-  [ -x "$d" ] || d="$HERE/detect-prerelease-pins.sh"
-  MO_REGISTRY_BASE="$BASE" "$d" "$PROJECT"
+  local detector="$PROJECT/tools/prerelease/detect-prerelease-pins.sh"
+  [ -x "$detector" ] || detector="$HERE/detect-prerelease-pins.sh"
+  MO_REGISTRY_BASE="$BASE" "$detector" "$PROJECT"
 }
 
 # ── unlink ────────────────────────────────────────────────────────────────────────────

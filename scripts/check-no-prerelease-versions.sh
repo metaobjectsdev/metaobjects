@@ -11,7 +11,7 @@
 # Offline, toolchain-free, runs in milliseconds. Wired into .githooks/pre-commit and the
 # `gates` lane of scripts/ci-local.sh.
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit
 
 fail=0
 report() { echo "  ✖ $1: $2" >&2; fail=1; }
