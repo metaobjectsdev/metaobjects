@@ -144,15 +144,35 @@ anon_read_ok() {
 # failing with `notarget` on the next clean install.
 repin_npm() {  # repin_npm <version|"">
   local v="$1"; [ -n "$v" ] || return 0
-  node -e '
-    const fs=require("fs"), f=process.argv[1], v=process.argv[2], scope=process.argv[3];
-    const p=JSON.parse(fs.readFileSync(f,"utf8")); let n=0;
-    for (const s of ["dependencies","devDependencies","peerDependencies","optionalDependencies"])
-      for (const k of Object.keys(p[s]||{})) if (k.startsWith(scope+"/")) { p[s][k]=v; n++; }
-    fs.writeFileSync(f, JSON.stringify(p,null,2)+"\n");
-    console.log(n);
-  ' "$PROJECT/package.json" "$v" "$NPM_SCOPE" >/dev/null
-  say "repinned every $NPM_SCOPE/* dependency to $v"
+  # EVERY manifest, not just the root one. A workspace/monorepo keeps its vendor
+  # dependencies in the member packages, so repinning only `$PROJECT/package.json`
+  # leaves them resolving the OLD version — from a private registry that has only the
+  # pre-release. The next clean install then fails `notarget`, which is the same failure
+  # this function's other half exists to prevent, reached from a different direction.
+  # (The nuget and python paths already walk/glob; npm was the odd one out.)
+  local total=0 changed=0 n
+  while IFS= read -r f; do
+    n="$(node -e '
+      const fs=require("fs"), f=process.argv[1], v=process.argv[2], scope=process.argv[3];
+      let raw; try { raw = fs.readFileSync(f,"utf8"); } catch { console.log(0); process.exit(0); }
+      let p; try { p = JSON.parse(raw); } catch { console.log(0); process.exit(0); }
+      let n=0;
+      for (const s of ["dependencies","devDependencies","peerDependencies","optionalDependencies"])
+        for (const k of Object.keys(p[s]||{})) if (k.startsWith(scope+"/")) { p[s][k]=v; n++; }
+      // Only WRITE when something changed. JSON.stringify normalizes indentation and
+      // line endings, so an unconditional write reformats a file it had no reason to
+      // touch — a whole-file diff (LF over CRLF) on a manifest with no vendor deps.
+      if (n) {
+        const nl = raw.includes("\r\n") ? "\r\n" : "\n";
+        fs.writeFileSync(f, JSON.stringify(p,null,2).split("\n").join(nl)+nl);
+      }
+      console.log(n);
+    ' "$f" "$v" "$NPM_SCOPE" 2>/dev/null || echo 0)"
+    total=$(( total + n ))
+    [ "$n" -gt 0 ] && changed=$(( changed + 1 ))
+  done < <(find "$PROJECT" -name package.json \
+             -not -path '*/node_modules/*' -not -path '*/.git/*' 2>/dev/null)
+  say "repinned $total $NPM_SCOPE/* dependencies to $v across $changed manifest(s)"
 }
 
 repin_py() {  # repin_py <version|"">
