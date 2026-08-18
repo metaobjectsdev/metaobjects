@@ -8,64 +8,11 @@
  * alone would misreport an unchecked table as a checked one.
  */
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { rmSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@libsql/client";
 import { run } from "../../src/index.js";
-
-const PLATFORM = JSON.stringify({
-  "metadata.root": {
-    package: "acme::platform",
-    children: [{
-      "object.entity": {
-        name: "Job",
-        children: [
-          { "source.rdb": { name: "src", "@table": "jobs" } },
-          { "field.long": { name: "id" } },
-          { "field.string": { name: "title" } },
-          { "identity.primary": { name: "pk", "@fields": ["id"] } },
-        ],
-      },
-    }],
-  },
-});
-
-/** Another owner's package, sharing the database. `venue` models a column the
- *  other owner has not migrated yet — drift for THEM, never for this consumer. */
-const ARENA = (venue: boolean): string => JSON.stringify({
-  "metadata.root": {
-    package: "arena",
-    children: [{
-      "object.entity": {
-        name: "Match",
-        children: [
-          { "source.rdb": { name: "src", "@table": "matches" } },
-          { "field.long": { name: "id" } },
-          ...(venue ? [{ "field.string": { name: "venue" } }] : []),
-          { "identity.primary": { name: "pk", "@fields": ["id"] } },
-        ],
-      },
-    }],
-  },
-});
-
-function scaffold(): { repo: string; dbUrl: string } {
-  const repo = mkdtempSync(join(tmpdir(), "metaobjects-verify-scope-"));
-  mkdirSync(join(repo, "metaobjects"), { recursive: true });
-  writeFileSync(join(repo, "metaobjects", "meta.platform.json"), PLATFORM, "utf8");
-  writeFileSync(join(repo, "metaobjects", "meta.arena.json"), ARENA(false), "utf8");
-  return { repo, dbUrl: `file:${join(repo, "local.db")}` };
-}
-
-function declareScope(repo: string, scope: string[]): void {
-  mkdirSync(join(repo, ".metaobjects"), { recursive: true });
-  writeFileSync(
-    join(repo, ".metaobjects", "config.json"),
-    JSON.stringify({ schema_version: 1, migrate: { scope } }),
-    "utf8",
-  );
-}
+import { arena, arenaFile, declareScope, PLATFORM, scaffold } from "./support/scope-fixture.js";
 
 /** Materialize the current metadata schema into the DB via the real migrate path. */
 async function materialize(repo: string, dbUrl: string): Promise<void> {
@@ -101,14 +48,14 @@ afterEach(() => {
 
 describe("meta verify --db — migrate.scope", () => {
   test("an out-of-scope object's divergence is reported as out-of-scope, not as drift", async () => {
-    const { repo, dbUrl } = scaffold();
+    const { repo, dbUrl } = scaffold("metaobjects-verify-scope-");
     try {
       await materialize(repo, dbUrl);
       expect(await run(["verify", "--cwd", repo, "--db", dbUrl, "--dialect", "sqlite"])).toBe(0);
 
       declareScope(repo, ["acme::platform::**"]);
       // The other owner's model gains a column its own migration has not applied.
-      writeFileSync(join(repo, "metaobjects", "meta.arena.json"), ARENA(true), "utf8");
+      writeFileSync(arenaFile(repo), arena({ venue: true }), "utf8");
       out = [];
       err = [];
 
@@ -123,7 +70,7 @@ describe("meta verify --db — migrate.scope", () => {
   });
 
   test("in-scope drift still fails the gate under a scope", async () => {
-    const { repo, dbUrl } = scaffold();
+    const { repo, dbUrl } = scaffold("metaobjects-verify-scope-");
     try {
       await materialize(repo, dbUrl);
       declareScope(repo, ["acme::platform::**"]);
@@ -147,10 +94,10 @@ describe("meta verify --db — migrate.scope", () => {
   });
 
   test("with no migrate.scope declared, the same divergence IS drift (unchanged)", async () => {
-    const { repo, dbUrl } = scaffold();
+    const { repo, dbUrl } = scaffold("metaobjects-verify-scope-");
     try {
       await materialize(repo, dbUrl);
-      writeFileSync(join(repo, "metaobjects", "meta.arena.json"), ARENA(true), "utf8");
+      writeFileSync(arenaFile(repo), arena({ venue: true }), "utf8");
       out = [];
       err = [];
 

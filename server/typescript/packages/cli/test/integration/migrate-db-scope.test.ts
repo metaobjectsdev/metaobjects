@@ -13,61 +13,9 @@
  * the loaded FQNs named, so the author can see what missed.
  */
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { rmSync } from "node:fs";
 import { run } from "../../src/index.js";
-
-const PLATFORM = JSON.stringify({
-  "metadata.root": {
-    package: "acme::platform",
-    children: [{
-      "object.entity": {
-        name: "Job",
-        children: [
-          { "source.rdb": { name: "src", "@table": "jobs" } },
-          { "field.long": { name: "id" } },
-          { "field.string": { name: "title" } },
-          { "identity.primary": { name: "pk", "@fields": ["id"] } },
-        ],
-      },
-    }],
-  },
-});
-
-/** Another owner's package, sharing the database. */
-const ARENA = JSON.stringify({
-  "metadata.root": {
-    package: "arena",
-    children: [{
-      "object.entity": {
-        name: "Match",
-        children: [
-          { "source.rdb": { name: "src", "@table": "matches" } },
-          { "field.long": { name: "id" } },
-          { "identity.primary": { name: "pk", "@fields": ["id"] } },
-        ],
-      },
-    }],
-  },
-});
-
-function scaffold(): { repo: string; dbUrl: string } {
-  const repo = mkdtempSync(join(tmpdir(), "metaobjects-migrate-scope-"));
-  mkdirSync(join(repo, "metaobjects"), { recursive: true });
-  writeFileSync(join(repo, "metaobjects", "meta.platform.json"), PLATFORM, "utf8");
-  writeFileSync(join(repo, "metaobjects", "meta.arena.json"), ARENA, "utf8");
-  return { repo, dbUrl: `file:${join(repo, "local.db")}` };
-}
-
-function declareScope(repo: string, scope: string[]): void {
-  mkdirSync(join(repo, ".metaobjects"), { recursive: true });
-  writeFileSync(
-    join(repo, ".metaobjects", "config.json"),
-    JSON.stringify({ schema_version: 1, migrate: { scope } }),
-    "utf8",
-  );
-}
+import { declareScope, scaffold } from "./support/scope-fixture.js";
 
 const migrateFromDb = (repo: string, dbUrl: string): Promise<number> =>
   run(["migrate", "--from-db", "--cwd", repo, "--db", dbUrl, "--dialect", "sqlite", "--slug", "initial"]);
@@ -92,7 +40,7 @@ afterEach(() => {
 
 describe("meta migrate --db — migrate.scope", () => {
   test("a scope matching NO loaded object is refused, naming the patterns and what was loaded", async () => {
-    const { repo, dbUrl } = scaffold();
+    const { repo, dbUrl } = scaffold("metaobjects-migrate-scope-");
     try {
       declareScope(repo, ["typo::**"]);
       expect(await migrateFromDb(repo, dbUrl)).toBe(2);
@@ -108,7 +56,7 @@ describe("meta migrate --db — migrate.scope", () => {
   });
 
   test("a scope that matches something still runs (the refusal is not a blanket break)", async () => {
-    const { repo, dbUrl } = scaffold();
+    const { repo, dbUrl } = scaffold("metaobjects-migrate-scope-");
     try {
       declareScope(repo, ["acme::platform::**"]);
       expect(await migrateFromDb(repo, dbUrl)).toBe(0);
@@ -122,7 +70,7 @@ describe("meta migrate --db — migrate.scope", () => {
   });
 
   test("--format json stays parseable under a scope — the out-of-scope note is text-format only", async () => {
-    const { repo, dbUrl } = scaffold();
+    const { repo, dbUrl } = scaffold("metaobjects-migrate-scope-");
     try {
       declareScope(repo, ["acme::platform::**"]);
       expect(await run([
@@ -144,7 +92,7 @@ describe("meta migrate --db — migrate.scope", () => {
   });
 
   test("no migrate.scope declared — unchanged, both tables governed", async () => {
-    const { repo, dbUrl } = scaffold();
+    const { repo, dbUrl } = scaffold("metaobjects-migrate-scope-");
     try {
       expect(await migrateFromDb(repo, dbUrl)).toBe(0);
       const all = [...out, ...err].join("\n");
