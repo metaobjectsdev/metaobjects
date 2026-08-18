@@ -42,7 +42,7 @@ README.md
 
 Each port's runner reads `cases.json`, and for every case: compiles `scope`
 with its native pattern compiler, then for every `expect` entry asserts
-`isInScope(fqn, compiledScope) === matches`. All ports assert the same
+`matchesScope(fqn, compiledScope) === matches`. All ports assert the same
 booleans — single-source, byte-identical expectations.
 
 ## Reference implementation

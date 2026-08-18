@@ -200,7 +200,7 @@ import { EntityFetcherProvider, EntityGrid } from "@metaobjectsdev/tanstack";
 - **Codegen substrate**: ts-poet for greenfield emit, ts-morph for in-place edits, Biome for format pass, `git merge-file --diff3` for hand-edit-preserving regen.
 - **Runtime substrate**: Kysely for TS (user-provided connection, async-only).
 - **Migration substrate**: Postgres + SQLite for TS v0.3.
-- **Metadata location**: resolved via `resolveCollection()` (`@metaobjectsdev/sdk`) — the single authority. No code path may hardcode the `metaobjects/` directory name except `meta init`, which scaffolds it. See [docs/features/metadata-sources.md](docs/features/metadata-sources.md).
+- **Metadata location**: resolved via `resolveCollection()` (`@metaobjectsdev/sdk`) — the single authority. The directory name lives in ONE literal, `DEFAULT_METADATA_DIR` in `sdk/src/memory.ts`; every other site (`meta init`'s scaffold included) imports it. No code path may write the literal again. See [docs/features/metadata-sources.md](docs/features/metadata-sources.md).
 
 ## Explicitly out of scope
 

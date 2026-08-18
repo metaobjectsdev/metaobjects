@@ -158,8 +158,9 @@ produced the cross-port `LIKE`/`ILIKE` divergence fixed in 0.21.6.
 **TypeScript is the only port with a runner today.** The reference implementation is
 [`server/typescript/packages/sdk/src/scope.ts`](../server/typescript/packages/sdk/src/scope.ts)
 (`compilePattern` / `compileScope` / `matchesScope`), and the corpus was authored
-against it. Java, Kotlin, C# and Python are deferred to the phase-1 ports plan; the
-corpus exists now precisely so those four land on one grammar rather than four.
+against it. Java, Kotlin, C# and Python have no runner yet; when each gains one, this corpus is
+what it implements against — it exists now precisely so those four land on one
+grammar rather than four.
 
 ## Orphaned fixtures (tested but not yet documented)
 

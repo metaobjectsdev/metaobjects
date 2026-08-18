@@ -3,7 +3,7 @@ import type { ColumnNamingStrategy, MetaData } from "@metaobjectsdev/metadata";
 import { buildExpectedSchema, buildExpectedSchemaWithProvenance } from "../expected-schema.js";
 import { diff, type DiffArgs } from "../diff/index.js";
 import { collectUnmanagedNames } from "../unmanaged.js";
-import { scopeExpectedSchema, type ObjectScopePredicate } from "../scope.js";
+import { carryForwardOutOfScope, scopeExpectedSchema, type ObjectScopePredicate } from "../scope.js";
 import type { Dialect, DiffResult, SchemaSnapshot } from "../types.js";
 import type { ExpectedViewInput } from "../expected-schema.js";
 
@@ -27,8 +27,20 @@ export interface PlanOfflineArgs extends Pick<DiffArgs, "allow" | "onAmbiguous" 
 export interface PlanOfflineResult {
   /** The change set to emit, from diffing metadata-expected against the snapshot. */
   diff: DiffResult;
-  /** The schema the migration brings us to — write this back as the new snapshot on accept. */
+  /**
+   * The schema the migration brings us to — write this back as the new snapshot on
+   * accept. Under a scope this is the governed schema PLUS the out-of-scope entries
+   * the prior snapshot held: committing the narrowed schema would delete them, and a
+   * later widening would then propose CREATE TABLE for a table that exists.
+   */
   nextSnapshot: SchemaSnapshot;
+  /**
+   * The governed (narrowed) expected side — what the diff compared and what the
+   * emitter renders against. Identical to `nextSnapshot` for an unscoped run; under
+   * a scope it is deliberately the SMALLER of the two, since a run must emit DDL
+   * only for what it governs.
+   */
+  expected: SchemaSnapshot;
   /** Qualified physical names excluded by `inScope`; empty when no scope was given. */
   outOfScope: readonly string[];
 }
@@ -47,9 +59,14 @@ export async function planOffline(args: PlanOfflineArgs): Promise<PlanOfflineRes
     }),
     args.inScope,
   );
-  const nextSnapshot = scoped.snapshot;
+  // The DIFF runs against the narrowed side; the SNAPSHOT keeps what this run
+  // excluded. Committing the narrowed schema would delete every out-of-scope entry
+  // the previous snapshot held, so removing or widening `migrate.scope` later would
+  // propose CREATE TABLE for a table that exists and fail at apply. Byte-identical
+  // for an unscoped run (`outOfScope` empty ⇒ the same object).
+  const nextSnapshot = carryForwardOutOfScope(scoped.snapshot, args.snapshot, scoped.outOfScope);
   const result = await diff({
-    expected: nextSnapshot,
+    expected: scoped.snapshot,
     actual: args.snapshot,
     dialect: args.dialect,
     // #258 — migration generation refuses a primary-key MOVE (there is no primary-key
@@ -72,7 +89,7 @@ export async function planOffline(args: PlanOfflineArgs): Promise<PlanOfflineRes
     ...(args.onAmbiguous ? { onAmbiguous: args.onAmbiguous } : {}),
     ...(args.ignoreTables ? { ignoreTables: args.ignoreTables } : {}),
   });
-  return { diff: result, nextSnapshot, outOfScope: scoped.outOfScope };
+  return { diff: result, nextSnapshot, expected: scoped.snapshot, outOfScope: scoped.outOfScope };
 }
 
 /** Seed an initial reference snapshot from metadata (greenfield baseline). */

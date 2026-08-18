@@ -30,7 +30,7 @@ files it always did.
 location their own way (a Maven `<source>` element, a positional directory, a
 `metadata` config key). The cross-port pattern grammar is already pinned by
 [`fixtures/scope-conformance/`](../../fixtures/scope-conformance/); wiring the other
-four CLIs to the same config file is the phase-1 ports plan.
+four CLIs to the same config file is future work, not yet planned or scheduled.
 
 ---
 
@@ -506,8 +506,8 @@ Design rationale and the full phase plan:
 
 - [`fixtures/scope-conformance/`](../../fixtures/scope-conformance/) — 10 cases
   pinning `*` / `**`, include-union, exclude-after-include, literal metacharacters,
-  and case sensitivity. TypeScript runs it today; the other four ports are deferred
-  to the phase-1 ports plan. See [`CONFORMANCE.md`](../CONFORMANCE.md).
+  and case sensitivity. TypeScript runs it today; the other four ports have no runner
+  yet. See [`CONFORMANCE.md`](../CONFORMANCE.md).
 
 **TypeScript gates**
 

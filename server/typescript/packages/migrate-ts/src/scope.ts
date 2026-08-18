@@ -63,6 +63,36 @@ export interface ScopedExpectedSchema {
 }
 
 /**
+ * Carry an out-of-scope object forward into the snapshot a run is about to commit.
+ *
+ * The committed snapshot is built from the metadata-expected schema, which a scoped
+ * run has already narrowed — so accepting a scoped run DELETES every out-of-scope
+ * entry the previous snapshot held. Widening or removing `migrate.scope` later then
+ * proposes `CREATE TABLE` for a table that exists, and the migration fails at apply.
+ *
+ * `prior` is the snapshot (or introspected schema) the run diffed against, and the
+ * entries taken from it are exactly the ones this run excluded — nothing else is
+ * carried, so a table the model never declared is unaffected either way. An empty
+ * `outOfScope` returns the SAME object, so an unscoped run commits a byte-identical
+ * snapshot.
+ */
+export function carryForwardOutOfScope(
+  next: SchemaSnapshot,
+  prior: SchemaSnapshot,
+  outOfScope: readonly string[],
+): SchemaSnapshot {
+  if (outOfScope.length === 0) return next;
+  const excluded = new Set(outOfScope);
+  const keep = <T extends { name: string; schema?: string }>(objs: readonly T[]): T[] =>
+    objs.filter((o) => excluded.has(qualifiedDbName(o)));
+  return {
+    ...next,
+    tables: [...next.tables, ...keep(prior.tables)],
+    views: [...next.views, ...keep(prior.views)],
+  };
+}
+
+/**
  * The distinct database schemas a snapshot's tables and views sit in, absent
  * normalized to the Postgres default — the value `diff` derives for itself when no
  * `scopeSchemas` is supplied. The ONE definition: any caller narrowing an expected

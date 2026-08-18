@@ -15,7 +15,7 @@ export { diff } from "./diff/index.js";
 export { collectUnmanagedNames } from "./unmanaged.js";
 // Per-command scope (`migrate.scope`) — see scope.ts for why the suppression is
 // two-sided and why the pattern engine stays in @metaobjectsdev/sdk.
-export { scopeExpectedSchema, declaredSchemasOf } from "./scope.js";
+export { scopeExpectedSchema, declaredSchemasOf, carryForwardOutOfScope } from "./scope.js";
 export type { ObjectScopePredicate, ScopedExpectedSchema } from "./scope.js";
 export { qualifiedDbName } from "./qualified-name.js";
 export { computeDrift, computeDriftFromActual, type ComputeDriftOptions, type DriftResult } from "./drift/drift.js";

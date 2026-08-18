@@ -121,6 +121,28 @@ describe("meta migrate --db — migrate.scope", () => {
     }
   });
 
+  test("--format json stays parseable under a scope — the out-of-scope note is text-format only", async () => {
+    const { repo, dbUrl } = scaffold();
+    try {
+      declareScope(repo, ["acme::platform::**"]);
+      expect(await run([
+        "--format", "json", "migrate", "--from-db", "--cwd", repo,
+        "--db", dbUrl, "--dialect", "sqlite", "--slug", "initial",
+      ])).toBe(0);
+      // The whole point: stdout is ONE machine-readable document. A prose line
+      // ahead of it breaks `| jq` outright, which is how the out-of-scope note
+      // shipped — unconditional `log.info`.
+      const stdout = out.join("\n");
+      expect(stdout).not.toContain("out-of-scope");
+      expect(() => JSON.parse(stdout)).not.toThrow();
+      // Moved to stderr, not dropped — an object that was neither created nor
+      // dropped has to be reported somewhere, in every format.
+      expect(err.join("\n")).toContain("out-of-scope");
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
   test("no migrate.scope declared — unchanged, both tables governed", async () => {
     const { repo, dbUrl } = scaffold();
     try {

@@ -19,6 +19,7 @@ import {
   introspect,
   diff,
   collectUnmanagedNames,
+  carryForwardOutOfScope,
   emit,
   writeMigration,
   baselineFromMetadata,
@@ -128,13 +129,21 @@ function resolveFormatOutDir(config: ResolvedMigrateConfig, metaRoot: string): s
  * Say what a declared `migrate.scope` left out. An excluded object produces neither
  * a create nor a drop, so without this line "no changes" and "no changes to the half
  * of the model this run governs" read identically.
+ *
+ * STDOUT in text format, STDERR otherwise. `--format json` / `--format toon` put a
+ * single machine-readable document on stdout, and a prose line ahead of it breaks
+ * `| jq` outright — the same split `emitStructuredError` makes two functions down.
+ * Routed to stderr rather than dropped, because the non-TTY default format is toon
+ * (`resolveFormat`): suppressing it outright would silence the note for every
+ * piped and CI run, which is most of them.
  */
-function logOutOfScope(names: readonly string[]): void {
+function logOutOfScope(names: readonly string[], fmt: OutputFormat): void {
   if (names.length === 0) return;
-  log.info(
+  const msg =
     `meta migrate — ${names.length} object(s) out-of-scope (outside migrate.scope, ` +
-      `governed elsewhere): ${names.join(", ")}`,
-  );
+    `governed elsewhere): ${names.join(", ")}`;
+  if (fmt === "text") log.info(msg);
+  else log.warn(msg);
 }
 
 function emitStructuredError(error: string, hint: string, fmt: OutputFormat): void {
@@ -500,7 +509,7 @@ export async function migrateCommand(
       toObjectScope(collection.migrateScope),
     );
     const expected = scoped.snapshot;
-    logOutOfScope(scoped.outOfScope);
+    logOutOfScope(scoped.outOfScope, fmt);
     let actual;
     try {
       actual = await introspect(kysely.db, kysely.dialect);
@@ -677,9 +686,16 @@ export async function migrateCommand(
     // native ALTER vs recreate-and-copy on older SQLite.
     if (!config.dryRun && exitCode === 0 && !applyFailed && writtenPaths.length > 0) {
       try {
+        // The COMMITTED snapshot keeps what `migrate.scope` excluded: writing the
+        // narrowed schema would delete every out-of-scope entry, so a later widening
+        // would propose CREATE TABLE for a table that exists and fail at apply. The
+        // out-of-scope entries come from `actual` — they are in the database, which
+        // is the same thing `baseline --from-db` records. Identical object, and so a
+        // byte-identical snapshot, for an unscoped run.
+        const committed = carryForwardOutOfScope(expected, actual, scoped.outOfScope);
         await writeSnapshot(
           snapshotPath(resolvePath(metaRoot, config.outDir), kysely.dialect),
-          actual.meta !== undefined ? { ...expected, meta: actual.meta } : expected,
+          actual.meta !== undefined ? { ...committed, meta: actual.meta } : committed,
         );
       } catch (err) {
         // The migration itself is written (and possibly applied) — report the
@@ -815,8 +831,12 @@ export async function runBaseline(
     // `baseline` records a STARTING POINT, so it is deliberately NOT scoped: the
     // `--from-db` arm captures whatever the database holds (there is no provenance
     // for an introspected table), and an offline baseline that recorded less would
-    // disagree with it. An out-of-scope table sitting in the snapshot is harmless —
-    // every later run suppresses it on both sides.
+    // disagree with it. An out-of-scope table sitting in the snapshot is harmless:
+    // every later run suppresses it on both sides of the diff, and an accepted
+    // scoped run carries it FORWARD (`carryForwardOutOfScope`) rather than dropping
+    // it — which is what makes that true. Committing the narrowed schema instead
+    // would delete the entry, and removing the scope later would then propose
+    // CREATE TABLE for a table that exists.
     try {
       const collection = await resolveCollection(metaRoot);
       metadata = await loadMemory(collection.configDir, {
@@ -1033,8 +1053,11 @@ export async function runOfflineGenerate(
     throw err;
   }
 
-  const { diff: diffResult, nextSnapshot } = plan;
-  logOutOfScope(plan.outOfScope);
+  // `nextSnapshot` is what gets COMMITTED (it retains this run's out-of-scope
+  // entries); `expected` is the governed side the emitter renders against. Equal
+  // for an unscoped run.
+  const { diff: diffResult, nextSnapshot, expected: governedExpected } = plan;
+  logOutOfScope(plan.outOfScope, fmt);
 
   if (diffResult.blocked.length > 0) {
     log.error(`migrate: ${diffResult.blocked.length} destructive change(s) blocked; re-run with --allow <tokens>`);
@@ -1051,7 +1074,7 @@ export async function runOfflineGenerate(
 
   const emitResult = emit(diffResult.changes, {
     dialect: config.dialect,
-    expectedSchema: nextSnapshot,
+    expectedSchema: governedExpected,
     actualSchema: snapshot,
     ...(snapshot.meta ? { actualMeta: snapshot.meta } : {}),
   });
@@ -1233,7 +1256,7 @@ async function runD1Migrate(
     toObjectScope(collection.migrateScope),
   );
   const expected = scoped.snapshot;
-  logOutOfScope(scoped.outOfScope);
+  logOutOfScope(scoped.outOfScope, fmt);
   let actual;
   try {
     actual = await introspectD1({

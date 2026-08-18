@@ -18,6 +18,7 @@ import { MetaDataLoader, InMemoryStringSource, type MetaRoot } from "@metaobject
 import { buildExpectedSchema, buildExpectedSchemaWithProvenance } from "../src/expected-schema.js";
 import { scopeExpectedSchema } from "../src/scope.js";
 import { diff } from "../src/diff/index.js";
+import { planOffline } from "../src/snapshot/plan.js";
 import { serializeSnapshot, SNAPSHOT_FORMAT_VERSION } from "../src/snapshot/serialize.js";
 import type { SchemaSnapshot } from "../src/types.js";
 
@@ -149,6 +150,49 @@ describe("scopeExpectedSchema", () => {
     const scoped = scopeExpectedSchema(withStranger, platformOnly);
     expect(scoped.snapshot.tables.map((t) => t.name)).toEqual(["jobs", "stranger"]);
     expect(scoped.outOfScope).toEqual(["public.matches"]);
+  });
+});
+
+describe("an accepted scoped run keeps out-of-scope entries in the committed snapshot", () => {
+  test("the snapshot planOffline hands back retains the excluded table", async () => {
+    const root = await loadBoth();
+    const prior = buildExpectedSchema(root, { dialect: "sqlite" });
+    expect(prior.tables.map((t) => t.name).sort()).toEqual(["jobs", "matches"]);
+
+    const plan = await planOffline({
+      metadata: root,
+      dialect: "sqlite",
+      snapshot: prior,
+      inScope: platformOnly,
+    });
+
+    // The DIFF side is narrowed — the run governs `jobs` only...
+    expect(plan.expected.tables.map((t) => t.name)).toEqual(["jobs"]);
+    // ...but the snapshot it commits still holds `matches`. Committing the narrowed
+    // schema would delete it, and removing `migrate.scope` later would then propose
+    // CREATE TABLE for a table that exists — a migration that fails at apply.
+    expect(plan.nextSnapshot.tables.map((t) => t.name).sort()).toEqual(["jobs", "matches"]);
+  });
+
+  test("an unscoped run commits the SAME object — byte-identical snapshot", async () => {
+    const root = await loadBoth();
+    const prior = buildExpectedSchema(root, { dialect: "sqlite" });
+    const plan = await planOffline({ metadata: root, dialect: "sqlite", snapshot: prior });
+    expect(plan.nextSnapshot).toBe(plan.expected);
+  });
+
+  test("removing the scope after an accepted run proposes nothing (the round trip)", async () => {
+    const root = await loadBoth();
+    const prior = buildExpectedSchema(root, { dialect: "sqlite" });
+
+    const scopedRun = await planOffline({
+      metadata: root, dialect: "sqlite", snapshot: prior, inScope: platformOnly,
+    });
+    // Second run, scope removed, diffing against what the first run committed.
+    const unscopedRun = await planOffline({
+      metadata: root, dialect: "sqlite", snapshot: scopedRun.nextSnapshot,
+    });
+    expect(unscopedRun.diff.changes).toEqual([]);
   });
 });
 

@@ -4,7 +4,7 @@
  * collection still loads the whole model; only the emitted file set narrows.
  */
 import { describe, test, expect } from "bun:test";
-import { cpSync, mkdtempSync, mkdirSync, rmSync, readdirSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, mkdirSync, rmSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { run } from "../../src/index.js";
 
@@ -67,20 +67,39 @@ describe("meta gen — collection scope", () => {
     }
   });
 
-  test("no declared scope emits every entity (byte-identical to today)", async () => {
-    const root = setupRepo();
+  test("an unscoped run emits every entity, byte-for-byte the same as an all-matching scope", async () => {
+    // Previously titled "byte-identical to today" while asserting only that three
+    // FILENAMES were present. A title claiming a byte guarantee over a test that
+    // reads no bytes is how the real guarantee went unexamined — the resolver was
+    // reordering the loaded file list, and therefore the emitted content, with
+    // nothing here able to see it.
+    const unscoped = setupRepo();
+    const allMatching = setupRepo();
     try {
       // No .metaobjects/config.json at all — the default, unscoped path.
-      const exit = await run(["gen", "--cwd", root]);
-      expect(exit).toBe(0);
+      expect(await run(["gen", "--cwd", unscoped])).toBe(0);
+      // A scope that admits everything must be indistinguishable from no scope.
+      declareScope(allMatching, ["trainerWebsite::**"]);
+      expect(await run(["gen", "--cwd", allMatching])).toBe(0);
 
-      const outDir = genOutDir(root);
-      const files = readdirSync(outDir);
-      expect(files).toContain("Post.ts");
-      expect(files).toContain("User.ts");
-      expect(files).toContain("Tag.ts");
+      const names = readdirSync(genOutDir(unscoped)).sort();
+      expect(names).toContain("Post.ts");
+      expect(names).toContain("User.ts");
+      expect(names).toContain("Tag.ts");
+      expect(readdirSync(genOutDir(allMatching)).sort()).toEqual(names);
+
+      for (const name of names) {
+        const a = readFileSync(join(genOutDir(unscoped), name), "utf8");
+        const b = readFileSync(join(genOutDir(allMatching), name), "utf8");
+        // Real bytes, not a filename listing. The outDir is baked into each
+        // repo's config, so nothing generated should mention it — if that ever
+        // changes, this is the assertion that says so.
+        expect(a).not.toContain(unscoped);
+        expect(b).toBe(a);
+      }
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      rmSync(unscoped, { recursive: true, force: true });
+      rmSync(allMatching, { recursive: true, force: true });
     }
   });
 });
