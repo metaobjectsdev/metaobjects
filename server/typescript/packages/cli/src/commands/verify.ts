@@ -638,20 +638,20 @@ export async function verifyCommand(
       views: snapshot.views.filter((v) => !excluded.has(qualifiedDbName(v))),
     };
 
+    // Pin the schema scope to the UNFILTERED snapshot's schemas whenever the filter
+    // above removed anything (migrate-ts's scope.ts header has the mechanism):
+    // filtering `expected` down to empty would otherwise reach `diff`'s "no model,
+    // govern the whole database" fallback and report every table another owner has
+    // as a snapshot disagreement. Nothing filtered ⇒ nothing passed ⇒ an unscoped
+    // project's arguments are unchanged.
+    const snapshotSchemas = excluded.size === 0 ? [] : declaredSchemasOf(snapshot);
+
     const result = await diff({
       expected: scopedSnapshot,
       actual,
       allow: {},
       unmanagedNames: [...collectUnmanagedNames(root), ...outOfScope],
-      // Pin the schema scope to the UNFILTERED snapshot's schemas whenever the
-      // filter above removed anything (migrate-ts's scope.ts header has the
-      // mechanism): filtering `expected` down to empty would otherwise reach
-      // `diff`'s "no model, govern the whole database" fallback and report every
-      // table another owner has as a snapshot disagreement. Nothing filtered ⇒
-      // nothing passed ⇒ an unscoped project's arguments are unchanged.
-      ...(excluded.size > 0 && declaredSchemasOf(snapshot).length > 0
-        ? { scopeSchemas: declaredSchemasOf(snapshot) }
-        : {}),
+      ...(snapshotSchemas.length > 0 ? { scopeSchemas: snapshotSchemas } : {}),
     });
     if (result.changes.length === 0) return [];
 
