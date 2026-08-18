@@ -87,6 +87,21 @@ export {
 } from "./memory.js";
 export type { LoadMemoryOptions } from "./memory.js";
 
+// Scope — output filter over fully-qualified node names
+export { compileScope, matchesScope } from "./scope.js";
+export type { Scope, CompiledScope } from "./scope.js";
+
+// Source resolution — a declared source SET to a canonically-sorted file list
+export { resolveSources, DEFAULT_SOURCES } from "./sources.js";
+export type { SourceSpec, ResolvedSource } from "./sources.js";
+
+// Discovery — nearest-ancestor `.metaobjects/config.json`, bounded by the repo root
+export { findConfigDir } from "./discovery.js";
+
+// Collection — the single authority on where a project's metadata lives
+export { resolveCollection } from "./collection.js";
+export type { Collection } from "./collection.js";
+
 // Workspace discovery — finds peer metadata packages in a monorepo
 export { discoverWorkspace, resolveExtendsOrder, packageLabel } from "./workspace.js";
 export type { Workspace, WorkspacePackage } from "./workspace.js";
