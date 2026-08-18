@@ -10,10 +10,14 @@
 // documentation of record on how each one is satisfied — deliberately not
 // collapsed into one over-broad assertion, because two earlier drafts of
 // this gate got that collapse wrong in opposite directions:
-//   1. `resolveSources` CANONICALIZES file order — it sorts its output by
-//      absolute path (sources.ts:127), so every permutation of a declared
-//      source SET collapses to the same file list before the loader ever
-//      runs. Test 1 pins this directly.
+//   1. `resolveSources` CANONICALIZES file order — it walks the specs in
+//      CONTENT order rather than declared order, so every permutation of a
+//      declared source SET collapses to the same file list before the loader
+//      ever runs. Test 1 pins this directly. (What that canonical order IS —
+//      per-directory-level, files before subdirectories, never a flat sort of
+//      absolute paths — is a separate contract, pinned by
+//      `source-order.test.ts`. This file only asserts it does not depend on
+//      declaration order.)
 //   2. The LOADER resolves CONTENT order-independently, given whatever file
 //      list it's handed — including an overlay arriving before its base.
 //      `_partitionOverlayLast` is the mechanism (stable-partitions

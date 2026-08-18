@@ -27,11 +27,9 @@ export const DEFAULT_METAOBJECTS_DIR = ".metaobjects";
 /** Recognized metadata file extensions, matched case-insensitively — mirrors
  *  `DirectorySource` in `@metaobjectsdev/metadata`, which checks
  *  `extname().toLowerCase()`. The single definition every metadata-file
- *  walker in this package uses: `sources.ts`'s `resolveSources` imports
- *  `isMetadataFile` from here rather than keeping its own copy, so the
- *  package's two walkers cannot silently disagree about whether e.g.
- *  `meta.JSON` counts (a real drift this fixes — this walk used to be
- *  case-sensitive while `sources.ts`'s was already case-insensitive). */
+ *  walker in this package uses — and since `resolveSources` (`sources.ts`)
+ *  now calls {@link listMetadataFiles} outright rather than keeping a second
+ *  recursive walk of its own, there is exactly one walker to keep honest. */
 export const METADATA_EXTENSIONS = new Set([".json", ".yaml", ".yml"]);
 
 export function isMetadataFile(name: string): boolean {
@@ -171,23 +169,46 @@ async function collectMetadataPaths(repoRoot: string): Promise<string[]> {
   return listMetadataFiles(join(repoRoot, DEFAULT_METADATA_DIR));
 }
 
+/** Directory excluded at every level of {@link listMetadataFiles} — drafts
+ *  that are deliberately not part of the loaded model. */
+const PENDING_DIR = "_pending";
+
 /**
  * Recursively list metadata files (*.json, *.yaml, *.yml, matched
  * case-insensitively — see `isMetadataFile` above) under a directory,
  * excluding _pending/ at any level. Subdirectories (e.g. projections/) are
  * walked depth-first. Files within a directory are sorted alphabetically for
- * deterministic load order; subdirectories are visited after files at the
+ * deterministic load order; subdirectories are visited AFTER the files at the
  * same level.
+ *
+ * That per-level rule is a contract, not an implementation detail. This is the
+ * order production has always handed the loader, and declaration order survives
+ * into generated output: `codegen-ts`'s barrel emits from `root.objects()`
+ * order, and so do the shared `enums.ts`, `meta docs` page ordering and `meta
+ * export`'s `canonicalSerialize` sibling order. A flat lexicographic sort of
+ * absolute paths is NOT the same list — it disagrees whenever a subdirectory
+ * name sorts before a sibling file (`common/` before `meta.users.json`) — so
+ * `resolveSources` calls this function rather than re-walking and re-sorting.
+ * Pinned by `test/source-order.test.ts`.
+ *
+ * Exported for that gate and for `sources.ts`; not re-exported from the package
+ * index — `resolveCollection` is the public door.
+ *
+ * An entry whose `stat` fails (a dangling symlink, a TOCTOU removal between
+ * `readdir` and `stat`, an EACCES entry) is SKIPPED, matching `DirectorySource`
+ * in `@metaobjectsdev/metadata`, which this walk otherwise mirrors. A failure to
+ * read the directory itself still throws — that is the "you have no metadata
+ * here" case callers report.
  *
  * Format selection (parsing) happens downstream in `FileSource` from
  * `@metaobjectsdev/metadata`, which infers the parser from file extension.
  */
-async function listMetadataFiles(dir: string): Promise<string[]> {
+export async function listMetadataFiles(dir: string): Promise<string[]> {
   let entries: string[];
   try {
     entries = await readdir(dir);
   } catch (err) {
-    throw new Error(`loadMemory: cannot read ${dir}: ${(err as Error).message}`);
+    throw new Error(`cannot read metadata directory ${dir}: ${(err as Error).message}`);
   }
   const paths: string[] = [];
   const subdirs: string[] = [];
@@ -198,17 +219,21 @@ async function listMetadataFiles(dir: string): Promise<string[]> {
   // deterministic-enumeration FLOOR, not the fix; it keeps every derived artifact
   // that preserves declaration order, e.g. serialization, stable across runtimes.)
   for (const entry of [...entries].sort()) {
-    if (entry === "_pending") continue;
+    if (entry === PENDING_DIR) continue;
     const full = join(dir, entry);
-    const s = await stat(full);
+    // `stat` (not `lstat`/`Dirent.isDirectory()`) so a symlinked subdirectory is
+    // traversed — `DirectorySource` has always followed symlinks this way.
+    const s = await stat(full).catch(() => undefined);
+    if (s === undefined) continue;
     if (s.isDirectory()) {
       subdirs.push(full);
     } else if (s.isFile() && isMetadataFile(entry)) {
       paths.push(full);
     }
   }
-  // Recurse into subdirectories after collecting files at this level
-  for (const sub of subdirs.sort()) {
+  // Recurse into subdirectories after collecting files at this level.
+  // `subdirs` is already in sorted order (built from the sorted `entries` above).
+  for (const sub of subdirs) {
     paths.push(...(await listMetadataFiles(sub)));
   }
   return paths;

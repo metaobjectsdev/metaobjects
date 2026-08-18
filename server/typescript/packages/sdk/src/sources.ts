@@ -3,17 +3,27 @@
 // Phase-1 metadata-source-resolution — source spec resolution.
 //
 // Turns a declared source SET (`.metaobjects/config.json`'s `sources`) into a
-// canonically-sorted, de-duplicated list of metadata file paths. The FULL
+// canonically-ordered, de-duplicated list of metadata file paths. The FULL
 // result — including which spec each entry attributes to — is a pure
 // function of the source SET, never of declaration order: permuting `specs`
-// cannot change the output, even when two specs overlap on the same file. A
-// later phase-1 task pins this with a permutation test (the design's
-// linchpin), so both the sort-by-absolute-path step and the content-based
-// overlap tie-break below are load-bearing.
-import { readdir, stat } from "node:fs/promises";
-import { isAbsolute, join, resolve } from "node:path";
+// cannot change the output, even when two specs overlap on the same file.
+// `test/order-independence.test.ts` pins that (the design's linchpin), so the
+// canonical spec ordering below is load-bearing.
+//
+// Canonical is NOT the same as "flat-sorted". Within one directory spec the
+// order is `listMetadataFiles`'s (memory.ts) — files at a level, then that
+// level's subdirectories, depth-first — because that is the order production
+// has always handed the loader, and declaration order survives into generated
+// output (the barrel's export list, the shared `enums.ts`, `meta docs` page
+// order, `meta export`'s sibling order). A flat sort of absolute paths
+// silently reorders any project with a subdirectory whose name sorts before a
+// sibling file. Across specs, order is decided by spec CONTENT, which is what
+// keeps the whole result permutation-invariant. `test/source-order.test.ts`
+// pins both halves.
+import { stat } from "node:fs/promises";
+import { isAbsolute, resolve } from "node:path";
 import { ParseError, codeSource } from "@metaobjectsdev/metadata";
-import { DEFAULT_METADATA_DIR, isMetadataFile } from "./memory.js";
+import { DEFAULT_METADATA_DIR, listMetadataFiles } from "./memory.js";
 
 /** Tagged union of source kinds. `resource` and `package` are declared now so
  *  the config shape is stable across phases; only `path` resolves in phase 1 —
@@ -42,36 +52,6 @@ export interface ResolvedSource {
  *  whole mechanism exists to eliminate. */
 export const DEFAULT_SOURCES: readonly SourceSpec[] = [{ path: DEFAULT_METADATA_DIR }];
 
-const PENDING_DIR = "_pending";
-
-/** Recursively collect metadata files under `dir`, excluding `_pending/` at any
- *  depth. Uses `stat` (follows symlinks) rather than `lstat` or
- *  `Dirent.isDirectory()` — `DirectorySource` in `@metaobjectsdev/metadata` has
- *  always followed symlinks this way, so a symlinked subdirectory must be
- *  traversed here too, or this walk and the loader's would silently disagree
- *  about the same tree. */
-async function collectDir(dir: string, out: string[]): Promise<void> {
-  const entries = await readdir(dir);
-  for (const entry of entries) {
-    if (entry === PENDING_DIR) continue;
-    const full = join(dir, entry);
-    let s;
-    try {
-      s = await stat(full);
-    } catch {
-      // A dangling symlink, a TOCTOU removal between readdir and stat, or an
-      // inaccessible (EACCES) entry — skip it, matching DirectorySource in
-      // @metaobjectsdev/metadata (directory-source.ts), which this walk
-      // otherwise mirrors. An uncaught stat() here would crash
-      // resolveSources with a raw Node ENOENT on a tree the loader reads
-      // fine.
-      continue;
-    }
-    if (s.isDirectory()) await collectDir(full, out);
-    else if (s.isFile() && isMetadataFile(entry)) out.push(full);
-  }
-}
-
 /** Narrows `spec` to its `path` arm, throwing `ERR_SOURCE_KIND_UNSUPPORTED`
  *  for `resource`/`package` — phase 1 resolves `path` only. Called in two
  *  separate passes by {@link resolveSources} (see the comment there): an
@@ -87,17 +67,20 @@ function assertPathSpec(spec: SourceSpec): asserts spec is { readonly path: stri
 }
 
 /**
- * Resolve a declared source SET to a canonically-sorted list of metadata files.
+ * Resolve a declared source SET to a canonically-ordered list of metadata files.
  *
  * The full result — each entry's `.file` AND its `.spec` — is a pure function
- * of the SET of `specs`: permuting `specs` cannot change the output. Two parts
- * make that hold: entries are sorted by absolute path (so file ORDER carries no
- * declaration-order information), and when two specs overlap on the same file,
- * the one attributed is chosen by comparing `JSON.stringify(spec)` — a
- * content-only tie-break, so which spec "wins" never depends on which was
- * processed first. Declared order carries no information anywhere in this
- * function (the loader derives whatever order it needs from the files
- * themselves).
+ * of the SET of `specs`: permuting `specs` cannot change the output. One thing
+ * makes that hold: the specs are processed in CONTENT order
+ * (`JSON.stringify(spec)`, ascending) rather than declared order, so both the
+ * emitted file order and the spec attributed to a file overlapping two specs
+ * are decided by content alone. Declared order carries no information anywhere
+ * in this function.
+ *
+ * Within one directory spec the file order is `listMetadataFiles`'s — files at
+ * a level, then that level's subdirectories, depth-first. That is deliberately
+ * NOT a flat sort of absolute paths: see the file header, and
+ * `test/source-order.test.ts`.
  *
  * Only `path` specs resolve in phase 1: a directory is walked recursively, a
  * file is taken as-is. An unresolvable `path` throws `ERR_SOURCE_UNRESOLVED`
@@ -121,34 +104,37 @@ export async function resolveSources(
   // "pure function of the SET" invariant (see the file header).
   for (const spec of specs) assertPathSpec(spec);
 
+  // Content order, computed once. This is the ONLY place declaration order is
+  // discarded, and everything below depends on it: the output file order, the
+  // spec attributed to an overlapping file, and which of several unresolvable
+  // paths reports its ERR_SOURCE_UNRESOLVED first.
+  const ordered = [...specs].sort((a, b) => {
+    const [ja, jb] = [JSON.stringify(a), JSON.stringify(b)];
+    return ja < jb ? -1 : ja > jb ? 1 : 0;
+  });
+
+  // Insertion order IS output order — a Map preserves it, so the per-spec walk
+  // order above survives to the caller. First contributor wins a shared file,
+  // which is content-determined because `ordered` is.
   const byFile = new Map<string, SourceSpec>();
 
-  for (const spec of specs) {
+  for (const spec of ordered) {
     assertPathSpec(spec); // already validated above; narrows `spec.path` for TS below.
 
     const target = isAbsolute(spec.path) ? spec.path : resolve(configDir, spec.path);
-    let stats;
-    try {
-      stats = await stat(target);
-    } catch {
+    const stats = await stat(target).catch(() => undefined);
+    if (stats === undefined) {
       throw new ParseError(
         `source path "${spec.path}" does not exist (resolved to ${target}, relative to ${configDir})`,
         { code: "ERR_SOURCE_UNRESOLVED", source: codeSource("resolveSources") },
       );
     }
 
-    const found: string[] = [];
-    if (stats.isDirectory()) await collectDir(target, found);
-    else found.push(target);
+    const found = stats.isDirectory() ? await listMetadataFiles(target) : [target];
     for (const file of found) {
-      const existing = byFile.get(file);
-      // Content-only tie-break: never "first spec processed wins", or the
-      // attributed `.spec` would depend on declaration order.
-      if (existing === undefined || JSON.stringify(spec) < JSON.stringify(existing)) {
-        byFile.set(file, spec);
-      }
+      if (!byFile.has(file)) byFile.set(file, spec);
     }
   }
 
-  return [...byFile.keys()].sort().map((file) => ({ file, spec: byFile.get(file)! }));
+  return [...byFile].map(([file, spec]) => ({ file, spec }));
 }

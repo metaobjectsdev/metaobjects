@@ -16,13 +16,15 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { resolveCollection } from "../src/collection.js";
-import { loadMemory } from "../src/memory.js";
+import { DEFAULT_METADATA_DIR, listMetadataFiles, loadMemory } from "../src/memory.js";
 import { compileScope, matchesScope } from "../src/scope.js";
 
 // Located relative to this test file (never a hardcoded absolute home path —
 // this repo is public) so the test runs unchanged on any checkout.
 const EXAMPLES_PROJECT = resolve(import.meta.dir, "../../../../../examples/advanced-modeling");
-const EXAMPLES = join(EXAMPLES_PROJECT, "metaobjects");
+// `DEFAULT_METADATA_DIR`, not the literal: this file dogfoods the rule that no
+// call site may assume that directory name, so it must not assume it either.
+const EXAMPLES = join(EXAMPLES_PROJECT, DEFAULT_METADATA_DIR);
 
 // The tree holds exactly these three files today (verified at HEAD by the
 // controller before dispatching this task) — asserted as a floor ("contains
@@ -31,14 +33,16 @@ const EXAMPLES = join(EXAMPLES_PROJECT, "metaobjects");
 const KNOWN_BASENAMES = ["meta.catalog.yaml", "meta.content.yaml", "meta.prompts.yaml"];
 
 /** Shared shape for both dogfood file-set assertions (F22): every resolved
- *  path sits under `under`, the known files are all present, and the set is
- *  sorted — `resolveSources` canonicalizes by sorting absolute paths, so
- *  pinning that here is what makes load order irrelevant to a consumer. */
-function assertKnownFileSet(files: readonly string[], under: string): void {
+ *  path sits under `under`, the known files are all present, and the order is
+ *  exactly the walk order the toolchain has always used — asserted by calling
+ *  `listMetadataFiles` on the same tree rather than restating a rule, so a
+ *  consumer reaching this collection from elsewhere gets byte-identical
+ *  generated output to a consumer sitting on top of it. */
+async function assertKnownFileSet(files: readonly string[], under: string): Promise<void> {
   expect(files.every((f) => f.startsWith(under))).toBe(true);
   const names = files.map((f) => basename(f));
   for (const known of KNOWN_BASENAMES) expect(names).toContain(known);
-  expect([...files]).toEqual([...files].sort());
+  expect([...files]).toEqual(await listMetadataFiles(under));
 }
 
 describe("dogfood: a consumer reaches the in-repo examples tree", () => {
@@ -59,7 +63,7 @@ describe("dogfood: a consumer reaches the in-repo examples tree", () => {
 
   test("resolves every metadata file in it", async () => {
     const c = await resolveCollection(join(consumer, "apps/ui"));
-    assertKnownFileSet(c.files, EXAMPLES);
+    await assertKnownFileSet(c.files, EXAMPLES);
   });
 
   test("the resolved set loads without errors", async () => {
@@ -73,7 +77,7 @@ describe("dogfood: the examples project's own committed config (sources: [])", (
   test("falls back to metaobjects/ under the project root, exactly like every adopter's default config", async () => {
     const c = await resolveCollection(EXAMPLES_PROJECT);
     expect(c.configDir).toBe(EXAMPLES_PROJECT);
-    assertKnownFileSet(c.files, EXAMPLES);
+    await assertKnownFileSet(c.files, EXAMPLES);
   });
 });
 

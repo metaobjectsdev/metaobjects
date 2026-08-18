@@ -37,10 +37,10 @@ four CLIs to the same config file is the phase-1 ports plan.
 ## `sources` — a set, not an ordered list
 
 `sources` is an array for authoring convenience, but it is **specified as a set**.
-Reordering it cannot change what resolves: `resolveSources` sorts the resolved
-absolute paths, and when two entries overlap on the same file the one recorded as
-its provenance is chosen by comparing the entry's content, never by which was
-declared first.
+Reordering it cannot change what resolves: `resolveSources` walks the entries in
+**content order** rather than declared order, so both the resolved file order and —
+when two entries overlap on the same file — the entry recorded as its provenance are
+decided by content, never by which was declared first.
 
 That is a real guarantee rather than a stylistic claim, because the loader does not
 need an order either — it derives overlay precedence from the files themselves
@@ -380,8 +380,14 @@ one line per config.
 Worth knowing precisely, because the layers are easy to conflate and they are not
 redundant.
 
-1. **`resolveSources` canonicalizes.** It sorts resolved absolute paths, so in
-   production the loader never sees a permuted file list at all.
+1. **`resolveSources` canonicalizes.** It processes the entries in content order, so
+   in production the loader never sees a permuted file list at all. Canonical is not
+   the same as "sorted": within one directory entry the files keep the walk order the
+   toolchain has always used — the files at a level, then that level's
+   subdirectories, depth-first — because declaration order survives into generated
+   output (a barrel's export list, the shared `enums.ts`, `meta docs` page order,
+   `meta export`'s sibling order). Flat-sorting the paths would silently reorder any
+   project holding a subdirectory whose name sorts before a sibling file.
 2. **The loader resolves content order-independently.** Overlay-only sources are
    stable-partitioned to merge last, so an overlay reaching a base declared in
    another file resolves the same regardless of which arrived first.
@@ -391,7 +397,9 @@ redundant.
    permuted loader inputs.
 
 Layers 1 and 2 are pinned by
-[`server/typescript/packages/sdk/test/order-independence.test.ts`](../../server/typescript/packages/sdk/test/order-independence.test.ts).
+[`server/typescript/packages/sdk/test/order-independence.test.ts`](../../server/typescript/packages/sdk/test/order-independence.test.ts);
+the per-level walk order layer 1 preserves is pinned by
+[`server/typescript/packages/sdk/test/source-order.test.ts`](../../server/typescript/packages/sdk/test/source-order.test.ts).
 
 ---
 
