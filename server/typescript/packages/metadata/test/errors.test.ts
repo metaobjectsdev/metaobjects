@@ -28,3 +28,16 @@ test("MetaModelError carries a stable ERR_PROVIDER_* code", () => {
   expect(thrown).toBeInstanceOf(MetaModelError);
   expect((thrown as MetaModelError).code).toBe("ERR_PROVIDER_DUPLICATE_ID");
 });
+
+// Phase-1 metadata-source-resolution design: register error codes that will be
+// raised when loading sources from .metaobjects/config.json.
+test("phase-1 source-resolution error codes are registered in the shared ledger", () => {
+  for (const code of [
+    "ERR_SOURCE_UNRESOLVED",
+    "ERR_SOURCE_KIND_UNSUPPORTED",
+    "ERR_SCOPE_PATTERN_INVALID",
+    "ERR_COLLECTION_NOT_FOUND",
+  ]) {
+    expect(ERROR_CODES).toContain(code);
+  }
+});
