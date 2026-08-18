@@ -1,13 +1,8 @@
 import { describe, test, expect } from "bun:test";
 import { compileScope, matchesScope, type Scope } from "../src/scope.js";
+import { errorCode } from "./support/error-code.js";
 
 const match = (fqn: string, scope: Scope) => matchesScope(fqn, compileScope(scope));
-
-/** Pull the stable ERR_ code off a caught error, if it carries one. */
-function errorCode(err: unknown): string {
-  const code = (err as { code?: unknown }).code;
-  return typeof code === "string" ? code : "ERR_UNKNOWN";
-}
 
 describe("compileScope / matchesScope", () => {
   test("empty include matches everything", () => {
@@ -72,6 +67,33 @@ describe("compileScope / matchesScope", () => {
     let caught: unknown;
     try {
       compileScope({ include: ["acme::::Order"] });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeDefined();
+    expect(errorCode(caught)).toBe("ERR_SCOPE_PATTERN_INVALID");
+  });
+
+  test("an odd colon run (malformed separator) is ERR_SCOPE_PATTERN_INVALID, not a silently-unmatchable pattern", () => {
+    // "acme:::Order".split("::") => ["acme", ":Order"] — the leftover ":"
+    // used to compile as a literal character into `^acme:::Order$`, a
+    // regex no legal "::"-joined name can ever match. A typo'd include
+    // pattern therefore silently scoped out EVERYTHING instead of failing
+    // to load.
+    let caught: unknown;
+    try {
+      compileScope({ include: ["acme:::Order"] });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeDefined();
+    expect(errorCode(caught)).toBe("ERR_SCOPE_PATTERN_INVALID");
+  });
+
+  test("a single stray colon (not the :: separator) is also ERR_SCOPE_PATTERN_INVALID", () => {
+    let caught: unknown;
+    try {
+      compileScope({ include: ["acme:Order"] });
     } catch (err) {
       caught = err;
     }

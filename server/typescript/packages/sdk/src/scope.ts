@@ -46,6 +46,21 @@ function compileSegment(segment: string, pattern: string): string {
       source: codeSource("compileSegment"),
     });
   }
+  // A segment surviving the split on the two-character PACKAGE_SEPARATOR
+  // ("::") can still contain a lone ":" when the pattern has an odd colon
+  // run — e.g. "acme:::Order".split("::") => ["acme", ":Order"]. SEGMENT
+  // ([^:]+) already excludes ":" from a well-formed segment, so a leftover
+  // ":" here means the separator was malformed, not that ":" is meant
+  // literally. Left unchecked, escapeLiteral treats it as a literal
+  // character and compiles a regex requiring three colons in a row — which
+  // no legal "::"-joined fully-qualified name can ever contain, so the
+  // pattern silently matches nothing instead of failing loud.
+  if (segment.includes(":")) {
+    throw new ParseError(
+      `scope pattern "${pattern}" has a malformed separator (an odd run of ":") — segments are joined by "::", never a single ":"`,
+      { code: "ERR_SCOPE_PATTERN_INVALID", source: codeSource("compileSegment") },
+    );
+  }
   if (segment === "**") return `(?:${SEGMENTS})`;
   // `*` inside a segment matches any characters except the separator char.
   return segment.split("*").map(escapeLiteral).join("[^:]*");

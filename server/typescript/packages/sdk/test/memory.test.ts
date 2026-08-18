@@ -70,6 +70,37 @@ describe("loadMemory", () => {
     }
   });
 
+  // C4 — memory.ts's own `isMetadataFile` used to match extensions
+  // case-SENSITIVELY while sources.ts's (already fixed to mirror
+  // DirectorySource in @metaobjectsdev/metadata) matched case-insensitively.
+  // Two metadata-file walkers in one package disagreeing about whether
+  // `meta.JSON` counts is exactly the drift this package's design exists to
+  // prevent; memory.ts now imports the shared, case-insensitive
+  // implementation. This is an intentional BEHAVIOR CHANGE — a file named
+  // `*.JSON` (previously silently skipped by loadMemory) is now collected.
+  test("collects a metadata file with an uppercase extension (meta.JSON), case-insensitively", async () => {
+    const root = makeMetaRoot();
+    try {
+      writeFileSync(
+        join(root, "metaobjects", "shouty.JSON"),
+        JSON.stringify({
+          metadata: {
+            package: "test",
+            children: [
+              { object: { name: "Shouty", subType: "entity", children: [] } },
+            ],
+          },
+        }),
+      );
+
+      const meta = await loadMemory(root);
+      const shouty = meta.findObject("Shouty");
+      expect(shouty).toBeDefined();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("loads decision children when metadata files contain them", async () => {
     const root = makeMetaRoot();
     try {

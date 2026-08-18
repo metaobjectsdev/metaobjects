@@ -11,8 +11,9 @@
 // linchpin), so both the sort-by-absolute-path step and the content-based
 // overlap tie-break below are load-bearing.
 import { readdir, stat } from "node:fs/promises";
-import { extname, isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { ParseError, codeSource } from "@metaobjectsdev/metadata";
+import { DEFAULT_METADATA_DIR, isMetadataFile } from "./memory.js";
 
 /** Tagged union of source kinds. `resource` and `package` are declared now so
  *  the config shape is stable across phases; only `path` resolves in phase 1 —
@@ -31,20 +32,17 @@ export interface ResolvedSource {
 
 /** Used when `sources` is absent or empty in `.metaobjects/config.json`. A
  *  DEFAULT, never a requirement — a project that declares `sources` explicitly
- *  need not include `metaobjects/` at all. */
-export const DEFAULT_SOURCES: readonly SourceSpec[] = [{ path: "metaobjects" }];
+ *  need not include `metaobjects/` at all. Built from `DEFAULT_METADATA_DIR`
+ *  (`memory.ts`'s own default-directory constant) rather than restating the
+ *  literal "metaobjects" here: a second independent encoding of the same
+ *  default would let `resolveCollection`'s "does the default dir exist"
+ *  check (`collection.ts`) desync from what `resolveSources` actually
+ *  resolves the moment the default ever changed — silently reproducing the
+ *  "two code paths disagree about where metadata lives" class of bug this
+ *  whole mechanism exists to eliminate. */
+export const DEFAULT_SOURCES: readonly SourceSpec[] = [{ path: DEFAULT_METADATA_DIR }];
 
 const PENDING_DIR = "_pending";
-
-/** Recognized metadata file extensions, matched case-insensitively — mirrors
- *  `DirectorySource` in `@metaobjectsdev/metadata`, which checks
- *  `extname().toLowerCase()`. Without this, `meta.JSON` would be picked up by
- *  the loader and silently skipped here. */
-const METADATA_EXTENSIONS = new Set([".json", ".yaml", ".yml"]);
-
-function isMetadataFile(name: string): boolean {
-  return METADATA_EXTENSIONS.has(extname(name).toLowerCase());
-}
 
 /** Recursively collect metadata files under `dir`, excluding `_pending/` at any
  *  depth. Uses `stat` (follows symlinks) rather than `lstat` or
@@ -57,10 +55,35 @@ async function collectDir(dir: string, out: string[]): Promise<void> {
   for (const entry of entries) {
     if (entry === PENDING_DIR) continue;
     const full = join(dir, entry);
-    const s = await stat(full);
+    let s;
+    try {
+      s = await stat(full);
+    } catch {
+      // A dangling symlink, a TOCTOU removal between readdir and stat, or an
+      // inaccessible (EACCES) entry — skip it, matching DirectorySource in
+      // @metaobjectsdev/metadata (directory-source.ts), which this walk
+      // otherwise mirrors. An uncaught stat() here would crash
+      // resolveSources with a raw Node ENOENT on a tree the loader reads
+      // fine.
+      continue;
+    }
     if (s.isDirectory()) await collectDir(full, out);
     else if (s.isFile() && isMetadataFile(entry)) out.push(full);
   }
+}
+
+/** Narrows `spec` to its `path` arm, throwing `ERR_SOURCE_KIND_UNSUPPORTED`
+ *  for `resource`/`package` — phase 1 resolves `path` only. Called in two
+ *  separate passes by {@link resolveSources} (see the comment there): an
+ *  unsupported kind must be reported regardless of where it sits in the
+ *  declared list. */
+function assertPathSpec(spec: SourceSpec): asserts spec is { readonly path: string } {
+  if ("path" in spec) return;
+  const kind = "resource" in spec ? "resource" : "package";
+  throw new ParseError(
+    `source kind "${kind}" is not supported by this toolchain yet; use a "path" source`,
+    { code: "ERR_SOURCE_KIND_UNSUPPORTED", source: codeSource("resolveSources") },
+  );
 }
 
 /**
@@ -89,16 +112,19 @@ export async function resolveSources(
   configDir: string,
   specs: readonly SourceSpec[],
 ): Promise<ResolvedSource[]> {
+  // Validate every spec's KIND up front, before any filesystem I/O. Without
+  // this separate pass, kind-validation and path resolution were
+  // interleaved in one loop, so which error code came back depended on
+  // DECLARATION ORDER: an unsupported-kind spec placed after an
+  // unresolvable path spec never got reached (the path spec's
+  // ERR_SOURCE_UNRESOLVED fired first) — contradicting this module's own
+  // "pure function of the SET" invariant (see the file header).
+  for (const spec of specs) assertPathSpec(spec);
+
   const byFile = new Map<string, SourceSpec>();
 
   for (const spec of specs) {
-    if (!("path" in spec)) {
-      const kind = "resource" in spec ? "resource" : "package";
-      throw new ParseError(
-        `source kind "${kind}" is not supported by this toolchain yet; use a "path" source`,
-        { code: "ERR_SOURCE_KIND_UNSUPPORTED", source: codeSource("resolveSources") },
-      );
-    }
+    assertPathSpec(spec); // already validated above; narrows `spec.path` for TS below.
 
     const target = isAbsolute(spec.path) ? spec.path : resolve(configDir, spec.path);
     let stats;

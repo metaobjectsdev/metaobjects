@@ -80,12 +80,22 @@ const SourceSpecSchema = z.union([
   z.object({ package: z.string().min(1) }).strict(),
 ]);
 
-// Compile-time parity: if SourceSpecSchema and the hand-written SourceSpec
-// (./sources.ts) ever drift, this assignment stops compiling. A conditional
-// type (`z.infer<...> extends SourceSpec ? true : never`) would silently
-// resolve to `never` instead of erroring — this form fails for real.
-const _sourceSpecParity: SourceSpec = {} as z.infer<typeof SourceSpecSchema>;
-void _sourceSpecParity;
+// Compile-time parity, BOTH directions: if SourceSpecSchema and the
+// hand-written SourceSpec (./sources.ts) ever drift, one of these two
+// assignments stops compiling. Each direction alone catches only HALF the
+// drift — `z.infer<...>` assignable to `SourceSpec` catches an arm added to
+// the schema but missing from SourceSpec, while `SourceSpec` assignable to
+// `z.infer<...>` catches the opposite: an arm added to the hand-written
+// SourceSpec that the schema never gained. A single one-directional
+// assignment (the prior form of this guard) let a SourceSpec-only addition
+// compile clean — proven by deliberately breaking each direction in
+// isolation; see the quality-pass report for both failing `tsc` outputs. A
+// conditional type (`X extends Y ? true : never`) would silently resolve to
+// `never` instead of erroring — this direct-assignment form fails for real.
+const _sourceSpecParityInferToSpec: SourceSpec = {} as z.infer<typeof SourceSpecSchema>;
+const _sourceSpecParitySpecToInfer: z.infer<typeof SourceSpecSchema> = {} as SourceSpec;
+void _sourceSpecParityInferToSpec;
+void _sourceSpecParitySpecToInfer;
 
 /** Mirrors the hand-written `Scope` interface in `./scope.ts`. An absent or
  *  empty `include` means "everything" — see `matchesScope`. */
@@ -96,6 +106,11 @@ const ScopeSchema = z
   })
   .strict();
 
+// .strict() at the TOP level too, not just the source-spec arms and the
+// scope block: without it, a misspelled top-level key (e.g. "scopes" for
+// "scope") is silently stripped by zod and the collection resolves as
+// "everything in scope" — the exact silent fail-open .strict() on the
+// nested arms exists to prevent, one level up.
 export const ConfigSchema = z.object({
   schema_version: z.literal(1),
   pending_in_git: z.boolean().default(true),
@@ -115,13 +130,17 @@ export const ConfigSchema = z.object({
     })
     .default({}),
   migrate: MigrateBlock.optional(),
-});
+}).strict();
 
 export type Config = z.infer<typeof ConfigSchema>;
 
 export const DEFAULT_CONFIG: Config = ConfigSchema.parse({ schema_version: 1 });
 
-const CONFIG_FILE = "config.json";
+/** `config.json`'s basename — the single owner. `discovery.ts` and
+ *  `collection.ts` import this rather than each keeping their own copy of
+ *  the literal (a duplication that had drifted into three separate
+ *  declarations of the same string). */
+export const CONFIG_FILE = "config.json";
 
 export async function loadConfig(metaRoot: string): Promise<Config> {
   const raw = await readFile(join(metaRoot, CONFIG_FILE), "utf8");

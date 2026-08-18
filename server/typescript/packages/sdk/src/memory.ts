@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { extname, join } from "node:path";
 import { readdir, stat } from "node:fs/promises";
 import {
   composeRegistry,
@@ -23,6 +23,20 @@ export const DEFAULT_METADATA_DIR = "metaobjects";
  * Scaffold via `meta init`; most contents are committed to git.
  */
 export const DEFAULT_METAOBJECTS_DIR = ".metaobjects";
+
+/** Recognized metadata file extensions, matched case-insensitively — mirrors
+ *  `DirectorySource` in `@metaobjectsdev/metadata`, which checks
+ *  `extname().toLowerCase()`. The single definition every metadata-file
+ *  walker in this package uses: `sources.ts`'s `resolveSources` imports
+ *  `isMetadataFile` from here rather than keeping its own copy, so the
+ *  package's two walkers cannot silently disagree about whether e.g.
+ *  `meta.JSON` counts (a real drift this fixes — this walk used to be
+ *  case-sensitive while `sources.ts`'s was already case-insensitive). */
+export const METADATA_EXTENSIONS = new Set([".json", ".yaml", ".yml"]);
+
+export function isMetadataFile(name: string): boolean {
+  return METADATA_EXTENSIONS.has(extname(name).toLowerCase());
+}
 
 /**
  * Options for {@link loadMemory}. Consumers can supply additional
@@ -143,7 +157,8 @@ async function collectMetadataPaths(repoRoot: string): Promise<string[]> {
 }
 
 /**
- * Recursively list metadata files (*.json, *.yaml, *.yml) under a directory,
+ * Recursively list metadata files (*.json, *.yaml, *.yml, matched
+ * case-insensitively — see `isMetadataFile` above) under a directory,
  * excluding _pending/ at any level. Subdirectories (e.g. projections/) are
  * walked depth-first. Files within a directory are sorted alphabetically for
  * deterministic load order; subdirectories are visited after files at the
@@ -182,8 +197,4 @@ async function listMetadataFiles(dir: string): Promise<string[]> {
     paths.push(...(await listMetadataFiles(sub)));
   }
   return paths;
-}
-
-function isMetadataFile(name: string): boolean {
-  return name.endsWith(".json") || name.endsWith(".yaml") || name.endsWith(".yml");
 }

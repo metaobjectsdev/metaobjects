@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveSources, DEFAULT_SOURCES } from "../src/sources.js";
+import { rejectedCode } from "./support/error-code.js";
 
 let root: string;
 const write = (rel: string, body = "{}") => {
@@ -14,29 +15,6 @@ const write = (rel: string, body = "{}") => {
 
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), "metaobjects-sources-")); });
 afterEach(() => { rmSync(root, { recursive: true, force: true }); });
-
-/** Pull the stable ERR_ code off a caught error, if it carries one. Mirrors
- *  scope.test.ts's `errorCode` — property-based, never message-matching: a
- *  cross-package `instanceof ParseError` is silently false when two physical
- *  copies of `@metaobjectsdev/metadata` are loaded (a globally-installed or
- *  linked CLI alongside a project-local dependency), so `.code` is the only
- *  reliable read. */
-function errorCode(err: unknown): string {
-  const code = (err as { code?: unknown }).code;
-  return typeof code === "string" ? code : "ERR_UNKNOWN";
-}
-
-/** Await `promise`, expecting it to reject — returns the rejection's stable
- *  code. The async counterpart of `errorCode` above, needed because
- *  `resolveSources` is async where `compileScope` (scope.test.ts) is not. */
-async function rejectedCode(promise: Promise<unknown>): Promise<string> {
-  try {
-    await promise;
-  } catch (err) {
-    return errorCode(err);
-  }
-  throw new Error("expected the promise to reject, but it resolved");
-}
 
 describe("resolveSources", () => {
   test("resolves a directory recursively, metadata files only", async () => {
@@ -108,6 +86,28 @@ describe("resolveSources", () => {
     );
   });
 
+  test("an unsupported kind is reported regardless of declaration order relative to an unresolvable path", async () => {
+    // Kind validation used to be interleaved with per-spec filesystem I/O in
+    // one loop, so an unsupported-kind spec placed AFTER an unresolvable
+    // path spec never got reached — the path spec's ERR_SOURCE_UNRESOLVED
+    // fired first, and the reported code silently depended on which spec
+    // was declared first. Both orderings must report the SAME code.
+    const unsupportedFirst: Parameters<typeof resolveSources>[1] = [
+      { resource: "acme/model" },
+      { path: "missing" },
+    ];
+    const unresolvedFirst: Parameters<typeof resolveSources>[1] = [
+      { path: "missing" },
+      { resource: "acme/model" },
+    ];
+    expect(await rejectedCode(resolveSources(root, unsupportedFirst))).toBe(
+      "ERR_SOURCE_KIND_UNSUPPORTED",
+    );
+    expect(await rejectedCode(resolveSources(root, unresolvedFirst))).toBe(
+      "ERR_SOURCE_KIND_UNSUPPORTED",
+    );
+  });
+
   test("_pending is excluded at any depth", async () => {
     write("model/meta.a.json");
     write("model/_pending/meta.draft.json");
@@ -122,6 +122,19 @@ describe("resolveSources", () => {
     symlinkSync(join(root, "real"), join(root, "model/linked"), "dir");
     const out = await resolveSources(root, [{ path: "model" }]);
     expect(out).toHaveLength(2);
+  });
+
+  test("a dangling symlink inside a source directory is skipped, not a raw ENOENT crash", async () => {
+    // DirectorySource in @metaobjectsdev/metadata catches and skips exactly
+    // this case (directory-source.ts). Before the fix, the bare `stat()` in
+    // collectDir had no try/catch, so a dangling symlink crashed
+    // resolveSources with a raw Node ENOENT carrying no ERR_ code — on a
+    // tree the loader itself reads fine.
+    write("model/meta.a.json");
+    const { symlinkSync } = await import("node:fs");
+    symlinkSync(join(root, "model/does-not-exist"), join(root, "model/dangling.json"));
+    const out = await resolveSources(root, [{ path: "model" }]);
+    expect(out.map((r) => r.file.replace(root + "/", ""))).toEqual(["model/meta.a.json"]);
   });
 
   test("DEFAULT_SOURCES is the metaobjects/ directory", () => {
