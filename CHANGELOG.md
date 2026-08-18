@@ -7,6 +7,64 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added — pre-release publishing to a private registry (no more real releases just to test a change)
+
+Trying an unreleased change against a downstream project required cutting a real release on
+npm / PyPI / NuGet / Maven Central. All four are immutable, so every experiment spent a
+version number, moved `latest`, and was visible to every consumer on a caret range. There is
+now a private path: publish a **pre-release** to a separate registry, consume it downstream,
+iterate, and switch back with one verified command.
+
+- **`bun run prerelease`** (`scripts/prerelease.mjs`) — publishes the in-development version
+  to a registry configured in `tools/prerelease/registry.env` (gitignored). One canonical
+  version string `<base>-rc.<N>`, normalized in exactly one place: `0.24.0-rc.3` (npm,
+  NuGet), `0.24.0rc3` (PEP 440), `7.24.0-rc.3` (Maven). npm by default, `--only all` for the
+  four ports. The collision-breaker is a **counter, not a commit sha**, because npm strips
+  SemVer build metadata — `0.24.0-rc.1+aaa` and `+bbb` are the same version to it.
+- **`tools/prerelease/prerelease-link.sh link|unlink|check`** — points a downstream project
+  at the registry, and takes it back off. It detects the project's ecosystems, writes only
+  namespace-scoped config (`@metaobjectsdev/*`, `metaobjects`, `MetaObjects*`,
+  `com.metaobjects` — everything else keeps resolving publicly), and on `unlink` repins
+  **every** vendor dependency, drops the lockfile, and runs the detector to prove the
+  project is clean. Repinning only the dependency you installed is not enough: `meta init`
+  writes `@metaobjectsdev/codegen-ts` and `@metaobjectsdev/metadata` into a consumer's
+  devDependencies too, and missing them fails the next clean install with `notarget`.
+- **`tools/prerelease/detect-prerelease-pins.sh`** — the guard a consumer commits and runs
+  in CI. The registry is a public HTTPS endpoint with anonymous reads, so no network
+  boundary is doing safety work; this check *is* the containment. It scans dependency
+  declarations only (a test server bound to `127.0.0.1` is not a dependency on anything) and
+  knows the registry host by default, so a consumer repo that has never seen the publisher's
+  config still catches a leak.
+- **`scripts/check-no-prerelease-versions.sh`** — wired into `.githooks/pre-commit` and the
+  `gates` lane. A committed `-rc.N` is not cosmetic: `scripts/release.mjs` derives the
+  lockstep set from the CLI's *current* version, so one stray pre-release version silently
+  drops that package from the next real release.
+- `tools/prerelease/docker-compose.yml` + `bootstrap.sh` stand up an equivalent registry for
+  a fork or an offline machine; the publisher is registry-agnostic either way.
+- Adopter-facing guide: [`docs/features/prerelease.md`](docs/features/prerelease.md).
+
+**Config is per-project and never machine-global**, deliberately. A user-level `~/.npmrc` is
+invisible to the detector, switches every project at once, and — the reason this is a rule
+rather than a preference — a silent fall-back to user-level config is the exact mechanism
+that published a pre-release to public npm while this was being built: `bun publish` ignores
+`npm_config_userconfig`, found `~/.npmrc`, and shipped for real. Every publish path now
+asserts its target equals the configured registry, checks it against a deny-list of the
+public registries, **parses `bun publish --dry-run`** rather than trusting bun, and runs with
+`HOME` redirected so a fall-back has no credential to use.
+
+### Fixed — `scripts/release.mjs` preflighted only one package
+
+The target-version check ran `npm view @metaobjectsdev/cli@<version>` and nothing else, so a
+version already published for any *other* package in the lockstep set was discovered
+mid-publish — after its dependencies had shipped irreversibly. That is not hypothetical:
+`@metaobjectsdev/metadata@0.24.0-rc.1` exists on public npm and no other package in the set
+carries it, so a lockstep RC at `0.24.0-rc.1` would publish thirteen packages and then fail
+on the fourteenth. npm versions cannot be reclaimed — `unpublish` is *refused* (`E405`) once
+anything depends on the version, and deprecation does not free the number. The preflight now
+checks every package in the set (in parallel, so it stays fast), and `bun run prerelease`
+skips numbers already burned on public npm when choosing an iteration.
+
+
 ## [0.23.2] — npm `0.23.2` · PyPI `0.23.2` · NuGet `0.23.2` · Maven `7.23.2`
 
 A coordinated **PATCH** across all four registries.

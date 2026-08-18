@@ -67,15 +67,33 @@ const dirty = out("git status --porcelain").split("\n")
   .filter((l) => l && !l.startsWith("??") && !l.endsWith("CHANGELOG.md"));
 if (dirty.length) die(`uncommitted changes:\n${dirty.join("\n")}\n(commit or stash first; CHANGELOG is allowed)`);
 
-// Target version free on npm + no existing tag.
-try { sh(`npm view @metaobjectsdev/cli@${VERSION} version`, { quiet: true }); die(`${VERSION} is already published`); }
-catch { /* 404 = free, good */ }
 if (out(`git tag -l v${VERSION}`)) die(`tag v${VERSION} already exists`);
 
 // The lockstep set = every non-private package at the CURRENT version (cli's version).
 const current = pkgs.find((p) => p.short === "cli").pkg.version;
 const set = pkgs.filter((p) => !p.pkg.private && p.pkg.version === current);
-ok(`preflight: on main, synced, ${VERSION} free`);
+
+// The target version must be free for EVERY package in the set, not just the cli.
+// Checking one package is a late failure waiting to happen: npm versions are permanent
+// (unpublish is refused outright once anything depends on the version, and deprecating it
+// does not free the number), so a version burned on a single package — as
+// @metaobjectsdev/metadata@0.24.0-rc.1 is — would fail mid-publish, after its dependencies
+// had already shipped irreversibly. Checked in parallel: 14 sequential `npm view`s is 14s.
+const taken = (await Promise.all(set.map(async (p) => {
+  try {
+    const r = await fetch(`https://registry.npmjs.org/${p.pkg.name.replace("/", "%2f")}`,
+      { headers: { accept: "application/vnd.npm.install-v1+json" }, signal: AbortSignal.timeout(15_000) });
+    if (r.status === 404) return null;             // never published = free
+    // Any other non-OK status is fatal, not "free": failing open here re-creates the
+    // irreversible mid-publish partial failure this preflight exists to prevent.
+    if (!r.ok) die(`npm answered HTTP ${r.status} for ${p.pkg.name} — cannot verify ${VERSION} is free`);
+    return (await r.json()).versions?.[VERSION] ? p.pkg.name : null;
+  } catch { die(`could not reach npm to verify ${VERSION} is free (${p.pkg.name})`); }
+}))).filter(Boolean);
+if (taken.length)
+  die(`${VERSION} is already published for:\n  ${taken.join("\n  ")}\n` +
+      `npm versions are permanent — pick the next free version.`);
+ok(`preflight: on main, synced, ${VERSION} free on all ${set.length} packages`);
 ok(`lockstep set @ ${current}: ${set.length} packages → ${VERSION}`);
 
 // --- PHASE 1: bump --------------------------------------------------------
