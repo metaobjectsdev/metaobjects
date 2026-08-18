@@ -446,6 +446,26 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
 
   const sweep = (dryRun: boolean): void => {
     if (projectRoot === undefined || orphanJobs.length === 0) return;
+
+    // NEVER reconcile a PARTIAL run. `meta gen <entity>` narrows the object set, so
+    // `emitted` is a subset of the full output BY CONSTRUCTION — every path belonging
+    // to an unselected entity looks exactly like an orphan, and the untouched ones get
+    // deleted. The shipped `requirementTests()` escapes only by accident (it walks
+    // `ctx.loadedRoot` and ignores `ctx.matches`); any app generator that honours
+    // `ctx.matches` — the documented, encouraged composition — would wipe every
+    // non-selected entity's output on a routine filtered run.
+    //
+    // The runner is the ONLY layer that knows the run was partial: a generator sees a
+    // narrowed entity list and cannot tell it from a model that genuinely has one
+    // entity. So the guard has to live here.
+    if (opts.entityFilter !== undefined && opts.entityFilter.length > 0) {
+      warnings.push(
+        `Skipped orphan cleanup: this run generated only ${opts.entityFilter.join(", ")}, ` +
+        `so it cannot tell a file belonging to an unselected entity from one that is no ` +
+        `longer generated. Run 'meta gen' with no entity filter to reconcile deletions.`,
+      );
+      return;
+    }
     const result = sweepOrphans({
       genStateDir,
       projectRoot,
@@ -459,7 +479,20 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       writes.push({ path: join(projectRoot, relPath), status: "removed" });
     }
     if (result.refused.length > 0) {
-      warnings.push(refusedOrphanMessage(result.refused));
+      // Grouped by the generator that refused, so each message names a generator the
+      // project actually registered. `orphanPolicy` is generic and apps are encouraged
+      // to compose their own, so one blanket message naming `requirement-tests` would
+      // be wrong for precisely the users the seam exists for.
+      const byGenerator = new Map<string, string[]>();
+      for (const relPath of result.refused) {
+        const owner = result.refusedBy.get(relPath) ?? "orphan cleanup";
+        const list = byGenerator.get(owner);
+        if (list === undefined) byGenerator.set(owner, [relPath]);
+        else list.push(relPath);
+      }
+      for (const [owner, paths] of byGenerator) {
+        warnings.push(refusedOrphanMessage(paths, owner));
+      }
     }
     if (result.forced.length > 0) {
       warnings.push(

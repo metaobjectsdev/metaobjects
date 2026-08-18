@@ -44,11 +44,23 @@ describe("describeRegenReplacement", () => {
     expect(msg).toContain("design doc");
   });
 
-  test("reports a stale artifact (metadata moved on) the same way", () => {
-    // Indistinguishable from a hand edit at this level, and that is fine: both mean
-    // "what was on disk is not what the model produces now".
+  test("says nothing when the artifact merely GREW — nothing was lost", () => {
+    // A blind assertion lived here: it fed a strict prefix of FRESH and asserted only
+    // toBeDefined(), so it passed while the function emitted "0 lines replaced:" with
+    // an empty sample and advice to move reasoning into the design doc — on a purely
+    // additive regeneration where nobody had written anything. The test asserted that
+    // SOMETHING was said, never that it made sense.
     const stale = "CREATE TABLE a (id INT);\n";
-    expect(describeRegenReplacement(stale, FRESH)).toBeDefined();
+    expect(describeRegenReplacement(stale, FRESH)).toBeUndefined();
+  });
+
+  test("reports a stale artifact whose content actually changed", () => {
+    // Indistinguishable from a hand edit at this level, and that is fine: both mean
+    // "a line that was on disk is not in what the model produces now".
+    const stale = "CREATE TABLE a (id BIGINT);\n";
+    const msg = describeRegenReplacement(stale, FRESH);
+    expect(msg).toBeDefined();
+    expect(msg).toContain("1 line");
   });
 
   test("counts only the lines that actually differ", () => {

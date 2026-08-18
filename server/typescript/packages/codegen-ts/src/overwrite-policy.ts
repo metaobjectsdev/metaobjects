@@ -224,6 +224,32 @@ export function readGeneratedSnapshot(
  * re-decides an orphan that has already been dealt with. A no-op for a path that
  * was never generated.
  */
+/**
+ * Forget MANY paths in one pass — one manifest read, one write, one snapshot delete
+ * per path.
+ *
+ * The per-path `forgetGeneratedPath` re-reads, re-sorts and rewrites the whole manifest
+ * every call, so clearing k orphans rewrote it k times. On a project with hundreds of
+ * generated files that turns bookkeeping into the dominant cost of `meta gen`, for a
+ * result that is identical either way.
+ */
+export function forgetGeneratedPaths(
+  genStateDir: string,
+  relPaths: Iterable<string>,
+): void {
+  const hashes = loadHashes(genStateDir);
+  let changed = false;
+  for (const relPath of relPaths) {
+    const snapshot = snapshotPath(genStateDir, relPath);
+    if (existsSync(snapshot)) rmSync(snapshot, { force: true });
+    if (relPath in hashes) {
+      delete hashes[relPath];
+      changed = true;
+    }
+  }
+  if (changed) saveHashes(genStateDir, hashes);
+}
+
 export function forgetGeneratedPath(genStateDir: string, relPath: string): void {
   const snapshot = snapshotPath(genStateDir, relPath);
   if (existsSync(snapshot)) rmSync(snapshot, { force: true });

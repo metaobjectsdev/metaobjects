@@ -74,6 +74,11 @@ export interface RequirementTestsOpts {
   reconcileOrphans?: boolean;
 }
 
+/** How many uncovered requirements to name before "…and N more". Mirrors the
+ *  runner's MAX_NAMED — the same cutoff, so every wall-avoiding message in the
+ *  feature reads the same shape. */
+const MAX_NAMED_UNCOVERED = 5;
+
 /** The directory `defaultPath` writes into — and therefore the namespace the
  *  default policy claims. Kept beside it so the pair cannot drift. */
 const DEFAULT_STUB_DIR = "requirements/";
@@ -160,10 +165,21 @@ export function requirementTests(opts: RequirementTestsOpts = {}): Generator {
       // indistinguishable from a deliberate exclusion. One warning, never failing,
       // so "no tests here" is a visible choice rather than silence.
       if ((opts.warnUncovered ?? true) && uncovered.length > 0) {
+        // CAPPED, matching the runner's refusal message. The default filter excludes
+        // every architectural node and every L1-L3 functional one, so on the ledger
+        // shapes this repo's own docs describe — dozens to hundreds of entries — an
+        // uncapped list is a wall of dotted paths with the one actionable sentence
+        // buried at the end of it. This is a generator meant to be the feature's first
+        // contact; burying the opt-out is how it gets switched off wholesale.
+        const shown = uncovered.slice(0, MAX_NAMED_UNCOVERED).join(", ");
+        const more =
+          uncovered.length > MAX_NAMED_UNCOVERED
+            ? `, and ${uncovered.length - MAX_NAMED_UNCOVERED} more`
+            : "";
         ctx.warn(
-          `requirement-tests: ${uncovered.length} requirement(s) matched no filter ` +
-            `and get no stub: ${uncovered.join(", ")}. If that is deliberate, set ` +
-            `warnUncovered: false to silence this.`,
+          `${uncovered.length} requirement(s) matched no filter and get no stub. ` +
+            `If that is deliberate, set warnUncovered: false to silence this. ` +
+            `Uncovered: ${shown}${more}.`,
         );
       }
 

@@ -236,7 +236,7 @@ describe("sweepOrphans", () => {
       dryRun: false,
     });
 
-    expect(result).toEqual({ removed: [], refused: [], forced: [] });
+    expect(result).toEqual({ removed: [], refused: [], forced: [], refusedBy: new Map() });
     expect(existsSync(join(root, STUB_A))).toBe(true);
   });
 
@@ -253,5 +253,52 @@ describe("sweepOrphans", () => {
 
     expect(result.removed).toEqual([STUB_A]);
     expect(existsSync(join(root, STUB_A))).toBe(false);
+  });
+});
+
+describe("overlapping namespaces cannot report one path two ways", () => {
+  test("a refusal is not escalated to a deletion by a later forcing job", () => {
+    // An app may register several requirementTests() instances; if their `owns`
+    // predicates overlap, one path is offered to both. Without the guard, a path
+    // refused by job A was force-deleted by job B and STILL reported as refused —
+    // "was NOT deleted" about a file that no longer exists.
+    generate(STUB_A, "// stub a\n");
+    writeFileSync(join(root, STUB_A), "// hand-edited\n");
+
+    const result = sweepOrphans({
+      genStateDir,
+      projectRoot: root,
+      emittedRelPaths: [],
+      jobs: [
+        reqJob(),
+        reqJob({
+          generatorName: "requirement-tests-forcing",
+          policy: { owns: (rel) => rel.startsWith("requirements/"), force: true },
+        }),
+      ],
+      dryRun: false,
+    });
+
+    expect(result.refused).toEqual([STUB_A]);
+    expect(result.forced).toEqual([]);
+    // The conservative answer held, so the file is still there.
+    expect(existsSync(join(root, STUB_A))).toBe(true);
+  });
+
+  test("no path ever appears in two outcome lists", () => {
+    generate(STUB_A, "// stub a\n");
+    generate(STUB_B, "// stub b\n");
+    writeFileSync(join(root, STUB_A), "// hand-edited\n");
+
+    const r = sweepOrphans({
+      genStateDir,
+      projectRoot: root,
+      emittedRelPaths: [],
+      jobs: [reqJob(), reqJob({ generatorName: "second" })],
+      dryRun: false,
+    });
+
+    const all = [...r.removed, ...r.refused, ...r.forced];
+    expect(all.length).toBe(new Set(all).size);
   });
 });

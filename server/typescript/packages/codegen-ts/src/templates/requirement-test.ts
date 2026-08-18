@@ -23,9 +23,54 @@ export interface RequirementTestArgs {
   readonly trackedBy?: readonly string[] | undefined;
 }
 
-/** Only `planned` is skipped — it is intended, not built, and reddening a build
- *  for something deliberately unbuilt is noise the app will silence wholesale. */
-const STATUS_PLANNED = "planned";
+/**
+ * Statuses whose stub is SKIPPED rather than failing.
+ *
+ * The rule is "does this entry claim the capability works right now?" — only `live`
+ * and `partial` do. `planned` is intended-not-built; `abandoned` and `superseded`
+ * describe a capability deliberately retired, whose `@implementedBy` is SUPPOSED to
+ * dangle. Emitting a failing stub for any of the three reddens an application's suite
+ * forever for something nobody intends to build, which is the noise an app silences
+ * wholesale — taking the `live` stubs with it.
+ *
+ * (FR-038 §4 proposes retiring `abandoned`/`superseded` from the vocabulary entirely.
+ * Until that breaking cut lands they are legal `@status` values, so the renderer has
+ * to handle them.)
+ */
+const SKIPPED_STATUSES: ReadonlySet<string> = new Set([
+  "planned",
+  "abandoned",
+  "superseded",
+]);
+
+/**
+ * Escape author prose for a double-quoted TS string literal.
+ *
+ * `@statement` and `@violation` are free text. Unescaped, a quote closes the literal
+ * and a newline breaks it — emitting a stub that does not parse, which `meta gen`
+ * still reports as written because nothing here compiles it.
+ */
+function forStringLiteral(s: string): string {
+  return s
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\r?\n/g, "\\n")
+    .replace(/\r/g, "\\r");
+}
+
+/**
+ * Make author prose safe inside a JSDoc block, preserving what was written.
+ *
+ * A comment-terminator in the prose would close the block early and spill the
+ * remainder into code; a newline needs its own continuation marker or the block's
+ * shape breaks. The terminator is separated by a space rather than deleted, so the
+ * sentence still reads — and deliberately NOT by a zero-width space, which would keep
+ * the text pixel-identical at the cost of putting an invisible character into
+ * generated source that nobody can see when debugging it.
+ */
+function forDocComment(s: string): string {
+  return s.replace(/\*\//g, "* /").replace(/\r?\n/g, "\n * ");
+}
 
 function claimLines(targets: readonly ResolvedClaim[]): string {
   if (targets.length === 0) {
@@ -43,7 +88,9 @@ function gapLine(a: RequirementTestArgs): string {
 }
 
 export function renderRequirementTest(a: RequirementTestArgs): string {
-  const skipped = a.view.status === STATUS_PLANNED;
+  const skipped = a.view.status !== undefined && SKIPPED_STATUSES.has(a.view.status);
+  const statement = forDocComment(a.statement);
+  const violation = forDocComment(a.violation);
   const runner = skipped ? "test.skip" : "test";
 
   // A `live` or `partial` stub asserts FAILURE until someone writes the real
@@ -53,7 +100,7 @@ export function renderRequirementTest(a: RequirementTestArgs): string {
     ? `  // Intended, not built. Write the assertion when this becomes live.`
     : `  expect.unreachable(\n` +
       `    "unimplemented requirement stub: ${a.view.path} [${a.concern}] — " +\n` +
-      `    "replace this with an assertion that fails when: ${a.violation}",\n` +
+      `    "replace this with an assertion that fails when: ${forStringLiteral(a.violation)}",\n` +
       `  );`;
 
   return (
@@ -63,9 +110,9 @@ export function renderRequirementTest(a: RequirementTestArgs): string {
     `import { test, expect } from "bun:test";\n` +
     `\n` +
     `/**\n` +
-    ` * ${a.statement}\n` +
+    ` * ${statement}\n` +
     ` *\n` +
-    ` * Violated by: ${a.violation}${gapLine(a)}\n` +
+    ` * Violated by: ${violation}${gapLine(a)}\n` +
     ` *\n` +
     ` * Claims:\n` +
     `${claimLines(a.targets)}\n` +

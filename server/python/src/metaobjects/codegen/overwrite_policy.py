@@ -43,8 +43,18 @@ HASHES_FILE = ".hashes.json"
 def content_hash(content: str) -> str:
     """sha-256 hex of ``content`` — the function that produces the manifest.
 
-    Same algorithm as every other port, so a manifest written by one is readable by
-    another and a future conformance fixture can compare them directly.
+    Same algorithm as every other port, so identical file content hashes identically
+    everywhere.
+
+    The KEYS, however, deliberately differ: TypeScript keys by path relative to the
+    PROJECT ROOT (it supports multiple output targets), while this port and C# key
+    relative to their single out dir. A manifest is therefore NOT portable between
+    ports. An earlier version of this docstring claimed a conformance fixture could
+    compare them directly — it cannot, and the claim was never true.
+
+    Because the key here is out-dir-relative, running gen twice with different out dirs
+    against ONE ``gen_state_dir`` collides two distinct files onto one key. Give each
+    out dir its own gen-state dir.
     """
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 

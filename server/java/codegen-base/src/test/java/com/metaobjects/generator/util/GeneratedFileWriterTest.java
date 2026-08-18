@@ -82,6 +82,42 @@ public class GeneratedFileWriterTest {
     }
 
     @Test
+    public void aHandWrittenFileMerelyMentioningTheWordIsNotOurs() throws Exception {
+        // The guard's own fail-open: a bare substring match treated any file containing
+        // the word as generator output and clobbered it — the silent overwrite this
+        // class exists to prevent, produced by the class itself. These are the shapes
+        // that actually occur in hand-written source.
+        for (String mine : new String[] {
+                "// NOT GENERATED - hand-maintained, see the ADR\npublic class X {}\n",
+                "public enum Kind { GENERATED, MANUAL }\n",
+                "/** Explains why the GENERATED files are disposable. */\npublic class X {}\n",
+        }) {
+            Path out = tmp.newFolder().toPath().resolve("X.java");
+            Files.writeString(out, mine);
+            assertEquals(mine, GeneratedFileWriter.Outcome.REFUSED,
+                    GeneratedFileWriter.write(out, GENERATED_BODY));
+            assertEquals(mine, Files.readString(out));
+        }
+    }
+
+    @Test
+    public void everyGeneratorsRealHeaderShapeIsStillRecognised() throws Exception {
+        // The tolerance that matters: prose after the token varies per generator, so
+        // narrowing the match must not start refusing our OWN output.
+        for (String header : new String[] {
+                "/** GENERATED - wire DTO for Council. */\npublic class X {}\n",
+                " * GENERATED - runtime drift gate.\n",
+                "// GENERATED - DO NOT EDIT - output-format prompt\n",
+                "/** GENERATED (#234) - strict Jackson deserializers. */\n",
+        }) {
+            Path out = tmp.newFolder().toPath().resolve("X.java");
+            Files.writeString(out, header);
+            assertEquals(header, GeneratedFileWriter.Outcome.WRITTEN,
+                    GeneratedFileWriter.write(out, GENERATED_BODY));
+        }
+    }
+
+    @Test
     public void theRefusalNamesTheFileAndTheWayOut() {
         Path out = tmp.getRoot().toPath().resolve("X.java");
         String msg = GeneratedFileWriter.refusedMessage(out);

@@ -94,6 +94,43 @@ async function gen(opts: GenOpts) {
 
 const abs = (rel: string): string => join(projectRoot, rel);
 
+describe("a filtered run never reconciles deletions", () => {
+  test("meta gen <entity> skips the sweep and says why", async () => {
+    // A partial run's emitted set is a subset BY CONSTRUCTION, so every unselected
+    // entity's output looks like an orphan. Deleting on that basis wipes files the run
+    // was never asked to consider.
+    await gen({ withDrop: true });
+    expect(existsSync(abs(DROP_STUB))).toBe(true);
+
+    const { root } = await new MetaDataLoader().load([
+      new InMemoryStringSource(model(false)),
+    ]);
+    const result = await runGen({
+      config: {
+        outDir: OUT_DIR,
+        extStyle: "js",
+        generators: [requirementTests({})],
+      },
+      metadata: root,
+      projectRoot,
+      entityFilter: ["Council"],
+    });
+
+    // The requirement is gone from the model, but this run cannot prove that is why.
+    expect(existsSync(abs(DROP_STUB))).toBe(true);
+    expect(result.files.filter((f) => f.status === "removed")).toEqual([]);
+    expect(result.warnings.some((w) => w.includes("Skipped orphan cleanup"))).toBe(true);
+  });
+
+  test("the same model on an UNFILTERED run does reconcile", async () => {
+    // Proves the guard is about the filter, not about the model.
+    await gen({ withDrop: true });
+    const result = await gen({ withDrop: false });
+    expect(existsSync(abs(DROP_STUB))).toBe(false);
+    expect(result.files.some((f) => f.status === "removed")).toBe(true);
+  });
+});
+
 describe("requirement stub deletion integrity, through runGen", () => {
   test("both stubs are written on the first run", async () => {
     const result = await gen({ withDrop: true });

@@ -129,9 +129,8 @@ def run_gen(
 
     # Captured BEFORE any write, because the first write creates the manifest — read
     # it afterwards and every project looks migrated.
-    had_manifest = (
-        has_hash_manifest(config.gen_state_dir) if config.gen_state_dir is not None else True
-    )
+    tracking_hashes = config.gen_state_dir is not None
+    had_manifest = tracking_hashes and has_hash_manifest(config.gen_state_dir or "")
 
     refused: list[str] = []
     for full, (content, _by) in emitted.items():
@@ -148,7 +147,17 @@ def run_gen(
             refused.append(rel)
 
     if refused:
-        if not had_manifest:
+        if not tracking_hashes:
+            # No state to reason from, so decide_and_write can only have refused for
+            # ONE reason: the file carries no @generated marker. Reporting the
+            # hash-manifest message here would describe a mechanism that is not
+            # running and send the reader to fix the wrong thing.
+            for rel in refused:
+                result.warnings.append(
+                    f"Refused to overwrite {rel}: the file exists and carries no "
+                    f"@generated header, so it is treated as hand-written."
+                )
+        elif not had_manifest:
             # Every refusal here has the SAME cause and the same one-line fix, so
             # stating it once beats a wall of per-file warnings that buries the
             # instruction. Self-extinguishing: once the manifest exists, never again.

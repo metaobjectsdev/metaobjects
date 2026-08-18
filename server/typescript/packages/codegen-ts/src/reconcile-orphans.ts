@@ -117,13 +117,20 @@ export function reconcileOrphans(args: ReconcileOrphansArgs): OrphanDecision {
  * are — otherwise the reasonable reaction to an unexplained refusal is to delete
  * the file, which is the outcome the refusal exists to prevent.
  */
-export function refusedOrphanMessage(paths: readonly string[]): string {
+export function refusedOrphanMessage(
+  paths: readonly string[],
+  /** Which generator's namespace these came from. `orphanPolicy` is a generic
+   *  `Generator` field and `sweepOrphans`/`OrphanPolicy` are exported precisely so an
+   *  app can compose its own — so this message must not hardcode `requirement-tests`,
+   *  naming a generator the project may not even use and a cause ("the requirement was
+   *  removed") that may not apply. */
+  generatorName = "orphan cleanup",
+): string {
   return (
-    `requirement-tests: ${paths.length} generated file(s) are no longer produced by ` +
-    `any requirement but have been edited by hand, so they were NOT deleted: ` +
-    `${paths.join(", ")}. Either the requirement was removed (delete these files ` +
-    `yourself if the assertions are no longer wanted) or it was renamed (move the ` +
-    `assertions into the newly generated stub first — regeneration cannot follow a ` +
-    `rename).`
+    `${generatorName}: ${paths.length} generated file(s) are no longer produced by ` +
+    `this generator but have been edited by hand, so they were NOT deleted: ` +
+    `${paths.join(", ")}. Either what produced them was removed (delete these files ` +
+    `yourself if the edits are no longer wanted) or it was renamed (move the edits ` +
+    `into the newly generated file first — regeneration cannot follow a rename).`
   );
 }

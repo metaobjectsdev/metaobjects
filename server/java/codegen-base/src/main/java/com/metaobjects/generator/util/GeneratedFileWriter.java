@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.regex.Pattern;
 
 /**
  * The write guard every Java and Kotlin generator goes through.
@@ -59,16 +60,32 @@ public final class GeneratedFileWriter {
 
     private GeneratedFileWriter() {}
 
-    /**
-     * The token every generator on these ports emits in its file header
-     * ({@code GENERATED — …} / {@code // GENERATED — DO NOT EDIT — …}).
-     *
-     * <p>Matched as a plain substring rather than anchored to a line or column: the
-     * header's surrounding prose differs per generator, and a guard that only recognises
-     * one exact phrasing would silently fail open on the others — the failure mode this
-     * whole class exists to remove.
-     */
+    /** The token every generator on these ports emits in its file header. */
     public static final String GENERATED_MARKER = "GENERATED";
+
+    /**
+     * Where the marker is allowed to appear: at the start of a line, directly after
+     * comment punctuation.
+     *
+     * <p>A bare {@code contains(GENERATED_MARKER)} was tolerant of every generator's
+     * phrasing — which was the point — but it also failed OPEN in the other direction. A
+     * hand-written file containing {@code // NOT GENERATED - hand-maintained}, an enum
+     * member named {@code GENERATED}, or a javadoc sentence merely using the word all
+     * read as this toolchain's output and got clobbered: the exact silent overwrite this
+     * class exists to prevent, produced by its own guard.
+     *
+     * <p>Anchoring to the header SHAPE keeps the tolerance that matters — the prose after
+     * the token still varies freely across generators — while excluding incidental
+     * mentions: in {@code // NOT GENERATED} the token is not what follows the comment
+     * punctuation, and an identifier has no comment punctuation before it at all.
+     */
+    private static final Pattern GENERATED_HEADER = Pattern.compile(
+        "^[ \\t]*(?://+|/\\*+|\\*+)[ \\t]*" + GENERATED_MARKER + "\\b", Pattern.MULTILINE);
+
+    /** Whether {@code content} carries this toolchain's generated-file header. */
+    static boolean looksGenerated(String content) {
+        return GENERATED_HEADER.matcher(content).find();
+    }
 
     /** What happened to one file. */
     public enum Outcome {
@@ -92,7 +109,7 @@ public final class GeneratedFileWriter {
      */
     public static Outcome write(Path outFile, String content) throws IOException {
         if (Files.exists(outFile)
-            && !Files.readString(outFile, StandardCharsets.UTF_8).contains(GENERATED_MARKER)) {
+            && !looksGenerated(Files.readString(outFile, StandardCharsets.UTF_8))) {
             LOG.warn(refusedMessage(outFile));
             return Outcome.REFUSED;
         }

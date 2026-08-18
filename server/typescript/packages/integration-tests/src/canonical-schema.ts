@@ -109,6 +109,11 @@ export function describeRegenReplacement(
   const freshLines = new Set(fresh.split("\n"));
   const lost = existing.split("\n").filter((l) => !freshLines.has(l) && l.trim() !== "");
   const n = lost.length;
+  // Nothing was LOST — the artifact merely grew (a table added to the metadata), so
+  // every existing line still appears in fresh output. Saying "0 lines replaced" and
+  // then advising the reader to move their reasoning into the design doc is noise on a
+  // purely additive regeneration where nobody wrote anything.
+  if (n === 0) return undefined;
   const noun = n === 1 ? "1 line" : `${n} lines`;
   const sample = lost.slice(0, 3).map((l) => `    ${l}`).join("\n");
 

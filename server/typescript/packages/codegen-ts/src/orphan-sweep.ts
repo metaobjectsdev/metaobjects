@@ -25,7 +25,7 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 import {
   listGeneratedPaths,
   isPristineGenerated,
-  forgetGeneratedPath,
+  forgetGeneratedPaths,
 } from "./overwrite-policy.js";
 import { reconcileOrphans, type OrphanPolicy } from "./reconcile-orphans.js";
 
@@ -57,6 +57,11 @@ export interface SweepOrphansResult {
   readonly removed: string[];
   /** Hand-edited orphans left alone and reported. */
   readonly refused: string[];
+  /** Which generator's namespace each refusal came from, so the caller can name it
+   *  instead of assuming one. `orphanPolicy` is a generic `Generator` field and an app
+   *  is encouraged to compose its own generator, so a message hardcoding one
+   *  generator's name would be wrong for exactly the users the seam exists for. */
+  readonly refusedBy: ReadonlyMap<string, string>;
   /** Hand-edited orphans deleted because their policy set `force`. Separate from
    *  `removed` so the caller can say the louder thing about them. */
   readonly forced: string[];
@@ -71,12 +76,12 @@ function toPosix(p: string): string {
 
 export function sweepOrphans(args: SweepOrphansArgs): SweepOrphansResult {
   if (args.jobs.length === 0) {
-    return { removed: [], refused: [], forced: [] };
+    return { removed: [], refused: [], forced: [], refusedBy: new Map() };
   }
 
   const previouslyGenerated = listGeneratedPaths(args.genStateDir);
   if (previouslyGenerated.length === 0) {
-    return { removed: [], refused: [], forced: [] };
+    return { removed: [], refused: [], forced: [], refusedBy: new Map() };
   }
 
   // NOT normalized: both sides of this comparison are produced by
@@ -92,6 +97,7 @@ export function sweepOrphans(args: SweepOrphansArgs): SweepOrphansResult {
   const refused = new Set<string>();
   const forced = new Set<string>();
   const forget = new Set<string>();
+  const refusedBy = new Map<string, string>();
 
   for (const job of args.jobs) {
     const decision = reconcileOrphans({
@@ -128,7 +134,17 @@ export function sweepOrphans(args: SweepOrphansArgs): SweepOrphansResult {
       forget.add(relPath);
     }
     for (const relPath of decision.refused) {
-      if (removed.has(relPath) || forced.has(relPath)) continue;
+      // `refused` belongs in this guard too. Without it, a path already refused by a
+      // non-forcing job could be picked up by a later FORCING job whose namespace
+      // overlaps (the file anticipates several requirementTests() instances), landing
+      // in `refused` and `forced` at once — deleted from disk, while
+      // `refusedOrphanMessage` tells the user it "was NOT deleted".
+      //
+      // First decision wins: a refusal is the conservative answer, and letting a
+      // later job escalate it to a deletion would make the outcome depend on job
+      // ORDER, which is exactly the ambiguity the runner's duplicate-path guard
+      // exists to reject elsewhere.
+      if (removed.has(relPath) || forced.has(relPath) || refused.has(relPath)) continue;
       if (job.policy.force === true) {
         forced.add(relPath);
         forget.add(relPath);
@@ -136,6 +152,7 @@ export function sweepOrphans(args: SweepOrphansArgs): SweepOrphansResult {
         // Deliberately NOT forgotten: the record is what makes the refusal
         // repeat until someone resolves it.
         refused.add(relPath);
+        refusedBy.set(relPath, job.generatorName);
       }
     }
     // Nothing on disk to report — the file is already gone. Clear the stale
@@ -147,14 +164,15 @@ export function sweepOrphans(args: SweepOrphansArgs): SweepOrphansResult {
     for (const relPath of [...removed, ...forced]) {
       rmSync(resolve(args.projectRoot, relPath), { force: true });
     }
-    for (const relPath of forget) {
-      forgetGeneratedPath(args.genStateDir, relPath);
-    }
+    // Batched: the per-path form rewrites the whole manifest each call, so clearing
+    // k orphans rewrote it k times for an identical result.
+    forgetGeneratedPaths(args.genStateDir, forget);
   }
 
   return {
     removed: [...removed].sort(),
     refused: [...refused].sort(),
     forced: [...forced].sort(),
+    refusedBy,
   };
 }
