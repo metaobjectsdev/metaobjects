@@ -35,6 +35,8 @@ README.md
 - **`exclude`** is applied **after** `include` — a name excluded is excluded
   regardless of which `include` pattern admitted it. `exclude` with no
   `include` narrows the "everything" default.
+- **Matching is case-sensitive** — a pattern and a name must agree in case
+  (`acme::Order` does not match `acme::order` or `ACME::Order`).
 
 ## Behavioral contract
 

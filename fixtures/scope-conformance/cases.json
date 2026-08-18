@@ -79,6 +79,15 @@
         { "fqn": "acme::Order.v2", "matches": true },
         { "fqn": "acme::OrderXv2", "matches": false }
       ]
+    },
+    {
+      "name": "matching-is-case-sensitive",
+      "scope": { "include": ["acme::Order"] },
+      "expect": [
+        { "fqn": "acme::Order", "matches": true },
+        { "fqn": "acme::order", "matches": false },
+        { "fqn": "ACME::Order", "matches": false }
+      ]
     }
   ]
 }
