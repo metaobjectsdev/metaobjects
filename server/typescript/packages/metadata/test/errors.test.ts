@@ -37,7 +37,7 @@ test("phase-1 source-resolution error codes are registered in the shared ledger"
     "ERR_SOURCE_KIND_UNSUPPORTED",
     "ERR_SCOPE_PATTERN_INVALID",
     "ERR_COLLECTION_NOT_FOUND",
-  ]) {
+  ] as const) {
     expect(ERROR_CODES).toContain(code);
   }
 });
