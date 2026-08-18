@@ -1,0 +1,84 @@
+{
+  "cases": [
+    {
+      "name": "empty-scope-matches-everything",
+      "scope": {},
+      "expect": [
+        { "fqn": "acme::commerce::Order", "matches": true },
+        { "fqn": "Order", "matches": true }
+      ]
+    },
+    {
+      "name": "single-star-is-one-segment",
+      "scope": { "include": ["acme::*"] },
+      "expect": [
+        { "fqn": "acme::Order", "matches": true },
+        { "fqn": "acme::commerce::Order", "matches": false },
+        { "fqn": "other::Order", "matches": false }
+      ]
+    },
+    {
+      "name": "double-star-is-one-or-more-segments",
+      "scope": { "include": ["acme::**"] },
+      "expect": [
+        { "fqn": "acme::Order", "matches": true },
+        { "fqn": "acme::commerce::Order", "matches": true },
+        { "fqn": "acme::commerce::internal::Secret", "matches": true },
+        { "fqn": "acme", "matches": false },
+        { "fqn": "acmex::Order", "matches": false }
+      ]
+    },
+    {
+      "name": "double-star-in-the-middle",
+      "scope": { "include": ["acme::**::Order"] },
+      "expect": [
+        { "fqn": "acme::commerce::Order", "matches": true },
+        { "fqn": "acme::a::b::Order", "matches": true },
+        { "fqn": "acme::Order", "matches": false },
+        { "fqn": "acme::commerce::Invoice", "matches": false }
+      ]
+    },
+    {
+      "name": "partial-star-never-crosses-separator",
+      "scope": { "include": ["acme::Order*"] },
+      "expect": [
+        { "fqn": "acme::Order", "matches": true },
+        { "fqn": "acme::OrderLine", "matches": true },
+        { "fqn": "acme::deep::OrderLine", "matches": false }
+      ]
+    },
+    {
+      "name": "exclude-applied-after-include",
+      "scope": { "include": ["acme::**"], "exclude": ["acme::internal::**"] },
+      "expect": [
+        { "fqn": "acme::commerce::Order", "matches": true },
+        { "fqn": "acme::internal::Secret", "matches": false }
+      ]
+    },
+    {
+      "name": "exclude-alone-narrows-everything",
+      "scope": { "exclude": ["acme::internal::**"] },
+      "expect": [
+        { "fqn": "other::Thing", "matches": true },
+        { "fqn": "acme::internal::Secret", "matches": false }
+      ]
+    },
+    {
+      "name": "multiple-includes-are-a-union",
+      "scope": { "include": ["acme::commerce::**", "acme::common::**"] },
+      "expect": [
+        { "fqn": "acme::commerce::Order", "matches": true },
+        { "fqn": "acme::common::BaseEntity", "matches": true },
+        { "fqn": "acme::billing::Invoice", "matches": false }
+      ]
+    },
+    {
+      "name": "regex-metacharacters-are-literal",
+      "scope": { "include": ["acme::Order.v2"] },
+      "expect": [
+        { "fqn": "acme::Order.v2", "matches": true },
+        { "fqn": "acme::OrderXv2", "matches": false }
+      ]
+    }
+  ]
+}
