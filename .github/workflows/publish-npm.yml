@@ -4,6 +4,15 @@ name: publish-npm
 # in tier order (a dependency never lands after its dependent). Mirrors
 # publish-csharp.yml / publish-python.yml: tag-triggered or manual.
 #
+# WHICH packages, and in WHAT ORDER, is NOT decided here — `scripts/publish-set.mjs`
+# is the single source of truth, shared with the local `bun run release` path. This
+# workflow used to carry its own hardcoded list of 13 directories, which drifted from
+# that derivation: @metaobjectsdev/docs-site is a runtime dependency of
+# @metaobjectsdev/cli but was never in the list, so a release cut through here would
+# have shipped a cli pinning a docs-site version nobody published — an uninstallable
+# tarball, discoverable only by an external `npm install`. A list that is derived
+# cannot drift from the derivation.
+#
 # This publishes the versions ALREADY COMMITTED in each package.json at the tagged
 # commit — bump + commit them first (locally: `bun run release <ver>` does the
 # bump/build/verify/publish in one shot WITH a confirm gate; this workflow is the
@@ -38,6 +47,9 @@ jobs:
           bun install --frozen-lockfile
           bun run build
 
+      - name: Derive + verify the publish set
+        run: node scripts/publish-set.mjs --check
+
       - name: Pack-verify the cli tarball pins siblings (no workspace:*)
         run: |
           set -euo pipefail
@@ -60,15 +72,15 @@ jobs:
         run: |
           set -euo pipefail
           echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          trap 'rm -f ~/.npmrc' EXIT
           pub() { ( cd "$1" && bun publish --access public ) && echo "  ✓ $1"; }
-          # tier 0 → 4 (deps before dependents)
-          for d in server/typescript/packages/metadata server/typescript/packages/render \
-                   server/typescript/packages/codegen-ts server/typescript/packages/runtime-ts \
-                   server/typescript/packages/migrate-ts server/typescript/packages/sdk \
-                   client/web/packages/runtime-web \
-                   server/typescript/packages/codegen-ts-react server/typescript/packages/codegen-ts-tanstack \
-                   client/web/packages/react client/web/packages/tanstack \
-                   server/typescript/packages/cli server/typescript/packages/ai-runtime ; do
+          # The set and its tier order (deps before dependents) come from the shared
+          # derivation, never from a list maintained here. Written to a file first so a
+          # non-zero exit fails the step instead of yielding a silently short list.
+          node scripts/publish-set.mjs > "${RUNNER_TEMP}/publish-set.txt"
+          mapfile -t DIRS < "${RUNNER_TEMP}/publish-set.txt"
+          [ "${#DIRS[@]}" -gt 0 ] || { echo "::error::derived publish set is empty"; exit 1; }
+          echo "publishing ${#DIRS[@]} packages in tier order"
+          for d in "${DIRS[@]}"; do
             pub "$d"
           done
-          rm -f ~/.npmrc

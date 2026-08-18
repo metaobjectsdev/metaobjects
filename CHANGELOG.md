@@ -64,6 +64,33 @@ anything depends on the version, and deprecation does not free the number. The p
 checks every package in the set (in parallel, so it stays fast), and `bun run prerelease`
 skips numbers already burned on public npm when choosing an iteration.
 
+### Fixed — `publish-npm.yml` would have published an uninstallable `@metaobjectsdev/cli`
+
+The workflow carried its **own hardcoded list of 13 package directories**;
+`scripts/release.mjs` **derived** the same set (every non-private package at the CLI's
+version). Two answers to one question, and they had drifted:
+`@metaobjectsdev/docs-site` is a runtime `dependencies` entry of `@metaobjectsdev/cli`
+(`workspace:*`, rewritten to the concrete version at pack time) and was not in the
+workflow's list. A release cut through the workflow would therefore have published a
+`cli` pinning `@metaobjectsdev/docs-site@<version>` that nobody published — `npm i
+@metaobjectsdev/cli` → `ETARGET`, discoverable only by an external install. It stayed
+latent because the local `bun run release` path publishes all 14, so `docs-site@0.23.2`
+is on npm today; **nothing had ever compared the two answers.**
+
+`scripts/publish-set.mjs` is now the single source of truth for which packages ship and
+in what order, and both paths read it — the workflow's list is gone, so it cannot drift
+from a derivation it no longer has. The derivation also fails loudly rather than
+returning a wrong set: a member with no declared tier, a set not closed over its own
+sibling runtime deps, or a tier order that would publish a dependency after its
+dependent. Wired into the `gates` lane (`publish-set parity`) beside
+`check-publish-intent.sh`, which enforces the same rule from the other side.
+
+`TIER_ORDER` omitted `docs-site` too, and that was **not** the harmless oversight it
+looked like: `indexOf()` returns `-1`, which does not sort last — it sorts **first**, so
+the local release path published `docs-site` ahead of `metadata` and `render`, the two
+packages it depends on. The tier is declared now, and an undeclared one is an error
+instead of an accidental position.
+
 
 ## [0.23.2] — npm `0.23.2` · PyPI `0.23.2` · NuGet `0.23.2` · Maven `7.23.2`
 
