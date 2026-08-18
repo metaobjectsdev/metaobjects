@@ -62,19 +62,21 @@ warn() { printf '\033[33m!\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 
 # ── registry config: flags, then env, then a registry.env next to this script ─────────
-# The registry HOST is public and defaulted here, so a consumer needs no local config at
-# all. The OWNER is an account name this public repository does not commit, and the TOKEN
-# is a credential — neither is defaulted. Reads are anonymous, so a collaborator outside
-# the project needs the owner and nothing else:
+# Nothing is defaulted. The TOKEN is a credential and the OWNER is an account name, which
+# are the obvious two — but the registry ADDRESS is infrastructure belonging to whoever
+# runs it, and this repository is public, so a committed default would publish one
+# operator's hostname to every reader and every fork. Reads are anonymous, so a
+# collaborator outside the project needs the address and the owner, and no token:
 #
-#     MO_REGISTRY_OWNER=<owner> tools/prerelease/prerelease-link.sh link --version <ver>
-DEFAULT_REGISTRY='https://gitea.mealing.com'
+#     MO_REGISTRY_BASE=https://<registry> MO_REGISTRY_OWNER=<owner> \
+#       tools/prerelease/prerelease-link.sh link --version <ver>
 # shellcheck source=/dev/null
 [ -f "$HERE/registry.env" ] && . "$HERE/registry.env"
-BASE="${MO_REGISTRY_BASE:-$DEFAULT_REGISTRY}"; OWNER="${MO_REGISTRY_OWNER:-}"; TOKEN="${MO_REGISTRY_TOKEN:-}"
+BASE="${MO_REGISTRY_BASE:-}"; OWNER="${MO_REGISTRY_OWNER:-}"; TOKEN="${MO_REGISTRY_TOKEN:-}"
 BASE="${BASE%/}"
 
 need_registry() {
+  [ -n "$BASE" ]  || die "set MO_REGISTRY_BASE (or pass --registry) — the pre-release registry's base URL; see tools/prerelease/registry.env.example"
   [ -n "$OWNER" ] || die "set MO_REGISTRY_OWNER (or pass --owner) — the registry account that hosts the packages"
 }
 HOSTPORT="${BASE#*://}"

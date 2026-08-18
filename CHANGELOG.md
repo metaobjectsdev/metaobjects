@@ -32,9 +32,16 @@ iterate, and switch back with one verified command.
 - **`tools/prerelease/detect-prerelease-pins.sh`** — the guard a consumer commits and runs
   in CI. The registry is a public HTTPS endpoint with anonymous reads, so no network
   boundary is doing safety work; this check *is* the containment. It scans dependency
-  declarations only (a test server bound to `127.0.0.1` is not a dependency on anything) and
-  knows the registry host by default, so a consumer repo that has never seen the publisher's
-  config still catches a leak.
+  declarations only (a test server bound to `127.0.0.1` is not a dependency on anything).
+  Four of its five checks are host-independent — check 3, a vendor dependency pinned to a
+  pre-release version, catches a leak regardless of where it came from. The fifth needs the
+  registry's address, which is **configuration and never a committed default**: the address
+  is infrastructure belonging to whoever runs the registry, this repository is public, and
+  this file installs into adopter repositories, so a hardcoded host would propagate one
+  operator's infrastructure to every one of them. With `MO_REGISTRY_BASE` unset that one
+  check **announces that it did not run** rather than passing in silence — a guard that is
+  quiet when it skips cannot be told apart from one that looked and found nothing. `link`
+  passes the address through, so a linked consumer has it.
 - **`scripts/check-no-prerelease-versions.sh`** — wired into `.githooks/pre-commit` and the
   `gates` lane. A committed `-rc.N` is not cosmetic: `scripts/release.mjs` derives the
   lockstep set from the CLI's *current* version, so one stray pre-release version silently

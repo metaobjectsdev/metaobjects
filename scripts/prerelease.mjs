@@ -77,17 +77,19 @@ const fileEnv = existsSync(envFile)
   : {};
 const cfg = (k) => process.env[k] || fileEnv[k];
 
-// The registry HOST is public information and is committed as the default so a consumer
-// needs no configuration to resolve pre-releases. The OWNER and the TOKEN are not: the
-// token is a credential, and the owner is an account name this public repository does not
-// name. Both come from registry.env or the environment.
-const DEFAULT_REGISTRY = "https://gitea.mealing.com";
-const BASE = (cfg("MO_REGISTRY_BASE") || DEFAULT_REGISTRY).replace(/\/$/, "");
+// None of the three is committed. The TOKEN is a credential and the OWNER is an account
+// name, which are the obvious two — but the registry ADDRESS is infrastructure belonging
+// to whoever runs it, and this repository is public. A default host here would publish
+// one operator's hostname to every reader and every fork, so the address is configuration
+// like the other two: registry.env or the environment.
+const BASE = (cfg("MO_REGISTRY_BASE") || "").replace(/\/$/, "");
 const OWNER = cfg("MO_REGISTRY_OWNER");
 const TOKEN = cfg("MO_REGISTRY_TOKEN");
-if (!OWNER || !TOKEN)
-  die(`publishing needs MO_REGISTRY_OWNER and MO_REGISTRY_TOKEN (reads are anonymous, writes are not) —\n` +
-      `  set them in the environment, or create ${envFile} from tools/prerelease/registry.env.example`);
+if (!BASE || !OWNER || !TOKEN)
+  die(`publishing needs MO_REGISTRY_BASE, MO_REGISTRY_OWNER and MO_REGISTRY_TOKEN —\n` +
+      `  set them in the environment, or create ${envFile} from tools/prerelease/registry.env.example.\n` +
+      `  Reads are anonymous; only the token is secret. tools/prerelease/docker-compose.yml\n` +
+      `  stands up a registry if you do not already have one.`);
 
 // GATE 1 + 2 — the target must be the configured registry, and must not be a public one.
 const PUBLIC_HOSTS = [

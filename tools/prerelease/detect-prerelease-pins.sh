@@ -37,17 +37,22 @@ ROOT="${1:-.}"
 # The vendor namespaces whose pre-release pins matter. Edit for your own scopes.
 NS_RE='@metaobjectsdev/|com\.metaobjects|(^|[^A-Za-z])MetaObjects(\.|"|<|$)|(^|[^A-Za-z-])metaobjects([^A-Za-z-]|$)'
 
-# The pre-release registry's host, known by default so this check needs no configuration
-# in a consumer repo — which matters, because the consumer is exactly where nobody has the
-# publisher's config. MO_REGISTRY_BASE overrides it for a different registry.
-DEFAULT_REGISTRY_HOST='gitea.mealing.com'
+# The pre-release registry's host comes from MO_REGISTRY_BASE (env, or the registry.env
+# beside this script). It is NOT defaulted: the address is infrastructure belonging to
+# whoever runs the registry, and this file ships into consumer repositories, so a
+# committed hostname would propagate one operator's infrastructure to every adopter.
+#
+# Without it, check 1 cannot run. It is announced rather than skipped in silence — a
+# guard that says nothing when it does not run is indistinguishable from one that ran and
+# found nothing, which is the failure mode this whole script exists to prevent. The other
+# four checks are host-independent and still run; check 3 in particular catches a
+# pre-release PIN regardless of where it came from.
 CFG="$(cd "$(dirname "$0")" && pwd)/registry.env"
 # shellcheck source=/dev/null
 [ -f "$CFG" ] && . "$CFG"
-REGISTRY_HOST="$DEFAULT_REGISTRY_HOST"
+REGISTRY_HOST=""
 if [ -n "${MO_REGISTRY_BASE:-}" ]; then
-  h="${MO_REGISTRY_BASE#*://}"; h="${h%%/*}"
-  [ "$h" = "$DEFAULT_REGISTRY_HOST" ] || REGISTRY_HOST="$DEFAULT_REGISTRY_HOST|$h"
+  h="${MO_REGISTRY_BASE#*://}"; REGISTRY_HOST="${h%%/*}"
 fi
 
 # Private/loopback/link-local hosts, and the suffixes used for LAN-only names.
@@ -120,7 +125,11 @@ scan() {  # scan <label> <grep-args...>
 }
 
 # 1 + 2 — registry addresses.
-scan "project points at the pre-release registry ($REGISTRY_HOST)" -- "$REGISTRY_HOST"
+if [ -n "$REGISTRY_HOST" ]; then
+  scan "project points at the pre-release registry ($REGISTRY_HOST)" -- "$REGISTRY_HOST"
+else
+  echo "  · check 1 NOT RUN: set MO_REGISTRY_BASE to scan for the pre-release registry's address" >&2
+fi
 scan "project points at a private-network or loopback package registry" -- "$PRIVATE_HOST_RE"
 
 # 3 — a vendor dependency pinned to a pre-release version.

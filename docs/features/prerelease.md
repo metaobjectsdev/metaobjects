@@ -12,7 +12,7 @@ releases with a verified one-command revert.
 
 | | |
 |---|---|
-| Registry | `https://gitea.mealing.com` — one Gitea instance serving npm, PyPI, NuGet and Maven |
+| Registry | one Gitea instance serving npm, PyPI, NuGet and Maven — the address is configuration (`MO_REGISTRY_BASE`), never a committed default; see [§7](#7-running-your-own-registry) |
 | Reads | **anonymous** — a consumer needs the URL and the owner, no account and no token |
 | Writes | token only, in gitignored local config, never in a committed file |
 | Publisher | `bun run prerelease` (`scripts/prerelease.mjs`) |
@@ -192,8 +192,8 @@ tools/prerelease/prerelease-link.sh unlink        # --to defaults to the current
 npm install
 ```
 
-The registry host is defaulted in the tooling, so `MO_REGISTRY_OWNER` is the only thing
-they need to be told. `unlink` needs nothing at all.
+They need to be told `MO_REGISTRY_BASE` and `MO_REGISTRY_OWNER` — neither is defaulted
+(§7) — and no token, because reads are anonymous. `unlink` needs nothing at all.
 
 ---
 
@@ -226,8 +226,13 @@ top of it. Treat a failure as a build break.
 `link` installs it into the consumer at `tools/prerelease/detect-prerelease-pins.sh`.
 **Commit it and run it in CI** (and from a pre-commit hook). It flags:
 
-1. the pre-release registry's host — **defaulted**, so a consumer repo that has never seen
-   the publisher's config still catches it;
+1. the pre-release registry's host — read from `MO_REGISTRY_BASE`, never a committed
+   default (§7), since this file ships into adopter repositories. Unset, this one check
+   **announces that it did not run** rather than passing in silence, because a guard that
+   is quiet when it skips cannot be told apart from a guard that looked and found nothing.
+   `link` passes the address through, so the linked consumer gets it; the other four
+   checks are host-independent and always run — check 3 in particular catches a
+   pre-release pin no matter where it came from;
 2. any private-network or loopback registry host (someone else's self-hosted instance);
 3. a vendor dependency pinned to a pre-release version, in any of the four spellings — the
    only signal that survives `pip freeze`, which records no index provenance at all. In
@@ -272,18 +277,27 @@ Everything else — "does this change work in a downstream app?" — belongs her
 
 ---
 
-## 7. Running your own registry
+## 7. Pointing the tooling at a registry
 
-The project registry is a normal Gitea instance. To stand up an equivalent (a fork, another
-team, an offline machine):
+**There is no default.** `MO_REGISTRY_BASE`, `MO_REGISTRY_OWNER` and `MO_REGISTRY_TOKEN`
+all come from the environment or from `tools/prerelease/registry.env` (gitignored; copy
+`registry.env.example`), and the tooling refuses rather than guessing. The token is a
+credential and the owner is an account name, which is the obvious reason for two of them —
+the address is in the same set because it is *infrastructure belonging to whoever runs the
+registry*, and this repository is public: a committed hostname propagates one operator's
+infrastructure to every reader, every fork, and — via
+`tools/prerelease/detect-prerelease-pins.sh`, which installs into consumer repos — every
+adopter. Without it, that guard's registry-address check announces that it did not run
+rather than passing silently.
+
+Any Gitea instance works. To stand one up (a fork, another team, an offline machine):
 
 ```bash
 docker compose -f tools/prerelease/docker-compose.yml up -d
 tools/prerelease/bootstrap.sh          # creates the owner + token, writes registry.env
 ```
 
-Then point `MO_REGISTRY_BASE` at it. The publisher and the link helper are registry-agnostic;
-nothing else changes.
+The publisher and the link helper are registry-agnostic; nothing else changes.
 
 > A CDN in front of the registry may cap request bodies (100 MB on Cloudflare's free plan),
 > in which case a very large artifact fails at the edge rather than at Gitea. Every artifact

@@ -1,8 +1,9 @@
 # OPTIONAL self-contained registry, for someone who does not already have one.
 #
-# The project's own pre-release registry is https://gitea.mealing.com (public hostname,
-# anonymous reads) and is the default the tooling uses. This file exists so that a fork,
-# a different team, or an offline machine can stand up an equivalent in one command.
+# The pre-release toolchain has no default registry — the address is configuration
+# (MO_REGISTRY_BASE), because it is infrastructure belonging to whoever runs it. This file
+# exists so that a fork, a different team, or an offline machine can stand one up in one
+# command rather than needing to already have somewhere to publish to.
 #
 # The pre-release toolchain is registry-AGNOSTIC: scripts/prerelease.mjs and
 # tools/prerelease/prerelease-link.sh read the address from tools/prerelease/registry.env
