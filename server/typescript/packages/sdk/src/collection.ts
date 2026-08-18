@@ -23,7 +23,10 @@ export interface Collection {
   /** Directory whose config declared this collection (or the resolved start
    *  directory, when nothing was discovered and the default applies). */
   readonly configDir: string;
-  /** Canonically-sorted absolute metadata file paths — see `resolveSources`. */
+  /** Canonically-ordered absolute metadata file paths — see `resolveSources`.
+   *  Canonical, not sorted: within a directory source the walk order the
+   *  toolchain has always used is preserved, because it survives into
+   *  generated output. */
   readonly files: readonly string[];
   /** Same set, carrying the contributing spec for provenance. */
   readonly sources: readonly ResolvedSource[];
@@ -32,6 +35,12 @@ export interface Collection {
   /** Output filter for migrate/verify --db. Undefined => the command governs
    *  everything in scope. */
   readonly migrateScope: CompiledScope | undefined;
+  /** The patterns `migrateScope` was compiled FROM, for diagnostics only —
+   *  `compileScope` produces RegExps, and a regex source is not something to
+   *  show an author who wrote `acme::platform::**`. Carried so the "your scope
+   *  matched nothing" refusal can name the patterns that missed. Always in
+   *  lockstep with `migrateScope`: both undefined, or both present. */
+  readonly migrateScopePatterns: readonly string[] | undefined;
 }
 
 // Deliberately NOT deduped with `exists` (imported from `./discovery.js`)
@@ -142,5 +151,6 @@ export async function resolveCollection(
     sources,
     scope: compileScope(toScope(scopeSpec)),
     migrateScope: migrateSpec === undefined ? undefined : compileScope({ include: migrateSpec }),
+    migrateScopePatterns: migrateSpec,
   };
 }

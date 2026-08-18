@@ -12,7 +12,19 @@
 // EXISTS in the database becomes a proposed `DROP TABLE` — the precise hazard this
 // feature exists to remove. `scopeExpectedSchema` therefore returns both halves and
 // callers must thread `outOfScope` into the diff.
+//
+// There is a THIRD half, and it is the one that bites hardest when the scope is
+// wrong. `diff` derives its SCHEMA scope from the schemas the expected side
+// mentions, falling back to "no schema scoping at all" when expected is empty (the
+// legacy whole-DB path for a project with no model). A scope matching NOTHING
+// empties `expected`, reaches that fallback, and every actual table in every schema
+// becomes a drop candidate — another owner's included, which was never in `expected`
+// so it has no provenance and never lands in `outOfScope`. Narrowing must never
+// WIDEN. `declaredSchemas` below reports the UNSCOPED model's schemas so callers can
+// pin `diff`'s `scopeSchemas` to a property of the whole model, which `migrate.scope`
+// then cannot move in either direction.
 
+import { DEFAULT_DB_SCHEMA_POSTGRES } from "@metaobjectsdev/metadata";
 import type { ExpectedSchemaWithProvenance } from "./expected-schema.js";
 import { qualifiedDbName } from "./qualified-name.js";
 import type { SchemaSnapshot } from "./types.js";
@@ -36,6 +48,39 @@ export interface ScopedExpectedSchema {
    * too — see the module header.
    */
   outOfScope: string[];
+  /**
+   * The database schemas the UNSCOPED model declares, for `diff`'s `scopeSchemas`.
+   * MUST be threaded there by every caller that narrows — see the module header:
+   * without it a scope matching nothing hands `diff` an empty expected side, which
+   * it reads as "no model, govern the whole database".
+   *
+   * `undefined` when no predicate was supplied (so `diff` derives its own set from
+   * an untouched `expected`, exactly as before — an unscoped project's arguments are
+   * unchanged) and also when the unscoped model declares no tables or views at all
+   * (nothing to derive from; `diff`'s legacy whole-DB fallback is preserved).
+   */
+  declaredSchemas?: string[];
+}
+
+/**
+ * The distinct database schemas a snapshot's tables and views sit in, absent
+ * normalized to the Postgres default — the value `diff` derives for itself when no
+ * `scopeSchemas` is supplied. The ONE definition: any caller narrowing an expected
+ * side must pin `diff`'s schema scope to the UNNARROWED snapshot's schemas, and a
+ * second encoding of "absent means public" here would silently disagree with the
+ * one inside `diff`.
+ *
+ * Empty in ⇒ empty out, which callers translate to "pass nothing", preserving
+ * `diff`'s legacy whole-database fallback for a genuinely empty model.
+ */
+export function declaredSchemasOf(snapshot: SchemaSnapshot): string[] {
+  return [
+    ...new Set(
+      [...snapshot.tables, ...snapshot.views].map(
+        (o) => o.schema ?? DEFAULT_DB_SCHEMA_POSTGRES,
+      ),
+    ),
+  ].sort();
 }
 
 /**
@@ -56,6 +101,11 @@ export function scopeExpectedSchema(
 ): ScopedExpectedSchema {
   if (inScope === undefined) return { snapshot: built.snapshot, outOfScope: [] };
 
+  // Computed from `built.snapshot` — the UNSCOPED side — deliberately, and before
+  // the filter below runs. Deriving it from the survivors would reproduce exactly
+  // the defect this exists to close.
+  const declared = declaredSchemasOf(built.snapshot);
+
   const outOfScope: string[] = [];
   const governed = <T extends { name: string; schema?: string }>(obj: T): boolean => {
     const qualified = qualifiedDbName(obj);
@@ -72,5 +122,6 @@ export function scopeExpectedSchema(
       views: built.snapshot.views.filter(governed),
     },
     outOfScope,
+    ...(declared.length > 0 ? { declaredSchemas: declared } : {}),
   };
 }

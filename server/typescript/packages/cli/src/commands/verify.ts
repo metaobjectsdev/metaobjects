@@ -33,6 +33,7 @@ import {
   computeDrift,
   computeDriftFromActual,
   collectUnmanagedNames,
+  declaredSchemasOf,
   qualifiedDbName,
   introspect,
   diff,
@@ -49,7 +50,7 @@ import {
   type DriftResult,
 } from "@metaobjectsdev/migrate-ts";
 import { loadMemory, resolveCollection, matchesScope } from "@metaobjectsdev/sdk";
-import { toObjectScope } from "../lib/migrate-scope.js";
+import { migrateScopeMismatch, toObjectScope } from "../lib/migrate-scope.js";
 import {
   TYPE_TEMPLATE,
   TEMPLATE_SUBTYPE_PROMPT,
@@ -400,6 +401,17 @@ export async function verifyCommand(
     const usingD1 = flags.dialect === "d1";
     if ((flags.db === undefined && !usingD1) || flags.skipSchema) return 0;
 
+    // A `migrate.scope` matching nothing is refused, not tolerated — it would make
+    // this gate compare zero objects and report "in sync" (see `migrateScopeMismatch`).
+    // Checked HERE rather than beside the other collection work at the top of
+    // `verifyCommand`, because `migrate.scope` governs only the schema gate: a stale
+    // pattern must not fail a `--templates` run that never consults it.
+    const scopeMismatch = migrateScopeMismatch(collection, root);
+    if (scopeMismatch !== undefined) {
+      log.error(`verify: ${scopeMismatch}`);
+      return 2;
+    }
+
     if (usingD1 && flags.db !== undefined) {
       log.error(`verify: --db is not used for dialect 'd1' — wrangler.toml owns the connection; pass --d1 <binding> instead`);
       return 2;
@@ -619,6 +631,15 @@ export async function verifyCommand(
       actual,
       allow: {},
       unmanagedNames: [...collectUnmanagedNames(root), ...outOfScope],
+      // Pin the schema scope to the UNFILTERED snapshot's schemas whenever the
+      // filter above removed anything (migrate-ts's scope.ts header has the
+      // mechanism): filtering `expected` down to empty would otherwise reach
+      // `diff`'s "no model, govern the whole database" fallback and report every
+      // table another owner has as a snapshot disagreement. Nothing filtered ⇒
+      // nothing passed ⇒ an unscoped project's arguments are unchanged.
+      ...(excluded.size > 0 && declaredSchemasOf(snapshot).length > 0
+        ? { scopeSchemas: declaredSchemasOf(snapshot) }
+        : {}),
     });
     if (result.changes.length === 0) return [];
 

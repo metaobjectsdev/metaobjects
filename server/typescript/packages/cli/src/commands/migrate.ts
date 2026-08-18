@@ -12,7 +12,7 @@ import { buildKyselyFromUrl, redactUrl } from "../lib/kysely.js";
 import { log } from "../lib/log.js";
 import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
-import { toObjectScope } from "../lib/migrate-scope.js";
+import { migrateScopeMismatch, toObjectScope } from "../lib/migrate-scope.js";
 import {
   buildExpectedSchemaWithProvenance,
   scopeExpectedSchema,
@@ -428,6 +428,13 @@ export async function migrateCommand(
     return 2;
   }
 
+  const scopeMismatch = migrateScopeMismatch(collection, metadata);
+  if (scopeMismatch !== undefined) {
+    log.error(`migrate: ${scopeMismatch}`);
+    emitStructuredError(`migrate: ${scopeMismatch}`, "fix or remove migrate.scope in .metaobjects/config.json", fmt);
+    return 2;
+  }
+
   let kysely;
   try {
     kysely = await buildKyselyFromUrl(config.databaseUrl, config.dialect);
@@ -500,6 +507,11 @@ export async function migrateCommand(
         // actual side so migrate proposes neither create nor drop for them. Objects
         // outside `migrate.scope` ride the same seam, for the same reason.
         unmanagedNames: [...collectUnmanagedNames(metadata), ...scoped.outOfScope],
+        // Pin the schema scope to the UNSCOPED model's schemas (see migrate-ts's
+        // scope.ts header): a `migrate.scope` matching nothing would otherwise empty
+        // `expected`, which `diff` reads as "no model, govern the whole database".
+        // Absent when no scope was given, so an unscoped run is unchanged.
+        ...(scoped.declaredSchemas !== undefined ? { scopeSchemas: scoped.declaredSchemas } : {}),
         onAmbiguous: async (a) => {
           collectedAmbiguous.push(a);
           return onAmbiguousResolution;
@@ -933,6 +945,13 @@ export async function runOfflineGenerate(
     return 2;
   }
 
+  const offlineScopeMismatch = migrateScopeMismatch(collection, metadata);
+  if (offlineScopeMismatch !== undefined) {
+    log.error(`migrate: ${offlineScopeMismatch}`);
+    emitStructuredError(`migrate: ${offlineScopeMismatch}`, "fix or remove migrate.scope in .metaobjects/config.json", fmt);
+    return 2;
+  }
+
   const outDir = resolvePath(metaRoot, config.outDir);
   const path = snapshotPath(outDir, config.dialect);
   let snapshot;
@@ -1171,6 +1190,13 @@ async function runD1Migrate(
     return 2;
   }
 
+  const d1ScopeMismatch = migrateScopeMismatch(collection, metadata);
+  if (d1ScopeMismatch !== undefined) {
+    log.error(`migrate: ${d1ScopeMismatch}`);
+    emitStructuredError(`migrate: ${d1ScopeMismatch}`, "fix or remove migrate.scope in .metaobjects/config.json", fmt);
+    return 2;
+  }
+
   // 4. Build expected schema + introspect actual.
   let columnNamingStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
   try {
@@ -1221,6 +1247,9 @@ async function runD1Migrate(
       // #208 §7 — declared-@unmanaged objects are external (see the online path above),
       // and so are objects outside `migrate.scope`.
       unmanagedNames: [...collectUnmanagedNames(metadata), ...scoped.outOfScope],
+      // Schema scope pinned to the UNSCOPED model's schemas — same reasoning as the
+      // online path above (migrate-ts's scope.ts header has the mechanism).
+      ...(scoped.declaredSchemas !== undefined ? { scopeSchemas: scoped.declaredSchemas } : {}),
       onAmbiguous: async (a) => {
         collectedAmbiguous.push(a);
         return onAmbiguousResolution;

@@ -107,6 +107,12 @@ export async function computeDriftFromActual(
     // Out-of-scope objects join it: dropping them from `expected` alone would turn each
     // one that EXISTS in the database into a spurious drop-* drift.
     unmanagedNames: [...collectUnmanagedNames(metadata), ...scoped.outOfScope],
+    // Pin the schema scope to the UNSCOPED model's schemas (see scope.ts's header):
+    // a scope matching nothing would otherwise empty `expected`, which `diff` reads
+    // as "no model, govern the whole database" — reporting phantom drift for every
+    // table another owner has in a schema this model never mentions. Absent when no
+    // scope was given, so an unscoped run is unchanged.
+    ...(scoped.declaredSchemas !== undefined ? { scopeSchemas: scoped.declaredSchemas } : {}),
     ...(opts?.ignoreTables !== undefined ? { ignoreTables: opts.ignoreTables } : {}),
   });
   return { ...result, outOfScope: scoped.outOfScope };

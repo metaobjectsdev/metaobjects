@@ -62,6 +62,12 @@ export async function planOffline(args: PlanOfflineArgs): Promise<PlanOfflineRes
     // Out-of-scope objects join them, for the same reason: an out-of-scope table already
     // recorded in the snapshot must not be dropped just because the scope excludes it.
     unmanagedNames: [...collectUnmanagedNames(args.metadata), ...scoped.outOfScope],
+    // Pin the schema scope to the UNSCOPED model's schemas (see scope.ts's header):
+    // a `migrate.scope` matching nothing would otherwise empty `expected`, which
+    // `diff` reads as "no model, govern the whole database" — turning the
+    // declaration that exists to protect another owner's tables into a proposed DROP
+    // for them. Absent when no scope was given, so an unscoped run is unchanged.
+    ...(scoped.declaredSchemas !== undefined ? { scopeSchemas: scoped.declaredSchemas } : {}),
     ...(args.allow ? { allow: args.allow } : {}),
     ...(args.onAmbiguous ? { onAmbiguous: args.onAmbiguous } : {}),
     ...(args.ignoreTables ? { ignoreTables: args.ignoreTables } : {}),
