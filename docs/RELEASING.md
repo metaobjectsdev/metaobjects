@@ -61,7 +61,22 @@ each one cost a broken/burned release to learn.
 The publish-candidate packages (versioned in lockstep unless a package gets an
 isolated patch). **Enumerate the set each release — do not trust this count** (it
 was **13** at 0.11.5); the lockstep set is "every non-`private` package at the
-previous version" (a sed/grep over `*/package.json`):
+previous version":
+
+```bash
+node scripts/publish-set.mjs --check    # the set + its tier order, and the invariants
+```
+
+> `scripts/publish-set.mjs` is the single source of truth for the set and its order.
+> Both publish paths read it — `scripts/release.mjs` and
+> `.github/workflows/publish-npm.yml` — because they used to answer the question
+> separately and drifted: the workflow's hardcoded list of 13 directories omitted
+> `@metaobjectsdev/docs-site`, which `@metaobjectsdev/cli` depends on at runtime, so a
+> release cut through the workflow would have published a `cli` pinning a `docs-site`
+> version nobody published (`npm i @metaobjectsdev/cli` → `ETARGET`). It also asserts
+> what the tier table below asserts in prose: every member has a declared tier, nothing
+> publishes before its own dependencies, and the set is closed over its sibling deps.
+> Runs in the `gates` lane; the table stays as the human-readable statement of intent.
 
 > **Mind the gap in that rule.** A non-`private` package on its OWN version line is
 > at neither the previous lockstep version nor `private`, so it matches neither
