@@ -84,6 +84,19 @@ MANIFESTS=(
   --include=gradle.properties --include=settings.xml --include=libs.versions.toml
 )
 
+# Arm 3b below applies ONLY to these. In a lockfile the package name and its version sit
+# on different lines, so a same-line namespace match cannot see the pair and a proximity
+# window is the only way to read it. Every other manifest format keeps name and version on
+# ONE line, where arm 3a already reads them exactly — running the window there instead
+# flags a third-party beta that merely happens to sit near a vendor entry, which is the
+# cry-wolf failure this check must not have.
+LOCKFILES=(
+  --include=package-lock.json --include=npm-shrinkwrap.json --include=yarn.lock
+  --include=pnpm-lock.yaml --include=bun.lock
+  --include=uv.lock --include=poetry.lock --include=Pipfile.lock
+  --include=packages.lock.json
+)
+
 EXCLUDES=(
   --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=vendor
   --exclude-dir=".venv*" --exclude-dir=venv --exclude-dir=site-packages
@@ -113,11 +126,12 @@ scan "vendor dependency pinned to a pre-release version" -- "($NS_RE).*$PRERELEA
 # XML is deliberately excluded here and handled by check 5 instead: a pom's own
 # <version>1.0.0-SNAPSHOT</version> is normal and must not be flagged.
 #
-# 3b — a bare quoted pre-release version, which is how it appears in LOCKFILES (name and
-# version on different lines, so the same-line arm above cannot see them). Flagged only
-# when a vendor namespace token appears within a few lines of the version: a naked
-# version-anywhere match would also flag every third-party rc/beta a project legitimately
-# depends on, and a check that cries wolf is a check people learn to ignore.
+# 3b — LOCKFILES only. There the package name and its version are on different lines, so
+# the same-line arm above cannot see the pair; a vendor namespace token within a few lines
+# of the version is the best available signal. Deliberately NOT run over other manifests:
+# there name and version share a line, arm 3a reads them exactly, and the window would
+# instead flag a third-party rc/beta that merely sits near a vendor entry — a check that
+# cries wolf is a check people learn to ignore.
 while IFS= read -r f; do
   [ -n "$f" ] || continue
   bad=$(awk -v ns="$NS_RE_AWK" -v re="$PRERELEASE_RE_AWK" '
@@ -135,7 +149,7 @@ while IFS= read -r f; do
     hit "vendor dependency pinned to a pre-release version"
     echo "$bad" | sed "s|^|      $f:|" >&2
   fi
-done < <(grep -rIlE --binary-files=without-match "${MANIFESTS[@]}" "${EXCLUDES[@]}" \
+done < <(grep -rIlE --binary-files=without-match "${LOCKFILES[@]}" "${EXCLUDES[@]}" \
            -- "\"$PRERELEASE_RE\"|==$PRERELEASE_RE|Version=\"$PRERELEASE_RE" "$ROOT" 2>/dev/null)
 
 # 4 — a bare npm dist-tag specifier: floats, and does not exist on the public registry.

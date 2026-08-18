@@ -230,7 +230,11 @@ top of it. Treat a failure as a build break.
    the publisher's config still catches it;
 2. any private-network or loopback registry host (someone else's self-hosted instance);
 3. a vendor dependency pinned to a pre-release version, in any of the four spellings — the
-   only signal that survives `pip freeze`, which records no index provenance at all;
+   only signal that survives `pip freeze`, which records no index provenance at all. In
+   manifests the name and the version share a line, so the match is namespace-anchored
+   exactly; in **lockfiles** they sit on different lines, so there — and only there — a
+   proximity window is used instead. Keeping the window out of manifests is deliberate: it
+   would flag a third-party `rc`/`beta` that merely happens to sit near a vendor entry;
 4. an npm dependency declared as a bare dist-tag, which floats;
 5. a Maven pom pinning a pre-release in a `<dependency>` or `<properties>` block — the
    project's own `1.0.0-SNAPSHOT` version is normal and is deliberately not flagged.
