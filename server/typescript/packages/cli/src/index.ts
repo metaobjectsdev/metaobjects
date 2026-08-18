@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { log } from "./lib/log.js";
 import { cliVersion } from "./lib/version.js";
 import { resolveFormat, isValidFormat, VALID_FORMATS } from "./lib/format.js";
+import { resolveCollection } from "@metaobjectsdev/sdk";
 export { defineConfig } from "@metaobjectsdev/codegen-ts";
 export type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 
@@ -271,8 +272,10 @@ export async function run(argv: string[]): Promise<number> {
     case undefined: {
       // Content-first no-args view: concise status + next-step help[] rather than
       // dumping the full manual (full manual is still available via `meta --help`).
-      const metaobjectsExists = await import("node:fs/promises")
-        .then(({ stat }) => stat(resolve(cwd, "metaobjects")).then(() => true).catch(() => false));
+      // "Is this a MetaObjects project?" routes through resolveCollection — the
+      // single authority on where metadata lives — rather than assuming the
+      // default `metaobjects/` directory name.
+      const metaobjectsExists = await resolveCollection(cwd).then(() => true).catch(() => false);
       const statusLine = metaobjectsExists
         ? `meta — MetaObjects CLI (v${VERSION})  ·  metaobjects/ found`
         : `meta — MetaObjects CLI (v${VERSION})  ·  no metaobjects/ here`;

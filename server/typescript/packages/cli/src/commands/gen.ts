@@ -1,5 +1,4 @@
-import { relative, join } from "node:path";
-import { existsSync } from "node:fs";
+import { relative } from "node:path";
 import { parseGenArgs } from "../lib/args.js";
 import { resolveGenConfig } from "../lib/config.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
@@ -9,7 +8,7 @@ import type { OutputFormat } from "../lib/format.js";
 import { log } from "../lib/log.js";
 import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
-import { loadMemory, DEFAULT_METADATA_DIR } from "@metaobjectsdev/sdk";
+import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
 import { runGen, listGenerators } from "@metaobjectsdev/codegen-ts";
 import type { WriteStatus } from "@metaobjectsdev/codegen-ts";
 
@@ -50,24 +49,28 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     return 2;
   }
 
+  // Discovery and load are two separate failure modes, kept in separate try
+  // blocks deliberately: a broad catch around both previously swallowed
+  // genuine ParseErrors (e.g. `origin.@via "X.y" ...: no such relationship
+  // "y" on X`) as "no metaobjects/ found", masking the real failure.
+  // `resolveCollection` raises `ERR_COLLECTION_NOT_FOUND` with its own
+  // message when nothing is discovered and no default directory exists.
+  let collection;
+  try {
+    collection = await resolveCollection(projectRoot);
+  } catch (err) {
+    log.error((err as Error).message);
+    return 2;
+  }
+
   let metadata;
   try {
-    metadata = await loadMemory(projectRoot, {
+    metadata = await loadMemory(collection.configDir, {
+      files: collection.files,
       ...(forgeConfig.providers !== undefined ? { providers: forgeConfig.providers } : {}),
     });
   } catch (err) {
-    const msg = (err as Error).message;
-    // Only emit the scaffold hint for the ACTUAL missing-metadata-dir
-    // condition — checked explicitly here. A broad substring match on
-    // "no such" / "cannot read" wrongly swallowed genuine ParseErrors (e.g.
-    // `origin.@via "X.y" ...: no such relationship "y" on X`) as "no
-    // metaobjects/ found", masking the real failure. Real parse/validation
-    // errors propagate with their actual message.
-    if (!existsSync(join(projectRoot, DEFAULT_METADATA_DIR))) {
-      log.error(`no metaobjects/ found in ${projectRoot}; run 'meta init' to scaffold`);
-    } else {
-      log.error(`failed to load metadata: ${msg}`);
-    }
+    log.error(`failed to load metadata: ${(err as Error).message}`);
     return 2;
   }
 

@@ -11,11 +11,11 @@
 // output is therefore guaranteed — it is byte-for-byte the same generator the
 // `meta gen` pipeline runs (gated by the docs conformance fixture).
 
-import { resolve as resolvePath, basename } from "node:path";
+import { resolve as resolvePath, basename, isAbsolute } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { log } from "../lib/log.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
-import { loadMemory, DEFAULT_METADATA_DIR } from "@metaobjectsdev/sdk";
+import { loadMemory, resolveCollection, type Collection } from "@metaobjectsdev/sdk";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -280,20 +280,28 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
     return emitSite(metaRoot, outDir, configProviders, promptsDir);
   }
 
+  // Discovery and load are two separate failure modes, kept in separate try
+  // blocks deliberately — same reasoning as `meta gen` (gen.ts): a broad
+  // catch around both would swallow a genuine ParseError as "no metaobjects/
+  // found", masking the real failure.
+  let collection;
+  try {
+    collection = await resolveCollection(metaRoot);
+  } catch (err) {
+    log.error(`docs: ${(err as Error).message}`);
+    return 2;
+  }
+
   // Load metadata standalone — same loader path as migrate/gen. Threads any
   // consumer providers from the config so custom types resolve.
   let root;
   try {
-    root = await loadMemory(metaRoot, {
+    root = await loadMemory(collection.configDir, {
+      files: collection.files,
       ...(configProviders !== undefined ? { providers: configProviders } : {}),
     });
   } catch (err) {
-    const msg = (err as Error).message;
-    if (!existsSync(join(metaRoot, DEFAULT_METADATA_DIR))) {
-      log.error(`docs: no metaobjects/ found in ${metaRoot}; run 'meta init' to scaffold`);
-    } else {
-      log.error(`docs: failed to load metadata: ${msg}`);
-    }
+    log.error(`docs: failed to load metadata: ${(err as Error).message}`);
     return 2;
   }
 
@@ -505,13 +513,35 @@ async function scaffoldSiteCommand(metaRoot: string): Promise<number> {
 }
 
 /**
+ * Distinct directories declared by the collection's source specs, resolved
+ * absolute against `collection.configDir`. The site's own loader
+ * (`@metaobjectsdev/docs-site`) wants whole directories — each becomes a
+ * symlinked, basename-keyed source group — unlike the per-file list
+ * `resolveCollection` produces for the sdk `loadMemory` path.
+ */
+function collectionSourceDirs(collection: Collection): string[] {
+  const dirs = new Map<string, string>();
+  for (const { spec } of collection.sources) {
+    if (!("path" in spec)) continue; // phase 1 resolves "path" specs only
+    const key = JSON.stringify(spec);
+    if (dirs.has(key)) continue;
+    dirs.set(
+      key,
+      isAbsolute(spec.path) ? spec.path : resolvePath(collection.configDir, spec.path),
+    );
+  }
+  return [...dirs.values()];
+}
+
+/**
  * Emit the browsable HTML documentation site via `@metaobjectsdev/docs-site`.
- * The site loads the model with its OWN loader from the metadata source dir
- * (`<metaRoot>/metaobjects`), so this is independent of the sdk loadMemory path
- * used for the markdown surfaces. Writes under `<outDir>/site` so it can coexist
- * with the markdown output. Scaffold-and-own: when the consumer has copied
- * templates/assets into `<metaRoot>/codegen/docs-site/` (via `--scaffold-site`),
- * those win over the bundled defaults.
+ * The site loads the model with its OWN loader from the resolved metadata
+ * source directories (see `resolveCollection`/`collectionSourceDirs`), so
+ * this is independent of the sdk loadMemory path used for the markdown
+ * surfaces. Writes under `<outDir>/site` so it can coexist with the markdown
+ * output. Scaffold-and-own: when the consumer has copied templates/assets
+ * into `<metaRoot>/codegen/docs-site/` (via `--scaffold-site`), those win
+ * over the bundled defaults.
  */
 async function emitSite(
   metaRoot: string,
@@ -520,14 +550,22 @@ async function emitSite(
   promptsDir?: string,
 ): Promise<number> {
   const siteOutDir = resolvePath(outDir, "site");
-  // metaobjects/ is REQUIRED (the site loads the model from it) and always first.
-  // Prompt `.mustache` source is additionally searched in the conventional
-  // <root>/templates/ and any explicit --prompts dir (for a project whose templates
-  // live elsewhere, e.g. data/templates/) — else the site can't show the prompt TEXT
-  // and prints a "source missing" note. Only existing dirs are added, and dirs are
+  // The resolved metadata source dir(s) are REQUIRED (the site loads the
+  // model from them) and always first. Prompt `.mustache` source is
+  // additionally searched in the conventional <root>/templates/ and any
+  // explicit --prompts dir (for a project whose templates live elsewhere,
+  // e.g. data/templates/) — else the site can't show the prompt TEXT and
+  // prints a "source missing" note. Only existing dirs are added, and dirs are
   // deduped by BASENAME (the site keys source groups by basename, and rejects a dup).
-  const sourceDirs = [join(metaRoot, DEFAULT_METADATA_DIR)];
-  const seenBasenames = new Set([basename(join(metaRoot, DEFAULT_METADATA_DIR))]);
+  let collection;
+  try {
+    collection = await resolveCollection(metaRoot);
+  } catch (err) {
+    log.error(`docs: ${(err as Error).message}`);
+    return 2;
+  }
+  const sourceDirs = collectionSourceDirs(collection);
+  const seenBasenames = new Set(sourceDirs.map((d) => basename(d)));
   if (promptsDir !== undefined && !existsSync(promptsDir)) {
     log.warn(`docs: --prompts dir does not exist: ${promptsDir}`);
   }
