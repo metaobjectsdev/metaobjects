@@ -91,6 +91,34 @@ the local release path published `docs-site` ahead of `metadata` and `render`, t
 packages it depends on. The tier is declared now, and an undeclared one is an error
 instead of an accidental position.
 
+### Metadata source resolution — adopter-visible changes
+
+`.metaobjects/config.json` gains `sources`, `scope` and `migrate.scope`, and every
+command resolves where metadata lives through one authority instead of reading a
+hardcoded `metaobjects/` directory. A project with one config at its root, no
+`sources` and no `scope` resolves the same files, generates the same code and emits
+the same migrations. Three changes are visible even to that project. Adopter guide:
+[`docs/features/metadata-sources.md`](docs/features/metadata-sources.md#upgrading).
+
+- **The workspace `extends:` walk is retired.** `loadMemory` used to have a second,
+  undocumented way of finding metadata: a `package.meta.json` declaring `extends:`
+  dependencies, inside a discoverable workspace (`pnpm-workspace.yaml` or
+  `package.json` `workspaces`), pulled in each peer package's `metaobjects/`
+  directory first, in topological order. Every CLI read path now resolves through
+  `sources`, which does no such walk. It fails LOUDLY — `ERR_UNRESOLVED_SUPER`
+  naming the target it cannot find, never a half-resolved model — and the
+  replacement is an explicit `{ "path": "../shared-model/metaobjects" }` source,
+  which works in any layout and needs no topological ordering.
+- **`.metaobjects/config.json` rejects unknown keys.** `ConfigSchema` is `.strict()`
+  at every level, so a key that was previously stripped in silence is now a load
+  error naming the key. Silently dropping a key means the setting you wrote does not
+  exist: `{ "migrate": { "scopee": [...] } }` used to mean *unscoped*, governing
+  every table in a database you were trying to share.
+- **`ExpectedView.fqn` is required.** On the public `@metaobjectsdev/codegen-ts`
+  export, the declaring object's fully-qualified name is no longer optional —
+  `migrate.scope` decides ownership on that name, and a view arriving without one
+  cannot be scoped at all. `buildProjectionViews` already supplies it; only
+  hand-built `ExpectedView` values need the field added.
 
 ## [0.23.2] — npm `0.23.2` · PyPI `0.23.2` · NuGet `0.23.2` · Maven `7.23.2`
 

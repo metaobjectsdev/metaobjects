@@ -417,6 +417,70 @@ type) surfaces as the config load error and stops the command.
 
 ---
 
+## Upgrading
+
+A project with one config at its root, no `sources` and no `scope` resolves the same
+files it always did and generates the same code. Three changes are still worth
+knowing about before you upgrade.
+
+### The workspace `extends:` walk is retired
+
+`loadMemory` used to have a second, hidden way of finding metadata: if the project
+carried a `package.meta.json` declaring `extends:` dependencies **and** a workspace
+could be discovered (`pnpm-workspace.yaml`, or `package.json` `workspaces`), it
+walked that dependency graph and loaded each peer package's `metaobjects/` directory
+first, in topological order.
+
+Every CLI read path now resolves its files through `sources`, which does no such
+walk. Two ways to find metadata, one of them implicit and reachable only from a
+particular repository layout, is precisely the divergence this feature exists to
+remove — and one of them was undocumented.
+
+**It fails loudly, not silently.** A model that depended on a peer package's
+declarations now fails to load with `ERR_UNRESOLVED_SUPER` naming the `extends:`
+target it cannot find; nothing generates from a half-resolved model.
+
+**The replacement is a declared source**, which is explicit and works in any layout,
+workspace or not:
+
+```json
+{
+  "schema_version": 1,
+  "sources": [
+    { "path": "../shared-model/metaobjects" },
+    { "path": "metaobjects" }
+  ]
+}
+```
+
+Order does not matter (see [`sources` — a set, not an ordered
+list](#sources--a-set-not-an-ordered-list)), so there is no topological ordering to
+reproduce.
+
+### `.metaobjects/config.json` rejects unknown keys
+
+`ConfigSchema` is `.strict()` at every level — the top level, `sources` entries,
+`scope`, `migrate`, and `migrate.d1`. A key that used to be silently dropped is now
+a load error that stops the command.
+
+This is deliberate and it is the whole point: a stripped key means the setting you
+wrote does not exist, and the command runs as if you had never written it.
+`{ "migrate": { "scopee": [...] } }` used to mean *unscoped* — governing every table
+in a database you were trying to share.
+
+If a command starts failing on a config that used to load, the message names the
+unrecognized key; fix the spelling or delete the key.
+
+### `ExpectedView.fqn` is required
+
+`ExpectedView` is a public `@metaobjectsdev/codegen-ts` export. Its `fqn` — the
+declaring object's fully-qualified name — is now **required** rather than optional,
+because `migrate.scope` decides on that name and a view arriving without one cannot
+be scoped at all. Code that builds `ExpectedView` values by hand (the normal path,
+`buildProjectionViews`, already supplies it) has to add the field.
+
+---
+
 ## What is deferred
 
 Phase 1 ships the spine. Explicitly **not** built yet, so you do not go looking:
