@@ -60,6 +60,41 @@ export interface RunGenOpts {
    * `--dry-run`, and watching it reappear.
    */
   dryRun?: boolean;
+  /**
+   * Output scope — an object is generated only when this predicate returns true
+   * for its fully-qualified name (`obj.resolutionKey()`, `<package>::<name>`).
+   * Intersects with `entityFilter`: both must pass. Absent ⇒ every object is
+   * in scope (byte-identical to a project with no `scope` declared).
+   *
+   * The collection metadata always loads in FULL regardless of this predicate —
+   * scope filters OUTPUT, never input (design §4.3). So an in-scope object may
+   * reference an out-of-scope one (an FK target, a relationship `@objectRef`, a
+   * projection's base) and resolve perfectly at load time, while the code
+   * emitted FOR the in-scope object still imports/names a symbol that was never
+   * generated. This is left silent by design, not auto-widened: the adopter
+   * declared the scope precisely because something else (another consumer,
+   * another codegen run) owns those objects, and the reference is real. Warning
+   * on it correctly would require walking every reference kind (identity.reference,
+   * every relationship.* @objectRef, projection extends bases, field.object
+   * @objectRef) FQN-resolved against the SAME scope — genuinely new machinery,
+   * not a fit for the existing `warnings: string[]` channel at this seam. If an
+   * adopter hits it, the failure is a plain compiler error in the generated
+   * code (an unresolved import) — loud, at build time, not silent at runtime.
+   *
+   * Deliberately a PLAIN PREDICATE, not the `include`/`exclude` pattern strings
+   * `@metaobjectsdev/sdk`'s `scope.ts` compiles. `codegen-ts` must not depend on
+   * `@metaobjectsdev/sdk` — the dependency runs the other way (`cli` depends on
+   * both) — so it cannot import `matchesScope`/`CompiledScope` itself. The
+   * design's "package patterns, never a predicate function" rule (§4.3 of the
+   * metadata-source-resolution design doc) governs CONFIG SURFACES that must
+   * port identically to a `pom.xml` / `metaobjects.config.yaml` in every
+   * language port; it says nothing about internal plumbing between two
+   * TypeScript packages in this one repo. Do not "fix" this into a config
+   * shape — `cli`'s `gen`/`verify` commands are the only callers, and they
+   * already hold a compiled `CompiledScope` from `resolveCollection()` and
+   * adapt it to this predicate with `(fqn) => matchesScope(fqn, collection.scope)`.
+   */
+  scope?: (fqn: string) => boolean;
 }
 
 export interface RunGenResult {
@@ -136,16 +171,37 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   }
   const root = opts.metadata;
 
-  // 1. Resolve entities (filter + safety check).
+  // 1. Resolve entities (entityFilter + scope + safety check). This is the
+  // single choke point for entity selection — scope INTERSECTS entityFilter
+  // (an object must pass both), matched against the object's
+  // fully-qualified name (resolutionKey(), never the bare name — two
+  // packages may declare the same short name).
   const allObjects = root.objects();
   const entityFilter = opts.entityFilter;
-  const filtered = entityFilter
+  const afterEntityFilter = entityFilter
     ? allObjects.filter((o) => entityFilter.includes(o.name))
     : allObjects;
+  const scope = opts.scope;
+  const filtered = scope
+    ? afterEntityFilter.filter((o) => scope(o.resolutionKey()))
+    : afterEntityFilter;
   if (filtered.length === 0) {
-    const reason = opts.entityFilter
-      ? "no object children match the provided entityFilter"
-      : "root has no object children";
+    // Name the REAL cause. When `scope` is absent, this is byte-identical to
+    // the pre-scope two-way branch (kept as its own arm, rather than folded
+    // into the scope-aware logic below, so an unscoped project's warning text
+    // — including its quirky edge case: an empty root with entityFilter set
+    // still blames entityFilter — is untouched). Only when `scope` is
+    // present does a THIRD reason become reachable: "root has no object
+    // children" for a scoped-out model, or "...entityFilter" for a scope
+    // that admitted everything entityFilter then excluded, are both false
+    // statements that send the reader to the wrong file.
+    const reason = scope === undefined
+      ? (entityFilter ? "no object children match the provided entityFilter" : "root has no object children")
+      : (allObjects.length === 0
+          ? "root has no object children"
+          : afterEntityFilter.length === 0
+            ? "no object children match the provided entityFilter"
+            : "no object children match the configured scope");
     warnings.push(`No entities to generate — ${reason}.`);
     return { files: [], warnings, conflicts: [] };
   }

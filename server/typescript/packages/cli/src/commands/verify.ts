@@ -48,7 +48,7 @@ import {
   type D1Runner,
   type DriftResult,
 } from "@metaobjectsdev/migrate-ts";
-import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
+import { loadMemory, resolveCollection, matchesScope } from "@metaobjectsdev/sdk";
 import { toObjectScope } from "../lib/migrate-scope.js";
 import {
   TYPE_TEMPLATE,
@@ -144,8 +144,14 @@ export async function verifyCommand(
 
   // Where the metadata lives is `resolveCollection`'s decision, not a hardcoded
   // directory. It also carries the per-command `migrate.scope` the schema gate below
-  // honours — `verify --db` and `migrate` govern the identical object set.
-  let collection;
+  // honours — `verify --db` and `migrate` govern the identical object set — and the
+  // top-level `scope` `runCodegenVerify` (a nested function below) threads into
+  // `computeCodegenDrift`. Explicitly typed (unlike the `let collection;` pattern
+  // elsewhere in this codebase): a nested function body is OUTSIDE the control-flow
+  // narrowing TS performs on a same-scope `let x;` reassignment, so a bare
+  // `let collection;` type-checked clean until this task added exactly that nested
+  // reference — the reader who removes the annotation next reintroduces TS7034.
+  let collection: Awaited<ReturnType<typeof resolveCollection>>;
   try {
     collection = await resolveCollection(cwd);
   } catch (err) {
@@ -676,9 +682,13 @@ export async function verifyCommand(
       return 2;
     }
 
+    // The identical predicate `meta gen` applies (Task 12b / design §7 open
+    // question 3) — a `gen` that committed under a narrowed scope and a
+    // `verify --codegen` that regenerates unscoped would disagree about which
+    // files should exist, reporting every out-of-scope entity as drift.
     let result;
     try {
-      result = await computeCodegenDrift(forgeConfig, root, cwd);
+      result = await computeCodegenDrift(forgeConfig, root, cwd, (fqn) => matchesScope(fqn, collection.scope));
     } catch (err) {
       log.error(`verify --codegen: regeneration failed: ${(err as Error).message}`);
       return 1;
