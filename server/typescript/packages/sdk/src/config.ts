@@ -62,18 +62,22 @@ const MigrateBlock = z.object({
  * Mirrors the hand-written `SourceSpec` union in `./sources.ts` — a
  * declared source kind, one of `path` (resolves today), `resource`, or
  * `package` (both reserved, throw `ERR_SOURCE_KIND_UNSUPPORTED` until a
- * later phase). Deliberately NOT `.strict()`: an existing project's
- * `.metaobjects/config.json` may still carry the pre-phase-1 `{ kind:
- * "path", path: "..." }` shape (the dead 2-arm discriminated union this
- * replaces) — `.strict()` would reject the extra `kind` key outright and
- * break that project's config on the next `meta` run. Zod's default
- * (strip-unknown-keys) parses it as the modern `{ path: "..." }` shape
- * instead, which is what back-compat requires.
+ * later phase). `.strict()` on every arm: this project is fail-closed on
+ * undeclared keys everywhere else (ADR-0023 makes an unregistered metadata
+ * attribute a hard error for the same reason) — a config schema that
+ * silently strips an unknown key would let `{ path: "model", pathh: "typo"
+ * }` parse clean and resolve one source instead of erroring on the typo.
+ * The pre-phase-1 `{ kind: "path", path: "..." }` shape (the dead 2-arm
+ * discriminated union this replaces) never shipped to an adopter — `meta
+ * init` has only ever scaffolded `"sources": []`, and nothing under `src/`
+ * ever read the old shape — so there is no live config to be lenient for;
+ * it only ever existed in this package's own tests, updated alongside this
+ * schema.
  */
 const SourceSpecSchema = z.union([
-  z.object({ path: z.string().min(1) }),
-  z.object({ resource: z.string().min(1) }),
-  z.object({ package: z.string().min(1) }),
+  z.object({ path: z.string().min(1) }).strict(),
+  z.object({ resource: z.string().min(1) }).strict(),
+  z.object({ package: z.string().min(1) }).strict(),
 ]);
 
 // Compile-time parity: if SourceSpecSchema and the hand-written SourceSpec

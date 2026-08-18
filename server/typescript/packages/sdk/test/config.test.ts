@@ -23,14 +23,14 @@ describe("ConfigSchema", () => {
   test("accepts a path source", () => {
     const parsed = ConfigSchema.parse({
       schema_version: 1,
-      sources: [{ kind: "path", path: "../shared/.meta" }],
+      sources: [{ path: "../shared/.meta" }],
     });
     expect(parsed.sources).toHaveLength(1);
   });
   test("accepts a package source", () => {
     const parsed = ConfigSchema.parse({
       schema_version: 1,
-      sources: [{ kind: "package", package: "@acme/entities" }],
+      sources: [{ package: "@acme/entities" }],
     });
     expect(parsed.sources).toHaveLength(1);
   });
@@ -115,6 +115,15 @@ describe("ConfigSchema — phase-1 source resolution", () => {
   });
   test("rejects an unknown source kind", () => {
     expect(() => ConfigSchema.parse({ schema_version: 1, sources: [{ nope: "x" }] })).toThrow();
+  });
+  test("rejects a source with an unrecognized extra key (fail-closed, not stripped)", () => {
+    // A typo'd sibling key must not silently vanish and leave a
+    // valid-looking single-key source behind — .strict() on every
+    // SourceSpecSchema arm means an unknown key is a hard parse error,
+    // matching this project's fail-closed posture elsewhere (ADR-0023).
+    expect(() =>
+      ConfigSchema.parse({ schema_version: 1, sources: [{ path: "model", pathh: "typo" }] }),
+    ).toThrow();
   });
   test("accepts a scope block", () => {
     const p = ConfigSchema.parse({

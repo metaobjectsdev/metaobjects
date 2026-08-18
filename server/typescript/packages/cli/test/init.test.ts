@@ -152,7 +152,7 @@ describe("init() --force config preservation", () => {
       schema_version: 1 as const,
       pending_in_git: false,                    // changed from default
       confidence_thresholds: { pending_promote: 0.95, drift_warn: 0.8 },
-      sources: [{ kind: "package" as const, package: "@acme/entities" }],
+      sources: [{ package: "@acme/entities" }],
       extract: {},
     };
     await saveConfig(join(cwd, ".metaobjects"), ConfigSchema.parse(customConfig));
@@ -165,7 +165,7 @@ describe("init() --force config preservation", () => {
     const reloaded = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
     expect(reloaded.pending_in_git).toBe(false);
     expect(reloaded.confidence_thresholds.pending_promote).toBe(0.95);
-    expect(reloaded.sources).toEqual([{ kind: "package", package: "@acme/entities" }]);
+    expect(reloaded.sources).toEqual([{ package: "@acme/entities" }]);
   });
 
   test("writes fresh defaults when existing config is invalid (and warns)", async () => {
