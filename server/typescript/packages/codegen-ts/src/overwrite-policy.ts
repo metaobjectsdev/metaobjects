@@ -420,94 +420,61 @@ export function hasHashManifest(genStateDir: string): boolean {
   return existsSync(join(genStateDir, HASHES_FILE));
 }
 
-/**
- * What `decideAndWrite` WOULD do, touching nothing. Backs `meta gen --dry-run`.
- *
- * Exact for every outcome the hash manifest decides, because those are pure
- * comparisons. Deliberately COARSE in one place: with a snapshot body present the
- * result depends on whether `git merge-file` comes back clean or conflicted, which
- * cannot be known without performing the merge — so that case reports `overwrite`,
- * meaning "this file will be rewritten", which is true either way.
- *
- * The reason this exists as its own function rather than a flag on
- * `decideAndWrite`: a preview must be incapable of writing, and the cheapest way to
- * guarantee that is to give it no write in its body at all.
- */
-export function previewWriteStatus(
-  path: string,
-  content: string,
-  optsOrStrategy: DecideAndWriteOpts | MergeStrategy = {},
-): WriteStatus {
-  const opts: DecideAndWriteOpts =
-    typeof optsOrStrategy === "string" ? { strategy: optsOrStrategy } : optsOrStrategy;
-  if (!existsSync(path)) return "new";
-  if ((opts.strategy ?? "overwrite") === "skip-existing") return "skipped";
-
-  const genStateDir = resolveGenStateDir(opts);
-  const relPath = opts.outputRelPath ?? defaultOutputRelPath(path);
-  const current = readFileSync(path, "utf-8");
-
-  if ((opts.baseline ?? "default") === "fresh") {
-    return current === content ? "unchanged" : "overwrite";
-  }
-
-  // Snapshot body present → a real merge runs. Clean vs conflicted is unknowable
-  // from here, so report the coarse truth rather than guess.
-  if (readSnapshotChecked(genStateDir, relPath) !== undefined) {
-    return current === content ? "unchanged" : "overwrite";
-  }
-
-  if (current === content) return "unchanged";
-  return isPristineGenerated(genStateDir, relPath, current) ? "overwrite" : "refused";
+/** Normalize the legacy `MergeStrategy` string shorthand into an options object. */
+function normalizeOpts(
+  optsOrStrategy: DecideAndWriteOpts | MergeStrategy,
+): DecideAndWriteOpts {
+  return typeof optsOrStrategy === "string" ? { strategy: optsOrStrategy } : optsOrStrategy;
 }
 
 /**
- * The main entry point. Backward-compatible with the rc.11 signature: passing
- * a `MergeStrategy` string as the third argument continues to work; passing
- * an options object opts into three-way merge.
+ * The single decision tree `decideAndWrite` and `previewWriteStatus` both classify
+ * through — the fix for the risk named at the top of this file. Two functions that
+ * each re-derive "which case applies" from scratch can drift out of step in their
+ * branch ORDER, and when they do, the preview lies. Every branch that decides WHICH
+ * case an input falls into lives here, exactly once. `decideAndWrite` executes the
+ * case (the write, the merge, the snapshot advance — see its own comments for the
+ * "how"); `previewWriteStatus` maps the case straight to a `WriteStatus` with no
+ * side effects. Neither function repeats the ordering, so neither can disagree with
+ * the other about it.
  */
-export function decideAndWrite(
+type WriteCase =
+  | { kind: "new" }
+  | { kind: "skip" }
+  | { kind: "no-snapshot-fresh-unchanged" }
+  | { kind: "no-snapshot-fresh-overwrite" }
+  | { kind: "no-snapshot-unchanged" }
+  | { kind: "no-snapshot-pristine-overwrite" }
+  | { kind: "no-snapshot-refused"; hasRecord: boolean }
+  | { kind: "snapshot-unchanged" }
+  | { kind: "snapshot-merge-required"; snapshotText: string };
+
+function classifyWrite(
   path: string,
   content: string,
-  optsOrStrategy: DecideAndWriteOpts | MergeStrategy = {},
-): WriteResult {
-  const opts: DecideAndWriteOpts =
-    typeof optsOrStrategy === "string"
-      ? { strategy: optsOrStrategy }
-      : optsOrStrategy;
-  const strategy: MergeStrategy = opts.strategy ?? "overwrite";
-  const baseline: BaselineMode = opts.baseline ?? "default";
+  opts: DecideAndWriteOpts,
+): WriteCase {
+  // First-time write — file doesn't exist.
+  if (!existsSync(path)) return { kind: "new" };
+
+  if ((opts.strategy ?? "overwrite") === "skip-existing") return { kind: "skip" };
+
+  // File exists. Load the canonical snapshot if any.
   const genStateDir = resolveGenStateDir(opts);
   const relPath = opts.outputRelPath ?? defaultOutputRelPath(path);
-
-  // 1. First-time write — file doesn't exist.
-  if (!existsSync(path)) {
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, content);
-    advanceSnapshot(genStateDir, relPath, content);
-    return { path, status: "new" };
-  }
-
-  if (strategy === "skip-existing") {
-    return { path, status: "skipped" };
-  }
-
-  // 2. File exists. Load the canonical snapshot if any.
   const snapshot = readSnapshotChecked(genStateDir, relPath);
+  const current = readFileSync(path, "utf-8");
 
-  // 3. First-time regen on a pre-existing file (no snapshot).
+  // First-time regen on a pre-existing file (no snapshot) — caveat 3. `baseline`
+  // only ever applies here: BaselineMode's own doc comment says so ("When
+  // .gen-state is absent but the file exists"), and a snapshot body — handled
+  // below — always gets the real three-way merge regardless of baseline.
   if (snapshot === undefined) {
-    const current = readFileSync(path, "utf-8");
-
-    if (baseline === "fresh") {
+    if ((opts.baseline ?? "default") === "fresh") {
       // Opt-in escape hatch: overwrite and seed the snapshot from fresh.
-      if (current === content) {
-        advanceSnapshot(genStateDir, relPath, content);
-        return { path, status: "unchanged" };
-      }
-      writeFileSync(path, content);
-      advanceSnapshot(genStateDir, relPath, content);
-      return { path, status: "overwrite" };
+      return current === content
+        ? { kind: "no-snapshot-fresh-unchanged" }
+        : { kind: "no-snapshot-fresh-overwrite" };
     }
 
     // No snapshot BODY. That is the normal state, not an edge case: the bodies
@@ -521,73 +488,156 @@ export function decideAndWrite(
     // The committed hash manifest answers the only question that matters. Note
     // this is the SAME question, asked of the same evidence, as the orphan-delete
     // path: see `isPristineGenerated`.
-    if (current === content) {
-      advanceSnapshot(genStateDir, relPath, current);
-      return { path, status: "unchanged" };
-    }
+    if (current === content) return { kind: "no-snapshot-unchanged" };
 
     if (isPristineGenerated(genStateDir, relPath, current)) {
       // Byte-for-byte what we last wrote, so replacing it loses nothing. This is
       // the common fresh-clone case (a formatter or engine bump moved the output)
       // and it must not refuse, or a clean checkout would stall on every file.
-      writeFileSync(path, content);
-      advanceSnapshot(genStateDir, relPath, content);
-      return { path, status: "overwrite" };
+      return { kind: "no-snapshot-pristine-overwrite" };
     }
 
     // Either somebody edited it (hash mismatch) or we have no record of writing
-    // it at all (no hash). Both are unprovable, so fail closed and say so.
-    //
-    // Deliberately does NOT advance the snapshot or the hash: a refusal that
-    // records the current content would make the file look pristine next run and
-    // turn this into a silent overwrite one run later.
+    // it at all (no hash). Both are unprovable, so fail closed.
     return {
-      path,
-      status: "refused",
-      conflictHint:
-        readGeneratedHash(genStateDir, relPath) === undefined
-          ? "no record of generating this file, and its content differs from fresh " +
-            "output — it was NOT overwritten. Move it aside, or re-run with " +
-            "--baseline=fresh to overwrite it and adopt fresh output as the baseline."
-          : "this file has been edited since it was generated — it was NOT " +
-            "overwritten. Move your edits into a non-generated file, or re-run " +
-            "with --baseline=fresh to discard them and adopt fresh output.",
+      kind: "no-snapshot-refused",
+      hasRecord: readGeneratedHash(genStateDir, relPath) !== undefined,
     };
   }
 
-  // 4. Snapshot exists — real three-way merge.
-  const current = readFileSync(path, "utf-8");
-
+  // Snapshot exists — a real three-way merge decides this one.
   // Fast path: nothing changed.
   if (current === content && snapshot.text === content) {
-    return { path, status: "unchanged" };
+    return { kind: "snapshot-unchanged" };
   }
+  return { kind: "snapshot-merge-required", snapshotText: snapshot.text };
+}
 
-  const baseTmp = writeTmpfile(snapshot.text);
-  const freshTmp = writeTmpfile(content);
+/**
+ * What `decideAndWrite` WOULD do, touching nothing. Backs `meta gen --dry-run`.
+ *
+ * Exact for every outcome the hash manifest decides, because those are pure
+ * comparisons — `classifyWrite` above is the single source for which one applies.
+ * Deliberately COARSE in one place: with a snapshot body present the result depends
+ * on whether `git merge-file` comes back clean or conflicted, which cannot be known
+ * without performing the merge — so that case reports `overwrite`, meaning "this
+ * file will be rewritten", which is true either way.
+ *
+ * The reason this exists as its own function rather than a flag on
+ * `decideAndWrite`: a preview must be incapable of writing, and the cheapest way to
+ * guarantee that is to give it no write in its body at all — mapping a `WriteCase`
+ * to a status touches no file and no manifest.
+ */
+export function previewWriteStatus(
+  path: string,
+  content: string,
+  optsOrStrategy: DecideAndWriteOpts | MergeStrategy = {},
+): WriteStatus {
+  const kase = classifyWrite(path, content, normalizeOpts(optsOrStrategy));
+  switch (kase.kind) {
+    case "new":
+      return "new";
+    case "skip":
+      return "skipped";
+    case "no-snapshot-fresh-unchanged":
+    case "no-snapshot-unchanged":
+    case "snapshot-unchanged":
+      return "unchanged";
+    case "no-snapshot-fresh-overwrite":
+    case "no-snapshot-pristine-overwrite":
+      return "overwrite";
+    case "no-snapshot-refused":
+      return "refused";
+    case "snapshot-merge-required":
+      return "overwrite";
+  }
+}
 
-  const outcome = runGitMergeFile(path, baseTmp, freshTmp);
+/**
+ * The main entry point. Backward-compatible with the rc.11 signature: passing
+ * a `MergeStrategy` string as the third argument continues to work; passing
+ * an options object opts into three-way merge.
+ */
+export function decideAndWrite(
+  path: string,
+  content: string,
+  optsOrStrategy: DecideAndWriteOpts | MergeStrategy = {},
+): WriteResult {
+  const opts = normalizeOpts(optsOrStrategy);
+  const genStateDir = resolveGenStateDir(opts);
+  const relPath = opts.outputRelPath ?? defaultOutputRelPath(path);
+  const kase = classifyWrite(path, content, opts);
 
-  if (outcome.exitCode === 0) {
-    // Clean merge — advance the canonical snapshot to fresh.
-    advanceSnapshot(genStateDir, relPath, content);
-    // Distinguish "user had no changes vs canonical" from "merge integrated
-    // edits". The fresh equals snapshot case happened above (fast path) — so
-    // if outcome.mergedContent equals fresh we report a plain overwrite,
-    // otherwise it's a merge that pulled in user edits.
-    if (outcome.mergedContent === content) {
+  switch (kase.kind) {
+    case "new":
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, content);
+      advanceSnapshot(genStateDir, relPath, content);
+      return { path, status: "new" };
+
+    case "skip":
+      return { path, status: "skipped" };
+
+    case "no-snapshot-fresh-unchanged":
+    case "no-snapshot-unchanged":
+      // Identical content needs no write, in either mode — just seed/advance the
+      // snapshot so the file is recognisable as ours next time.
+      advanceSnapshot(genStateDir, relPath, content);
+      return { path, status: "unchanged" };
+
+    case "no-snapshot-fresh-overwrite":
+    case "no-snapshot-pristine-overwrite":
+      writeFileSync(path, content);
+      advanceSnapshot(genStateDir, relPath, content);
       return { path, status: "overwrite" };
-    }
-    return { path, status: "merged" };
-  }
 
-  // Conflict — do NOT advance the snapshot. The output now contains diff3
-  // markers from git merge-file.
-  return {
-    path,
-    status: "conflict",
-    conflictHint:
-      "merge conflict — resolve `<<<<<<<` markers and re-run `meta gen` to " +
-      "advance the canonical state.",
-  };
+    case "no-snapshot-refused":
+      // Deliberately does NOT advance the snapshot or the hash: a refusal that
+      // records the current content would make the file look pristine next run and
+      // turn this into a silent overwrite one run later.
+      return {
+        path,
+        status: "refused",
+        conflictHint: kase.hasRecord
+          ? "this file has been edited since it was generated — it was NOT " +
+            "overwritten. Move your edits into a non-generated file, or re-run " +
+            "with --baseline=fresh to discard them and adopt fresh output."
+          : "no record of generating this file, and its content differs from fresh " +
+            "output — it was NOT overwritten. Move it aside, or re-run with " +
+            "--baseline=fresh to overwrite it and adopt fresh output as the baseline.",
+      };
+
+    case "snapshot-unchanged":
+      return { path, status: "unchanged" };
+
+    case "snapshot-merge-required": {
+      const baseTmp = writeTmpfile(kase.snapshotText);
+      const freshTmp = writeTmpfile(content);
+
+      const outcome = runGitMergeFile(path, baseTmp, freshTmp);
+
+      if (outcome.exitCode === 0) {
+        // Clean merge — advance the canonical snapshot to fresh.
+        advanceSnapshot(genStateDir, relPath, content);
+        // Distinguish "user had no changes vs canonical" from "merge integrated
+        // edits". The fresh-equals-snapshot case is `snapshot-unchanged` above —
+        // so if the merged result equals fresh we report a plain overwrite,
+        // otherwise it's a merge that pulled in user edits.
+        return {
+          path,
+          status: outcome.mergedContent === content ? "overwrite" : "merged",
+        };
+      }
+
+      // Conflict — do NOT advance the snapshot. The output now contains diff3
+      // markers from git merge-file.
+      return {
+        path,
+        status: "conflict",
+        conflictHint:
+          "merge conflict — resolve `<<<<<<<` markers and re-run `meta gen` to " +
+          "advance the canonical state.",
+      };
+    }
+  }
 }

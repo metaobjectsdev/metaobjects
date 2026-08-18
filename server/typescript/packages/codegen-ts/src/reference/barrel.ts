@@ -2,7 +2,6 @@
 // Then import it LOCALLY in metaobjects.config.ts instead of from the package:
 //   import { barrel } from "./codegen/generators/barrel.js";
 //
-//
 // RUNTIME: this file executes under whatever runs `meta gen`, and the published CLI's
 // shebang is `#!/usr/bin/env node` — so it runs under NODE even in a Bun project. Do not
 // reach for `Bun.*` globals here; they are undefined and take the whole run down with

@@ -17,6 +17,11 @@ from .overwrite_policy import decide_and_write, has_hash_manifest
 
 _VALID_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
+# How many refused paths to name before falling back to "…and N more". Mirrors
+# codegen-ts's MAX_NAMED / C#'s maxNamed — the same cutoff, so the three ports'
+# no-manifest warnings read the same shape.
+_MAX_NAMED_REFUSALS = 5
+
 
 @dataclass
 class RunGenResult:
@@ -147,8 +152,12 @@ def run_gen(
             # Every refusal here has the SAME cause and the same one-line fix, so
             # stating it once beats a wall of per-file warnings that buries the
             # instruction. Self-extinguishing: once the manifest exists, never again.
-            shown = ", ".join(refused[:5])
-            more = f", and {len(refused) - 5} more" if len(refused) > 5 else ""
+            shown = ", ".join(refused[:_MAX_NAMED_REFUSALS])
+            more = (
+                f", and {len(refused) - _MAX_NAMED_REFUSALS} more"
+                if len(refused) > _MAX_NAMED_REFUSALS
+                else ""
+            )
             result.warnings.append(
                 f"Refused to overwrite {len(refused)} existing file(s), and this project "
                 f"has no codegen hash manifest — so codegen cannot tell your edits from "

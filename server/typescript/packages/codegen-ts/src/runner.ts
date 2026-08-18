@@ -25,6 +25,7 @@ import {
   type WriteResult,
   type MergeStrategy,
   type BaselineMode,
+  type DecideAndWriteOpts,
 } from "./overwrite-policy.js";
 
 /** JS-identifier-shape only. Prevents filesystem traversal when metadata comes
@@ -479,7 +480,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       // as "overwrite" while the real run refused it — the one case the preview most
       // needs to be right about. A merge outcome is still coarse (see
       // previewWriteStatus), because clean-vs-conflicted is unknowable without merging.
-      const policyOpts: import("./overwrite-policy.js").DecideAndWriteOpts = {
+      const policyOpts: DecideAndWriteOpts = {
         strategy,
         genStateDir,
         baseline,
@@ -504,7 +505,7 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     // distinct entries (e.g. `database/Post.ts` vs `web/Post.queries.ts`).
     // Without an explicit projectRoot we let decideAndWrite derive a stable
     // hash-of-path key — fine for ephemeral test runs.
-    const policyOpts: import("./overwrite-policy.js").DecideAndWriteOpts = {
+    const policyOpts: DecideAndWriteOpts = {
       strategy,
       genStateDir,
       baseline,

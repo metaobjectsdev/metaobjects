@@ -136,11 +136,11 @@ def decide_and_write(
             _record(gen_state_dir, rel_path or os.path.basename(path), content)
         return "new"
 
-    with open(path, encoding="utf-8") as fh:
-        current = fh.read()
-
     if strategy == "skip-existing":
         return "skipped"
+
+    with open(path, encoding="utf-8") as fh:
+        current = fh.read()
 
     # No state to reason from: keep the legacy marker rule rather than refuse
     # everything, and let the CLI (which always supplies state) carry the guarantee.

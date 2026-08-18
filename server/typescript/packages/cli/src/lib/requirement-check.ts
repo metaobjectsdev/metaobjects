@@ -33,7 +33,6 @@ import {
   REQUIREMENT_LEVEL_MEMBER,
   REQUIREMENT_DISPOSITION_DEFERRED,
   REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES,
-  resolveObjectRef,
   // One shared resolver (FR-038): codegen's requirement-test fan-out needs the same
   // ADR-0042 package-local binding, so these moved to @metaobjectsdev/metadata rather
   // than being reimplemented there.
@@ -152,7 +151,6 @@ function subtreeClaimsAnything(req: MetaRequirement): boolean {
   }
   return false;
 }
-
 
 /** Every `requirement.*` node in the tree, at any nesting depth. Hierarchy IS
  *  nesting — an L1 solution contains its L2 segments — so this is a walk, not a
