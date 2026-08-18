@@ -270,16 +270,23 @@ able to create and read it**, or the neutral file is neutral in name only.
 when the key is absent or empty — never a requirement, and never assumed by any code path.
 
 The rule: **`sources` is the single authority on where metadata lives, and everything that needs to
-find metadata reads it.** Today that is false in TypeScript in nine places, which is the concrete
+find metadata reads it.** Today that is false in TypeScript in ten places, which is the concrete
 phase-1 work item:
 
 | Site | Kind | Phase 1 |
 |---|---|---|
 | `cli/commands/docs.ts` (×3), `export.ts`, `gen.ts` | read | route through resolved `sources` |
+| `cli/commands/prompt-snapshot.ts` | read | route |
 | `cli/index.ts` — the "is this a MetaObjects project?" probe | read | route |
 | `cli/lib/detect-stack.ts` — concern detection | read | route |
 | `sdk/memory.ts` (×2) — the loader entry itself | read | route |
 | `cli/commands/init.ts` (×2) | **write** | **keep the literal** — scaffolding the default is the one place it belongs |
+
+`prompt-snapshot.ts` was missing from the first draft of this table, which is why nothing scheduled
+it; it is listed now because the ports plan is written from this table and would otherwise inherit
+the omission in four more languages. It matters more than its size suggests: `--check` is a drift
+GATE, so a project declaring `sources` elsewhere would gate against a stale `metaobjects/` rather
+than fail.
 
 **Python is already the reference implementation of this shape**, not a laggard: its project config
 reads `metadata` from the config file with the directory name as a *fallback*

@@ -142,6 +142,24 @@ describe("ConfigSchema — phase-1 source resolution", () => {
     });
     expect(p.migrate?.scope).toEqual(["acme::platform::**"]);
   });
+  test("rejects a typo'd key inside `migrate` — a stripped `scopee` silently means UNSCOPED", () => {
+    // The nested blocks were `.partial()` under zod's default strip policy, so
+    // `{ migrate: { scopee: [...], dialect: "postgres" } }` parsed to
+    // `{ dialect: "postgres" }` — the typo vanished and the run governed the whole
+    // database. That is the `migrate.scope`-matched-nothing hazard through a
+    // second door, and the exact fail-open `.strict()` exists to prevent.
+    expect(() =>
+      ConfigSchema.parse({
+        schema_version: 1,
+        migrate: { scopee: ["acme::platform::**"], dialect: "postgres" },
+      }),
+    ).toThrow();
+  });
+  test("rejects a typo'd key inside `migrate.d1`", () => {
+    expect(() =>
+      ConfigSchema.parse({ schema_version: 1, migrate: { d1: { bindingg: "DB" } } }),
+    ).toThrow();
+  });
   test("an existing config with no new keys still parses (back-compat)", () => {
     const p = ConfigSchema.parse({
       schema_version: 1, pending_in_git: true,

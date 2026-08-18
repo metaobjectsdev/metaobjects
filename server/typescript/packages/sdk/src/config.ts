@@ -33,12 +33,15 @@ export const AllowTokenEnum = z.enum([
   "drop-identity-default",
 ]);
 
+// .strict(), like every other object in this schema: `.partial()` alone leaves
+// zod's default STRIP policy in place, so a misspelled key is silently deleted
+// and the block reads as if the author never wrote it.
 const D1Block = z.object({
   binding: z.string(),
   remote: z.boolean(),
   autoApply: z.boolean(),
   wranglerConfigPath: z.string(),
-}).partial();
+}).partial().strict();
 
 /** #192 — migration output-format adapters; orthogonal to dialect. */
 const MigrateFormatEnum = z.enum(["default", "flyway"]);
@@ -56,7 +59,12 @@ const MigrateBlock = z.object({
    *  Include-only — there's no `migrate.scope.exclude`, since a migration run
    *  is scoped to what it's touching, not filtered down from "everything". */
   scope: z.array(z.string().min(1)),
-}).partial();
+// .strict() for the same reason as the top level and the source arms below, and
+// with sharper teeth here: `{ migrate: { scopee: [...], dialect: "postgres" } }`
+// used to parse to `{ dialect: "postgres" }`, so a typo'd `scope` key meant
+// "unscoped" — silently governing every table in the database, which is the
+// hazard `migrate.scope` exists to remove.
+}).partial().strict();
 
 /**
  * Mirrors the hand-written `SourceSpec` union in `./sources.ts` — a
