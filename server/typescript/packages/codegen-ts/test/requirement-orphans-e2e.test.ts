@@ -122,6 +122,26 @@ describe("a filtered run never reconciles deletions", () => {
     expect(result.warnings.some((w) => w.includes("Skipped orphan cleanup"))).toBe(true);
   });
 
+  test("but says nothing on a FIRST filtered run, where the sweep would find nothing", async () => {
+    // The warning earns its noise by naming work that was actually skipped. On a project
+    // with no gen-state manifest there are no orphan candidates at all, so the sweep
+    // provably no-ops — and `meta gen <entity>` is a routine command. Warning on every
+    // one of those teaches the reader to skim past the message, which is how the real
+    // one gets skimmed past too.
+    const result = await runGen({
+      config: {
+        outDir: OUT_DIR,
+        extStyle: "js",
+        generators: [requirementTests({})],
+      },
+      metadata: await load(true),
+      projectRoot,
+      entityFilter: ["Council"],
+    });
+
+    expect(result.warnings.some((w) => w.includes("Skipped orphan cleanup"))).toBe(false);
+  });
+
   test("the same model on an UNFILTERED run does reconcile", async () => {
     // Proves the guard is about the filter, not about the model.
     await gen({ withDrop: true });

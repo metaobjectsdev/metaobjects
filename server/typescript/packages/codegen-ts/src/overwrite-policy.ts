@@ -217,21 +217,17 @@ export function readGeneratedSnapshot(
 }
 
 /**
- * Drop both halves of the record for a path this run no longer generates — the
+ * Drop both halves of the record for paths this run no longer generates — each
  * snapshot file and its `.hashes.json` entry.
  *
- * Both halves, or the next run sees the path again in `listGeneratedPaths` and
- * re-decides an orphan that has already been dealt with. A no-op for a path that
- * was never generated.
- */
-/**
- * Forget MANY paths in one pass — one manifest read, one write, one snapshot delete
- * per path.
+ * BOTH halves, or the next run sees the path again in `listGeneratedPaths` and
+ * re-decides an orphan that has already been dealt with. A no-op for a path that was
+ * never generated.
  *
- * The per-path `forgetGeneratedPath` re-reads, re-sorts and rewrites the whole manifest
- * every call, so clearing k orphans rewrote it k times. On a project with hundreds of
- * generated files that turns bookkeeping into the dominant cost of `meta gen`, for a
- * result that is identical either way.
+ * Batched deliberately: one manifest read and one write for the whole set. A per-path
+ * variant re-reads, re-sorts and rewrites the entire manifest every call, so clearing k
+ * orphans rewrote it k times — on a project with hundreds of generated files that makes
+ * bookkeeping the dominant cost of `meta gen`, for an identical result.
  */
 export function forgetGeneratedPaths(
   genStateDir: string,
@@ -248,16 +244,6 @@ export function forgetGeneratedPaths(
     }
   }
   if (changed) saveHashes(genStateDir, hashes);
-}
-
-export function forgetGeneratedPath(genStateDir: string, relPath: string): void {
-  const snapshot = snapshotPath(genStateDir, relPath);
-  if (existsSync(snapshot)) rmSync(snapshot, { force: true });
-  const hashes = loadHashes(genStateDir);
-  if (relPath in hashes) {
-    delete hashes[relPath];
-    saveHashes(genStateDir, hashes);
-  }
 }
 
 const ENGINE_FILE = ".engine.json";

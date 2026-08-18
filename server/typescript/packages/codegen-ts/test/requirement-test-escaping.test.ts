@@ -89,6 +89,56 @@ describe("author prose cannot break the generated stub", () => {
   });
 });
 
+// `@statement` and `@violation` are the OBVIOUS free-text fields, and escaping only
+// those leaves the same hole open in four more places that reach the same literal and
+// the same JSDoc block. `@trackedBy` is the sharpest of them: it is registered as
+// free-form on purpose — `verify` never resolves it, because which sprint owns a gap
+// lives in the tracker — so it is the one field whose contract invites arbitrary text.
+describe("every author-supplied field is escaped, not just the two obvious ones", () => {
+  function renderWith(extra: Partial<Parameters<typeof renderRequirementTest>[0]>): string {
+    return renderRequirementTest({
+      view: { ...view },
+      concern: "object.entity",
+      statement: "Notes are private.",
+      violation: "the GM sees a player's notes",
+      targets: [],
+      ...extra,
+    });
+  }
+
+  test("a JSDoc terminator in a @trackedBy entry", () => {
+    const src = renderWith({ disposition: "deferred", trackedBy: ["ACME-1 /* see */ ACME-2"] });
+    expect(parsedCleanly(runStub(src).out)).toBe(true);
+  });
+
+  test("a JSDoc terminator in a @disposition", () => {
+    const src = renderWith({ disposition: "deferred */ leaked" });
+    expect(parsedCleanly(runStub(src).out)).toBe(true);
+  });
+
+  test("a JSDoc terminator in a claimed reference", () => {
+    const src = renderWith({ targets: [{ ref: "acme::Widget /**/ x", node: {} as never, concern: "object.entity" }] });
+    expect(parsedCleanly(runStub(src).out)).toBe(true);
+  });
+
+  test("a double quote in the requirement path", () => {
+    // `path` is interpolated into TWO double-quoted literals — the test name and the
+    // unreachable message — so a quote closes both.
+    const src = renderWith({ view: { ...view, path: 'req."probe"' } });
+    expect(parsedCleanly(runStub(src).out)).toBe(true);
+  });
+
+  test("a double quote in the concern", () => {
+    const src = renderWith({ concern: 'object."entity"' });
+    expect(parsedCleanly(runStub(src).out)).toBe(true);
+  });
+
+  test("a backslash in the requirement path", () => {
+    const src = renderWith({ view: { ...view, path: "req\\probe" } });
+    expect(parsedCleanly(runStub(src).out)).toBe(true);
+  });
+});
+
 describe("a retired requirement does not redden the suite forever", () => {
   // `abandoned` / `superseded` describe a capability deliberately retired — their
   // `@implementedBy` is SUPPOSED to dangle. A failing stub for one is a permanent red

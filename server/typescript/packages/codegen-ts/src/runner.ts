@@ -20,6 +20,7 @@ import {
   decideAndWrite,
   previewWriteStatus,
   hasHashManifest,
+  listGeneratedPaths,
   loadEngineVersion,
   saveEngineVersion,
   type WriteResult,
@@ -459,11 +460,29 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
     // narrowed entity list and cannot tell it from a model that genuinely has one
     // entity. So the guard has to live here.
     if (opts.entityFilter !== undefined && opts.entityFilter.length > 0) {
-      warnings.push(
-        `Skipped orphan cleanup: this run generated only ${opts.entityFilter.join(", ")}, ` +
-        `so it cannot tell a file belonging to an unselected entity from one that is no ` +
-        `longer generated. Run 'meta gen' with no entity filter to reconcile deletions.`,
-      );
+      // Say it only when something was ACTUALLY withheld. With no previously-generated
+      // path outside this run's own output there are no orphan candidates at all, so
+      // the sweep provably no-ops and there is nothing to report. `meta gen <entity>`
+      // is a routine command; warning on every one of them teaches the reader to skim
+      // the message, which is how the real one gets skimmed too.
+      //
+      // Note the manifest is NOT empty here even on a first run — the writes above have
+      // already recorded this run's own paths in it — so the emitted set has to come
+      // out before counting. Computing the candidate set is safe on a filtered run;
+      // what must never happen is ACTING on it.
+      //
+      // A non-empty candidate set is the FLOOR, not proof that a specific file would
+      // have been removed: whether one falls inside an opting-in generator's namespace
+      // is the reconcile's answer, and running that is the thing being skipped.
+      const emittedRel = new Set(emitted.map((f) => relative(projectRoot, f.fullPath)));
+      const withheld = listGeneratedPaths(genStateDir).filter((p) => !emittedRel.has(p));
+      if (withheld.length > 0) {
+        warnings.push(
+          `Skipped orphan cleanup: this run generated only ${opts.entityFilter.join(", ")}, ` +
+          `so it cannot tell a file belonging to an unselected entity from one that is no ` +
+          `longer generated. Run 'meta gen' with no entity filter to reconcile deletions.`,
+        );
+      }
       return;
     }
     const result = sweepOrphans({

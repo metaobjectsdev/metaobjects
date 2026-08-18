@@ -44,11 +44,16 @@ const SKIPPED_STATUSES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Escape author prose for a double-quoted TS string literal.
+ * Escape an author-supplied value for a double-quoted TS string literal.
  *
- * `@statement` and `@violation` are free text. Unescaped, a quote closes the literal
- * and a newline breaks it — emitting a stub that does not parse, which `meta gen`
- * still reports as written because nothing here compiles it.
+ * Unescaped, a quote closes the literal and a newline breaks it — emitting a stub that
+ * does not parse, which `meta gen` still reports as written because nothing here
+ * compiles it.
+ *
+ * Applied to EVERY value that reaches a literal, not only the two obviously-prose ones.
+ * `@statement` and `@violation` are the fields that look dangerous, but the requirement
+ * path and the concern land in the same two literals, and escaping only what looks like
+ * prose leaves the identical hole open one line down.
  */
 function forStringLiteral(s: string): string {
   return s
@@ -59,14 +64,19 @@ function forStringLiteral(s: string): string {
 }
 
 /**
- * Make author prose safe inside a JSDoc block, preserving what was written.
+ * Make an author-supplied value safe inside a JSDoc block, preserving what was written.
  *
- * A comment-terminator in the prose would close the block early and spill the
- * remainder into code; a newline needs its own continuation marker or the block's
- * shape breaks. The terminator is separated by a space rather than deleted, so the
- * sentence still reads — and deliberately NOT by a zero-width space, which would keep
- * the text pixel-identical at the cost of putting an invisible character into
- * generated source that nobody can see when debugging it.
+ * A comment-terminator would close the block early and spill the remainder into code; a
+ * newline needs its own continuation marker or the block's shape breaks. The terminator
+ * is separated by a space rather than deleted, so the sentence still reads — and
+ * deliberately NOT by a zero-width space, which would keep the text pixel-identical at
+ * the cost of putting an invisible character into generated source that nobody can see
+ * when debugging it.
+ *
+ * Every value interpolated into the block goes through this, including the ones whose
+ * shape the loader constrains. `@trackedBy` is the one that makes the rule non-optional:
+ * it is registered free-form ON PURPOSE — `verify` never resolves it, because which
+ * sprint owns a gap belongs in the tracker — so its contract invites arbitrary text.
  */
 function forDocComment(s: string): string {
   return s.replace(/\*\//g, "* /").replace(/\r?\n/g, "\n * ");
@@ -76,14 +86,16 @@ function claimLines(targets: readonly ResolvedClaim[]): string {
   if (targets.length === 0) {
     return " *   (none — this requirement names no model nodes)";
   }
-  return targets.map((t) => ` *   - ${t.ref}  (${t.concern})`).join("\n");
+  return targets
+    .map((t) => ` *   - ${forDocComment(t.ref)}  (${forDocComment(t.concern)})`)
+    .join("\n");
 }
 
 function gapLine(a: RequirementTestArgs): string {
   const tracked = a.trackedBy ?? [];
   if (a.disposition === undefined && tracked.length === 0) return "";
-  const decided = a.disposition ?? "undecided";
-  const refs = tracked.length > 0 ? ` — ${tracked.join(", ")}` : "";
+  const decided = forDocComment(a.disposition ?? "undecided");
+  const refs = tracked.length > 0 ? ` — ${tracked.map(forDocComment).join(", ")}` : "";
   return `\n *\n * Known gap: ${decided}${refs}`;
 }
 
@@ -92,6 +104,10 @@ export function renderRequirementTest(a: RequirementTestArgs): string {
   const statement = forDocComment(a.statement);
   const violation = forDocComment(a.violation);
   const runner = skipped ? "test.skip" : "test";
+  // The test NAME is the link between the ledger entry and the assertion, so it is
+  // built from the same two values every time — but it is still a string literal, and
+  // an unescaped quote in either closes it.
+  const testName = `${forStringLiteral(a.view.path)} [${forStringLiteral(a.concern)}]`;
 
   // A `live` or `partial` stub asserts FAILURE until someone writes the real
   // assertion over it. `expect.unreachable` names the requirement in the failure
@@ -99,7 +115,7 @@ export function renderRequirementTest(a: RequirementTestArgs): string {
   const body = skipped
     ? `  // Intended, not built. Write the assertion when this becomes live.`
     : `  expect.unreachable(\n` +
-      `    "unimplemented requirement stub: ${a.view.path} [${a.concern}] — " +\n` +
+      `    "unimplemented requirement stub: ${testName} — " +\n` +
       `    "replace this with an assertion that fails when: ${forStringLiteral(a.violation)}",\n` +
       `  );`;
 
@@ -117,7 +133,7 @@ export function renderRequirementTest(a: RequirementTestArgs): string {
     ` * Claims:\n` +
     `${claimLines(a.targets)}\n` +
     ` */\n` +
-    `${runner}("${a.view.path} [${a.concern}]", () => {\n` +
+    `${runner}("${testName}", () => {\n` +
     `${body}\n` +
     `});\n`
   );

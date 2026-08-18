@@ -14,7 +14,7 @@ import {
   decideAndWrite,
   listGeneratedPaths,
   readGeneratedSnapshot,
-  forgetGeneratedPath,
+  forgetGeneratedPaths,
 } from "../src/overwrite-policy.js";
 
 let root: string;
@@ -76,16 +76,16 @@ describe("readGeneratedSnapshot", () => {
   });
 });
 
-describe("forgetGeneratedPath", () => {
+describe("forgetGeneratedPaths", () => {
   test("drops the snapshot file AND the hash entry", () => {
     generate("out/Council.ts", "export const a = 1;\n");
     generate("out/Keep.ts", "export const b = 2;\n");
 
-    forgetGeneratedPath(genStateDir, "out/Council.ts");
+    forgetGeneratedPaths(genStateDir, ["out/Council.ts"]);
 
     expect(listGeneratedPaths(genStateDir)).toEqual(["out/Keep.ts"]);
     expect(existsSync(join(genStateDir, "out/Council.ts"))).toBe(false);
-    // The surviving entry is untouched — forgetting is per-path, not a reset.
+    // The surviving entry is untouched — forgetting is scoped to the set, not a reset.
     expect(readGeneratedSnapshot(genStateDir, "out/Keep.ts")).toBe(
       "export const b = 2;\n",
     );
@@ -95,9 +95,30 @@ describe("forgetGeneratedPath", () => {
     expect(Object.keys(hashes)).toEqual(["out/Keep.ts"]);
   });
 
+  test("clears a whole set in one pass", () => {
+    // The reason this function is batched at all: a sweep clears k orphans together,
+    // and a per-path variant rewrote the entire manifest k times for the same result.
+    generate("out/A.ts", "export const a = 1;\n");
+    generate("out/B.ts", "export const b = 2;\n");
+    generate("out/Keep.ts", "export const c = 3;\n");
+
+    forgetGeneratedPaths(genStateDir, ["out/A.ts", "out/B.ts"]);
+
+    expect(listGeneratedPaths(genStateDir)).toEqual(["out/Keep.ts"]);
+    expect(existsSync(join(genStateDir, "out/A.ts"))).toBe(false);
+    expect(existsSync(join(genStateDir, "out/B.ts"))).toBe(false);
+  });
+
   test("is a no-op for a path that was never generated", () => {
     generate("out/Keep.ts", "export const b = 2;\n");
-    expect(() => forgetGeneratedPath(genStateDir, "out/Nope.ts")).not.toThrow();
+    expect(() => forgetGeneratedPaths(genStateDir, ["out/Nope.ts"])).not.toThrow();
     expect(listGeneratedPaths(genStateDir)).toEqual(["out/Keep.ts"]);
+  });
+
+  test("an empty set leaves the manifest untouched", () => {
+    generate("out/Keep.ts", "export const b = 2;\n");
+    const before = readFileSync(join(genStateDir, ".hashes.json"), "utf-8");
+    forgetGeneratedPaths(genStateDir, []);
+    expect(readFileSync(join(genStateDir, ".hashes.json"), "utf-8")).toBe(before);
   });
 });
