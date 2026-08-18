@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveCollection } from "../src/collection.js";
 import { matchesScope } from "../src/scope.js";
+import { rejectedCode } from "./support/error-code.js";
 
 let root: string;
 const write = (rel: string, body: string) => {
@@ -12,27 +13,6 @@ const write = (rel: string, body: string) => {
 };
 const config = (dir: string, cfg: object) =>
   write(join(dir, ".metaobjects/config.json"), JSON.stringify({ schema_version: 1, ...cfg }));
-
-/** Pull the stable ERR_ code off a caught error, if it carries one. Mirrors
- *  scope.test.ts / sources.test.ts's `errorCode` — property-based, never
- *  message-matching or `instanceof`: a cross-package `instanceof ParseError`
- *  is silently false when two physical copies of `@metaobjectsdev/metadata`
- *  are loaded, so `.code` is the only reliable read. */
-function errorCode(err: unknown): string {
-  const code = (err as { code?: unknown }).code;
-  return typeof code === "string" ? code : "ERR_UNKNOWN";
-}
-
-/** Await `promise`, expecting it to reject — returns the rejection's stable
- *  code. Mirrors sources.test.ts's `rejectedCode`. */
-async function rejectedCode(promise: Promise<unknown>): Promise<string> {
-  try {
-    await promise;
-  } catch (err) {
-    return errorCode(err);
-  }
-  throw new Error("expected the promise to reject, but it resolved");
-}
 
 beforeEach(() => { root = mkdtempSync(join(tmpdir(), "metaobjects-collection-")); mkdirSync(join(root, ".git")); });
 afterEach(() => { rmSync(root, { recursive: true, force: true }); });

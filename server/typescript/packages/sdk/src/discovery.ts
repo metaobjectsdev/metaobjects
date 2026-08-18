@@ -15,12 +15,14 @@
 // the walk one directory too early.
 import { stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { CONFIG_FILE } from "./config.js";
 import { DEFAULT_METAOBJECTS_DIR } from "./memory.js";
 
-const CONFIG_FILE = "config.json";
 const GIT_DIR = ".git";
 
-async function exists(path: string): Promise<boolean> {
+/** Exported for reuse — `collection.ts` had its own byte-identical copy
+ *  (`fileExists`); one definition, imported. */
+export async function exists(path: string): Promise<boolean> {
   try {
     await stat(path);
     return true;

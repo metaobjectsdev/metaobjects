@@ -13,8 +13,8 @@
 import { stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { ParseError, codeSource } from "@metaobjectsdev/metadata";
-import { loadConfig, type Config } from "./config.js";
-import { findConfigDir } from "./discovery.js";
+import { CONFIG_FILE, loadConfig, type Config } from "./config.js";
+import { exists, findConfigDir } from "./discovery.js";
 import { compileScope, type CompiledScope, type Scope } from "./scope.js";
 import { DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR } from "./memory.js";
 import { DEFAULT_SOURCES, resolveSources, type ResolvedSource, type SourceSpec } from "./sources.js";
@@ -34,23 +34,15 @@ export interface Collection {
   readonly migrateScope: CompiledScope | undefined;
 }
 
+// Deliberately NOT deduped with `exists` (imported from `./discovery.js`)
+// even though both wrap a bare stat/catch: this predicate exists to produce
+// the friendlier `ERR_COLLECTION_NOT_FOUND` diagnostic below rather than the
+// raw `ERR_SOURCE_UNRESOLVED` `resolveSources` would throw on a genuinely
+// missing default directory — trading that clearer error for one syscall is
+// a bad trade, so the redundant `stat` here is intentional, not an oversight.
 async function isDir(p: string): Promise<boolean> {
   try {
     return (await stat(p)).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-/** `config.json`'s own basename — kept local rather than imported, matching
- *  `discovery.ts`'s own private `CONFIG_FILE` constant (the string is not
- *  exported from `config.js`). */
-const CONFIG_FILE = "config.json";
-
-async function fileExists(p: string): Promise<boolean> {
-  try {
-    await stat(p);
-    return true;
   } catch {
     return false;
   }
@@ -95,17 +87,32 @@ export async function resolveCollection(
   opts?: { explicitDir?: string },
 ): Promise<Collection> {
   const explicit = opts?.explicitDir;
-  const configDir =
-    explicit !== undefined ? resolve(explicit) : ((await findConfigDir(startDir)) ?? resolve(startDir));
+
+  // Whether `configDir` carries a `config.json` — threaded through rather
+  // than re-`stat`'d below. On the non-explicit path, `findConfigDir`
+  // already proved this: it returns a directory ONLY after confirming
+  // `.metaobjects/config.json` exists there (discovery.ts's own `exists`
+  // check), and returns undefined only after confirming the same file is
+  // absent at every directory it examined, `resolve(startDir)` included. A
+  // second `stat` of the identical file would just re-prove what discovery
+  // already established. The check is only load-bearing on the
+  // `explicitDir` path, where `findConfigDir` never runs at all.
+  let configDir: string;
+  let hasConfig: boolean;
+  if (explicit !== undefined) {
+    configDir = resolve(explicit);
+    hasConfig = await exists(join(configDir, DEFAULT_METAOBJECTS_DIR, CONFIG_FILE));
+  } else {
+    const found = await findConfigDir(startDir);
+    configDir = found ?? resolve(startDir);
+    hasConfig = found !== undefined;
+  }
 
   let specs: readonly SourceSpec[] = DEFAULT_SOURCES;
   let scopeSpec: Config["scope"];
   let migrateSpec: string[] | undefined;
 
-  // Check the FILE, not the `.metaobjects/` directory: a directory that
-  // exists but holds no `config.json` is the ordinary "no config" case and
-  // must fall through silently, same as no `.metaobjects/` at all.
-  if (await fileExists(join(configDir, DEFAULT_METAOBJECTS_DIR, CONFIG_FILE))) {
+  if (hasConfig) {
     // No try/catch here: a config.json that EXISTS but fails to load
     // (malformed JSON, a ConfigSchema violation) propagates. Swallowing it
     // would make a typo'd config behave identically to no config at all —
