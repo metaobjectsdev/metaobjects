@@ -35,6 +35,23 @@ import java.nio.file.Path;
  * <p>Refusing is a WARNING, never a build failure. These generators run inside
  * {@code mvn metaobjects:generate}, where failing the reactor over a file the user chose
  * to own would punish exactly the person the guard is protecting.
+ *
+ * <p><b>WHAT THIS GUARD MUST NOT WRAP.</b> It only fits output whose header <i>we</i>
+ * control, because "no marker ⇒ not ours" is sound only when our own emitters always
+ * write the marker. Two write paths deliberately bypass it, and re-routing them would
+ * break them silently rather than loudly:
+ *
+ * <ul>
+ *   <li>{@code DocsMojo}'s API pages — rendered from {@code templates/api/*.mustache},
+ *       which emit no marker and are under no obligation to.</li>
+ *   <li>{@code TemplateScopeGenerator} — emits whatever a user's {@code --template-spec}
+ *       renders (SQL, markdown, CSV); the content is not ours to require a marker of.</li>
+ * </ul>
+ *
+ * <p>Guarding either made the FIRST run write and every run after refuse, so the artifact
+ * froze while the build stayed green — the exact silent-staleness failure this class was
+ * added to prevent, produced by the class itself. Before wrapping a new write site, check
+ * that its emitter actually writes the marker.
  */
 public final class GeneratedFileWriter {
 

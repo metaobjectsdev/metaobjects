@@ -187,8 +187,18 @@ public class DocsMojo extends AbstractMetaDataMojo {
         try {
             for (Map.Entry<String, String> e : emitted.entrySet()) {
                 Path dest = apiRoot.resolve(e.getKey());
-                // The writer creates parents and writes UTF-8 itself.
-                GeneratedFileWriter.write(dest, e.getValue());
+                // NOT routed through GeneratedFileWriter, deliberately. That guard refuses
+                // any existing file lacking the `GENERATED` marker, and these API pages are
+                // rendered from `templates/api/*.mustache` — none of which emits the token,
+                // and none of which is obliged to. Guarding them made the FIRST run write and
+                // every run after silently refuse, so the docs froze while the build stayed
+                // green and still reported "wrote N api pages".
+                //
+                // The marker floor protects output whose header WE control. Doc pages
+                // rendered from a user-editable template are not that; the guard belongs on
+                // the first-party generators, which were each verified to emit the token.
+                Files.createDirectories(dest.getParent());
+                Files.writeString(dest, e.getValue(), StandardCharsets.UTF_8);
             }
         } catch (IOException ex) {
             throw new UncheckedIOException("metaobjects:docs — failed writing api pages into " + apiRoot, ex);

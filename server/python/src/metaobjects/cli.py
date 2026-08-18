@@ -373,13 +373,26 @@ def _generate(
         return [], errors
     # The project root is the metadata dir's parent — the directory holding
     # `metaobjects/`, which is where `.metaobjects/` belongs beside it.
-    gen_state_dir = str(Path(metadata_dir).resolve().parent / ".metaobjects" / ".gen-state")
+    # verify --codegen is the ONLY caller of _generate, and it regenerates into a
+    # throwaway temp dir purely to diff. It must NOT record a manifest: that would
+    # mutate the user's project from a read-only drift check, with keys relative to a
+    # directory deleted seconds later. The real gen paths anchor their own manifest via
+    # gen_state_dir_for().
     return (
-        _run_suite(
-            root, out_dir, generators, entity_filter, emit_package_init, gen_state_dir
-        ),
+        _run_suite(root, out_dir, generators, entity_filter, emit_package_init, None),
         [],
     )
+
+
+def gen_state_dir_for(metadata_dir: str) -> str:
+    """Where a project's codegen hash manifest lives.
+
+    Anchored on the project — the metadata dir's parent, i.e. the directory holding
+    ``metaobjects/`` — never on ``Path.cwd()``, which is whatever directory the process
+    happens to sit in and would scatter ``.metaobjects/`` into any package that merely
+    runs a generator.
+    """
+    return str(Path(metadata_dir).resolve().parent / ".metaobjects" / ".gen-state")
 
 
 #: The default api-surface subdir (the cross-port contract's ``api/python``).
@@ -551,7 +564,8 @@ def _cmd_gen(args: argparse.Namespace) -> int:
         for msg in load_errors:
             print(f"  {msg}", file=sys.stderr)
         return 1
-    written = _run_suite(root, args.out, generators, entities)
+    gen_state = gen_state_dir_for(args.metadata_dir)
+    written = _run_suite(root, args.out, generators, entities, gen_state_dir=gen_state)
     if spec_gens:
         # The template-spec pass renders user-supplied templates: a bad ref or a
         # wrong --templates dir raises RenderError (not OSError/ValueError, so it
@@ -560,7 +574,8 @@ def _cmd_gen(args: argparse.Namespace) -> int:
 
         try:
             spec_written = _run_suite(
-                root, args.out, spec_gens, entities, emit_package_init=False
+                root, args.out, spec_gens, entities, emit_package_init=False,
+                gen_state_dir=gen_state,
             )
         except RenderError as exc:
             print(
@@ -577,7 +592,11 @@ def _cmd_gen(args: argparse.Namespace) -> int:
 
 
 def _run_gen_targets(
-    config: ProjectConfig, targets: list[TargetConfig], root: MetaData
+    config: ProjectConfig,
+    targets: list[TargetConfig],
+    root: MetaData,
+    *,
+    gen_state_dir: str | None = None,
 ) -> tuple[list[str], list[str]]:
     """Run each target's suite into its ``outDir``. Returns (all_written, errors).
 
@@ -600,7 +619,9 @@ def _run_gen_targets(
                 continue
         out_dir = config.out_dir_for(t)
         try:
-            written = _run_suite(root, out_dir, gens, t.entities)
+            written = _run_suite(
+                root, out_dir, gens, t.entities, gen_state_dir=gen_state_dir
+            )
         except ValueError as exc:  # intra-target run_gen collision → clean error
             errors.append(f"target '{t.name}': {exc}")
             continue
@@ -657,7 +678,9 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
             print(f"  {msg}", file=sys.stderr)
         return 1
 
-    written, errors = _run_gen_targets(config, targets, root)
+    written, errors = _run_gen_targets(
+        config, targets, root, gen_state_dir=gen_state_dir_for(config.metadata_dir())
+    )
     if errors:
         for msg in errors:
             print(f"error: {msg}", file=sys.stderr)
@@ -843,6 +866,9 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
 
         # The exact gen pipeline into the temp tree — verify now rejects exactly
         # what gen rejects (incl. the cross-target duplicate-output-path guard).
+        # gen_state_dir stays None: this regenerates into a temp tree purely to
+        # diff, so recording a manifest would mutate the user's project from a
+        # read-only drift check, keyed to a directory deleted seconds later.
         _written, errors = _run_gen_targets(config, remapped, root)
         if errors:
             for msg in errors:
