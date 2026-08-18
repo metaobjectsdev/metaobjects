@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { SourceSpec } from "./sources.js";
 
 const DialectEnum = z.enum(["sqlite", "postgres", "d1"]);
 
@@ -50,7 +51,46 @@ const MigrateBlock = z.object({
   onAmbiguous: OnAmbiguousEnum,
   allow: z.array(AllowTokenEnum),
   d1: D1Block,
+  /** Restricts a `meta migrate` run to a subset of the loaded metadata, by the
+   *  same package-glob pattern grammar as top-level `scope` (see `scope.ts`).
+   *  Include-only — there's no `migrate.scope.exclude`, since a migration run
+   *  is scoped to what it's touching, not filtered down from "everything". */
+  scope: z.array(z.string().min(1)),
 }).partial();
+
+/**
+ * Mirrors the hand-written `SourceSpec` union in `./sources.ts` — a
+ * declared source kind, one of `path` (resolves today), `resource`, or
+ * `package` (both reserved, throw `ERR_SOURCE_KIND_UNSUPPORTED` until a
+ * later phase). Deliberately NOT `.strict()`: an existing project's
+ * `.metaobjects/config.json` may still carry the pre-phase-1 `{ kind:
+ * "path", path: "..." }` shape (the dead 2-arm discriminated union this
+ * replaces) — `.strict()` would reject the extra `kind` key outright and
+ * break that project's config on the next `meta` run. Zod's default
+ * (strip-unknown-keys) parses it as the modern `{ path: "..." }` shape
+ * instead, which is what back-compat requires.
+ */
+const SourceSpecSchema = z.union([
+  z.object({ path: z.string().min(1) }),
+  z.object({ resource: z.string().min(1) }),
+  z.object({ package: z.string().min(1) }),
+]);
+
+// Compile-time parity: if SourceSpecSchema and the hand-written SourceSpec
+// (./sources.ts) ever drift, this assignment stops compiling. A conditional
+// type (`z.infer<...> extends SourceSpec ? true : never`) would silently
+// resolve to `never` instead of erroring — this form fails for real.
+const _sourceSpecParity: SourceSpec = {} as z.infer<typeof SourceSpecSchema>;
+void _sourceSpecParity;
+
+/** Mirrors the hand-written `Scope` interface in `./scope.ts`. An absent or
+ *  empty `include` means "everything" — see `matchesScope`. */
+const ScopeSchema = z
+  .object({
+    include: z.array(z.string().min(1)).optional(),
+    exclude: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
 
 export const ConfigSchema = z.object({
   schema_version: z.literal(1),
@@ -61,14 +101,10 @@ export const ConfigSchema = z.object({
       drift_warn: z.number().min(0).max(1).default(0.7),
     })
     .default({}),
-  sources: z
-    .array(
-      z.union([
-        z.object({ kind: z.literal("path"), path: z.string() }),
-        z.object({ kind: z.literal("package"), package: z.string() }),
-      ]),
-    )
-    .default([]),
+  sources: z.array(SourceSpecSchema).default([]),
+  /** Output filter applied across every command — see `./scope.ts`. Absent
+   *  means "everything" (no filtering), matching `Scope`'s own contract. */
+  scope: ScopeSchema.optional(),
   extract: z
     .object({
       metaignore: z.string().optional(),

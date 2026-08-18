@@ -100,3 +100,46 @@ describe("ConfigSchema — migrate block", () => {
     expect(parsed.migrate?.databaseUrl).toBe("postgres://localhost/db");
   });
 });
+
+describe("ConfigSchema — phase-1 source resolution", () => {
+  test("accepts a path source", () => {
+    const p = ConfigSchema.parse({ schema_version: 1, sources: [{ path: "../model" }] });
+    expect(p.sources).toEqual([{ path: "../model" }]);
+  });
+  test("accepts resource and package source kinds", () => {
+    const p = ConfigSchema.parse({
+      schema_version: 1,
+      sources: [{ resource: "acme/model" }, { package: "@acme/model" }],
+    });
+    expect(p.sources).toHaveLength(2);
+  });
+  test("rejects an unknown source kind", () => {
+    expect(() => ConfigSchema.parse({ schema_version: 1, sources: [{ nope: "x" }] })).toThrow();
+  });
+  test("accepts a scope block", () => {
+    const p = ConfigSchema.parse({
+      schema_version: 1,
+      scope: { include: ["acme::**"], exclude: ["acme::internal::**"] },
+    });
+    expect(p.scope?.include).toEqual(["acme::**"]);
+  });
+  test("scope defaults to undefined (match everything)", () => {
+    expect(ConfigSchema.parse({ schema_version: 1 }).scope).toBeUndefined();
+  });
+  test("accepts migrate.scope", () => {
+    const p = ConfigSchema.parse({
+      schema_version: 1,
+      migrate: { scope: ["acme::platform::**"] },
+    });
+    expect(p.migrate?.scope).toEqual(["acme::platform::**"]);
+  });
+  test("an existing config with no new keys still parses (back-compat)", () => {
+    const p = ConfigSchema.parse({
+      schema_version: 1, pending_in_git: true,
+      confidence_thresholds: { pending_promote: 0.8, drift_warn: 0.7 },
+      sources: [], extract: {},
+    });
+    expect(p.sources).toEqual([]);
+    expect(p.scope).toBeUndefined();
+  });
+});
