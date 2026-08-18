@@ -391,10 +391,11 @@ describe("runGen — scope", () => {
     };
 
     // The real-world "no scope declared" path (`meta gen`) still ALWAYS passes a
-    // predicate — `matchesScope(fqn, collection.scope)` with an empty compiled
-    // scope, which matches everything. So the byte-identical guarantee that
-    // matters is exactly this: omitting `scope` entirely vs. a predicate that
-    // matches every entity must produce identical output, not merely "close".
+    // predicate — `collection.inScope`, which an unconfigured project compiles
+    // from an empty include/exclude, so it admits everything. The byte-identical
+    // guarantee that matters is exactly this: omitting `scope` entirely vs. a
+    // predicate that matches every entity must produce identical output, not
+    // merely "close".
     const outA = await runGen({
       config: defineConfig({ ...baseConfig, outDir: noScopeDir }),
       metadata: result.root,

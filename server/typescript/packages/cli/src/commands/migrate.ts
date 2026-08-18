@@ -143,9 +143,10 @@ function resolveFormatOutDir(config: ResolvedMigrateConfig, metaRoot: string): s
  *
  * Conditioned on the local directory EXISTING, so the ordinary case — a run from
  * anywhere inside a project with one ledger at its root — says nothing.
- * `--out-dir` (and a `migrate.outDir` in the config) is honoured: the caller
- * passes the RESOLVED directory, so a deliberate redirection is compared, not
- * the default that was overridden.
+ * `--out-dir` (and a `migrate.outDir` in the config) is honoured, as is the
+ * active output format's own convention: the caller passes the directory this
+ * run will actually WRITE to (`resolveFormatOutDir`), so a deliberate
+ * redirection is compared rather than a default that was overridden.
  */
 function warnIfLedgerRelocated(cwd: string, resolvedOutDir: string): void {
   const local = resolvePath(cwd, MIGRATE_DEFAULT_OUT_DIR);
@@ -354,7 +355,11 @@ export async function migrateCommand(
   // resolves and the directory the metadata comes from cannot diverge.
   const metaRoot = await resolveConfigDir(cwd);
   const config = await resolveMigrateConfig(flags, metaRoot);
-  warnIfLedgerRelocated(cwd, resolvePath(metaRoot, config.outDir));
+  // `resolveFormatOutDir`, not `resolvePath(metaRoot, config.outDir)`: under
+  // `--migration-format flyway` with a default outDir the run writes to
+  // Flyway's conventional location instead, so the unredirected path names a
+  // directory this invocation will never touch.
+  warnIfLedgerRelocated(cwd, resolveFormatOutDir(config, metaRoot));
 
   try {
   // #192 — Flyway owns apply + history (flyway_schema_history). We generate the

@@ -4,7 +4,7 @@
 // generate but never apply), and the emit layout (V<N>__/U<N>__ into Flyway's
 // conventional dir, with --out-dir overriding it).
 
-import { describe, test, expect, afterAll } from "bun:test";
+import { describe, test, expect, afterAll, spyOn } from "bun:test";
 import { mkdtemp, rm, mkdir, writeFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -193,5 +193,41 @@ describe("migrate --migration-format flyway — emit", () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]!.startsWith("V1__")).toBe(false);
     expect(entries[0]!.endsWith("-add-note")).toBe(true);
+  });
+});
+
+describe("the relocated-ledger warning under the flyway layout", () => {
+  // The warning exists to say "the ledger you can see here is not the one this
+  // run uses". Under `--migration-format flyway` with a default `outDir` the
+  // directory the run uses comes from `resolveFormatOutDir`, which redirects to
+  // Flyway's conventional location — so comparing against the unredirected
+  // `outDir` named a directory the run would never touch.
+  test("names the directory the run will actually use, not the default outDir", async () => {
+    const root = await mkdtemp(join(tmpdir(), "mts-flyway-warn-"));
+    dirs.push(root);
+    // The project root declares the config; the subdirectory the command runs
+    // from holds a ledger of its own but no config — the exact layout the
+    // warning was written for.
+    await mkdir(join(root, ".metaobjects"), { recursive: true });
+    await writeFile(join(root, ".metaobjects", "config.json"), '{"schema_version":1}', "utf8");
+    const sub = join(root, "apps", "api");
+    await mkdir(join(sub, ".metaobjects", "migrations"), { recursive: true });
+
+    const stderr: string[] = [];
+    const spy = spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      stderr.push(args.map(String).join(" "));
+    });
+    try {
+      // `--dialect d1` is refused by the flyway adapter immediately AFTER the
+      // warning, so this exercises the warning without needing a database.
+      await run(["migrate", "--cwd", sub, "--migration-format", "flyway", "--dialect", "d1"]);
+    } finally {
+      spy.mockRestore();
+    }
+
+    const warning = stderr.find((l) => l.includes("using the migrations directory"));
+    expect(warning).toBeDefined();
+    expect(warning).toContain(join(root, "src", "main", "resources", "db", "migration"));
+    expect(warning).not.toContain(join(root, ".metaobjects", "migrations"));
   });
 });

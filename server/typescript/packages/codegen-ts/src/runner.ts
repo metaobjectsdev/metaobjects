@@ -90,9 +90,9 @@ export interface RunGenOpts {
    * port identically to a `pom.xml` / `metaobjects.config.yaml` in every
    * language port; it says nothing about internal plumbing between two
    * TypeScript packages in this one repo. Do not "fix" this into a config
-   * shape — `cli`'s `gen`/`verify` commands are the only callers, and they
-   * already hold a compiled `CompiledScope` from `resolveCollection()` and
-   * adapt it to this predicate with `(fqn) => matchesScope(fqn, collection.scope)`.
+   * shape — `cli`'s `gen`/`verify` commands are the only callers, and a
+   * `Collection` already exposes exactly this predicate as `inScope`, which
+   * they pass straight through.
    */
   scope?: (fqn: string) => boolean;
 }
