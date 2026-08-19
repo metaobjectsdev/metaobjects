@@ -47,6 +47,14 @@ public final class SourceResolver {
 
     private static final Set<String> EXTENSIONS = Set.of(".json", ".yaml", ".yml");
 
+    /**
+     * Directory excluded at every level of a directory-spec walk — drafts that
+     * are deliberately not part of the loaded model. Mirrors TypeScript's
+     * {@code PENDING_DIR} in {@code metadata-files.ts} and the loader's own
+     * {@link com.metaobjects.loader.DirectorySource}.
+     */
+    private static final String PENDING_DIR = "_pending";
+
     private SourceResolver() {}
 
     /**
@@ -99,6 +107,11 @@ public final class SourceResolver {
                 try (Stream<Path> walk = Files.walk(target)) {
                     walk.filter(Files::isRegularFile)
                         .filter(p -> hasSupportedExtension(p.getFileName().toString()))
+                        // Excludes _pending/ at ANY depth — every ancestor path
+                        // component between `target` and `p` is checked, not
+                        // merely `p`'s own basename, so the whole subtree is
+                        // skipped.
+                        .filter(p -> !isUnderPendingDir(target, p))
                         .sorted(Comparator.comparing(p -> p.getFileName().toString()))
                         .forEach(p -> seen.add(p.toAbsolutePath().normalize()));
                 } catch (IOException e) {
@@ -136,6 +149,19 @@ public final class SourceResolver {
         }
 
         return resolveSources(base, specs);
+    }
+
+    /**
+     * True when any ancestor path component between {@code base} and {@code file}
+     * (i.e. excluding {@code file}'s own name) is exactly {@link #PENDING_DIR}.
+     */
+    private static boolean isUnderPendingDir(Path base, Path file) {
+        Path rel = base.relativize(file).getParent();
+        if (rel == null) return false;
+        for (Path part : rel) {
+            if (part.toString().equals(PENDING_DIR)) return true;
+        }
+        return false;
     }
 
     private static boolean hasSupportedExtension(String name) {

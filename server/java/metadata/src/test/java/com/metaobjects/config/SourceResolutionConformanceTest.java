@@ -60,13 +60,15 @@ public class SourceResolutionConformanceTest {
      * One row per corpus case.
      *
      * @param resolveFrom Project-root-relative directory the resolver is invoked
-     *     FROM. Defaults to {@code "."} — 18 of 19 cases leave it there, so the
-     *     config lives at the project root and "relative to project root" vs
-     *     "relative to the invocation directory" coincide. The one case that sets it
-     *     ({@code a-parent-relative-path-resolves-against-the-declaring-configs-
-     *     directory}) is the one place those two bases diverge, and both the
-     *     config's own location AND the {@code expectFiles} comparison base below
-     *     must honor it correctly for that case to mean anything.
+     *     FROM. Defaults to {@code "."} — every case leaves it there EXCEPT
+     *     {@code a-parent-relative-path-resolves-against-the-declaring-configs-
+     *     directory}, so for all the others the config lives at the project root
+     *     and "relative to project root" vs "relative to the invocation directory"
+     *     coincide. That one case is the one place those two bases diverge, and
+     *     both the config's own location AND the {@code expectFiles} comparison
+     *     base below must honor it correctly for that case to mean anything. (Do
+     *     not restate this as "N of M cases" — the corpus grows and a hardcoded
+     *     count silently goes stale; the structural description above does not.)
      */
     /**
      * {@code expectError}: a JSON string pins the exact error code raised; JSON
@@ -173,9 +175,10 @@ public class SourceResolutionConformanceTest {
             }
 
             // Compared against the PROJECT ROOT explicitly — never against
-            // `invokeDir`. For 18 of 19 cases the two coincide (resolveFrom "."), so a
-            // comparison-base bug here would pass every case except the one that sets
-            // `resolveFrom`, which is exactly why that case exists.
+            // `invokeDir`. For every case but the one that sets `resolveFrom` the two
+            // coincide (resolveFrom "."), so a comparison-base bug here would pass
+            // every other case and fail only that one — which is exactly why that
+            // case exists.
             Set<String> got = SourceResolver.resolveCollection(invokeDir).stream()
                     .map(p -> root.relativize(p).toString().replace('\\', '/'))
                     .collect(Collectors.toSet());

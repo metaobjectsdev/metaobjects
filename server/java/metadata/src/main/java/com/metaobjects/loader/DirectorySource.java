@@ -60,6 +60,13 @@ public final class DirectorySource {
 
     private static final Set<String> EXTENSIONS = Set.of(".json", ".yaml", ".yml");
 
+    /**
+     * Directory excluded at every level of {@link #expand()} — drafts that are
+     * deliberately not part of the loaded model. Mirrors TypeScript's
+     * {@code PENDING_DIR} in {@code metadata-files.ts}.
+     */
+    private static final String PENDING_DIR = "_pending";
+
     private final Path directory;
     private final Options opts;
 
@@ -102,6 +109,10 @@ public final class DirectorySource {
                 .filter(Files::isRegularFile)
                 .filter(p -> hasSupportedExtension(p.getFileName().toString()))
                 .filter(p -> !opts.getExclude().contains(p.getFileName().toString()))
+                // Excludes _pending/ at ANY depth — every ancestor path component
+                // between `directory` and `p` is checked, not merely `p`'s own
+                // basename, so the whole subtree is skipped.
+                .filter(p -> !isUnderPendingDir(directory, p))
                 .sorted(Comparator.comparing(p -> p.getFileName().toString()))
                 .map(FileSource::new);
         } catch (IOException e) {
@@ -114,6 +125,19 @@ public final class DirectorySource {
      */
     public List<MetaDataSource> expandToList() {
         return expand().map(fs -> (MetaDataSource) fs).collect(Collectors.toList());
+    }
+
+    /**
+     * True when any ancestor path component between {@code base} and {@code file}
+     * (i.e. excluding {@code file}'s own name) is exactly {@link #PENDING_DIR}.
+     */
+    private static boolean isUnderPendingDir(Path base, Path file) {
+        Path rel = base.relativize(file).getParent();
+        if (rel == null) return false;
+        for (Path part : rel) {
+            if (part.toString().equals(PENDING_DIR)) return true;
+        }
+        return false;
     }
 
     private static boolean hasSupportedExtension(String name) {

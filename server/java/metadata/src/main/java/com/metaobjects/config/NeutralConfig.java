@@ -117,17 +117,18 @@ public final class NeutralConfig {
 
         List<Map<String, String>> specs = new ArrayList<>();
         JsonElement srcs = root.get("sources");
-        if (srcs != null && !srcs.isJsonNull() && !srcs.isJsonArray()) {
-            // A present-but-wrong-typed `sources` (e.g. a bare object instead of an
-            // array) must RAISE, not silently read as "absent" — the latter would
-            // fall back to the default directory with no diagnostic, exactly the
-            // "typo'd config behaves like no config" failure this class exists to
-            // prevent (see the class javadoc).
+        // A present `sources` key that is not an array must RAISE, not silently
+        // read as "absent" — the latter would fall back to the default directory
+        // with no diagnostic, exactly the "typo'd config behaves like no config"
+        // failure this class exists to prevent (see the class javadoc). This is
+        // the GENERAL rule: a present-but-JSON-null `sources` is just as wrong-
+        // typed as a present-but-object `sources` — it is not a special case.
+        if (srcs != null && !srcs.isJsonArray()) {
             throw new MetaDataException(
                     path + ": \"sources\" must be an array",
                     ErrorCode.ERR_BAD_ATTR_VALUE);
         }
-        if (srcs != null && srcs.isJsonArray()) {
+        if (srcs != null) {
             for (JsonElement el : srcs.getAsJsonArray()) {
                 if (!el.isJsonObject()) {
                     throw new MetaDataException(
@@ -143,7 +144,23 @@ public final class NeutralConfig {
                 Map<String, String> spec = new LinkedHashMap<>();
                 for (Map.Entry<String, JsonElement> e : entry.entrySet()) {
                     JsonElement v = e.getValue();
-                    spec.put(e.getKey(), v.isJsonPrimitive() ? v.getAsString() : v.toString());
+                    if (!v.isJsonPrimitive() || !v.getAsJsonPrimitive().isString()) {
+                        // Every source-spec value (`path`/`resource`/`package`) is a
+                        // string — a bare number/boolean/object/array silently
+                        // stringified (the prior behavior) would let
+                        // {"path": 123} load a directory literally named "123"
+                        // rather than failing loudly on the typo'd config.
+                        throw new MetaDataException(
+                                path + ": \"sources\" entry \"" + e.getKey() + "\" must be a string",
+                                ErrorCode.ERR_BAD_ATTR_VALUE);
+                    }
+                    String value = v.getAsString();
+                    if (value.strip().isEmpty()) {
+                        throw new MetaDataException(
+                                path + ": \"sources\" entry \"" + e.getKey() + "\" must not be empty",
+                                ErrorCode.ERR_BAD_ATTR_VALUE);
+                    }
+                    spec.put(e.getKey(), value);
                 }
                 specs.add(spec);
             }

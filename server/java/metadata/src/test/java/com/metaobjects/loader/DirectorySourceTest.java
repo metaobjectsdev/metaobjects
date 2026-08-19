@@ -62,6 +62,31 @@ public class DirectorySourceTest {
         }
     }
 
+    @Test public void excludesPendingDirAtAnyDepth() throws IOException {
+        // Mirrors TypeScript's PENDING_DIR exclusion (metadata-files.ts) — a draft
+        // entity under _pending/ must be invisible to codegen, not merely a file
+        // that happens to be NAMED "_pending". Before this fix, only TypeScript
+        // knew about this directory; a draft would generate a live table under
+        // `mvn metaobjects:generate`.
+        Path dir = Files.createTempDirectory("ds-");
+        try {
+            Files.writeString(dir.resolve("meta.live.json"), "{}");
+            Path pending = Files.createDirectory(dir.resolve("_pending"));
+            Files.writeString(pending.resolve("meta.draft.json"), "{}");
+            // Nested: _pending/ excluded at ANY depth, not just top-level.
+            Path nestedPending = Files.createDirectories(dir.resolve("nested").resolve("_pending"));
+            Files.writeString(nestedPending.resolve("meta.deep-draft.json"), "{}");
+
+            DirectorySource src = new DirectorySource(dir);
+            List<FileSource> expanded = src.expand().collect(Collectors.toList());
+
+            assertEquals(1, expanded.size());
+            assertEquals("meta.live.json", expanded.get(0).getId());
+        } finally {
+            deleteRecursively(dir);
+        }
+    }
+
     @Test public void nonRecursiveSkipsSubdirectories() throws IOException {
         Path dir = Files.createTempDirectory("ds-");
         try {
