@@ -625,8 +625,11 @@ Phase 1 ships the spine. Explicitly **not** built yet, so you do not go looking:
 - **`url` sources** and **named `collection` references**.
 - **Per-generator declarative `scope`.** The TypeScript `filter` function is the
   escape hatch and is unchanged.
-- **The other four ports' CLIs reading `.metaobjects/config.json`.** The pattern
-  grammar is corpus-gated so they cannot diverge when they land.
+- **Cross-port `scope` and `migrate.scope`.** Java's own `<filters>` grammar
+  collides with `scope`'s pattern characters (see "Port support" near the top of
+  this document), so reconciling the two is a separate, adopter-affecting decision
+  rather than a mechanical port. They remain Node-CLI-only for now; `sources`
+  itself is no longer in this list — all four CLI surfaces read it today.
 - **Database and other runtime metadata sources.** Ruled a runtime-metadata concern
   rather than a build-time one.
 
@@ -637,17 +640,33 @@ Design rationale and the full phase plan:
 
 ## Verified by
 
+**Cross-port source resolution**
+
+- [`fixtures/source-resolution-conformance/`](../../fixtures/source-resolution-conformance/) —
+  pins the resolved file SET for a declared `sources` list (the default, the
+  relative-path base, recursion, extension matching, union/de-dup, and every error
+  condition, including the deliberately-unpinned malformed-config case — see the
+  corpus's own README). All four CLI surfaces run it:
+  `server/typescript/packages/sdk/test/source-resolution-conformance.test.ts`,
+  `server/csharp/MetaObjects.Conformance.Tests/SourceResolutionConformanceTests.cs`,
+  `server/python/tests/conformance/test_source_resolution_conformance.py`, and
+  `server/java/metadata/src/test/java/com/metaobjects/config/SourceResolutionConformanceTest.java`
+  (Kotlin runs through the Java/Maven loader, so it shares the Java runner).
+
 **Cross-port pattern semantics**
 
 - [`fixtures/scope-conformance/`](../../fixtures/scope-conformance/) — 10 cases
   pinning `*` / `**`, include-union, exclude-after-include, literal metacharacters,
   and case sensitivity. TypeScript runs it today; the other four ports have no runner
-  yet. See [`CONFORMANCE.md`](../CONFORMANCE.md).
+  yet, because `scope` itself stays Node-CLI-only (see "Port support" above). See
+  [`CONFORMANCE.md`](../CONFORMANCE.md).
 
 **TypeScript gates**
 
 - `server/typescript/packages/sdk/test/scope.test.ts` — the pattern engine
 - `server/typescript/packages/sdk/test/scope-conformance.test.ts` — the corpus runner
+- `server/typescript/packages/sdk/test/source-resolution-conformance.test.ts` — the
+  cross-port sources corpus runner
 - `server/typescript/packages/sdk/test/sources.test.ts` — `path` resolution, `_pending`
   exclusion, unsupported kinds
 - `server/typescript/packages/sdk/test/discovery.test.ts` — nearest-ancestor walk and
