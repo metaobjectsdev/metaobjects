@@ -73,7 +73,11 @@ static int RunGen(string[] rest)
         return 0;
     }
 
-    if (metadataDir is null || outDir is null)
+    // Rung 1 (explicit positional) is honored as-is; an omitted metadataDir
+    // falls back to the port-neutral .metaobjects/config.json ladder.
+    metadataDir = ResolveMetadataDirOrExit(metadataDir);
+
+    if (outDir is null)
     {
         Console.Error.WriteLine("usage: dotnet meta gen <metadataDir> --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--template-spec <json>] [--emit-abstract-shapes]");
         Console.Error.WriteLine("       dotnet meta gen --list");
@@ -121,7 +125,11 @@ static int RunDocs(string[] rest)
         else if (!rest[i].StartsWith('-')) metadataDir ??= rest[i];
     }
 
-    if (metadataDir is null || outDir is null)
+    // Rung 1 (explicit positional) is honored as-is; an omitted metadataDir
+    // falls back to the port-neutral .metaobjects/config.json ladder.
+    metadataDir = ResolveMetadataDirOrExit(metadataDir);
+
+    if (outDir is null)
     {
         Console.Error.WriteLine("usage: dotnet meta docs <metadataDir> --out <dir> [--namespace <ns>] [--project <name>] [--model-base-url <url>]");
         return 2;
@@ -147,6 +155,69 @@ static int RunDocs(string[] rest)
     foreach (var p in outcome.WrittenPaths) Console.WriteLine($"  written: {p}");
     Console.WriteLine($"dotnet meta docs: {outcome.WrittenPaths.Count} api page(s) written");
     return 0;
+}
+
+// The metadata-location ladder's rungs 3-4 (source-resolution design doc §3):
+// rung 1 is the explicit positional argument the caller already tried; rung 2
+// (a port-native config surface) doesn't exist in C#; rungs 3 (a declared
+// `sources` in .metaobjects/config.json) and 4 (the default "metaobjects"
+// directory) live in MetaObjects.Config.SourceResolver.ResolveCollection,
+// which this wraps. Called from all three metadataDir-taking commands (gen,
+// docs, verify) so an omitted positional argument is never a hard requirement
+// wherever a project's config can name the location instead.
+//
+// Never returns null: either hands back a real directory, or prints a
+// diagnostic and terminates the process — callers may treat the result as
+// always-present and keep their existing (now-unreachable-when-omitted)
+// null checks for the OTHER positional/option they still require.
+static string ResolveMetadataDirOrExit(string? metadataDir)
+{
+    if (metadataDir is not null) return metadataDir;
+
+    var cwd = Directory.GetCurrentDirectory();
+    try
+    {
+        var cfg = MetaObjects.Config.NeutralConfig.Read(cwd);
+        var specs = cfg?.Sources ?? Array.Empty<IReadOnlyDictionary<string, string>>();
+
+        if (specs.Count == 0)
+        {
+            // No declared sources — validate + apply the DEFAULT directory through
+            // the same ladder the shared conformance corpus gates (raises
+            // ERR_COLLECTION_NOT_FOUND when the default is also absent).
+            _ = MetaObjects.Config.SourceResolver.ResolveCollection(cwd);
+            return Path.Combine(cwd, MetaObjects.Config.NeutralConfig.DefaultMetadataDir);
+        }
+
+        if (specs.Count > 1)
+        {
+            // MetaDataLoader.FromDirectory takes ONE directory — it cannot express a
+            // multi-source SET. Fail loudly rather than silently loading just one of
+            // the declared sources; MetaDataLoader.Load(IReadOnlyList<IMetaDataSource>)
+            // (MetaDataLoader.cs:334) is the documented follow-up that lifts this.
+            Console.Error.WriteLine(
+                $"error: {cwd}: .metaobjects/config.json declares {specs.Count} metadata sources, but " +
+                "this CLI's loader accepts only one directory at a time. Pass <metadataDir> explicitly, " +
+                "or reduce \"sources\" to a single entry.");
+            Environment.Exit(2);
+            throw new InvalidOperationException("unreachable");
+        }
+
+        // Exactly one declared source. Resolve + validate it through the same
+        // kind/existence checks ResolveSources applies (ERR_SOURCE_KIND_UNSUPPORTED /
+        // ERR_SOURCE_UNRESOLVED), then hand the loader that spec's OWN root — never
+        // the default directory name, which this project may not even have.
+        MetaObjects.Config.SourceResolver.ResolveSources(cwd, specs);
+        var rawPath = specs[0]["path"]; // guaranteed present: ResolveSources above
+                                         // would already have thrown otherwise.
+        return Path.IsPathRooted(rawPath) ? rawPath : Path.GetFullPath(Path.Combine(cwd, rawPath));
+    }
+    catch (MetaObjects.MetaModelException e)
+    {
+        Console.Error.WriteLine($"error: {e.Code}: {e.Message}");
+        Environment.Exit(2);
+        throw;
+    }
 }
 
 static int Unknown(string cmd)
@@ -208,11 +279,9 @@ static int RunVerify(string[] rest)
         else templatesRoot ??= a;
     }
 
-    if (metadataDir is null)
-    {
-        Console.Error.WriteLine("usage: dotnet meta verify <metadataDir> [--templates <root>] [--codegen --out <dir> [--namespace <ns>]] [--db]");
-        return 2;
-    }
+    // Rung 1 (explicit positional) is honored as-is; an omitted metadataDir
+    // falls back to the port-neutral .metaobjects/config.json ladder.
+    metadataDir = ResolveMetadataDirOrExit(metadataDir);
 
     // The templates gate needs a root. Bare verify (defaults to templates) and an
     // explicit --templates both require it; surface a clear usage error if absent.
