@@ -22,6 +22,8 @@ describe("emit postgres — checks", () => {
   });
   test("drop-check → ALTER TABLE DROP CONSTRAINT", () => {
     const r = emit([{ kind: "drop-check", table: "orders", check: "orders_status_chk", status: ALLOWED } as unknown as Change], { dialect: "postgres" });
-    expect(r.up).toContain(`ALTER TABLE "orders" DROP CONSTRAINT "orders_status_chk";`);
+    // #313 — the forward drop carries IF EXISTS. The add-check test above asserts the
+    // matching DOWN, which stays bare; the two together pin the direction split.
+    expect(r.up).toContain(`ALTER TABLE "orders" DROP CONSTRAINT IF EXISTS "orders_status_chk";`);
   });
 });
