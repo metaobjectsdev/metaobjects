@@ -6,15 +6,19 @@
 // between parallel CI jobs sharing one server, and puts a DROP DATABASE next to a
 // name derived from a real one (Postgres truncates identifiers at 63 bytes, so a
 // long enough target derives a scratch name that truncates back ONTO the target).
-// None of that is worth it when the engines run in-process: PGlite is real Postgres
-// compiled to WASM, and libsql runs sqlite in memory. Nothing to provision, nothing
-// to clean up, nothing to drop by mistake.
+// None of that is worth it when the engine runs locally and disposably: PGlite is
+// real Postgres compiled to WASM and lives in this process; sqlite is a throwaway
+// file in a private temp directory (see `openMemorySqlite` for why not `:memory:`).
+// Nothing to provision, nothing to name, nothing to drop by mistake.
 //
 // Both drivers are OPTIONAL peers imported lazily. PGlite is ~22 MB of WASM and must
 // not land in the node_modules of every adopter who only ever runs `meta gen`; the
 // install hints mirror `buildKyselyFromUrl`'s. `cli` already depends on
 // `@libsql/kysely-libsql` outright, so only a direct embedder can miss that one.
 import { Kysely } from "kysely";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 export interface ReplayEngine {
   /** An empty database. The caller owns applying migrations into it. */
@@ -30,6 +34,23 @@ export async function openReplayEngine(
   return dialect === "postgres" ? openPglite() : openMemorySqlite();
 }
 
+/**
+ * A throwaway sqlite database in a private temp directory, removed on dispose.
+ *
+ * NOT `:memory:`, and that is the whole point of this comment. Under
+ * `@libsql/kysely-libsql`, `:memory:` gives every CONNECTION its own database — so a
+ * table created inside a transaction is invisible the moment the transaction's
+ * connection is released. `applyPending` runs each migration file in a transaction,
+ * which means an in-memory engine would replay a whole chain into a series of
+ * throwaway databases, introspect an empty one, and never let migration 2 see
+ * migration 1's tables. The gate would pass having proved nothing.
+ *
+ * `file::memory:?cache=shared` fixes the visibility and breaks isolation instead —
+ * two engines in one process land in the SAME database — and libsql rejects the
+ * named `?mode=memory&cache=shared` form outright (`URL_PARAM_NOT_SUPPORTED`). A
+ * unique temp file is correct on both counts, and it is what the existing
+ * `test/integrity/replay.test.ts` has always used.
+ */
 async function openMemorySqlite(): Promise<ReplayEngine> {
   type LibsqlDialectCtor = new (opts: { url: string }) =>
     ConstructorParameters<typeof Kysely<Record<string, unknown>>>[0]["dialect"];
@@ -42,8 +63,13 @@ async function openMemorySqlite(): Promise<ReplayEngine> {
       `the sqlite replay engine requires '@libsql/kysely-libsql'; install it to run 'meta verify --replay'`,
     );
   }
-  const db = new Kysely<Record<string, unknown>>({ dialect: new LibsqlDialect({ url: ":memory:" }) });
-  return disposable(db, async () => { /* the in-memory database dies with the connection */ });
+  const dir = mkdtempSync(join(tmpdir(), "meta-replay-"));
+  const db = new Kysely<Record<string, unknown>>({
+    dialect: new LibsqlDialect({ url: `file:${join(dir, "replay.db")}` }),
+  });
+  return disposable(db, async () => {
+    rmSync(dir, { recursive: true, force: true });
+  });
 }
 
 async function openPglite(): Promise<ReplayEngine> {

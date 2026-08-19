@@ -32,6 +32,34 @@ describe("openReplayEngine", () => {
     }
   });
 
+  // THE defect that nearly shipped, and the reason this case exists on BOTH dialects:
+  // `applyPending` runs every migration file inside a transaction, so a table created
+  // by migration 1 must be visible to migration 2 and to the introspection that
+  // follows. Under `@libsql/kysely-libsql`, `:memory:` gives each CONNECTION its own
+  // database, so a tx-created table vanishes the instant the transaction's connection
+  // is released — a whole chain would replay into a series of throwaway databases and
+  // the gate would pass having proved nothing. Only a cross-transaction assertion
+  // catches it; the non-transactional cases above all passed.
+  for (const dialect of ["sqlite", "postgres"] as const) {
+    test(`${dialect}: a table created inside a transaction survives it`, async () => {
+      const engine = await openReplayEngine(dialect);
+      try {
+        await engine.db.transaction().execute(async (trx) => {
+          await sql`CREATE TABLE in_tx (id integer primary key)`.execute(trx);
+        });
+        // A second transaction must SEE the first one's table, the way migration 2
+        // sees migration 1's.
+        await engine.db.transaction().execute(async (trx) => {
+          await sql`INSERT INTO in_tx (id) VALUES (1)`.execute(trx);
+        });
+        const snap = await introspect(engine.db, dialect);
+        expect(snap.tables.map((x) => x.name)).toContain("in_tx");
+      } finally {
+        await engine.dispose();
+      }
+    });
+  }
+
   // applyPending runs each migration file inside a kysely transaction and takes a
   // pg advisory lock on postgres. Both must work through the shim, or the gate
   // fails for a reason that has nothing to do with the chain under test.
