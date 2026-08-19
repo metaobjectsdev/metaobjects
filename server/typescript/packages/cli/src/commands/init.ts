@@ -336,6 +336,19 @@ async function writeConfigFile(opts: InitOptions, result: InitResult, agentDir: 
       result.preserved.push(".metaobjects/config.json");
     } catch {
       if (priorContent !== undefined) {
+        // In the full-scaffold path this is only reachable once the caller has
+        // already required --force (the exists-guard at the top of `init()`
+        // throws before writeConfigFile runs otherwise), so opts.force is always
+        // true there. `--config-only` calls this function directly with no such
+        // guard, so without this check it would silently destroy an existing,
+        // merely-unparseable config on every run — the one thing `--force` is
+        // supposed to gate.
+        if (!opts.force) {
+          throw new Error(
+            `existing .metaobjects/config.json exists but could not be parsed; refusing to overwrite it. ` +
+            `Use --force to replace it with defaults. Prior content:\n${priorContent}`,
+          );
+        }
         log.warn("existing .metaobjects/config.json was invalid — writing fresh defaults. Prior content:");
         log.warn(priorContent);
         result.warnings.push("invalid .metaobjects/config.json replaced with defaults");

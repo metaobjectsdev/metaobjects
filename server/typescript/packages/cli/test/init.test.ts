@@ -256,6 +256,31 @@ describe("init() --config-only", () => {
     const cfg = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
     expect(cfg.sources).toEqual([{ path: "model" }]);
   });
+
+  test("refuses to overwrite an existing config it cannot parse, without --force", async () => {
+    mkdirSync(join(cwd, ".metaobjects"), { recursive: true });
+    // Not valid against ConfigSchema.strict() — e.g. written by a newer `meta`
+    // or a typo'd key. Before --config-only existed, reaching this failure
+    // required an explicit --force; --config-only must not have quietly
+    // regressed that safety net.
+    writeFileSync(join(cwd, ".metaobjects", "config.json"), JSON.stringify({ schema_version: 1, unknownKey: true }));
+
+    await expect(init({ cwd, configOnly: true })).rejects.toThrow(/could not be parsed/);
+    // Unmodified — the refusal must be provable, not just declared.
+    const cfg = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
+    expect(cfg.unknownKey).toBe(true);
+  });
+
+  test("--force still replaces an existing unparseable config with defaults", async () => {
+    mkdirSync(join(cwd, ".metaobjects"), { recursive: true });
+    writeFileSync(join(cwd, ".metaobjects", "config.json"), JSON.stringify({ schema_version: 1, unknownKey: true }));
+
+    const result = await init({ cwd, configOnly: true, force: true });
+
+    expect(result.warnings).toContain("invalid .metaobjects/config.json replaced with defaults");
+    const cfg = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
+    expect(cfg.sources).toEqual([]);
+  });
 });
 
 describe("initCommand --config-only", () => {
