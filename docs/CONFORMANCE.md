@@ -77,6 +77,24 @@ Stated as mechanisms rather than as a list of attribute names on purpose — the
 requirement vocabulary has a breaking change scheduled (FR-038), which moves what the
 manifest contains without moving the boundary between the two halves.
 
+**How to tell a deliberate split from a real parity gap**, since the two look identical
+in the matrix — both show one port covered and four blank. Ask what the uncovered ports
+*claim*. Here they claim nothing: they load requirement vocabulary and stop, exactly as the
+feature doc says. Contrast `{{#hasField}}` in 0.23.1, where the JVM emitted `has<Field>()`
+onto generated payload records **and** `verify` accepted the section, while no render engine
+in any port implemented the other half — two ports shipping halves of one promise, with no
+fixture that could see it. A split is deliberate when no port makes a claim the corpus would
+have to check; it is a gap when some port already made one.
+
+**A hazard for whoever ships the scheduled removal.** Contract prose lives *inside* attr
+descriptions in `expected-registry.json`, where five ports byte-match it and nothing else
+gates it — `@verifiedBy` carries "verify checks each name EXISTS and is not skipped; it
+never runs them", and `@trackedBy` carries "NOT resolved by verify, which does not reach the
+network". Deleting an attribute deletes its description, and with it the only gated
+statement of that guarantee. Sweep every description being removed for contract prose and
+rehome it in the **same** change, not after — the same class as the ADR-0047 renumbering
+trap, where a string that reads like prose is actually a gated artifact.
+
 Per-port runners + commands:
 
 | Port | Metamodel + YAML + render + verify | Persistence | API contract |
