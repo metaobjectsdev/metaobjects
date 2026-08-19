@@ -48,3 +48,10 @@ Write one when a decision is **cross-cutting** (affects more than one language p
 - [ADR-0028 — Object taxonomy: `object.projection`, value purity, and the population doctrine](ADR-0028-object-taxonomy-projection-value-purity.md) — *Accepted*
 - [ADR-0029 — Universal `Entity.child` extends-resolution and the `via` inference contract](ADR-0029-entity-child-extends-and-via-inference.md) — *Accepted*
 - [ADR-0030 — The declared API surface lives in core; protocol lives in bindings; the organization tier stays out](ADR-0030-declared-api-surface-and-org-tier-boundary.md) — *Accepted*
+- [ADR-0052 — A template's subtype axis is DIRECTION: `template.output` renders outbound, a response is parsed inbound](ADR-0052-template-direction-outbound-vs-inbound.md) — *Accepted*
+- [ADR-0053 — The reply's syntax is `@responseFormat` on `template.prompt`](ADR-0053-inbound-response-format.md) — *Accepted*
+
+> **Index gap — ADR-0031 through ADR-0051 are on disk but not listed above.** The index stopped
+> being maintained after ADR-0030; the files are authoritative, this list is not. Read
+> `ls spec/decisions/` for the full set until the backfill lands. Recorded here rather than
+> silently left, because an index that looks complete and is not is worse than one that says so.

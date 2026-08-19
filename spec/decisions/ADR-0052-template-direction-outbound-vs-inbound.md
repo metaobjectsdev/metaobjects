@@ -92,13 +92,24 @@ directions of outbound plus one inbound rider, not one type.
 
 ## Open question — where `@format` lives on the inbound side
 
-`@format` currently serves both directions: it drives the render engine's
-escaping/whitespace **and** tells the parser what syntax to read. Outbound it clearly stays
-on `template.output`. Inbound it must travel with `@responseRef`, and the options are a new
-`template.prompt` attr (e.g. `@responseFormat`) or hanging it off the response payload
-object. **Not decided here** — it is a vocabulary question that should clear ADR-0037's
-procedure on its own evidence, and deciding it inside this ADR would smuggle in an attribute
-addition under a re-homing decision.
+_**RESOLVED by [ADR-0053](ADR-0053-inbound-response-format.md) (2026-08-19): a new
+`template.prompt @responseFormat`, closed enum `json | xml`, default `json`.** The question is kept
+here rather than deleted, because the reason it was deferred turned out to be wrong in an
+instructive way._
+
+The deferral assumed the question was separable — that the re-homing could ship and the format
+carrier could follow. It is not. Every inbound emitter in all five ports dispatches on one bit
+(is the reply JSON or XML) and reads it from `template.output @format`; move the tier and the bit
+has no source. `template.prompt @format` cannot supply it, because that attribute is already the
+*prompt body's* syntax, and the two genuinely differ — the docs-site fixture renders a `text` prompt
+whose reply is XML. Worse, `@format` defaults to `text`, so gating the inbound tier on it would emit
+**no parser at all, silently**, for a prompt that declared `@responseRef` and omitted `@format` —
+the mirror image of the absurd artifact this ADR exists to remove.
+
+The original concern — that deciding it here would smuggle an attribute addition past ADR-0037 — is
+answered by giving it its own record: ADR-0053 clears ADR-0037's ordered test on its own evidence.
+
+The two ADRs ship together. ADR-0052 alone is not implementable.
 
 ## Alternatives considered
 
