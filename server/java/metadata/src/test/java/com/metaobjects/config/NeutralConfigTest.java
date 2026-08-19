@@ -59,4 +59,23 @@ public class NeutralConfigTest {
         MetaDataException ex = assertThrows(MetaDataException.class, () -> NeutralConfig.read(dir));
         assertEquals(ErrorCode.ERR_BAD_ATTR_VALUE, ex.getCode().orElseThrow());
     }
+
+    @Test
+    public void schemaVersionAsFloatLiteralIsAcceptedLikeTheOtherThreePorts() throws IOException {
+        // `schema_version: 1.0` is valid JSON, equal to 1, and every other port
+        // accepts it (C#'s NeutralConfigTests.cs pins the identical case).
+        Path dir = writeConfig("{ \"schema_version\": 1.0, \"sources\": [ { \"path\": \"model\" } ] }");
+        NeutralConfig cfg = NeutralConfig.read(dir).orElseThrow();
+        assertEquals(1, cfg.getSources().size());
+    }
+
+    @Test
+    public void schemaVersionNonIntegralRaisesRatherThanTruncating() throws IOException {
+        // Regression: Gson's JsonPrimitive#getAsInt() TRUNCATES a non-integral
+        // BigDecimal instead of raising, so `schema_version: 1.5` used to read as
+        // 1 and pass silently. Comparing as a double (NeutralConfig.java) catches it.
+        Path dir = writeConfig("{ \"schema_version\": 1.5, \"sources\": [] }");
+        MetaDataException ex = assertThrows(MetaDataException.class, () -> NeutralConfig.read(dir));
+        assertEquals(ErrorCode.ERR_BAD_ATTR_VALUE, ex.getCode().orElseThrow());
+    }
 }

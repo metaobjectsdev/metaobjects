@@ -513,10 +513,19 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
                 || (loaderConfig.getSources() != null && !loaderConfig.getSources().isEmpty());
         if (pomNamesLocation) return List.of();
 
+        // Prefixed "model:file:" explicitly rather than handed back as a bare
+        // Path::toString(): MetaDataLoader.processSources decides how to wrap a bare
+        // source string by checking `s.indexOf(':') < 0`, and an absolute path is not
+        // guaranteed colon-free — a Windows path (`C:\...`) fails that ambiguous
+        // sniff and is handed to URIHelper.toURI() unwrapped, which dies in
+        // validateUriType(). These are always fully-resolved absolute filesystem
+        // paths (SourceResolver.resolveCollection), so there is nothing to sniff:
+        // say "file" outright, the same shape processSources itself already builds
+        // for its own `new File(s).exists()` branch.
         return com.metaobjects.config.SourceResolver
                 .resolveCollection(getProjectBaseDir().toPath())
                 .stream()
-                .map(java.nio.file.Path::toString)
+                .map(p -> "model:file:" + p.toString().replace(java.io.File.separatorChar, '/'))
                 .toList();
     }
 }

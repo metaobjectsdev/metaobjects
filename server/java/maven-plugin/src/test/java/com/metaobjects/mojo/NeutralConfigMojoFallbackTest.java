@@ -109,6 +109,41 @@ public class NeutralConfigMojoFallbackTest {
         }
     }
 
+    @Test
+    public void createLoaderHandlesAColonInTheResolvedAbsolutePath() throws IOException {
+        // Regression: resolveNeutralSourcesIfPomIsSilent used to hand
+        // MetaDataLoader.processSources a bare Path::toString() — ambiguous
+        // whenever the absolute path contains a colon, since processSources
+        // sniffs `s.indexOf(':') < 0` to decide whether to wrap the string as a
+        // "model:file:" source. A Windows drive letter (`C:\...`) is the common
+        // case; reproduced here without a Windows machine via a colon in a plain
+        // Unix directory NAME (legal on ext4/most POSIX filesystems), which is
+        // just as ambiguous to that sniff. Before the fix this died with an
+        // uncoded IllegalArgumentException out of URIHelper.validateUriType.
+        Path root = Files.createTempDirectory("mo-mojo-neutral-colon-").toAbsolutePath().normalize();
+        try {
+            Path weirdRoot = root.resolve("cache:v1");
+            Files.createDirectories(weirdRoot);
+            Path metaDir = weirdRoot.resolve("custom-metadata");
+            Files.createDirectories(metaDir);
+            Files.write(metaDir.resolve("meta.widget.json"), WIDGET_JSON.getBytes(StandardCharsets.UTF_8));
+
+            Path dotMo = weirdRoot.resolve(".metaobjects");
+            Files.createDirectories(dotMo);
+            Files.write(dotMo.resolve("config.json"),
+                    "{\"schema_version\":1,\"sources\":[{\"path\":\"custom-metadata\"}]}"
+                            .getBytes(StandardCharsets.UTF_8));
+
+            MetaDataGeneratorMojo mojo = mojoWithSilentPom(weirdRoot);
+            MetaDataLoader loaded = mojo.createLoader(mojo.createProjectClassLoader());
+
+            assertEquals(1, loaded.getMetaObjects().size());
+            assertEquals("Widget", loaded.getMetaObjects().get(0).getShortName());
+        } finally {
+            deleteRecursive(root);
+        }
+    }
+
     @Test(expected = MetaDataException.class)
     public void createLoaderRaisesWhenPomIsSilentAndNoCollectionExists() throws IOException {
         // Neither a neutral config nor a default "metaobjects/" directory — the final

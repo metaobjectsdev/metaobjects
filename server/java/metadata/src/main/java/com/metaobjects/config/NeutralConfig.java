@@ -108,8 +108,14 @@ public final class NeutralConfig {
         JsonObject root = parsed.getAsJsonObject();
 
         JsonElement version = root.get("schema_version");
+        // Compared as a double, not getAsInt(): Gson's getAsInt() on a non-integral
+        // BigDecimal TRUNCATES rather than raising, so a typo'd `schema_version: 1.5`
+        // silently read as 1 and passed. getAsDouble() still accepts an
+        // integral-valued float like `1.0` (equal to 1, and valid JSON — every other
+        // port accepts it too, C#'s NeutralConfig.cs for the identical reason) while
+        // correctly rejecting a genuinely non-integral value.
         if (version == null || !version.isJsonPrimitive() || !version.getAsJsonPrimitive().isNumber()
-                || version.getAsInt() != SUPPORTED_SCHEMA_VERSION) {
+                || version.getAsDouble() != SUPPORTED_SCHEMA_VERSION) {
             throw new MetaDataException(
                     path + ": unsupported schema_version (expected " + SUPPORTED_SCHEMA_VERSION + ")",
                     ErrorCode.ERR_BAD_ATTR_VALUE);
