@@ -4,6 +4,7 @@ import { applyPending } from "../apply/apply.js";
 import { MIGRATIONS_TABLE } from "../apply/ledger.js";
 import { introspect } from "../introspect/index.js";
 import { driftAgainstSnapshot, type DriftClassification } from "../drift/classify.js";
+import { excludeFromSnapshot, type GovernedScope } from "../scope.js";
 import type { Dialect, SchemaSnapshot } from "../types.js";
 
 export interface VerifyReplayArgs {
@@ -14,6 +15,20 @@ export interface VerifyReplayArgs {
   migrationsDir: string;
   /** The committed snapshot the migrations are expected to reproduce. */
   snapshot: SchemaSnapshot;
+  /**
+   * The scope decision the run made, as `scopeExpectedSchema` reports it.
+   *
+   * A project declaring `migrate.scope` carries the OTHER owner's tables into its
+   * committed snapshot on purpose (`carryForwardOutOfScope`), and its chain — also on
+   * purpose — never creates them. Without this they read as missing on every replay,
+   * so a scoped project could never use this check at all.
+   *
+   * Excluded from the SNAPSHOT side only: the replayed database never had them
+   * either, so there is nothing to suppress on the actual side. Omitted ⇒ the
+   * comparison is byte-for-byte what it was, which is what every unscoped project
+   * gets.
+   */
+  governed?: GovernedScope;
 }
 
 export interface VerifyReplayResult extends DriftClassification {
@@ -35,7 +50,12 @@ export async function verifyReplay(args: VerifyReplayArgs): Promise<VerifyReplay
     ...introspected,
     tables: introspected.tables.filter((t) => t.name !== MIGRATIONS_TABLE),
   };
-  const classification = await driftAgainstSnapshot(args.snapshot, actual, args.dialect);
+  // `excludeFromSnapshot` returns a ScopedExpectedSchema, so take `.snapshot`. With an
+  // empty `outOfScope` it returns the SAME object, not an equal copy.
+  const expected = args.governed !== undefined
+    ? excludeFromSnapshot(args.snapshot, args.governed).snapshot
+    : args.snapshot;
+  const classification = await driftAgainstSnapshot(expected, actual, args.dialect);
   return {
     ...classification,
     ok: classification.drift.length === 0 && classification.unmanaged.length === 0,
