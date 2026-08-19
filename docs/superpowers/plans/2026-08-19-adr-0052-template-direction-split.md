@@ -31,14 +31,33 @@ Phase D (TS codegen) is complete; Phases C/E are partial; F, G, H are **not star
    `generators/api-model.ts:820,914` still keys the inbound facts on `template.output`.
    (e) `extractor/render payload import` golden. (f) `outputParser() conformance fixtures` —
    the shared `template-output-simple` fixture.
-2. **Phase F — C#, Java, Kotlin, Python codegen.** Note Java has **no extractor generator**, so its
+2. **The trace helper, in EVERY port — a fifth inbound consumer, easy to miss.** It is not one of
+   the three generators Phase D/F names, and nothing has moved it yet.
+   `trace_helper_generator.py:171-174`, TS `trace-helper-file.ts:116-143`, Java
+   `LlmTraceHelperGenerator.java`. Each derives the RESPONSE parse format from the prompt's
+   `@format` and must read `@responseFormat` instead.
+
+   The Python site carries a comment asserting *"the SAME rule the output-parser / extractor
+   generators use."* **That parity claim is factual — verified**: `output_parser_generator.py:136`,
+   `extractor_generator.py:194`, `output_prompt_generator.py:76` and
+   `output_format_spec_emitter.py:19` all read `TEMPLATE_ATTR_FORMAT` with
+   `TEMPLATE_FORMAT_DEFAULT`, the identical pattern. So the whole cluster moves together; the
+   comment must be **updated to name `@responseFormat`, not deleted** — the parity survives the
+   move and deleting it would hide that these five sites share one rule.
+
+   The tempting alternative — "reading `@format` is correct for `template.output`, since the output
+   body IS the response" — is exactly the conflation ADR-0052 dissolves. Once `template.output` is
+   outbound-only its `@format` is the syntax of a document being rendered OUT, and is never a
+   response. Do not take that branch.
+
+3. **Phase F — C#, Java, Kotlin, Python codegen.** Note Java has **no extractor generator**, so its
    only enforcement path is the strict parser; do not assume the TS shape.
-3. **api-docs in 4 ports** (12 of the 16 Python failures were api-docs) + `verify` in 3 ports.
-4. **Phase E remainder** — docs-site fixture + golden, `examples/advanced-modeling` regen (the
+4. **api-docs in 4 ports** (12 of the 16 Python failures were api-docs) + `verify` in 3 ports.
+5. **Phase E remainder** — docs-site fixture + golden, `examples/advanced-modeling` regen (the
    committed `ProgramDescriptionOutput.output.ts` with its impossible `JSON.parse` must vanish),
    `template-output-render-conformance` (outbound; remove only parser-emission assertions),
    Kotlin port-local fixtures (**snapshots have no update flag** — read ACTUAL from the failure).
-5. **Phase G** — migration guide, `templates-and-payloads.md`, agent-context skills (2 copies +
+6. **Phase G** — migration guide, `templates-and-payloads.md`, agent-context skills (2 copies +
    5 byte-gated fixture sets; `references/typescript.md` is the one that omits the tolerant tier
    entirely), roadmap slot reconciliation, CHANGELOG.
 
