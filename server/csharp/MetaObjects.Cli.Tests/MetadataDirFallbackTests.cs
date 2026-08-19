@@ -67,6 +67,23 @@ public sealed class MetadataDirFallbackTests : IDisposable
     }
 
     [Fact]
+    public void Gen_with_no_outDir_and_nothing_to_resolve_prints_usage_not_the_ladders_error()
+    {
+        // Usage-first: a missing --out is a plain CLI-usage mistake, independent of
+        // whether metadata can be found. Before the fix, ResolveMetadataDirOrExit ran
+        // FIRST and this empty project (no --out either) exited 2 with the ladder's
+        // own ERR_COLLECTION_NOT_FOUND instead of the actionable "usage: ..." line —
+        // confusing on the common first-run case where both are missing at once.
+        Directory.CreateDirectory(_tmp);
+
+        var (exitCode, _, stderr) = RunCli(_tmp, "gen");
+
+        Assert.Equal(2, exitCode);
+        Assert.Contains("usage: dotnet meta gen", stderr);
+        Assert.DoesNotContain("ERR_COLLECTION_NOT_FOUND", stderr);
+    }
+
+    [Fact]
     public void Gen_with_no_positional_metadataDir_and_multiple_declared_sources_refuses_rather_than_picking_one()
     {
         var aDir = Path.Combine(_tmp, "a");

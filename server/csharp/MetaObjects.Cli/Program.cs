@@ -73,16 +73,22 @@ static int RunGen(string[] rest)
         return 0;
     }
 
-    // Rung 1 (explicit positional) is honored as-is; an omitted metadataDir
-    // falls back to the port-neutral .metaobjects/config.json ladder.
-    metadataDir = ResolveMetadataDirOrExit(metadataDir);
-
+    // Usage-first: a missing --out is a plain CLI-usage error, unconditional on
+    // whether metadata can be found — it must win over ResolveMetadataDirOrExit
+    // below, which can itself terminate the process with an unrelated
+    // ERR_COLLECTION_NOT_FOUND. Checking outDir after resolution would show that
+    // confusing error instead of this actionable usage line on the (common)
+    // first-run case where BOTH are missing.
     if (outDir is null)
     {
         Console.Error.WriteLine("usage: dotnet meta gen <metadataDir> --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--template-spec <json>] [--emit-abstract-shapes]");
         Console.Error.WriteLine("       dotnet meta gen --list");
         return 2;
     }
+
+    // Rung 1 (explicit positional) is honored as-is; an omitted metadataDir
+    // falls back to the port-neutral .metaobjects/config.json ladder.
+    metadataDir = ResolveMetadataDirOrExit(metadataDir);
 
     // Advisory: nudge a re-scaffold if the copied-in agent context predates this build.
     // Never throws, never changes the exit code (a missing/corrupt manifest is ignored).
@@ -125,15 +131,17 @@ static int RunDocs(string[] rest)
         else if (!rest[i].StartsWith('-')) metadataDir ??= rest[i];
     }
 
-    // Rung 1 (explicit positional) is honored as-is; an omitted metadataDir
-    // falls back to the port-neutral .metaobjects/config.json ladder.
-    metadataDir = ResolveMetadataDirOrExit(metadataDir);
-
+    // Usage-first — see the identical comment in RunGen above; a missing --out
+    // must win over ResolveMetadataDirOrExit's own possible ERR_COLLECTION_NOT_FOUND.
     if (outDir is null)
     {
         Console.Error.WriteLine("usage: dotnet meta docs <metadataDir> --out <dir> [--namespace <ns>] [--project <name>] [--model-base-url <url>]");
         return 2;
     }
+
+    // Rung 1 (explicit positional) is honored as-is; an omitted metadataDir
+    // falls back to the port-neutral .metaobjects/config.json ladder.
+    metadataDir = ResolveMetadataDirOrExit(metadataDir);
 
     // Default the project label to the input directory's leaf name (cosmetic — surfaces
     // in the AGENT-API header). Trailing-separator-safe.
