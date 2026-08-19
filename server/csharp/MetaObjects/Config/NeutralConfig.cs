@@ -59,7 +59,14 @@ public sealed class NeutralConfig
 
             if (!root.TryGetProperty("schema_version", out var v) ||
                 v.ValueKind != JsonValueKind.Number ||
-                v.GetInt32() != SupportedSchemaVersion)
+                // Compare as a double, not GetInt32(): a float-looking literal like
+                // `1.0` is valid JSON and the other three ports all accept it as
+                // equal to 1 — GetInt32() used to throw a raw, uncoded
+                // FormatException on it instead. TryGetDouble never throws and a
+                // genuinely non-integral value (e.g. `1.5`) still correctly fails
+                // the equality check below.
+                !v.TryGetDouble(out var schemaVersion) ||
+                schemaVersion != SupportedSchemaVersion)
             {
                 throw new MetaModelException(
                     $"{path}: unsupported schema_version (expected {SupportedSchemaVersion})",
@@ -67,18 +74,18 @@ public sealed class NeutralConfig
             }
 
             var specs = new List<IReadOnlyDictionary<string, string>>();
-            if (root.TryGetProperty("sources", out var srcs) && srcs.ValueKind != JsonValueKind.Null
-                && srcs.ValueKind != JsonValueKind.Array)
+            if (root.TryGetProperty("sources", out var srcs))
             {
-                // A present-but-wrong-typed `sources` (e.g. a bare object instead of an
-                // array) must RAISE, not silently read as "absent" — the latter would
-                // fall back to the default directory with no diagnostic, exactly the
-                // "typo'd config behaves like no config" failure this class exists to
-                // prevent (see the file header).
-                throw new MetaModelException($"{path}: \"sources\" must be an array", ErrorCode.ERR_BAD_ATTR_VALUE);
-            }
-            if (root.TryGetProperty("sources", out srcs) && srcs.ValueKind == JsonValueKind.Array)
-            {
+                // A present `sources` key that is not an array must RAISE, not
+                // silently read as "absent" — the latter would fall back to the
+                // default directory with no diagnostic, exactly the "typo'd config
+                // behaves like no config" failure this class exists to prevent (see
+                // the file header). This is the GENERAL rule: a present-but-JSON-
+                // null `sources` is just as wrong-typed as a present-but-object
+                // `sources` — it is not a special case.
+                if (srcs.ValueKind != JsonValueKind.Array)
+                    throw new MetaModelException($"{path}: \"sources\" must be an array", ErrorCode.ERR_BAD_ATTR_VALUE);
+
                 foreach (var s in srcs.EnumerateArray())
                 {
                     if (s.ValueKind != JsonValueKind.Object)
@@ -86,7 +93,19 @@ public sealed class NeutralConfig
 
                     var d = new Dictionary<string, string>();
                     foreach (var p in s.EnumerateObject())
-                        d[p.Name] = p.Value.ValueKind == JsonValueKind.String ? p.Value.GetString()! : p.Value.GetRawText();
+                    {
+                        // Every source-spec value (`path`/`resource`/`package`) is a
+                        // string — silently stringifying a non-string (the prior
+                        // behavior) would let {"path": 123} load a directory
+                        // literally named "123" rather than failing loudly on the
+                        // typo'd config.
+                        if (p.Value.ValueKind != JsonValueKind.String)
+                            throw new MetaModelException($"{path}: \"sources\" entry \"{p.Name}\" must be a string", ErrorCode.ERR_BAD_ATTR_VALUE);
+                        var value = p.Value.GetString()!;
+                        if (string.IsNullOrWhiteSpace(value))
+                            throw new MetaModelException($"{path}: \"sources\" entry \"{p.Name}\" must not be empty", ErrorCode.ERR_BAD_ATTR_VALUE);
+                        d[p.Name] = value;
+                    }
 
                     if (d.Count != 1)
                         throw new MetaModelException($"{path}: each \"sources\" entry must have exactly one key", ErrorCode.ERR_BAD_ATTR_VALUE);

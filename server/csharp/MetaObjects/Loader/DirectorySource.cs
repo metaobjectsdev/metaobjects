@@ -29,6 +29,11 @@ public sealed class DirectorySource
     private static readonly HashSet<string> _supportedExtensions =
         new(StringComparer.OrdinalIgnoreCase) { ".json", ".yaml", ".yml" };
 
+    /// Directory excluded at every level of <see cref="Expand"/> — drafts that are
+    /// deliberately not part of the loaded model. Mirrors TypeScript's
+    /// `PENDING_DIR` in `metadata-files.ts`.
+    private const string PendingDir = "_pending";
+
     /// <summary>The directory being scanned.</summary>
     public string Directory { get; }
 
@@ -53,7 +58,11 @@ public sealed class DirectorySource
             : SearchOption.TopDirectoryOnly;
 
         IEnumerable<string> files = System.IO.Directory.EnumerateFiles(Directory, "*", search)
-            .Where(p => _supportedExtensions.Contains(Path.GetExtension(p)));
+            .Where(p => _supportedExtensions.Contains(Path.GetExtension(p)))
+            // Excludes _pending/ at ANY depth — every ancestor path component
+            // between `Directory` and the file is checked, not merely the file's
+            // own name, so the whole subtree is skipped.
+            .Where(p => !IsUnderPendingDir(Directory, p));
 
         if (Opts.Exclude is { Count: > 0 } excludes)
         {
@@ -63,6 +72,18 @@ public sealed class DirectorySource
         return files
             .OrderBy(p => p, StringComparer.Ordinal)
             .Select(p => new FileSource(p));
+    }
+
+    /// True when any ancestor path component between <paramref name="root"/> and
+    /// <paramref name="filePath"/> (i.e. excluding the file's own name) is
+    /// exactly <see cref="PendingDir"/>.
+    private static bool IsUnderPendingDir(string root, string filePath)
+    {
+        var relative = Path.GetRelativePath(root, filePath);
+        var dir = Path.GetDirectoryName(relative);
+        if (string.IsNullOrEmpty(dir)) return false;
+        return dir.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            .Any(part => part == PendingDir);
     }
 
     private static bool MatchesGlob(string name, string pattern)

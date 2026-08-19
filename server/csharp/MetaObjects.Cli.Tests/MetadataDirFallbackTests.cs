@@ -90,6 +90,31 @@ public sealed class MetadataDirFallbackTests : IDisposable
     }
 
     [Fact]
+    public void Gen_with_no_positional_metadataDir_and_a_single_FILE_source_refuses_clearly()
+    {
+        // Before this fix, a single declared `path` source resolving to a FILE
+        // (rather than a directory) was handed straight to MetaDataLoader.FromDirectory,
+        // which fails deep inside DirectorySource with an opaque, uncoded ERR_UNKNOWN —
+        // never naming the actual limit (this CLI's loader takes only a directory).
+        var vendorDir = Path.Combine(_tmp, "vendor");
+        Directory.CreateDirectory(vendorDir);
+        File.WriteAllText(Path.Combine(vendorDir, "meta.catalog.json"), """{ "metadata.root": { "children": [] } }""");
+        var cfgDir = Path.Combine(_tmp, ".metaobjects");
+        Directory.CreateDirectory(cfgDir);
+        File.WriteAllText(
+            Path.Combine(cfgDir, "config.json"),
+            """{ "schema_version": 1, "sources": [ { "path": "vendor/meta.catalog.json" } ] }""");
+
+        var outDir = Path.Combine(_tmp, "generated");
+        var (exitCode, _, stderr) = RunCli(_tmp, "gen", "--out", outDir, "--namespace", "X");
+
+        Assert.Equal(2, exitCode);
+        Assert.Contains("is a FILE", stderr);
+        Assert.DoesNotContain("ERR_UNKNOWN", stderr);
+        Assert.False(Directory.Exists(outDir));
+    }
+
+    [Fact]
     public void Gen_with_an_explicit_positional_metadataDir_is_unaffected()
     {
         // The explicit-argument path must stay byte-identical: no .metaobjects/

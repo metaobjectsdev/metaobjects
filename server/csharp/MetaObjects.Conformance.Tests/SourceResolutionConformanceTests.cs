@@ -16,13 +16,15 @@ public class SourceResolutionConformanceTests
         Dictionary<string, string> Tree,
         JsonElement? Config,
         // Project-root-relative directory the resolver is invoked FROM. Defaults
-        // to "." — 18 of 19 cases leave it there, so the config lives at the
-        // project root and "relative to project root" vs "relative to the
-        // invocation directory" coincide. The one case that sets it
-        // ("a-parent-relative-path-resolves-against-the-declaring-configs-
-        // directory") is the one place those two bases diverge, and both the
-        // config's own location AND the expectFiles comparison base below must
-        // honor it correctly for that case to mean anything.
+        // to "." — every case leaves it there EXCEPT
+        // "a-parent-relative-path-resolves-against-the-declaring-configs-directory",
+        // so for all the others the config lives at the project root and
+        // "relative to project root" vs "relative to the invocation directory"
+        // coincide. That one case is the one place those two bases diverge, and
+        // both the config's own location AND the expectFiles comparison base
+        // below must honor it correctly for that case to mean anything. (Do not
+        // restate this as "N of M cases" — the corpus grows and a hardcoded
+        // count silently goes stale; the structural description above does not.)
         string ResolveFrom,
         string[]? ExpectFiles,
         // A JSON string pins the exact error code raised; JSON `true` pins only
@@ -118,9 +120,10 @@ public class SourceResolutionConformanceTests
             }
 
             // Compared against the PROJECT ROOT explicitly — never against
-            // `invokeDir`. For 18 of 19 cases the two coincide (resolveFrom "."),
-            // so a comparison base bug here would pass every case except the one
-            // that sets `resolveFrom`, which is exactly why that case exists.
+            // `invokeDir`. For every case but the one that sets `resolveFrom` the
+            // two coincide (resolveFrom "."), so a comparison base bug here would
+            // pass every other case and fail only that one — which is exactly why
+            // that case exists.
             var got = SourceResolver.ResolveCollection(invokeDir)
                 .Select(f => Path.GetRelativePath(root, f).Replace(Path.DirectorySeparatorChar, '/'))
                 .ToHashSet();

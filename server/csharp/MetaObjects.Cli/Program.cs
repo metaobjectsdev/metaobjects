@@ -210,7 +210,24 @@ static string ResolveMetadataDirOrExit(string? metadataDir)
         MetaObjects.Config.SourceResolver.ResolveSources(cwd, specs);
         var rawPath = specs[0]["path"]; // guaranteed present: ResolveSources above
                                          // would already have thrown otherwise.
-        return Path.IsPathRooted(rawPath) ? rawPath : Path.GetFullPath(Path.Combine(cwd, rawPath));
+        var resolved = Path.IsPathRooted(rawPath) ? rawPath : Path.GetFullPath(Path.Combine(cwd, rawPath));
+
+        if (!Directory.Exists(resolved))
+        {
+            // ResolveSources above already proved `resolved` exists, so this means
+            // it is a FILE. MetaDataLoader.FromDirectory below takes a directory —
+            // handing it a file path used to fail deep inside DirectorySource with
+            // an opaque ERR_UNKNOWN instead of naming the actual limit. Refuse
+            // clearly here instead, the same way the multi-source branch above does.
+            Console.Error.WriteLine(
+                $"error: {cwd}: .metaobjects/config.json's single \"sources\" entry (\"{rawPath}\") is a FILE, " +
+                "but this CLI's loader only accepts a directory source. Pass <metadataDir> explicitly, or point " +
+                "\"sources\" at the file's containing directory.");
+            Environment.Exit(2);
+            throw new InvalidOperationException("unreachable");
+        }
+
+        return resolved;
     }
     catch (MetaObjects.MetaModelException e)
     {

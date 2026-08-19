@@ -35,6 +35,37 @@ public class DirectorySourceTests
     }
 
     [Fact]
+    public void Expand_Excludes_PendingDir_AtAnyDepth()
+    {
+        // Mirrors TypeScript's PENDING_DIR exclusion (metadata-files.ts) — a draft
+        // entity under _pending/ must be invisible to codegen, not merely a file
+        // that happens to be NAMED "_pending". Before this fix, only TypeScript
+        // knew about this directory; a draft would generate a live table under
+        // `dotnet meta gen`.
+        string dir = Path.Combine(Path.GetTempPath(), "ds_" + Path.GetRandomFileName());
+        Directory.CreateDirectory(dir);
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "meta.live.json"), "{}");
+            Directory.CreateDirectory(Path.Combine(dir, "_pending"));
+            File.WriteAllText(Path.Combine(dir, "_pending", "meta.draft.json"), "{}");
+            // Nested: _pending/ excluded at ANY depth, not just top-level.
+            Directory.CreateDirectory(Path.Combine(dir, "nested", "_pending"));
+            File.WriteAllText(Path.Combine(dir, "nested", "_pending", "meta.deep-draft.json"), "{}");
+
+            var src = new DirectorySource(dir);
+            var expanded = src.Expand().ToList();
+
+            Assert.Single(expanded);
+            Assert.Equal("meta.live.json", expanded[0].Id);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Expand_HonorsExcludeGlobs()
     {
         string dir = Path.Combine(Path.GetTempPath(), "ds_" + Path.GetRandomFileName());
