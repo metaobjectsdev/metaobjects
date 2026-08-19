@@ -53,6 +53,12 @@ README.md
 - **Recursion.** A directory `path` is walked recursively; a file `path` resolves
   to that one file.
 - **Extensions.** `.json`, `.yaml`, `.yml`, matched case-insensitively. Nothing else.
+  See `metadata-extensions-are-matched-case-insensitively`, which mixes
+  `.JSON`/`.YAML`/`.Yml` spellings alongside a normal lowercase file AND a
+  same-family unsupported extension in uppercase (`.TXT`) — a port that only
+  lowercases `.json` (missing `.yaml`/`.yml`), or that folds case and then
+  matches too loosely (accepting any extension once folded), diverges from
+  this case either way.
 - **Union with de-duplication.** Overlapping sources yield each file exactly once.
 - **A declared path that does not exist is `ERR_SOURCE_UNRESOLVED`** — never a
   silent skip. Only the DEFAULT may be absent, and then it is

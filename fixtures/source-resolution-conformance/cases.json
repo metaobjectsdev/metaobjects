@@ -51,6 +51,23 @@
       "expectFiles": ["model/meta.a.json"]
     },
     {
+      "name": "metadata-extensions-are-matched-case-insensitively",
+      "tree": {
+        "model/meta.a.json": "{\"metadata.root\":{\"children\":[]}}",
+        "model/meta.b.JSON": "{\"metadata.root\":{\"children\":[]}}",
+        "model/meta.c.YAML": "metadata.root:\n  children: []\n",
+        "model/meta.d.Yml": "metadata.root:\n  children: []\n",
+        "model/notes.TXT": "not metadata"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "model" }] },
+      "expectFiles": [
+        "model/meta.a.json",
+        "model/meta.b.JSON",
+        "model/meta.c.YAML",
+        "model/meta.d.Yml"
+      ]
+    },
+    {
       "name": "a-single-file-path-resolves-to-that-file",
       "tree": {
         "vendor/meta.catalog.json": "{\"metadata.root\":{\"children\":[]}}",
