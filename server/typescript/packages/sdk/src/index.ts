@@ -76,16 +76,33 @@ export {
 } from "./forge-types.js";
 export type { ForgeType, ForgeAttr } from "./forge-types.js";
 
-// Memory loader — read metaobjects/ into a MetaData tree
-// (workspace-aware: walks extends: deps via pnpm-workspace.yaml or
-//  package.json workspaces field if present)
-export {
-  loadMemory,
-  defaultLoadMemoryProviders,
-  DEFAULT_METADATA_DIR,
-  DEFAULT_METAOBJECTS_DIR,
-} from "./memory.js";
+// Memory loader — read a project's resolved metadata into a MetaData tree.
+// Where those files come from is `resolveCollection`'s decision (below), which
+// `loadMemory` calls when the caller supplies no explicit file set.
+export { loadMemory, defaultLoadMemoryProviders } from "./memory.js";
 export type { LoadMemoryOptions } from "./memory.js";
+
+// Default project layout — the DEFAULT value of `sources` (applied by
+// `resolveCollection` alone) and the fixed directory holding the config that
+// declares them. Exported for `meta init`, which SCAFFOLDS that layout.
+export { DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR } from "./metadata-files.js";
+
+// Scope — output filter over fully-qualified node names
+export { compileScope, matchesScope } from "./scope.js";
+export type { Scope, CompiledScope } from "./scope.js";
+
+// Source resolution — a declared source SET to a canonically-sorted file list
+export { resolveSources, resolveSpecPath, orderedPathSpecs, DEFAULT_SOURCES } from "./sources.js";
+export type { SourceSpec, ResolvedSource } from "./sources.js";
+
+// Discovery — nearest-ancestor project root (a `.metaobjects/config.json`,
+// the only marker), bounded by the repo root
+export { discoverCollectionRoot, resolveConfigDir } from "./discovery.js";
+export type { DiscoveredRoot } from "./discovery.js";
+
+// Collection — the single authority on where a project's metadata lives
+export { resolveCollection } from "./collection.js";
+export type { Collection } from "./collection.js";
 
 // Workspace discovery — finds peer metadata packages in a monorepo
 export { discoverWorkspace, resolveExtendsOrder, packageLabel } from "./workspace.js";

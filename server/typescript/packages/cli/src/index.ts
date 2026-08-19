@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { log } from "./lib/log.js";
 import { cliVersion } from "./lib/version.js";
 import { resolveFormat, isValidFormat, VALID_FORMATS } from "./lib/format.js";
+import { resolveCollection } from "@metaobjectsdev/sdk";
 export { defineConfig } from "@metaobjectsdev/codegen-ts";
 export type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 
@@ -13,10 +14,10 @@ USAGE:
   meta <command> [flags]
 
 COMMANDS:
-  init                  Scaffold metaobjects/ + .metaobjects/ in the current repo
+  init                  Scaffold a MetaObjects project in the current repo
   init --refresh-docs   Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
   agent-docs            Scaffold only the agent-context (.metaobjects/ + .claude/skills/) — canonical redirect target for all language ports
-  gen [<entity>...]     Codegen TS targets from metaobjects/ entities
+  gen [<entity>...]     Codegen TS targets from your declared metadata
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description
   export                Flatten loaded metadata to one canonical JSON artifact
   docs <metadata> --out <dir>  Generate neutral metadata documentation (entity + template pages; --site for HTML site)
@@ -39,7 +40,7 @@ EXPORT FLAGS:
   --out <file>          Write output to a file (default: stdout)
 
 DOCS FLAGS:
-  <metadata>            Project root holding metaobjects/ (default: current directory)
+  <metadata>            Project root to resolve metadata from (default: current directory)
   --out <dir>, -o       Output directory for the pages (default: ./docs)
   --templates <dir>     Project root to resolve adopter templates/ overrides (default: <metadata>)
   --prompts <dir>       Extra dir holding prompt .mustache sources for --site (e.g. data/templates/)
@@ -90,7 +91,7 @@ ship in later sub-projects. See https://metaobjects.com for docs.
 
 /** Focused per-subcommand usage slices shown by `<cmd> --help`. */
 const COMMAND_HELP: Record<string, string> = {
-  gen: `meta gen — codegen TS targets from metaobjects/ entities
+  gen: `meta gen — codegen TS targets from your declared metadata
 
 USAGE:
   meta gen [<entity>...] [flags]
@@ -152,7 +153,7 @@ USAGE:
   meta docs [<metadata>] [flags]
 
 FLAGS:
-  <metadata>            Project root holding metaobjects/ (default: current directory)
+  <metadata>            Project root to resolve metadata from (default: current directory)
   --out <dir>, -o       Output directory for the pages (default: ./docs)
   --model               Emit the markdown model surface (entity + template pages)
   --api                 Emit the markdown api surface (generated SDK reference)
@@ -161,10 +162,10 @@ FLAGS:
   --scaffold-site       Copy the site's templates + assets into codegen/docs-site/ to own (theme) them
   --templates <dir>     Project root to resolve adopter templates/ overrides (default: <metadata>)
   --prompts <dir>       Extra dir holding prompt .mustache sources (for --site) when they
-                        live outside metaobjects/ or templates/ (e.g. data/templates/)
+                        live outside the metadata sources or templates/ (e.g. data/templates/)
   --help, -h            Print this help
 `,
-  init: `meta init — scaffold metaobjects/ + .metaobjects/ in the current repo
+  init: `meta init — scaffold a MetaObjects project in the current repo
 
 USAGE:
   meta init [flags]
@@ -271,12 +272,19 @@ export async function run(argv: string[]): Promise<number> {
     case undefined: {
       // Content-first no-args view: concise status + next-step help[] rather than
       // dumping the full manual (full manual is still available via `meta --help`).
-      const metaobjectsExists = await import("node:fs/promises")
-        .then(({ stat }) => stat(resolve(cwd, "metaobjects")).then(() => true).catch(() => false));
-      const statusLine = metaobjectsExists
-        ? `meta — MetaObjects CLI (v${VERSION})  ·  metaobjects/ found`
-        : `meta — MetaObjects CLI (v${VERSION})  ·  no metaobjects/ here`;
-      const nextSteps = metaobjectsExists
+      // "Is this a MetaObjects project?" routes through resolveCollection — the
+      // single authority on where metadata lives — rather than assuming the
+      // default `metaobjects/` directory name. The status line must not assert
+      // it either: a project whose config points `sources` at
+      // `../shared-model/metadata` would be told "metaobjects/ found", which is
+      // false, and one that resolves nothing would be told there is no
+      // `metaobjects/` here when the real problem may be a declared source that
+      // failed to resolve.
+      const metadataResolves = await resolveCollection(cwd).then(() => true).catch(() => false);
+      const statusLine = metadataResolves
+        ? `meta — MetaObjects CLI (v${VERSION})  ·  metadata found`
+        : `meta — MetaObjects CLI (v${VERSION})  ·  no MetaObjects project here`;
+      const nextSteps = metadataResolves
         ? [
             "  meta gen              Run codegen",
             "  meta verify           Check for drift",
@@ -284,7 +292,7 @@ export async function run(argv: string[]): Promise<number> {
             "  meta --help           Full command reference",
           ]
         : [
-            "  meta init             Scaffold metaobjects/ in this directory",
+            "  meta init             Scaffold a MetaObjects project in this directory",
             "  meta --help           Full command reference",
           ];
       log.info(`${statusLine}\n\n${nextSteps.join("\n")}\n`);

@@ -104,6 +104,14 @@ class ErrorCode(str, Enum):
     # Source-v2 multi-source one-primary rule (ADR-0007).
     ERR_SOURCE_NO_PRIMARY = "ERR_SOURCE_NO_PRIMARY"
     ERR_SOURCE_MULTIPLE_PRIMARY = "ERR_SOURCE_MULTIPLE_PRIMARY"
+    # Phase-1 metadata-source-resolution — a path source declared in .metaobjects/config.json does not exist on disk.
+    ERR_SOURCE_UNRESOLVED = "ERR_SOURCE_UNRESOLVED"
+    # Phase-1 metadata-source-resolution — a declared source kind (resource or package) is not supported by this toolchain.
+    ERR_SOURCE_KIND_UNSUPPORTED = "ERR_SOURCE_KIND_UNSUPPORTED"
+    # Phase-1 metadata-source-resolution — a scope include/exclude package pattern is malformed (empty pattern or empty :: segment).
+    ERR_SCOPE_PATTERN_INVALID = "ERR_SCOPE_PATTERN_INVALID"
+    # Phase-1 metadata-source-resolution — no metadata collection was discovered: no config declaring sources, and no default metaobjects/ directory.
+    ERR_COLLECTION_NOT_FOUND = "ERR_COLLECTION_NOT_FOUND"
     # FR-016 / ADR-0018 — per-kind physical-name aliases on source.rdb.
     ERR_PHYSICAL_NAME_KIND_MISMATCH = "ERR_PHYSICAL_NAME_KIND_MISMATCH"
     ERR_PHYSICAL_NAME_MULTIPLE = "ERR_PHYSICAL_NAME_MULTIPLE"

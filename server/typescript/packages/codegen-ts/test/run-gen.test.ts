@@ -333,3 +333,145 @@ describe("runGen — entityFilter", () => {
     expect(existsSync(join(tmp, "index.ts"))).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Task 12b: collection-level `scope` filters generated output.
+// ---------------------------------------------------------------------------
+describe("runGen — scope", () => {
+  test("a scope predicate emits artifacts for in-scope entities only (file list + contents)", async () => {
+    const loader = new MetaDataLoader();
+    const result = await loader.load([new FileSource(join(FIXTURE_DIR, "two-entities-fk.json"))]);
+    expect(result.errors).toEqual([]);
+
+    const out = await runGen({
+      config: defineConfig({
+        outDir: tmp,
+        extStyle: "none",
+        dbImport: "~/server/db",
+        dialect: "postgres",
+        generators: [entityFile(), queriesFile(), barrel()],
+      }),
+      metadata: result.root,
+      // "demo::Post" only — User is in the same package but declares an
+      // `identity.reference`/`relationship.association` TO Post's declared
+      // scope, so this fixture doubles as evidence the predicate is matched
+      // against the FQN (`demo::Post`), never the bare "Post".
+      scope: (fqn) => fqn === "demo::Post",
+    });
+
+    expect(out.warnings).toEqual([]);
+    expect(existsSync(join(tmp, "Post.ts"))).toBe(true);
+    expect(existsSync(join(tmp, "Post.queries.ts"))).toBe(true);
+    expect(existsSync(join(tmp, "User.ts"))).toBe(false);
+    expect(existsSync(join(tmp, "User.queries.ts"))).toBe(false);
+
+    const postContent = readFileSync(join(tmp, "Post.ts"), "utf-8");
+    expect(postContent).toContain("pgTable");
+    expect(postContent).toContain("authorId");
+
+    // Barrel content, not just the file's existence — only Post is re-exported.
+    const barrelContent = readFileSync(join(tmp, "index.ts"), "utf-8");
+    expect(barrelContent).toContain('export * from "./Post"');
+    expect(barrelContent).not.toContain("User");
+  });
+
+  test("no scope option produces byte-identical output to an always-matching scope predicate", async () => {
+    const loader = new MetaDataLoader();
+    const result = await loader.load([new FileSource(join(FIXTURE_DIR, "two-entities-fk.json"))]);
+    expect(result.errors).toEqual([]);
+
+    const noScopeDir = join(tmp, "no-scope");
+    const alwaysTrueDir = join(tmp, "always-true");
+
+    const baseConfig = {
+      extStyle: "none" as const,
+      dbImport: "~/server/db",
+      dialect: "postgres" as const,
+      generators: [entityFile(), queriesFile(), routesFile(), barrel()],
+    };
+
+    // The real-world "no scope declared" path (`meta gen`) still ALWAYS passes a
+    // predicate — `collection.inScope`, which an unconfigured project compiles
+    // from an empty include/exclude, so it admits everything. The byte-identical
+    // guarantee that matters is exactly this: omitting `scope` entirely vs. a
+    // predicate that matches every entity must produce identical output, not
+    // merely "close".
+    const outA = await runGen({
+      config: defineConfig({ ...baseConfig, outDir: noScopeDir }),
+      metadata: result.root,
+    });
+    const outB = await runGen({
+      config: defineConfig({ ...baseConfig, outDir: alwaysTrueDir }),
+      metadata: result.root,
+      scope: () => true,
+    });
+
+    expect(outB.warnings).toEqual(outA.warnings);
+
+    const filesA = readdirSync(noScopeDir).sort();
+    const filesB = readdirSync(alwaysTrueDir).sort();
+    expect(filesB).toEqual(filesA);
+    for (const f of filesA) {
+      expect(readFileSync(join(alwaysTrueDir, f), "utf-8")).toEqual(
+        readFileSync(join(noScopeDir, f), "utf-8"),
+      );
+    }
+  });
+
+  test("scope intersects entityFilter — an entity passing only one of the two is not emitted", async () => {
+    const loader = new MetaDataLoader();
+    const result = await loader.load([new FileSource(join(FIXTURE_DIR, "two-entities-fk.json"))]);
+    expect(result.errors).toEqual([]);
+
+    // User passes entityFilter but is excluded by scope (which admits only
+    // Post); Post passes scope but is excluded by entityFilter. Neither alone
+    // is enough — intersection means NEITHER is emitted.
+    const out = await runGen({
+      config: defineConfig({
+        outDir: tmp,
+        extStyle: "none",
+        dbImport: "~/server/db",
+        dialect: "postgres",
+        generators: [entityFile(), queriesFile(), barrel()],
+      }),
+      metadata: result.root,
+      entityFilter: ["User"],
+      scope: (fqn) => fqn === "demo::Post",
+    });
+
+    expect(out.files).toHaveLength(0);
+    expect(existsSync(join(tmp, "User.ts"))).toBe(false);
+    expect(existsSync(join(tmp, "Post.ts"))).toBe(false);
+    // Attributed to the real cause (scope), not entityFilter — User genuinely
+    // matched entityFilter and was then excluded by scope.
+    expect(out.warnings.some((w) => w.includes("scope"))).toBe(true);
+  });
+
+  test("a scope matching nothing warns with a reason that names scope", async () => {
+    const loader = new MetaDataLoader();
+    const result = await loader.load([new FileSource(join(FIXTURE_DIR, "two-entities-fk.json"))]);
+    expect(result.errors).toEqual([]);
+
+    const out = await runGen({
+      config: defineConfig({
+        outDir: tmp,
+        extStyle: "none",
+        dbImport: "~/server/db",
+        dialect: "postgres",
+        generators: [entityFile(), queriesFile(), barrel()],
+      }),
+      metadata: result.root,
+      scope: () => false,
+    });
+
+    expect(out.files).toHaveLength(0);
+    // The reason must name scope specifically — "root has no object children"
+    // would be a false statement (the root has two) that sends the reader to
+    // the wrong file.
+    const scopeWarning = out.warnings.find((w) => w.includes("No entities to generate"));
+    expect(scopeWarning).toBeDefined();
+    expect(scopeWarning).toContain("scope");
+    expect(scopeWarning).not.toContain("entityFilter");
+    expect(scopeWarning).not.toContain("root has no object children");
+  });
+});

@@ -37,6 +37,21 @@ const META = {
   },
 };
 
+/** A second model in its own package, for the shared-source `--site` case. */
+const SHARED_META = {
+  "metadata.root": {
+    package: "acme::shared",
+    children: [
+      {
+        "object.value": {
+          name: "SharedThing",
+          children: [{ "field.string": { name: "label" } }],
+        },
+      },
+    ],
+  },
+};
+
 const dirs: string[] = [];
 
 /** Build a standalone project root holding metaobjects/ — NO gen config. Also
@@ -449,6 +464,41 @@ describe("meta docs --site — HTML documentation site", () => {
     const code = await docsCommand([root, "--site", "--out", out], root);
     expect(code).toBe(0);
     expect(existsSync(join(out, "site", "index.html"))).toBe(true);
+  });
+
+  test("two declared sources sharing a basename are disambiguated, not refused", async () => {
+    // The flagship shape of the multi-source feature: a project's own
+    // `metaobjects/` plus a shared model's `metaobjects/` next door. Both have
+    // the basename the site keys its source groups by, and the site used to
+    // refuse the pair outright ("duplicate source dir basename").
+    const workspace = await mkdtemp(join(tmpdir(), "meta-docs-multi-"));
+    dirs.push(workspace);
+    const root = join(workspace, "app");
+    await mkdir(join(root, ".metaobjects"), { recursive: true });
+    await mkdir(join(root, "metaobjects"), { recursive: true });
+    await writeFile(join(root, "metaobjects", "meta.json"), JSON.stringify(META), "utf8");
+    await mkdir(join(workspace, "shared-model", "metaobjects"), { recursive: true });
+    await writeFile(
+      join(workspace, "shared-model", "metaobjects", "meta.json"),
+      JSON.stringify(SHARED_META),
+      "utf8",
+    );
+    await writeFile(
+      join(root, ".metaobjects", "config.json"),
+      JSON.stringify({
+        schema_version: 1,
+        sources: [{ path: "metaobjects" }, { path: "../shared-model/metaobjects" }],
+      }),
+      "utf8",
+    );
+
+    const out = join(root, "out-site-multi");
+    expect(await docsCommand([root, "--site", "--out", out], root)).toBe(0);
+    expect(existsSync(join(out, "site", "index.html"))).toBe(true);
+    // Both models are in the site, so neither source was dropped to dodge the collision.
+    const index = await readFile(join(out, "site", "index.html"), "utf8");
+    expect(index).toContain("Welcome");
+    expect(index).toContain("SharedThing");
   });
 });
 

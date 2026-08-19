@@ -91,6 +91,59 @@ the local release path published `docs-site` ahead of `metadata` and `render`, t
 packages it depends on. The tier is declared now, and an undeclared one is an error
 instead of an accidental position.
 
+### Metadata source resolution — adopter-visible changes
+
+`.metaobjects/config.json` gains `sources`, `scope` and `migrate.scope`, and every
+command resolves where metadata lives through one authority instead of reading a
+hardcoded `metaobjects/` directory. A project with one config at its root, no
+`sources` and no `scope` resolves the same files, generates the same code and emits
+the same migrations. Three changes are visible even to that project. Adopter guide:
+[`docs/features/metadata-sources.md`](docs/features/metadata-sources.md#upgrading).
+
+- **The workspace `extends:` walk is retired.** `loadMemory` used to have a second,
+  undocumented way of finding metadata: a `package.meta.json` declaring `extends:`
+  dependencies, inside a discoverable workspace (`pnpm-workspace.yaml` or
+  `package.json` `workspaces`), pulled in each peer package's `metaobjects/`
+  directory first, in topological order. Every CLI read path now resolves through
+  `sources`, which does no such walk. It fails LOUDLY — `ERR_UNRESOLVED_SUPER`
+  naming the target it cannot find, never a half-resolved model — and the
+  replacement is an explicit `{ "path": "../shared-model/metaobjects" }` source,
+  which works in any layout and needs no topological ordering.
+- **`.metaobjects/config.json` rejects unknown keys.** `ConfigSchema` is `.strict()`
+  at every level, so a key that was previously stripped in silence is now a load
+  error naming the key. Silently dropping a key means the setting you wrote does not
+  exist: `{ "migrate": { "scopee": [...] } }` used to mean *unscoped*, governing
+  every table in a database you were trying to share.
+- **`ExpectedView.fqn` is required.** On the public `@metaobjectsdev/codegen-ts`
+  export, the declaring object's fully-qualified name is no longer optional —
+  `migrate.scope` decides ownership on that name, and a view arriving without one
+  cannot be scoped at all. `buildProjectionViews` already supplies it; only
+  hand-built `ExpectedView` values need the field added.
+- **`meta export` output order changed, and `_pending/` is excluded.** `export` now
+  serializes the file set `resolveCollection` resolved rather than scanning a
+  directory through `DirectorySource`, so siblings emit files-before-subdirectories
+  (the overlay-safe order the loader has always been given) instead of a flat
+  basename sort, and staged `_pending/` files — skipped by every other read path —
+  are no longer exported. The canonical JSON content is unchanged; a committed
+  export diffed against a fresh one shows a reordering.
+- **The migrations directory follows the project root.** `.metaobjects/migrations`
+  and the schema snapshot resolve from the directory whose `.metaobjects/config.json`
+  governs the run, found by walking up from the working directory. `meta migrate
+  apply-pending` and `--rollback` load no metadata and previously used the working
+  directory unconditionally, so a subdirectory holding a ledger but no config of its
+  own now replays the project root's history. `migrate` says so out loud when the
+  resolved directory differs from `<cwd>/.metaobjects/migrations` and that local
+  directory exists; `--out-dir` overrides, and giving the subdirectory its own
+  `.metaobjects/config.json` makes it a project root.
+- **A project boundary is a `.metaobjects/config.json` — a bare `metaobjects/`
+  directory is not one.** Discovery walks up for a config and stops at nothing
+  else short of the `.git` boundary, so a command run inside a nested directory
+  that holds metadata but declares no config of its own resolves the nearest
+  ancestor config — adopting its `sources` and `outDir`. `metaobjects/` is the
+  default *value* of `sources`, so a directory of that name says nothing about
+  whether a project lives there. If a subdirectory should own its metadata, give
+  it a config: `meta init` writes one, and a `"sources": []` config is enough to
+  claim the directory and take the default.
 
 ## [0.23.2] — npm `0.23.2` · PyPI `0.23.2` · NuGet `0.23.2` · Maven `7.23.2`
 

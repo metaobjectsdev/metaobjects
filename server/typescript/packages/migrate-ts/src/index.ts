@@ -8,11 +8,23 @@
 // See docs/specs/2026-05-11-v0.2-sp4-migrate-ts-design.md.
 
 // Pipeline functions
-export { buildExpectedSchema } from "./expected-schema.js";
+export { buildExpectedSchema, buildExpectedSchemaWithProvenance } from "./expected-schema.js";
+export type { ExpectedSchemaWithProvenance, SchemaProvenance } from "./expected-schema.js";
 export { introspect, introspectPostgres, introspectSqlite } from "./introspect/index.js";
 export { diff } from "./diff/index.js";
 export { collectUnmanagedNames } from "./unmanaged.js";
-export { computeDrift, computeDriftFromActual, type ComputeDriftOptions } from "./drift/drift.js";
+// Per-command scope (`migrate.scope`) — see scope.ts for why the suppression is
+// two-sided and why the pattern engine stays in @metaobjectsdev/sdk.
+export {
+  scopeExpectedSchema,
+  declaredSchemasOf,
+  carryForwardOutOfScope,
+  excludeFromSnapshot,
+  scopedDiffInputs,
+} from "./scope.js";
+export type { ObjectScopePredicate, ScopedExpectedSchema, GovernedScope } from "./scope.js";
+export { qualifiedDbName } from "./qualified-name.js";
+export { computeDrift, computeDriftFromActual, type ComputeDriftOptions, type DriftResult } from "./drift/drift.js";
 export { classifyDrift, driftAgainstSnapshot } from "./drift/classify.js";
 export type { DriftClassification } from "./drift/classify.js";
 export { emit } from "./emit/index.js";

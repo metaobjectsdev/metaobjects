@@ -200,6 +200,7 @@ import { EntityFetcherProvider, EntityGrid } from "@metaobjectsdev/tanstack";
 - **Codegen substrate**: ts-poet for greenfield emit, ts-morph for in-place edits, Biome for format pass, `git merge-file --diff3` for hand-edit-preserving regen.
 - **Runtime substrate**: Kysely for TS (user-provided connection, async-only).
 - **Migration substrate**: Postgres + SQLite for TS v0.3.
+- **Metadata location**: resolved via `resolveCollection()` (`@metaobjectsdev/sdk`) — the single authority. `metaobjects/` is the **default value of `sources`** and nothing else: no other module, command or user-facing message may assert that a directory of that name exists or is where metadata lives. Exactly six sites may name it — `sdk/src/metadata-files.ts` (`DEFAULT_METADATA_DIR`, its single definition), `sdk/src/sources.ts` (`DEFAULT_SOURCES`, **the** default), `sdk/src/collection.ts` (inside `resolveCollection`, *applying* that default), `sdk/src/index.ts` (the barrel re-export of the constant, no use), `cli/src/commands/init.ts` (the scaffolder **writing** the layout), and `sdk/src/agent-docs/body.ts` (the agent-docs prose `meta init` scaffolds beside that layout). Enforced by `sdk/test/no-hardcoded-metadata-dir.test.ts`, whose allowlist demands a written reason per entry. See [docs/features/metadata-sources.md](docs/features/metadata-sources.md).
 
 ## Explicitly out of scope
 
@@ -223,6 +224,8 @@ import { EntityFetcherProvider, EntityGrid } from "@metaobjectsdev/tanstack";
 ## File organization
 
 **Default convention**: one file per domain concept under `metaobjects/`. Multiple objects per file when they share a domain. Projections (`source.dbView`) live inline with their base entity.
+
+`metaobjects/` is the **default value** of `sources` in `.metaobjects/config.json` — never a requirement. A project declaring `sources` explicitly can point anywhere (and need not have such a directory at all); `"sources": []`, which is what `meta init` scaffolds, takes the default.
 
 ```
 project-root/

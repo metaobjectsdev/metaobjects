@@ -278,6 +278,84 @@ For D1 projects, the `migrate` block instead looks like:
 
 Precedence for `meta migrate`: CLI flag > env var (`DATABASE_URL` only) > `.metaobjects/config.json` > built-in default.
 
+### Metadata sources (`sources`)
+
+`sources` is the single authority on **where metadata lives**. Every read command
+(`gen`, `migrate`, `verify`, `docs`, `export`) resolves it. When the key is absent or
+empty — which is what `meta init` scaffolds — it takes its default value, the
+`metaobjects/` directory beside the config, so existing projects are unaffected.
+
+```jsonc
+"sources": [
+  { "path": "metaobjects" },                        // a directory, relative to this config
+  { "path": "../model/src/main/resources/metadata" }, // a sibling module — read IN PLACE
+  { "path": "vendor/model/meta.catalog.json" }      // a single file
+]
+```
+
+- A relative `path` resolves against the directory holding this `.metaobjects/`
+  folder, never against the ambient cwd. A directory is walked recursively for
+  `.json` / `.yaml` / `.yml`, skipping `_pending/`.
+- **`sources` is a set** — reordering it cannot change what resolves, and two entries
+  may overlap.
+- A `path` that does not exist is an error (`ERR_SOURCE_UNRESOLVED`), never a silent
+  skip.
+- `{ "resource": "…" }` and `{ "package": "…" }` parse but do not resolve yet
+  (`ERR_SOURCE_KIND_UNSUPPORTED`). The file is validated **strictly**, so a
+  misspelled key is a load error rather than a silently ignored extra.
+
+**Discovery.** The CLI walks **up** from the working directory (`--cwd` moves the
+start) for the nearest `.metaobjects/config.json` — nearest wins — and stops after a
+directory containing `.git`, so a checkout never adopts a parent checkout's config.
+
+### Output scope (`scope`)
+
+```jsonc
+"scope": {
+  "include": ["acme::billing::**", "acme::common::*"],
+  "exclude": ["acme::billing::internal::**"]
+}
+```
+
+Patterns match an object's fully-qualified name (`<package>::<Name>`). `*` matches
+within **one** segment and never crosses `::`; a segment that is exactly `**` matches
+**one or more** whole segments; everything else is literal; absent/empty `include`
+means everything; `exclude` applies after `include`; matching is case-sensitive.
+
+**The collection always loads in full — `scope` filters output, never input.** It
+applies to `meta gen` and to `meta verify --codegen` (which regenerates under the
+same scope, so a scoped `gen` is not reported as drift). `meta docs` and `meta export`
+are deliberately **not** scoped — they inspect the loaded collection. `meta gen
+<Entity>` arguments intersect with `scope`; both must pass.
+
+The TypeScript-only per-generator `filter` function is unchanged and remains the
+escape hatch for predicate-shaped filtering.
+
+### Per-command scope (`migrate.scope`)
+
+```jsonc
+"migrate": {
+  "outDir": "./.metaobjects/migrations",
+  "scope": ["acme::billing::**"]
+}
+```
+
+An include-only array of the same patterns, for a database this project **shares with
+another owner**. Tables and views whose declaring object falls outside it are neither
+created nor dropped — they leave the expected schema *and* are suppressed on the
+actual side — and `meta migrate` prints how many it left alone. `meta verify --db`
+reports them as out-of-scope instead of as drift. `meta migrate baseline` is
+deliberately unscoped: a `--from-db` baseline has no metadata provenance to scope by.
+
+Declare a `migrate` block only in the project that holds `.metaobjects/migrations/`
+and the schema snapshot — that project owns the schema. Run `meta migrate` from that
+directory (or point `--cwd` at it): `migrate.scope` comes from the discovered config,
+but the rest of the block is read from `.metaobjects/config.json` in the directory the
+command runs in.
+
+Full adopter guide, including vendoring for airgapped builds and a worked polyglot
+example: [docs/features/metadata-sources.md](../../../../docs/features/metadata-sources.md).
+
 ## Metadata format
 
 See `.metaobjects/AGENTS.md` (scaffolded by `meta init`) for the metaobjects metamodel rules, attribute conventions, and worked examples. Deeper references:

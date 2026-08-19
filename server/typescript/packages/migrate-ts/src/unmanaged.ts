@@ -10,10 +10,10 @@
 import {
   isMetaSource,
   resolveTableSchema,
-  DEFAULT_DB_SCHEMA_POSTGRES,
   TYPE_OBJECT,
   type MetaData,
 } from "@metaobjectsdev/metadata";
+import { qualifiedDbName } from "./qualified-name.js";
 
 /**
  * The qualified physical names (`schema.name`, schema defaulting to Postgres `public`)
@@ -38,8 +38,7 @@ export function collectUnmanagedNames(root: MetaData): string[] {
       // make the class check false and silently un-silence a declared-@unmanaged
       // object, turning it back into a proposed drop.
       if (!isMetaSource(src) || !src.isUnmanaged) continue;
-      const schema = resolveTableSchema(obj) ?? DEFAULT_DB_SCHEMA_POSTGRES;
-      out.push(`${schema}.${src.physicalName}`);
+      out.push(qualifiedDbName({ name: src.physicalName, schema: resolveTableSchema(obj) }));
     }
   }
   return out;
