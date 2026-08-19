@@ -68,8 +68,11 @@ SUBCOMMANDS:
                        (use with --from-db). NOTE: for a brand-new/empty database use
                        the greenfield example below, NOT baseline — an offline baseline
                        records your metadata as already-applied and emits no CREATE TABLE.
-  apply-pending        Replay committed migration files against --db (no diff);
-                       provisions a fresh/CI database. postgres/sqlite only.
+  apply-pending        Replay committed migration files against --db (no diff).
+                       Provisions a fresh/CI database when the chain BUILDS the
+                       schema — 'meta verify --replay' proves that it does. A
+                       database adopted via 'baseline --from-db' has no such
+                       chain. postgres/sqlite only.
 
 MIGRATE FLAGS:
   --db <url>           DB connection URL (required for live-introspect / --apply / --rollback)
@@ -89,7 +92,13 @@ MIGRATE FLAGS:
   --allow <csv>        Comma-separated destructive-change permissions:
                        drop-column,drop-table,type-change,drop-index,drop-fk,
                        drop-check,drop-view,drop-view-cascade,
-                       adopt-view,nullable-to-not-null,drop-identity-default
+                       adopt-view,nullable-to-not-null,drop-identity-default,
+                       drop-unmanaged
+                       drop-unmanaged permits dropping a table/view the committed
+                       snapshot never contained — one this toolchain never managed.
+                       Without it that drop is refused, because the migration it
+                       writes cannot replay against a database where the object
+                       never existed.
   --on-ambiguous abort|rename|drop-add
                        How to handle ambiguous renames (default: abort)
   --from-db            Introspect live DB instead of using the committed snapshot

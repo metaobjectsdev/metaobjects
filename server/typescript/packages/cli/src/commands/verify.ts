@@ -135,7 +135,8 @@ export async function verifyCommand(
   if (!flags.anyExplicit) {
     log.info(
       "meta verify — running --templates (default). Explicit subverbs: " +
-        "--templates (prompt drift), --db/--dialect d1 (schema drift), --codegen (codegen drift).",
+        "--templates (prompt drift), --db/--dialect d1 (schema drift), --codegen (codegen drift), " +
+        "--replay/--replay-snapshot (the committed migration chain replays from empty).",
     );
   }
 

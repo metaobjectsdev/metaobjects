@@ -110,7 +110,7 @@ or META_NO_ANTIPATTERNS=1.
 
 NOTE: outDir, dialect, dbImport, extStyle are read from metaobjects.config.ts
 `,
-  verify: `meta verify — drift gate (templates / DB schema / codegen)
+  verify: `meta verify — drift gate (templates / DB schema / codegen / migration replay)
 
 USAGE:
   meta verify [flags]
@@ -122,6 +122,17 @@ FLAGS:
   --db <url>            Schema drift — live DB URL enables the schema-drift gate.
                         Supports: file:, libsql:, postgres:, postgresql:
                         D1 has no URL — use --dialect d1 / --d1 <binding> instead.
+  --replay              Migration-chain drift — replay the committed chain into an
+                        EMPTY throwaway database and assert it applies. Needs no --db:
+                        the engine is in-process (PGlite for postgres, a temp file for
+                        sqlite) and provisions nothing. Dialect comes from --dialect,
+                        else migrate.dialect. flyway and d1 are refused.
+                        Postgres needs the optional peer '@electric-sql/pglite'.
+  --replay-snapshot     ...and assert the replayed schema EQUALS the committed
+                        snapshot — catches a hand-edited up.sql that still applies but
+                        no longer builds the recorded schema. Does NOT apply to a
+                        project adopted with 'migrate baseline --from-db' (its chain
+                        does not build the schema); use --replay there.
   --prompts <dir>       Directory of provider-resolved template text (default: prompts)
   --dialect sqlite|postgres|d1   Optional override (auto-detected from --db URL scheme)
   --allow <csv>         Accepted for parity with 'migrate'; does NOT affect the drift gate

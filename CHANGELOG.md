@@ -7,6 +7,89 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed — a committed migration chain must replay from empty, and `meta migrate` stops writing chains that cannot ([#313](https://github.com/metaobjectsdev/metaobjects/issues/313))
+
+**`meta migrate --from-db` now REFUSES a drop for a table or view the committed schema
+snapshot never contained**, exiting 2 and naming each object. This is the one change here
+that can fail an existing project's `meta migrate`, so it leads. Pass
+**`--allow drop-unmanaged`** when the drop is genuinely intended.
+
+The refusal exists because the drop it blocks produces a migration nobody can replay. The
+live migrate path diffs metadata against introspection and never reads the snapshot, so a
+table another tool owns reads as "in the database, not in the model" and is proposed for a
+`DROP TABLE`. Every incremental migrate then keeps succeeding against the database that
+already has that table — the chain only fails the day someone provisions a fresh one, which
+for the reporter was **three months later**, by which point the only working database left
+was a leftover CI container. `drift/classify.ts` has always said objects present in the DB
+but not the snapshot "must never be treated as actionable drift or auto-dropped"; this is
+the first place that doctrine is enforced where it mattered.
+
+It does not false-fire on brownfield projects, and the reason is structural rather than
+special-cased: **both mechanisms ADD to the snapshot.** A `baseline --from-db` snapshot
+contains the foreign table; a project declaring `migrate.scope` carries its out-of-scope
+entries forward. The guard fires precisely when nothing ever claimed the object. It fails
+OPEN with no snapshot on disk — refusing there would break the first `meta migrate` of every
+greenfield project — and it lives on the live path only, because the offline path diffs
+against the snapshot and so cannot propose a snapshot-absent drop at all.
+
+**Emitted forward drops now carry `IF EXISTS`** — `drop-table`, `drop-view` (plain and
+CASCADE), `drop-index` (both the plain form and #285's constraint-backed
+`ALTER TABLE … DROP CONSTRAINT`), `drop-fk` and `drop-check` — in both dialects, so an
+already-absent object cannot break a replay. **Down statements stay bare, deliberately:**
+`rollbackTo` runs `down.sql` and the ledger delete in ONE transaction, so a guarded down
+would no-op and still record the rollback as done. Rollback is the one place a loud failure
+is load-bearing. Also left bare on purpose: the sqlite recreate-and-copy rebuild's
+`DROP TABLE` and d1-cascade's, each of which drops a table the same recipe just
+`INSERT…SELECT`ed from, where `IF EXISTS` converts a caught corruption into a silent one.
+`drop-column` is excluded as the one genuine dialect limit — sqlite has no
+`DROP COLUMN IF EXISTS` — and the new refusal covers it instead. D1 inherits the sqlite
+change, since `emit/d1.ts` renders through `renderSqlite`.
+
+**A chain creating a table or view in a non-default schema now emits
+`CREATE SCHEMA IF NOT EXISTS`** ahead of it. `CREATE SCHEMA` was emitted nowhere in either
+emitter — only by the ledger's own setup — so an `@schema` project's chain could never apply
+to a virgin database. Views count, not only tables: a first migration creating just a view in
+a non-default schema failed identically. The down does not drop the schema; it may hold
+objects this tool does not own and cannot restore.
+
+### Added — `meta verify --replay` and `--replay-snapshot`
+
+Two new verify subverbs that answer the question the toolchain was already promising an
+answer to. `docs/features/migrations-and-drift.md` and `meta migrate --help` both said
+`apply-pending` "is the way to provision a fresh or CI database"; that is true only of a
+chain that builds the schema, and nothing checked.
+
+- **`--replay`** replays the committed chain into an empty throwaway database and asserts it
+  **applies**. This is the #313 gate.
+- **`--replay-snapshot`** additionally asserts the replayed schema **equals the committed
+  snapshot**, finally wiring `verifyReplay` — built, exported, and without a CLI caller since
+  the 2026-05-31 design retained it as "the optional `verify --replay` integrity aid". It
+  catches a different defect: hand-edited structural DDL that still applies but no longer
+  builds the recorded schema.
+
+They are two tiers rather than one gate because the populations differ. A project adopted via
+`migrate baseline --from-db` passes the first trivially and **cannot** pass the second by
+construction — its snapshot is the whole introspected database against an empty chain. The
+reporter's failure was an *apply* error, so the weaker assertion is the one that answers the
+bug and is immune to that class. The limitation is documented rather than auto-detected: the
+only candidate signal has no production caller and would live in the *target* database's
+ledger, while the gate runs against a fresh engine with no ledger at all.
+
+Neither needs a `--db`. The engine is local and disposable — real Postgres in-process via
+**PGlite**, a throwaway temp file for sqlite — so there is nothing to provision, no
+credentials, and no scratch database to collide with or drop by mistake. **`@electric-sql/pglite`
+is a new OPTIONAL peer dependency of `@metaobjectsdev/migrate-ts`** (~22 MB of WASM, so it is
+not forced on every adopter): install it to replay a postgres chain. With no URL to infer from,
+the dialect precedence is `--dialect` > `migrate.dialect` > refuse naming `--dialect`.
+`--migration-format flyway` and `--dialect d1` are refused, mirroring `apply-pending`. An empty
+chain and a missing snapshot both pass and **say which**, because a gate that is silent when it
+checked nothing cannot be told apart from one that passed.
+
+`verifyReplay` also gains an optional `governed` so a project declaring `migrate.scope` can use
+the second tier at all: such a project carries the other owner's tables into its snapshot on
+purpose and its chain never creates them, so without this they were reported as missing on
+every replay.
+
 ### Added — pre-release publishing to a private registry (no more real releases just to test a change)
 
 Trying an unreleased change against a downstream project required cutting a real release on
