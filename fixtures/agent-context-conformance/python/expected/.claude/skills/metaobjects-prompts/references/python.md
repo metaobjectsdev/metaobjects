@@ -119,7 +119,41 @@ one boundary, not both.
 > generator emits a `record_<entity>(recorder, input, redact=None)` helper (per
 > concrete entity extending `LlmCallBase` with a `@responseRef`/`@payloadRef`-carrying
 > `template.prompt`) that tolerantly extracts the typed response, builds the base
-> trace row, and persists it once. What's still TS-only is the **`call<Entity>`
+> trace row, and persists it once.
+>
+> `LlmCallBase` is shipped metadata, not something you author: opt in when you load,
+> then inherit from it. Without the opt-in the `extends` fails with
+> `ERR_UNRESOLVED_SUPER`.
+>
+> ```python
+> load_directory("metadata/", libraries=["ai"])   # metaobjects::ai::LlmCallBase
+> ```
+> For `metaobjects gen` / `verify`, declare it in `metaobjects.config.yaml` instead —
+> the CLI reads the same opt-in from there:
+> ```yaml
+> metadata: metadata/
+> libraries: ["ai"]
+> ```
+> ```yaml
+> - object.entity:
+>     name: AssistantCall
+>     extends: metaobjects::ai::LlmCallBase
+>     children:
+>       - source.rdb:       { table: assistant_call, role: primary }
+>       - identity.primary: { name: id, fields: ["spanId"] }
+>       # Typed columns are AUTHORED, never derived (ADR-0024 amendment).
+>       # Declare BOTH: the generated record_<entity> writes voRequest and
+>       # voResponse unconditionally, and any key the entity does not declare
+>       # raises "no field '<name>' in metadata" on the first persist.
+>       - field.object: { name: voRequest,  objectRef: MyRequestVO,  storage: jsonb }
+>       - field.object: { name: voResponse, objectRef: MyResponseVO, storage: jsonb }
+> ```
+>
+> Note the opt-in also brings in the library's own concrete `LlmCall` entity
+> (table `llm_call`) alongside the abstract base — it will appear in codegen output
+> and in a schema diff unless you filter it.
+>
+> What's still TS-only is the **`call<Entity>`
 > render→call→record convenience loop** — Python intentionally does not emit it,
 > because the `LlmClient` seam it wraps is BYO / vendor-neutral here (ADR-0024). So
 > you compose render → your LLM call → the generated `record_<entity>(...)` yourself;
