@@ -245,6 +245,16 @@ describe("init() --config-only", () => {
     }
   });
 
+  test("--print-only writes nothing to disk", async () => {
+    // --config-only used to return ABOVE the --print-only guard the full-scaffold
+    // path checks below it, so this documented dry run silently wrote the real file.
+    const result = await init({ cwd, configOnly: true, printOnly: true });
+
+    expect(result.created).toContain(".metaobjects/config.json");
+    expect(existsSync(join(cwd, ".metaobjects"))).toBe(false);
+    expect(existsSync(join(cwd, ".metaobjects", "config.json"))).toBe(false);
+  });
+
   test("leaves an existing valid config untouched", async () => {
     mkdirSync(join(cwd, ".metaobjects"), { recursive: true });
     const existing = { schema_version: 1, sources: [{ path: "model" }] };

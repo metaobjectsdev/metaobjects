@@ -387,6 +387,13 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   }
 
   if (opts.configOnly) {
+    // --print-only must win outright: a documented dry run must never write, and
+    // this branch used to return ABOVE the printOnly guard the full-scaffold path
+    // uses below, so `--config-only --print-only` silently wrote the real file.
+    if (opts.printOnly) {
+      result.created.push(".metaobjects/config.json");
+      return result;
+    }
     // Config only: write/preserve .metaobjects/config.json and nothing else — no
     // metaobjects/ dir, no agent-context, no TypeScript scaffold. `agentDirExists` is
     // captured before the mkdir below so an existing valid config is still preserved.
