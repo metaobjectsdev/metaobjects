@@ -351,15 +351,15 @@ class KotlinPayloadGeneratorTest {
             ] } },
             { "object.projection": { "name": "AuthorSummary", "children": [
                 { "field.string": { "name": "bio", "extends": "Author.bio" } },
-                { "field.boolean": { "name": "hasAnyPost", "children": [
+                { "field.boolean": { "name": "hasAnyPost", "@required": true, "children": [
                     { "origin.aggregate": { "@agg": "any", "@via": "Author.posts",
                         "@filter": { "category": "tech" } } }
                 ] } },
-                { "field.boolean": { "name": "allPosts", "children": [
+                { "field.boolean": { "name": "allPosts", "@required": true, "children": [
                     { "origin.aggregate": { "@agg": "all", "@via": "Author.posts",
                         "@filter": { "category": "tech" } } }
                 ] } },
-                { "field.string": { "name": "categories", "isArray": true, "children": [
+                { "field.string": { "name": "categories", "isArray": true, "@required": true, "children": [
                     { "origin.aggregate": { "@agg": "collect", "@of": "Post.category", "@via": "Author.posts" } }
                 ] } },
                 { "field.string": { "name": "latestCategory", "children": [
@@ -395,14 +395,16 @@ class KotlinPayloadGeneratorTest {
             // declared==derived by validation)
             assertTrue("val categories: List<String>" in src && "val categories: List<String>?" !in src,
                 "declared field.string isArray must emit non-null List<String>; saw:\n$src")
-            // first → declared field.string, NON-NULL (#270: origin.first no longer
-            // forces nullability)
-            assertTrue("val latestCategory: String" in src && "val latestCategory: String?" !in src,
-                "declared field.string must emit non-null String (origin.first ignored); saw:\n$src")
-            // computed → declared field.boolean, NON-NULL (#270: origin.computed no
-            // longer forces nullability)
-            assertTrue("val hasBio: Boolean" in src && "val hasBio: Boolean?" !in src,
-                "declared field.boolean must emit non-null Boolean (origin.computed ignored); saw:\n$src")
+            // The CONVERSE arm (#309). `latestCategory` (origin.first) and `hasBio`
+            // (origin.computed) carry NO `@required`, so they emit NULLABLE — while their
+            // `@required` siblings above carry the very same kinds of origin child and emit
+            // non-null. Together the two arms prove #270's actual claim: the origin child is
+            // not what decides nullability, in EITHER direction. Asserting only non-null
+            // could not show that, because #309's all-non-null emitter passed it too.
+            assertTrue("val latestCategory: String? = null" in src,
+                "an unmarked field.string must emit nullable (origin.first does not decide it); saw:\n$src")
+            assertTrue("val hasBio: Boolean? = null" in src,
+                "an unmarked field.boolean must emit nullable (origin.computed does not decide it); saw:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
         }

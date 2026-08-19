@@ -31,12 +31,14 @@ import java.nio.file.Paths
  * <p>DECLARED-TYPE-AUTHORITATIVE (#270): a payload field's property type comes ONLY from
  * its declared `field.<subType>` + `isArray` + `@objectRef` — never from any `origin.*`
  * child it carries (an origin child is IGNORED for typing; the field types exactly as if
- * it were absent). Nullability is never derived from origin semantics (no more
- * "computed/first are nullable"); this port does not read `@required` either — every
- * emitted property is unconditionally non-null (only the TS and Python emitters
- * consult `@required` for optionality). A prompt's payload is a typed projection the
- * author DECLARES, so payload bloat shows up as a diff — matching the origin-blind
- * TS / C# reference emitters (Java converged alongside this port, #270 fix round 1).
+ * it were absent). Nullability is never derived from ORIGIN semantics (no more
+ * "computed/first are nullable") — but it IS derived from the declared `@required`
+ * (#309): required ⇒ non-null, absent ⇒ nullable with a `null` default. Those are two
+ * different questions, and this comment previously conflated them: it recorded
+ * "unconditionally non-null" as settled fact, which is how the required half rode along
+ * unexamined behind #270's origin-blindness convergence. A prompt's payload is a typed
+ * projection the author DECLARES, so payload bloat shows up as a diff — matching the
+ * origin-blind TS / C# reference emitters (Java converged alongside this port, #270 round 1).
  * The property's TypeName is resolved as:
  * <ul>
  *   <li>{@code field.enum} — the generated enum class (single, or {@code List<Enum>}).</li>
@@ -139,8 +141,29 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
         val ctorBuilder = FunSpec.constructorBuilder()
         for (field in voObject.metaFields) {
-            val type = resolveFieldType(field, voObject, loader, outPkg, outRoot, emittedNestedFqns, emittedEnumFqns, nameMap)
-            ctorBuilder.addParameter(ParameterSpec.builder(field.name, type).build())
+            val declared = resolveFieldType(field, voObject, loader, outPkg, outRoot, emittedNestedFqns, emittedEnumFqns, nameMap)
+            // #309 — optionality comes from the DECLARED @required. Emitting every property
+            // non-null made a payload unable to represent a response that omits a field the
+            // metadata never marked required, which is the payload's main job on the
+            // template.output side. A nullable property with a `null` default is Kotlin's
+            // idiomatic rendering of the same cross-language decision C# renders as `T?`
+            // and TypeScript as `name?: T` — the DECISION is uniform, the rendering is not.
+            //
+            // Uses THIS port's existing predicate rather than a second one. It accepts the
+            // boolean `true` or the string `"true"`, which is what `KotlinExtractSchemaEmitter`
+            // already accepts — so the payload type and the extract mapper that populates it
+            // cannot disagree about a field. That lockstep is the property Python's
+            // `is_field_required` docstring protects ("do not reconcile it with the runtime
+            // predicate"); Python holds the tighter boolean-only threshold on BOTH of its
+            // tiers, Kotlin holds the looser one on both. The remaining cross-port question —
+            // whether `@required: "true"` should be legal metadata at all, given the metamodel
+            // types the attr as a boolean — is a loader question, not a codegen one, and
+            // deciding it here would only move the skew rather than close it.
+            val required = KotlinGenUtil.isRequiredField(field)
+            val type = if (required) declared else declared.copy(nullable = true)
+            val param = ParameterSpec.builder(field.name, type)
+            if (!required) param.defaultValue("null")
+            ctorBuilder.addParameter(param.build())
             typeBuilder.addProperty(
                 PropertySpec.builder(field.name, type).initializer(field.name).build()
             )

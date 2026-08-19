@@ -8,5 +8,5 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 public data class ReplyPayload(
-  public val text: String,
+  public val text: String? = null,
 )

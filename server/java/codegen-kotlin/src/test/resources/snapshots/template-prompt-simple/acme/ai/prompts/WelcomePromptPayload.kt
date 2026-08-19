@@ -9,6 +9,6 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 public data class WelcomePromptPayload(
-  public val id: Long,
-  public val name: String,
+  public val id: Long? = null,
+  public val name: String? = null,
 )

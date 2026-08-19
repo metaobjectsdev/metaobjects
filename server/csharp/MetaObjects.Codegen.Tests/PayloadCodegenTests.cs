@@ -48,11 +48,11 @@ public class PayloadCodegenTests
     {
         var src = PayloadCodegen.GeneratePayloadRecords(Load(), "AuthorBrief");
         Assert.Contains("public sealed record AuthorBrief", src);
-        Assert.Contains("public required string displayName { get; init; }", src);
-        Assert.Contains("public required int postCount { get; init; }", src);
-        Assert.Contains("public required IReadOnlyList<PostBrief> posts { get; init; }", src);
+        Assert.Contains("public string? displayName { get; init; }", src);
+        Assert.Contains("public int? postCount { get; init; }", src);
+        Assert.Contains("public IReadOnlyList<PostBrief>? posts { get; init; }", src);
         Assert.Contains("public sealed record PostBrief", src);
-        Assert.Contains("public required string title { get; init; }", src);
+        Assert.Contains("public string? title { get; init; }", src);
     }
 
     // Same shape as Model, but the nested @objectRef is authored FULLY-QUALIFIED
@@ -82,7 +82,7 @@ public class PayloadCodegenTests
         var root = new MetaDataLoader().Load([new InMemoryStringSource(FqnRefModel, id: "fqn.json")]).Root;
         var src = PayloadCodegen.GeneratePayloadRecords(root, "AuthorBrief");
         // Regression: the FQN must NOT leak into the generated C# type or record name.
-        Assert.Contains("public required IReadOnlyList<PostBrief> posts { get; init; }", src);
+        Assert.Contains("public IReadOnlyList<PostBrief>? posts { get; init; }", src);
         Assert.Contains("public sealed record PostBrief", src);   // nested record DID resolve (FindObject matched the bare name)
         Assert.DoesNotContain("acme::ai::", src);
     }
@@ -188,13 +188,13 @@ public class PayloadCodegenTests
         Assert.Equal(
             "public sealed record AuthorBrief\n" +
             "{\n" +
-            "    public required string displayName { get; init; }\n" +
-            "    public required int postCount { get; init; }\n" +
-            "    public required IReadOnlyList<PostBrief> posts { get; init; }\n" +
+            "    public string? displayName { get; init; }\n" +
+            "    public int? postCount { get; init; }\n" +
+            "    public IReadOnlyList<PostBrief>? posts { get; init; }\n" +
             "}\n\n" +
             "public sealed record PostBrief\n" +
             "{\n" +
-            "    public required string title { get; init; }\n" +
+            "    public string? title { get; init; }\n" +
             "}\n",
             src);
     }
@@ -245,16 +245,16 @@ public class PayloadCodegenCollisionNamingTests
         Assert.Equal(
             "public sealed record Digest\n" +
             "{\n" +
-            "    public required AcmeAlphaNote fromAlpha { get; init; }\n" +
-            "    public required AcmeBetaNote fromBeta { get; init; }\n" +
+            "    public AcmeAlphaNote? fromAlpha { get; init; }\n" +
+            "    public AcmeBetaNote? fromBeta { get; init; }\n" +
             "}\n\n" +
             "public sealed record AcmeAlphaNote\n" +
             "{\n" +
-            "    public required string alphaText { get; init; }\n" +
+            "    public string? alphaText { get; init; }\n" +
             "}\n\n" +
             "public sealed record AcmeBetaNote\n" +
             "{\n" +
-            "    public required string betaText { get; init; }\n" +
+            "    public string? betaText { get; init; }\n" +
             "}\n",
             src);
         Assert.DoesNotContain("record Note", src);

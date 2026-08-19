@@ -245,12 +245,17 @@ public sealed class RenderHelperConformanceTests
         // merged `{ alphaText; betaText }` shape.
         Assert.Contains("public sealed record AcmeAlphaNote", records);
         Assert.Contains("public sealed record AcmeBetaNote", records);
+        // #309 — this fixture carries BOTH arms, which is what makes it the payload tier's
+        // optionality oracle as well as its collision oracle: the shared corpus declares
+        // `alphaText`/`betaText` as `@required: true` (meta.alpha.json / meta.beta.json)
+        // while `fromAlpha`/`fromBeta` carry no `@required` (meta.app.json). A port that
+        // hardcodes either answer now fails on the other half of the same model.
         Assert.Contains("public required string alphaText { get; init; }", records);
         Assert.Contains("public required string betaText { get; init; }", records);
         Assert.DoesNotContain("public sealed record Note", records);
         // Digest's own fields point at the qualified names, not at each other's field.
-        Assert.Contains("public required AcmeAlphaNote fromAlpha { get; init; }", records);
-        Assert.Contains("public required AcmeBetaNote fromBeta { get; init; }", records);
+        Assert.Contains("public AcmeAlphaNote? fromAlpha { get; init; }", records);
+        Assert.Contains("public AcmeBetaNote? fromBeta { get; init; }", records);
 
         var payloadSrc = "namespace Acme.Generated;\n" + records;
         var asm = CompileToAssembly(file.Content, payloadSrc);

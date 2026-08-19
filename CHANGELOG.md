@@ -352,6 +352,56 @@ command whose whole job is the drift verdict. Pinned by a regression test on the
 which needs no Postgres container and covers the silent half: before the fix its failure
 output *is* the bug, verbatim.
 
+### Fixed — a payload field's optionality now comes from `@required` in every port ([#309](https://github.com/metaobjectsdev/metaobjects/issues/309), NuGet/Maven)
+
+C# emitted `public required` on **every** generated payload property regardless of
+`@required`, and Kotlin emitted every property non-null for the same reason. So a
+`template.output` payload — the type an LLM response is deserialized into — could not
+represent a response that omits a field the metadata never marked required. The generated
+C# parser's own doc comment says it throws when the JSON is *"missing a `required`
+property"*, which is #309 exactly: adopting the generator meant rejecting real responses
+that a hand-written record accepted.
+
+**The rule, now uniform:** a payload field is optional unless it declares `@required`.
+`spec/metamodel/field.json` documents `@required` as an optional boolean defaulting to
+absent, so absent ⇒ optional. The **decision** is one cross-language contract; the
+**rendering** stays idiomatic — C# `T?`, Kotlin `T? = null`, TypeScript `name?: T`, Python
+`T | None = None`.
+
+**Only C# and Kotlin changed.** TypeScript and Python already read `@required`. Java needed
+no change and got none: `SpringTypeMapper` already emits boxed `Integer`/`Long`/`Boolean`,
+so every record component is nullable by construction and absent ⇒ optional already held.
+
+**C# was contradicting itself, not just the spec.** Its own FR-010 extractor derives
+per-field required-ness from `@required` and classifies an absent optional as benign
+`LOST_OPTIONAL`; `ExtractorGenerator.cs` even documents that PayloadCodegen *"does not
+honor @required"*. One port, two tiers, opposite predicates.
+
+**Kotlin uses that port's existing `KotlinGenUtil.isRequiredField`**, which accepts the
+boolean `true` or the string `"true"` — matching what `KotlinExtractSchemaEmitter` already
+accepts, so the payload type and the mapper that populates it cannot disagree. That lockstep
+is the property Python's `is_field_required` docstring protects; Python holds the tighter
+boolean-only threshold on both of its tiers, Kotlin the looser one on both. Whether
+`@required: "true"` should be legal metadata at all is a loader question, left open.
+
+**What made this survivable for four releases: the tests pinned it.** C#'s payload suite
+asserted `public required` on fixtures where **no field carried `@required`**, so it could
+never distinguish "reads the attr" from "hardcodes it" — and one demo test asserted that
+omitting an unmarked field "fails to compile" while its comment called them "required
+members". That test now declares what it asserts, and gained the arm nobody had: omitting an
+**optional** member must compile. Kotlin's `#270` test asserted non-null as a proxy for
+"origins don't decide nullability", which the all-non-null emitter also satisfied; it now
+carries both arms, so a `@required` field with an `origin.first` stays non-null while an
+unmarked sibling with the same origin kind goes nullable.
+
+The shared `template-output-render-conformance/xpkg-collision` corpus turns out to carry
+both arms already — `alphaText`/`betaText` are `@required: true` while `fromAlpha`/`fromBeta`
+are not — so the ports were asserting **contradictory output for one shared model**. It is
+now the payload tier's optionality oracle as well as its collision oracle.
+
+Adopter-visible in C# and Kotlin: a payload property that was non-null becomes nullable
+unless its metadata declares `@required`. Mark the fields you genuinely require.
+
 ### Fixed — a projection could not borrow an entity's alternate key ([#310](https://github.com/metaobjectsdev/metaobjects/issues/310), all four loaders)
 
 A `object.projection` borrows its key rather than declaring one:

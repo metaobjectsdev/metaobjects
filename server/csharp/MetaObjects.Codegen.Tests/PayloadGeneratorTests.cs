@@ -83,11 +83,11 @@ public sealed class PayloadGeneratorTests
         var file = Assert.Single(files);
         Assert.Equal("ClassificationResponse.payload.cs", file.Path);
         Assert.Contains("public sealed record ClassificationResponse", file.Content);
-        Assert.Contains("public required string documentType { get; init; }", file.Content);
-        Assert.Contains("public required double confidence { get; init; }", file.Content);
-        Assert.Contains("public required NoteEntry note { get; init; }", file.Content);
+        Assert.Contains("public string? documentType { get; init; }", file.Content);
+        Assert.Contains("public double? confidence { get; init; }", file.Content);
+        Assert.Contains("public NoteEntry? note { get; init; }", file.Content);
         Assert.Contains("public sealed record NoteEntry", file.Content);
-        Assert.Contains("public required string value { get; init; }", file.Content);
+        Assert.Contains("public string? value { get; init; }", file.Content);
         // The FQN must not leak into the file name or the record/type names.
         Assert.DoesNotContain("acme::intake::", file.Content);
         Assert.DoesNotContain("::", file.Path);
@@ -149,11 +149,11 @@ public sealed class PayloadGeneratorTests
         Assert.Equal("Digest.payload.cs", file.Path);
         Assert.Contains("public sealed record Digest", file.Content);
         Assert.Contains("public sealed record AcmeAlphaNote", file.Content);
-        Assert.Contains("public required string alphaText { get; init; }", file.Content);
+        Assert.Contains("public string? alphaText { get; init; }", file.Content);
         Assert.Contains("public sealed record AcmeBetaNote", file.Content);
-        Assert.Contains("public required string betaText { get; init; }", file.Content);
-        Assert.Contains("public required AcmeAlphaNote fromAlpha { get; init; }", file.Content);
-        Assert.Contains("public required AcmeBetaNote fromBeta { get; init; }", file.Content);
+        Assert.Contains("public string? betaText { get; init; }", file.Content);
+        Assert.Contains("public AcmeAlphaNote? fromAlpha { get; init; }", file.Content);
+        Assert.Contains("public AcmeBetaNote? fromBeta { get; init; }", file.Content);
         Assert.DoesNotContain("public sealed record Note", file.Content);
     }
 
@@ -202,14 +202,14 @@ public sealed class PayloadGeneratorTests
         var file = Assert.Single(files);
         Assert.Equal("Digest.payload.cs", file.Path);
         // Declared `field.int` wins over the (`@convert`-acknowledged) string passthrough.
-        Assert.Contains("public required int alias { get; init; }", file.Content);
+        Assert.Contains("public int? alias { get; init; }", file.Content);
         Assert.DoesNotContain("string alias", file.Content);
         // Declared `field.string` wins over origin.collection — no list, no via-target type.
-        Assert.Contains("public required string summary { get; init; }", file.Content);
+        Assert.Contains("public string? summary { get; init; }", file.Content);
         // Declared `field.object @objectRef` + isArray wins over the disagreeing @via walk.
-        Assert.Contains("public required IReadOnlyList<Highlight> posts { get; init; }", file.Content);
+        Assert.Contains("public IReadOnlyList<Highlight>? posts { get; init; }", file.Content);
         Assert.Contains("public sealed record Highlight", file.Content);
-        Assert.Contains("public required string snippet { get; init; }", file.Content);
+        Assert.Contains("public string? snippet { get; init; }", file.Content);
         // The ignored @via entity never enters the closure.
         Assert.DoesNotContain("record Post", file.Content);
         Assert.DoesNotContain("internalNotes", file.Content);

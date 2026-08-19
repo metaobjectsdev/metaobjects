@@ -28,8 +28,8 @@ public class DemoTests
             { "field.string": { "name": "title" } }
           ]}},
           { "object.projection": { "name": "AuthorBrief", "children": [
-            { "field.string": { "name": "displayName" } },
-            { "field.int": { "name": "postCount" } },
+            { "field.string": { "name": "displayName", "@required": true } },
+            { "field.int": { "name": "postCount", "@required": true } },
             { "field.object": { "name": "posts", "isArray": true, "@objectRef": "PostBrief",
               "children": [ { "origin.collection": { "@via": "Author.posts" } } ] } }
           ]}},
@@ -98,10 +98,15 @@ public class DemoTests
     }
 
     [Fact]
-    public void Compile_time__a_wrong_shaped_caller_fails_to_compile()
+    public void Compile_time__a_caller_omitting_a_DECLARED_required_member_fails_to_compile()
     {
-        // The caller omits required members (postCount, posts) — the codegen'd shape
-        // contract makes this a compile error, not a silent runtime mismatch.
+        // The caller omits `postCount`, which the metadata marks `@required: true` — the
+        // codegen'd shape contract makes that a compile error, not a silent runtime mismatch.
+        //
+        // #309: this test previously proved the same thing about fields carrying NO
+        // `@required` at all, because the emitter marked every property `required`. It
+        // therefore pinned the defect while its comment claimed to demonstrate the design.
+        // The fixture now declares what the test asserts, so it passes for the stated reason.
         var source = GeneratedSource(Load()) + """
         public static class BadCaller
         {
@@ -113,7 +118,28 @@ public class DemoTests
         }
         """;
         var errors = CompileErrors(source);
-        Assert.True(errors.Count > 0, "expected a wrong-shaped caller to FAIL compilation, but it compiled clean");
+        Assert.True(errors.Count > 0, "expected a caller omitting a required member to FAIL compilation, but it compiled clean");
+    }
+
+    [Fact]
+    public void Compile_time__a_caller_omitting_an_OPTIONAL_member_compiles()
+    {
+        // The other arm, which no test covered while every property was `required`: `posts`
+        // carries no `@required`, so omitting it must be legal. This is the shape #309 was
+        // filed about — an LLM response that simply does not populate an optional field.
+        var source = GeneratedSource(Load()) + """
+        public static class PartialCaller
+        {
+            public static string Go(IProvider p)
+            {
+                var partial = new AuthorBrief { displayName = "Ada", postCount = 1 };
+                return RenderHandles.RenderContentStrategyPrompt(partial, p);
+            }
+        }
+        """;
+        var errors = CompileErrors(source);
+        Assert.True(errors.Count == 0, "expected omitting an OPTIONAL member to compile, got: "
+            + string.Join("; ", errors));
     }
 
     [Fact]

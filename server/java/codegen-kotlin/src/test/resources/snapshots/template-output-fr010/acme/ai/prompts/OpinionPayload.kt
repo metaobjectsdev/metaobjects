@@ -11,5 +11,5 @@ import kotlinx.serialization.Serializable
 public data class OpinionPayload(
   public val text: String,
   public val confidence: OpinionOutputPayloadConfidence,
-  public val note: String,
+  public val note: String? = null,
 )

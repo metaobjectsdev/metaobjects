@@ -9,6 +9,6 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 public data class AuthorBioPayload(
-  public val name: String,
-  public val postCount: Long,
+  public val name: String? = null,
+  public val postCount: Long? = null,
 )

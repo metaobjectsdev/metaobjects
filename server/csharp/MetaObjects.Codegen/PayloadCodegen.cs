@@ -332,7 +332,22 @@ public static class PayloadCodegen
                     // Scalar array (e.g. field.string with isArray) -> a list of the scalar.
                     type = IsArrayField(f) ? $"IReadOnlyList<{scalar}>" : scalar;
                 }
-                lines.Add($"    public required {type} {f.Name} {{ get; init; }}");
+                // #309 — optionality comes from the DECLARED @required, like every other
+                // tier. `required` on an unmarked field made the generated
+                // `JsonSerializer.Deserialize<Payload>` reject any response omitting it,
+                // which is fatal for the payload's main job: absorbing an LLM response that
+                // does not always populate every field. It also contradicted this port's own
+                // sibling — the FR-010 extractor derives per-field required-ness from
+                // `@required` and classifies an absent optional as benign LOST_OPTIONAL.
+                //
+                // `spec/metamodel/field.json` documents @required as an optional boolean
+                // defaulting to absent, so absent ⇒ optional. Rendered idiomatically per
+                // language: C# uses `required` + non-nullable for a required field and a
+                // nullable property with no `required` otherwise.
+                bool isRequired = f.Attr(FIELD_ATTR_REQUIRED) is true;
+                lines.Add(isRequired
+                    ? $"    public required {type} {f.Name} {{ get; init; }}"
+                    : $"    public {type}? {f.Name} {{ get; init; }}");
             }
             lines.Add("}");
             output.Add(string.Join("\n", lines));
