@@ -40,6 +40,7 @@ import {
   buildExpectedSchemaWithProvenance,
   type GovernedScope,
   applyPending,
+  type ApplyPendingResult,
   openReplayEngine,
   type ReplayEngine,
   verifyReplay,
@@ -313,7 +314,7 @@ export async function verifyCommand(
     }
 
     try {
-      let applied;
+      let applied: ApplyPendingResult;
       try {
         applied = await applyPending(engine.db, dir, { dryRun: false, dialect });
       } catch (err) {

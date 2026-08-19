@@ -154,6 +154,22 @@ describe("verify --replay runs the gate", () => {
     expect(await verifyCommand(["--replay"], root)).toBe(0);
   });
 
+  // `migrate.dialect` genuinely defaults to undefined, so this refusal is reachable
+  // rather than dead code — with no --db there is no URL to infer from, and guessing
+  // would replay a postgres chain through sqlite.
+  test("no dialect anywhere is refused, operationally", async () => {
+    const root = await project();
+    await withApplyingChain(root);
+    await writeFile(
+      join(root, ".metaobjects", "config.json"),
+      JSON.stringify({ schema_version: 1, migrate: { outDir: MIGRATIONS } }),
+      "utf8",
+    );
+    expect(await verifyCommand(["--replay", "--skip-schema"], root)).toBe(2);
+    // The control: naming the dialect on the command line makes the same run pass.
+    expect(await verifyCommand(["--replay", "--dialect", "sqlite", "--skip-schema"], root)).toBe(0);
+  });
+
   // `--skip-schema` is load-bearing here, not incidental: without it the D1 SCHEMA
   // gate also returns 2 (no wrangler.toml), so the assertion would pass whether or
   // not the replay gate refuses at all.
