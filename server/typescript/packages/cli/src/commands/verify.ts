@@ -36,8 +36,13 @@ import {
   collectUnmanagedNames,
   excludeFromSnapshot,
   scopedDiffInputs,
+  scopeExpectedSchema,
   buildExpectedSchemaWithProvenance,
   type GovernedScope,
+  applyPending,
+  openReplayEngine,
+  type ReplayEngine,
+  verifyReplay,
   introspect,
   diff,
   readSnapshot,
@@ -80,9 +85,14 @@ const ERR_UNKNOWN_ATTR = "ERR_UNKNOWN_ATTR";
 
 /**
  * A no-flags MigrateFlags, so `resolveMigrateConfig` yields exactly what `meta migrate`
- * would use with nothing passed on the command line — config value, else default. verify
- * consumes only `outDir` from the result (#292); the other fields exist to satisfy the
- * shared shape, and reading any of them here would be reaching into migrate's decisions.
+ * would use with nothing passed on the command line — config value, else default.
+ *
+ * verify consumes `outDir` (#292) and — for the replay gate ONLY — `dialect`. The #292
+ * restriction that reading anything else "would be reaching into migrate's decisions"
+ * was written about the DRIFT gate, whose dialect comes from the live `--db` URL. The
+ * replay gate has no `--db` at all, and the dialect a committed chain was EMITTED for
+ * is a migrate decision by definition, so migrate's own resolution is the only correct
+ * source for it. Everything else here exists to satisfy the shared shape.
  */
 const EMPTY_MIGRATE_FLAGS = {
   db: undefined, dialect: undefined, format: undefined, outDir: undefined, slug: undefined,
@@ -229,6 +239,11 @@ export async function verifyCommand(
   // are checked on every `meta verify`. Opt-in by DECLARATION — a model with no
   // requirement nodes is silent, not in drift.
   const requirementExit = runRequirementVerify();
+  // #313 — BOTH replay flags select this gate. `--replay-snapshot` implies
+  // `--replay`'s work, so a broken chain must fail under it even when `--replay`
+  // was not passed; naming only `flags.replay` here is how `--replay-snapshot`
+  // would parse cleanly and do nothing at all.
+  const replayExit = flags.replay || flags.replaySnapshot ? await runReplayVerify() : 0;
 
   // Advisory verify-as-teacher pass: surface hand-rolled work the metadata could
   // model. Warnings ONLY — never changes the exit code (bias to under-flagging).
@@ -236,7 +251,179 @@ export async function verifyCommand(
   // noisy project (both opt-outs work on `meta verify` and `meta gen`).
   if (!flags.noAntipatterns && process.env.META_NO_ANTIPATTERNS !== "1") runAntiPatternAdvisory();
 
-  return Math.max(templateExit, schemaExit, codegenExit, requirementExit);
+  return Math.max(templateExit, schemaExit, codegenExit, requirementExit, replayExit);
+
+  // -- replay (#313) ---------------------------------------------------------
+  /**
+   * Replay the committed migration chain into an EMPTY throwaway database and assert
+   * it applies. `--replay-snapshot` additionally asserts the result equals the
+   * committed snapshot.
+   *
+   * This exists because `meta migrate` could write a chain that cannot be replayed —
+   * a bare `DROP TABLE "x"` for an object no migration ever created — and nothing
+   * noticed until someone tried to provision a fresh database, which for the reporter
+   * was three months later. The two tiers are separate because a project adopted via
+   * `migrate baseline --from-db` passes the first trivially and CANNOT pass the second
+   * by construction: its snapshot is the whole introspected database and its chain is
+   * empty.
+   *
+   * Exit codes follow verify's convention: a chain that fails to apply, or a snapshot
+   * mismatch, is drift → 1; an engine that will not start is operational → 2.
+   */
+  async function runReplayVerify(): Promise<number> {
+    // Resolve the migrations directory and the chain's dialect through MIGRATE's own
+    // precedence, never a second derivation — verify must not look somewhere migrate
+    // does not write, nor assume a dialect the chain was not emitted for.
+    const migrateConfig = await resolveMigrateConfig(EMPTY_MIGRATE_FLAGS, projectRoot);
+
+    if (migrateConfig.format === "flyway") {
+      log.error(
+        `meta verify --replay is not supported with --migration-format flyway — run 'flyway migrate' against a scratch database to replay`,
+      );
+      return 2;
+    }
+
+    // --dialect wins; else migrate's resolved dialect; else refuse. There is no --db
+    // to infer from, so guessing would replay a postgres chain through sqlite.
+    const dialect: Dialect | undefined = flags.dialect ?? migrateConfig.dialect;
+    if (dialect === undefined) {
+      log.error(
+        `meta verify --replay: no dialect — pass --dialect <postgres|sqlite>, or set migrate.dialect in .metaobjects/config.json`,
+      );
+      return 2;
+    }
+    if (dialect === "d1") {
+      log.error(
+        `meta verify --replay is not supported for dialect 'd1' — use 'wrangler d1 migrations apply' against a scratch database to replay committed migrations`,
+      );
+      return 2;
+    }
+
+    const dir = resolvePath(projectRoot, migrateConfig.outDir);
+
+    let engine: ReplayEngine;
+    try {
+      engine = await openReplayEngine(dialect);
+    } catch (err) {
+      // A missing optional driver lands here, and its message already carries the
+      // install hint. Operational, not drift.
+      log.error(`meta verify --replay: ${(err as Error).message}`);
+      return 2;
+    }
+
+    try {
+      let applied;
+      try {
+        applied = await applyPending(engine.db, dir, { dryRun: false, dialect });
+      } catch (err) {
+        log.error(`meta verify --replay: ${(err as Error).message}`);
+        log.error(
+          `meta verify --replay: the committed chain does not apply to an empty database. ` +
+            `Applied migrations are immutable, so fix this with a NEW migration that creates the ` +
+            `missing object — not by editing a committed up.sql.`,
+        );
+        return 1;
+      }
+
+      // Not a silent pass. `discoverMigrations` returns [] for a missing directory, so
+      // a run over an empty chain would otherwise "succeed" having proved nothing —
+      // and a gate that is quiet when it checked nothing cannot be told from one that
+      // passed. Every migration is pending against a fresh engine, so an empty
+      // `pending` means the directory held none.
+      if (applied.pending.length === 0) {
+        log.info(`meta verify --replay: no committed migrations — nothing to replay`);
+        return 0;
+      }
+
+      log.info(
+        `meta verify --replay — the committed chain applies to an empty ${dialect} database ` +
+          `(${applied.applied.length} migration(s)).`,
+      );
+
+      if (!flags.replaySnapshot) return 0;
+      return await runReplaySnapshotTier(engine, dialect, dir);
+    } finally {
+      await engine.dispose();
+    }
+  }
+
+  /**
+   * The second tier: the replayed schema must EQUAL the committed snapshot.
+   *
+   * This is the 2026-05-31 §8 integrity aid, finally wired — `verifyReplay` has been
+   * built and exported with no CLI caller since then. What it catches that tier 1
+   * cannot is hand-edited structural DDL: a committed up.sql someone changed so the
+   * chain still applies but no longer produces the schema the snapshot records.
+   *
+   * It does NOT support a project adopted via `migrate baseline --from-db`, and does
+   * not try to detect one. The only candidate signal (`BASELINE_NAME`/`recordBaseline`)
+   * has no production caller and would live in the TARGET database's ledger, while
+   * this runs against a fresh engine with no ledger at all. So the failure message
+   * names baseline adoption as the first thing to rule out.
+   */
+  async function runReplaySnapshotTier(
+    engine: ReplayEngine,
+    dialect: Extract<Dialect, "postgres" | "sqlite">,
+    dir: string,
+  ): Promise<number> {
+    // Fails OPEN on a missing snapshot: a project that has never generated one
+    // offline is not in an error state, and an unreadable/unparseable file is
+    // migrate's error to raise with its own message, not a drift verdict. It still
+    // SAYS so — silence here would be indistinguishable from a pass.
+    let snapshot: SchemaSnapshot | null;
+    try {
+      snapshot = await readSnapshot(snapshotPath(dir, dialect));
+    } catch {
+      log.info(`meta verify --replay-snapshot: the committed snapshot could not be read — nothing to compare`);
+      return 0;
+    }
+    if (snapshot === null) {
+      log.info(`meta verify --replay-snapshot: no committed snapshot — nothing to compare`);
+      return 0;
+    }
+
+    // A scoped project carries the OTHER owner's tables into its snapshot on purpose
+    // and its chain never creates them, so they must leave the comparison. The
+    // committed snapshot alone cannot be scoped — `scopeExpectedSchema` decides on a
+    // qualified-name → metadata-FQN provenance map the snapshot does not carry — so
+    // the expected side is rebuilt from metadata purely to derive that decision.
+    //
+    // Only for a project that actually declares `migrate.scope`. An unscoped project
+    // passes no `governed` and gets the comparison exactly as it was.
+    let governed: GovernedScope | undefined;
+    if (schemaScope !== undefined) {
+      const viewStrategy = forgeConfig?.columnNamingStrategy ?? "snake_case";
+      const built = buildExpectedSchemaWithProvenance(root, {
+        dialect,
+        columnNamingStrategy: viewStrategy,
+        views: buildProjectionViews(root, { dialect, columnNamingStrategy: viewStrategy }),
+      });
+      governed = scopeExpectedSchema(built, schemaScope);
+    }
+
+    // `verifyReplay` calls `applyPending` itself. That is NOT a second replay: the
+    // first one recorded every migration in this engine's ledger, so the call finds
+    // nothing pending and returns immediately.
+    const result = await verifyReplay({
+      db: engine.db,
+      dialect,
+      migrationsDir: dir,
+      snapshot,
+      ...(governed !== undefined ? { governed } : {}),
+    });
+    if (result.ok) {
+      log.info(`meta verify --replay-snapshot — the replayed chain reproduces the committed snapshot.`);
+      return 0;
+    }
+
+    log.error(
+      `meta verify --replay-snapshot: the replayed chain does not reproduce the committed snapshot. ` +
+        `If this project was adopted with 'migrate baseline --from-db', its chain does not build the ` +
+        `schema and this tier does not apply — use --replay instead.`,
+    );
+    for (const line of summarizeDrift([...result.drift, ...result.unmanaged])) log.error(`  ${line}`);
+    return 1;
+  }
 
   // -- requirements (#290) ---------------------------------------------------
   function runRequirementVerify(): number {

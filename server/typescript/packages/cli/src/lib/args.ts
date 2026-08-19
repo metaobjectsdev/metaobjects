@@ -232,7 +232,20 @@ export interface VerifyFlags {
   templates: boolean;
   /** Run the codegen-drift gate (regenerate-to-temp and diff committed output). */
   codegen: boolean;
-  /** Whether ANY explicit subverb flag (--templates/--db/--codegen) was passed. */
+  /**
+   * Replay the committed migration chain into an empty throwaway database and assert
+   * it applies (#313). Needs no `--db`: the engine is local and disposable (PGlite
+   * for postgres, a temp sqlite file), so the gate provisions nothing.
+   */
+  replay: boolean;
+  /**
+   * `--replay` plus: assert the replayed schema EQUALS the committed snapshot. A
+   * separate subverb rather than a `--strict` modifier, because `--lax` below is a
+   * different axis (ADR-0023 attribute strictness) and `--strict` beside it would
+   * read as that flag's opposite rather than as a replay depth.
+   */
+  replaySnapshot: boolean;
+  /** Whether ANY explicit subverb flag (--templates/--db/--codegen/--replay*) was passed. */
   anyExplicit: boolean;
   /** Suppress the advisory anti-pattern (verify-as-teacher) pass. */
   noAntipatterns: boolean;
@@ -255,6 +268,8 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
       "skip-schema": { type: "boolean", default: false },
       templates: { type: "boolean", default: false },
       codegen: { type: "boolean", default: false },
+      replay: { type: "boolean", default: false },
+      "replay-snapshot": { type: "boolean", default: false },
       "no-antipatterns": { type: "boolean", default: false },
       lax: { type: "boolean", default: false },
       "d1": { type: "string" },
@@ -283,11 +298,15 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
 
   const templates = !!values.templates;
   const codegen = !!values.codegen;
+  const replay = !!values.replay;
+  const replaySnapshot = !!values["replay-snapshot"];
   // --db is itself an explicit subverb selector: passing a connection URL means
   // "run the schema-drift mode". So is `--dialect d1` (D1 has no --db connection
-  // URL — see the `d1` field doc above). So "any explicit subverb" is
-  // templates|codegen|db|dialect==d1.
-  const anyExplicit = templates || codegen || values.db !== undefined || dialect === "d1";
+  // URL — see the `d1` field doc above). The replay flags are subverbs too, and
+  // must be listed here or `meta verify --replay` would ALSO run the template gate
+  // as the bare-verify default.
+  const anyExplicit =
+    templates || codegen || values.db !== undefined || dialect === "d1" || replay || replaySnapshot;
 
   return {
     prompts: values.prompts,
@@ -297,6 +316,8 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
     skipSchema: !!values["skip-schema"],
     templates,
     codegen,
+    replay,
+    replaySnapshot,
     anyExplicit,
     noAntipatterns: !!values["no-antipatterns"],
     lax: !!values.lax,
