@@ -3110,8 +3110,8 @@ public final class ValidationPhase {
             }
         }
 
-        // R5 — @promptStyle (template.output only, FR-010) must be in the closed
-        // set (guide|inline|exampleOnly). Absent is fine; default is "guide".
+        // R5 — @promptStyle (template.prompt only since ADR-0052, FR-010) must be in
+        // the closed set (guide|inline|exampleOnly). Absent is fine; default is "guide".
         // ADR-0039: resolving — a template may inherit @promptStyle via extends.
         if (template.hasMetaAttr(TemplateConstants.ATTR_PROMPT_STYLE)) {
             String style = template.getMetaAttr(TemplateConstants.ATTR_PROMPT_STYLE)
@@ -3123,6 +3123,26 @@ public final class ValidationPhase {
                         + "' @promptStyle '" + style
                         + "' is not a valid value; allowed: "
                         + TemplateConstants.ALLOWED_PROMPT_STYLES,
+                    ErrorCode.ERR_BAD_ATTR_VALUE, template.getSource());
+            }
+        }
+
+        // R5b — @responseFormat (template.prompt only, ADR-0053) must be in the closed
+        // set (json|xml). Absent is fine; default is "json". Deliberately NOT
+        // ALLOWED_FORMATS: a reply is only ever parsed as JSON or XML, and registering
+        // members nothing dispatches on is what ADR-0007 Amendment 2 forbids.
+        // ADR-0039: resolving — a template may inherit @responseFormat via extends.
+        if (template.hasMetaAttr(TemplateConstants.ATTR_RESPONSE_FORMAT)) {
+            String respFmt = template.getMetaAttr(TemplateConstants.ATTR_RESPONSE_FORMAT)
+                                     .getValueAsString();
+            if (respFmt != null
+                    && !TemplateConstants.ALLOWED_RESPONSE_FORMATS.contains(respFmt)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_BAD_ATTR_VALUE
+                        + ": template '" + template.getName()
+                        + "' @responseFormat '" + respFmt
+                        + "' is not a valid value; allowed: "
+                        + TemplateConstants.ALLOWED_RESPONSE_FORMATS,
                     ErrorCode.ERR_BAD_ATTR_VALUE, template.getSource());
             }
         }

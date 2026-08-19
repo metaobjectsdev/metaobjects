@@ -53,11 +53,10 @@ public final class OutputTemplate extends MetaTemplate {
             def.optionalAttributeWithConstraints(ATTR_REQUIRED_TAGS)
                .ofType(StringAttribute.SUBTYPE_STRING).asArray();
 
-            // Output overlay (template.output only — FR-010 @promptStyle + @kind/email
-            // part-refs).
-            def.optionalAttributeWithConstraints(ATTR_PROMPT_STYLE)
-               .ofType(StringAttribute.SUBTYPE_STRING)
-               .withEnum(PROMPT_STYLE_GUIDE, PROMPT_STYLE_INLINE, PROMPT_STYLE_EXAMPLE_ONLY);
+            // Output overlay (template.output only — @kind + the email part-refs).
+            // ADR-0052: @promptStyle is NOT here. It governs a fragment instructing an
+            // LLM how to format its reply, so it lives on template.prompt beside
+            // @responseRef; template.output is outbound only and parses nothing.
             def.optionalAttributeWithConstraints(ATTR_KIND)
                .ofType(StringAttribute.SUBTYPE_STRING)
                .withEnum(KIND_DOCUMENT, KIND_EMAIL);
@@ -70,15 +69,6 @@ public final class OutputTemplate extends MetaTemplate {
         });
     }
 
-    /**
-     * Returns the value of {@code @promptStyle} if explicitly set, else
-     * {@link TemplateConstants#PROMPT_STYLE_DEFAULT} ({@code "guide"}).
-     * ADR-0039: template.* attrs resolve through extends (includeParentData=true,
-     * the default) — matching the TS reference + C#.
-     */
-    public String getPromptStyle() {
-        if (!hasMetaAttr(ATTR_PROMPT_STYLE)) return PROMPT_STYLE_DEFAULT;
-        String v = getMetaAttr(ATTR_PROMPT_STYLE).getValueAsString();
-        return v != null ? v : PROMPT_STYLE_DEFAULT;
-    }
+    // ADR-0052: getPromptStyle() moved to PromptTemplate. An output has no reply to
+    // format, so it has no fragment presentation to configure.
 }

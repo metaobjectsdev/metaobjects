@@ -88,7 +88,10 @@ ALLOWED_FORMATS = (
 )
 TEMPLATE_FORMAT_DEFAULT = TEMPLATE_FORMAT_TEXT
 
-# FR-010 artifact-1: output-format prompt presentation style (template.output only).
+# FR-010 artifact-1: response-format fragment presentation (template.PROMPT only).
+# ADR-0052 moved it off template.output — it governs a fragment that instructs an LLM
+# how to format its reply, so its home was the subtype defined as "every rendered
+# artifact other than an LLM prompt".
 # Closed enum, enforced via allowed_values exactly like @format. Default "guide".
 # Guidance is NEVER carried in comments. Set project-wide via an abstract template
 # base + extends, with a render-time PromptOverrides.style on top.
@@ -103,10 +106,29 @@ PROMPT_STYLES = (
     PROMPT_STYLE_EXAMPLE_ONLY,
 )
 
+# ADR-0053 — the syntax of the model's REPLY (template.prompt only). Distinct from
+# @format, which is the syntax of the rendered PROMPT body: the two genuinely differ
+# (a plain-text prompt may elicit an XML reply), which is why one attribute cannot
+# serve both directions.
+#
+# TWO members, not TEMPLATE_FORMATS' seven, because two is what every shipping consumer
+# dispatches on (Format.JSON / Format.XML) in all five ports. The rest are
+# reserved-not-registered under ADR-0007 Amendment 2's re-entry bar. Default "json"
+# reproduces the pre-ADR-0053 fallback (anything not "xml" was treated as JSON).
+TEMPLATE_ATTR_RESPONSE_FORMAT = "responseFormat"
+RESPONSE_FORMAT_JSON = "json"
+RESPONSE_FORMAT_XML = "xml"
+RESPONSE_FORMAT_DEFAULT = RESPONSE_FORMAT_JSON
+RESPONSE_FORMATS = (
+    RESPONSE_FORMAT_JSON,
+    RESPONSE_FORMAT_XML,
+)
+
 # @xmlText — a FIELD-level marker (boolean) for the tolerant extract engine: this field
 # receives its element's TEXT CONTENT when a template.output response is parsed from XML
 # (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]). Registered on field.* by
 # prompt_provider (the prompt/output domain owns this extract concern — NOT a core field
-# property). No effect for @format: json. Mirrors Java TemplateConstants.ATTR_XML_TEXT,
+# property). No effect when the eliciting prompt's @responseFormat is json. Mirrors Java
+# TemplateConstants.ATTR_XML_TEXT,
 # TS FIELD_ATTR_XML_TEXT, and C# TemplateConstants.ATTR_XML_TEXT.
 TEMPLATE_ATTR_XML_TEXT = "xmlText"

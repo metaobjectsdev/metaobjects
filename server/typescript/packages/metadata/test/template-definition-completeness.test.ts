@@ -17,8 +17,9 @@
 //   - REQUIRED: prompt.@payloadRef, output.@payloadRef, toolcall.@toolName,
 //     toolcall.@payloadRef.
 //   - DEFAULTS + closed enums: @format (default "text", 7 formats),
-//     @promptStyle (default "guide", 3 styles), @kind (default "document",
-//     2 kinds).
+//     @promptStyle (default "guide", 3 styles — on template.PROMPT since
+//     ADR-0052), @responseFormat (default "json", 2 formats — ADR-0053),
+//     @kind (default "document", 2 kinds).
 //   - isArray: @requiredTags, @requiredSlots.
 //   - base carries NO attrs; toolcall does NOT inherit genericAttrs.
 //   - templates carry no dataType; childRules == [wildcard(attr)].
@@ -78,6 +79,11 @@ type ExpectedAttr = {
 const TEMPLATE_FORMATS = ["text", "html", "xml", "csv", "json", "markdown", "spreadsheet"];
 const PROMPT_STYLES = ["guide", "inline", "exampleOnly"];
 const TEMPLATE_KINDS = ["document", "email"];
+// ADR-0053. Deliberately TWO members, not TEMPLATE_FORMATS' seven — the rest are
+// reserved-not-registered until a shipping consumer dispatches on them. Spelled
+// out here rather than imported, like its siblings above: this file pins the
+// schema independently of the constants it is checking.
+const TEMPLATE_RESPONSE_FORMATS = ["json", "xml"];
 
 // genericAttrs (shared by prompt + output), spelled out per subtype below.
 const genericAttrs: Record<string, ExpectedAttr> = {
@@ -105,10 +111,9 @@ const EXPECTED: Record<string, Record<string, ExpectedAttr>> = {
     requiredSlots: { valueType: "string", isArray: true, required: false },
     model: { valueType: "string", isArray: false, required: false },
     responseRef: { valueType: "string", isArray: false, required: false },
-  },
-  output: {
-    ...genericAttrs,
-    // promptStyleAttr
+    // ADR-0052 inbound half — promptStyleAttr moved here from template.output,
+    // where a fragment that instructs an LLM lived on the subtype defined as
+    // "every rendered artifact other than an LLM prompt".
     promptStyle: {
       valueType: "string",
       isArray: false,
@@ -116,6 +121,18 @@ const EXPECTED: Record<string, Record<string, ExpectedAttr>> = {
       default: "guide",
       allowedValues: PROMPT_STYLES,
     },
+    // ADR-0053 — the syntax of the REPLY (json|xml), distinct from @format, which
+    // is the syntax of the rendered prompt BODY.
+    responseFormat: {
+      valueType: "string",
+      isArray: false,
+      required: false,
+      default: "json",
+      allowedValues: TEMPLATE_RESPONSE_FORMATS,
+    },
+  },
+  output: {
+    ...genericAttrs,
     // outputKindAttrs
     kind: {
       valueType: "string",

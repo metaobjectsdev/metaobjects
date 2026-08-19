@@ -60,6 +60,18 @@ public final class PromptTemplate extends MetaTemplate {
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             def.optionalAttributeWithConstraints(ATTR_RESPONSE_REF)
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+
+            // ADR-0052 inbound half. @promptStyle moved here from template.output,
+            // where a fragment that instructs an LLM lived on the subtype defined as
+            // "every rendered artifact other than an LLM prompt". ADR-0053 adds
+            // @responseFormat — the syntax of the REPLY, distinct from @format, which
+            // is the syntax of the rendered prompt BODY.
+            def.optionalAttributeWithConstraints(ATTR_PROMPT_STYLE)
+               .ofType(StringAttribute.SUBTYPE_STRING)
+               .withEnum(PROMPT_STYLE_GUIDE, PROMPT_STYLE_INLINE, PROMPT_STYLE_EXAMPLE_ONLY);
+            def.optionalAttributeWithConstraints(ATTR_RESPONSE_FORMAT)
+               .ofType(StringAttribute.SUBTYPE_STRING)
+               .withEnum(RESPONSE_FORMAT_JSON, RESPONSE_FORMAT_XML);
         });
     }
 
@@ -99,5 +111,28 @@ public final class PromptTemplate extends MetaTemplate {
         return hasMetaAttr(ATTR_RESPONSE_REF)
             ? getMetaAttr(ATTR_RESPONSE_REF).getValueAsString()
             : null;
+    }
+
+    /**
+     * Returns the value of {@code @promptStyle} if explicitly set, else
+     * {@link TemplateConstants#PROMPT_STYLE_DEFAULT} ({@code "guide"}).
+     * Moved here from {@code OutputTemplate} by ADR-0052.
+     */
+    public String getPromptStyle() {
+        if (!hasMetaAttr(ATTR_PROMPT_STYLE)) return PROMPT_STYLE_DEFAULT;
+        String v = getMetaAttr(ATTR_PROMPT_STYLE).getValueAsString();
+        return v != null ? v : PROMPT_STYLE_DEFAULT;
+    }
+
+    /**
+     * Returns the value of {@code @responseFormat} if explicitly set, else
+     * {@link TemplateConstants#RESPONSE_FORMAT_DEFAULT} ({@code "json"}) — ADR-0053.
+     * This is the syntax of the model's REPLY; {@code @format} is the syntax of the
+     * rendered prompt BODY, and the two genuinely differ.
+     */
+    public String getResponseFormat() {
+        if (!hasMetaAttr(ATTR_RESPONSE_FORMAT)) return RESPONSE_FORMAT_DEFAULT;
+        String v = getMetaAttr(ATTR_RESPONSE_FORMAT).getValueAsString();
+        return v != null ? v : RESPONSE_FORMAT_DEFAULT;
     }
 }

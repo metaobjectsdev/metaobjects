@@ -10,9 +10,9 @@
     {
       "type": "template",
       "subType": "prompt",
-      "description": "An LLM-targeted renderable prompt template (FR-004). Carries the generic reference + governance attrs plus the LLM overlay (@maxTokens / @requiredSlots / @model / @responseRef). Its renderable body is required via @textRef.",
-      "whenToUse": "You are sending text to an LLM. Declare a prompt template with a typed payload so the prompt is versioned, drift-checked against its fields, and cache-stable \u2014 instead of string-building it in code.",
-      "rules": "prompt requires @payloadRef (the typed payload it renders against) AND @textRef (the body text, provider-resolved at render time \u2014 enforced in the loader's validateTemplatePayloadRefs pass, not at the attr layer where @textRef is relaxed to optional so template.output email can omit it). @format is a closed enum keyed by the render engine's escaper. @responseRef (optional) names the response value-object the prompt expects and drives typed LLM-call trace derivation.",
+      "description": "An LLM-targeted renderable prompt template (FR-004). Carries the generic reference + governance attrs plus the LLM overlay (@maxTokens / @requiredSlots / @model / @responseRef). Its renderable body is required via @textRef. A prompt declaring @responseRef also owns the INBOUND half (ADR-0052): the parser-on-receipt, the FR-010 response-format fragment (@promptStyle), and the reply syntax (@responseFormat).",
+      "whenToUse": "You are sending text to an LLM. Declare a prompt template with a typed payload so the prompt is versioned, drift-checked against its fields, and cache-stable \u2014 instead of string-building it in code. Add @responseRef when you also want the reply parsed into a typed shape.",
+      "rules": "prompt requires @payloadRef (the typed payload it renders against) AND @textRef (the body text, provider-resolved at render time \u2014 enforced in the loader's validateTemplatePayloadRefs pass, not at the attr layer where @textRef is relaxed to optional so template.output email can omit it). @format is the syntax of the rendered PROMPT body, a closed enum keyed by the render engine's escaper; @responseFormat (ADR-0053) is the syntax of the model's REPLY. @responseRef (optional) names the response value-object the prompt expects, drives typed LLM-call trace derivation, and is the sole gate on the inbound codegen tier \u2014 which keys on its presence, never on a format value.",
       "children": [
         {
           "type": "attr",
@@ -112,16 +112,43 @@
           "name": "responseRef",
           "min": 0,
           "max": 1,
-          "description": "Optional ref to the response value-object this prompt expects (peer of @payloadRef; drives typed LLM-call trace derivation)."
+          "description": "Optional ref to the response value-object this prompt expects (peer of @payloadRef; drives typed LLM-call trace derivation). Its presence is the sole gate on the inbound codegen tier (ADR-0052): parser-on-receipt, tolerant extract, and the FR-010 response-format fragment."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "promptStyle",
+          "min": 0,
+          "max": 1,
+          "default": "guide",
+          "allowedValues": [
+            "guide",
+            "inline",
+            "exampleOnly"
+          ],
+          "description": "FR-010 response-format fragment presentation: 'guide' (prose list + example), 'inline' (inline placeholders / enum choices), or 'exampleOnly' (filled skeleton). Guidance is never emitted as comments."
+        },
+        {
+          "type": "attr",
+          "subType": "string",
+          "name": "responseFormat",
+          "min": 0,
+          "max": 1,
+          "default": "json",
+          "allowedValues": [
+            "json",
+            "xml"
+          ],
+          "description": "ADR-0053: the syntax of the model's REPLY, read by the parser-on-receipt and the FR-010 response-format fragment. Distinct from @format, which is the syntax of the rendered PROMPT body. Two members because two is what every shipping consumer dispatches on; the other @format members are reserved-not-registered."
         }
       ]
     },
     {
       "type": "template",
       "subType": "output",
-      "description": "An output / serialization template (FR-004): every rendered artifact other than an LLM prompt \u2014 a document (email, export, docs, config) or an email. Carries the generic reference + governance attrs, the FR-010 @promptStyle, and the @kind + email part-refs.",
-      "whenToUse": "You render a document/email/serialized output from typed data. Declare an output template so the {{fields}} are drift-checked against the payload VO at build time.",
-      "rules": "output is either a document (@kind=\"document\" or absent \u2192 renders @textRef in @format to one string) or an email (@kind=\"email\" \u2192 renders subject + html + optional text to a structured EmailDocument). The cross-field presence rule is enforced in the loader's validateTemplatePayloadRefs pass: document requires @textRef; email requires @subjectRef AND @htmlBodyRef (with @textBodyRef optional) and carries NO @textRef. @format is a closed enum keyed by the render engine's escaper; @promptStyle (FR-010) selects the output-format prompt presentation and is never emitted as comments.",
+      "description": "An output / serialization template (FR-004): every rendered artifact other than an LLM prompt \u2014 a document (email, export, docs, config) or an email. Carries the generic reference + governance attrs and the @kind + email part-refs. OUTBOUND ONLY (ADR-0052) \u2014 it renders, and generates no parser.",
+      "whenToUse": "You render a document/email/serialized output from typed data. Declare an output template so the {{fields}} are drift-checked against the payload VO at build time. To parse a model's reply instead, declare @responseRef on the template.prompt that elicits it \u2014 never a template.output.",
+      "rules": "output is either a document (@kind=\"document\" or absent \u2192 renders @textRef in @format to one string) or an email (@kind=\"email\" \u2192 renders subject + html + optional text to a structured EmailDocument). The cross-field presence rule is enforced in the loader's validateTemplatePayloadRefs pass: document requires @textRef; email requires @subjectRef AND @htmlBodyRef (with @textBodyRef optional) and carries NO @textRef. @format is a closed enum keyed by the render engine's escaper. template.output is OUTBOUND ONLY (ADR-0052): it emits a render helper and nothing that reads a model's reply \u2014 the parser-on-receipt, the tolerant extract and the FR-010 response-format fragment all belong to template.prompt @responseRef.",
       "children": [
         {
           "type": "attr",
@@ -189,20 +216,6 @@
           "min": 0,
           "max": 1,
           "description": "Output tags the rendered text must contain (drives the verify output-tag check)."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "promptStyle",
-          "min": 0,
-          "max": 1,
-          "default": "guide",
-          "allowedValues": [
-            "guide",
-            "inline",
-            "exampleOnly"
-          ],
-          "description": "FR-010 output-format prompt presentation: 'guide' (prose list + example), 'inline' (inline placeholders / enum choices), or 'exampleOnly' (filled skeleton). Guidance is never emitted as comments."
         },
         {
           "type": "attr",

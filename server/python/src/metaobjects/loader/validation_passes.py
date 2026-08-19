@@ -140,7 +140,9 @@ _TEMPLATE_SUBTYPE_ONLY_ATTRS: dict[str, frozenset[str]] = {
     tc.TEMPLATE_ATTR_REQUIRED_SLOTS: frozenset({tc.TEMPLATE_SUBTYPE_PROMPT}),
     tc.TEMPLATE_ATTR_MODEL: frozenset({tc.TEMPLATE_SUBTYPE_PROMPT}),
     tc.TEMPLATE_ATTR_RESPONSE_REF: frozenset({tc.TEMPLATE_SUBTYPE_PROMPT}),
-    tc.TEMPLATE_ATTR_PROMPT_STYLE: frozenset({tc.TEMPLATE_SUBTYPE_OUTPUT}),
+    # ADR-0052 / ADR-0053 — the inbound half belongs to template.prompt.
+    tc.TEMPLATE_ATTR_PROMPT_STYLE: frozenset({tc.TEMPLATE_SUBTYPE_PROMPT}),
+    tc.TEMPLATE_ATTR_RESPONSE_FORMAT: frozenset({tc.TEMPLATE_SUBTYPE_PROMPT}),
     tc.TEMPLATE_ATTR_KIND: frozenset({tc.TEMPLATE_SUBTYPE_OUTPUT}),
     tc.TEMPLATE_ATTR_SUBJECT_REF: frozenset({tc.TEMPLATE_SUBTYPE_OUTPUT}),
     tc.TEMPLATE_ATTR_HTML_BODY_REF: frozenset({tc.TEMPLATE_SUBTYPE_OUTPUT}),
@@ -3357,9 +3359,12 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
         has_payload_ref = isinstance(payload_ref, str) and payload_ref
 
         # --- subtype-specific attr on the wrong subtype ---
-        # e.g. @maxTokens (prompt-only) on a template.output, or @promptStyle
-        # (output-only) on a template.prompt. ADR-0039: resolving — a subtype-only
-        # attr may be inherited via extends, so read the effective value.
+        # e.g. @maxTokens (prompt-only) on a template.output, or @kind
+        # (output-only) on a template.prompt. Since ADR-0052 that also catches
+        # @promptStyle / @responseFormat left behind on a template.output, which is
+        # exactly the stale declaration the migration has to surface.
+        # ADR-0039: resolving — a subtype-only attr may be inherited via extends, so
+        # read the effective value.
         for attr_name, allowed_subs in _TEMPLATE_SUBTYPE_ONLY_ATTRS.items():
             if tpl.get_meta_attr(attr_name) is not None and tpl.sub_type not in allowed_subs:
                 valid_on = " / ".join(f"template.{s}" for s in sorted(allowed_subs))

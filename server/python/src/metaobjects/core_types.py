@@ -1003,6 +1003,20 @@ _TEMPLATE_ATTRS_BY_SUBTYPE: dict[str, list[AttrSchema]] = {
         AttrSchema(name=tc.TEMPLATE_ATTR_REQUIRED_SLOTS, value_type=ATTR_SUBTYPE_STRING, is_array=True),
         AttrSchema(name=tc.TEMPLATE_ATTR_MODEL, value_type=ATTR_SUBTYPE_STRING),
         AttrSchema(name=tc.TEMPLATE_ATTR_RESPONSE_REF, value_type=ATTR_SUBTYPE_STRING),
+        # ADR-0052 inbound half — @promptStyle moved here from template.output.
+        AttrSchema(
+            name=tc.TEMPLATE_ATTR_PROMPT_STYLE,
+            value_type=ATTR_SUBTYPE_STRING,
+            default=tc.PROMPT_STYLE_DEFAULT,
+            allowed_values=tc.PROMPT_STYLES,
+        ),
+        # ADR-0053 — the syntax of the REPLY, distinct from @format (the prompt BODY).
+        AttrSchema(
+            name=tc.TEMPLATE_ATTR_RESPONSE_FORMAT,
+            value_type=ATTR_SUBTYPE_STRING,
+            default=tc.RESPONSE_FORMAT_DEFAULT,
+            allowed_values=tc.RESPONSE_FORMATS,
+        ),
     ],
     tc.TEMPLATE_SUBTYPE_OUTPUT: [
         AttrSchema(name=tc.TEMPLATE_ATTR_PAYLOAD_REF, value_type=ATTR_SUBTYPE_STRING, required=True),
@@ -1016,12 +1030,8 @@ _TEMPLATE_ATTRS_BY_SUBTYPE: dict[str, list[AttrSchema]] = {
         AttrSchema(name=tc.TEMPLATE_ATTR_MAX_CHARS, value_type=ATTR_SUBTYPE_INT),
         *_TEMPLATE_GOVERNANCE_ATTRS,
         AttrSchema(name=tc.TEMPLATE_ATTR_REQUIRED_TAGS, value_type=ATTR_SUBTYPE_STRING, is_array=True),
-        AttrSchema(
-            name=tc.TEMPLATE_ATTR_PROMPT_STYLE,
-            value_type=ATTR_SUBTYPE_STRING,
-            default=tc.PROMPT_STYLE_DEFAULT,
-            allowed_values=tc.PROMPT_STYLES,
-        ),
+        # ADR-0052: no @promptStyle here — template.output is outbound only and has no
+        # reply to format.
         AttrSchema(
             name=tc.TEMPLATE_ATTR_KIND,
             value_type=ATTR_SUBTYPE_STRING,

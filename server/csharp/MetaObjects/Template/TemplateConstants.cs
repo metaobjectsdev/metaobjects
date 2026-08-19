@@ -117,9 +117,11 @@ public static class TemplateConstants
         "spreadsheet",
     ];
 
-    // FR-010 artifact-1 prompt presentation style (template.output only). Closed enum;
-    // guidance is NEVER carried in comments. Default "guide". Set project-wide via an
-    // abstract template base + extends, with a render-time PromptOverrides.Style on top.
+    // FR-010 response-format fragment presentation (template.PROMPT only — ADR-0052
+    // moved it off template.output, where a fragment that instructs an LLM lived on the
+    // subtype defined as "every rendered artifact other than an LLM prompt"). Closed
+    // enum; guidance is NEVER carried in comments. Default "guide". Set project-wide via
+    // an abstract template base + extends, with a render-time PromptOverrides.Style on top.
     public const string TEMPLATE_ATTR_PROMPT_STYLE = "promptStyle";
     public const string PROMPT_STYLE_GUIDE         = "guide";
     public const string PROMPT_STYLE_INLINE        = "inline";
@@ -131,6 +133,26 @@ public static class TemplateConstants
         PROMPT_STYLE_GUIDE,
         PROMPT_STYLE_INLINE,
         PROMPT_STYLE_EXAMPLE_ONLY,
+    ];
+
+    // ADR-0053 — the syntax of the model's REPLY (template.prompt only). Distinct from
+    // @format, which is the syntax of the rendered PROMPT body: the two genuinely differ
+    // (a plain-text prompt may elicit an XML reply), which is why one attribute cannot
+    // serve both directions.
+    //
+    // TWO members, not TEMPLATE_FORMATS' seven, because two is what every shipping
+    // consumer dispatches on (Format.Json / Format.Xml) in all five ports. The rest are
+    // reserved-not-registered under ADR-0007 Amendment 2's re-entry bar. Default "json"
+    // reproduces the pre-ADR-0053 fallback (anything not "xml" was treated as JSON).
+    public const string TEMPLATE_ATTR_RESPONSE_FORMAT = "responseFormat";
+    public const string RESPONSE_FORMAT_JSON          = "json";
+    public const string RESPONSE_FORMAT_XML           = "xml";
+    public const string RESPONSE_FORMAT_DEFAULT       = RESPONSE_FORMAT_JSON;
+
+    public static readonly string[] TEMPLATE_RESPONSE_FORMATS =
+    [
+        RESPONSE_FORMAT_JSON,
+        RESPONSE_FORMAT_XML,
     ];
 
     // -----------------------------------------------------------------------
