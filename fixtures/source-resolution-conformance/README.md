@@ -11,13 +11,26 @@ are read, `scope` filters what is emitted from them.
 ## Shape
 
 ```
-cases.json   # { cases: [{ name, tree, config, resolveFrom?, expectFiles?, expectError? }] }
+cases.json   # { cases: [{ name, tree, symlinks?, config, resolveFrom?, expectFiles?, expectError? }] }
 README.md
 ```
 
 - **`tree`** — a map of project-root-relative path → file content. The runner
   materializes it in a fresh temporary directory. A `.keep` entry exists only to
   force an otherwise-empty directory to be created.
+- **`symlinks`** — OPTIONAL, a map of project-root-relative `linkPath` →
+  project-root-relative `targetPath`. Materialized AFTER `tree` (so the target
+  already exists), as a directory symlink at `linkPath` pointing at `targetPath`.
+  Exists to gate that every port's directory walk FOLLOWS a symlinked directory
+  — whether the `sources` path itself is a symlink
+  (`a-symlinked-sources-path-resolves-through-it`) or a symlink sits partway
+  through a walked tree (`a-symlinked-subdirectory-inside-a-walked-tree-
+  resolves-through-it`) — rather than silently resolving to zero files or
+  skipping the subtree. The reported path preserves the symlink's OWN name (a
+  file reached through `link/` is reported as `link/…`, never resolved to
+  `real/…`) — see "Order is deliberately NOT pinned" below for the parallel
+  point about `expectFiles` being exact strings, not just "the same underlying
+  file by any name". Every port's runner must honor this key.
 - **`config`** — written verbatim to `.metaobjects/config.json`, under the
   directory named by `resolveFrom` (project root when `resolveFrom` is absent).
   When `null`, no config file is created at all.
@@ -114,20 +127,30 @@ Pinning a shared code across ports would mean changing the reference, which
 this corpus does not do. Python raises `ERR_COLLECTION_NOT_FOUND`; C# and Java
 both raise `ERR_BAD_ATTR_VALUE` — three distinct outcomes across four ports,
 which is exactly why this case checks only that resolution raises, never with
-which error, same as file order above. The same `true` form is available to
-any future malformed-config case that needs it (bad JSON, an unsupported
-`schema_version`, a malformed `sources` entry shape, …) — none of those are
-in the corpus yet, but nothing about the mechanism is specific to this one
-shape.
+which error, same as file order above. The same `true` form covers five more
+cases beyond this one: an unsupported `schema_version`
+(`an-unsupported-schema-version-is-an-error`) and four malformed `sources`
+entry shapes (`sources-null-is-an-error-not-the-default`,
+`an-empty-path-is-an-error`, `a-sources-entry-with-two-keys-is-an-error`,
+`a-non-string-source-value-is-an-error`). Genuinely malformed JSON SYNTAX (an
+unparseable `.metaobjects/config.json`) is still not in the corpus — the case
+schema's `config` field is always a valid JSON value that the runner
+re-serializes via `JSON.stringify`/equivalent, so expressing broken syntax
+would need a schema extension carrying raw file text instead of a config
+object. Nothing about the `true`-sentinel mechanism is specific to any of
+these shapes.
 
 ## Behavioral contract
 
 Each port's runner reads `cases.json`, and for every case: materializes `tree`
-in a fresh temp directory, writes `config` when non-null under the directory
-named by `resolveFrom` (default the project root), resolves sources against
-that directory, then asserts either that the resolved file set equals
-`expectFiles` (as a set, project-root-relative, path separators normalized to
-`/`) or that resolution failed with `expectError`.
+in a fresh temp directory, then `symlinks` (when present), writes `config`
+when non-null under the directory named by `resolveFrom` (default the project
+root), resolves sources against that directory, then asserts either that the
+resolved file set equals `expectFiles` (as a set, project-root-relative, path
+separators normalized to `/`) — AND that its size matches the raw resolved
+count, since a Set/HashSet comparison alone cannot see a duplicate emission
+collapse invisibly into one set element — or that resolution failed with
+`expectError`.
 
 ## Reference implementation
 

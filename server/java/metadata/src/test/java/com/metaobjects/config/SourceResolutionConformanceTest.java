@@ -76,9 +76,13 @@ public class SourceResolutionConformanceTest {
      * code is deliberately not pinned cross-port (see the corpus README).
      */
     private record Case(String name, Map<String, String> tree, JsonObject config,
-                         String resolveFrom, List<String> expectFiles, JsonElement expectError) {}
+                         String resolveFrom, List<String> expectFiles, JsonElement expectError,
+                         Map<String, String> symlinks) {}
 
-    private static Path corpus() {
+    /** Package-private (not private): shared with {@link SourceResolutionCorpusNotEmptyTest},
+     *  which needs to locate the same committed corpus file without a second definition
+     *  of "walk up to find fixtures/". */
+    static Path corpus() {
         Path dir = Paths.get("").toAbsolutePath();
         while (dir != null && !Files.isDirectory(dir.resolve("fixtures"))) dir = dir.getParent();
         assertNotNull("could not locate the repository fixtures/ directory", dir);
@@ -101,8 +105,20 @@ public class SourceResolutionConformanceTest {
                 tree.put(e.getKey(), e.getValue().getAsString());
             }
 
+            // A LITERALLY ABSENT "config" key is a malformed corpus case, not the same
+            // thing as an explicit `"config": null` (which means "no config file" —
+            // see e.g. no-config-uses-default-directory). Python's dict indexing and
+            // C#'s JsonElement.GetProperty both throw on the former; Gson's `get()`
+            // returns Java null for BOTH, so without this check a future case that
+            // simply forgot the key would silently read as "no config" here while the
+            // other three runners crash loudly on the same corpus file.
+            if (!c.has("config")) {
+                throw new IllegalStateException(
+                        "corpus case \"" + name + "\" has no \"config\" key (use JSON null for " +
+                        "\"no config file\", not an absent key)");
+            }
             JsonElement cfgEl = c.get("config");
-            JsonObject config = (cfgEl == null || cfgEl.isJsonNull()) ? null : cfgEl.getAsJsonObject();
+            JsonObject config = cfgEl.isJsonNull() ? null : cfgEl.getAsJsonObject();
 
             String resolveFrom = c.has("resolveFrom") ? c.get("resolveFrom").getAsString() : ".";
 
@@ -116,7 +132,17 @@ public class SourceResolutionConformanceTest {
 
             JsonElement expectError = c.has("expectError") ? c.get("expectError") : null;
 
-            rows.add(new Object[]{name, new Case(name, tree, config, resolveFrom, expectFiles, expectError)});
+            // Optional: linkPath -> targetPath, both project-root-relative, materialized
+            // AFTER `tree` (I1 — a symlinked source root, or a symlinked subdirectory
+            // inside a walked tree).
+            Map<String, String> symlinks = new LinkedHashMap<>();
+            if (c.has("symlinks")) {
+                for (Map.Entry<String, JsonElement> e : c.getAsJsonObject("symlinks").entrySet()) {
+                    symlinks.put(e.getKey(), e.getValue().getAsString());
+                }
+            }
+
+            rows.add(new Object[]{name, new Case(name, tree, config, resolveFrom, expectFiles, expectError, symlinks)});
         }
         return rows;
     }
@@ -141,6 +167,12 @@ public class SourceResolutionConformanceTest {
                 Path abs = root.resolve(entry.getKey());
                 Files.createDirectories(abs.getParent());
                 Files.write(abs, entry.getValue().getBytes(StandardCharsets.UTF_8));
+            }
+            // Materialized AFTER tree — see the Case record's symlinks doc.
+            for (Map.Entry<String, String> link : testCase.symlinks().entrySet()) {
+                Path linkPath = root.resolve(link.getKey());
+                Files.createDirectories(linkPath.getParent());
+                Files.createSymbolicLink(linkPath, root.resolve(link.getValue()));
             }
 
             // The invocation directory: project root joined with `resolveFrom`. The
@@ -179,12 +211,19 @@ public class SourceResolutionConformanceTest {
             // coincide (resolveFrom "."), so a comparison-base bug here would pass
             // every other case and fail only that one — which is exactly why that
             // case exists.
-            Set<String> got = SourceResolver.resolveCollection(invokeDir).stream()
+            List<Path> raw = SourceResolver.resolveCollection(invokeDir);
+            Set<String> got = raw.stream()
                     .map(p -> root.relativize(p).toString().replace('\\', '/'))
                     .collect(Collectors.toSet());
 
             Set<String> want = new HashSet<>(testCase.expectFiles());
             assertEquals(want, got);
+            // The Set comparison above cannot see a duplicate emission (two entries
+            // for the same file collapse invisibly into one Set element) —
+            // `overlapping-sources-yield-each-file-once` specifically exercises
+            // resolveCollection's own de-duplication, so the RAW list length must be
+            // asserted too, before it is thrown away by the Set conversion.
+            assertEquals(want.size(), raw.size());
         } finally {
             deleteRecursive(root);
         }

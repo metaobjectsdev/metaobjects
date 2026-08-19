@@ -245,6 +245,25 @@
       },
       "config": { "schema_version": 1, "sources": [{ "path": 123 }] },
       "expectError": true
+    },
+    {
+      "name": "a-symlinked-sources-path-resolves-through-it",
+      "tree": {
+        "real/meta.a.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "symlinks": { "link": "real" },
+      "config": { "schema_version": 1, "sources": [{ "path": "link" }] },
+      "expectFiles": ["link/meta.a.json"]
+    },
+    {
+      "name": "a-symlinked-subdirectory-inside-a-walked-tree-resolves-through-it",
+      "tree": {
+        "model/meta.top.json": "{\"metadata.root\":{\"children\":[]}}",
+        "external/meta.linked.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "symlinks": { "model/linked": "external" },
+      "config": { "schema_version": 1, "sources": [{ "path": "model" }] },
+      "expectFiles": ["model/meta.top.json", "model/linked/meta.linked.json"]
     }
   ]
 }

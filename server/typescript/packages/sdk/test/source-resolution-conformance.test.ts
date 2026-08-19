@@ -1,7 +1,7 @@
 // Runs the shared source-resolution corpus against the TypeScript reference
 // implementation. Every port ships an equivalent runner reading this same file.
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { resolveCollection } from "../src/collection.js";
@@ -19,6 +19,10 @@ interface Case {
    *  resolution RAISES — the malformed-config error code is deliberately not
    *  pinned cross-port (see the corpus README). */
   readonly expectError?: string | true;
+  /** Optional: linkPath -> targetPath, both project-root-relative, materialized
+   *  AFTER `tree` (I1 — a symlinked source root, or a symlinked subdirectory
+   *  inside a walked tree). */
+  readonly symlinks?: Record<string, string>;
 }
 
 const CORPUS = resolve(
@@ -37,6 +41,12 @@ async function materialize(c: Case): Promise<{ root: string; resolveDir: string 
     const abs = join(root, rel);
     await mkdir(dirname(abs), { recursive: true });
     await writeFile(abs, content);
+  }
+  // Materialized AFTER tree — see the Case.symlinks doc.
+  for (const [linkRel, targetRel] of Object.entries(c.symlinks ?? {})) {
+    const linkAbs = join(root, linkRel);
+    await mkdir(dirname(linkAbs), { recursive: true });
+    await symlink(join(root, targetRel), linkAbs, "dir");
   }
   const resolveDir = resolve(root, c.resolveFrom ?? ".");
   if (c.config !== null) {
@@ -76,9 +86,17 @@ describe("source-resolution conformance", () => {
         }
         return;
       }
+      // A case with neither `expectFiles` nor `expectError` is a malformed corpus
+      // entry, not "expect zero files" — `?? []` here would silently pass such a
+      // case instead of failing loudly on it (this is the TS-runner-specific half
+      // of the "assert count, not just presence" family of fixes; see the C#/Java/
+      // Python runners' analogous length assertions below the set comparison).
+      if (c.expectFiles === undefined) {
+        throw new Error(`corpus case "${c.name}" has neither expectFiles nor expectError`);
+      }
       const collection = await resolveCollection(resolveDir, { explicitDir: resolveDir });
       const got = collection.files.map((f) => relative(root, f).split(sep).join("/")).sort();
-      expect(got).toEqual([...(c.expectFiles ?? [])].sort());
+      expect(got).toEqual([...c.expectFiles].sort());
     });
   }
 });

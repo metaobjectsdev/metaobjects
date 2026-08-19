@@ -36,14 +36,22 @@ def test_corpus_is_non_empty() -> None:
 
 
 def _materialize(case: dict, root: Path) -> Path:
-    """Materialize ``tree`` under ``root`` and ``config`` (when present) under the
-    directory named by ``resolveFrom`` (project root when absent). Returns the
-    directory resolution must be invoked against.
+    """Materialize ``tree`` under ``root``, then ``symlinks`` (I1 — a symlinked
+    source root, or a symlinked subdirectory inside a walked tree), then
+    ``config`` (when present) under the directory named by ``resolveFrom``
+    (project root when absent). Returns the directory resolution must be
+    invoked against.
     """
     for rel, content in case["tree"].items():
         p = root / rel
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content)
+
+    # Materialized AFTER tree — both link/target are project-root-relative.
+    for link_rel, target_rel in case.get("symlinks", {}).items():
+        link = root / link_rel
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(root / target_rel, target_is_directory=True)
 
     resolve_from = root / case.get("resolveFrom", ".")
 
@@ -72,8 +80,15 @@ def test_source_resolution_conformance(case: dict, tmp_path: Path) -> None:
     # `expectFiles` is project-root-relative even when `resolveFrom` points
     # elsewhere — resolve against `tmp_path`, not `resolve_from`.
     root = tmp_path.resolve()
-    got = {p.relative_to(root).as_posix() for p in resolve_collection(resolve_from)}
+    raw = resolve_collection(resolve_from)
+    got = {p.relative_to(root).as_posix() for p in raw}
     assert got == set(case["expectFiles"])
+    # A set comparison alone cannot see a duplicate emission (two entries for the
+    # same file collapse invisibly into one set element) —
+    # `overlapping-sources-yield-each-file-once` specifically exercises
+    # resolve_collection's own de-duplication, so the RAW list length must be
+    # asserted too, before it is thrown away by the set conversion.
+    assert len(raw) == len(case["expectFiles"])
 
 
 def test_cli_falls_back_to_neutral_config(tmp_path: Path, monkeypatch) -> None:
@@ -89,40 +104,9 @@ def test_cli_falls_back_to_neutral_config(tmp_path: Path, monkeypatch) -> None:
     from metaobjects.cli import resolve_metadata_location
 
     monkeypatch.chdir(tmp_path)
-    got = resolve_metadata_location(explicit=None, config=None, root=tmp_path)
+    got = resolve_metadata_location(config=None, root=tmp_path)
     assert {Path(p).relative_to(tmp_path.resolve()).as_posix() for p in got} == {
         "model/meta.a.json"
-    }
-
-
-def test_explicit_relative_metadata_dir_resolves_against_cwd(
-    tmp_path: Path, monkeypatch
-) -> None:
-    """A RELATIVE explicit <metadata_dir> must not resolve one level too deep.
-
-    Regression for the plan's original defect: `resolve_sources(Path(explicit)
-    .resolve().parent, [{"path": explicit}])` joins an already-absolute base
-    with a still-relative spec, walking one directory too far up.
-
-    A SINGLE-segment argument (e.g. ``"model"``) cannot distinguish the buggy
-    formulation from the fixed one: ``Path("model").resolve().parent`` happens
-    to land back at the project root, so the extra join silently cancels out.
-    The defect only shows up with a MULTI-segment relative path (``"sub/model"``)
-    — the buggy form resolves the base to ``.../sub`` and then joins the still-
-    relative ``"sub/model"`` onto it, landing on ``.../sub/sub/model`` (does not
-    exist -> ERR_SOURCE_UNRESOLVED) instead of ``.../sub/model``.
-    """
-    (tmp_path / "sub" / "model").mkdir(parents=True)
-    (tmp_path / "sub" / "model" / "meta.a.json").write_text(
-        '{"metadata.root":{"children":[]}}'
-    )
-
-    from metaobjects.cli import resolve_metadata_location
-
-    monkeypatch.chdir(tmp_path)
-    got = resolve_metadata_location(explicit="sub/model", config=None, root=tmp_path)
-    assert {Path(p).relative_to(tmp_path.resolve()).as_posix() for p in got} == {
-        "sub/model/meta.a.json"
     }
 
 

@@ -30,7 +30,11 @@ public class SourceResolutionConformanceTests
         // A JSON string pins the exact error code raised; JSON `true` pins only
         // that resolution RAISES — the malformed-config error code is
         // deliberately not pinned cross-port (see the corpus README).
-        JsonElement? ExpectError);
+        JsonElement? ExpectError,
+        // Optional: linkPath -> targetPath, both project-root-relative, materialized
+        // AFTER `Tree` (I1 — a symlinked source root, or a symlinked subdirectory
+        // inside a walked tree).
+        Dictionary<string, string> Symlinks);
 
     public static TheoryData<string> CaseNames()
     {
@@ -68,7 +72,13 @@ public class SourceResolutionConformanceTests
                 : null;
             JsonElement? expectError = el.TryGetProperty("expectError", out var ee) ? ee.Clone() : null;
 
-            cases.Add(new Case(el.GetProperty("name").GetString()!, tree, cfg, resolveFrom, expectFiles, expectError));
+            var symlinks = new Dictionary<string, string>();
+            if (el.TryGetProperty("symlinks", out var sl))
+            {
+                foreach (var p in sl.EnumerateObject()) symlinks[p.Name] = p.Value.GetString()!;
+            }
+
+            cases.Add(new Case(el.GetProperty("name").GetString()!, tree, cfg, resolveFrom, expectFiles, expectError, symlinks));
         }
         return cases;
     }
@@ -89,6 +99,14 @@ public class SourceResolutionConformanceTests
                 var abs = Path.Combine(root, rel.Replace('/', Path.DirectorySeparatorChar));
                 Directory.CreateDirectory(Path.GetDirectoryName(abs)!);
                 File.WriteAllText(abs, content);
+            }
+            // Materialized AFTER tree — see the Case record's Symlinks doc.
+            foreach (var (linkRel, targetRel) in c.Symlinks)
+            {
+                var linkAbs = Path.Combine(root, linkRel.Replace('/', Path.DirectorySeparatorChar));
+                var targetAbs = Path.Combine(root, targetRel.Replace('/', Path.DirectorySeparatorChar));
+                Directory.CreateDirectory(Path.GetDirectoryName(linkAbs)!);
+                Directory.CreateSymbolicLink(linkAbs, targetAbs);
             }
 
             // The invocation directory: project root joined with `resolveFrom`.
@@ -124,10 +142,17 @@ public class SourceResolutionConformanceTests
             // two coincide (resolveFrom "."), so a comparison base bug here would
             // pass every other case and fail only that one — which is exactly why
             // that case exists.
-            var got = SourceResolver.ResolveCollection(invokeDir)
+            var raw = SourceResolver.ResolveCollection(invokeDir);
+            var got = raw
                 .Select(f => Path.GetRelativePath(root, f).Replace(Path.DirectorySeparatorChar, '/'))
                 .ToHashSet();
             Assert.Equal(c.ExpectFiles!.ToHashSet(), got);
+            // A HashSet comparison alone cannot see a duplicate emission (two entries
+            // for the same file collapse invisibly into one set element) —
+            // `overlapping-sources-yield-each-file-once` specifically exercises
+            // ResolveCollection's own de-duplication, so the RAW list count must be
+            // asserted too, before it is thrown away by the ToHashSet conversion.
+            Assert.Equal(c.ExpectFiles!.Length, raw.Count);
         }
         finally
         {
