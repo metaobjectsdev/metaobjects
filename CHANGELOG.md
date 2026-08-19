@@ -47,6 +47,23 @@ guide: [`docs/features/metadata-sources.md`](docs/features/metadata-sources.md).
   but which error is each port's own — verified empirically: TypeScript raises
   a raw `ZodError` with no code at all, Python raises
   `ERR_COLLECTION_NOT_FOUND`, C# and Java both raise `ERR_BAD_ATTR_VALUE`.
+- **Directory expansion follows symlinked directories in all four ports** —
+  including when a declared `sources` path is itself a symlink, or a symlink
+  sits partway through a walked tree. TypeScript and C# already did; Java and
+  Python now match (a symlinked `sources` path previously resolved to zero
+  files in Java, silently, exit 0). A symlink cycle is a loud error rather
+  than a hang. Gated by two new `symlinks`-bearing corpus cases.
+- **Behavior change (Java/Maven only): a `<loader>` naming neither
+  `<sourceDir>` nor `<sources>`, with no `.metaobjects/config.json` `sources`
+  and no default `metaobjects/` directory, now FAILS the build**
+  (`ERR_COLLECTION_NOT_FOUND`) instead of silently producing an empty model
+  and passing. This is the one behavior change here that can break an
+  existing `mvn metaobjects:generate`/`:verify` — most likely to bite a
+  multi-module reactor where a parent pom configures `<loader>` and one child
+  module never adds its own `<sourceDir>`. To restore the old outcome, declare
+  `<sourceDir>`/`<sources>` explicitly in that module's pom, or give it a real
+  metadata source (a `metaobjects/` directory or a `.metaobjects/config.json`
+  `sources` entry).
 
 ### Changed — a committed migration chain must replay from empty, and `meta migrate` stops writing chains that cannot ([#313](https://github.com/metaobjectsdev/metaobjects/issues/313))
 
