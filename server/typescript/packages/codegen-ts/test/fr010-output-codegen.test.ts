@@ -61,11 +61,11 @@ const MODEL = [
     },
   },
   {
-    "template.output": {
+    "template.prompt": {
       name: "TicketOut",
       "@payloadRef": "Ticket",
+          "@responseRef": "Ticket",
       "@textRef": "out/ticket",
-      "@format": "json",
     },
   },
 ];
@@ -100,7 +100,8 @@ describe("FR-010 codegen — extract-schema + output-format-spec emitters (sourc
   test("text-format output gets NO extract block", async () => {
     const root = await loadRoot([
       { "object.value": { name: "Note", children: [{ "field.string": { name: "body", "@required": true } }] } },
-      { "template.output": { name: "NoteOut", "@payloadRef": "Note", "@textRef": "out/note", "@format": "text" } },
+      { "template.prompt": { name: "NoteOut", "@payloadRef": "Note",
+          "@responseRef": "Note", "@textRef": "out/note", "@format": "text" } },
     ]);
     const src = renderOutputParser(root, "NoteOut");
     expect(src).toContain("export function parseNoteOut(");
@@ -144,11 +145,11 @@ const MODEL_FR011 = [
     },
   },
   {
-    "template.output": {
+    "template.prompt": {
       name: "TaskOut",
       "@payloadRef": "Task",
+          "@responseRef": "Task",
       "@textRef": "out/task",
-      "@format": "json",
     },
   },
 ];

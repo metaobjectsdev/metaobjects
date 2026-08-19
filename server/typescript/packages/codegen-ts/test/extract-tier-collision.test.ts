@@ -152,11 +152,11 @@ describe("extract/output-parser tier — ADR-0044 cross-package collision (#228)
               },
             },
             {
-              "template.output": {
+              "template.prompt": {
                 name: "WidgetOut",
                 "@payloadRef": "Widget",
+          "@responseRef": "Widget",
                 "@textRef": "x/y",
-                "@format": "json",
               },
             },
           ],
@@ -201,11 +201,11 @@ describe("output-parser runtime payload lookup — ADR-0042 FQN fix for a collid
                 },
               },
               {
-                "template.output": {
+                "template.prompt": {
                   name: "ReportDocAlpha",
                   "@payloadRef": "Report",
+          "@responseRef": "Report",
                   "@textRef": "unused/a",
-                  "@format": "json",
                 },
               },
             ],
@@ -224,11 +224,11 @@ describe("output-parser runtime payload lookup — ADR-0042 FQN fix for a collid
                 },
               },
               {
-                "template.output": {
+                "template.prompt": {
                   name: "ReportDocBeta",
                   "@payloadRef": "Report",
+          "@responseRef": "Report",
                   "@textRef": "unused/b",
-                  "@format": "json",
                 },
               },
             ],

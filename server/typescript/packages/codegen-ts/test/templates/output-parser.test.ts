@@ -40,11 +40,11 @@ describe("renderOutputParser()", () => {
         },
       },
       {
-        "template.output": {
+        "template.prompt": {
           name: "NpcResponseOutput",
           "@payloadRef": "NpcResponsePayload",
+          "@responseRef": "NpcResponsePayload",
           "@textRef": "npc/output",
-          "@format": "json",
         },
       },
     ]);
@@ -78,11 +78,11 @@ describe("renderOutputParser()", () => {
         },
       },
       {
-        "template.output": {
+        "template.prompt": {
           name: "AllScalarsOutput",
           "@payloadRef": "AllScalars",
+          "@responseRef": "AllScalars",
           "@textRef": "x/y",
-          "@format": "json",
         },
       },
     ]);
@@ -106,11 +106,11 @@ describe("renderOutputParser()", () => {
         },
       },
       {
-        "template.output": {
+        "template.prompt": {
           name: "ListOutput",
           "@payloadRef": "ListPayload",
+          "@responseRef": "ListPayload",
           "@textRef": "x/y",
-          "@format": "json",
         },
       },
     ]);
@@ -140,11 +140,11 @@ describe("renderOutputParser()", () => {
         },
       },
       {
-        "template.output": {
+        "template.prompt": {
           name: "OuterOutput",
           "@payloadRef": "Outer",
+          "@responseRef": "Outer",
           "@textRef": "x/y",
-          "@format": "json",
         },
       },
     ]);
@@ -178,23 +178,49 @@ describe("renderOutputParser()", () => {
         },
       },
       {
-        "template.output": {
+        "template.prompt": {
           name: "OuterOutput",
           "@payloadRef": "Outer",
+          "@responseRef": "Outer",
           "@textRef": "x/y",
-          "@format": "json",
         },
       },
     ]);
     const out = renderOutputParser(root, "OuterOutput");
+    // Neither field is @required, so both carry `.optional()` — the schema's
+    // notion of the contract is the metadata's. The indentation contract is
+    // unchanged by that: nested fields sit one step deeper, and the nested
+    // closer aligns with the parent's field column.
     expect(out).toContain(`const OuterOutputSchema = z.object({
   inner: z.object({
-    x: z.string(),
-  }),
+    x: z.string().optional(),
+  }).optional(),
 });`);
   });
 
-  test("throws when template name is not a template.output", async () => {
+  test("throws when the template is a template.output (ADR-0052: outbound parses nothing)", async () => {
+    // The polarity of this guard inverted with ADR-0052. It used to reject a
+    // template.prompt; a prompt is now the ONLY thing that can carry a response.
+    const root = await loadRoot([
+      {
+        "object.value": {
+          name: "P",
+          children: [{ "field.string": { name: "x" } }],
+        },
+      },
+      {
+        "template.output": {
+          name: "notAPrompt",
+          "@payloadRef": "P",
+          "@textRef": "x/y",
+          "@format": "html",
+        },
+      },
+    ]);
+    expect(() => renderOutputParser(root, "notAPrompt")).toThrow(/not a template\.prompt/i);
+  });
+
+  test("throws when a prompt declares no @responseRef at all", async () => {
     const root = await loadRoot([
       {
         "object.value": {
@@ -204,14 +230,13 @@ describe("renderOutputParser()", () => {
       },
       {
         "template.prompt": {
-          name: "notOutput",
+          name: "fireAndForget",
           "@payloadRef": "P",
           "@textRef": "x/y",
-          "@format": "text",
         },
       },
     ]);
-    expect(() => renderOutputParser(root, "notOutput")).toThrow(/not a template\.output/i);
+    expect(() => renderOutputParser(root, "fireAndForget")).toThrow(/missing @responseRef/i);
   });
 
   test("throws when @payloadRef cannot be resolved", async () => {
@@ -219,11 +244,11 @@ describe("renderOutputParser()", () => {
     // The renderer must still defend its contract on the post-load tree.
     const root = await loadRootAllowErrors([
       {
-        "template.output": {
+        "template.prompt": {
           name: "BrokenOutput",
           "@payloadRef": "DoesNotExist",
+          "@responseRef": "DoesNotExist",
           "@textRef": "x/y",
-          "@format": "json",
         },
       },
     ]);
