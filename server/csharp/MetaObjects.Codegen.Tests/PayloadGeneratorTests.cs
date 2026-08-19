@@ -84,7 +84,10 @@ public sealed class PayloadGeneratorTests
         Assert.Equal("ClassificationResponse.payload.cs", file.Path);
         Assert.Contains("public sealed record ClassificationResponse", file.Content);
         Assert.Contains("public string? documentType { get; init; }", file.Content);
-        Assert.Contains("public double? confidence { get; init; }", file.Content);
+        // field.decimal is precision-exact — `decimal`, never `double` (#309). This
+        // assertion pinned `double` while the entity generator, ADR-0019, Kotlin/Java
+        // (BigDecimal) and TypeScript (string) all said otherwise.
+        Assert.Contains("public decimal? confidence { get; init; }", file.Content);
         Assert.Contains("public NoteEntry? note { get; init; }", file.Content);
         Assert.Contains("public sealed record NoteEntry", file.Content);
         Assert.Contains("public string? value { get; init; }", file.Content);

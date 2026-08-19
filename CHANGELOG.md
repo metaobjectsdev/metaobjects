@@ -402,6 +402,20 @@ now the payload tier's optionality oracle as well as its collision oracle.
 Adopter-visible in C# and Kotlin: a payload property that was non-null becomes nullable
 unless its metadata declares `@required`. Mark the fields you genuinely require.
 
+### Fixed — a payload's `field.decimal` emitted C# `double`, silently rounding ([#309](https://github.com/metaobjectsdev/metaobjects/issues/309), NuGet)
+
+`PayloadCodegen`'s scalar map sent `field.decimal` to `double`. Every other tier and port
+already said otherwise: this port's own entity generator maps it to `decimal`
+(`CSharpNaming`), [ADR-0019](spec/decisions/ADR-0019-runtime-return-type-contract.md) pins
+the runtime return type to `decimal`, Kotlin and Java use `BigDecimal` (their mapper's
+comment reads "NEVER a float"), and TypeScript uses `string` because its Postgres driver
+returns `NUMERIC` as a string precisely to avoid float rounding.
+
+So the payload tier — the shape most likely to carry money — was the one place that rounded.
+Reported alongside the `@required` defect above and fixed with it, since both are the same
+tier disagreeing with the rest of the toolchain. Adopter-visible: a payload property typed
+`double` becomes `decimal`.
+
 ### Fixed — a projection could not borrow an entity's alternate key ([#310](https://github.com/metaobjectsdev/metaobjects/issues/310), all four loaders)
 
 A `object.projection` borrows its key rather than declaring one:

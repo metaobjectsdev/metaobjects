@@ -58,7 +58,14 @@ public static class PayloadCodegen
             [FIELD_SUBTYPE_CURRENCY]  = "long",
             [FIELD_SUBTYPE_DOUBLE]    = "double",
             [FIELD_SUBTYPE_FLOAT]     = "double",
-            [FIELD_SUBTYPE_DECIMAL]   = "double",
+            // #309 (second observation) — `decimal`, NOT `double`. field.decimal is
+            // precision-exact, and every other tier and port already says so: this port's
+            // entity generator maps it to `decimal` (CSharpNaming), ADR-0019 pins the
+            // runtime return type to `decimal`, Kotlin/Java use BigDecimal ("NEVER a
+            // float"), and TypeScript uses `string` because its pg driver returns NUMERIC
+            // as a string to avoid float rounding. Only the payload tier said `double`,
+            // which silently rounds — the one shape most likely to carry money.
+            [FIELD_SUBTYPE_DECIMAL]   = "decimal",
             [FIELD_SUBTYPE_BOOLEAN]   = "bool",
             [FIELD_SUBTYPE_DATE]      = "string",
             [FIELD_SUBTYPE_TIME]      = "string",
