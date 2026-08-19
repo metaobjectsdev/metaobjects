@@ -42,6 +42,19 @@ public abstract class MetaIdentity extends MetaData {
     /** Reference subtype - this entity has fields whose value(s) identify an instance of another entity. */
     public final static String SUBTYPE_REFERENCE = "reference";
 
+    /**
+     * The identity subtypes that denote a UNIQUE key (#310).
+     *
+     * <p>ADR-0040 put uniqueness in the TYPE: primary and secondary are both unique keys
+     * (secondary IS the unique alternate key — {@code @unique} was removed from it precisely
+     * because the subtype already says so), while reference is a foreign key and carries no
+     * uniqueness at all. Named here because more than one rule needs "is this a candidate
+     * key?", and answering it by listing subtypes at each site is how the sites drift.</p>
+     */
+    public static boolean isUniqueKeySubType(String subType) {
+        return SUBTYPE_PRIMARY.equals(subType) || SUBTYPE_SECONDARY.equals(subType);
+    }
+
     // === ESSENTIAL ATTRIBUTES ===
     /** Array of field names that comprise this identity */
     public final static String ATTR_FIELDS = "fields";

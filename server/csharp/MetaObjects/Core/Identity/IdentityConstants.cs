@@ -24,6 +24,21 @@ public static class IdentityConstants
         IDENTITY_SUBTYPE_REFERENCE,
     ];
 
+    /// <summary>
+    /// The identity subtypes that denote a UNIQUE key (#310).
+    ///
+    /// ADR-0040 put uniqueness in the TYPE: primary and secondary are both unique keys
+    /// (secondary IS the unique alternate key — @unique was removed from it precisely
+    /// because the subtype already says so), while reference is a foreign key and carries
+    /// no uniqueness. Named here because more than one rule needs "is this a candidate
+    /// key?", and answering it by listing subtypes at each site is how the sites drift.
+    /// </summary>
+    public static readonly string[] IDENTITY_UNIQUE_KEY_SUBTYPES =
+    [
+        IDENTITY_SUBTYPE_PRIMARY,
+        IDENTITY_SUBTYPE_SECONDARY,
+    ];
+
     // Identity attrs
     public const string IDENTITY_ATTR_FIELDS     = "fields";
     public const string IDENTITY_ATTR_GENERATION = "generation";

@@ -789,6 +789,31 @@ declared field set IS the exposure (fail-closed). Give it a read-only `source.rd
 projection detection + view DDL off that read-only source, so without it `meta gen`
 emits nothing for the projection.
 
+**The borrowed key may be ANY unique key — including a composite, and including the
+entity's `identity.secondary`.** The single-field `extends: "Author.id"` above is the
+common case, not the limit. Both of these are legal:
+
+```yaml
+# Composite primary → composite primary. @fields is COMPUTED from the local
+# pass-through fields, so it is optional here (declare it and it must agree).
+- identity.primary: { name: pk, extends: "Order.pk" }      # Order.pk = [tenant, ref]
+
+# A read model keyed on the entity's BUSINESS key, never surfacing its surrogate id.
+# Account has both: identity.primary pk (auto-increment id) AND identity.secondary
+# byCode (tenant + code). The view exposes tenant + code and borrows byCode.
+- identity.primary: { name: pk, extends: "Account.byCode" }
+```
+
+The rule is **uniqueness, not nomination**: ADR-0040 put uniqueness in the type, so
+`identity.primary` and `identity.secondary` are both unique keys and either can back a
+projection's key. `identity.reference` cannot — a foreign key is not unique, so
+`identity.primary extends: "Account.ownerRef"` is `ERR_EXTENDS_TARGET_MISMATCH`.
+
+Key correspondence still holds in every case: every field named by the borrowed identity's
+`@fields` needs a local field `extends`-ing that entity field, or the load fails with
+`ERR_IDENTITY_KEY_MISMATCH` — the identity cannot claim a pass-through the fields do not
+make.
+
 **A CONCRETE projection declares its OWN source — never inherits one.** A
 projection may `extends` another projection to reuse shape, but the child must
 declare its own `source.rdb`; inheriting the parent's is

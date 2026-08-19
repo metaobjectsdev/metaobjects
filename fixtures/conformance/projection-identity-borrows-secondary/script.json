@@ -1,0 +1,19 @@
+{
+  "operations": [
+    {
+      "navigate": ["object:AccountsByCode"],
+      "invoke": "object.primary-identity",
+      "expect": { "subtype": "primary" }
+    },
+    {
+      "navigate": ["object:AccountsByCode"],
+      "invoke": "object.effective-fields",
+      "expect": { "names": ["tenant", "code"] }
+    },
+    {
+      "navigate": ["object:Account"],
+      "invoke": "object.primary-identity",
+      "expect": { "subtype": "primary" }
+    }
+  ]
+}

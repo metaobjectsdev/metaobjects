@@ -444,7 +444,7 @@ public class MetaDataLoader
                     SuperResolve.TypeIdentity? r = failure.Referrer;
                     SuperResolve.TypeIdentity? t = failure.Target;
                     errors.Add(new MetaError(
-                        $"the extends target '{failure.Ref}' is {t?.Type}.{t?.SubType} but the extending node '{failure.NodeFqn}' is {r?.Type}.{r?.SubType} — a dotted extends must target a node of the same type and subtype",
+                        $"the extends target '{failure.Ref}' is {t?.Type}.{t?.SubType} but the extending node '{failure.NodeFqn}' is {r?.Type}.{r?.SubType} — {SuperResolve.EXTENDS_TARGET_MISMATCH_RULE}",
                         ErrorCode.ERR_EXTENDS_TARGET_MISMATCH,
                         Envelope: envelope));
                     continue;

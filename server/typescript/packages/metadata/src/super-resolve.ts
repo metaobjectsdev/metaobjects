@@ -21,6 +21,8 @@
 
 import type { MetaData } from "./shared/meta-data.js";
 import { PACKAGE_SEPARATOR, CHILD_REF_SEPARATOR } from "./shared/structural.js";
+import { TYPE_IDENTITY } from "./shared/base-types.js";
+import { IDENTITY_UNIQUE_KEY_SUBTYPES } from "./core/identity/identity-constants.js";
 
 // ---------------------------------------------------------------------------
 // Tree search helper
@@ -86,6 +88,51 @@ export function isChildTargetingRef(ref: string): boolean {
   const lastSegment = lastSep === -1 ? ref : ref.slice(lastSep + PACKAGE_SEPARATOR.length);
   return lastSegment.includes(CHILD_REF_SEPARATOR);
 }
+
+/**
+ * Whether a dotted `extends` target is acceptable for the extending node.
+ *
+ * Type must match exactly. Subtype must match too — with ONE exception, on identities
+ * (#310). For an identity, subtype equality was answering the wrong question: it read as
+ * "the same kind of thing", but ADR-0040 encodes uniqueness in the TYPE, so `primary` and
+ * `secondary` are both UNIQUE KEYS and differ only in which one the entity nominated as
+ * its main handle. Borrowing a key borrows uniqueness, not that nomination — so a read
+ * model may key off a business key the entity models as `identity.secondary` while never
+ * surfacing its surrogate `identity.primary` at all.
+ *
+ * The gate was never written for identities in the first place: its only conformance
+ * fixture is `error-extends-entity-field-type-mismatch`, a `field.uuid` extending a
+ * `field.string`. For a FIELD, subtype IS the datatype and inheriting across it is
+ * incoherent; for an identity, subtype is a ROLE. A field-shape rule was generalized onto
+ * a role axis without a fixture ever exercising it.
+ *
+ * `identity.reference` is excluded on both sides: a foreign key is not unique, so it can
+ * never back a borrowed key — and a set-membership test says that once, rather than
+ * enumerating the legal pairs.
+ *
+ * EXPORTED because there are two doors: this module's deferred resolution and
+ * `parser-core`'s eager check. They had independent copies of the boolean, so a change to
+ * one silently left the other enforcing the old rule on whichever path a given loader
+ * configuration takes.
+ */
+export function extendsTargetCompatible(node: MetaData, target: MetaData): boolean {
+  if (target.type !== node.type) return false;
+  if (target.subType === node.subType) return true;
+  return (
+    node.type === TYPE_IDENTITY &&
+    IDENTITY_UNIQUE_KEY_SUBTYPES.includes(node.subType) &&
+    IDENTITY_UNIQUE_KEY_SUBTYPES.includes(target.subType)
+  );
+}
+
+/**
+ * The one wording for `ERR_EXTENDS_TARGET_MISMATCH`, shared by both doors and mirrored in
+ * the other three ports. States the exception, so an author who hits it on a `field` is
+ * not left wondering why their identity case was allowed.
+ */
+export const EXTENDS_TARGET_MISMATCH_RULE =
+  "a dotted extends must target a node of the same type and subtype — the one exception " +
+  "is an identity, which may extend any UNIQUE key (identity.primary or identity.secondary)";
 
 /**
  * FR-024: split a child-targeting ref into the owner-object ref and the child
@@ -276,9 +323,20 @@ export function resolveDeferredSupers(root: MetaData): DeferredSuperFailure[] {
     if (target !== undefined) {
       // FR-024: a dotted ref must target a node of the SAME type and subtype
       // as the extending node. Dotted-only — top-level extends is unchanged.
+      //
+      // #310 — with ONE exception, on identities. Subtype equality here was standing in
+      // for "the target is the same kind of thing", and for identities that is the wrong
+      // question: ADR-0040 put uniqueness in the TYPE, so `identity.primary` and
+      // `identity.secondary` are both UNIQUE KEYS and differ only in which one the entity
+      // nominated as its main handle. A projection borrowing a key is borrowing
+      // uniqueness, not that nomination — so a read model may key off a business key the
+      // entity models as `identity.secondary` while never surfacing its surrogate
+      // `identity.primary` at all, which is the shape that was foreclosed.
+      //
+      // `identity.reference` stays out: an FK is not unique, so it can never back a key.
       if (
         isChildTargetingRef(node.superRef) &&
-        (target.type !== node.type || target.subType !== node.subType)
+        !extendsTargetCompatible(node, target)
       ) {
         failures.push({
           nodeFqn: node.fqn(),

@@ -10,9 +10,43 @@ Mirrors TS ``resolveDeferredSupers`` in super-resolve.ts:
 from __future__ import annotations
 
 from .errors import ErrorCode, MetaError
+from .meta.core.identity.identity_constants import IDENTITY_UNIQUE_KEY_SUBTYPES
 from .meta.meta_data import MetaData
+from .shared.base_types import TYPE_IDENTITY
 from .shared.separators import PACKAGE_SEP
 from .source import resolved_source
+
+
+def extends_target_compatible(node: MetaData, target: MetaData) -> bool:
+    """Whether a dotted ``extends`` target is acceptable for the extending node.
+
+    Type must match exactly. Subtype must match too — with ONE exception, on identities
+    (#310). For an identity, subtype equality was answering the wrong question: it read as
+    "the same kind of thing", but ADR-0040 encodes uniqueness in the TYPE, so ``primary``
+    and ``secondary`` are both UNIQUE KEYS and differ only in which one the entity
+    nominated as its main handle. Borrowing a key borrows uniqueness, not that nomination
+    — so a read model may key off a business key the entity models as ``identity.secondary``
+    while never surfacing its surrogate ``identity.primary`` at all.
+
+    ``identity.reference`` is excluded on both sides: a foreign key is not unique, so it
+    can never back a borrowed key.
+    """
+    if target.type != node.type:
+        return False
+    if target.sub_type == node.sub_type:
+        return True
+    return (
+        node.type == TYPE_IDENTITY
+        and node.sub_type in IDENTITY_UNIQUE_KEY_SUBTYPES
+        and target.sub_type in IDENTITY_UNIQUE_KEY_SUBTYPES
+    )
+
+
+# The one wording for ERR_EXTENDS_TARGET_MISMATCH, mirrored in the other three ports.
+EXTENDS_TARGET_MISMATCH_RULE = (
+    "a dotted extends must target a node of the same type and subtype — the one exception "
+    "is an identity, which may extend any UNIQUE key (identity.primary or identity.secondary)"
+)
 
 
 def resolve_supers(root: MetaData, errors: list[MetaError]) -> None:
@@ -99,17 +133,17 @@ def resolve_supers(root: MetaData, errors: list[MetaError]) -> None:
                 path=node.fqn(),
                 envelope=resolved_source(node.source, node.fqn(), node.super_ref),
             ))
-        elif _is_child_targeting_ref(node.super_ref) and (
-            target.type != node.type or target.sub_type != node.sub_type
+        elif _is_child_targeting_ref(node.super_ref) and not extends_target_compatible(
+            node, target
         ):
             # FR-024 (ADR-0029): a dotted extends target must match the referrer's
-            # type AND subtype (dotted-only check — top-level extends unchanged).
-            # Mirrors TS resolveDeferredSupers' target-mismatch kind.
+            # type AND subtype (dotted-only check — top-level extends unchanged), with
+            # the #310 identity exception. Mirrors TS resolveDeferredSupers.
             errors.append(MetaError(
                 f"the dotted extends target '{node.super_ref}' is "
                 f"[{target.type}.{target.sub_type}] but the extending node is "
-                f"[{node.type}.{node.sub_type}] — a dotted extends must target a "
-                f"node of the same type and subtype (referenced by {node.fqn()})",
+                f"[{node.type}.{node.sub_type}] — {EXTENDS_TARGET_MISMATCH_RULE} "
+                f"(referenced by {node.fqn()})",
                 ErrorCode.ERR_EXTENDS_TARGET_MISMATCH,
                 path=node.fqn(),
                 envelope=resolved_source(node.source, node.fqn(), node.super_ref),

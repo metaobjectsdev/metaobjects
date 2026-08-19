@@ -352,6 +352,50 @@ command whose whole job is the drift verdict. Pinned by a regression test on the
 which needs no Postgres container and covers the silent half: before the fix its failure
 output *is* the bug, verbatim.
 
+### Fixed — a projection could not borrow an entity's alternate key ([#310](https://github.com/metaobjectsdev/metaobjects/issues/310), all four loaders)
+
+A `object.projection` borrows its key rather than declaring one:
+`identity.primary: { extends: "Account.pk" }`. But the loader required a dotted `extends`
+target to have the same type **and subtype**, so the borrowed identity had to be the
+entity's `identity.primary`. A read model keyed on a **business key** — a unique code or
+slug the entity models as `identity.secondary`, with the surrogate auto-increment
+`identity.primary` deliberately never surfaced — failed to load with
+`ERR_EXTENDS_TARGET_MISMATCH`, plus a second, misleading `ERR_MISSING_REQUIRED_ATTR:
+@fields` (the inherit never happened, so the identity looked malformed too).
+
+**This was the code being stricter than the contract it ships.** The byte-gated registry
+manifest for `object.projection` says, in both its `description` and its `rules`:
+
+> Identity is optional and, when present, MUST extend **an entity identity**.
+
+Not "an entity's PRIMARY identity" — and an `identity.secondary` is an entity identity.
+`spec/metamodel/object.json` and ADR-0028 carry the same unqualified sentence. So this is a
+correction, not a capability grant, and `expected-registry.json` is unchanged.
+
+**The rule is uniqueness, not nomination.** ADR-0040 moved uniqueness into the TYPE, so
+`identity.primary` and `identity.secondary` are both unique keys — they differ only in
+which one the entity nominated as its main handle, and borrowing a key borrows uniqueness,
+not that nomination. `identity.reference` stays excluded on both sides: a foreign key is
+not unique, so it can never back a key. That bound is pinned per port, not assumed.
+
+The subtype half of the gate was never written for identities in the first place. Its only
+conformance byte is `error-extends-entity-field-type-mismatch` — a `field.uuid` extending a
+`field.string`. For a FIELD, subtype IS the datatype and inheriting across it is incoherent;
+for an identity, subtype is a ROLE. A field-shape rule had been generalized onto a role axis
+without a fixture ever exercising it.
+
+Nothing downstream needed changing: FR-024's key-correspondence pass never read the subtype,
+and the view builder already anchors the FROM relation on the *extended identity's owner* —
+so the emitted SQL selects the projected columns and omits the surrogate, as intended.
+
+**Two doors, one predicate.** TypeScript and C# each check this twice — an eager check
+during parse and a deferred one after all files load — and each held its own copy of the
+boolean. They now share one function, because a one-sided fix passes whichever path a given
+loader configuration happens to take; the eager door is pinned separately, and reverting
+only it turns the new test red.
+
+New shared fixture `projection-identity-borrows-secondary`, green in all four ports.
+
 ### Fixed — Java and Kotlin get the safety floor they never implemented (Maven)
 
 `docs/features/codegen-concepts.md` §7 has always stated a **product-wide** backstop —

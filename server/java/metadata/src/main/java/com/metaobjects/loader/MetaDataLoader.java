@@ -535,8 +535,19 @@ public class MetaDataLoader implements LoaderConfigurable {
             return null;
         }
 
-        if (!target.getType().equals(p.child.getType())
-                || !target.getSubType().equals(p.child.getSubType())) {
+        // #310 — type must match exactly; subtype must match too, with ONE exception on
+        // identities. ADR-0040 encodes uniqueness in the TYPE, so primary and secondary are
+        // both UNIQUE KEYS and differ only in which one the entity nominated as its main
+        // handle. Borrowing a key borrows uniqueness, not that nomination — so a read model
+        // may key off a business key the entity models as identity.secondary while never
+        // surfacing its surrogate identity.primary. identity.reference stays out: a foreign
+        // key is not unique, so it can never back a borrowed key.
+        boolean compatible = target.getType().equals(p.child.getType())
+                && (target.getSubType().equals(p.child.getSubType())
+                    || (com.metaobjects.identity.MetaIdentity.TYPE_IDENTITY.equals(p.child.getType())
+                        && com.metaobjects.identity.MetaIdentity.isUniqueKeySubType(p.child.getSubType())
+                        && com.metaobjects.identity.MetaIdentity.isUniqueKeySubType(target.getSubType())));
+        if (!compatible) {
             com.metaobjects.source.ErrorSource envelope =
                 com.metaobjects.source.ResolvedSource.from(
                     p.child.getSource(), p.child.getShortName(), p.superName);
@@ -546,6 +557,8 @@ public class MetaDataLoader implements LoaderConfigurable {
                     + target.getType() + "." + target.getSubType() + "] but the extending node is ["
                     + p.child.getType() + "." + p.child.getSubType()
                     + "] — a dotted extends must target a node of the same type and subtype"
+                    + " — the one exception is an identity, which may extend any UNIQUE key"
+                    + " (identity.primary or identity.secondary)"
                     + " in file [" + p.filename + "]",
                 com.metaobjects.ErrorCode.ERR_EXTENDS_TARGET_MISMATCH,
                 envelope);

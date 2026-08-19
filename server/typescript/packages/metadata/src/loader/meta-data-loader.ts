@@ -27,7 +27,7 @@ import { validateSourceParameterRef } from "../persistence/source/validate-sourc
 import { validateFieldReadOnly } from "../core/field/validate-field-readonly.js";
 import { validateEnumNormalizeAmbiguity } from "../core/field/validate-enum-normalize-ambiguity.js";
 import { validateDiscriminator } from "../core/object/validate-discriminator.js";
-import { resolveDeferredSupers } from "../super-resolve.js";
+import { resolveDeferredSupers, EXTENDS_TARGET_MISMATCH_RULE } from "../super-resolve.js";
 import { validateSubtypeRules } from "../subtype-rules.js";
 import { validateMaxOccurs } from "../validate-max-occurs.js";
 import { validateIdentityPassthrough } from "../core/identity/validate-identity-passthrough.js";
@@ -534,7 +534,7 @@ export class MetaDataLoader {
           const t = failure.target;
           errors.push(
             new ParseError(
-              `the extends target '${failure.ref}' is ${t?.type}.${t?.subType} but the extending node '${failure.nodeFqn}' is ${r?.type}.${r?.subType} — a dotted extends must target a node of the same type and subtype`,
+              `the extends target '${failure.ref}' is ${t?.type}.${t?.subType} but the extending node '${failure.nodeFqn}' is ${r?.type}.${r?.subType} — ${EXTENDS_TARGET_MISMATCH_RULE}`,
               {
                 code: "ERR_EXTENDS_TARGET_MISMATCH",
                 source: resolvedSource(failure.source, failure.nodeFqn, failure.ref),

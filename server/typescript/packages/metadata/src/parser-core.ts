@@ -31,7 +31,12 @@ import { canonicalSerialize, inferAttrSubType } from "./serializer-json.js";
 import { ParseError, type ErrorCode } from "./errors.js";
 import { resolvedSource, type ErrorSource, type LoaderWarning, type Contributor } from "./source.js";
 import { semanticDiff } from "./semantic-diff.js";
-import { resolveSuperRef, isChildTargetingRef } from "./super-resolve.js";
+import {
+  resolveSuperRef,
+  isChildTargetingRef,
+  extendsTargetCompatible,
+  EXTENDS_TARGET_MISMATCH_RULE,
+} from "./super-resolve.js";
 import { JsonPathBuilder } from "./json-path.js";
 import { getYamlPosition, type YamlPosition } from "./core/yaml-positions.js";
 import {
@@ -607,12 +612,18 @@ function parseNodeFresh(
       // FR-024 — a dotted child-targeting ref must resolve to a node of the
       // SAME type and subtype as the extending node. Dotted-only check; the
       // shipped top-level extends behavior is unchanged.
+      //
+      // The predicate is IMPORTED, not restated: this eager path and
+      // super-resolve's deferred path are two doors onto one rule, and they
+      // previously held independent copies of the boolean — so #310's relaxation
+      // applied to one would have left the other refusing, on whichever path a
+      // given loader configuration happens to take.
       if (
         isChildTargetingRef(model.superRef) &&
-        (superModel.type !== model.type || superModel.subType !== model.subType)
+        !extendsTargetCompatible(model, superModel)
       ) {
         throw new ParseError(
-          `the extends target '${model.superRef}' is ${superModel.type}.${superModel.subType} but the extending node '${model.fqn()}' is ${model.type}.${model.subType} — a dotted extends must target a node of the same type and subtype`,
+          `the extends target '${model.superRef}' is ${superModel.type}.${superModel.subType} but the extending node '${model.fqn()}' is ${model.type}.${model.subType} — ${EXTENDS_TARGET_MISMATCH_RULE}`,
           {
             code: "ERR_EXTENDS_TARGET_MISMATCH",
             source: resolvedSource(errSource(), model.fqn(), model.superRef),

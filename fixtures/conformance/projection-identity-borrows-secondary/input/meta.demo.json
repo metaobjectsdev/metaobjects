@@ -1,0 +1,32 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Account",
+          "children": [
+            { "source.rdb": { "@table": "accounts" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "tenant" } },
+            { "field.string": { "name": "code" } },
+            { "field.string": { "name": "internalNotes" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } },
+            { "identity.secondary": { "name": "byCode", "@fields": ["tenant", "code"] } }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "AccountsByCode",
+          "children": [
+            { "source.rdb": { "@kind": "view", "@table": "v_accounts_by_code" } },
+            { "field.string": { "name": "tenant", "extends": "demo::Account.tenant" } },
+            { "field.string": { "name": "code", "extends": "demo::Account.code" } },
+            { "identity.primary": { "name": "pk", "extends": "demo::Account.byCode" } }
+          ]
+        }
+      }
+    ]
+  }
+}

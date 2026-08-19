@@ -573,11 +573,14 @@ public static class Parser
                 // FR-024 — a dotted child-targeting ref must resolve to a node of the
                 // SAME type and subtype as the extending node. Dotted-only check; the
                 // shipped top-level extends behavior is unchanged.
+                // The predicate is SHARED with SuperResolve's deferred path, not restated:
+                // the two doors previously held independent copies of the boolean, so a
+                // change to one left the other enforcing the old rule.
                 if (SuperResolve.IsChildTargetingRef(model.SuperRef) &&
-                    (superModel.Type != model.Type || superModel.SubType != model.SubType))
+                    !SuperResolve.ExtendsTargetCompatible(model, superModel))
                 {
                     throw new ParseException(
-                        $"the extends target '{model.SuperRef}' is {superModel.Type}.{superModel.SubType} but the extending node '{model.Fqn()}' is {model.Type}.{model.SubType} — a dotted extends must target a node of the same type and subtype",
+                        $"the extends target '{model.SuperRef}' is {superModel.Type}.{superModel.SubType} but the extending node '{model.Fqn()}' is {model.Type}.{model.SubType} — {SuperResolve.EXTENDS_TARGET_MISMATCH_RULE}",
                         ErrorCode.ERR_EXTENDS_TARGET_MISMATCH, st.Source, st.Builder.ToString(),
                         ResolvedSource.From(st.CurrentSource(), model.Fqn(), model.SuperRef));
                 }

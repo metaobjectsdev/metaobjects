@@ -15,6 +15,22 @@ export const IDENTITY_SUBTYPES = [
 ] as const;
 export type IdentitySubType = (typeof IDENTITY_SUBTYPES)[number];
 
+/**
+ * The identity subtypes that denote a UNIQUE key.
+ *
+ * ADR-0040 put uniqueness in the TYPE: `identity.primary` and `identity.secondary` are both
+ * unique keys (secondary IS the unique alternate key — `@unique` was removed from it
+ * precisely because the subtype already says so), while `identity.reference` is a foreign
+ * key and carries no uniqueness at all.
+ *
+ * Named here because more than one rule needs "is this a candidate key?" and answering it
+ * by listing subtypes at each site is how the two drift apart.
+ */
+export const IDENTITY_UNIQUE_KEY_SUBTYPES: readonly string[] = [
+  IDENTITY_SUBTYPE_PRIMARY,
+  IDENTITY_SUBTYPE_SECONDARY,
+];
+
 // ---------------------------------------------------------------------------
 // Identity attrs
 // ---------------------------------------------------------------------------

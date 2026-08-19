@@ -14,6 +14,8 @@
 // multi-pass walker (resolveDeferredSupers) is added in Task 5.1.
 
 using MetaObjects.Meta;
+using MetaObjects.Shared;
+using MetaObjects.Core.Identity;
 
 namespace MetaObjects;
 
@@ -82,6 +84,41 @@ internal static class SuperResolve
         string lastSegment = lastSep == -1 ? reference : reference[(lastSep + PACKAGE_SEPARATOR.Length)..];
         return lastSegment.Contains(CHILD_REF_SEPARATOR, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Whether a dotted <c>extends</c> target is acceptable for the extending node.
+    ///
+    /// Type must match exactly. Subtype must match too — with ONE exception, on identities
+    /// (#310). For an identity, subtype equality was answering the wrong question: it read
+    /// as "the same kind of thing", but ADR-0040 encodes uniqueness in the TYPE, so
+    /// primary and secondary are both UNIQUE KEYS and differ only in which one the entity
+    /// nominated as its main handle. Borrowing a key borrows uniqueness, not that
+    /// nomination — so a read model may key off a business key the entity models as
+    /// identity.secondary while never surfacing its surrogate identity.primary at all.
+    ///
+    /// identity.reference is excluded on both sides: a foreign key is not unique, so it
+    /// can never back a borrowed key.
+    ///
+    /// Shared because there are TWO doors — this module's deferred resolution and
+    /// Parser's eager check. They held independent copies of the boolean, so a change to
+    /// one silently left the other enforcing the old rule.
+    /// </summary>
+    public static bool ExtendsTargetCompatible(MetaData node, MetaData target)
+    {
+        if (target.Type != node.Type) return false;
+        if (target.SubType == node.SubType) return true;
+        return node.Type == BaseTypes.TYPE_IDENTITY
+            && IdentityConstants.IDENTITY_UNIQUE_KEY_SUBTYPES.Contains(node.SubType)
+            && IdentityConstants.IDENTITY_UNIQUE_KEY_SUBTYPES.Contains(target.SubType);
+    }
+
+    /// <summary>
+    /// The one wording for ERR_EXTENDS_TARGET_MISMATCH, shared by both doors and mirrored
+    /// in the other three ports.
+    /// </summary>
+    public const string EXTENDS_TARGET_MISMATCH_RULE =
+        "a dotted extends must target a node of the same type and subtype — the one exception " +
+        "is an identity, which may extend any UNIQUE key (identity.primary or identity.secondary)";
 
     /// <summary>
     /// FR-024: split a child-targeting ref into the root-object ref and the child
@@ -329,8 +366,7 @@ internal static class SuperResolve
             {
                 // FR-024: a dotted ref must target a node of the SAME type and subtype
                 // as the extending node. Dotted-only — top-level extends is unchanged.
-                if (IsChildTargetingRef(node.SuperRef) &&
-                    (target.Type != node.Type || target.SubType != node.SubType))
+                if (IsChildTargetingRef(node.SuperRef) && !ExtendsTargetCompatible(node, target))
                 {
                     failures.Add(new DeferredSuperFailure(
                         node.Fqn(),
