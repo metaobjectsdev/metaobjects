@@ -15,8 +15,9 @@ guide: [`docs/features/metadata-sources.md`](docs/features/metadata-sources.md).
 - **`sources` is read by all four CLI surfaces**, not just the Node `meta` CLI —
   the C#, Python and Java/Kotlin CLIs (Kotlin has no CLI of its own; it runs
   through the same Maven plugin as Java) now resolve metadata from the
-  port-neutral `.metaobjects/config.json`, so one declaration serves every port.
-  Each reads a **neutral subset** (`schema_version` + `sources`) and ignores
+  port-neutral `.metaobjects/config.json`, so one declaration serves every port
+  (C#'s CLI loader accepts only a single directory `path` source — see the
+  adopter guide). Each reads a **neutral subset** (`schema_version` + `sources`) and ignores
   unknown top-level keys, so the TypeScript-owned keys in that file (`migrate`,
   `scope`, `extract`, and the rest) never become a four-port change. Precedence
   is a ladder — explicit CLI argument, then the port's own native surface (a

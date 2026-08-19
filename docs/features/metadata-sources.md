@@ -55,6 +55,18 @@ match wins:
 A config file that exists but is malformed is an error at its own rung; it never
 falls through to the next one.
 
+**`dotnet meta` (C#) accepts only a single DIRECTORY source.** Its loader
+(`MetaDataLoader.FromDirectory`) takes one directory, so `sources` declaring more
+than one entry, or a single entry that resolves to a FILE rather than a
+directory, is refused with a clear diagnostic naming the limit — rather than
+silently loading a subset of the declared sources, or (for the single-file case)
+failing deep inside the loader with an opaque, uncoded error. Declare exactly one
+directory `path` to use `dotnet meta gen`/`verify`/`docs`, or route around the
+limit with an explicit `<metadataDir>` CLI argument.
+`MetaDataLoader.Load(IReadOnlyList<IMetaDataSource>)` (`MetaDataLoader.cs`) is the
+documented follow-up that would lift both restrictions. The other three CLI
+surfaces have no such limit.
+
 The non-TypeScript ports read a **neutral subset** of that file —
 `schema_version` and `sources` — and ignore every other top-level key, so the
 TypeScript-owned keys beside them (`migrate`, `extract`, and the rest) never
