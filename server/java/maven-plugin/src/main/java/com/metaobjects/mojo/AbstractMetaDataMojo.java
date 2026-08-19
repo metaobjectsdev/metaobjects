@@ -260,8 +260,17 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
             sourceDir = loaderConfig.getSourceDir();
         }
 
+        // Precedence ladder (spec §5): when the pom names neither <sourceDir> nor
+        // <sources>, fall back to the port-neutral .metaobjects/config.json (else the
+        // built-in default directory) instead of silently loading nothing.
+        List<String> sources = loaderConfig.getSources();
+        List<String> neutralSources = resolveNeutralSourcesIfPomIsSilent(loaderConfig);
+        if (!neutralSources.isEmpty()) {
+            sources = neutralSources;
+        }
+
         MavenLoaderConfiguration.configure(configurable, sourceDir, projectClassLoader,
-                                         loaderConfig.getSources(), loaderArgs(strict));
+                                         sources, loaderArgs(strict));
 
         MetaDataLoader loader = configurable.getLoader();
 
@@ -467,5 +476,47 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
             }
         }
         return sourceDir;
+    }
+
+    /**
+     * The module basedir metadata-source resolution is anchored to — the same
+     * directory that would hold a project's {@code .metaobjects/} folder. Falls back
+     * to the process working directory when {@code project} is unset (e.g. a Mojo
+     * driven directly in a unit test, matching {@link #warnIfAgentContextStale()}'s
+     * same fallback).
+     */
+    protected File getProjectBaseDir() {
+        return project != null ? project.getBasedir() : new File(System.getProperty("user.dir"));
+    }
+
+    /**
+     * The precedence ladder for where metadata lives (spec §5). First match wins.
+     *
+     * <p>1. The pom — {@code <loader><sourceDir>} or {@code <loader><sources>}. If
+     * EITHER is present the pom owns the whole concern and the neutral file is not
+     * consulted; precedence is whole-concern, not a per-entry merge.
+     * <br>2. {@code sources} in the port-neutral {@code .metaobjects/config.json},
+     * read from the module basedir.
+     * <br>3. The built-in default directory.
+     *
+     * <p>A neutral file that EXISTS but is malformed throws rather than falling
+     * through. {@code <filters>} is untouched by this ladder — {@code scope} stays
+     * out of scope for this mechanism (Global Constraints).
+     *
+     * @return the resolved metadata file paths, or an empty list when the pom names
+     *     either {@code <sourceDir>} or {@code <sources>} (i.e. the neutral file is
+     *     not consulted at all)
+     */
+    protected List<String> resolveNeutralSourcesIfPomIsSilent(LoaderParam loaderConfig) {
+        boolean pomNamesLocation =
+                (loaderConfig.getSourceDir() != null && !loaderConfig.getSourceDir().isBlank())
+                || (loaderConfig.getSources() != null && !loaderConfig.getSources().isEmpty());
+        if (pomNamesLocation) return List.of();
+
+        return com.metaobjects.config.SourceResolver
+                .resolveCollection(getProjectBaseDir().toPath())
+                .stream()
+                .map(java.nio.file.Path::toString)
+                .toList();
     }
 }
