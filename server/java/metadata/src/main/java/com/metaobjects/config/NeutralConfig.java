@@ -117,6 +117,16 @@ public final class NeutralConfig {
 
         List<Map<String, String>> specs = new ArrayList<>();
         JsonElement srcs = root.get("sources");
+        if (srcs != null && !srcs.isJsonNull() && !srcs.isJsonArray()) {
+            // A present-but-wrong-typed `sources` (e.g. a bare object instead of an
+            // array) must RAISE, not silently read as "absent" — the latter would
+            // fall back to the default directory with no diagnostic, exactly the
+            // "typo'd config behaves like no config" failure this class exists to
+            // prevent (see the class javadoc).
+            throw new MetaDataException(
+                    path + ": \"sources\" must be an array",
+                    ErrorCode.ERR_BAD_ATTR_VALUE);
+        }
         if (srcs != null && srcs.isJsonArray()) {
             for (JsonElement el : srcs.getAsJsonArray()) {
                 if (!el.isJsonObject()) {

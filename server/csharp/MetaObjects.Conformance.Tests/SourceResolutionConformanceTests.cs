@@ -25,7 +25,10 @@ public class SourceResolutionConformanceTests
         // honor it correctly for that case to mean anything.
         string ResolveFrom,
         string[]? ExpectFiles,
-        string? ExpectError);
+        // A JSON string pins the exact error code raised; JSON `true` pins only
+        // that resolution RAISES — the malformed-config error code is
+        // deliberately not pinned cross-port (see the corpus README).
+        JsonElement? ExpectError);
 
     public static TheoryData<string> CaseNames()
     {
@@ -61,7 +64,7 @@ public class SourceResolutionConformanceTests
             string[]? expectFiles = el.TryGetProperty("expectFiles", out var ef)
                 ? ef.EnumerateArray().Select(x => x.GetString()!).ToArray()
                 : null;
-            string? expectError = el.TryGetProperty("expectError", out var ee) ? ee.GetString() : null;
+            JsonElement? expectError = el.TryGetProperty("expectError", out var ee) ? ee.Clone() : null;
 
             cases.Add(new Case(el.GetProperty("name").GetString()!, tree, cfg, resolveFrom, expectFiles, expectError));
         }
@@ -105,7 +108,12 @@ public class SourceResolutionConformanceTests
             if (c.ExpectError is not null)
             {
                 var ex = Assert.ThrowsAny<MetaModelException>(() => SourceResolver.ResolveCollection(invokeDir));
-                Assert.Equal(c.ExpectError, ex.Code.ToString());
+                // A string pins the exact code; `true` only pins that it raises —
+                // see the ExpectError field doc above.
+                if (c.ExpectError.Value.ValueKind == JsonValueKind.String)
+                {
+                    Assert.Equal(c.ExpectError.Value.GetString(), ex.Code.ToString());
+                }
                 return;
             }
 

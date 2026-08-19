@@ -67,7 +67,17 @@ public sealed class NeutralConfig
             }
 
             var specs = new List<IReadOnlyDictionary<string, string>>();
-            if (root.TryGetProperty("sources", out var srcs) && srcs.ValueKind == JsonValueKind.Array)
+            if (root.TryGetProperty("sources", out var srcs) && srcs.ValueKind != JsonValueKind.Null
+                && srcs.ValueKind != JsonValueKind.Array)
+            {
+                // A present-but-wrong-typed `sources` (e.g. a bare object instead of an
+                // array) must RAISE, not silently read as "absent" — the latter would
+                // fall back to the default directory with no diagnostic, exactly the
+                // "typo'd config behaves like no config" failure this class exists to
+                // prevent (see the file header).
+                throw new MetaModelException($"{path}: \"sources\" must be an array", ErrorCode.ERR_BAD_ATTR_VALUE);
+            }
+            if (root.TryGetProperty("sources", out srcs) && srcs.ValueKind == JsonValueKind.Array)
             {
                 foreach (var s in srcs.EnumerateArray())
                 {

@@ -191,6 +191,15 @@
         "migrate": { "dialect": "postgres" }
       },
       "expectFiles": ["model/meta.a.json"]
+    },
+    {
+      "name": "sources-must-be-an-array-not-an-object",
+      "tree": {
+        "metaobjects/meta.stale.json": "{\"metadata.root\":{\"children\":[]}}",
+        "custom/meta.real.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": { "path": "custom" } },
+      "expectError": true
     }
   ]
 }

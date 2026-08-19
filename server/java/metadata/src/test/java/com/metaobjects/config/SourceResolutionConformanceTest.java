@@ -68,8 +68,13 @@ public class SourceResolutionConformanceTest {
      *     config's own location AND the {@code expectFiles} comparison base below
      *     must honor it correctly for that case to mean anything.
      */
+    /**
+     * {@code expectError}: a JSON string pins the exact error code raised; JSON
+     * {@code true} pins only that resolution RAISES — the malformed-config error
+     * code is deliberately not pinned cross-port (see the corpus README).
+     */
     private record Case(String name, Map<String, String> tree, JsonObject config,
-                         String resolveFrom, List<String> expectFiles, String expectError) {}
+                         String resolveFrom, List<String> expectFiles, JsonElement expectError) {}
 
     private static Path corpus() {
         Path dir = Paths.get("").toAbsolutePath();
@@ -107,7 +112,7 @@ public class SourceResolutionConformanceTest {
                 }
             }
 
-            String expectError = c.has("expectError") ? c.get("expectError").getAsString() : null;
+            JsonElement expectError = c.has("expectError") ? c.get("expectError") : null;
 
             rows.add(new Object[]{name, new Case(name, tree, config, resolveFrom, expectFiles, expectError)});
         }
@@ -157,7 +162,12 @@ public class SourceResolutionConformanceTest {
                     SourceResolver.resolveCollection(invokeDir);
                     fail("expected " + testCase.expectError() + " for case " + testCase.name());
                 } catch (MetaDataException e) {
-                    assertEquals(testCase.expectError(), e.getCode().orElseThrow().name());
+                    JsonElement expected = testCase.expectError();
+                    // A string pins the exact code; `true` only pins that it raises —
+                    // see the Case record's javadoc above.
+                    if (expected.isJsonPrimitive() && expected.getAsJsonPrimitive().isString()) {
+                        assertEquals(expected.getAsString(), e.getCode().orElseThrow().name());
+                    }
                 }
                 return;
             }

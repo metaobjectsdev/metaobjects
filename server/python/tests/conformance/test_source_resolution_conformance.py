@@ -50,7 +50,11 @@ def test_source_resolution_conformance(case: dict, tmp_path: Path) -> None:
     if "expectError" in case:
         with pytest.raises(ParseError) as e:
             resolve_collection(resolve_from)
-        assert e.value.code.value == case["expectError"]
+        # A string pins the exact code; `True` only pins that resolution
+        # RAISES — the malformed-config error code is deliberately not
+        # pinned cross-port (see the corpus README).
+        if isinstance(case["expectError"], str):
+            assert e.value.code.value == case["expectError"]
         return
 
     # `expectFiles` is project-root-relative even when `resolveFrom` points

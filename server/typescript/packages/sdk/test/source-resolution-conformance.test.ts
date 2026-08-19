@@ -15,7 +15,10 @@ interface Case {
    *  `.metaobjects/config.json`. See the corpus README, "Shape". */
   readonly resolveFrom?: string;
   readonly expectFiles?: readonly string[];
-  readonly expectError?: string;
+  /** A string pins the exact error code raised; `true` pins only that
+   *  resolution RAISES — the malformed-config error code is deliberately not
+   *  pinned cross-port (see the corpus README). */
+  readonly expectError?: string | true;
 }
 
 const CORPUS = resolve(
@@ -57,13 +60,20 @@ describe("source-resolution conformance", () => {
     test(c.name, async () => {
       const { root, resolveDir } = await materialize(c);
       if (c.expectError !== undefined) {
-        let code: string | undefined;
+        let thrown: unknown;
+        let threw = false;
         try {
           await resolveCollection(resolveDir, { explicitDir: resolveDir });
         } catch (e) {
-          code = (e as { code?: string }).code;
+          threw = true;
+          thrown = e;
         }
-        expect(code).toBe(c.expectError);
+        expect(threw).toBe(true);
+        // A string pins the exact code; `true` only pins that it raises — see
+        // the `expectError` type doc above.
+        if (typeof c.expectError === "string") {
+          expect((thrown as { code?: string }).code).toBe(c.expectError);
+        }
         return;
       }
       const collection = await resolveCollection(resolveDir, { explicitDir: resolveDir });

@@ -34,8 +34,11 @@ README.md
 - **`expectFiles`** — project-root-relative paths (NOT relative to
   `resolveFrom`), compared as an **UNORDERED SET**. See "Order is
   deliberately not pinned" below.
-- **`expectError`** — an error code the resolution must fail with. Exactly one
-  of `expectFiles` / `expectError` is present per case.
+- **`expectError`** — either a STRING error code the resolution must fail with
+  exactly, or the literal `true` meaning "must raise, but which error/code is
+  deliberately not pinned across ports" (see "Also deliberately NOT pinned:
+  the malformed-config error code" below for why the latter form exists).
+  Exactly one of `expectFiles` / `expectError` is present per case.
 
 ## Semantics pinned here
 
@@ -97,16 +100,25 @@ output depends on it. It just is not a cross-port promise.
 
 ## Also deliberately NOT pinned: the malformed-config error code
 
-The corpus has no case for a `.metaobjects/config.json` that exists but fails
-to parse (bad JSON, an unsupported `schema_version`, a malformed `sources`
-shape). The contract is only that resolution MUST raise rather than silently
-degrade to "no config" — which error code it raises with is left to each
-port. The reference implementation is why: `collection.ts:129-140` has no
+`sources-must-be-an-array-not-an-object` pins that a `.metaobjects/config.json`
+that exists but is malformed (here: `sources` declared as a bare object instead
+of an array) MUST raise rather than silently degrade to "no config" — the
+regression this case exists to catch is a wrong-typed `sources` reading as
+absent, falling back to the default `metaobjects/` directory with no
+diagnostic at all, even when a stale file sits there. It uses `"expectError":
+true` rather than a string code, because which code it raises with is left to
+each port. The reference implementation is why: `collection.ts:129-140` has no
 try/catch around config loading and lets the raw zod/JSON error propagate, so
-TypeScript emits no MetaObjects error code here at all. Pinning a shared code
-across ports would mean changing the reference, which this corpus does not
-do. Python raises `ERR_COLLECTION_NOT_FOUND`; C# and Java may each choose a
-different code for the same failure, same as file order above.
+TypeScript throws a `ZodError` carrying no MetaObjects error code at all.
+Pinning a shared code across ports would mean changing the reference, which
+this corpus does not do. Python raises `ERR_COLLECTION_NOT_FOUND`; C# and Java
+both raise `ERR_BAD_ATTR_VALUE` — three distinct outcomes across four ports,
+which is exactly why this case checks only that resolution raises, never with
+which error, same as file order above. The same `true` form is available to
+any future malformed-config case that needs it (bad JSON, an unsupported
+`schema_version`, a malformed `sources` entry shape, …) — none of those are
+in the corpus yet, but nothing about the mechanism is specific to this one
+shape.
 
 ## Behavioral contract
 
