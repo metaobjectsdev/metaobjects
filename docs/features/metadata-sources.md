@@ -34,12 +34,62 @@ exactly that set. A `path` is read **in place and never installed** or copied.
 `"sources": []`, so every existing project takes the default and resolves the same
 files it always did.
 
-**Port support.** `sources` / `scope` / `migrate.scope` are read by the **Node
-`meta` CLI** today. The Java, Kotlin, C# and Python CLIs still take their metadata
-location their own way (a Maven `<source>` element, a positional directory, a
-`metadata` config key). The cross-port pattern grammar is already pinned by
-[`fixtures/scope-conformance/`](../../fixtures/scope-conformance/); wiring the other
-four CLIs to the same config file is future work, not yet planned or scheduled.
+**Port support.** `sources` is read by **all four CLI surfaces** — the Node `meta`
+CLI, `dotnet meta` (C#), `metaobjects` (Python) and `metaobjects:generate` (Java
+and Kotlin, via Maven — Kotlin has no CLI entry point of its own; it runs through
+the same Maven plugin as Java). Each resolves the same files from the same
+declaration; that promise is gated by
+[`fixtures/source-resolution-conformance/`](../../fixtures/source-resolution-conformance/).
+
+Each port reaches it its own way, and the ladder is the same everywhere — first
+match wins:
+
+1. An explicit CLI argument (a positional metadata directory, `--config`, `--cwd`).
+2. The port's own native surface, where it has one — Java and Kotlin's pom
+   `<sourceDir>`/`<sources>`, Python's `metadata` key in `metaobjects.config.yaml`.
+   If the pom names either element it owns the concern outright and the neutral
+   file is not consulted.
+3. `sources` in `.metaobjects/config.json`.
+4. The built-in default — a `metaobjects/` directory beside that config.
+
+A config file that exists but is malformed is an error at its own rung; it never
+falls through to the next one.
+
+The non-TypeScript ports read a **neutral subset** of that file —
+`schema_version` and `sources` — and ignore every other top-level key, so the
+TypeScript-owned keys beside them (`migrate`, `extract`, and the rest) never
+become a four-port concern. The Node CLI remains the file's only writer;
+`meta init --config-only` writes it into a Maven- or pip-rooted project without
+adding a TypeScript scaffold.
+
+**`scope` and `migrate.scope` remain Node-CLI-only.** Java's shipped `<filters>`
+grammar uses `*` to cross the `::` package separator and `@` to match one
+segment — respectively `scope`'s `**` and `*`, **inverted** — plus `!`-prefix
+exclusion and a `.[attr]` predicate that `scope` cannot express at all
+(`GeneratorUtil.createRegexFromGlob` even carries a `TODO` conceding its own
+separator handling is wrong). Both are output filters over the same resolved
+file set, so they compete rather than layer, and reconciling them changes
+behavior for existing Java consumers — a separate, adopter-affecting decision
+rather than a mechanical port. No cross-port behavior depends on `scope`.
+
+**Two things are deliberately not cross-port contracts**, because the corpus
+that gates this feature says so explicitly:
+
+- **Resolved file order.** The ports' directory walks already differ and always
+  have — Java sorts by basename, C# by full-path ordinal, Python by basename,
+  TypeScript walks depth-first with files before subdirectories — and the
+  loader's overlay partition discards caller order regardless
+  (super-resolution is order-independent, #188). Every port resolves the same
+  file **set**; only the order within it is each port's own.
+- **The error code for a malformed config.** A `.metaobjects/config.json` that
+  exists but is malformed (e.g. `sources` declared as an object instead of an
+  array) must raise rather than silently degrade to "no config" — but which
+  error is each port's own. Verified empirically: TypeScript raises a raw
+  `ZodError` carrying no MetaObjects error code at all, Python raises
+  `ERR_COLLECTION_NOT_FOUND`, and C# and Java both raise `ERR_BAD_ATTR_VALUE`.
+  The shared corpus expresses this with `"expectError": true` ("must raise,
+  code unpinned") alongside the existing string-code form for cases that DO
+  pin one.
 
 ---
 

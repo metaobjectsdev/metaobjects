@@ -7,6 +7,46 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added — `sources` is read by all four CLI surfaces, plus `meta init --config-only`
+
+`.metaobjects/config.json`'s `sources` key stops being a Node-only concern. Adopter
+guide: [`docs/features/metadata-sources.md`](docs/features/metadata-sources.md).
+
+- **`sources` is read by all four CLI surfaces**, not just the Node `meta` CLI —
+  the C#, Python and Java/Kotlin CLIs (Kotlin has no CLI of its own; it runs
+  through the same Maven plugin as Java) now resolve metadata from the
+  port-neutral `.metaobjects/config.json`, so one declaration serves every port.
+  Each reads a **neutral subset** (`schema_version` + `sources`) and ignores
+  unknown top-level keys, so the TypeScript-owned keys in that file (`migrate`,
+  `scope`, `extract`, and the rest) never become a four-port change. Precedence
+  is a ladder — explicit CLI argument, then the port's own native surface (a
+  pom's `<sourceDir>`/`<sources>`, Python's `metadata` key), then `sources`,
+  then the default `metaobjects/` directory — and a config that exists but is
+  malformed errors at its own rung rather than silently falling through. Gated
+  by the new
+  [`fixtures/source-resolution-conformance/`](fixtures/source-resolution-conformance/)
+  corpus, which every port runs.
+- **`meta init --config-only`** writes `.metaobjects/config.json` and nothing
+  else, so a Maven- or pip-rooted project can declare its sources for the Node
+  CLI (which owns `migrate` and `verify --db`, ADR-0015) without acquiring a
+  TypeScript scaffold it will not use.
+- **`scope` / `migrate.scope` stay Node-CLI-only.** Java's shipped `<filters>`
+  grammar uses `*` to cross the `::` separator and `@` to match one segment —
+  respectively `scope`'s `**` and `*`, inverted — plus `!`-prefix exclusion and
+  a `.[attr]` predicate `scope` cannot express at all
+  (`GeneratorUtil.createRegexFromGlob` carries a `TODO` conceding its own
+  separator handling is wrong). Both are output filters over the same resolved
+  file set, so reconciling them is a separate, adopter-affecting decision
+  rather than a mechanical port. No cross-port behavior depends on `scope`.
+- **Resolved file order, and the malformed-config error code, are deliberately
+  NOT cross-port contracts.** The ports' directory walks already differ and
+  always have (Java sorts by basename, C# by full-path ordinal, Python by
+  basename, TypeScript walks depth-first); the corpus compares file **sets**.
+  A malformed config must raise rather than silently degrade to "no config",
+  but which error is each port's own — verified empirically: TypeScript raises
+  a raw `ZodError` with no code at all, Python raises
+  `ERR_COLLECTION_NOT_FOUND`, C# and Java both raise `ERR_BAD_ATTR_VALUE`.
+
 ### Changed — a committed migration chain must replay from empty, and `meta migrate` stops writing chains that cannot ([#313](https://github.com/metaobjectsdev/metaobjects/issues/313))
 
 **`meta migrate --from-db` now REFUSES a drop for a table or view the committed schema
