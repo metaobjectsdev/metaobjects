@@ -87,14 +87,24 @@ def test_explicit_relative_metadata_dir_resolves_against_cwd(
     Regression for the plan's original defect: `resolve_sources(Path(explicit)
     .resolve().parent, [{"path": explicit}])` joins an already-absolute base
     with a still-relative spec, walking one directory too far up.
+
+    A SINGLE-segment argument (e.g. ``"model"``) cannot distinguish the buggy
+    formulation from the fixed one: ``Path("model").resolve().parent`` happens
+    to land back at the project root, so the extra join silently cancels out.
+    The defect only shows up with a MULTI-segment relative path (``"sub/model"``)
+    — the buggy form resolves the base to ``.../sub`` and then joins the still-
+    relative ``"sub/model"`` onto it, landing on ``.../sub/sub/model`` (does not
+    exist -> ERR_SOURCE_UNRESOLVED) instead of ``.../sub/model``.
     """
-    (tmp_path / "model").mkdir()
-    (tmp_path / "model" / "meta.a.json").write_text('{"metadata.root":{"children":[]}}')
+    (tmp_path / "sub" / "model").mkdir(parents=True)
+    (tmp_path / "sub" / "model" / "meta.a.json").write_text(
+        '{"metadata.root":{"children":[]}}'
+    )
 
     from metaobjects.cli import resolve_metadata_location
 
     monkeypatch.chdir(tmp_path)
-    got = resolve_metadata_location(explicit="model", config=None, root=tmp_path)
+    got = resolve_metadata_location(explicit="sub/model", config=None, root=tmp_path)
     assert {Path(p).relative_to(tmp_path.resolve()).as_posix() for p in got} == {
-        "model/meta.a.json"
+        "sub/model/meta.a.json"
     }

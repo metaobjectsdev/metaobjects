@@ -222,3 +222,45 @@ def test_gen_flag_path_ignores_config_when_present(tmp_path: Path) -> None:
     rc = main(["gen", str(meta), "--out", str(out)])
     assert rc == 0
     assert (out / "Program.py").exists()
+
+
+def test_gen_no_args_no_yaml_falls_back_to_neutral_config(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """No positional <metadata_dir> AND no metaobjects.config.yaml anywhere:
+    `gen` must descend to the `.metaobjects/config.json` `sources` rung
+    (source-resolution ladder rung 3) rather than erroring, per fix round 1.
+
+    The metadata lives under `model/`, NOT the built-in default `metaobjects/`
+    directory — so this only passes if the declared `sources` path is actually
+    consulted, not a coincidental default-directory hit.
+    """
+    model = tmp_path / "model"
+    model.mkdir()
+    (model / "meta.fitness.json").write_text(FITNESS.read_text())
+    d = tmp_path / ".metaobjects"
+    d.mkdir()
+    (d / "config.json").write_text(
+        json.dumps({"schema_version": 1, "sources": [{"path": "model"}]})
+    )
+
+    monkeypatch.chdir(tmp_path)
+    rc = main(["gen", "--out", "gen/models", "--generators", "entity"])
+    assert rc == 0
+    assert (tmp_path / "gen/models/Program.py").exists()
+
+
+def test_gen_no_args_no_config_at_all_falls_back_to_default_directory(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """No positional <metadata_dir>, no metaobjects.config.yaml, AND no
+    `.metaobjects/config.json`: `gen` descends all the way to the ladder's
+    built-in default directory (`metaobjects/`) rather than erroring."""
+    meta = tmp_path / "metaobjects"
+    meta.mkdir()
+    (meta / "meta.fitness.json").write_text(FITNESS.read_text())
+
+    monkeypatch.chdir(tmp_path)
+    rc = main(["gen", "--out", "gen/models", "--generators", "entity"])
+    assert rc == 0
+    assert (tmp_path / "gen/models/Program.py").exists()

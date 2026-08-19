@@ -152,3 +152,38 @@ def test_verify_target_scoping_widens_to_shared_outdir(tmp_path: Path, capsys) -
     rc = main(["verify", "--codegen", "--config", str(cfg), "--target", "a"])
     assert rc == 1
     assert "Week.py" in capsys.readouterr().err
+
+
+def test_verify_codegen_no_args_no_yaml_falls_back_to_neutral_config(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """No positional <metadata_dir> AND no metaobjects.config.yaml anywhere:
+    `verify --codegen` must descend to the `.metaobjects/config.json` `sources`
+    rung rather than erroring, per fix round 1 — and must agree with `gen`
+    taking the SAME rung (a fresh gen is in sync; drift is still caught).
+
+    The metadata lives under `model/`, NOT the built-in default `metaobjects/`
+    directory, so this only passes if the declared `sources` path is actually
+    consulted by BOTH commands.
+    """
+    model = tmp_path / "model"
+    model.mkdir()
+    (model / "meta.fitness.json").write_text(FITNESS.read_text())
+    d = tmp_path / ".metaobjects"
+    d.mkdir()
+    (d / "config.json").write_text(
+        '{"schema_version": 1, "sources": [{"path": "model"}]}'
+    )
+
+    monkeypatch.chdir(tmp_path)
+    # No --generators here: `verify --codegen` has no such flag (it always
+    # regenerates the full default suite), so `gen` must run the full suite
+    # too or the diff reports the un-emitted generators as spurious drift —
+    # same constraint the flag-mode docstring notes for --entities.
+    assert main(["gen", "--out", "gen/models"]) == 0
+    # Fresh gen -> no drift, via the same fallback rung.
+    assert main(["verify", "--codegen", "--out", "gen/models"]) == 0
+    # Drift the committed output; the fallback rung must still catch it.
+    program = tmp_path / "gen/models/Program.py"
+    program.write_text(program.read_text() + "\n# drift\n")
+    assert main(["verify", "--codegen", "--out", "gen/models"]) == 1
