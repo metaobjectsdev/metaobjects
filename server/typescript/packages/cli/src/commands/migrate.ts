@@ -1,5 +1,6 @@
 import { resolve as resolvePath } from "node:path";
 import { mkdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { parseMigrateArgs } from "../lib/args.js";
 import { resolveMigrateConfig, MIGRATE_DEFAULT_OUT_DIR } from "../lib/config.js";
@@ -10,13 +11,17 @@ import type { OutputFormat } from "../lib/format.js";
 import { toonEncode } from "../lib/format.js";
 import { buildKyselyFromUrl, redactUrl } from "../lib/kysely.js";
 import { log } from "../lib/log.js";
-import { loadMemory } from "@metaobjectsdev/sdk";
+import { loadMemory, resolveCollection, resolveConfigDir, type Collection } from "@metaobjectsdev/sdk";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
+import { migrateScopeMismatch, outOfScopeNote } from "../lib/migrate-scope.js";
 import {
-  buildExpectedSchema,
+  buildExpectedSchemaWithProvenance,
+  scopeExpectedSchema,
+  scopedDiffInputs,
   introspect,
   diff,
   collectUnmanagedNames,
+  carryForwardOutOfScope,
   emit,
   writeMigration,
   baselineFromMetadata,
@@ -41,6 +46,7 @@ import {
   type D1Binding,
   type EmitResult,
   type D1Runner,
+  type SchemaProvenance,
 } from "@metaobjectsdev/migrate-ts";
 import {
   buildWranglerExecuteArgs,
@@ -122,6 +128,74 @@ function resolveFormatOutDir(config: ResolvedMigrateConfig, metaRoot: string): s
   return resolvePath(metaRoot, config.outDir);
 }
 
+/**
+ * D1's OWN directory convention — `--out-dir` > `wrangler.toml`'s
+ * `migrations_dir` > `"migrations"` — kept apart from `resolveFormatOutDir`
+ * because the middle term is not knowable until a wrangler binding has been
+ * resolved (`runD1Migrate` step 1), while every other dialect can answer
+ * immediately from `config` alone.
+ */
+function resolveD1OutDir(
+  config: ResolvedMigrateConfig,
+  metaRoot: string,
+  migrationsDirHint: string | undefined,
+): string {
+  const isDefaultOutDir = config.outDir === MIGRATE_DEFAULT_OUT_DIR;
+  return resolvePath(metaRoot, isDefaultOutDir ? (migrationsDirHint ?? "migrations") : config.outDir);
+}
+
+/**
+ * Say so when the migrations directory this run will use is NOT the one sitting
+ * in the working directory.
+ *
+ * `metaRoot` is now the discovered project root rather than ambient cwd, and the
+ * migrations directory follows it. That is the right call — the ledger belongs
+ * with the config that declares it — but it is a behaviour change for the two
+ * subcommands that load no metadata at all: `apply-pending` and `--rollback`
+ * used cwd unconditionally, so a subdirectory holding `.metaobjects/migrations`
+ * under a project root that also has one now replays the ROOT's ledger.
+ * Replaying somebody else's migration history silently is the worst outcome
+ * available here, so it is announced.
+ *
+ * Conditioned on the local directory EXISTING, so the ordinary case — a run from
+ * anywhere inside a project with one ledger at its root — says nothing.
+ * `--out-dir` (and a `migrate.outDir` in the config) is honoured: the caller
+ * must pass the directory THIS run will actually WRITE to, never a default
+ * that was overridden — a deliberate redirection is compared, not a stale
+ * guess. That answer comes from **two** call sites, because there are two
+ * directory conventions: every dialect but d1 resolves via
+ * `resolveFormatOutDir` before the format/dialect dispatch below; d1 has its
+ * own convention (`resolveD1OutDir`, wrangler.toml's `migrations_dir`) that is
+ * unknowable until its binding resolves, so it calls this again for itself
+ * from inside `runD1Migrate`, once that binding is in hand.
+ */
+function warnIfLedgerRelocated(cwd: string, resolvedOutDir: string): void {
+  const local = resolvePath(cwd, MIGRATE_DEFAULT_OUT_DIR);
+  if (resolvedOutDir === local || !existsSync(local)) return;
+  log.warn(
+    `migrate: using the migrations directory ${resolvedOutDir}, not the ${local} ` +
+      `in this working directory — the ledger belongs to the project root that declares it. ` +
+      `Pass --out-dir ${local} to use the local one.`,
+  );
+}
+
+/**
+ * Report what a declared `migrate.scope` left out (wording: `outOfScopeNote`).
+ *
+ * STDOUT in text format, STDERR otherwise. `--format json` / `--format toon` put a
+ * single machine-readable document on stdout, and a prose line ahead of it breaks
+ * `| jq` outright — the same split `emitStructuredError` makes just below.
+ * Routed to stderr rather than dropped, because the non-TTY default format is toon
+ * (`resolveFormat`): suppressing it outright would silence the note for every
+ * piped and CI run, which is most of them.
+ */
+function logOutOfScope(names: readonly string[], fmt: OutputFormat): void {
+  if (names.length === 0) return;
+  const msg = outOfScopeNote("migrate", names);
+  if (fmt === "text") log.info(msg);
+  else log.warn(msg);
+}
+
 function emitStructuredError(error: string, hint: string, fmt: OutputFormat): void {
   const payload = { error, hint };
   if (fmt === "json") {
@@ -130,6 +204,27 @@ function emitStructuredError(error: string, hint: string, fmt: OutputFormat): vo
     log.info(toonEncode(payload));
   }
   // text format: errors go to stderr via log.error() — the caller handles that path
+}
+
+/**
+ * The refusal for a `migrate.scope` that matches nothing, as all three of migrate's
+ * pipelines (online, offline, D1) issue it.
+ *
+ * Returns the exit code to return, or `undefined` when there is nothing to refuse.
+ * Three byte-identical copies of the report-and-exit differed only in a local
+ * variable name; the hint string and the exit code are one decision, recorded once
+ * — a configuration error, so exit 2.
+ */
+function refuseScopeMismatch(
+  collection: Collection,
+  provenance: () => SchemaProvenance,
+  fmt: OutputFormat,
+): number | undefined {
+  const mismatch = migrateScopeMismatch(collection, provenance);
+  if (mismatch === undefined) return undefined;
+  log.error(`migrate: ${mismatch}`);
+  emitStructuredError(`migrate: ${mismatch}`, "fix or remove migrate.scope in .metaobjects/config.json", fmt);
+  return 2;
 }
 
 /**
@@ -257,8 +352,45 @@ export async function migrateCommand(
     return 2;
   }
 
-  const metaRoot = cwd;
+  // The project root is the directory whose `.metaobjects/config.json` governs
+  // this run — the same directory `resolveCollection` resolves the metadata
+  // from, found the same way (design §4.6.1: "Per-port generator config is then
+  // read from that same directory"). Everything below is relative to it: the
+  // `.metaobjects/config.json` operational block, `metaobjects.config.ts`'s
+  // `columnNamingStrategy`, the migrations `outDir`, `wrangler.toml` discovery.
+  //
+  // Read from ambient cwd instead, as this did, they DIVERGE the moment the two
+  // differ: run `meta migrate` from a subdirectory of a project whose root
+  // declares `columnNamingStrategy: "literal"` and the metadata resolves from
+  // the ancestor while the strategy silently defaults to snake_case — emitting a
+  // migration that renames every column. Newly reachable, too: before metadata
+  // sources were resolvable that invocation just failed with "no metaobjects/
+  // found".
+  //
+  // `resolveConfigDir` rather than `resolveCollection` deliberately: this must
+  // not require metadata to EXIST. `migrate apply-pending` and `--rollback`
+  // replay committed SQL and load no metadata at all, and making them fail on a
+  // project with no model would be a regression. It is the SAME walk
+  // `resolveCollection` runs (one exported definition in the sdk's
+  // `discovery.ts`, not two that agree by construction), so the directory this
+  // resolves and the directory the metadata comes from cannot diverge.
+  const metaRoot = await resolveConfigDir(cwd);
   const config = await resolveMigrateConfig(flags, metaRoot);
+  // `resolveFormatOutDir`, not `resolvePath(metaRoot, config.outDir)`: under
+  // `--migration-format flyway` with a default outDir the run writes to
+  // Flyway's conventional location instead, so the unredirected path names a
+  // directory this invocation will never touch.
+  //
+  // Skipped for a plain `--dialect d1` run (format !== flyway): d1 resolves
+  // its OWN directory from wrangler.toml, unknowable until its binding
+  // resolves, so it issues this warning for itself from inside
+  // `runD1Migrate` instead — `resolveFormatOutDir` here would name the
+  // Kysely-path default, a directory that run never writes to. A d1 +
+  // `--migration-format flyway` run is refused just below before either
+  // directory is ever touched, so THAT combination still wants this one.
+  if (config.dialect !== "d1" || config.format === "flyway") {
+    warnIfLedgerRelocated(cwd, resolveFormatOutDir(config, metaRoot));
+  }
 
   try {
   // #192 — Flyway owns apply + history (flyway_schema_history). We generate the
@@ -341,7 +473,7 @@ export async function migrateCommand(
       );
       return 2;
     }
-    return await runD1Migrate(config, metaRoot, wranglerRunner ?? defaultWranglerRunner, fmt);
+    return await runD1Migrate(config, metaRoot, cwd, wranglerRunner ?? defaultWranglerRunner, fmt);
   }
 
   // `migrate baseline` — seed the committed reference snapshot, emit no migration.
@@ -389,18 +521,27 @@ export async function migrateCommand(
     postgresConfigProviders = undefined;
   }
 
+  // Discovery and load are two separate failure modes, kept in separate try blocks
+  // (the `meta gen` pattern): a broad catch around both reports a genuine ParseError
+  // as "no metadata found", masking the real failure. `resolveCollection` raises
+  // ERR_COLLECTION_NOT_FOUND with its own message — the same exit 2 the hand-rolled
+  // ENOENT sniff used to produce.
+  let collection;
+  try {
+    collection = await resolveCollection(metaRoot);
+  } catch (err) {
+    log.error((err as Error).message);
+    return 2;
+  }
+
   let metadata;
   try {
-    metadata = await loadMemory(metaRoot, {
+    metadata = await loadMemory(collection.configDir, {
+      files: collection.files,
       ...(postgresConfigProviders !== undefined ? { providers: postgresConfigProviders } : {}),
     });
   } catch (err) {
-    const msg = (err as Error).message;
-    if (msg.includes("ENOENT") || msg.includes("no such") || msg.includes("cannot read")) {
-      log.error(`no metaobjects/ found in ${metaRoot}; run 'meta init' to scaffold`);
-    } else {
-      log.error(`failed to load metadata: ${msg}`);
-    }
+    log.error(`failed to load metadata: ${(err as Error).message}`);
     return 2;
   }
 
@@ -435,11 +576,20 @@ export async function migrateCommand(
     // view DDL (create/drop/replace + dependency-recreate) and emit() renders it —
     // there is no separate view-migration emitter.
     const expectedViews = buildProjectionViews(metadata, { dialect: kysely.dialect, columnNamingStrategy });
-    const expected = buildExpectedSchema(metadata, {
+    const built = buildExpectedSchemaWithProvenance(metadata, {
       dialect: kysely.dialect,
       columnNamingStrategy,
       views: expectedViews,
     });
+    const scopeRc = refuseScopeMismatch(collection, () => built.provenance, fmt);
+    if (scopeRc !== undefined) return scopeRc;
+    // Per-command scope: objects outside `migrate.scope` are another owner's. They
+    // leave the expected schema here and are suppressed on the actual side below —
+    // dropping them from `expected` ALONE would propose DROP TABLE for every one of
+    // them that exists in the database.
+    const scoped = scopeExpectedSchema(built, collection.inMigrateScope);
+    const expected = scoped.snapshot;
+    logOutOfScope(scoped.outOfScope, fmt);
     let actual;
     try {
       actual = await introspect(kysely.db, kysely.dialect);
@@ -455,7 +605,12 @@ export async function migrateCommand(
     let diffResult;
     try {
       diffResult = await diff({
-        expected,
+        // The three scoped-diff obligations as one value (migrate-ts's scope.ts
+        // header has the mechanism): the narrowed expected side, `unmanagedNames`
+        // merging #208 §7's declared-@unmanaged set with the out-of-scope names so
+        // neither is created or dropped, and the schema scope pinned to the
+        // UNSCOPED model so narrowing can never widen the run.
+        ...scopedDiffInputs(scoped, collectUnmanagedNames(metadata)),
         actual,
         dialect: kysely.dialect,
         allow: tokensToAllowOptions(config.allow),
@@ -463,9 +618,6 @@ export async function migrateCommand(
         // has no expressible migration; refuse loudly instead of emitting SQL that drops
         // the constraint and breaks referencing FKs at apply.
         refusePrimaryKeyChange: true,
-        // #208 §7 — declared-@unmanaged objects are external: exclude them from the
-        // actual side so migrate proposes neither create nor drop for them.
-        unmanagedNames: collectUnmanagedNames(metadata),
         onAmbiguous: async (a) => {
           collectedAmbiguous.push(a);
           return onAmbiguousResolution;
@@ -610,9 +762,25 @@ export async function migrateCommand(
     // native ALTER vs recreate-and-copy on older SQLite.
     if (!config.dryRun && exitCode === 0 && !applyFailed && writtenPaths.length > 0) {
       try {
+        // The COMMITTED snapshot keeps what `migrate.scope` excluded: writing the
+        // narrowed schema would delete every out-of-scope entry, so a later widening
+        // would propose CREATE TABLE for a table that exists and fail at apply. The
+        // out-of-scope entries come from `actual` — they are in the database, which
+        // is the same thing `baseline --from-db` records. Identical object, and so a
+        // byte-identical snapshot, for an unscoped run.
+        //
+        // The trade-off, stated so it is not rediscovered: those carried entries are
+        // INTROSPECTED descriptors, not metadata-built ones, so they can differ
+        // cosmetically from what this model would have emitted for the same table
+        // (column order, a default's rendered form). Removing the scope later can
+        // therefore produce one round of alter churn. That is strictly better than
+        // the alternative it replaced — a `CREATE TABLE` for a table that exists,
+        // which fails at apply — and it is the same mixed-provenance snapshot
+        // `baseline --from-db` writes for every table it adopts.
+        const committed = carryForwardOutOfScope(expected, actual, scoped.outOfScope);
         await writeSnapshot(
           snapshotPath(resolvePath(metaRoot, config.outDir), kysely.dialect),
-          actual.meta !== undefined ? { ...expected, meta: actual.meta } : expected,
+          actual.meta !== undefined ? { ...committed, meta: actual.meta } : committed,
         );
       } catch (err) {
         // The migration itself is written (and possibly applied) — report the
@@ -745,8 +913,19 @@ export async function runBaseline(
     } catch {
       // config absent — no custom providers, default snake_case
     }
+    // `baseline` records a STARTING POINT, so it is deliberately NOT scoped: the
+    // `--from-db` arm captures whatever the database holds (there is no provenance
+    // for an introspected table), and an offline baseline that recorded less would
+    // disagree with it. An out-of-scope table sitting in the snapshot is harmless:
+    // every later run suppresses it on both sides of the diff, and an accepted
+    // scoped run carries it FORWARD (`carryForwardOutOfScope`) rather than dropping
+    // it — which is what makes that true. Committing the narrowed schema instead
+    // would delete the entry, and removing the scope later would then propose
+    // CREATE TABLE for a table that exists.
     try {
-      metadata = await loadMemory(metaRoot, {
+      const collection = await resolveCollection(metaRoot);
+      metadata = await loadMemory(collection.configDir, {
+        files: collection.files,
         ...(baselineConfigProviders !== undefined ? { providers: baselineConfigProviders } : {}),
       });
     } catch (err) {
@@ -880,14 +1059,30 @@ export async function runOfflineGenerate(
   }
 
   let metadata;
+  let collection;
   try {
-    metadata = await loadMemory(metaRoot, {
+    collection = await resolveCollection(metaRoot);
+    metadata = await loadMemory(collection.configDir, {
+      files: collection.files,
       ...(offlineConfigProviders !== undefined ? { providers: offlineConfigProviders } : {}),
     });
   } catch (err) {
     log.error(`migrate: failed to load metadata: ${(err as Error).message}`);
     return 2;
   }
+
+  const offlineDialect = config.dialect;
+  const offlineViews = buildProjectionViews(metadata, { dialect: offlineDialect, columnNamingStrategy: offlineStrategy });
+  const scopeRc = refuseScopeMismatch(
+    collection,
+    () => buildExpectedSchemaWithProvenance(metadata, {
+      dialect: offlineDialect,
+      columnNamingStrategy: offlineStrategy,
+      views: offlineViews,
+    }).provenance,
+    fmt,
+  );
+  if (scopeRc !== undefined) return scopeRc;
 
   const outDir = resolvePath(metaRoot, config.outDir);
   const path = snapshotPath(outDir, config.dialect);
@@ -916,7 +1111,7 @@ export async function runOfflineGenerate(
   const collectedAmbiguous: AmbiguousChange[] = [];
   const onAmbiguousResolution = mapOnAmbiguous(config.onAmbiguous);
 
-  const offlineViews = buildProjectionViews(metadata, { dialect: config.dialect, columnNamingStrategy: offlineStrategy });
+  const offlineScope = collection.inMigrateScope;
 
   let plan;
   try {
@@ -926,6 +1121,8 @@ export async function runOfflineGenerate(
       snapshot,
       columnNamingStrategy: offlineStrategy,
       views: offlineViews,
+      // Per-command scope — narrows BOTH sides of the offline diff (see planOffline).
+      ...(offlineScope !== undefined ? { inScope: offlineScope } : {}),
       allow: tokensToAllowOptions(config.allow),
       onAmbiguous: async (a) => {
         collectedAmbiguous.push(a);
@@ -946,7 +1143,11 @@ export async function runOfflineGenerate(
     throw err;
   }
 
-  const { diff: diffResult, nextSnapshot } = plan;
+  // `nextSnapshot` is what gets COMMITTED (it retains this run's out-of-scope
+  // entries); `expected` is the governed side the emitter renders against. Equal
+  // for an unscoped run.
+  const { diff: diffResult, nextSnapshot, expected: governedExpected } = plan;
+  logOutOfScope(plan.outOfScope, fmt);
 
   if (diffResult.blocked.length > 0) {
     log.error(`migrate: ${diffResult.blocked.length} destructive change(s) blocked; re-run with --allow <tokens>`);
@@ -963,7 +1164,7 @@ export async function runOfflineGenerate(
 
   const emitResult = emit(diffResult.changes, {
     dialect: config.dialect,
-    expectedSchema: nextSnapshot,
+    expectedSchema: governedExpected,
     actualSchema: snapshot,
     ...(snapshot.meta ? { actualMeta: snapshot.meta } : {}),
   });
@@ -1052,6 +1253,7 @@ async function runRollback(
 async function runD1Migrate(
   config: ResolvedMigrateConfig,
   metaRoot: string,
+  cwd: string,
   runner: WranglerRunner,
   fmt: OutputFormat = "text",
 ): Promise<number> {
@@ -1079,6 +1281,12 @@ async function runD1Migrate(
     binding = { binding: config.d1.binding!, database_name: "", database_id: "", migrations_dir: undefined };
   }
 
+  // The binding — and with it wrangler.toml's `migrations_dir` — is only now
+  // known, so this is the earliest point d1 can honestly answer "where will
+  // this run write?" (the caller skipped its own generic check for exactly
+  // this reason; see the guard around that call).
+  warnIfLedgerRelocated(cwd, resolveD1OutDir(config, metaRoot, binding.migrations_dir));
+
   // 2. Build a D1Runner closure over the wrangler runner.
   const d1Runner: D1Runner = async (sql) => {
     const args = buildWranglerExecuteArgs({
@@ -1101,18 +1309,25 @@ async function runD1Migrate(
     d1ConfigProviders = undefined;
   }
 
+  // Discovery and load are separate failure modes (the `meta gen` pattern);
+  // `resolveCollection`'s own ERR_COLLECTION_NOT_FOUND replaces the hand-rolled
+  // ENOENT sniff, with the same exit 2.
+  let collection;
+  try {
+    collection = await resolveCollection(metaRoot);
+  } catch (err) {
+    log.error((err as Error).message);
+    return 2;
+  }
+
   let metadata;
   try {
-    metadata = await loadMemory(metaRoot, {
+    metadata = await loadMemory(collection.configDir, {
+      files: collection.files,
       ...(d1ConfigProviders !== undefined ? { providers: d1ConfigProviders } : {}),
     });
   } catch (err) {
-    const msg = (err as Error).message;
-    if (msg.includes("ENOENT") || msg.includes("no such") || msg.includes("cannot read")) {
-      log.error(`no metaobjects/ found in ${metaRoot}; run 'meta init' to scaffold`);
-    } else {
-      log.error(`migrate: failed to load metadata: ${msg}`);
-    }
+    log.error(`migrate: failed to load metadata: ${(err as Error).message}`);
     return 2;
   }
 
@@ -1125,7 +1340,13 @@ async function runD1Migrate(
     // metaobjects.config.ts absent or invalid — use default snake_case
   }
   const expectedViews = buildProjectionViews(metadata, { dialect: "d1", columnNamingStrategy });
-  const expected = buildExpectedSchema(metadata, { dialect: "d1", columnNamingStrategy, views: expectedViews });
+  const built = buildExpectedSchemaWithProvenance(metadata, { dialect: "d1", columnNamingStrategy, views: expectedViews });
+  const scopeRc = refuseScopeMismatch(collection, () => built.provenance, fmt);
+  if (scopeRc !== undefined) return scopeRc;
+  // Per-command scope — both-sided, exactly as on the Kysely path above.
+  const scoped = scopeExpectedSchema(built, collection.inMigrateScope);
+  const expected = scoped.snapshot;
+  logOutOfScope(scoped.outOfScope, fmt);
   let actual;
   try {
     actual = await introspectD1({
@@ -1145,7 +1366,8 @@ async function runD1Migrate(
   let diffResult;
   try {
     diffResult = await diff({
-      expected,
+      // The three scoped-diff obligations, exactly as on the online path above.
+      ...scopedDiffInputs(scoped, collectUnmanagedNames(metadata)),
       actual,
       // D1 is SQLite at the SQL level — the dialect activates the sqlite diff
       // semantics (structural FK matching: SQLite stores no FK names; CHECK
@@ -1157,8 +1379,6 @@ async function runD1Migrate(
       // has no expressible migration; refuse loudly instead of emitting SQL that drops
       // the constraint and breaks referencing FKs at apply (same failure as the online path).
       refusePrimaryKeyChange: true,
-      // #208 §7 — declared-@unmanaged objects are external (see the online path above).
-      unmanagedNames: collectUnmanagedNames(metadata),
       onAmbiguous: async (a) => {
         collectedAmbiguous.push(a);
         return onAmbiguousResolution;
@@ -1217,14 +1437,9 @@ async function runD1Migrate(
   const combinedUp = emitResult.up;
   const combinedDown = emitResult.down;
 
-  // Migration dir resolution: --out-dir > wrangler.toml's migrations_dir > "migrations".
-  // The default outDir (./.metaobjects/migrations) is the Kysely-path default; for D1
-  // we fall back to wrangler conventions when the caller hasn't overridden it.
-  const isDefaultOutDir = config.outDir === MIGRATE_DEFAULT_OUT_DIR;
-  const migrationsDir = resolvePath(
-    metaRoot,
-    isDefaultOutDir ? (binding.migrations_dir ?? "migrations") : config.outDir,
-  );
+  // Migration dir resolution — same convention `warnIfLedgerRelocated` was
+  // just given above, so the two cannot drift apart.
+  const migrationsDir = resolveD1OutDir(config, metaRoot, binding.migrations_dir);
 
   if (config.dryRun) {
     log.info(`-- UP --\n${combinedUp}\n\n-- DOWN --\n${combinedDown}`);

@@ -23,14 +23,14 @@ describe("ConfigSchema", () => {
   test("accepts a path source", () => {
     const parsed = ConfigSchema.parse({
       schema_version: 1,
-      sources: [{ kind: "path", path: "../shared/.meta" }],
+      sources: [{ path: "../shared/.meta" }],
     });
     expect(parsed.sources).toHaveLength(1);
   });
   test("accepts a package source", () => {
     const parsed = ConfigSchema.parse({
       schema_version: 1,
-      sources: [{ kind: "package", package: "@acme/entities" }],
+      sources: [{ package: "@acme/entities" }],
     });
     expect(parsed.sources).toHaveLength(1);
   });
@@ -98,5 +98,75 @@ describe("ConfigSchema — migrate block", () => {
       migrate: { databaseUrl: "postgres://localhost/db" },
     });
     expect(parsed.migrate?.databaseUrl).toBe("postgres://localhost/db");
+  });
+});
+
+describe("ConfigSchema — phase-1 source resolution", () => {
+  test("accepts a path source", () => {
+    const p = ConfigSchema.parse({ schema_version: 1, sources: [{ path: "../model" }] });
+    expect(p.sources).toEqual([{ path: "../model" }]);
+  });
+  test("accepts resource and package source kinds", () => {
+    const p = ConfigSchema.parse({
+      schema_version: 1,
+      sources: [{ resource: "acme/model" }, { package: "@acme/model" }],
+    });
+    expect(p.sources).toHaveLength(2);
+  });
+  test("rejects an unknown source kind", () => {
+    expect(() => ConfigSchema.parse({ schema_version: 1, sources: [{ nope: "x" }] })).toThrow();
+  });
+  test("rejects a source with an unrecognized extra key (fail-closed, not stripped)", () => {
+    // A typo'd sibling key must not silently vanish and leave a
+    // valid-looking single-key source behind — .strict() on every
+    // SourceSpecSchema arm means an unknown key is a hard parse error,
+    // matching this project's fail-closed posture elsewhere (ADR-0023).
+    expect(() =>
+      ConfigSchema.parse({ schema_version: 1, sources: [{ path: "model", pathh: "typo" }] }),
+    ).toThrow();
+  });
+  test("accepts a scope block", () => {
+    const p = ConfigSchema.parse({
+      schema_version: 1,
+      scope: { include: ["acme::**"], exclude: ["acme::internal::**"] },
+    });
+    expect(p.scope?.include).toEqual(["acme::**"]);
+  });
+  test("scope defaults to undefined (match everything)", () => {
+    expect(ConfigSchema.parse({ schema_version: 1 }).scope).toBeUndefined();
+  });
+  test("accepts migrate.scope", () => {
+    const p = ConfigSchema.parse({
+      schema_version: 1,
+      migrate: { scope: ["acme::platform::**"] },
+    });
+    expect(p.migrate?.scope).toEqual(["acme::platform::**"]);
+  });
+  test("rejects a typo'd key inside `migrate` — a stripped `scopee` silently means UNSCOPED", () => {
+    // The nested blocks were `.partial()` under zod's default strip policy, so
+    // `{ migrate: { scopee: [...], dialect: "postgres" } }` parsed to
+    // `{ dialect: "postgres" }` — the typo vanished and the run governed the whole
+    // database. That is the `migrate.scope`-matched-nothing hazard through a
+    // second door, and the exact fail-open `.strict()` exists to prevent.
+    expect(() =>
+      ConfigSchema.parse({
+        schema_version: 1,
+        migrate: { scopee: ["acme::platform::**"], dialect: "postgres" },
+      }),
+    ).toThrow();
+  });
+  test("rejects a typo'd key inside `migrate.d1`", () => {
+    expect(() =>
+      ConfigSchema.parse({ schema_version: 1, migrate: { d1: { bindingg: "DB" } } }),
+    ).toThrow();
+  });
+  test("an existing config with no new keys still parses (back-compat)", () => {
+    const p = ConfigSchema.parse({
+      schema_version: 1, pending_in_git: true,
+      confidence_thresholds: { pending_promote: 0.8, drift_warn: 0.7 },
+      sources: [], extract: {},
+    });
+    expect(p.sources).toEqual([]);
+    expect(p.scope).toBeUndefined();
   });
 });

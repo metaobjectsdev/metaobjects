@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadMemory } from "../src/memory.js";
+import { rejectedCode } from "./support/error-code.js";
 
 function makeMetaRoot(): string {
   const root = mkdtempSync(join(tmpdir(), "memory-load-"));
@@ -70,6 +71,37 @@ describe("loadMemory", () => {
     }
   });
 
+  // C4 — memory.ts's own `isMetadataFile` used to match extensions
+  // case-SENSITIVELY while sources.ts's (already fixed to mirror
+  // DirectorySource in @metaobjectsdev/metadata) matched case-insensitively.
+  // Two metadata-file walkers in one package disagreeing about whether
+  // `meta.JSON` counts is exactly the drift this package's design exists to
+  // prevent; memory.ts now imports the shared, case-insensitive
+  // implementation. This is an intentional BEHAVIOR CHANGE — a file named
+  // `*.JSON` (previously silently skipped by loadMemory) is now collected.
+  test("collects a metadata file with an uppercase extension (meta.JSON), case-insensitively", async () => {
+    const root = makeMetaRoot();
+    try {
+      writeFileSync(
+        join(root, "metaobjects", "shouty.JSON"),
+        JSON.stringify({
+          metadata: {
+            package: "test",
+            children: [
+              { object: { name: "Shouty", subType: "entity", children: [] } },
+            ],
+          },
+        }),
+      );
+
+      const meta = await loadMemory(root);
+      const shouty = meta.findObject("Shouty");
+      expect(shouty).toBeDefined();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("loads decision children when metadata files contain them", async () => {
     const root = makeMetaRoot();
     try {
@@ -100,10 +132,14 @@ describe("loadMemory", () => {
     }
   });
 
-  test("throws if metaobjects/ doesn't exist", async () => {
+  test("nothing to resolve is ERR_COLLECTION_NOT_FOUND, the same code every command reports", async () => {
+    // `loadMemory` resolves through `resolveCollection` like every other read
+    // path, so the "you have no metadata here" failure is that function's
+    // structured code rather than a bare `readdir` ENOENT from a directory
+    // `loadMemory` picked on its own.
     const root = mkdtempSync(join(tmpdir(), "memory-load-nodir-"));
     try {
-      await expect(loadMemory(root)).rejects.toThrow(/cannot read|ENOENT|no such/i);
+      expect(await rejectedCode(loadMemory(root))).toBe("ERR_COLLECTION_NOT_FOUND");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -169,8 +205,17 @@ describe("loadMemory", () => {
   });
 });
 
-describe("loadMemory — cross-package loading via workspace", () => {
-  test("loads transitive extends: deps from workspace peers", async () => {
+// The `package.meta.json` + workspace `extends:` peer walk is RETIRED (design
+// §11; `docs/features/metadata-sources.md` → Upgrading). `loadMemory` had two
+// ways of finding metadata, one of them implicit and reachable only from a
+// particular repository layout. It now has none of its own: it asks
+// `resolveCollection`, exactly like every other read path.
+//
+// These tests pin what the Upgrading section PROMISES about that removal —
+// that it fails loudly, and that a declared source replaces it — rather than
+// merely deleting the coverage along with the feature.
+describe("loadMemory — the retired workspace peer walk", () => {
+  test("a declared source is the replacement, and it needs no topological order", async () => {
     const wsRoot = mkdtempSync(join(tmpdir(), "ws-loadmem-"));
     try {
       // Workspace setup: shared package + billing package that extends shared
@@ -200,16 +245,16 @@ describe("loadMemory — cross-package loading via workspace", () => {
         }),
       );
 
-      // billing package: extends shared; defines an Invoice entity
-      mkdirSync(join(wsRoot, "packages", "billing", ".meta"), { recursive: true });
+      // billing package: reaches shared by DECLARING it as a source. The
+      // shared entry is written SECOND on purpose — `sources` is a set, so
+      // there is no topological order to reproduce.
+      mkdirSync(join(wsRoot, "packages", "billing", ".metaobjects"), { recursive: true });
       mkdirSync(join(wsRoot, "packages", "billing", "metaobjects"), { recursive: true });
       writeFileSync(
-        join(wsRoot, "packages", "billing", ".meta", "package.meta.json"),
+        join(wsRoot, "packages", "billing", ".metaobjects", "config.json"),
         JSON.stringify({
-          name: "@acme/billing",
-          version: "1.0.0",
-          metaobjectsPackage: "acme::billing",
-          extends: ["@acme/shared"],
+          schema_version: 1,
+          sources: [{ path: "metaobjects" }, { path: "../shared/metaobjects" }],
         }),
       );
       writeFileSync(
@@ -235,8 +280,9 @@ describe("loadMemory — cross-package loading via workspace", () => {
     }
   });
 
-  test("single-package mode works unchanged when no workspace present", async () => {
-    // No workspace config — loadMemory falls back to current package only
+  test("a project declaring nothing resolves its own default source, and only that", async () => {
+    // The other side of the removal: with no config and no peer walk, the
+    // default source is the whole of what loads.
     const root = makeMetaRoot();
     try {
       writeFileSync(
@@ -257,7 +303,12 @@ describe("loadMemory — cross-package loading via workspace", () => {
     }
   });
 
-  test("cross-package super: resolves via extends graph", async () => {
+  test("a model that leaned on the peer walk fails LOUDLY, with ERR_UNRESOLVED_SUPER", async () => {
+    // The Upgrading section's promise, gated: nothing generates from a
+    // half-resolved model. `domain` declares no `sources`, so it resolves its
+    // own default directory and nothing else — and the `extends:` into
+    // `acme::common` that the workspace walk used to satisfy now names a target
+    // no loaded file declares.
     const wsRoot = mkdtempSync(join(tmpdir(), "ws-crossref-"));
     try {
       writeFileSync(join(wsRoot, "pnpm-workspace.yaml"), "packages:\n  - 'packages/*'\n");
@@ -317,16 +368,59 @@ describe("loadMemory — cross-package loading via workspace", () => {
         }),
       );
 
-      const meta = await loadMemory(join(wsRoot, "packages", "domain"));
-      const widget = meta.ownChildren().find((c) => c.name === "Widget");
-      expect(widget).toBeDefined();
-      const idField = widget!.ownChildren().find((c) => c.name === "id");
-      expect(idField).toBeDefined();
-      // super resolved across package boundary
-      expect(idField!.superResolved).toBeDefined();
-      expect(idField!.superResolved!.typeId.subType).toBe("long");
+      expect(await rejectedCode(loadMemory(join(wsRoot, "packages", "domain")))).toBe(
+        "ERR_UNRESOLVED_SUPER",
+      );
     } finally {
       rmSync(wsRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("loadMemory with an explicit file set", () => {
+  test("loads exactly the supplied files, ignoring any metaobjects/ dir", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "metaobjects-memory-files-"));
+    try {
+      mkdirSync(join(dir, "model"), { recursive: true });
+      mkdirSync(join(dir, "metaobjects"), { recursive: true });
+      writeFileSync(join(dir, "model/meta.a.json"), JSON.stringify({
+        "metadata.root": { package: "acme", children: [
+          { "object.entity": { name: "Order", children: [{ "field.string": { name: "id" } }] } }] },
+      }), "utf8");
+      writeFileSync(join(dir, "metaobjects/meta.decoy.json"), JSON.stringify({
+        "metadata.root": { package: "acme", children: [
+          { "object.entity": { name: "Decoy", children: [{ "field.string": { name: "id" } }] } }] },
+      }), "utf8");
+      const root = await loadMemory(dir, { files: [join(dir, "model/meta.a.json")] });
+      const names = root.children().map((c) => c.name);
+      expect(names).toContain("Order");
+      expect(names).not.toContain("Decoy");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("with no `files` option, a project with a metaobjects/ tree still loads exactly as before", async () => {
+    const root = makeMetaRoot();
+    try {
+      writeFileSync(
+        join(root, "metaobjects", "domain.json"),
+        JSON.stringify({
+          "metadata.root": {
+            package: "acme",
+            children: [
+              { "object.entity": { name: "Order", children: [{ "field.string": { name: "id" } }] } },
+            ],
+          },
+        }),
+        "utf8",
+      );
+
+      const meta = await loadMemory(root);
+      const names = meta.children().map((c) => c.name);
+      expect(names).toEqual(["Order"]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });

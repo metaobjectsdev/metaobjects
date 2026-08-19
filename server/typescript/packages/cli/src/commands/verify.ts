@@ -28,12 +28,16 @@ import {
 } from "../lib/wrangler.js";
 import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
-import { buildKyselyFromUrl, type Dialect } from "../lib/kysely.js";
+import { buildKyselyFromUrl, inferDialect, type Dialect } from "../lib/kysely.js";
 import { tokensToAllowOptions, describeChange } from "../lib/allow.js";
 import {
   computeDrift,
   computeDriftFromActual,
   collectUnmanagedNames,
+  excludeFromSnapshot,
+  scopedDiffInputs,
+  buildExpectedSchemaWithProvenance,
+  type GovernedScope,
   introspect,
   diff,
   readSnapshot,
@@ -46,9 +50,10 @@ import {
   type Change,
   type D1Binding,
   type D1Runner,
-  type DiffResult,
+  type DriftResult,
 } from "@metaobjectsdev/migrate-ts";
-import { loadMemory } from "@metaobjectsdev/sdk";
+import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
+import { migrateScopeMismatch, outOfScopeNote } from "../lib/migrate-scope.js";
 import {
   TYPE_TEMPLATE,
   TEMPLATE_SUBTYPE_PROMPT,
@@ -108,12 +113,6 @@ export async function verifyCommand(
     return 2;
   }
 
-  // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
-  warnIfAgentContextStale(cwd);
-  // Advisory: the committed hash manifest is what makes hand-edit detection work
-  // on a machine that did not generate the output. Silent unless it is ignored.
-  warnIfManifestIgnored(cwd);
-
   // ADR-0021 D2 — explicit verify subverbs. Each flag selects one drift mode;
   // any combination runs each and the overall exit code is the MAX (non-zero on
   // any drift). A bare `verify` (no explicit subverb) keeps its documented
@@ -130,6 +129,47 @@ export async function verifyCommand(
     );
   }
 
+  // Where the metadata lives is `resolveCollection`'s decision, not a hardcoded
+  // directory. It also carries the per-command `migrate.scope` the schema gate below
+  // honours — `verify --db` and `migrate` govern the identical object set — and the
+  // top-level `scope` `runCodegenVerify` (a nested function below) threads into
+  // `computeCodegenDrift`. Explicitly typed (unlike the `let collection;` pattern
+  // elsewhere in this codebase): a nested function body is OUTSIDE the control-flow
+  // narrowing TS performs on a same-scope `let x;` reassignment, so a bare
+  // `let collection;` type-checked clean until this task added exactly that nested
+  // reference — the reader who removes the annotation next reintroduces TS7034.
+  let collection: Awaited<ReturnType<typeof resolveCollection>>;
+  try {
+    collection = await resolveCollection(cwd);
+  } catch (err) {
+    log.error((err as Error).message);
+    return 2;
+  }
+
+  // The project root is whichever directory `resolveCollection` decided the
+  // metadata belongs to (design §4.6.1: "Per-port generator config is then read
+  // from that same directory"). The line this draws, applied throughout this
+  // command: anything named BY the metadata or its config resolves against
+  // `projectRoot` — `metaobjects.config.ts`, `.metaobjects/config.json`, the
+  // `outDir` and `wranglerConfigPath` they carry, the `prompts/` a `@textRef`
+  // resolves in, the test files a `@verifiedBy` names. Identical paths for a run
+  // from the project root.
+  //
+  // The two advisory passes — the agent-context staleness nudge and the
+  // anti-pattern scan — are rooted here too, matching `meta gen`. Both commands
+  // describe them as the same pass, and scanning two different trees for it made
+  // that false: a `verify` run from a subdirectory scanned only that subtree and
+  // found no agent-context manifest at all, so the nudge silently never fired.
+  const projectRoot = collection.configDir;
+
+  // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
+  warnIfAgentContextStale(projectRoot);
+  // Advisory: the committed hash manifest is what makes hand-edit detection work on a
+  // machine that did not generate the output. Silent unless it is ignored. Keyed on
+  // projectRoot, not cwd, for the same reason its neighbour is — the manifest belongs to
+  // whichever directory `resolveCollection` decided the metadata lives in.
+  warnIfManifestIgnored(projectRoot);
+
   // Best-effort load of metaobjects.config.ts. Two consumers:
   //  1) consumer-supplied providers (e.g. a `template.toolcall` subtype) threaded
   //     into loadMemory — verify doesn't REQUIRE codegen config for templates/db;
@@ -138,7 +178,7 @@ export async function verifyCommand(
   // error (it can't diff without knowing where the committed output lives).
   let forgeConfig: MetaobjectsGenConfig | undefined;
   try {
-    forgeConfig = await loadMetaobjectsConfig(cwd);
+    forgeConfig = await loadMetaobjectsConfig(projectRoot);
   } catch {
     forgeConfig = undefined;
   }
@@ -148,16 +188,13 @@ export async function verifyCommand(
   // so an undeclared/typo'd own @attr fails verify (matching Java's Maven goal).
   let root: Awaited<ReturnType<typeof loadMemory>>;
   try {
-    root = await loadMemory(cwd, {
+    root = await loadMemory(collection.configDir, {
+      files: collection.files,
       ...(configProviders !== undefined ? { providers: configProviders } : {}),
       strict: !flags.lax,
     });
   } catch (err) {
     const msg = (err as Error).message;
-    if (msg.includes("ENOENT") || msg.includes("no such") || msg.includes("cannot read")) {
-      log.error(`no metaobjects/ found in ${cwd}; run 'meta init' to scaffold`);
-      return 2;
-    }
     log.error(`failed to load metadata: ${msg}`);
     // Strict-load rejection (ADR-0023): give the author the three exits — register
     // the attr on a provider, stash it in the `attr.properties` bag, or pass --lax.
@@ -173,7 +210,13 @@ export async function verifyCommand(
     return 1;
   }
 
-  const promptsDir = join(cwd, flags.prompts ?? DEFAULT_PROMPTS_DIR);
+  // The schema gate governs exactly the objects `meta migrate` governs — ONE
+  // declaration (`migrate.scope`), not a second key: a drift gate that fails on
+  // tables migrate deliberately does not own is incoherent. Undefined ⇒ everything
+  // loaded, which is every project that declares no scope.
+  const schemaScope = collection.inMigrateScope;
+
+  const promptsDir = join(projectRoot, flags.prompts ?? DEFAULT_PROMPTS_DIR);
   const provider = new FileProvider(promptsDir);
 
   // Exit-code composition: the overall result is the MAX across every selected
@@ -204,7 +247,7 @@ export async function verifyCommand(
     // authority — see the verified-by-scan header.
     const diags = [
       ...checkRequirements(root),
-      ...checkVerifiedBy(root, cwd, forgeConfig?.verify?.testFiles),
+      ...checkVerifiedBy(root, projectRoot, forgeConfig?.verify?.testFiles),
     ];
 
     // Printed on EVERY run, clean or not — a gate that says nothing when it
@@ -249,7 +292,7 @@ export async function verifyCommand(
   function runAntiPatternAdvisory(): void {
     let findings;
     try {
-      findings = scanSourceForAntiPatterns(cwd);
+      findings = scanSourceForAntiPatterns(projectRoot);
     } catch {
       return; // never let an advisory scan break verify
     }
@@ -382,6 +425,26 @@ export async function verifyCommand(
     const usingD1 = flags.dialect === "d1";
     if ((flags.db === undefined && !usingD1) || flags.skipSchema) return 0;
 
+    // A `migrate.scope` matching nothing it could govern is refused, not tolerated —
+    // it would make this gate compare zero objects and report "in sync" (see
+    // `migrateScopeMismatch`). Checked HERE rather than beside the other collection
+    // work at the top of `verifyCommand`, because `migrate.scope` governs only the
+    // schema gate: a stale pattern must not fail a `--templates` run that never
+    // consults it.
+    const scopeMismatch = migrateScopeMismatch(collection, () => {
+      const dialect: Dialect = usingD1 ? "d1" : (flags.dialect ?? inferDialect(flags.db as string));
+      const viewStrategy = forgeConfig?.columnNamingStrategy ?? "snake_case";
+      return buildExpectedSchemaWithProvenance(root, {
+        dialect,
+        columnNamingStrategy: viewStrategy,
+        views: buildProjectionViews(root, { dialect, columnNamingStrategy: viewStrategy }),
+      }).provenance;
+    });
+    if (scopeMismatch !== undefined) {
+      log.error(`verify: ${scopeMismatch}`);
+      return 2;
+    }
+
     if (usingD1 && flags.db !== undefined) {
       log.error(`verify: --db is not used for dialect 'd1' — wrangler.toml owns the connection; pass --d1 <binding> instead`);
       return 2;
@@ -432,7 +495,11 @@ export async function verifyCommand(
         // `actual` this drift comparison uses, and re-introspecting for it would both
         // cost a second round trip and open a window where the two could disagree.
         actual = await introspect(kysely.db, kysely.dialect);
-        driftResult = await computeDriftFromActual(actual, kysely.dialect, root, { allow, views: expectedViews });
+        driftResult = await computeDriftFromActual(actual, kysely.dialect, root, {
+          allow,
+          views: expectedViews,
+          ...(schemaScope !== undefined ? { inScope: schemaScope } : {}),
+        });
       } catch (err) {
         log.error(`verify: failed to introspect ${kysely.displayUrl}: ${(err as Error).message}`);
         return 1;
@@ -440,7 +507,7 @@ export async function verifyCommand(
 
       const snapshotDrift =
         driftResult.changes.length === 0
-          ? await checkCommittedSnapshot(actual, kysely.dialect, kysely.displayUrl)
+          ? await checkCommittedSnapshot(actual, kysely.dialect, kysely.displayUrl, driftResult)
           : [];
 
       return reportSchemaDrift(driftResult, [...ledgerDrift, ...snapshotDrift], kysely.displayUrl);
@@ -464,14 +531,14 @@ export async function verifyCommand(
   // computeDriftFromActual and the SAME reportSchemaDrift the sqlite/postgres
   // path uses — no forked reporting/exit-code logic.
   async function runD1SchemaVerify(ledgerDrift: string[]): Promise<number> {
-    const d1Config = await resolveD1Config({ d1Binding: flags.d1, remote: flags.remote }, cwd);
+    const d1Config = await resolveD1Config({ d1Binding: flags.d1, remote: flags.remote }, projectRoot);
 
     const wranglerConfigPath = d1Config.wranglerConfigPath
-      ? resolvePath(cwd, d1Config.wranglerConfigPath)
-      : findWranglerConfig(cwd);
+      ? resolvePath(projectRoot, d1Config.wranglerConfigPath)
+      : findWranglerConfig(projectRoot);
 
     if (wranglerConfigPath === undefined && d1Config.binding === undefined) {
-      log.error(`verify: no wrangler.toml found in ${cwd} or parents; pass --d1 <binding> to bypass`);
+      log.error(`verify: no wrangler.toml found in ${projectRoot} or parents; pass --d1 <binding> to bypass`);
       return 2;
     }
 
@@ -497,7 +564,7 @@ export async function verifyCommand(
         command: sql,
         configPath: wranglerConfigPath,
       });
-      const { stdout } = await activeWranglerRunner(wranglerArgs, cwd);
+      const { stdout } = await activeWranglerRunner(wranglerArgs, projectRoot);
       return stdout;
     };
 
@@ -514,7 +581,11 @@ export async function verifyCommand(
     const expectedViews = buildProjectionViews(root, { dialect: "d1", columnNamingStrategy: viewStrategy });
     let driftResult;
     try {
-      driftResult = await computeDriftFromActual(actual, "d1", root, { allow, views: expectedViews });
+      driftResult = await computeDriftFromActual(actual, "d1", root, {
+        allow,
+        views: expectedViews,
+        ...(schemaScope !== undefined ? { inScope: schemaScope } : {}),
+      });
     } catch (err) {
       log.error(`verify: ${(err as Error).message}`);
       return 1;
@@ -558,14 +629,15 @@ export async function verifyCommand(
     actual: SchemaSnapshot,
     dialect: Dialect,
     displayUrl: string,
+    governed: GovernedScope,
   ): Promise<string[]> {
     if (dialect === "d1") return []; // d1 keeps migrations Wrangler-native; no offline snapshot
     // Resolve the migrations dir through migrate's OWN precedence (flag > config >
     // default) rather than re-deriving it, so verify can never look somewhere migrate
     // does not write. Only `outDir` is consumed; the rest of the resolved config is
     // migrate's business.
-    const migrateConfig = await resolveMigrateConfig(EMPTY_MIGRATE_FLAGS, cwd);
-    const dir = resolvePath(cwd, migrateConfig.outDir);
+    const migrateConfig = await resolveMigrateConfig(EMPTY_MIGRATE_FLAGS, projectRoot);
+    const dir = resolvePath(projectRoot, migrateConfig.outDir);
     let snapshot: SchemaSnapshot | null;
     try {
       snapshot = await readSnapshot(snapshotPath(dir, dialect));
@@ -574,16 +646,27 @@ export async function verifyCommand(
     }
     if (snapshot === null) return [];
 
+    // Out-of-scope objects leave BOTH sides of this comparison, and the schema pin
+    // comes from the scope decision the DRIFT comparison already made — one door
+    // (migrate-ts's `excludeFromSnapshot` + `scopedDiffInputs`), not a fifth
+    // hand-rolled copy of the three-part contract. `unmanagedNames` suppresses the
+    // actual side only, which is right for the metadata↔DB diff (its expected side
+    // is already scoped) but not here: the committed snapshot IS the expected side,
+    // and a snapshot written before the scope was declared still carries the other
+    // owner's tables. Re-deriving the pin from the snapshot is what left an empty
+    // (never-migrated) snapshot reaching `diff`'s whole-database fallback.
     const result = await diff({
-      expected: snapshot,
+      ...scopedDiffInputs(excludeFromSnapshot(snapshot, governed), collectUnmanagedNames(root)),
       actual,
       allow: {},
-      unmanagedNames: collectUnmanagedNames(root),
       // #297 — the SAME pipeline `meta migrate` runs, or this gate answers a different
       // question than the one it reports on. `DiffArgs.dialect` is optional, so omitting
       // it was silently accepted: views fell through to comparing our emitted body
       // against the deparser's (never equal, so permanent drift on Postgres), CHECK
       // constraints were skipped entirely, and SQLite type canonicalization no-opped.
+      //
+      // Note `unmanagedNames` is NOT restated here: `scopedDiffInputs` above supplies it
+      // MERGED with the out-of-scope set, and a second key would silently drop that half.
       dialect,
     });
     if (result.changes.length === 0) return [];
@@ -596,7 +679,7 @@ export async function verifyCommand(
     ];
   }
 
-  function reportSchemaDrift(driftResult: DiffResult, ledgerDrift: string[], displayUrl: string): number {
+  function reportSchemaDrift(driftResult: DriftResult, ledgerDrift: string[], displayUrl: string): number {
     // #208 §8 — make declared-external objects visible: they are excluded from the
     // drift comparison (computeDrift/computeDriftFromActual thread them out), so
     // annotate them as external (declared) rather than let them vanish silently.
@@ -605,6 +688,13 @@ export async function verifyCommand(
       log.info(
         `meta verify — ${externalDeclared.length} object(s) external (declared @unmanaged, managed elsewhere): ${externalDeclared.join(", ")}`,
       );
+    }
+
+    // Same reasoning for the per-command scope: an object `migrate.scope` excluded
+    // was NOT checked, and silence would misreport it as checked-and-clean. Shared
+    // wording with `meta migrate` — one declaration, one sentence about it.
+    if (driftResult.outOfScope.length > 0) {
+      log.info(outOfScopeNote("verify", driftResult.outOfScope));
     }
 
     const changes = driftResult.changes;
@@ -639,9 +729,13 @@ export async function verifyCommand(
       return 2;
     }
 
+    // The identical predicate `meta gen` applies (Task 12b / design §7 open
+    // question 3) — a `gen` that committed under a narrowed scope and a
+    // `verify --codegen` that regenerates unscoped would disagree about which
+    // files should exist, reporting every out-of-scope entity as drift.
     let result;
     try {
-      result = await computeCodegenDrift(forgeConfig, root, cwd);
+      result = await computeCodegenDrift(forgeConfig, root, projectRoot, collection.inScope);
     } catch (err) {
       log.error(`verify --codegen: regeneration failed: ${(err as Error).message}`);
       return 1;

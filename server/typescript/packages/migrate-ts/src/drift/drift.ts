@@ -16,10 +16,11 @@
 import type { Kysely } from "kysely";
 import type { MetaRoot } from "@metaobjectsdev/metadata";
 import type { ColumnNamingStrategy } from "@metaobjectsdev/metadata";
-import { buildExpectedSchema } from "../expected-schema.js";
+import { buildExpectedSchemaWithProvenance } from "../expected-schema.js";
 import { introspect } from "../introspect/index.js";
 import { diff } from "../diff/index.js";
 import { collectUnmanagedNames } from "../unmanaged.js";
+import { scopeExpectedSchema, scopedDiffInputs, type ObjectScopePredicate } from "../scope.js";
 import type { AllowOptions, Dialect, DiffResult, SchemaSnapshot } from "../types.js";
 
 export interface ComputeDriftOptions {
@@ -46,6 +47,36 @@ export interface ComputeDriftOptions {
    * itself; pass these so view drift is detected. Defaults to none.
    */
   views?: readonly import("../expected-schema.js").ExpectedViewInput[];
+  /**
+   * Per-command scope (`migrate.scope`): objects whose declaring FQN this predicate
+   * rejects are governed by somebody else. They leave the expected side AND are
+   * suppressed on the actual side, so their divergence is neither drift nor a
+   * proposed drop — `verify` reports them as out-of-scope instead (see
+   * `DriftResult.outOfScope`). Omit to govern everything loaded (unchanged behavior).
+   *
+   * `verify --db` and `migrate` deliberately share ONE declaration: a drift gate
+   * failing on tables migrate does not own is incoherent.
+   */
+  inScope?: ObjectScopePredicate;
+}
+
+export interface DriftResult extends DiffResult {
+  /**
+   * Qualified physical names excluded by `inScope` — empty when no scope was
+   * given. The caller REPORTS these: an object silently dropped from the
+   * comparison is indistinguishable from one that was checked and found clean.
+   */
+  outOfScope: readonly string[];
+  /**
+   * The schemas this comparison governed (`ScopedExpectedSchema.declaredSchemas`),
+   * `undefined` when no scope was given and `diff` derived its own.
+   *
+   * Reported so a SECOND comparison over the same run — `verify`'s committed-snapshot
+   * gate — can govern exactly the same schemas instead of re-deriving them from a
+   * different expected side. Together with `outOfScope` this pair is a
+   * `GovernedScope`, which is what `excludeFromSnapshot` takes.
+   */
+  declaredSchemas: readonly string[] | undefined;
 }
 
 /**
@@ -65,24 +96,33 @@ export async function computeDriftFromActual(
   dialect: Dialect,
   metadata: MetaRoot,
   opts?: ComputeDriftOptions,
-): Promise<DiffResult> {
-  const expected = buildExpectedSchema(metadata, {
-    dialect,
-    ...(opts?.columnNamingStrategy !== undefined
-      ? { columnNamingStrategy: opts.columnNamingStrategy }
-      : {}),
-    ...(opts?.views !== undefined ? { views: opts.views } : {}),
-  });
-  return diff({
-    expected,
+): Promise<DriftResult> {
+  const scoped = scopeExpectedSchema(
+    buildExpectedSchemaWithProvenance(metadata, {
+      dialect,
+      ...(opts?.columnNamingStrategy !== undefined
+        ? { columnNamingStrategy: opts.columnNamingStrategy }
+        : {}),
+      ...(opts?.views !== undefined ? { views: opts.views } : {}),
+    }),
+    opts?.inScope,
+  );
+  const result = await diff({
+    // The three scoped-diff obligations as one value (see scope.ts's header):
+    // the narrowed expected side, `unmanagedNames` merging @unmanaged with the
+    // out-of-scope names so neither is proposed for drop, and the schema scope
+    // pinned to the UNSCOPED model so a narrow scope can never widen the run.
+    ...scopedDiffInputs(scoped, collectUnmanagedNames(metadata)),
     actual,
     dialect,
     allow: opts?.allow ?? {},
-    // #208 §7 — a declared-@unmanaged object is external, so it is not drift: exclude it
-    // from the actual side (same as `meta migrate`) rather than surface a false drop-*.
-    unmanagedNames: collectUnmanagedNames(metadata),
     ...(opts?.ignoreTables !== undefined ? { ignoreTables: opts.ignoreTables } : {}),
   });
+  return {
+    ...result,
+    outOfScope: scoped.outOfScope,
+    declaredSchemas: scoped.declaredSchemas,
+  };
 }
 
 /**
@@ -97,7 +137,7 @@ export async function computeDrift(
   dialect: Dialect,
   metadata: MetaRoot,
   opts?: ComputeDriftOptions,
-): Promise<DiffResult> {
+): Promise<DriftResult> {
   const actual = await introspect(db, dialect);
   return computeDriftFromActual(actual, dialect, metadata, opts);
 }

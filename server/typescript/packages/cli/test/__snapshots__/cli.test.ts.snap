@@ -7,10 +7,10 @@ USAGE:
   meta <command> [flags]
 
 COMMANDS:
-  init                  Scaffold metaobjects/ + .metaobjects/ in the current repo
+  init                  Scaffold a MetaObjects project in the current repo
   init --refresh-docs   Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
   agent-docs            Scaffold only the agent-context (.metaobjects/ + .claude/skills/) — canonical redirect target for all language ports
-  gen [<entity>...]     Codegen TS targets from metaobjects/ entities
+  gen [<entity>...]     Codegen TS targets from your declared metadata
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description
   export                Flatten loaded metadata to one canonical JSON artifact
   docs <metadata> --out <dir>  Generate neutral metadata documentation (entity + template pages; --site for HTML site)
@@ -33,7 +33,7 @@ EXPORT FLAGS:
   --out <file>          Write output to a file (default: stdout)
 
 DOCS FLAGS:
-  <metadata>            Project root holding metaobjects/ (default: current directory)
+  <metadata>            Project root to resolve metadata from (default: current directory)
   --out <dir>, -o       Output directory for the pages (default: ./docs)
   --templates <dir>     Project root to resolve adopter templates/ overrides (default: <metadata>)
   --prompts <dir>       Extra dir holding prompt .mustache sources for --site (e.g. data/templates/)

@@ -15,7 +15,7 @@ import { log } from "../lib/log.js";
 import { FileProvider } from "../lib/file-provider.js";
 import { snapshotPaths, unifiedDiff } from "../lib/snapshot.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
-import { loadMemory } from "@metaobjectsdev/sdk";
+import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
 import { TYPE_TEMPLATE, TEMPLATE_ATTR_TEXT_REF, TEMPLATE_ATTR_FORMAT } from "@metaobjectsdev/metadata";
 import { render, ESCAPERS, type RenderFormat } from "@metaobjectsdev/render";
 
@@ -30,13 +30,36 @@ export async function promptSnapshotCommand(args: string[], cwd: string): Promis
     return 2;
   }
 
+  // Where the metadata lives is `resolveCollection`'s decision, not this
+  // command's — `--check` is a drift GATE, so a project declaring `sources`
+  // elsewhere would otherwise gate against a stale `metaobjects/` (or report
+  // "no metaobjects/ found" for metadata it can see perfectly well). Discovery
+  // and load stay separate failure modes, the `meta gen` pattern: a broad catch
+  // around both reports a genuine ParseError as "no metadata found".
+  // `resolveCollection` raises ERR_COLLECTION_NOT_FOUND with its own message,
+  // replacing the hand-rolled ENOENT sniff that used to live here.
+  let collection;
+  try {
+    collection = await resolveCollection(cwd);
+  } catch (err) {
+    log.error((err as Error).message);
+    return 2;
+  }
+
+  // Everything project-relative below hangs off the DECLARING directory, not
+  // ambient cwd: `.metaobjects/snapshots/` is that config's own state, and the
+  // prompt text belongs to the same project as the metadata that references it.
+  // Identical to cwd for a run from the project root, which is the only
+  // invocation that worked before metadata sources were resolvable at all.
+  const projectRoot = collection.configDir;
+
   // Best-effort load of metaobjects.config.ts to pick up consumer-supplied
   // providers. prompt-snapshot doesn't require codegen config; if it's absent
   // or invalid, fall back to defaults — the loader still works for any
   // metadata that only uses core+forge subtypes.
   let configProviders: NonNullable<Awaited<ReturnType<typeof loadMetaobjectsConfig>>["providers"]> | undefined;
   try {
-    const forgeConfig = await loadMetaobjectsConfig(cwd);
+    const forgeConfig = await loadMetaobjectsConfig(projectRoot);
     configProviders = forgeConfig.providers;
   } catch {
     configProviders = undefined;
@@ -44,20 +67,16 @@ export async function promptSnapshotCommand(args: string[], cwd: string): Promis
 
   let root;
   try {
-    root = await loadMemory(cwd, {
+    root = await loadMemory(collection.configDir, {
+      files: collection.files,
       ...(configProviders !== undefined ? { providers: configProviders } : {}),
     });
   } catch (err) {
-    const msg = (err as Error).message;
-    if (msg.includes("ENOENT") || msg.includes("no such") || msg.includes("cannot read")) {
-      log.error(`no metaobjects/ found in ${cwd}; run 'meta init' to scaffold`);
-      return 2;
-    }
-    log.error(`failed to load metadata: ${msg}`);
+    log.error(`failed to load metadata: ${(err as Error).message}`);
     return 1;
   }
 
-  const promptsDir = join(cwd, flags.prompts ?? DEFAULT_PROMPTS_DIR);
+  const promptsDir = join(projectRoot, flags.prompts ?? DEFAULT_PROMPTS_DIR);
   const provider = new FileProvider(promptsDir);
 
   // ADR-0039: effective children — resolve rather than rely on root being unextended.
@@ -79,7 +98,7 @@ export async function promptSnapshotCommand(args: string[], cwd: string): Promis
     // Absent/typeless required attrs are a loader-schema concern, not ours.
     if (typeof textRef !== "string") continue;
 
-    const { dir, payloadPath, snapPath } = snapshotPaths(cwd, tmpl.name);
+    const { dir, payloadPath, snapPath } = snapshotPaths(projectRoot, tmpl.name);
     if (!existsSync(payloadPath)) {
       log.info(`[${tmpl.name}] skipped — no payload at ${payloadPath}`);
       skipped++;

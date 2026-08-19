@@ -1,5 +1,4 @@
-import { relative, join } from "node:path";
-import { existsSync } from "node:fs";
+import { relative } from "node:path";
 import { parseGenArgs } from "../lib/args.js";
 import { resolveGenConfig } from "../lib/config.js";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
@@ -10,7 +9,7 @@ import { log } from "../lib/log.js";
 import { warnIfAgentContextStale } from "../lib/agent-context-staleness.js";
 import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
-import { loadMemory, DEFAULT_METADATA_DIR } from "@metaobjectsdev/sdk";
+import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
 import { runGen, listGenerators } from "@metaobjectsdev/codegen-ts";
 import type { WriteStatus } from "@metaobjectsdev/codegen-ts";
 
@@ -41,14 +40,45 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     return listGeneratorsCommand();
   }
 
-  // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
-  warnIfAgentContextStale(cwd);
-  // Advisory: the committed hash manifest is what makes hand-edit detection work
-  // on a machine that did not generate the output. Silent unless it is ignored.
-  warnIfManifestIgnored(cwd);
-
-  const projectRoot = cwd;
   const cliConfig = resolveGenConfig(flags);
+
+  // Discovery and load are two separate failure modes, kept in separate try
+  // blocks deliberately: a broad catch around both previously swallowed
+  // genuine ParseErrors (e.g. `origin.@via "X.y" ...: no such relationship
+  // "y" on X`) as "no metaobjects/ found", masking the real failure.
+  // `resolveCollection` raises `ERR_COLLECTION_NOT_FOUND` with its own
+  // message when nothing is discovered and no default directory exists.
+  //
+  // Discovery runs BEFORE the config read, deliberately: the project root is
+  // whichever directory `resolveCollection` decided the metadata belongs to,
+  // and everything project-relative — `metaobjects.config.ts`, the `outDir`
+  // its generators name, `.metaobjects/.gen-state/` — has to come from that
+  // same directory. Reading the config from ambient cwd while the metadata
+  // came from an ancestor is the config-half of the very divergence this
+  // design exists to remove (design §4.6.1: "Per-port generator config is then
+  // read from that same directory"). For a run from the project root the two
+  // are the same path, which is the only invocation that worked before.
+  let collection;
+  try {
+    collection = await resolveCollection(cwd);
+  } catch (err) {
+    log.error((err as Error).message);
+    return 2;
+  }
+  const projectRoot = collection.configDir;
+
+  // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
+  // Rooted at `projectRoot`, not ambient cwd — the scaffolded agent context sits
+  // with the project that declares the metadata, so a run from a subdirectory
+  // would find no manifest there and silently skip the nudge. `meta verify` makes
+  // the same call for the same reason; the two commands describe this and the
+  // anti-pattern scan below as one advisory pass, so they must scan one tree.
+  warnIfAgentContextStale(projectRoot);
+  // Advisory: the committed hash manifest is what makes hand-edit detection work on a
+  // machine that did not generate the output. Silent unless it is ignored. Keyed on
+  // projectRoot, not cwd, for the same reason its neighbour is — the manifest belongs to
+  // whichever directory `resolveCollection` decided the metadata lives in.
+  warnIfManifestIgnored(projectRoot);
 
   let forgeConfig;
   try {
@@ -60,22 +90,12 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
 
   let metadata;
   try {
-    metadata = await loadMemory(projectRoot, {
+    metadata = await loadMemory(collection.configDir, {
+      files: collection.files,
       ...(forgeConfig.providers !== undefined ? { providers: forgeConfig.providers } : {}),
     });
   } catch (err) {
-    const msg = (err as Error).message;
-    // Only emit the scaffold hint for the ACTUAL missing-metadata-dir
-    // condition — checked explicitly here. A broad substring match on
-    // "no such" / "cannot read" wrongly swallowed genuine ParseErrors (e.g.
-    // `origin.@via "X.y" ...: no such relationship "y" on X`) as "no
-    // metaobjects/ found", masking the real failure. Real parse/validation
-    // errors propagate with their actual message.
-    if (!existsSync(join(projectRoot, DEFAULT_METADATA_DIR))) {
-      log.error(`no metaobjects/ found in ${projectRoot}; run 'meta init' to scaffold`);
-    } else {
-      log.error(`failed to load metadata: ${msg}`);
-    }
+    log.error(`failed to load metadata: ${(err as Error).message}`);
     return 2;
   }
 
@@ -89,6 +109,11 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
       // --dry-run must actually preview. This was previously passed only to the
       // display object below, so a "preview" run wrote every file.
       dryRun: cliConfig.dryRun,
+      // Collection-level `scope` (Task 12b) — the output filter over
+      // GENERATED entities, never over what the collection loads. Always
+      // passed: an unconfigured project's predicate admits everything, so this
+      // is a no-op for the common case, not a behavior change.
+      scope: collection.inScope,
       ...(cliConfig.entities.length > 0 ? { entityFilter: cliConfig.entities } : {}),
     });
   } catch (err) {

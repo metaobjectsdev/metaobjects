@@ -80,6 +80,87 @@ anything depends on the version, and deprecation does not free the number. The p
 checks every package in the set (in parallel, so it stays fast), and `bun run prerelease`
 skips numbers already burned on public npm when choosing an iteration.
 
+### Fixed — `publish-npm.yml` would have published an uninstallable `@metaobjectsdev/cli`
+
+The workflow carried its **own hardcoded list of 13 package directories**;
+`scripts/release.mjs` **derived** the same set (every non-private package at the CLI's
+version). Two answers to one question, and they had drifted:
+`@metaobjectsdev/docs-site` is a runtime `dependencies` entry of `@metaobjectsdev/cli`
+(`workspace:*`, rewritten to the concrete version at pack time) and was not in the
+workflow's list. A release cut through the workflow would therefore have published a
+`cli` pinning `@metaobjectsdev/docs-site@<version>` that nobody published — `npm i
+@metaobjectsdev/cli` → `ETARGET`, discoverable only by an external install. It stayed
+latent because the local `bun run release` path publishes all 14, so `docs-site@0.23.2`
+is on npm today; **nothing had ever compared the two answers.**
+
+`scripts/publish-set.mjs` is now the single source of truth for which packages ship and
+in what order, and both paths read it — the workflow's list is gone, so it cannot drift
+from a derivation it no longer has. The derivation also fails loudly rather than
+returning a wrong set: a member with no declared tier, a set not closed over its own
+sibling runtime deps, or a tier order that would publish a dependency after its
+dependent. Wired into the `gates` lane (`publish-set parity`) beside
+`check-publish-intent.sh`, which enforces the same rule from the other side.
+
+`TIER_ORDER` omitted `docs-site` too, and that was **not** the harmless oversight it
+looked like: `indexOf()` returns `-1`, which does not sort last — it sorts **first**, so
+the local release path published `docs-site` ahead of `metadata` and `render`, the two
+packages it depends on. The tier is declared now, and an undeclared one is an error
+instead of an accidental position.
+
+### Metadata source resolution — adopter-visible changes
+
+`.metaobjects/config.json` gains `sources`, `scope` and `migrate.scope`, and every
+command resolves where metadata lives through one authority instead of reading a
+hardcoded `metaobjects/` directory. A project with one config at its root, no
+`sources` and no `scope` resolves the same files, generates the same code and emits
+the same migrations. Three changes are visible even to that project. Adopter guide:
+[`docs/features/metadata-sources.md`](docs/features/metadata-sources.md#upgrading).
+
+- **The workspace `extends:` walk is retired.** `loadMemory` used to have a second,
+  undocumented way of finding metadata: a `package.meta.json` declaring `extends:`
+  dependencies, inside a discoverable workspace (`pnpm-workspace.yaml` or
+  `package.json` `workspaces`), pulled in each peer package's `metaobjects/`
+  directory first, in topological order. Every CLI read path now resolves through
+  `sources`, which does no such walk. It fails LOUDLY — `ERR_UNRESOLVED_SUPER`
+  naming the target it cannot find, never a half-resolved model — and the
+  replacement is an explicit `{ "path": "../shared-model/metaobjects" }` source,
+  which works in any layout and needs no topological ordering.
+- **`.metaobjects/config.json` rejects unknown keys.** `ConfigSchema` is `.strict()`
+  at every level, so a key that was previously stripped in silence is now a load
+  error naming the key. Silently dropping a key means the setting you wrote does not
+  exist: `{ "migrate": { "scopee": [...] } }` used to mean *unscoped*, governing
+  every table in a database you were trying to share.
+- **`ExpectedView.fqn` is required.** On the public `@metaobjectsdev/codegen-ts`
+  export, the declaring object's fully-qualified name is no longer optional —
+  `migrate.scope` decides ownership on that name, and a view arriving without one
+  cannot be scoped at all. `buildProjectionViews` already supplies it; only
+  hand-built `ExpectedView` values need the field added.
+- **`meta export` output order changed, and `_pending/` is excluded.** `export` now
+  serializes the file set `resolveCollection` resolved rather than scanning a
+  directory through `DirectorySource`, so siblings emit files-before-subdirectories
+  (the overlay-safe order the loader has always been given) instead of a flat
+  basename sort, and staged `_pending/` files — skipped by every other read path —
+  are no longer exported. The canonical JSON content is unchanged; a committed
+  export diffed against a fresh one shows a reordering.
+- **The migrations directory follows the project root.** `.metaobjects/migrations`
+  and the schema snapshot resolve from the directory whose `.metaobjects/config.json`
+  governs the run, found by walking up from the working directory. `meta migrate
+  apply-pending` and `--rollback` load no metadata and previously used the working
+  directory unconditionally, so a subdirectory holding a ledger but no config of its
+  own now replays the project root's history. `migrate` says so out loud when the
+  resolved directory differs from `<cwd>/.metaobjects/migrations` and that local
+  directory exists; `--out-dir` overrides, and giving the subdirectory its own
+  `.metaobjects/config.json` makes it a project root.
+- **A project boundary is a `.metaobjects/config.json` — a bare `metaobjects/`
+  directory is not one.** Discovery walks up for a config and stops at nothing
+  else short of the `.git` boundary, so a command run inside a nested directory
+  that holds metadata but declares no config of its own resolves the nearest
+  ancestor config — adopting its `sources` and `outDir`. `metaobjects/` is the
+  default *value* of `sources`, so a directory of that name says nothing about
+  whether a project lives there. If a subdirectory should own its metadata, give
+  it a config: `meta init` writes one, and a `"sources": []` config is enough to
+  claim the directory and take the default.
+
 ## [0.23.3] — npm `0.23.3` · PyPI `0.23.3` · NuGet `0.23.3` · Maven `7.23.3`
 
 A coordinated **PATCH** across all four registries, and every one of them carries a real

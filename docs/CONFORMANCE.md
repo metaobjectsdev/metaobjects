@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **19 shared conformance corpora** under
+The MetaObjects standard ships **20 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -42,6 +42,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l`.
 | [`fixtures/template-output-render-conformance/`](../fixtures/template-output-render-conformance/) | 5 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/generator-registry-conformance/`](../fixtures/generator-registry-conformance/) | 1 canonical manifest | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/provider-composition-conformance/`](../fixtures/provider-composition-conformance/) | 9 (5 error-shape + 4 compose-load) | ✓ | ✓ | — (JVM registry via Java) | ✓ | ✓ |
+| [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | — | — | — | — |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 4 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
 
@@ -138,10 +139,33 @@ inheritance), `m2m/` (3), `jsonb/` (2, typed value-object columns) and
 Kotlin, C#, Python — run it in BOTH lanes: a hand-rolled reference server and
 the port's own GENERATED API artifact booted over HTTP.
 
+### `fixtures/scope-conformance/` (10 cases)
+
+All 10 cases → [features/metadata-sources.md](features/metadata-sources.md) (the
+`scope` pattern grammar). The corpus is file-shaped: one committed `cases.json`,
+read directly by every port's runner, with no per-port fixture and no ledger.
+
+It pins the semantics of a consumer's `include`/`exclude` scope over
+fully-qualified names — **`*` matches within one `::` segment and never crosses
+it; a segment that is exactly `**` matches one or more whole segments (so
+`acme::**` does not match the bare `acme`); every other character is literal,
+regex metacharacters included; an absent or empty `include` means everything;
+multiple `include` patterns are a union and `exclude` is applied after it; and
+matching is case-sensitive.** These are exactly the rules four independent
+implementations would otherwise each get slightly wrong — the failure mode that
+produced the cross-port `LIKE`/`ILIKE` divergence fixed in 0.21.6.
+
+**TypeScript is the only port with a runner today.** The reference implementation is
+[`server/typescript/packages/sdk/src/scope.ts`](../server/typescript/packages/sdk/src/scope.ts)
+(`compilePattern` / `compileScope` / `matchesScope`), and the corpus was authored
+against it. Java, Kotlin, C# and Python have no runner yet; when each gains one, this corpus is
+what it implements against — it exists now precisely so those four land on one
+grammar rather than four.
+
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the six corpora mapped above (metamodel 255 + yaml 15 + verify 31
-+ render 15 + persistence 33 + api-contract 41) each map to a feature doc. None
+The fixtures in the seven corpora mapped above (metamodel 255 + yaml 15 + verify 31
++ render 15 + persistence 33 + api-contract 41 + scope 10) each map to a feature doc. None
 are orphaned today. The remaining corpora in the totals table gate tooling
 contracts (registry manifests, provider composition, agent context, docs emit)
 rather than user-facing metamodel behaviour, so they have no feature-doc row.

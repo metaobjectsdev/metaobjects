@@ -99,9 +99,13 @@ function ensureFreshDist(): void {
   const codegenTsRoot = dirname(
     createRequire(import.meta.url).resolve("@metaobjectsdev/codegen-ts/package.json"),
   );
+  const sdkRoot = dirname(
+    createRequire(import.meta.url).resolve("@metaobjectsdev/sdk/package.json"),
+  );
   for (const { name, pkgRoot, srcDir, distFile } of [
     { name: "codegen-ts", pkgRoot: codegenTsRoot, srcDir: join(codegenTsRoot, "src"), distFile: join(codegenTsRoot, "dist", "index.js") },
     { name: "cli", pkgRoot: CLI_ROOT, srcDir: join(CLI_ROOT, "src"), distFile: META_BIN },
+    { name: "sdk", pkgRoot: sdkRoot, srcDir: join(sdkRoot, "src"), distFile: join(sdkRoot, "dist", "index.js") },
   ]) {
     const stale = (): boolean =>
       !existsSync(distFile) || newestSrcMtime(srcDir) > statSync(distFile).mtimeMs;

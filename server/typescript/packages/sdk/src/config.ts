@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { SourceSpec } from "./sources.js";
 
 const DialectEnum = z.enum(["sqlite", "postgres", "d1"]);
 
@@ -32,12 +33,15 @@ export const AllowTokenEnum = z.enum([
   "drop-identity-default",
 ]);
 
+// .strict(), like every other object in this schema: `.partial()` alone leaves
+// zod's default STRIP policy in place, so a misspelled key is silently deleted
+// and the block reads as if the author never wrote it.
 const D1Block = z.object({
   binding: z.string(),
   remote: z.boolean(),
   autoApply: z.boolean(),
   wranglerConfigPath: z.string(),
-}).partial();
+}).partial().strict();
 
 /** #192 — migration output-format adapters; orthogonal to dialect. */
 const MigrateFormatEnum = z.enum(["default", "flyway"]);
@@ -50,8 +54,71 @@ const MigrateBlock = z.object({
   onAmbiguous: OnAmbiguousEnum,
   allow: z.array(AllowTokenEnum),
   d1: D1Block,
-}).partial();
+  /** Restricts a `meta migrate` run to a subset of the loaded metadata, by the
+   *  same package-glob pattern grammar as top-level `scope` (see `scope.ts`).
+   *  Include-only — there's no `migrate.scope.exclude`, since a migration run
+   *  is scoped to what it's touching, not filtered down from "everything". */
+  scope: z.array(z.string().min(1)),
+// .strict() for the same reason as the top level and the source arms below, and
+// with sharper teeth here: `{ migrate: { scopee: [...], dialect: "postgres" } }`
+// used to parse to `{ dialect: "postgres" }`, so a typo'd `scope` key meant
+// "unscoped" — silently governing every table in the database, which is the
+// hazard `migrate.scope` exists to remove.
+}).partial().strict();
 
+/**
+ * Mirrors the hand-written `SourceSpec` union in `./sources.ts` — a
+ * declared source kind, one of `path` (resolves today), `resource`, or
+ * `package` (both reserved, throw `ERR_SOURCE_KIND_UNSUPPORTED` until a
+ * later phase). `.strict()` on every arm: this project is fail-closed on
+ * undeclared keys everywhere else (ADR-0023 makes an unregistered metadata
+ * attribute a hard error for the same reason) — a config schema that
+ * silently strips an unknown key would let `{ path: "model", pathh: "typo"
+ * }` parse clean and resolve one source instead of erroring on the typo.
+ * The pre-phase-1 `{ kind: "path", path: "..." }` shape (the dead 2-arm
+ * discriminated union this replaces) never shipped to an adopter — `meta
+ * init` has only ever scaffolded `"sources": []`, and nothing under `src/`
+ * ever read the old shape — so there is no live config to be lenient for;
+ * it only ever existed in this package's own tests, updated alongside this
+ * schema.
+ */
+const SourceSpecSchema = z.union([
+  z.object({ path: z.string().min(1) }).strict(),
+  z.object({ resource: z.string().min(1) }).strict(),
+  z.object({ package: z.string().min(1) }).strict(),
+]);
+
+// Compile-time parity, BOTH directions: if SourceSpecSchema and the
+// hand-written SourceSpec (./sources.ts) ever drift, one of these two
+// assignments stops compiling. Each direction alone catches only HALF the
+// drift — `z.infer<...>` assignable to `SourceSpec` catches an arm added to
+// the schema but missing from SourceSpec, while `SourceSpec` assignable to
+// `z.infer<...>` catches the opposite: an arm added to the hand-written
+// SourceSpec that the schema never gained. A single one-directional
+// assignment (the prior form of this guard) let a SourceSpec-only addition
+// compile clean — proven by deliberately breaking each direction in
+// isolation; see the quality-pass report for both failing `tsc` outputs. A
+// conditional type (`X extends Y ? true : never`) would silently resolve to
+// `never` instead of erroring — this direct-assignment form fails for real.
+const _sourceSpecParityInferToSpec: SourceSpec = {} as z.infer<typeof SourceSpecSchema>;
+const _sourceSpecParitySpecToInfer: z.infer<typeof SourceSpecSchema> = {} as SourceSpec;
+void _sourceSpecParityInferToSpec;
+void _sourceSpecParitySpecToInfer;
+
+/** Mirrors the hand-written `Scope` interface in `./scope.ts`. An absent or
+ *  empty `include` means "everything" — see `matchesScope`. */
+const ScopeSchema = z
+  .object({
+    include: z.array(z.string().min(1)).optional(),
+    exclude: z.array(z.string().min(1)).optional(),
+  })
+  .strict();
+
+// .strict() at the TOP level too, not just the source-spec arms and the
+// scope block: without it, a misspelled top-level key (e.g. "scopes" for
+// "scope") is silently stripped by zod and the collection resolves as
+// "everything in scope" — the exact silent fail-open .strict() on the
+// nested arms exists to prevent, one level up.
 export const ConfigSchema = z.object({
   schema_version: z.literal(1),
   pending_in_git: z.boolean().default(true),
@@ -61,27 +128,27 @@ export const ConfigSchema = z.object({
       drift_warn: z.number().min(0).max(1).default(0.7),
     })
     .default({}),
-  sources: z
-    .array(
-      z.union([
-        z.object({ kind: z.literal("path"), path: z.string() }),
-        z.object({ kind: z.literal("package"), package: z.string() }),
-      ]),
-    )
-    .default([]),
+  sources: z.array(SourceSpecSchema).default([]),
+  /** Output filter applied across every command — see `./scope.ts`. Absent
+   *  means "everything" (no filtering), matching `Scope`'s own contract. */
+  scope: ScopeSchema.optional(),
   extract: z
     .object({
       metaignore: z.string().optional(),
     })
     .default({}),
   migrate: MigrateBlock.optional(),
-});
+}).strict();
 
 export type Config = z.infer<typeof ConfigSchema>;
 
 export const DEFAULT_CONFIG: Config = ConfigSchema.parse({ schema_version: 1 });
 
-const CONFIG_FILE = "config.json";
+/** `config.json`'s basename — the single owner. `discovery.ts` and
+ *  `collection.ts` import this rather than each keeping their own copy of
+ *  the literal (a duplication that had drifted into three separate
+ *  declarations of the same string). */
+export const CONFIG_FILE = "config.json";
 
 export async function loadConfig(metaRoot: string): Promise<Config> {
   const raw = await readFile(join(metaRoot, CONFIG_FILE), "utf8");

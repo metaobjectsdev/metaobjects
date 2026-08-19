@@ -81,11 +81,19 @@ function listFiles(dir: string): string[] {
  * @param config   the loaded metaobjects config (provides outDir/targets).
  * @param metadata the loaded MetaRoot (same object `meta gen` would use).
  * @param projectRoot absolute project root (committed outDirs are keyed off it).
+ * @param scope    the SAME output-scope predicate `meta gen` used to produce the
+ *   committed output (Task 12b / design §7 open question 3). A `verify --codegen`
+ *   that regenerates unscoped while the committed output was scoped would read
+ *   every out-of-scope entity as drift — regen would try to emit it, but it was
+ *   never committed because the `meta gen` that produced the committed tree
+ *   never emitted it either. Undefined ⇒ everything is in scope (byte-identical
+ *   to a project with no `scope` declared).
  */
 export async function computeCodegenDrift(
   config: MetaobjectsGenConfig,
   metadata: MetaData,
   projectRoot: string,
+  scope?: (fqn: string) => boolean,
 ): Promise<CodegenDriftResult> {
   const root = isAbsolute(projectRoot) ? projectRoot : resolve(projectRoot);
 
@@ -157,6 +165,7 @@ export async function computeCodegenDrift(
       genStateDir: join(tempRoot, ".gen-state"),
       mergeStrategy: "overwrite",
       baseline: "fresh",
+      ...(scope !== undefined ? { scope } : {}),
     });
 
     // Diff each committed outDir against its temp mirror.

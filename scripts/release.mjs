@@ -21,6 +21,7 @@ import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createInterface } from "node:readline/promises";
+import { publishSet } from "./publish-set.mjs";
 
 const VERSION = process.argv[2];
 const DRY = process.argv.includes("--dry-run");
@@ -31,28 +32,9 @@ const out = (cmd) => execSync(cmd, { encoding: "utf8" }).trim();
 const ok = (m) => console.log(`\x1b[32m✓\x1b[0m ${m}`);
 const die = (m) => { console.error(`\x1b[31m✗ ${m}\x1b[0m`); process.exit(1); };
 
-// Publish order: a dependency never lands after its dependent (docs/RELEASING.md).
-// Enumerated dynamically below; this only orders the ones that are actually in the set.
-const TIER_ORDER = [
-  "metadata", "render",
-  "codegen-ts", "runtime-ts", "migrate-ts", "sdk", "runtime-web",
-  "codegen-ts-react", "codegen-ts-tanstack", "react",
-  "tanstack",
-  "cli", "ai-runtime",
-];
-
 if (!VERSION || !/^\d+\.\d+\.\d+(-rc\.\d+)?$/.test(VERSION)) {
   die("usage: bun run release <version> [--dry-run] [--yes]   (e.g. 0.12.6)");
 }
-
-// --- enumerate the workspace packages -------------------------------------
-const pkgDirs = out(
-  "ls -d server/typescript/packages/*/ client/web/packages/*/",
-).split("\n").map((d) => d.replace(/\/$/, ""));
-const pkgs = pkgDirs.map((dir) => {
-  const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
-  return { dir, pkg, short: pkg.name?.replace("@metaobjectsdev/", "") };
-});
 
 // --- PHASE 0: preflight (all must pass) -----------------------------------
 console.log(`\n── Releasing ${VERSION}${DRY ? "  (DRY RUN)" : ""} ──\n`);
@@ -69,9 +51,13 @@ if (dirty.length) die(`uncommitted changes:\n${dirty.join("\n")}\n(commit or sta
 
 if (out(`git tag -l v${VERSION}`)) die(`tag v${VERSION} already exists`);
 
-// The lockstep set = every non-private package at the CURRENT version (cli's version).
-const current = pkgs.find((p) => p.short === "cli").pkg.version;
-const set = pkgs.filter((p) => !p.pkg.private && p.pkg.version === current);
+// The lockstep set = every non-private package at the CURRENT version (cli's version),
+// in tier order. Derived by scripts/publish-set.mjs, which .github/workflows/publish-npm.yml
+// also reads — the two publish paths must never disagree about which packages ship (they
+// did: the workflow's hardcoded list omitted docs-site, a runtime dependency of the cli).
+// It throws rather than returns on a set that is untiered, mis-ordered, or not closed over
+// its own sibling deps; everything below this line is irreversible once publishing starts.
+const { lockstep: current, set } = publishSet();
 
 // The target version must be free for EVERY package in the set, not just the cli.
 // Checking one package is a late failure waiting to happen: npm versions are permanent
@@ -151,7 +137,7 @@ sh(`git commit -q -m "chore(release): @metaobjectsdev TypeScript packages ${VERS
 ok("committed");
 
 // --- PHASE 7: publish to latest, tier order -------------------------------
-const ordered = [...set].sort((a, b) => TIER_ORDER.indexOf(a.short) - TIER_ORDER.indexOf(b.short));
+const ordered = set;   // publishSet() returns it in tier order, already validated
 for (const pkg of ordered) {
   sh(`cd ${pkg.dir} && bun publish`, { quiet: true });
   ok(`published ${pkg.short}@${VERSION}`);

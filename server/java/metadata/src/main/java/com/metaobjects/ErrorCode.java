@@ -283,6 +283,18 @@ public enum ErrorCode {
     /** An object declares more than one source node with role=primary. */
     ERR_SOURCE_MULTIPLE_PRIMARY,
 
+    /** Phase-1 metadata-source-resolution: a {@code path} source declared in {@code .metaobjects/config.json} does not exist on disk. */
+    ERR_SOURCE_UNRESOLVED,
+
+    /** Phase-1 metadata-source-resolution: a declared source kind ({@code resource} or {@code package}) is not supported by this toolchain. */
+    ERR_SOURCE_KIND_UNSUPPORTED,
+
+    /** Phase-1 metadata-source-resolution: a {@code scope} include/exclude package pattern is malformed (empty pattern or empty {@code ::} segment). */
+    ERR_SCOPE_PATTERN_INVALID,
+
+    /** Phase-1 metadata-source-resolution: no metadata collection was discovered — no config declaring {@code sources}, and no default {@code metaobjects/} directory. */
+    ERR_COLLECTION_NOT_FOUND,
+
     /**
      * FR-016 / ADR-0018: a {@code source.rdb} declares a kind-aware physical-name
      * alias ({@code @view} / {@code @materializedView} / {@code @proc} /

@@ -61,6 +61,7 @@ import type {
   Dialect, SchemaSnapshot, TableDescriptor, ColumnDescriptor, IndexDescriptor, FkDescriptor,
   CheckDescriptor, ViewDescriptor,
 } from "./types.js";
+import { qualifiedDbName } from "./qualified-name.js";
 import { viewFingerprint } from "./view-fingerprint.js";
 import { resolveViewColumns, type ExpectedViewColumnInput } from "./view-column-types.js";
 import {
@@ -112,12 +113,55 @@ export interface ExpectedViewInput {
   sql?: string;
   dependsOn?: readonly string[];
   columns?: readonly ExpectedViewColumnInput[];
+  /**
+   * `resolutionKey()` of the object that declared this view — its PROVENANCE.
+   * Recorded in the provenance map and deliberately NEVER copied onto the
+   * `ViewDescriptor`: descriptors are serialized into the committed snapshot, and
+   * a descriptor that gains a field owes a `SNAPSHOT_FORMAT_VERSION` bump, which
+   * hard-fails every older reader. Optional — a caller that supplies no FQN gets a
+   * view with no provenance, which `scopeExpectedSchema` keeps (never guesses).
+   */
+  fqn?: string;
 }
 
+/**
+ * Qualified physical name (`qualifiedDbName`) → the `resolutionKey()` of the
+ * metadata object that declared it. The ONLY sound basis for a per-command scope
+ * decision: a SQL name cannot be reversed into an FQN (naming strategies, `@table`
+ * overrides and TPH folding are all lossy), and a second metadata walk would have
+ * to re-implement Pass 1's skip rules — abstract, TPH subtype, no writable source,
+ * `@unmanaged` — and would drift from them.
+ */
+export type SchemaProvenance = ReadonlyMap<string, string>;
+
+export interface ExpectedSchemaWithProvenance {
+  snapshot: SchemaSnapshot;
+  provenance: SchemaProvenance;
+}
+
+/**
+ * The expected schema as every existing caller wants it. Thin wrapper over
+ * {@link buildExpectedSchemaWithProvenance}; byte-identical output.
+ */
 export function buildExpectedSchema(
   root: MetaData,
   opts?: BuildExpectedSchemaOptions,
 ): SchemaSnapshot {
+  return buildExpectedSchemaWithProvenance(root, opts).snapshot;
+}
+
+/**
+ * The expected schema PLUS the declaring FQN of every table and view in it.
+ *
+ * Provenance is threaded out of the passes that already hold the declaring node —
+ * Pass 2 has each table's entity, Pass 4 each view's input — so there is exactly
+ * one walk and one set of skip rules. Callers that filter by scope
+ * (`scopeExpectedSchema`) consume it; callers that don't use the wrapper above.
+ */
+export function buildExpectedSchemaWithProvenance(
+  root: MetaData,
+  opts?: BuildExpectedSchemaOptions,
+): ExpectedSchemaWithProvenance {
   // D1 is SQLite at the SQL level; normalize it so downstream dialect checks
   // don't need to handle "d1" separately.
   const dialect = opts?.dialect === "d1" ? "sqlite" : opts?.dialect;
@@ -207,6 +251,12 @@ export function buildExpectedSchema(
     return byBareHit === AMBIGUOUS ? undefined : byBareHit;
   };
 
+  // Provenance: qualified physical name → declaring object's FQN. Recorded as the
+  // descriptors are built, never re-derived from a SQL name (lossy) and never by a
+  // second walk (it would have to duplicate Pass 1's skip rules and would drift from
+  // them — a TPH subtype, for one, shares its base's table and declares none of its own).
+  const provenance = new Map<string, string>();
+
   // Pass 2: build full descriptors with FK resolution.
   // Schema is resolved here (not stored in Pass 1) to avoid exactOptionalPropertyTypes
   // issues with `string | undefined` vs `schema?: string`.
@@ -214,6 +264,7 @@ export function buildExpectedSchema(
     const t = buildTable(entity, tableName, resolveTargetTable, root as MetaRoot, strategy, dialect);
     const schema = resolveTableSchema(entity);
     if (schema !== undefined) t.schema = schema;
+    provenance.set(qualifiedDbName(t), entity.resolutionKey());
     return t;
   });
 
@@ -288,13 +339,17 @@ export function buildExpectedSchema(
   //     whether a view change can use a non-destructive CREATE OR REPLACE.
   const views: ViewDescriptor[] = (opts?.views ?? []).map((v) => {
     const columns = resolveViewColumns(v.columns, tables);
-    return {
+    const descriptor: ViewDescriptor = {
       name: v.name,
       ...(v.schema !== undefined ? { schema: v.schema } : {}),
       ...(v.sql !== undefined ? { sql: v.sql, fingerprint: viewFingerprint(v.sql) } : {}),
       ...(v.dependsOn !== undefined ? { dependsOn: v.dependsOn } : {}),
       ...(columns !== undefined ? { columns } : {}),
     };
+    // The declaring FQN goes to the provenance map ONLY — never onto the descriptor,
+    // which is what the committed snapshot serializes (see ExpectedViewInput.fqn).
+    if (v.fqn !== undefined) provenance.set(qualifiedDbName(descriptor), v.fqn);
+    return descriptor;
   });
 
   // Collision guard: two DISTINCT metadata objects that resolve to the same generated
@@ -324,7 +379,7 @@ export function buildExpectedSchema(
     );
   }
 
-  return { tables, views };
+  return { snapshot: { tables, views }, provenance };
 }
 
 /**

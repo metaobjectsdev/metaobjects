@@ -1,5 +1,3 @@
-import { join } from "node:path";
-import { readdir, stat } from "node:fs/promises";
 import {
   composeRegistry,
   coreProviders,
@@ -8,21 +6,8 @@ import {
   type MetaRoot,
 } from "@metaobjectsdev/metadata";
 import { FileSource } from "@metaobjectsdev/metadata/core";
+import { resolveCollection } from "./collection.js";
 import { forgeTypesProvider } from "./forge-types.js";
-import { discoverWorkspace, resolveExtendsOrder } from "./workspace.js";
-
-/**
- * Default directory name (relative to project root) where metadata JSON files
- * are scanned. Scaffold via `meta init`; the directory is committed to git.
- */
-export const DEFAULT_METADATA_DIR = "metaobjects";
-
-/**
- * Default directory name (relative to project root) for MetaObjects' own
- * runtime state: config.json, .gen-state/, package.meta.json, agent docs.
- * Scaffold via `meta init`; most contents are committed to git.
- */
-export const DEFAULT_METAOBJECTS_DIR = ".metaobjects";
 
 /**
  * Options for {@link loadMemory}. Consumers can supply additional
@@ -50,6 +35,19 @@ export interface LoadMemoryOptions {
    * the `meta verify` command opts in to `true` (strict-by-default, #96).
    */
   strict?: boolean;
+  /**
+   * An already-resolved, absolute metadata file list — normally
+   * `resolveCollection(...).files`. When supplied, `loadMemory` loads exactly
+   * these files and resolves nothing itself.
+   *
+   * Omitting it is not a different WAY of finding metadata, only a different
+   * place the same resolution happens: `loadMemory` then calls
+   * `resolveCollection(repoRoot)` itself. Passing it saves the second
+   * resolution when the caller already holds a collection (every routed CLI
+   * command does) and lets a caller load a file set it computed some other
+   * way; it can no longer diverge from what the config declares.
+   */
+  files?: readonly string[];
 }
 
 /** Default provider bundle threaded by {@link loadMemory} when no options
@@ -62,10 +60,15 @@ export const defaultLoadMemoryProviders: readonly MetaDataTypeProvider[] = [
 ];
 
 /**
- * Load all metadata files from `<repoRoot>/metaobjects/` into a single
- * MetaData. If `<repoRoot>/.meta/package.meta.json` declares `extends:` deps
- * and a workspace can be discovered (pnpm-workspace.yaml or package.json
- * workspaces), peer packages are loaded too in topological dep-first order.
+ * Load a project's metadata into a single MetaData tree.
+ *
+ * Which files those are is `resolveCollection`'s decision, never this
+ * function's: with no {@link LoadMemoryOptions.files} it calls
+ * `resolveCollection(repoRoot)` — nearest-ancestor `.metaobjects/config.json`,
+ * then that config's declared `sources`, falling back to the default source
+ * directory only when a project declares none. `loadMemory` names no directory
+ * of its own, so a caller cannot end up loading from somewhere the rest of the
+ * toolchain does not.
  *
  * Excludes `_pending/`. Registers metaobjects core types plus Meta Forge's
  * descriptive top-level types (decision, principle, etc.) so mixed content
@@ -73,11 +76,15 @@ export const defaultLoadMemoryProviders: readonly MetaDataTypeProvider[] = [
  * {@link LoadMemoryOptions.providers}) are composed AFTER the defaults so
  * they may depend on core/forge ids.
  *
- * Throws if `metaobjects/` doesn't exist (callers should run `meta init`).
+ * Throws `ERR_COLLECTION_NOT_FOUND` when nothing resolves (callers should run
+ * `meta init`), unless `options.files` is supplied.
  *
- * @param repoRoot The project's working-directory root (e.g. process.cwd()).
- *   `loadMemory` resolves `metaobjects/` and (if workspace-aware) the
- *   transitive `extends:` graph automatically.
+ * @param repoRoot Where resolution STARTS — the working directory, typically
+ *   `process.cwd()`. The walk goes up from here for the governing config, so
+ *   this need not be the project root itself.
+ *   **Ignored entirely when `options.files` is supplied**: that list is already
+ *   resolved, so nothing reads this path. Every routed CLI command passes both,
+ *   and the argument is inert at all of them.
  * @param options Optional {@link LoadMemoryOptions} — supply additional
  *   providers or replace the default bundle entirely.
  */
@@ -99,10 +106,15 @@ export async function loadMemory(
   }
   const registry = composeRegistry(providers);
 
-  // Collect all metadata file paths to load. Order matters for the parser's
-  // deferred-resolution pass (it parses in array order, then resolves supers
-  // against the merged tree afterwards) — dep packages first, current last.
-  const paths = await collectMetadataPaths(repoRoot);
+  // Both arms are `resolveCollection`'s answer — one already computed by the
+  // caller, one computed here. There is no third way to find metadata, and
+  // that is the whole of this line's design: the previous no-`files` arm
+  // scanned `<repoRoot>/<default dir>` directly, so a caller that copied the
+  // routed shape but forgot `files` silently loaded from a directory the
+  // project's config may never have mentioned.
+  const paths = options?.files !== undefined
+    ? [...options.files]
+    : [...(await resolveCollection(repoRoot)).files];
 
   const loader = new MetaDataLoader({
     registry,
@@ -116,74 +128,4 @@ export async function loadMemory(
   }
 
   return result.root;
-}
-
-// Dep packages' metaobjects/ files first (topological order), then current.
-async function collectMetadataPaths(repoRoot: string): Promise<string[]> {
-  const currentMetaDir = join(repoRoot, ".meta");
-  const ws = await discoverWorkspace(repoRoot);
-
-  // Workspace path: walk extends, load dep metaobjects/ dirs first
-  if (ws !== undefined) {
-    const currentPkg = ws.packages.find((p) => p.metaDir === currentMetaDir);
-    if (currentPkg !== undefined && currentPkg.manifest.extends.length > 0) {
-      const ordered = resolveExtendsOrder(ws, currentMetaDir);
-      const paths: string[] = [];
-      for (const pkg of ordered) {
-        // Each workspace package's metadata lives alongside its .meta/ dir
-        const pkgRoot = join(pkg.metaDir, "..");
-        paths.push(...(await listMetadataFiles(join(pkgRoot, DEFAULT_METADATA_DIR))));
-      }
-      return paths;
-    }
-  }
-
-  // Single-package path: scan metaobjects/ at the project root
-  return listMetadataFiles(join(repoRoot, DEFAULT_METADATA_DIR));
-}
-
-/**
- * Recursively list metadata files (*.json, *.yaml, *.yml) under a directory,
- * excluding _pending/ at any level. Subdirectories (e.g. projections/) are
- * walked depth-first. Files within a directory are sorted alphabetically for
- * deterministic load order; subdirectories are visited after files at the
- * same level.
- *
- * Format selection (parsing) happens downstream in `FileSource` from
- * `@metaobjectsdev/metadata`, which infers the parser from file extension.
- */
-async function listMetadataFiles(dir: string): Promise<string[]> {
-  let entries: string[];
-  try {
-    entries = await readdir(dir);
-  } catch (err) {
-    throw new Error(`loadMemory: cannot read ${dir}: ${(err as Error).message}`);
-  }
-  const paths: string[] = [];
-  const subdirs: string[] = [];
-  // #188: sort the raw `readdir` entries so file order is deterministic across
-  // runtimes/filesystems (Node vs Bun return different `readdir` orders), matching
-  // this function's docstring and the metadata package's own `DirectorySource`.
-  // (Resolution is now order-INDEPENDENT — super-resolve.ts #188 — so this is the
-  // deterministic-enumeration FLOOR, not the fix; it keeps every derived artifact
-  // that preserves declaration order, e.g. serialization, stable across runtimes.)
-  for (const entry of [...entries].sort()) {
-    if (entry === "_pending") continue;
-    const full = join(dir, entry);
-    const s = await stat(full);
-    if (s.isDirectory()) {
-      subdirs.push(full);
-    } else if (s.isFile() && isMetadataFile(entry)) {
-      paths.push(full);
-    }
-  }
-  // Recurse into subdirectories after collecting files at this level
-  for (const sub of subdirs.sort()) {
-    paths.push(...(await listMetadataFiles(sub)));
-  }
-  return paths;
-}
-
-function isMetadataFile(name: string): boolean {
-  return name.endsWith(".json") || name.endsWith(".yaml") || name.endsWith(".yml");
 }

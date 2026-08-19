@@ -143,6 +143,17 @@ gate_bun_version() { scripts/check-bun-version.sh; }
 # them as installable. Offline check; see scripts/check-publish-intent.sh.
 gate_publish_intent() { scripts/check-publish-intent.sh; }
 
+# ── publish set: the two publish paths must agree on WHICH packages ship ──────
+# `bun run release` and .github/workflows/publish-npm.yml both publish the npm
+# lockstep set. release.mjs DERIVED it; the workflow HARDCODED 13 directories — and
+# they drifted. @metaobjectsdev/docs-site is a runtime dependency of
+# @metaobjectsdev/cli and was absent from the workflow's list, so a release cut
+# through the workflow would have published a cli pinning a docs-site version that
+# does not exist: `npm i @metaobjectsdev/cli` → ETARGET. Only an external install
+# could see it. Both paths now read scripts/publish-set.mjs, which also asserts the
+# set is tier-ordered and closed over its own sibling deps. Offline (manifests only).
+gate_publish_set() { node scripts/publish-set.mjs --check && node scripts/test-publish-set.mjs; }
+
 # ── release hygiene: no pre-release version may be committed ──────────────────
 # scripts/prerelease.mjs bumps every version declaration in place and restores them on
 # exit; a crashed run (or a hand-run sed) can leave an -rc.N behind. That is not cosmetic:
@@ -377,6 +388,7 @@ if want gates; then step    "leak-scan (security)"             gate_leak_scan;  
 if want gates; then step    "pom-version parity"               gate_pom_versions;           fi
 if want gates; then step    "bun-version parity"               gate_bun_version;            fi
 if want gates; then step    "publish-intent parity"            gate_publish_intent;         fi
+if want gates; then step    "publish-set parity"               gate_publish_set;            fi
 if want gates; then step    "no committed pre-release version" gate_no_prerelease_versions; fi
 if want gates; then step_if bun "peer-range bounds"            gate_peer_ranges;            fi
 if want gates; then step_if bun "fixture-lint"                 gate_fixture_lint;           fi
