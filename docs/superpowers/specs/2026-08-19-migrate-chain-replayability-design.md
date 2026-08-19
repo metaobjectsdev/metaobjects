@@ -14,7 +14,7 @@ then dies:
 
 ```
 $ meta migrate apply-pending --db postgresql://…/fresh
-meta: migrate apply-pending: apply failed: table "arena_season_standing" does not exist
+meta: migrate apply-pending: apply failed: table "other_owned_table" does not exist
 ```
 
 Nothing warns at generation time. The reporter's chain was broken for roughly three months; the
