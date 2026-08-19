@@ -4,6 +4,44 @@ import { openReplayEngine } from "../../src/verify/replay-engine.js";
 import { introspect } from "../../src/introspect/index.js";
 
 describe("openReplayEngine", () => {
+  // PGlite is Postgres compiled to WASM, and Emscripten propagates the WASM
+  // program's internal exit status into `process.exitCode` — it becomes 99 on the
+  // FIRST QUERY, not on teardown, and stays there. `bin/meta.ts` ends with
+  // `process.exit(code)`, so the shipped CLI overrides it and was never affected;
+  // anything that does NOT force its own exit inherits it. That is why this whole
+  // FILE used to exit 99 with 11 pass / 0 fail, turning two `ci-local.sh --only ts`
+  // gates red while reporting no failing test — and why an embedder calling
+  // `openReplayEngine` programmatically would silently exit non-zero on success.
+  //
+  // This must run on the postgres engine specifically; sqlite never touches WASM.
+  //
+  // It runs in a CHILD PROCESS, and that is the whole design. Two in-process
+  // shapes were tried first and both prove nothing:
+  //   - `const before = process.exitCode; … expect(after).toBe(before)` passes
+  //     vacuously once any earlier test has opened a postgres engine, because
+  //     99 === 99.
+  //   - Pinning a clean baseline with `process.exitCode = 0` first fixes that but
+  //     then captures 0 rather than the pristine `undefined`, so it never
+  //     exercises the `?? 0` that the real fix turns on — it passed against the
+  //     broken implementation.
+  // The only faithful assertion is the one the CI gate itself makes: what a fresh
+  // process actually EXITS with, starting from a pristine `process.exitCode`.
+  test("postgres: does not leak PGlite's WASM exit status into the host process", async () => {
+    const script = `
+      const { openReplayEngine } = await import("${import.meta.dir}/../../src/verify/replay-engine.ts");
+      const { sql } = await import("kysely");
+      const engine = await openReplayEngine("postgres");
+      try { await sql\`SELECT 1\`.execute(engine.db); } finally { await engine.dispose(); }
+    `;
+    const proc = Bun.spawn(["bun", "-e", script], {
+      cwd: `${import.meta.dir}/../..`,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const code = await proc.exited;
+    expect(code).toBe(0);
+  }, 60_000);
+
   test("sqlite: gives an empty, usable database", async () => {
     const engine = await openReplayEngine("sqlite");
     try {

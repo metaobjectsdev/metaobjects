@@ -84,11 +84,40 @@ async function openPglite(): Promise<ReplayEngine> {
     );
   }
   const { PostgresDialect } = await import("kysely");
+
+  // PGlite is Postgres compiled to WASM, and Emscripten propagates the WASM
+  // program's internal exit status into `process.exitCode` — it becomes 99 on the
+  // FIRST QUERY (not on teardown) and stays there for the life of the process.
+  // Opening an engine must not decide what the HOST process exits with, so the
+  // caller's value is captured here and restored on dispose.
+  //
+  // `bin/meta.ts` ends with `process.exit(code)`, which overrides this, so the
+  // shipped CLI never showed it. Anything that does NOT force its own exit did:
+  // this package's `bun test` exited 99 on 0 failures, turning two
+  // `ci-local.sh --only ts` gates red with no failing test to point at, and an
+  // embedder calling `openReplayEngine` directly would exit non-zero on success.
+  const hostExitCode = process.exitCode;
   const pg = new PGliteCtor();
   const db = new Kysely<Record<string, unknown>>({
     dialect: new PostgresDialect({ pool: pgliteAsPool(pg) as never }),
   });
-  return disposable(db, () => pg.close());
+
+  // `?? 0` is load-bearing, not defensive: assigning `undefined` to
+  // `process.exitCode` is a NO-OP under Bun (measured — set 99, assign
+  // `undefined`, it stays 99; assign 0 and it clears). The pristine value IS
+  // `undefined`, so restoring it literally runs and changes nothing — which is
+  // the shape this bug already took once during the fix.
+  //
+  // The restore sits in a `finally` because this close is frequently the SECOND:
+  // `disposable` runs `db.destroy()` first, which drives the pool's `end()`,
+  // which already called `pg.close()`, so this call throws `PGlite is closed`.
+  return disposable(db, async () => {
+    try {
+      await pg.close();
+    } finally {
+      process.exitCode = hostExitCode ?? 0;
+    }
+  });
 }
 
 /** The slice of PGlite's surface this file uses. */
