@@ -31,9 +31,10 @@ public sealed class OutputParserGeneratorTests
     };
 
     [Fact]
-    public void Emits_no_files_when_no_template_output_nodes()
+    public void Emits_no_files_for_a_prompt_that_declares_no_response()
     {
-        // A model with only a template.prompt; the output-parser generator stays silent.
+        // A prompt with no @responseRef has no inbound half — nothing elicits a typed
+        // reply, so there is nothing to parse.
         const string m = """
         { "metadata.root": { "package": "acme::ai", "children": [
           { "object.value": { "name": "Payload", "children": [ { "field.string": { "name": "x" } } ] } },
@@ -45,20 +46,40 @@ public sealed class OutputParserGeneratorTests
     }
 
     [Fact]
-    public void Emits_one_file_per_template_output_with_expected_path_and_class()
+    public void A_template_output_emits_no_parser_extractor_or_response_format()
+    {
+        // The ADR-0052 pin. `template.output` is OUTBOUND ONLY: it renders a document or
+        // an email and generates nothing that reads a model's reply. Before this, the
+        // parser tier had no @kind filter at all, so a markdown document template got a
+        // generated `JSON.parse`-equivalent — a method that could never work.
+        const string m = """
+        { "metadata.root": { "package": "acme::ai", "children": [
+          { "object.value": { "name": "Doc", "children": [ { "field.string": { "name": "body" } } ] } },
+          { "template.output": { "name": "Welcome", "@payloadRef": "Doc",
+                                 "@textRef": "mail/welcome", "@format": "json" } }
+        ]}}
+        """;
+        var root = Load(m);
+        Assert.Empty(new OutputParserGenerator().Generate(Ctx(root)));
+        Assert.Empty(new OutputPromptGenerator().Generate(Ctx(root)));
+        Assert.Empty(new ExtractorGenerator().Generate(Ctx(root)));
+    }
+
+    [Fact]
+    public void Emits_one_file_per_responding_prompt_with_expected_path_and_class()
     {
         const string m = """
         { "metadata.root": { "package": "acme::ai", "children": [
           { "object.value": { "name": "AlphaPayload", "children": [ { "field.string": { "name": "name" } } ] } },
           { "object.value": { "name": "BetaPayload",  "children": [ { "field.int":    { "name": "n" } } ] } },
-          { "template.output": { "name": "Alpha", "@payloadRef": "AlphaPayload", "@textRef": "a/x", "@format": "json" } },
-          { "template.output": { "name": "Beta",  "@payloadRef": "BetaPayload",  "@textRef": "b/x", "@format": "json" } }
+          { "template.prompt": { "name": "Alpha", "@payloadRef": "AlphaPayload", "@responseRef": "AlphaPayload", "@textRef": "a/x", "@format": "text", "@responseFormat": "json" } },
+          { "template.prompt": { "name": "Beta",  "@payloadRef": "BetaPayload", "@responseRef": "BetaPayload",  "@textRef": "b/x", "@format": "text", "@responseFormat": "json" } }
         ]}}
         """;
         var files = new OutputParserGenerator().Generate(Ctx(Load(m))).OrderBy(f => f.Path).ToList();
         Assert.Equal(2, files.Count);
-        Assert.Equal("Alpha.output.cs", files[0].Path);
-        Assert.Equal("Beta.output.cs",  files[1].Path);
+        Assert.Equal("Alpha.response.cs", files[0].Path);
+        Assert.Equal("Beta.response.cs",  files[1].Path);
         Assert.Contains("public static class AlphaParser", files[0].Content);
         Assert.Contains("public static class BetaParser",  files[1].Content);
     }
@@ -72,12 +93,12 @@ public sealed class OutputParserGeneratorTests
             { "field.string": { "name": "name" } },
             { "field.int":    { "name": "age" } }
           ]}},
-          { "template.output": { "name": "NpcResponseOutput", "@payloadRef": "NpcResponsePayload",
-                                  "@textRef": "npc/output", "@format": "json" } }
+          { "template.prompt": { "name": "NpcResponseOutput", "@payloadRef": "NpcResponsePayload", "@responseRef": "NpcResponsePayload",
+                                  "@textRef": "npc/output", "@format": "text", "@responseFormat": "json" } }
         ]}}
         """;
         var file = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(m))));
-        Assert.Equal("NpcResponseOutput.output.cs", file.Path);
+        Assert.Equal("NpcResponseOutput.response.cs", file.Path);
 
         var src = file.Content;
         Assert.Contains("using System.Text.Json;", src);
@@ -106,8 +127,8 @@ public sealed class OutputParserGeneratorTests
             { "field.string": { "name": "name" } },
             { "field.int":    { "name": "age" } }
           ]}},
-          { "template.output": { "name": "NpcResponseOutput", "@payloadRef": "NpcResponsePayload",
-                                  "@textRef": "npc/output", "@format": "json" } }
+          { "template.prompt": { "name": "NpcResponseOutput", "@payloadRef": "NpcResponsePayload", "@responseRef": "NpcResponsePayload",
+                                  "@textRef": "npc/output", "@format": "text", "@responseFormat": "json" } }
         ]}}
         """;
         var root = Load(m);
@@ -133,13 +154,14 @@ public sealed class OutputParserGeneratorTests
     }
 
     [Fact]
-    public void Emitted_source_matches_the_template_output_simple_fixture()
+    public void Emitted_source_matches_the_shared_responding_prompt_fixture()
     {
         // Conformance-adjacent check: the same fixture used by the TS port should
         // drive the C# emit (different output shape — TS = Zod, C# = STJ — but
-        // same metadata in).
+        // same metadata in). ADR-0052: the shared inbound fixture is a responding
+        // PROMPT — `template-output-simple` is outbound-only now and emits nothing here.
         var repoRoot = LocateRepoRoot();
-        var fixtureDir = Path.Combine(repoRoot, "fixtures", "conformance", "template-output-simple", "input");
+        var fixtureDir = Path.Combine(repoRoot, "fixtures", "conformance", "template-prompt-response-json", "input");
         Assert.True(Directory.Exists(fixtureDir), $"fixture dir not found at {fixtureDir}");
 
         var load = MetaDataLoader.FromDirectory(fixtureDir);
@@ -152,8 +174,11 @@ public sealed class OutputParserGeneratorTests
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
         };
         var file = Assert.Single(new OutputParserGenerator().Generate(ctx));
-        Assert.Equal("NpcResponseOutput.output.cs", file.Path);
-        Assert.Contains("public static NpcResponsePayload Parse(string text)", file.Content);
+        Assert.Equal("SupportAnswerPrompt.response.cs", file.Path);
+        // The bound type is the @responseRef shape (SupportAnswer), NOT the @payloadRef
+        // request shape (SupportRequest) — the distinction ADR-0052 exists to draw.
+        Assert.Contains("public static SupportAnswer Parse(string text)", file.Content);
+        Assert.DoesNotContain("SupportRequest Parse(", file.Content);
         Assert.Contains("public static bool TryParse(string text,", file.Content);
     }
 

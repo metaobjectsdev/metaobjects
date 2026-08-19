@@ -26,7 +26,8 @@ namespace MetaObjects.Codegen.Tests;
 ///   • Address value object referenced by an Author object-field → MODEL only (its POCO IS
 ///     emitted because it is referenced);
 ///   • BaseNode abstract entity → NO unit (no symbols);
-///   • SummaryOutput json template.output → RENDER/PAYLOAD/PROMPT/OUTPUT_PARSER.
+///   • SummaryOutput responding template.prompt → PAYLOAD/PROMPT/OUTPUT_PARSER (ADR-0052 inbound);
+///   • SummaryDoc template.output → RENDER only (ADR-0052 outbound — no parser, ever).
 /// </summary>
 public sealed class CSharpApiDocsAccuracyTests
 {
@@ -58,9 +59,13 @@ public sealed class CSharpApiDocsAccuracyTests
       { "object.value": { "name": "SummaryPayload", "children": [
         { "field.string": { "name": "summary", "@required": true } }
       ]}},
+      { "template.prompt": {
+        "name": "SummaryOutput", "@payloadRef": "SummaryPayload", "@responseRef": "SummaryPayload",
+        "@textRef": "blog/summary", "@format": "text", "@responseFormat": "json", "@promptStyle": "inline"
+      }},
       { "template.output": {
-        "name": "SummaryOutput", "@payloadRef": "SummaryPayload",
-        "@textRef": "blog/summary", "@format": "json", "@promptStyle": "inline"
+        "name": "SummaryDoc", "@kind": "document", "@payloadRef": "SummaryPayload",
+        "@textRef": "blog/summary", "@format": "json"
       }}
     ]}}
     """;
@@ -149,10 +154,12 @@ public sealed class CSharpApiDocsAccuracyTests
         {
             var (model, _) = BuildAndGenerate(tpl);
             var nodes = model.Units.Select(u => u.Node).OrderBy(n => n, StringComparer.Ordinal).ToList();
-            // Author + Address + AuthorSummary (projection) + SummaryPayload + SummaryOutput;
+            // Author + Address + AuthorSummary (projection) + SummaryPayload + both halves of
+            // the ADR-0052 split (SummaryOutput inbound prompt, SummaryDoc outbound output);
             // BaseNode (abstract) is absent.
             Assert.Equal(
-                new[] { "Address", "Author", "AuthorSummary", "SummaryOutput", "SummaryPayload" }, nodes);
+                new[] { "Address", "Author", "AuthorSummary", "SummaryDoc", "SummaryOutput", "SummaryPayload" },
+                nodes);
         }
         finally { Directory.Delete(tpl, recursive: true); }
     }
@@ -301,8 +308,10 @@ public sealed class CSharpApiDocsAccuracyTests
     }
 
     [Fact]
-    public void Output_template_documents_render_payload_prompt_parser()
+    public void Responding_prompt_documents_payload_response_format_and_parser()
     {
+        // ADR-0052: the INBOUND symbols belong to the responding prompt. The documented
+        // Payload is the @responseRef shape — what the parser above it actually returns.
         var tpl = WriteTemplates();
         try
         {
@@ -312,10 +321,27 @@ public sealed class CSharpApiDocsAccuracyTests
             Assert.Equal(
                 new HashSet<ApiSymbolKind>
                 {
-                    ApiSymbolKind.Render, ApiSymbolKind.Payload,
-                    ApiSymbolKind.Prompt, ApiSymbolKind.OutputParser,
+                    ApiSymbolKind.Payload, ApiSymbolKind.Prompt, ApiSymbolKind.OutputParser,
                 },
                 kinds);
+        }
+        finally { Directory.Delete(tpl, recursive: true); }
+    }
+
+    [Fact]
+    public void Output_template_documents_render_only()
+    {
+        // The other half of the ADR-0052 split, and the control for it: `template.output`
+        // is OUTBOUND ONLY. It documents its render helper and nothing that reads a reply —
+        // no parser, no response-format fragment. api-docs claiming an OutputParser here
+        // would be documenting a symbol codegen no longer emits.
+        var tpl = WriteTemplates();
+        try
+        {
+            var (model, _) = BuildAndGenerate(tpl);
+            var doc = model.Units.Single(u => u.Node == "SummaryDoc");
+            var kinds = doc.Symbols.Select(s => s.Kind).ToHashSet();
+            Assert.Equal(new HashSet<ApiSymbolKind> { ApiSymbolKind.Render }, kinds);
         }
         finally { Directory.Delete(tpl, recursive: true); }
     }

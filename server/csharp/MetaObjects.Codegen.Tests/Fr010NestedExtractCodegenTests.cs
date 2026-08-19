@@ -39,8 +39,8 @@ public sealed class Fr010NestedExtractCodegenTests
         { "field.object": { "name": "shipTo", "@objectRef": "Address" } },
         { "field.object": { "name": "items", "isArray": true, "@objectRef": "LineItem" } }
       ]}},
-      { "template.output": { "name": "OrderOutput", "@payloadRef": "OrderPayload",
-          "@textRef": "ai/order", "@format": "json", "@promptStyle": "guide" } }
+      { "template.prompt": { "name": "OrderOutput", "@payloadRef": "OrderPayload", "@responseRef": "OrderPayload",
+          "@textRef": "ai/order", "@format": "text", "@responseFormat": "json", "@promptStyle": "guide" } }
     ]}}
     """;
 

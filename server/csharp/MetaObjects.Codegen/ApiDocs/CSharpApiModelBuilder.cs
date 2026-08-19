@@ -184,13 +184,14 @@ public sealed class CSharpApiModelBuilder
                 "renders the output template against a typed payload",
                 returns));
         }
+        // ADR-0052: the inbound symbols belong to the RESPONDING PROMPT, not to an output.
         if (OutputPromptGenerator.AppliesTo(tmpl, root))
         {
-            var prompt = CSharpNaming.PromptClassName(name);
+            var prompt = CSharpNaming.ResponseFormatClassName(name);
             symbols.Add(new ApiSymbol(
                 prompt, ApiSymbolKind.Prompt, ns,
                 $"static class {prompt}",
-                "builds the output-format prompt fragment"));
+                "builds the response-format prompt fragment"));
         }
         if (OutputParserGenerator.AppliesTo(tmpl))
         {
@@ -198,19 +199,16 @@ public sealed class CSharpApiModelBuilder
             symbols.Add(new ApiSymbol(
                 parser, ApiSymbolKind.OutputParser, ns,
                 $"static class {parser}",
-                "parses model output back into the typed payload"));
+                "parses a model reply back into the typed response shape"));
 
-            // PAYLOAD — the strict typed payload record the payload-generator emits (and the
-            // prompt/parser/extractor bind to). Gated by the SAME predicate the payload
-            // generator uses (PayloadGenerator.AppliesTo → @payloadRef resolves to an
-            // object.value) — no inline mirror that could drift from what is emitted.
-            if (PayloadGenerator.AppliesTo(tmpl, root))
+            // PAYLOAD — the strict typed record the payload-generator emits (and the
+            // fragment/parser/extractor bind to). ADR-0052: for a responding prompt that is the
+            // `@responseRef` shape, which is what the parser above actually returns; documenting
+            // the `@payloadRef` request record here would name a type the parser never mentions.
+            if (FindInbound.ResponseShape(root, tmpl) is { } inbound)
             {
-                // ADR-0039: resolving — @payloadRef may be inherited via an abstract template base.
-                var payloadRef = (string)tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF)!;
-                // ADR-0042: a bare @payloadRef resolves in the template's package.
-                var vo = PayloadGenerator.ResolvePayloadVo(
-                    root, payloadRef, global::MetaObjects.NamingRefs.EffectivePackage(tmpl))!;
+                var payloadRef = inbound.Ref;
+                var vo = inbound.Vo;
                 symbols.Add(new ApiSymbol(
                     payloadRef, ApiSymbolKind.Payload, ns,
                     $"record {payloadRef}",
