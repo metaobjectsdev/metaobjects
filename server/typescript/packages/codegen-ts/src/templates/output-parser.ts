@@ -136,6 +136,21 @@ export function renderOutputParser(root: MetaData, templateName: string, ctx?: R
   // strict parser and no extract at all.
   const format = shape.format;
 
+  // The strict Zod tier is JSON-ONLY, by construction.
+  //
+  // Its body is `Schema.parse(JSON.parse(text))`. There is no XML equivalent: the
+  // TS runtime ships no XML parser, which is exactly why this reached for
+  // JSON.parse in the first place — and it did so for an XML template too, so
+  // `parse<Name>` was a generated function that could never work. Supplying one
+  // would mean taking an XML-parser dependency AND assuming a model emits exactly
+  // well-formed XML, which is the assumption FR-010's tolerant extract exists
+  // because you cannot make.
+  //
+  // So an XML reply gets the tolerant extract and nothing else. Its typed shape is
+  // `<Name>Extracted` — a nullable mirror, which is the honest type for a
+  // best-effort parse of model output.
+  const emitStrict = format !== RESPONSE_FORMAT_XML;
+
   const strictBody = `const ${schemaName} = ${schema};
 
 export type ${dataName} = z.infer<typeof ${schemaName}>;
@@ -269,13 +284,15 @@ export function ${extractLenientWithName}(
     : `import type { MetaRoot } from "@metaobjectsdev/metadata";\n`;
   const runtimeImport = `import { extractObject } from "@metaobjectsdev/runtime-ts";\n`;
 
+  // `zod` is imported only when the strict tier is emitted — an XML reply's file
+  // would otherwise carry an unused import (tsc noUnusedLocals-unsafe).
   return (
-    `import { z } from "zod";\n` +
+    (emitStrict ? `import { z } from "zod";\n` : "") +
     `import {\n  ${renderImports.join(",\n  ")},\n} from "@metaobjectsdev/render";\n` +
     metadataImport +
     runtimeImport +
     `\n` +
-    `${strictBody}\n` +
+    (emitStrict ? `${strictBody}\n` : "") +
     `${delegating}`
   );
 }

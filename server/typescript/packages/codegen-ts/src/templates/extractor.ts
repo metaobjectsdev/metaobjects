@@ -344,7 +344,7 @@ export function renderExtractor(root: MetaData, templateName: string, ctx?: Rend
     `// arrays-of-objects populated) in one call, by delegating to the nested-capable extract and\n` +
     `// mapping the all-nullable mirror onto the strict payload. No registry / binding / factory.\n` +
     `\n` +
-    `import {\n  ${extractLenientWithName},\n  type ${mirrorTypes.join(",\n  type ")},\n} from "./${templateName}.output.js";\n` +
+    `import {\n  ${extractLenientWithName},\n  type ${mirrorTypes.join(",\n  type ")},\n} from "./${templateName}.response.js";\n` +
     `${payloadImports}\n` +
     `import type { MetaRoot } from "@metaobjectsdev/metadata";\n` +
     `import type { ExtractionResult } from "@metaobjectsdev/render";\n` +

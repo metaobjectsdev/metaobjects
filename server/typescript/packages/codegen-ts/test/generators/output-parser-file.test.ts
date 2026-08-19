@@ -107,12 +107,15 @@ describe("outputParser() factory — ADR-0052 direction split", () => {
 
     const parsers = await outputParser().generate(ctx);
     expect(parsers.map((f) => f.path)).toEqual(["Ask.response.ts"]);
-    // KNOWN GAP, pre-dating ADR-0052 and deliberately not changed here: the STRICT
-    // parser body is `Schema.parse(JSON.parse(text))` regardless of syntax, so for an
-    // XML reply `parseAsk` cannot work — only the tolerant extract below handles XML.
-    // Asserted so the emission is pinned, NOT because it is correct.
-    expect(parsers[0]!.content).toContain("export function parseAsk");
-    expect(parsers[0]!.content).toContain("export function safeParseAsk");
+    // An XML reply gets the tolerant extract and NOTHING strict. The strict tier is
+    // `Schema.parse(JSON.parse(text))` and has no XML equivalent — the TS runtime
+    // ships no XML parser, which is why it used to emit a `parseAsk` that could
+    // never work. Its typed shape is the nullable `AskExtracted` mirror instead.
+    expect(parsers[0]!.content).not.toContain("export function parseAsk");
+    expect(parsers[0]!.content).not.toContain("export function safeParseAsk");
+    expect(parsers[0]!.content).not.toContain('from "zod"');
+    expect(parsers[0]!.content).toContain("export interface AskExtracted");
+    expect(parsers[0]!.content).toContain("export function extractLenientAskWithLoader");
     // The reply syntax comes from @responseFormat, NOT from @format — which is
     // "text" here and would have yielded no extract path at all before ADR-0053.
     expect(parsers[0]!.content).toContain("Format.XML");
@@ -146,6 +149,10 @@ describe("outputParser() factory — ADR-0052 direction split", () => {
     expect(out).toHaveLength(1);
     expect(out[0]!.content).toContain("Format.JSON");
     expect(out[0]!.content).not.toContain("Format.XML");
+    // A JSON reply DOES get the strict tier — JSON.parse is a real, exact parser,
+    // so `Schema.parse(JSON.parse(text))` is a correct thing to generate.
+    expect(out[0]!.content).toContain("export function parseAsk");
+    expect(out[0]!.content).toContain("export function safeParseAsk");
   });
 
   test("parses into the @responseRef shape, not the @payloadRef shape", async () => {
