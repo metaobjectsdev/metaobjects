@@ -14,11 +14,12 @@ import {
   FIELD_ATTR_EXAMPLE,
   FIELD_ATTR_INSTRUCTION,
   FIELD_ATTR_ENUM_DOC,
-  TEMPLATE_ATTR_FORMAT,
   TEMPLATE_ATTR_PROMPT_STYLE,
   PROMPT_STYLE_INLINE,
   PROMPT_STYLE_EXAMPLE_ONLY,
+  RESPONSE_FORMAT_XML,
 } from "@metaobjectsdev/metadata";
+import { responseFormatOf } from "./find-inbound.js";
 import {
   fields,
   isRequired,
@@ -42,9 +43,11 @@ export function specLiteral(vo: MetaData, template: MetaData, rootName: string):
 }
 
 function resolveFormat(template: MetaData): string {
-  // ADR-0039: resolving — a template may inherit @format via extends.
-  const f = template.attr(TEMPLATE_ATTR_FORMAT);
-  return typeof f === "string" && f.toLowerCase() === "xml" ? "Format.XML" : "Format.JSON";
+  // ADR-0053: the fragment describes the REPLY, so its syntax is @responseFormat —
+  // NOT @format, which is the syntax of the rendered prompt BODY. Reading @format
+  // here typed the instruction "produce your answer like this" off the format of
+  // the question.
+  return responseFormatOf(template) === RESPONSE_FORMAT_XML ? "Format.XML" : "Format.JSON";
 }
 
 function resolvePromptStyle(template: MetaData): string {

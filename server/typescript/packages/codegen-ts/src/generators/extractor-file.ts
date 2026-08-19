@@ -14,13 +14,13 @@
 // Custom output directory:
 //   generators: [..., extractor({ outDir: "src/generated/outputs" })]
 
-import { TYPE_TEMPLATE, TEMPLATE_SUBTYPE_OUTPUT, TEMPLATE_ATTR_FORMAT } from "@metaobjectsdev/metadata";
 import {
   type EmittedFile,
   type Generator,
   type GeneratorFactory,
   oncePerRun,
 } from "../generator.js";
+import { inboundTemplates, responseShape } from "../templates/find-inbound.js";
 import { renderExtractor } from "../templates/extractor.js";
 
 export interface ExtractorOpts {
@@ -35,16 +35,12 @@ export const extractor = function extractor(opts?: ExtractorOpts): Generator {
   const generator: Generator = {
     name: "extractor",
     generate: oncePerRun((_entities, ctx) => {
-      // ADR-0039: resolving — root has no super (children()==ownChildren()).
-      const outputs = ctx.loadedRoot
-        .children()
-        .filter((c) => c.type === TYPE_TEMPLATE && c.subType === TEMPLATE_SUBTYPE_OUTPUT);
       const files: EmittedFile[] = [];
-      for (const t of outputs) {
-        // The extract tier requires the extract API, which only json/xml output-parsers emit.
-        // ADR-0039: resolving — a template may inherit @format via extends.
-        const format = ((t.attr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text").toLowerCase();
-        if (format !== "json" && format !== "xml") continue;
+      for (const t of inboundTemplates(ctx.loadedRoot)) {
+        // The extract tier sits over the parser's extract API. Since ADR-0052 every
+        // responding prompt emits one (@responseFormat is a closed json|xml set), so
+        // the only remaining skip is an unresolvable @responseRef.
+        if (!responseShape(ctx.loadedRoot, t)) continue;
         files.push({
           path: `${dirPrefix}${t.name}.extractor.ts`,
           // ADR-0044/#228: thread ctx.renderContext (when present — runGen always supplies it;

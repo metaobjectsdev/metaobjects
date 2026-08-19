@@ -24,15 +24,15 @@ import {
   type MetaData,
   type MetaField,
   TYPE_TEMPLATE,
-  TEMPLATE_SUBTYPE_OUTPUT,
+  TEMPLATE_SUBTYPE_PROMPT,
   FIELD_SUBTYPE_OBJECT,
   FIELD_SUBTYPE_ENUM,
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_REQUIRED,
-  TEMPLATE_ATTR_PAYLOAD_REF,
-  TEMPLATE_ATTR_FORMAT,
+  TEMPLATE_ATTR_RESPONSE_REF,
   resolveObjectRef,
 } from "@metaobjectsdev/metadata";
+import { responseShape } from "./find-inbound.js";
 import { fields, isArray } from "./fr010-field-mapping.js";
 import { mirrorName } from "./extract-delegate-emitter.js";
 import { enumUnionAliasName } from "./inferred-types.js";
@@ -288,36 +288,31 @@ function reachableMirrorTypes(vo: MetaData, root: MetaData, rootMirror: string, 
 }
 
 /**
- * Render the full `<TemplateName>.extractor.ts` for one `template.output` node.
- * Throws if the template isn't found / isn't a template.output / its @payloadRef doesn't resolve,
- * or if the target format is not json/xml (the extract tier requires the extract<Name> API, which
- * only the json/xml output-parsers emit).
+ * Render the full `<PromptName>.extractor.ts` for one responding `template.prompt`.
+ * Throws if the template isn't found / isn't a template.prompt / its @responseRef
+ * doesn't resolve. ADR-0052: no format gate remains — @responseFormat is a closed
+ * json|xml set, so every responding prompt has an extract<Name> API to sit over.
  */
 export function renderExtractor(root: MetaData, templateName: string, ctx?: RenderContext): string {
   const tmpl = findTemplate(root, templateName);
   if (!tmpl) {
     throw new Error(`template "${templateName}" not found in metadata root`);
   }
-  if (tmpl.subType !== TEMPLATE_SUBTYPE_OUTPUT) {
-    throw new Error(`template "${templateName}" is not a template.output (got subtype "${tmpl.subType}")`);
+  if (tmpl.subType !== TEMPLATE_SUBTYPE_PROMPT) {
+    throw new Error(`template "${templateName}" is not a template.prompt (got subtype "${tmpl.subType}")`);
   }
-  // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
-  const payloadRef = tmpl.attr(TEMPLATE_ATTR_PAYLOAD_REF);
-  if (typeof payloadRef !== "string") {
-    throw new Error(`template "${templateName}" missing @payloadRef`);
-  }
-  // ADR-0042: a bare @payloadRef resolves in the template's package.
-  const vo = findObject(root, payloadRef, tmpl.package ?? tmpl.fileDefaultPackage ?? "");
-  if (!vo) {
-    throw new Error(`template "${templateName}" @payloadRef "${payloadRef}" not found in metadata root`);
-  }
-  // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
-  const format = ((tmpl.attr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text").toLowerCase();
-  if (format !== "json" && format !== "xml") {
+  // ADR-0052: the extract tier reads a REPLY, so it binds @responseRef.
+  const shape = responseShape(root, tmpl);
+  if (!shape) {
+    // ADR-0039: resolving — @responseRef may be inherited via extends.
+    const declared = tmpl.attr(TEMPLATE_ATTR_RESPONSE_REF);
     throw new Error(
-      `template "${templateName}" @format "${format}" has no extract API to extract over (json/xml only)`,
+      typeof declared === "string"
+        ? `template "${templateName}" @responseRef "${declared}" not found in metadata root`
+        : `template "${templateName}" missing @responseRef`,
     );
   }
+  const { vo } = shape;
 
   // ADR-0044/#228: the strict payload TYPE name is the entity-domain EMITTED name (Task 3's
   // `valueObjectEmittedName`) — the SAME name entityFile() declared the interface under, so a

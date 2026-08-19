@@ -13,13 +13,14 @@ import {
   type MetaData,
   TYPE_FIELD,
   TYPE_TEMPLATE,
-  TEMPLATE_SUBTYPE_OUTPUT,
+  TEMPLATE_SUBTYPE_PROMPT,
   FIELD_SUBTYPE_OBJECT,
   FIELD_ATTR_OBJECT_REF,
-  TEMPLATE_ATTR_PAYLOAD_REF,
-  TEMPLATE_ATTR_FORMAT,
+  TEMPLATE_ATTR_RESPONSE_REF,
+  RESPONSE_FORMAT_XML,
   resolveObjectRef,
 } from "@metaobjectsdev/metadata";
+import { responseShape } from "./find-inbound.js";
 import {
   nestedMirrorInterfaces,
   nestedMappers,
@@ -90,28 +91,34 @@ function renderObjectSchema(vo: MetaData, root: MetaData, seen: ReadonlySet<stri
 }
 
 /**
- * Render the full output-parser file for one `template.output` node.
- * Throws if the template isn't found, isn't a template.output, or its
- * @payloadRef doesn't resolve to an object.value.
+ * Render the full response-parser file for one responding `template.prompt`.
+ * Throws if the template isn't found, isn't a template.prompt, or its
+ * @responseRef is missing / doesn't resolve to an object.value.
+ *
+ * ADR-0052: the shape parsed INTO is `@responseRef`, not `@payloadRef` —
+ * `@payloadRef` types the REQUEST rendered outbound, which is the distinction the
+ * trace helper has always drawn ("@responseRef types the result; @payloadRef types
+ * the request") and the inbound tier used to ignore.
  */
 export function renderOutputParser(root: MetaData, templateName: string, ctx?: RenderContext): string {
   const tmpl = findTemplate(root, templateName);
   if (!tmpl) {
     throw new Error(`template "${templateName}" not found in metadata root`);
   }
-  if (tmpl.subType !== TEMPLATE_SUBTYPE_OUTPUT) {
-    throw new Error(`template "${templateName}" is not a template.output (got subtype "${tmpl.subType}")`);
+  if (tmpl.subType !== TEMPLATE_SUBTYPE_PROMPT) {
+    throw new Error(`template "${templateName}" is not a template.prompt (got subtype "${tmpl.subType}")`);
   }
-  // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
-  const payloadRef = tmpl.attr(TEMPLATE_ATTR_PAYLOAD_REF);
-  if (typeof payloadRef !== "string") {
-    throw new Error(`template "${templateName}" missing @payloadRef`);
+  const shape = responseShape(root, tmpl);
+  if (!shape) {
+    // ADR-0039: resolving — @responseRef may be inherited via extends.
+    const declared = tmpl.attr(TEMPLATE_ATTR_RESPONSE_REF);
+    throw new Error(
+      typeof declared === "string"
+        ? `template "${templateName}" @responseRef "${declared}" not found in metadata root`
+        : `template "${templateName}" missing @responseRef`,
+    );
   }
-  // ADR-0042: a bare @payloadRef resolves in the template's package.
-  const vo = findObject(root, payloadRef, tmpl.package ?? tmpl.fileDefaultPackage ?? "");
-  if (!vo) {
-    throw new Error(`template "${templateName}" @payloadRef "${payloadRef}" not found in metadata root`);
-  }
+  const { vo, ref: payloadRef } = shape;
 
   const schema = renderObjectSchema(vo, root, new Set([payloadRef]), 0);
   const schemaName = `${templateName}Schema`;
@@ -120,13 +127,14 @@ export function renderOutputParser(root: MetaData, templateName: string, ctx?: R
   const parseName = `parse${templateName}`;
   const safeParseName = `safeParse${templateName}`;
 
-  // FR-010: emit the tolerant extract() API alongside the strict Zod parser when the
-  // template targets json/xml. The @payloadRef already resolved to a value-object above,
-  // so a ExtractSchema can always be baked. text-format outputs get no extract.
-  // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
-  const format = (tmpl.attr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text";
-  const lc = format.toLowerCase();
-  const emitExtractLenient = lc === "json" || lc === "xml";
+  // FR-010: emit the tolerant extract() API alongside the strict Zod parser.
+  //
+  // ADR-0052/0053: a declared @responseRef ALWAYS gets the tolerant path, and the
+  // syntax comes from @responseFormat (json|xml, default json) — never from
+  // @format, which is the syntax of the rendered prompt BODY. The old json/xml
+  // gate on @format is what made a text-bodied prompt with a JSON reply emit a
+  // strict parser and no extract at all.
+  const format = shape.format;
 
   const strictBody = `const ${schemaName} = ${schema};
 
@@ -164,15 +172,14 @@ export function ${safeParseName}(
 }
 `;
 
-  if (!emitExtractLenient) {
-    return `import { z } from "zod";\n\n${strictBody}`;
-  }
-
-  // ---- FR-010 tolerant extract block (json/xml only) ----
+  // ---- FR-010 tolerant extract block ----
+  // Unconditional since ADR-0052: a declared @responseRef IS the request for the
+  // tolerant path, and @responseFormat is a closed json|xml set, so there is no
+  // longer a third case to gate on.
   const extractedName = `${templateName}Extracted`;
   const extractLenientWithName = `extractLenient${templateName}WithLoader`;
   const payloadFqnConst = `${templateName.toUpperCase()}_PAYLOAD_NAME`;
-  const formatEnum = format.toLowerCase() === "xml" ? "Format.XML" : "Format.JSON";
+  const formatEnum = format === RESPONSE_FORMAT_XML ? "Format.XML" : "Format.JSON";
 
   // The nullable mirror is the return shape of the delegating extract. Use the nested-aware
   // emitter so the payload mirror's nested-object / array-of-object components are typed (not
