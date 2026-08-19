@@ -19,6 +19,15 @@
           "@textRef": "xpkg/digest",
           "@format": "json"
         }
+      },
+      {
+        "template.prompt": {
+          "name": "DigestPrompt",
+          "@payloadRef": "Digest",
+          "@responseRef": "Digest",
+          "@textRef": "xpkg/digest-prompt",
+          "@responseFormat": "json"
+        }
       }
     ]
   }

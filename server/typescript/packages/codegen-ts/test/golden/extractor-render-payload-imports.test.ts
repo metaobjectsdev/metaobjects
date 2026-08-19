@@ -67,11 +67,14 @@ const MODEL = [
     },
   },
   {
-    "template.output": {
+    // ADR-0052: the inbound tier is driven by a responding prompt. @payloadRef
+    // and @responseRef name the same shape here because this fixture exercises
+    // the extractor's payload IMPORTS, not the request/response distinction.
+    "template.prompt": {
       name: "OrderOut",
       "@payloadRef": "Order",
+      "@responseRef": "Order",
       "@textRef": "out/order",
-      "@format": "json",
     },
   },
 ];
@@ -225,7 +228,7 @@ describe("extractor/render payload import resolves against the REAL generated VO
       writeFileSync(full, body);
     };
     for (const f of entityFiles) write(f.path, f.content);
-    write("OrderOut.output.ts", parserSrc);
+    write("OrderOut.response.ts", parserSrc);
     write("OrderOut.extractor.ts", extractorSrc);
     write("OrderOut.render.ts", renderSrc);
     write("engine-stubs.d.ts", ENGINE_STUBS);
@@ -233,7 +236,7 @@ describe("extractor/render payload import resolves against the REAL generated VO
     // 4. tsc — the payload import must RESOLVE (no TS2307) and the type be found.
     const fileList = [
       ...entityFiles.map((f) => f.path),
-      "OrderOut.output.ts",
+      "OrderOut.response.ts",
       "OrderOut.extractor.ts",
       "OrderOut.render.ts",
       "engine-stubs.d.ts",
