@@ -95,6 +95,19 @@ order anyway.
 A port MAY have a stable internal order — several do, and their own generated
 output depends on it. It just is not a cross-port promise.
 
+## Also deliberately NOT pinned: the malformed-config error code
+
+The corpus has no case for a `.metaobjects/config.json` that exists but fails
+to parse (bad JSON, an unsupported `schema_version`, a malformed `sources`
+shape). The contract is only that resolution MUST raise rather than silently
+degrade to "no config" — which error code it raises with is left to each
+port. The reference implementation is why: `collection.ts:129-140` has no
+try/catch around config loading and lets the raw zod/JSON error propagate, so
+TypeScript emits no MetaObjects error code here at all. Pinning a shared code
+across ports would mean changing the reference, which this corpus does not
+do. Python raises `ERR_COLLECTION_NOT_FOUND`; C# and Java may each choose a
+different code for the same failure, same as file order above.
+
 ## Behavioral contract
 
 Each port's runner reads `cases.json`, and for every case: materializes `tree`

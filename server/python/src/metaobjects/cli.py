@@ -407,6 +407,46 @@ def gen_state_dir_for(metadata_dir: str) -> str:
     return str(Path(metadata_dir).resolve().parent / ".metaobjects" / ".gen-state")
 
 
+def resolve_metadata_location(
+    explicit: str | None,
+    config: ProjectConfig | None,
+    root: Path,
+) -> list[str]:
+    """The precedence ladder for where metadata lives. First match wins.
+
+    1. An explicit CLI argument (the positional ``metadata_dir``).
+    2. This port's native surface — ``metadata`` in ``metaobjects.config.yaml``.
+    3. ``sources`` in the port-neutral ``.metaobjects/config.json``.
+    4. The built-in default directory.
+
+    A file that EXISTS at any rung but is malformed raises rather than falling
+    through to the next rung. See
+    `docs/superpowers/specs/2026-08-19-cross-port-metadata-sources-design.md` §5.
+    """
+    from metaobjects.config.source_resolver import resolve_collection, resolve_sources
+
+    if explicit is not None:
+        # Resolve to an absolute path FIRST and pass it as an absolute spec —
+        # `resolve_sources` takes an absolute `path` as-is, so the base is
+        # irrelevant. Joining a relative `explicit` onto its own already-
+        # absolute parent (the naive approach) resolves one level too deep.
+        return [
+            str(p)
+            for p in resolve_sources(root, [{"path": str(Path(explicit).resolve())}])
+        ]
+
+    if config is not None:
+        # `config.metadata_dir()` is already resolved to an absolute path
+        # (`ProjectConfig._resolve_under`), so the base passed here is
+        # likewise irrelevant.
+        return [
+            str(p) for p in resolve_sources(root, [{"path": config.metadata_dir()}])
+        ]
+
+    # Rungs 3 and 4 both live in `resolve_collection`.
+    return [str(p) for p in resolve_collection(root)]
+
+
 #: The default api-surface subdir (the cross-port contract's ``api/python``).
 _DOCS_DEFAULT_API_SUBDIR = "api/python"
 
