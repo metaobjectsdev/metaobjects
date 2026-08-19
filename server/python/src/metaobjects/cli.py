@@ -235,6 +235,7 @@ def _load_root(
     metadata_dir: str,
     strict: bool = False,
     providers: list[object] | None = None,
+    libraries: list[str] | None = None,
 ) -> tuple[MetaData | None, list[str]]:
     """Load metadata; return ``(root, error_messages)``. ``root`` is None on error.
 
@@ -247,15 +248,26 @@ def _load_root(
     composed ON TOP of the core set, so a config-registered custom subtype resolves
     through the standalone CLI just as it does when an app loads the loader directly.
     Empty/None keeps the core-providers-only default (``from_directory`` convenience).
+
+    ``libraries`` — MetaObjects-shipped library packages (config key ``libraries``,
+    e.g. ``["ai"]``). Without this the CLI could not load ``metaobjects::ai::LlmCallBase``,
+    so ``metaobjects gen`` failed with ERR_UNRESOLVED_SUPER on exactly the metadata the
+    registered ``trace-helper`` generator exists to consume — the generator was reachable
+    from the CLI while its input was not.
     """
     if providers:
         from metaobjects.core_types import core_providers
 
         result = MetaDataLoader.from_directory(
-            metadata_dir, providers=[*core_providers, *providers], strict=strict
+            metadata_dir,
+            providers=[*core_providers, *providers],
+            strict=strict,
+            libraries=libraries,
         )
     else:
-        result = MetaDataLoader.from_directory(metadata_dir, strict=strict)
+        result = MetaDataLoader.from_directory(
+            metadata_dir, strict=strict, libraries=libraries
+        )
     if result.errors:
         msgs = [f"{e.code}: {e.message}" for e in result.errors]
         return None, msgs
@@ -671,7 +683,9 @@ def _cmd_gen_config(args: argparse.Namespace) -> int:
     if not providers_ok:
         return 1
 
-    root, load_errors = _load_root(config.metadata_dir(), providers=providers)
+    root, load_errors = _load_root(
+        config.metadata_dir(), providers=providers, libraries=config.libraries
+    )
     if root is None:
         print("error: failed to load metadata:", file=sys.stderr)
         for msg in load_errors:
@@ -844,7 +858,9 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
     if not providers_ok:
         return 1
 
-    root, load_errors = _load_root(config.metadata_dir(), strict=strict, providers=providers)
+    root, load_errors = _load_root(
+        config.metadata_dir(), strict=strict, providers=providers, libraries=config.libraries
+    )
     if root is None:
         print("error: failed to load metadata:", file=sys.stderr)
         for msg in load_errors:

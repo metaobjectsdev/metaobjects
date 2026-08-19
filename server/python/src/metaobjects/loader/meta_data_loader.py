@@ -153,14 +153,32 @@ class MetaDataLoader:
         exclude: list[str] | None = None,
         recurse: bool = True,
         strict: bool = False,
+        libraries: list[str] | None = None,
     ) -> LoadResult:
         """Load every JSON/YAML file under ``directory`` (recursive by default).
 
         ``strict`` (ADR-0023) — when True, an undeclared own ``@-attr`` →
         ``ERR_UNKNOWN_ATTR``. Defaults False (downstream-friendly open policy).
+
+        ``libraries`` — opt in to MetaObjects-shipped standard metadata packages,
+        e.g. ``libraries=["ai"]`` to make ``metaobjects::ai::LlmCallBase`` available
+        to ``extends``. Omitted by default: shipping a package nobody asked for would
+        put names into every adopter's model.
+
+        Library sources are prepended for a deterministic, TS-matching order — NOT
+        because resolution needs it. ``resolve_supers`` runs once after every root has
+        merged, so appending resolves identically; do not treat source order here as
+        load-bearing.
         """
         loader = cls(providers=providers, strict=strict)
-        sources = list(
+        sources: list[MetaDataSource] = []
+        if libraries:
+            # Imported lazily — keeps the embedded library module off the import path
+            # for the (overwhelmingly common) load that requests no libraries.
+            from metaobjects.library import library_sources
+
+            sources.extend(library_sources(libraries))
+        sources.extend(
             DirectorySource(directory, exclude=exclude, recurse=recurse).expand()
         )
         return loader.load(sources)

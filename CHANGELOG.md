@@ -482,6 +482,78 @@ ADR-0015 makes for schema migrations. Refusing warns rather than failing the rea
 because failing a Maven build over a file the user chose to own would punish exactly the
 person the guard protects.
 
+||||||| constructed merge base
+
+### Added — Python port serves the shipped `ai` library (loader `libraries=[...]`)
+
+**No new vocabulary — this is port parity.** No type, subtype, or attribute is added, so
+`expected-registry.json` is untouched.
+
+The Python port shipped both halves of the AI trace stack *except* the metadata they
+operate on. `runtime/llm_recorder.py` (`build_llm_call_row` / `persist_llm_call_row`) and
+the registered `trace-helper` generator were both present, but there was no `library/`
+package and no `libraries` loader option — so `metaobjects::ai::LlmCallBase` could not be
+loaded on this port at all, and the documented `extends: metaobjects::ai::LlmCallBase`
+failed with `ERR_UNRESOLVED_SUPER`. A generator shipped without its input.
+
+That is the more useful lesson: the feature was complete on both sides of the metadata
+and absent in the middle, and nothing failed loudly, because *nothing could author the
+entity that would have exercised it*. The port's own docs described the path as working.
+
+Mirrors the TypeScript design rather than inventing a second one — same package names,
+same refs (path under `library/` minus `.yaml`), same on-disk-first resolution:
+
+- `metaobjects/library/` — `library_sources(packages)` returns a `FileSource` when the
+  repo-root `library/` tree is reachable (a checkout, so editing the canonical YAML takes
+  effect immediately) and falls back to the generated embed otherwise (the ordinary
+  wheel-in-site-packages case). An unrecognised package name contributes no sources
+  rather than raising: asking for a package this version does not ship must not stop a
+  consumer loading its own metadata.
+- `scripts/generate_embedded_library.py` — regenerates the embed from the canonical
+  repo-root YAML. Embedded as a `.py` module, not shipped as package data, so no build
+  backend configuration can silently drop it.
+- `MetaDataLoader.from_directory(..., libraries=["ai"])` (hence `load_directory`) —
+  opt-in, and imported lazily: a load that requests no libraries neither pays the import
+  nor gets extra names in its model. Sources are prepended for a deterministic,
+  TS-matching order, **not** because resolution needs it — `resolve_supers` runs once
+  after every root merges, so appending resolves identically.
+- **A `libraries` key on `metaobjects.config.yaml`, threaded into the CLI's load path.**
+  The option first landed only on the loader — which is also all TypeScript exposes — so
+  `metaobjects gen` still could not load `metaobjects::ai::LlmCallBase` even though the
+  `trace-helper` generator that consumes it is registered *for the CLI*. The generator was
+  reachable from the command line while its input was not. An unknown package name in the
+  config is a `ConfigError` naming the valid ones, while the programmatic API keeps
+  TypeScript's silent skip: a name typed into a config file is a mistake worth failing on,
+  where an API caller asking for a package this version does not ship should still load
+  its own metadata. (The TypeScript CLI still lacks the key — parity follow-up, not drift
+  introduced here.)
+
+Three gates ship with it, since each of these failed silently before:
+
+- the embed is byte-compared against the canonical YAML (the drift pattern already used
+  for `spec/metamodel/`), so a stale generated module cannot reach a wheel;
+- `extends: metaobjects::ai::LlmCallBase` is asserted to fail *without* the opt-in and to
+  resolve 18 inherited fields *with* it — the negative half is what proves the opt-in is
+  doing the work;
+- **ADR-0024 FIX #1 is now enforced**: `build_llm_call_row`'s keys are asserted equal to
+  `LlmCallBase`'s effective fields, both directions. The ADR asked for this gate; it did
+  not exist. A recorder writing an undeclared column fails at persist with "Unknown
+  field", and the two drifting apart is invisible until then.
+- the acceptance test **runs** the generated helper against a capturing recorder and
+  asserts every key it writes is a field the entity declares. Worth stating why: the first
+  version of that test asserted the strings `voRequest`/`voResponse` appeared in the
+  emitted source, against a fixture declaring neither column — so it passed while blessing
+  a helper that raises on its first write. That is the same bypass ADR-0024 already warns
+  about ("the green tests pass only because they bypass the shipped base with bespoke
+  entities"), reappearing one level up in a test written to prevent it. A substring
+  assertion over generated code is not an end-to-end test.
+
+Not addressed here, and worth knowing before adopting: the `ai` opt-in also brings the
+library's own **concrete** `LlmCall` entity (table `llm_call`) in alongside the abstract
+base, so it appears in codegen output and in a schema diff unless filtered. Documented in
+the Python prompts reference rather than changed, because `library/ai/llm-call.yaml` is
+shared by every port and splitting it is a cross-port decision.
+
 ## [0.23.2] — npm `0.23.2` · PyPI `0.23.2` · NuGet `0.23.2` · Maven `7.23.2`
 
 A coordinated **PATCH** across all four registries.
