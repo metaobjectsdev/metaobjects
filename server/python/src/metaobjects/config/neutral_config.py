@@ -55,12 +55,26 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
             code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
         )
 
+    # `.get("sources", [])` only applies the [] default when the key is ABSENT —
+    # a present `sources: null` returns None here, which correctly fails the
+    # `isinstance(sources, list)` check below rather than silently reading as
+    # "absent" and falling back to the default directory with no diagnostic.
     sources = raw.get("sources", [])
     if not isinstance(sources, list) or not all(
-        isinstance(s, dict) and len(s) == 1 for s in sources
+        isinstance(s, dict)
+        and len(s) == 1
+        # Every source-spec value (`path`/`resource`/`package`) must be a
+        # non-empty (after stripping whitespace) string — a bare number/
+        # boolean/null would otherwise reach `Path()` downstream and raise an
+        # uncaught TypeError instead of this coded error, and an empty or
+        # whitespace-only `path` would resolve to the config-holding directory
+        # itself rather than failing loudly on the typo'd config.
+        and all(isinstance(v, str) and v.strip() for v in s.values())
+        for s in sources
     ):
         raise ParseError(
-            f"{path}: 'sources' must be an array of single-key objects",
+            f"{path}: 'sources' must be an array of single-key objects, each "
+            "value a non-empty string",
             code=ErrorCode.ERR_COLLECTION_NOT_FOUND,
         )
 

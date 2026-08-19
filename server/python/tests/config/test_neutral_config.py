@@ -63,3 +63,30 @@ def test_wrong_schema_version_raises(tmp_path: Path) -> None:
     with pytest.raises(ParseError) as e:
         read_neutral_config(tmp_path)
     assert e.value.code == ErrorCode.ERR_COLLECTION_NOT_FOUND
+
+
+def test_null_sources_raises(tmp_path: Path) -> None:
+    # A present `sources: null` is present-but-wrong-typed, same as a bare
+    # object — it must not silently read as "absent" (see the shared
+    # source-resolution-conformance corpus for the cross-port pin of this).
+    _write_config(tmp_path, {"schema_version": 1, "sources": None})
+    with pytest.raises(ParseError):
+        read_neutral_config(tmp_path)
+
+
+def test_whitespace_only_path_raises(tmp_path: Path) -> None:
+    # Deliberately NOT gated by the shared cross-port corpus: the TS reference
+    # (`config.ts`'s `z.string().min(1)`) rejects only a fully-empty path, not
+    # a whitespace-only one, and the reference is out of scope to change here.
+    # This port is stricter on this one edge case by design.
+    _write_config(tmp_path, {"schema_version": 1, "sources": [{"path": "   "}]})
+    with pytest.raises(ParseError):
+        read_neutral_config(tmp_path)
+
+
+def test_non_string_source_value_raises(tmp_path: Path) -> None:
+    # A bare number must fail here, at the config-read boundary, rather than
+    # reaching `Path()` downstream and raising an uncaught TypeError.
+    _write_config(tmp_path, {"schema_version": 1, "sources": [{"path": 123}]})
+    with pytest.raises(ParseError):
+        read_neutral_config(tmp_path)

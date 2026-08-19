@@ -23,6 +23,18 @@ _CORPUS = (
 _CASES = json.loads(_CORPUS.read_text())["cases"]
 
 
+def test_corpus_is_non_empty() -> None:
+    """A silent zero-case run is a failed gate, not a pass.
+
+    `@pytest.mark.parametrize` over an empty list simply collects zero tests —
+    pytest reports that as a SKIP, not a failure, so a corpus that quietly lost
+    its cases (e.g. a bad path, a JSON-parsing bug) would report green here
+    with nothing actually checked. Mirrors the TS runner's identically-named
+    guard (`source-resolution-conformance.test.ts`).
+    """
+    assert len(_CASES) > 0
+
+
 def _materialize(case: dict, root: Path) -> Path:
     """Materialize ``tree`` under ``root`` and ``config`` (when present) under the
     directory named by ``resolveFrom`` (project root when absent). Returns the
@@ -112,3 +124,29 @@ def test_explicit_relative_metadata_dir_resolves_against_cwd(
     assert {Path(p).relative_to(tmp_path.resolve()).as_posix() for p in got} == {
         "sub/model/meta.a.json"
     }
+
+
+def test_docs_with_no_positional_falls_back_to_neutral_config(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """`docs` used to declare `metadata_dir` as a REQUIRED positional, so the
+    neutral `.metaobjects/config.json` `sources` rung was unreachable from it
+    even though `gen` and `verify --codegen` could already reach it. A bare
+    `metaobjects docs --out <dir>` must resolve metadata via the same ladder
+    `gen` uses.
+    """
+    (tmp_path / "model").mkdir()
+    (tmp_path / "model" / "meta.a.json").write_text('{"metadata.root":{"children":[]}}')
+    d = tmp_path / ".metaobjects"
+    d.mkdir()
+    (d / "config.json").write_text(
+        json.dumps({"schema_version": 1, "sources": [{"path": "model"}]})
+    )
+
+    from metaobjects.cli import main
+
+    monkeypatch.chdir(tmp_path)
+    out = tmp_path / "out"
+    rc = main(["docs", "--out", str(out)])
+    assert rc == 0
+    assert (out / "api" / "python" / "README.md").exists()

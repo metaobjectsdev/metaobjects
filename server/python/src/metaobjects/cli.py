@@ -503,7 +503,35 @@ def _cmd_docs(args: argparse.Namespace) -> int:
     providers, providers_ok = _providers_from_args(args)
     if not providers_ok:
         return 1
-    root, errors = _load_root(args.metadata_dir, providers=providers)
+
+    if args.metadata_dir is None:
+        # Mirrors `gen`'s no-positional routing (#267): rung 2 (`metadata` in
+        # `metaobjects.config.yaml`, if one is found), else rungs 3-4 via
+        # `resolve_metadata_location` (the neutral `.metaobjects/config.json`
+        # `sources` key this feature adds, else the built-in default
+        # directory). Before this, `metadata_dir` was a REQUIRED positional
+        # here, so this ladder was unreachable from `docs` even though `gen`
+        # and `verify --codegen` could both already reach it.
+        root_dir = Path.cwd()
+        config: ProjectConfig | None = None
+        config_path = _find_config(args)
+        if config_path is not None:
+            try:
+                config = load_project_config(config_path)
+            except ConfigError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 1
+        try:
+            paths = resolve_metadata_location(explicit=None, config=config, root=root_dir)
+        except ParseError as exc:
+            print(f"error: could not resolve metadata location: {exc}", file=sys.stderr)
+            return 1
+        root, errors = _load_root_from_paths(paths, providers=providers)
+        project_default = root_dir.name
+    else:
+        root, errors = _load_root(args.metadata_dir, providers=providers)
+        project_default = Path(args.metadata_dir).resolve().name
+
     if root is None:
         print("error: failed to load metadata:", file=sys.stderr)
         for msg in errors:
@@ -511,7 +539,7 @@ def _cmd_docs(args: argparse.Namespace) -> int:
         return 1
 
     api_subdir = args.api_subdir or _DOCS_DEFAULT_API_SUBDIR
-    project = args.project or Path(args.metadata_dir).resolve().name
+    project = args.project or project_default
     model_base_url = getattr(args, "model_base_url", None)
 
     model = PythonApiModelBuilder().build(root, project)
@@ -1416,7 +1444,16 @@ def _build_parser() -> argparse.ArgumentParser:
             "surface of the cross-port SDK-docs contract) under --out"
         ),
     )
-    docs.add_argument("metadata_dir", help="directory of metadata JSON/YAML files")
+    # Optional, like `gen`'s: an omitted positional falls through the same
+    # location ladder (`metaobjects.config.yaml`'s `metadata` key, else the
+    # neutral `.metaobjects/config.json` `sources`, else the default directory)
+    # instead of hard-requiring the caller to name a directory.
+    docs.add_argument(
+        "metadata_dir",
+        nargs="?",
+        default=None,
+        help="directory of metadata JSON/YAML files (omit to use the config ladder)",
+    )
     docs.add_argument(
         "--out",
         required=True,

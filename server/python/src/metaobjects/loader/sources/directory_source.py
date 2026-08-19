@@ -15,6 +15,11 @@ from .file_source import FileSource
 
 _SUPPORTED_SUFFIXES = (".json", ".yaml", ".yml")
 
+#: Directory excluded at every level of a recursive expand() — drafts that are
+#: deliberately not part of the loaded model. Mirrors TypeScript's
+#: `PENDING_DIR` in `metadata-files.ts`.
+_PENDING_DIR = "_pending"
+
 
 class DirectorySource:
     """Expands a directory into a sorted, filtered list of FileSource objects."""
@@ -44,6 +49,12 @@ class DirectorySource:
                 if p.is_file()
                 and p.suffix.lower() in _SUPPORTED_SUFFIXES
                 and p.name not in self._exclude
+                # Excludes _pending/ at ANY depth — a directory NAME check on every
+                # ancestor component between `self._directory` and `p`, not merely
+                # a basename filter on `p` itself, so the whole subtree is skipped
+                # (a draft entity must be invisible to codegen, not just a file
+                # that happens to be named "_pending").
+                and _PENDING_DIR not in p.relative_to(self._directory).parts[:-1]
             ),
             key=lambda p: p.name,
         )

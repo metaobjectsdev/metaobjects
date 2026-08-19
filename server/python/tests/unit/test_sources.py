@@ -98,6 +98,25 @@ def test_directory_source_non_recursive(tmp_path: Path) -> None:
     assert ids == ["top.json"]
 
 
+def test_directory_source_excludes_pending_dir_at_any_depth(tmp_path: Path) -> None:
+    # Mirrors TypeScript's PENDING_DIR exclusion (metadata-files.ts) — a draft
+    # entity under _pending/ must be invisible to codegen, not merely a file
+    # that happens to be NAMED "_pending". Before this fix, only TypeScript
+    # knew about this directory; a draft would generate a live table under
+    # `metaobjects gen`.
+    (tmp_path / "meta.live.json").write_text("{}", encoding="utf-8")
+    pending = tmp_path / "_pending"
+    pending.mkdir()
+    (pending / "meta.draft.json").write_text("{}", encoding="utf-8")
+    # Nested: _pending/ excluded at ANY depth, not just top-level.
+    nested_pending = tmp_path / "nested" / "_pending"
+    nested_pending.mkdir(parents=True)
+    (nested_pending / "meta.deep-draft.json").write_text("{}", encoding="utf-8")
+
+    ids = [s.id for s in DirectorySource(tmp_path).expand()]
+    assert ids == ["meta.live.json"]
+
+
 def test_uri_source_file_scheme_reads_content(tmp_path: Path) -> None:
     p = tmp_path / "x.json"
     p.write_text("{}", encoding="utf-8")
