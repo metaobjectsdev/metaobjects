@@ -60,6 +60,36 @@ export const arena = (opts: { venue: boolean } = { venue: false }): string => JS
 export const arenaFile = (repo: string): string => join(repo, "metaobjects", "meta.arena.json");
 
 /**
+ * A package of shared SHAPES: an abstract base and a value object. Both are
+ * loaded objects, but neither can declare a table or view — persistability
+ * needs a writable source — so a `migrate.scope` over only this package
+ * governs zero tables however well its patterns match.
+ */
+export const SHARED = JSON.stringify({
+  "metadata.root": {
+    package: "acme::shared",
+    children: [
+      {
+        "object.entity": {
+          name: "BaseRecord",
+          abstract: true,
+          children: [{ "field.long": { name: "id" } }],
+        },
+      },
+      {
+        "object.value": {
+          name: "Address",
+          children: [
+            { "field.string": { name: "line1" } },
+            { "field.string": { name: "line2" } },
+          ],
+        },
+      },
+    ],
+  },
+});
+
+/**
  * A throwaway project holding both packages, plus the sqlite URL beside it.
  * `prefix` names the temp directory so a failing run says which suite made it.
  */
@@ -68,6 +98,7 @@ export function scaffold(prefix: string): { repo: string; dbUrl: string } {
   mkdirSync(join(repo, "metaobjects"), { recursive: true });
   writeFileSync(join(repo, "metaobjects", "meta.platform.json"), PLATFORM, "utf8");
   writeFileSync(arenaFile(repo), arena(), "utf8");
+  writeFileSync(join(repo, "metaobjects", "meta.shared.json"), SHARED, "utf8");
   return { repo, dbUrl: `file:${join(repo, "local.db")}` };
 }
 

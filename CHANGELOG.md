@@ -135,10 +135,15 @@ the same migrations. Three changes are visible even to that project. Adopter gui
   resolved directory differs from `<cwd>/.metaobjects/migrations` and that local
   directory exists; `--out-dir` overrides, and giving the subdirectory its own
   `.metaobjects/config.json` makes it a project root.
-- **Discovery stops at a `metaobjects/` directory, not only at a config.** A nested
-  project holding its own `metaobjects/` and no `.metaobjects/config.json` keeps
-  reading its own metadata, as it always did, rather than adopting an ancestor's
-  model and `outDir`.
+- **A project boundary is a `.metaobjects/config.json` — a bare `metaobjects/`
+  directory is not one.** Discovery walks up for a config and stops at nothing
+  else short of the `.git` boundary, so a command run inside a nested directory
+  that holds metadata but declares no config of its own resolves the nearest
+  ancestor config — adopting its `sources` and `outDir`. `metaobjects/` is the
+  default *value* of `sources`, so a directory of that name says nothing about
+  whether a project lives there. If a subdirectory should own its metadata, give
+  it a config: `meta init` writes one, and a `"sources": []` config is enough to
+  claim the directory and take the default.
 
 ## [0.23.2] — npm `0.23.2` · PyPI `0.23.2` · NuGet `0.23.2` · Maven `7.23.2`
 

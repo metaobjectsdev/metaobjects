@@ -27,7 +27,7 @@ import {
 } from "../lib/wrangler.js";
 import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 import { buildProjectionViews } from "@metaobjectsdev/codegen-ts";
-import { buildKyselyFromUrl, type Dialect } from "../lib/kysely.js";
+import { buildKyselyFromUrl, inferDialect, type Dialect } from "../lib/kysely.js";
 import { tokensToAllowOptions, describeChange } from "../lib/allow.js";
 import {
   computeDrift,
@@ -35,6 +35,7 @@ import {
   collectUnmanagedNames,
   excludeFromSnapshot,
   scopedDiffInputs,
+  buildExpectedSchemaWithProvenance,
   type GovernedScope,
   introspect,
   diff,
@@ -418,12 +419,21 @@ export async function verifyCommand(
     const usingD1 = flags.dialect === "d1";
     if ((flags.db === undefined && !usingD1) || flags.skipSchema) return 0;
 
-    // A `migrate.scope` matching nothing is refused, not tolerated — it would make
-    // this gate compare zero objects and report "in sync" (see `migrateScopeMismatch`).
-    // Checked HERE rather than beside the other collection work at the top of
-    // `verifyCommand`, because `migrate.scope` governs only the schema gate: a stale
-    // pattern must not fail a `--templates` run that never consults it.
-    const scopeMismatch = migrateScopeMismatch(collection, root);
+    // A `migrate.scope` matching nothing it could govern is refused, not tolerated —
+    // it would make this gate compare zero objects and report "in sync" (see
+    // `migrateScopeMismatch`). Checked HERE rather than beside the other collection
+    // work at the top of `verifyCommand`, because `migrate.scope` governs only the
+    // schema gate: a stale pattern must not fail a `--templates` run that never
+    // consults it.
+    const scopeMismatch = migrateScopeMismatch(collection, () => {
+      const dialect: Dialect = usingD1 ? "d1" : (flags.dialect ?? inferDialect(flags.db as string));
+      const viewStrategy = forgeConfig?.columnNamingStrategy ?? "snake_case";
+      return buildExpectedSchemaWithProvenance(root, {
+        dialect,
+        columnNamingStrategy: viewStrategy,
+        views: buildProjectionViews(root, { dialect, columnNamingStrategy: viewStrategy }),
+      }).provenance;
+    });
     if (scopeMismatch !== undefined) {
       log.error(`verify: ${scopeMismatch}`);
       return 2;

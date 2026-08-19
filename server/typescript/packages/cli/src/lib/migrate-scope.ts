@@ -10,7 +10,7 @@
 // or a refusal that drifted between them would be drift the user reads.
 
 import type { Collection } from "@metaobjectsdev/sdk";
-import type { MetaRoot } from "@metaobjectsdev/metadata";
+import type { SchemaProvenance } from "@metaobjectsdev/migrate-ts";
 
 /**
  * Say what a declared `migrate.scope` left out, for `migrate` and `verify --db`
@@ -37,13 +37,15 @@ export function outOfScopeNote(command: string, names: readonly string[]): strin
 const EXAMPLE_FQN_CAP = 3;
 
 /**
- * The refusal for a `migrate.scope` that matches NOTHING.
+ * The refusal for a `migrate.scope` that matches NOTHING it could govern.
  *
- * A scope matching zero loaded objects can never be what someone meant — it says
- * "every table in this model belongs to somebody else", which is a project with no
- * schema to migrate at all, expressed the hard way. In practice it is a typo'd or
- * stale package pattern, and it is silent: migrate reports "no changes" while
- * having compared nothing.
+ * A scope matching zero of the objects that declare a table or view can never be
+ * what someone meant — it says "every table in this model belongs to somebody
+ * else", which is a project with no schema to migrate at all, expressed the hard
+ * way. In practice it is a typo'd or stale package pattern, or a scope over a
+ * package that holds only value objects and abstracts (shapes that can never
+ * contribute a table or view), and it is silent: migrate reports "no changes"
+ * while having compared nothing.
  *
  * It is also actively dangerous, which is why this is a refusal and not a warning.
  * An empty expected side is what `diff` reads as "no model, govern the whole
@@ -53,22 +55,37 @@ const EXAMPLE_FQN_CAP = 3;
  * stops the wrong scope going unnoticed in the first place.
  *
  * Returns the message to report, or `undefined` when there is nothing to refuse —
- * no scope declared, or at least one loaded object inside it. Callers report it and
- * exit 2 (a configuration error), rather than this throwing, so it reads like every
- * other config failure in these commands.
+ * no scope declared, or at least one table- or view-declaring object inside it.
+ * Callers report it and exit 2 (a configuration error), rather than this throwing,
+ * so it reads like every other config failure in these commands.
  */
 export function migrateScopeMismatch(
   collection: Collection,
-  root: MetaRoot,
+  /**
+   * The UNSCOPED expected schema's provenance (migrate-ts
+   * `buildExpectedSchemaWithProvenance`) — qualified table/view name → declaring
+   * FQN. Supplied lazily because it is consulted only under a declared scope, so
+   * a project with no `migrate.scope` pays nothing for this check and its runs
+   * are byte-for-byte what they always were.
+   */
+  provenance: () => SchemaProvenance,
 ): string | undefined {
   const { inMigrateScope, migrateScopePatterns } = collection;
   if (inMigrateScope === undefined) return undefined;
 
-  // ADR-0039: `objects()` is the resolving accessor — the loaded object set, which
-  // is exactly what `migrate.scope` claims to be a subset of.
-  const fqns = root.objects().map((o) => o.resolutionKey());
-  // No objects at all is not a scope error: there is nothing for a pattern to miss,
-  // and an empty model has its own (much louder) failure modes downstream.
+  // The declaring FQNs of every table and view the UNSCOPED model contributes —
+  // the same provenance `scopeExpectedSchema` decides scope on, so the refusal
+  // asks exactly the question the run answers. NOT the loaded object set: that
+  // counts value objects and abstracts, which can never declare a table or view
+  // (persistability derives from a declared/inherited writable source, never
+  // from a subtype — #248), so a scope over only those objects passed this
+  // refusal while governing zero tables. And not a fresh walk either: it would
+  // have to re-implement the builder's skip rules (abstract, TPH subtype, no
+  // writable source, `@unmanaged`) and would drift from them.
+  const fqns = [...new Set(provenance().values())];
+  // A model that declares no table or view at all is not a scope error: there is
+  // nothing for a pattern to govern, scoped or not, and an empty schema has its
+  // own (much louder) failure modes downstream.
   if (fqns.length === 0) return undefined;
   if (fqns.some(inMigrateScope)) return undefined;
 
@@ -76,10 +93,10 @@ export function migrateScopeMismatch(
   const examples = fqns.slice(0, EXAMPLE_FQN_CAP).join(", ");
   const more = fqns.length > EXAMPLE_FQN_CAP ? `, …and ${fqns.length - EXAMPLE_FQN_CAP} more` : "";
   return (
-    `migrate.scope matched none of the ${fqns.length} object(s) loaded, so this run would ` +
-    `treat every one of them as another owner's and compare nothing. ` +
-    `Patterns: ${patterns}. Loaded: ${examples}${more}. ` +
+    `migrate.scope matched none of the ${fqns.length} object(s) declaring a table or view, ` +
+    `so this run would treat every one of them as another owner's and compare nothing. ` +
+    `Patterns: ${patterns}. Declaring a table or view: ${examples}${more}. ` +
     `Fix the patterns in .metaobjects/config.json (migrate.scope), or remove the key to ` +
-    `govern everything loaded.`
+    `govern everything the model declares.`
   );
 }

@@ -11,6 +11,12 @@
  * having compared nothing, while an empty expected side is exactly what the diff
  * reads as "no model, govern the whole database". Refused, with the patterns and
  * the loaded FQNs named, so the author can see what missed.
+ *
+ * The near-miss variant matters just as much: a scope matching only value
+ * objects and abstracts matches LOADED objects but none that can declare a
+ * table or view — the run still compares nothing, so it is refused on the same
+ * question, answered against the expected schema's provenance rather than the
+ * loaded object set.
  */
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { rmSync } from "node:fs";
@@ -49,6 +55,27 @@ describe("meta migrate --db — migrate.scope", () => {
       // The patterns that missed, and the shape they had to match — an author
       // cannot fix a typo from "your scope matched nothing" alone.
       expect(all).toContain("typo::**");
+      expect(all).toContain("acme::platform::Job");
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("a scope matching only value objects and abstracts is refused — they declare no table", async () => {
+    const { repo, dbUrl } = scaffold("metaobjects-migrate-scope-");
+    try {
+      // `acme::shared` (scaffolded by the fixture) holds an abstract base and a
+      // value object: loaded objects, but none that can contribute a table or
+      // view. Matching them is not governing anything — the run would compare
+      // nothing and report "no changes" against a database it was told to check.
+      declareScope(repo, ["acme::shared::**"]);
+      expect(await migrateFromDb(repo, dbUrl)).toBe(2);
+      const all = [...out, ...err].join("\n");
+      expect(all).toContain("matched none");
+      // The patterns that missed, and the table-declaring objects they could
+      // have matched — the refusal is decided against those, not against every
+      // loaded object.
+      expect(all).toContain("acme::shared::**");
       expect(all).toContain("acme::platform::Job");
     } finally {
       rmSync(repo, { recursive: true, force: true });

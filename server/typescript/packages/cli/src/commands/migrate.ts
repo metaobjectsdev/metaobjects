@@ -12,7 +12,6 @@ import { toonEncode } from "../lib/format.js";
 import { buildKyselyFromUrl, redactUrl } from "../lib/kysely.js";
 import { log } from "../lib/log.js";
 import { loadMemory, resolveCollection, resolveConfigDir, type Collection } from "@metaobjectsdev/sdk";
-import type { MetaRoot } from "@metaobjectsdev/metadata";
 import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
 import { migrateScopeMismatch, outOfScopeNote } from "../lib/migrate-scope.js";
 import {
@@ -47,6 +46,7 @@ import {
   type D1Binding,
   type EmitResult,
   type D1Runner,
+  type SchemaProvenance,
 } from "@metaobjectsdev/migrate-ts";
 import {
   buildWranglerExecuteArgs,
@@ -217,10 +217,10 @@ function emitStructuredError(error: string, hint: string, fmt: OutputFormat): vo
  */
 function refuseScopeMismatch(
   collection: Collection,
-  root: MetaRoot,
+  provenance: () => SchemaProvenance,
   fmt: OutputFormat,
 ): number | undefined {
-  const mismatch = migrateScopeMismatch(collection, root);
+  const mismatch = migrateScopeMismatch(collection, provenance);
   if (mismatch === undefined) return undefined;
   log.error(`migrate: ${mismatch}`);
   emitStructuredError(`migrate: ${mismatch}`, "fix or remove migrate.scope in .metaobjects/config.json", fmt);
@@ -545,9 +545,6 @@ export async function migrateCommand(
     return 2;
   }
 
-  const scopeRc = refuseScopeMismatch(collection, metadata, fmt);
-  if (scopeRc !== undefined) return scopeRc;
-
   let kysely;
   try {
     kysely = await buildKyselyFromUrl(config.databaseUrl, config.dialect);
@@ -579,18 +576,18 @@ export async function migrateCommand(
     // view DDL (create/drop/replace + dependency-recreate) and emit() renders it —
     // there is no separate view-migration emitter.
     const expectedViews = buildProjectionViews(metadata, { dialect: kysely.dialect, columnNamingStrategy });
+    const built = buildExpectedSchemaWithProvenance(metadata, {
+      dialect: kysely.dialect,
+      columnNamingStrategy,
+      views: expectedViews,
+    });
+    const scopeRc = refuseScopeMismatch(collection, () => built.provenance, fmt);
+    if (scopeRc !== undefined) return scopeRc;
     // Per-command scope: objects outside `migrate.scope` are another owner's. They
     // leave the expected schema here and are suppressed on the actual side below —
     // dropping them from `expected` ALONE would propose DROP TABLE for every one of
     // them that exists in the database.
-    const scoped = scopeExpectedSchema(
-      buildExpectedSchemaWithProvenance(metadata, {
-        dialect: kysely.dialect,
-        columnNamingStrategy,
-        views: expectedViews,
-      }),
-      collection.inMigrateScope,
-    );
+    const scoped = scopeExpectedSchema(built, collection.inMigrateScope);
     const expected = scoped.snapshot;
     logOutOfScope(scoped.outOfScope, fmt);
     let actual;
@@ -1074,7 +1071,17 @@ export async function runOfflineGenerate(
     return 2;
   }
 
-  const scopeRc = refuseScopeMismatch(collection, metadata, fmt);
+  const offlineDialect = config.dialect;
+  const offlineViews = buildProjectionViews(metadata, { dialect: offlineDialect, columnNamingStrategy: offlineStrategy });
+  const scopeRc = refuseScopeMismatch(
+    collection,
+    () => buildExpectedSchemaWithProvenance(metadata, {
+      dialect: offlineDialect,
+      columnNamingStrategy: offlineStrategy,
+      views: offlineViews,
+    }).provenance,
+    fmt,
+  );
   if (scopeRc !== undefined) return scopeRc;
 
   const outDir = resolvePath(metaRoot, config.outDir);
@@ -1104,7 +1111,6 @@ export async function runOfflineGenerate(
   const collectedAmbiguous: AmbiguousChange[] = [];
   const onAmbiguousResolution = mapOnAmbiguous(config.onAmbiguous);
 
-  const offlineViews = buildProjectionViews(metadata, { dialect: config.dialect, columnNamingStrategy: offlineStrategy });
   const offlineScope = collection.inMigrateScope;
 
   let plan;
@@ -1325,9 +1331,6 @@ async function runD1Migrate(
     return 2;
   }
 
-  const scopeRc = refuseScopeMismatch(collection, metadata, fmt);
-  if (scopeRc !== undefined) return scopeRc;
-
   // 4. Build expected schema + introspect actual.
   let columnNamingStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
   try {
@@ -1337,11 +1340,11 @@ async function runD1Migrate(
     // metaobjects.config.ts absent or invalid — use default snake_case
   }
   const expectedViews = buildProjectionViews(metadata, { dialect: "d1", columnNamingStrategy });
+  const built = buildExpectedSchemaWithProvenance(metadata, { dialect: "d1", columnNamingStrategy, views: expectedViews });
+  const scopeRc = refuseScopeMismatch(collection, () => built.provenance, fmt);
+  if (scopeRc !== undefined) return scopeRc;
   // Per-command scope — both-sided, exactly as on the Kysely path above.
-  const scoped = scopeExpectedSchema(
-    buildExpectedSchemaWithProvenance(metadata, { dialect: "d1", columnNamingStrategy, views: expectedViews }),
-    collection.inMigrateScope,
-  );
+  const scoped = scopeExpectedSchema(built, collection.inMigrateScope);
   const expected = scoped.snapshot;
   logOutOfScope(scoped.outOfScope, fmt);
   let actual;

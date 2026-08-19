@@ -137,4 +137,45 @@ describe("meta migrate — migrate.scope", () => {
     expect(await runOfflineGenerate(cfg(), root)).toBe(1);
     expect(await migrationDirs(root)).toHaveLength(0);
   });
+
+  test("a scope matching only value objects and abstracts is refused before the snapshot gate", async () => {
+    const root = await project();
+    // A package of shapes that can never declare a table: the scope matches
+    // loaded objects, but none the run could actually govern.
+    await writeFile(
+      join(root, "metaobjects", "meta.shared.json"),
+      JSON.stringify({
+        "metadata.root": {
+          package: "acme::shared",
+          children: [
+            { "object.entity": { name: "BaseRecord", abstract: true, children: [
+              { "field.long": { name: "id" } },
+            ] } },
+            { "object.value": { name: "Address", children: [
+              { "field.string": { name: "line1" } },
+              { "field.string": { name: "line2" } },
+            ] } },
+          ],
+        },
+      }),
+      "utf8",
+    );
+    await declareScope(root, ["acme::shared::**"]);
+    // No baseline was run, so there is no snapshot: a run that got PAST the
+    // refusal would report "no schema snapshot" — also exit 2 — so the message
+    // is what pins that the scope error is the one reported, and that the
+    // refusal fires before the snapshot is ever read.
+    const errors: string[] = [];
+    const origErr = console.error;
+    console.error = (...a: unknown[]) => { errors.push(a.map(String).join(" ")); };
+    try {
+      expect(await runOfflineGenerate(cfg(), root)).toBe(2);
+    } finally {
+      console.error = origErr;
+    }
+    const all = errors.join("\n");
+    expect(all).toContain("matched none");
+    expect(all).toContain("acme::shared::**");
+    expect(all).toContain("acme::platform::Job");
+  });
 });
