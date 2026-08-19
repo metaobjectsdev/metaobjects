@@ -77,6 +77,17 @@ const MODEL = [
       "@textRef": "out/order",
     },
   },
+  {
+    // ADR-0052: the render helper is the OUTBOUND tier and stays on
+    // `template.output` — it is the control proving the inbound move did not drag
+    // the outbound tier with it. So the render half of this gate needs its own
+    // output node; asking renderRenderHelper() for the prompt above throws.
+    "template.output": {
+      name: "OrderDoc",
+      "@payloadRef": "Order",
+      "@textRef": "out/order",
+    },
+  },
 ];
 
 async function loadRoot(children: unknown[]) {
@@ -204,7 +215,7 @@ describe("extractor/render payload import resolves against the REAL generated VO
     //    plus the REAL sibling output-parser the extractor imports from.
     const parserSrc = renderOutputParser(root, "OrderOut");
     const extractorSrc = renderExtractor(root, "OrderOut");
-    const renderSrc = renderRenderHelper(root, "OrderOut", PROVIDER);
+    const renderSrc = renderRenderHelper(root, "OrderDoc", PROVIDER);
 
     // The dangling `./payloads.js` import must be GONE — the payload types come
     // from the VO's own module instead.

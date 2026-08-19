@@ -66,7 +66,14 @@ describe("outputParser() conformance fixtures", () => {
       const emitted = await gen.generate(makeCtx(res.root));
 
       const expectedDir = join(CORPUS, fixture, "expected");
-      const expectedFiles = readdirSync(expectedDir).filter((f) => f.endsWith(".output.ts"));
+      // Filter by the SAME suffix set discovery used. Filtering on `.output.ts` alone
+      // here would re-create the vacuous-suite bug one line below the comment warning
+      // about it: discovery would admit a fixture on its `.response.ts` golden, then
+      // the loop would match zero files and assert nothing while reporting green.
+      const expectedFiles = readdirSync(expectedDir).filter((f) =>
+        GOLDEN_SUFFIXES.some((s) => f.endsWith(s)),
+      );
+      expect(expectedFiles.length).toBeGreaterThan(0);
       for (const ef of expectedFiles) {
         const expected = readFileSync(join(expectedDir, ef), "utf8");
         const match = emitted.find((e) => e.path === ef);
