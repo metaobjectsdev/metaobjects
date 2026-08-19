@@ -3,6 +3,60 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this
 > plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+## STATUS — 2026-08-19, branch `adr-0052-template-direction`
+
+Six commits on top of `6c9a39f78`. Phases A and B are **complete and green in all five ports**;
+Phase D (TS codegen) is complete; Phases C/E are partial; F, G, H are **not started**.
+
+**Done:**
+- ADR-0053 + ADR-0052 amendment + `spec/decisions/README.md` (which also records that the ADR
+  index stopped being maintained after ADR-0030 — 0031-0051 are on disk, unlisted).
+- Vocabulary in all five ports + `expected-registry.json` + `fixtures/metamodel-docs/expected/`.
+  Verified: TS metadata **2404 pass**, C# **903+354+291+46**, Java metadata **1404 / BUILD
+  SUCCESS**, Python loader+wrong-subtype **23 pass**, 10/10 gates.
+- TS inbound tier re-pointed via `templates/find-inbound.ts`. Gate proven RED before green.
+- **An XML reply now emits the tolerant extract and nothing strict** — the strict tier is
+  `Schema.parse(JSON.parse(text))` and TS ships no XML parser, so `parse<Name>` could never work.
+- **The strict schema now honours `@required`** — it previously emitted every field mandatory, so
+  `parse<Name>` threw on a reply that correctly omitted an optional field. Same defect family as
+  #309, one tier over: every other port reuses the payload VO, TS re-derives inline.
+- Inline test fixtures re-pointed. codegen-ts: **1243 pass / 11 fail**.
+
+**Remaining, in dependency order:**
+
+1. **11 codegen-ts failures.** (a) `fr010-output-codegen` "text-format output gets NO extract
+   block" — premise is obsolete, the `@format` gate is gone; rewrite or delete. (b) the
+   `xpkg-collision` / ADR-0042 FQN trio — file-based fixtures under `test/fixtures/`, convert like
+   the inline ones. (c) `Extractor codegen` tsc-gate + run-proof. (d) `api-docs ACCURACY` ×3 —
+   `generators/api-model.ts:820,914` still keys the inbound facts on `template.output`.
+   (e) `extractor/render payload import` golden. (f) `outputParser() conformance fixtures` —
+   the shared `template-output-simple` fixture.
+2. **Phase F — C#, Java, Kotlin, Python codegen.** Note Java has **no extractor generator**, so its
+   only enforcement path is the strict parser; do not assume the TS shape.
+3. **api-docs in 4 ports** (12 of the 16 Python failures were api-docs) + `verify` in 3 ports.
+4. **Phase E remainder** — docs-site fixture + golden, `examples/advanced-modeling` regen (the
+   committed `ProgramDescriptionOutput.output.ts` with its impossible `JSON.parse` must vanish),
+   `template-output-render-conformance` (outbound; remove only parser-emission assertions),
+   Kotlin port-local fixtures (**snapshots have no update flag** — read ACTUAL from the failure).
+5. **Phase G** — migration guide, `templates-and-payloads.md`, agent-context skills (2 copies +
+   5 byte-gated fixture sets; `references/typescript.md` is the one that omits the tolerant tier
+   entirely), roadmap slot reconciliation, CHANGELOG.
+
+**Two findings recorded, not acted on:**
+- The tolerant tier is **under**-strict: `orThrow` and `extract<Name>` both fire only on
+  `hasLostRequired()`, `MALFORMED` never throws from any shipped helper, and response VOs in the
+  corpus mostly declare no `@required`. Deliberate and documented at
+  `render/src/extract/types.ts:377-383`, so left alone — but it means the strict tier is currently
+  the only thing catching a type-invalid required field.
+- `template.toolcall` gets no parser in any port. Before treating that as a gap, settle whether it
+  is a parsing concern at all — a provider SDK hands back an already-parsed arguments object.
+
+Challenge records: `~/.claude/challenge-log/adr-0052-inbound-home/` (agreed) and
+`~/.claude/challenge-log/strict-tier-survives-tolerant/` (**split** — one arm proposed deleting the
+strict tier, the other showed why that cannot happen; both were partly right).
+
+---
+
 **Goal:** Make a template subtype's axis DIRECTION — `template.output` renders outbound only and
 generates no parser; the inbound half (response shape, FR-010 output-format fragment,
 parser-on-receipt) is driven from `template.prompt @responseRef` + a new `@responseFormat`.
