@@ -137,6 +137,14 @@ export interface InitOptions {
   wireRoot?: boolean;
   /** Scaffold ONLY the agent-context (always-on + skills + root wiring), skipping the metaobjects/ project scaffold — for dropping context into an existing/polyglot repo. */
   docsOnly?: boolean;
+  /**
+   * Write ONLY `.metaobjects/config.json` — no TypeScript scaffold (metaobjects.config.ts,
+   * codegen/generators/, package.json edits, .gitignore, agent-context files, or a
+   * metaobjects/ directory). For a Maven- or pip-rooted project that needs the Node CLI
+   * (which owns `migrate` and `verify --db` under ADR-0015) to discover its metadata
+   * without acquiring a TypeScript project it will never use.
+   */
+  configOnly?: boolean;
 }
 
 export interface InitResult {
@@ -304,6 +312,65 @@ async function writeOwnedGenerators(opts: InitOptions, result: InitResult): Prom
   }
 }
 
+/**
+ * .metaobjects/config.json — write fresh defaults, or preserve+merge an existing
+ * valid config. Shared by the full scaffold and `--config-only` so the two paths
+ * cannot drift on the config's default content.
+ */
+async function writeConfigFile(opts: InitOptions, result: InitResult, agentDir: string, agentDirExists: boolean): Promise<void> {
+  const freshConfig = opts.d1
+    ? ConfigSchema.parse({ ...DEFAULT_CONFIG, migrate: buildD1MigrateBlock(opts.cwd) })
+    : DEFAULT_CONFIG;
+  const writeFresh = (): Promise<void> =>
+    writeFile(join(agentDir, "config.json"), JSON.stringify(freshConfig, null, 2) + "\n", "utf8");
+
+  if (!agentDirExists) {
+    await writeFresh();
+    result.created.push(".metaobjects/config.json");
+    return;
+  }
+
+  const configPath = join(agentDir, "config.json");
+  let priorContent: string | undefined;
+  try {
+    priorContent = await readFile(configPath, "utf8");
+    const parsed = ConfigSchema.parse(JSON.parse(priorContent));
+    const merged = ConfigSchema.parse({ ...DEFAULT_CONFIG, ...parsed });
+    // When a valid .metaobjects/config.json already exists and the user passes --force,
+    // we preserve the existing config and only re-scaffold support files. The --d1 flag
+    // only takes effect on fresh inits — retro-fitting D1 onto an existing project is
+    // the user's job (edit migrate.dialect and migrate.d1 in config.json directly).
+    await saveConfig(agentDir, merged);
+    result.preserved.push(".metaobjects/config.json");
+    return;
+  } catch {
+    if (priorContent === undefined) {
+      // The .metaobjects/ dir existed but config.json itself did not — a fresh write.
+      await writeFresh();
+      result.created.push(".metaobjects/config.json");
+      return;
+    }
+
+    // In the full-scaffold path this is only reachable once the caller has
+    // already required --force (the exists-guard at the top of `init()`
+    // throws before writeConfigFile runs otherwise), so opts.force is always
+    // true there. `--config-only` calls this function directly with no such
+    // guard, so without this check it would silently destroy an existing,
+    // merely-unparseable config on every run — the one thing `--force` is
+    // supposed to gate.
+    if (!opts.force) {
+      throw new Error(
+        `existing .metaobjects/config.json exists but could not be parsed; refusing to overwrite it. ` +
+        `Use --force to replace it with defaults. Prior content:\n${priorContent}`,
+      );
+    }
+    log.warn("existing .metaobjects/config.json was invalid — writing fresh defaults. Prior content:");
+    log.warn(priorContent);
+    result.warnings.push("invalid .metaobjects/config.json replaced with defaults");
+    await writeFresh();
+  }
+}
+
 export async function init(opts: InitOptions): Promise<InitResult> {
   const result: InitResult = { created: [], preserved: [], warnings: [] };
   const agentDir = join(opts.cwd, DEFAULT_METAOBJECTS_DIR);
@@ -316,6 +383,22 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   if (opts.docsOnly) {
     // Agent-context only: scaffold the always-on + skills + root wiring, never the metaobjects/ project.
     await writeAgentContext(opts, result);
+    return result;
+  }
+
+  if (opts.configOnly) {
+    // --print-only must win outright: a documented dry run must never write, and
+    // this branch used to return ABOVE the printOnly guard the full-scaffold path
+    // uses below, so `--config-only --print-only` silently wrote the real file.
+    if (opts.printOnly) {
+      result.created.push(".metaobjects/config.json");
+      return result;
+    }
+    // Config only: write/preserve .metaobjects/config.json and nothing else — no
+    // metaobjects/ dir, no agent-context, no TypeScript scaffold. `agentDirExists` is
+    // captured before the mkdir below so an existing valid config is still preserved.
+    await mkdir(agentDir, { recursive: true });
+    await writeConfigFile(opts, result, agentDir, agentDirExists);
     return result;
   }
 
@@ -372,45 +455,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   }
 
   // .metaobjects/config.json
-  const freshConfig = opts.d1
-    ? ConfigSchema.parse({ ...DEFAULT_CONFIG, migrate: buildD1MigrateBlock(opts.cwd) })
-    : DEFAULT_CONFIG;
-  if (agentDirExists) {
-    const configPath = join(agentDir, "config.json");
-    let priorContent: string | undefined;
-    try {
-      priorContent = await readFile(configPath, "utf8");
-      const parsed = ConfigSchema.parse(JSON.parse(priorContent));
-      const merged = ConfigSchema.parse({ ...DEFAULT_CONFIG, ...parsed });
-      // When a valid .metaobjects/config.json already exists and the user passes --force,
-      // we preserve the existing config and only re-scaffold support files. The --d1 flag
-      // only takes effect on fresh inits — retro-fitting D1 onto an existing project is
-      // the user's job (edit migrate.dialect and migrate.d1 in config.json directly).
-      await saveConfig(agentDir, merged);
-      result.preserved.push(".metaobjects/config.json");
-    } catch {
-      if (priorContent !== undefined) {
-        log.warn("existing .metaobjects/config.json was invalid — writing fresh defaults. Prior content:");
-        log.warn(priorContent);
-        result.warnings.push("invalid .metaobjects/config.json replaced with defaults");
-      }
-      await writeFile(
-        join(agentDir, "config.json"),
-        JSON.stringify(freshConfig, null, 2) + "\n",
-        "utf8",
-      );
-      if (priorContent === undefined) {
-        result.created.push(".metaobjects/config.json");
-      }
-    }
-  } else {
-    await writeFile(
-      join(agentDir, "config.json"),
-      JSON.stringify(freshConfig, null, 2) + "\n",
-      "utf8",
-    );
-    result.created.push(".metaobjects/config.json");
-  }
+  await writeConfigFile(opts, result, agentDir, agentDirExists);
 
   // .metaobjects/.gitignore
   await writeFile(join(agentDir, ".gitignore"), METAOBJECTS_GITIGNORE_BODY, "utf8");
@@ -653,6 +698,7 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
       noSkills: flags.noSkills,
       wireRoot: flags.wireRoot,
       docsOnly: flags.docsOnly,
+      configOnly: flags.configOnly,
     });
 
     if (flags.printOnly) {
@@ -666,6 +712,13 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
         log.info(`Scaffolded the MetaObjects agent context (${result.created.length} files): .metaobjects/AGENTS.md + .claude/skills/metaobjects-*.`);
         for (const w of result.warnings) log.info(`  ${w}`);
         log.info("Re-run --docs-only --refresh-docs to update; --no-wire-root to skip the root CLAUDE.md @import.");
+      } else if (flags.configOnly) {
+        if (result.created.includes(".metaobjects/config.json")) {
+          log.info("Wrote .metaobjects/config.json — declare your metadata sources there for the Node CLI (migrate, verify --db).");
+        } else {
+          log.info(".metaobjects/config.json already exists — left untouched.");
+        }
+        for (const w of result.warnings) log.warn(w);
       } else {
         log.info(nextStepsBlock());
         // Surface any scaffold warnings (e.g. the #77 monorepo-subdir agent-context

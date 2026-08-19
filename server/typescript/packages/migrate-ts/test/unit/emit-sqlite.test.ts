@@ -58,7 +58,8 @@ describe("renderSqlite — create-table", () => {
 describe("renderSqlite — table-level + indexes", () => {
   test("drop-table", () => {
     const { up } = emit([{ kind: "drop-table", table: "old", status: ALLOWED }], { dialect: "sqlite" });
-    expect(norm(up)).toBe(`DROP TABLE "old";`);
+    // #313 — forward drops carry IF EXISTS so a committed chain replays from empty.
+    expect(norm(up)).toBe(`DROP TABLE IF EXISTS "old";`);
   });
   test("rename-table", () => {
     const { up } = emit([{ kind: "rename-table", from: "p", to: "a", status: ALLOWED }], { dialect: "sqlite" });
@@ -74,7 +75,7 @@ describe("renderSqlite — table-level + indexes", () => {
   });
   test("drop-index", () => {
     const { up } = emit([{ kind: "drop-index", table: "u", index: "i", status: ALLOWED }], { dialect: "sqlite" });
-    expect(norm(up)).toBe(`DROP INDEX "i";`);
+    expect(norm(up)).toBe(`DROP INDEX IF EXISTS "i";`);
   });
 });
 
@@ -360,7 +361,7 @@ describe("renderSqlite — drop-index vs drop-column (#255 generalized)", () => 
       ],
       { dialect: "sqlite" },
     );
-    const idxDropIndex = up.indexOf('DROP INDEX "uniqueCode"');
+    const idxDropIndex = up.indexOf('DROP INDEX IF EXISTS "uniqueCode"');
     const idxDropColumn = up.indexOf('ALTER TABLE "programs" DROP COLUMN "code"');
     expect(idxDropIndex).toBeGreaterThanOrEqual(0);
     expect(idxDropColumn).toBeGreaterThanOrEqual(0);

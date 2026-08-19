@@ -347,6 +347,23 @@ export interface AllowOptions {
    * skips the default-diff for a live auto-sequence default entirely.)
    */
   dropIdentityDefault?: boolean;
+  /**
+   * Permits dropping an object the COMMITTED SNAPSHOT never contained — i.e. one
+   * this toolchain never managed. Without it, such a drop is refused at generation
+   * time, because the migration it would write cannot replay against a database
+   * where that object never existed (#313). `classify.ts` already states the
+   * doctrine: objects present in the DB but not the snapshot "must never be treated
+   * as actionable drift or auto-dropped".
+   *
+   * The ONE field here read by the CLI's generation-time provenance guard rather
+   * than by `diff()`'s status pass — `diff` compares metadata against introspection
+   * and never sees the snapshot, which is precisely why the doctrine was not
+   * enforced where it mattered. It lives in `AllowOptions` anyway so `--allow` keeps
+   * ONE token list and ONE grant map (`ALLOW_TOKENS` / `ALLOW_TOKEN_MAP`, pinned
+   * together by `cli/test/unit/allow-tokens-pinned.test.ts`): a second parallel
+   * validation path for a single token is the exact drift that pin exists to catch.
+   */
+  dropUnmanaged?: boolean;
 }
 
 export type AmbiguousChange =

@@ -47,6 +47,7 @@ import tempfile
 from pathlib import Path
 
 from metaobjects import MetaDataLoader
+from metaobjects.errors import ParseError
 from metaobjects.agent_context import (
     AGENT_CONTEXT_MANIFEST_PATH,
     agent_context_staleness,
@@ -274,6 +275,35 @@ def _load_root(
     return result.root, []
 
 
+def _load_root_from_paths(
+    paths: list[str],
+    strict: bool = False,
+    providers: list[object] | None = None,
+) -> tuple[MetaData | None, list[str]]:
+    """Load metadata from an explicit file list rather than a single directory.
+
+    The source-resolution ladder's ``.metaobjects/config.json`` rung
+    (:func:`resolve_metadata_location`) can resolve to several directories or
+    individual files, which a single ``from_directory`` call cannot express —
+    so this loads each resolved file as its own ``file://`` source via
+    :meth:`MetaDataLoader.from_uris`. Mirrors :func:`_load_root`'s ``strict``/
+    ``providers`` contract exactly.
+    """
+    uris = [Path(p).resolve().as_uri() for p in paths]
+    if providers:
+        from metaobjects.core_types import core_providers
+
+        result = MetaDataLoader.from_uris(
+            uris, providers=[*core_providers, *providers], strict=strict
+        )
+    else:
+        result = MetaDataLoader.from_uris(uris, strict=strict)
+    if result.errors:
+        msgs = [f"{e.code}: {e.message}" for e in result.errors]
+        return None, msgs
+    return result.root, []
+
+
 def _strict_load_hint() -> str:
     """Actionable next-steps when strict verify rejects an undeclared @attr."""
     return (
@@ -407,6 +437,65 @@ def gen_state_dir_for(metadata_dir: str) -> str:
     return str(Path(metadata_dir).resolve().parent / ".metaobjects" / ".gen-state")
 
 
+def resolve_metadata_location(
+    config: ProjectConfig | None,
+    root: Path,
+) -> list[str]:
+    """The precedence ladder for where metadata lives, rungs 2-4. First match wins.
+
+    2. This port's native surface — ``metadata`` in ``metaobjects.config.yaml``.
+    3. ``sources`` in the port-neutral ``.metaobjects/config.json``.
+    4. The built-in default directory.
+
+    Rung 1 — an explicit CLI argument (the positional ``metadata_dir``) — is
+    NOT this function's concern: every command handler that accepts one already
+    loads it directly via ``_load_root(args.metadata_dir)`` (``MetaDataLoader
+    .from_directory``, a single-directory load with no resolve-then-rejoin step
+    of its own) BEFORE this function would even be reachable, so this function is
+    only ever called with rung 1 already having been tried and found absent. An
+    earlier revision accepted an ``explicit`` parameter and duplicated rung 1
+    here via `resolve_sources` — reachable from no command handler, so it could
+    silently drift from the real rung-1 path (e.g. picking up
+    `source_resolver.py`'s CLI-facing `_pending` exclusion while
+    `_load_root`'s loader-level walk does not) with nothing to notice. Removed
+    rather than wired: replumbing every metadataDir-taking command onto
+    `resolve_sources`'s `from_uris`-based load instead of `from_directory` is a
+    materially different, higher-risk change than this ladder needs.
+
+    A file that EXISTS at any rung but is malformed raises rather than falling
+    through to the next rung. See
+    `docs/superpowers/specs/2026-08-19-cross-port-metadata-sources-design.md` §5.
+    """
+    from metaobjects.config.source_resolver import resolve_collection, resolve_sources
+
+    if config is not None:
+        # `config.metadata_dir()` is already resolved to an absolute path
+        # (`ProjectConfig._resolve_under`), so the base passed here is
+        # likewise irrelevant.
+        return [
+            str(p) for p in resolve_sources(root, [{"path": config.metadata_dir()}])
+        ]
+
+    # Rungs 3 and 4 both live in `resolve_collection`.
+    return [str(p) for p in resolve_collection(root)]
+
+
+def _resolve_metadata_location_or_print_error(
+    config: ProjectConfig | None, root: Path
+) -> list[str] | None:
+    """``resolve_metadata_location`` for the no-explicit-``metadata_dir`` CLI
+    paths (``docs``, and the ``gen``/``verify --codegen`` neutral fallbacks),
+    translating a raised ``ParseError`` into this CLI's print-and-return-1
+    convention instead of letting it propagate. Returns ``None`` on failure —
+    the caller has nothing further to print and should return 1.
+    """
+    try:
+        return resolve_metadata_location(config=config, root=root)
+    except ParseError as exc:
+        print(f"error: could not resolve metadata location: {exc}", file=sys.stderr)
+        return None
+
+
 #: The default api-surface subdir (the cross-port contract's ``api/python``).
 _DOCS_DEFAULT_API_SUBDIR = "api/python"
 
@@ -433,7 +522,33 @@ def _cmd_docs(args: argparse.Namespace) -> int:
     providers, providers_ok = _providers_from_args(args)
     if not providers_ok:
         return 1
-    root, errors = _load_root(args.metadata_dir, providers=providers)
+
+    if args.metadata_dir is None:
+        # Mirrors `gen`'s no-positional routing (#267): rung 2 (`metadata` in
+        # `metaobjects.config.yaml`, if one is found), else rungs 3-4 via
+        # `resolve_metadata_location` (the neutral `.metaobjects/config.json`
+        # `sources` key this feature adds, else the built-in default
+        # directory). Before this, `metadata_dir` was a REQUIRED positional
+        # here, so this ladder was unreachable from `docs` even though `gen`
+        # and `verify --codegen` could both already reach it.
+        root_dir = Path.cwd()
+        config: ProjectConfig | None = None
+        config_path = _find_config(args)
+        if config_path is not None:
+            try:
+                config = load_project_config(config_path)
+            except ConfigError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 1
+        paths = _resolve_metadata_location_or_print_error(config, root_dir)
+        if paths is None:
+            return 1
+        root, errors = _load_root_from_paths(paths, providers=providers)
+        project_default = root_dir.name
+    else:
+        root, errors = _load_root(args.metadata_dir, providers=providers)
+        project_default = Path(args.metadata_dir).resolve().name
+
     if root is None:
         print("error: failed to load metadata:", file=sys.stderr)
         for msg in errors:
@@ -441,7 +556,7 @@ def _cmd_docs(args: argparse.Namespace) -> int:
         return 1
 
     api_subdir = args.api_subdir or _DOCS_DEFAULT_API_SUBDIR
-    project = args.project or Path(args.metadata_dir).resolve().name
+    project = args.project or project_default
     model_base_url = getattr(args, "model_base_url", None)
 
     model = PythonApiModelBuilder().build(root, project)
@@ -652,22 +767,71 @@ def _run_gen_targets(
     return all_written, errors
 
 
+def _cmd_gen_neutral_fallback(args: argparse.Namespace) -> int:
+    """``gen`` with no positional ``metadata_dir`` AND no ``metaobjects.config.yaml``.
+
+    Descends the source-resolution ladder's remaining rungs — ``sources`` in
+    ``.metaobjects/config.json``, else the built-in default directory — via
+    :func:`resolve_metadata_location`. There is no declarative target registry
+    at this rung (that is what a ``metaobjects.config.yaml`` provides), so
+    ``--out`` is required exactly as it is in explicit-``<metadata_dir>`` flag
+    mode; this function otherwise mirrors ``_cmd_gen``'s flag-mode body, minus
+    the ``--template-spec`` pass (out of scope for this rung).
+    """
+    if args.out is None:
+        print(
+            "error: gen requires <metadata_dir> and --out "
+            "(or a metaobjects.config.yaml / --list).",
+            file=sys.stderr,
+        )
+        return 2
+
+    root_dir = Path.cwd()
+    paths = _resolve_metadata_location_or_print_error(None, root_dir)
+    if paths is None:
+        return 1
+
+    generators: list[Generator] | None = None
+    if args.generators:
+        generators, gen_errors = _resolve_generators(args.generators)
+        if gen_errors:
+            print("error: invalid --generators selection:", file=sys.stderr)
+            for msg in gen_errors:
+                print(f"  {msg}", file=sys.stderr)
+            return 1
+
+    entities = _parse_entities(getattr(args, "entities", None))
+    providers, providers_ok = _providers_from_args(args)
+    if not providers_ok:
+        return 1
+
+    root, load_errors = _load_root_from_paths(paths, providers=providers)
+    if root is None:
+        print("error: failed to load metadata:", file=sys.stderr)
+        for msg in load_errors:
+            print(f"  {msg}", file=sys.stderr)
+        return 1
+
+    gen_state = str(root_dir.resolve() / ".metaobjects" / ".gen-state")
+    written = _run_suite(root, args.out, generators, entities, gen_state_dir=gen_state)
+    for path in written:
+        print(path)
+    print(f"metaobjects gen: wrote {len(written)} file(s) to {args.out}")
+    return 0
+
+
 def _cmd_gen_config(args: argparse.Namespace) -> int:
     """``gen`` with no positional ``metadata_dir`` → declarative-config mode (#267).
 
     Load ``metaobjects.config.yaml``, load metadata ONCE, and run every target
     (or ``--target``) into its own ``outDir`` with a cross-target duplicate-path
     guard. Providers resolve relative to the config file (no ``PYTHONPATH=``).
+    No ``metaobjects.config.yaml`` at all → :func:`_cmd_gen_neutral_fallback`
+    (the ladder's remaining rungs), not an error.
     """
     config_path = _find_config(args)
     if config_path is None:
-        print(
-            "error: no <metadata_dir> given and no metaobjects.config.yaml found. "
-            "Either pass <metadata_dir> --out (flag mode) or create a "
-            "metaobjects.config.yaml (or pass --config <path>).",
-            file=sys.stderr,
-        )
-        return 2
+        return _cmd_gen_neutral_fallback(args)
     try:
         config = load_project_config(config_path)
     except ConfigError as exc:
@@ -721,6 +885,38 @@ def _relative_set(root: Path) -> dict[str, str]:
     return files
 
 
+def _diff_report(expected: dict[str, str], committed: dict[str, str]) -> int:
+    """Compare a regenerated file map against the committed one; print the
+    standard ``verify --codegen`` drift report. Returns 0 (in sync) or 1.
+
+    Extracted so the explicit-``<metadata_dir>`` flag mode
+    (:func:`_verify_codegen`) and the ``.metaobjects/config.json`` fallback
+    rung (:func:`_verify_codegen_neutral_fallback`) report drift identically.
+    """
+    changed = sorted(
+        k for k in expected if k in committed and expected[k] != committed[k]
+    )
+    missing = sorted(k for k in expected if k not in committed)  # not yet committed
+    extra = sorted(k for k in committed if k not in expected)  # stale committed file
+
+    if not changed and not missing and not extra:
+        print(f"metaobjects verify: in sync ({len(expected)} file(s)).")
+        return 0
+
+    print("error: generated code is out of sync with metadata.", file=sys.stderr)
+    for k in changed:
+        print(f"  drifted: {k}", file=sys.stderr)
+    for k in missing:
+        print(f"  missing: {k}", file=sys.stderr)
+    for k in extra:
+        print(f"  extra:   {k}", file=sys.stderr)
+    print(
+        "regenerate (metaobjects gen) and commit the result.",
+        file=sys.stderr,
+    )
+    return 1
+
+
 def _verify_codegen(args: argparse.Namespace) -> int:
     """``verify --codegen`` — regenerate to a temp dir + diff vs committed ``--out``.
 
@@ -764,28 +960,52 @@ def _verify_codegen(args: argparse.Namespace) -> int:
         expected = _relative_set(Path(tmp))
         committed = _relative_set(Path(args.out))
 
-    changed = sorted(
-        k for k in expected if k in committed and expected[k] != committed[k]
-    )
-    missing = sorted(k for k in expected if k not in committed)  # not yet committed
-    extra = sorted(k for k in committed if k not in expected)  # stale committed file
+    return _diff_report(expected, committed)
 
-    if not changed and not missing and not extra:
-        print(f"metaobjects verify: in sync ({len(expected)} file(s)).")
-        return 0
 
-    print("error: generated code is out of sync with metadata.", file=sys.stderr)
-    for k in changed:
-        print(f"  drifted: {k}", file=sys.stderr)
-    for k in missing:
-        print(f"  missing: {k}", file=sys.stderr)
-    for k in extra:
-        print(f"  extra:   {k}", file=sys.stderr)
-    print(
-        "regenerate (metaobjects gen) and commit the result.",
-        file=sys.stderr,
-    )
-    return 1
+def _verify_codegen_neutral_fallback(args: argparse.Namespace) -> int:
+    """``verify --codegen`` with no positional ``metadata_dir`` AND no
+    ``metaobjects.config.yaml``.
+
+    Descends the source-resolution ladder's remaining rungs via
+    :func:`resolve_metadata_location`, exactly like
+    :func:`_cmd_gen_neutral_fallback`. There is no declarative target registry
+    at this rung, so ``--out`` (the committed dir to diff against) is required
+    exactly as it is in explicit-``<metadata_dir>`` flag mode.
+    """
+    if args.out is None:
+        print(
+            "error: verify --codegen requires --out (the committed output dir).",
+            file=sys.stderr,
+        )
+        return 2
+
+    root_dir = Path.cwd()
+    paths = _resolve_metadata_location_or_print_error(None, root_dir)
+    if paths is None:
+        return 1
+
+    strict = not getattr(args, "lax", False)
+    providers, providers_ok = _providers_from_args(args)
+    if not providers_ok:
+        return 1
+
+    with tempfile.TemporaryDirectory() as tmp:
+        entities = _parse_entities(getattr(args, "entities", None))
+        root, load_errors = _load_root_from_paths(paths, strict=strict, providers=providers)
+        if root is None:
+            print("error: failed to load metadata:", file=sys.stderr)
+            for msg in load_errors:
+                print(f"  {msg}", file=sys.stderr)
+            if strict and any("ERR_UNKNOWN_ATTR" in m for m in load_errors):
+                print(_strict_load_hint(), file=sys.stderr)
+            return 1
+
+        _run_suite(root, tmp, None, entities, gen_state_dir=None)
+        expected = _relative_set(Path(tmp))
+        committed = _relative_set(Path(args.out))
+
+    return _diff_report(expected, committed)
 
 
 def _temp_slot_for(temp_root: Path, real_outdir: str, config_dir: Path) -> str:
@@ -820,15 +1040,12 @@ def _verify_codegen_config(args: argparse.Namespace) -> int:
     drift (mirrors the TS ``computeCodegenDrift`` unit = unique outDir).
     ``--target`` widens to the outDir-sharing closure (an outDir is verified as a
     unit). Strict-by-default (ADR-0023) unless ``--lax``.
+    No ``metaobjects.config.yaml`` at all → :func:`_verify_codegen_neutral_fallback`
+    (the ladder's remaining rungs), not an error.
     """
     config_path = _find_config(args)
     if config_path is None:
-        print(
-            "error: verify --codegen with no <metadata_dir> requires a "
-            "metaobjects.config.yaml (or --config <path>).",
-            file=sys.stderr,
-        )
-        return 2
+        return _verify_codegen_neutral_fallback(args)
     try:
         config = load_project_config(config_path)
     except ConfigError as exc:
@@ -1240,7 +1457,16 @@ def _build_parser() -> argparse.ArgumentParser:
             "surface of the cross-port SDK-docs contract) under --out"
         ),
     )
-    docs.add_argument("metadata_dir", help="directory of metadata JSON/YAML files")
+    # Optional, like `gen`'s: an omitted positional falls through the same
+    # location ladder (`metaobjects.config.yaml`'s `metadata` key, else the
+    # neutral `.metaobjects/config.json` `sources`, else the default directory)
+    # instead of hard-requiring the caller to name a directory.
+    docs.add_argument(
+        "metadata_dir",
+        nargs="?",
+        default=None,
+        help="directory of metadata JSON/YAML files (omit to use the config ladder)",
+    )
     docs.add_argument(
         "--out",
         required=True,

@@ -216,13 +216,20 @@ function renderRecreate(
 function renderUpNative(c: Change): string {
   switch (c.kind) {
     case "create-table":   return renderCreateTable(c.table);
-    case "drop-table":     return `DROP TABLE ${quote(c.table)};`;
+    // #313 — FORWARD drops are `IF EXISTS` so a committed chain applies to a VIRGIN
+    // database: the diff legitimately proposes dropping an object present in the live
+    // DB that no migration in the chain ever created. `renderDownNative` stays bare
+    // (a no-op rollback would still be recorded as done), and so does the
+    // recreate-and-copy rebuild's DROP above — that one drops a table the same recipe
+    // just INSERT…SELECTed from, where IF EXISTS turns a caught corruption into a
+    // silent one.
+    case "drop-table":     return `DROP TABLE IF EXISTS ${quote(c.table)};`;
     case "rename-table":   return `ALTER TABLE ${quote(c.from)} RENAME TO ${quote(c.to)};`;
     case "add-column":     return `ALTER TABLE ${quote(c.table)} ADD COLUMN ${renderColumnInline(c.column)};`;
     case "drop-column":    return `ALTER TABLE ${quote(c.table)} DROP COLUMN ${quote(c.column)};`;
     case "rename-column":  return `ALTER TABLE ${quote(c.table)} RENAME COLUMN ${quote(c.from)} TO ${quote(c.to)};`;
     case "add-index":      return renderCreateIndex(c.table, c.index);
-    case "drop-index":     return `DROP INDEX ${quote(c.index)};`;
+    case "drop-index":     return `DROP INDEX IF EXISTS ${quote(c.index)};`;
     case "add-check":
     case "drop-check":
     case "change-column-type":

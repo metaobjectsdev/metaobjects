@@ -133,7 +133,8 @@ describe("renderPostgres — table-level", () => {
   test("drop-table", () => {
     const changes: Change[] = [{ kind: "drop-table", table: "legacy", status: ALLOWED }];
     const { up } = emit(changes, { dialect: "postgres" });
-    expect(norm(up)).toBe(`DROP TABLE "legacy";`);
+    // #313 — forward drops carry IF EXISTS so a committed chain replays from empty.
+    expect(norm(up)).toBe(`DROP TABLE IF EXISTS "legacy";`);
   });
 });
 
@@ -161,7 +162,7 @@ describe("renderPostgres — indexes + FKs", () => {
   test("drop-index", () => {
     const changes: Change[] = [{ kind: "drop-index", table: "users", index: "old_idx", status: ALLOWED }];
     const { up } = emit(changes, { dialect: "postgres" });
-    expect(norm(up)).toBe(`DROP INDEX "old_idx";`);
+    expect(norm(up)).toBe(`DROP INDEX IF EXISTS "old_idx";`);
   });
 
   test("add-fk with ON DELETE CASCADE", () => {
@@ -184,7 +185,7 @@ describe("renderPostgres — indexes + FKs", () => {
   test("drop-fk", () => {
     const changes: Change[] = [{ kind: "drop-fk", table: "weeks", fk: "weeks_program_id_fk", status: ALLOWED }];
     const { up } = emit(changes, { dialect: "postgres" });
-    expect(norm(up)).toBe(`ALTER TABLE "weeks" DROP CONSTRAINT "weeks_program_id_fk";`);
+    expect(norm(up)).toBe(`ALTER TABLE "weeks" DROP CONSTRAINT IF EXISTS "weeks_program_id_fk";`);
   });
 });
 

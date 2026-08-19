@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // wireRoot defaults TRUE (root-wiring is on by default so the scaffolded always-on actually loads; --no-wire-root opts out).
-const defaultInitFlags = { force: false, quiet: false, printOnly: false, refreshDocs: false, d1: false, servers: [], clients: [], noSkills: false, wireRoot: true, docsOnly: false };
+const defaultInitFlags = { force: false, quiet: false, printOnly: false, refreshDocs: false, d1: false, servers: [], clients: [], noSkills: false, wireRoot: true, docsOnly: false, configOnly: false };
 
 describe("parseInitArgs", () => {
   test("default flags (wireRoot on by default, others off)", () => {
@@ -26,6 +26,9 @@ describe("parseInitArgs", () => {
   });
   test("--d1 toggles d1", () => {
     expect(parseInitArgs(["--d1"])).toEqual({ ...defaultInitFlags, d1: true });
+  });
+  test("--config-only toggles configOnly", () => {
+    expect(parseInitArgs(["--config-only"])).toEqual({ ...defaultInitFlags, configOnly: true });
   });
   test("throws on unknown flag", () => {
     expect(() => parseInitArgs(["--foo"])).toThrow(/Unknown option '--foo'/);

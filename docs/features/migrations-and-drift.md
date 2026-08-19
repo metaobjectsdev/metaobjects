@@ -57,11 +57,99 @@ configured in `metaobjects.config.ts` (typically `./migrations/<timestamp>__<slu
 
 **`meta migrate apply-pending`** replays the committed migration files against `--db`
 in order, ledger-tracked (`_metaobjects_migrations`) and transactional — with **no
-diff and no metadata load**. It is the way to provision a fresh or CI database from the
-committed migrations. `meta migrate --apply`, by contrast, is diff-first — it authors a
-new migration from the metadata-vs-DB diff before applying it. `apply-pending` just runs
+diff and no metadata load**. For a project whose chain *builds* the schema, it is the
+way to provision a fresh or CI database from the committed migrations; run
+[`meta verify --replay`](#meta-verify---replay--the-chain-applies-from-empty) to know
+you are one of those. A project adopted with `migrate baseline --from-db` is not: its
+chain starts after the schema already existed, so there is nothing for `apply-pending`
+to build. `meta migrate --apply`, by contrast, is diff-first — it authors a new
+migration from the metadata-vs-DB diff before applying it. `apply-pending` just runs
 the pending already-committed files, making it idempotent; `--dry-run` lists what would
 run. postgres/sqlite only — on D1 use `wrangler d1 migrations apply`.
+
+### `meta verify --replay` — the chain applies from empty
+
+```bash
+meta verify --replay              # the committed chain applies to an empty database
+meta verify --replay-snapshot     # ...and reproduces the committed schema snapshot
+```
+
+A committed chain can be broken without anything saying so. `meta migrate` writes a
+`DROP TABLE "x"` whenever `x` is in the live database and absent from the metadata —
+including when **no migration in the chain ever created `x`**, which is what happens
+when another tool owns that table. Every incremental migrate keeps succeeding against
+the database that already has `x`; the chain only fails the day somebody provisions a
+fresh one ([#313](https://github.com/metaobjectsdev/metaobjects/issues/313)).
+
+**`--replay`** replays the whole committed chain into an empty throwaway database and
+asserts it applies. Nothing is compared. This is the gate for the promise
+`apply-pending` makes.
+
+**`--replay-snapshot`** additionally asserts the replayed schema equals the committed
+snapshot. That catches a different thing: **hand-edited structural DDL** — a committed
+`up.sql` someone changed so the chain still applies but no longer produces the schema
+the snapshot records.
+
+Neither needs a database. The engine is local and disposable — real Postgres in-process
+via [PGlite](https://pglite.dev), a throwaway temp file for sqlite — so there is nothing
+to provision, no credentials, and no scratch database to collide with or accidentally
+drop. PGlite is an **optional peer dependency** of `@metaobjectsdev/migrate-ts`: install
+it (`npm i -D @electric-sql/pglite`) to replay a postgres chain. Without it the gate
+exits 2 and says so.
+
+With no `--db` there is no URL to infer a dialect from, so: `--dialect` wins, else
+`migrate.dialect` from `.metaobjects/config.json`, else the run refuses naming
+`--dialect`. `--migration-format flyway` and `--dialect d1` are refused — replay those
+with `flyway migrate` and `wrangler d1 migrations apply` against a scratch database.
+
+Exit codes follow `verify`'s convention: a chain that fails to apply, or a snapshot
+mismatch, is drift → **1**; an engine that cannot start is operational → **2**. An
+empty chain, or a missing snapshot, passes → **0**, and says which, because a gate that
+is silent when it checked nothing cannot be told apart from one that passed.
+
+**`--replay-snapshot` does not apply to a project adopted with
+`migrate baseline --from-db`.** Such a project's snapshot is the whole introspected
+database while its chain is empty, so the comparison cannot pass by construction. Use
+`--replay` there. This is documented rather than auto-detected: the only signal that
+could distinguish the two lives in the target database's ledger, and this gate runs
+against a fresh engine that has no ledger at all.
+
+**If the gate goes red**, applied migrations are checksum-immutable — hand-editing a
+committed `up.sql` is rejected on any database that already applied it. The supported
+fix is a **compensating migration**: author a new one that creates the missing object,
+or that supersedes the bad drop.
+
+#### `--allow drop-unmanaged` — the same problem, caught earlier
+
+`meta migrate --from-db` **refuses** to author a drop for a table or view the committed
+snapshot never contained, because that is precisely the statement that cannot replay:
+
+```
+migrate: refusing to drop public.other_owned_table — absent from the committed schema
+snapshot, so this toolchain never managed it and the migration could not replay against
+a database where it never existed. Re-run with '--allow drop-unmanaged' if the drop is
+intended.
+```
+
+Pass `--allow drop-unmanaged` when the drop is genuinely what you want. The refusal does
+not fire for brownfield projects: `baseline --from-db` puts the foreign table *in* the
+snapshot, and a project declaring `migrate.scope` carries its out-of-scope entries
+forward, so both read as managed. It fires precisely when nothing ever claimed the
+object. A project with no snapshot yet — every greenfield first run — is unaffected.
+
+#### Emitted forward drops carry `IF EXISTS`
+
+Every forward `DROP TABLE` / `DROP VIEW` / `DROP INDEX` / `DROP CONSTRAINT` a migration
+emits is now `IF EXISTS`, in both dialects, so an already-absent object cannot break a
+replay. **Down statements stay bare** deliberately: `rollbackTo` runs `down.sql` and the
+ledger delete in one transaction, so a silently-no-op down would still record the
+rollback as done — rollback is the one place a loud failure is load-bearing.
+
+A chain that creates a table or view in a non-default schema now also emits
+`CREATE SCHEMA IF NOT EXISTS "<schema>";` ahead of it. Without that, an `@schema`
+project's chain could never apply to a virgin database, because nothing ever created
+the schema. The down does **not** drop the schema: it may hold objects this tool does
+not own and cannot restore.
 
 #### D1: rebuilding a foreign-key-referenced table
 

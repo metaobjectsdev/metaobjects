@@ -98,6 +98,78 @@ def test_directory_source_non_recursive(tmp_path: Path) -> None:
     assert ids == ["top.json"]
 
 
+def test_directory_source_exclude_pending_is_off_by_default(tmp_path: Path) -> None:
+    # Loader-level default is OFF (matches TS's loader-level DirectorySource,
+    # which has no _pending concept at all) — only the CLI-facing
+    # source_resolver.py turns it on. An app embedding DirectorySource(dir)
+    # directly must see every file, _pending/ included.
+    (tmp_path / "meta.live.json").write_text("{}", encoding="utf-8")
+    pending = tmp_path / "_pending"
+    pending.mkdir()
+    (pending / "meta.draft.json").write_text("{}", encoding="utf-8")
+
+    ids = sorted(s.id for s in DirectorySource(tmp_path).expand())
+    assert ids == ["meta.draft.json", "meta.live.json"]
+
+
+def test_directory_source_excludes_pending_dir_at_any_depth_when_opted_in(tmp_path: Path) -> None:
+    # Mirrors TypeScript's PENDING_DIR exclusion (metadata-files.ts) — a draft
+    # entity under _pending/ must be invisible to codegen, not merely a file
+    # that happens to be NAMED "_pending". source_resolver.py (the CLI-facing
+    # caller) opts in via exclude_pending=True; this test exercises the option
+    # directly.
+    (tmp_path / "meta.live.json").write_text("{}", encoding="utf-8")
+    pending = tmp_path / "_pending"
+    pending.mkdir()
+    (pending / "meta.draft.json").write_text("{}", encoding="utf-8")
+    # Nested: _pending/ excluded at ANY depth, not just top-level.
+    nested_pending = tmp_path / "nested" / "_pending"
+    nested_pending.mkdir(parents=True)
+    (nested_pending / "meta.deep-draft.json").write_text("{}", encoding="utf-8")
+
+    ids = [s.id for s in DirectorySource(tmp_path, exclude_pending=True).expand()]
+    assert ids == ["meta.live.json"]
+
+
+def test_directory_source_follows_a_symlinked_root(tmp_path: Path) -> None:
+    # I1: the SOURCE path itself is a symlink to a directory. `Path.is_dir()`
+    # follows symlinks (the existence guard passes), so the walk must too, or
+    # the root resolves to zero files, silently.
+    real = tmp_path / "real"
+    real.mkdir()
+    (real / "meta.a.json").write_text("{}", encoding="utf-8")
+    link = tmp_path / "link"
+    link.symlink_to(real, target_is_directory=True)
+
+    ids = [s.id for s in DirectorySource(link).expand()]
+    assert ids == ["meta.a.json"]
+
+
+def test_directory_source_follows_a_symlinked_subdirectory(tmp_path: Path) -> None:
+    # I1, second arm: a symlinked SUBDIRECTORY inside a walked tree.
+    (tmp_path / "meta.top.json").write_text("{}", encoding="utf-8")
+    external = tmp_path.parent / f"{tmp_path.name}-external"
+    external.mkdir()
+    (external / "meta.linked.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "linked").symlink_to(external, target_is_directory=True)
+
+    ids = sorted(s.id for s in DirectorySource(tmp_path).expand())
+    assert ids == ["meta.linked.json", "meta.top.json"]
+
+
+def test_directory_source_symlink_cycle_fails_loudly_rather_than_hanging(
+    tmp_path: Path,
+) -> None:
+    from metaobjects.loader.sources import SymlinkLoopError
+
+    (tmp_path / "meta.top.json").write_text("{}", encoding="utf-8")
+    # A directory symlinked to its own ancestor — a cycle.
+    (tmp_path / "loop").symlink_to(tmp_path, target_is_directory=True)
+
+    with pytest.raises(SymlinkLoopError):
+        list(DirectorySource(tmp_path).expand())
+
+
 def test_uri_source_file_scheme_reads_content(tmp_path: Path) -> None:
     p = tmp_path / "x.json"
     p.write_text("{}", encoding="utf-8")

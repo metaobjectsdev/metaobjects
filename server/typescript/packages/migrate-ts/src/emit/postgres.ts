@@ -54,16 +54,53 @@ export function renderPostgres(changes: Change[]): EmitResult {
   }
   // Down runs in reverse order (so creates undo correctly w.r.t. FKs).
   return {
-    up: upStmts.join("\n\n"),
+    up: [...createSchemaStmts(sorted), ...upStmts].join("\n\n"),
     down: [...downStmts].reverse().join("\n\n"),
     recreatedTables: new Set(), // postgres alters in place; no recreate-and-copy
   };
 }
 
+/**
+ * `CREATE SCHEMA IF NOT EXISTS` for every non-default schema this migration creates
+ * an object in, ahead of everything else it emits.
+ *
+ * A chain must be appliable to a VIRGIN database (#313), and `CREATE TABLE "s"."x"`
+ * fails there unless `s` exists — yet `CREATE SCHEMA` was emitted nowhere in either
+ * emitter, only by the ledger's own setup. So an `@schema` project's chain could
+ * never be replayed, and the first `apply-pending` against a fresh CI database died.
+ *
+ * VIEWS count, not only tables: a first migration that creates only a view in a
+ * non-default schema fails identically. A `create-view` carries the schema in two
+ * places and the change's own key wins, matching `renderCreateView(c.view, c.schema)`.
+ *
+ * `IF NOT EXISTS` because a later migration in the same chain, or an operator, may
+ * have created it already. Sorted so output is deterministic — the committed snapshot
+ * and the golden tests depend on that. Deliberately NOT dropped in `down`: the schema
+ * may hold objects this tool does not own and cannot restore.
+ */
+function createSchemaStmts(sorted: readonly Change[]): string[] {
+  const schemas = new Set<string>();
+  for (const c of sorted) {
+    const s =
+      c.kind === "create-table" ? c.table.schema
+      : c.kind === "create-view" ? (c.schema ?? c.view.schema)
+      : undefined;
+    if (s !== undefined && s !== DEFAULT_DB_SCHEMA_POSTGRES) schemas.add(s);
+  }
+  return [...schemas].sort().map((s) => `CREATE SCHEMA IF NOT EXISTS ${quote(s)};`);
+}
+
 function renderUp(c: Change): string {
   switch (c.kind) {
     case "create-table":           return renderCreateTable(c.table);
-    case "drop-table":             return `DROP TABLE ${quoteQualified(c.table, c.schema)};`;
+    // #313 — every FORWARD drop is `IF EXISTS`. A committed chain must apply to a
+    // VIRGIN database, and the diff legitimately proposes dropping an object that
+    // exists in the live DB but was never created by any migration in the chain (a
+    // table another tool owns, say). Bare, that statement kills the replay with
+    // `table "x" does not exist`. The DOWN renderer below is deliberately NOT
+    // guarded: `rollbackTo` runs down.sql and the ledger delete in ONE transaction,
+    // so a no-op down would still record the rollback as done.
+    case "drop-table":             return `DROP TABLE IF EXISTS ${quoteQualified(c.table, c.schema)};`;
     case "rename-table":           return `ALTER TABLE ${quoteQualified(c.from, c.schema)} RENAME TO ${quote(c.to)};`;
     case "add-column": {
       const base = `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD COLUMN ${renderColumn(c.column)};`;
@@ -90,18 +127,28 @@ function renderUp(c: Change): string {
     // descriptor (both diff producers populate it), which is where the marker lives.
     // Matters broadly, not marginally: Drizzle's `unique()` emits constraints, so every
     // schema adopted from Drizzle has constraint-backed unique indexes.
+    // Both arms carry the #313 `IF EXISTS`: they are two renderings of the SAME
+    // `drop-index` change, and guarding one would leave the change kind half-covered.
     case "drop-index":
       return c.restore?.constraint !== undefined
-        ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.index)};`
-        : `DROP INDEX ${quoteIndexQualified(c.index, c.schema)};`;
+        ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT IF EXISTS ${quote(c.index)};`
+        : `DROP INDEX IF EXISTS ${quoteIndexQualified(c.index, c.schema)};`;
     case "add-fk":                 return renderAddFk(c.table, c.schema, c.fk);
-    case "drop-fk":                return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.fk)};`;
-    // add-check / drop-check are declared but NOT yet produced by the diff —
-    // checks are create-time-only (inlined in CREATE TABLE via renderCreateTable).
-    // These arms exist for future existing-table CHECK evolution support, mirroring
-    // the create-view/drop-view "declared, not yet produced" pattern.
+    case "drop-fk":                return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT IF EXISTS ${quote(c.fk)};`;
+    // `drop-check` IS produced by the diff — diff/index.ts:579 and :592 both push it,
+    // and an evolved `field.enum @values` is a live producer. (A comment here used to
+    // claim these arms were unreachable "declared, not yet produced" stubs; that was
+    // false, and two tests already asserted the emitted statement.) `add-check` is the
+    // paired ADD and rides the same passes.
+    //
+    // `drop-fk`/`drop-check` are guarded on Postgres ONLY, and that is not a dialect
+    // split: SQLite emits no standalone statement for either kind — `renderUpNative`
+    // throws, because SQLite constraints are create-time-only and inline, so the change
+    // folds into a table recreate that rebuilds from the EXPECTED descriptor and never
+    // references the dropped constraint. SQLite is already replay-safe by construction;
+    // guarding Postgres makes the two dialects agree.
     case "add-check":              return `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD CONSTRAINT ${quote(c.check.name)} CHECK (${c.check.expression});`;
-    case "drop-check":             return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT ${quote(c.check)};`;
+    case "drop-check":             return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT IF EXISTS ${quote(c.check)};`;
     case "create-view":            return renderCreateView(c.view, c.schema, /* orReplace */ false);
     case "drop-view":              return renderDropView(c);
     case "replace-view":           return renderCreateView(c.view, c.schema, /* orReplace */ true);
@@ -372,7 +419,9 @@ function renderViewComment(qualifiedView: string, comment: string | null): strin
 function renderDropView(c: Extract<Change, { kind: "drop-view" }>): string {
   const qualified = quoteQualifiedView(c.view, c.schema);
   const dependents = c.dependents ?? [];
-  if (dependents.length === 0) return `DROP VIEW ${qualified};`;
+  // #313 `IF EXISTS` on both forms — this is the FORWARD renderer. `renderRestoreView`
+  // below stays bare: it is reached only from `renderDown`.
+  if (dependents.length === 0) return `DROP VIEW IF EXISTS ${qualified};`;
 
   const listed = dependents
     .map((d) => `--   ${d.schema}.${d.name} (${d.relkind === "m" ? "materialized view" : "view"})`)
@@ -385,7 +434,7 @@ function renderDropView(c: Extract<Change, { kind: "drop-view" }>): string {
     "-- restore them:",
     listed,
     rule,
-    `DROP VIEW ${qualified} CASCADE;`,
+    `DROP VIEW IF EXISTS ${qualified} CASCADE;`,
   ].join("\n");
 }
 

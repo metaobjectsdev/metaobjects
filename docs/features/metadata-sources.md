@@ -34,12 +34,74 @@ exactly that set. A `path` is read **in place and never installed** or copied.
 `"sources": []`, so every existing project takes the default and resolves the same
 files it always did.
 
-**Port support.** `sources` / `scope` / `migrate.scope` are read by the **Node
-`meta` CLI** today. The Java, Kotlin, C# and Python CLIs still take their metadata
-location their own way (a Maven `<source>` element, a positional directory, a
-`metadata` config key). The cross-port pattern grammar is already pinned by
-[`fixtures/scope-conformance/`](../../fixtures/scope-conformance/); wiring the other
-four CLIs to the same config file is future work, not yet planned or scheduled.
+**Port support.** `sources` is read by **all four CLI surfaces** — the Node `meta`
+CLI, `dotnet meta` (C#), `metaobjects` (Python) and `metaobjects:generate` (Java
+and Kotlin, via Maven — Kotlin has no CLI entry point of its own; it runs through
+the same Maven plugin as Java). Each resolves the same files from the same
+declaration; that promise is gated by
+[`fixtures/source-resolution-conformance/`](../../fixtures/source-resolution-conformance/).
+
+Each port reaches it its own way, and the ladder is the same everywhere — first
+match wins:
+
+1. An explicit CLI argument (a positional metadata directory, `--config`, `--cwd`).
+2. The port's own native surface, where it has one — Java and Kotlin's pom
+   `<sourceDir>`/`<sources>`, Python's `metadata` key in `metaobjects.config.yaml`.
+   If the pom names either element it owns the concern outright and the neutral
+   file is not consulted.
+3. `sources` in `.metaobjects/config.json`.
+4. The built-in default — a `metaobjects/` directory beside that config.
+
+A config file that exists but is malformed is an error at its own rung; it never
+falls through to the next one.
+
+**`dotnet meta` (C#) accepts only a single DIRECTORY source.** Its loader
+(`MetaDataLoader.FromDirectory`) takes one directory, so `sources` declaring more
+than one entry, or a single entry that resolves to a FILE rather than a
+directory, is refused with a clear diagnostic naming the limit — rather than
+silently loading a subset of the declared sources, or (for the single-file case)
+failing deep inside the loader with an opaque, uncoded error. Declare exactly one
+directory `path` to use `dotnet meta gen`/`verify`/`docs`, or route around the
+limit with an explicit `<metadataDir>` CLI argument.
+`MetaDataLoader.Load(IReadOnlyList<IMetaDataSource>)` (`MetaDataLoader.cs`) is the
+documented follow-up that would lift both restrictions. The other three CLI
+surfaces have no such limit.
+
+The non-TypeScript ports read a **neutral subset** of that file —
+`schema_version` and `sources` — and ignore every other top-level key, so the
+TypeScript-owned keys beside them (`migrate`, `extract`, and the rest) never
+become a four-port concern. The Node CLI remains the file's only writer;
+`meta init --config-only` writes it into a Maven- or pip-rooted project without
+adding a TypeScript scaffold.
+
+**`scope` and `migrate.scope` remain Node-CLI-only.** Java's shipped `<filters>`
+grammar uses `*` to cross the `::` package separator and `@` to match one
+segment — respectively `scope`'s `**` and `*`, **inverted** — plus `!`-prefix
+exclusion and a `.[attr]` predicate that `scope` cannot express at all
+(`GeneratorUtil.createRegexFromGlob` even carries a `TODO` conceding its own
+separator handling is wrong). Both are output filters over the same resolved
+file set, so they compete rather than layer, and reconciling them changes
+behavior for existing Java consumers — a separate, adopter-affecting decision
+rather than a mechanical port. No cross-port behavior depends on `scope`.
+
+**Two things are deliberately not cross-port contracts**, because the corpus
+that gates this feature says so explicitly:
+
+- **Resolved file order.** The ports' directory walks already differ and always
+  have — Java sorts by basename, C# by full-path ordinal, Python by basename,
+  TypeScript walks depth-first with files before subdirectories — and the
+  loader's overlay partition discards caller order regardless
+  (super-resolution is order-independent, #188). Every port resolves the same
+  file **set**; only the order within it is each port's own.
+- **The error code for a malformed config.** A `.metaobjects/config.json` that
+  exists but is malformed (e.g. `sources` declared as an object instead of an
+  array) must raise rather than silently degrade to "no config" — but which
+  error is each port's own. Verified empirically: TypeScript raises a raw
+  `ZodError` carrying no MetaObjects error code at all, Python raises
+  `ERR_COLLECTION_NOT_FOUND`, and C# and Java both raise `ERR_BAD_ATTR_VALUE`.
+  The shared corpus expresses this with `"expectError": true` ("must raise,
+  code unpinned") alongside the existing string-code form for cases that DO
+  pin one.
 
 ---
 
@@ -575,8 +637,11 @@ Phase 1 ships the spine. Explicitly **not** built yet, so you do not go looking:
 - **`url` sources** and **named `collection` references**.
 - **Per-generator declarative `scope`.** The TypeScript `filter` function is the
   escape hatch and is unchanged.
-- **The other four ports' CLIs reading `.metaobjects/config.json`.** The pattern
-  grammar is corpus-gated so they cannot diverge when they land.
+- **Cross-port `scope` and `migrate.scope`.** Java's own `<filters>` grammar
+  collides with `scope`'s pattern characters (see "Port support" near the top of
+  this document), so reconciling the two is a separate, adopter-affecting decision
+  rather than a mechanical port. They remain Node-CLI-only for now; `sources`
+  itself is no longer in this list — all four CLI surfaces read it today.
 - **Database and other runtime metadata sources.** Ruled a runtime-metadata concern
   rather than a build-time one.
 
@@ -587,17 +652,33 @@ Design rationale and the full phase plan:
 
 ## Verified by
 
+**Cross-port source resolution**
+
+- [`fixtures/source-resolution-conformance/`](../../fixtures/source-resolution-conformance/) —
+  pins the resolved file SET for a declared `sources` list (the default, the
+  relative-path base, recursion, extension matching, union/de-dup, and every error
+  condition, including the deliberately-unpinned malformed-config case — see the
+  corpus's own README). All four CLI surfaces run it:
+  `server/typescript/packages/sdk/test/source-resolution-conformance.test.ts`,
+  `server/csharp/MetaObjects.Conformance.Tests/SourceResolutionConformanceTests.cs`,
+  `server/python/tests/conformance/test_source_resolution_conformance.py`, and
+  `server/java/metadata/src/test/java/com/metaobjects/config/SourceResolutionConformanceTest.java`
+  (Kotlin runs through the Java/Maven loader, so it shares the Java runner).
+
 **Cross-port pattern semantics**
 
 - [`fixtures/scope-conformance/`](../../fixtures/scope-conformance/) — 10 cases
   pinning `*` / `**`, include-union, exclude-after-include, literal metacharacters,
   and case sensitivity. TypeScript runs it today; the other four ports have no runner
-  yet. See [`CONFORMANCE.md`](../CONFORMANCE.md).
+  yet, because `scope` itself stays Node-CLI-only (see "Port support" above). See
+  [`CONFORMANCE.md`](../CONFORMANCE.md).
 
 **TypeScript gates**
 
 - `server/typescript/packages/sdk/test/scope.test.ts` — the pattern engine
 - `server/typescript/packages/sdk/test/scope-conformance.test.ts` — the corpus runner
+- `server/typescript/packages/sdk/test/source-resolution-conformance.test.ts` — the
+  cross-port sources corpus runner
 - `server/typescript/packages/sdk/test/sources.test.ts` — `path` resolution, `_pending`
   exclusion, unsupported kinds
 - `server/typescript/packages/sdk/test/discovery.test.ts` — nearest-ancestor walk and

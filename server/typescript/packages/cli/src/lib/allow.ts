@@ -33,6 +33,10 @@ export const ALLOW_TOKEN_MAP: Record<string, keyof AllowOptions> = {
   // @generation at all — ambiguous between "never declared it" and
   // "deliberately removing auto-increment", so migrate refuses without it.
   "drop-identity-default": "dropIdentityDefault",
+  // Gates dropping an object the committed snapshot never contained (#313). Read by
+  // migrate's generation-time provenance guard, not by diff()'s status pass — see
+  // AllowOptions.dropUnmanaged for why it still belongs in that shape.
+  "drop-unmanaged": "dropUnmanaged",
 };
 
 /** Translate parsed `--allow` tokens into the migrate-ts `AllowOptions` shape. */

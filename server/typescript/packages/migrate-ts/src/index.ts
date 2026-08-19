@@ -112,6 +112,10 @@ export {
 export { verifyReplay } from "./verify/replay.js";
 export type { VerifyReplayArgs, VerifyReplayResult } from "./verify/replay.js";
 
+// An empty in-process database to replay a committed chain into (#313).
+export { openReplayEngine } from "./verify/replay-engine.js";
+export type { ReplayEngine } from "./verify/replay-engine.js";
+
 // Wrangler config helpers
 export {
   findWranglerConfig,

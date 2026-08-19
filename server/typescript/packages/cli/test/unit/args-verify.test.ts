@@ -6,6 +6,7 @@ describe("parseVerifyArgs", () => {
     expect(parseVerifyArgs([])).toEqual({
       prompts: undefined, db: undefined, dialect: undefined, allow: [], skipSchema: false,
       templates: false, codegen: false, anyExplicit: false, noAntipatterns: false, lax: false,
+      replay: false, replaySnapshot: false,
       d1: undefined, remote: false,
     });
   });
@@ -13,6 +14,7 @@ describe("parseVerifyArgs", () => {
     expect(parseVerifyArgs(["--prompts", "templates"])).toEqual({
       prompts: "templates", db: undefined, dialect: undefined, allow: [], skipSchema: false,
       templates: false, codegen: false, anyExplicit: false, noAntipatterns: false, lax: false,
+      replay: false, replaySnapshot: false,
       d1: undefined, remote: false,
     });
   });
@@ -20,6 +22,7 @@ describe("parseVerifyArgs", () => {
     expect(parseVerifyArgs(["--db", "file:x.db", "--dialect", "sqlite", "--skip-schema"])).toEqual({
       prompts: undefined, db: "file:x.db", dialect: "sqlite", allow: [], skipSchema: true,
       templates: false, codegen: false, anyExplicit: true, noAntipatterns: false, lax: false,
+      replay: false, replaySnapshot: false,
       d1: undefined, remote: false,
     });
   });
@@ -29,6 +32,7 @@ describe("parseVerifyArgs", () => {
     expect(parseVerifyArgs(["--dialect", "d1", "--d1", "DB", "--remote"])).toEqual({
       prompts: undefined, db: undefined, dialect: "d1", allow: [], skipSchema: false,
       templates: false, codegen: false, anyExplicit: true, noAntipatterns: false, lax: false,
+      replay: false, replaySnapshot: false,
       d1: "DB", remote: true,
     });
     const bare = parseVerifyArgs(["--dialect", "d1"]);
@@ -52,6 +56,7 @@ describe("parseVerifyArgs", () => {
       prompts: undefined, db: undefined, dialect: undefined,
       allow: ["drop-column", "drop-table"], skipSchema: false,
       templates: false, codegen: false, anyExplicit: false, noAntipatterns: false, lax: false,
+      replay: false, replaySnapshot: false,
       d1: undefined, remote: false,
     });
   });

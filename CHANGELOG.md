@@ -7,6 +7,147 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added — `sources` is read by all four CLI surfaces, plus `meta init --config-only`
+
+`.metaobjects/config.json`'s `sources` key stops being a Node-only concern. Adopter
+guide: [`docs/features/metadata-sources.md`](docs/features/metadata-sources.md).
+
+- **`sources` is read by all four CLI surfaces**, not just the Node `meta` CLI —
+  the C#, Python and Java/Kotlin CLIs (Kotlin has no CLI of its own; it runs
+  through the same Maven plugin as Java) now resolve metadata from the
+  port-neutral `.metaobjects/config.json`, so one declaration serves every port
+  (C#'s CLI loader accepts only a single directory `path` source — see the
+  adopter guide). Each reads a **neutral subset** (`schema_version` + `sources`) and ignores
+  unknown top-level keys, so the TypeScript-owned keys in that file (`migrate`,
+  `scope`, `extract`, and the rest) never become a four-port change. Precedence
+  is a ladder — explicit CLI argument, then the port's own native surface (a
+  pom's `<sourceDir>`/`<sources>`, Python's `metadata` key), then `sources`,
+  then the default `metaobjects/` directory — and a config that exists but is
+  malformed errors at its own rung rather than silently falling through. Gated
+  by the new
+  [`fixtures/source-resolution-conformance/`](fixtures/source-resolution-conformance/)
+  corpus, which every port runs.
+- **`meta init --config-only`** writes `.metaobjects/config.json` and nothing
+  else, so a Maven- or pip-rooted project can declare its sources for the Node
+  CLI (which owns `migrate` and `verify --db`, ADR-0015) without acquiring a
+  TypeScript scaffold it will not use.
+- **`scope` / `migrate.scope` stay Node-CLI-only.** Java's shipped `<filters>`
+  grammar uses `*` to cross the `::` separator and `@` to match one segment —
+  respectively `scope`'s `**` and `*`, inverted — plus `!`-prefix exclusion and
+  a `.[attr]` predicate `scope` cannot express at all
+  (`GeneratorUtil.createRegexFromGlob` carries a `TODO` conceding its own
+  separator handling is wrong). Both are output filters over the same resolved
+  file set, so reconciling them is a separate, adopter-affecting decision
+  rather than a mechanical port. No cross-port behavior depends on `scope`.
+- **Resolved file order, and the malformed-config error code, are deliberately
+  NOT cross-port contracts.** The ports' directory walks already differ and
+  always have (Java sorts by basename, C# by full-path ordinal, Python by
+  basename, TypeScript walks depth-first); the corpus compares file **sets**.
+  A malformed config must raise rather than silently degrade to "no config",
+  but which error is each port's own — verified empirically: TypeScript raises
+  a raw `ZodError` with no code at all, Python raises
+  `ERR_COLLECTION_NOT_FOUND`, C# and Java both raise `ERR_BAD_ATTR_VALUE`.
+- **Directory expansion follows symlinked directories in all four ports** —
+  including when a declared `sources` path is itself a symlink, or a symlink
+  sits partway through a walked tree. TypeScript and C# already did; Java and
+  Python now match (a symlinked `sources` path previously resolved to zero
+  files in Java, silently, exit 0). A symlink cycle is a loud error rather
+  than a hang. Gated by two new `symlinks`-bearing corpus cases.
+- **Behavior change (Java/Maven only): a `<loader>` naming neither
+  `<sourceDir>` nor `<sources>`, with no `.metaobjects/config.json` `sources`
+  and no default `metaobjects/` directory, now FAILS the build**
+  (`ERR_COLLECTION_NOT_FOUND`) instead of silently producing an empty model
+  and passing. This is the one behavior change here that can break an
+  existing `mvn metaobjects:generate`/`:verify` — most likely to bite a
+  multi-module reactor where a parent pom configures `<loader>` and one child
+  module never adds its own `<sourceDir>`. To restore the old outcome, declare
+  `<sourceDir>`/`<sources>` explicitly in that module's pom, or give it a real
+  metadata source (a `metaobjects/` directory or a `.metaobjects/config.json`
+  `sources` entry).
+
+### Changed — a committed migration chain must replay from empty, and `meta migrate` stops writing chains that cannot ([#313](https://github.com/metaobjectsdev/metaobjects/issues/313))
+
+**`meta migrate --from-db` now REFUSES a drop for a table or view the committed schema
+snapshot never contained**, exiting 2 and naming each object. This is the one change here
+that can fail an existing project's `meta migrate`, so it leads. Pass
+**`--allow drop-unmanaged`** when the drop is genuinely intended.
+
+The refusal exists because the drop it blocks produces a migration nobody can replay. The
+live migrate path diffs metadata against introspection and never reads the snapshot, so a
+table another tool owns reads as "in the database, not in the model" and is proposed for a
+`DROP TABLE`. Every incremental migrate then keeps succeeding against the database that
+already has that table — the chain only fails the day someone provisions a fresh one, which
+for the reporter was **three months later**, by which point the only working database left
+was a leftover CI container. `drift/classify.ts` has always said objects present in the DB
+but not the snapshot "must never be treated as actionable drift or auto-dropped"; this is
+the first place that doctrine is enforced where it mattered.
+
+It does not false-fire on brownfield projects, and the reason is structural rather than
+special-cased: **both mechanisms ADD to the snapshot.** A `baseline --from-db` snapshot
+contains the foreign table; a project declaring `migrate.scope` carries its out-of-scope
+entries forward. The guard fires precisely when nothing ever claimed the object. It fails
+OPEN with no snapshot on disk — refusing there would break the first `meta migrate` of every
+greenfield project — and it lives on the live path only, because the offline path diffs
+against the snapshot and so cannot propose a snapshot-absent drop at all.
+
+**Emitted forward drops now carry `IF EXISTS`** — `drop-table`, `drop-view` (plain and
+CASCADE), `drop-index` (both the plain form and #285's constraint-backed
+`ALTER TABLE … DROP CONSTRAINT`), `drop-fk` and `drop-check` — in both dialects, so an
+already-absent object cannot break a replay. **Down statements stay bare, deliberately:**
+`rollbackTo` runs `down.sql` and the ledger delete in ONE transaction, so a guarded down
+would no-op and still record the rollback as done. Rollback is the one place a loud failure
+is load-bearing. Also left bare on purpose: the sqlite recreate-and-copy rebuild's
+`DROP TABLE` and d1-cascade's, each of which drops a table the same recipe just
+`INSERT…SELECT`ed from, where `IF EXISTS` converts a caught corruption into a silent one.
+`drop-column` is excluded as the one genuine dialect limit — sqlite has no
+`DROP COLUMN IF EXISTS` — and the new refusal covers it instead. D1 inherits the sqlite
+change, since `emit/d1.ts` renders through `renderSqlite`.
+
+**A chain creating a table or view in a non-default schema now emits
+`CREATE SCHEMA IF NOT EXISTS`** ahead of it. `CREATE SCHEMA` was emitted nowhere in either
+emitter — only by the ledger's own setup — so an `@schema` project's chain could never apply
+to a virgin database. Views count, not only tables: a first migration creating just a view in
+a non-default schema failed identically. The down does not drop the schema; it may hold
+objects this tool does not own and cannot restore.
+
+### Added — `meta verify --replay` and `--replay-snapshot`
+
+Two new verify subverbs that answer the question the toolchain was already promising an
+answer to. `docs/features/migrations-and-drift.md` and `meta migrate --help` both said
+`apply-pending` "is the way to provision a fresh or CI database"; that is true only of a
+chain that builds the schema, and nothing checked.
+
+- **`--replay`** replays the committed chain into an empty throwaway database and asserts it
+  **applies**. This is the #313 gate.
+- **`--replay-snapshot`** additionally asserts the replayed schema **equals the committed
+  snapshot**, finally wiring `verifyReplay` — built, exported, and without a CLI caller since
+  the 2026-05-31 design retained it as "the optional `verify --replay` integrity aid". It
+  catches a different defect: hand-edited structural DDL that still applies but no longer
+  builds the recorded schema.
+
+They are two tiers rather than one gate because the populations differ. A project adopted via
+`migrate baseline --from-db` passes the first trivially and **cannot** pass the second by
+construction — its snapshot is the whole introspected database against an empty chain. The
+reporter's failure was an *apply* error, so the weaker assertion is the one that answers the
+bug and is immune to that class. The limitation is documented rather than auto-detected: the
+only candidate signal has no production caller and would live in the *target* database's
+ledger, while the gate runs against a fresh engine with no ledger at all.
+
+Neither needs a `--db`. The engine is local and disposable — real Postgres in-process via
+**PGlite**, a throwaway temp file for sqlite — so there is nothing to provision, no
+credentials, and no scratch database to collide with or drop by mistake. **`@electric-sql/pglite`
+is a new OPTIONAL peer dependency of `@metaobjectsdev/migrate-ts`** (~22 MB of WASM, so it is
+not forced on every adopter): install it to replay a postgres chain. With no URL to infer from,
+the dialect precedence is `--dialect` > `migrate.dialect` > refuse naming `--dialect`.
+`--migration-format flyway` and `--dialect d1` are refused, mirroring `apply-pending`. An empty
+chain and a missing snapshot both pass and **say which**, because a gate that is silent when it
+checked nothing cannot be told apart from one that passed.
+
+`verifyReplay` also gains an optional `governed` so a project declaring `migrate.scope` can use
+the second tier at all: such a project carries the other owner's tables into its snapshot on
+purpose and its chain never creates them, so without this they were reported as missing on
+every replay.
+
 ### Added — pre-release publishing to a private registry (no more real releases just to test a change)
 
 Trying an unreleased change against a downstream project required cutting a real release on

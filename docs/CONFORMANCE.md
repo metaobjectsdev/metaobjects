@@ -1,6 +1,6 @@
 # Conformance coverage
 
-The MetaObjects standard ships **20 shared conformance corpora** under
+The MetaObjects standard ships **21 shared conformance corpora** under
 [`fixtures/`](../fixtures/). Every port runs every corpus that is *applicable to
 it* and asserts the same expected behaviour against the same fixtures. **This page
 is the inverse index**: fixture → feature doc + per-port pass status, and it is the
@@ -42,6 +42,7 @@ regenerate with `ls -d fixtures/<corpus>/*/ | wc -l`.
 | [`fixtures/template-output-render-conformance/`](../fixtures/template-output-render-conformance/) | 5 | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/generator-registry-conformance/`](../fixtures/generator-registry-conformance/) | 1 canonical manifest | ✓ | ✓ | ✓ | ✓ | ✓ |
 | [`fixtures/provider-composition-conformance/`](../fixtures/provider-composition-conformance/) | 9 (5 error-shape + 4 compose-load) | ✓ | ✓ | — (JVM registry via Java) | ✓ | ✓ |
+| [`fixtures/source-resolution-conformance/`](../fixtures/source-resolution-conformance/) | 25 cases | ✓ (reference implementation) | ✓ | inherits via Java | ✓ | ✓ |
 | [`fixtures/scope-conformance/`](../fixtures/scope-conformance/) | 10 cases | ✓ (reference implementation) | — | — | — | — |
 | [`fixtures/agent-context-conformance/`](../fixtures/agent-context-conformance/) | 4 | ✓ (the emitter is TS-owned) | — | — | — | — |
 | [`fixtures/metamodel-docs/`](../fixtures/metamodel-docs/) | 1 | ✓ (docs emit is TS-owned) | — | — | — | — |
@@ -182,6 +183,31 @@ inheritance), `m2m/` (3), `jsonb/` (2, typed value-object columns) and
 Kotlin, C#, Python — run it in BOTH lanes: a hand-rolled reference server and
 the port's own GENERATED API artifact booted over HTTP.
 
+### `fixtures/source-resolution-conformance/` (25 cases)
+
+All 25 cases → [features/metadata-sources.md](features/metadata-sources.md) (how a
+declared `sources` set resolves to a file list). Companion to
+`scope-conformance/` below — `sources` decides which files are read, `scope`
+filters what is emitted from them. The corpus is file-shaped: one committed
+`cases.json`, read directly by every port's runner, with no per-port fixture
+and no ledger.
+
+It pins the resolved file **SET** for a declared `sources` list — the default
+directory, replacement-not-merge, the relative-path base (the directory
+HOLDING `.metaobjects/`, never the process cwd), recursive directory walking,
+case-insensitive extension matching, union-with-de-duplication, and every
+error condition (an unresolvable path, an unsupported `resource`/`package`
+kind, and a malformed config — `"expectError": true` pins only that
+resolution RAISES, since which error code it raises with is deliberately NOT
+a cross-port contract; see the corpus README). **All four CLI surfaces run
+it** — TypeScript (the reference implementation), C#, Python, and Java (Kotlin
+inherits it, since Kotlin has no CLI entry point of its own and runs through
+the same Maven plugin as Java):
+`server/typescript/packages/sdk/test/source-resolution-conformance.test.ts`,
+`server/csharp/MetaObjects.Conformance.Tests/SourceResolutionConformanceTests.cs`,
+`server/python/tests/conformance/test_source_resolution_conformance.py`, and
+`server/java/metadata/src/test/java/com/metaobjects/config/SourceResolutionConformanceTest.java`.
+
 ### `fixtures/scope-conformance/` (10 cases)
 
 All 10 cases → [features/metadata-sources.md](features/metadata-sources.md) (the
@@ -207,9 +233,9 @@ grammar rather than four.
 
 ## Orphaned fixtures (tested but not yet documented)
 
-The fixtures in the seven corpora mapped above (metamodel 255 + yaml 15 + verify 31
-+ render 15 + persistence 33 + api-contract 41 + scope 10) each map to a feature doc. None
-are orphaned today. The remaining corpora in the totals table gate tooling
+The fixtures in the eight corpora mapped above (metamodel 255 + yaml 15 + verify 31
++ render 15 + persistence 33 + api-contract 41 + source-resolution 25 + scope 10) each
+map to a feature doc. None are orphaned today. The remaining corpora in the totals table gate tooling
 contracts (registry manifests, provider composition, agent context, docs emit)
 rather than user-facing metamodel behaviour, so they have no feature-doc row.
 

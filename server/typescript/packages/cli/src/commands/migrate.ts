@@ -29,6 +29,7 @@ import {
   snapshotPath,
   readSnapshot,
   writeSnapshot,
+  qualifiedDbName,
   BlockedChangesError,
   PrimaryKeyChangeError,
   renderD1,
@@ -47,6 +48,7 @@ import {
   type EmitResult,
   type D1Runner,
   type SchemaProvenance,
+  type SchemaSnapshot,
 } from "@metaobjectsdev/migrate-ts";
 import {
   buildWranglerExecuteArgs,
@@ -66,8 +68,11 @@ SUBCOMMANDS:
                        (use with --from-db). NOTE: for a brand-new/empty database use
                        the greenfield example below, NOT baseline — an offline baseline
                        records your metadata as already-applied and emits no CREATE TABLE.
-  apply-pending        Replay committed migration files against --db (no diff);
-                       provisions a fresh/CI database. postgres/sqlite only.
+  apply-pending        Replay committed migration files against --db (no diff).
+                       Provisions a fresh/CI database when the chain BUILDS the
+                       schema — 'meta verify --replay' proves that it does. A
+                       database adopted via 'baseline --from-db' has no such
+                       chain. postgres/sqlite only.
 
 MIGRATE FLAGS:
   --db <url>           DB connection URL (required for live-introspect / --apply / --rollback)
@@ -87,7 +92,13 @@ MIGRATE FLAGS:
   --allow <csv>        Comma-separated destructive-change permissions:
                        drop-column,drop-table,type-change,drop-index,drop-fk,
                        drop-check,drop-view,drop-view-cascade,
-                       adopt-view,nullable-to-not-null,drop-identity-default
+                       adopt-view,nullable-to-not-null,drop-identity-default,
+                       drop-unmanaged
+                       drop-unmanaged permits dropping a table/view the committed
+                       snapshot never contained — one this toolchain never managed.
+                       Without it that drop is refused, because the migration it
+                       writes cannot replay against a database where the object
+                       never existed.
   --on-ambiguous abort|rename|drop-add
                        How to handle ambiguous renames (default: abort)
   --from-db            Introspect live DB instead of using the committed snapshot
@@ -289,6 +300,45 @@ function summarizeChanges(changes: Change[]): Record<string, number> {
     counts[c.kind] = (counts[c.kind] ?? 0) + 1;
   }
   return counts;
+}
+
+/**
+ * The qualified names of tables/views this diff proposes to DROP that the committed
+ * snapshot never contained — i.e. objects this toolchain never managed (#313).
+ *
+ * FAILS OPEN. No snapshot on disk, or one that cannot be read, yields an empty list:
+ * a project that has never generated one is not in an error state, and refusing there
+ * would break the first `meta migrate` of every greenfield project. A parse failure is
+ * migrate's own error to raise elsewhere, with its own message, not a silent refusal
+ * here.
+ *
+ * Names come from `qualifiedDbName` and nothing else. Three independent sets already
+ * have to agree on this spelling — the diff's identity maps, the `@unmanaged`
+ * exclusion set, and the out-of-scope set — and a fourth encoding of "absent schema
+ * means public" would silently un-guard every object it disagreed about.
+ */
+async function snapshotAbsentDrops(changes: Change[], snapPath: string): Promise<string[]> {
+  let snapshot: SchemaSnapshot | null;
+  try {
+    snapshot = await readSnapshot(snapPath);
+  } catch {
+    return [];
+  }
+  if (snapshot === null) return [];
+
+  const managed = new Set<string>();
+  for (const t of snapshot.tables) managed.add(qualifiedDbName(t));
+  for (const v of snapshot.views) managed.add(qualifiedDbName(v));
+
+  const absent: string[] = [];
+  for (const c of changes) {
+    const name =
+      c.kind === "drop-table" ? qualifiedDbName({ name: c.table, schema: c.schema })
+      : c.kind === "drop-view" ? qualifiedDbName({ name: c.view, schema: c.schema })
+      : undefined;
+    if (name !== undefined && !managed.has(name)) absent.push(name);
+  }
+  return absent;
 }
 
 function allowFlagFor(kind: string): string {
@@ -658,6 +708,44 @@ export async function migrateCommand(
     }
 
     changeCounts = summarizeChanges(diffResult.changes);
+
+    // #313 — refuse to AUTHOR a drop for an object the committed snapshot never
+    // contained. This path diffs metadata against introspection and never reads the
+    // snapshot, so an object another tool owns reads as "in the DB, not in the model"
+    // and is proposed for a drop; the migration that results cannot replay against a
+    // database where that object never existed, which is how a chain stays broken for
+    // months. `classify.ts` already states the doctrine — objects present in the DB
+    // but not the snapshot "must never be treated as actionable drift or
+    // auto-dropped" — and this is where it is finally enforced.
+    //
+    // It does not false-fire on the brownfield cases, because both of them ADD to the
+    // snapshot: a `baseline --from-db` snapshot contains the foreign table, and a
+    // scoped project carries its out-of-scope entries forward. The guard fires
+    // precisely when nothing ever claimed the object.
+    //
+    // Only on THIS path, and that is not an omission: the offline path diffs metadata
+    // against the committed snapshot, so it proposes a drop only for an object the
+    // snapshot HAS. A snapshot-absent drop is unreachable there by construction.
+    const unmanagedDrops = await snapshotAbsentDrops(
+      diffResult.changes,
+      snapshotPath(resolvePath(metaRoot, config.outDir), kysely.dialect),
+    );
+    if (unmanagedDrops.length > 0 && tokensToAllowOptions(config.allow).dropUnmanaged !== true) {
+      const named = unmanagedDrops.join(", ");
+      log.error(
+        `migrate: refusing to drop ${named} — absent from the committed schema snapshot, so this ` +
+          `toolchain never managed ${unmanagedDrops.length === 1 ? "it" : "them"} and the migration ` +
+          `could not replay against a database where ${unmanagedDrops.length === 1 ? "it" : "they"} ` +
+          `never existed. Re-run with '--allow drop-unmanaged' if the drop is intended.`,
+      );
+      emitStructuredError(
+        `migrate: refusing to drop ${named} — absent from the committed schema snapshot`,
+        "re-run with '--allow drop-unmanaged' if the drop is intended",
+        fmt,
+      );
+      await kysely.close();
+      return 2;
+    }
 
     // All changes — tables AND views — are emitted by the one schema-diff path.
     // View DDL (create/drop/replace) is produced by diff()'s view passes (2b body
