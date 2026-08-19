@@ -438,32 +438,35 @@ def gen_state_dir_for(metadata_dir: str) -> str:
 
 
 def resolve_metadata_location(
-    explicit: str | None,
     config: ProjectConfig | None,
     root: Path,
 ) -> list[str]:
-    """The precedence ladder for where metadata lives. First match wins.
+    """The precedence ladder for where metadata lives, rungs 2-4. First match wins.
 
-    1. An explicit CLI argument (the positional ``metadata_dir``).
     2. This port's native surface — ``metadata`` in ``metaobjects.config.yaml``.
     3. ``sources`` in the port-neutral ``.metaobjects/config.json``.
     4. The built-in default directory.
+
+    Rung 1 — an explicit CLI argument (the positional ``metadata_dir``) — is
+    NOT this function's concern: every command handler that accepts one already
+    loads it directly via ``_load_root(args.metadata_dir)`` (``MetaDataLoader
+    .from_directory``, a single-directory load with no resolve-then-rejoin step
+    of its own) BEFORE this function would even be reachable, so this function is
+    only ever called with rung 1 already having been tried and found absent. An
+    earlier revision accepted an ``explicit`` parameter and duplicated rung 1
+    here via `resolve_sources` — reachable from no command handler, so it could
+    silently drift from the real rung-1 path (e.g. picking up
+    `source_resolver.py`'s CLI-facing `_pending` exclusion while
+    `_load_root`'s loader-level walk does not) with nothing to notice. Removed
+    rather than wired: replumbing every metadataDir-taking command onto
+    `resolve_sources`'s `from_uris`-based load instead of `from_directory` is a
+    materially different, higher-risk change than this ladder needs.
 
     A file that EXISTS at any rung but is malformed raises rather than falling
     through to the next rung. See
     `docs/superpowers/specs/2026-08-19-cross-port-metadata-sources-design.md` §5.
     """
     from metaobjects.config.source_resolver import resolve_collection, resolve_sources
-
-    if explicit is not None:
-        # Resolve to an absolute path FIRST and pass it as an absolute spec —
-        # `resolve_sources` takes an absolute `path` as-is, so the base is
-        # irrelevant. Joining a relative `explicit` onto its own already-
-        # absolute parent (the naive approach) resolves one level too deep.
-        return [
-            str(p)
-            for p in resolve_sources(root, [{"path": str(Path(explicit).resolve())}])
-        ]
 
     if config is not None:
         # `config.metadata_dir()` is already resolved to an absolute path
@@ -487,7 +490,7 @@ def _resolve_metadata_location_or_print_error(
     the caller has nothing further to print and should return 1.
     """
     try:
-        return resolve_metadata_location(explicit=None, config=config, root=root)
+        return resolve_metadata_location(config=config, root=root)
     except ParseError as exc:
         print(f"error: could not resolve metadata location: {exc}", file=sys.stderr)
         return None
