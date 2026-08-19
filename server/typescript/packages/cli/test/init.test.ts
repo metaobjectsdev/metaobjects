@@ -218,6 +218,54 @@ describe("init() — monorepo-subdir agent-context warning (#77)", () => {
   });
 });
 
+describe("init() --config-only", () => {
+  test("writes just the config, no TypeScript scaffold", async () => {
+    const result = await init({ cwd, configOnly: true });
+
+    // The one file it writes.
+    expect(result.created).toContain(".metaobjects/config.json");
+    const cfg = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
+    expect(cfg.schema_version).toBe(1);
+    expect(cfg.sources).toEqual([]);
+
+    // None of the TypeScript scaffold, none of the metaobjects/ metadata dir, none
+    // of the agent-context — this is the whole point of the flag: a Maven- or
+    // pip-rooted project declares its sources for the Node CLI without acquiring a
+    // TS project it will not use.
+    for (const unwanted of [
+      "metaobjects.config.ts",
+      "codegen/generators/entity.ts",
+      "package.json",
+      ".gitignore",
+      "metaobjects",
+      ".metaobjects/.gitignore",
+      ".metaobjects/AGENTS.md",
+    ]) {
+      expect(existsSync(join(cwd, unwanted))).toBe(false);
+    }
+  });
+
+  test("leaves an existing valid config untouched", async () => {
+    mkdirSync(join(cwd, ".metaobjects"), { recursive: true });
+    const existing = { schema_version: 1, sources: [{ path: "model" }] };
+    writeFileSync(join(cwd, ".metaobjects", "config.json"), JSON.stringify(existing));
+
+    const result = await init({ cwd, configOnly: true });
+
+    expect(result.preserved).toContain(".metaobjects/config.json");
+    const cfg = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
+    expect(cfg.sources).toEqual([{ path: "model" }]);
+  });
+});
+
+describe("initCommand --config-only", () => {
+  test("returns 0 and writes only the config", async () => {
+    expect(await initCommand(["--config-only"], cwd)).toBe(0);
+    expect(existsSync(join(cwd, ".metaobjects", "config.json"))).toBe(true);
+    expect(existsSync(join(cwd, "metaobjects.config.ts"))).toBe(false);
+  });
+});
+
 describe("init --d1", () => {
   test("scaffolds config with migrate.dialect = 'd1' and prefilled binding from wrangler.toml", async () => {
     writeFileSync(join(cwd, "wrangler.toml"), [

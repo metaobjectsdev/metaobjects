@@ -15,6 +15,7 @@ export interface InitFlags {
   noSkills: boolean;
   wireRoot: boolean;
   docsOnly: boolean;
+  configOnly: boolean;
 }
 
 export function parseInitArgs(argv: string[]): InitFlags {
@@ -31,6 +32,7 @@ export function parseInitArgs(argv: string[]): InitFlags {
       "no-skills": { type: "boolean", default: false },
       "no-wire-root": { type: "boolean", default: false },
       "docs-only": { type: "boolean", default: false },
+      "config-only": { type: "boolean", default: false },
     },
     strict: true,
     allowPositionals: false,
@@ -46,6 +48,7 @@ export function parseInitArgs(argv: string[]): InitFlags {
     noSkills: !!values["no-skills"],
     wireRoot: !values["no-wire-root"],
     docsOnly: !!values["docs-only"],
+    configOnly: !!values["config-only"],
   };
 }
 

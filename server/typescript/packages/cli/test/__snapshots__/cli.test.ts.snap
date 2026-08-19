@@ -9,6 +9,7 @@ USAGE:
 COMMANDS:
   init                  Scaffold a MetaObjects project in the current repo
   init --refresh-docs   Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
+  init --config-only    Write only .metaobjects/config.json — for a Maven- or pip-rooted project
   agent-docs            Scaffold only the agent-context (.metaobjects/ + .claude/skills/) — canonical redirect target for all language ports
   gen [<entity>...]     Codegen TS targets from your declared metadata
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description

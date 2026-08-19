@@ -16,6 +16,7 @@ USAGE:
 COMMANDS:
   init                  Scaffold a MetaObjects project in the current repo
   init --refresh-docs   Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
+  init --config-only    Write only .metaobjects/config.json — for a Maven- or pip-rooted project
   agent-docs            Scaffold only the agent-context (.metaobjects/ + .claude/skills/) — canonical redirect target for all language ports
   gen [<entity>...]     Codegen TS targets from your declared metadata
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description
@@ -188,6 +189,8 @@ FLAGS:
   --print-only          Print what would be written, don't write
   --d1                  Include D1 (Cloudflare) migration config
   --no-wire-root        Skip wiring root metaobjects.config.ts
+  --config-only         Write only .metaobjects/config.json (no TS scaffold) — declares
+                        metadata sources for the Node CLI from a Maven- or pip-rooted project
   --help, -h            Print this help
 `,
   "agent-docs": `meta agent-docs — scaffold the agent-context (.metaobjects/ always-on files + .claude/skills/)
