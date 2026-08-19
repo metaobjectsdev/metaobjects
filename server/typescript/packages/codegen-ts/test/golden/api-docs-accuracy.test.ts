@@ -127,6 +127,18 @@ const FIXTURE = JSON.stringify({
           "@format": "json",
         },
       },
+      {
+        // ADR-0052: the extractor artifacts this gate checks are emitted from a
+        // responding prompt, not from the document above. Without one the gate
+        // would pass vacuously — nothing to compare — which is the failure mode
+        // this whole file exists to prevent.
+        "template.prompt": {
+          name: "SummarizeProduct",
+          "@payloadRef": "SummaryVO",
+          "@responseRef": "SummaryVO",
+          "@textRef": "p/summarize",
+        },
+      },
       // Email template.output (json → extractor + render:EmailDocument).
       {
         "template.output": {
@@ -327,6 +339,7 @@ describe("api-docs ACCURACY gate — documented symbols == real generated output
   let routesFiles: EmittedFile[];
   let extractorFiles: EmittedFile[];
   let renderFiles: EmittedFile[];
+  let promptRenderFiles: EmittedFile[];
 
   // Concatenated content per generator-suite (for symbol scans).
   let entityAll = "";
@@ -344,6 +357,7 @@ describe("api-docs ACCURACY gate — documented symbols == real generated output
     routesFiles = await runGenerator(routesFile(), root, projectRoot);
     extractorFiles = await runGenerator(extractor(), root, projectRoot);
     renderFiles = await runGenerator(renderHelper(), root, projectRoot);
+    promptRenderFiles = await runGenerator(promptRender(), root, projectRoot);
 
     entityAll = joinContent(entityFiles);
     queriesAll = joinContent(queriesFiles);
@@ -357,7 +371,10 @@ describe("api-docs ACCURACY gate — documented symbols == real generated output
     expect(entityFiles.length).toBeGreaterThan(0);
     expect(queriesFiles.length).toBeGreaterThan(0);
     expect(routesFiles.length).toBeGreaterThan(0);
-    expect(extractorFiles.length).toBe(2); // ProductSummary + WelcomeEmail (both json)
+    // ADR-0052: extractors come from RESPONDING PROMPTS, not from outputs. The two
+    // json template.outputs used to produce one each; now only SummarizeProduct
+    // (the one node declaring @responseRef) does.
+    expect(extractorFiles.length).toBe(1);
     expect(renderFiles.length).toBe(2);
     expect(model.units.length).toBeGreaterThan(0);
   });
@@ -425,6 +442,19 @@ describe("api-docs ACCURACY gate — documented symbols == real generated output
           return {
             ok: hasExportedFn(f.content, sym.name),
             why: `no exported function ${sym.name} in ${node}.render.ts`,
+          };
+        }
+        case "prompt": {
+          // promptRender aggregates every handle into ONE file (default
+          // "prompts.ts"), so this is keyed on the file, not on <node>.
+          // ADR-0052 put a responding prompt in this fixture for the first time,
+          // which is what exposed that this gate could not check `kind: prompt`
+          // at all — it fell through to "unhandled kind".
+          const f = fileFor(promptRenderFiles, "prompts.ts");
+          if (!f) return { ok: false, why: `no prompts.ts emitted` };
+          return {
+            ok: hasExportedFn(f.content, sym.name),
+            why: `no exported function ${sym.name} in prompts.ts`,
           };
         }
         case "rest":
@@ -518,6 +548,10 @@ describe("api-docs ACCURACY gate — documented symbols == real generated output
           return extractorFiles;
         case "render":
           return renderFiles;
+        case "prompt":
+          // promptRender aggregates into one "prompts.ts" (ADR-0052 put a
+          // responding prompt in this fixture, so this kind now reaches here).
+          return promptRenderFiles;
         default:
           // The T5 kinds (relation / callable / rest-hono / prompt) are covered by
           // the dedicated T5 describe block below; this original block's fixture
@@ -751,12 +785,15 @@ describe("api-docs ACCURACY gate — documented symbols == real generated output
     expect(del.fields).toBeUndefined();
   });
 
-  test("FIELD SHAPE: extractor payload fields == the @payloadRef VO interface fields", () => {
+  test("FIELD SHAPE: extractor fields == the @responseRef VO interface fields", () => {
+    // ADR-0052: the extractor documents the RESPONSE shape, and it hangs off the
+    // responding prompt — not off ProductSummary, which is outbound and now
+    // documents only its render.
     const voFile = fileFor(entityFiles, "SummaryVO.ts")!;
     const emitted = interfaceFieldNames(voFile.content, "SummaryVO");
     expect(emitted).toContain("headline");
-    const extract = model.units.find((u) => u.node === "ProductSummary")!.symbols
-      .find((s) => s.kind === "extractor" && s.name === "extractProductSummary")!;
+    const extract = model.units.find((u) => u.node === "SummarizeProduct")!.symbols
+      .find((s) => s.kind === "extractor" && s.name === "extractSummarizeProduct")!;
     expect(extract.fields, "extract carries the payload VO shape").toBeDefined();
     expect([...docFieldNames(extract)].sort()).toEqual([...emitted].sort());
     // @required field is documented required.

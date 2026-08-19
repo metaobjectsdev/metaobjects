@@ -107,6 +107,7 @@ import {
   variableNameFromEntity,
 } from "../naming.js";
 import { getPkInfo } from "../templates/queries.js";
+import { responseShape } from "../templates/find-inbound.js";
 import { isTphSubtype } from "../templates/zod-validators.js";
 import { isTphDiscriminatorBase } from "../templates/tph-discriminator.js";
 import { isCallableEntity } from "../templates/callable-file.js";
@@ -823,50 +824,21 @@ function templateOutputs(root: MetaRoot): MetaData[] {
 function buildTemplateUnit(tmpl: MetaData, root: MetaRoot, _layout: OutputLayout): ApiUnitDoc {
   const name = tmpl.name;
   const symbols: ApiSymbol[] = [];
-  // extractor + render-helper generators emit FLAT `<Name>.extractor.ts` /
-  // `<Name>.render.ts` (no package folding), so importPath ignores layout.
-  const extractorMod = templateModulePath(`${name}.extractor`);
+  // The render-helper generator emits a FLAT `<Name>.render.ts` (no package
+  // folding), so importPath ignores layout.
   const renderMod = templateModulePath(`${name}.render`);
 
-  // ADR-0039: resolving — a template may inherit @payloadRef/@format/@kind via extends.
+  // ADR-0039: resolving — a template may inherit @payloadRef/@kind via extends.
   const payloadRef = tmpl.attr(TEMPLATE_ATTR_PAYLOAD_REF);
   const payload = typeof payloadRef === "string" ? payloadRef : undefined;
-  const format = ((tmpl.attr(TEMPLATE_ATTR_FORMAT) as string | undefined) ?? "text").toLowerCase();
   const kind = ((tmpl.attr(TEMPLATE_ATTR_KIND) as string | undefined) ?? TEMPLATE_KIND_DEFAULT).toLowerCase();
 
-  // --- extractor: only json/xml output-parsers expose the extract API (matches
-  //     extractor-file.ts's `if (format !== "json" && format !== "xml") continue`). ---
-  if (payload && (format === "json" || format === "xml")) {
-    const extract = `extract${name}`;
-    const extractLenient = `extractLenient${name}`;
-    // The extractor's strict return IS the @payloadRef value-object's interface —
-    // document its field shape (same VO field walk the payload interface emitter
-    // uses) so an agent sees what `extract<Name>` yields, not just the type name.
-    const payloadShape = payloadFieldShapes(root, payload);
-    const extractSym: ApiSymbol = {
-      name: extract,
-      kind: "extractor",
-      importPath: extractorMod,
-      signature: `${extract}(root: MetaRoot, text: string): ${payload}`,
-      params: [`root: MetaRoot`, `text: string`],
-      returns: payload,
-      throws: `Error when a @required field is lost (the strict opt-in gate).`,
-      usage: `Parse dirty LLM ${format} text into a strict, fully-typed ${payload} graph.`,
-    };
-    if (payloadShape !== undefined) extractSym.fields = payloadShape;
-    symbols.push(
-      extractSym,
-      {
-        name: extractLenient,
-        kind: "extractor",
-        importPath: extractorMod,
-        signature: `${extractLenient}(root: MetaRoot, text: string): ExtractionResult<${name}Extracted>`,
-        params: [`root: MetaRoot`, `text: string`],
-        returns: `ExtractionResult<${name}Extracted>`,
-        usage: `Never-throwing extract; inspect report for lost/defaulted fields.`,
-      },
-    );
-  }
+  // ADR-0052: a template.output documents its RENDER and nothing else. The
+  // extractor symbols used to be built here, gated on @format ∈ {json,xml} and
+  // typed on @payloadRef — so the reference documented functions this subtype no
+  // longer emits, named the REQUEST shape as the parse result, and said nothing
+  // about the prompts that actually do emit them. They now live in
+  // buildPromptUnit, keyed on @responseRef.
 
   // --- render: render<Name>; document → string, email → EmailDocument
   //     (matches render-helper.ts's @kind branch). Render is emitted for any
@@ -950,12 +922,57 @@ function buildPromptUnit(tmpl: MetaData, root: MetaRoot): ApiUnitDoc {
     symbols.push(sym);
   }
 
-  return {
+  // --- ADR-0052 inbound half: a prompt declaring @responseRef also owns the
+  //     parser-on-receipt and the tolerant extract. Gated on @responseRef
+  //     PRESENCE, matching extractor-file.ts / output-parser-file.ts — never on
+  //     a format value, and never on @payloadRef, which types the REQUEST. ---
+  const shape = responseShape(root, tmpl);
+  if (shape) {
+    const { vo, ref: responseRef, format } = shape;
+    // The extractor generator emits a FLAT `<Name>.extractor.ts`.
+    const extractorMod = templateModulePath(`${name}.extractor`);
+    const extract = `extract${name}`;
+    const extractLenient = `extractLenient${name}`;
+    // The strict return IS the @responseRef value-object's interface — document
+    // its field shape so an agent sees what `extract<Name>` yields, not just a
+    // type name. `vo` is the resolved node; `responseRef` is the authored ref.
+    void vo;
+    const responseFieldShape = payloadFieldShapes(root, responseRef);
+    const extractSym: ApiSymbol = {
+      name: extract,
+      kind: "extractor",
+      importPath: extractorMod,
+      signature: `${extract}(root: MetaRoot, text: string): ${responseRef}`,
+      params: [`root: MetaRoot`, `text: string`],
+      returns: responseRef,
+      throws: `Error when a @required field is lost (the strict opt-in gate).`,
+      usage: `Parse the model's ${format} reply to ${name} into a strict, fully-typed ${responseRef} graph.`,
+    };
+    if (responseFieldShape !== undefined) extractSym.fields = responseFieldShape;
+    symbols.push(extractSym, {
+      name: extractLenient,
+      kind: "extractor",
+      importPath: extractorMod,
+      signature: `${extractLenient}(root: MetaRoot, text: string): ExtractionResult<${name}Extracted>`,
+      params: [`root: MetaRoot`, `text: string`],
+      returns: `ExtractionResult<${name}Extracted>`,
+      usage: `Never-throwing extract of the ${name} reply; inspect report for lost/defaulted fields.`,
+    });
+  }
+
+  const unit: ApiUnitDoc = {
     node: name,
     package: effectivePackage(tmpl),
     nodeKind: "template",
     symbols,
   };
+  // ADR-0052: the extractor symbols moved here, so their worked example must move
+  // with them. Without this the page documents `extract<Name>(root, …)` but the
+  // setup preamble never introduces `root`, because the preamble derives its
+  // handles from the rendered EXAMPLE text.
+  const example = templateExample(name, symbols);
+  if (example !== undefined) unit.example = example;
+  return unit;
 }
 
 // ---------------------------------------------------------------------------

@@ -87,6 +87,16 @@ describe("setup-preamble: the rendered TEXT names these exact symbols (change-de
         "@format": "json",
       },
     },
+    {
+      // ADR-0052: the extractor handles (and so the `root: MetaRoot` the preamble
+      // must introduce) come from a responding prompt, not from the output above.
+      "template.prompt": {
+        name: "WidgetAsk",
+        "@payloadRef": "WidgetVO",
+        "@responseRef": "WidgetVO",
+        "@textRef": "p/widget-ask",
+      },
+    },
   ];
 
   async function load() {
