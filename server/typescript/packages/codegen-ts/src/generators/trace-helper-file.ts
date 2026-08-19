@@ -24,8 +24,10 @@ import {
   TEMPLATE_ATTR_PAYLOAD_REF,
   TEMPLATE_ATTR_RESPONSE_REF,
   TEMPLATE_ATTR_FORMAT,
+  RESPONSE_FORMAT_XML,
   TEMPLATE_ATTR_TEXT_REF,
 } from "@metaobjectsdev/metadata";
+import { responseFormatOf } from "../templates/find-inbound.js";
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import {
   type EmittedFile,
@@ -113,13 +115,19 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
         ? `{ ...input, callType: ${JSON.stringify(callTypeValue)}, status, errorDetail }`
         : `{ ...input, status, errorDetail }`;
 
-      // Derive the parse format from the prompt's @format attr.
-      // "xml" → Format.XML; absent or any other value → Format.JSON.
-      // ADR-0039: resolving — a prompt may inherit @format via extends.
-      const promptFormat = prompt.attr(TEMPLATE_ATTR_FORMAT);
-      const formatLiteral = typeof promptFormat === "string" && promptFormat.toLowerCase() === "xml"
-        ? "Format.XML"
-        : "Format.JSON";
+      // ADR-0053: the REPLY's syntax is @responseFormat, not @format.
+      //
+      // This site used to read @format twice — once as the reply's syntax and once
+      // as the prompt body's — under a comment calling them "two intentionally
+      // different shapes". They are two different FACTS, not two shapes of one:
+      // a plain-text prompt can elicit an XML reply, and the shipped docs-site
+      // fixture is exactly that. Reading @format here mis-parsed every prompt whose
+      // body format differed from its reply's.
+      //
+      // The same rule the output-parser / extractor / response-format-fragment
+      // generators use — all four now go through responseFormatOf().
+      const formatLiteral =
+        responseFormatOf(prompt) === RESPONSE_FORMAT_XML ? "Format.XML" : "Format.JSON";
 
       // Collect VO names for interface emission (dedupe via batch emitter).
       // Both refs are guaranteed strings by the guards above. ADR-0042: a bare
@@ -137,9 +145,11 @@ export const traceHelperFile = function traceHelperFile(opts?: TraceHelperOpts):
       // ADR-0039: resolving — a prompt may inherit @textRef via extends.
       const textRef = prompt.attr(TEMPLATE_ATTR_TEXT_REF);
       const renderable = typeof textRef === "string";
-      // Same @format attr, two intentionally different shapes: extract() takes the
-      // Format enum (formatLiteral, above → Format.XML/Format.JSON), render() takes the
-      // raw format string (renderFormat, here → e.g. "json"/"xml", default "text").
+      // render() takes the raw format string of the prompt BODY — @format, which is
+      // genuinely this attribute's job. Distinct from formatLiteral above, which is
+      // the REPLY's syntax and comes from @responseFormat (ADR-0053).
+      // ADR-0039: resolving — a prompt may inherit @format via extends.
+      const promptFormat = prompt.attr(TEMPLATE_ATTR_FORMAT);
       const renderFormat = typeof promptFormat === "string" ? promptFormat : "text";
 
       // Build the import block — all imports MUST stay at the top of the emitted file.

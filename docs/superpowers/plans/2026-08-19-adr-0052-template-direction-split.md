@@ -31,11 +31,15 @@ Phase D (TS codegen) is complete; Phases C/E are partial; F, G, H are **not star
    `generators/api-model.ts:820,914` still keys the inbound facts on `template.output`.
    (e) `extractor/render payload import` golden. (f) `outputParser() conformance fixtures` —
    the shared `template-output-simple` fixture.
-2. **The trace helper, in EVERY port — a fifth inbound consumer, easy to miss.** It is not one of
-   the three generators Phase D/F names, and nothing has moved it yet.
-   `trace_helper_generator.py:171-174`, TS `trace-helper-file.ts:116-143`, Java
-   `LlmTraceHelperGenerator.java`. Each derives the RESPONSE parse format from the prompt's
-   `@format` and must read `@responseFormat` instead.
+2. **The trace helper — TS is DONE; Python and Java remain.** A fifth inbound consumer, not one
+   of the three generators Phase D/F names.
+   - ✅ **TS `trace-helper-file.ts`** — now reads `@responseFormat` for the reply and keeps
+     `@format` for the body. Pinned by
+     `test/generators/trace-helper-response-format.test.ts`, whose discriminating case is
+     `@format: text` + `@responseFormat: xml`, plus its mirror so it cannot pass by reading
+     either attribute alone. **Gate proven: reverting the fix turns 3 of its 4 red.**
+   - ⬜ `trace_helper_generator.py:171-174`, Java `LlmTraceHelperGenerator.java` — still derive
+     the RESPONSE parse format from `@format`. Port the TS shape.
 
    The Python site carries a comment asserting *"the SAME rule the output-parser / extractor
    generators use."* **That parity claim is factual — verified**: `output_parser_generator.py:136`,
