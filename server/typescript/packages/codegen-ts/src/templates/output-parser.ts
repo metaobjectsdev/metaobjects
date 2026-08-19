@@ -21,6 +21,7 @@ import {
   resolveObjectRef,
 } from "@metaobjectsdev/metadata";
 import { responseShape } from "./find-inbound.js";
+import { isRequired } from "./fr010-field-mapping.js";
 import {
   nestedMirrorInterfaces,
   nestedMappers,
@@ -54,7 +55,19 @@ function findTemplate(root: MetaData, name: string): MetaData | undefined {
   return root.children().find((c) => c.type === TYPE_TEMPLATE && c.name === name);
 }
 
-/** Render the Zod expression for a single field; recurses on @objectRef. */
+/** Render the Zod expression for a single field; recurses on @objectRef.
+ *
+ * Optionality comes from `@required`, via the SAME `isRequired` predicate the
+ * tolerant tier uses — so the two tiers in this file cannot disagree about what
+ * the contract is. They used to: this schema emitted every field as mandatory
+ * and never read `@required`, so `parse<Name>` threw on a reply that correctly
+ * omitted a declared-optional field, while the tolerant extract accepted it.
+ *
+ * Every other port reuses the payload VO, which #309 made `@required`-correct.
+ * TypeScript re-derives its schema inline here, which is how it drifted — the
+ * same "payload tier disagrees with the rest of the toolchain" shape ADR-0052
+ * came out of.
+ */
 function fieldZod(field: MetaData, root: MetaData, seen: ReadonlySet<string>, depth: number): string {
   // isArray is a native (reserved) property on MetaData, not an attr.
   const isArray = field.resolvedIsArray();
@@ -74,7 +87,10 @@ function fieldZod(field: MetaData, root: MetaData, seen: ReadonlySet<string>, de
   } else {
     base = SCALAR_ZOD[field.subType] ?? "z.unknown()";
   }
-  return isArray ? `z.array(${base})` : base;
+  const shaped = isArray ? `z.array(${base})` : base;
+  // `.optional()` wraps the ARRAY, not its element: an absent list and a list of
+  // absent things are different claims.
+  return isRequired(field) ? shaped : `${shaped}.optional()`;
 }
 
 /** Render a `z.object({ ... })` for an object.value node.

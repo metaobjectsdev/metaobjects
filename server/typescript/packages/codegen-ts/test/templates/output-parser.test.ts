@@ -230,3 +230,95 @@ describe("renderOutputParser()", () => {
     expect(() => renderOutputParser(root, "BrokenOutput")).toThrow(/DoesNotExist/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The strict schema's notion of the contract must be the metadata's notion.
+//
+// The strict tier used to emit every field as mandatory — it never read
+// @required and never emitted .optional(). So `parse<Name>` threw on a reply
+// that correctly omitted a declared-OPTIONAL field: it enforced a contract the
+// metadata does not declare, and disagreed with the tolerant tier sitting in the
+// same file, which reads the real attr.
+//
+// Every other port reuses the payload VO (made @required-correct by #309); only
+// TypeScript re-derives its own schema inline, which is how it drifted. These
+// tests pin the two tiers to ONE answer.
+// ---------------------------------------------------------------------------
+describe("renderOutputParser() — strict optionality tracks @required", () => {
+  const RESPONSE_WITH_BOTH = [
+    { "object.value": { name: "Req", children: [{ "field.string": { name: "q" } }] } },
+    {
+      "object.value": {
+        name: "Res",
+        children: [
+          { "field.string": { name: "answer", "@required": true } },
+          { "field.string": { name: "note" } },
+          { "field.int": { name: "score" } },
+          { "field.string": { name: "tags", isArray: true } },
+        ],
+      },
+    },
+    {
+      "template.prompt": {
+        name: "Ask",
+        "@payloadRef": "Req",
+        "@responseRef": "Res",
+        "@textRef": "p/ask",
+      },
+    },
+  ];
+
+  test("a @required field is mandatory; an unmarked field is .optional()", async () => {
+    const src = renderOutputParser(await loadRoot(RESPONSE_WITH_BOTH), "Ask");
+    expect(src).toContain("answer: z.string(),");
+    expect(src).toContain("note: z.string().optional(),");
+    expect(src).toContain("score: z.number().int().optional(),");
+  });
+
+  test("array-ness and optionality compose — .optional() wraps the array", async () => {
+    const src = renderOutputParser(await loadRoot(RESPONSE_WITH_BOTH), "Ask");
+    expect(src).toContain("tags: z.array(z.string()).optional(),");
+  });
+
+  test("a nested value-object field honours @required the same way", async () => {
+    const src = renderOutputParser(
+      await loadRoot([
+        { "object.value": { name: "Req", children: [{ "field.string": { name: "q" } }] } },
+        { "object.value": { name: "Inner", children: [{ "field.string": { name: "x" } }] } },
+        {
+          "object.value": {
+            name: "Res",
+            children: [
+              {
+                "field.object": {
+                  name: "kept",
+                  "@objectRef": "Inner",
+                  "@required": true,
+                },
+              },
+              { "field.object": { name: "maybe", "@objectRef": "Inner" } },
+            ],
+          },
+        },
+        {
+          "template.prompt": {
+            name: "Ask",
+            "@payloadRef": "Req",
+            "@responseRef": "Res",
+            "@textRef": "p/ask",
+          },
+        },
+      ]),
+      "Ask",
+    );
+    // Asserted as exact blocks, not a spanning regex: a lazy [\s\S]*? between
+    // `kept:` and `}).optional()` happily matches ACROSS the required field into
+    // the optional one's closer, so the negative form silently cannot fail.
+    expect(src).toContain(
+      ["  kept: z.object({", "    x: z.string().optional(),", "  }),"].join("\n"),
+    );
+    expect(src).toContain(
+      ["  maybe: z.object({", "    x: z.string().optional(),", "  }).optional(),"].join("\n"),
+    );
+  });
+});
