@@ -69,6 +69,16 @@ Phase D (TS codegen) is complete; Phases C/E are partial; F, G, H are **not star
   the only thing catching a type-invalid required field.
 - `template.toolcall` gets no parser in any port. Before treating that as a gap, settle whether it
   is a parsing concern at all — a provider SDK hands back an already-parsed arguments object.
+- **`isRequired` reads the `@required` ATTR only, never a `validator.required` CHILD** — while
+  `expected-registry.json` documents `@required` as *"Equivalent to attaching a validator.required
+  child."* So a response field expressing requiredness the validator way is required per the
+  metamodel and `.optional()` in every inbound tier. **Pre-existing and shared by both tiers**, so
+  the `@required` fix still did what it claimed — it made the strict and tolerant tiers AGREE with
+  each other (byte-identical predicates, verified) — but "the strict schema's contract is the
+  metadata's contract" in that commit message is broader than what shipped. The narrower true
+  claim: the two tiers now agree on the `@required` attr. Closing the validator-child half means
+  changing one shared predicate and would move the tolerant tier's behaviour too, so it is a
+  deliberate follow-up rather than a rider on this branch.
 
 Challenge records: `~/.claude/challenge-log/adr-0052-inbound-home/` (agreed) and
 `~/.claude/challenge-log/strict-tier-survives-tolerant/` (**split** — one arm proposed deleting the

@@ -154,13 +154,15 @@ export function renderOutputParser(root: MetaData, templateName: string, ctx?: R
 
   // The strict Zod tier is JSON-ONLY, by construction.
   //
-  // Its body is `Schema.parse(JSON.parse(text))`. There is no XML equivalent: the
-  // TS runtime ships no XML parser, which is exactly why this reached for
-  // JSON.parse in the first place — and it did so for an XML template too, so
-  // `parse<Name>` was a generated function that could never work. Supplying one
-  // would mean taking an XML-parser dependency AND assuming a model emits exactly
-  // well-formed XML, which is the assumption FR-010's tolerant extract exists
-  // because you cannot make.
+  // Its body is `Schema.parse(JSON.parse(text))`, and there is no XML equivalent to
+  // generate. Not because no XML reader exists — `render/src/extract/
+  // xml-forgiving-reader.ts` ships one — but because that reader is FORGIVING by
+  // design, and strict all-or-nothing semantics layered over a repairing parser is
+  // incoherent: it would throw or accept based on how much repair happened, which
+  // is not a contract anyone can reason about. The JS runtime's `JSON.parse` is an
+  // exact parser, which is what makes the strict tier meaningful for JSON and only
+  // for JSON. Before this, an XML template got `JSON.parse` anyway — a generated
+  // function that could never work.
   //
   // So an XML reply gets the tolerant extract and nothing else. Its typed shape is
   // `<Name>Extracted` — a nullable mirror, which is the honest type for a
