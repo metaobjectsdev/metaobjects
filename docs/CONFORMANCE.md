@@ -53,6 +53,30 @@ library-vs-pipeline divergences (see the `_comment` block in each port's
 are tracked as known-gaps rather than silently patched — the runner treats listed
 fixtures as passing, but a future port-level reconciliation pass would close them.
 
+### Split coverage: where a feature is gated, and where it deliberately is not
+
+The matrix is corpus-shaped, so a feature whose coverage splits — across several
+corpora, or between its *vocabulary* and its *behaviour* — never gets a row of its
+own, and its boundary ends up discoverable only from the feature doc. The split ones
+are recorded here instead.
+
+**Capability requirements** ([features/requirements.md](features/requirements.md)):
+
+- *Vocabulary — gated in all five ports.* The types, their attributes and their closed
+  enums travel in `registry-conformance`'s byte-matched manifest, which every port
+  reproduces exactly, and accept/reject behaviour is pinned by `requirement-*` fixtures
+  in `fixtures/conformance/`. A port that drifts on what it will load fails.
+- *Checks — TypeScript only, by decision.* The `meta verify` diagnostics over
+  requirements ship in the TypeScript CLI; the other ports load and validate and stop
+  there. Same call as [ADR-0015](../spec/decisions/ADR-0015-single-shared-migrate-engine.md):
+  one implementation of a build-time gate rather than five, where the gate is not a
+  per-port runtime concern. `verify-conformance` therefore holds no requirement cases,
+  and that absence is deliberate rather than a gap.
+
+Stated as mechanisms rather than as a list of attribute names on purpose — the
+requirement vocabulary has a breaking change scheduled (FR-038), which moves what the
+manifest contains without moving the boundary between the two halves.
+
 Per-port runners + commands:
 
 | Port | Metamodel + YAML + render + verify | Persistence | API contract |
@@ -91,6 +115,7 @@ unit-test runners (`bun test`, `dotnet test`, `pytest`, `mvn test`) pull Docker.
 | `template-*`, `error-template-*` | [features/templates-and-payloads.md](features/templates-and-payloads.md) |
 | `origin-*`, `error-origin-*` | [features/templates-and-payloads.md](features/templates-and-payloads.md) (payload origins) |
 | `projection-*`, `error-projection-*`, `field-readonly-on-view-projection` | [features/source-kinds.md](features/source-kinds.md) (projections + the object taxonomy, ADR-0028) |
+| `requirement-*`, `error-unknown-attr-requirement` | [features/requirements.md](features/requirements.md) (vocabulary only — the `meta verify` checks are TS-owned; see "Split coverage" above) |
 | `smoke-empty-metadata` | [features/entities.md](features/entities.md) |
 
 ### `fixtures/yaml-conformance/` (15)
