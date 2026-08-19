@@ -39,16 +39,26 @@ is catching **hand-edited structural DDL** that diverges from the snapshot.
 The reporter did not ask for that. Their failure was `table "x" does not exist` — the chain does not
 **apply**. That is a strictly weaker assertion, and the difference decides who can use the gate:
 
-| Project class | Chain applies from empty? | Chain reproduces the snapshot? |
+| Project class | Chain applies from empty? | Chain reproduces the snapshot, via `verifyReplay` as built? |
 |---|---|---|
 | Adopted via `baseline --from-db` (`migrate.ts:870` snapshots the whole introspected DB against an empty chain) | **passes trivially** — nothing to apply | **fails by construction** |
-| Declares `migrate.scope` (`carryForwardOutOfScope`, `scope.ts:93`, writes the other owner's tables into the snapshot) | **passes** — the chain only creates in-scope objects | **fails** unless `excludeFromSnapshot` is threaded |
-| Uses `@schema` (`CREATE SCHEMA` is emitted nowhere but the ledger, `ledger.ts:126`) | **fails — a true positive** | fails |
+| Declares `migrate.scope` (`carryForwardOutOfScope`, `scope.ts:93`, writes the other owner's tables into the snapshot) | **passes** — the chain only creates in-scope objects | **fails** until `excludeFromSnapshot` is threaded — repairable, and §3.2 threads it |
+| Uses `@schema` (`CREATE SCHEMA` is emitted nowhere but the ledger, `ledger.ts:126`) | **fails — a true positive**, fixed by §3.3 | fails |
 | The reported bug | **fails — the defect** | fails |
 
-Comparing against the snapshot makes the gate unpassable for three documented, supported adoption
-paths. Asserting only that the chain applies makes it precise: it catches the reported bug, is
-immune to the first two classes, and its one remaining failure is a real defect with a real fix.
+Two honest qualifications on that table, because an earlier draft overstated it. The scoped row is
+about `verifyReplay` **as currently built**: `scopedDiffInputs` (`scope.ts:188-196`) narrows *both*
+sides — out-of-scope names are merged into `unmanagedNames`, which suppresses them on the actual
+side too — so under the reporter's literal formulation (replay, then diff against metadata through
+the normal scoped path) a scoped project would **pass**. It fails only because `verify/replay.ts`
+does not thread those inputs, which §3.2 fixes. And the `@schema` row is a true positive in both
+columns, not an obstacle.
+
+So the durable argument for splitting the tiers is narrower than "three unpassable paths", and it is
+this: **baseline adoption is unpassable against the snapshot by construction and cannot be
+detected** (§3.2), while the reporter's actual failure is an *apply* error that the weaker
+assertion catches directly. One tier answers the bug; the other answers a different question worth
+asking.
 
 **Both assertions are worth having, at different strengths.** So this ships one subverb with two
 tiers rather than two commands.
@@ -64,27 +74,41 @@ Change these to `IF EXISTS` — all verified present and bare:
 | `emit/postgres.ts:66` | `drop-table` |
 | `emit/sqlite.ts:219` | `drop-table` |
 | `emit/postgres.ts:375`, `:388` | `renderDropView`, plain and CASCADE |
-| `emit/postgres.ts:431` | `renderRestoreView`'s illegal-replace fallback |
 | `emit/postgres.ts:93-96` | `drop-index` — **both arms**: the plain `DROP INDEX`, and the constraint-backed `ALTER TABLE … DROP CONSTRAINT`, which Postgres spells `DROP CONSTRAINT IF EXISTS` |
 | `emit/sqlite.ts:225` | `drop-index` |
+| `emit/postgres.ts:98`, `:104` | `drop-fk`, `drop-check` — Postgres only; see the exclusion note below for why this is not a dialect split |
+
+**`emit/postgres.ts:431` is deliberately NOT in this list.** An earlier draft included it. It is the
+illegal-replace fallback inside `renderRestoreView`, which is reached only from `postgres.ts:178`
+and `:179` — both inside the **down** renderer. Guarding it would violate the forward-only rule
+stated below, in the same change that states it.
 
 **The rule is per change-kind, not per statement:** every `drop-table`, `drop-view` and `drop-index`
 is guarded in **both** dialects. Postgres's constraint-backed index arm is included because it is
 how Postgres renders the *same* `drop-index` change whose SQLite rendering is guarded at
 `sqlite.ts:225` — guarding one and not the other would leave the change kind half-covered.
 
-**`drop-column`, `drop-fk` and `drop-check` are excluded**, for two different structural reasons:
+**`drop-fk` and `drop-check` ARE guarded — on Postgres only — and that is not a dialect split.**
+An earlier draft excluded them on the reasoning that a Postgres-only guard would make the guarantee
+dialect-dependent. That reasoning was backwards. SQLite emits no standalone statement for these
+kinds at all: `renderUpNative` throws (`sqlite.ts:225-235`, *"should have been handled by recreate
+bundler"*), because SQLite constraints are create-time-only and inline, so the change is folded into
+a table recreate. `renderRecreate` builds the replacement table from the **expected** descriptor
+(`sqlite.ts:173-183`, `renderCreateTable(tmpDescriptor)`) and never references the dropped
+constraint — so **SQLite is already replay-safe here by construction**. Postgres is the only dialect
+that can fail on an absent constraint. Guarding it makes the two dialects *agree*.
 
-- `drop-column` **does** emit a native SQLite statement (`sqlite.ts:222`,
-  `ALTER TABLE … DROP COLUMN`), so it is excluded purely because **SQLite has no
-  `DROP COLUMN IF EXISTS`** — a SQL-dialect fact.
-- `drop-fk` / `drop-check` emit **no standalone SQLite statement at all**: `renderUpNative`
-  throws for them (`sqlite.ts:225-235`, *"should have been handled by recreate bundler"*) because
-  SQLite constraints are create-time-only and inline, so the change is folded into a table
-  recreate.
+**`drop-column` is excluded**, and it is the one genuine dialect limit: SQLite emits it natively
+(`sqlite.ts:222`, `ALTER TABLE … DROP COLUMN`) and there is no `DROP COLUMN IF EXISTS` in SQLite.
+Guarding Postgres alone here really would make the same declared change behave differently per
+dialect, so it stays out and §3.4's guard is what covers it.
 
-Either way, guarding them on Postgres alone would make the guarantee dialect-dependent for the same
-declared change, which is the failure mode this rule exists to avoid.
+**One known deviation, left alone deliberately.** `sqlite.ts:275` — the `create-view` **down** —
+already emits `DROP VIEW IF EXISTS`, while its Postgres twin (`postgres.ts:176`) is bare. That
+predates this work and contradicts the forward-only rule below. It is out of scope: it is
+view-only, changing it alters rollback behaviour, and no failure has been attributed to it.
+Recorded here so a later sweep does not "discover" it as an oversight, and so the rule's one
+existing exception is written down rather than remembered.
 
 **Down statements stay bare** (`postgres.ts:113`, `:176`, `sqlite.ts:256`). `rollbackTo`
 (`apply/apply.ts:149`) runs `down.sql` and deletes the ledger row in one transaction; with
@@ -107,13 +131,17 @@ independently correct, and D1 keeps the `apply-pending` refusal it already has.
 A new subverb alongside `--templates` / `--db` / `--codegen` (ADR-0021 D2, `verify.ts:116-130`).
 Opt-in; a bare `verify` never runs it.
 
-**Default tier — applies.** Provision an empty database, run `applyPending` against it, assert it
+**`--replay` — applies.** Provision an empty database, run `applyPending` against it, assert it
 completes. Nothing is compared. This is the #313 gate.
 
-**`--replay --strict`** additionally asserts the result equals the committed snapshot, via the
+**`--replay-snapshot`** additionally asserts the result equals the committed snapshot, via the
 existing `verifyReplay`. This is the 2026-05-31 §8 integrity aid, finally wired, and it is where
 `excludeFromSnapshot` (`scope.ts:130`) must be threaded so a scoped project can use it — today
 `verify/replay.ts` does not thread it, though `verify.ts:659` shows the pattern.
+
+The second tier is a **separate subverb, not a `--strict` modifier**: `verify` already owns a
+`--lax` flag on a different axis (ADR-0023 attribute strictness, `args.ts:244`, `:259`, `:302`), and
+a `--strict` beside it would read as that flag's opposite rather than as a replay depth.
 
 **Engine, per 2026-05-31 §8's tiering** — in-process, so the gate needs no infrastructure and there
 is no scratch database to name, collide with, or accidentally drop:
@@ -133,15 +161,21 @@ flyway` and `--dialect d1`.
 
 **Zero committed migrations** is not a silent pass. `discoverMigrations` returns `[]` for a missing
 directory (`apply.ts:316-322`), so the run would otherwise succeed having proved nothing. The gate
-reports "no committed migrations — nothing to replay" and, at `--strict` against a non-empty
-snapshot, fails.
+reports "no committed migrations — nothing to replay" and, at `--replay-snapshot` against a
+non-empty snapshot, fails.
 
-**A baselined chain is skipped with a reason, not failed.** At `--strict`, a chain that provably
-cannot build the snapshot (baseline adoption) reports that it was skipped and why. A gate that
-convicts a supported adoption path gets suppressed, and a suppressed gate protects nothing.
+**`--replay-snapshot` does not support baseline-adopted projects, and says so rather than
+detecting it.** An earlier draft had it "skip with a reason". That cannot be implemented: the only
+candidate signal is `BASELINE_NAME` / `recordBaseline` (`ledger.ts:205-227`), which has **no
+production caller** — it appears only in `ledger.ts` and the package barrel — and even if it were
+written, it lands in the *target* database's ledger while this gate runs against a fresh in-process
+database that has no ledger at all. So the limitation is documented, not auto-detected: a project
+adopted via `baseline --from-db` uses `--replay` and not `--replay-snapshot`, and the failure
+message for a snapshot mismatch names baseline adoption as the first thing to rule out.
 
 **Exit codes** follow `verify`'s convention (`Math.max` at `verify.ts:239`): a chain that fails to
-apply, or a `--strict` mismatch, is **drift → 1**; an engine that cannot start is **operational → 2**.
+apply, or a `--replay-snapshot` mismatch, is **drift → 1**; an engine that cannot start is
+**operational → 2**.
 
 ### 3.3 `CREATE SCHEMA IF NOT EXISTS` for `@schema` projects
 
@@ -159,7 +193,8 @@ was never managed by this toolchain — the `drop-table` in #313 is exactly this
 time, naming the object, unless the drop is explicitly allowed by a new `--allow drop-unmanaged`
 token.
 
-The population problem that sinks the strict gate does not apply here, and for a pleasing reason:
+The population problem that sinks `--replay-snapshot` for baselined projects does not apply here,
+and for a pleasing reason:
 both brownfield mechanisms *add* to the snapshot. A baselined project's snapshot contains the
 foreign table, so the guard reads it as managed and does not fire; a scoped project's snapshot
 carries out-of-scope entries forward for the same reason. The guard fires precisely when nothing
@@ -208,11 +243,12 @@ gets suppressed**, and this one would otherwise go red on exactly the population
 
 ## 6. Non-goals
 
-- Column and constraint `IF EXISTS` (§3.1's dialect reason).
+- `drop-column` `IF EXISTS` (§3.1's one genuine dialect limit; §3.4's guard covers it instead).
+- `sqlite.ts:275`'s pre-existing `IF EXISTS` on a `create-view` down (§3.1).
 - Repairing already-applied chains automatically (§4).
 - Any cross-port work: `migrate` is TS-owned.
-- Making `--strict` pass for baselined projects. It cannot, by construction, and §3.2 skips them
-  with a reason instead.
+- Making `--replay-snapshot` pass for baselined projects, or auto-detecting them. Neither is
+  possible with the signals that exist (§3.2); the limitation is documented instead.
 
 ## 7. Verified by
 
