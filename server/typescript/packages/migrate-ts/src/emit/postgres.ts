@@ -54,10 +54,40 @@ export function renderPostgres(changes: Change[]): EmitResult {
   }
   // Down runs in reverse order (so creates undo correctly w.r.t. FKs).
   return {
-    up: upStmts.join("\n\n"),
+    up: [...createSchemaStmts(sorted), ...upStmts].join("\n\n"),
     down: [...downStmts].reverse().join("\n\n"),
     recreatedTables: new Set(), // postgres alters in place; no recreate-and-copy
   };
+}
+
+/**
+ * `CREATE SCHEMA IF NOT EXISTS` for every non-default schema this migration creates
+ * an object in, ahead of everything else it emits.
+ *
+ * A chain must be appliable to a VIRGIN database (#313), and `CREATE TABLE "s"."x"`
+ * fails there unless `s` exists — yet `CREATE SCHEMA` was emitted nowhere in either
+ * emitter, only by the ledger's own setup. So an `@schema` project's chain could
+ * never be replayed, and the first `apply-pending` against a fresh CI database died.
+ *
+ * VIEWS count, not only tables: a first migration that creates only a view in a
+ * non-default schema fails identically. A `create-view` carries the schema in two
+ * places and the change's own key wins, matching `renderCreateView(c.view, c.schema)`.
+ *
+ * `IF NOT EXISTS` because a later migration in the same chain, or an operator, may
+ * have created it already. Sorted so output is deterministic — the committed snapshot
+ * and the golden tests depend on that. Deliberately NOT dropped in `down`: the schema
+ * may hold objects this tool does not own and cannot restore.
+ */
+function createSchemaStmts(sorted: readonly Change[]): string[] {
+  const schemas = new Set<string>();
+  for (const c of sorted) {
+    const s =
+      c.kind === "create-table" ? c.table.schema
+      : c.kind === "create-view" ? (c.schema ?? c.view.schema)
+      : undefined;
+    if (s !== undefined && s !== DEFAULT_DB_SCHEMA_POSTGRES) schemas.add(s);
+  }
+  return [...schemas].sort().map((s) => `CREATE SCHEMA IF NOT EXISTS ${quote(s)};`);
 }
 
 function renderUp(c: Change): string {
