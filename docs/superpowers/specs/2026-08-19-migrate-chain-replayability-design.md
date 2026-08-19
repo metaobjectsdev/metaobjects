@@ -73,10 +73,17 @@ is guarded in **both** dialects. Postgres's constraint-backed index arm is inclu
 how Postgres renders the *same* `drop-index` change whose SQLite rendering is guarded at
 `sqlite.ts:225` — guarding one and not the other would leave the change kind half-covered.
 
-**`drop-column`, `drop-fk` and `drop-check` are excluded**, and the reason is structural rather than
-a preference: SQLite has no `DROP COLUMN IF EXISTS`, and it emits no standalone statement for
-`drop-fk`/`drop-check` at all — those change kinds trigger a table rebuild (`sqlite.ts:150-152`,
-`:226-227`). Guarding them on Postgres alone would make the guarantee dialect-dependent for the same
+**`drop-column`, `drop-fk` and `drop-check` are excluded**, for two different structural reasons:
+
+- `drop-column` **does** emit a native SQLite statement (`sqlite.ts:222`,
+  `ALTER TABLE … DROP COLUMN`), so it is excluded purely because **SQLite has no
+  `DROP COLUMN IF EXISTS`** — a SQL-dialect fact.
+- `drop-fk` / `drop-check` emit **no standalone SQLite statement at all**: `renderUpNative`
+  throws for them (`sqlite.ts:225-235`, *"should have been handled by recreate bundler"*) because
+  SQLite constraints are create-time-only and inline, so the change is folded into a table
+  recreate.
+
+Either way, guarding them on Postgres alone would make the guarantee dialect-dependent for the same
 declared change, which is the failure mode this rule exists to avoid.
 
 **Down statements stay bare** (`postgres.ts:113`, `:176`, `sqlite.ts:256`). `rollbackTo`
