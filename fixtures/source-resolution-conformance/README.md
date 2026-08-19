@@ -1,0 +1,92 @@
+# source-resolution-conformance
+
+Pins how a consumer's `sources` set in `.metaobjects/config.json` resolves to a
+set of metadata files. Every port's CLI must resolve the SAME FILES from the
+same declaration — that is the cross-port promise this corpus exists to keep.
+
+Companion to `scope-conformance/`, which pins the (currently TypeScript-only)
+`scope` pattern grammar. The two are independent: `sources` decides which files
+are read, `scope` filters what is emitted from them.
+
+## Shape
+
+```
+cases.json   # { cases: [{ name, tree, config, resolveFrom?, expectFiles?, expectError? }] }
+README.md
+```
+
+- **`tree`** — a map of project-root-relative path → file content. The runner
+  materializes it in a fresh temporary directory. A `.keep` entry exists only to
+  force an otherwise-empty directory to be created.
+- **`config`** — written verbatim to `.metaobjects/config.json`, under the
+  directory named by `resolveFrom` (project root when `resolveFrom` is absent).
+  When `null`, no config file is created at all.
+- **`resolveFrom`** — OPTIONAL, a project-root-relative directory path,
+  default `"."`. Names the directory the resolver is invoked against — i.e.
+  the directory treated as holding `.metaobjects/`. Exists so a case can prove
+  a relative `path` source resolves against the *declaring config's*
+  directory rather than the project root or the process's ambient working
+  directory: put `resolveFrom` somewhere other than `"."` and a `path` source
+  containing `../` only lands on the right files if the port under test
+  resolved it against the right base. Every port's runner must honor this key
+  — it is part of the case schema from the start rather than retrofitted once
+  three ports already exist.
+- **`expectFiles`** — project-root-relative paths (NOT relative to
+  `resolveFrom`), compared as an **UNORDERED SET**. See "Order is
+  deliberately not pinned" below.
+- **`expectError`** — an error code the resolution must fail with. Exactly one
+  of `expectFiles` / `expectError` is present per case.
+
+## Semantics pinned here
+
+- **Default.** `sources` absent or empty ⇒ exactly one `path` source, the literal
+  `metaobjects`. It is a default VALUE, never a requirement.
+- **Replacement, not merge.** A declared `sources` replaces the default entirely —
+  the default directory is not implicitly appended.
+- **Relative base.** A relative `path` resolves against the directory HOLDING the
+  `.metaobjects/` folder, never against the process working directory. See
+  `a-parent-relative-path-resolves-against-the-declaring-configs-directory`,
+  which uses `resolveFrom` to invoke resolution from a subdirectory while the
+  config's own `path` source climbs back out with `../` — the case only
+  passes when a port resolves relative to the config's directory, not to
+  wherever the process happened to be started.
+- **Recursion.** A directory `path` is walked recursively; a file `path` resolves
+  to that one file.
+- **Extensions.** `.json`, `.yaml`, `.yml`, matched case-insensitively. Nothing else.
+- **Union with de-duplication.** Overlapping sources yield each file exactly once.
+- **A declared path that does not exist is `ERR_SOURCE_UNRESOLVED`** — never a
+  silent skip. Only the DEFAULT may be absent, and then it is
+  `ERR_COLLECTION_NOT_FOUND`.
+- **`resource` and `package` kinds are declared but resolve nowhere yet:**
+  `ERR_SOURCE_KIND_UNSUPPORTED`.
+- **Unknown top-level config keys are IGNORED.** The file carries
+  TypeScript-owned keys no other port models. `schema_version` and `sources` are
+  the neutral subset; each port validates those strictly and ignores the rest.
+
+## Order is deliberately NOT pinned
+
+`expectFiles` is a set. The ports' directory walks already differ and always
+have — Java sorts by basename (`DirectorySource.java:105`), C# by full-path
+ordinal (`DirectorySource.cs:64`), Python by basename
+(`directory_source.py:40-48`), TypeScript walks depth-first with files before
+subdirectories (`metadata-files.ts:101-121`). Making order a contract would be a
+behavior change in three ports for no benefit: super-resolution is
+order-independent (#188) and the loader's overlay partition discards caller
+order anyway.
+
+A port MAY have a stable internal order — several do, and their own generated
+output depends on it. It just is not a cross-port promise.
+
+## Behavioral contract
+
+Each port's runner reads `cases.json`, and for every case: materializes `tree`
+in a fresh temp directory, writes `config` when non-null under the directory
+named by `resolveFrom` (default the project root), resolves sources against
+that directory, then asserts either that the resolved file set equals
+`expectFiles` (as a set, project-root-relative, path separators normalized to
+`/`) or that resolution failed with `expectError`.
+
+## Reference implementation
+
+`server/typescript/packages/sdk/src/sources.ts` (`resolveSources`) and
+`server/typescript/packages/sdk/src/collection.ts` (`resolveCollection`).

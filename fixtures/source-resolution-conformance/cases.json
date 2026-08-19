@@ -1,0 +1,157 @@
+{
+  "cases": [
+    {
+      "name": "no-config-uses-default-directory",
+      "tree": {
+        "metaobjects/meta.users.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": null,
+      "expectFiles": ["metaobjects/meta.users.json"]
+    },
+    {
+      "name": "empty-sources-uses-default-directory",
+      "tree": {
+        "metaobjects/meta.users.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [] },
+      "expectFiles": ["metaobjects/meta.users.json"]
+    },
+    {
+      "name": "declared-path-replaces-the-default-entirely",
+      "tree": {
+        "metaobjects/ignored.json": "{\"metadata.root\":{\"children\":[]}}",
+        "model/meta.orders.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "model" }] },
+      "expectFiles": ["model/meta.orders.json"]
+    },
+    {
+      "name": "directory-is-walked-recursively",
+      "tree": {
+        "model/meta.a.json": "{\"metadata.root\":{\"children\":[]}}",
+        "model/nested/meta.b.yaml": "metadata.root:\n  children: []\n",
+        "model/nested/deep/meta.c.yml": "metadata.root:\n  children: []\n"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "model" }] },
+      "expectFiles": [
+        "model/meta.a.json",
+        "model/nested/meta.b.yaml",
+        "model/nested/deep/meta.c.yml"
+      ]
+    },
+    {
+      "name": "non-metadata-extensions-are-ignored",
+      "tree": {
+        "model/meta.a.json": "{\"metadata.root\":{\"children\":[]}}",
+        "model/README.md": "not metadata",
+        "model/notes.txt": "not metadata",
+        "model/script.ts": "export {}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "model" }] },
+      "expectFiles": ["model/meta.a.json"]
+    },
+    {
+      "name": "a-single-file-path-resolves-to-that-file",
+      "tree": {
+        "vendor/meta.catalog.json": "{\"metadata.root\":{\"children\":[]}}",
+        "vendor/meta.other.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "vendor/meta.catalog.json" }] },
+      "expectFiles": ["vendor/meta.catalog.json"]
+    },
+    {
+      "name": "two-sources-union",
+      "tree": {
+        "a/meta.a.json": "{\"metadata.root\":{\"children\":[]}}",
+        "b/meta.b.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "a" }, { "path": "b" }] },
+      "expectFiles": ["a/meta.a.json", "b/meta.b.json"]
+    },
+    {
+      "name": "overlapping-sources-yield-each-file-once",
+      "tree": {
+        "model/meta.a.json": "{\"metadata.root\":{\"children\":[]}}",
+        "model/nested/meta.b.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [{ "path": "model" }, { "path": "model/nested" }]
+      },
+      "expectFiles": ["model/meta.a.json", "model/nested/meta.b.json"]
+    },
+    {
+      "name": "source-order-does-not-change-the-resolved-set",
+      "tree": {
+        "a/meta.a.json": "{\"metadata.root\":{\"children\":[]}}",
+        "b/meta.b.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "b" }, { "path": "a" }] },
+      "expectFiles": ["a/meta.a.json", "b/meta.b.json"]
+    },
+    {
+      "name": "a-parent-relative-path-resolves-against-the-declaring-configs-directory",
+      "tree": {
+        "shared/meta.shared.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "../shared" }] },
+      "resolveFrom": "app",
+      "expectFiles": ["shared/meta.shared.json"]
+    },
+    {
+      "name": "a-declared-path-that-does-not-exist-is-an-error",
+      "tree": {
+        "metaobjects/meta.users.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "nope" }] },
+      "expectError": "ERR_SOURCE_UNRESOLVED"
+    },
+    {
+      "name": "an-empty-directory-source-resolves-to-no-files",
+      "tree": {
+        "model/.keep": ""
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "model" }] },
+      "expectFiles": []
+    },
+    {
+      "name": "resource-kind-is-unsupported",
+      "tree": {
+        "metaobjects/meta.users.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "resource": "com/acme/model" }] },
+      "expectError": "ERR_SOURCE_KIND_UNSUPPORTED"
+    },
+    {
+      "name": "package-kind-is-unsupported",
+      "tree": {
+        "metaobjects/meta.users.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "package": "acme-model" }] },
+      "expectError": "ERR_SOURCE_KIND_UNSUPPORTED"
+    },
+    {
+      "name": "no-config-and-no-default-directory-is-an-error",
+      "tree": {
+        "src/.keep": ""
+      },
+      "config": null,
+      "expectError": "ERR_COLLECTION_NOT_FOUND"
+    },
+    {
+      "name": "unknown-top-level-keys-are-ignored",
+      "tree": {
+        "model/meta.a.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [{ "path": "model" }],
+        "pending_in_git": true,
+        "confidence_thresholds": { "pending_promote": 0.8 },
+        "extract": { "metaignore": ".metaignore" },
+        "migrate": { "dialect": "postgres" }
+      },
+      "expectFiles": ["model/meta.a.json"]
+    }
+  ]
+}
