@@ -71,6 +71,17 @@ const CHILDREN = [
       "@format": "json",
     },
   },
+  {
+    // ADR-0052: `root` is introduced by the setup preamble only when a documented
+    // example calls extract<Name>(root, ...), and those symbols now hang off a
+    // responding prompt rather than the output above.
+    "template.prompt": {
+      "name": "SummarizeProduct",
+      "@payloadRef": "SummaryVO",
+      "@responseRef": "SummaryVO",
+      "@textRef": "p/summarize",
+    },
+  },
 ];
 
 async function loadModel(): Promise<ApiModel> {

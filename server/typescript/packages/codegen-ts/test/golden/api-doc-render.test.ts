@@ -49,6 +49,16 @@ const CHILDREN = [
       "@format": "json",
     },
   },
+  {
+    // ADR-0052: the extractor symbols these renders show belong to a responding
+    // prompt. The output above now contributes only its render handle.
+    "template.prompt": {
+      "name": "SummarizeProduct",
+      "@payloadRef": "SummaryVO",
+      "@responseRef": "SummaryVO",
+      "@textRef": "p/summarize",
+    },
+  },
 ];
 
 async function loadModel(): Promise<{ model: ApiModel; root: Awaited<ReturnType<MetaDataLoader["load"]>>["root"] }> {
@@ -380,7 +390,8 @@ Generated public API surface, one page per entity and output template.
 
 ## Templates
 
-- [ProductSummary](./ProductSummary.md) — 2 extractor, render (3 symbols)
+- [ProductSummary](./ProductSummary.md) — render (1 symbol)
+- [SummarizeProduct](./SummarizeProduct.md) — 2 extractor, prompt (3 symbols)
 `;
 
 describe("renderApiIndex — consolidated human index", () => {
@@ -467,17 +478,26 @@ const removed = await deleteProductById(db, created.id);
 
 ## ProductSummary
 
-\`import { extractProductSummary, extractLenientProductSummary } from "./ProductSummary.extractor"\`
-- \`extractProductSummary(root: MetaRoot, text: string): SummaryVO // SummaryVO: { headline: string }\` — Parse dirty LLM json text into a strict, fully-typed SummaryVO graph. [throws: Error when a @required field is lost (the strict opt-in gate).]
-- \`extractLenientProductSummary(root: MetaRoot, text: string): ExtractionResult<ProductSummaryExtracted>\` — Never-throwing extract; inspect report for lost/defaulted fields.
-
 \`import { renderProductSummary } from "./ProductSummary.render"\`
 - \`renderProductSummary(payload: SummaryVO, provider: Provider): string\` — Render the ProductSummary document from a typed SummaryVO payload.
 
 Example:
 \`\`\`ts
-const extracted = extractProductSummary(root, llmText);
 const output = renderProductSummary({ headline: "…" }, provider);
+\`\`\`
+
+## SummarizeProduct
+
+\`import { renderSummarizeProduct } from "./prompts"\`
+- \`renderSummarizeProduct(payload: SummaryVO, provider: Provider): string // string: { headline: string }\` — Render the SummarizeProduct prompt text from a typed SummaryVO payload (ready to send to an LLM).
+
+\`import { extractSummarizeProduct, extractLenientSummarizeProduct } from "./SummarizeProduct.extractor"\`
+- \`extractSummarizeProduct(root: MetaRoot, text: string): SummaryVO // SummaryVO: { headline: string }\` — Parse the model's json reply to SummarizeProduct into a strict, fully-typed SummaryVO graph. [throws: Error when a @required field is lost (the strict opt-in gate).]
+- \`extractLenientSummarizeProduct(root: MetaRoot, text: string): ExtractionResult<SummarizeProductExtracted>\` — Never-throwing extract of the SummarizeProduct reply; inspect report for lost/defaulted fields.
+
+Example:
+\`\`\`ts
+const extracted = extractSummarizeProduct(root, llmText);
 \`\`\`
 `;
 

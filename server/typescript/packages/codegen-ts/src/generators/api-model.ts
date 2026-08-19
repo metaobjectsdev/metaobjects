@@ -847,7 +847,7 @@ function buildTemplateUnit(tmpl: MetaData, root: MetaRoot, _layout: OutputLayout
     const render = `render${name}`;
     const isEmail = kind === TEMPLATE_KIND_EMAIL;
     const returns = isEmail ? "EmailDocument" : "string";
-    symbols.push({
+    const renderSym: ApiSymbol = {
       name: render,
       kind: "render",
       importPath: renderMod,
@@ -857,7 +857,14 @@ function buildTemplateUnit(tmpl: MetaData, root: MetaRoot, _layout: OutputLayout
       usage: isEmail
         ? `Render the ${name} email (subject + bodies) from a typed ${payload} payload.`
         : `Render the ${name} document from a typed ${payload} payload.`,
-    });
+    };
+    // The payload shape used to reach this unit only via the extractor symbol.
+    // ADR-0052 moved that away, which left the render example with no field shape
+    // to build from — it degraded to `render<Name>({}, provider)`. Attach it here,
+    // where it always belonged: this is the payload the render handle takes.
+    const renderShape = payloadFieldShapes(root, payload);
+    if (renderShape !== undefined) renderSym.fields = renderShape;
+    symbols.push(renderSym);
   }
 
   const unit: ApiUnitDoc = {
@@ -1086,9 +1093,10 @@ function templateExample(name: string, symbols: ApiSymbol[]): UnitExample | unde
   if (renderSym !== undefined) {
     picks.push({ name: renderSym.name, importPath: renderSym.importPath });
     // Render's payload object literal comes from the @payloadRef VO shape the
-    // render symbol returns/consumes; reuse the extractor's documented payload
-    // fields when present so the example body is real.
-    const payloadFields = extract?.fields;
+    // render symbol consumes. Prefer the render symbol's OWN fields — it borrowed
+    // the extractor's before ADR-0052, which silently degraded the example to
+    // `render<Name>({}, provider)` the moment the extractor moved to the prompt.
+    const payloadFields = renderSym.fields ?? extract?.fields;
     const payloadLit = objectLiteralFromFields(payloadFields);
     body.push(`const output = ${renderSym.name}(${payloadLit}, provider);`);
   }
