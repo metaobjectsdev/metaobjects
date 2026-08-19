@@ -2,6 +2,8 @@ package com.metaobjects.loader;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.FileSystemLoopException;
+import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
@@ -37,6 +39,7 @@ public final class DirectorySource {
     public static final class Options {
         private List<String> exclude = List.of();
         private boolean recurse = true;
+        private boolean excludePending = false;
 
         /**
          * Sets filenames to exclude from expansion (exact filename match).
@@ -54,8 +57,24 @@ public final class DirectorySource {
             return this;
         }
 
+        /**
+         * Sets whether {@code _pending/} (at any depth) is excluded from expansion.
+         * Default: {@code false} — this is a LOADER-level primitive, and
+         * {@code _pending/} is a CLI/pending-workflow concept (TypeScript's
+         * {@code metadata-files.ts}, not its loader-level {@code DirectorySource}).
+         * {@link com.metaobjects.config.SourceResolver}, the CLI-facing caller, turns
+         * this ON explicitly rather than the exclusion being baked into every
+         * embedder of this class (a runtime app calling {@code new DirectorySource(dir)}
+         * directly gets every file back, matching the reference loader).
+         */
+        public Options setExcludePending(boolean excludePending) {
+            this.excludePending = excludePending;
+            return this;
+        }
+
         public List<String> getExclude() { return exclude; }
         public boolean isRecurse() { return recurse; }
+        public boolean isExcludePending() { return excludePending; }
     }
 
     private static final Set<String> EXTENSIONS = Set.of(".json", ".yaml", ".yml");
@@ -97,13 +116,24 @@ public final class DirectorySource {
      * Expands this directory into a sorted stream of {@link FileSource}.
      * Sorted by full path (ordinal) for deterministic ordering across runs.
      *
+     * <p>Follows symlinked directories — including when {@code directory} itself
+     * is a symlink — matching TypeScript ({@code stat}, not {@code lstat}) and C#
+     * ({@code EnumerateFiles(..., AllDirectories)}), both of which have always
+     * followed symlinks this way. A symlink CYCLE is a loud error rather than a
+     * hang: {@code Files.walk}'s own traversal detects it and throws
+     * {@link FileSystemLoopException} (naming the looping path), which the JDK
+     * wraps in {@link UncheckedIOException} and surfaces from whichever stream
+     * operation is consuming this method's lazily-returned {@link Stream} — not
+     * from this method itself, since the walk has not actually run yet when
+     * {@code expand()} returns.</p>
+     *
      * @return stream of file sources; caller should close if iteration is partial
      * @throws UncheckedIOException if the directory cannot be listed
      */
     public Stream<FileSource> expand() {
         try {
             Stream<Path> walk = opts.isRecurse()
-                ? Files.walk(directory)
+                ? Files.walk(directory, FileVisitOption.FOLLOW_LINKS)
                 : Files.list(directory);
             return walk
                 .filter(Files::isRegularFile)
@@ -111,8 +141,9 @@ public final class DirectorySource {
                 .filter(p -> !opts.getExclude().contains(p.getFileName().toString()))
                 // Excludes _pending/ at ANY depth — every ancestor path component
                 // between `directory` and `p` is checked, not merely `p`'s own
-                // basename, so the whole subtree is skipped.
-                .filter(p -> !isUnderPendingDir(directory, p))
+                // basename, so the whole subtree is skipped. Off by default — see
+                // Options.setExcludePending.
+                .filter(p -> !opts.isExcludePending() || !isUnderPendingDir(directory, p))
                 .sorted(Comparator.comparing(p -> p.getFileName().toString()))
                 .map(FileSource::new);
         } catch (IOException e) {

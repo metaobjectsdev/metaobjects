@@ -24,6 +24,18 @@ public sealed class DirectorySource
 
         /// <summary>Recurse into subdirectories. Default: true.</summary>
         public bool Recurse { get; init; } = true;
+
+        /// <summary>
+        /// Exclude <c>_pending/</c> at any depth. Default: <c>false</c> — this is a
+        /// LOADER-level primitive, and <c>_pending/</c> is a CLI/pending-promote-workflow
+        /// concept (TypeScript's <c>metadata-files.ts</c>, not its loader-level
+        /// <c>DirectorySource</c>, which has no <c>_pending</c> concept at all).
+        /// <see cref="MetaObjects.Config.SourceResolver"/> — the CLI-facing caller —
+        /// turns this ON explicitly rather than the exclusion being baked into every
+        /// embedder of this class: an app calling <c>new DirectorySource(dir)</c>
+        /// directly gets every file back, matching the reference loader.
+        /// </summary>
+        public bool ExcludePending { get; init; } = false;
     }
 
     private static readonly HashSet<string> _supportedExtensions =
@@ -58,11 +70,16 @@ public sealed class DirectorySource
             : SearchOption.TopDirectoryOnly;
 
         IEnumerable<string> files = System.IO.Directory.EnumerateFiles(Directory, "*", search)
-            .Where(p => _supportedExtensions.Contains(Path.GetExtension(p)))
+            .Where(p => _supportedExtensions.Contains(Path.GetExtension(p)));
+
+        if (Opts.ExcludePending)
+        {
             // Excludes _pending/ at ANY depth — every ancestor path component
             // between `Directory` and the file is checked, not merely the file's
-            // own name, so the whole subtree is skipped.
-            .Where(p => !IsUnderPendingDir(Directory, p));
+            // own name, so the whole subtree is skipped. Off by default — see
+            // Options.ExcludePending.
+            files = files.Where(p => !IsUnderPendingDir(Directory, p));
+        }
 
         if (Opts.Exclude is { Count: > 0 } excludes)
         {

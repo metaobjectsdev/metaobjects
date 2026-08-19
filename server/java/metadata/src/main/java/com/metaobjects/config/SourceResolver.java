@@ -87,14 +87,17 @@ public final class SourceResolver {
             }
 
             if (isDir) {
-                // Directory expansion — extension filter, `_pending/`-at-any-depth
-                // exclusion, and basename sort (this port's own order, deliberately
-                // NOT a cross-port contract — see the class javadoc) — is
-                // DirectorySource's, the SAME code the loader itself uses to turn a
-                // directory into metadata files. Reimplementing the walk here would
-                // be a second, driftable definition of "which files count as
-                // metadata".
-                new DirectorySource(target).expand()
+                // Directory expansion — extension filter and basename sort (this
+                // port's own order, deliberately NOT a cross-port contract — see the
+                // class javadoc) — is DirectorySource's, the SAME code the loader
+                // itself uses to turn a directory into metadata files. Reimplementing
+                // the walk here would be a second, driftable definition of "which
+                // files count as metadata". `_pending/`-at-any-depth exclusion is OFF
+                // by default at the loader level (a runtime app embedding
+                // DirectorySource directly gets every file) — this CLI-facing
+                // resolver turns it ON, since `_pending/` is the TypeScript CLI's
+                // pending/promote-workflow concept, not a loader concept.
+                new DirectorySource(target, new DirectorySource.Options().setExcludePending(true)).expand()
                         .forEach(fs -> seen.add(fs.getPath().toAbsolutePath().normalize()));
             } else {
                 seen.add(target.toAbsolutePath().normalize());

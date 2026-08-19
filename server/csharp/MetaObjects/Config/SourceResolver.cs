@@ -68,8 +68,13 @@ public static class SourceResolver
             // header calls out: order within one directory spec is this port's own
             // full-path ordinal sort, deliberately NOT a cross-port contract (see the
             // file header above), but it MUST still be the loader's own order.
+            // ExcludePending = true: this IS the CLI-facing resolver — `_pending/` is
+            // the TypeScript CLI's pending/promote-workflow concept, not a loader
+            // concept, so the loader-level default (off) is overridden here, the one
+            // place this port's CLI turns it on.
             var found = isDir
-                ? new DirectorySource(target).Expand().Select(f => f.FilePath)
+                ? new DirectorySource(target, new DirectorySource.Options { ExcludePending = true })
+                    .Expand().Select(f => f.FilePath)
                 : new[] { target }.AsEnumerable();
 
             foreach (var f in found)
