@@ -200,6 +200,51 @@
       },
       "config": { "schema_version": 1, "sources": { "path": "custom" } },
       "expectError": true
+    },
+    {
+      "name": "sources-null-is-an-error-not-the-default",
+      "tree": {
+        "metaobjects/meta.stale.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": null },
+      "expectError": true
+    },
+    {
+      "name": "an-empty-path-is-an-error",
+      "tree": {
+        "metaobjects/meta.users.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "" }] },
+      "expectError": true
+    },
+    {
+      "name": "a-sources-entry-with-two-keys-is-an-error",
+      "tree": {
+        "metaobjects/meta.stale.json": "{\"metadata.root\":{\"children\":[]}}",
+        "custom/meta.real.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [{ "path": "custom", "resource": "com/acme/model" }]
+      },
+      "expectError": true
+    },
+    {
+      "name": "an-unsupported-schema-version-is-an-error",
+      "tree": {
+        "metaobjects/meta.stale.json": "{\"metadata.root\":{\"children\":[]}}",
+        "model/meta.real.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 2, "sources": [{ "path": "model" }] },
+      "expectError": true
+    },
+    {
+      "name": "a-non-string-source-value-is-an-error",
+      "tree": {
+        "123/meta.real.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": 123 }] },
+      "expectError": true
     }
   ]
 }
