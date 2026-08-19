@@ -48,6 +48,23 @@ def test_resource_kind_unsupported(tmp_path: Path) -> None:
     assert e.value.code == ErrorCode.ERR_SOURCE_KIND_UNSUPPORTED
 
 
+def test_kind_error_precedes_unresolved_path_regardless_of_order(tmp_path: Path) -> None:
+    # Kind validation runs across the WHOLE spec list before any filesystem
+    # access, so an unsupported-kind spec always wins over an unresolved-path
+    # spec — in EITHER declaration order. Interleaving the two checks one spec
+    # at a time (kind-check-then-stat, per spec) would make the reported error
+    # code depend on which spec happens to come first; pinned against the
+    # TypeScript reference (`sources.ts` `orderedPathSpecs`), verified
+    # empirically to raise ERR_SOURCE_KIND_UNSUPPORTED in both orders.
+    with pytest.raises(ParseError) as e_missing_first:
+        resolve_sources(tmp_path, [{"path": "nope"}, {"resource": "x"}])
+    assert e_missing_first.value.code == ErrorCode.ERR_SOURCE_KIND_UNSUPPORTED
+
+    with pytest.raises(ParseError) as e_resource_first:
+        resolve_sources(tmp_path, [{"resource": "x"}, {"path": "nope"}])
+    assert e_resource_first.value.code == ErrorCode.ERR_SOURCE_KIND_UNSUPPORTED
+
+
 def test_collection_falls_back_to_default_dir(tmp_path: Path) -> None:
     (tmp_path / "metaobjects").mkdir()
     (tmp_path / "metaobjects" / "a.json").write_text("{}")

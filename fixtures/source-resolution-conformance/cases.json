@@ -148,6 +148,28 @@
       "expectError": "ERR_SOURCE_KIND_UNSUPPORTED"
     },
     {
+      "name": "unsupported-kind-precedes-unresolved-path-when-path-is-declared-first",
+      "tree": {
+        "metaobjects/meta.users.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [{ "path": "nope" }, { "resource": "com/acme/model" }]
+      },
+      "expectError": "ERR_SOURCE_KIND_UNSUPPORTED"
+    },
+    {
+      "name": "unsupported-kind-precedes-unresolved-path-when-path-is-declared-second",
+      "tree": {
+        "metaobjects/meta.users.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [{ "resource": "com/acme/model" }, { "path": "nope" }]
+      },
+      "expectError": "ERR_SOURCE_KIND_UNSUPPORTED"
+    },
+    {
       "name": "no-config-and-no-default-directory-is-an-error",
       "tree": {
         "src/.keep": ""

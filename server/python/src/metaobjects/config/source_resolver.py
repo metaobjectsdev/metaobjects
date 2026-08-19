@@ -22,14 +22,17 @@ def _list_metadata_files(directory: Path) -> list[Path]:
     )
 
 
-def resolve_sources(config_dir: Path, specs: list[dict[str, str]]) -> list[Path]:
-    """Resolve a declared source SET to a de-duplicated list of metadata files.
+def _validate_kinds(specs: list[dict[str, str]]) -> None:
+    """Validate every spec's kind before ANY filesystem access.
 
-    A relative ``path`` resolves against ``config_dir`` — the directory HOLDING
-    the ``.metaobjects/`` folder — never against the process working directory.
+    Mirrors `sources.ts`'s `orderedPathSpecs` (`.map(toPathSpec)` runs over the
+    whole list before `resolveSources` performs a single `stat()`): a kind
+    check interleaved with resolution, one spec at a time, would make which
+    error code comes back depend on declaration order — `{"path": "nope"},
+    {"resource": "x"}` and its reverse must both report
+    `ERR_SOURCE_KIND_UNSUPPORTED`, never `ERR_SOURCE_UNRESOLVED` on one
+    ordering and the kind error on the other.
     """
-    seen: dict[Path, None] = {}
-
     for spec in specs:
         if "path" not in spec:
             kind = next(iter(spec), "<empty>")
@@ -38,6 +41,19 @@ def resolve_sources(config_dir: Path, specs: list[dict[str, str]]) -> list[Path]
                 code=ErrorCode.ERR_SOURCE_KIND_UNSUPPORTED,
             )
 
+
+def resolve_sources(config_dir: Path, specs: list[dict[str, str]]) -> list[Path]:
+    """Resolve a declared source SET to a de-duplicated list of metadata files.
+
+    A relative ``path`` resolves against ``config_dir`` — the directory HOLDING
+    the ``.metaobjects/`` folder — never against the process working directory.
+    """
+    # Whole-list kind validation FIRST — see `_validate_kinds`.
+    _validate_kinds(specs)
+
+    seen: dict[Path, None] = {}
+
+    for spec in specs:
         raw = Path(spec["path"])
         target = raw if raw.is_absolute() else (config_dir / raw)
 

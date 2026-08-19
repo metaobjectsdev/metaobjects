@@ -65,6 +65,18 @@ README.md
   `ERR_COLLECTION_NOT_FOUND`.
 - **`resource` and `package` kinds are declared but resolve nowhere yet:**
   `ERR_SOURCE_KIND_UNSUPPORTED`.
+- **Kind validation precedes path resolution, and that precedence is
+  order-independent.** Every spec's kind is checked across the WHOLE
+  declared list before any spec's path is touched on disk — so a multi-spec
+  list containing both an unsupported kind and a path that does not exist
+  always fails `ERR_SOURCE_KIND_UNSUPPORTED`, in EITHER declaration order,
+  never `ERR_SOURCE_UNRESOLVED`. See
+  `unsupported-kind-precedes-unresolved-path-when-path-is-declared-first`
+  and its `-declared-second` sibling — a port that interleaves the two
+  checks one spec at a time (kind-check-then-stat, per spec, in a single
+  loop) reports whichever error comes first in declaration order instead,
+  diverging on exactly one of the two cases depending on which order it
+  happens to process first.
 - **Unknown top-level config keys are IGNORED.** The file carries
   TypeScript-owned keys no other port models. `schema_version` and `sources` are
   the neutral subset; each port validates those strictly and ignores the rest.

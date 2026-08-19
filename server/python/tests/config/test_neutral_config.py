@@ -3,7 +3,7 @@ import pytest
 from pathlib import Path
 
 from metaobjects.config.neutral_config import read_neutral_config
-from metaobjects.errors import ParseError
+from metaobjects.errors import ErrorCode, ParseError
 
 
 def _write_config(root: Path, payload: object) -> None:
@@ -53,11 +53,13 @@ def test_malformed_json_raises_not_none(tmp_path: Path) -> None:
     d.mkdir(parents=True)
     (d / "config.json").write_text("{ not json")
     # A file that EXISTS but cannot be read must never look like no config at all.
-    with pytest.raises(ParseError):
+    with pytest.raises(ParseError) as e:
         read_neutral_config(tmp_path)
+    assert e.value.code == ErrorCode.ERR_COLLECTION_NOT_FOUND
 
 
 def test_wrong_schema_version_raises(tmp_path: Path) -> None:
     _write_config(tmp_path, {"schema_version": 2, "sources": []})
-    with pytest.raises(ParseError):
+    with pytest.raises(ParseError) as e:
         read_neutral_config(tmp_path)
+    assert e.value.code == ErrorCode.ERR_COLLECTION_NOT_FOUND
