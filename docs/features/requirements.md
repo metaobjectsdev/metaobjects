@@ -27,7 +27,7 @@ disproof to the thing being resurrected, in one line.
 
 ## Declaring one
 
-Requirements live in `metaobjects/` beside the entities they describe:
+Requirements live beside the entities they describe (by default in `metaobjects/`):
 
 ```jsonc
 { "metadata.root": {
