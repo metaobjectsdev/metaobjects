@@ -321,54 +321,53 @@ async function writeConfigFile(opts: InitOptions, result: InitResult, agentDir: 
   const freshConfig = opts.d1
     ? ConfigSchema.parse({ ...DEFAULT_CONFIG, migrate: buildD1MigrateBlock(opts.cwd) })
     : DEFAULT_CONFIG;
-  if (agentDirExists) {
-    const configPath = join(agentDir, "config.json");
-    let priorContent: string | undefined;
-    try {
-      priorContent = await readFile(configPath, "utf8");
-      const parsed = ConfigSchema.parse(JSON.parse(priorContent));
-      const merged = ConfigSchema.parse({ ...DEFAULT_CONFIG, ...parsed });
-      // When a valid .metaobjects/config.json already exists and the user passes --force,
-      // we preserve the existing config and only re-scaffold support files. The --d1 flag
-      // only takes effect on fresh inits — retro-fitting D1 onto an existing project is
-      // the user's job (edit migrate.dialect and migrate.d1 in config.json directly).
-      await saveConfig(agentDir, merged);
-      result.preserved.push(".metaobjects/config.json");
-    } catch {
-      if (priorContent !== undefined) {
-        // In the full-scaffold path this is only reachable once the caller has
-        // already required --force (the exists-guard at the top of `init()`
-        // throws before writeConfigFile runs otherwise), so opts.force is always
-        // true there. `--config-only` calls this function directly with no such
-        // guard, so without this check it would silently destroy an existing,
-        // merely-unparseable config on every run — the one thing `--force` is
-        // supposed to gate.
-        if (!opts.force) {
-          throw new Error(
-            `existing .metaobjects/config.json exists but could not be parsed; refusing to overwrite it. ` +
-            `Use --force to replace it with defaults. Prior content:\n${priorContent}`,
-          );
-        }
-        log.warn("existing .metaobjects/config.json was invalid — writing fresh defaults. Prior content:");
-        log.warn(priorContent);
-        result.warnings.push("invalid .metaobjects/config.json replaced with defaults");
-      }
-      await writeFile(
-        join(agentDir, "config.json"),
-        JSON.stringify(freshConfig, null, 2) + "\n",
-        "utf8",
-      );
-      if (priorContent === undefined) {
-        result.created.push(".metaobjects/config.json");
-      }
-    }
-  } else {
-    await writeFile(
-      join(agentDir, "config.json"),
-      JSON.stringify(freshConfig, null, 2) + "\n",
-      "utf8",
-    );
+  const writeFresh = (): Promise<void> =>
+    writeFile(join(agentDir, "config.json"), JSON.stringify(freshConfig, null, 2) + "\n", "utf8");
+
+  if (!agentDirExists) {
+    await writeFresh();
     result.created.push(".metaobjects/config.json");
+    return;
+  }
+
+  const configPath = join(agentDir, "config.json");
+  let priorContent: string | undefined;
+  try {
+    priorContent = await readFile(configPath, "utf8");
+    const parsed = ConfigSchema.parse(JSON.parse(priorContent));
+    const merged = ConfigSchema.parse({ ...DEFAULT_CONFIG, ...parsed });
+    // When a valid .metaobjects/config.json already exists and the user passes --force,
+    // we preserve the existing config and only re-scaffold support files. The --d1 flag
+    // only takes effect on fresh inits — retro-fitting D1 onto an existing project is
+    // the user's job (edit migrate.dialect and migrate.d1 in config.json directly).
+    await saveConfig(agentDir, merged);
+    result.preserved.push(".metaobjects/config.json");
+    return;
+  } catch {
+    if (priorContent === undefined) {
+      // The .metaobjects/ dir existed but config.json itself did not — a fresh write.
+      await writeFresh();
+      result.created.push(".metaobjects/config.json");
+      return;
+    }
+
+    // In the full-scaffold path this is only reachable once the caller has
+    // already required --force (the exists-guard at the top of `init()`
+    // throws before writeConfigFile runs otherwise), so opts.force is always
+    // true there. `--config-only` calls this function directly with no such
+    // guard, so without this check it would silently destroy an existing,
+    // merely-unparseable config on every run — the one thing `--force` is
+    // supposed to gate.
+    if (!opts.force) {
+      throw new Error(
+        `existing .metaobjects/config.json exists but could not be parsed; refusing to overwrite it. ` +
+        `Use --force to replace it with defaults. Prior content:\n${priorContent}`,
+      );
+    }
+    log.warn("existing .metaobjects/config.json was invalid — writing fresh defaults. Prior content:");
+    log.warn(priorContent);
+    result.warnings.push("invalid .metaobjects/config.json replaced with defaults");
+    await writeFresh();
   }
 }
 

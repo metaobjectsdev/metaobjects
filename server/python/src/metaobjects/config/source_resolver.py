@@ -3,36 +3,21 @@ from __future__ import annotations
 from pathlib import Path
 
 from metaobjects.errors import ErrorCode, ParseError
+from metaobjects.loader.sources import DirectorySource
 
 from .neutral_config import DEFAULT_METADATA_DIR, read_neutral_config
-
-_SUPPORTED_SUFFIXES = (".json", ".yaml", ".yml")
-
-#: Directory excluded at every level of `_list_metadata_files` — drafts that
-#: are deliberately not part of the loaded model. Mirrors TypeScript's
-#: `PENDING_DIR` in `metadata-files.ts` and the loader's own
-#: `DirectorySource` (`loader/sources/directory_source.py`).
-_PENDING_DIR = "_pending"
 
 
 def _list_metadata_files(directory: Path) -> list[Path]:
     """Recursively list metadata files under ``directory``.
 
-    Mirrors `DirectorySource`'s extension set (`.json`/`.yaml`/`.yml`,
-    case-insensitive) AND its `_pending/`-at-any-depth exclusion. Order is
-    this port's own and is deliberately NOT a cross-port contract — see the
-    corpus README.
+    Delegates to the loader's own `DirectorySource` — the SAME code the loader
+    uses to turn a directory into metadata files — rather than re-walking with
+    a second, driftable definition of "which files count as metadata" (extension
+    set, `_pending/`-at-any-depth exclusion). Order is this port's own and is
+    deliberately NOT a cross-port contract — see the corpus README.
     """
-    return sorted(
-        (
-            p
-            for p in directory.rglob("*")
-            if p.is_file()
-            and p.suffix.lower() in _SUPPORTED_SUFFIXES
-            and _PENDING_DIR not in p.relative_to(directory).parts[:-1]
-        ),
-        key=lambda p: p.name,
-    )
+    return [fs.path for fs in DirectorySource(directory).expand()]
 
 
 def _validate_kinds(specs: list[dict[str, str]]) -> None:

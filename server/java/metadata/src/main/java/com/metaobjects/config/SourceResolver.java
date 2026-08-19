@@ -17,19 +17,14 @@ package com.metaobjects.config;
 
 import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaDataException;
+import com.metaobjects.loader.DirectorySource;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
-import java.util.stream.Stream;
 
 /**
  * Turns a declared source SET ({@code .metaobjects/config.json}'s {@code sources}, or
@@ -44,16 +39,6 @@ import java.util.stream.Stream;
  * {@code fixtures/source-resolution-conformance/cases.json}.
  */
 public final class SourceResolver {
-
-    private static final Set<String> EXTENSIONS = Set.of(".json", ".yaml", ".yml");
-
-    /**
-     * Directory excluded at every level of a directory-spec walk — drafts that
-     * are deliberately not part of the loaded model. Mirrors TypeScript's
-     * {@code PENDING_DIR} in {@code metadata-files.ts} and the loader's own
-     * {@link com.metaobjects.loader.DirectorySource}.
-     */
-    private static final String PENDING_DIR = "_pending";
 
     private SourceResolver() {}
 
@@ -102,21 +87,15 @@ public final class SourceResolver {
             }
 
             if (isDir) {
-                // Order within one directory spec is this port's own basename sort,
-                // deliberately NOT a cross-port contract — see the class javadoc.
-                try (Stream<Path> walk = Files.walk(target)) {
-                    walk.filter(Files::isRegularFile)
-                        .filter(p -> hasSupportedExtension(p.getFileName().toString()))
-                        // Excludes _pending/ at ANY depth — every ancestor path
-                        // component between `target` and `p` is checked, not
-                        // merely `p`'s own basename, so the whole subtree is
-                        // skipped.
-                        .filter(p -> !isUnderPendingDir(target, p))
-                        .sorted(Comparator.comparing(p -> p.getFileName().toString()))
-                        .forEach(p -> seen.add(p.toAbsolutePath().normalize()));
-                } catch (IOException e) {
-                    throw new UncheckedIOException("Failed to list " + target, e);
-                }
+                // Directory expansion — extension filter, `_pending/`-at-any-depth
+                // exclusion, and basename sort (this port's own order, deliberately
+                // NOT a cross-port contract — see the class javadoc) — is
+                // DirectorySource's, the SAME code the loader itself uses to turn a
+                // directory into metadata files. Reimplementing the walk here would
+                // be a second, driftable definition of "which files count as
+                // metadata".
+                new DirectorySource(target).expand()
+                        .forEach(fs -> seen.add(fs.getPath().toAbsolutePath().normalize()));
             } else {
                 seen.add(target.toAbsolutePath().normalize());
             }
@@ -149,26 +128,5 @@ public final class SourceResolver {
         }
 
         return resolveSources(base, specs);
-    }
-
-    /**
-     * True when any ancestor path component between {@code base} and {@code file}
-     * (i.e. excluding {@code file}'s own name) is exactly {@link #PENDING_DIR}.
-     */
-    private static boolean isUnderPendingDir(Path base, Path file) {
-        Path rel = base.relativize(file).getParent();
-        if (rel == null) return false;
-        for (Path part : rel) {
-            if (part.toString().equals(PENDING_DIR)) return true;
-        }
-        return false;
-    }
-
-    private static boolean hasSupportedExtension(String name) {
-        String lower = name.toLowerCase(Locale.ROOT);
-        for (String ext : EXTENSIONS) {
-            if (lower.endsWith(ext)) return true;
-        }
-        return false;
     }
 }

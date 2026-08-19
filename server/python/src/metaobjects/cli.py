@@ -477,6 +477,22 @@ def resolve_metadata_location(
     return [str(p) for p in resolve_collection(root)]
 
 
+def _resolve_metadata_location_or_print_error(
+    config: ProjectConfig | None, root: Path
+) -> list[str] | None:
+    """``resolve_metadata_location`` for the no-explicit-``metadata_dir`` CLI
+    paths (``docs``, and the ``gen``/``verify --codegen`` neutral fallbacks),
+    translating a raised ``ParseError`` into this CLI's print-and-return-1
+    convention instead of letting it propagate. Returns ``None`` on failure —
+    the caller has nothing further to print and should return 1.
+    """
+    try:
+        return resolve_metadata_location(explicit=None, config=config, root=root)
+    except ParseError as exc:
+        print(f"error: could not resolve metadata location: {exc}", file=sys.stderr)
+        return None
+
+
 #: The default api-surface subdir (the cross-port contract's ``api/python``).
 _DOCS_DEFAULT_API_SUBDIR = "api/python"
 
@@ -521,10 +537,8 @@ def _cmd_docs(args: argparse.Namespace) -> int:
             except ConfigError as exc:
                 print(f"error: {exc}", file=sys.stderr)
                 return 1
-        try:
-            paths = resolve_metadata_location(explicit=None, config=config, root=root_dir)
-        except ParseError as exc:
-            print(f"error: could not resolve metadata location: {exc}", file=sys.stderr)
+        paths = _resolve_metadata_location_or_print_error(config, root_dir)
+        if paths is None:
             return 1
         root, errors = _load_root_from_paths(paths, providers=providers)
         project_default = root_dir.name
@@ -770,10 +784,8 @@ def _cmd_gen_neutral_fallback(args: argparse.Namespace) -> int:
         return 2
 
     root_dir = Path.cwd()
-    try:
-        paths = resolve_metadata_location(explicit=None, config=None, root=root_dir)
-    except ParseError as exc:
-        print(f"error: could not resolve metadata location: {exc}", file=sys.stderr)
+    paths = _resolve_metadata_location_or_print_error(None, root_dir)
+    if paths is None:
         return 1
 
     generators: list[Generator] | None = None
@@ -966,10 +978,8 @@ def _verify_codegen_neutral_fallback(args: argparse.Namespace) -> int:
         return 2
 
     root_dir = Path.cwd()
-    try:
-        paths = resolve_metadata_location(explicit=None, config=None, root=root_dir)
-    except ParseError as exc:
-        print(f"error: could not resolve metadata location: {exc}", file=sys.stderr)
+    paths = _resolve_metadata_location_or_print_error(None, root_dir)
+    if paths is None:
         return 1
 
     strict = not getattr(args, "lax", False)
