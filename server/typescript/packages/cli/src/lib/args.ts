@@ -197,6 +197,13 @@ export const ALLOW_TOKENS = [
   // metadata declares no @generation at all — ambiguous between "never
   // declared it" and "deliberately removing auto-increment".
   "drop-identity-default",
+  // drop-unmanaged permits dropping an object the COMMITTED SNAPSHOT never
+  // contained — i.e. one this toolchain never managed, typically a table another
+  // tool owns. Without it such a drop is refused at generation time, because the
+  // migration it writes cannot replay against a database where that object never
+  // existed (#313). Unlike its neighbours this one is enforced by `migrate` itself
+  // rather than by `diff()`'s status pass; see AllowOptions.dropUnmanaged.
+  "drop-unmanaged",
 ] as const;
 type AllowToken = (typeof ALLOW_TOKENS)[number];
 
