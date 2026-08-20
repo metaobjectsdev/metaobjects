@@ -3118,6 +3118,30 @@ public static class ValidationPasses
             // #210 — nested payload targets stay value-only (see the helper's doctrine).
             CheckNestedPayloadRefsValueOnly(payload, root, errors, nestedVisited);
 
+            // ADR-0052 — @responseRef obeys the SAME target rule as @payloadRef. It had no
+            // check at all in this port while TypeScript validated it, so a @responseRef naming
+            // an object.entity loaded clean here and failed there — and, once ADR-0052 made the
+            // inbound codegen tier key on it, produced a parser bound to a record the payload
+            // tier would not emit (uncompilable generated C#). Codegen now also fails closed,
+            // but a mistake this cheap to make belongs at the loader, where every port sees it.
+            // ADR-0039: resolving — a template may inherit @responseRef via extends.
+            if (tmpl.Attr(TEMPLATE_ATTR_RESPONSE_REF) is string responseRef)
+            {
+                var resVo = NamingRefs.ResolveObjectRef(root, responseRef, NamingRefs.EffectivePackage(tmpl));
+                if (resVo is null || !IsLegalPayloadTarget(resVo))
+                {
+                    errors.Add(new MetaError(
+                        $"template \"{tmpl.Name}\" @responseRef \"{responseRef}\" does not resolve to an object.value or sourceless object.projection at root",
+                        ErrorCode.ERR_INVALID_TEMPLATE,
+                        Envelope: ResolvedSource.From(tmpl.Source, tmpl.Fqn(), responseRef)));
+                }
+                else
+                {
+                    // #210 — the response closure's nested targets stay value-only too.
+                    CheckNestedPayloadRefsValueOnly(resVo, root, errors, nestedVisited);
+                }
+            }
+
             // Use Children() (effective) so inherited payload fields are visible.
             var fieldNames = new HashSet<string>(
                 payload.Children().Where(c => c.Type == TYPE_FIELD).Select(f => f.Name),

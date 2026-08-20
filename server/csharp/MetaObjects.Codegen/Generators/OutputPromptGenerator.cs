@@ -1,12 +1,17 @@
-// output-prompt-generator — for each `template.output` whose @format is json or xml, emits a
-// `<TemplateName>.prompt.cs` file declaring a static `<TemplateName>Prompt` class with a
-// `RenderFormat()` / `RenderFormat(PromptOverrides)` pair backed by the render engine's
-// OutputFormatRenderer (FR-010 artifact 1 — the "produce your answer like this" fragment).
+// output-prompt-generator — for each responding `template.prompt` (one carrying `@responseRef`),
+// emits a `<PromptName>.responseFormat.cs` file declaring a static `<PromptName>ResponseFormat`
+// class with a `RenderFormat()` / `RenderFormat(PromptOverrides)` pair backed by the render
+// engine's OutputFormatRenderer (FR-010 artifact 1 — the "produce your answer like this"
+// fragment).
 //
-// The baked OutputFormatSpec's rootName is the payload class name, so the prompt fragment and
-// the extract() codegen agree on the root element/object name. Mirrors the Java
-// SpringOutputPromptGenerator. Skips: template.prompt, missing/unresolved @payloadRef,
-// and @format values other than json/xml.
+// ADR-0052: gated on `@responseRef` presence, like every other inbound generator. It previously
+// keyed on `template.output` + a json/xml `@format` gate, which is how a fragment that instructs
+// an LLM came to be emitted from the subtype defined as "every rendered artifact other than an
+// LLM prompt".
+//
+// The baked OutputFormatSpec's rootName is the RESPONSE VO's class name, so the fragment and the
+// extract() codegen agree on the root element/object name. Mirrors the Java
+// SpringOutputPromptGenerator. Skips: template.output, and a missing/unresolved `@responseRef`.
 
 using System.Text;
 using MetaObjects.Meta;
@@ -16,8 +21,8 @@ using static MetaObjects.Template.TemplateConstants;
 namespace MetaObjects.Codegen.Generators;
 
 /// <summary>
-/// Emits one <c>&lt;Template&gt;Prompt</c> class per json/xml <c>template.output</c>, exposing
-/// <c>RenderFormat()</c> + <c>RenderFormat(PromptOverrides)</c>.
+/// Emits one <c>&lt;Prompt&gt;ResponseFormat</c> class per responding <c>template.prompt</c>,
+/// exposing <c>RenderFormat()</c> + <c>RenderFormat(PromptOverrides)</c>.
 /// </summary>
 public class OutputPromptGenerator : IGenerator
 {
@@ -25,52 +30,30 @@ public class OutputPromptGenerator : IGenerator
 
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
-        // ADR-0039: Children() — resolving root scan (behavior-identical; root has no super).
-        var outputs = ctx.Root.Children()
-            .Where(c => c.Type == TYPE_TEMPLATE && c.SubType == TEMPLATE_SUBTYPE_OUTPUT)
-            .OrderBy(t => t.Name, StringComparer.Ordinal)
-            .ToList();
-
         var files = new List<EmittedFile>();
-        foreach (var tmpl in outputs)
+        // ADR-0052: the direction rule lives in FindInbound, never re-derived here.
+        foreach (var tmpl in FindInbound.InboundTemplates(ctx.Root))
         {
-            if (!AppliesTo(tmpl, ctx.Root)) continue;
-            // ADR-0039: resolving — @payloadRef may be inherited via an abstract template base.
-            var payloadRef = (string)tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF)!;
-            // ADR-0042: a bare @payloadRef resolves in the template's package (else root-level).
-            var vo = global::MetaObjects.NamingRefs.ResolveObjectRef(
-                ctx.Root, payloadRef, global::MetaObjects.NamingRefs.EffectivePackage(tmpl))!;
-            files.Add(EmitPrompt(tmpl, vo, payloadRef, ctx));
+            // @responseRef must resolve to a value-object (same contract as the parser).
+            if (FindInbound.ResponseShape(ctx.Root, tmpl) is not { } shape) continue;
+            files.Add(EmitPrompt(tmpl, shape.Vo, shape.Ref, ctx));
         }
         return files;
     }
 
     /// <summary>
-    /// True iff this generator emits an output-format prompt for <paramref name="tmpl"/>:
-    /// a <c>template.output</c> with a json/xml <c>@format</c> and a <c>@payloadRef</c>
-    /// that resolves to a root-level <c>object</c>. Single source of truth shared by the
-    /// generator loop AND the api-docs builder (so docs never claim a suppressed symbol).
+    /// True iff this generator emits a response-format fragment for <paramref name="tmpl"/>: a
+    /// <c>template.prompt</c> whose <c>@responseRef</c> resolves to a root-level <c>object</c>.
+    /// Single source of truth shared by the generator loop AND the api-docs builder (so docs
+    /// never claim a suppressed symbol).
     /// </summary>
-    public static bool AppliesTo(MetaData tmpl, MetaRoot root)
-    {
-        if (tmpl.Type != TYPE_TEMPLATE || tmpl.SubType != TEMPLATE_SUBTYPE_OUTPUT) return false;
-        // ADR-0039: resolving — @format/@payloadRef may be inherited via an abstract template base.
-        var format = tmpl.Attr(TEMPLATE_ATTR_FORMAT) as string ?? "text";
-        var supported =
-            format.Equals("json", StringComparison.OrdinalIgnoreCase) ||
-            format.Equals("xml", StringComparison.OrdinalIgnoreCase);
-        if (!supported) return false;
-        if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef) return false;
-        // ADR-0042: a bare @payloadRef resolves in the template's package (else root-level).
-        return global::MetaObjects.NamingRefs.ResolveObjectRef(
-            root, payloadRef, global::MetaObjects.NamingRefs.EffectivePackage(tmpl)) is not null;
-    }
+    public static bool AppliesTo(MetaData tmpl, MetaRoot root) => FindInbound.IsInbound(tmpl, root);
 
     protected virtual EmittedFile EmitPrompt(MetaData tmpl, MetaData vo, string payloadRef, GenContext ctx)
     {
         var templateName = tmpl.Name;
-        var promptClass = CSharpNaming.PromptClassName(templateName);
-        // rootName == payload class name so the prompt fragment and extract() agree.
+        var promptClass = CSharpNaming.ResponseFormatClassName(templateName);
+        // rootName == response VO class name so the fragment and extract() agree.
         var specLiteral = OutputFormatSpecEmitter.SpecLiteral(vo, tmpl, payloadRef);
 
         var sb = new StringBuilder();
@@ -83,17 +66,19 @@ public class OutputPromptGenerator : IGenerator
         sb.AppendLine();
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
-        sb.AppendLine($"/// <summary>Output-format prompt fragment for the <c>{templateName}</c> template.output.</summary>");
+        sb.AppendLine($"/// <summary>Response-format prompt fragment for the <c>{templateName}</c> template.prompt.</summary>");
         sb.AppendLine($"public static class {promptClass}");
         sb.AppendLine("{");
         sb.AppendLine($"    private static readonly OutputFormatSpec Spec = {specLiteral};");
         sb.AppendLine();
-        sb.AppendLine("    /// <summary>The output-format instruction fragment (\"produce your answer like this\").</summary>");
+        sb.AppendLine("    /// <summary>The response-format instruction fragment (\"produce your answer like this\").</summary>");
         sb.AppendLine("    public static string RenderFormat() => OutputFormatRenderer.Render(Spec, PromptOverrides.None());");
         sb.AppendLine();
         sb.AppendLine("    /// <summary>The fragment with render-time overrides (style / per-field example / instruction).</summary>");
         sb.AppendLine("    public static string RenderFormat(PromptOverrides overrides) => OutputFormatRenderer.Render(Spec, overrides);");
         sb.AppendLine("}");
-        return new EmittedFile($"{templateName}.prompt.cs", sb.ToString());
+        // ADR-0052 D4: the artifact name follows the DIRECTION axis. A file named
+        // `<Prompt>.prompt.cs` generated from a prompt reproduces the confusion being removed.
+        return new EmittedFile($"{templateName}.responseFormat.cs", sb.ToString());
     }
 }

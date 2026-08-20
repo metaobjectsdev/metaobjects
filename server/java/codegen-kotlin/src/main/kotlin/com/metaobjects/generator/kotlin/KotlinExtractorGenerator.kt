@@ -81,12 +81,9 @@ open class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         val payloadNameMap = KotlinGenUtil.computePayloadNameMap(allTemplates, loader)
         val extractedNameMap = KotlinGenUtil.computeExtractedNameMap(allTemplates, loader)
 
-        // Only template.output gets an extractor file. Stable name order — matches the sibling
-        // generators' deterministic emission.
-        val outputs = loader.root.getChildren(OutputTemplate::class.java, true)
-            .sortedBy { it.name }
-
-        for (tmpl in outputs) {
+        // ADR-0052: the direction rule lives in FindInbound, never re-derived here. Only a
+        // RESPONDING template.prompt gets an extractor; template.output parses nothing.
+        for (tmpl in FindInbound.inboundTemplates(loader)) {
             emit(tmpl, loader, outRoot, payloadNameMap, extractedNameMap)
         }
     }
@@ -98,30 +95,24 @@ open class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         payloadNameMap: Map<String, String>,
         extractedNameMap: Map<String, String>,
     ) {
-        val payloadRef = template.payloadRef
-        if (payloadRef.isNullOrEmpty()) {
-            LOG.warn("skipping extractor for {} — missing @payloadRef", template.name)
-            return
-        }
-        // ADR-0042 — resolve @payloadRef under the loader's package-local contract (#228).
-        val payloadVo = KotlinGenUtil.resolveValueObjectRef(loader, payloadRef, template.getPackage())
-        if (payloadVo == null) {
+        // ADR-0052: the extract tier is INBOUND — it reads a model's reply, so it binds
+        // @responseRef, never @payloadRef (which types the request rendered outbound).
+        val shape = FindInbound.responseShape(loader, template)
+        if (shape == null) {
             LOG.warn(
-                "skipping extractor for {} — @payloadRef '{}' does not resolve to an object.value or sourceless object.projection",
-                template.name, payloadRef
+                "skipping extractor for {} — no @responseRef, or it does not resolve to an object.value or sourceless object.projection",
+                template.name
             )
             return
         }
+        val payloadRef = shape.ref
+        val payloadVo = shape.vo
 
-        // The extract tier sits over the NESTED-CAPABLE delegating extract, which the parser
-        // generator emits only for json/xml. Skip otherwise (nothing to extract over).
-        val format = template.format
-        val extractable = TemplateConstants.FORMAT_JSON.equals(format, ignoreCase = true)
-            || TemplateConstants.FORMAT_XML.equals(format, ignoreCase = true)
-        if (!extractable) {
-            LOG.warn("skipping extractor for {} — format '{}' has no extract", template.name, format)
-            return
-        }
+        // Every responding prompt gets the extract tier: the parser now emits the delegating
+        // extract unconditionally, so there is no format left to gate on. The old
+        // `@format in {json,xml}` test read the syntax of the OUTBOUND body to decide whether a
+        // REPLY could be extracted — which is why a text-bodied prompt expecting JSON got none.
+        val format = shape.format
 
         val (templatePkg, templateShort) = PackageMapping.splitFqn(template.name)
         val outPkg = KotlinNaming.promptsPackage(templatePkg)
@@ -133,7 +124,7 @@ open class KotlinExtractorGenerator : MultiFileDirectGeneratorBase<MetaObject>()
         // Root mirror + strict payload are template-named (unique — never collision-scoped);
         // nested targets consult the collision-scoped name maps (#228).
         val rootMirror = KotlinNaming.extractedName(templateShort)
-        val rootStrict = KotlinNaming.payloadName(templateShort)
+        val rootStrict = KotlinNaming.responseName(templateShort)
 
         val src = buildString {
             append("// GENERATED — DO NOT EDIT — extractor for template.output `")

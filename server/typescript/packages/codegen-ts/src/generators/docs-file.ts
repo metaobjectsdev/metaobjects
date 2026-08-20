@@ -19,7 +19,7 @@
 // breaks, the refactor is the bug, not the fixture.
 
 import type { MetaObject, MetaRoot } from "@metaobjectsdev/metadata";
-import { TYPE_TEMPLATE, TEMPLATE_SUBTYPE_OUTPUT } from "@metaobjectsdev/metadata";
+import { TYPE_TEMPLATE } from "@metaobjectsdev/metadata";
 import { render } from "@metaobjectsdev/render";
 import type { Provider } from "@metaobjectsdev/render";
 import type { Generator, GeneratorFactory, EmittedFile } from "../generator.js";
@@ -132,12 +132,21 @@ export const docsFile = function docsFile(opts?: DocsFileOpts): Generator {
           return { path, content: renderDocPage(TEMPLATE_REF, payload, provider, path) };
         });
 
-      // ALSO emit one NEUTRAL render-contract page per `template.output` node —
-      // a sibling artifact, distinct from the entity page. Raw node name → file
+      // ALSO emit one NEUTRAL render-contract page per top-level `template.*` node
+      // — a sibling artifact, distinct from the entity page. Raw node name → file
       // (`<name>.md`), agreeing with the entity Used-by back-link target.
+      //
+      // EVERY template subtype, not just `template.output`: the api-docs surface
+      // has always emitted `api/<lang>/<pkg>/<Prompt>.md` for a top-level
+      // `template.prompt` (it documents the prompt-render handle), and that page
+      // carries a "Model / metadata" back-link to `<pkg>/<Prompt>.md`. While this
+      // loop filtered to outputs, that link pointed at a page nothing wrote — a
+      // broken link in every shipped doc tree containing a prompt. ADR-0052 makes
+      // it worse rather than better: a responding prompt now carries the whole
+      // inbound tier, so it is the LAST node a doc tree should omit.
       // ADR-0039: resolving — root has no super (children()==ownChildren()).
       for (const child of ctx.loadedRoot.children()) {
-        if (child.type !== TYPE_TEMPLATE || child.subType !== TEMPLATE_SUBTYPE_OUTPUT) continue;
+        if (child.type !== TYPE_TEMPLATE) continue;
         const node = docPageNode(child);
         templateNodes.push(node);
         const path = docPageOutputPath(layout, node);

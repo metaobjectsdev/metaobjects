@@ -7,8 +7,10 @@ using Xunit;
 namespace MetaObjects.Codegen.Tests;
 
 /// <summary>
-/// PayloadGenerator emission tests (the <c>template.output</c> -&gt; <c>&lt;Name&gt;.payload.cs</c>
-/// wrapper around <see cref="PayloadCodegen.GeneratePayloadRecords"/>). Covers the ADR-0044
+/// PayloadGenerator emission tests (the <c>&lt;Name&gt;.payload.cs</c> wrapper around
+/// <see cref="PayloadCodegen.GeneratePayloadRecords"/>). TWO walks feed it: the OUTBOUND
+/// <c>template.output @payloadRef</c> and, per ADR-0052, the INBOUND
+/// <c>template.prompt @responseRef</c>. Covers the ADR-0044
 /// (#219) fix end-to-end at the GENERATOR layer:
 ///   - a template.output declared in a NAMED package with a BARE @payloadRef must resolve
 ///     (the generator now threads the template's own package into GeneratePayloadRecords —
@@ -43,16 +45,42 @@ public sealed class PayloadGeneratorTests
     };
 
     [Fact]
-    public void Emits_no_files_when_no_template_output_nodes()
+    public void Emits_no_files_when_there_are_no_templates()
     {
+        // The record follows @payloadRef, not the subtype, so "no files" no longer means "no
+        // template.output" — a template.prompt gets one too (Emits_the_request_record_for_a_prompt).
+        // With @payloadRef both REQUIRED and loader-validated to an object.value / sourceless
+        // object.projection, a declared template that resolves to nothing is unreachable in a
+        // valid load; a root with no templates is the honest empty case. The generator's
+        // defensive skip for an unresolvable ref is covered where it IS reachable —
+        // OutputParserGeneratorTests.A_responseRef_that_is_not_a_value_object_emits_no_parser,
+        // which exists precisely because @responseRef has no such loader rule.
+        const string m = """
+        { "metadata.root": { "package": "acme::ai", "children": [
+          { "object.value": { "name": "Payload", "children": [ { "field.string": { "name": "x" } } ] } }
+        ]}}
+        """;
+        var files = new PayloadGenerator().Generate(Ctx(Load(m))).ToList();
+        Assert.Empty(files);
+    }
+
+    [Fact]
+    public void Emits_the_request_record_for_a_prompt()
+    {
+        // C# filtered this walk to template.output, so a prompt's REQUEST shape — the payload a
+        // consumer constructs by hand and passes to the render API — got no record in this port
+        // while Java, Kotlin and Python all emitted one. It looks unbound from inside codegen
+        // because the render HELPER is outbound-only in every port, but the shipped adopter docs
+        // show exactly that call for a prompt (docs/features/templates-and-payloads.md:224).
         const string m = """
         { "metadata.root": { "package": "acme::ai", "children": [
           { "object.value": { "name": "Payload", "children": [ { "field.string": { "name": "x" } } ] } },
           { "template.prompt": { "name": "promptOnly", "@payloadRef": "Payload", "@textRef": "p/x", "@format": "text" } }
         ]}}
         """;
-        var files = new PayloadGenerator().Generate(Ctx(Load(m))).ToList();
-        Assert.Empty(files);
+        var file = Assert.Single(new PayloadGenerator().Generate(Ctx(Load(m))));
+        Assert.Equal("Payload.payload.cs", file.Path);
+        Assert.Contains("public sealed record Payload", file.Content);
     }
 
     // Regression (the fix formerly proposed on the unmerged fix/csharp-payload-generator-bare-payloadref
@@ -94,6 +122,74 @@ public sealed class PayloadGeneratorTests
         // The FQN must not leak into the file name or the record/type names.
         Assert.DoesNotContain("acme::intake::", file.Content);
         Assert.DoesNotContain("::", file.Path);
+    }
+
+    // ── ADR-0052, the INBOUND half ──────────────────────────────────────────────────
+    // These are the gate for the headline change. Before them, deleting the @responseRef
+    // walk out of PayloadGenerator.Generate left the whole C# suite GREEN: every other
+    // test's fixture set @responseRef == @payloadRef, so the outbound walk emitted the
+    // same record by coincidence and nothing could tell the two apart.
+
+    [Fact]
+    public void Emits_the_response_record_for_a_responding_prompt()
+    {
+        // A responding prompt's @responseRef names the shape its generated parser RETURNS,
+        // and that shape needs a strict record of its own. It is NOT the prompt's
+        // @payloadRef, which types the request rendered outbound — here they are
+        // deliberately DIFFERENT value-objects, which is the only way this can discriminate.
+        const string m = """
+        { "metadata.root": { "package": "acme::ai", "children": [
+          { "object.value": { "name": "SupportRequest", "children": [
+            { "field.string": { "name": "question" } }
+          ]}},
+          { "object.value": { "name": "SupportAnswer", "children": [
+            { "field.string":  { "name": "answer" } },
+            { "field.decimal": { "name": "confidence" } }
+          ]}},
+          { "template.prompt": { "name": "SupportPrompt", "@payloadRef": "SupportRequest",
+                                 "@responseRef": "SupportAnswer", "@textRef": "support/ask",
+                                 "@format": "text", "@responseFormat": "json" } }
+        ]}}
+        """;
+        var files = new PayloadGenerator().Generate(Ctx(Load(m))).OrderBy(f => f.Path).ToList();
+
+        // BOTH shapes get a record, in different files: the request this prompt renders outbound
+        // and the reply its parser returns are different declared shapes. This test previously
+        // asserted the request record was ABSENT, on the reasoning that nothing generated binds
+        // it — true of generated code, false of the shipped consumer surface.
+        Assert.Equal(2, files.Count);
+        var answer = Assert.Single(files, f => f.Path == "SupportAnswer.payload.cs");
+        var request = Assert.Single(files, f => f.Path == "SupportRequest.payload.cs");
+
+        // Each is named after its resolved VALUE-OBJECT — not the template.
+        Assert.Contains("public sealed record SupportAnswer", answer.Content);
+        Assert.Contains("public string? answer { get; init; }", answer.Content);
+        Assert.Contains("public decimal? confidence { get; init; }", answer.Content);
+        Assert.Contains("public sealed record SupportRequest", request.Content);
+        Assert.Contains("public string? question { get; init; }", request.Content);
+    }
+
+    [Fact]
+    public void One_record_when_an_output_payload_and_a_prompt_response_name_the_same_shape()
+    {
+        // The record is named after the resolved VALUE-OBJECT, so the outbound and inbound
+        // walks can legitimately land on the same path — an output's @payloadRef and a
+        // prompt's @responseRef may be the same declared shape. CodegenRunner THROWS on a
+        // duplicate emitted path (no byte-identical collapse like TS #266), so the dedupe
+        // by resolved VO FQN is load-bearing, not cosmetic.
+        const string m = """
+        { "metadata.root": { "package": "acme::ai", "children": [
+          { "object.value": { "name": "Ticket", "children": [ { "field.string": { "name": "summary" } } ] } },
+          { "template.output": { "name": "TicketDoc", "@payloadRef": "Ticket",
+                                 "@textRef": "t/doc", "@format": "text" } },
+          { "template.prompt": { "name": "TicketPrompt", "@payloadRef": "Ticket",
+                                 "@responseRef": "Ticket", "@textRef": "t/ask",
+                                 "@format": "text", "@responseFormat": "json" } }
+        ]}}
+        """;
+        var file = Assert.Single(new PayloadGenerator().Generate(Ctx(Load(m))));
+        Assert.Equal("Ticket.payload.cs", file.Path);
+        Assert.Contains("public sealed record Ticket", file.Content);
     }
 
     [Fact]

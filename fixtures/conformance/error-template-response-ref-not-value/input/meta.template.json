@@ -1,0 +1,33 @@
+{
+  "metadata.root": {
+    "package": "acme::ai",
+    "children": [
+      {
+        "object.value": {
+          "name": "AskRequest",
+          "children": [
+            { "field.string": { "name": "question" } }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Answer",
+          "children": [
+            { "field.string": { "name": "text" } },
+            { "identity.primary": { "name": "id", "@fields": "text" } }
+          ]
+        }
+      },
+      {
+        "template.prompt": {
+          "name": "askPrompt",
+          "@payloadRef": "acme::ai::AskRequest",
+          "@responseRef": "acme::ai::Answer",
+          "@textRef": "ai/ask",
+          "@format": "text"
+        }
+      }
+    ]
+  }
+}

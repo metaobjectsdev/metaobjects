@@ -31,13 +31,49 @@ public class Fr010LoaderAttrsTests
         FullCoreRegistry.Compose();
 
     // ------------------------------------------------------------------------
-    // @promptStyle — registered on template.output, closed enum, default guide.
+    // @promptStyle — registered on template.PROMPT (ADR-0052), closed enum, default
+    // guide. It governs a fragment that instructs an LLM how to format its reply, so
+    // hosting it on the subtype defined as "every rendered artifact other than an LLM
+    // prompt" was a contradiction visible in the attribute's own description.
+    //
+    // @responseFormat — ADR-0053, beside it: the syntax of the REPLY, distinct from
+    // @format, which is the syntax of the rendered prompt BODY.
     // ------------------------------------------------------------------------
 
+    /// <summary>
+    /// A prompt carrying the full inbound half. Note @format text alongside
+    /// @responseFormat xml — the prompt body and the reply are independently typed,
+    /// which is the shape a single @format could not express.
+    /// </summary>
+    private static string InboundPrompt(string responseFormat, string promptStyle) => $$"""
+        { "metadata.root": {
+            "package": "acme::ai",
+            "children": [
+              { "object.value": {
+                  "name": "AskPayload",
+                  "children": [ { "field.string": { "name": "question" } } ]
+              } },
+              { "object.value": {
+                  "name": "AnswerPayload",
+                  "children": [ { "field.string": { "name": "text" } } ]
+              } },
+              { "template.prompt": {
+                  "name": "ask",
+                  "@payloadRef": "AskPayload",
+                  "@responseRef": "AnswerPayload",
+                  "@textRef": "ai/ask",
+                  "@format": "text",
+                  "@responseFormat": "{{responseFormat}}",
+                  "@promptStyle": "{{promptStyle}}"
+              } }
+            ]
+          } }
+        """;
+
     [Fact]
-    public void Template_output_registers_prompt_style_closed_enum()
+    public void Template_prompt_registers_prompt_style_closed_enum()
     {
-        var def = Registry().Find(TYPE_TEMPLATE, TEMPLATE_SUBTYPE_OUTPUT);
+        var def = Registry().Find(TYPE_TEMPLATE, TEMPLATE_SUBTYPE_PROMPT);
         Assert.NotNull(def);
         var byName = def!.Attributes.ToDictionary(a => a.Name);
 
@@ -52,68 +88,68 @@ public class Fr010LoaderAttrsTests
     }
 
     [Fact]
-    public void Prompt_subtype_does_not_carry_prompt_style()
+    public void Template_prompt_registers_response_format_closed_enum()
     {
-        // @promptStyle is output-only — the prompt fragment is an output concern.
         var def = Registry().Find(TYPE_TEMPLATE, TEMPLATE_SUBTYPE_PROMPT);
         Assert.NotNull(def);
-        Assert.DoesNotContain(TEMPLATE_ATTR_PROMPT_STYLE, def!.Attributes.Select(a => a.Name));
+        var byName = def!.Attributes.ToDictionary(a => a.Name);
+
+        Assert.True(byName.ContainsKey(TEMPLATE_ATTR_RESPONSE_FORMAT));
+        var rf = byName[TEMPLATE_ATTR_RESPONSE_FORMAT];
+        Assert.False(rf.Required);
+        Assert.Equal(RESPONSE_FORMAT_DEFAULT, rf.Default);
+        Assert.NotNull(rf.AllowedValues);
+        // TWO members, not TEMPLATE_FORMATS' seven — the rest are
+        // reserved-not-registered until a shipping consumer dispatches on them.
+        Assert.Equal(
+            new HashSet<string> { RESPONSE_FORMAT_JSON, RESPONSE_FORMAT_XML },
+            rf.AllowedValues!.Select(v => v?.ToString()).ToHashSet());
     }
 
     [Fact]
-    public void Template_output_loads_with_valid_prompt_style()
+    public void Output_subtype_does_not_carry_the_inbound_attrs()
     {
-        const string json = """
-        { "metadata.root": {
-            "package": "acme::ai",
-            "children": [
-              { "object.value": {
-                  "name": "AnswerPayload",
-                  "children": [ { "field.string": { "name": "text" } } ]
-              } },
-              { "template.output": {
-                  "name": "answer",
-                  "@payloadRef": "AnswerPayload",
-                  "@textRef": "ai/answer",
-                  "@format": "json",
-                  "@promptStyle": "inline"
-              } }
-            ]
-          } }
-        """;
-        var res = LoadJson(json, "meta.ai.json");
+        // ADR-0052/0053: template.output is outbound only — it parses nothing, so it
+        // has neither a fragment presentation nor a reply syntax.
+        var def = Registry().Find(TYPE_TEMPLATE, TEMPLATE_SUBTYPE_OUTPUT);
+        Assert.NotNull(def);
+        var names = def!.Attributes.Select(a => a.Name).ToList();
+        Assert.DoesNotContain(TEMPLATE_ATTR_PROMPT_STYLE, names);
+        Assert.DoesNotContain(TEMPLATE_ATTR_RESPONSE_FORMAT, names);
+    }
+
+    [Fact]
+    public void Template_prompt_loads_with_valid_inbound_attrs()
+    {
+        var res = LoadJson(InboundPrompt("xml", "inline"), "meta.ai.json");
 
         Assert.Empty(res.Errors);
         var tmpl = res.Root.Children()
-            .Single(c => c.Type == TYPE_TEMPLATE && c.SubType == TEMPLATE_SUBTYPE_OUTPUT);
+            .Single(c => c.Type == TYPE_TEMPLATE && c.SubType == TEMPLATE_SUBTYPE_PROMPT);
         Assert.Equal(PROMPT_STYLE_INLINE, tmpl.OwnAttr(TEMPLATE_ATTR_PROMPT_STYLE));
+        Assert.Equal(TEMPLATE_FORMAT_DEFAULT, tmpl.OwnAttr(TEMPLATE_ATTR_FORMAT));
+        Assert.Equal(RESPONSE_FORMAT_XML, tmpl.OwnAttr(TEMPLATE_ATTR_RESPONSE_FORMAT));
     }
 
     [Fact]
-    public void Template_output_bad_prompt_style_emits_err_bad_attr_value()
+    public void Template_prompt_bad_prompt_style_emits_err_bad_attr_value()
     {
-        const string json = """
-        { "metadata.root": {
-            "package": "acme::ai",
-            "children": [
-              { "object.value": {
-                  "name": "AnswerPayload",
-                  "children": [ { "field.string": { "name": "text" } } ]
-              } },
-              { "template.output": {
-                  "name": "answer",
-                  "@payloadRef": "AnswerPayload",
-                  "@textRef": "ai/answer",
-                  "@format": "json",
-                  "@promptStyle": "bogus"
-              } }
-            ]
-          } }
-        """;
-        var res = LoadJson(json, "meta.ai.json");
+        var res = LoadJson(InboundPrompt("json", "bogus"), "meta.ai.json");
 
         var err = res.Errors.FirstOrDefault(e =>
             e.Code == ErrorCode.ERR_BAD_ATTR_VALUE && e.Message.Contains("promptStyle"));
+        Assert.NotNull(err);
+    }
+
+    [Fact]
+    public void Template_prompt_bad_response_format_emits_err_bad_attr_value()
+    {
+        // "markdown" is a legal @format but NOT a legal @responseFormat — nothing
+        // dispatches on it inbound (ADR-0053).
+        var res = LoadJson(InboundPrompt("markdown", "guide"), "meta.ai.json");
+
+        var err = res.Errors.FirstOrDefault(e =>
+            e.Code == ErrorCode.ERR_BAD_ATTR_VALUE && e.Message.Contains("responseFormat"));
         Assert.NotNull(err);
     }
 

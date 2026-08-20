@@ -2,8 +2,12 @@
 //
 // Registers the FR-010 field-teaching + prompt-presentation vocabulary in the TS
 // loader, matching the Java pilot / C# port:
-//   - @promptStyle  : closed enum (guide|inline|exampleOnly) on template.output ONLY,
-//                     enforced via allowedValues like @format. Default "guide".
+//   - @promptStyle  : closed enum (guide|inline|exampleOnly) on template.prompt ONLY
+//                     (ADR-0052 moved it off template.output), enforced via
+//                     allowedValues like @format. Default "guide".
+//   - @responseFormat : closed enum (json|xml) on template.prompt ONLY (ADR-0053) —
+//                     the syntax of the model's REPLY, distinct from @format, which
+//                     is the syntax of the rendered prompt BODY. Default "json".
 //   - @example      : free-text string on any field (commonFieldAttrs).
 //   - @instruction  : free-text string on any field (commonFieldAttrs).
 //   - @enumAlias    : properties (map) on field.enum — off-vocab → canonical member.
@@ -22,6 +26,11 @@ import {
   TEMPLATE_SUBTYPE_OUTPUT,
   TEMPLATE_SUBTYPE_PROMPT,
   TEMPLATE_ATTR_PROMPT_STYLE,
+  TEMPLATE_ATTR_FORMAT,
+  TEMPLATE_ATTR_RESPONSE_FORMAT,
+  RESPONSE_FORMAT_JSON,
+  RESPONSE_FORMAT_XML,
+  RESPONSE_FORMAT_DEFAULT,
   PROMPT_STYLE_GUIDE,
   PROMPT_STYLE_INLINE,
   PROMPT_STYLE_EXAMPLE_ONLY,
@@ -50,12 +59,17 @@ function codes(errors: readonly unknown[]): (string | undefined)[] {
 }
 
 // ---------------------------------------------------------------------------
-// @promptStyle — registered on template.output, closed enum, default guide.
+// @promptStyle — registered on template.PROMPT, closed enum, default guide.
+//
+// ADR-0052 moved it off template.output. It governs a fragment that instructs an
+// LLM how to format its reply, so its home was the subtype defined as "every
+// rendered artifact OTHER than an LLM prompt" — a contradiction visible in the
+// attribute's own description. Alongside it, ADR-0053's @responseFormat.
 // ---------------------------------------------------------------------------
 
-describe("FR-010 @promptStyle — template.output", () => {
+describe("FR-010 @promptStyle — template.prompt (ADR-0052)", () => {
   it("is registered as a closed enum with default 'guide'", () => {
-    const def = registry().find(TYPE_TEMPLATE, TEMPLATE_SUBTYPE_OUTPUT);
+    const def = registry().find(TYPE_TEMPLATE, TEMPLATE_SUBTYPE_PROMPT);
     expect(def).toBeDefined();
     const ps = def!.attributes.find((a) => a.name === TEMPLATE_ATTR_PROMPT_STYLE);
     expect(ps).toBeDefined();
@@ -66,17 +80,23 @@ describe("FR-010 @promptStyle — template.output", () => {
     );
   });
 
-  it("is NOT carried by template.prompt (the prompt fragment is an output concern)", () => {
-    const def = registry().find(TYPE_TEMPLATE, TEMPLATE_SUBTYPE_PROMPT);
+  it("is NOT carried by template.output (which is outbound only and parses nothing)", () => {
+    const def = registry().find(TYPE_TEMPLATE, TEMPLATE_SUBTYPE_OUTPUT);
     expect(def).toBeDefined();
     expect(def!.attributes.map((a) => a.name)).not.toContain(TEMPLATE_ATTR_PROMPT_STYLE);
   });
 
-  it("loads template.output with a valid @promptStyle", async () => {
+  it("loads template.prompt with a valid @promptStyle", async () => {
     const { root, errors } = await load({
       "metadata.root": {
         package: "acme::ai",
         children: [
+          {
+            "object.value": {
+              name: "AskPayload",
+              children: [{ "field.string": { name: "question" } }],
+            },
+          },
           {
             "object.value": {
               name: "AnswerPayload",
@@ -84,11 +104,12 @@ describe("FR-010 @promptStyle — template.output", () => {
             },
           },
           {
-            "template.output": {
-              name: "answer",
-              "@payloadRef": "AnswerPayload",
-              "@textRef": "ai/answer",
-              "@format": "json",
+            "template.prompt": {
+              name: "ask",
+              "@payloadRef": "AskPayload",
+              "@responseRef": "AnswerPayload",
+              "@textRef": "ai/ask",
+              "@format": "text",
               "@promptStyle": "inline",
             },
           },
@@ -98,7 +119,7 @@ describe("FR-010 @promptStyle — template.output", () => {
     expect(errors).toHaveLength(0);
     const tmpl = root
       .ownChildren()
-      .find((c) => c.type === TYPE_TEMPLATE && c.subType === TEMPLATE_SUBTYPE_OUTPUT);
+      .find((c) => c.type === TYPE_TEMPLATE && c.subType === TEMPLATE_SUBTYPE_PROMPT);
     expect(tmpl).toBeDefined();
     expect(tmpl!.ownAttr(TEMPLATE_ATTR_PROMPT_STYLE)).toBe(PROMPT_STYLE_INLINE);
   });
@@ -110,16 +131,16 @@ describe("FR-010 @promptStyle — template.output", () => {
         children: [
           {
             "object.value": {
-              name: "AnswerPayload",
-              children: [{ "field.string": { name: "text" } }],
+              name: "AskPayload",
+              children: [{ "field.string": { name: "question" } }],
             },
           },
           {
-            "template.output": {
-              name: "answer",
-              "@payloadRef": "AnswerPayload",
-              "@textRef": "ai/answer",
-              "@format": "json",
+            "template.prompt": {
+              name: "ask",
+              "@payloadRef": "AskPayload",
+              "@textRef": "ai/ask",
+              "@format": "text",
               "@promptStyle": "bogus",
             },
           },
@@ -130,6 +151,102 @@ describe("FR-010 @promptStyle — template.output", () => {
       (e) =>
         (e as { code?: string }).code === "ERR_BAD_ATTR_VALUE" &&
         (e as { message?: string }).message?.includes("promptStyle"),
+    );
+    expect(err).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// @responseFormat — ADR-0053. The syntax of the model's REPLY, on template.prompt.
+// ---------------------------------------------------------------------------
+
+describe("ADR-0053 @responseFormat — template.prompt", () => {
+  it("is registered as a json|xml closed enum defaulting to json", () => {
+    const def = registry().find(TYPE_TEMPLATE, TEMPLATE_SUBTYPE_PROMPT);
+    expect(def).toBeDefined();
+    const rf = def!.attributes.find((a) => a.name === TEMPLATE_ATTR_RESPONSE_FORMAT);
+    expect(rf).toBeDefined();
+    expect(rf!.required).toBe(false);
+    expect(rf!.default).toBe(RESPONSE_FORMAT_DEFAULT);
+    // Deliberately TWO members, not TEMPLATE_FORMATS' seven: the rest are
+    // reserved-not-registered until a shipping consumer dispatches on them.
+    expect(new Set(rf!.allowedValues)).toEqual(
+      new Set([RESPONSE_FORMAT_JSON, RESPONSE_FORMAT_XML]),
+    );
+  });
+
+  it("is NOT carried by template.output (an output has no reply to parse)", () => {
+    const def = registry().find(TYPE_TEMPLATE, TEMPLATE_SUBTYPE_OUTPUT);
+    expect(def).toBeDefined();
+    expect(def!.attributes.map((a) => a.name)).not.toContain(TEMPLATE_ATTR_RESPONSE_FORMAT);
+  });
+
+  it("accepts a text-bodied prompt whose reply is XML — the shape @format alone could not express", async () => {
+    const { root, errors } = await load({
+      "metadata.root": {
+        package: "acme::ai",
+        children: [
+          {
+            "object.value": {
+              name: "AskPayload",
+              children: [{ "field.string": { name: "question" } }],
+            },
+          },
+          {
+            "object.value": {
+              name: "AnswerPayload",
+              children: [{ "field.string": { name: "text" } }],
+            },
+          },
+          {
+            "template.prompt": {
+              name: "ask",
+              "@payloadRef": "AskPayload",
+              "@responseRef": "AnswerPayload",
+              "@textRef": "ai/ask",
+              "@format": "text",
+              "@responseFormat": "xml",
+            },
+          },
+        ],
+      },
+    });
+    expect(errors).toHaveLength(0);
+    const tmpl = root
+      .ownChildren()
+      .find((c) => c.type === TYPE_TEMPLATE && c.subType === TEMPLATE_SUBTYPE_PROMPT);
+    expect(tmpl!.ownAttr(TEMPLATE_ATTR_FORMAT)).toBe("text");
+    expect(tmpl!.ownAttr(TEMPLATE_ATTR_RESPONSE_FORMAT)).toBe(RESPONSE_FORMAT_XML);
+  });
+
+  it("emits ERR_BAD_ATTR_VALUE for a @responseFormat outside the closed set", async () => {
+    const { errors } = await load({
+      "metadata.root": {
+        package: "acme::ai",
+        children: [
+          {
+            "object.value": {
+              name: "AskPayload",
+              children: [{ "field.string": { name: "question" } }],
+            },
+          },
+          {
+            "template.prompt": {
+              name: "ask",
+              "@payloadRef": "AskPayload",
+              "@textRef": "ai/ask",
+              // "markdown" is a legal @format but NOT a legal @responseFormat —
+              // nothing dispatches on it inbound (ADR-0053).
+              "@responseFormat": "markdown",
+            },
+          },
+        ],
+      },
+    });
+    const err = errors.find(
+      (e) =>
+        (e as { code?: string }).code === "ERR_BAD_ATTR_VALUE" &&
+        (e as { message?: string }).message?.includes("responseFormat"),
     );
     expect(err).toBeDefined();
   });

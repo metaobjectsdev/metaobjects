@@ -4,6 +4,14 @@
     "children": [
       {
         "object.value": {
+          "name": "SupportRequest",
+          "children": [
+            { "field.string": { "name": "question", "@required": true } }
+          ]
+        }
+      },
+      {
+        "object.value": {
           "name": "SupportAnswer",
           "children": [
             { "field.string": { "name": "text", "@required": true, "@example": "Your refund will appear in 3-5 days.", "@instruction": "One or two sentences to the customer." } },
@@ -13,12 +21,14 @@
         }
       },
       {
-        "template.output": {
-          "name": "SupportAnswerOutput",
-          "@payloadRef": "acme::support::SupportAnswer",
+        "template.prompt": {
+          "name": "SupportAnswerPrompt",
+          "@payloadRef": "acme::support::SupportRequest",
+          "@responseRef": "acme::support::SupportAnswer",
           "@textRef": "support/answer",
-          "@format": "xml",
-          "@promptStyle": "guide"
+          "@format": "text",
+          "@responseFormat": "json",
+          "@promptStyle": "inline"
         }
       }
     ]

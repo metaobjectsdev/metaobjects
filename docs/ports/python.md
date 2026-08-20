@@ -267,8 +267,14 @@ Two generators ship together for the full prompt+parse story:
   payload field carries is ignored for typing; a nested payload is a declared
   `field.object @objectRef` to another `object.value`). Mirrors the Kotlin
   reference shape.
-- `output_parser_generator` emits one `<template_name>_output_parser.py` per
-  `template.output`, importing the payload class from the sibling payload module.
+  A responding `template.prompt` (one declaring `@responseRef`, ADR-0052) gets a
+  SECOND record in its own module: `<template_name>_response.py` holding
+  `<TemplateName>Response`. It is a separate module because strictness is per-module
+  here — the REQUEST payload emits `extra="forbid"` so a mistyped render slot fails at
+  construction, while a reply record must tolerate unknown fields.
+- `output_parser_generator` emits one `<template_name>_response_parser.py` per
+  responding `template.prompt`, importing the response class from the sibling response
+  module. `template.output` gets no parser at all — it renders outbound.
 
 Pythonic single-API throw-only convention — Pydantic raises `ValidationError`
 on bad input; callers wrap in `try/except` per their own error policy (matches
@@ -289,27 +295,30 @@ class NpcResponsePayload(BaseModel):
 ```
 
 ```python
-# generated/npc_response_output_parser.py
-from .npc_response_payload import NpcResponsePayload
+# generated/npc_response_response_parser.py
+from .npc_response_response import NpcResponseResponse
 
 
-def parse_npc_response(text: str) -> NpcResponsePayload:
-    """Parse an LLM response into a typed ``NpcResponsePayload``.
+def parse_npc_response(text: str) -> NpcResponseResponse:
+    """Parse an LLM response into a typed ``NpcResponseResponse``.
 
     Raises:
         pydantic.ValidationError: when the input does not match the schema.
     """
-    return NpcResponsePayload.model_validate_json(text)
+    return NpcResponseResponse.model_validate_json(text)
 
 
 __all__ = ["parse_npc_response"]
 ```
 
+The strict `parse_*` is JSON-only (ADR-0053): an `@responseFormat: xml` reply gets the
+tolerant `extract_lenient_*` and nothing strict.
+
 Consumer wiring:
 
 ```python
 from pydantic import ValidationError
-from generated.npc_response_output_parser import parse_npc_response
+from generated.npc_response_response_parser import parse_npc_response
 
 llm_response: str = my_llm_client.complete(prompt_text)
 
@@ -320,14 +329,13 @@ except ValidationError as e:
     return None
 ```
 
-The same `<TemplateName>Payload` class is reused for both prompt rendering
-(consumer constructs it, passes to `render(...)`) and output parsing (parser
-returns it from `parse_<template_name>(...)`) — matches the Java payload-VO ↔
-output-parser handoff. `metaobjects.render.verify` extends to walk
-`template.output` nodes the same way it walks `template.prompt`. Cross-port
+`<TemplateName>Payload` types what a template RENDERS (the consumer constructs it and
+passes it to `render(...)`); `<TemplateName>Response` types what its parser RETURNS. The
+split is ADR-0052's: `@payloadRef` is the request, `@responseRef` the reply, and they are
+usually different shapes. `metaobjects.render.verify` walks both subtypes. Cross-port
 design is at [ADR-0010](../../spec/decisions/ADR-0010-template-output-parser-codegen.md);
 the feature reference is at
-[`features/templates-and-payloads.md`](../features/templates-and-payloads.md#output-parsing-fr-006).
+[`features/templates-and-payloads.md`](../features/templates-and-payloads.md#response-parsing-fr-006).
 
 **Per-file dedupe note.** When two templates' payloads reference the same nested
 `field.object @objectRef` target, each template's payload file contains its own

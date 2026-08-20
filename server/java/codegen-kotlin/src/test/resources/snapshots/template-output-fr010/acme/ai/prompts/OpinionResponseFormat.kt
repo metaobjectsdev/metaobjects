@@ -10,7 +10,7 @@ import com.metaobjects.render.extract.FieldKind
 import com.metaobjects.render.extract.Format
 
 /** Output-format prompt fragment for the `Opinion` template.output. */
-object OpinionPrompt {
+object OpinionResponseFormat {
     private val SPEC: OutputFormatSpec =
         OutputFormatSpec(Format.JSON, "OpinionPayload", PromptStyle.GUIDE, listOf(PromptField("text", FieldKind.STRING, true, false, null, null, "A well-reasoned response.", null, null), PromptField("confidence", FieldKind.ENUM, true, false, listOf("HIGH", "OK", "LOW"), mapOf("HIGH" to "Very confident", "LOW" to "Best guess", "OK" to "Reasonably confident"), null, null, null), PromptField("note", FieldKind.STRING, false, false, null, null, null, null, null)))
     fun renderFormat(): String = OutputFormatRenderer.render(SPEC, PromptOverrides.none())

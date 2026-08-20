@@ -37,38 +37,82 @@ public class PayloadGenerator : IGenerator
 
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
+        // EVERY template subtype (prompt / output / toolcall) carrying a @payloadRef, matching
+        // Java, Kotlin and Python. C# alone filtered to template.output, so a template.prompt's
+        // REQUEST shape — the payload a consumer constructs and hands to the render API — got no
+        // record in this port. That is a real consumer surface, not dead output: the shipped
+        // adopter docs show exactly this call for a prompt
+        // (docs/features/templates-and-payloads.md:224, `new WelcomePromptPayload(...)` passed to
+        // Renderer.render). The render HELPER is outbound-only in every port, which is what makes
+        // this look unbound from inside codegen; the binding is hand-written by the adopter.
+        //
         // ADR-0039: Children() — resolving root scan (behavior-identical; root has no super).
-        var outputs = ctx.Root.Children()
-            .Where(c => c.Type == TYPE_TEMPLATE && c.SubType == TEMPLATE_SUBTYPE_OUTPUT)
+        var outbound = ctx.Root.Children()
+            .Where(c => c.Type == TYPE_TEMPLATE)
             .OrderBy(t => t.Name, StringComparer.Ordinal)
             .ToList();
 
         var files = new List<EmittedFile>();
-        foreach (var tmpl in outputs)
+        // Dedupe by the resolved VO's FQN, not by template: the record is named after the
+        // resolved VALUE-OBJECT, so two templates naming the same shape would otherwise emit the
+        // same path twice and CodegenRunner would throw on the duplicate. Before ADR-0052 that
+        // could only happen between two outputs sharing a @payloadRef; now an output's payload
+        // and a prompt's response can legitimately be the same declared shape.
+        var emittedVoFqns = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var tmpl in outbound)
         {
             if (!AppliesTo(tmpl, ctx.Root))
             {
                 // ADR-0039: resolving — @payloadRef may be inherited via an abstract template base.
                 if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is null)
-                    ctx.Warn($"{Name}: template.output \"{tmpl.Name}\" missing @payloadRef — skipped.");
+                    ctx.Warn($"{Name}: {tmpl.Type}.{tmpl.SubType} \"{tmpl.Name}\" missing @payloadRef — skipped.");
                 continue;
             }
             var payloadRef = (string)tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF)!;
-            files.Add(EmitPayload(tmpl, payloadRef, ctx));
+            AddIfNew(files, emittedVoFqns, tmpl, payloadRef, ctx);
         }
+
+        // ADR-0052 — the INBOUND half. A responding prompt's `@responseRef` names the shape its
+        // generated parser/extractor return, so that shape needs a strict record of its own. It
+        // is NOT the prompt's `@payloadRef`, which types the request rendered outbound; emitting
+        // only the request record would leave OutputParserGenerator referencing a type nobody
+        // declares, and the generated code would not compile.
+        foreach (var tmpl in FindInbound.InboundTemplates(ctx.Root))
+        {
+            if (FindInbound.ResponseShape(ctx.Root, tmpl) is not { } shape) continue;
+            // AddIfNew re-resolves through ResolvePayloadVo, which enforces the SAME
+            // "must be an object.value" target rule @payloadRef obeys — so the two refs cannot
+            // diverge on what counts as a legal payload target.
+            AddIfNew(files, emittedVoFqns, tmpl, shape.Ref, ctx);
+        }
+
         return files;
     }
 
+    /// <summary>Emit the payload record file for one ref unless its resolved VO already has one.</summary>
+    private void AddIfNew(List<EmittedFile> files, HashSet<string> emittedVoFqns,
+        MetaData tmpl, string reference, GenContext ctx)
+    {
+        var referrerPkg = global::MetaObjects.NamingRefs.EffectivePackage(tmpl);
+        var vo = ResolvePayloadVo(ctx.Root, reference, referrerPkg);
+        if (vo is null) return;
+        if (!emittedVoFqns.Add(vo.ResolutionKey())) return;
+        files.Add(EmitPayload(tmpl, reference, ctx));
+    }
+
     /// <summary>
-    /// True iff this generator emits a strict payload record for <paramref name="tmpl"/>: a
-    /// <c>template.output</c> whose <c>@payloadRef</c> resolves to a root-level
-    /// <c>object.value</c>. Single source of truth shared by the generator loop AND the
-    /// api-docs builder (so docs never claim a payload record that is not emitted). Reuses
-    /// the SAME resolver <see cref="RenderHelperGenerator.AppliesTo"/> uses (no mirror).
+    /// True iff this generator emits a strict payload record for <paramref name="tmpl"/>: ANY
+    /// <c>template.*</c> whose <c>@payloadRef</c> resolves to a root-level <c>object.value</c>.
+    /// Single source of truth shared by the generator loop AND the api-docs builder (so docs
+    /// never claim a payload record that is not emitted). Reuses the SAME resolver
+    /// <see cref="RenderHelperGenerator.AppliesTo"/> uses (no mirror), but deliberately NOT its
+    /// subtype filter: the render helper is outbound-only, while a payload record is wanted for
+    /// any template a consumer renders — which includes a prompt.
     /// </summary>
     public static bool AppliesTo(MetaData tmpl, MetaRoot root)
     {
-        if (tmpl.Type != TYPE_TEMPLATE || tmpl.SubType != TEMPLATE_SUBTYPE_OUTPUT) return false;
+        if (tmpl.Type != TYPE_TEMPLATE) return false;
         // ADR-0039: resolving — @payloadRef may be inherited via an abstract template base.
         if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef) return false;
         // ADR-0042: a bare @payloadRef resolves in the template's package.

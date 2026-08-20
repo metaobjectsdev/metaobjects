@@ -25,18 +25,27 @@ function makeCtx(root: Awaited<ReturnType<MetaDataLoader["load"]>>["root"]): Gen
 }
 
 describe("outputParser() conformance fixtures", () => {
+  // ADR-0052 renamed the emitted parser `<Output>.output.ts` → `<Prompt>.response.ts`.
+  // Both suffixes are accepted so the discovery survives the transition.
+  const GOLDEN_SUFFIXES = [".response.ts", ".output.ts"] as const;
+
   const fixtures = readdirSync(CORPUS).filter((d) => {
     const expectedDir = join(CORPUS, d, "expected");
     if (!existsSync(expectedDir)) return false;
-    return readdirSync(expectedDir).some((f) => f.endsWith(".output.ts"));
+    return readdirSync(expectedDir).some((f) =>
+      GOLDEN_SUFFIXES.some((s) => f.endsWith(s)),
+    );
   });
 
-  if (fixtures.length === 0) {
-    it("(no fixtures with expected/*.output.ts found — placeholder)", () => {
-      expect(true).toBe(true);
-    });
-    return;
-  }
+  // A discovery-driven suite that PASSES on zero matches is worse than no suite:
+  // rename the golden and it silently stops asserting anything while still
+  // reporting green. It used to install an `expect(true).toBe(true)` placeholder
+  // here, which is exactly that failure. Fail loudly instead — if the corpus
+  // genuinely has no parser goldens, that is a fact someone must state on purpose.
+  it("discovers at least one parser golden (guards against a silently vacuous suite)", () => {
+    expect(fixtures.length).toBeGreaterThan(0);
+  });
+  if (fixtures.length === 0) return;
 
   for (const fixture of fixtures) {
     it(`fixture ${fixture}: outputParser() byte-matches expected/*.output.ts`, async () => {
@@ -57,7 +66,14 @@ describe("outputParser() conformance fixtures", () => {
       const emitted = await gen.generate(makeCtx(res.root));
 
       const expectedDir = join(CORPUS, fixture, "expected");
-      const expectedFiles = readdirSync(expectedDir).filter((f) => f.endsWith(".output.ts"));
+      // Filter by the SAME suffix set discovery used. Filtering on `.output.ts` alone
+      // here would re-create the vacuous-suite bug one line below the comment warning
+      // about it: discovery would admit a fixture on its `.response.ts` golden, then
+      // the loop would match zero files and assert nothing while reporting green.
+      const expectedFiles = readdirSync(expectedDir).filter((f) =>
+        GOLDEN_SUFFIXES.some((s) => f.endsWith(s)),
+      );
+      expect(expectedFiles.length).toBeGreaterThan(0);
       for (const ef of expectedFiles) {
         const expected = readFileSync(join(expectedDir, ef), "utf8");
         const match = emitted.find((e) => e.path === ef);

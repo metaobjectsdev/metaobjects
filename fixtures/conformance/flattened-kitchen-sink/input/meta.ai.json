@@ -20,11 +20,24 @@
         }
       },
       {
+        "object.value": {
+          "name": "ProductDescription",
+          "@description": "The typed shape describeProduct expects back from the model.",
+          "children": [
+            { "field.string": { "name": "headline" } },
+            { "field.string": { "name": "body" } }
+          ]
+        }
+      },
+      {
         "template.prompt": {
           "name": "describeProduct",
           "@payloadRef": "acme::ai::ProductPromptPayload",
+          "@responseRef": "acme::ai::ProductDescription",
           "@textRef": "product/describe",
-          "@format": "xml"
+          "@format": "xml",
+          "@responseFormat": "json",
+          "@promptStyle": "guide"
         }
       },
       {
@@ -32,8 +45,7 @@
           "name": "productCard",
           "@payloadRef": "acme::ai::ProductPromptPayload",
           "@textRef": "product/card",
-          "@format": "html",
-          "@promptStyle": "guide"
+          "@format": "html"
         }
       },
       {

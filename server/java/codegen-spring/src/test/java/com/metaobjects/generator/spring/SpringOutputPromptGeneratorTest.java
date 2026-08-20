@@ -44,17 +44,17 @@ public class SpringOutputPromptGeneratorTest extends SharedRegistryTestBase {
         gen.execute(loader);
 
         // Fixture: package acme::ai, template.output name "AnswerOutput"
-        // → class AnswerOutputPrompt in acme/ai/prompts/
-        Path promptFile = outDir.resolve("acme/ai/prompts/AnswerOutputPrompt.java");
-        assertTrue("expected AnswerOutputPrompt.java at " + promptFile, Files.exists(promptFile));
+        // → class AnswerOutputResponseFormat in acme/ai/prompts/
+        Path promptFile = outDir.resolve("acme/ai/prompts/AnswerOutputResponseFormat.java");
+        assertTrue("expected AnswerOutputResponseFormat.java at " + promptFile, Files.exists(promptFile));
         String src = Files.readString(promptFile);
 
         assertTrue("expected `package acme.ai.prompts;`; saw:\n" + src,
             src.contains("package acme.ai.prompts;"));
-        assertTrue("expected `public final class AnswerOutputPrompt`; saw:\n" + src,
-            src.contains("public final class AnswerOutputPrompt"));
+        assertTrue("expected `public final class AnswerOutputResponseFormat`; saw:\n" + src,
+            src.contains("public final class AnswerOutputResponseFormat"));
         assertTrue("expected private constructor; saw:\n" + src,
-            src.contains("private AnswerOutputPrompt() {"));
+            src.contains("private AnswerOutputResponseFormat() {"));
 
         // SPEC field
         assertTrue("expected OutputFormatSpec SPEC field; saw:\n" + src,
@@ -74,30 +74,38 @@ public class SpringOutputPromptGeneratorTest extends SharedRegistryTestBase {
         assertTrue("expected `PromptStyle.GUIDE` in SPEC literal; saw:\n" + src,
             src.contains("PromptStyle.GUIDE"));
 
-        // Fixture uses @format: xml → SPEC must contain Format.XML
+        // Fixture uses @responseFormat: xml → SPEC must contain Format.XML. ADR-0053: its
+        // @format is "text" (the prompt BODY's syntax), so a generator still reading @format
+        // would emit Format.JSON here.
         assertTrue("expected `Format.XML` in SPEC literal; saw:\n" + src,
             src.contains("Format.XML"));
 
-        // SPEC rootName should be the payload class name: AnswerOutputPayload
-        assertTrue("expected `AnswerOutputPayload` as SPEC rootName; saw:\n" + src,
-            src.contains("\"AnswerOutputPayload\""));
+        // SPEC rootName is the RESPONSE record — the shape the fragment describes and the
+        // parser returns — never the @payloadRef request record.
+        assertTrue("expected `AnswerOutputResponse` as SPEC rootName; saw:\n" + src,
+            src.contains("\"AnswerOutputResponse\""));
     }
 
     // -------------------------------------------------------------------------
-    // Format gate: only json/xml emit a class
+    // ADR-0052/0053 — the gate is @responseRef presence, never a format value
     // -------------------------------------------------------------------------
 
     @Test
-    public void skipsUnsupportedFormatTemplates() throws Exception {
+    public void aTextBodiedPromptWithAResponseStillGetsAFragment() throws Exception {
+        // The case the OLD gate got wrong, and the reason D2 exists. @format is the syntax
+        // of the rendered prompt BODY; a prompt written in prose that asks for a JSON reply
+        // is the common shape, and it used to fall through the `@format ∈ {json,xml}` gate
+        // and get NO fragment at all — the tier silently unserved for its main use case.
         String fixture = """
             {
               "metadata.root": { "package": "acme::ai", "children": [
                 { "object.value": { "name": "FooPayload", "children": [
                     { "field.string": { "name": "text" } }
                 ] } },
-                { "template.output": {
+                { "template.prompt": {
                     "name": "FooOutput",
                     "@payloadRef": "FooPayload",
+                    "@responseRef": "FooPayload",
                     "@textRef": "ai/foo",
                     "@format": "text"
                 } }
@@ -114,20 +122,63 @@ public class SpringOutputPromptGeneratorTest extends SharedRegistryTestBase {
         gen.setArgs(args);
         gen.execute(loader);
 
+        Path promptFile = outDir.resolve("acme/ai/prompts/FooOutputResponseFormat.java");
+        assertTrue("a text-bodied prompt declaring @responseRef must still get a fragment at "
+            + promptFile, Files.exists(promptFile));
+        // @responseFormat is absent, so it defaults to json (ADR-0053) — NOT to @format's "text".
+        assertTrue("absent @responseFormat must default to Format.JSON",
+            Files.readString(promptFile).contains("Format.JSON"));
+    }
+
+    @Test
+    public void aTemplateOutputGetsNoFragmentWhateverItsFormat() throws Exception {
+        // The ADR-0052 direction pin. template.output is OUTBOUND ONLY: it renders a
+        // document or an email, and nothing about it instructs a model how to reply.
+        // @format: json here is deliberate — under the old rule this was the case that
+        // DID emit, so a fragment appearing would prove the direction rule is not applied.
+        String fixture = """
+            {
+              "metadata.root": { "package": "acme::ai", "children": [
+                { "object.value": { "name": "DocPayload", "children": [
+                    { "field.string": { "name": "body" } }
+                ] } },
+                { "template.output": {
+                    "name": "WelcomeDoc",
+                    "@payloadRef": "DocPayload",
+                    "@textRef": "mail/welcome",
+                    "@format": "json"
+                } }
+              ] }
+            }
+            """;
+        Path outDir    = tempFolder.newFolder("prompt-outbound").toPath();
+        Path workspace = tempFolder.newFolder("prompt-outbound-fx").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "prompt-outbound", fixture);
+
+        SpringOutputPromptGenerator gen = new SpringOutputPromptGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
+        gen.setArgs(args);
+        gen.execute(loader);
+
         Path promptsDir = outDir.resolve("acme/ai/prompts");
         if (Files.exists(promptsDir)) {
             try (java.util.stream.Stream<Path> stream = Files.list(promptsDir)) {
-                assertEquals("@format=plain must NOT trigger prompt emission", 0L, stream.count());
+                assertEquals("template.output must NOT trigger fragment emission", 0L, stream.count());
             }
         }
     }
 
     // -------------------------------------------------------------------------
-    // template.prompt nodes are ignored
+    // A prompt that declares NO response is not inbound
     // -------------------------------------------------------------------------
 
     @Test
-    public void skipsPromptTemplates() throws Exception {
+    public void skipsPromptsThatDeclareNoResponse() throws Exception {
+        // ADR-0052 moved the inbound tier ONTO template.prompt, but not onto every prompt:
+        // a prompt with no @responseRef elicits no typed reply, so there is nothing to
+        // instruct the model about and nothing to parse. This is the half of the direction
+        // rule that keeps "prompt" from meaning "always inbound".
         String fixture = """
             {
               "metadata.root": { "package": "acme::ai", "children": [
@@ -156,7 +207,8 @@ public class SpringOutputPromptGeneratorTest extends SharedRegistryTestBase {
         Path promptsDir = outDir.resolve("acme/ai/prompts");
         if (Files.exists(promptsDir)) {
             try (java.util.stream.Stream<Path> stream = Files.list(promptsDir)) {
-                assertEquals("template.prompt must NOT trigger prompt emission", 0L, stream.count());
+                assertEquals("a prompt with no @responseRef must NOT trigger fragment emission",
+                    0L, stream.count());
             }
         }
     }
@@ -174,11 +226,13 @@ public class SpringOutputPromptGeneratorTest extends SharedRegistryTestBase {
                     { "field.string": { "name": "headline", "@required": true } },
                     { "field.string": { "name": "body" } }
                 ] } },
-                { "template.output": {
+                { "template.prompt": {
                     "name": "SummaryOutput",
                     "@payloadRef": "SummaryPayload",
+                    "@responseRef": "SummaryPayload",
                     "@textRef": "ai/summary",
-                    "@format": "json",
+                    "@format": "text",
+                    "@responseFormat": "json",
                     "@promptStyle": "inline"
                 } }
               ] }
@@ -194,8 +248,8 @@ public class SpringOutputPromptGeneratorTest extends SharedRegistryTestBase {
         gen.setArgs(args);
         gen.execute(loader);
 
-        Path promptFile = outDir.resolve("acme/ai/prompts/SummaryOutputPrompt.java");
-        assertTrue("expected SummaryOutputPrompt.java", Files.exists(promptFile));
+        Path promptFile = outDir.resolve("acme/ai/prompts/SummaryOutputResponseFormat.java");
+        assertTrue("expected SummaryOutputResponseFormat.java", Files.exists(promptFile));
         String src = Files.readString(promptFile);
 
         assertTrue("expected `PromptStyle.INLINE` in SPEC; saw:\n" + src,

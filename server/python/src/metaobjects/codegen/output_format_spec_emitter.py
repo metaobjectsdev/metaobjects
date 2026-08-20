@@ -1,6 +1,6 @@
-"""Turns a payload value-object + its ``template.output`` node into a Python source
+"""Turns a response value-object + its ``template.prompt`` node into a Python source
 literal for an :class:`~metaobjects.render.OutputFormatSpec` — the artifact-1 prompt
-descriptor used by the FR-010 output-prompt codegen.
+descriptor used by the FR-010 response-format codegen.
 
 Emits ``OutputFormatSpec(Format.X, "rootName", PromptStyle.X, [PromptField(...), …])``.
 Mirrors the C# / Java ``OutputFormatSpecEmitter`` adapted to Python (keyword args for
@@ -10,18 +10,18 @@ Bounded scope: scalar / enum. Nested object → ``FieldKind.OBJECT`` placeholder
 from __future__ import annotations
 
 from metaobjects.codegen import fr010_field_mapping as fm
+from metaobjects.codegen.generators.find_inbound import is_xml, response_format_of
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.template import template_constants as tc
 
 
 def _format_enum(template: MetaData) -> str:
-    fmt = template.get_meta_attr(tc.TEMPLATE_ATTR_FORMAT)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
-    return (
-        "Format.XML"
-        if isinstance(fmt, str) and fmt.lower() == "xml"
-        else "Format.JSON"
-    )
+    """ADR-0053 — the fragment describes the REPLY, so its syntax is ``@responseFormat``,
+    NOT ``@format``, which is the syntax of the rendered prompt BODY. Reading ``@format``
+    here typed the instruction "produce your answer like this" off the format of the
+    QUESTION."""
+    return "Format.XML" if is_xml(response_format_of(template)) else "Format.JSON"
 
 
 def _prompt_style_enum(template: MetaData) -> str:

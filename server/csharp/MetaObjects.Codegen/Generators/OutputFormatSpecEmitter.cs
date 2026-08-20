@@ -29,9 +29,11 @@ internal static class OutputFormatSpecEmitter
     }
 
     // ADR-0039: resolving — @format may be inherited via an abstract template base.
+    // ADR-0053: the fragment describes the REPLY, so its syntax is @responseFormat — NOT
+    // @format, which is the syntax of the rendered prompt BODY. Reading @format here typed the
+    // instruction "produce your answer like this" off the format of the question.
     private static string ResolveFormat(MetaData template) =>
-        template.Attr(TEMPLATE_ATTR_FORMAT) is string f && f.Equals("xml", System.StringComparison.OrdinalIgnoreCase)
-            ? "Format.Xml" : "Format.Json";
+        FindInbound.IsXml(FindInbound.ResponseFormatOf(template)) ? "Format.Xml" : "Format.Json";
 
     // ADR-0039: resolving — @promptStyle may be inherited via an abstract template base.
     private static string ResolvePromptStyle(MetaData template) =>

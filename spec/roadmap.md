@@ -48,8 +48,8 @@ under **Shipped**; planned FRs under **Planned** + the **Release plan**. ✅ shi
 | FR-034 | Ecosystem tier — connected systems (`system`/`container`/`surface`/`environment`) | 📋 designed (**draft, deferred post-1.0**) | 1.1 | — |
 | FR-035 | Present-key PATCH tristate (mutation surface) | 🟢 shipped 5 ports (absent→untouched / present-null→clears / null-on-`@required`→400); coordinated **breaking** release held for FR-036 | 1.0 | — |
 | FR-036 | Constraint-validation enforcement + semantic pins | 🟢 shipped 5 ports in the coordinated `0.16.0`/`7.8.0` breaking release (required-string = non-empty·accept-whitespace · `@Pattern` = full-match · strictest-wins length; HTTP-tier enforcement all 5 ports; TPH tristate) | 1.0 | — |
-| FR-037 | Projection expressiveness (`origin.rank`) + field write-access modes (`@mutability`) | ⚪ requirements (pre-design), decisions resolved. Design: `docs/superpowers/specs/2026-08-10-fr-037-projection-expressiveness-and-write-once-design.md` | 1.1 | — |
-| FR-038 | Requirement-derived test stubs (inverts `@verifiedBy`) | ⚪ proposed. Generate the test from the requirement so the link is structural, not a name the author picks — an audit of one 19-name ledger found 4 names that did not verify their claim. Design: `docs/superpowers/specs/2026-08-15-fr-038-requirement-derived-test-stubs-design.md` | 1.1 | — |
+| FR-037 | Projection expressiveness (`origin.rank`) + field write-access modes (`@mutability`) | ⚪ requirements (pre-design), decisions resolved. **R1/R2 retire registered vocabulary (`@readOnly`), so the breaking half must ride a coordinated pre-1.0 breaking MINOR** — post-1.0 a metamodel-vocabulary break is a 2.0 event (ADR-0035 §1), not a 1.1 minor. `origin.rank` + the rest are additive → 1.1. Design: `docs/superpowers/specs/2026-08-10-fr-037-projection-expressiveness-and-write-once-design.md` | 1.0 · 1.1 | — |
+| FR-038 | Requirement-derived test stubs (inverts `@verifiedBy`) | ⚪ proposed. Generate the test from the requirement so the link is structural, not a name the author picks — an audit of one 19-name ledger found 4 names that did not verify their claim. **The `@verifiedBy` retirement is breaking and rides the SAME pre-1.0 MINOR as FR-037's R1/R2, not a second one**; the stub generator is additive → 1.1. Design: `docs/superpowers/specs/2026-08-15-fr-038-requirement-derived-test-stubs-design.md` | 1.0 · 1.1 | — |
 
 _(FR-001 was the original metamodel foundation — pre-dates the FR-numbered tracking.)_
 _(FR-032 was developed under the working number "FR-026" — see commit history; renumbered to avoid the FR-026=Forms collision. Design: `docs/superpowers/specs/2026-06-13-fr-032-canonical-fqn-refs-design.md`, ADR-0032.)_
@@ -229,6 +229,50 @@ properly without holding the GA.
   does this); (2) link it from **metaobjects.dev** as the "see it in production" proof (play it live /
   read the source / watch the drift gate catch a rename); (3) keep it ≤ one published line behind —
   fold "bump the reference app" into the release checklist so it never lags.
+
+### The next coordinated pre-1.0 breaking MINOR — what it carries, and why it precedes GA
+
+`0.21.0` was **a** pre-1.0 breaking slot, not **the** one: ADR-0035 §3 charters "the next one or
+two releases as the window to land every breaking change we still want, then freeze", and
+`docs/RELEASING.md:167` states the mechanism — while the project is 0.x, a **MINOR is how a
+breaking change ships**, because `^0.20.x` does not resolve `0.21.0` and so the break is adopted
+deliberately rather than on a routine `npm update`.
+
+**This is a rule, not a preference.** After the renumbering, a breaking change to the metamodel
+vocabulary requires a **2.0** (ADR-0035 §1 + Amendment 1, Consequences). So a breaking metamodel
+change cannot be targeted at `1.1` — that target is unreachable for the breaking half of any FR
+that retires registered vocabulary. Chartered to ride the next such MINOR:
+
+- **ADR-0052 / ADR-0053** — `@promptStyle` moves to `template.prompt`; `@responseFormat` is added
+  (ADR-0053, a *separate* ADR — counting the batch from ADR-0052 alone under-counts it by one).
+  A `@promptStyle` left on a `template.output` now fails the load.
+- **FR-037 R1/R2** — `@readOnly` retired in favour of `@mutability`. Its design records the cost
+  of missing the window: the project would carry both spellings plus the conflict rule
+  *permanently*.
+- **FR-038** — the `@verifiedBy` retirement, explicitly "the same coordinated pre-1.0 breaking
+  slot as FR-037's `@mutability`, not a second one".
+
+**Why not carry the break in the `1.0` cut itself?** `1.0.0` is a MAJOR under semver, so a
+break landing *in* the renumbering is neither a pre-1.0 MINOR nor a 2.0 event — it looks like a
+free slot. It is not: §G3 requires "at least one coordinated release after the last breaking
+move … with **no** metamodel-breaking changes, **to prove the rate has actually dropped**". A
+1.0 that carries a break has had no quiet period at all, so it freezes the vocabulary on the
+strength of a stability claim nothing tested. The gate is about evidence, not arithmetic.
+
+**Cost, stated plainly:** landing any of these resets the §G3 quiet-period clock in
+`docs/1.0-readiness.md` — "at least one coordinated release after the last breaking move with no
+metamodel-breaking changes". So this MINOR pushes the 1.0 renumbering out by at least one
+coordinated release. That trade was already adjudicated for the analogous #210 case (see the
+Group-B entry above: it rides the breaking batch "while 1.0 stays unscheduled", with "1.0 being
+scheduled imminently" listed as the reversal trigger). Note that ADR-0035's own §C3 text still
+names `0.15.1` as the last breaking move — stale; `0.21.0` superseded it.
+
+**The open tension, named:** `CLAUDE.md` and the "Before 1.0" section above both say GA is the
+next release move and that nothing outstanding blocks the promotion. This section says a
+breaking MINOR comes first. Those are reconcilable only by deciding which goes first — and
+#210's reversal trigger is the mechanism for deciding it: if 1.0 is scheduled imminently, ship
+the break as documentation-and-rule-of-thumb instead and let the vocabulary changes become 2.0
+work. What is NOT available is targeting the breaking half at `1.1`.
 
 ### 1.1 — Serialization foundation + connected-systems tier
 

@@ -67,11 +67,25 @@ const MODEL = [
     },
   },
   {
-    "template.output": {
+    // ADR-0052: the inbound tier is driven by a responding prompt. @payloadRef
+    // and @responseRef name the same shape here because this fixture exercises
+    // the extractor's payload IMPORTS, not the request/response distinction.
+    "template.prompt": {
       name: "OrderOut",
       "@payloadRef": "Order",
+      "@responseRef": "Order",
       "@textRef": "out/order",
-      "@format": "json",
+    },
+  },
+  {
+    // ADR-0052: the render helper is the OUTBOUND tier and stays on
+    // `template.output` — it is the control proving the inbound move did not drag
+    // the outbound tier with it. So the render half of this gate needs its own
+    // output node; asking renderRenderHelper() for the prompt above throws.
+    "template.output": {
+      name: "OrderDoc",
+      "@payloadRef": "Order",
+      "@textRef": "out/order",
     },
   },
 ];
@@ -201,7 +215,7 @@ describe("extractor/render payload import resolves against the REAL generated VO
     //    plus the REAL sibling output-parser the extractor imports from.
     const parserSrc = renderOutputParser(root, "OrderOut");
     const extractorSrc = renderExtractor(root, "OrderOut");
-    const renderSrc = renderRenderHelper(root, "OrderOut", PROVIDER);
+    const renderSrc = renderRenderHelper(root, "OrderDoc", PROVIDER);
 
     // The dangling `./payloads.js` import must be GONE — the payload types come
     // from the VO's own module instead.
@@ -225,7 +239,7 @@ describe("extractor/render payload import resolves against the REAL generated VO
       writeFileSync(full, body);
     };
     for (const f of entityFiles) write(f.path, f.content);
-    write("OrderOut.output.ts", parserSrc);
+    write("OrderOut.response.ts", parserSrc);
     write("OrderOut.extractor.ts", extractorSrc);
     write("OrderOut.render.ts", renderSrc);
     write("engine-stubs.d.ts", ENGINE_STUBS);
@@ -233,7 +247,7 @@ describe("extractor/render payload import resolves against the REAL generated VO
     // 4. tsc — the payload import must RESOLVE (no TS2307) and the type be found.
     const fileList = [
       ...entityFiles.map((f) => f.path),
-      "OrderOut.output.ts",
+      "OrderOut.response.ts",
       "OrderOut.extractor.ts",
       "OrderOut.render.ts",
       "engine-stubs.d.ts",

@@ -2,9 +2,9 @@ package com.metaobjects.generator.kotlin
 
 import com.metaobjects.metadata.ktx.loadString
 import com.metaobjects.metadata.ktx.metaObjectOrNull
-import com.metaobjects.metadata.ktx.outputTemplateOrNull
+import com.metaobjects.metadata.ktx.promptTemplateOrNull
 import com.metaobjects.`object`.MetaObject
-import com.metaobjects.template.OutputTemplate
+import com.metaobjects.template.PromptTemplate
 import kotlin.test.Test
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -38,23 +38,23 @@ class KotlinOutputFormatSpecEmitterTest {
                                    "@enumDoc": { "HIGH": "Directly supported.", "OK": "Inference." } } },
                 { "field.string": { "name": "note" } }
             ] } },
-            { "template.output": {
+            { "template.prompt": {
                 "name": "AnswerOutput",
-                "@payloadRef": "AnswerOutputPayload",
+                "@payloadRef": "AnswerOutputPayload", "@responseRef": "AnswerOutputPayload",
                 "@textRef": "ai/answer",
-                "@format": "xml",
+                "@format": "text", "@responseFormat": "xml",
                 "@promptStyle": "guide"
             } }
           ] }
         }
     """.trimIndent()
 
-    private fun loadVoAndTemplate(): Pair<MetaObject, OutputTemplate> {
+    private fun loadVoAndTemplate(): Pair<MetaObject, PromptTemplate> {
         val loader = loadString("kofs-test", fixture)
         val vo = checkNotNull(loader.metaObjectOrNull("acme::ai::AnswerOutputPayload")) {
             "AnswerOutputPayload not found in loader"
         }
-        val tmpl = checkNotNull(loader.outputTemplateOrNull("acme::ai::AnswerOutput")) {
+        val tmpl = checkNotNull(loader.promptTemplateOrNull("acme::ai::AnswerOutput")) {
             "AnswerOutput not found in loader"
         }
         return vo to tmpl
@@ -142,18 +142,18 @@ class KotlinOutputFormatSpecEmitterTest {
                                       "@values": ["LOW","HIGH"],
                                       "@enumAlias": { "medium": "HIGH" } } }
                 ] } },
-                { "template.output": {
+                { "template.prompt": {
                     "name": "SimpleOutput",
-                    "@payloadRef": "SimplePayload",
+                    "@payloadRef": "SimplePayload", "@responseRef": "SimplePayload",
                     "@textRef": "test/simple",
-                    "@format": "json"
+                    "@format": "text", "@responseFormat": "json"
                 } }
               ] }
             }
         """.trimIndent()
         val loader = loadString("kofs-noalias", fx)
         val vo = checkNotNull(loader.metaObjectOrNull("acme::noalias::SimplePayload"))
-        val tmpl = checkNotNull(loader.outputTemplateOrNull("acme::noalias::SimpleOutput"))
+        val tmpl = checkNotNull(loader.promptTemplateOrNull("acme::noalias::SimpleOutput"))
 
         val s = KotlinOutputFormatSpecEmitter.specLiteral(vo, tmpl, "SimplePayload")
 
@@ -193,18 +193,18 @@ class KotlinOutputFormatSpecEmitterTest {
                 { "object.value": { "name": "AnswerOutputPayload", "children": [
                     { "field.string": { "name": "text" } }
                 ] } },
-                { "template.output": {
+                { "template.prompt": {
                     "name": "AnswerOutput",
-                    "@payloadRef": "AnswerOutputPayload",
+                    "@payloadRef": "AnswerOutputPayload", "@responseRef": "AnswerOutputPayload",
                     "@textRef": "ai/answer",
-                    "@format": "json"
+                    "@format": "text", "@responseFormat": "json"
                 } }
               ] }
             }
         """.trimIndent()
         val loader = loadString("kofs-json", fx)
         val vo = checkNotNull(loader.metaObjectOrNull("acme::ai::AnswerOutputPayload"))
-        val tmpl = checkNotNull(loader.outputTemplateOrNull("acme::ai::AnswerOutput"))
+        val tmpl = checkNotNull(loader.promptTemplateOrNull("acme::ai::AnswerOutput"))
 
         val s = KotlinOutputFormatSpecEmitter.specLiteral(vo, tmpl, "AnswerOutputPayload")
 
@@ -223,11 +223,11 @@ class KotlinOutputFormatSpecEmitterTest {
                 { "object.value": { "name": "StylePayload", "children": [
                     { "field.string": { "name": "x" } }
                 ] } },
-                { "template.output": {
+                { "template.prompt": {
                     "name": "StyleTemplate",
-                    "@payloadRef": "StylePayload",
+                    "@payloadRef": "StylePayload", "@responseRef": "StylePayload",
                     "@textRef": "style/inline",
-                    "@format": "json",
+                    "@format": "text", "@responseFormat": "json",
                     "@promptStyle": "inline"
                 } }
               ] }
@@ -235,7 +235,7 @@ class KotlinOutputFormatSpecEmitterTest {
         """.trimIndent()
         val loader = loadString("kofs-inline", fx)
         val vo = checkNotNull(loader.metaObjectOrNull("acme::ai::StylePayload"))
-        val tmpl = checkNotNull(loader.outputTemplateOrNull("acme::ai::StyleTemplate"))
+        val tmpl = checkNotNull(loader.promptTemplateOrNull("acme::ai::StyleTemplate"))
 
         val s = KotlinOutputFormatSpecEmitter.specLiteral(vo, tmpl, "StylePayload")
 
@@ -249,11 +249,11 @@ class KotlinOutputFormatSpecEmitterTest {
                 { "object.value": { "name": "StylePayload2", "children": [
                     { "field.string": { "name": "y" } }
                 ] } },
-                { "template.output": {
+                { "template.prompt": {
                     "name": "StyleTemplate2",
-                    "@payloadRef": "StylePayload2",
+                    "@payloadRef": "StylePayload2", "@responseRef": "StylePayload2",
                     "@textRef": "style/exampleOnly",
-                    "@format": "json",
+                    "@format": "text", "@responseFormat": "json",
                     "@promptStyle": "exampleOnly"
                 } }
               ] }
@@ -261,7 +261,7 @@ class KotlinOutputFormatSpecEmitterTest {
         """.trimIndent()
         val loader = loadString("kofs-exampleonly", fx)
         val vo = checkNotNull(loader.metaObjectOrNull("acme::ai::StylePayload2"))
-        val tmpl = checkNotNull(loader.outputTemplateOrNull("acme::ai::StyleTemplate2"))
+        val tmpl = checkNotNull(loader.promptTemplateOrNull("acme::ai::StyleTemplate2"))
 
         val s = KotlinOutputFormatSpecEmitter.specLiteral(vo, tmpl, "StylePayload2")
 
@@ -275,18 +275,18 @@ class KotlinOutputFormatSpecEmitterTest {
                 { "object.value": { "name": "DefaultPayload", "children": [
                     { "field.string": { "name": "z" } }
                 ] } },
-                { "template.output": {
+                { "template.prompt": {
                     "name": "DefaultTemplate",
-                    "@payloadRef": "DefaultPayload",
+                    "@payloadRef": "DefaultPayload", "@responseRef": "DefaultPayload",
                     "@textRef": "test/default",
-                    "@format": "json"
+                    "@format": "text", "@responseFormat": "json"
                 } }
               ] }
             }
         """.trimIndent()
         val loader = loadString("kofs-defaultstyle", fx)
         val vo = checkNotNull(loader.metaObjectOrNull("acme::ai::DefaultPayload"))
-        val tmpl = checkNotNull(loader.outputTemplateOrNull("acme::ai::DefaultTemplate"))
+        val tmpl = checkNotNull(loader.promptTemplateOrNull("acme::ai::DefaultTemplate"))
 
         val s = KotlinOutputFormatSpecEmitter.specLiteral(vo, tmpl, "DefaultPayload")
 
@@ -306,18 +306,18 @@ class KotlinOutputFormatSpecEmitterTest {
                 { "object.value": { "name": "DollarPayload", "children": [
                     { "field.string": { "name": "cost", "@example": "cost is ${'$'}amount" } }
                 ] } },
-                { "template.output": {
+                { "template.prompt": {
                     "name": "DollarTemplate",
-                    "@payloadRef": "DollarPayload",
+                    "@payloadRef": "DollarPayload", "@responseRef": "DollarPayload",
                     "@textRef": "test/dollar",
-                    "@format": "json"
+                    "@format": "text", "@responseFormat": "json"
                 } }
               ] }
             }
         """.trimIndent()
         val loader = loadString("kofs-dollar", fx)
         val vo = checkNotNull(loader.metaObjectOrNull("acme::dollar::DollarPayload"))
-        val tmpl = checkNotNull(loader.outputTemplateOrNull("acme::dollar::DollarTemplate"))
+        val tmpl = checkNotNull(loader.promptTemplateOrNull("acme::dollar::DollarTemplate"))
 
         val s = KotlinOutputFormatSpecEmitter.specLiteral(vo, tmpl, "DollarPayload")
 
@@ -335,18 +335,18 @@ class KotlinOutputFormatSpecEmitterTest {
                 { "object.value": { "name": "QuotePayload", "children": [
                     { "field.string": { "name": "msg", "@instruction": "say \"hi\"" } }
                 ] } },
-                { "template.output": {
+                { "template.prompt": {
                     "name": "QuoteTemplate",
-                    "@payloadRef": "QuotePayload",
+                    "@payloadRef": "QuotePayload", "@responseRef": "QuotePayload",
                     "@textRef": "test/quote",
-                    "@format": "json"
+                    "@format": "text", "@responseFormat": "json"
                 } }
               ] }
             }
         """.trimIndent()
         val loader = loadString("kofs-quote", fx)
         val vo = checkNotNull(loader.metaObjectOrNull("acme::test::QuotePayload"))
-        val tmpl = checkNotNull(loader.outputTemplateOrNull("acme::test::QuoteTemplate"))
+        val tmpl = checkNotNull(loader.promptTemplateOrNull("acme::test::QuoteTemplate"))
 
         val s = KotlinOutputFormatSpecEmitter.specLiteral(vo, tmpl, "QuotePayload")
 
@@ -371,18 +371,18 @@ class KotlinOutputFormatSpecEmitterTest {
                     { "field.double":  { "name": "score"   } },
                     { "field.boolean": { "name": "valid"   } }
                 ] } },
-                { "template.output": {
+                { "template.prompt": {
                     "name": "NumericTemplate",
-                    "@payloadRef": "NumericPayload",
+                    "@payloadRef": "NumericPayload", "@responseRef": "NumericPayload",
                     "@textRef": "test/numeric",
-                    "@format": "json"
+                    "@format": "text", "@responseFormat": "json"
                 } }
               ] }
             }
         """.trimIndent()
         val loader = loadString("kofs-numeric", fx)
         val vo = checkNotNull(loader.metaObjectOrNull("acme::types::NumericPayload"))
-        val tmpl = checkNotNull(loader.outputTemplateOrNull("acme::types::NumericTemplate"))
+        val tmpl = checkNotNull(loader.promptTemplateOrNull("acme::types::NumericTemplate"))
 
         val s = KotlinOutputFormatSpecEmitter.specLiteral(vo, tmpl, "NumericPayload")
 
@@ -410,18 +410,18 @@ class KotlinOutputFormatSpecEmitterTest {
                                        "k10": "v10", "k11": "v11", "k12": "v12"
                                      } } }
                 ] } },
-                { "template.output": {
+                { "template.prompt": {
                     "name": "BigDocTemplate",
-                    "@payloadRef": "BigDocPayload",
+                    "@payloadRef": "BigDocPayload", "@responseRef": "BigDocPayload",
                     "@textRef": "test/big",
-                    "@format": "json"
+                    "@format": "text", "@responseFormat": "json"
                 } }
               ] }
             }
         """.trimIndent()
         val loader = loadString("kofs-bigdoc", fx)
         val vo = checkNotNull(loader.metaObjectOrNull("acme::ai::BigDocPayload"))
-        val tmpl = checkNotNull(loader.outputTemplateOrNull("acme::ai::BigDocTemplate"))
+        val tmpl = checkNotNull(loader.promptTemplateOrNull("acme::ai::BigDocTemplate"))
 
         val s = KotlinOutputFormatSpecEmitter.specLiteral(vo, tmpl, "BigDocPayload")
 

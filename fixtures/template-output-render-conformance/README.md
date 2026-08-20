@@ -170,10 +170,26 @@ render + name assertions, strengthening the gate rather than weakening it.
 
 Identical to `xpkg-collision/` above (same three metadata files, same `Digest`
 payload with colliding `Note` VOs from `acme::alpha` and `acme::beta`), but the
-`DigestDoc` `template.output` has `@format="json"` instead of `@format="html"`.
-This variant exercises the extract/output-parser tier (which gates on
-`@format ∈ {json,xml}`); the html variant does not. The generated render helper,
-collision-aware payload naming, and render output remain identical — see
+`DigestDoc` `template.output` has `@format="json"` instead of `@format="html"`,
+and it additionally declares a `DigestPrompt` `template.prompt` whose
+`@responseRef` is that same `Digest` payload.
+
+**The `DigestPrompt` node is what exercises the extract/output-parser tier.**
+Since [ADR-0052](../../spec/decisions/ADR-0052-template-direction-outbound-vs-inbound.md)
+that tier is INBOUND and keys on a `template.prompt` declaring `@responseRef` —
+never on `template.output`, and never on `@format ∈ {json,xml}`, which was the
+old gate. `template.output` is outbound only and emits no parser, extractor or
+response-format fragment at all, so `DigestDoc` drives the render helper and
+nothing else.
+
+The prompt was ADDED beside the output rather than replacing it, deliberately:
+this corpus is the outbound render oracle AND the payload tier's optionality
+oracle, so converting `DigestDoc` would have traded two guarantees for a third.
+Ports implementing this fixture should expect BOTH nodes, and should emit
+inbound artifacts named for `DigestPrompt`, not `DigestDoc`.
+
+The generated render helper, collision-aware payload naming, and render output
+remain identical — see
 [Cross-package short-name collision](#cross-package-short-name-collision--xpkg-collision-digestdoc)
 above for the full contract and expected payload names
 (`AcmeAlphaNotePayload`/`AcmeBetaNotePayload` for Java/Kotlin/Python;

@@ -29,9 +29,10 @@ import java.util.Set;
 import com.metaobjects.generator.util.GeneratedFileWriter;
 
 /**
- * Generator: one {@code <TemplateShortName>Parser} Java class per
- * {@code template.output} declaration, emitting a Jackson-backed throw-only
- * parser around the {@code @payloadRef} payload record produced by
+ * Generator: one {@code <TemplateShortName>Parser} Java class per RESPONDING
+ * {@code template.prompt} declaration (ADR-0052 — one carrying {@code @responseRef}),
+ * emitting a Jackson-backed throw-only parser around the {@code <TemplateShortName>Response}
+ * record produced by
  * {@link SpringPayloadGenerator} (no payload-shape re-declaration).
  *
  * <p>FR-006 — the Java port of the cross-language template-output parser
@@ -59,7 +60,12 @@ import com.metaobjects.generator.util.GeneratedFileWriter;
  *
  * <p>Skips and defensive cases (mirrors the cross-port behavior):
  * <ul>
- *   <li>{@code template.prompt} is ignored — only outputs need parsing.</li>
+ *   <li>{@code template.output} is ignored — it renders OUTBOUND and parses nothing.</li>
+ *   <li>A {@code template.prompt} with no {@code @responseRef} — nothing elicits a
+ *       typed reply, so there is nothing to parse.</li>
+ *   <li>A {@code @responseRef} that does not resolve to a payload target — skipped
+ *       fail-closed, so the parser can never bind a record the payload tier
+ *       refused to emit.</li>
  *   <li>Missing {@code @payloadRef} — skipped (loader's validation pass
  *       normally rejects this first; defensive only).</li>
  *   <li>{@code @payloadRef} resolves to a non-VO target (e.g. {@code object.entity}) —
@@ -120,9 +126,9 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
 
         // ADR-0044 (#228) — gather ALL MetaTemplate (prompt/output/toolcall), matching
         // SpringPayloadGenerator.execute()'s domain EXACTLY, so the run-wide nested-payload
-        // name map (below) agrees with the payload tier's — even though only
-        // template.output gets a parser FILE emitted here (the SUBTYPE_OUTPUT filter moves
-        // to the `outputs` sublist, after the nameMap is computed over every template).
+        // name map (below) agrees with the payload tier's — even though only a RESPONDING
+        // PROMPT gets a parser FILE emitted here (ADR-0052: the direction filter lives in
+        // FindInbound and is applied after the nameMap is computed over every template).
         // ADR-0039: root-scan discipline — resolving children accessor.
         List<MetaTemplate> allTemplates =
             new ArrayList<>(loader.getRoot().getChildren(MetaTemplate.class, true));
@@ -130,44 +136,33 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
 
         Map<String, String> nameMap = SpringPayloadGenerator.computePayloadNameMap(allTemplates, loader);
 
-        // Stable name order — matches the other ports' deterministic emission.
-        List<MetaTemplate> outputs = new ArrayList<>();
-        for (MetaTemplate t : allTemplates) {
-            if (TemplateConstants.SUBTYPE_OUTPUT.equals(t.getSubType())) {
-                outputs.add(t);
-            }
-        }
-
-        for (MetaTemplate tmpl : outputs) {
+        // ADR-0052: the direction rule lives in FindInbound, never re-derived here.
+        for (MetaTemplate tmpl : FindInbound.inboundTemplates(loader)) {
             emit(tmpl, loader, outRoot, nameMap);
         }
     }
 
     /**
-     * True iff this generator emits a parser for {@code node}: the node is a
-     * {@code template.output} (NOT a prompt) carrying a {@code @payloadRef} that
-     * resolves (against {@code loader}) to an {@code object.value}. The
-     * tolerant {@code extractLenient} overloads are only added for json/xml
-     * formats, but the parser FILE itself is emitted for every output template
-     * with a valid VO payload — so format is intentionally NOT part of this
-     * inclusion predicate. Extracted from the {@link #execute(MetaDataLoader)}
-     * {@code SUBTYPE_OUTPUT} filter combined with the per-template {@link #emit}
-     * payload guard.
+     * True iff this generator emits a response parser for {@code node}: a
+     * {@code template.prompt} carrying a {@code @responseRef} that resolves (against
+     * {@code loader}) to an {@code object.value}. Single source of truth shared by the
+     * generator loop AND the api-docs builder.
+     *
+     * <p>ADR-0052: {@code template.output} is OUTBOUND ONLY and gets no parser. It had
+     * NO format filter at all here, so a markdown document template got a generated
+     * Jackson {@code readValue} — a method that could never work — for text the system
+     * had just rendered itself.
      */
     public static boolean appliesTo(MetaData node, MetaDataLoader loader) {
-        if (!(node instanceof MetaTemplate template)) return false;
-        if (!TemplateConstants.SUBTYPE_OUTPUT.equals(template.getSubType())) return false;
-        String payloadRef = template.getPayloadRef();
-        if (payloadRef == null || payloadRef.isEmpty()) return false;
-        return resolveValueObject(loader, payloadRef, MetaDataUtil.findPackageForMetaData(template)) != null;
+        return FindInbound.isInbound(node, loader);
     }
 
     protected void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot, Map<String, String> nameMap) {
-        if (!appliesTo(template, loader)) {
-            return; // missing @payloadRef, or not a VO — same contract as SpringPayloadGenerator
+        FindInbound.InboundShape shape = FindInbound.responseShape(loader, template);
+        if (shape == null) {
+            return; // no @responseRef, or it does not resolve to a VO
         }
-        MetaObject payloadVo = resolveValueObject(loader, template.getPayloadRef(),
-            MetaDataUtil.findPackageForMetaData(template));
+        MetaObject payloadVo = shape.vo();
 
         String[] split = SpringNaming.splitFqn(template.getName());
         String templatePkg = split[0];
@@ -175,43 +170,59 @@ public class SpringOutputParserGenerator extends MultiFileDirectGeneratorBase<Me
         String outPkg = SpringNaming.promptsPackage(templatePkg);
         // PascalCase the class names — templates authored in camelCase
         // (e.g. `npcTurn`) yield Java-idiomatic `NpcTurnParser` /
-        // `NpcTurnPayload`. Pairs with SpringPayloadGenerator's matching
-        // capitalisation so the parser's payload-class reference stays
-        // consistent.
+        // `NpcTurnResponse`. Pairs with SpringPayloadGenerator's matching
+        // capitalisation so the parser's record reference stays consistent.
         String parserClass = SpringNaming.parserName(templateShort);
-        String payloadClass = SpringNaming.payloadName(templateShort);
+        // ADR-0052: the shape parsed INTO is @responseRef — the reply — never @payloadRef,
+        // which types the request this prompt renders outbound.
+        String payloadClass = SpringNaming.responseName(templateShort);
 
         StringBuilder src = new StringBuilder();
-        src.append("// GENERATED — DO NOT EDIT — parser for template.output `")
+        src.append("// GENERATED — DO NOT EDIT — response parser for template.prompt `")
            .append(template.getName()).append("`\n");
         src.append("package ").append(outPkg).append(";\n\n");
-        src.append("import com.fasterxml.jackson.core.JsonProcessingException;\n");
-        src.append("import com.fasterxml.jackson.databind.ObjectMapper;\n");
-        String format = template.getFormat();
-        boolean emitExtractLenient = TemplateConstants.FORMAT_JSON.equalsIgnoreCase(format)
-            || TemplateConstants.FORMAT_XML.equalsIgnoreCase(format);
+        // ADR-0053: the reply's syntax is @responseFormat (json|xml, default json) — never
+        // @format, which is the syntax of the rendered prompt BODY. The old @format gate is
+        // what made a text-bodied prompt with a JSON reply emit a strict parser and no
+        // extract at all — the common case, silently unserved.
+        String format = FindInbound.responseFormatOf(template);
+        // The strict Jackson tier is JSON-ONLY, by construction: strict all-or-nothing
+        // semantics layered over the REPAIRING XML reader would throw or accept based on
+        // how much repair happened, which is not a contract anyone can reason about. So an
+        // XML reply gets the tolerant extract and nothing strict.
+        boolean emitStrict = !FindInbound.isXml(format);
+        // Every responding prompt gets the tolerant tier — declaring a response shape IS
+        // the request for one.
+        boolean emitExtractLenient = true;
+        if (emitStrict) {
+            src.append("import com.fasterxml.jackson.core.JsonProcessingException;\n");
+            src.append("import com.fasterxml.jackson.databind.ObjectMapper;\n");
+        }
         if (emitExtractLenient) {
             src.append("import com.metaobjects.render.extract.Format;\n");
             src.append("import com.metaobjects.render.extract.ExtractMap;\n");
         }
         src.append("\n");
         src.append("/** Parser for LLM responses matching the `")
-           .append(templateShort).append("` template.output. */\n");
+           .append(templateShort).append("` template.prompt. */\n");
         src.append("public final class ").append(parserClass).append(" {\n\n");
-        src.append("    private static final ObjectMapper MAPPER = new ObjectMapper();\n\n");
+        if (emitStrict) {
+            src.append("    private static final ObjectMapper MAPPER = new ObjectMapper();\n\n");
+        }
         src.append("    private ").append(parserClass).append("() { /* no instances */ }\n\n");
-        src.append("    /**\n");
-        src.append("     * Parse an LLM response into a typed {@link ")
-           .append(payloadClass).append("}.\n");
-        src.append("     *\n");
-        src.append("     * @throws JsonProcessingException when the input is not valid JSON for the payload schema.\n");
-        src.append("     */\n");
-        src.append("    public static ").append(payloadClass).append(" parse(String text) throws JsonProcessingException {\n");
-        src.append("        return MAPPER.readValue(text, ").append(payloadClass).append(".class);\n");
-        src.append("    }\n");
+        if (emitStrict) {
+            src.append("    /**\n");
+            src.append("     * Parse an LLM response into a typed {@link ")
+               .append(payloadClass).append("}.\n");
+            src.append("     *\n");
+            src.append("     * @throws JsonProcessingException when the input is not valid JSON for the response schema.\n");
+            src.append("     */\n");
+            src.append("    public static ").append(payloadClass).append(" parse(String text) throws JsonProcessingException {\n");
+            src.append("        return MAPPER.readValue(text, ").append(payloadClass).append(".class);\n");
+            src.append("    }\n");
+        }
         if (emitExtractLenient) {
-            String formatEnum = TemplateConstants.FORMAT_XML.equalsIgnoreCase(format)
-                ? "Format.XML" : "Format.JSON";
+            String formatEnum = FindInbound.isXml(format) ? "Format.XML" : "Format.JSON";
             String payloadFqn = payloadVo.getName();
 
             // ---- Runtime-delegating extract (the single metadata-driven extract path) ----

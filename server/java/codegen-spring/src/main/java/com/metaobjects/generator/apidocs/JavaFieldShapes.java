@@ -98,12 +98,25 @@ public final class JavaFieldShapes {
         MetaObject vo = SpringPayloadGenerator.resolveValueObject(
             loader, payloadRef, MetaDataUtil.findPackageForMetaData(tmpl));
         if (vo == null) return List.of();
+        return payloadFieldsOf(vo, loader);
+    }
+
+    /**
+     * The documented field shapes of an already-resolved payload value-object.
+     *
+     * <p>ADR-0052 gives a responding {@code template.prompt} a SECOND record — the
+     * {@code @responseRef} shape its parser returns — so the api-docs builder needs to
+     * derive field shapes from a VO it resolved itself, not only from a template's
+     * {@code @payloadRef}. Same derivation, same generator methods; only the entry point
+     * differs, so the two records can never be documented by different rules.
+     */
+    public static List<FieldShape> payloadFieldsOf(MetaObject vo, MetaDataLoader loader) {
+        if (vo == null) return List.of();
 
         SpringPayloadGenerator gen = new SpringPayloadGenerator();
         Path scratch = scratchDir();
         Set<String> emittedNestedFqns = new HashSet<>();
-        String[] split = SpringNaming.splitFqn(tmpl.getName());
-        String nestedPkg = SpringNaming.promptsPackage(split[0]);
+        String nestedPkg = SpringNaming.promptsPackage(SpringNaming.splitFqn(vo.getName())[0]);
 
         List<FieldShape> out = new ArrayList<>();
         // api-docs documents field shapes only (bare nested names are fine here); pass

@@ -356,11 +356,25 @@ public object KotlinGenUtil {
         val voOutPkg = LinkedHashMap<String, String>()
         val orderedFqns = ArrayList<String>()
         for (tmpl in templates) {
-            val payloadRef = tmpl.payloadRef ?: continue
-            // ADR-0042 — resolve @payloadRef under the loader's own package-local contract.
-            val vo = resolveValueObjectRef(loader, payloadRef, tmpl.getPackage()) ?: continue
             val nestedPkg = KotlinNaming.promptsPackage(PackageMapping.splitFqn(tmpl.name).first)
-            collectNestedClosure(vo, nestedPkg, voOutPkg, orderedFqns, mutableSetOf(vo.name))
+            val payloadRef = tmpl.payloadRef
+            // ADR-0042 — resolve @payloadRef under the loader's own package-local contract.
+            val vo =
+                if (payloadRef.isNullOrEmpty()) null
+                else resolveValueObjectRef(loader, payloadRef, tmpl.getPackage())
+            if (vo != null) {
+                collectNestedClosure(vo, nestedPkg, voOutPkg, orderedFqns, mutableSetOf(vo.name))
+            }
+            // ADR-0052 — a responding prompt's @responseRef closure emits classes too, so its
+            // nested value-objects must enter the SAME name map; leaving them out would let a
+            // response-side nested VO collide with a request-side one and clobber its file — the
+            // exact ADR-0044 (#219) defect one tier down. The response ROOT is template-named
+            // (KotlinNaming.responseName), so like the primary it is seeded into `seen`.
+            val shape = FindInbound.responseShape(loader, tmpl)
+            if (shape != null) {
+                collectNestedClosure(
+                    shape.vo, nestedPkg, voOutPkg, orderedFqns, mutableSetOf(shape.vo.name))
+            }
         }
         // Group by (output package, bare short name).
         val byPkgShort = LinkedHashMap<String, MutableList<String>>()

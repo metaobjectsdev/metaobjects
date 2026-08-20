@@ -4,6 +4,19 @@
     "children": [
       {
         "object.value": {
+          "name": "SupportRequest",
+          "children": [
+            {
+              "field.string": {
+                "name": "question",
+                "@required": true
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
           "name": "SupportAnswer",
           "children": [
             {
@@ -42,14 +55,17 @@
         }
       },
       {
-        "template.output": {
-          "name": "SupportAnswerOutput",
-          "@format": "xml",
-          "@payloadRef": "acme::support::SupportAnswer",
+        "template.prompt": {
+          "name": "SupportAnswerPrompt",
+          "@format": "text",
+          "@payloadRef": "acme::support::SupportRequest",
           "@promptStyle": "guide",
+          "@responseFormat": "xml",
+          "@responseRef": "acme::support::SupportAnswer",
           "@textRef": "support/answer"
         }
       }
     ]
   }
 }
+

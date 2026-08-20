@@ -14,12 +14,14 @@ public sealed class GenListAndSelectionTests : IDisposable
     private string MetaDir => Path.Combine(_tmp, "metaobjects");
     private string OutDir => Path.Combine(_tmp, "generated");
 
-    // A template.output + its payload VO — the input the extractor/output-parser
-    // generators key off (template generators emit per template.output node).
+    // A responding template.prompt + its VO — the input the extractor/output-parser
+    // generators key off (ADR-0052: the inbound tier emits per template.prompt carrying
+    // @responseRef; a template.output is outbound only and emits nothing here).
     private const string TemplateMetadata = """
     { "metadata.root": { "package": "acme::ai", "children": [
       { "object.value": { "name": "AlphaPayload", "children": [ { "field.string": { "name": "name" } } ] } },
-      { "template.output": { "name": "Alpha", "@payloadRef": "AlphaPayload", "@textRef": "a/x", "@format": "json" } }
+      { "template.prompt": { "name": "Alpha", "@payloadRef": "AlphaPayload", "@responseRef": "AlphaPayload",
+                             "@textRef": "a/x", "@format": "text", "@responseFormat": "json" } }
     ]}}
     """;
 
@@ -63,14 +65,14 @@ public sealed class GenListAndSelectionTests : IDisposable
     public void Previously_omitted_output_prompt_is_now_selectable_and_emits()
     {
         // output-prompt is one of the five generators the CLI previously could not
-        // reach; it emits a prompt fragment per template.output.
+        // reach; it emits a response-format fragment per responding template.prompt.
         var outcome = GenCommand.Run(
             MetaDir, OutDir, "Acme.Generated",
             emitAbstractShapes: false, generatorNames: ["output-prompt"], templateRoot: null);
 
         Assert.True(outcome.Ok, string.Join("; ", outcome.LoadErrors));
         Assert.Contains(outcome.Result!.Files, f => f.Status == "written");
-        Assert.True(File.Exists(Path.Combine(OutDir, "Alpha.prompt.cs")));
+        Assert.True(File.Exists(Path.Combine(OutDir, "Alpha.responseFormat.cs")));
     }
 
     [Fact]
@@ -92,7 +94,7 @@ public sealed class GenListAndSelectionTests : IDisposable
             emitAbstractShapes: false, generatorNames: null, templateRoot: null);
 
         Assert.True(outcome.Ok, string.Join("; ", outcome.LoadErrors));
-        // The default suite still includes output-parser, which emits for template.output.
-        Assert.True(File.Exists(Path.Combine(OutDir, "Alpha.output.cs")));
+        // The default suite still includes output-parser, which emits for a responding prompt.
+        Assert.True(File.Exists(Path.Combine(OutDir, "Alpha.response.cs")));
     }
 }

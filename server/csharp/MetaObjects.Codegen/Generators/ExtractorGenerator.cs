@@ -46,40 +46,25 @@ public class ExtractorGenerator : IGenerator
 
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
-        // ADR-0039: Children() — resolving root scan (behavior-identical; root has no super).
-        var outputs = ctx.Root.Children()
-            .Where(c => c.Type == TYPE_TEMPLATE && c.SubType == TEMPLATE_SUBTYPE_OUTPUT)
-            .OrderBy(t => t.Name, System.StringComparer.Ordinal)
-            .ToList();
-
         var files = new List<EmittedFile>();
-        foreach (var tmpl in outputs)
+        // ADR-0052: the direction rule lives in FindInbound, never re-derived here.
+        foreach (var tmpl in FindInbound.InboundTemplates(ctx.Root))
         {
-            // ADR-0039: resolving — @payloadRef may be inherited via an abstract template base.
-            if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef)
+            // ADR-0052: the extract tier reads a REPLY, so it binds @responseRef. The old
+            // json/xml gate against @format is gone — @responseFormat is a closed json|xml set,
+            // so the only remaining skips are an unresolvable ref and a flat shape.
+            if (FindInbound.ResponseShape(ctx.Root, tmpl) is not { } shape)
             {
-                ctx.Warn($"{Name}: template.output \"{tmpl.Name}\" missing @payloadRef — skipped.");
+                ctx.Warn($"{Name}: template.prompt \"{tmpl.Name}\" @responseRef does not resolve — skipped.");
                 continue;
             }
 
-            // ADR-0039: resolving — @format may be inherited via an abstract template base.
-            var format = tmpl.Attr(TEMPLATE_ATTR_FORMAT) as string ?? "text";
-            bool formatSupportsExtract =
-                format.Equals("json", System.StringComparison.OrdinalIgnoreCase) ||
-                format.Equals("xml", System.StringComparison.OrdinalIgnoreCase);
-            // ADR-0042/#228: a bare @payloadRef resolves in the template's OWN package first
-            // (never a bare-tail/global-scan fallback that could bind the WRONG package's
-            // same-short-named object under a cross-package collision).
-            var referrerPkg = global::MetaObjects.NamingRefs.EffectivePackage(tmpl);
-            var vo = ExtractDelegateEmitter.FindObject(ctx.Root, payloadRef, referrerPkg);
-
             // The extract tier sits over the NESTED-CAPABLE delegating extract, which
-            // OutputParserGenerator emits only for json/xml payloads that have a nested object /
+            // OutputParserGenerator emits only for shapes that have a nested object /
             // array-of-objects. Skip otherwise (nothing to extract over).
-            if (!formatSupportsExtract || vo is null || !ExtractDelegateEmitter.HasNested(vo, ctx.Root))
-                continue;
+            if (!ExtractDelegateEmitter.HasNested(shape.Vo, ctx.Root)) continue;
 
-            files.Add(EmitExtractor(tmpl, vo, payloadRef, ctx));
+            files.Add(EmitExtractor(tmpl, shape.Vo, shape.Ref, ctx));
         }
         return files;
     }
@@ -110,7 +95,7 @@ public class ExtractorGenerator : IGenerator
         sb.AppendLine();
         sb.AppendLine($"namespace {ctx.Config.Namespace};");
         sb.AppendLine();
-        sb.AppendLine($"/// <summary>The <c>extract</c> tier for the <c>{templateName}</c> template.output — turns dirty LLM");
+        sb.AppendLine($"/// <summary>The <c>extract</c> tier for the <c>{templateName}</c> template.prompt — turns dirty LLM");
         sb.AppendLine($"/// text into a fully-typed <see cref=\"{strictType}\"/> graph (nested objects + arrays-of-objects");
         sb.AppendLine($"/// populated) in one call, by delegating to the nested-capable extract and mapping the all-nullable");
         sb.AppendLine($"/// <c>{rootMirror}</c> mirror onto the strict payload. No registry / binding / factory.</summary>");

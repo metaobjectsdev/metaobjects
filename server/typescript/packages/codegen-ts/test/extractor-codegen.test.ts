@@ -172,11 +172,11 @@ const MODEL = [
     },
   },
   {
-    "template.output": {
+    "template.prompt": {
       name: "OrderOut",
       "@payloadRef": "Order",
+          "@responseRef": "Order",
       "@textRef": "out/order",
-      "@format": "json",
     },
   },
 ];
@@ -283,7 +283,7 @@ describe("Extractor codegen — source shape", () => {
     TEMP_DIRS.push(dir);
     // The REAL per-VO entity modules the extractor imports its payload types from.
     await writeEntityModules(dir, root);
-    writeFileSync(join(dir, "OrderOut.output.ts"), parserSrc);
+    writeFileSync(join(dir, "OrderOut.response.ts"), parserSrc);
     writeFileSync(join(dir, "OrderOut.extractor.ts"), extractorSrc);
     writeFileSync(join(dir, "engine.d.ts"), ENGINE_STUBS);
 
@@ -291,7 +291,7 @@ describe("Extractor codegen — source shape", () => {
       "Order.ts",
       "Customer.ts",
       "Line.ts",
-      "OrderOut.output.ts",
+      "OrderOut.response.ts",
       "OrderOut.extractor.ts",
       "engine.d.ts",
     ]);
@@ -311,7 +311,7 @@ describe("Extractor codegen — import-and-RUN proof (bun dynamic import)", () =
     TEMP_DIRS.push(dir);
     // The extractor's payload imports are `import type` (erased at runtime), so the
     // VO modules need not be loaded here; the run-proof exercises the emitted logic.
-    writeFileSync(join(dir, "OrderOut.output.ts"), parserSrc);
+    writeFileSync(join(dir, "OrderOut.response.ts"), parserSrc);
     writeFileSync(join(dir, "OrderOut.extractor.ts"), extractorSrc);
 
     const ex = await import(join(dir, "OrderOut.extractor.ts"));

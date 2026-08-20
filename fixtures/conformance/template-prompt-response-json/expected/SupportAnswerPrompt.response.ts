@@ -7,29 +7,30 @@ import {
 import type { MetaRoot } from "@metaobjectsdev/metadata";
 import { extractObject } from "@metaobjectsdev/runtime-ts";
 
-const NpcResponseOutputSchema = z.object({
-  name: z.string(),
-  age: z.number().int(),
+const SupportAnswerPromptSchema = z.object({
+  text: z.string(),
+  confidence: z.unknown(),
+  note: z.string().optional(),
 });
 
-export type NpcResponseOutputData = z.infer<typeof NpcResponseOutputSchema>;
-export type NpcResponseOutputValidationError = z.ZodError;
+export type SupportAnswerPromptData = z.infer<typeof SupportAnswerPromptSchema>;
+export type SupportAnswerPromptValidationError = z.ZodError;
 
 /**
- * Parse an LLM response into a typed NpcResponseOutputData.
+ * Parse an LLM response into a typed SupportAnswerPromptData.
  * @throws ZodError on validation failure.
  */
-export function parseNpcResponseOutput(text: string): NpcResponseOutputData {
-  return NpcResponseOutputSchema.parse(JSON.parse(text));
+export function parseSupportAnswerPrompt(text: string): SupportAnswerPromptData {
+  return SupportAnswerPromptSchema.parse(JSON.parse(text));
 }
 
 /**
  * Parse an LLM response with explicit error handling (Result-style).
  * Does not throw on validation failure.
  */
-export function safeParseNpcResponseOutput(
+export function safeParseSupportAnswerPrompt(
   text: string,
-): { success: true; data: NpcResponseOutputData } | { success: false; error: NpcResponseOutputValidationError } {
+): { success: true; data: SupportAnswerPromptData } | { success: false; error: SupportAnswerPromptValidationError } {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -39,7 +40,7 @@ export function safeParseNpcResponseOutput(
       error: new z.ZodError([{ code: "custom", path: [], message: `invalid JSON: ${(err as Error).message}` }]),
     };
   }
-  const result = NpcResponseOutputSchema.safeParse(parsed);
+  const result = SupportAnswerPromptSchema.safeParse(parsed);
   return result.success
     ? { success: true, data: result.data }
     : { success: false, error: result.error };
@@ -47,20 +48,22 @@ export function safeParseNpcResponseOutput(
 
 
 /** Payload value-object name this parser extracts — resolved against a loaded MetaRoot at runtime. */
-export const NPCRESPONSEOUTPUT_PAYLOAD_NAME = "NpcResponsePayload";
+export const SUPPORTANSWERPROMPT_PAYLOAD_NAME = "SupportAnswer";
 
-/** Best-effort extracted twin of `NpcResponseOutput` — every field nullable (null where lost/malformed). */
-export interface NpcResponseOutputExtracted {
-  name: string | null;
-  age: number | null;
+/** Best-effort extracted twin of `SupportAnswerPrompt` — every field nullable (null where lost/malformed). */
+export interface SupportAnswerPromptExtracted {
+  text: string | null;
+  confidence: string | null;
+  note: string | null;
 }
 
-/** Map an assembled ValueObject graph into a typed `NpcResponseOutputExtracted` mirror. Generated; null-tolerant. */
-function fromNpcResponseOutputExtracted(o: unknown): NpcResponseOutputExtracted | null {
+/** Map an assembled ValueObject graph into a typed `SupportAnswerPromptExtracted` mirror. Generated; null-tolerant. */
+function fromSupportAnswerPromptExtracted(o: unknown): SupportAnswerPromptExtracted | null {
   if (o == null) return null;
   return {
-    name: dlgString(readProp(o, "name")),
-    age: dlgInt(readProp(o, "age")),
+    text: dlgString(readProp(o, "text")),
+    confidence: dlgString(readProp(o, "confidence")),
+    note: dlgString(readProp(o, "note")),
   };
 }
 
@@ -78,31 +81,25 @@ function dlgString(v: unknown): string | null {
   return v == null ? null : String(v);
 }
 
-function dlgInt(v: unknown): number | null {
-  if (v == null) return null;
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? Math.trunc(n) : null;
-}
-
 /**
  * Runtime-delegating tolerant best-effort extraction; never throws. FULLY populates
  * nested-object and array-of-object components by delegating to the metadata-driven runtime
  * `extractObject` (which assembles the whole graph reflection-free via the Phase A object
  * model, reading the live metadata directly), then maps the assembled graph into the typed
- * `NpcResponseOutputExtracted` mirror.
+ * `SupportAnswerPromptExtracted` mirror.
  *
  * @param root a loaded MetaRoot (e.g. `(await new MetaDataLoader().load(...)).root`) that declares
- *             the `NpcResponsePayload` value-object.
+ *             the `SupportAnswer` value-object.
  */
-export function extractLenientNpcResponseOutputWithLoader(
+export function extractLenientSupportAnswerPromptWithLoader(
   root: MetaRoot,
   text: string,
   opts?: Partial<ExtractOptions> | null,
-): ExtractionResult<NpcResponseOutputExtracted> {
-  const mo = root.findObject(NPCRESPONSEOUTPUT_PAYLOAD_NAME);
+): ExtractionResult<SupportAnswerPromptExtracted> {
+  const mo = root.findObject(SUPPORTANSWERPROMPT_PAYLOAD_NAME);
   if (mo === undefined) {
-    throw new Error(`extractLenientNpcResponseOutputWithLoader: payload "${NPCRESPONSEOUTPUT_PAYLOAD_NAME}" not found in the supplied MetaRoot`);
+    throw new Error(`extractLenientSupportAnswerPromptWithLoader: payload "${SUPPORTANSWERPROMPT_PAYLOAD_NAME}" not found in the supplied MetaRoot`);
   }
   const outcome = extractObject(mo, text, Format.JSON, opts);
-  return { data: fromNpcResponseOutputExtracted(outcome.data), report: outcome.report };
+  return { data: fromSupportAnswerPromptExtracted(outcome.data), report: outcome.report };
 }

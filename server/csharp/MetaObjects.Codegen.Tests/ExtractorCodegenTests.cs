@@ -67,8 +67,8 @@ public sealed class ExtractorCodegenTests
         { "field.string": { "name": "note" } },
         { "field.object": { "name": "shipTo", "@objectRef": "Customer" } }
       ]}},
-      { "template.output": { "name": "OrderOut", "@payloadRef": "Order",
-          "@textRef": "ai/order", "@format": "json", "@promptStyle": "guide" } }
+      { "template.prompt": { "name": "OrderOut", "@payloadRef": "Order", "@responseRef": "Order",
+          "@textRef": "ai/order", "@format": "text", "@responseFormat": "json", "@promptStyle": "guide" } }
     ]}}
     """;
 

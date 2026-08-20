@@ -66,6 +66,10 @@ export const TEMPLATE_ATTR_HTML_BODY_REF = "htmlBodyRef";
 export const TEMPLATE_ATTR_TEXT_BODY_REF = "textBodyRef";
 
 // Prompt-overlay attrs (template.prompt only).
+//
+// ADR-0052: @responseRef is also the INBOUND gate. Its presence — never a format
+// value — is what makes a prompt emit a parser-on-receipt, a tolerant extract, and
+// the FR-010 response-format fragment. A template.output emits none of those.
 export const TEMPLATE_ATTR_RESPONSE_REF = "responseRef";
 export const TEMPLATE_ATTR_MAX_TOKENS = "maxTokens";
 export const TEMPLATE_ATTR_REQUIRED_SLOTS = "requiredSlots";
@@ -94,7 +98,8 @@ export const TEMPLATE_FORMATS = [
 ] as const;
 export type TemplateFormat = (typeof TEMPLATE_FORMATS)[number];
 
-// FR-010 artifact-1 prompt presentation style (template.output only). Closed enum;
+// FR-010 response-format fragment presentation (template.prompt only — ADR-0052 moved
+// it off template.output, where its own name contradicted the subtype). Closed enum;
 // guidance is NEVER carried in comments. Default "guide". Set project-wide via an
 // abstract template base + extends, with a render-time override on top.
 export const TEMPLATE_ATTR_PROMPT_STYLE = "promptStyle";
@@ -109,6 +114,27 @@ export const PROMPT_STYLES = [
   PROMPT_STYLE_EXAMPLE_ONLY,
 ] as const;
 export type PromptStyle = (typeof PROMPT_STYLES)[number];
+
+// ADR-0053 — the syntax of the model's REPLY (template.prompt only). Distinct from
+// @format, which is the syntax of the rendered PROMPT body: the two genuinely differ
+// (a plain-text prompt may elicit an XML reply), which is why one attribute cannot
+// serve both directions.
+//
+// Two members, not TEMPLATE_FORMATS' seven, because two is what every shipping
+// consumer dispatches on (Format.JSON / Format.XML) in all five ports. The rest are
+// reserved-not-registered under ADR-0007 Amendment 2's re-entry bar: a member enters
+// the registry only when a shipping consumer dispatches on it.
+//
+// Default "json" reproduces the trace helper's pre-ADR-0053 fallback exactly (anything
+// not "xml" was treated as JSON), so the default is behaviour-preserving rather than a
+// new policy.
+export const TEMPLATE_ATTR_RESPONSE_FORMAT = "responseFormat";
+export const RESPONSE_FORMAT_JSON = "json";
+export const RESPONSE_FORMAT_XML = "xml";
+
+export const TEMPLATE_RESPONSE_FORMATS = [RESPONSE_FORMAT_JSON, RESPONSE_FORMAT_XML] as const;
+export type ResponseFormat = (typeof TEMPLATE_RESPONSE_FORMATS)[number];
+export const RESPONSE_FORMAT_DEFAULT: ResponseFormat = RESPONSE_FORMAT_JSON;
 
 // @xmlText — a FIELD-level marker (boolean) for the tolerant extract engine: this field
 // receives its element's TEXT CONTENT when a template.output response is parsed from XML

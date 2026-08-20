@@ -311,10 +311,13 @@ public class JavaApiDocsAccuracyTest extends SharedRegistryTestBase {
     }
 
     @Test
-    public void promptTemplateIsDocumentedAsPayloadOnly() {
-        // template.prompt → PAYLOAD only; RENDER/PROMPT/OUTPUT_PARSER require SUBTYPE_OUTPUT.
+    public void aPromptWithNoResponseIsDocumentedAsPayloadOnly() {
+        // ADR-0052: a prompt is inbound only when it DECLARES a response. With no
+        // @responseRef there is nothing to instruct the model about and nothing to parse,
+        // so PROMPT/OUTPUT_PARSER are absent — and RENDER is absent because the render
+        // helper stays outbound (template.output) only.
         ApiUnit classify = unit("ClassifyPrompt");
-        assertEquals("template.prompt ClassifyPrompt → PAYLOAD only",
+        assertEquals("a template.prompt with no @responseRef → PAYLOAD only",
             EnumSet.of(ApiSymbolKind.PAYLOAD), kinds(classify));
 
         // Forward-confirm the one PAYLOAD it DOES document is real...
@@ -323,19 +326,48 @@ public class JavaApiDocsAccuracyTest extends SharedRegistryTestBase {
         // ...and the skipped categories' names are absent from the generated output.
         assertFalse("no ClassifyPromptRenderHelper should exist",
             containsIdentifier(allGenerated, "ClassifyPromptRenderHelper"));
-        assertFalse("no ClassifyPromptPrompt should exist",
-            containsIdentifier(allGenerated, "ClassifyPromptPrompt"));
+        assertFalse("no ClassifyPromptResponseFormat should exist",
+            containsIdentifier(allGenerated, "ClassifyPromptResponseFormat"));
         assertFalse("no ClassifyPromptParser should exist",
             containsIdentifier(allGenerated, "ClassifyPromptParser"));
     }
 
     @Test
-    public void outputTemplateDocumentsAllFourHelperKinds() {
+    public void aRespondingPromptDocumentsTheInboundKinds() {
+        // The ADR-0052 inbound unit: the response-format fragment, the parser, and the
+        // records — the @payloadRef request AND the @responseRef reply, which are
+        // different shapes here on purpose.
+        ApiUnit answer = unit("AnswerPrompt");
+        assertEquals("a responding template.prompt → PAYLOAD/PROMPT/OUTPUT_PARSER",
+            EnumSet.of(ApiSymbolKind.PAYLOAD, ApiSymbolKind.PROMPT, ApiSymbolKind.OUTPUT_PARSER),
+            kinds(answer));
+
+        // Every documented symbol must be a real generated identifier — the invariant that
+        // api-docs may never claim a symbol codegen suppressed.
+        assertTrue("documented AnswerPromptResponseFormat must appear in generated Java",
+            containsIdentifier(allGenerated, "AnswerPromptResponseFormat"));
+        assertTrue("documented AnswerPromptParser must appear in generated Java",
+            containsIdentifier(allGenerated, "AnswerPromptParser"));
+        assertTrue("documented AnswerPromptResponse record must appear in generated Java",
+            containsIdentifier(allGenerated, "AnswerPromptResponse"));
+        // The render helper stays outbound-only.
+        assertFalse("no AnswerPromptRenderHelper should exist",
+            containsIdentifier(allGenerated, "AnswerPromptRenderHelper"));
+    }
+
+    @Test
+    public void anOutputTemplateDocumentsOnlyItsOutboundKinds() {
+        // ADR-0052 direction pin at the DOCS tier. Before this, a json template.output was
+        // documented as carrying a prompt fragment and a parser — symbols describing how to
+        // read a model's reply, attached to a template that only ever writes one.
         ApiUnit summary = unit("SummaryOutput");
-        assertEquals("json template.output → PAYLOAD/RENDER/PROMPT/OUTPUT_PARSER",
-            EnumSet.of(ApiSymbolKind.PAYLOAD, ApiSymbolKind.RENDER,
-                       ApiSymbolKind.PROMPT, ApiSymbolKind.OUTPUT_PARSER),
+        assertEquals("json template.output → RENDER/PAYLOAD only",
+            EnumSet.of(ApiSymbolKind.PAYLOAD, ApiSymbolKind.RENDER),
             kinds(summary));
+        assertFalse("no SummaryOutputResponseFormat should exist",
+            containsIdentifier(allGenerated, "SummaryOutputResponseFormat"));
+        assertFalse("no SummaryOutputParser should exist",
+            containsIdentifier(allGenerated, "SummaryOutputParser"));
     }
 
     // ------------------------------------------------------------------------

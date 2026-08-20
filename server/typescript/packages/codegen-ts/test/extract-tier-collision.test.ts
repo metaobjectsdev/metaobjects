@@ -87,8 +87,8 @@ describe("extract/output-parser tier — ADR-0044 cross-package collision (#228)
     expect(names).toContain("AcmeBetaNote.ts");
     expect(names).not.toContain("Note.ts");
 
-    const outputSrc = files.get("DigestDoc.output.ts")!;
-    const extractorSrc = files.get("DigestDoc.extractor.ts")!;
+    const outputSrc = files.get("DigestPrompt.response.ts")!;
+    const extractorSrc = files.get("DigestPrompt.extractor.ts")!;
 
     // Mirror interfaces for BOTH colliding VOs present — neither dropped by bare-name dedupe.
     expect(outputSrc).toContain("export interface AcmeAlphaNoteExtracted {");
@@ -119,7 +119,7 @@ describe("extract/output-parser tier — ADR-0044 cross-package collision (#228)
     expect(extractorSrc).not.toMatch(/\bNote\b/);
 
     // ---- Compile + RUN the generated output ----
-    const extractorMod = await import(join(dir, "DigestDoc.extractor.ts"));
+    const extractorMod = await import(join(dir, "DigestPrompt.extractor.ts"));
 
     const text = JSON.stringify({
       fromAlpha: { alphaText: "AA" },
@@ -127,14 +127,14 @@ describe("extract/output-parser tier — ADR-0044 cross-package collision (#228)
     });
 
     // Tolerant delegating extract (output-parser.ts) — never throws.
-    const { data, report } = extractorMod.extractLenientDigestDoc(root, text);
+    const { data, report } = extractorMod.extractLenientDigestPrompt(root, text);
     expect(report.lostRequired()).toEqual([]);
     expect(data.fromAlpha).toEqual({ alphaText: "AA" });
     expect(data.fromBeta).toEqual({ betaText: "BB" });
 
     // Strict extract (extractor.ts) — throws iff a required field was lost; asserts full type
     // fidelity end-to-end (entity module + output-parser + extractor all agree).
-    const strict = extractorMod.extractDigestDoc(root, text);
+    const strict = extractorMod.extractDigestPrompt(root, text);
     expect(strict.fromAlpha).toEqual({ alphaText: "AA" });
     expect(strict.fromBeta).toEqual({ betaText: "BB" });
   });
@@ -152,11 +152,11 @@ describe("extract/output-parser tier — ADR-0044 cross-package collision (#228)
               },
             },
             {
-              "template.output": {
+              "template.prompt": {
                 name: "WidgetOut",
                 "@payloadRef": "Widget",
+          "@responseRef": "Widget",
                 "@textRef": "x/y",
-                "@format": "json",
               },
             },
           ],
@@ -174,7 +174,7 @@ describe("extract/output-parser tier — ADR-0044 cross-package collision (#228)
     expect([...files.keys()]).toContain("Widget.ts");
     expect([...files.keys()]).not.toContain("DemoWidget.ts");
 
-    const outputSrc = files.get("WidgetOut.output.ts")!;
+    const outputSrc = files.get("WidgetOut.response.ts")!;
     expect(outputSrc).toContain("export interface WidgetOutExtracted {");
     expect(outputSrc).toContain('export const WIDGETOUT_PAYLOAD_NAME = "Widget";');
     expect(outputSrc).toContain("root.findObject(WIDGETOUT_PAYLOAD_NAME)");
@@ -201,11 +201,11 @@ describe("output-parser runtime payload lookup — ADR-0042 FQN fix for a collid
                 },
               },
               {
-                "template.output": {
+                "template.prompt": {
                   name: "ReportDocAlpha",
                   "@payloadRef": "Report",
+          "@responseRef": "Report",
                   "@textRef": "unused/a",
-                  "@format": "json",
                 },
               },
             ],
@@ -224,11 +224,11 @@ describe("output-parser runtime payload lookup — ADR-0042 FQN fix for a collid
                 },
               },
               {
-                "template.output": {
+                "template.prompt": {
                   name: "ReportDocBeta",
                   "@payloadRef": "Report",
+          "@responseRef": "Report",
                   "@textRef": "unused/b",
-                  "@format": "json",
                 },
               },
             ],
@@ -244,8 +244,8 @@ describe("output-parser runtime payload lookup — ADR-0042 FQN fix for a collid
     TEMP_DIRS.push(dir);
     const files = await genFiles(root, dir);
 
-    const alphaOut = files.get("ReportDocAlpha.output.ts")!;
-    const betaOut = files.get("ReportDocBeta.output.ts")!;
+    const alphaOut = files.get("ReportDocAlpha.response.ts")!;
+    const betaOut = files.get("ReportDocBeta.response.ts")!;
 
     // The payload's OWN bare name ("Report") collides -> the FQN is baked + resolved via the
     // canonical resolveObjectRef, NOT the ambiguous bare root.findObject().
@@ -257,8 +257,8 @@ describe("output-parser runtime payload lookup — ADR-0042 FQN fix for a collid
     expect(betaOut).toContain("resolveObjectRef(root, REPORTDOCBETA_PAYLOAD_NAME, \"\").node");
 
     // ---- Compile + RUN both against the SAME shared root ----
-    const alphaMod = await import(join(dir, "ReportDocAlpha.output.ts"));
-    const betaMod = await import(join(dir, "ReportDocBeta.output.ts"));
+    const alphaMod = await import(join(dir, "ReportDocAlpha.response.ts"));
+    const betaMod = await import(join(dir, "ReportDocBeta.response.ts"));
 
     const alphaText = JSON.stringify({ alphaVal: "AV" });
     const betaText = JSON.stringify({ betaVal: "BV" });

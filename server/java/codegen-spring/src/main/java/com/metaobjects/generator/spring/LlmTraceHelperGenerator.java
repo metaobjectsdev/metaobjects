@@ -33,7 +33,8 @@ import com.metaobjects.generator.util.GeneratedFileWriter;
  *   <li>resolves the response payload {@link MetaObject} (the {@code @responseRef}
  *       VO) and the trace entity {@link MetaObject} from the supplied loader;</li>
  *   <li>runs the runtime tolerant extract
- *       ({@code com.metaobjects.object.extract.MetaObjectExtractor.extract(responseMo, input.llmResponseText())})
+ *       ({@code com.metaobjects.object.extract.MetaObjectExtractor.extract(responseMo, input.llmResponseText(), format)},
+ *       the format baked from the prompt's {@code @responseFormat} per ADR-0053)
  *       into a typed {@code voResponse} (a lost-required field → {@code status="error"},
  *       {@code voResponse=null}) — mirroring the TS reference's lost-required gate;</li>
  *   <li>builds the base trace row via the Slice-1
@@ -83,6 +84,9 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
     /** FQN of the runtime extract entry point (emitted as a source FQN string). */
     public static final String META_OBJECT_EXTRACT_FQN =
             "com.metaobjects.object.extract.MetaObjectExtractor";
+    /** FQN of the reply-syntax enum the emitted extract call selects (ADR-0053). */
+    public static final String EXTRACT_FORMAT_FQN =
+            "com.metaobjects.render.extract.Format";
     /** FQN of the never-throwing recorder seam (emitted as a source FQN string). */
     public static final String RECORDER_FQN =
             "com.metaobjects.manager.db.ai.LlmCallRecorder";
@@ -161,6 +165,19 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
                     + responseRef + "\" does not resolve to an object.value or sourceless object.projection");
         }
 
+        // ADR-0053 — the REPLY's syntax is @responseFormat (json|xml, default json).
+        //
+        // This site used to bake nothing at all: it called the 2-arg
+        // MetaObjectExtractor.extract(mo, text) overload, which hardcodes Format.JSON. So a
+        // prompt declaring an XML reply got a trace helper that parsed it as JSON — the
+        // reply's syntax was inexpressible here, not merely mis-read. (@format was never
+        // consulted, which is why this port needed a different fix from TypeScript's and
+        // Python's, where @format WAS the source and had to be replaced.)
+        String replyFormat = FindInbound.responseFormatOf(prompt);
+        String formatEnum = FindInbound.isXml(replyFormat)
+            ? EXTRACT_FORMAT_FQN + ".XML"
+            : EXTRACT_FORMAT_FQN + ".JSON";
+
         String[] split = SpringNaming.splitFqn(entity.getName());
         String pkg = split[0];
         String shortName = split[1];
@@ -214,7 +231,8 @@ public class LlmTraceHelperGenerator extends MultiFileDirectGeneratorBase<MetaOb
         // Tolerant extract → typed voResponse + lost-required gate.
         src.append("        com.metaobjects.render.extract.ExtractionResult<Object> outcome =\n");
         src.append("            ").append(META_OBJECT_EXTRACT_FQN)
-           .append(".extract(responseMo, input.llmResponseText());\n");
+           .append(".extract(responseMo, input.llmResponseText(), ")
+           .append(formatEnum).append(");\n");
         src.append("        boolean failed = outcome.report().hasLostRequired();\n");
         src.append("        String status = failed ? ").append(CALL_INPUT_FQN).append(".STATUS_ERROR : ")
            .append(CALL_INPUT_FQN).append(".STATUS_OK;\n");

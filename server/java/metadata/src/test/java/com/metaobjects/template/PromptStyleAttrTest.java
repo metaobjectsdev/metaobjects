@@ -13,10 +13,16 @@ import java.util.List;
 import static org.junit.Assert.*;
 
 /**
- * Tests for the FR-010 {@code @promptStyle} attribute on {@code template.output}.
+ * Tests for the FR-010 {@code @promptStyle} attribute on {@code template.prompt}.
  *
- * <p>Registered in FR-010 Plan 3 Task 1. Mirrors the {@code @format} validation pattern
- * in {@link TemplateValidationTest#rejectsUnknownFormatValue()}.
+ * <p>Registered in FR-010 Plan 3 Task 1; re-homed from {@code template.output} to
+ * {@code template.prompt} by ADR-0052, which made a template subtype's axis DIRECTION.
+ * {@code @promptStyle} governs a fragment that instructs an LLM how to format its reply,
+ * so its old home — the subtype defined as "every rendered artifact other than an LLM
+ * prompt" — was a contradiction visible in the attribute's own description.
+ *
+ * <p>Mirrors the {@code @format} validation pattern in
+ * {@link TemplateValidationTest#rejectsUnknownFormatValue()}.
  *
  * <p>Rules verified:
  * <ol>
@@ -25,7 +31,7 @@ import static org.junit.Assert.*;
  *   <li>An out-of-set value (e.g. {@code "fancy"}) is REJECTED with
  *       {@link ErrorCode#ERR_BAD_ATTR_VALUE}.</li>
  *   <li>When {@code @promptStyle} is absent the accessor
- *       ({@link OutputTemplate#getPromptStyle()}) returns the default {@code "guide"}.</li>
+ *       ({@link PromptTemplate#getPromptStyle()}) returns the default {@code "guide"}.</li>
  * </ol>
  */
 public class PromptStyleAttrTest extends SharedRegistryTestBase {
@@ -39,23 +45,23 @@ public class PromptStyleAttrTest extends SharedRegistryTestBase {
     }
 
     /**
-     * Build a minimal {@code template.output} JSON fixture with the given
+     * Build a minimal {@code template.prompt} JSON fixture with the given
      * {@code @promptStyle} value (or none if {@code promptStyleValue} is null).
      */
     private String outputTemplateJson(String promptStyleValue) {
         String styleAttr = promptStyleValue != null
             ? ", \"@promptStyle\": \"" + promptStyleValue + "\""
             : "";
-        // A template.output defaults to @kind="document", which requires @textRef
-        // (a document is never bodyless). Include it so these @promptStyle-focused
-        // fixtures satisfy the document/textRef cross-field rule. @payloadRef is
-        // required on template.output (SP-G Unit 6a — matches the cross-port canonical),
-        // so declare a minimal payload object.value "P" and reference it.
+        // A template.prompt requires @textRef (the renderable body) and @payloadRef, so
+        // declare a minimal payload object.value "P" and reference it. @responseRef is
+        // what makes the prompt carry the ADR-0052 inbound half at all, and it is the
+        // only reason @promptStyle is meaningful here — so these fixtures declare it.
         return "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
                "  { \"object.value\": { \"name\": \"P\", \"children\": [" +
                "      { \"field.string\": { \"name\": \"f\" } }" +
                "  ] } }," +
-               "  { \"template.output\": { \"name\": \"T\", \"@textRef\": \"out/t\", \"@payloadRef\": \"P\"" + styleAttr + " } }" +
+               "  { \"template.prompt\": { \"name\": \"T\", \"@textRef\": \"out/t\", \"@payloadRef\": \"P\"," +
+               "      \"@responseRef\": \"P\"" + styleAttr + " } }" +
                "] } }";
     }
 
@@ -130,16 +136,63 @@ public class PromptStyleAttrTest extends SharedRegistryTestBase {
         com.metaobjects.MetaData templateNode =
             loader.getRoot().getChildOfType(
                 TemplateConstants.TYPE_TEMPLATE, "acme::T");
-        assertNotNull("template.output 'T' must be present in the loaded root", templateNode);
-        assertTrue("template node must be an OutputTemplate instance",
-            templateNode instanceof OutputTemplate);
+        assertNotNull("template.prompt 'T' must be present in the loaded root", templateNode);
+        assertTrue("template node must be a PromptTemplate instance",
+            templateNode instanceof PromptTemplate);
 
-        OutputTemplate t = (OutputTemplate) templateNode;
+        PromptTemplate t = (PromptTemplate) templateNode;
         assertFalse("@promptStyle must not be set (absent in JSON)",
             t.hasMetaAttr(TemplateConstants.ATTR_PROMPT_STYLE, false));
         assertEquals("getPromptStyle() must return the default 'guide' when absent",
             TemplateConstants.PROMPT_STYLE_DEFAULT, t.getPromptStyle());
         assertEquals("PROMPT_STYLE_DEFAULT must equal \"guide\"",
             "guide", TemplateConstants.PROMPT_STYLE_DEFAULT);
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 5 — ADR-0053 @responseFormat, the sibling of @promptStyle
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void absentResponseFormatDefaultsToJson() {
+        MetaDataLoader loader = load(outputTemplateJson(null), "response-format-absent.json");
+
+        com.metaobjects.MetaData templateNode =
+            loader.getRoot().getChildOfType(
+                TemplateConstants.TYPE_TEMPLATE, "acme::T");
+        PromptTemplate t = (PromptTemplate) templateNode;
+
+        assertFalse("@responseFormat must not be set (absent in JSON)",
+            t.hasMetaAttr(TemplateConstants.ATTR_RESPONSE_FORMAT, false));
+        // The default reproduces the pre-ADR-0053 fallback exactly (anything that was
+        // not "xml" was treated as JSON), so it is behaviour-preserving.
+        assertEquals("getResponseFormat() must return the default 'json' when absent",
+            TemplateConstants.RESPONSE_FORMAT_DEFAULT, t.getResponseFormat());
+        assertEquals("RESPONSE_FORMAT_DEFAULT must equal \"json\"",
+            "json", TemplateConstants.RESPONSE_FORMAT_DEFAULT);
+    }
+
+    @Test
+    public void rejectsUnknownResponseFormatValue() {
+        // "markdown" is a legal @format but NOT a legal @responseFormat — nothing
+        // dispatches on it inbound (ADR-0053).
+        String json = "{ \"metadata.root\": { \"package\": \"acme\", \"children\": [" +
+                      "  { \"object.value\": { \"name\": \"P\", \"children\": [" +
+                      "      { \"field.string\": { \"name\": \"f\" } }" +
+                      "  ] } }," +
+                      "  { \"template.prompt\": { \"name\": \"T\", \"@textRef\": \"out/t\"," +
+                      "      \"@payloadRef\": \"P\", \"@responseRef\": \"P\"," +
+                      "      \"@responseFormat\": \"markdown\" } }" +
+                      "] } }";
+        try {
+            load(json, "bad-response-format.json");
+            fail("an out-of-set @responseFormat must be rejected");
+        } catch (RuntimeException e) {
+            boolean messageMatches = e.getMessage() != null
+                && e.getMessage().contains("ERR_BAD_ATTR_VALUE");
+            assertTrue(
+                "Exception must signal ERR_BAD_ATTR_VALUE: " + e.getMessage(),
+                messageMatches);
+        }
     }
 }

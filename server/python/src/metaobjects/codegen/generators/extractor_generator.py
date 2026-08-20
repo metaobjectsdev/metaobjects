@@ -1,4 +1,6 @@
-"""Extractor codegen — one ``<template_name>_extractor.py`` per ``template.output``.
+"""Extractor codegen — one ``<template_name>_extractor.py`` per responding
+``template.prompt`` (ADR-0052: the extract tier reads a REPLY, so it binds
+``@responseRef``; ``template.output`` renders outbound and parses nothing).
 
 The ``extract`` tier (cross-port parity with the Java ``ExtractorCodeGenerator``, the
 TS ``renderExtractor``, and the Kotlin / C# ports) sits OVER the existing tolerant
@@ -41,23 +43,22 @@ from metaobjects.codegen import extract_delegate_emitter as rde
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
+from metaobjects.codegen.generators.find_inbound import (
+    inbound_templates,
+    response_shape,
+)
 from metaobjects.codegen.generators.payload_vo_generator import (
     is_field_required,
     payload_class_name,
-    payload_module_name,
-    resolve_payload_vo,
+    response_class_name,
+    response_module_name,
 )
 from metaobjects.meta.core.field import field_constants as fc
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.meta_data import MetaData
-from metaobjects.meta.template import template_constants as tc
-from metaobjects.shared.base_types import TYPE_TEMPLATE
 from metaobjects.shared.separators import PACKAGE_SEP
 
 _GENERATOR_NAME = "extractor-generator"
-
-# The extract tier only exists where the tolerant extract API does — json/xml.
-_EXTRACT_FORMATS = frozenset({tc.TEMPLATE_FORMAT_JSON, tc.TEMPLATE_FORMAT_XML})
 
 
 def _pkg_of(node: MetaData) -> str:
@@ -75,18 +76,19 @@ def _pkg_of(node: MetaData) -> str:
 def _strict_class(
     vo: MetaData, root_vo: MetaData, template_name: str, name_map: dict[str, str]
 ) -> str:
-    """The strict Pydantic class name for a value-object. The ROOT payload VO
+    """The strict Pydantic class name for a value-object. The ROOT response VO
     (matched by ``resolution_key()`` — NOT bare ``name``, so a nested VO that
     happens to share the root's bare name across packages is never mistaken for
-    the root) maps to the template-named ``<Template>Payload`` (payload_vo emits
-    the primary class under the template name); every OTHER (nested) VO maps to
-    its ADR-0044 (#228) *name_map* base + ``Payload`` — bare when unique in the
-    payload's nested-VO closure, package-qualified on a cross-package short-name
-    collision (see :func:`~metaobjects.codegen.extract_delegate_emitter.build_name_map`,
-    which reuses the SAME naming pass ``payload_vo_generator`` runs, so this name
-    always matches the payload module's own emitted class)."""
+    the root) maps to the template-named ``<Template>Response`` (payload_vo emits
+    the primary class of the response module under the template name); every
+    OTHER (nested) VO maps to its ADR-0044 (#228) *name_map* base + ``Payload`` —
+    bare when unique in the response's nested-VO closure, package-qualified on a
+    cross-package short-name collision (see
+    :func:`~metaobjects.codegen.extract_delegate_emitter.build_name_map`, which
+    reuses the SAME naming pass ``payload_vo_generator`` runs, so this name always
+    matches the response module's own emitted class)."""
     if vo.resolution_key() == root_vo.resolution_key():
-        return payload_class_name(template_name)
+        return response_class_name(template_name)
     base = name_map.get(vo.resolution_key(), vo.name)
     return payload_class_name(base)
 
@@ -173,37 +175,30 @@ def render_extractor(
     *,
     generator: "ExtractorGenerator | None" = None,
 ) -> str | None:
-    """Render one ``<snake>_extractor.py`` for a ``template.output`` node.
+    """Render one ``<snake>_extractor.py`` for a responding ``template.prompt`` node.
 
     When *generator* is supplied, its ``_emit_mapper`` override is used for each
     mirror→strict mapper (the extension seam); when ``None`` the module-level
     :func:`_emit_mapper` is used (byte-identical back-compat path).
 
-    Returns ``None`` when the ``@payloadRef`` can't be resolved to an ``object.value``,
-    or when the target ``@format`` is not json/xml (the extract tier requires the
-    tolerant extract API, which only the json/xml output-parsers emit)."""
-    payload_ref = template.get_meta_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
-    if not isinstance(payload_ref, str) or not payload_ref:
+    Returns ``None`` when the template declares no ``@responseRef`` or the ref can't
+    be resolved to a payload target. ADR-0052: no format gate remains —
+    ``@responseFormat`` is a closed json|xml set, so every responding prompt has a
+    tolerant ``extract_lenient_*_with_loader`` to sit over."""
+    # ADR-0052: the extract tier reads a REPLY, so it binds @responseRef.
+    shape = response_shape(root, template, _pkg_of(template))
+    if shape is None:
         return None
-    # ADR-0042 (#228): the referrer is THIS template — a bare @payloadRef resolves
-    # in ITS OWN package first.
-    payload = resolve_payload_vo(root, payload_ref, _pkg_of(template))
-    if payload is None:
-        return None
-
-    fmt = template.get_meta_attr(tc.TEMPLATE_ATTR_FORMAT)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
-    fmt_str = fmt if isinstance(fmt, str) else tc.TEMPLATE_FORMAT_DEFAULT
-    if fmt_str.lower() not in _EXTRACT_FORMATS:
-        return None
+    payload = shape.vo
 
     template_name = template.name
     snake = _snake_case(template_name)
-    parser_module = f"{snake}_output_parser"
-    payload_module = payload_module_name(template_name)
+    parser_module = f"{snake}_response_parser"
+    payload_module = response_module_name(template_name)
     extract_lenient_with_fn = f"extract_lenient_{snake}_with_loader"
     extract_lenient_fn = f"extract_lenient_{snake}"
     extract_fn = f"extract_{snake}"
-    root_strict = payload_class_name(template_name)
+    root_strict = response_class_name(template_name)
 
     fqn = f"{payload.package}::{template_name}" if payload.package else template_name
 
@@ -280,8 +275,8 @@ def render_extractor(
 
 
 class ExtractorGenerator:
-    """Generator wrapping ``render_extractor``. Emits one file per ``template.output``
-    declared at root level (mirrors ``OutputParserGenerator``)."""
+    """Generator wrapping ``render_extractor``. Emits one file per responding
+    ``template.prompt`` declared at root level (mirrors ``OutputParserGenerator``)."""
 
     name = _GENERATOR_NAME
 
@@ -304,8 +299,8 @@ class ExtractorGenerator:
         return _emit_mapper(vo, root, root_vo, template_name, name_map)
 
     def _render_module(self, template: MetaData, root: MetaData) -> str | None:
-        """EXTENSION SEAM — render the whole extractor module for one
-        ``template.output``. Defaults to :func:`render_extractor` (passing this
+        """EXTENSION SEAM — render the whole extractor module for one responding
+        ``template.prompt``. Defaults to :func:`render_extractor` (passing this
         instance so the ``_emit_mapper`` override is honored). Override to
         pre/post-process the emitted source or replace the render path."""
         return render_extractor(template, root, generator=self)
@@ -315,21 +310,13 @@ class ExtractorGenerator:
         if root is None:
             return []
         files: list[EmittedFile] = []
-        outputs = sorted(
-            (
-                # ADR-0039 sanctioned own: top-level scan on the loader ROOT (never extended, own == effective)
-                c
-                for c in root.own_children()
-                if c.type == TYPE_TEMPLATE and c.sub_type == tc.TEMPLATE_SUBTYPE_OUTPUT
-            ),
-            key=lambda c: c.name,
-        )
-        for tmpl in outputs:
+        # ADR-0052: the direction rule lives in FindInbound, never re-derived here.
+        for tmpl in inbound_templates(root):
             content = self._render_module(tmpl, root)
             if content is None:
                 ctx.warn(
-                    f"{_GENERATOR_NAME}: skipping template.output "
-                    f"'{tmpl.name}' (no resolvable @payloadRef or non-json/xml format)."
+                    f"{_GENERATOR_NAME}: skipping template.prompt "
+                    f"'{tmpl.name}' (@responseRef does not resolve to a payload target)."
                 )
                 continue
             files.append(

@@ -21,9 +21,11 @@ import java.util.List;
 import com.metaobjects.generator.util.GeneratedFileWriter;
 
 /**
- * Generator: one {@code <TemplateShortName>OutputPrompt} Java class per
- * {@code template.output} declaration (where {@code @format} is {@code json}
- * or {@code xml}), emitting a static {@code renderFormat()} / {@code renderFormat(PromptOverrides)}
+ * Generator: one {@code <TemplateShortName>ResponseFormat} Java class per RESPONDING
+ * {@code template.prompt} declaration (ADR-0052 — one carrying {@code @responseRef};
+ * the reply's syntax comes from {@code @responseFormat}, never {@code @format}, which is
+ * the syntax of the rendered prompt BODY), emitting a static
+ * {@code renderFormat()} / {@code renderFormat(PromptOverrides)}
  * pair backed by {@code OutputFormatRenderer} from the {@code metaobjects-render} module.
  *
  * <p>FR-010 Plan 3 — the Java prompt-fragment codegen. Mirrors the structure of
@@ -56,9 +58,9 @@ import com.metaobjects.generator.util.GeneratedFileWriter;
  *
  * <p>Skips:
  * <ul>
- *   <li>{@code template.prompt} nodes — only outputs need prompt-fragment codegen.</li>
- *   <li>Missing or non-VO {@code @payloadRef}.</li>
- *   <li>{@code @format} values other than {@code json} or {@code xml}.</li>
+ *   <li>{@code template.output} nodes — outbound only; nothing instructs a model.</li>
+ *   <li>A {@code template.prompt} with no {@code @responseRef}.</li>
+ *   <li>A {@code @responseRef} that does not resolve to a payload target.</li>
  * </ul>
  *
  * <p>The {@code SPEC}'s {@code rootName} is the capitalized payload class name
@@ -82,62 +84,50 @@ public class SpringOutputPromptGenerator extends MultiFileDirectGeneratorBase<Me
         parseArgs();
         Path outRoot = Paths.get(outDir.getAbsolutePath());
 
-        // Stable name order — matches the other ports' deterministic emission.
-        // ADR-0039: root-scan discipline — resolving children accessor.
-        List<MetaTemplate> outputs = new ArrayList<>();
-        for (MetaTemplate t : loader.getRoot().getChildren(MetaTemplate.class, true)) {
-            if (TemplateConstants.SUBTYPE_OUTPUT.equals(t.getSubType())) {
-                outputs.add(t);
-            }
-        }
-        outputs.sort((a, b) -> a.getName().compareTo(b.getName()));
-
-        for (MetaTemplate tmpl : outputs) {
+        // ADR-0052: the direction rule lives in FindInbound, never re-derived here.
+        for (MetaTemplate tmpl : FindInbound.inboundTemplates(loader)) {
             emit(tmpl, loader, outRoot);
         }
     }
 
     /**
-     * True iff this generator emits an output-format prompt for {@code node}: the
-     * node is a {@code template.output} whose {@code @format} is {@code json} or
-     * {@code xml} AND whose {@code @payloadRef} resolves (against {@code loader})
-     * to an {@code object.value}. Extracted from the {@link #execute(MetaDataLoader)}
-     * {@code SUBTYPE_OUTPUT} filter combined with the per-template {@link #emit}
-     * format + payload guards.
+     * True iff this generator emits a response-format prompt fragment for {@code node}:
+     * a {@code template.prompt} whose {@code @responseRef} resolves (against
+     * {@code loader}) to an {@code object.value}. Single source of truth shared by the
+     * generator loop AND the api-docs builder.
+     *
+     * <p>ADR-0052/0053: the gate is {@code @responseRef} PRESENCE, not a format value.
+     * The old {@code @format ∈ {json,xml}} gate read the syntax of the OUTBOUND body to
+     * decide whether to instruct the model about the syntax of its REPLY — so a
+     * text-bodied prompt asking for a JSON answer, the common case, got no fragment at
+     * all. Both formats now get one; {@code @responseFormat} only selects which.
      */
     public static boolean appliesTo(MetaData node, MetaDataLoader loader) {
-        if (!(node instanceof MetaTemplate template)) return false;
-        if (!TemplateConstants.SUBTYPE_OUTPUT.equals(template.getSubType())) return false;
-        String format = template.getFormat();
-        boolean supported = TemplateConstants.FORMAT_JSON.equalsIgnoreCase(format)
-                || TemplateConstants.FORMAT_XML.equalsIgnoreCase(format);
-        if (!supported) return false;
-        String payloadRef = template.getPayloadRef();
-        if (payloadRef == null || payloadRef.isEmpty()) return false;
-        return resolveValueObject(loader, payloadRef,
-            com.metaobjects.util.MetaDataUtil.findPackageForMetaData(template)) != null;
+        return FindInbound.isInbound(node, loader);
     }
 
     protected void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot) {
-        if (!appliesTo(template, loader)) {
-            return; // unsupported @format, missing @payloadRef, or not a VO
+        FindInbound.InboundShape shape = FindInbound.responseShape(loader, template);
+        if (shape == null) {
+            return; // no @responseRef, or it does not resolve to a VO
         }
-        MetaObject payloadVo = resolveValueObject(loader, template.getPayloadRef(),
-            com.metaobjects.util.MetaDataUtil.findPackageForMetaData(template));
+        MetaObject payloadVo = shape.vo();
 
         String[] split = SpringNaming.splitFqn(template.getName());
         String templatePkg = split[0];
         String templateShort = split[1];
         String outPkg = SpringNaming.promptsPackage(templatePkg);
-        String promptClass = SpringNaming.promptName(templateShort);
-        String payloadClass = SpringNaming.payloadName(templateShort);
+        String promptClass = SpringNaming.responseFormatName(templateShort);
+        // ADR-0052: the fragment describes the RESPONSE shape, so its root name is the
+        // response record — never the @payloadRef record, which types the request.
+        String responseClass = SpringNaming.responseName(templateShort);
 
-        // The SPEC rootName agrees with the payload class name so both prompt and
-        // extract artifacts share the same root element name.
-        String specLiteral = OutputFormatSpecEmitter.specLiteral(payloadVo, template, payloadClass);
+        // The SPEC rootName agrees with the response record name so the fragment and the
+        // parser agree on the root element name.
+        String specLiteral = OutputFormatSpecEmitter.specLiteral(payloadVo, template, responseClass);
 
         StringBuilder src = new StringBuilder();
-        src.append("// GENERATED — DO NOT EDIT — output-format prompt for template.output `")
+        src.append("// GENERATED — DO NOT EDIT — response-format fragment for template.prompt `")
            .append(template.getName()).append("`\n");
         src.append("package ").append(outPkg).append(";\n\n");
         src.append("import com.metaobjects.render.prompt.OutputFormatSpec;\n");
@@ -148,8 +138,8 @@ public class SpringOutputPromptGenerator extends MultiFileDirectGeneratorBase<Me
         src.append("import com.metaobjects.render.extract.FieldKind;\n");
         src.append("import com.metaobjects.render.extract.Format;\n");
         src.append("\n");
-        src.append("/** Output-format prompt fragment for the `")
-           .append(templateShort).append("` template.output. */\n");
+        src.append("/** Response-format prompt fragment for the `")
+           .append(templateShort).append("` template.prompt. */\n");
         src.append("public final class ").append(promptClass).append(" {\n\n");
         src.append("    private static final OutputFormatSpec SPEC =\n");
         src.append("        ").append(specLiteral).append(";\n\n");
@@ -210,6 +200,6 @@ public class SpringOutputPromptGenerator extends MultiFileDirectGeneratorBase<Me
 
     @Override
     protected String getSingleOutputFilename(MetaObject md) {
-        return SpringNaming.promptName(SpringNaming.splitFqn(md.getName())[1]) + ".java";
+        return SpringNaming.responseFormatName(SpringNaming.splitFqn(md.getName())[1]) + ".java";
     }
 }

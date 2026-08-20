@@ -140,7 +140,9 @@ _TEMPLATE_SUBTYPE_ONLY_ATTRS: dict[str, frozenset[str]] = {
     tc.TEMPLATE_ATTR_REQUIRED_SLOTS: frozenset({tc.TEMPLATE_SUBTYPE_PROMPT}),
     tc.TEMPLATE_ATTR_MODEL: frozenset({tc.TEMPLATE_SUBTYPE_PROMPT}),
     tc.TEMPLATE_ATTR_RESPONSE_REF: frozenset({tc.TEMPLATE_SUBTYPE_PROMPT}),
-    tc.TEMPLATE_ATTR_PROMPT_STYLE: frozenset({tc.TEMPLATE_SUBTYPE_OUTPUT}),
+    # ADR-0052 / ADR-0053 — the inbound half belongs to template.prompt.
+    tc.TEMPLATE_ATTR_PROMPT_STYLE: frozenset({tc.TEMPLATE_SUBTYPE_PROMPT}),
+    tc.TEMPLATE_ATTR_RESPONSE_FORMAT: frozenset({tc.TEMPLATE_SUBTYPE_PROMPT}),
     tc.TEMPLATE_ATTR_KIND: frozenset({tc.TEMPLATE_SUBTYPE_OUTPUT}),
     tc.TEMPLATE_ATTR_SUBJECT_REF: frozenset({tc.TEMPLATE_SUBTYPE_OUTPUT}),
     tc.TEMPLATE_ATTR_HTML_BODY_REF: frozenset({tc.TEMPLATE_SUBTYPE_OUTPUT}),
@@ -3357,9 +3359,12 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
         has_payload_ref = isinstance(payload_ref, str) and payload_ref
 
         # --- subtype-specific attr on the wrong subtype ---
-        # e.g. @maxTokens (prompt-only) on a template.output, or @promptStyle
-        # (output-only) on a template.prompt. ADR-0039: resolving — a subtype-only
-        # attr may be inherited via extends, so read the effective value.
+        # e.g. @maxTokens (prompt-only) on a template.output, or @kind
+        # (output-only) on a template.prompt. Since ADR-0052 that also catches
+        # @promptStyle / @responseFormat left behind on a template.output, which is
+        # exactly the stale declaration the migration has to surface.
+        # ADR-0039: resolving — a subtype-only attr may be inherited via extends, so
+        # read the effective value.
         for attr_name, allowed_subs in _TEMPLATE_SUBTYPE_ONLY_ATTRS.items():
             if tpl.get_meta_attr(attr_name) is not None and tpl.sub_type not in allowed_subs:
                 valid_on = " / ".join(f"template.{s}" for s in sorted(allowed_subs))
@@ -3440,6 +3445,30 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
 
         # #210 — nested payload targets stay value-only (see the helper's doctrine).
         _check_nested_payload_refs_value_only(payload, root, errors, nested_visited)
+
+        # ADR-0052 — @responseRef obeys the SAME target rule as @payloadRef. It had no check at
+        # all in this port while TypeScript validated it, so a @responseRef naming an
+        # object.entity loaded clean here and failed there — and, once ADR-0052 made the inbound
+        # codegen tier key on it, that ref reached a generator whose parser binds a record the
+        # payload tier would not emit. Codegen also fails closed now, but a mistake this cheap to
+        # make belongs at the loader, where every port sees it.
+        # ADR-0039: resolving — a template may inherit @responseRef via extends.
+        response_ref = tpl.get_meta_attr(tc.TEMPLATE_ATTR_RESPONSE_REF)
+        if isinstance(response_ref, str) and response_ref:
+            response_vo = resolve_object_ref(root, response_ref, referrer_pkg)
+            if response_vo is None or not _is_legal_payload_target(response_vo):
+                errors.append(MetaError(
+                    code=ErrorCode.ERR_INVALID_TEMPLATE,
+                    message=(
+                        f"template '{tpl.name}' @responseRef '{response_ref}' "
+                        f"does not resolve to an object.value or sourceless "
+                        f"object.projection at root"
+                    ),
+                    envelope=resolved_source(tpl.source, tpl.fqn(), response_ref),
+                ))
+            else:
+                # #210 — the response closure's nested targets stay value-only too.
+                _check_nested_payload_refs_value_only(response_vo, root, errors, nested_visited)
 
         # R3 — required-slots membership
         if is_prompt:

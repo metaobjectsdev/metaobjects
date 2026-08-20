@@ -31,8 +31,8 @@ public sealed class Fr010CodegenTests
         { "field.string": { "name": "note" } },
         { "field.string": { "name": "tags", "isArray": true } }
       ]}},
-      { "template.output": { "name": "AnswerOutput", "@payloadRef": "AnswerPayload",
-          "@textRef": "ai/answer", "@format": "json", "@promptStyle": "guide" } }
+      { "template.prompt": { "name": "AnswerOutput", "@payloadRef": "AnswerPayload", "@responseRef": "AnswerPayload",
+          "@textRef": "ai/answer", "@format": "text", "@responseFormat": "json", "@promptStyle": "guide" } }
     ]}}
     """;
 
@@ -79,27 +79,34 @@ public sealed class Fr010CodegenTests
     }
 
     [Fact]
-    public void Parser_omits_extract_for_text_format()
+    public void Parser_emits_extract_for_a_text_bodied_prompt_with_a_json_reply()
     {
+        // ADR-0052/0053, and the reason the ADR exists. This shape — a plain-text prompt
+        // BODY eliciting a JSON REPLY — is the common case, and the old design could not
+        // express it: the tier gated the tolerant extract on @format, the body's syntax,
+        // so this template got a strict parser and NO extract at all. @responseFormat now
+        // carries the reply's syntax (defaulting to json), and @responseRef presence alone
+        // decides that there is an inbound half.
         const string m = """
         { "metadata.root": { "package": "acme::ai", "children": [
           { "object.value": { "name": "P", "children": [ { "field.string": { "name": "x" } } ] } },
-          { "template.output": { "name": "TextOut", "@payloadRef": "P", "@textRef": "t/x", "@format": "text" } }
+          { "template.prompt": { "name": "TextOut", "@payloadRef": "P", "@responseRef": "P", "@textRef": "t/x", "@format": "text" } }
         ]}}
         """;
         var src = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(m)))).Content;
-        Assert.Contains("Parse(string text)", src);          // strict parser still emitted
-        Assert.DoesNotContain("ExtractLenient(", src);        // no extract for text
-        Assert.DoesNotContain("Extracted", src);
+        Assert.Contains("Parse(string text)", src);      // strict tier: the reply is json
+        Assert.Contains("ExtractLenient(", src);          // tolerant tier: now unconditional
+        Assert.Contains("Extracted", src);
+        Assert.Contains("Format.Json", src);              // from @responseFormat's default
     }
 
     [Fact]
     public void Prompt_generator_emits_render_format_pair()
     {
         var file = Assert.Single(new OutputPromptGenerator().Generate(Ctx(Load(Model))));
-        Assert.Equal("AnswerOutput.prompt.cs", file.Path);
+        Assert.Equal("AnswerOutput.responseFormat.cs", file.Path);
         var src = file.Content;
-        Assert.Contains("public static class AnswerOutputPrompt", src);
+        Assert.Contains("public static class AnswerOutputResponseFormat", src);
         Assert.Contains("private static readonly OutputFormatSpec Spec = new OutputFormatSpec(Format.Json, \"AnswerPayload\", PromptStyle.Guide,", src);
         Assert.Contains("public static string RenderFormat() => OutputFormatRenderer.Render(Spec, PromptOverrides.None());", src);
         Assert.Contains("public static string RenderFormat(PromptOverrides overrides)", src);
@@ -110,12 +117,29 @@ public sealed class Fr010CodegenTests
     }
 
     [Fact]
-    public void Prompt_generator_skips_text_format()
+    public void Prompt_generator_serves_a_text_bodied_prompt()
     {
+        // The fragment describes the REPLY, so a text-bodied prompt still gets one — the
+        // old @format gate skipped exactly the templates that most needed it.
         const string m = """
         { "metadata.root": { "package": "acme::ai", "children": [
           { "object.value": { "name": "P", "children": [ { "field.string": { "name": "x" } } ] } },
-          { "template.output": { "name": "TextOut", "@payloadRef": "P", "@textRef": "t/x", "@format": "text" } }
+          { "template.prompt": { "name": "TextOut", "@payloadRef": "P", "@responseRef": "P", "@textRef": "t/x", "@format": "text" } }
+        ]}}
+        """;
+        var file = Assert.Single(new OutputPromptGenerator().Generate(Ctx(Load(m))));
+        Assert.Equal("TextOut.responseFormat.cs", file.Path);
+        Assert.Contains("Format.Json", file.Content);
+    }
+
+    [Fact]
+    public void Prompt_generator_skips_a_prompt_with_no_response()
+    {
+        // The inbound gate is @responseRef PRESENCE. No declared reply, no fragment.
+        const string m = """
+        { "metadata.root": { "package": "acme::ai", "children": [
+          { "object.value": { "name": "P", "children": [ { "field.string": { "name": "x" } } ] } },
+          { "template.prompt": { "name": "TextOut", "@payloadRef": "P", "@textRef": "t/x", "@format": "text" } }
         ]}}
         """;
         Assert.Empty(new OutputPromptGenerator().Generate(Ctx(Load(m))));
@@ -154,7 +178,7 @@ public sealed class Fr010CodegenTests
         Assert.False(isEmpty);
 
         // --- invoke RenderFormat() and assert the guide-style fragment ---
-        var promptType = asm.GetType("Acme.Generated.AnswerOutputPrompt")!;
+        var promptType = asm.GetType("Acme.Generated.AnswerOutputResponseFormat")!;
         var render = promptType.GetMethod("RenderFormat", Type.EmptyTypes)!;
         var fragment = (string)render.Invoke(null, null)!;
 
@@ -176,8 +200,8 @@ public sealed class Fr010CodegenTests
             "@values": ["IN_PROGRESS","DONE"],
             "@coerceDefault": "DONE", "@normalize": "none" } }
       ]}},
-      { "template.output": { "name": "TaskOutput", "@payloadRef": "TaskPayload",
-          "@textRef": "ai/task", "@format": "json", "@promptStyle": "guide" } }
+      { "template.prompt": { "name": "TaskOutput", "@payloadRef": "TaskPayload", "@responseRef": "TaskPayload",
+          "@textRef": "ai/task", "@format": "text", "@responseFormat": "json", "@promptStyle": "guide" } }
     ]}}
     """;
 

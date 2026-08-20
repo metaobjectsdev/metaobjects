@@ -11,7 +11,7 @@
           "name": "xmlText",
           "min": 0,
           "max": 1,
-          "description": "When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json."
+          "description": "When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt's @responseFormat is json."
         },
         {
           "type": "attr",

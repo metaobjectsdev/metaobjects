@@ -24,23 +24,45 @@ shape — an `object.value`, or (since #210) a **sourceless** `object.projection
 Mustache is the chosen template engine — it has the only published
 cross-language spec + conformance suite.
 
-## Two template subtypes
+## Two template subtypes — the axis is DIRECTION
 
-| Subtype | Use case | Carries |
-|---|---|---|
-| `template.prompt` | LLM-targeted | `@maxTokens`, `@requiredSlots`, `@model` (in addition to the generic attrs) |
-| `template.output` | Email / docs / config / export | Just the generic attrs |
+A template subtype does not say what the text is *about*; it says which way the text
+travels. That is [ADR-0052](../../spec/decisions/ADR-0052-template-direction-outbound-vs-inbound.md).
+
+| Subtype | Direction | Use case | Generates |
+|---|---|---|---|
+| `template.prompt` | outbound, and (optionally) inbound | LLM-targeted | The payload record + the render handle. Declaring `@responseRef` additionally generates the response record, the response-format fragment, the parser-on-receipt and the tolerant extractor. |
+| `template.output` | outbound only | Email / docs / config / export | The payload record + the render helper. **Never a parser** — nothing reads a reply to a document. |
 
 Both carry the same generic attributes:
 
 | Attr | Required | Purpose |
 |---|---|---|
-| `@payloadRef` | yes | The `object.value` — or sourceless `object.projection` (#210) — declaring the payload shape |
+| `@payloadRef` | yes | The `object.value` — or sourceless `object.projection` (#210) — declaring the shape this template RENDERS |
 | `@textRef` | yes | The 2-layer logical reference `group/source` resolved by a provider |
-| `@format` | no | `text` / `html` / `xml` / `csv` / `json` / `markdown` / `spreadsheet` — drives the escaper. Default: `text`. |
+| `@format` | no | `text` / `html` / `xml` / `csv` / `json` / `markdown` / `spreadsheet` — the syntax of the rendered BODY; drives the escaper. Default: `text`. |
 | `@maxChars` | no | Build-time size budget |
 | `@owner` | no | Governance attribute |
 | `@since` | no | Governance attribute |
+
+`template.prompt` additionally carries `@maxTokens`, `@requiredSlots`, `@model`, and the
+inbound half:
+
+| Attr | Required | Purpose |
+|---|---|---|
+| `@responseRef` | no | The payload target a model's REPLY is parsed into. Its presence IS the request for the whole inbound tier. |
+| `@responseFormat` | no | `json` \| `xml` — the syntax of the REPLY. Default: `json`. |
+| `@promptStyle` | no | `guide` \| `inline` \| `exampleOnly` — how the response-format fragment teaches the shape |
+
+> **`@format` and `@responseFormat` are two different facts, not two shapes of one.**
+> `@format` is the syntax of the question you send; `@responseFormat`
+> ([ADR-0053](../../spec/decisions/ADR-0053-inbound-response-format.md)) is the syntax of
+> the answer you expect. A plain-text prompt asking for a JSON object is the common case,
+> and the pre-ADR-0052 tier read `@format` for both — so that prompt got a strict parser
+> and no tolerant extract, while an `@format: markdown` document got a generated
+> `JSON.parse` over rendered prose.
+>
+> Leaving `@responseRef` off is how you say "this prompt's reply is not machine-read."
 
 ## Payload fields are declared
 
@@ -279,12 +301,12 @@ data class PostSummaryPayload(val title: String)
 ### C#
 
 `MetaObjects.Render` ships the render engine + verify. `MetaObjects.Codegen`
-ships payload-VO codegen for **`template.output`** parse targets — the strict
-record is named after the **value object**, not the template (for this model:
-`record WelcomePayload` / `record PostSummary`), with `required` init-only
-properties named verbatim after the metadata fields (`displayName`, `postCount`,
-`posts`). Nothing is emitted for a `template.prompt`; its render payload is a
-plain object/array graph you supply:
+ships payload-VO codegen for every declared template — the strict record is named
+after the **value object**, not the template (for this model: `record WelcomePayload` /
+`record PostSummary`), with `required` init-only properties named verbatim after the
+metadata fields (`displayName`, `postCount`, `posts`). Because the name comes from the
+VO, a responding prompt's `@responseRef` record simply IS that VO's record; there is no
+second convention. You can still hand the renderer a plain object/array graph instead:
 
 ```csharp
 using MetaObjects.Render;
@@ -312,7 +334,7 @@ string output = Renderer.Render(new RenderRequest
 recognizes `template.*` + `origin.*`. Payload-VO codegen **is** emitted (the
 `payload` generator emits a Pydantic `BaseModel` per template, typed from the
 declared fields (#270) — see
-[Output parsing (FR-006)](#output-parsing-fr-006)), so a consumer can render from
+[Response parsing (FR-006)](#response-parsing-fr-006)), so a consumer can render from
 the generated payload type or from a plain `dict`.
 
 `render` takes a `RenderRequest` (only `payload` + `provider` are required; `ref`
@@ -334,14 +356,20 @@ out = render(RenderRequest(
 ))
 ```
 
-## Output parsing (FR-006)
+## Response parsing (FR-006)
 
-Symmetric story for the reverse direction: for every declared `template.output`,
-codegen emits a typed parser that turns an LLM response (raw text) into the
-`@payloadRef` value-object. Reuses the same payload-VO `template.prompt` does;
-no new metadata authoring. See [ADR-0010](../../spec/decisions/ADR-0010-template-output-parser-codegen.md)
+Symmetric story for the reverse direction: for every `template.prompt` declaring
+`@responseRef`, codegen emits a typed parser that turns a model's reply (raw text) into
+that shape. The gate is `@responseRef` PRESENCE, never a format value — declaring a
+response shape IS the request for a parser. See
+[ADR-0052](../../spec/decisions/ADR-0052-template-direction-outbound-vs-inbound.md) for
+the direction rule, [ADR-0010](../../spec/decisions/ADR-0010-template-output-parser-codegen.md)
 for the cross-port principle and [FR-006](../superpowers/specs/2026-05-25-fr6-template-output-parser-codegen.md)
 for the design.
+
+A responding prompt therefore carries TWO declared shapes and gets TWO records: the
+`@payloadRef` request it renders outbound, and the `@responseRef` reply it parses. They
+are usually different — the question and the answer rarely have the same fields.
 
 ### Cross-port API
 
@@ -360,8 +388,15 @@ The throwing API matches the substrate's native deserialization exception
 (Zod `ZodError`, `JsonException`, `ValidationError`, `SerializationException`,
 `JsonProcessingException`). The Result-style API wraps the throwing API and
 does not throw on validation failure. All five shipped ports satisfy the same
-conformance fixture
-([`template-output-simple`](../../fixtures/conformance/template-output-simple/)).
+conformance fixtures
+([`template-prompt-response-json`](../../fixtures/conformance/template-prompt-response-json/)
+and its `-xml` sibling).
+
+**The strict tier is JSON-only.** An `@responseFormat: xml` reply gets the tolerant
+extract and nothing strict — not for want of an XML reader (the render package ships a
+forgiving one) but because strict all-or-nothing semantics layered over a REPAIRING
+parser is incoherent: it would raise or accept based on how much repair happened, which
+is not a contract anyone can reason about.
 
 ### Consumer-side usage (Kotlin example)
 
@@ -395,15 +430,23 @@ the generated parser.
 
 | Port | File | Class/module |
 |---|---|---|
-| TypeScript | `<TemplateName>.output.ts` | `parse<TemplateName>` + `safeParse<TemplateName>` functions |
-| C# | `<TemplateName>.output.cs` | `static class <TemplateName>Parser` |
-| Python | `<template_name>_output_parser.py` | `parse_<template_name>` function + `<TemplateName>Data` BaseModel |
-| Kotlin | `<TemplateShortName>Parser.kt` | `object <TemplateShortName>Parser` (same package as the payload class) |
+| TypeScript | `<PromptName>.response.ts` | `parse<PromptName>` + `safeParse<PromptName>` functions |
+| C# | `<PromptName>.response.cs` | `static class <PromptName>Parser` |
+| Python | `<prompt_name>_response_parser.py` | `parse_<prompt_name>` function |
+| Kotlin | `<PromptShortName>Parser.kt` | `object <PromptShortName>Parser` (same package as the record) |
+| Java | `<PromptShortName>Parser.java` | `final class <PromptShortName>Parser` |
 
-The parser file is a companion to (not a replacement for) the existing payload-VO
-file — the parser imports the payload class rather than redeclaring it. `meta verify`
-extends to walk `template.output` nodes the same way it walks `template.prompt`,
-catching payload-VO ↔ parser drift at build time.
+The parser file is a companion to (not a replacement for) the record file — the parser
+imports the response record rather than redeclaring it. Where that record comes from
+differs by port, because the ports do not share a naming convention: **C#** names records
+after the resolved VALUE OBJECT, so the response record simply IS the VO's record;
+**Java, Kotlin and Python** name them after the TEMPLATE, so a responding prompt gets a
+SECOND record, `<Prompt>Response`, beside `<Prompt>Payload` (Python puts it in its own
+`<prompt_name>_response.py`, since the request record rejects unknown fields and a reply
+record must tolerate them); **TypeScript** types the payload from `entityFile()`, which
+emits per `object.value` regardless of any template.
+
+`meta verify` walks both subtypes, catching payload ↔ template drift at build time.
 
 **On malformed metadata, generators behave slightly differently** — TS throws
 from `renderOutputParser` (aborts the run); C# / Python / Kotlin warn and skip
@@ -493,8 +536,10 @@ The following conformance fixtures gate this feature's behavior across ports:
 
 **Template subtypes (metamodel)**
 
-- [`fixtures/conformance/template-output-simple/`](../../fixtures/conformance/template-output-simple/) — `template.output` with `@payloadRef`
+- [`fixtures/conformance/template-output-simple/`](../../fixtures/conformance/template-output-simple/) — `template.output` with `@payloadRef` (OUTBOUND only: render, no parser)
 - [`fixtures/conformance/template-prompt-simple/`](../../fixtures/conformance/template-prompt-simple/) — `template.prompt` with `@payloadRef`
+- [`fixtures/conformance/template-prompt-response-json/`](../../fixtures/conformance/template-prompt-response-json/) — a RESPONDING `template.prompt`: `@responseRef` drives the whole inbound tier
+- [`fixtures/conformance/template-prompt-response-xml/`](../../fixtures/conformance/template-prompt-response-xml/) — `@responseFormat: xml` — the tolerant extract, and no strict parser
 - [`fixtures/conformance/template-output-and-prompt/`](../../fixtures/conformance/template-output-and-prompt/) — both subtypes coexist on one entity
 - [`fixtures/conformance/error-template-payload-ref-unresolved/`](../../fixtures/conformance/error-template-payload-ref-unresolved/) — `@payloadRef` must resolve at load
 - [`fixtures/conformance/error-template-prompt-missing-payload-ref/`](../../fixtures/conformance/error-template-prompt-missing-payload-ref/) — `template.prompt` requires `@payloadRef`
@@ -545,4 +590,5 @@ for the per-port pass/skip ledger.
 - [source-kinds.md](source-kinds.md) — `source.rdb` `@kind: "view"` for materialized payloads (FR-003)
 - [migrations-and-drift.md](migrations-and-drift.md) — the verify pillar
 - [migrations/value-assembly-origins-and-source-role-shrink.md](migrations/value-assembly-origins-and-source-role-shrink.md) — migrating a pre-#210 payload (assembly origins on a value; nested non-value targets)
+- [migrations/template-direction-outbound-vs-inbound.md](migrations/template-direction-outbound-vs-inbound.md) — migrating a pre-ADR-0052 model (`@promptStyle` on an output; the inbound tier moving to `@responseRef`)
 - FR-004 spec: [2026-05-22-fr-004-cross-language-prompt-construction-design.md](../superpowers/specs/2026-05-22-fr-004-cross-language-prompt-construction-design.md)

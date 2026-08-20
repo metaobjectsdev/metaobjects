@@ -31,9 +31,10 @@ public sealed class OutputParserGeneratorTests
     };
 
     [Fact]
-    public void Emits_no_files_when_no_template_output_nodes()
+    public void Emits_no_files_for_a_prompt_that_declares_no_response()
     {
-        // A model with only a template.prompt; the output-parser generator stays silent.
+        // A prompt with no @responseRef has no inbound half — nothing elicits a typed
+        // reply, so there is nothing to parse.
         const string m = """
         { "metadata.root": { "package": "acme::ai", "children": [
           { "object.value": { "name": "Payload", "children": [ { "field.string": { "name": "x" } } ] } },
@@ -45,20 +46,40 @@ public sealed class OutputParserGeneratorTests
     }
 
     [Fact]
-    public void Emits_one_file_per_template_output_with_expected_path_and_class()
+    public void A_template_output_emits_no_parser_extractor_or_response_format()
+    {
+        // The ADR-0052 pin. `template.output` is OUTBOUND ONLY: it renders a document or
+        // an email and generates nothing that reads a model's reply. Before this, the
+        // parser tier had no @kind filter at all, so a markdown document template got a
+        // generated `JSON.parse`-equivalent — a method that could never work.
+        const string m = """
+        { "metadata.root": { "package": "acme::ai", "children": [
+          { "object.value": { "name": "Doc", "children": [ { "field.string": { "name": "body" } } ] } },
+          { "template.output": { "name": "Welcome", "@payloadRef": "Doc",
+                                 "@textRef": "mail/welcome", "@format": "json" } }
+        ]}}
+        """;
+        var root = Load(m);
+        Assert.Empty(new OutputParserGenerator().Generate(Ctx(root)));
+        Assert.Empty(new OutputPromptGenerator().Generate(Ctx(root)));
+        Assert.Empty(new ExtractorGenerator().Generate(Ctx(root)));
+    }
+
+    [Fact]
+    public void Emits_one_file_per_responding_prompt_with_expected_path_and_class()
     {
         const string m = """
         { "metadata.root": { "package": "acme::ai", "children": [
           { "object.value": { "name": "AlphaPayload", "children": [ { "field.string": { "name": "name" } } ] } },
           { "object.value": { "name": "BetaPayload",  "children": [ { "field.int":    { "name": "n" } } ] } },
-          { "template.output": { "name": "Alpha", "@payloadRef": "AlphaPayload", "@textRef": "a/x", "@format": "json" } },
-          { "template.output": { "name": "Beta",  "@payloadRef": "BetaPayload",  "@textRef": "b/x", "@format": "json" } }
+          { "template.prompt": { "name": "Alpha", "@payloadRef": "AlphaPayload", "@responseRef": "AlphaPayload", "@textRef": "a/x", "@format": "text", "@responseFormat": "json" } },
+          { "template.prompt": { "name": "Beta",  "@payloadRef": "BetaPayload", "@responseRef": "BetaPayload",  "@textRef": "b/x", "@format": "text", "@responseFormat": "json" } }
         ]}}
         """;
         var files = new OutputParserGenerator().Generate(Ctx(Load(m))).OrderBy(f => f.Path).ToList();
         Assert.Equal(2, files.Count);
-        Assert.Equal("Alpha.output.cs", files[0].Path);
-        Assert.Equal("Beta.output.cs",  files[1].Path);
+        Assert.Equal("Alpha.response.cs", files[0].Path);
+        Assert.Equal("Beta.response.cs",  files[1].Path);
         Assert.Contains("public static class AlphaParser", files[0].Content);
         Assert.Contains("public static class BetaParser",  files[1].Content);
     }
@@ -72,12 +93,12 @@ public sealed class OutputParserGeneratorTests
             { "field.string": { "name": "name" } },
             { "field.int":    { "name": "age" } }
           ]}},
-          { "template.output": { "name": "NpcResponseOutput", "@payloadRef": "NpcResponsePayload",
-                                  "@textRef": "npc/output", "@format": "json" } }
+          { "template.prompt": { "name": "NpcResponseOutput", "@payloadRef": "NpcResponsePayload", "@responseRef": "NpcResponsePayload",
+                                  "@textRef": "npc/output", "@format": "text", "@responseFormat": "json" } }
         ]}}
         """;
         var file = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(m))));
-        Assert.Equal("NpcResponseOutput.output.cs", file.Path);
+        Assert.Equal("NpcResponseOutput.response.cs", file.Path);
 
         var src = file.Content;
         Assert.Contains("using System.Text.Json;", src);
@@ -95,33 +116,164 @@ public sealed class OutputParserGeneratorTests
     }
 
     [Fact]
+    public void A_responseRef_that_is_not_a_value_object_emits_no_parser()
+    {
+        // Fail-closed, at BOTH doors.
+        //
+        // @responseRef must resolve through the SAME payload-target resolver @payloadRef
+        // obeys (object.value, or a sourceless object.projection), because PayloadGenerator
+        // emits the record this parser binds using that resolver. When FindInbound used the
+        // any-object ResolveObjectRef instead, an entity target resolved HERE, the parser
+        // emitted `static Answer Parse(string)`, and PayloadGenerator emitted no record —
+        // CS0246, generated code that cannot compile.
+        //
+        // Door 1 is the LOADER, which now enforces the same target rule on @responseRef that
+        // it always enforced on @payloadRef (only TypeScript did, so the same metadata failed
+        // one port's load and passed four). Door 2 is this generator, kept fail-closed as
+        // defence in depth: an adopter may register its own provider or loosen strictness,
+        // and codegen must not emit a parser for a target the payload tier refuses to emit a
+        // record for. The generator assertions below therefore run against the loaded root
+        // DESPITE the load error, which is exactly the state door 2 exists to survive.
+        const string m = """
+        { "metadata.root": { "package": "acme::ai", "children": [
+          { "object.value": { "name": "Req", "children": [ { "field.string": { "name": "q" } } ] } },
+          { "object.entity": { "name": "Answer", "children": [
+            { "source.rdb": { "@table": "answers" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "text" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+          ]}},
+          { "template.prompt": { "name": "AskPrompt", "@payloadRef": "Req", "@responseRef": "Answer",
+                                 "@textRef": "a/x", "@format": "text", "@responseFormat": "json" } }
+        ]}}
+        """;
+        var load = new MetaDataLoader().Load([new InMemoryStringSource(m, id: "outputs.json")]);
+        // Door 1 — the loader convicts the metadata, naming the offending ref.
+        var err = Assert.Single(load.Errors);
+        Assert.Equal(ErrorCode.ERR_INVALID_TEMPLATE, err.Code);
+        Assert.Contains("@responseRef", err.Message);
+        Assert.Contains("AskPrompt", err.Message);
+
+        var ctx = new GenContext
+        {
+            Entities = load.Root.Objects(),
+            Root = load.Root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+        };
+        // Door 2 — no record for the entity, therefore no parser bound to it. The two must
+        // agree, and agreeing on "nothing" is the only safe agreement available for a target
+        // neither can legally emit. The prompt's @payloadRef (a real value-object) still gets
+        // its request record — that is a different ref, and it resolves.
+        var payloads = new PayloadGenerator().Generate(ctx).ToList();
+        Assert.Equal("Req.payload.cs", Assert.Single(payloads).Path);
+        Assert.DoesNotContain(payloads, f => f.Content.Contains("record Answer"));
+
+        Assert.Empty(new OutputParserGenerator().Generate(ctx));
+        Assert.Empty(new OutputPromptGenerator().Generate(ctx));
+        Assert.Empty(new ExtractorGenerator().Generate(ctx));
+    }
+
+    [Fact]
+    public void An_xml_reply_gets_the_tolerant_extract_and_no_strict_parser()
+    {
+        // ADR-0053: the strict Parse/TryParse tier is JSON-ONLY. Not for want of an XML
+        // reader — MetaObjects.Render ships a forgiving one — but because strict
+        // all-or-nothing semantics layered over a REPAIRING parser is incoherent: it would
+        // throw or accept based on how much repair happened, which is not a contract
+        // anyone can reason about. So an XML reply gets the tolerant extract and nothing
+        // strict. Before ADR-0052 it got `JsonSerializer.Deserialize` — a generated method
+        // that could never work.
+        const string m = """
+        { "metadata.root": { "package": "acme::ai", "children": [
+          { "object.value": { "name": "Answer", "children": [ { "field.string": { "name": "text" } } ] } },
+          { "template.prompt": { "name": "AskXml", "@payloadRef": "Answer", "@responseRef": "Answer",
+                                 "@textRef": "ask/x", "@format": "text", "@responseFormat": "xml" } }
+        ]}}
+        """;
+        var file = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(m))));
+        Assert.Equal("AskXml.response.cs", file.Path);
+
+        // No strict tier — nor any of the System.Text.Json machinery it needs.
+        // Match the PUBLIC signatures, not a bare "TryParse(": the tolerant tier's
+        // coercion mappers legitimately call int.TryParse / decimal.TryParse.
+        Assert.DoesNotContain("public static Answer Parse(string text)", file.Content);
+        Assert.DoesNotContain("public static bool TryParse(string text,", file.Content);
+        Assert.DoesNotContain("using System.Text.Json;", file.Content);
+        Assert.DoesNotContain("JsonSerializer", file.Content);
+
+        // The tolerant tier IS emitted, and dispatches on the XML reader.
+        Assert.Contains("using MetaObjects.Render.Extract;", file.Content);
+        Assert.Contains("Format.Xml", file.Content);
+        Assert.DoesNotContain("Format.Json", file.Content);
+        Assert.Contains("AnswerExtracted", file.Content);
+    }
+
+    [Fact]
+    public void A_json_reply_gets_both_tiers()
+    {
+        // The control for the XML case above: same model, same everything, one attribute
+        // different. Without this pair, "no strict tier" could be passing because the
+        // generator emits nothing useful for either format.
+        const string m = """
+        { "metadata.root": { "package": "acme::ai", "children": [
+          { "object.value": { "name": "Answer", "children": [ { "field.string": { "name": "text" } } ] } },
+          { "template.prompt": { "name": "AskJson", "@payloadRef": "Answer", "@responseRef": "Answer",
+                                 "@textRef": "ask/j", "@format": "text", "@responseFormat": "json" } }
+        ]}}
+        """;
+        var file = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(m))));
+        Assert.Contains("public static Answer Parse(string text)", file.Content);
+        Assert.Contains("public static bool TryParse(string text,", file.Content);
+        Assert.Contains("using System.Text.Json;", file.Content);
+        Assert.Contains("Format.Json", file.Content);
+        Assert.DoesNotContain("Format.Xml", file.Content);
+        // Both formats get the tolerant tier — it is the strict half that is format-gated.
+        Assert.Contains("AnswerExtracted", file.Content);
+    }
+
+    [Fact]
     public void Emitted_source_compiles_alongside_the_payload_record()
     {
         // End-to-end: payload-VO codegen + output-parser codegen should compile
         // together with no errors. Guards against C# language-level regressions
         // in the emitted shape (required keyword, nullable annotations, etc.).
+        //
+        // The payload half MUST come through PayloadGenerator.Generate — the registered
+        // generator seam `dotnet meta gen` actually runs — not through PayloadCodegen
+        // directly. Calling the codec directly with a hand-written ref proves only that a
+        // record CAN be produced for a name the test already knew; it cannot see the
+        // generator failing to emit that record at all. That is exactly the ADR-0052
+        // failure mode: the parser binds @responseRef, so if the generator does not walk
+        // @responseRef the parser references a type nobody declares. Routed through the
+        // seam, deleting the inbound walk turns this red with a CS0246.
+        //
+        // @responseRef is a DIFFERENT value-object from @payloadRef here on purpose: with
+        // the two equal, the outbound walk would emit the needed record by coincidence.
         const string m = """
         { "metadata.root": { "package": "acme::ai", "children": [
+          { "object.value": { "name": "NpcRequestPayload", "children": [
+            { "field.string": { "name": "setting" } }
+          ]}},
           { "object.value": { "name": "NpcResponsePayload", "children": [
             { "field.string": { "name": "name" } },
             { "field.int":    { "name": "age" } }
           ]}},
-          { "template.output": { "name": "NpcResponseOutput", "@payloadRef": "NpcResponsePayload",
-                                  "@textRef": "npc/output", "@format": "json" } }
+          { "template.prompt": { "name": "NpcResponseOutput", "@payloadRef": "NpcRequestPayload", "@responseRef": "NpcResponsePayload",
+                                  "@textRef": "npc/output", "@format": "text", "@responseFormat": "json" } }
         ]}}
         """;
         var root = Load(m);
         var parserSrc = Assert.Single(new OutputParserGenerator().Generate(Ctx(root))).Content;
-        var payloadSrc = PayloadCodegen.GeneratePayloadRecords(root, "NpcResponsePayload");
+        var payloadFiles = new PayloadGenerator().Generate(Ctx(root)).ToList();
+        // The record the parser binds must be among what the generator emitted.
+        Assert.Contains(payloadFiles, f => f.Path == "NpcResponsePayload.payload.cs");
 
-        // Wrap the payload record in a namespace matching the parser's.
-        var wrappedPayload = "namespace Acme.Generated;\n" + payloadSrc;
-
-        var trees = new[]
-        {
-            CSharpSyntaxTree.ParseText(parserSrc,     new CSharpParseOptions(LanguageVersion.CSharp12)),
-            CSharpSyntaxTree.ParseText(wrappedPayload, new CSharpParseOptions(LanguageVersion.CSharp12)),
-        };
+        // PayloadGenerator already emits its own `namespace {ctx.Config.Namespace};` header,
+        // which is the same namespace the parser emits under — no wrapping needed.
+        var trees = payloadFiles
+            .Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12)))
+            .Prepend(CSharpSyntaxTree.ParseText(parserSrc, new CSharpParseOptions(LanguageVersion.CSharp12)))
+            .ToArray();
         var refs = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator).Where(p => p.Length > 0)
             .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
@@ -133,13 +285,14 @@ public sealed class OutputParserGeneratorTests
     }
 
     [Fact]
-    public void Emitted_source_matches_the_template_output_simple_fixture()
+    public void Emitted_source_matches_the_shared_responding_prompt_fixture()
     {
         // Conformance-adjacent check: the same fixture used by the TS port should
         // drive the C# emit (different output shape — TS = Zod, C# = STJ — but
-        // same metadata in).
+        // same metadata in). ADR-0052: the shared inbound fixture is a responding
+        // PROMPT — `template-output-simple` is outbound-only now and emits nothing here.
         var repoRoot = LocateRepoRoot();
-        var fixtureDir = Path.Combine(repoRoot, "fixtures", "conformance", "template-output-simple", "input");
+        var fixtureDir = Path.Combine(repoRoot, "fixtures", "conformance", "template-prompt-response-json", "input");
         Assert.True(Directory.Exists(fixtureDir), $"fixture dir not found at {fixtureDir}");
 
         var load = MetaDataLoader.FromDirectory(fixtureDir);
@@ -152,8 +305,11 @@ public sealed class OutputParserGeneratorTests
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
         };
         var file = Assert.Single(new OutputParserGenerator().Generate(ctx));
-        Assert.Equal("NpcResponseOutput.output.cs", file.Path);
-        Assert.Contains("public static NpcResponsePayload Parse(string text)", file.Content);
+        Assert.Equal("SupportAnswerPrompt.response.cs", file.Path);
+        // The bound type is the @responseRef shape (SupportAnswer), NOT the @payloadRef
+        // request shape (SupportRequest) — the distinction ADR-0052 exists to draw.
+        Assert.Contains("public static SupportAnswer Parse(string text)", file.Content);
+        Assert.DoesNotContain("SupportRequest Parse(", file.Content);
         Assert.Contains("public static bool TryParse(string text,", file.Content);
     }
 

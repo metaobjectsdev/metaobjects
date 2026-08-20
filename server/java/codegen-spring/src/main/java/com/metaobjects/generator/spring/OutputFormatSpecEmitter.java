@@ -10,7 +10,7 @@ import com.metaobjects.field.ObjectField;
 import com.metaobjects.field.StringField;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.template.MetaTemplate;
-import com.metaobjects.template.OutputTemplate;
+import com.metaobjects.template.PromptTemplate;
 import com.metaobjects.template.TemplateConstants;
 
 import java.util.ArrayList;
@@ -18,8 +18,8 @@ import java.util.List;
 import java.util.Properties;
 
 /**
- * Pure helper that turns a value-object (VO) {@link MetaObject} + its
- * {@code template.output} node into a Java source literal for an
+ * Pure helper that turns a value-object (VO) {@link MetaObject} + its responding
+ * {@code template.prompt} node into a Java source literal for an
  * {@code OutputFormatSpec} — the artifact-1 prompt descriptor used by the
  * FR-010 prompt-fragment codegen.
  *
@@ -56,16 +56,16 @@ final class OutputFormatSpecEmitter {
      * Emit a {@code new OutputFormatSpec(Format.X, "<rootName>", PromptStyle.<S>,
      * java.util.List.of(...))} literal for all fields on {@code vo}.
      *
-     * <p>{@code @format} from the template: {@code "xml"} → {@code Format.XML};
-     * anything else → {@code Format.JSON}.</p>
+     * <p>{@code @responseFormat} from the template (ADR-0053): {@code "xml"} →
+     * {@code Format.XML}; anything else → {@code Format.JSON}.</p>
      *
      * <p>{@code @promptStyle}: {@code "guide"} → {@code PromptStyle.GUIDE} (default),
      * {@code "inline"} → {@code PromptStyle.INLINE},
      * {@code "exampleOnly"} → {@code PromptStyle.EXAMPLE_ONLY}.</p>
      *
-     * @param vo       the payload value-object whose fields drive the spec
-     * @param template the {@code template.output} node carrying {@code @format} and
-     *                 {@code @promptStyle}
+     * @param vo       the RESPONSE value-object whose fields drive the spec
+     * @param template the responding {@code template.prompt} node carrying
+     *                 {@code @responseFormat} and {@code @promptStyle}
      * @param rootName the logical root name embedded in the spec
      * @return Java source snippet, e.g.
      *         {@code new OutputFormatSpec(Format.JSON, "Foo", PromptStyle.GUIDE, java.util.List.of(...))}
@@ -88,17 +88,30 @@ final class OutputFormatSpecEmitter {
     // Private helpers — template attr resolution
     // -------------------------------------------------------------------------
 
-    /** Resolve {@code @format} to a {@code Format.*} enum literal. */
+    /**
+     * Resolve the REPLY's syntax to a {@code Format.*} enum literal.
+     *
+     * <p>ADR-0053: this reads {@code @responseFormat}, never {@code @format}. The fragment
+     * this spec drives tells the model how to format its REPLY; {@code @format} is the
+     * syntax of the rendered prompt BODY, and the two genuinely differ — a text-bodied
+     * prompt asking for a JSON answer is the common case.
+     */
     private static String resolveFormatEnum(MetaTemplate template) {
-        return "xml".equalsIgnoreCase(template.getFormat()) ? "Format.XML" : "Format.JSON";
+        return FindInbound.isXml(FindInbound.responseFormatOf(template))
+            ? "Format.XML" : "Format.JSON";
     }
 
     /**
      * Resolve {@code @promptStyle} to a {@code PromptStyle.*} enum literal.
      * Default (absent or unrecognized) → {@code PromptStyle.GUIDE}.
+     *
+     * <p>ADR-0052: {@code @promptStyle} moved from {@code template.output} to
+     * {@code template.prompt}. It governs how a fragment INSTRUCTING AN LLM is laid out,
+     * so it belonged on the prompt all along; it had been registered on the subtype
+     * defined as "every rendered artifact other than an LLM prompt".
      */
     private static String resolvePromptStyleEnum(MetaTemplate template) {
-        String raw = (template instanceof OutputTemplate ot) ? ot.getPromptStyle() : null;
+        String raw = (template instanceof PromptTemplate pt) ? pt.getPromptStyle() : null;
         return switch (raw != null ? raw : TemplateConstants.PROMPT_STYLE_DEFAULT) {
             case TemplateConstants.PROMPT_STYLE_INLINE       -> "PromptStyle.INLINE";
             case TemplateConstants.PROMPT_STYLE_EXAMPLE_ONLY -> "PromptStyle.EXAMPLE_ONLY";

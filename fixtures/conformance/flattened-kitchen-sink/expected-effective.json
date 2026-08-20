@@ -47,10 +47,31 @@
         }
       },
       {
+        "object.value": {
+          "name": "ProductDescription",
+          "@description": "The typed shape describeProduct expects back from the model.",
+          "children": [
+            {
+              "field.string": {
+                "name": "headline"
+              }
+            },
+            {
+              "field.string": {
+                "name": "body"
+              }
+            }
+          ]
+        }
+      },
+      {
         "template.prompt": {
           "name": "describeProduct",
           "@format": "xml",
           "@payloadRef": "acme::ai::ProductPromptPayload",
+          "@promptStyle": "guide",
+          "@responseFormat": "json",
+          "@responseRef": "acme::ai::ProductDescription",
           "@textRef": "product/describe"
         }
       },
@@ -59,7 +80,6 @@
           "name": "productCard",
           "@format": "html",
           "@payloadRef": "acme::ai::ProductPromptPayload",
-          "@promptStyle": "guide",
           "@textRef": "product/card"
         }
       },
@@ -712,3 +732,4 @@
     ]
   }
 }
+

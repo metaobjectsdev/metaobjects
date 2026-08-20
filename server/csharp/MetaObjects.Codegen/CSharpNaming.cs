@@ -202,10 +202,15 @@ public static class CSharpNaming
     /// <summary>The render-helper class name for a template: <c>&lt;TemplateName&gt;RenderHelper</c>.</summary>
     public static string RenderHelperName(string templateName) => templateName + "RenderHelper";
 
-    /// <summary>The output-format prompt class name for a template: <c>&lt;TemplateName&gt;Prompt</c>.</summary>
-    public static string PromptClassName(string templateName) => templateName + "Prompt";
+    /// <summary>
+    /// The FR-010 response-format fragment class name for a responding prompt:
+    /// <c>&lt;PromptName&gt;ResponseFormat</c>. ADR-0052 D4 — named for the DIRECTION, not the
+    /// subtype: the pre-ADR <c>&lt;Name&gt;Prompt</c> read as "ClassifyPromptPrompt" once the
+    /// tier moved onto <c>template.prompt</c>, which is the confusion the ADR removes.
+    /// </summary>
+    public static string ResponseFormatClassName(string templateName) => templateName + "ResponseFormat";
 
-    /// <summary>The output-parser class name for a template: <c>&lt;TemplateName&gt;Parser</c>.</summary>
+    /// <summary>The response-parser class name for a responding prompt: <c>&lt;PromptName&gt;Parser</c>.</summary>
     public static string ParserClassName(string templateName) => templateName + "Parser";
 
     /// <summary>The extractor class name for a payload value-object: <c>&lt;PayloadRef&gt;Extractor</c>.</summary>

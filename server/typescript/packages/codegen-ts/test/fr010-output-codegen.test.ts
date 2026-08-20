@@ -61,11 +61,11 @@ const MODEL = [
     },
   },
   {
-    "template.output": {
+    "template.prompt": {
       name: "TicketOut",
       "@payloadRef": "Ticket",
+          "@responseRef": "Ticket",
       "@textRef": "out/ticket",
-      "@format": "json",
     },
   },
 ];
@@ -97,15 +97,25 @@ describe("FR-010 codegen — extract-schema + output-format-spec emitters (sourc
     expect(src).not.toContain("tryExtractLenientTicketOut");
   });
 
-  test("text-format output gets NO extract block", async () => {
+  test("a TEXT-bodied prompt still gets the extract block — the gate is @responseRef, not @format", async () => {
+    // Inverted premise. This used to assert that `@format: text` suppressed the
+    // extract block, because the old tier gated the tolerant path on @format
+    // being json/xml. That gate was the defect: @format is the syntax of the
+    // rendered prompt BODY, so a plain-text prompt whose reply is JSON got a
+    // strict parser and NO tolerant extract at all — the common case, silently
+    // unserved. ADR-0052 gates on @responseRef presence; ADR-0053 takes the
+    // reply's syntax from @responseFormat (default json).
     const root = await loadRoot([
       { "object.value": { name: "Note", children: [{ "field.string": { name: "body", "@required": true } }] } },
-      { "template.output": { name: "NoteOut", "@payloadRef": "Note", "@textRef": "out/note", "@format": "text" } },
+      { "template.prompt": { name: "NoteOut", "@payloadRef": "Note",
+          "@responseRef": "Note", "@textRef": "out/note", "@format": "text" } },
     ]);
     const src = renderOutputParser(root, "NoteOut");
     expect(src).toContain("export function parseNoteOut(");
-    expect(src).not.toContain("extractLenientNoteOut");
-    expect(src).not.toContain("@metaobjectsdev/render");
+    expect(src).toContain("extractLenientNoteOutWithLoader");
+    expect(src).toContain("@metaobjectsdev/render");
+    // Reply defaults to JSON even though the prompt body is text.
+    expect(src).toContain("Format.JSON");
   });
 
   test("output-prompt emits a guide-style spec literal with @example/@instruction/@enumDoc", async () => {
@@ -144,11 +154,11 @@ const MODEL_FR011 = [
     },
   },
   {
-    "template.output": {
+    "template.prompt": {
       name: "TaskOut",
       "@payloadRef": "Task",
+          "@responseRef": "Task",
       "@textRef": "out/task",
-      "@format": "json",
     },
   },
 ];

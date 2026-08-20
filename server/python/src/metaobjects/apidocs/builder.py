@@ -17,10 +17,12 @@ Per-category enumeration (mirrors the Java ``JavaApiModelBuilder`` / C#
   ``Protocol``) / REST (one per FastAPI route) / VALIDATION (Pydantic field
   constraints on the create/update shape) / FILTER (the allowlist). A value object
   → MODEL only. An abstract object / a TPH subtype yields no instance artifacts.
-* Templates (``template.output`` only): each → PAYLOAD / RENDER / PROMPT /
-  OUTPUT_PARSER / EXTRACTOR, gated by the matching generator's applies-predicate
-  (RENDER/PARSER need a resolvable ``@payloadRef``; PROMPT/EXTRACTOR additionally
-  need a json/xml ``@format``).
+* Templates (EVERY subtype — ADR-0052): a resolvable ``@payloadRef`` gives the
+  PAYLOAD record it renders outbound, plus RENDER for a ``template.output`` (the
+  only subtype the render-helper generator emits for). A ``template.prompt``
+  declaring ``@responseRef`` adds the INBOUND tier — the response PAYLOAD record,
+  PROMPT (the response-format fragment) and EXTRACTOR, plus OUTPUT_PARSER unless
+  the reply is XML, which gets no strict tier (ADR-0053).
 
 An object that yields no symbols (e.g. an abstract object) produces NO unit at all
 (never an empty unit).
@@ -40,6 +42,7 @@ from metaobjects.codegen.generators.m2m_codegen import (
     build_object_index,
     resolve_m2m_descriptors,
 )
+from metaobjects.codegen.generators.find_inbound import is_xml, response_shape
 from metaobjects.codegen.generators.payload_vo_generator import (
     is_field_required,
     resolve_payload_vo,
@@ -56,9 +59,6 @@ from metaobjects.meta.persistence.source.source_constants import SOURCE_KIND_TAB
 from metaobjects.meta.template import template_constants as tc
 from metaobjects.shared.base_types import TYPE_OBJECT, TYPE_TEMPLATE
 from metaobjects.shared.separators import PACKAGE_SEP
-
-# Structured formats that get an output-format prompt + a tolerant extractor.
-_STRUCTURED_FORMATS = frozenset({tc.TEMPLATE_FORMAT_JSON, tc.TEMPLATE_FORMAT_XML})
 
 
 def _pkg_of(node: MetaData) -> str:
@@ -95,11 +95,6 @@ def _is_writable_table_entity(obj: MetaObject, object_index: dict[str, MetaObjec
     if src is None:
         return False
     return src.effective_kind() == SOURCE_KIND_TABLE
-
-
-def _template_format(tmpl: MetaData) -> str:
-    fmt = tmpl.get_meta_attr(tc.TEMPLATE_ATTR_FORMAT)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
-    return fmt if isinstance(fmt, str) and fmt else tc.TEMPLATE_FORMAT_DEFAULT
 
 
 def _payload_resolves(tmpl: MetaData, root: MetaData) -> MetaObject | None:
@@ -141,11 +136,13 @@ class PythonApiModelBuilder:
             if unit is not None:
                 units.append(unit)
 
-        # Templates: only template.output is consumed by the payload/render/prompt/
-        # parser/extractor generators (the other template subtypes emit nothing).
+        # Templates: ADR-0052 — EVERY template subtype gets a unit, not just
+        # template.output. A template.prompt carries a @payloadRef record and, when it
+        # declares @responseRef, the whole inbound tier — all of it generated, so all
+        # of it documentable.
         # ADR-0039 sanctioned own: top-level scan on the loader ROOT (never extended, own == effective)
         for tmpl in root.own_children():
-            if tmpl.type == TYPE_TEMPLATE and tmpl.sub_type == tc.TEMPLATE_SUBTYPE_OUTPUT:
+            if tmpl.type == TYPE_TEMPLATE:
                 units.append(self._build_template_unit(tmpl, root))
 
         return ApiModel(project, units)
@@ -280,10 +277,9 @@ class PythonApiModelBuilder:
         module = naming.snake_case(name)
         symbols: list[ApiSymbol] = []
         payload_vo = _payload_resolves(tmpl, root)
-        fmt = _template_format(tmpl).lower()
 
         if payload_vo is not None:
-            # PAYLOAD — the typed Pydantic payload model the parser/prompt bind to.
+            # PAYLOAD — the typed Pydantic record for the shape this template RENDERS.
             payload_class = naming.payload_class_name(name)
             symbols.append(
                 ApiSymbol(
@@ -298,56 +294,81 @@ class PythonApiModelBuilder:
                 )
             )
 
-            # RENDER — the typed render helper wrapping the render engine.
-            render_fn = naming.render_helper_fn(name)
+            # RENDER — the typed render helper wrapping the render engine. OUTBOUND
+            # ONLY: render_helper_generator emits for a template.output alone, so
+            # documenting it for a prompt would name a function never generated.
+            if tmpl.sub_type == tc.TEMPLATE_SUBTYPE_OUTPUT:
+                render_fn = naming.render_helper_fn(name)
+                symbols.append(
+                    ApiSymbol(
+                        name=render_fn,
+                        kind=ApiSymbolKind.RENDER,
+                        module=f"from .{module}_render_helper import {render_fn}",
+                        signature=f"def {render_fn}(payload, provider)",
+                        usage="renders the output template against a typed payload",
+                        returns="EmailDocument" if _is_email_kind(tmpl) else "str",
+                    )
+                )
+
+        # ADR-0052 — the INBOUND symbols belong to a RESPONDING template.prompt, never
+        # to an output, and the gate is @responseRef PRESENCE rather than a format
+        # value. Shares `response_shape` with the generators, so the docs can never
+        # claim a symbol codegen suppressed.
+        inbound = response_shape(root, tmpl, _pkg_of(tmpl))
+        if inbound is not None:
+            # The RESPONSE record the parser actually returns — not the @payloadRef
+            # request record documented above, which types what this prompt renders out.
+            response_class = naming.response_class_name(name)
             symbols.append(
                 ApiSymbol(
-                    name=render_fn,
-                    kind=ApiSymbolKind.RENDER,
-                    module=f"from .{module}_render_helper import {render_fn}",
-                    signature=f"def {render_fn}(payload, provider)",
-                    usage="renders the output template against a typed payload",
-                    returns="EmailDocument" if _is_email_kind(tmpl) else "str",
+                    name=response_class,
+                    kind=ApiSymbolKind.PAYLOAD,
+                    module=(
+                        f"from .{naming.response_module_name(name)} import {response_class}"
+                    ),
+                    signature=f"class {response_class}(BaseModel)",
+                    usage="the typed response shape a model reply is parsed into",
+                    fields=self._payload_fields(inbound.vo),
                 )
             )
 
-            # OUTPUT_PARSER — the strict ``parse_*`` back into the typed payload.
-            parse_fn = naming.output_parser_fn(name)
+            # OUTPUT_PARSER — the strict ``parse_*``. ADR-0053: JSON-only, so an XML
+            # reply gets no strict tier and documenting one would name a missing fn.
+            if not is_xml(inbound.format):
+                parse_fn = naming.output_parser_fn(name)
+                symbols.append(
+                    ApiSymbol(
+                        name=parse_fn,
+                        kind=ApiSymbolKind.OUTPUT_PARSER,
+                        module=f"from .{module}_response_parser import {parse_fn}",
+                        signature=f"def {parse_fn}(text)",
+                        usage="parses a model reply back into the typed response shape",
+                        returns=response_class,
+                    )
+                )
+
+            prompt_fn = naming.output_prompt_fn(name)
             symbols.append(
                 ApiSymbol(
-                    name=parse_fn,
-                    kind=ApiSymbolKind.OUTPUT_PARSER,
-                    module=f"from .{module}_output_parser import {parse_fn}",
-                    signature=f"def {parse_fn}(text)",
-                    usage="parses model output back into the typed payload",
-                    returns=naming.payload_class_name(name),
+                    name=prompt_fn,
+                    kind=ApiSymbolKind.PROMPT,
+                    module=f"from .{module}_response_format import {prompt_fn}",
+                    signature=f"def {prompt_fn}(overrides=None)",
+                    usage="builds the response-format prompt fragment",
+                    returns="str",
                 )
             )
-
-            # PROMPT + EXTRACTOR — only for json/xml output templates.
-            if fmt in _STRUCTURED_FORMATS:
-                prompt_fn = naming.output_prompt_fn(name)
-                symbols.append(
-                    ApiSymbol(
-                        name=prompt_fn,
-                        kind=ApiSymbolKind.PROMPT,
-                        module=f"from .{module}_output_prompt import {prompt_fn}",
-                        signature=f"def {prompt_fn}(overrides=None)",
-                        usage="builds the output-format prompt fragment",
-                        returns="str",
-                    )
+            extract_fn = naming.extractor_fn(name)
+            symbols.append(
+                ApiSymbol(
+                    name=extract_fn,
+                    kind=ApiSymbolKind.EXTRACTOR,
+                    module=f"from .{module}_extractor import {extract_fn}",
+                    signature=f"def {extract_fn}(root, text, opts=None)",
+                    usage="extracts the strict typed response from dirty model output",
+                    returns=response_class,
                 )
-                extract_fn = naming.extractor_fn(name)
-                symbols.append(
-                    ApiSymbol(
-                        name=extract_fn,
-                        kind=ApiSymbolKind.EXTRACTOR,
-                        module=f"from .{module}_extractor import {extract_fn}",
-                        signature=f"def {extract_fn}(root, text, opts=None)",
-                        usage="extracts the strict typed payload from dirty model output",
-                        returns=naming.payload_class_name(name),
-                    )
-                )
+            )
 
         return ApiUnit(name, _package_of(tmpl), "template", symbols)
 

@@ -251,16 +251,37 @@ describe("buildApiModel — SKIP rules", () => {
   });
 });
 
-describe("buildApiModel — template.output extractor + render symbols", () => {
-  test("document template emits extract<Name>/extractLenient<Name> + render<Name>:string", async () => {
+// ADR-0052: a responding prompt owns the inbound half. @payloadRef types the
+// REQUEST it renders; @responseRef types the REPLY it parses — deliberately two
+// different value-objects here, so a unit that documents the wrong one is visible.
+const REQUEST_VO = {
+  "object.value": {
+    name: "AskVO",
+    children: [{ "field.string": { name: "question", "@required": true } }],
+  },
+};
+const SUMMARY_PROMPT = {
+  "template.prompt": {
+    name: "SummarizeProduct",
+    "@payloadRef": "AskVO",
+    "@responseRef": "SummaryVO",
+    "@textRef": "p/summarize",
+    "@format": "text",
+  },
+};
+
+describe("buildApiModel — template.output documents its RENDER only (ADR-0052)", () => {
+  test("a document template emits render<Name>:string and NO extractor", async () => {
     const root = await loadRoot([SUMMARY_VO, SUMMARY_DOC]);
     const model = buildApiModel(root, { loadedRoot: root });
 
     const u = unit(model, "ProductSummary");
     expect(u.nodeKind).toBe("template");
 
-    const extractors = u.symbols.filter((s) => s.kind === "extractor").map((s) => s.name);
-    expect(extractors).toEqual(["extractProductSummary", "extractLenientProductSummary"]);
+    // The reference used to document extract<Name>/extractLenient<Name> here —
+    // functions template.output no longer emits — and typed the result as the
+    // @payloadRef VO, which is the thing being rendered OUT, not a reply.
+    expect(u.symbols.filter((s) => s.kind === "extractor")).toEqual([]);
 
     const renders = u.symbols.filter((s) => s.kind === "render");
     expect(renders.map((s) => s.name)).toEqual(["renderProductSummary"]);
@@ -275,27 +296,55 @@ describe("buildApiModel — template.output extractor + render symbols", () => {
     const renders = unit(model, "WelcomeEmail").symbols.filter((s) => s.kind === "render");
     expect(renders.map((s) => s.name)).toEqual(["renderWelcomeEmail"]);
     expect(renders[0]!.returns).toBe("EmailDocument");
+    // An email generating a parser for text it just rendered was the artifact
+    // that motivated ADR-0052.
+    expect(unit(model, "WelcomeEmail").symbols.filter((s) => s.kind === "extractor")).toEqual([]);
+  });
+});
+
+describe("buildApiModel — a responding template.prompt owns the extractor symbols", () => {
+  test("emits extract<Name>/extractLenient<Name> typed on @responseRef, not @payloadRef", async () => {
+    const root = await loadRoot([REQUEST_VO, SUMMARY_VO, SUMMARY_PROMPT]);
+    const model = buildApiModel(root, { loadedRoot: root });
+
+    const u = unit(model, "SummarizeProduct");
+    const extractors = u.symbols.filter((s) => s.kind === "extractor");
+    expect(extractors.map((s) => s.name)).toEqual([
+      "extractSummarizeProduct",
+      "extractLenientSummarizeProduct",
+    ]);
+    // The strict return is the RESPONSE shape. Typing it as @payloadRef would
+    // document the request as the parse result — the defect ADR-0052 names.
+    expect(extractors[0]!.returns).toBe("SummaryVO");
+    expect(extractors[0]!.signature).toContain("): SummaryVO");
+    expect(extractors[0]!.importPath).toContain("SummarizeProduct.extractor");
+
+    // The render handle still documents the REQUEST payload.
+    const renders = u.symbols.filter((s) => s.kind === "prompt");
+    expect(renders[0]!.signature).toContain("payload: AskVO");
   });
 
-  test("extractor symbols are gated on json/xml format (a text template has none)", async () => {
-    const TEXT_DOC = {
-      "template.output": {
-        name: "PlainNote",
-        "@kind": "document",
-        "@payloadRef": "SummaryVO",
-        "@textRef": "out/note",
-        "@format": "text",
+  test("a prompt with NO @responseRef documents no extractor at all", async () => {
+    const FIRE_AND_FORGET = {
+      "template.prompt": {
+        name: "Announce",
+        "@payloadRef": "AskVO",
+        "@textRef": "p/announce",
       },
     };
-    const root = await loadRoot([SUMMARY_VO, TEXT_DOC]);
+    const root = await loadRoot([REQUEST_VO, SUMMARY_VO, FIRE_AND_FORGET]);
     const model = buildApiModel(root, { loadedRoot: root });
-    const u = unit(model, "PlainNote");
-    const extractors = u.symbols.filter((s) => s.kind === "extractor");
-    expect(extractors).toEqual([]);
-    // render still present (render works for any format)
-    expect(u.symbols.filter((s) => s.kind === "render").map((s) => s.name)).toEqual([
-      "renderPlainNote",
-    ]);
+    expect(unit(model, "Announce").symbols.filter((s) => s.kind === "extractor")).toEqual([]);
+  });
+
+  test("the gate is @responseRef presence, not a format value", async () => {
+    // @format: text on the prompt BODY must not suppress the reply's extractor —
+    // that gate is exactly what left the common case unserved before ADR-0053.
+    const root = await loadRoot([REQUEST_VO, SUMMARY_VO, SUMMARY_PROMPT]);
+    const model = buildApiModel(root, { loadedRoot: root });
+    expect(
+      unit(model, "SummarizeProduct").symbols.filter((s) => s.kind === "extractor").length,
+    ).toBe(2);
   });
 });
 

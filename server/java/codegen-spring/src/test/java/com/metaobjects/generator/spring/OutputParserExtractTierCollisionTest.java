@@ -65,8 +65,8 @@ public class OutputParserExtractTierCollisionTest extends SharedRegistryTestBase
         gen.setArgs(args);
         gen.execute(loader);
 
-        Path parser = outDir.resolve("acme/app/prompts/DigestDocParser.java");
-        assertTrue("expected DigestDocParser.java at " + parser, Files.exists(parser));
+        Path parser = outDir.resolve("acme/app/prompts/DigestPromptParser.java");
+        assertTrue("expected DigestPromptParser.java at " + parser, Files.exists(parser));
         String src = Files.readString(parser);
 
         // Both colliding nested VOs get their OWN distinct, collision-scoped mapper —
@@ -104,11 +104,13 @@ public class OutputParserExtractTierCollisionTest extends SharedRegistryTestBase
                 { "field.string": { "name": "title", "@required": true } },
                 { "field.object": { "name": "detail", "@objectRef": "Detail" } }
             ] } },
-            { "template.output": {
+            { "template.prompt": {
                 "name": "WidgetDoc",
                 "@payloadRef": "WidgetOut",
+                "@responseRef": "WidgetOut",
                 "@textRef": "widget/doc",
-                "@format": "json"
+                "@format": "text",
+                "@responseFormat": "json"
             } }
           ] }
         }
@@ -149,11 +151,13 @@ public class OutputParserExtractTierCollisionTest extends SharedRegistryTestBase
                 { "object.value": { "name": "Report", "children": [
                     { "field.string": { "name": "alphaVal", "@required": true } }
                 ] } },
-                { "template.output": {
+                { "template.prompt": {
                     "name": "ReportDocAlpha",
                     "@payloadRef": "Report",
+                    "@responseRef": "Report",
                     "@textRef": "report/alpha",
-                    "@format": "json"
+                    "@format": "text",
+                    "@responseFormat": "json"
                 } }
             ] } }
             """;
@@ -165,11 +169,13 @@ public class OutputParserExtractTierCollisionTest extends SharedRegistryTestBase
                 { "object.value": { "name": "Report", "children": [
                     { "field.string": { "name": "betaVal", "@required": true } }
                 ] } },
-                { "template.output": {
+                { "template.prompt": {
                     "name": "ReportDocBeta",
                     "@payloadRef": "Report",
+                    "@responseRef": "Report",
                     "@textRef": "report/beta",
-                    "@format": "json"
+                    "@format": "text",
+                    "@responseFormat": "json"
                 } }
             ] } }
             """;

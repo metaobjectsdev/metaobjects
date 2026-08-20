@@ -51,7 +51,7 @@ public class GeneratorExtensibilityTests
     private const string OutputModel = """
     { "metadata.root": { "package": "acme::ai", "children": [
       { "object.value": { "name": "AlphaPayload", "children": [ { "field.string": { "name": "name" } } ] } },
-      { "template.output": { "name": "Alpha", "@payloadRef": "AlphaPayload", "@textRef": "a/x", "@format": "json" } }
+      { "template.prompt": { "name": "Alpha", "@payloadRef": "AlphaPayload", "@responseRef": "AlphaPayload", "@textRef": "a/x", "@format": "text", "@responseFormat": "json" } }
     ]}}
     """;
 

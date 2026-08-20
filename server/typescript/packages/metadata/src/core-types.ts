@@ -400,13 +400,15 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   // (ADR-0011). Four subtypes: base + prompt + output + toolcall; attr-only
   // children. A single MetaTemplate class backs every subtype (mirrors source);
   // per-subtype attr schemas drive validation (prompt + output require
-  // @payloadRef + @textRef + @format closed enum; prompt adds the LLM overlay;
-  // output adds @promptStyle + @kind/email part-refs; toolcall has its own set —
-  // @toolName + @payloadRef, no @textRef requirement since toolcalls have no
+  // @payloadRef + @textRef + @format closed enum; prompt adds the LLM overlay
+  // plus the ADR-0052 inbound half (@responseRef/@promptStyle/@responseFormat);
+  // output adds @kind/email part-refs and is OUTBOUND ONLY; toolcall has its own
+  // set — @toolName + @payloadRef, no @textRef requirement since toolcalls have no
   // renderable body).
   // FR-033: the template provider's declarative definition (the 4-subtype
   // vocabulary + the full per-subtype attr constraints — incl. @format/@promptStyle/
-  // @kind closed-enum allowedValues + defaults + required @payloadRef/@toolName —
+  // @responseFormat/@kind closed-enum allowedValues + defaults + required
+  // @payloadRef/@toolName —
   // + real descriptions + the FR-004/ADR-0011 rules prose) is externalized to
   // spec/metamodel/template.json, embedded at build into TEMPLATE_DEFINITION.
   // defineProviderFromData lowers it to TypeDefinitions; the factory (behavior)

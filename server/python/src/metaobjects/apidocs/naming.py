@@ -20,6 +20,8 @@ from __future__ import annotations
 from metaobjects.codegen.generators.payload_vo_generator import (
     payload_class_name,
     payload_module_name,
+    response_class_name,
+    response_module_name,
 )
 
 __all__ = [
@@ -35,6 +37,8 @@ __all__ = [
     "pk_param",
     "payload_class_name",
     "payload_module_name",
+    "response_class_name",
+    "response_module_name",
     "render_helper_fn",
     "output_prompt_fn",
     "output_parser_fn",

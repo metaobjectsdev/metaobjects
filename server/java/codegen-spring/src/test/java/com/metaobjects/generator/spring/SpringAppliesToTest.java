@@ -76,6 +76,12 @@ public class SpringAppliesToTest {
                 "@payloadRef": "SummaryPayload",
                 "@textRef": "plain/prompt"
             } },
+            { "template.prompt": {
+                "name": "RespondingPrompt",
+                "@payloadRef": "SummaryPayload",
+                "@responseRef": "SummaryPayload",
+                "@textRef": "responding/prompt"
+            } },
             { "object.entity": { "name": "LlmCallBase", "abstract": true, "children": [
                 { "field.uuid":   { "name": "traceId" } },
                 { "field.string": { "name": "status" } }
@@ -228,24 +234,39 @@ public class SpringAppliesToTest {
         assertFalse(SpringRenderHelperGenerator.appliesTo(plainPrompt, loader));
     }
 
+    // ADR-0052 — the two inbound predicates. Both negatives matter and they fail for
+    // DIFFERENT reasons, which is what makes this pair a real test of the rule:
+    // SummaryOutput is excluded by DIRECTION (a template.output renders outbound and
+    // parses nothing, whatever its @format — and its @format is json, the value that
+    // used to make it apply), PlainPrompt by having declared no response at all.
+
     @Test
-    public void outputPromptAppliesToJsonXmlOutputWithPayloadRef() throws Exception {
+    public void outputPromptAppliesToARespondingPromptOnly() throws Exception {
         MetaDataLoader loader = loader();
+        MetaTemplate respondingPrompt = template(loader, "RespondingPrompt");
         MetaTemplate summaryOutput = template(loader, "SummaryOutput");
         MetaTemplate plainPrompt = template(loader, "PlainPrompt");
 
-        assertTrue("json output with VO payloadRef gets a prompt fragment",
+        assertTrue("a prompt declaring @responseRef gets a response-format fragment",
+            SpringOutputPromptGenerator.appliesTo(respondingPrompt, loader));
+        assertFalse("template.output is outbound only — no fragment even at @format=json",
             SpringOutputPromptGenerator.appliesTo(summaryOutput, loader));
-        assertFalse(SpringOutputPromptGenerator.appliesTo(plainPrompt, loader));
+        assertFalse("a prompt with no @responseRef elicits no typed reply",
+            SpringOutputPromptGenerator.appliesTo(plainPrompt, loader));
     }
 
     @Test
-    public void outputParserAppliesToOutputWithPayloadRef() throws Exception {
+    public void outputParserAppliesToARespondingPromptOnly() throws Exception {
         MetaDataLoader loader = loader();
+        MetaTemplate respondingPrompt = template(loader, "RespondingPrompt");
         MetaTemplate summaryOutput = template(loader, "SummaryOutput");
         MetaTemplate plainPrompt = template(loader, "PlainPrompt");
 
-        assertTrue(SpringOutputParserGenerator.appliesTo(summaryOutput, loader));
-        assertFalse(SpringOutputParserGenerator.appliesTo(plainPrompt, loader));
+        assertTrue("a prompt declaring @responseRef gets a parser",
+            SpringOutputParserGenerator.appliesTo(respondingPrompt, loader));
+        assertFalse("template.output is outbound only — no parser for text we just rendered",
+            SpringOutputParserGenerator.appliesTo(summaryOutput, loader));
+        assertFalse("a prompt with no @responseRef has nothing to parse",
+            SpringOutputParserGenerator.appliesTo(plainPrompt, loader));
     }
 }

@@ -133,9 +133,11 @@ public class GeneratedTraceHelperCompileRunTest {
         // resolves both MetaObjects by their baked FQNs
         assertTrue("resolves trace MO", src.contains("getMetaObjectByName(\"acme::ai::GreetingCall\")"));
         assertTrue("resolves response MO", src.contains("getMetaObjectByName(\"acme::ai::GreetResponse\")"));
-        // runtime extract + lost-required gate
+        // runtime extract + lost-required gate. ADR-0053: the reply's syntax is baked from
+        // @responseFormat, which defaults to JSON — this fixture declares none.
         assertTrue("extract call",
-            src.contains("com.metaobjects.object.extract.MetaObjectExtractor.extract(responseMo, input.llmResponseText())"));
+            src.contains("com.metaobjects.object.extract.MetaObjectExtractor.extract(responseMo, "
+                + "input.llmResponseText(), com.metaobjects.render.extract.Format.JSON)"));
         assertTrue("lost-required gate", src.contains("hasLostRequired()"));
         // base row builder
         assertTrue("buildLlmCallRow call",
@@ -150,6 +152,74 @@ public class GeneratedTraceHelperCompileRunTest {
 
         // --- compile the emitted Java in-memory (omdb + om + render on test classpath) ---
         compileGenerated(gen);
+    }
+
+    /**
+     * ADR-0053 — the REPLY's syntax is {@code @responseFormat}, never {@code @format}.
+     *
+     * <p>This generator used to bake nothing at all: it called the 2-arg
+     * {@code MetaObjectExtractor.extract(mo, text)} overload, which hardcodes
+     * {@code Format.JSON}. A prompt declaring an XML reply therefore got a trace helper
+     * that parsed it as JSON — the reply's syntax was INEXPRESSIBLE here, not merely
+     * mis-read. (TypeScript and Python had the other defect: they read {@code @format},
+     * the syntax of the rendered prompt BODY. Same ruling, opposite starting point.)
+     *
+     * <p>The case is DISCRIMINATING: {@code @format: text} + {@code @responseFormat: xml}
+     * cannot be satisfied by reading {@code @format}, and the mirror below cannot be
+     * satisfied by reading it either.
+     */
+    @Test
+    public void replyFormatComesFromResponseFormatNotFormat() throws Exception {
+        String src = emitHelperFor("trace-xml-reply", withPromptAttrs(
+            "\"@format\": \"text\", \"@responseFormat\": \"xml\""), "gen-xml-reply");
+        assertTrue("XML reply must bake Format.XML",
+            src.contains("input.llmResponseText(), com.metaobjects.render.extract.Format.XML)"));
+        assertFalse("must not fall back to JSON", src.contains("Format.JSON"));
+    }
+
+    /** The mirror, so neither attribute alone can satisfy both cases. */
+    @Test
+    public void replyFormatIgnoresAnXmlBodyWhenTheReplyIsJson() throws Exception {
+        String src = emitHelperFor("trace-json-reply", withPromptAttrs(
+            "\"@format\": \"xml\", \"@responseFormat\": \"json\""), "gen-json-reply");
+        assertTrue("JSON reply must bake Format.JSON",
+            src.contains("input.llmResponseText(), com.metaobjects.render.extract.Format.JSON)"));
+        assertFalse("must not read the BODY's format", src.contains("Format.XML"));
+    }
+
+    /**
+     * ADR-0053's default reproduces the pre-ADR fallback exactly (anything not {@code "xml"}
+     * was treated as JSON), which is what makes the attribute's introduction
+     * behaviour-preserving rather than a new policy.
+     */
+    @Test
+    public void replyFormatDefaultsToJsonWhenResponseFormatIsAbsent() throws Exception {
+        String src = emitHelperFor("trace-default-reply", withPromptAttrs(
+            "\"@format\": \"xml\""), "gen-default-reply");
+        assertTrue("absent @responseFormat must default to JSON",
+            src.contains("input.llmResponseText(), com.metaobjects.render.extract.Format.JSON)"));
+    }
+
+    /** {@link #META} with *extra* attrs spliced onto the nested {@code template.prompt}. */
+    private static String withPromptAttrs(String attrs) {
+        String tail = "\"@responseRef\": \"" + PKG + "::GreetResponse\" } }";
+        assertTrue("fixture must contain the @responseRef tail to extend", META.contains(tail));
+        return META.replace(tail,
+            "\"@responseRef\": \"" + PKG + "::GreetResponse\", " + attrs + " } }");
+    }
+
+    /** Load *meta*, run the generator into a fresh temp dir, and return the emitted source. */
+    private String emitHelperFor(String loaderName, String meta, String outFolder) throws Exception {
+        MetaDataLoader loader = newLoader(loaderName, meta);
+        Path gen = tmp.newFolder(outFolder).toPath();
+        LlmTraceHelperGenerator generator = new LlmTraceHelperGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", gen.toString());
+        generator.setArgs(args);
+        generator.execute(loader);
+        Path helper = gen.resolve("acme/ai/GreetingCallTraceHelper.java");
+        assertTrue("GreetingCallTraceHelper.java must be emitted at " + helper, Files.exists(helper));
+        return Files.readString(helper);
     }
 
     @Test

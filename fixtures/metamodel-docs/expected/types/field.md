@@ -33,7 +33,7 @@ Abstract base field — the shared root subtype that concrete field subtypes spe
 | `@sortable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out. |
 | `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Default sort direction applied when this field is the default sort field. |
 | `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
-| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json. |
+| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt's @responseFormat is json. |
 
 **Allowed children**
 
@@ -66,7 +66,7 @@ True/false flag. Binds to the native boolean type; DB column is BOOLEAN.
 | `@sortable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out. |
 | `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Default sort direction applied when this field is the default sort field. |
 | `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
-| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json. |
+| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt's @responseFormat is json. |
 
 **Allowed children**
 
@@ -102,7 +102,7 @@ Stores money as integer minor units (cents). Binds to long; the client formats v
 | `@sortable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out. |
 | `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Default sort direction applied when this field is the default sort field. |
 | `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
-| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json. |
+| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt's @responseFormat is json. |
 
 **Allowed children**
 
@@ -136,7 +136,7 @@ Calendar date (no time-of-day). Binds to the native date/temporal type; DB colum
 | `@sortable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out. |
 | `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Default sort direction applied when this field is the default sort field. |
 | `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
-| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json. |
+| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt's @responseFormat is json. |
 
 **Allowed children**
 
@@ -173,7 +173,7 @@ Precision-exact decimal (use @precision/@scale). Native TS binding is string (lo
 | `@sortable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out. |
 | `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Default sort direction applied when this field is the default sort field. |
 | `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
-| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json. |
+| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt's @responseFormat is json. |
 
 **Allowed children**
 
@@ -206,7 +206,7 @@ Double-precision (64-bit) IEEE-754 floating point. Binds to the native double/nu
 | `@sortable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out. |
 | `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Default sort direction applied when this field is the default sort field. |
 | `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
-| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json. |
+| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt's @responseFormat is json. |
 
 **Allowed children**
 
@@ -248,7 +248,7 @@ String-backed enumeration constrained to a closed set of member symbols (@values
 | `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Default sort direction applied when this field is the default sort field. |
 | `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
 | `@values` | string[] | yes |  |  | metaobjects-core-types | Member symbols of an enum-subtype field. Declaration order is significant; each is a legal identifier and its own stored string. |
-| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json. |
+| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt's @responseFormat is json. |
 
 **Allowed children**
 
@@ -279,7 +279,7 @@ Single-precision floating point. Binds to the native double/number type (TS has 
 | `@sortable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out. |
 | `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Default sort direction applied when this field is the default sort field. |
 | `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
-| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json. |
+| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt's @responseFormat is json. |
 
 **Allowed children**
 
@@ -313,7 +313,7 @@ An IP-address string (IPv4 or IPv6) (ADR-0036/0037 — a concept with a native t
 | `@sortable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out. |
 | `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Default sort direction applied when this field is the default sort field. |
 | `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
-| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json. |
+| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt's @responseFormat is json. |
 
 **Allowed children**
 
@@ -346,7 +346,7 @@ An IP-address string (IPv4 or IPv6) (ADR-0036/0037 — a concept with a native t
 | `@sortable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out. |
 | `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Default sort direction applied when this field is the default sort field. |
 | `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
-| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json. |
+| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt's @responseFormat is json. |
 
 **Allowed children**
 
@@ -379,7 +379,7 @@ An IP-address string (IPv4 or IPv6) (ADR-0036/0037 — a concept with a native t
 | `@sortable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out. |
 | `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Default sort direction applied when this field is the default sort field. |
 | `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
-| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json. |
+| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt's @responseFormat is json. |
 
 **Allowed children**
 
@@ -416,7 +416,7 @@ An open-keyed map (Record<string,V> / dict[str,V]) stored in a single jsonb colu
 | `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Default sort direction applied when this field is the default sort field. |
 | `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
 | `@valueType` | string | no |  |  | metaobjects-core-types | Scalar value subtype for a scalar-valued map (string/int/long/double/float/decimal/boolean/date/time/timestamp/uuid). Mutually exclusive with @objectRef; exactly one of the two must be set. |
-| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json. |
+| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt's @responseFormat is json. |
 
 **Allowed children**
 
@@ -453,7 +453,7 @@ A nested structured value (set @objectRef to the target object). Storage is gove
 | `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Default sort direction applied when this field is the default sort field. |
 | `@storage` | string | no |  | `flattened`, `jsonb`, `subdocument` | metaobjects-db | Storage strategy for an object-typed field (set with @objectRef). "flattened" expands the nested value into prefixed columns on the parent table. "jsonb" stores the structured value in a single jsonb column (supports isArray=true for arrays of values). "subdocument" is a hint for document-store codegen targets and emits no Postgres column. |
 | `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
-| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json. |
+| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt's @responseFormat is json. |
 
 **Allowed children**
 
@@ -488,7 +488,7 @@ Variable-length text. Binds to the native string type; DB column is VARCHAR/TEXT
 | `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Default sort direction applied when this field is the default sort field. |
 | `@stringFormat` | string | no |  | `email`, `hostname` | metaobjects-core-types | ADR-0036/0037: a closed validation format for a plain string field that has NO native type or behavior of its own — email \| hostname. The field stays a plain string (native binding + DB column unchanged); codegen emits the matching validator (Zod z.email() / a hostname check; PG CHECK where appropriate). The canonical matcher per format lives in each port's codegen, NOT author validator.regex (cross-language regex engines diverge). Named @stringFormat (not @format) to avoid colliding with template.* @format (output format). Concepts WITH a native type or behavior are subtypes instead (uuid → field.uuid, url/uri → field.uri, ip → field.inet). |
 | `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
-| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json. |
+| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt's @responseFormat is json. |
 
 **Allowed children**
 
@@ -520,7 +520,7 @@ Time-of-day (no calendar date). Binds to the native date/temporal type; DB colum
 | `@sortable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out. |
 | `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Default sort direction applied when this field is the default sort field. |
 | `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
-| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json. |
+| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt's @responseFormat is json. |
 
 **Allowed children**
 
@@ -555,7 +555,7 @@ Date + time-of-day instant (optionally with timezone). Binds to the native date/
 | `@sortable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out. |
 | `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Default sort direction applied when this field is the default sort field. |
 | `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
-| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json. |
+| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt's @responseFormat is json. |
 
 **Allowed children**
 
@@ -589,7 +589,7 @@ A URI/URL string (ADR-0036/0037 — a concept with a native type + behavior, so 
 | `@sortable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out. |
 | `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Default sort direction applied when this field is the default sort field. |
 | `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
-| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json. |
+| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt's @responseFormat is json. |
 
 **Allowed children**
 
@@ -622,7 +622,7 @@ Logical UUID identity scalar. A bare scalar (no required attrs, no loader value-
 | `@sortable` | boolean | no |  |  | metaobjects-ui | When true, the field is exposed in generated CRUD sort allowlists. Inherits from @filterable by default; set false to opt out. |
 | `@sortableDefaultOrder` | string | no |  | `asc`, `desc` | metaobjects-ui | Default sort direction applied when this field is the default sort field. |
 | `@unique` | boolean | no |  |  | metaobjects-core-types | When true, the field gets a column-level UNIQUE constraint. |
-| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect for @format: json. |
+| `@xmlText` | boolean | no |  |  | metaobjects-prompt | When true, this field receives its element's XML TEXT CONTENT during tolerant extract (JAXB @XmlValue / Jackson @JacksonXmlText / .NET [XmlText]) instead of a same-named child. No effect when the eliciting prompt's @responseFormat is json. |
 
 **Allowed children**
 

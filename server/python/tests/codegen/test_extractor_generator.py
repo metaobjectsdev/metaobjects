@@ -2,9 +2,13 @@
 
 The ``extract`` tier sits OVER the existing tolerant extract: it runs the
 nested-capable ``extract_<snake>_with_loader``, raises when a ``@required`` field
-was lost, and otherwise maps the all-nullable ``<Name>PayloadExtracted`` mirror
-graph onto the STRICT ``<Name>Payload`` Pydantic graph via a generated recursive
+was lost, and otherwise maps the all-nullable ``<Name>ResponseExtracted`` mirror
+graph onto the STRICT ``<Name>Response`` Pydantic graph via a generated recursive
 mirror→strict mapper (recursing nested objects + arrays-of-objects).
+
+ADR-0052 — the tier binds ``@responseRef`` on a ``template.prompt``. The fixture
+declares a request shape (``OrderBrief``) and a reply shape (``Order``) that share
+no field, so binding the wrong one fails these tests rather than passing by luck.
 
 Mirrors ``test_output_parser_generator.py``'s materialize→import→invoke harness.
 The cross-port reference is the TS ``extractor-codegen.test.ts`` (Task 1) and the
@@ -42,10 +46,11 @@ from metaobjects.shared.structural import KEY_IS_ARRAY
 
 
 # ---------------------------------------------------------------------------
-# Builders — a template.output "OrderOut" over an "Order" payload with a
-# REQUIRED single nested object, a REQUIRED array-of-objects, a REQUIRED
-# scalar-array, an OPTIONAL scalar, an OPTIONAL scalar-array, and an OPTIONAL
-# single nested object.
+# Builders — a responding template.prompt "OrderPrompt" whose @responseRef is an
+# "Order" reply shape with a REQUIRED single nested object, a REQUIRED
+# array-of-objects, a REQUIRED scalar-array, an OPTIONAL scalar, an OPTIONAL
+# scalar-array, and an OPTIONAL single nested object. Its @payloadRef is a
+# DIFFERENT shape ("OrderBrief"), so every assertion discriminates.
 # ---------------------------------------------------------------------------
 
 
@@ -69,6 +74,28 @@ def _output_template(name: str, payload_ref: str, *, fmt: str = "json") -> MetaT
     tmpl.set_attr(tc.TEMPLATE_ATTR_TEXT_REF, "tpl/output")
     tmpl.set_attr(tc.TEMPLATE_ATTR_FORMAT, fmt)
     return tmpl
+
+
+def _responding_prompt(
+    name: str,
+    payload_ref: str,
+    response_ref: str | None,
+    *,
+    fmt: str = "text",
+) -> MetaTemplate:
+    """A ``template.prompt``. ``@format`` defaults to ``text`` deliberately — it is the
+    syntax of the rendered BODY, and ADR-0053 says the inbound tier must not read it."""
+    tmpl = MetaTemplate(TYPE_TEMPLATE, tc.TEMPLATE_SUBTYPE_PROMPT, name)
+    tmpl.set_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF, payload_ref)
+    if response_ref is not None:
+        tmpl.set_attr(tc.TEMPLATE_ATTR_RESPONSE_REF, response_ref)
+    tmpl.set_attr(tc.TEMPLATE_ATTR_TEXT_REF, "tpl/prompt")
+    tmpl.set_attr(tc.TEMPLATE_ATTR_FORMAT, fmt)
+    return tmpl
+
+
+def _template(root: MetaRoot, name: str) -> MetaTemplate:
+    return next(c for c in root.own_children() if c.name == name)
 
 
 def _order_root() -> MetaRoot:
@@ -140,10 +167,16 @@ def _order_root() -> MetaRoot:
             ),
         ],
     )
-    tmpl = _output_template("OrderOut", "Order")
+    # The REQUEST shape — deliberately disjoint from `Order`, so a generator that
+    # bound @payloadRef would emit a wholly different (and failing) graph.
+    brief = _value_object(
+        "OrderBrief",
+        [_field("query", fc.FIELD_SUBTYPE_STRING, **{fc.FIELD_ATTR_REQUIRED: True})],
+    )
+    tmpl = _responding_prompt("OrderPrompt", "OrderBrief", "Order")
     root = MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "test")
     root.package = "acme::ai"
-    for c in (customer, line, order, tmpl):
+    for c in (customer, line, order, brief, tmpl):
         root.add_child(c)
     return root
 
@@ -164,40 +197,65 @@ def _ctx(root: MetaRoot, *, out_dir: str = "/tmp/out") -> GenContext:
 
 
 def test_render_emits_extract_and_extract_and_mappers() -> None:
-    out = render_extractor(_order_root().own_children()[3], _order_root())
+    root = _order_root()
+    out = render_extractor(_template(root, "OrderPrompt"), root)
     assert out is not None
-    # extract returns the STRICT payload type, routes through the with-loader extract.
-    assert "def extract_order_out(root, text, opts=None) -> OrderOutPayload:" in out
-    assert "extract_lenient_order_out_with_loader(root, text, opts)" in out
+    # extract returns the STRICT response type, routes through the with-loader extract.
+    assert "def extract_order_prompt(root, text, opts=None) -> OrderPromptResponse:" in out
+    assert "extract_lenient_order_prompt_with_loader(root, text, opts)" in out
     assert "if r.report.has_lost_required():" in out
     # re-exposed extract under the public name, delegating to the nested-capable path.
-    assert "def extract_lenient_order_out(root, text, opts=None):" in out
-    # imports the strict payload graph + the with-loader extract.
+    assert "def extract_lenient_order_prompt(root, text, opts=None):" in out
+    # imports the strict response graph + the with-loader extract.
     assert (
-        "from .order_out_output_parser import extract_lenient_order_out_with_loader" in out
+        "from .order_prompt_response_parser import extract_lenient_order_prompt_with_loader"
+        in out
     )
-    assert "from .order_out_payload import" in out
+    assert "from .order_prompt_response import" in out
+    # ADR-0052 — the REQUEST record is never referenced by the extract tier.
+    assert "order_prompt_payload" not in out
+    assert "OrderBrief" not in out
     # one mapper per type in the graph (root + nested).
     assert "def _to_strict_order(" in out
     assert "def _to_strict_customer(" in out
     assert "def _to_strict_line(" in out
 
 
-def test_render_returns_none_when_payload_ref_unresolved() -> None:
-    tmpl = _output_template("StrayOutput", "DoesNotExist")
+def test_render_returns_none_when_response_ref_unresolved() -> None:
+    tmpl = _responding_prompt("StrayPrompt", "DoesNotExist", "AlsoMissing")
     root = MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "test")
     root.add_child(tmpl)
     assert render_extractor(tmpl, root) is None
 
 
-def test_render_returns_none_for_text_format() -> None:
-    """No extract API for text-format outputs → no extract tier."""
+def test_render_returns_none_when_prompt_declares_no_response_ref() -> None:
+    """A prompt that renders outbound and never reads a reply gets no extract tier."""
     payload = _value_object("P", [_field("x", fc.FIELD_SUBTYPE_STRING)])
-    tmpl = _output_template("TextOut", "P", fmt="text")
+    tmpl = _responding_prompt("Greet", "P", None)
     root = MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "test")
     for c in (payload, tmpl):
         root.add_child(c)
     assert render_extractor(tmpl, root) is None
+
+
+def test_render_returns_none_for_template_output() -> None:
+    """The OUTBOUND control: a ``template.output`` parses nothing, whatever its
+    ``@format`` says. ADR-0052 — `template.output` renders a document."""
+    payload = _value_object("P", [_field("x", fc.FIELD_SUBTYPE_STRING)])
+    tmpl = _output_template("ReceiptOut", "P", fmt="json")
+    root = MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "test")
+    for c in (payload, tmpl):
+        root.add_child(c)
+    assert render_extractor(tmpl, root) is None
+
+
+def test_a_text_bodied_prompt_still_gets_an_extract_tier() -> None:
+    """ADR-0053 — the old ``@format ∈ {json,xml}`` gate read the syntax of the
+    OUTBOUND body. ``_order_root``'s prompt declares ``@format: text``, and it gets the
+    full extract tier because it declares a reply shape."""
+    root = _order_root()
+    assert _template(root, "OrderPrompt").get_meta_attr(tc.TEMPLATE_ATTR_FORMAT) == "text"
+    assert render_extractor(_template(root, "OrderPrompt"), root) is not None
 
 
 def test_factory_returns_generator_with_expected_name() -> None:
@@ -205,9 +263,9 @@ def test_factory_returns_generator_with_expected_name() -> None:
     assert gen.name == "extractor-generator"
 
 
-def test_generator_emits_one_file_per_template_output() -> None:
+def test_generator_emits_one_file_per_responding_prompt() -> None:
     files = ExtractorGenerator().generate(_ctx(_order_root()))
-    assert [f.path for f in files] == ["order_out_extractor.py"]
+    assert [f.path for f in files] == ["order_prompt_extractor.py"]
 
 
 # ---------------------------------------------------------------------------
@@ -253,7 +311,7 @@ def test_extract_extracts_dirty_into_strict_payload(tmp_path, monkeypatch) -> No
     root = _order_root()
     pkg_dir = _materialize_package(_all_files(root), tmp_path)
     _import_package(pkg_dir, monkeypatch)
-    ex = import_module("_gen_pkg.order_out_extractor")
+    ex = import_module("_gen_pkg.order_prompt_extractor")
 
     dirty = (
         "Sure, here you go!\n```json\n"
@@ -264,7 +322,7 @@ def test_extract_extracts_dirty_into_strict_payload(tmp_path, monkeypatch) -> No
         '"priority": "HIGH", '
         '"labels": ["A", "B"] }\n```'
     )
-    order = ex.extract_order_out(root, dirty)
+    order = ex.extract_order_prompt(root, dirty)
     # nested single populated + typed.
     assert order.customer.name == "Ada"
     # array-of-objects populated + typed.
@@ -294,7 +352,7 @@ def test_extract_populates_optional_nested_when_present(tmp_path, monkeypatch) -
     root = _order_root()
     pkg_dir = _materialize_package(_all_files(root), tmp_path)
     _import_package(pkg_dir, monkeypatch)
-    ex = import_module("_gen_pkg.order_out_extractor")
+    ex = import_module("_gen_pkg.order_prompt_extractor")
 
     dirty = (
         "Sure, here you go!\n```json\n"
@@ -306,7 +364,7 @@ def test_extract_populates_optional_nested_when_present(tmp_path, monkeypatch) -
         '"labels": ["A"], '
         '"ship_to": {"name": "Grace"} }\n```'
     )
-    order = ex.extract_order_out(root, dirty)
+    order = ex.extract_order_prompt(root, dirty)
     # optional nested PRESENT → mapped through _to_strict_customer + strictly typed.
     assert order.ship_to is not None
     assert order.ship_to.name == "Grace"
@@ -323,7 +381,7 @@ def test_extract_populates_optional_scalar_array_when_present(
     root = _order_root()
     pkg_dir = _materialize_package(_all_files(root), tmp_path)
     _import_package(pkg_dir, monkeypatch)
-    ex = import_module("_gen_pkg.order_out_extractor")
+    ex = import_module("_gen_pkg.order_prompt_extractor")
 
     dirty = (
         "Sure, here you go!\n```json\n"
@@ -335,7 +393,7 @@ def test_extract_populates_optional_scalar_array_when_present(
         '"labels": ["A"], '
         '"aliases": ["ada", "lovelace"] }\n```'
     )
-    order = ex.extract_order_out(root, dirty)
+    order = ex.extract_order_prompt(root, dirty)
     # optional scalar-array PRESENT → populated list[str].
     assert order.aliases == ["ada", "lovelace"]
     assert all(isinstance(a, str) for a in order.aliases)
@@ -347,11 +405,11 @@ def test_extract_raises_on_lost_required(tmp_path, monkeypatch) -> None:
     root = _order_root()
     pkg_dir = _materialize_package(_all_files(root), tmp_path)
     _import_package(pkg_dir, monkeypatch)
-    ex = import_module("_gen_pkg.order_out_extractor")
+    ex = import_module("_gen_pkg.order_prompt_extractor")
 
     # missing the required `customer` (and tags) → lost-required → raises.
     with pytest.raises(ValueError, match="lost required"):
-        ex.extract_order_out(root, '{ "lines": [] }')
+        ex.extract_order_prompt(root, '{ "lines": [] }')
 
 
 def test_extract_reexposed_never_raises_and_no_lost_required(tmp_path, monkeypatch) -> None:
@@ -360,7 +418,7 @@ def test_extract_reexposed_never_raises_and_no_lost_required(tmp_path, monkeypat
     root = _order_root()
     pkg_dir = _materialize_package(_all_files(root), tmp_path)
     _import_package(pkg_dir, monkeypatch)
-    ex = import_module("_gen_pkg.order_out_extractor")
+    ex = import_module("_gen_pkg.order_prompt_extractor")
 
     clean = json.dumps(
         {
@@ -372,7 +430,7 @@ def test_extract_reexposed_never_raises_and_no_lost_required(tmp_path, monkeypat
             "labels": ["A", "B"],
         }
     )
-    r = ex.extract_lenient_order_out(root, clean)
+    r = ex.extract_lenient_order_prompt(root, clean)
     assert r.report.has_lost_required() is False
     # nested populated in the mirror too (with-loader path).
     assert r.data.customer.name == "Ada"
@@ -385,12 +443,12 @@ def test_extract_reexposed_never_raises_and_no_lost_required(tmp_path, monkeypat
 
 
 def test_payload_types_enum_field_as_literal_scalar_and_array() -> None:
-    """The STRICT payload annotates an enum field as ``Literal[...]`` (scalar) and an
+    """The STRICT record annotates an enum field as ``Literal[...]`` (scalar) and an
     enum array as ``list[Literal[...]]`` — NOT bare ``str`` / ``list[str]``."""
-    from metaobjects.codegen.generators.payload_vo_generator import render_payload_vo
+    from metaobjects.codegen.generators.payload_vo_generator import render_response_vo
 
     root = _order_root()
-    payload_src = render_payload_vo(root.own_children()[3], root)
+    payload_src = render_response_vo(_template(root, "OrderPrompt"), root)
     assert payload_src is not None
     # Inline enum (no shared super) → inline Literal, NOT a bare str.
     assert 'priority: Literal["LOW", "HIGH"]' in payload_src
@@ -411,11 +469,11 @@ def test_payload_literal_is_pydantic_runtime_enforced(tmp_path, monkeypatch) -> 
     root = _order_root()
     pkg_dir = _materialize_package(_all_files(root), tmp_path)
     _import_package(pkg_dir, monkeypatch)
-    payload_mod = import_module("_gen_pkg.order_out_payload")
-    OrderOutPayload = payload_mod.OrderOutPayload
+    payload_mod = import_module("_gen_pkg.order_prompt_response")
+    OrderPromptResponse = payload_mod.OrderPromptResponse
 
     # A valid member constructs fine.
-    ok = OrderOutPayload(
+    ok = OrderPromptResponse(
         customer={"name": "Ada"},
         lines=[{"sku": "A", "qty": 2}],
         tags=["x"],
@@ -426,7 +484,7 @@ def test_payload_literal_is_pydantic_runtime_enforced(tmp_path, monkeypatch) -> 
     assert ok.priority == "HIGH"
     # An OFF-set member raises — the Literal is enforced by Pydantic at construction.
     with pytest.raises(pydantic.ValidationError):
-        OrderOutPayload(
+        OrderPromptResponse(
             customer={"name": "Ada"},
             lines=[{"sku": "A", "qty": 2}],
             tags=["x"],
@@ -444,10 +502,10 @@ def test_lenient_mirror_enum_leaf_stays_str(tmp_path, monkeypatch) -> None:
     root = _order_root()
     pkg_dir = _materialize_package(_all_files(root), tmp_path)
     _import_package(pkg_dir, monkeypatch)
-    parser = import_module("_gen_pkg.order_out_output_parser")
+    parser = import_module("_gen_pkg.order_prompt_response_parser")
     import dataclasses
 
-    mirror = parser.OrderOutPayloadExtracted
+    mirror = parser.OrderPromptResponseExtracted
     ann = {f.name: f.type for f in dataclasses.fields(mirror)}
     # enum scalar mirror stays str (no Literal).
     assert ann["priority"] == "str | None"

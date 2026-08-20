@@ -78,11 +78,11 @@ The 14 generators registered in `codegen-kotlin` (`GeneratorRegistry.kt`):
 | `KotlinRelationsGenerator` | `<Entity>Relations.kt` — extension fns for `cardinality=many` query helpers | entities with to-many relationships |
 | `KotlinRepositoryGenerator` | `<Entity>RepositoryBase.kt` — persistence repository base (row-mapper + CRUD + patch) | writable entities (`source.rdb @kind="table"`) |
 | `KotlinFilterAllowlistGenerator` | `<Entity>FilterAllowlist.kt` — FR-009 filter allowlist (filterable field names + allowed ops per field) | writable entities (`source.rdb @kind="table"`) |
-| `KotlinPayloadGenerator` | `<Template>Payload.kt` — `@Serializable` payload from `@payloadRef` view-object | every `template.prompt` / `template.output` |
-| `KotlinOutputParserGenerator` | `<Template>Parser.kt` — `object` with `parseXxx` (throws `SerializationException`) + `safeParseXxx` (returns `Result<TPayload>`) | every `template.output` (FR-006) |
-| `KotlinOutputPromptGenerator` | `<Template>Prompt.kt` — output-format prompt fragment (FR-010) | every `template.output` |
+| `KotlinPayloadGenerator` | `<Template>Payload.kt` — `@Serializable` record from `@payloadRef`; plus `<Prompt>Response.kt` from `@responseRef` (ADR-0052) | every `template.*`; the Response class on a responding `template.prompt` |
+| `KotlinOutputParserGenerator` | `<Prompt>Parser.kt` — `object` with `parseXxx` (throws `SerializationException`) + `safeParseXxx` (returns `Result<TResponse>`) | every responding `template.prompt` (FR-006); strict tier JSON-only |
+| `KotlinOutputPromptGenerator` | `<Prompt>ResponseFormat.kt` — response-format prompt fragment (FR-010) | every responding `template.prompt` |
 | `KotlinRenderHelperGenerator` | `<Template>RenderHelper.kt` — typed `render()` wrappers (document/email, keyed off `@kind`) | every `template.output` |
-| `KotlinExtractorGenerator` | `<Template>Extractor.kt` — strict typed `extract<Name>` payload helper (FR-010) | every nested-capable `template.output` |
+| `KotlinExtractorGenerator` | `<Prompt>Extractor.kt` — strict typed `extract<Name>` response helper (FR-010) | every responding `template.prompt` |
 | `KotlinValidatorGenerator` | `MetadataStartupValidator.kt` + `ExposedTableValidator.kt` | once per project |
 | `KotlinSpringConfigGenerator` | `MetadataExposedConfig.kt` — `@Configuration` wiring `Database.connect()` + auto-validator | once per project |
 | `KotlinStoredProcGenerator` | Stored-procedure call wrappers | entities with `source.rdb @kind="storedProc"` |
@@ -234,12 +234,17 @@ val out = render {
 }
 ```
 
-## FR-006 — output parsing
+## FR-006 — response parsing
 
-`KotlinOutputParserGenerator` emits a typed parser per `template.output` beside
-the payload class. The dual-API matches kotlinx.serialization's exception model
-(`SerializationException`) plus the Kotlin stdlib's `Result<T>` Result-style
-convention.
+`KotlinOutputParserGenerator` emits a typed parser per responding `template.prompt` —
+one declaring `@responseRef` — beside the `<Prompt>Response` class. The dual-API matches
+kotlinx.serialization's exception model (`SerializationException`) plus the Kotlin
+stdlib's `Result<T>` Result-style convention.
+
+ADR-0052: the shape parsed INTO is `@responseRef`, never `@payloadRef` (which types the
+request the prompt renders outbound), and `template.output` gets no parser at all. The
+strict tier is JSON-only — an `@responseFormat: xml` reply gets the tolerant extract and
+nothing strict.
 
 ```kotlin
 // generated/acme/ai/prompts/NpcResponseParser.kt
@@ -286,7 +291,7 @@ does NOT include the JSON format. See
 for the full consumer-wiring contract. Cross-port design is at
 [ADR-0010](../../spec/decisions/ADR-0010-template-output-parser-codegen.md);
 the feature reference is at
-[`features/templates-and-payloads.md`](../features/templates-and-payloads.md#output-parsing-fr-006).
+[`features/templates-and-payloads.md`](../features/templates-and-payloads.md#response-parsing-fr-006).
 
 ## Angular 18 frontend
 

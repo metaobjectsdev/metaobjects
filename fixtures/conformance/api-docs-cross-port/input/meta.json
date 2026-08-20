@@ -40,12 +40,42 @@
         }
       },
       {
+        "object.value": {
+          "name": "OrderAdvicePayload",
+          "package": "acme::shop",
+          "children": [
+            { "field.string": { "name": "question", "@required": true } }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "OrderAdviceResponse",
+          "package": "acme::shop",
+          "children": [
+            { "field.string": { "name": "advice", "@required": true } },
+            { "field.string": { "name": "rationale" } }
+          ]
+        }
+      },
+      {
         "template.output": {
           "name": "OrderSummary",
           "package": "acme::shop",
           "@payloadRef": "acme::shop::OrderSummaryPayload",
           "@textRef": "shop/order-summary",
-          "@format": "json",
+          "@format": "json"
+        }
+      },
+      {
+        "template.prompt": {
+          "name": "OrderAdvice",
+          "package": "acme::shop",
+          "@payloadRef": "acme::shop::OrderAdvicePayload",
+          "@responseRef": "acme::shop::OrderAdviceResponse",
+          "@textRef": "shop/order-advice",
+          "@format": "text",
+          "@responseFormat": "json",
           "@promptStyle": "inline"
         }
       }

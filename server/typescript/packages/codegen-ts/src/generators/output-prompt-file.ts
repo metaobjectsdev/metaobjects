@@ -1,10 +1,13 @@
 // server/typescript/packages/codegen-ts/src/generators/output-prompt-file.ts
 //
-// FR-010 stock generator that emits one <TemplateName>.prompt.ts file per json/xml
-// template.output node — the output-format prompt fragment ("produce your answer
-// like this"). Wraps renderOutputPrompt() from templates/output-prompt.ts. Skips
-// text-format outputs and outputs whose @payloadRef doesn't resolve to a value-object
-// (same contract as the output-parser generator).
+// FR-010 stock generator that emits one <PromptName>.responseFormat.ts file per
+// responding `template.prompt` — the response-format fragment ("produce your answer
+// like this"). Wraps renderOutputPrompt() from templates/output-prompt.ts.
+//
+// ADR-0052: gated on `@responseRef` presence, like every other inbound generator.
+// It previously keyed on `template.output` + a json/xml `@format` gate, which is
+// how a fragment that instructs an LLM came to be emitted from the subtype defined
+// as "every rendered artifact other than an LLM prompt".
 //
 // Consumer wiring (metaobjects.config.ts):
 //   generators: [..., promptRender(), outputParser(), outputPrompt()]
@@ -13,18 +16,13 @@
 //   generators: [..., outputPrompt({ outDir: "src/generated/outputs" })]
 
 import {
-  TYPE_TEMPLATE,
-  TEMPLATE_SUBTYPE_OUTPUT,
-  TEMPLATE_ATTR_PAYLOAD_REF,
-  resolveObjectRef,
-} from "@metaobjectsdev/metadata";
-import {
   type EmittedFile,
   type Generator,
   type GeneratorFactory,
   oncePerRun,
 } from "../generator.js";
-import { renderOutputPrompt, templateSupportsPrompt } from "../templates/output-prompt.js";
+import { inboundTemplates, responseShape } from "../templates/find-inbound.js";
+import { renderOutputPrompt } from "../templates/output-prompt.js";
 
 export interface OutputPromptOpts {
   /** Output directory prefix relative to the target's outDir. Default: "" (root). */
@@ -39,23 +37,12 @@ export const outputPrompt = function outputPrompt(opts?: OutputPromptOpts): Gene
     name: "output-prompt",
     generate: oncePerRun((_entities, ctx) => {
       const root = ctx.loadedRoot;
-      // ADR-0039: resolving — root has no super (children()==ownChildren()).
-      const outputs = root
-        .children()
-        .filter((c) => c.type === TYPE_TEMPLATE && c.subType === TEMPLATE_SUBTYPE_OUTPUT);
       const files: EmittedFile[] = [];
-      for (const t of outputs) {
-        // Only json/xml outputs get a renderable prompt fragment.
-        if (!templateSupportsPrompt(t)) continue;
-        // @payloadRef must resolve to a value-object (same contract as the parser).
-        // ADR-0039: resolving — a template may inherit its @* refs/format/kind via extends.
-        const payloadRef = t.attr(TEMPLATE_ATTR_PAYLOAD_REF);
-        if (typeof payloadRef !== "string") continue;
-        // ADR-0042: a bare @payloadRef resolves in the template's package.
-        const vo = resolveObjectRef(root, payloadRef, t.package ?? t.fileDefaultPackage ?? "").node;
-        if (!vo) continue;
+      for (const t of inboundTemplates(root)) {
+        // @responseRef must resolve to a value-object (same contract as the parser).
+        if (!responseShape(root, t)) continue;
         files.push({
-          path: `${dirPrefix}${t.name}.prompt.ts`,
+          path: `${dirPrefix}${t.name}.responseFormat.ts`,
           content: renderOutputPrompt(root, t.name),
         });
       }

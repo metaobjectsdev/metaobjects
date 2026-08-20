@@ -52,11 +52,11 @@ class KotlinNestedExtractLenientCompileRunTest {
             { "field.object": { "name": "items", "@objectRef": "acme::ai::LineItemPayload",
                                 "isArray": true } }
         ] } },
-        { "template.output": {
+        { "template.prompt": {
             "name": "NestedAnswer",
-            "@payloadRef": "NestedAnswerPayload",
+            "@payloadRef": "NestedAnswerPayload", "@responseRef": "NestedAnswerPayload",
             "@textRef": "ai/nested",
-            "@format": "json" } }
+            "@format": "text", "@responseFormat": "json" } }
       ] }
     }""".trimIndent()
 

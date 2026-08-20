@@ -1,0 +1,17 @@
+{
+  "errors": [
+    {
+      "code": "ERR_INVALID_TEMPLATE",
+      "source": {
+        "format": "resolved",
+        "files": [
+          "meta.template.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[2]['template.prompt']",
+        "referrer": "askPrompt",
+        "target": "acme::ai::Answer"
+      }
+    }
+  ],
+  "warnings": []
+}

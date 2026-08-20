@@ -45,12 +45,43 @@ def _load_json(json_text: str):
 
 
 # ---------------------------------------------------------------------------
-# @promptStyle — registered on template.output, closed enum, default guide.
+# @promptStyle — registered on template.PROMPT (ADR-0052), closed enum, default
+# guide. It governs a fragment that instructs an LLM how to format its reply, so
+# hosting it on the subtype defined as "every rendered artifact other than an LLM
+# prompt" was a contradiction visible in the attribute's own description.
+#
+# @responseFormat — ADR-0053, beside it: the syntax of the REPLY, distinct from
+# @format, which is the syntax of the rendered prompt BODY.
 # ---------------------------------------------------------------------------
 
+_INBOUND_PROMPT = """
+    { "metadata.root": {
+        "package": "acme::ai",
+        "children": [
+          { "object.value": {
+              "name": "AskPayload",
+              "children": [ { "field.string": { "name": "question" } } ]
+          } },
+          { "object.value": {
+              "name": "AnswerPayload",
+              "children": [ { "field.string": { "name": "text" } } ]
+          } },
+          { "template.prompt": {
+              "name": "ask",
+              "@payloadRef": "AskPayload",
+              "@responseRef": "AnswerPayload",
+              "@textRef": "ai/ask",
+              "@format": "text",
+              "@responseFormat": %s,
+              "@promptStyle": %s
+          } }
+        ]
+      } }
+"""
 
-def test_template_output_registers_prompt_style_closed_enum() -> None:
-    definition = _registry().find(TYPE_TEMPLATE, tc.TEMPLATE_SUBTYPE_OUTPUT)
+
+def test_template_prompt_registers_prompt_style_closed_enum() -> None:
+    definition = _registry().find(TYPE_TEMPLATE, tc.TEMPLATE_SUBTYPE_PROMPT)
     assert definition is not None
     by_name = {a.name: a for a in definition.attrs}
 
@@ -66,63 +97,49 @@ def test_template_output_registers_prompt_style_closed_enum() -> None:
     }
 
 
-def test_prompt_subtype_does_not_carry_prompt_style() -> None:
-    # @promptStyle is output-only — the prompt fragment is an output concern.
+def test_template_prompt_registers_response_format_closed_enum() -> None:
     definition = _registry().find(TYPE_TEMPLATE, tc.TEMPLATE_SUBTYPE_PROMPT)
     assert definition is not None
-    assert tc.TEMPLATE_ATTR_PROMPT_STYLE not in {a.name for a in definition.attrs}
+    by_name = {a.name: a for a in definition.attrs}
+
+    assert tc.TEMPLATE_ATTR_RESPONSE_FORMAT in by_name
+    rf = by_name[tc.TEMPLATE_ATTR_RESPONSE_FORMAT]
+    assert rf.required is False
+    assert rf.default == tc.RESPONSE_FORMAT_DEFAULT
+    assert rf.allowed_values is not None
+    # TWO members, not ALLOWED_FORMATS' seven — the rest are
+    # reserved-not-registered until a shipping consumer dispatches on them.
+    assert set(rf.allowed_values) == {tc.RESPONSE_FORMAT_JSON, tc.RESPONSE_FORMAT_XML}
 
 
-def test_template_output_loads_with_valid_prompt_style() -> None:
-    json_text = """
-    { "metadata.root": {
-        "package": "acme::ai",
-        "children": [
-          { "object.value": {
-              "name": "AnswerPayload",
-              "children": [ { "field.string": { "name": "text" } } ]
-          } },
-          { "template.output": {
-              "name": "answer",
-              "@payloadRef": "AnswerPayload",
-              "@textRef": "ai/answer",
-              "@format": "json",
-              "@promptStyle": "inline"
-          } }
-        ]
-      } }
-    """
-    result = _load_json(json_text)
+def test_output_subtype_does_not_carry_the_inbound_attrs() -> None:
+    # ADR-0052/0053: template.output is outbound only — it parses nothing, so it has
+    # neither a fragment presentation nor a reply syntax.
+    definition = _registry().find(TYPE_TEMPLATE, tc.TEMPLATE_SUBTYPE_OUTPUT)
+    assert definition is not None
+    names = {a.name for a in definition.attrs}
+    assert tc.TEMPLATE_ATTR_PROMPT_STYLE not in names
+    assert tc.TEMPLATE_ATTR_RESPONSE_FORMAT not in names
+
+
+def test_template_prompt_loads_with_valid_inbound_attrs() -> None:
+    result = _load_json(_INBOUND_PROMPT % ('"xml"', '"inline"'))
 
     assert result.errors == []
     tmpl = next(
         c
         for c in result.root.children()
-        if c.type == TYPE_TEMPLATE and c.sub_type == tc.TEMPLATE_SUBTYPE_OUTPUT
+        if c.type == TYPE_TEMPLATE and c.sub_type == tc.TEMPLATE_SUBTYPE_PROMPT
     )
     assert tmpl.attr(tc.TEMPLATE_ATTR_PROMPT_STYLE) == tc.PROMPT_STYLE_INLINE
+    # The prompt BODY is text while the REPLY is xml — the shape a single @format
+    # could not express, and the reason ADR-0053 exists.
+    assert tmpl.attr(tc.TEMPLATE_ATTR_FORMAT) == tc.TEMPLATE_FORMAT_TEXT
+    assert tmpl.attr(tc.TEMPLATE_ATTR_RESPONSE_FORMAT) == tc.RESPONSE_FORMAT_XML
 
 
-def test_template_output_bad_prompt_style_emits_err_bad_attr_value() -> None:
-    json_text = """
-    { "metadata.root": {
-        "package": "acme::ai",
-        "children": [
-          { "object.value": {
-              "name": "AnswerPayload",
-              "children": [ { "field.string": { "name": "text" } } ]
-          } },
-          { "template.output": {
-              "name": "answer",
-              "@payloadRef": "AnswerPayload",
-              "@textRef": "ai/answer",
-              "@format": "json",
-              "@promptStyle": "bogus"
-          } }
-        ]
-      } }
-    """
-    result = _load_json(json_text)
+def test_template_prompt_bad_prompt_style_emits_err_bad_attr_value() -> None:
+    result = _load_json(_INBOUND_PROMPT % ('"json"', '"bogus"'))
 
     err = next(
         (
@@ -130,6 +147,23 @@ def test_template_output_bad_prompt_style_emits_err_bad_attr_value() -> None:
             for e in result.errors
             if e.code == ErrorCode.ERR_BAD_ATTR_VALUE
             and tc.TEMPLATE_ATTR_PROMPT_STYLE in e.message
+        ),
+        None,
+    )
+    assert err is not None
+
+
+def test_template_prompt_bad_response_format_emits_err_bad_attr_value() -> None:
+    # "markdown" is a legal @format but NOT a legal @responseFormat — nothing
+    # dispatches on it inbound (ADR-0053).
+    result = _load_json(_INBOUND_PROMPT % ('"markdown"', '"guide"'))
+
+    err = next(
+        (
+            e
+            for e in result.errors
+            if e.code == ErrorCode.ERR_BAD_ATTR_VALUE
+            and tc.TEMPLATE_ATTR_RESPONSE_FORMAT in e.message
         ),
         None,
     )

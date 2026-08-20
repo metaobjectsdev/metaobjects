@@ -373,13 +373,18 @@ configuration model that has not yet been specced.
 | Runtime metadata | Full — OMDB ObjectManager |
 | REST controller codegen | Spring Web MVC — `metaobjects-codegen-spring` (FR-008 §2.1) |
 
-## FR-006 — output parsing
+## FR-006 — response parsing
 
 `SpringOutputParserGenerator` (in `metaobjects-codegen-spring`) emits one
-`<TemplateName>Parser` Java class per `template.output` declaration — a
-Jackson-backed, throw-only parser around the `@payloadRef` payload record
-`SpringPayloadGenerator` already emits (no payload-shape re-declaration).
+`<PromptShortName>Parser` Java class per responding `template.prompt` — one declaring
+`@responseRef` — a Jackson-backed, throw-only parser around the `<Prompt>Response`
+record `SpringPayloadGenerator` emits for that ref (no shape re-declaration).
 Registered in the module's generator registry as `output-parser`.
+
+ADR-0052: the shape parsed INTO is `@responseRef`, never `@payloadRef` (which types the
+request the prompt renders outbound), and `template.output` gets no parser at all. This
+port's records are TEMPLATE-named, so a responding prompt gets a SECOND record —
+`<Prompt>Response` beside `<Prompt>Payload`.
 
 ```java
 // generated/NpcResponseParser.java
@@ -414,7 +419,7 @@ field, and `Verify.check(...)` (with output-tag slots supplied via its
 `VerifyOptions`) catches payload-VO ↔ parser drift at build time. Cross-port design is at
 [ADR-0010](../../spec/decisions/ADR-0010-template-output-parser-codegen.md);
 the feature reference is at
-[`features/templates-and-payloads.md`](../features/templates-and-payloads.md#output-parsing-fr-006).
+[`features/templates-and-payloads.md`](../features/templates-and-payloads.md#response-parsing-fr-006).
 FR-010's tolerant `extractLenient(loader, text)` variant (returns an
 `ExtractionResult<TPayload>` instead of throwing) ships alongside `parse()`.
 

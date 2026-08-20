@@ -5,8 +5,8 @@
       { "object.value": { "name": "Greeting", "children": [
           { "field.string": { "name": "text" } }
       ] } },
-      { "template.output": { "name": "Reply",
-          "@payloadRef": "Greeting", "@textRef": "ai/reply" } }
+      { "template.prompt": { "name": "Reply",
+          "@payloadRef": "Greeting", "@responseRef": "Greeting", "@textRef": "ai/reply" } }
     ]
   }
 }

@@ -18,8 +18,8 @@ import java.util.Map;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Conformance test for the FR-010 output codegen contract, loading the cross-port
- * fixtures from {@code fixtures/conformance/template-output-{json,xml}-simple/input/meta.json}.
+ * Conformance test for the FR-010 inbound codegen contract, loading the cross-port
+ * fixtures from {@code fixtures/conformance/template-prompt-response-{json,xml}/input/meta.json}.
  *
  * <p>Asserts the key structural markers emitted by both
  * {@link SpringOutputPromptGenerator} and {@link SpringOutputParserGenerator} for each
@@ -52,9 +52,14 @@ public class TemplateOutputFixtureConformanceTest extends SharedRegistryTestBase
 
     @Parameterized.Parameters(name = "{0}")
     public static List<Object[]> cases() {
+        // ADR-0052 renamed these: the inbound tier is driven by a responding
+        // template.prompt, so the fixtures are template-prompt-response-{json,xml}.
+        // Both carry `@format: "text"` with a `@responseFormat` that differs from it —
+        // the case that discriminates ADR-0053's two-attribute split. A generator still
+        // reading @format would emit Format.JSON for BOTH rows and fail the xml one.
         return List.of(
-            new Object[]{ "template-output-json-simple", "PromptStyle.INLINE", "Format.JSON" },
-            new Object[]{ "template-output-xml-simple",  "PromptStyle.GUIDE",  "Format.XML"  }
+            new Object[]{ "template-prompt-response-json", "PromptStyle.INLINE", "Format.JSON", true  },
+            new Object[]{ "template-prompt-response-xml",  "PromptStyle.GUIDE",  "Format.XML",  false }
         );
     }
 
@@ -64,12 +69,15 @@ public class TemplateOutputFixtureConformanceTest extends SharedRegistryTestBase
     private final String fixtureName;
     private final String promptStyleConstant;
     private final String formatConstant;
+    private final boolean expectStrictTier;
 
     public TemplateOutputFixtureConformanceTest(
-            String fixtureName, String promptStyleConstant, String formatConstant) {
+            String fixtureName, String promptStyleConstant, String formatConstant,
+            boolean expectStrictTier) {
         this.fixtureName = fixtureName;
         this.promptStyleConstant = promptStyleConstant;
         this.formatConstant = formatConstant;
+        this.expectStrictTier = expectStrictTier;
     }
 
     // -------------------------------------------------------------------------
@@ -103,14 +111,14 @@ public class TemplateOutputFixtureConformanceTest extends SharedRegistryTestBase
         parserGen.setArgs(args);
         parserGen.execute(loader);
 
-        // ---- Fixtures: package acme::support, template.output name "SupportAnswerOutput"
+        // ---- Fixtures: package acme::support, template.prompt name "SupportAnswerPrompt"
         // outPkg = acme.support.prompts → path acme/support/prompts/
-        Path promptFile = outDir.resolve("acme/support/prompts/SupportAnswerOutputPrompt.java");
-        Path parserFile = outDir.resolve("acme/support/prompts/SupportAnswerOutputParser.java");
+        Path promptFile = outDir.resolve("acme/support/prompts/SupportAnswerPromptResponseFormat.java");
+        Path parserFile = outDir.resolve("acme/support/prompts/SupportAnswerPromptParser.java");
 
         // ---- Prompt assertions ----
 
-        assertTrue("[" + fixtureName + "] expected SupportAnswerOutputPrompt.java at "
+        assertTrue("[" + fixtureName + "] expected SupportAnswerPromptResponseFormat.java at "
                 + promptFile, Files.exists(promptFile));
         String promptSrc = Files.readString(promptFile);
 
@@ -131,17 +139,32 @@ public class TemplateOutputFixtureConformanceTest extends SharedRegistryTestBase
 
         // ---- Parser assertions ----
 
-        assertTrue("[" + fixtureName + "] expected SupportAnswerOutputParser.java at "
+        assertTrue("[" + fixtureName + "] expected SupportAnswerPromptParser.java at "
                 + parserFile, Files.exists(parserFile));
         String parserSrc = Files.readString(parserFile);
 
-        // The single metadata-driven extract path: a loader-delegating extractLenient(...)
-        // overload alongside the strict parse(...). No baked ExtractSchema literal anymore.
+        // The tolerant tier is emitted for EVERY responding prompt — declaring a response
+        // shape is the request for one, and it is the only tier an XML reply gets.
         assertTrue("[" + fixtureName + "] expected loader-delegating `extractLenient(com.metaobjects.loader.MetaDataLoader`; saw:\n" + parserSrc,
             parserSrc.contains("extractLenient(com.metaobjects.loader.MetaDataLoader"));
 
-        assertTrue("[" + fixtureName + "] expected `parse(`; saw:\n" + parserSrc,
-            parserSrc.contains("parse("));
+        // ADR-0053: the strict Jackson tier is JSON-ONLY. Strict all-or-nothing semantics
+        // layered over the REPAIRING XML reader would throw or accept based on how much
+        // repair happened, which is not a contract anyone can reason about.
+        if (expectStrictTier) {
+            assertTrue("[" + fixtureName + "] expected the strict `parse(` tier; saw:\n" + parserSrc,
+                parserSrc.contains("public static SupportAnswerPromptResponse parse(String text)"));
+        } else {
+            assertTrue("[" + fixtureName + "] XML reply must get NO strict parse tier; saw:\n" + parserSrc,
+                !parserSrc.contains("public static SupportAnswerPromptResponse parse(String text)"));
+            assertTrue("[" + fixtureName + "] XML reply must not import Jackson; saw:\n" + parserSrc,
+                !parserSrc.contains("com.fasterxml.jackson"));
+        }
+
+        // ADR-0052: the parser returns the @responseRef shape (SupportAnswer), never the
+        // @payloadRef request shape (SupportRequest) — the distinction the ADR exists to draw.
+        assertTrue("[" + fixtureName + "] parser must not bind the request shape; saw:\n" + parserSrc,
+            !parserSrc.contains("SupportRequest"));
 
         // No baked snapshot must survive (Move 1: the FieldSpec-literal path is gone).
         assertTrue("[" + fixtureName + "] must NOT emit a baked `ExtractSchema EXTRACT_SCHEMA` literal; saw:\n" + parserSrc,

@@ -1,14 +1,16 @@
 # Java parser-on-receipt
 
-For every `template.output`, `codegen-spring`'s `SpringOutputParserGenerator` emits
-a **typed parser** that validates an LLM/raw response against the template's
-`@payloadRef` payload record. This is the receive side only — codegen emits **no**
-provider/LLM-call layer; you compose the call yourself.
+For every RESPONDING `template.prompt` — one declaring `@responseRef` —
+`codegen-spring`'s `SpringOutputParserGenerator` emits a **typed parser** that validates
+a model's reply against that shape. ADR-0052: the tier binds `@responseRef`, never
+`@payloadRef` (which types the request the prompt renders outbound), and a
+`template.output` gets no parser at all. This is the receive side only — codegen emits
+**no** provider/LLM-call layer; you compose the call yourself.
 
 ## Contents
 - Wire the generator
 - What it emits
-- The output-format prompt fragment (FR-010)
+- The response-format prompt fragment (FR-010)
 - The three-step consumer pattern
 - Recommended LLM caller (bring-your-own)
 - Drift gate
@@ -31,17 +33,20 @@ the payload record it parses into) to the Maven plugin's `<generators>` list:
 
 ## What it emits
 
-Per `template.output`, `mvn metaobjects:generate` writes a `<Name>Parser` class with a static
-`parse` method returning the `@payloadRef` payload record. The strict path throws
-`com.fasterxml.jackson.core.JsonProcessingException` on malformed input:
+Per responding `template.prompt`, `mvn metaobjects:generate` writes a `<Name>Parser`
+class with a static `parse` method returning the `<Name>Response` record — this port's
+records are TEMPLATE-named, so a responding prompt gets a SECOND record beside
+`<Name>Payload`. The strict path throws
+`com.fasterxml.jackson.core.JsonProcessingException` on malformed input, and is
+JSON-only: an `@responseFormat: xml` reply gets the tolerant extract and no `parse`:
 
 ```java
 // generated <Name>Parser.java (shape)
 public final class NpcResponseParser {
     private NpcResponseParser() { }   // no instances
 
-    public static NpcResponsePayload parse(String text) throws JsonProcessingException {
-        // Jackson-backed: validates the text against the payload record
+    public static NpcResponseResponse parse(String text) throws JsonProcessingException {
+        // Jackson-backed: validates the text against the @responseRef record
     }
 }
 ```
@@ -61,10 +66,10 @@ reference) return `MetaObjectAware` instances instead, and those need
 `JsonObjectWriter`/`MetaObjectSerializer` — not a bare mapper — to serialize
 correctly (see the codegen reference's "Serializing generated objects" section).
 
-## The output-format prompt fragment (FR-010)
+## The response-format prompt fragment (FR-010)
 
-For every json/xml-format `template.output`, `codegen-spring`'s
-`SpringOutputPromptGenerator` emits a `<TemplateShortName>OutputPrompt` class with a
+For every responding `template.prompt`, `codegen-spring`'s
+`SpringOutputPromptGenerator` emits a `<PromptShortName>ResponseFormat` class with a
 static `renderFormat()` / `renderFormat(PromptOverrides)` pair, backed by
 `OutputFormatRenderer` from the `metaobjects-render` module — the "produce your
 answer like this" fragment for the model. Wire it alongside
@@ -77,11 +82,12 @@ answer like this" fragment for the model. Wire it alongside
 </generator>
 ```
 
-`@promptStyle` on the `template.output` (`guide` default / `inline` / `exampleOnly`)
-controls the fragment's presentation; guidance is never emitted as comments. Skipped
-for `template.prompt` nodes, non-json/xml `@format`, and unresolved `@payloadRef` —
-the same skip contract as the parser generator. The `SPEC`'s root name is the
-capitalized payload class name, agreeing with the parser's extract-codegen root.
+`@promptStyle` on the `template.prompt` (`guide` default / `inline` / `exampleOnly`)
+controls the fragment's presentation; guidance is never emitted as comments. Skipped for
+`template.output` nodes and an unresolved `@responseRef` — the same skip contract as the
+parser generator. There is NO format gate: the old `@format ∈ {json,xml}` test read the
+syntax of the outbound body to decide whether to describe the reply. The `SPEC`'s root
+name is the response record's, agreeing with the parser's extract-codegen root.
 
 ## The three-step consumer pattern
 

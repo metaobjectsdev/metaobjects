@@ -16,8 +16,9 @@ branch —
     @filterable name) → MODEL / DATA_ACCESS / REST / FILTER / VALIDATION;
   • Address value object referenced by an Author object-field → MODEL only;
   • BaseNode abstract entity → NO unit (no symbols);
-  • SummaryOutput json template.output → PAYLOAD / RENDER / PROMPT / OUTPUT_PARSER /
-    EXTRACTOR.
+  • SummaryPrompt responding template.prompt → PAYLOAD (request) + PAYLOAD (response) /
+    PROMPT / OUTPUT_PARSER / EXTRACTOR (ADR-0052 inbound);
+  • SummaryDoc template.output → RENDER + PAYLOAD (ADR-0052 outbound — no parser, ever).
 """
 from __future__ import annotations
 
@@ -70,9 +71,14 @@ _MODEL = """
   { "object.value": { "name": "SummaryPayload", "children": [
     { "field.string": { "name": "summary", "@required": true } }
   ]}},
+  { "template.prompt": {
+    "name": "SummaryPrompt", "package": "blog", "@payloadRef": "SummaryPayload",
+    "@responseRef": "SummaryPayload", "@textRef": "blog/summary",
+    "@format": "text", "@responseFormat": "json", "@promptStyle": "inline"
+  }},
   { "template.output": {
-    "name": "SummaryOutput", "package": "blog", "@payloadRef": "SummaryPayload",
-    "@textRef": "blog/summary", "@format": "json", "@promptStyle": "inline"
+    "name": "SummaryDoc", "package": "blog", "@payloadRef": "SummaryPayload",
+    "@textRef": "blog/summary", "@format": "json"
   }}
 ]}}
 """
@@ -139,8 +145,15 @@ def _contains_identifier(haystack: str, name: str) -> bool:
 def test_fixture_documents_the_expected_units() -> None:
     model, _ = _build_and_generate()
     nodes = sorted(u.node for u in model.units)
-    # Author + Address + SummaryPayload + SummaryOutput; BaseNode (abstract) absent.
-    assert nodes == ["Address", "Author", "SummaryOutput", "SummaryPayload"]
+    # Author + Address + SummaryPayload + both halves of the ADR-0052 split
+    # (SummaryPrompt inbound, SummaryDoc outbound); BaseNode (abstract) absent.
+    assert nodes == [
+        "Address",
+        "Author",
+        "SummaryDoc",
+        "SummaryPayload",
+        "SummaryPrompt",
+    ]
 
 
 def test_every_documented_type_name_appears_in_generated_python() -> None:
@@ -217,17 +230,34 @@ def test_abstract_object_is_not_documented() -> None:
     assert not any(u.node == "BaseNode" for u in model.units)
 
 
-def test_output_template_documents_render_payload_prompt_parser_extractor() -> None:
+def test_responding_prompt_documents_payload_prompt_parser_extractor() -> None:
+    """ADR-0052: the INBOUND symbols belong to the responding prompt. The documented
+    response PAYLOAD is the ``@responseRef`` shape — what the parser above it returns."""
     model, _ = _build_and_generate()
-    summary = next(u for u in model.units if u.node == "SummaryOutput")
-    kinds = {s.kind for s in summary.symbols}
+    prompt = next(u for u in model.units if u.node == "SummaryPrompt")
+    kinds = {s.kind for s in prompt.symbols}
     assert kinds == {
-        ApiSymbolKind.RENDER,
         ApiSymbolKind.PAYLOAD,
         ApiSymbolKind.PROMPT,
         ApiSymbolKind.OUTPUT_PARSER,
         ApiSymbolKind.EXTRACTOR,
     }
+    # TWO payload records: the request it renders outbound and the reply it parses.
+    payloads = sorted(s.name for s in prompt.symbols if s.kind == ApiSymbolKind.PAYLOAD)
+    assert payloads == ["SummaryPromptPayload", "SummaryPromptResponse"]
+    # ...and no RENDER: render_helper_generator emits for template.output alone, so
+    # documenting one here would name a function that is never generated.
+    assert ApiSymbolKind.RENDER not in kinds
+
+
+def test_output_template_documents_render_and_its_payload_only() -> None:
+    """The other half of the ADR-0052 split, and the control for it: ``template.output``
+    is OUTBOUND ONLY. It documents its render helper and the payload record that helper
+    binds — and nothing that reads a reply: no parser, no response-format fragment."""
+    model, _ = _build_and_generate()
+    doc = next(u for u in model.units if u.node == "SummaryDoc")
+    kinds = {s.kind for s in doc.symbols}
+    assert kinds == {ApiSymbolKind.RENDER, ApiSymbolKind.PAYLOAD}
 
 
 if __name__ == "__main__":  # pragma: no cover

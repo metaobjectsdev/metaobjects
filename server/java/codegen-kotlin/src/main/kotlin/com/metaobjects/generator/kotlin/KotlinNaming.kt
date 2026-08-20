@@ -114,7 +114,20 @@ object KotlinNaming {
     fun renderHelperName(templateShort: String): String = capitalizeFirst(templateShort) + "RenderHelper"
 
     /** [KotlinOutputPromptGenerator]: `templateShort + "Prompt"`. */
-    fun promptName(templateShort: String): String = templateShort + "Prompt"
+    /**
+     * ADR-0052 D4 — the FR-010 fragment class that tells a model how to format its reply.
+     * Renamed from `<Short>Prompt`: generated FROM a `template.prompt` now, the old suffix
+     * produced `ClassifyPromptPrompt`. Mirrors Java's `SpringNaming.responseFormatName`.
+     */
+    fun responseFormatName(templateShort: String): String = templateShort + "ResponseFormat"
+
+    /**
+     * ADR-0052 — a responding prompt's SECOND record: the `@responseRef` shape its parser
+     * returns, distinct from the `@payloadRef` request record [payloadName] emits.
+     * TEMPLATE-named, keeping ONE naming convention in this generator (Java does the same;
+     * C# diverges because its records are named for the value-object).
+     */
+    fun responseName(templateShort: String): String = templateShort + "Response"
 
     /** [KotlinOutputParserGenerator]: `templateShort + "Parser"`. */
     fun parserName(templateShort: String): String = templateShort + "Parser"

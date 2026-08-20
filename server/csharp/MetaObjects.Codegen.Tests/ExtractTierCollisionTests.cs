@@ -68,7 +68,7 @@ public sealed class ExtractTierCollisionTests
         var root = LoadCorpus();
         var ctx = Ctx(root);
 
-        var parserSrc = Assert.Single(new OutputParserGenerator().Generate(ctx), f => f.Path == "DigestDoc.output.cs").Content;
+        var parserSrc = Assert.Single(new OutputParserGenerator().Generate(ctx), f => f.Path == "DigestPrompt.response.cs").Content;
         var extractorFile = Assert.Single(new ExtractorGenerator().Generate(ctx));
         var extractorSrc = extractorFile.Content;
 
@@ -110,7 +110,7 @@ public sealed class ExtractTierCollisionTests
         var root = LoadCorpus();
         var ctx = Ctx(root);
 
-        var parserSrc = Assert.Single(new OutputParserGenerator().Generate(ctx), f => f.Path == "DigestDoc.output.cs").Content;
+        var parserSrc = Assert.Single(new OutputParserGenerator().Generate(ctx), f => f.Path == "DigestPrompt.response.cs").Content;
         var extractorSrc = Assert.Single(new ExtractorGenerator().Generate(ctx)).Content;
         // GENERATOR-emitted payload records (PayloadCodegen — never hand-authored), resolved via
         // the FQN root VO (mirrors RenderHelperConformanceTests' xpkg-collision precedent).
@@ -156,8 +156,8 @@ public sealed class ExtractTierCollisionTests
           { "object.value": { "name": "Widget", "children": [
             { "field.object": { "name": "detail", "@objectRef": "Detail", "@required": true } }
           ]}},
-          { "template.output": { "name": "WidgetOut", "@payloadRef": "Widget",
-              "@textRef": "x/y", "@format": "json" } }
+          { "template.prompt": { "name": "WidgetOut", "@payloadRef": "Widget", "@responseRef": "Widget",
+              "@textRef": "x/y", "@format": "text", "@responseFormat": "json" } }
         ]}}
         """;
         var r = new MetaDataLoader().Load([new InMemoryStringSource(m, id: "widget.json")]);
@@ -209,8 +209,8 @@ public sealed class ExtractTierCollisionTests
           { "object.value": { "name": "Report", "children": [
             { "field.string": { "name": "betaVal", "@required": true } }
           ]}},
-          { "template.output": { "name": "ReportDoc", "@payloadRef": "Report",
-              "@textRef": "x/y", "@format": "json" } }
+          { "template.prompt": { "name": "ReportDoc", "@payloadRef": "Report", "@responseRef": "Report",
+              "@textRef": "x/y", "@format": "text", "@responseFormat": "json" } }
         ]}}
         """;
         // Adversarial load order: alpha's ENTITY "Report" loads FIRST, so a package-blind
@@ -235,7 +235,7 @@ public sealed class ExtractTierCollisionTests
         var ctx = new GenContext { Entities = root.Objects(), Root = root, Config = config };
 
         var entitySrc = Assert.Single(new EntityGenerator().Generate(ctx)).Content;
-        var parserSrc = Assert.Single(new OutputParserGenerator().Generate(ctx), f => f.Path == "ReportDoc.output.cs").Content;
+        var parserSrc = Assert.Single(new OutputParserGenerator().Generate(ctx), f => f.Path == "ReportDoc.response.cs").Content;
         var payloadSrc = "using System.Collections.Generic;\nnamespace Acme.Generated;\n"
             + PayloadCodegen.GeneratePayloadRecords(root, "acme::beta::Report");
 

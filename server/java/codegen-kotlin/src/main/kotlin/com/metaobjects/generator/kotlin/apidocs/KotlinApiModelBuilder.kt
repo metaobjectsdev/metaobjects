@@ -5,6 +5,7 @@ import com.metaobjects.field.MetaField
 import com.metaobjects.field.ObjectField
 import com.metaobjects.generator.kotlin.KotlinGenUtil
 import com.metaobjects.generator.kotlin.KotlinM2mSupport
+import com.metaobjects.generator.kotlin.FindInbound
 import com.metaobjects.generator.kotlin.KotlinNaming
 import com.metaobjects.generator.kotlin.KotlinTphPlan
 import com.metaobjects.generator.kotlin.KotlinTypeMapper
@@ -78,7 +79,10 @@ class KotlinApiModelBuilder {
 
         // Templates: one unit per template.output under the model root.
         // ADR-0039: root-scan discipline — resolving children accessor.
-        for (child in loader.root.getChildren(OutputTemplate::class.java, true)) {
+        // ADR-0052: EVERY template subtype gets a unit, not just template.output. A
+        // template.prompt carries a @payloadRef record and, when it declares @responseRef, the
+        // whole inbound tier — all of it generated, so all of it documentable.
+        for (child in loader.root.getChildren(MetaTemplate::class.java, true)) {
             units.add(buildTemplateUnit(child, loader))
         }
 
@@ -293,7 +297,10 @@ class KotlinApiModelBuilder {
                 )
             )
 
-            // RENDER — the typed render helper wrapping the JVM render engine.
+            // RENDER — the typed render helper wrapping the JVM render engine. OUTBOUND ONLY:
+            // KotlinRenderHelperGenerator emits only for a template.output, so documenting it
+            // for a prompt would name a class that is never generated.
+            if (tmpl is com.metaobjects.template.OutputTemplate) {
             val render = KotlinNaming.renderHelperName(shortName)
             symbols.add(
                 ApiSymbol(
@@ -305,8 +312,30 @@ class KotlinApiModelBuilder {
                     returns = if (isEmailKind(tmpl)) "EmailDocument" else "String",
                 )
             )
+            }
 
-            // OUTPUT_PARSER — the typed parse<Name> / safeParse<Name> back into the payload.
+        }
+
+        // ADR-0052 — the INBOUND symbols belong to a RESPONDING template.prompt, never to an
+        // output, and the gate is @responseRef presence rather than a format value. Shares
+        // FindInbound with the generators, so docs can never claim a symbol codegen suppressed.
+        val inbound = FindInbound.responseShape(loader, tmpl)
+        if (inbound != null) {
+            // The RESPONSE record the parser actually returns — not the @payloadRef request
+            // record documented above, which types what this prompt renders outbound.
+            val response = KotlinNaming.responseName(shortName)
+            symbols.add(
+                ApiSymbol(
+                    name = response,
+                    kind = ApiSymbolKind.PAYLOAD,
+                    importLine = importLine(promptsPkg, response),
+                    signature = "data class $response",
+                    usage = "the typed response shape a model reply is parsed into",
+                    fields = payloadFields(inbound.vo),
+                )
+            )
+
+            // OUTPUT_PARSER — the typed parse<Name> / safeParse<Name> back into the response.
             val parser = KotlinNaming.parserName(shortName)
             symbols.add(
                 ApiSymbol(
@@ -314,21 +343,20 @@ class KotlinApiModelBuilder {
                     kind = ApiSymbolKind.OUTPUT_PARSER,
                     importLine = importLine(promptsPkg, parser),
                     signature = "object $parser",
-                    usage = "parses model output back into the typed payload",
-                    returns = KotlinNaming.payloadName(shortName),
+                    usage = "parses a model reply back into the typed response shape",
+                    returns = response,
                 )
             )
 
-            // PROMPT + EXTRACTOR — only for json/xml output templates.
-            if (format in STRUCTURED_FORMATS) {
-                val prompt = KotlinNaming.promptName(shortName)
+            run {
+                val prompt = KotlinNaming.responseFormatName(shortName)
                 symbols.add(
                     ApiSymbol(
                         name = prompt,
                         kind = ApiSymbolKind.PROMPT,
                         importLine = importLine(promptsPkg, prompt),
                         signature = "object $prompt",
-                        usage = "builds the output-format prompt fragment",
+                        usage = "builds the response-format prompt fragment",
                         returns = "String",
                     )
                 )
@@ -339,8 +367,8 @@ class KotlinApiModelBuilder {
                         kind = ApiSymbolKind.EXTRACTOR,
                         importLine = importLine(promptsPkg, extractor),
                         signature = "object $extractor",
-                        usage = "extracts the strict typed payload from dirty model output",
-                        returns = KotlinNaming.payloadName(shortName),
+                        usage = "extracts the strict typed response from dirty model output",
+                        returns = response,
                     )
                 )
             }

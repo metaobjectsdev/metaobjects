@@ -120,11 +120,16 @@ public final class TemplateConstants {
         FORMAT_TEXT, FORMAT_HTML, FORMAT_XML, FORMAT_CSV,
         FORMAT_JSON, FORMAT_MARKDOWN, FORMAT_SPREADSHEET);
 
-    // --- @promptStyle (template.output only — FR-010) ---
+    // --- @promptStyle (template.prompt only — FR-010, re-homed by ADR-0052) ---
 
     /**
-     * Attribute name for the output-format prompt fragment layout style.
-     * Only valid on {@code template.output}. Closed enum: see {@link #ALLOWED_PROMPT_STYLES}.
+     * Attribute name for the response-format fragment layout style.
+     * Only valid on {@code template.prompt}. Closed enum: see {@link #ALLOWED_PROMPT_STYLES}.
+     *
+     * <p>ADR-0052 moved this off {@code template.output}: it governs a fragment that
+     * instructs an LLM how to format its reply, so hosting it on the subtype defined as
+     * "every rendered artifact other than an LLM prompt" was a contradiction visible in
+     * the attribute's own description.
      */
     public static final String ATTR_PROMPT_STYLE = "promptStyle";
 
@@ -142,4 +147,35 @@ public final class TemplateConstants {
      */
     public static final Set<String> ALLOWED_PROMPT_STYLES = Set.of(
         PROMPT_STYLE_GUIDE, PROMPT_STYLE_INLINE, PROMPT_STYLE_EXAMPLE_ONLY);
+
+    // --- @responseFormat (template.prompt only — ADR-0053) ---
+
+    /**
+     * Attribute name for the syntax of the model's REPLY. Only valid on
+     * {@code template.prompt}. Closed enum: see {@link #ALLOWED_RESPONSE_FORMATS}.
+     *
+     * <p>Distinct from {@link #ATTR_FORMAT}, which is the syntax of the rendered prompt
+     * BODY. The two genuinely differ — a plain-text prompt may elicit an XML reply — which
+     * is why one attribute cannot serve both directions.
+     */
+    public static final String ATTR_RESPONSE_FORMAT = "responseFormat";
+
+    public static final String RESPONSE_FORMAT_JSON = "json";
+    public static final String RESPONSE_FORMAT_XML = "xml";
+
+    /**
+     * Default value for {@code @responseFormat} when absent. Reproduces the
+     * pre-ADR-0053 fallback exactly (anything that was not "xml" was treated as JSON),
+     * so the default is behaviour-preserving rather than a new policy.
+     */
+    public static final String RESPONSE_FORMAT_DEFAULT = RESPONSE_FORMAT_JSON;
+
+    /**
+     * Closed set of valid {@code @responseFormat} values (ADR-0053). TWO members, not
+     * {@link #ALLOWED_FORMATS}' seven: two is what every shipping consumer dispatches on.
+     * The rest are reserved-not-registered under ADR-0007 Amendment 2's re-entry bar —
+     * a member enters the registry only when a shipping consumer dispatches on it.
+     */
+    public static final Set<String> ALLOWED_RESPONSE_FORMATS = Set.of(
+        RESPONSE_FORMAT_JSON, RESPONSE_FORMAT_XML);
 }

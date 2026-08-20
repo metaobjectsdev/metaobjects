@@ -40,11 +40,11 @@ describe("renderOutputParser()", () => {
         },
       },
       {
-        "template.output": {
+        "template.prompt": {
           name: "NpcResponseOutput",
           "@payloadRef": "NpcResponsePayload",
+          "@responseRef": "NpcResponsePayload",
           "@textRef": "npc/output",
-          "@format": "json",
         },
       },
     ]);
@@ -78,11 +78,11 @@ describe("renderOutputParser()", () => {
         },
       },
       {
-        "template.output": {
+        "template.prompt": {
           name: "AllScalarsOutput",
           "@payloadRef": "AllScalars",
+          "@responseRef": "AllScalars",
           "@textRef": "x/y",
-          "@format": "json",
         },
       },
     ]);
@@ -106,11 +106,11 @@ describe("renderOutputParser()", () => {
         },
       },
       {
-        "template.output": {
+        "template.prompt": {
           name: "ListOutput",
           "@payloadRef": "ListPayload",
+          "@responseRef": "ListPayload",
           "@textRef": "x/y",
-          "@format": "json",
         },
       },
     ]);
@@ -140,11 +140,11 @@ describe("renderOutputParser()", () => {
         },
       },
       {
-        "template.output": {
+        "template.prompt": {
           name: "OuterOutput",
           "@payloadRef": "Outer",
+          "@responseRef": "Outer",
           "@textRef": "x/y",
-          "@format": "json",
         },
       },
     ]);
@@ -178,23 +178,49 @@ describe("renderOutputParser()", () => {
         },
       },
       {
-        "template.output": {
+        "template.prompt": {
           name: "OuterOutput",
           "@payloadRef": "Outer",
+          "@responseRef": "Outer",
           "@textRef": "x/y",
-          "@format": "json",
         },
       },
     ]);
     const out = renderOutputParser(root, "OuterOutput");
+    // Neither field is @required, so both carry `.optional()` — the schema's
+    // notion of the contract is the metadata's. The indentation contract is
+    // unchanged by that: nested fields sit one step deeper, and the nested
+    // closer aligns with the parent's field column.
     expect(out).toContain(`const OuterOutputSchema = z.object({
   inner: z.object({
-    x: z.string(),
-  }),
+    x: z.string().optional(),
+  }).optional(),
 });`);
   });
 
-  test("throws when template name is not a template.output", async () => {
+  test("throws when the template is a template.output (ADR-0052: outbound parses nothing)", async () => {
+    // The polarity of this guard inverted with ADR-0052. It used to reject a
+    // template.prompt; a prompt is now the ONLY thing that can carry a response.
+    const root = await loadRoot([
+      {
+        "object.value": {
+          name: "P",
+          children: [{ "field.string": { name: "x" } }],
+        },
+      },
+      {
+        "template.output": {
+          name: "notAPrompt",
+          "@payloadRef": "P",
+          "@textRef": "x/y",
+          "@format": "html",
+        },
+      },
+    ]);
+    expect(() => renderOutputParser(root, "notAPrompt")).toThrow(/not a template\.prompt/i);
+  });
+
+  test("throws when a prompt declares no @responseRef at all", async () => {
     const root = await loadRoot([
       {
         "object.value": {
@@ -204,14 +230,13 @@ describe("renderOutputParser()", () => {
       },
       {
         "template.prompt": {
-          name: "notOutput",
+          name: "fireAndForget",
           "@payloadRef": "P",
           "@textRef": "x/y",
-          "@format": "text",
         },
       },
     ]);
-    expect(() => renderOutputParser(root, "notOutput")).toThrow(/not a template\.output/i);
+    expect(() => renderOutputParser(root, "fireAndForget")).toThrow(/missing @responseRef/i);
   });
 
   test("throws when @payloadRef cannot be resolved", async () => {
@@ -219,14 +244,106 @@ describe("renderOutputParser()", () => {
     // The renderer must still defend its contract on the post-load tree.
     const root = await loadRootAllowErrors([
       {
-        "template.output": {
+        "template.prompt": {
           name: "BrokenOutput",
           "@payloadRef": "DoesNotExist",
+          "@responseRef": "DoesNotExist",
           "@textRef": "x/y",
-          "@format": "json",
         },
       },
     ]);
     expect(() => renderOutputParser(root, "BrokenOutput")).toThrow(/DoesNotExist/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The strict schema's notion of the contract must be the metadata's notion.
+//
+// The strict tier used to emit every field as mandatory — it never read
+// @required and never emitted .optional(). So `parse<Name>` threw on a reply
+// that correctly omitted a declared-OPTIONAL field: it enforced a contract the
+// metadata does not declare, and disagreed with the tolerant tier sitting in the
+// same file, which reads the real attr.
+//
+// Every other port reuses the payload VO (made @required-correct by #309); only
+// TypeScript re-derives its own schema inline, which is how it drifted. These
+// tests pin the two tiers to ONE answer.
+// ---------------------------------------------------------------------------
+describe("renderOutputParser() — strict optionality tracks @required", () => {
+  const RESPONSE_WITH_BOTH = [
+    { "object.value": { name: "Req", children: [{ "field.string": { name: "q" } }] } },
+    {
+      "object.value": {
+        name: "Res",
+        children: [
+          { "field.string": { name: "answer", "@required": true } },
+          { "field.string": { name: "note" } },
+          { "field.int": { name: "score" } },
+          { "field.string": { name: "tags", isArray: true } },
+        ],
+      },
+    },
+    {
+      "template.prompt": {
+        name: "Ask",
+        "@payloadRef": "Req",
+        "@responseRef": "Res",
+        "@textRef": "p/ask",
+      },
+    },
+  ];
+
+  test("a @required field is mandatory; an unmarked field is .optional()", async () => {
+    const src = renderOutputParser(await loadRoot(RESPONSE_WITH_BOTH), "Ask");
+    expect(src).toContain("answer: z.string(),");
+    expect(src).toContain("note: z.string().optional(),");
+    expect(src).toContain("score: z.number().int().optional(),");
+  });
+
+  test("array-ness and optionality compose — .optional() wraps the array", async () => {
+    const src = renderOutputParser(await loadRoot(RESPONSE_WITH_BOTH), "Ask");
+    expect(src).toContain("tags: z.array(z.string()).optional(),");
+  });
+
+  test("a nested value-object field honours @required the same way", async () => {
+    const src = renderOutputParser(
+      await loadRoot([
+        { "object.value": { name: "Req", children: [{ "field.string": { name: "q" } }] } },
+        { "object.value": { name: "Inner", children: [{ "field.string": { name: "x" } }] } },
+        {
+          "object.value": {
+            name: "Res",
+            children: [
+              {
+                "field.object": {
+                  name: "kept",
+                  "@objectRef": "Inner",
+                  "@required": true,
+                },
+              },
+              { "field.object": { name: "maybe", "@objectRef": "Inner" } },
+            ],
+          },
+        },
+        {
+          "template.prompt": {
+            name: "Ask",
+            "@payloadRef": "Req",
+            "@responseRef": "Res",
+            "@textRef": "p/ask",
+          },
+        },
+      ]),
+      "Ask",
+    );
+    // Asserted as exact blocks, not a spanning regex: a lazy [\s\S]*? between
+    // `kept:` and `}).optional()` happily matches ACROSS the required field into
+    // the optional one's closer, so the negative form silently cannot fail.
+    expect(src).toContain(
+      ["  kept: z.object({", "    x: z.string().optional(),", "  }),"].join("\n"),
+    );
+    expect(src).toContain(
+      ["  maybe: z.object({", "    x: z.string().optional(),", "  }).optional(),"].join("\n"),
+    );
   });
 });

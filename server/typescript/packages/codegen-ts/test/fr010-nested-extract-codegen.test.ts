@@ -60,11 +60,11 @@ const NESTED_MODEL = {
         },
       },
       {
-        "template.output": {
+        "template.prompt": {
           name: "OrderOut",
           "@payloadRef": "Order",
+          "@responseRef": "Order",
           "@textRef": "out/order",
-          "@format": "json",
         },
       },
     ],

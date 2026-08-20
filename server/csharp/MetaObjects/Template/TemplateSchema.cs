@@ -107,17 +107,26 @@ public static class TemplateSchema
         Name: TemplateConstants.TEMPLATE_ATTR_RESPONSE_REF,
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
-        Description: "Optional ref to the response value-object this prompt expects (peer of @payloadRef; drives typed LLM-call trace derivation).");
+        Description: "Optional ref to the response value-object this prompt expects (peer of @payloadRef; drives typed LLM-call trace derivation). Its presence is the sole gate on the inbound codegen tier (ADR-0052): parser-on-receipt, tolerant extract, and the FR-010 response-format fragment.");
 
-    // --- output-only overlay ---
-
+    // ADR-0052 — the inbound half lives on template.prompt, beside @responseRef.
     private static readonly AttrSchema PromptStyleAttr = new AttrSchema(
         Name: TemplateConstants.TEMPLATE_ATTR_PROMPT_STYLE,
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: false,
         Default: TemplateConstants.PROMPT_STYLE_DEFAULT,
         AllowedValues: [.. TemplateConstants.TEMPLATE_PROMPT_STYLES],
-        Description: "FR-010 output-format prompt presentation: 'guide' (prose list + example), 'inline' (inline placeholders / enum choices), or 'exampleOnly' (filled skeleton). Guidance is never emitted as comments.");
+        Description: "FR-010 response-format fragment presentation: 'guide' (prose list + example), 'inline' (inline placeholders / enum choices), or 'exampleOnly' (filled skeleton). Guidance is never emitted as comments.");
+
+    private static readonly AttrSchema ResponseFormatAttr = new AttrSchema(
+        Name: TemplateConstants.TEMPLATE_ATTR_RESPONSE_FORMAT,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+        Required: false,
+        Default: TemplateConstants.RESPONSE_FORMAT_DEFAULT,
+        AllowedValues: [.. TemplateConstants.TEMPLATE_RESPONSE_FORMATS],
+        Description: "ADR-0053: the syntax of the model's REPLY, read by the parser-on-receipt and the FR-010 response-format fragment. Distinct from @format, which is the syntax of the rendered PROMPT body. Two members because two is what every shipping consumer dispatches on; the other @format members are reserved-not-registered.");
+
+    // --- output-only overlay ---
 
     private static readonly AttrSchema KindAttr = new AttrSchema(
         Name: TemplateConstants.TEMPLATE_ATTR_KIND,
@@ -168,6 +177,8 @@ public static class TemplateSchema
         RequiredSlotsAttr,
         ModelAttr,
         ResponseRefAttr,
+        PromptStyleAttr,
+        ResponseFormatAttr,
     ];
 
     private static readonly IReadOnlyList<AttrSchema> OutputAttrs =
@@ -179,7 +190,6 @@ public static class TemplateSchema
         OwnerAttr,
         SinceAttr,
         RequiredTagsAttr,
-        PromptStyleAttr,
         KindAttr,
         SubjectRefAttr,
         HtmlBodyRefAttr,

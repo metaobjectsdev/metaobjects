@@ -102,6 +102,36 @@ def payload_module_name(template_name: str) -> str:
     return f"{_snake_case(template_name)}_payload"
 
 
+def response_class_name(template_name: str) -> str:
+    """``SupportAnswerPrompt`` → ``SupportAnswerPromptResponse``.
+
+    ADR-0052 gives a responding prompt a SECOND strict record: ``@payloadRef``
+    types the request it renders outbound, ``@responseRef`` the reply it parses,
+    and the two are different shapes. This port's primary record is TEMPLATE-named
+    (:func:`payload_class_name`), so the response record is template-named too —
+    ONE naming convention in this generator rather than a template-derived name
+    beside a value-object-derived one. Java's ``SpringNaming.responseName`` and
+    Kotlin's ``KotlinNaming.responseName`` are the same call.
+
+    (C# diverges deliberately: its records are named after the resolved VALUE
+    OBJECT, so there the response record simply IS the VO's record.)"""
+    return f"{template_name}Response"
+
+
+def response_module_name(template_name: str) -> str:
+    """``SupportAnswerPrompt`` → ``support_answer_prompt_response``.
+
+    The response record gets its OWN module rather than joining
+    ``<template>_payload.py``, for two reasons. (1) Strictness is per-module here:
+    a ``template.prompt``'s REQUEST payload emits ``extra="forbid"`` (a mistyped
+    render slot must fail at construction) while a reply record must tolerate
+    unknown fields — one file cannot carry both defaults, and a value-object
+    reachable from BOTH closures could only have one. (2) It keeps every existing
+    model's ``<template>_payload.py`` byte-identical. Java and Kotlin land the
+    response in its own file for the same reason (one record per file)."""
+    return f"{_snake_case(template_name)}_response"
+
+
 # ---------------------------------------------------------------------------
 # Resolution helpers (ADR-0042 package-local — same contract as Kotlin).
 # ---------------------------------------------------------------------------
@@ -466,6 +496,82 @@ def render_payload_vo(
     if payload is None:
         return None
 
+    return _render_record_module(
+        template,
+        root,
+        payload=payload,
+        class_name=payload_class_name(template.name),
+        primary_docstring=(
+            f"GENERATED payload for template ``{template.name}``.\n\n"
+            f"    Field shape derived from the ``{payload.name}`` object.value."
+        ),
+        # A template.prompt payload is the RENDER INPUT — make it reject unknown fields so a
+        # mistyped slot fails at construction. Output/toolcall payloads are parse targets and
+        # keep the tolerant default.
+        strict_extras=template.sub_type == tc.TEMPLATE_SUBTYPE_PROMPT,
+        generator=generator,
+    )
+
+
+def render_response_vo(
+    template: MetaTemplate,
+    root: MetaData,
+    *,
+    generator: "PayloadVoGenerator | None" = None,
+) -> str | None:
+    """Render the ADR-0052 RESPONSE record module for a responding ``template.prompt``.
+
+    ``None`` when the template declares no ``@responseRef`` or the ref does not
+    resolve — i.e. for every template that is not a responding prompt, which is the
+    normal case and never a warning.
+
+    The record is the shape the generated parser RETURNS. It is NOT the prompt's
+    ``@payloadRef``, which types the request rendered outbound; emitting only the
+    request record would leave ``output_parser_generator`` importing a class nobody
+    declares. Unlike the request payload it keeps Pydantic's tolerant
+    ``extra="ignore"`` default — a model's reply is not a contract this side
+    controls, and the strict/tolerant tiers each have their own way of reporting a
+    field that is missing."""
+    # Deferred import: ``find_inbound`` imports ``resolve_payload_vo`` from THIS
+    # module (the direction rule must resolve a response through the same target
+    # rule ``@payloadRef`` obeys), so a module-level import here would be a cycle.
+    from metaobjects.codegen.generators.find_inbound import response_shape
+
+    shape = response_shape(root, template, _pkg_of(template))
+    if shape is None:
+        return None
+    return _render_record_module(
+        template,
+        root,
+        payload=shape.vo,
+        class_name=response_class_name(template.name),
+        primary_docstring=(
+            f"GENERATED response shape for template.prompt ``{template.name}``.\n\n"
+            f"    Field shape derived from the ``{shape.vo.name}`` object.value."
+        ),
+        strict_extras=False,
+        generator=generator,
+    )
+
+
+def _render_record_module(
+    template: MetaTemplate,
+    root: MetaData,
+    *,
+    payload: MetaObject,
+    class_name: str,
+    primary_docstring: str,
+    strict_extras: bool,
+    generator: "PayloadVoGenerator | None",
+) -> str:
+    """Render one self-contained record module: the PRIMARY class *class_name*
+    modelling *payload*, plus a class for every value-object in its declared
+    ``field.object @objectRef`` closure.
+
+    Shared by :func:`render_payload_vo` (the ``@payloadRef`` request record) and
+    :func:`render_response_vo` (the ADR-0052 ``@responseRef`` reply record) — the
+    two differ only in which VO roots the closure, what the primary class is called,
+    and whether unknown fields are rejected."""
     # ADR-0044 pass 1/2 — the collision domain is this module's nested-payload
     # closure. Seed `seen` with the primary VO's key so the primary (named after
     # the TEMPLATE, not the VO) stays out of the VO-short-name collision domain.
@@ -478,7 +584,6 @@ def render_payload_vo(
     # ``resolution_key()`` (see _resolve_object_field_type) so two same-short-name
     # VOs from different packages both emit.
     emitted_nested_keys: set[str] = set()
-    class_name = payload_class_name(template.name)
     extra_imports: set[str] = set()
     nested_emit_queue: list[tuple[MetaObject, str]] = []
     # Shared-enum aliases (``<Pascal(super.name)> = Literal[...]``), deduped by name and
@@ -488,11 +593,6 @@ def render_payload_vo(
     # The class-block emitter: the generator's overridable hook when an instance is
     # supplied, else the module-level default (byte-identical back-compat path).
     emit_class = generator._emit_payload_class if generator is not None else _emit_payload_class
-
-    # A template.prompt payload is the RENDER INPUT — make it reject unknown fields so a
-    # mistyped slot fails at construction. Output/toolcall payloads are parse targets and
-    # keep the tolerant default.
-    strict_extras = template.sub_type == tc.TEMPLATE_SUBTYPE_PROMPT
 
     # The PRIMARY class (the one named after the template). Its docstring
     # mirrors Kotlin's KDoc.
@@ -504,10 +604,7 @@ def render_payload_vo(
         emitted_nested_keys=emitted_nested_keys,
         extra_imports=extra_imports,
         enum_aliases=enum_aliases,
-        docstring=(
-            f"GENERATED payload for template ``{template.name}``.\n\n"
-            f"    Field shape derived from the ``{payload.name}`` object.value."
-        ),
+        docstring=primary_docstring,
         name_map=name_map,
     )
     if strict_extras:
@@ -596,9 +693,11 @@ def _effective_fqn_for(template: MetaTemplate, payload: MetaObject) -> str:
 
 
 class PayloadVoGenerator:
-    """Generator wrapping ``render_payload_vo``. Emits one file per declared
-    ``template.*`` (prompt / output / toolcall) — iterates ALL template
-    subtypes uniformly to match the Kotlin reference (no subtype filter)."""
+    """Generator wrapping ``render_payload_vo``. Emits one ``<template>_payload.py``
+    per declared ``template.*`` (prompt / output / toolcall) — iterates ALL template
+    subtypes uniformly to match the Kotlin reference (no subtype filter) — plus, for
+    a responding ``template.prompt`` (ADR-0052), a second ``<template>_response.py``
+    holding the reply record its generated parser returns."""
 
     name = _GENERATOR_NAME
 
@@ -642,6 +741,14 @@ class PayloadVoGenerator:
         the emitted source, or replace the render path entirely."""
         return render_payload_vo(template, root, generator=self)
 
+    def _render_response_module(
+        self, template: MetaTemplate, root: MetaData
+    ) -> str | None:
+        """EXTENSION SEAM — render the ADR-0052 response-record module for one
+        responding ``template.prompt``, or ``None`` when the template declares no
+        resolvable ``@responseRef``. Defaults to :func:`render_response_vo`."""
+        return render_response_vo(template, root, generator=self)
+
     def generate(self, ctx: GenContext) -> list[EmittedFile]:
         root = ctx.loaded_root
         if root is None:
@@ -662,13 +769,25 @@ class PayloadVoGenerator:
                     f"{_GENERATOR_NAME}: skipping template "
                     f"'{tmpl.name}' (no resolvable @payloadRef to an object.value)."
                 )
-                continue
-            files.append(
-                EmittedFile(
-                    path=f"{payload_module_name(tmpl.name)}.py",
-                    content=ruff_format(content),
+            else:
+                files.append(
+                    EmittedFile(
+                        path=f"{payload_module_name(tmpl.name)}.py",
+                        content=ruff_format(content),
+                    )
                 )
-            )
+            # ADR-0052 — the INBOUND half. A responding prompt's @responseRef names the
+            # shape its generated parser RETURNS, so that shape needs a strict record of
+            # its own, in its own module (see response_module_name). Silent when absent:
+            # not being a responding prompt is the normal case, not a skipped emission.
+            response = self._render_response_module(tmpl, root)
+            if response is not None:
+                files.append(
+                    EmittedFile(
+                        path=f"{response_module_name(tmpl.name)}.py",
+                        content=ruff_format(response),
+                    )
+                )
         return files
 
 
