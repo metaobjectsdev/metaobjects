@@ -368,6 +368,13 @@ async function writeConfigFile(opts: InitOptions, result: InitResult, agentDir: 
     log.warn(priorContent);
     result.warnings.push("invalid .metaobjects/config.json replaced with defaults");
     await writeFresh();
+    // F11 — matches the OTHER two `writeFresh()` call sites above: this IS a
+    // fresh write (a destructive one, replacing content that could not be
+    // parsed), not a no-op. Omitting this left it in neither `created` nor
+    // `preserved`, so the `--config-only` CLI summary (which keys on
+    // `result.created.includes(...)` alone) reported "already exists — left
+    // untouched" for a config it had just overwritten with defaults.
+    result.created.push(".metaobjects/config.json");
   }
 }
 

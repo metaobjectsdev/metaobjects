@@ -124,6 +124,19 @@ describe("resolveSources", () => {
     expect(out).toHaveLength(2);
   });
 
+  test("a symlink cycle raises a clear error, not a hang or a stack overflow", async () => {
+    // F7 — the reference walk (`listMetadataFiles`, `metadata-files.ts`) follows a
+    // symlinked directory via `stat` (not `lstat`) with no loop guard. This PR
+    // promoted symlink-following to a cross-port contract and Java/Python both
+    // added cycle detection when they picked it up; the reference itself did not.
+    // `model/loop -> model` is self-referential: walking into `loop` re-lists
+    // `model` (now reached as `model/loop`), which contains `loop` again, forever.
+    write("model/meta.a.json");
+    const { symlinkSync } = await import("node:fs");
+    symlinkSync(join(root, "model"), join(root, "model/loop"), "dir");
+    await expect(resolveSources(root, [{ path: "model" }])).rejects.toThrow();
+  });
+
   test("a dangling symlink inside a source directory is skipped, not a raw ENOENT crash", async () => {
     // DirectorySource in @metaobjectsdev/metadata catches and skips exactly
     // this case (directory-source.ts). Before the fix, the bare `stat()` in
