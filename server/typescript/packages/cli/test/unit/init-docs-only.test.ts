@@ -1,5 +1,5 @@
 import { test, expect, describe, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { init } from "../../src/commands/init.js";
@@ -27,5 +27,41 @@ describe("init() --docs-only", () => {
     expect(existsSync(join(cwd, "metaobjects"))).toBe(false);
     expect(existsSync(join(cwd, "metaobjects.config.ts"))).toBe(false);
     expect(existsSync(join(cwd, ".metaobjects/config.json"))).toBe(false);
+  });
+
+  // Same shape as the `--config-only --print-only` bug: the agent-context branches
+  // return ABOVE the `--print-only` guard the full-scaffold path checks below them,
+  // so a documented dry run silently wrote the real files. Unlike that one, the write
+  // set here is DYNAMIC (it depends on the resolved stack), so the guard cannot be a
+  // hardcoded path list in `init()` — it belongs inside `writeAgentContext`, which
+  // already computes the exact plan before performing a single write.
+  test("--docs-only --print-only reports the real write set and writes nothing", async () => {
+    const planned = await init({
+      cwd, docsOnly: true, printOnly: true, wireRoot: true,
+      servers: ["java"], clients: ["react"],
+    });
+
+    // Reported set is the REAL one, not a hardcoded guess: it names the docs, the
+    // stack-scoped skill reference, and the manifest.
+    expect(planned.created).toContain(".metaobjects/AGENTS.md");
+    expect(planned.created).toContain(".claude/skills/metaobjects-codegen/references/java.md");
+    expect(planned.created).toContain(".metaobjects/.agent-context.json");
+
+    // ...and the directory is untouched.
+    expect(readdirSync(cwd)).toEqual([]);
+  });
+
+  test("--refresh-docs --print-only writes nothing", async () => {
+    // The second door onto the same guard: refresh short-circuits on its own branch,
+    // which also sat above the --print-only check. It only engages once the project
+    // exists, so seed the marker directory first.
+    mkdirSync(join(cwd, ".metaobjects"), { recursive: true });
+
+    const planned = await init({ cwd, refreshDocs: true, printOnly: true, servers: ["java"] });
+
+    expect(planned.created).toContain(".metaobjects/AGENTS.md");
+    expect(existsSync(join(cwd, ".metaobjects/AGENTS.md"))).toBe(false);
+    expect(existsSync(join(cwd, ".metaobjects/.agent-context.json"))).toBe(false);
+    expect(readdirSync(join(cwd, ".metaobjects"))).toEqual([]);
   });
 });
