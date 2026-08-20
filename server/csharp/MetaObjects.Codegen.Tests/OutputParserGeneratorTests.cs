@@ -118,17 +118,22 @@ public sealed class OutputParserGeneratorTests
     [Fact]
     public void A_responseRef_that_is_not_a_value_object_emits_no_parser()
     {
-        // Fail-closed. @responseRef must resolve through the SAME payload-target resolver
-        // @payloadRef obeys (object.value, or a sourceless object.projection), because
-        // PayloadGenerator emits the record this parser binds using that resolver. When
-        // FindInbound used the any-object ResolveObjectRef instead, an entity target
-        // resolved HERE, the parser emitted `static Answer Parse(string)`, and
-        // PayloadGenerator emitted no record — CS0246, generated code that cannot compile.
+        // Fail-closed, at BOTH doors.
         //
-        // Nothing upstream catches it: unlike TypeScript, whose loader validates the
-        // @responseRef target (validation-passes.ts:336-345), the C# loader validates only
-        // @payloadRef — so this model loads with ZERO errors. Asserted below, because if the
-        // C# loader ever gains that rule this test would otherwise pass vacuously.
+        // @responseRef must resolve through the SAME payload-target resolver @payloadRef
+        // obeys (object.value, or a sourceless object.projection), because PayloadGenerator
+        // emits the record this parser binds using that resolver. When FindInbound used the
+        // any-object ResolveObjectRef instead, an entity target resolved HERE, the parser
+        // emitted `static Answer Parse(string)`, and PayloadGenerator emitted no record —
+        // CS0246, generated code that cannot compile.
+        //
+        // Door 1 is the LOADER, which now enforces the same target rule on @responseRef that
+        // it always enforced on @payloadRef (only TypeScript did, so the same metadata failed
+        // one port's load and passed four). Door 2 is this generator, kept fail-closed as
+        // defence in depth: an adopter may register its own provider or loosen strictness,
+        // and codegen must not emit a parser for a target the payload tier refuses to emit a
+        // record for. The generator assertions below therefore run against the loaded root
+        // DESPITE the load error, which is exactly the state door 2 exists to survive.
         const string m = """
         { "metadata.root": { "package": "acme::ai", "children": [
           { "object.value": { "name": "Req", "children": [ { "field.string": { "name": "q" } } ] } },
@@ -143,7 +148,11 @@ public sealed class OutputParserGeneratorTests
         ]}}
         """;
         var load = new MetaDataLoader().Load([new InMemoryStringSource(m, id: "outputs.json")]);
-        Assert.Empty(load.Errors);
+        // Door 1 — the loader convicts the metadata, naming the offending ref.
+        var err = Assert.Single(load.Errors);
+        Assert.Equal(ErrorCode.ERR_INVALID_TEMPLATE, err.Code);
+        Assert.Contains("@responseRef", err.Message);
+        Assert.Contains("AskPrompt", err.Message);
 
         var ctx = new GenContext
         {
@@ -151,10 +160,10 @@ public sealed class OutputParserGeneratorTests
             Root = load.Root,
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
         };
-        // No record for the entity, therefore no parser bound to it. The two must agree, and
-        // agreeing on "nothing" is the only safe agreement available for a target neither can
-        // legally emit. The prompt's @payloadRef (a real value-object) still gets its request
-        // record — that is a different ref, and it resolves.
+        // Door 2 — no record for the entity, therefore no parser bound to it. The two must
+        // agree, and agreeing on "nothing" is the only safe agreement available for a target
+        // neither can legally emit. The prompt's @payloadRef (a real value-object) still gets
+        // its request record — that is a different ref, and it resolves.
         var payloads = new PayloadGenerator().Generate(ctx).ToList();
         Assert.Equal("Req.payload.cs", Assert.Single(payloads).Path);
         Assert.DoesNotContain(payloads, f => f.Content.Contains("record Answer"));
