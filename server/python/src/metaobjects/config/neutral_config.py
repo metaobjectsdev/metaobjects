@@ -49,7 +49,12 @@ def read_neutral_config(config_dir: Path) -> NeutralConfig | None:
         )
 
     version = raw.get("schema_version")
-    if version != 1:
+    # `isinstance(version, bool)` must be checked FIRST and separately: Python's
+    # `bool` is a subclass of `int` and `True == 1`, so a bare `version != 1`
+    # check accepts `schema_version: true` — a divergence from Java's
+    # `isNumber()` and C#'s `ValueKind != Number`, both of which reject a JSON
+    # boolean outright.
+    if isinstance(version, bool) or not isinstance(version, (int, float)) or version != 1:
         raise ParseError(
             f"{path}: unsupported schema_version {version!r} (expected 1)",
             code=ErrorCode.ERR_COLLECTION_NOT_FOUND,

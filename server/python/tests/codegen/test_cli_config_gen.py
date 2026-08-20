@@ -224,6 +224,30 @@ def test_gen_flag_path_ignores_config_when_present(tmp_path: Path) -> None:
     assert (out / "Program.py").exists()
 
 
+def test_gen_missing_metadata_dir_errors_cleanly(tmp_path: Path, capsys) -> None:
+    """An explicit <metadata_dir> that does not exist must fail with a coded
+    CLI error, not an uncaught FileNotFoundError traceback. `DirectorySource`
+    switched from `rglob` to a manual `iterdir()` walk (the symlink-following
+    fix) — `iterdir()` raises OSError on a directory that never existed;
+    nothing on the `_load_root` path caught it."""
+    missing = tmp_path / "does" / "not" / "exist"
+    rc = main(["gen", str(missing), "--out", str(tmp_path / "out")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "error: failed to load metadata" in err
+
+
+def test_gen_metadata_dir_is_a_file_errors_cleanly(tmp_path: Path, capsys) -> None:
+    """Same as above, for the `NotADirectoryError` arm: <metadata_dir> resolves
+    to a plain file rather than a directory."""
+    not_a_dir = tmp_path / "somefile.txt"
+    not_a_dir.write_text("not a directory")
+    rc = main(["gen", str(not_a_dir), "--out", str(tmp_path / "out")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "error: failed to load metadata" in err
+
+
 def test_gen_no_args_no_yaml_falls_back_to_neutral_config(
     tmp_path: Path, monkeypatch
 ) -> None:

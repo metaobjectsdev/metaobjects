@@ -256,19 +256,32 @@ def _load_root(
     registered ``trace-helper`` generator exists to consume — the generator was reachable
     from the CLI while its input was not.
     """
-    if providers:
-        from metaobjects.core_types import core_providers
+    try:
+        if providers:
+            from metaobjects.core_types import core_providers
 
-        result = MetaDataLoader.from_directory(
-            metadata_dir,
-            providers=[*core_providers, *providers],
-            strict=strict,
-            libraries=libraries,
-        )
-    else:
-        result = MetaDataLoader.from_directory(
-            metadata_dir, strict=strict, libraries=libraries
-        )
+            result = MetaDataLoader.from_directory(
+                metadata_dir,
+                providers=[*core_providers, *providers],
+                strict=strict,
+                libraries=libraries,
+            )
+        else:
+            result = MetaDataLoader.from_directory(
+                metadata_dir, strict=strict, libraries=libraries
+            )
+    except OSError as e:
+        # `DirectorySource.expand()` walks via `iterdir()` (not `rglob()`, so it
+        # can follow a symlinked subdirectory — the I1 fix) and raises a plain
+        # OSError (FileNotFoundError / NotADirectoryError, or `SymlinkLoopError`
+        # on a symlink cycle) when `metadata_dir` itself can't be walked. Nothing
+        # upstream of this call catches it, so it would otherwise surface as a
+        # raw Python traceback instead of the coded "error: failed to load
+        # metadata" every other `_load_root` failure prints. Mirrors the
+        # TypeScript reference, which wraps the equivalent `readdir` failure in
+        # a clean `Error` at the same boundary (`metadata-files.ts`,
+        # `listMetadataFiles`: "cannot read metadata directory ...").
+        return None, [f"cannot read metadata directory {metadata_dir}: {e}"]
     if result.errors:
         msgs = [f"{e.code}: {e.message}" for e in result.errors]
         return None, msgs
@@ -279,6 +292,7 @@ def _load_root_from_paths(
     paths: list[str],
     strict: bool = False,
     providers: list[object] | None = None,
+    libraries: list[str] | None = None,
 ) -> tuple[MetaData | None, list[str]]:
     """Load metadata from an explicit file list rather than a single directory.
 
@@ -287,17 +301,20 @@ def _load_root_from_paths(
     individual files, which a single ``from_directory`` call cannot express —
     so this loads each resolved file as its own ``file://`` source via
     :meth:`MetaDataLoader.from_uris`. Mirrors :func:`_load_root`'s ``strict``/
-    ``providers`` contract exactly.
+    ``providers``/``libraries`` contract exactly.
     """
     uris = [Path(p).resolve().as_uri() for p in paths]
     if providers:
         from metaobjects.core_types import core_providers
 
         result = MetaDataLoader.from_uris(
-            uris, providers=[*core_providers, *providers], strict=strict
+            uris,
+            providers=[*core_providers, *providers],
+            strict=strict,
+            libraries=libraries,
         )
     else:
-        result = MetaDataLoader.from_uris(uris, strict=strict)
+        result = MetaDataLoader.from_uris(uris, strict=strict, libraries=libraries)
     if result.errors:
         msgs = [f"{e.code}: {e.message}" for e in result.errors]
         return None, msgs
@@ -543,7 +560,22 @@ def _cmd_docs(args: argparse.Namespace) -> int:
         paths = _resolve_metadata_location_or_print_error(config, root_dir)
         if paths is None:
             return 1
-        root, errors = _load_root_from_paths(paths, providers=providers)
+        docs_libraries: list[str] | None = None
+        if config is not None:
+            # `config` was already loaded above (to resolve rung 2's `metadata`
+            # key) — its OWN `providers`/`libraries` must reach this load too,
+            # exactly as `gen`'s config-mode load does (`_cmd_gen_config`), or a
+            # project relying on either (e.g. `libraries: ["ai"]` to resolve
+            # `extends: metaobjects::ai::LlmCallBase`) fails `docs` with
+            # `ERR_UNRESOLVED_SUPER` while `gen` on the same config succeeds.
+            config_providers, config_providers_ok = _config_providers(config)
+            if not config_providers_ok:
+                return 1
+            providers = [*providers, *config_providers]
+            docs_libraries = config.libraries
+        root, errors = _load_root_from_paths(
+            paths, providers=providers, libraries=docs_libraries
+        )
         project_default = root_dir.name
     else:
         root, errors = _load_root(args.metadata_dir, providers=providers)
