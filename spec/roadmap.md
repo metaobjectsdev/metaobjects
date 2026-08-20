@@ -48,7 +48,7 @@ under **Shipped**; planned FRs under **Planned** + the **Release plan**. ✅ shi
 | FR-034 | Ecosystem tier — connected systems (`system`/`container`/`surface`/`environment`) | 📋 designed (**draft, deferred post-1.0**) | 1.1 | — |
 | FR-035 | Present-key PATCH tristate (mutation surface) | 🟢 shipped 5 ports (absent→untouched / present-null→clears / null-on-`@required`→400); coordinated **breaking** release held for FR-036 | 1.0 | — |
 | FR-036 | Constraint-validation enforcement + semantic pins | 🟢 shipped 5 ports in the coordinated `0.16.0`/`7.8.0` breaking release (required-string = non-empty·accept-whitespace · `@Pattern` = full-match · strictest-wins length; HTTP-tier enforcement all 5 ports; TPH tristate) | 1.0 | — |
-| FR-037 | Projection expressiveness (`origin.rank`) + field write-access modes (`@mutability`) | ⚪ requirements (pre-design), decisions resolved. **R1/R2 retire registered vocabulary (`@readOnly`), so the breaking half must ride a coordinated pre-1.0 breaking MINOR** — post-1.0 a metamodel-vocabulary break is a 2.0 event (ADR-0035 §1), not a 1.1 minor. `origin.rank` + the rest are additive → 1.1. Design: `docs/superpowers/specs/2026-08-10-fr-037-projection-expressiveness-and-write-once-design.md` | 1.0 · 1.1 | — |
+| FR-037 | Projection expressiveness (`origin.rank`) + field write-access modes (`@mutability`) | ⚪ requirements (pre-design), decisions resolved. **R1/R2 retire registered vocabulary (`@readOnly`), so the breaking half must ride a coordinated pre-1.0 breaking MINOR** — post-1.0 a metamodel-vocabulary break moves `metamodelVersion`'s major (ADR-0035 §1 + Am. 2) and should still ride the pre-1.0 slot, where the caret rule is a real gate. `origin.rank` + the rest are additive → 1.1. Design: `docs/superpowers/specs/2026-08-10-fr-037-projection-expressiveness-and-write-once-design.md` | 1.0 · 1.1 | — |
 | FR-038 | Requirement-derived test stubs (inverts `@verifiedBy`) | ⚪ proposed. Generate the test from the requirement so the link is structural, not a name the author picks — an audit of one 19-name ledger found 4 names that did not verify their claim. **The `@verifiedBy` retirement is breaking and rides the SAME pre-1.0 MINOR as FR-037's R1/R2, not a second one**; the stub generator is additive → 1.1. Design: `docs/superpowers/specs/2026-08-15-fr-038-requirement-derived-test-stubs-design.md` | 1.0 · 1.1 | — |
 
 _(FR-001 was the original metamodel foundation — pre-dates the FR-numbered tracking.)_
@@ -239,7 +239,7 @@ breaking change ships**, because `^0.20.x` does not resolve `0.21.0` and so the 
 deliberately rather than on a routine `npm update`.
 
 **This is a rule, not a preference.** After the renumbering, a breaking change to the metamodel
-vocabulary requires a **2.0** (ADR-0035 §1 + Amendment 1, Consequences). So a breaking metamodel
+vocabulary requires a **major** (ADR-0035 §1 + Amendment 1, Consequences). So a breaking metamodel
 change cannot be targeted at `1.1` — that target is unreachable for the breaking half of any FR
 that retires registered vocabulary. Chartered to ride the next such MINOR:
 
@@ -266,6 +266,16 @@ coordinated release. That trade was already adjudicated for the analogous #210 c
 Group-B entry above: it rides the breaking batch "while 1.0 stays unscheduled", with "1.0 being
 scheduled imminently" listed as the reversal trigger). Note that ADR-0035's own §C3 text still
 names `0.15.1` as the last breaking move — stale; `0.21.0` superseded it.
+
+**What ADR-0035 Amendment 2 changes here, and what it does not.** Amendment 2 (2026-08-20)
+severs "a metamodel break forces a PACKAGE major": post-1.0 such a break moves
+**`metamodelVersion`'s** major, and the package rides a MINOR. That removes the "`1.1` is
+unreachable" arithmetic above — but it does **not** make the pre-1.0 slot unnecessary, and the
+batch should still ride it. Pre-1.0, `^0.x` gives adopters a real, mechanical gate; post-1.0
+`^1.0.0` accepts `1.1.0`, so the same break arrives on a routine update with only a changelog
+line to announce it. Landing this batch before the cut is landing it with the stronger mechanism
+still available. See
+[`docs/superpowers/specs/2026-08-20-two-contracts-versioning-design.md`](../docs/superpowers/specs/2026-08-20-two-contracts-versioning-design.md).
 
 **The open tension, named:** `CLAUDE.md` and the "Before 1.0" section above both say GA is the
 next release move and that nothing outstanding blocks the promotion. This section says a
