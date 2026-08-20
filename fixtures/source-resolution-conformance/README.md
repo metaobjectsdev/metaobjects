@@ -11,7 +11,7 @@ are read, `scope` filters what is emitted from them.
 ## Shape
 
 ```
-cases.json   # { cases: [{ name, tree, symlinks?, config, resolveFrom?, expectFiles?, expectError? }] }
+cases.json   # { cases: [{ name, tree, symlinks?, config, resolveFrom?, expectFiles?, expectError?, errorIsNative? }] }
 README.md
 ```
 
@@ -78,10 +78,26 @@ README.md
   `resolveFrom`), compared as an **UNORDERED SET**. See "Order is
   deliberately not pinned" below.
 - **`expectError`** — either a STRING error code the resolution must fail with
-  exactly, or the literal `true` meaning "must raise, but which error/code is
-  deliberately not pinned across ports" (see "Also deliberately NOT pinned:
-  the malformed-config error code" below for why the latter form exists).
-  Exactly one of `expectFiles` / `expectError` is present per case.
+  exactly, or the literal `true` meaning "must raise the port's own coded
+  metadata error, but WHICH code is deliberately not pinned across ports" (see
+  "Also deliberately NOT pinned: the malformed-config error code" below for why
+  the latter form exists). Exactly one of `expectFiles` / `expectError` is
+  present per case. Note what `true` still pins in a port that HAS a coded error
+  type: the type. Java, C# and Python all require `MetaDataException` /
+  `MetaModelException` / `ParseError` on this arm, so a malformed config that
+  crashes with a raw `NullPointerException` fails the case rather than passing
+  it. (TypeScript alone cannot: it propagates the raw parser error, which is the
+  whole reason the code is unpinned.)
+- **`errorIsNative`** — OPTIONAL boolean, only meaningful beside
+  `expectError: true`. Means the failure surfaces as a PLATFORM-native error
+  rather than the port's coded metadata error, so the type requirement above is
+  lifted for this case alone. Exactly one case sets it:
+  `a-symlink-cycle-is-an-error`, where the raise comes from the filesystem walk
+  (`IOException` in C#, `FileSystemLoopException` in Java, `SymlinkLoopError` in
+  Python) and never passes through a coded-error constructor. It exists so that
+  admitting that one case did not silently relax the other six `true` cases from
+  "a coded parse failure" to "anything at all" — which is precisely what a blanket
+  widening of the runners does, and did.
 
 ## Semantics pinned here
 

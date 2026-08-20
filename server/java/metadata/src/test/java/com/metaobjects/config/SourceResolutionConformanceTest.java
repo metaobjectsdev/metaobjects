@@ -73,12 +73,18 @@ public class SourceResolutionConformanceTest {
      */
     /**
      * {@code expectError}: a JSON string pins the exact error code raised; JSON
-     * {@code true} pins only that resolution RAISES — the malformed-config error
-     * code is deliberately not pinned cross-port (see the corpus README).
+     * {@code true} leaves the CODE unpinned but still requires the port's coded
+     * {@link MetaDataException} — the malformed-config error code is deliberately
+     * not pinned cross-port (see the corpus README), the TYPE is.
+     *
+     * <p>{@code errorIsNative}: this case's failure surfaces as a PLATFORM-native
+     * error rather than a coded exception, lifting the type requirement for it
+     * alone — the symlink-cycle case, whose raise comes from the filesystem walk
+     * ({@code FileSystemLoopException}) and never reaches a coded-error constructor.
      */
     private record Case(String name, Map<String, String> tree, JsonObject config,
                          String resolveFrom, List<String> expectFiles, JsonElement expectError,
-                         Map<String, String> symlinks) {}
+                         Map<String, String> symlinks, boolean errorIsNative) {}
 
     /** Package-private (not private): shared with {@link SourceResolutionCorpusNotEmptyTest},
      *  which needs to locate the same committed corpus file without a second definition
@@ -143,7 +149,9 @@ public class SourceResolutionConformanceTest {
                 }
             }
 
-            rows.add(new Object[]{name, new Case(name, tree, config, resolveFrom, expectFiles, expectError, symlinks)});
+            boolean errorIsNative = c.has("errorIsNative") && c.get("errorIsNative").getAsBoolean();
+
+            rows.add(new Object[]{name, new Case(name, tree, config, resolveFrom, expectFiles, expectError, symlinks, errorIsNative)});
         }
         return rows;
     }
@@ -199,19 +207,24 @@ public class SourceResolutionConformanceTest {
                     SourceResolver.resolveCollection(invokeDir);
                     fail("expected " + testCase.expectError() + " for case " + testCase.name());
                 } catch (Exception e) {
-                    // `true` pins only that it RAISES, so the catch is on Exception.
-                    // Narrowing it to MetaDataException silently re-pinned the very thing
-                    // the corpus refuses to pin: the symlink-cycle guard surfaces a
-                    // FileSystemLoopException, which escaped this catch and failed the
-                    // case even though the port behaved exactly as the contract requires.
+                    // The catch is on Exception so a native raise can reach the body at
+                    // all; the TYPE requirement is asserted here rather than by the catch
+                    // clause. `true` leaves the CODE unpinned but still demands
+                    // MetaDataException — a malformed config that crashes with a raw NPE
+                    // must FAIL this case, not pass it. `errorIsNative` lifts that for the
+                    // one case whose raise comes from the filesystem walk
+                    // (FileSystemLoopException) and never reaches a coded-error
+                    // constructor; widening the whole arm instead would quietly relax the
+                    // six malformed-config cases to "anything at all".
                     // (`fail` above throws AssertionError, an Error — so it still escapes.)
-                    // A string still pins the exact code, and that arm needs the coded type.
-                    if (codePinned) {
-                        assertTrue("case " + testCase.name() + " pins code " + expected.getAsString()
-                                        + " so it must raise MetaDataException, got " + e,
+                    if (!testCase.errorIsNative()) {
+                        assertTrue("case " + testCase.name()
+                                        + " must raise MetaDataException, got " + e,
                                 e instanceof MetaDataException);
-                        assertEquals(expected.getAsString(),
-                                ((MetaDataException) e).getCode().orElseThrow().name());
+                        if (codePinned) {
+                            assertEquals(expected.getAsString(),
+                                    ((MetaDataException) e).getCode().orElseThrow().name());
+                        }
                     }
                 }
                 return;

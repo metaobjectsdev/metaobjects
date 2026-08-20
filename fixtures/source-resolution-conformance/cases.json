@@ -272,7 +272,8 @@
       },
       "symlinks": { "model/loop": "model" },
       "config": { "schema_version": 1, "sources": [{ "path": "model" }] },
-      "expectError": true
+      "expectError": true,
+      "errorIsNative": true
     }
   ]
 }

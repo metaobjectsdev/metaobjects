@@ -269,7 +269,14 @@ async function writeAgentContext(opts: InitOptions, result: InitResult): Promise
       await writeFile(abs, c.contents, "utf8");
     }
     result.created.push(c.newPath);
-    result.warnings.push(`${c.path} appears hand-edited; refreshed version written to ${c.newPath}`);
+    // Past tense only when it actually happened — a dry run that reports "written
+    // to <path>.new" is claiming an edit-preserving side effect the user can go
+    // look for and will not find.
+    result.warnings.push(
+      dryRun
+        ? `${c.path} appears hand-edited; refreshed version would be written to ${c.newPath}`
+        : `${c.path} appears hand-edited; refreshed version written to ${c.newPath}`,
+    );
   }
   if (!dryRun) {
     const manifestAbs = join(opts.cwd, AGENT_CONTEXT_MANIFEST_PATH);
@@ -295,7 +302,11 @@ async function wireRootMemory(cwd: string, result: InitResult, dryRun = false): 
   // If neither root memory file exists, create CLAUDE.md (Claude Code's canonical) with the import.
   if (!claudeExists && !agentsExists) {
     if (!dryRun) await writeFile(claudePath, `# Project memory\n\n${ROOT_IMPORT_LINE}\n`, "utf8");
-    result.created.push("CLAUDE.md (created with MetaObjects @import)");
+    result.created.push(
+      dryRun
+        ? "CLAUDE.md (would be created with MetaObjects @import)"
+        : "CLAUDE.md (created with MetaObjects @import)",
+    );
     return;
   }
   // Otherwise append the import to whichever exist (idempotent — never double-add).
@@ -304,7 +315,14 @@ async function wireRootMemory(cwd: string, result: InitResult, dryRun = false): 
     const body = await readFile(path, "utf8");
     if (body.includes(ROOT_IMPORT_LINE)) continue;
     if (!dryRun) await writeFile(path, `${body.replace(/\n*$/, "\n")}\n${ROOT_IMPORT_LINE}\n`, "utf8");
-    result.warnings.push(`wired ${ROOT_IMPORT_LINE} into ${path.endsWith("AGENTS.md") ? "AGENTS.md" : "CLAUDE.md"} so the MetaObjects context loads`);
+    // Past tense only when it actually happened — this one mutates a file the user
+    // owns, so a dry run reporting it as done is the most misleading of the three.
+    const target = path.endsWith("AGENTS.md") ? "AGENTS.md" : "CLAUDE.md";
+    result.warnings.push(
+      dryRun
+        ? `would wire ${ROOT_IMPORT_LINE} into ${target} so the MetaObjects context loads`
+        : `wired ${ROOT_IMPORT_LINE} into ${target} so the MetaObjects context loads`,
+    );
   }
 }
 

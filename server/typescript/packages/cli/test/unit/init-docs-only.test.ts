@@ -49,6 +49,18 @@ describe("init() --docs-only", () => {
 
     // ...and the directory is untouched.
     expect(readdirSync(cwd)).toEqual([]);
+
+    // Nothing reports in the PAST tense. A dry run claiming it "created" a root
+    // CLAUDE.md or "wired" an @import names a side effect on a file the user owns,
+    // which they can go look for and will not find — a more expensive lie than the
+    // silent write, because it reads as a completed action.
+    // Anchored, not `\bcreated with\b` — that also matches the CORRECT "(would be
+    // created with …)" and the assertion fails on its own fix.
+    const past = [...planned.created, ...planned.warnings].filter(
+      (m) => m.includes("(created with") || /^wired /.test(m) || m.includes("version written to"),
+    );
+    expect(past).toEqual([]);
+    expect(planned.created).toContain("CLAUDE.md (would be created with MetaObjects @import)");
   });
 
   test("--refresh-docs --print-only writes nothing", async () => {

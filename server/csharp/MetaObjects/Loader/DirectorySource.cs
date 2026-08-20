@@ -63,9 +63,27 @@ public sealed class DirectorySource
     /// by full path (ordinal). The sort happens on the full path so that nested
     /// directory traversal is also deterministic.
     /// </summary>
+    /// <summary>
+    /// How two resolved directory paths are compared when deciding "is this an
+    /// ancestor I have already walked".
+    /// </summary>
+    /// <remarks>
+    /// Ordinal on Linux, where the filesystem genuinely distinguishes <c>Model</c> from
+    /// <c>model</c> and case-folding would REJECT a valid tree. Case-insensitive
+    /// elsewhere, because <see cref="RealPath"/> necessarily mixes spellings — a
+    /// non-link segment keeps whatever casing the caller wrote (via
+    /// <see cref="Path.GetFullPath(string)"/>) while a resolved link comes back in the
+    /// filesystem's own canonical casing — so on a case-insensitive volume an ordinal
+    /// compare lets <c>MODEL/loop -> model</c> slip past the guard. Slipping past is not
+    /// benign here: this is the one port whose enumeration SWALLOWS the kernel's ELOOP,
+    /// so there is no backstop underneath it.
+    /// </remarks>
+    private static readonly StringComparer PathComparer =
+        OperatingSystem.IsLinux() ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
+
     public IEnumerable<FileSource> Expand()
     {
-        IEnumerable<string> files = Collect(Directory, new HashSet<string>(StringComparer.Ordinal))
+        IEnumerable<string> files = Collect(Directory, new HashSet<string>(PathComparer))
             .Where(p => _supportedExtensions.Contains(Path.GetExtension(p)));
 
         if (Opts.ExcludePending)
@@ -123,7 +141,7 @@ public sealed class DirectorySource
             throw new IOException(
                 $"symlink loop detected while expanding metadata directory: {directory} revisits {real}");
 
-        var nextAncestors = new HashSet<string>(ancestors, StringComparer.Ordinal) { real };
+        var nextAncestors = new HashSet<string>(ancestors, PathComparer) { real };
 
         // Sorted so traversal is deterministic across filesystems, matching the
         // full-path ordinal sort Expand() applies to the result.

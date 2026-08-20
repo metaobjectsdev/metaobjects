@@ -19,6 +19,12 @@ interface Case {
    *  resolution RAISES — the malformed-config error code is deliberately not
    *  pinned cross-port (see the corpus README). */
   readonly expectError?: string | true;
+  /** Optional: the failure surfaces as a PLATFORM-native error rather than a coded
+   *  one, lifting the coded-TYPE requirement for this case. Java/C#/Python honour
+   *  it; TypeScript has nothing to lift — it propagates the raw parser error, which
+   *  is why the code is unpinned here in the first place — so it is unread. Declared
+   *  anyway so this interface stays a faithful mirror of the case schema. */
+  readonly errorIsNative?: boolean;
   /** Optional: linkPath -> targetPath, both project-root-relative, materialized
    *  AFTER `tree` (I1 — a symlinked source root, or a symlinked subdirectory
    *  inside a walked tree). */
