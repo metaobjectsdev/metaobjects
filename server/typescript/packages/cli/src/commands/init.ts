@@ -218,6 +218,23 @@ async function stackForAgentContext(opts: InitOptions, prior: Manifest | undefin
   return resolveStack(opts.cwd, overrides);
 }
 
+/** Writes `contents` to `path` (relative to `cwd`), unless `dryRun` — in which case
+ *  the write is skipped entirely and the caller still records what WOULD have
+ *  landed. Factors the mkdir+writeFile pair shared by every write site below. */
+async function writeUnlessDryRun(cwd: string, dryRun: boolean, path: string, contents: string): Promise<void> {
+  if (dryRun) return;
+  const abs = join(cwd, path);
+  await mkdir(dirname(abs), { recursive: true });
+  await writeFile(abs, contents, "utf8");
+}
+
+/** "would be VERBED" during a dry run, plain VERBED otherwise — the one tense
+ *  marker every reported write shares, so each call site states only its own
+ *  past participle instead of writing out both tenses of the whole sentence. */
+function verbed(dryRun: boolean, pastParticiple: string): string {
+  return dryRun ? `would be ${pastParticiple}` : pastParticiple;
+}
+
 async function writeAgentContext(opts: InitOptions, result: InitResult): Promise<void> {
   warnIfMonorepoSubdir(opts, result);
   const prior = await readManifest(opts.cwd);
@@ -255,34 +272,23 @@ async function writeAgentContext(opts: InitOptions, result: InitResult): Promise
   const dryRun = opts.printOnly === true;
 
   for (const w of writes) {
-    if (!dryRun) {
-      const abs = join(opts.cwd, w.path);
-      await mkdir(dirname(abs), { recursive: true });
-      await writeFile(abs, w.contents, "utf8");
-    }
+    await writeUnlessDryRun(opts.cwd, dryRun, w.path, w.contents);
     result.created.push(w.path);
   }
   for (const c of conflicts) {
-    if (!dryRun) {
-      const abs = join(opts.cwd, c.newPath);
-      await mkdir(dirname(abs), { recursive: true });
-      await writeFile(abs, c.contents, "utf8");
-    }
+    await writeUnlessDryRun(opts.cwd, dryRun, c.newPath, c.contents);
     result.created.push(c.newPath);
     // Past tense only when it actually happened — a dry run that reports "written
     // to <path>.new" is claiming an edit-preserving side effect the user can go
     // look for and will not find.
     result.warnings.push(
-      dryRun
-        ? `${c.path} appears hand-edited; refreshed version would be written to ${c.newPath}`
-        : `${c.path} appears hand-edited; refreshed version written to ${c.newPath}`,
+      `${c.path} appears hand-edited; refreshed version ${verbed(dryRun, "written")} to ${c.newPath}`,
     );
   }
-  if (!dryRun) {
-    const manifestAbs = join(opts.cwd, AGENT_CONTEXT_MANIFEST_PATH);
-    await mkdir(dirname(manifestAbs), { recursive: true });
-    await writeFile(manifestAbs, JSON.stringify(decision.manifest, null, 2) + "\n", "utf8");
-  }
+  await writeUnlessDryRun(
+    opts.cwd, dryRun, AGENT_CONTEXT_MANIFEST_PATH,
+    JSON.stringify(decision.manifest, null, 2) + "\n",
+  );
   result.created.push(AGENT_CONTEXT_MANIFEST_PATH);
 
   for (const orphan of decision.removed) {
@@ -301,12 +307,8 @@ async function wireRootMemory(cwd: string, result: InitResult, dryRun = false): 
 
   // If neither root memory file exists, create CLAUDE.md (Claude Code's canonical) with the import.
   if (!claudeExists && !agentsExists) {
-    if (!dryRun) await writeFile(claudePath, `# Project memory\n\n${ROOT_IMPORT_LINE}\n`, "utf8");
-    result.created.push(
-      dryRun
-        ? "CLAUDE.md (would be created with MetaObjects @import)"
-        : "CLAUDE.md (created with MetaObjects @import)",
-    );
+    await writeUnlessDryRun(cwd, dryRun, "CLAUDE.md", `# Project memory\n\n${ROOT_IMPORT_LINE}\n`);
+    result.created.push(`CLAUDE.md (${verbed(dryRun, "created")} with MetaObjects @import)`);
     return;
   }
   // Otherwise append the import to whichever exist (idempotent — never double-add).
@@ -314,15 +316,11 @@ async function wireRootMemory(cwd: string, result: InitResult, dryRun = false): 
     if (!exists) continue;
     const body = await readFile(path, "utf8");
     if (body.includes(ROOT_IMPORT_LINE)) continue;
-    if (!dryRun) await writeFile(path, `${body.replace(/\n*$/, "\n")}\n${ROOT_IMPORT_LINE}\n`, "utf8");
+    const target = path.endsWith("AGENTS.md") ? "AGENTS.md" : "CLAUDE.md";
+    await writeUnlessDryRun(cwd, dryRun, target, `${body.replace(/\n*$/, "\n")}\n${ROOT_IMPORT_LINE}\n`);
     // Past tense only when it actually happened — this one mutates a file the user
     // owns, so a dry run reporting it as done is the most misleading of the three.
-    const target = path.endsWith("AGENTS.md") ? "AGENTS.md" : "CLAUDE.md";
-    result.warnings.push(
-      dryRun
-        ? `would wire ${ROOT_IMPORT_LINE} into ${target} so the MetaObjects context loads`
-        : `wired ${ROOT_IMPORT_LINE} into ${target} so the MetaObjects context loads`,
-    );
+    result.warnings.push(`${verbed(dryRun, "wired")} ${ROOT_IMPORT_LINE} into ${target} so the MetaObjects context loads`);
   }
 }
 

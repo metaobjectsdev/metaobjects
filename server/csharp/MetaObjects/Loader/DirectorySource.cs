@@ -59,11 +59,6 @@ public sealed class DirectorySource
     }
 
     /// <summary>
-    /// Enumerate the matched files as <see cref="FileSource"/> instances, sorted
-    /// by full path (ordinal). The sort happens on the full path so that nested
-    /// directory traversal is also deterministic.
-    /// </summary>
-    /// <summary>
     /// How two resolved directory paths are compared when deciding "is this an
     /// ancestor I have already walked".
     /// </summary>
@@ -81,6 +76,11 @@ public sealed class DirectorySource
     private static readonly StringComparer PathComparer =
         OperatingSystem.IsLinux() ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
 
+    /// <summary>
+    /// Enumerate the matched files as <see cref="FileSource"/> instances, sorted
+    /// by full path (ordinal). The sort happens on the full path so that nested
+    /// directory traversal is also deterministic.
+    /// </summary>
     public IEnumerable<FileSource> Expand()
     {
         IEnumerable<string> files = Collect(Directory, new HashSet<string>(PathComparer))
@@ -193,17 +193,15 @@ public sealed class DirectorySource
             current = Path.Combine(current, segment);
             try
             {
-                // returnFinalTarget walks a chain of links in one call; the bound is the
-                // OS's own, and a link cycle here surfaces as an IOException we fall back on.
-                var target = System.IO.Directory.ResolveLinkTarget(current, returnFinalTarget: true)
-                             ?? System.IO.File.ResolveLinkTarget(current, returnFinalTarget: true);
-                if (target is not null)
-                {
-                    var t = target.FullName;
-                    current = Path.IsPathRooted(t)
-                        ? Path.GetFullPath(t)
-                        : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(current) ?? root, t));
-                }
+                // returnFinalTarget walks a chain of links (relative or absolute
+                // targets, either) in one call and hands back an already
+                // fully-qualified target. Every path this loop resolves is a
+                // directory — Collect only ever calls RealPath on one it has
+                // already confirmed exists — so Directory.ResolveLinkTarget alone
+                // is authoritative; a link cycle here surfaces as an IOException
+                // we fall back on.
+                var target = System.IO.Directory.ResolveLinkTarget(current, returnFinalTarget: true);
+                if (target is not null) current = target.FullName;
             }
             catch (IOException) { /* unresolvable — keep the lexical form for this segment */ }
             catch (UnauthorizedAccessException) { /* ditto */ }
