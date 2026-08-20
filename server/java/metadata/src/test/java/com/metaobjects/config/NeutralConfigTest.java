@@ -70,6 +70,29 @@ public class NeutralConfigTest {
     }
 
     @Test
+    public void unquotedKeysAndSingleQuotedStringsAreRejected() throws IOException {
+        // F8 — Gson's `JsonParser.parseString` ALWAYS parses leniently regardless
+        // of any JsonReader configuration (a well-known Gson quirk: both
+        // `JsonParser.parseReader` and `Gson.fromJson(JsonReader, ...)` force
+        // `setLenient(true)` internally before walking the reader). That silently
+        // accepted unquoted keys and single-quoted strings — syntax the class
+        // javadoc promises is rejected, and which TS's `JSON.parse`, Python's
+        // `json.loads`, and C#'s `System.Text.Json` all reject.
+        Path dir = writeConfig("{schema_version: 1, sources: [{path: 'model'}]}");
+        MetaDataException ex = assertThrows(MetaDataException.class, () -> NeutralConfig.read(dir));
+        assertEquals(ErrorCode.ERR_MALFORMED_JSON, ex.getCode().orElseThrow());
+    }
+
+    @Test
+    public void nanAndInfinityLiteralsAreRejected() throws IOException {
+        // Same Gson-leniency quirk as above, for the numeric-literal extensions
+        // (`NaN` / `Infinity` / `-Infinity`) lenient mode also accepts.
+        Path dir = writeConfig("{ \"schema_version\": NaN, \"sources\": [] }");
+        MetaDataException ex = assertThrows(MetaDataException.class, () -> NeutralConfig.read(dir));
+        assertEquals(ErrorCode.ERR_MALFORMED_JSON, ex.getCode().orElseThrow());
+    }
+
+    @Test
     public void schemaVersionNonIntegralRaisesRatherThanTruncating() throws IOException {
         // Regression: Gson's JsonPrimitive#getAsInt() TRUNCATES a non-integral
         // BigDecimal instead of raising, so `schema_version: 1.5` used to read as

@@ -18,6 +18,7 @@ package com.metaobjects.config;
 import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.loader.DirectorySource;
+import com.metaobjects.loader.FileSource;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,6 +26,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 /**
  * Turns a declared source SET ({@code .metaobjects/config.json}'s {@code sources}, or
@@ -97,8 +99,15 @@ public final class SourceResolver {
                 // DirectorySource directly gets every file) — this CLI-facing
                 // resolver turns it ON, since `_pending/` is the TypeScript CLI's
                 // pending/promote-workflow concept, not a loader concept.
-                new DirectorySource(target, new DirectorySource.Options().setExcludePending(true)).expand()
-                        .forEach(fs -> seen.add(fs.getPath().toAbsolutePath().normalize()));
+                // try-with-resources: expand() wraps Files.walk(), which the JDK
+                // documents as requiring prompt closing of its underlying
+                // directory-handle resource ("must be used within a try-with-resources
+                // statement or similar control structure") — a plain `.forEach()`
+                // with no `close()` leaks it on every directory source resolved.
+                try (Stream<FileSource> stream =
+                        new DirectorySource(target, new DirectorySource.Options().setExcludePending(true)).expand()) {
+                    stream.forEach(fs -> seen.add(fs.getPath().toAbsolutePath().normalize()));
+                }
             } else {
                 seen.add(target.toAbsolutePath().normalize());
             }

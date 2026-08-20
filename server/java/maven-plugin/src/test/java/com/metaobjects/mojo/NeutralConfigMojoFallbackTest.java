@@ -144,6 +144,78 @@ public class NeutralConfigMojoFallbackTest {
         }
     }
 
+    @Test
+    public void createLoaderHandlesASpaceInTheResolvedAbsolutePath() throws IOException {
+        // F9 — a checkout under a directory containing a space (far more common
+        // than the colon case above, e.g. "My Projects") used to die with an
+        // uncoded IllegalArgumentException: `resolveNeutralSourcesIfPomIsSilent`
+        // hands `MetaDataLoader.processSources` a "model:file:<absolute path>"
+        // string, which reaches `URIHelper.constructValidatedURI`'s
+        // `new URI(uriStr)` — the single-String URI constructor requires
+        // already-well-formed RFC 2396 syntax and throws on a raw space. The
+        // neutral fallback makes this the DEFAULT path for every pom-silent
+        // module, so any checkout under a spaced directory name broke every
+        // `mvn metaobjects:generate`/`:verify` invocation.
+        Path root = Files.createTempDirectory("mo-mojo-neutral-space-").toAbsolutePath().normalize();
+        try {
+            Path weirdRoot = root.resolve("My Projects");
+            Files.createDirectories(weirdRoot);
+            Path metaDir = weirdRoot.resolve("custom-metadata");
+            Files.createDirectories(metaDir);
+            Files.write(metaDir.resolve("meta.widget.json"), WIDGET_JSON.getBytes(StandardCharsets.UTF_8));
+
+            Path dotMo = weirdRoot.resolve(".metaobjects");
+            Files.createDirectories(dotMo);
+            Files.write(dotMo.resolve("config.json"),
+                    "{\"schema_version\":1,\"sources\":[{\"path\":\"custom-metadata\"}]}"
+                            .getBytes(StandardCharsets.UTF_8));
+
+            MetaDataGeneratorMojo mojo = mojoWithSilentPom(weirdRoot);
+            MetaDataLoader loaded = mojo.createLoader(mojo.createProjectClassLoader());
+
+            assertEquals(1, loaded.getMetaObjects().size());
+            assertEquals("Widget", loaded.getMetaObjects().get(0).getShortName());
+        } finally {
+            deleteRecursive(root);
+        }
+    }
+
+    @Test
+    public void createLoaderResolvesToZeroObjectsWhenTheDeclaredSourceIsAnEmptyDirectory() throws IOException {
+        // F3 — a pom-silent module whose .metaobjects/config.json DECLARES a real
+        // (existing) but empty source directory. `resolveNeutralSourcesIfPomIsSilent`
+        // overloads an empty List<String> return to mean two different things: "the
+        // pom owns the location" (skip — keep whatever the pom's own <sources> was)
+        // and "the neutral rung WAS consulted and legitimately resolved to zero
+        // files" (must still win — `sources` must become the empty list, not fall
+        // back to the pom's own null). Mirrors the shared corpus's
+        // `an-empty-directory-source-resolves-to-no-files` case, which the Java
+        // conformance runner gates only at the `SourceResolver` layer — never through
+        // this mojo — so a regression here was invisible to that gate.
+        Path root = Files.createTempDirectory("mo-mojo-neutral-empty-dir-").toAbsolutePath().normalize();
+        try {
+            Path emptyDir = root.resolve("empty-model");
+            Files.createDirectories(emptyDir);
+
+            Path dotMo = root.resolve(".metaobjects");
+            Files.createDirectories(dotMo);
+            Files.write(dotMo.resolve("config.json"),
+                    "{\"schema_version\":1,\"sources\":[{\"path\":\"empty-model\"}]}"
+                            .getBytes(StandardCharsets.UTF_8));
+
+            MetaDataGeneratorMojo mojo = mojoWithSilentPom(root);
+            MetaDataLoader loaded = mojo.createLoader(mojo.createProjectClassLoader());
+
+            assertEquals("the declared source resolved to zero files — a legitimate, "
+                            + "non-error outcome per the shared corpus — so the loader "
+                            + "must reflect exactly that (zero objects), not silently fall "
+                            + "back to whatever an unconfigured loader would have done",
+                    0, loaded.getMetaObjects().size());
+        } finally {
+            deleteRecursive(root);
+        }
+    }
+
     @Test(expected = MetaDataException.class)
     public void createLoaderRaisesWhenPomIsSilentAndNoCollectionExists() throws IOException {
         // Neither a neutral config nor a default "metaobjects/" directory — the final
