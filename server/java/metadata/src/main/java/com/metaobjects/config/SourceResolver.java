@@ -23,6 +23,7 @@ import com.metaobjects.loader.FileSource;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -59,6 +60,16 @@ public final class SourceResolver {
      * an unresolved PATH regardless of which is declared first
      * ({@code unsupported-kind-precedes-unresolved-path-when-path-is-declared-first}/
      * {@code -second}).
+     *
+     * <p>Pass 2 processes the validated specs in CONTENT order (natural string
+     * ordering of each spec's {@code path}), not declared order — mirroring the
+     * reference implementation's {@code orderedPathSpecs}
+     * ({@code sources.ts}: kind-validated, then sorted by
+     * {@code JSON.stringify(spec)}, which for a validated {@code path}-only spec
+     * reduces to sorting by the path string alone). This does not change the
+     * resolved file SET — de-duplication is order-independent — only which
+     * declared path's {@code ERR_SOURCE_UNRESOLVED} fires first when more than one
+     * is simultaneously unresolvable, which order-independence alone cannot pin.
      */
     public static List<Path> resolveSources(Path configDir, List<Map<String, String>> specs) {
         // Pass 1 — kind validation across the WHOLE set, no filesystem I/O yet.
@@ -73,6 +84,7 @@ public final class SourceResolver {
             }
             pathSpecs.add(rawPath);
         }
+        Collections.sort(pathSpecs);
 
         // Pass 2 — resolve each validated path spec against the filesystem.
         LinkedHashSet<Path> seen = new LinkedHashSet<>();
