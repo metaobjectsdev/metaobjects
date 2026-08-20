@@ -89,12 +89,10 @@ open class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject
             .sortedBy { it.name }
         val extractedNameMap = KotlinGenUtil.computeExtractedNameMap(allTemplates, loader)
 
-        // Only template.output gets a parser file. Stable name order — matches TS/C#/Python
-        // deterministic emission.
-        val outputs = loader.root.getChildren(OutputTemplate::class.java, true)
-            .sortedBy { it.name }
-
-        for (tmpl in outputs) {
+        // ADR-0052: the direction rule lives in FindInbound, never re-derived here. Only a
+        // RESPONDING template.prompt gets a parser file; template.output renders outbound and
+        // parses nothing.
+        for (tmpl in FindInbound.inboundTemplates(loader)) {
             emit(tmpl, loader, outRoot, extractedNameMap)
         }
     }
@@ -105,7 +103,12 @@ open class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject
         outRoot: Path,
         extractedNameMap: Map<String, String>,
     ) {
-        val payloadRef = template.payloadRef
+        // ADR-0052: the shape parsed INTO is @responseRef — the reply — never @payloadRef,
+        // which types the request this prompt renders outbound. responseShape resolves through
+        // the SAME value-object resolver the payload tier uses, so the parser can never bind a
+        // record that tier refused to emit.
+        val shape = FindInbound.responseShape(loader, template) ?: return
+        val payloadRef: String? = shape.ref
         if (payloadRef.isNullOrEmpty()) {
             // Loader validation normally catches this first; defensive only.
             LOG.warn(
@@ -129,25 +132,34 @@ open class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject
         val (templatePkg, templateShort) = PackageMapping.splitFqn(template.name)
         val outPkg = KotlinNaming.promptsPackage(templatePkg)
         val parserClass = KotlinNaming.parserName(templateShort)
-        val payloadClass = KotlinNaming.payloadName(templateShort)
+        // ADR-0052: the parser returns the RESPONSE record, never the @payloadRef request record.
+        val payloadClass = KotlinNaming.responseName(templateShort)
         // Root mirror is template-named (unique — never collision-scoped); nested mirrors
         // consult [extractedNameMap] (#228).
         val extractedClass = KotlinNaming.extractedName(templateShort)
         val parseFn = "parse$templateShort"
         val safeParseFn = "safeParse$templateShort"
 
-        val format = template.format
-        val emitExtractLenient = TemplateConstants.FORMAT_JSON.equals(format, ignoreCase = true)
-            || TemplateConstants.FORMAT_XML.equals(format, ignoreCase = true)
+        // ADR-0053: the reply's syntax is @responseFormat (json|xml, default json) — never
+        // @format, which is the syntax of the rendered prompt BODY. The old @format gate is what
+        // made a text-bodied prompt with a JSON reply emit a strict parser and no extract at all.
+        val format = shape.format
+        // Every responding prompt gets the tolerant tier — declaring a response shape IS the
+        // request for one, and it is the only tier an XML reply gets.
+        val emitExtractLenient = true
+        // The strict kotlinx-serialization tier is JSON-ONLY: strict all-or-nothing semantics
+        // layered over the REPAIRING XML reader would throw or accept based on how much repair
+        // happened, which is not a contract anyone can reason about.
+        val emitStrict = !FindInbound.isXml(format)
 
         val src = buildString {
-            append("// GENERATED — DO NOT EDIT — parser for template.output `")
+            append("// GENERATED — DO NOT EDIT — response parser for template.prompt `")
             append(template.name)
             append("`\n")
             append("package ")
             append(outPkg)
             append("\n\n")
-            append("import kotlinx.serialization.json.Json\n")
+            if (emitStrict) append("import kotlinx.serialization.json.Json\n")
             if (emitExtractLenient) {
                 append("import com.metaobjects.loader.MetaDataLoader\n")
                 append("import com.metaobjects.`object`.extract.MetaObjectExtractor\n")
@@ -167,43 +179,44 @@ open class KotlinOutputParserGenerator : MultiFileDirectGeneratorBase<MetaObject
             }
             append("/** Parser for LLM responses matching the `")
             append(templateShort)
-            append("` template.output. */\n")
+            append("` template.prompt. */\n")
             append("object ")
             append(parserClass)
             append(" {\n")
             append("\n")
-            append("    private val json: Json = Json { ignoreUnknownKeys = false }\n")
-            append("\n")
-            append("    /**\n")
-            append("     * Parse an LLM response into a typed [")
-            append(payloadClass)
-            append("].\n")
-            append("     *\n")
-            append("     * @throws kotlinx.serialization.SerializationException when the input is not valid JSON for the payload schema.\n")
-            append("     */\n")
-            append("    fun ")
-            append(parseFn)
-            append("(text: String): ")
-            append(payloadClass)
-            append(" =\n")
-            append("        json.decodeFromString<")
-            append(payloadClass)
-            append(">(text)\n")
-            append("\n")
-            append("    /**\n")
-            append("     * Parse with explicit error handling (Result-style — does not throw).\n")
-            append("     */\n")
-            append("    fun ")
-            append(safeParseFn)
-            append("(text: String): Result<")
-            append(payloadClass)
-            append("> =\n")
-            append("        runCatching { ")
-            append(parseFn)
-            append("(text) }\n")
+            if (emitStrict) {
+                append("    private val json: Json = Json { ignoreUnknownKeys = false }\n")
+                append("\n")
+                append("    /**\n")
+                append("     * Parse an LLM response into a typed [")
+                append(payloadClass)
+                append("].\n")
+                append("     *\n")
+                append("     * @throws kotlinx.serialization.SerializationException when the input is not valid JSON for the response schema.\n")
+                append("     */\n")
+                append("    fun ")
+                append(parseFn)
+                append("(text: String): ")
+                append(payloadClass)
+                append(" =\n")
+                append("        json.decodeFromString<")
+                append(payloadClass)
+                append(">(text)\n")
+                append("\n")
+                append("    /**\n")
+                append("     * Parse with explicit error handling (Result-style — does not throw).\n")
+                append("     */\n")
+                append("    fun ")
+                append(safeParseFn)
+                append("(text: String): Result<")
+                append(payloadClass)
+                append("> =\n")
+                append("        runCatching { ")
+                append(parseFn)
+                append("(text) }\n")
+            }
             if (emitExtractLenient) {
-                val formatEnum = if (TemplateConstants.FORMAT_XML.equals(format, ignoreCase = true))
-                    "Format.XML" else "Format.JSON"
+                val formatEnum = if (FindInbound.isXml(format)) "Format.XML" else "Format.JSON"
                 val payloadFqn = payloadVo.name
 
                 // ---- Runtime-delegating extract (the single metadata-driven extract path) ----

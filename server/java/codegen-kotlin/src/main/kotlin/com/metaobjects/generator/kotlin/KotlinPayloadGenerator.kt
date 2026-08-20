@@ -94,25 +94,50 @@ open class KotlinPayloadGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
         emittedEnumFqns: MutableSet<String>,
         nameMap: Map<String, String>,
     ) {
-        val payloadRef = template.payloadRef ?: return
-        // ADR-0042 — resolve @payloadRef under the loader's package-local contract (#228).
-        val payloadVo = KotlinGenUtil.resolveValueObjectRef(loader, payloadRef, template.getPackage()) ?: return
-
         val (templatePkg, templateShort) = PackageMapping.splitFqn(template.name)
         val outPkg = KotlinNaming.promptsPackage(templatePkg)
-        val className = KotlinNaming.payloadName(templateShort)
 
-        emitPayloadClass(
-            outPkg = outPkg,
-            className = className,
-            kdoc = "GENERATED — payload for template `${template.name}`.\n",
-            voObject = payloadVo,
-            loader = loader,
-            outRoot = outRoot,
-            emittedNestedFqns = emittedNestedFqns,
-            emittedEnumFqns = emittedEnumFqns,
-            nameMap = nameMap,
-        )
+        val payloadRef = template.payloadRef
+        // ADR-0042 — resolve @payloadRef under the loader's package-local contract (#228).
+        val payloadVo =
+            if (payloadRef.isNullOrEmpty()) null
+            else KotlinGenUtil.resolveValueObjectRef(loader, payloadRef, template.getPackage())
+        if (payloadVo != null) {
+            emitPayloadClass(
+                outPkg = outPkg,
+                className = KotlinNaming.payloadName(templateShort),
+                kdoc = "GENERATED — payload for template `${template.name}`.\n",
+                voObject = payloadVo,
+                loader = loader,
+                outRoot = outRoot,
+                emittedNestedFqns = emittedNestedFqns,
+                emittedEnumFqns = emittedEnumFqns,
+                nameMap = nameMap,
+            )
+        }
+
+        // ADR-0052 — the INBOUND half. A responding prompt's @responseRef names the shape its
+        // generated parser RETURNS, so that shape needs a strict class of its own. It is NOT the
+        // prompt's @payloadRef, which types the request rendered outbound; emitting only the
+        // request class would leave KotlinOutputParserGenerator referencing a type nobody
+        // declares, and the generated Kotlin would not compile.
+        //
+        // TEMPLATE-named (`<Short>Response`), matching this port's existing convention for the
+        // primary class rather than mixing in a value-object-derived name — same call as Java.
+        val shape = FindInbound.responseShape(loader, template)
+        if (shape != null) {
+            emitPayloadClass(
+                outPkg = outPkg,
+                className = KotlinNaming.responseName(templateShort),
+                kdoc = "GENERATED — response shape for template.prompt `${template.name}`.\n",
+                voObject = shape.vo,
+                loader = loader,
+                outRoot = outRoot,
+                emittedNestedFqns = emittedNestedFqns,
+                emittedEnumFqns = emittedEnumFqns,
+                nameMap = nameMap,
+            )
+        }
     }
 
     /**

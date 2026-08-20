@@ -78,7 +78,7 @@ class KotlinExtractTierCollisionTest {
             assertTrue("NotePayload.kt" !in names, "must NOT emit a clobbered bare NotePayload.kt; files=$names")
 
             // ---- Tier 2 + 3: the parser file (mirror family) ----
-            val parserSrc = produced.first { it.fileName.toString() == "DigestDocParser.kt" }.readText()
+            val parserSrc = produced.first { it.fileName.toString() == "DigestPromptParser.kt" }.readText()
             // Collision-scoped nested mirror declarations (their OWN naming scheme).
             assertTrue("data class AcmeAlphaNoteExtracted(" in parserSrc,
                 "parser must declare AcmeAlphaNoteExtracted; saw:\n$parserSrc")
@@ -89,7 +89,7 @@ class KotlinExtractTierCollisionTest {
                 "must NOT emit a bare (colliding) NoteExtracted; saw:\n$parserSrc")
             // The root mirror types its object fields as the collision-scoped nested mirrors.
             assertTrue("AcmeAlphaNoteExtracted?" in parserSrc && "AcmeBetaNoteExtracted?" in parserSrc,
-                "root DigestDocExtracted must type fromAlpha/fromBeta as the scoped mirrors; saw:\n$parserSrc")
+                "root DigestPromptExtracted must type fromAlpha/fromBeta as the scoped mirrors; saw:\n$parserSrc")
             // Collision-scoped mappers — never a bare (duplicated) fromNoteExtracted.
             assertTrue("fun fromAcmeAlphaNoteExtracted(" in parserSrc, parserSrc)
             assertTrue("fun fromAcmeBetaNoteExtracted(" in parserSrc, parserSrc)
@@ -97,7 +97,7 @@ class KotlinExtractTierCollisionTest {
                 "must NOT emit a bare (colliding) fromNoteExtracted mapper; saw:\n$parserSrc")
 
             // ---- Tier 3: the extractor file references BOTH strict records AND mirrors ----
-            val extractorSrc = produced.first { it.fileName.toString() == "DigestDocExtractor.kt" }.readText()
+            val extractorSrc = produced.first { it.fileName.toString() == "DigestPromptExtractor.kt" }.readText()
             // Strict payload references (mapper name + return type).
             assertTrue("toStrictAcmeAlphaNotePayload" in extractorSrc, extractorSrc)
             assertTrue("toStrictAcmeBetaNotePayload" in extractorSrc, extractorSrc)
@@ -188,7 +188,9 @@ class KotlinExtractTierCollisionTest {
             { "field.string": { "name": "alphaVal" } }
         ] } },
         { "template.output": { "name": "ReportOut",
-            "@payloadRef": "Report", "@textRef": "alpha/t", "@format": "json" } }
+            "@payloadRef": "Report", "@textRef": "alpha/t", "@format": "text" } },
+        { "template.prompt": { "name": "ReportAsk",
+            "@payloadRef": "Report", "@responseRef": "Report", "@textRef": "alpha/t", "@format": "text", "@responseFormat": "json" } }
       ] }
     }""".trimIndent()
 
@@ -198,7 +200,9 @@ class KotlinExtractTierCollisionTest {
             { "field.string": { "name": "betaVal" } }
         ] } },
         { "template.output": { "name": "ReportOut",
-            "@payloadRef": "Report", "@textRef": "beta/t", "@format": "json" } }
+            "@payloadRef": "Report", "@textRef": "beta/t", "@format": "text" } },
+        { "template.prompt": { "name": "ReportAsk",
+            "@payloadRef": "Report", "@responseRef": "Report", "@textRef": "beta/t", "@format": "text", "@responseFormat": "json" } }
       ] }
     }""".trimIndent()
 
@@ -234,8 +238,8 @@ class KotlinExtractTierCollisionTest {
             // Output-prompt: emits a field-name fragment derived from the resolved VO.
             KotlinOutputPromptGenerator().apply { setArgs(mapOf("outputDir" to outDir.toString())) }.execute(loader)
 
-            val alphaPrompt = outDir.resolve("po/alpha/prompts/ReportOutPrompt.kt").readText()
-            val betaPrompt = outDir.resolve("po/beta/prompts/ReportOutPrompt.kt").readText()
+            val alphaPrompt = outDir.resolve("po/alpha/prompts/ReportAskResponseFormat.kt").readText()
+            val betaPrompt = outDir.resolve("po/beta/prompts/ReportAskResponseFormat.kt").readText()
             assertTrue("alphaVal" in alphaPrompt && "betaVal" !in alphaPrompt,
                 "po::alpha ReportOut output-prompt must list po::alpha::Report (alphaVal); saw:\n$alphaPrompt")
             assertTrue("betaVal" in betaPrompt && "alphaVal" !in betaPrompt,

@@ -1,4 +1,4 @@
-// GENERATED — DO NOT EDIT — parser for template.output `acme::ai::Opinion`
+// GENERATED — DO NOT EDIT — response parser for template.prompt `acme::ai::Opinion`
 package acme.ai.prompts
 
 import kotlinx.serialization.json.Json
@@ -15,23 +15,23 @@ data class OpinionExtracted(
     val note: String? = null,
 )
 
-/** Parser for LLM responses matching the `Opinion` template.output. */
+/** Parser for LLM responses matching the `Opinion` template.prompt. */
 object OpinionParser {
 
     private val json: Json = Json { ignoreUnknownKeys = false }
 
     /**
-     * Parse an LLM response into a typed [OpinionPayload].
+     * Parse an LLM response into a typed [OpinionResponse].
      *
-     * @throws kotlinx.serialization.SerializationException when the input is not valid JSON for the payload schema.
+     * @throws kotlinx.serialization.SerializationException when the input is not valid JSON for the response schema.
      */
-    fun parseOpinion(text: String): OpinionPayload =
-        json.decodeFromString<OpinionPayload>(text)
+    fun parseOpinion(text: String): OpinionResponse =
+        json.decodeFromString<OpinionResponse>(text)
 
     /**
      * Parse with explicit error handling (Result-style — does not throw).
      */
-    fun safeParseOpinion(text: String): Result<OpinionPayload> =
+    fun safeParseOpinion(text: String): Result<OpinionResponse> =
         runCatching { parseOpinion(text) }
 
     /** Payload FQN this parser extracts — resolved against the supplied loader at runtime. */

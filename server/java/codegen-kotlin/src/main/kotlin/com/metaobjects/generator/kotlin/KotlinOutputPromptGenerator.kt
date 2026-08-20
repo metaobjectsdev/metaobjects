@@ -74,49 +74,31 @@ open class KotlinOutputPromptGenerator : MultiFileDirectGeneratorBase<MetaObject
         parseArgs()
         val outRoot = Paths.get(outDir.absolutePath)
 
-        // Stable name order — matches TS/C#/Python/Java deterministic emission.
-        // ADR-0039: root-scan discipline — resolving children accessor.
-        val outputs = loader.root.getChildren(OutputTemplate::class.java, true)
-            .sortedBy { it.name }
-
-        for (tmpl in outputs) {
+        // ADR-0052: the direction rule lives in FindInbound, never re-derived here.
+        for (tmpl in FindInbound.inboundTemplates(loader)) {
             emit(tmpl, loader, outRoot)
         }
     }
 
     protected open fun emit(template: MetaTemplate, loader: MetaDataLoader, outRoot: Path) {
-        // Only emit for json/xml formats.
-        val format = template.format
-        val supported = TemplateConstants.FORMAT_JSON.equals(format, ignoreCase = true)
-            || TemplateConstants.FORMAT_XML.equals(format, ignoreCase = true)
-        if (!supported) {
-            return
-        }
-
-        val payloadRef = template.payloadRef
-        if (payloadRef.isNullOrEmpty()) {
-            // Loader validation normally catches this first; defensive only.
+        // ADR-0052/0053: the gate is @responseRef PRESENCE, not a format value. The old
+        // `@format in {json,xml}` gate read the syntax of the OUTBOUND body to decide whether to
+        // instruct the model about the syntax of its REPLY — so a text-bodied prompt asking for a
+        // JSON answer, the common case, got no fragment at all.
+        val shape = FindInbound.responseShape(loader, template)
+        if (shape == null) {
             LOG.warn(
-                "skipping output-prompt for {} — missing @payloadRef",
+                "skipping response-format fragment for {} — no @responseRef, or it does not resolve to an object.value or sourceless object.projection",
                 template.name
             )
             return
         }
-        // ADR-0042 — resolve @payloadRef under the loader's package-local contract (#228).
-        val payloadVo = KotlinGenUtil.resolveValueObjectRef(loader, payloadRef, template.getPackage())
-        if (payloadVo == null) {
-            // @payloadRef resolves to an entity / sourced projection (or nothing) — same
-            // contract as KotlinPayloadGenerator: a payload is a VO or sourceless projection (#210).
-            LOG.warn(
-                "skipping output-prompt for {} — @payloadRef '{}' does not resolve to an object.value or sourceless object.projection",
-                template.name, payloadRef
-            )
-            return
-        }
+        val payloadRef = shape.ref
+        val payloadVo = shape.vo
 
         val (templatePkg, templateShort) = PackageMapping.splitFqn(template.name)
         val outPkg = KotlinNaming.promptsPackage(templatePkg)
-        val promptClass = KotlinNaming.promptName(templateShort)
+        val promptClass = KotlinNaming.responseFormatName(templateShort)
         val payloadClass = KotlinNaming.payloadName(templateShort)
 
         // The SPEC rootName agrees with the payload class name so both prompt and

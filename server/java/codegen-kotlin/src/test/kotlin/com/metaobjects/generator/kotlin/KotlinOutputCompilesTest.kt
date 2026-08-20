@@ -47,10 +47,10 @@ class KotlinOutputCompilesTest {
                 "@coerceDefault": "LOW" } },
             { "field.string": { "name": "note" } }
         ] } },
-        { "template.output": { "name": "Opinion",
-            "@payloadRef": "OpinionOutputPayload",
+        { "template.prompt": { "name": "Opinion",
+            "@payloadRef": "OpinionOutputPayload", "@responseRef": "OpinionOutputPayload",
             "@textRef": "ai/opinion",
-            "@format": "json",
+            "@format": "text", "@responseFormat": "json",
             "@promptStyle": "guide" } }
       ] }
     }""".trimIndent()
@@ -138,7 +138,7 @@ class KotlinOutputCompilesTest {
     /**
      * FR-010 compile-proof: generates OpinionPayload.kt (KotlinPayloadGenerator),
      * OpinionParser.kt with the loader-delegating extractLenient(loader, text) + OpinionExtracted
-     * (KotlinOutputParserGenerator), and OpinionPrompt.kt with renderFormat()
+     * (KotlinOutputParserGenerator), and OpinionResponseFormat.kt with renderFormat()
      * (KotlinOutputPromptGenerator), then compiles all three together and
      * behaviorally exercises extractLenient(loader, ...) and renderFormat() via reflection.
      *
@@ -161,13 +161,13 @@ class KotlinOutputCompilesTest {
                 gen.execute(loader)
             }
 
-            // Collect all emitted .kt files — expect 5: OpinionPayload, OpinionParser, OpinionPrompt,
+            // Collect all emitted .kt files — expect 5: OpinionPayload, OpinionParser, OpinionResponseFormat,
             // plus one typed enum-class file per `field.enum` payload field (confidence, priority).
             // The strict payload types those fields as the generated enum class (the lenient mirror
             // leaf stays String — asserted below), so the enum files must be emitted + compile.
             val emitted = Files.walk(outDir).filter { it.isRegularFile() }.sorted().toList()
-            assertEquals(5, emitted.size,
-                "expected 5 generated files (3 + 2 enum classes); got: ${emitted.map { it.fileName }}")
+            assertEquals(6, emitted.size,
+                "expected 6 generated files (payload + response + parser + fragment + 2 enum classes); got: ${emitted.map { it.fileName }}")
             val emittedNames = emitted.map { it.fileName.toString() }.toSet()
             assertTrue("OpinionOutputPayloadConfidence.kt" in emittedNames,
                 "typed enum class for `confidence` must be emitted; got $emittedNames")
@@ -248,8 +248,8 @@ class KotlinOutputCompilesTest {
                 "priority must classify DEFAULTED; states=${report.states()}")
 
             // --- renderFormat() ---
-            val promptClass = cl.loadClass("acme.ai.prompts.OpinionPrompt")
-            assertNotNull(promptClass, "OpinionPrompt class must be loadable")
+            val promptClass = cl.loadClass("acme.ai.prompts.OpinionResponseFormat")
+            assertNotNull(promptClass, "OpinionResponseFormat class must be loadable")
 
             val promptInstance = promptClass.getDeclaredField("INSTANCE").get(null)
             val renderFormatMethod = promptClass.getDeclaredMethod("renderFormat")

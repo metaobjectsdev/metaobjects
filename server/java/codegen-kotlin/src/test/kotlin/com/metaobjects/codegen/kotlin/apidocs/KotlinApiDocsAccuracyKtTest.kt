@@ -46,9 +46,10 @@ import kotlin.test.assertTrue
  * - M:N `Author` ↔ `Tag` via the `AuthorTag` junction → the M:N REST traversal;
  * - `Address` value object (no identity, no rdb source) → MODEL only;
  * - `BaseNode` abstract entity → NO unit (no symbols);
- * - `SummaryOutput` json `template.output` → PAYLOAD / RENDER / PROMPT / OUTPUT_PARSER / EXTRACTOR;
- * - `ClassifyPrompt` `template.prompt` → NO documented unit (the builder documents output templates
- *   only); its output-only helpers (render / parser / prompt / extractor) are NOT generated either.
+ * - `SummaryOutput` json `template.output` → PAYLOAD / RENDER (ADR-0052: outbound only);
+ * - `AnswerPrompt` responding `template.prompt` → PAYLOAD / PROMPT / OUTPUT_PARSER / EXTRACTOR;
+ * - `ClassifyPrompt` `template.prompt` with NO `@responseRef` → PAYLOAD only (nothing elicits a
+ *   typed reply, so no fragment and no parser).
  */
 class KotlinApiDocsAccuracyKtTest {
 
@@ -118,7 +119,16 @@ class KotlinApiDocsAccuracyKtTest {
         { "template.output": { "name": "SummaryOutput",
             "@payloadRef": "SummaryPayload",
             "@textRef": "blog/summary",
-            "@format": "json",
+            "@format": "json" } },
+        { "object.value": { "name": "AnswerPayload", "children": [
+            { "field.string": { "name": "answer", "@required": true } }
+        ] } },
+        { "template.prompt": { "name": "AnswerPrompt",
+            "@payloadRef": "SummaryPayload",
+            "@responseRef": "AnswerPayload",
+            "@textRef": "blog/answer",
+            "@format": "text",
+            "@responseFormat": "json",
             "@promptStyle": "inline" } },
         { "template.prompt": { "name": "ClassifyPrompt",
             "@payloadRef": "ClassifyPayload",
@@ -336,11 +346,16 @@ class KotlinApiDocsAccuracyKtTest {
     }
 
     @Test
-    fun promptTemplateIsNotDocumentedAndHasNoOutputHelpers() {
-        // The builder documents template.output only — a template.prompt yields no unit.
-        assertFalse(
-            model.units.any { it.node == "ClassifyPrompt" },
-            "template.prompt ClassifyPrompt must NOT produce a documented unit",
+    fun promptWithNoResponseIsDocumentedAsPayloadOnly() {
+        // ADR-0052: a template.prompt IS documented — it carries a @payloadRef record like any
+        // template. What a prompt with NO @responseRef does not get is the INBOUND tier: nothing
+        // elicits a typed reply, so no fragment and no parser. (RENDER is absent too: the render
+        // helper is template.output-only in every port.)
+        val classify = unit("ClassifyPrompt")
+        assertEquals(
+            setOf(ApiSymbolKind.PAYLOAD),
+            kinds(classify),
+            "a template.prompt with no @responseRef → PAYLOAD only",
         )
         // And the output-only helpers are not generated for a prompt template.
         assertFalse(containsIdentifier(allGenerated, "ClassifyPromptRenderHelper"), "no ClassifyPromptRenderHelper")
@@ -350,15 +365,30 @@ class KotlinApiDocsAccuracyKtTest {
     }
 
     @Test
-    fun outputTemplateDocumentsAllFiveHelperKinds() {
+    fun outputTemplateDocumentsItsOutboundKindsOnly() {
+        // ADR-0052 direction pin at the DOCS tier. A template.output renders outbound; the
+        // fragment, parser and extractor all describe reading a model's REPLY, so documenting
+        // them here named symbols codegen no longer emits.
         val summary = unit("SummaryOutput")
         assertEquals(
+            setOf(ApiSymbolKind.PAYLOAD, ApiSymbolKind.RENDER),
+            kinds(summary),
+            "json template.output → PAYLOAD/RENDER only",
+        )
+    }
+
+    @Test
+    fun respondingPromptDocumentsTheInboundKinds() {
+        // The other half: the inbound symbols belong to a prompt that declares @responseRef.
+        // RENDER is absent because the render helper is template.output-only in every port.
+        val answer = unit("AnswerPrompt")
+        assertEquals(
             setOf(
-                ApiSymbolKind.PAYLOAD, ApiSymbolKind.RENDER, ApiSymbolKind.PROMPT,
+                ApiSymbolKind.PAYLOAD, ApiSymbolKind.PROMPT,
                 ApiSymbolKind.OUTPUT_PARSER, ApiSymbolKind.EXTRACTOR,
             ),
-            kinds(summary),
-            "json template.output → PAYLOAD/RENDER/PROMPT/OUTPUT_PARSER/EXTRACTOR",
+            kinds(answer),
+            "responding template.prompt → PAYLOAD/PROMPT/OUTPUT_PARSER/EXTRACTOR",
         )
     }
 

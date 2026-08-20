@@ -13,10 +13,12 @@
               "@enumDoc": { "HIGH": "Very confident", "OK": "Reasonably confident", "LOW": "Best guess" } } },
           { "field.string": { "name": "note" } }
       ] } },
-      { "template.output": { "name": "Opinion",
+      { "template.prompt": { "name": "Opinion",
           "@payloadRef": "OpinionOutputPayload",
+          "@responseRef": "OpinionOutputPayload",
           "@textRef": "ai/opinion",
-          "@format": "json",
+          "@format": "text",
+          "@responseFormat": "json",
           "@promptStyle": "guide" } }
     ]
   }

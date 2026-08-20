@@ -62,10 +62,10 @@ class KotlinExtractorCompilesTest {
             { "field.enum":     { "name": "labels", "isArray": true, "@required": true, "@values": ["A", "B"] } },
             { "field.string":   { "name": "note" } }
         ] } },
-        { "template.output": { "name": "OrderOut",
-            "@payloadRef": "Order",
+        { "template.prompt": { "name": "OrderOut",
+            "@payloadRef": "Order", "@responseRef": "Order",
             "@textRef": "shop/order",
-            "@format": "json",
+            "@format": "text", "@responseFormat": "json",
             "@promptStyle": "guide" } }
       ] }
     }""".trimIndent()
@@ -121,7 +121,10 @@ class KotlinExtractorCompilesTest {
             val order = extractMethod.invoke(extractorInstance, loader, dirty)
             assertNotNull(order, "extract must return a strict Order payload")
 
-            val orderClass = cl.loadClass("acme.shop.prompts.OrderOutPayload")
+            // ADR-0052: the extract tier targets the RESPONSE record (@responseRef), so the
+            // strict root is OrderOutResponse. Nested records keep their VO-derived
+            // <VOShort>Payload names — only the template-named ROOT moves.
+            val orderClass = cl.loadClass("acme.shop.prompts.OrderOutResponse")
             val customer = orderClass.getDeclaredMethod("getCustomer").invoke(order)
             val customerClass = cl.loadClass("acme.shop.prompts.CustomerPayload")
             assertEquals("Ada", customerClass.getDeclaredMethod("getName").invoke(customer),
@@ -298,10 +301,10 @@ class KotlinExtractorCompilesTest {
             { "field.enum":   { "name": "currentPriority",  "@required": true, "extends": "Priority" } },
             { "field.enum":   { "name": "previousPriority", "@required": true, "extends": "Priority" } }
         ] } },
-        { "template.output": { "name": "TicketOut",
-            "@payloadRef": "Ticket",
+        { "template.prompt": { "name": "TicketOut",
+            "@payloadRef": "Ticket", "@responseRef": "Ticket",
             "@textRef": "orders/ticket",
-            "@format": "json",
+            "@format": "text", "@responseFormat": "json",
             "@promptStyle": "guide" } }
       ] }
     }""".trimIndent()

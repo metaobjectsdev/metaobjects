@@ -30,9 +30,9 @@ class KotlinOutputPromptGeneratorTest {
             ] } },
             { "template.prompt": { "name": "WelcomePrompt",
                 "@payloadRef": "Greeting", "@textRef": "demo/welcome" } },
-            { "template.output": { "name": "Reply",
-                "@payloadRef": "Greeting", "@textRef": "demo/reply",
-                "@format": "json" } }
+            { "template.prompt": { "name": "Reply",
+                "@payloadRef": "Greeting", "@responseRef": "Greeting", "@textRef": "demo/reply",
+                "@format": "text", "@responseFormat": "json" } }
           ] }
         }""".trimIndent()
 
@@ -42,7 +42,7 @@ class KotlinOutputPromptGeneratorTest {
             gen.setArgs(mapOf("outputDir" to outDir.toString()))
             gen.execute(loadString("test-prompt-mix", fx))
 
-            val prompt = outDir.resolve("acme/demo/prompts/ReplyPrompt.kt")
+            val prompt = outDir.resolve("acme/demo/prompts/ReplyResponseFormat.kt")
             val promptPrompt = outDir.resolve("acme/demo/prompts/WelcomePromptPrompt.kt")
             assertTrue(Files.exists(prompt),
                 "expected $prompt; files=${Files.walk(outDir).toList()}")
@@ -63,10 +63,10 @@ class KotlinOutputPromptGeneratorTest {
                 { "field.string": { "name": "text",       "@required": true } },
                 { "field.string": { "name": "note" } }
             ] } },
-            { "template.output": { "name": "Answer",
-                "@payloadRef": "AnswerOutputPayload",
+            { "template.prompt": { "name": "Answer",
+                "@payloadRef": "AnswerOutputPayload", "@responseRef": "AnswerOutputPayload",
                 "@textRef": "ai/answer",
-                "@format": "json" } }
+                "@format": "text", "@responseFormat": "json" } }
           ] }
         }""".trimIndent()
 
@@ -76,13 +76,13 @@ class KotlinOutputPromptGeneratorTest {
             gen.setArgs(mapOf("outputDir" to outDir.toString()))
             gen.execute(loadString("test-json-prompt", fx))
 
-            val promptFile = outDir.resolve("acme/ai/prompts/AnswerPrompt.kt")
+            val promptFile = outDir.resolve("acme/ai/prompts/AnswerResponseFormat.kt")
             assertTrue(Files.exists(promptFile),
-                "expected AnswerPrompt.kt; files=${Files.walk(outDir).toList()}")
+                "expected AnswerResponseFormat.kt; files=${Files.walk(outDir).toList()}")
             val src = Files.readString(promptFile)
 
             // Object declaration
-            assertTrue("object AnswerPrompt" in src, "missing object AnswerPrompt; src:\n$src")
+            assertTrue("object AnswerResponseFormat" in src, "missing object AnswerResponseFormat; src:\n$src")
 
             // SPEC constant
             assertTrue("private val SPEC: OutputFormatSpec =" in src,
@@ -123,10 +123,10 @@ class KotlinOutputPromptGeneratorTest {
             { "object.value": { "name": "SummaryOutputPayload", "children": [
                 { "field.string": { "name": "body" } }
             ] } },
-            { "template.output": { "name": "Summary",
-                "@payloadRef": "SummaryOutputPayload",
+            { "template.prompt": { "name": "Summary",
+                "@payloadRef": "SummaryOutputPayload", "@responseRef": "SummaryOutputPayload",
                 "@textRef": "reports/summary",
-                "@format": "xml" } }
+                "@format": "text", "@responseFormat": "xml" } }
           ] }
         }""".trimIndent()
 
@@ -136,12 +136,12 @@ class KotlinOutputPromptGeneratorTest {
             gen.setArgs(mapOf("outputDir" to outDir.toString()))
             gen.execute(loadString("test-xml-prompt", fx))
 
-            val promptFile = outDir.resolve("acme/reports/prompts/SummaryPrompt.kt")
+            val promptFile = outDir.resolve("acme/reports/prompts/SummaryResponseFormat.kt")
             assertTrue(Files.exists(promptFile),
-                "expected SummaryPrompt.kt; files=${Files.walk(outDir).toList()}")
+                "expected SummaryResponseFormat.kt; files=${Files.walk(outDir).toList()}")
             val src = Files.readString(promptFile)
 
-            assertTrue("object SummaryPrompt" in src, "missing object SummaryPrompt; src:\n$src")
+            assertTrue("object SummaryResponseFormat" in src, "missing object SummaryResponseFormat; src:\n$src")
             assertTrue("Format.XML" in src, "expected Format.XML for xml format; src:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
@@ -151,14 +151,18 @@ class KotlinOutputPromptGeneratorTest {
     // ---------------------------------------------------------------------------
     // 4. Text format (default) → no file emitted (no-op).
     // ---------------------------------------------------------------------------
-    @Test fun textFormatEmitsNoFile() {
+    // ADR-0052/0053: the gate is @responseRef PRESENCE, never a format value. This test
+    // previously asserted "@format: text emits nothing" — the exact rule the ADR reverses, and
+    // the reason a text-bodied prompt asking for a JSON answer (the common case) used to get no
+    // fragment at all. @format is the syntax of the prompt BODY; the reply's is @responseFormat.
+    @Test fun textBodiedPromptWithAResponseStillEmitsAFragment() {
         val fx = """{
           "metadata.root": { "package": "acme::demo", "children": [
             { "object.value": { "name": "Greeting", "children": [
                 { "field.string": { "name": "text" } }
             ] } },
-            { "template.output": { "name": "Reply",
-                "@payloadRef": "Greeting",
+            { "template.prompt": { "name": "Reply",
+                "@payloadRef": "Greeting", "@responseRef": "Greeting",
                 "@textRef": "demo/reply",
                 "@format": "text" } }
           ] }
@@ -171,8 +175,13 @@ class KotlinOutputPromptGeneratorTest {
             gen.execute(loadString("test-text-noprompt", fx))
 
             val emitted = Files.walk(outDir).filter { Files.isRegularFile(it) }.toList()
-            assertEquals(0, emitted.size,
-                "text format must NOT emit any prompt file; got: $emitted")
+            assertEquals(1, emitted.size,
+                "a text-bodied prompt declaring @responseRef must still get a fragment; got: $emitted")
+            assertTrue(emitted.single().fileName.toString() == "ReplyResponseFormat.kt",
+                "expected ReplyResponseFormat.kt; got: $emitted")
+            // Absent @responseFormat defaults to json (ADR-0053) — NOT to @format's "text".
+            assertTrue(Files.readString(emitted.single()).contains("Format.JSON"),
+                "absent @responseFormat must default to Format.JSON")
         } finally {
             outDir.toFile().deleteRecursively()
         }
@@ -181,14 +190,16 @@ class KotlinOutputPromptGeneratorTest {
     // ---------------------------------------------------------------------------
     // 5. No @format (defaults to text) → no file emitted.
     // ---------------------------------------------------------------------------
-    @Test fun noFormatAttrDefaultsToTextAndNoEmit() {
+    // The companion pin: with NO @format at all the fragment is still emitted, because the
+    // decision never depended on @format. Its reply syntax defaults to json.
+    @Test fun absentFormatStillEmitsAFragmentDefaultingToJson() {
         val fx = """{
           "metadata.root": { "package": "acme::demo", "children": [
             { "object.value": { "name": "Greeting", "children": [
                 { "field.string": { "name": "text" } }
             ] } },
-            { "template.output": { "name": "Reply",
-                "@payloadRef": "Greeting", "@textRef": "demo/reply" } }
+            { "template.prompt": { "name": "Reply",
+                "@payloadRef": "Greeting", "@responseRef": "Greeting", "@textRef": "demo/reply" } }
           ] }
         }""".trimIndent()
 
@@ -199,8 +210,10 @@ class KotlinOutputPromptGeneratorTest {
             gen.execute(loadString("test-noformat-noprompt", fx))
 
             val emitted = Files.walk(outDir).filter { Files.isRegularFile(it) }.toList()
-            assertEquals(0, emitted.size,
-                "absent @format (defaults to text) must not emit any prompt file; got: $emitted")
+            assertEquals(1, emitted.size,
+                "absent @format must not suppress the fragment; got: $emitted")
+            assertTrue(Files.readString(emitted.single()).contains("Format.JSON"),
+                "absent @responseFormat must default to Format.JSON")
         } finally {
             outDir.toFile().deleteRecursively()
         }
@@ -246,14 +259,14 @@ class KotlinOutputPromptGeneratorTest {
             { "object.value": { "name": "Farewell", "children": [
                 { "field.string": { "name": "text" } }
             ] } },
-            { "template.output": { "name": "Reply",
-                "@payloadRef": "Greeting", "@textRef": "ai/reply",
-                "@format": "json" } },
-            { "template.output": { "name": "Goodbye",
-                "@payloadRef": "Farewell", "@textRef": "ai/goodbye",
-                "@format": "xml" } },
-            { "template.output": { "name": "Note",
-                "@payloadRef": "Greeting", "@textRef": "ai/note",
+            { "template.prompt": { "name": "Reply",
+                "@payloadRef": "Greeting", "@responseRef": "Greeting", "@textRef": "ai/reply",
+                "@format": "text", "@responseFormat": "json" } },
+            { "template.prompt": { "name": "Goodbye",
+                "@payloadRef": "Farewell", "@responseRef": "Farewell", "@textRef": "ai/goodbye",
+                "@format": "text", "@responseFormat": "xml" } },
+            { "template.prompt": { "name": "Note",
+                "@payloadRef": "Greeting", "@responseRef": "Greeting", "@textRef": "ai/note",
                 "@format": "text" } }
           ] }
         }""".trimIndent()
@@ -265,21 +278,21 @@ class KotlinOutputPromptGeneratorTest {
             gen.execute(loadString("test-multi-prompt", fx))
 
             // json + xml → prompt files
-            assertTrue(Files.exists(outDir.resolve("acme/ai/prompts/ReplyPrompt.kt")),
-                "expected ReplyPrompt.kt for json format")
-            assertTrue(Files.exists(outDir.resolve("acme/ai/prompts/GoodbyePrompt.kt")),
-                "expected GoodbyePrompt.kt for xml format")
+            assertTrue(Files.exists(outDir.resolve("acme/ai/prompts/ReplyResponseFormat.kt")),
+                "expected ReplyResponseFormat.kt for json format")
+            assertTrue(Files.exists(outDir.resolve("acme/ai/prompts/GoodbyeResponseFormat.kt")),
+                "expected GoodbyeResponseFormat.kt for xml format")
 
             // text → no file
             assertFalse(Files.exists(outDir.resolve("acme/ai/prompts/NotePrompt.kt")),
                 "text format must NOT emit a prompt file")
 
-            val reply = Files.readString(outDir.resolve("acme/ai/prompts/ReplyPrompt.kt"))
-            val goodbye = Files.readString(outDir.resolve("acme/ai/prompts/GoodbyePrompt.kt"))
+            val reply = Files.readString(outDir.resolve("acme/ai/prompts/ReplyResponseFormat.kt"))
+            val goodbye = Files.readString(outDir.resolve("acme/ai/prompts/GoodbyeResponseFormat.kt"))
 
-            assertTrue("object ReplyPrompt" in reply, reply)
+            assertTrue("object ReplyResponseFormat" in reply, reply)
             assertTrue("Format.JSON" in reply, reply)
-            assertTrue("object GoodbyePrompt" in goodbye, goodbye)
+            assertTrue("object GoodbyeResponseFormat" in goodbye, goodbye)
             assertTrue("Format.XML" in goodbye, goodbye)
         } finally {
             outDir.toFile().deleteRecursively()
@@ -295,10 +308,10 @@ class KotlinOutputPromptGeneratorTest {
             { "object.value": { "name": "StylePayload", "children": [
                 { "field.string": { "name": "x" } }
             ] } },
-            { "template.output": { "name": "StyleTemplate",
-                "@payloadRef": "StylePayload",
+            { "template.prompt": { "name": "StyleTemplate",
+                "@payloadRef": "StylePayload", "@responseRef": "StylePayload",
                 "@textRef": "ai/style",
-                "@format": "json",
+                "@format": "text", "@responseFormat": "json",
                 "@promptStyle": "inline" } }
           ] }
         }""".trimIndent()
@@ -309,7 +322,7 @@ class KotlinOutputPromptGeneratorTest {
             gen.setArgs(mapOf("outputDir" to outDir.toString()))
             gen.execute(loadString("test-style-prompt", fx))
 
-            val src = Files.readString(outDir.resolve("acme/ai/prompts/StyleTemplatePrompt.kt"))
+            val src = Files.readString(outDir.resolve("acme/ai/prompts/StyleTemplateResponseFormat.kt"))
             assertTrue("PromptStyle.INLINE" in src,
                 "expected PromptStyle.INLINE for @promptStyle:inline; src:\n$src")
         } finally {
@@ -326,10 +339,10 @@ class KotlinOutputPromptGeneratorTest {
             { "object.value": { "name": "AnswerOutputPayload", "children": [
                 { "field.string": { "name": "text" } }
             ] } },
-            { "template.output": { "name": "Answer",
-                "@payloadRef": "AnswerOutputPayload",
+            { "template.prompt": { "name": "Answer",
+                "@payloadRef": "AnswerOutputPayload", "@responseRef": "AnswerOutputPayload",
                 "@textRef": "ai/answer",
-                "@format": "json" } }
+                "@format": "text", "@responseFormat": "json" } }
           ] }
         }""".trimIndent()
 
@@ -339,7 +352,7 @@ class KotlinOutputPromptGeneratorTest {
             gen.setArgs(mapOf("outputDir" to outDir.toString()))
             gen.execute(loadString("test-rootname-prompt", fx))
 
-            val src = Files.readString(outDir.resolve("acme/ai/prompts/AnswerPrompt.kt"))
+            val src = Files.readString(outDir.resolve("acme/ai/prompts/AnswerResponseFormat.kt"))
             // SPEC rootName = templateShort + "Payload" = "AnswerPayload"
             assertTrue("\"AnswerPayload\"" in src,
                 "SPEC rootName must be the payload class name 'AnswerPayload'; src:\n$src")

@@ -6,7 +6,7 @@ import com.metaobjects.field.MapField
 import com.metaobjects.field.ObjectField
 import com.metaobjects.`object`.MetaObject
 import com.metaobjects.template.MetaTemplate
-import com.metaobjects.template.OutputTemplate
+import com.metaobjects.template.PromptTemplate
 import com.metaobjects.template.TemplateConstants
 import java.util.Properties
 
@@ -69,16 +69,23 @@ internal object KotlinOutputFormatSpecEmitter {
     // Private helpers — template attr resolution
     // -------------------------------------------------------------------------
 
-    /** Resolve `@format` to a `Format.*` enum literal. */
+    /**
+     * Resolve the REPLY's syntax to a `Format.*` enum literal.
+     *
+     * ADR-0053: reads `@responseFormat`, never `@format`. The fragment this spec drives tells
+     * the model how to format its REPLY; `@format` is the syntax of the rendered prompt BODY,
+     * and the two genuinely differ — a text-bodied prompt asking for a JSON answer is the
+     * common case.
+     */
     private fun resolveFormatEnum(template: MetaTemplate): String =
-        if ("xml".equals(template.format, ignoreCase = true)) "Format.XML" else "Format.JSON"
+        if (FindInbound.isXml(FindInbound.responseFormatOf(template))) "Format.XML" else "Format.JSON"
 
     /**
      * Resolve `@promptStyle` to a `PromptStyle.*` enum literal.
      * Default (absent or unrecognized) → `PromptStyle.GUIDE`.
      */
     private fun resolvePromptStyleEnum(template: MetaTemplate): String {
-        val raw = (template as? OutputTemplate)?.promptStyle
+        val raw = (template as? PromptTemplate)?.promptStyle
             ?: TemplateConstants.PROMPT_STYLE_DEFAULT
         return when (raw) {
             TemplateConstants.PROMPT_STYLE_INLINE       -> "PromptStyle.INLINE"

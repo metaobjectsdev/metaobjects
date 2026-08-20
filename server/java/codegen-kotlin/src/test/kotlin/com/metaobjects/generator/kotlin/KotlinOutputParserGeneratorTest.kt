@@ -32,8 +32,8 @@ class KotlinOutputParserGeneratorTest {
             ] } },
             { "template.prompt": { "name": "WelcomePrompt",
                 "@payloadRef": "Greeting", "@textRef": "demo/welcome" } },
-            { "template.output": { "name": "Reply",
-                "@payloadRef": "Greeting", "@textRef": "demo/reply" } }
+            { "template.prompt": { "name": "Reply",
+                "@payloadRef": "Greeting", "@responseRef": "Greeting", "@textRef": "demo/reply" } }
           ] }
         }""".trimIndent()
 
@@ -63,8 +63,8 @@ class KotlinOutputParserGeneratorTest {
             { "object.value": { "name": "Greeting", "children": [
                 { "field.string": { "name": "text" } }
             ] } },
-            { "template.output": { "name": "Reply",
-                "@payloadRef": "Greeting", "@textRef": "demo/reply" } }
+            { "template.prompt": { "name": "Reply",
+                "@payloadRef": "Greeting", "@responseRef": "Greeting", "@textRef": "demo/reply" } }
           ] }
         }""".trimIndent()
 
@@ -79,8 +79,8 @@ class KotlinOutputParserGeneratorTest {
 
             // Dual API surface
             assertTrue("object ReplyParser" in src, src)
-            assertTrue("fun parseReply(text: String): ReplyPayload" in src, src)
-            assertTrue("fun safeParseReply(text: String): Result<ReplyPayload>" in src, src)
+            assertTrue("fun parseReply(text: String): ReplyResponse" in src, src)
+            assertTrue("fun safeParseReply(text: String): Result<ReplyResponse>" in src, src)
 
             // Imports — only the Json import is needed; SerializationException
             // is referenced via FQN in the KDoc so consumers with `-Werror`
@@ -104,8 +104,8 @@ class KotlinOutputParserGeneratorTest {
             { "object.value": { "name": "Greeting", "children": [
                 { "field.string": { "name": "text" } }
             ] } },
-            { "template.output": { "name": "Reply",
-                "@payloadRef": "Greeting", "@textRef": "demo/reply" } }
+            { "template.prompt": { "name": "Reply",
+                "@payloadRef": "Greeting", "@responseRef": "Greeting", "@textRef": "demo/reply" } }
           ] }
         }""".trimIndent()
 
@@ -118,10 +118,10 @@ class KotlinOutputParserGeneratorTest {
             val src = Files.readString(outDir.resolve("acme/demo/prompts/ReplyParser.kt"))
 
             // No data class redeclaration — the payload shape belongs to KotlinPayloadGenerator.
-            assertFalse("data class ReplyPayload" in src,
+            assertFalse("data class ReplyResponse" in src,
                 "parser file must NOT redeclare the payload data class; got:\n$src")
             // The decode call site uses the existing payload class.
-            assertTrue("decodeFromString<ReplyPayload>(text)" in src, src)
+            assertTrue("decodeFromString<ReplyResponse>(text)" in src, src)
         } finally {
             outDir.toFile().deleteRecursively()
         }
@@ -143,8 +143,8 @@ class KotlinOutputParserGeneratorTest {
             { "object.value": { "name": "Greeting", "children": [
                 { "field.string": { "name": "text" } }
             ] } },
-            { "template.output": { "name": "Reply",
-                "@payloadRef": "Greeting", "@textRef": "demo/reply" } }
+            { "template.prompt": { "name": "Reply",
+                "@payloadRef": "Greeting", "@responseRef": "Greeting", "@textRef": "demo/reply" } }
           ] }
         }""".trimIndent()
 
@@ -172,10 +172,10 @@ class KotlinOutputParserGeneratorTest {
             { "object.value": { "name": "Farewell", "children": [
                 { "field.string": { "name": "text" } }
             ] } },
-            { "template.output": { "name": "Reply",
-                "@payloadRef": "Greeting", "@textRef": "demo/reply" } },
-            { "template.output": { "name": "Goodbye",
-                "@payloadRef": "Farewell", "@textRef": "demo/goodbye" } }
+            { "template.prompt": { "name": "Reply",
+                "@payloadRef": "Greeting", "@responseRef": "Greeting", "@textRef": "demo/reply" } },
+            { "template.prompt": { "name": "Goodbye",
+                "@payloadRef": "Farewell", "@responseRef": "Farewell", "@textRef": "demo/goodbye" } }
           ] }
         }""".trimIndent()
 
@@ -191,11 +191,11 @@ class KotlinOutputParserGeneratorTest {
             val reply = Files.readString(outDir.resolve("acme/demo/prompts/ReplyParser.kt"))
             val goodbye = Files.readString(outDir.resolve("acme/demo/prompts/GoodbyeParser.kt"))
             // The payload class name is derived from the TEMPLATE short name
-            // (matches KotlinPayloadGenerator's `<TemplateShortName>Payload` convention),
+            // (ADR-0052: the parser binds `<TemplateShortName>Response` — the @responseRef shape),
             // NOT from the @payloadRef VO name. The parser file therefore decodes into
-            // <TemplateShortName>Payload regardless of which VO was the @payloadRef target.
-            assertTrue("decodeFromString<ReplyPayload>" in reply, reply)
-            assertTrue("decodeFromString<GoodbyePayload>" in goodbye, goodbye)
+            // <TemplateShortName>Response regardless of which VO was the @responseRef target.
+            assertTrue("decodeFromString<ReplyResponse>" in reply, reply)
+            assertTrue("decodeFromString<GoodbyeResponse>" in goodbye, goodbye)
             // Sanity — the parser names follow the template, not the VO.
             assertTrue("object ReplyParser" in reply, reply)
             assertTrue("object GoodbyeParser" in goodbye, goodbye)
@@ -247,10 +247,10 @@ class KotlinOutputParserGeneratorTest {
                                     "@enumAlias": { "medium": "OK" } } },
                 { "field.string":  { "name": "note" } }
             ] } },
-            { "template.output": { "name": "Answer",
-                "@payloadRef": "AnswerOutputPayload",
+            { "template.prompt": { "name": "Answer",
+                "@payloadRef": "AnswerOutputPayload", "@responseRef": "AnswerOutputPayload",
                 "@textRef": "ai/answer",
-                "@format": "json" } }
+                "@format": "text", "@responseFormat": "json" } }
           ] }
         }""".trimIndent()
 
@@ -316,10 +316,10 @@ class KotlinOutputParserGeneratorTest {
             { "object.value": { "name": "AnswerOutputPayload", "children": [
                 { "field.string": { "name": "text" } }
             ] } },
-            { "template.output": { "name": "Answer",
-                "@payloadRef": "AnswerOutputPayload",
+            { "template.prompt": { "name": "Answer",
+                "@payloadRef": "AnswerOutputPayload", "@responseRef": "AnswerOutputPayload",
                 "@textRef": "ai/answer",
-                "@format": "json" } }
+                "@format": "text", "@responseFormat": "json" } }
           ] }
         }""".trimIndent()
 
@@ -348,14 +348,17 @@ class KotlinOutputParserGeneratorTest {
     // ---------------------------------------------------------------------------
     // 9. FR-010: text format (default) does NOT emit extract / EXTRACT_SCHEMA.
     // ---------------------------------------------------------------------------
-    @Test fun textFormatDoesNotEmitExtractLenientBlock() {
+        // ADR-0052: the tolerant tier is emitted for EVERY responding prompt — declaring a
+    // response shape IS the request for one. This previously asserted the opposite, keyed on
+    // @format, which is the syntax of the prompt BODY and says nothing about the reply.
+    @Test fun textBodiedPromptStillEmitsExtractLenient() {
         val fx = """{
           "metadata.root": { "package": "acme::demo", "children": [
             { "object.value": { "name": "Greeting", "children": [
                 { "field.string": { "name": "text" } }
             ] } },
-            { "template.output": { "name": "Reply",
-                "@payloadRef": "Greeting",
+            { "template.prompt": { "name": "Reply",
+                "@payloadRef": "Greeting", "@responseRef": "Greeting",
                 "@textRef": "demo/reply",
                 "@format": "text" } }
           ] }
@@ -369,14 +372,16 @@ class KotlinOutputParserGeneratorTest {
 
             val src = Files.readString(outDir.resolve("acme/demo/prompts/ReplyParser.kt"))
 
-            assertFalse("extract" in src,
-                "text format must NOT emit extract; src:\n$src")
+            // The tolerant tier IS emitted: @responseRef is declared, and @format never had a
+            // say in it. Absent @responseFormat defaults to json (ADR-0053).
+            assertTrue("ExtractionResult" in src,
+                "a responding prompt must emit the tolerant extract whatever its @format; src:\n$src")
+            assertTrue("Format.JSON" in src,
+                "absent @responseFormat must default to Format.JSON; src:\n$src")
             assertFalse("EXTRACT_SCHEMA" in src,
-                "text format must NOT emit EXTRACT_SCHEMA; src:\n$src")
-            assertFalse("ExtractionResult" in src,
-                "text format must NOT emit ExtractionResult; src:\n$src")
+                "no baked ExtractSchema literal survives; src:\n$src")
 
-            // parse/safeParse still present.
+            // The strict tier is present too — json replies get both.
             assertTrue("fun parseReply" in src, "fun parseReply must still be present; src:\n$src")
             assertTrue("fun safeParseReply" in src, "fun safeParseReply must still be present; src:\n$src")
         } finally {
@@ -393,10 +398,10 @@ class KotlinOutputParserGeneratorTest {
             { "object.value": { "name": "SummaryOutputPayload", "children": [
                 { "field.string": { "name": "body" } }
             ] } },
-            { "template.output": { "name": "Summary",
-                "@payloadRef": "SummaryOutputPayload",
+            { "template.prompt": { "name": "Summary",
+                "@payloadRef": "SummaryOutputPayload", "@responseRef": "SummaryOutputPayload",
                 "@textRef": "reports/summary",
-                "@format": "xml" } }
+                "@format": "text", "@responseFormat": "xml" } }
           ] }
         }""".trimIndent()
 
@@ -424,16 +429,19 @@ class KotlinOutputParserGeneratorTest {
     // ---------------------------------------------------------------------------
     // 11. FR-010: no @format (default=text) behaves the same as @format=text.
     // ---------------------------------------------------------------------------
-    @Test fun noFormatAttrDefaultsToTextAndNoExtractLenient() {
-        // The existing fixtures (tests 1-6) omit @format, which defaults to "text".
-        // This test makes the no-extract contract explicit for the default case.
+        // Companion pin: no @format at all still emits the tolerant tier.
+    @Test fun absentFormatStillEmitsExtractLenient() {
+        // The existing fixtures (tests 1-6) omit @format, which defaults to "text". ADR-0052:
+        // that never had any bearing on the tolerant tier — @format is the syntax of the prompt
+        // BODY. Declaring @responseRef IS the request for the tier, and the reply's syntax
+        // defaults to json via @responseFormat.
         val fx = """{
           "metadata.root": { "package": "acme::demo", "children": [
             { "object.value": { "name": "Greeting", "children": [
                 { "field.string": { "name": "text" } }
             ] } },
-            { "template.output": { "name": "Reply",
-                "@payloadRef": "Greeting", "@textRef": "demo/reply" } }
+            { "template.prompt": { "name": "Reply",
+                "@payloadRef": "Greeting", "@responseRef": "Greeting", "@textRef": "demo/reply" } }
           ] }
         }""".trimIndent()
 
@@ -446,9 +454,11 @@ class KotlinOutputParserGeneratorTest {
             val src = Files.readString(outDir.resolve("acme/demo/prompts/ReplyParser.kt"))
 
             assertFalse("EXTRACT_SCHEMA" in src,
-                "absent @format (defaults to text) must not emit EXTRACT_SCHEMA; src:\n$src")
-            assertFalse("ExtractionResult" in src,
-                "absent @format must not emit ExtractionResult; src:\n$src")
+                "no baked ExtractSchema literal survives; src:\n$src")
+            assertTrue("ExtractionResult" in src,
+                "a responding prompt must emit the tolerant extract; src:\n$src")
+            assertTrue("Format.JSON" in src,
+                "absent @responseFormat must default to Format.JSON; src:\n$src")
         } finally {
             outDir.toFile().deleteRecursively()
         }
