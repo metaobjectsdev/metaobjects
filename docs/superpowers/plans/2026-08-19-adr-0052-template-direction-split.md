@@ -3,90 +3,125 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this
 > plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-## STATUS — 2026-08-19, branch `adr-0052-template-direction`
+## STATUS — 2026-08-19 (session 3), branch `adr-0052-template-direction`
 
-Six commits on top of `6c9a39f78`. Phases A and B are **complete and green in all five ports**;
-Phase D (TS codegen) is complete; Phases C/E are partial; F, G, H are **not started**.
+15 commits on `6c9a39f78`. **TypeScript and C# are complete and green. Java, Kotlin and
+Python have not been started.**
 
-**Done:**
-- ADR-0053 + ADR-0052 amendment + `spec/decisions/README.md` (which also records that the ADR
-  index stopped being maintained after ADR-0030 — 0031-0051 are on disk, unlisted).
-- Vocabulary in all five ports + `expected-registry.json` + `fixtures/metamodel-docs/expected/`.
-  Verified: TS metadata **2404 pass**, C# **903+354+291+46**, Java metadata **1404 / BUILD
-  SUCCESS**, Python loader+wrong-subtype **23 pass**, 10/10 gates.
-- TS inbound tier re-pointed via `templates/find-inbound.ts`. Gate proven RED before green.
-- **An XML reply now emits the tolerant extract and nothing strict** — the strict tier is
-  `Schema.parse(JSON.parse(text))` and TS ships no XML parser, so `parse<Name>` could never work.
-- **The strict schema now honours `@required`** — it previously emitted every field mandatory, so
-  `parse<Name>` threw on a reply that correctly omitted an optional field. Same defect family as
-  #309, one tier over: every other port reuses the payload VO, TS re-derives inline.
-- Inline test fixtures re-pointed. codegen-ts: **1243 pass / 11 fail**.
+- TS: codegen-ts **1261 pass / 0 fail** (`82433999e`).
+- C#: **903 + 357 + 291 + 46 pass, 0 fail** (`44691316b`). This is the REFERENCE PORT for the
+  remaining three — read it before starting Java.
 
-**Remaining, in dependency order:**
+### ⛔ START HERE — close the C# verification gaps BEFORE porting to Java
 
-1. **11 codegen-ts failures.** (a) `fr010-output-codegen` "text-format output gets NO extract
-   block" — premise is obsolete, the `@format` gate is gone; rewrite or delete. (b) the
-   `xpkg-collision` / ADR-0042 FQN trio — file-based fixtures under `test/fixtures/`, convert like
-   the inline ones. (c) `Extractor codegen` tsc-gate + run-proof. (d) `api-docs ACCURACY` ×3 —
-   `generators/api-model.ts:820,914` still keys the inbound facts on `template.output`.
-   (e) `extractor/render payload import` golden. (f) `outputParser() conformance fixtures` —
-   the shared `template-output-simple` fixture.
-2. **The trace helper — TS is DONE; Python and Java remain.** A fifth inbound consumer, not one
-   of the three generators Phase D/F names.
-   - ✅ **TS `trace-helper-file.ts`** — now reads `@responseFormat` for the reply and keeps
-     `@format` for the body. Pinned by
-     `test/generators/trace-helper-response-format.test.ts`, whose discriminating case is
-     `@format: text` + `@responseFormat: xml`, plus its mirror so it cannot pass by reading
-     either attribute alone. **Gate proven: reverting the fix turns 3 of its 4 red.**
-   - ⬜ `trace_helper_generator.py:171-174`, Java `LlmTraceHelperGenerator.java` — still derive
-     the RESPONSE parse format from `@format`. Port the TS shape.
+C# is green, and **green is weaker evidence than usual here**, because most of its 25 failures
+were fixed by REWRITING the tests. That is the move that launders a bad change into a passing
+suite. One gate-can-it-fail probe was run and it immediately caught a pin of mine that asserted
+nothing (see "Findings"). There is no reason to think it was the only one. Java/Kotlin/Python
+will copy whatever precedent C# sets, so the precedent has to be trustworthy first.
 
-   The Python site carries a comment asserting *"the SAME rule the output-parser / extractor
-   generators use."* **That parity claim is factual — verified**: `output_parser_generator.py:136`,
-   `extractor_generator.py:194`, `output_prompt_generator.py:76` and
-   `output_format_spec_emitter.py:19` all read `TEMPLATE_ATTR_FORMAT` with
-   `TEMPLATE_FORMAT_DEFAULT`, the identical pattern. So the whole cluster moves together; the
-   comment must be **updated to name `@responseFormat`, not deleted** — the parity survives the
-   move and deleting it would hide that these five sites share one rule.
+1. **The headline change has NO gate.** `PayloadGeneratorTests.cs` never failed, so its fixtures
+   are still all `template.output` + `@payloadRef` — it tests the old path only. Add a responding
+   prompt and assert the `@responseRef` record IS emitted; then delete the emission and watch it
+   go red. Today, deleting it leaves C# green.
+2. **The compile gate bypasses the seam.** `Emitted_source_compiles_alongside_the_payload_record`
+   builds its payload by calling `PayloadCodegen.GeneratePayloadRecords(...)` DIRECTLY, so the
+   `PayloadGenerator` change is outside the only gate that proves the generated parser compiles
+   against a record that actually exists. Route it through `PayloadGenerator.Generate()`.
+3. **Zero C# tests use `@responseFormat: "xml"`.** The strict-tier-is-JSON-only behaviour is
+   entirely unverified in C#. Add a case asserting `Parse`/`TryParse` are ABSENT and the tolerant
+   extract is present.
+4. **Java, Kotlin and Python were never run in session 3.** `fixtures/conformance/template-output-simple`
+   lost its `expected/` dir; their references to it look comment-only, but that was never
+   confirmed by running them. Do that before assuming a clean baseline.
 
-   The tempting alternative — "reading `@format` is correct for `template.output`, since the output
-   body IS the response" — is exactly the conflation ADR-0052 dissolves. Once `template.output` is
-   outbound-only its `@format` is the syntax of a document being rendered OUT, and is never a
-   response. Do not take that branch.
+### Then: Phase F for the remaining three ports
 
-3. **Phase F — C#, Java, Kotlin, Python codegen.** Note Java has **no extractor generator**, so its
-   only enforcement path is the strict parser; do not assume the TS shape.
-4. **api-docs in 4 ports** (12 of the 16 Python failures were api-docs) + `verify` in 3 ports.
-5. **Phase E remainder** — docs-site fixture + golden, `examples/advanced-modeling` regen (the
-   committed `ProgramDescriptionOutput.output.ts` with its impossible `JSON.parse` must vanish),
-   `template-output-render-conformance` (outbound; remove only parser-emission assertions),
-   Kotlin port-local fixtures (**snapshots have no update flag** — read ACTUAL from the failure).
-6. **Phase G** — migration guide, `templates-and-payloads.md`, agent-context skills (2 copies +
-   5 byte-gated fixture sets; `references/typescript.md` is the one that omits the tolerant tier
-   entirely), roadmap slot reconciliation, CHANGELOG.
+**Each port needs MORE than the three generator re-points this plan originally described.**
 
-**Two findings recorded, not acted on:**
-- The tolerant tier is **under**-strict: `orThrow` and `extract<Name>` both fire only on
-  `hasLostRequired()`, `MALFORMED` never throws from any shipped helper, and response VOs in the
-  corpus mostly declare no `@required`. Deliberate and documented at
-  `render/src/extract/types.ts:377-383`, so left alone — but it means the strict tier is currently
-  the only thing catching a type-invalid required field.
-- `template.toolcall` gets no parser in any port. Before treating that as a gap, settle whether it
-  is a parsing concern at all — a provider SDK hands back an already-parsed arguments object.
-- **`isRequired` reads the `@required` ATTR only, never a `validator.required` CHILD** — while
-  `expected-registry.json` documents `@required` as *"Equivalent to attaching a validator.required
-  child."* So a response field expressing requiredness the validator way is required per the
-  metamodel and `.optional()` in every inbound tier. **Pre-existing and shared by both tiers**, so
-  the `@required` fix still did what it claimed — it made the strict and tolerant tiers AGREE with
-  each other (byte-identical predicates, verified) — but "the strict schema's contract is the
-  metadata's contract" in that commit message is broader than what shipped. The narrower true
-  claim: the two tiers now agree on the `@required` attr. Closing the validator-child half means
-  changing one shared predicate and would move the tolerant tier's behaviour too, so it is a
-  deliberate follow-up rather than a rider on this branch.
+**The payload tier must emit the `@responseRef` shape.** No non-TS port did. TypeScript never hit
+this because its payload types come from `entityFile()`, which emits per `object.value` regardless
+of any template. Every other port emits its strict record from `@payloadRef` only, so a parser
+bound to `@responseRef` references a type nobody declares and the generated code does not compile.
+
+The ports do NOT share one answer, because they do not share a naming convention:
+
+- **C# (done)** names the record after the resolved VALUE-OBJECT, so extending
+  `PayloadGenerator` to also walk `@responseRef` was enough. Deduped by resolved VO FQN, because
+  `CodegenRunner` THROWS on a duplicate path (no byte-identical collapse like TS #266) and an
+  output's payload may legitimately be the same declared shape as a prompt's response.
+- **Java / Python** name the primary record after the TEMPLATE (`<Template>Payload`), so a
+  responding prompt needs a SECOND record and a name for it. `SpringPayloadGenerator` already
+  walks every subtype but keys on `getPayloadRef()`; the cheapest consistent option is to let the
+  response VO enter the existing nested-closure name map and emit under its VO-derived
+  `<VOShort>Payload`, reusing the ADR-0044 collision machinery rather than inventing a convention.
+- **Kotlin** — convention not yet checked.
+
+Java additionally has **no extractor generator at all**, so its strict parser is its only
+enforcement path (verified: nothing matching `*Extract*` under `codegen-spring/.../spring/`).
+
+Per-port file lists are in the File Structure section. Baselines at `6c9a39f78`: Kotlin 315 ·
+Python 1733 · Java BUILD SUCCESS. Java: **never `-T`**.
+
+### Then: the rest
+
+- **Trace helper** — `trace_helper_generator.py:171-174` and Java `LlmTraceHelperGenerator.java`
+  still derive the RESPONSE parse format from `@format`. A FIFTH inbound consumer, not one of the
+  three generators Phase F names. Copy the TS `responseFormatOf()` shape; pin with the
+  discriminating case `@format: text` + `@responseFormat: xml`, and prove the gate fails.
+- **api-docs** in Java/Kotlin/Python (**C# is done**, inside `44691316b`) + `verify` in 3 ports
+  (`cli/src/commands/verify.ts:350-360`, C# `VerifyCommand.cs`, Java `TemplateVerify.java`).
+- **Phase E remainder** — docs-site fixture + golden, `examples/advanced-modeling` regen (the
+  committed `ProgramDescriptionOutput.output.ts` with its impossible `JSON.parse` must vanish),
+  Kotlin port-local fixtures (**snapshots have no update flag** — read ACTUAL from the failure).
+- **Phase G** — migration guide, `templates-and-payloads.md` (lines 364 + 496 still describe
+  `template-output-simple` as the `@payloadRef` parser fixture, now false), agent-context skills
+  (2 copies + 5 byte-gated fixture sets), CHANGELOG, roadmap slot.
+
+### Findings from session 3 (do not re-derive)
+
+- **A vacuous pin, caught by breaking it.** `A_template_output_emits_no_parser_extractor_or_response_format`
+  PASSES with the direction rule inverted. The subtype half of `FindInbound`'s filter does not
+  discriminate on its own — `@responseRef` is prompt-only vocabulary the LOADER already enforces,
+  so the ref predicate carries all the weight. Removing the ref predicate does turn a test red;
+  that is the gate that is actually proven. **Write the equivalent pins for the other ports around
+  `@responseRef`, not around the subtype.**
+- **`output-parser-conformance` was one line from being vacuous again** — it discovered fixtures by
+  EITHER golden suffix but filtered `.output.ts` alone inside the loop, so a renamed golden would
+  admit the fixture and assert over zero files. Fixed. Watch for the shape.
+- **The shared inbound fixture already existed.** Phase B created
+  `fixtures/conformance/template-prompt-response-json` (+ `-xml`); the golden moved there and
+  `template-output-simple` is outbound-only now. The plan's old Task E1 file list
+  (`template-output-json-simple` etc.) names fixtures that do not exist — stale, ignore it.
+- **The render helper is the outbound CONTROL and must keep throwing on a prompt.** A test that
+  converts its template to a prompt and still calls `renderRenderHelper()` needs its own
+  `template.output` node, not a relaxed render helper.
+- **`@required` reads the ATTR only, never a `validator.required` CHILD**, while
+  `expected-registry.json` documents them as equivalent. Pre-existing, shared by both tiers,
+  deliberately NOT fixed here. `a516a6131`'s commit message over-claims; the narrower true
+  statement is that the strict and tolerant tiers now AGREE on the attr.
+- **The strict Zod schema types a `field.enum` as `z.unknown()`** (no enum entry in `SCALAR_ZOD`),
+  so the strict tier accepts anything for an enum. Visible in the new golden
+  `template-prompt-response-json/expected/SupportAnswerPrompt.response.ts`. Pre-existing; not this
+  branch's job, but it weakens the "strict tier is the only thing catching a type-invalid required
+  field" claim below.
+- The tolerant tier is **under**-strict: `orThrow` and `extract<Name>` fire only on
+  `hasLostRequired()`; `MALFORMED` never throws from any shipped helper. Deliberate, documented at
+  `render/src/extract/types.ts:377-383`.
+- `template.toolcall` gets no parser in any port. Settle whether it is a parsing concern at all
+  before treating that as a gap — a provider SDK hands back an already-parsed arguments object.
+
+### Still blocking, and a human call
+
+**The release-slot contradiction is unresolved.** ADR-0052 line 3 says this rides "the coordinated
+pre-1.0 breaking slot alongside FR-037/FR-038"; `spec/roadmap.md:51-52` targets both at **1.1**
+(post-GA), and CLAUDE.md says GA is the next release move. Both cannot be true. It does not block
+Phase F code, but it must be settled before the cut, and whoever settles it should fix whichever of
+the two is wrong.
 
 Challenge records: `~/.claude/challenge-log/adr-0052-inbound-home/` (agreed) and
 `~/.claude/challenge-log/strict-tier-survives-tolerant/` (**split** — one arm proposed deleting the
-strict tier, the other showed why that cannot happen; both were partly right).
+strict tier; Java having no extractor generator is why that cannot happen).
 
 ---
 
