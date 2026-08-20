@@ -3,80 +3,51 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this
 > plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-## STATUS — 2026-08-19 (session 3), branch `adr-0052-template-direction`
+## STATUS — 2026-08-20 (session 5), branch `adr-0052-template-direction`
 
-15 commits on `6c9a39f78`. **TypeScript and C# are complete and green. Java, Kotlin and
-Python have not been started.**
+**All five ports are ported and green.** Phase F, the trace helper, Phase E and Phase G
+are done; the remaining work is the release cut itself.
 
-- TS: codegen-ts **1261 pass / 0 fail** (`82433999e`).
-- C#: **903 + 357 + 291 + 46 pass, 0 fail** (`44691316b`). This is the REFERENCE PORT for the
-  remaining three — read it before starting Java.
+| Port | Suite |
+|---|---|
+| TypeScript | codegen-ts 1383 · sdk/docs-site/cli 294 · workspace build + typecheck clean |
+| C# | 905 + 363 (1 skip) + 291 + 46, 0 fail |
+| Java + Kotlin | full reactor BUILD SUCCESS (Kotlin 316) |
+| Python | 1750 pass, 0 fail |
 
-### ⛔ START HERE — close the C# verification gaps BEFORE porting to Java
+### What session 5 closed
 
-C# is green, and **green is weaker evidence than usual here**, because most of its 25 failures
-were fixed by REWRITING the tests. That is the move that launders a bad change into a passing
-suite. One gate-can-it-fail probe was run and it immediately caught a pin of mine that asserted
-nothing (see "Findings"). There is no reason to think it was the only one. Java/Kotlin/Python
-will copy whatever precedent C# sets, so the precedent has to be trustworthy first.
+- **Python codegen** — payload (a SECOND `<Template>Response` record in its own
+  `<template>_response.py`), parser, response-format fragment, extractor, api-docs. Emitted
+  paths follow TS/C#: `_output_parser` → `_response_parser`, `_output_prompt` →
+  `_response_format`.
+- **The trace helper, in Python AND Java.** The plan's premise about Java was WRONG: it
+  never read `@format`. It called the 2-arg `MetaObjectExtractor.extract(mo, text)`
+  overload, which hardcodes `Format.JSON` — so an XML reply was INEXPRESSIBLE there rather
+  than mis-read. Same ruling, opposite starting point.
+- **The shared api-docs corpus coverage regression** (see the session-4 note below), plus
+  the pre-existing broken back-link it exposed: `meta docs` wrote the neutral model page
+  for `template.output` alone, while api-docs has always emitted an api page for a
+  top-level `template.prompt` that links back to it.
+- **A C# test the branch had already broken.** `A_responseRef_that_is_not_a_value_object_
+  emits_no_parser` asserted `Assert.Empty(load.Errors)` on the premise that the C# loader
+  validates only `@payloadRef`; the loader gained the `@responseRef` rule two commits
+  later. The test's own comment had predicted exactly this. It now asserts BOTH doors.
+- **Phase E** — `examples/advanced-modeling/src/generated/ProgramDescriptionOutput.output.ts`
+  (the committed `JSON.parse` over rendered markdown) is deleted; the docs-site fixture
+  declares `@responseFormat: xml` on its text-bodied prompt and its goldens are regenerated.
+- **Phase G** — migration guide, `templates-and-payloads.md`, all five port docs, the
+  `metaobjects-prompts` skill + its five per-port references (and the five byte-gated
+  agent-context fixture sets), CHANGELOG.
 
-1. **The headline change has NO gate.** `PayloadGeneratorTests.cs` never failed, so its fixtures
-   are still all `template.output` + `@payloadRef` — it tests the old path only. Add a responding
-   prompt and assert the `@responseRef` record IS emitted; then delete the emission and watch it
-   go red. Today, deleting it leaves C# green.
-2. **The compile gate bypasses the seam.** `Emitted_source_compiles_alongside_the_payload_record`
-   builds its payload by calling `PayloadCodegen.GeneratePayloadRecords(...)` DIRECTLY, so the
-   `PayloadGenerator` change is outside the only gate that proves the generated parser compiles
-   against a record that actually exists. Route it through `PayloadGenerator.Generate()`.
-3. **Zero C# tests use `@responseFormat: "xml"`.** The strict-tier-is-JSON-only behaviour is
-   entirely unverified in C#. Add a case asserting `Parse`/`TryParse` are ABSENT and the tolerant
-   extract is present.
-4. **Java, Kotlin and Python were never run in session 3.** `fixtures/conformance/template-output-simple`
-   lost its `expected/` dir; their references to it look comment-only, but that was never
-   confirmed by running them. Do that before assuming a clean baseline.
+### `verify` needed no change — verified, not assumed
 
-### Then: Phase F for the remaining three ports
-
-**Each port needs MORE than the three generator re-points this plan originally described.**
-
-**The payload tier must emit the `@responseRef` shape.** No non-TS port did. TypeScript never hit
-this because its payload types come from `entityFile()`, which emits per `object.value` regardless
-of any template. Every other port emits its strict record from `@payloadRef` only, so a parser
-bound to `@responseRef` references a type nobody declares and the generated code does not compile.
-
-The ports do NOT share one answer, because they do not share a naming convention:
-
-- **C# (done)** names the record after the resolved VALUE-OBJECT, so extending
-  `PayloadGenerator` to also walk `@responseRef` was enough. Deduped by resolved VO FQN, because
-  `CodegenRunner` THROWS on a duplicate path (no byte-identical collapse like TS #266) and an
-  output's payload may legitimately be the same declared shape as a prompt's response.
-- **Java / Python** name the primary record after the TEMPLATE (`<Template>Payload`), so a
-  responding prompt needs a SECOND record and a name for it. `SpringPayloadGenerator` already
-  walks every subtype but keys on `getPayloadRef()`; the cheapest consistent option is to let the
-  response VO enter the existing nested-closure name map and emit under its VO-derived
-  `<VOShort>Payload`, reusing the ADR-0044 collision machinery rather than inventing a convention.
-- **Kotlin** — convention not yet checked.
-
-Java additionally has **no extractor generator at all**, so its strict parser is its only
-enforcement path (verified: nothing matching `*Extract*` under `codegen-spring/.../spring/`).
-
-Per-port file lists are in the File Structure section. Baselines at `6c9a39f78`: Kotlin 315 ·
-Python 1733 · Java BUILD SUCCESS. Java: **never `-T`**.
-
-### Then: the rest
-
-- **Trace helper** — `trace_helper_generator.py:171-174` and Java `LlmTraceHelperGenerator.java`
-  still derive the RESPONSE parse format from `@format`. A FIFTH inbound consumer, not one of the
-  three generators Phase F names. Copy the TS `responseFormatOf()` shape; pin with the
-  discriminating case `@format: text` + `@responseFormat: xml`, and prove the gate fails.
-- **api-docs** in Java/Kotlin/Python (**C# is done**, inside `44691316b`) + `verify` in 3 ports
-  (`cli/src/commands/verify.ts:350-360`, C# `VerifyCommand.cs`, Java `TemplateVerify.java`).
-- **Phase E remainder** — docs-site fixture + golden, `examples/advanced-modeling` regen (the
-  committed `ProgramDescriptionOutput.output.ts` with its impossible `JSON.parse` must vanish),
-  Kotlin port-local fixtures (**snapshots have no update flag** — read ACTUAL from the failure).
-- **Phase G** — migration guide, `templates-and-payloads.md` (lines 364 + 496 still describe
-  `template-output-simple` as the `@payloadRef` parser fixture, now false), agent-context skills
-  (2 copies + 5 byte-gated fixture sets), CHANGELOG, roadmap slot.
+The plan listed `verify` in three ports as remaining work. Reading all three
+(`cli/src/commands/verify.ts`, C# `VerifyCommand.cs`, Java `TemplateVerify.java`) shows
+they are already direction-correct: each keys the render-drift check on `@payloadRef`
+(which ADR-0052 did not move) and picks body refs per subtype. There is no render drift to
+check on the response side — a `@responseRef` shape is parsed, not rendered — and its
+target rule is enforced one layer earlier, by the loader.
 
 ### Findings from session 3 (do not re-derive)
 
@@ -111,13 +82,16 @@ Python 1733 · Java BUILD SUCCESS. Java: **never `-T`**.
 - `template.toolcall` gets no parser in any port. Settle whether it is a parsing concern at all
   before treating that as a gap — a provider SDK hands back an already-parsed arguments object.
 
-### Still blocking, and a human call
+### Still open, and a human call
 
-**The release-slot contradiction is unresolved.** ADR-0052 line 3 says this rides "the coordinated
-pre-1.0 breaking slot alongside FR-037/FR-038"; `spec/roadmap.md:51-52` targets both at **1.1**
-(post-GA), and CLAUDE.md says GA is the next release move. Both cannot be true. It does not block
-Phase F code, but it must be settled before the cut, and whoever settles it should fix whichever of
-the two is wrong.
+**Which release carries this.** The roadmap contradiction is SETTLED and fixed: ADR-0035 §1 makes a
+post-1.0 metamodel-vocabulary break a 2.0 event, so a 1.1 MINOR could never have carried FR-037's
+`@readOnly` retirement or FR-038's `@verifiedBy` retirement, and the cells that said so were wrong.
+The roadmap now names what the next breaking MINOR carries — including that `@responseFormat` is
+ADR-0053, so counting the batch from ADR-0052 alone under-counts it by one.
+
+**What remains Doug's call: whether that breaking MINOR goes before GA or after.** Not a code
+question, and it does not block anything in this plan.
 
 Challenge records: `~/.claude/challenge-log/adr-0052-inbound-home/` (agreed) and
 `~/.claude/challenge-log/strict-tier-survives-tolerant/` (**split** — one arm proposed deleting the

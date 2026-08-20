@@ -1,16 +1,19 @@
 # Kotlin parser-on-receipt
 
-For every `template.output`, `codegen-kotlin`'s `KotlinOutputParserGenerator` emits
-a **typed parser** that validates an LLM/raw response against the template's
-`@payloadRef` payload data class. This is the receive side only — codegen emits
-**no** provider/LLM-call layer; you compose the call yourself. The payload data
-class itself comes from `KotlinPayloadGenerator` (a `@Serializable data class`), so
-the parser and the payload VO can't silently drift.
+For every RESPONDING `template.prompt` — one declaring `@responseRef` —
+`codegen-kotlin`'s `KotlinOutputParserGenerator` emits a **typed parser** that validates
+a model's reply against that shape. ADR-0052: the tier binds `@responseRef`, never
+`@payloadRef` (which types the request the prompt renders outbound), and a
+`template.output` gets no parser at all. This is the receive side only — codegen emits
+**no** provider/LLM-call layer; you compose the call yourself. The data class itself comes
+from `KotlinPayloadGenerator` (a `@Serializable data class`) — this port's classes are
+TEMPLATE-named, so a responding prompt gets a SECOND one, `<Name>Response`, beside
+`<Name>Payload`, and the parser and the record can't silently drift.
 
 ## Contents
 - Wire the generators
 - What it emits
-- The output-format prompt fragment (FR-010)
+- The response-format prompt fragment (FR-010)
 - The three-step consumer pattern
 - Consumer dependency
 - Recommended LLM caller (bring-your-own)
@@ -34,9 +37,10 @@ the payload it parses into) to the Maven plugin's `<generators>` list:
 
 ## What it emits
 
-Per `template.output`, `mvn metaobjects:generate` writes a `<Name>Parser.kt`
-`object` with a dual API matching kotlinx.serialization's exception model plus the
-Kotlin stdlib `Result<T>` convention:
+Per responding `template.prompt`, `mvn metaobjects:generate` writes a
+`<Name>Parser.kt` `object` with a dual API matching kotlinx.serialization's exception
+model plus the Kotlin stdlib `Result<T>` convention. The strict tier is JSON-only — an
+`@responseFormat: xml` reply gets the tolerant extract and neither strict function:
 
 ```kotlin
 // generated <Name>Parser.kt (shape)
@@ -44,8 +48,8 @@ object NpcResponseParser {
     private val json: Json = Json { ignoreUnknownKeys = false }
 
     /** Throws kotlinx.serialization.SerializationException on bad input. */
-    fun parseNpcResponse(text: String): NpcResponsePayload =
-        json.decodeFromString<NpcResponsePayload>(text)
+    fun parseNpcResponse(text: String): NpcResponseResponse =
+        json.decodeFromString<NpcResponseResponse>(text)
 
     /** Result-style — does not throw. */
     fun safeParseNpcResponse(text: String): Result<NpcResponsePayload> =
@@ -63,10 +67,10 @@ null) and a `extractLenient(loader, text)` overload that delegates to the runtim
 components. The lenient mirror type (`<Name>Extracted`) uses nullable fields per
 the Kotlin null-safety port — a missing/malformed component is `null`, not a throw.
 
-## The output-format prompt fragment (FR-010)
+## The response-format prompt fragment (FR-010)
 
-For every json/xml-format `template.output`, `codegen-kotlin`'s
-`KotlinOutputPromptGenerator` emits a `<TemplateShortName>OutputPrompt.kt` `object`
+For every responding `template.prompt`, `codegen-kotlin`'s
+`KotlinOutputPromptGenerator` emits a `<PromptShortName>ResponseFormat.kt` `object`
 with `renderFormat()` / `renderFormat(overrides: PromptOverrides)`, backed by
 `OutputFormatRenderer` from the `metaobjects-render` module — the "produce your
 answer like this" fragment for the model. Wire it alongside
@@ -79,11 +83,12 @@ answer like this" fragment for the model. Wire it alongside
 </generator>
 ```
 
-`@promptStyle` on the `template.output` (`guide` default / `inline` / `exampleOnly`)
-controls the fragment's presentation; guidance is never emitted as comments. Skipped
-for `template.prompt` nodes, non-json/xml `@format`, and unresolved `@payloadRef` —
-the same skip contract as the parser generator. The `SPEC`'s root name is the
-capitalized payload class name, agreeing with the parser's extract-codegen root.
+`@promptStyle` on the `template.prompt` (`guide` default / `inline` / `exampleOnly`)
+controls the fragment's presentation; guidance is never emitted as comments. Skipped for
+`template.output` nodes and an unresolved `@responseRef` — the same skip contract as the
+parser generator. There is NO format gate: the old `@format ∈ {json,xml}` test read the
+syntax of the outbound body to decide whether to describe the reply. The `SPEC`'s root
+name is the response class's, agreeing with the parser's extract-codegen root.
 
 ## The three-step consumer pattern
 

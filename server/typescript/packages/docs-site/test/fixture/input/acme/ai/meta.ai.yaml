@@ -15,12 +15,17 @@ metadata:
         children:
           - field.string: { name: verdict, "@description": "verdict <b>tag</b> & \"quote\"" }   # attr on the wire; use &lt;tag&gt; to embed <tag> & "quotes"
           - field.string: { name: reason, "@xmlText": true }
+    # ADR-0052/0053 — the discriminating shape: a TEXT-bodied prompt whose REPLY is
+    # XML. @format is the syntax of the rendered body (prose); @responseFormat is the
+    # syntax of the answer, and NpcResponse's `@xmlText` member only means anything
+    # under the latter. A tier reading @format here parses XML as JSON.
     - template.prompt:
         name: npcReview
         "@payloadRef": NpcPayload
         "@responseRef": NpcResponse
         "@textRef": ai/npc-review
         "@format": text
+        "@responseFormat": xml
         "@dataflow": ingest
     - template.output:
         name: npcReviewOutput

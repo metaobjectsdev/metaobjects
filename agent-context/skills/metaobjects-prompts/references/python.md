@@ -1,11 +1,13 @@
 # Python parser-on-receipt
 
-For every `template.output`, the `output-parser` generator (run via `metaobjects gen`)
-emits a **typed parser** that validates an LLM/raw response against the template's
-`@payloadRef` payload Pydantic model. This is the receive side only — codegen emits
-**no** provider/LLM-call layer; you compose the call yourself. The payload class comes
-from the sibling `payload` generator, so the parser and the payload VO can't silently
-drift.
+For every RESPONDING `template.prompt` — one declaring `@responseRef` — the
+`output-parser` generator (run via `metaobjects gen`) emits a **typed parser** that
+validates a model's reply against that shape's Pydantic model. ADR-0052: the tier binds
+`@responseRef`, never `@payloadRef` (which types the request the prompt renders
+outbound), and a `template.output` gets no parser at all. This is the receive side only —
+codegen emits **no** provider/LLM-call layer; you compose the call yourself. The record
+class comes from the sibling `payload` generator, so the parser and the record can't
+silently drift.
 
 ## Contents
 - Wire the generators
@@ -18,7 +20,7 @@ drift.
 
 ## Wire the generators
 
-Select `output-parser` (the `payload` generator that emits the `<Name>Payload` it
+Select `output-parser` (the `payload` generator that emits the `<Name>Response` it
 parses into runs alongside it):
 
 ```bash
@@ -30,17 +32,17 @@ metaobjects gen ./metadata --out ./generated --generators payload,output-parser
 
 ## What it emits
 
-Per `template.output`, `metaobjects gen` writes one `<template_name>_output_parser.py`
-with a single throw-only entry point. Python uses one API (not TS's
+Per responding `template.prompt`, `metaobjects gen` writes one
+`<template_name>_response_parser.py` with a single throw-only entry point. Python uses one API (not TS's
 `parse`/`safeParse`) because raising `pydantic.ValidationError` is the idiomatic
 failure — the pydantic / Instructor / FastAPI norm; a Result-style wrapper would be
 un-Pythonic.
 
 ```python
-# generated <template_name>_output_parser.py (shape)
-from .npc_response_payload import NpcResponsePayload   # the @payloadRef VO (Pydantic v2 BaseModel)
+# generated <template_name>_response_parser.py (shape)
+from .npc_response_response import NpcResponseResponse   # the @responseRef record (Pydantic v2 BaseModel)
 
-def parse_npc_response(text: str) -> NpcResponsePayload:
+def parse_npc_response(text: str) -> NpcResponseResponse:
     """Validates text against the payload model.
 
     Raises:
@@ -49,16 +51,20 @@ def parse_npc_response(text: str) -> NpcResponsePayload:
     ...
 ```
 
-For `@format: json|xml` outputs the generator additionally emits a **tolerant**
-best-effort variant — `extract_lenient_<name>(text) -> ExtractionResult[<Name>PayloadExtracted]`
+Every responding prompt ALSO gets a **tolerant** best-effort variant —
+`extract_lenient_<name>_with_loader(root, text) -> ExtractionResult[<Name>ResponseExtracted]`
 (from the `metaobjects` render `extract` engine) for cases where you want a classified
-per-field report rather than a raise. The lenient mirror (`<Name>PayloadExtracted`)
-uses `Optional[...]` fields — a missing/malformed component is `None`, not a raise.
+per-field report rather than a raise. The lenient mirror (`<Name>ResponseExtracted`) uses
+`Optional[...]` fields — a missing/malformed component is `None`, not a raise.
 
-## The output-format prompt fragment (FR-010)
+The STRICT `parse_*` is JSON-only (ADR-0053): an `@responseFormat: xml` reply gets the
+tolerant path and no `parse_*` at all, because strict all-or-nothing semantics layered
+over a REPAIRING XML reader would raise or accept based on how much repair happened.
 
-For every json/xml-format `template.output`, the `output-prompt` generator (run via
-`metaobjects gen`) emits one `<template_name>_output_prompt.py` module exposing
+## The response-format prompt fragment (FR-010)
+
+For every responding `template.prompt`, the `output-prompt` generator (run via
+`metaobjects gen`) emits one `<template_name>_response_format.py` module exposing
 `render_<name>_format(overrides=None) -> str`, backed by the render engine's
 `render_output_format()` — the "produce your answer like this" fragment for the
 model:
@@ -67,11 +73,13 @@ model:
 metaobjects gen ./metadata --out ./generated --generators payload,output-prompt
 ```
 
-`@promptStyle` on the `template.output` (`guide` default / `inline` / `exampleOnly`)
-controls the fragment's presentation; guidance is never emitted as comments. Skipped
-for `template.prompt` nodes, non-json/xml `@format`, and unresolved `@payloadRef` —
-the same skip contract as the `output-parser` generator. The baked spec's root name
-is the payload class name, agreeing with the parser's `extract_<name>()` root.
+`@promptStyle` on the `template.prompt` (`guide` default / `inline` / `exampleOnly`)
+controls the fragment's presentation; guidance is never emitted as comments. Skipped for
+`template.output` nodes and an unresolved `@responseRef` — the same skip contract as the
+`output-parser` generator. There is NO format gate: the old `@format ∈ {json,xml}` test
+read the syntax of the outbound body to decide whether to describe the reply, so a
+text-bodied prompt asking for a JSON answer got no fragment. The baked spec's root name
+is the response class name, agreeing with the parser's `extract_<name>()` root.
 
 ## The three-step consumer pattern
 
@@ -80,7 +88,7 @@ here) → parse the response with the generated parser:
 
 ```python
 from pydantic import ValidationError
-from .npc_response_output_parser import parse_npc_response
+from .npc_response_response_parser import parse_npc_response
 
 text = my_llm_client.complete(prompt_text)   # YOUR code — no generated provider
 try:

@@ -19,10 +19,13 @@ language lives in a reference fragment (pointed to at the bottom).
 A **template** is a typed pair: a logical reference to external text + a payload
 value-object declaring exactly what data the text expects.
 
-| Subtype | Use | Extra attrs |
-|---|---|---|
-| `template.prompt` | LLM-targeted | `@maxTokens`, `@requiredSlots`, `@requiredTags`, `@model`, `@responseRef` |
-| `template.output` | email / docs / config / export | `@kind: document \| email` (default `document`), `@promptStyle`, `@requiredTags`; `@kind: email` adds `@subjectRef` / `@htmlBodyRef` / `@textBodyRef` |
+A template subtype's axis is **DIRECTION** — which way the text travels, not what it
+is about (ADR-0052).
+
+| Subtype | Direction | Use | Extra attrs |
+|---|---|---|---|
+| `template.prompt` | outbound, and optionally inbound | LLM-targeted | `@maxTokens`, `@requiredSlots`, `@requiredTags`, `@model`, `@responseRef`, `@responseFormat`, `@promptStyle` |
+| `template.output` | outbound ONLY | email / docs / config / export | `@kind: document \| email` (default `document`), `@requiredTags`; `@kind: email` adds `@subjectRef` / `@htmlBodyRef` / `@textBodyRef` |
 
 Both carry the generic attrs:
 
@@ -36,13 +39,22 @@ Both carry the generic attrs:
 `template.output @kind: email` renders a structured `EmailDocument` (subject + HTML
 body + optional plain-text body) instead of one string — the TS render helper emits
 an `EmailDocument`-returning function for it (see the `render-example-email`
-conformance fixture). `@promptStyle` (`guide` / `inline` / `exampleOnly`, FR-010)
-selects how the output-format prompt fragment presents the payload shape to an LLM
-(see "the output-format prompt fragment" below); `@requiredTags` names output tags
-the rendered text must contain (`verify` checks it) on both subtypes.
-`template.prompt` additionally carries `@responseRef` — naming the response
-shape (an `object.value` or sourceless `object.projection`, #210) the prompt
-expects, for typed LLM-call trace derivation.
+conformance fixture). `@requiredTags` names output tags the rendered text must contain
+(`verify` checks it) on both subtypes.
+
+**The INBOUND half belongs to `template.prompt` alone.** `@responseRef` names the
+response shape (an `object.value` or sourceless `object.projection`, #210) a model's
+reply is parsed into, and its PRESENCE is what asks for the whole inbound tier: the
+response record, the response-format fragment, the parser-on-receipt and the tolerant
+extractor. `@responseFormat` (`json` default / `xml`, ADR-0053) is the syntax of that
+REPLY; `@promptStyle` (`guide` / `inline` / `exampleOnly`, FR-010) selects how the
+fragment presents the shape.
+
+> **`@format` and `@responseFormat` are different facts.** `@format` is the syntax of
+> the BODY you render; `@responseFormat` is the syntax of the answer you expect. A
+> plain-text prompt asking for a JSON object is the common case. Putting `@promptStyle`
+> or `@responseFormat` on a `template.output` is a LOAD ERROR — an output renders a
+> document and nothing reads a reply to it.
 
 A third, structurally different subtype is also registered core vocabulary:
 **`template.toolcall`** (`@toolName` + `@payloadRef`, ADR-0011) — a vendor-agnostic
@@ -192,33 +204,42 @@ For every template, the verify step resolves the text, parses each `{{...}}`
 reference, and checks it exists on the payload VO. If the text references
 `{{authorName}}` but the payload only has `displayName`, **the build fails.** This
 is the prompt-vs-payload drift gate — run it in CI. It walks both `template.prompt`
-and `template.output` nodes the same way.
+and `template.output` nodes the same way (both RENDER; only the direction of what comes
+back differs).
 
-## `template.output` also generates a parser-on-receipt
+## A RESPONDING `template.prompt` generates a parser-on-receipt
 
-For every `template.output`, codegen emits a **typed parser** that turns an LLM/raw
-response back into the `@payloadRef` value-object — the reverse direction, reusing
-the same payload VO (no new authoring). Each port emits it idiomatically: a
-throw-on-invalid parse plus, where the language has the precedent, a Result-style
-"safe" variant that doesn't throw. The parser file is a companion to the payload-VO
-file; `verify` catches payload-VO ↔ parser drift at build time too.
+For every `template.prompt` declaring `@responseRef`, codegen emits a **typed parser**
+that turns a model's reply back into that shape. It binds `@responseRef`, never
+`@payloadRef` — `@payloadRef` types the request the prompt renders outbound, and the
+question and the answer are usually different shapes. Each port emits the parser
+idiomatically: a throw-on-invalid parse plus, where the language has the precedent, a
+Result-style "safe" variant that doesn't throw.
+
+**A `template.output` gets no parser, ever.** Nothing reads a reply to a document. (Before
+ADR-0052 it did, with no format filter at all — so an `@format: markdown` document got a
+generated `JSON.parse` over rendered prose.)
+
+The strict tier is JSON-only: an `@responseFormat: xml` reply gets the tolerant extract
+and nothing strict, because strict all-or-nothing semantics layered over a REPAIRING XML
+reader would raise or accept based on how much repair happened.
 
 The three-step consumer pattern is identical everywhere: render the prompt → call
-your LLM client → parse the response with the generated parser.
+your LLM client → parse the reply with the generated parser.
 
-## `template.output` also generates the output-format prompt fragment (FR-010)
+## A RESPONDING `template.prompt` generates the response-format fragment (FR-010)
 
-For every **json/xml-format** `template.output` whose `@payloadRef` resolves to a
-value-object, codegen additionally emits an `output-prompt` artifact: a
-`render<Name>Format(...)`-shaped function backed by the render engine's
-output-format renderer — the "produce your answer like this" instruction fragment
-you splice into the prompt text so the model returns exactly the shape the parser
-above expects. It's generated only for `json`/`xml` outputs (`text`/`html`/`csv`/
-`markdown`/`spreadsheet` don't get a fragment) and skipped under the same
-unresolved-`@payloadRef` rule as the parser; the fragment and the parser's
-`extract()` codegen agree on the same root name.
+For every `template.prompt` whose `@responseRef` resolves, codegen additionally emits a
+`render<Name>Format(...)`-shaped function backed by the render engine's output-format
+renderer — the "produce your answer like this" instruction fragment you splice into the
+prompt text so the model returns exactly the shape the parser above expects. The gate is
+`@responseRef` PRESENCE, not a format value: the old `@format ∈ {json,xml}` gate read the
+syntax of the OUTBOUND body to decide whether to instruct the model about the syntax of
+its REPLY, so a text-bodied prompt asking for a JSON answer got no fragment at all.
+`@responseFormat` selects which syntax the fragment teaches; the fragment and the
+extractor agree on the same root name.
 
-`@promptStyle` on the `template.output` controls the fragment's presentation
+`@promptStyle` on the `template.prompt` controls the fragment's presentation
 (default `guide`):
 
 | `@promptStyle` | Presentation |

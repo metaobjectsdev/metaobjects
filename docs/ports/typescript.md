@@ -366,12 +366,18 @@ Hono idioms rather than contract drift:
    Hono has no prefix-wrapping primitive at the verb level, and string
    concatenation produces the same URL grammar.
 
-## FR-006 — output parsing
+## FR-006 — response parsing
 
-For every `template.output`, `outputParser()` (from `@metaobjectsdev/codegen-ts/generators`)
-emits `<TemplateName>.output.ts` with a Zod-backed dual-API: `parseXxx(text)`
-throws on bad input; `safeParseXxx(text)` returns a `{ success, data | error }`
-discriminated union — matches Zod's idiomatic shape.
+For every `template.prompt` declaring `@responseRef`, `outputParser()` (from
+`@metaobjectsdev/codegen-ts/generators`) emits `<PromptName>.response.ts` with a
+Zod-backed dual-API: `parseXxx(text)` throws on bad input; `safeParseXxx(text)`
+returns a `{ success, data | error }` discriminated union — matches Zod's idiomatic
+shape.
+
+ADR-0052: the shape parsed INTO is `@responseRef`, never `@payloadRef` (which types the
+request the prompt renders outbound), and `template.output` gets no parser at all. The
+strict tier is JSON-only — an `@responseFormat: xml` reply gets the tolerant extract and
+nothing strict.
 
 ```ts
 // metaobjects.config.ts (additions)
@@ -381,13 +387,13 @@ export default defineConfig({
   generators: [
     entityFile(), queriesFile(), routesFile(), barrel(),
     promptRender(),    // renderXxx() per template.prompt
-    outputParser(),    // parseXxx() / safeParseXxx() per template.output
+    outputParser(),    // parseXxx() / safeParseXxx() per responding template.prompt
   ],
 });
 ```
 
 ```ts
-// generated/NpcResponse.output.ts
+// generated/NpcResponse.response.ts
 import { z } from "zod";
 
 const NpcResponseSchema = z.object({
@@ -424,12 +430,11 @@ if (!r.success) log.warn("LLM returned malformed payload", r.error);
 else handle(r.data);
 ```
 
-`meta verify` extends to walk `template.output` nodes (FR-006) the same way it
-walks `template.prompt` (FR-004), catching payload-VO ↔ parser drift at build
+`meta verify` walks both template subtypes, catching payload ↔ template drift at build
 time. Cross-port design is at
 [ADR-0010](../../spec/decisions/ADR-0010-template-output-parser-codegen.md);
 the feature reference is at
-[`features/templates-and-payloads.md`](../features/templates-and-payloads.md#output-parsing-fr-006).
+[`features/templates-and-payloads.md`](../features/templates-and-payloads.md#response-parsing-fr-006).
 
 **Consumer dependency.** The emitted parser imports `zod`. It's likely already in
 your `dependencies` (Drizzle / `@metaobjectsdev/runtime-ts` both lean on it);

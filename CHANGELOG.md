@@ -7,6 +7,85 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### BREAKING — a template subtype's axis is DIRECTION (ADR-0052 / ADR-0053)
+
+`template.output` renders OUTBOUND — a document, an email, an export — and generates
+**nothing that reads a model's reply**. The inbound half (the response record, the FR-010
+response-format fragment, the parser-on-receipt and the tolerant extractor) belongs to a
+`template.prompt` carrying **`@responseRef`**, and the gate is that attribute's PRESENCE,
+never a format value. All five ports; the rule lives in one predicate per port
+(`FindInbound`) that every inbound generator and every api-docs builder calls through.
+
+**What was wrong.** The old tier had drifted three ways at once, and each way produced
+generated code that could not work:
+
+- The **parser** applied NO format filter. An `@format: markdown` document template got a
+  generated `Schema.parse(JSON.parse(text))` over rendered prose — and this repository
+  shipped one, in `examples/advanced-modeling`.
+- The **fragment emitter** and the **extractor** each applied their own
+  `@format ∈ {json,xml}` gate — against the OUTBOUND body's syntax, which says nothing
+  about the reply. A text-bodied prompt asking for a JSON answer, the common case, got a
+  strict parser and no tolerant extract, and no fragment at all.
+- Nothing generated the inbound tier for a `template.prompt`, even though `@responseRef`
+  has been prompt-only vocabulary since it was introduced.
+
+**ADR-0053 supplies the missing fact:** `@responseFormat` (`json` | `xml`, default `json`)
+is the syntax of the REPLY, distinct from `@format`, the syntax of the rendered prompt
+BODY. The default reproduces the pre-ADR fallback exactly, so a model that never declares
+it keeps its behaviour. The **strict tier is JSON-only**: an XML reply gets the tolerant
+extract and nothing strict, because strict all-or-nothing semantics layered over a
+REPAIRING parser would raise or accept based on how much repair happened.
+
+**Breaking, and each fails loudly:**
+
+- A `@promptStyle` left on a `template.output` now fails the LOAD
+  (`ERR_INVALID_TEMPLATE`) — it is prompt-only vocabulary, as is `@responseFormat`.
+- A `template.output`'s parser / extractor / fragment files are no longer emitted;
+  `verify --codegen` names the committed ones as files a fresh regen would not emit.
+- Emitted paths follow the direction: `.output.*` → `.response.*`, `.prompt.*` →
+  `.responseFormat.*`, and (Python) `_output_parser.py` → `_response_parser.py`,
+  `_output_prompt.py` → `_response_format.py`.
+- **`@responseRef` now obeys the same target rule as `@payloadRef` in every port.** Only
+  TypeScript validated it; C#, Java and Python checked `@payloadRef` and never
+  `@responseRef`, so the same metadata failed one port's load and passed four — and in C#
+  the consequence was a parser returning a record nobody emitted (CS0246).
+
+Migration: [`docs/features/migrations/template-direction-outbound-vs-inbound.md`](docs/features/migrations/template-direction-outbound-vs-inbound.md).
+
+**The response RECORD differs by port, because the ports do not share a naming
+convention.** C# names records after the resolved VALUE OBJECT, so the response record
+simply IS that VO's record. Java, Kotlin and Python name them after the TEMPLATE, so a
+responding prompt gets a SECOND record, `<Prompt>Response`, beside `<Prompt>Payload`;
+Python puts it in its own `<prompt>_response.py`, because the request payload emits
+`extra="forbid"` (a mistyped render slot must fail at construction) while a reply record
+must tolerate unknown fields, and a value-object reachable from both closures could carry
+only one setting. TypeScript needs no new record — its payload types come from
+`entityFile()`, which emits per `object.value` regardless of any template.
+
+**Also fixed, found while doing it:**
+
+- **The trace helper was a fifth inbound consumer nobody had listed.** TypeScript and
+  Python derived a REPLY's parse format from `@format`; Java called the 2-arg
+  `MetaObjectExtractor.extract` overload, which hardcodes `Format.JSON`, so an XML reply
+  was inexpressible there rather than merely mis-read. All three now read
+  `@responseFormat`.
+- **A `template.prompt` got no model doc page.** The api-docs surface has always emitted
+  `api/<lang>/<pkg>/<Prompt>.md` for a top-level prompt, and that page carries a
+  "Model / metadata" back-link — but `meta docs` wrote the neutral page for
+  `template.output` alone, so the link pointed at a page nothing generated, in every doc
+  tree containing a prompt.
+- **A prompt's `@payloadRef` record was generated and documented nowhere** (C#, then
+  Python): api-docs walked `template.output` only.
+
+**The durable lesson is about the corpus, not the code.** `api-docs-cross-port` had
+exactly one template, and one `@promptStyle` on it was the whole reason it exercised the
+PROMPT and OUTPUT_PARSER paths in every port's api-docs builder. Removing that attribute —
+required, since it is prompt-only now — silently deleted the last inbound coverage in the
+corpus, and **all five ports stayed green**: a corpus that stops exercising a code path
+emits no diagnostic, only assertions that quietly cover less. The corpus now carries a
+README naming which case covers which path, so an edit that removes one has to remove its
+stated purpose too.
+
 ### Added — pre-release publishing to a private registry (no more real releases just to test a change)
 
 Trying an unreleased change against a downstream project required cutting a real release on

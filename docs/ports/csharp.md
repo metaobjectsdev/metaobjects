@@ -173,16 +173,22 @@ string output = Renderer.Render(new RenderRequest {
 `Verify` in `MetaObjects.Render` drift-checks every `template.*` against its
 `@payloadRef`. Wire it into your CI step or invoke `dotnet meta verify` directly.
 
-## FR-006 — output parsing
+## FR-006 — response parsing
 
 `OutputParserGenerator` (in `MetaObjects.Codegen`) emits one
-`<TemplateName>.output.cs` file per `template.output` declaration. The static
-`<TemplateName>Parser` class follows the BCL `Parse`/`TryParse` dual-API
-convention — `Parse` throws on bad input, `TryParse` returns a bool plus an
+`<PromptName>.response.cs` file per responding `template.prompt` — one declaring
+`@responseRef`. The static `<PromptName>Parser` class follows the BCL `Parse`/`TryParse`
+dual-API convention — `Parse` throws on bad input, `TryParse` returns a bool plus an
 out-error string.
 
+ADR-0052: the shape parsed INTO is `@responseRef`, never `@payloadRef` (which types the
+request the prompt renders outbound), and `template.output` gets no parser at all. This
+port's records are VALUE-OBJECT-named, so the response record simply IS the VO's record —
+no second naming convention. The strict tier is JSON-only: an `@responseFormat: xml`
+reply gets the tolerant extract and nothing strict.
+
 ```csharp
-// generated/NpcResponse.output.cs
+// generated/NpcResponse.response.cs
 public static class NpcResponseParser
 {
     private static readonly JsonSerializerOptions Options = new()
@@ -219,11 +225,11 @@ else
     return BadRequest(new { error });
 ```
 
-`MetaObjects.Render`'s `Verify` walks `template.output` nodes the same way
-it walks `template.prompt`, catching payload-VO ↔ parser drift at build time.
+`MetaObjects.Render`'s `Verify` walks both template subtypes, catching payload ↔
+template drift at build time.
 Cross-port design is at [ADR-0010](../../spec/decisions/ADR-0010-template-output-parser-codegen.md);
 the feature reference is at
-[`features/templates-and-payloads.md`](../features/templates-and-payloads.md#output-parsing-fr-006).
+[`features/templates-and-payloads.md`](../features/templates-and-payloads.md#response-parsing-fr-006).
 
 **Consumer dependency.** `System.Text.Json` ships in the .NET 8 BCL — no
 NuGet package to add. The generated parser uses the strict (case-sensitive)

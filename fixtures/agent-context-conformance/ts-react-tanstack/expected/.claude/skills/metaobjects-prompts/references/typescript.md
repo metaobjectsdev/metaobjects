@@ -1,15 +1,17 @@
 # TypeScript parser-on-receipt
 
-For every `template.output` in your metadata, the `outputParser()` generator (from
-`@metaobjectsdev/codegen-ts/generators`) emits a **typed parser** that validates an
-LLM/raw response against the template's `@payloadRef` payload value-object. This is
-the receive side; codegen emits **no** provider/LLM-call layer — you compose the
-call yourself.
+For every RESPONDING `template.prompt` in your metadata — one declaring
+`@responseRef` — the `outputParser()` generator (from
+`@metaobjectsdev/codegen-ts/generators`) emits a **typed parser** that validates a
+model's reply against that shape. ADR-0052: the tier binds `@responseRef`, never
+`@payloadRef` (which types the request the prompt renders outbound), and a
+`template.output` gets no parser at all. This is the receive side; codegen emits **no**
+provider/LLM-call layer — you compose the call yourself.
 
 ## Contents
 - Wire the generator
 - What it emits
-- The output-format prompt fragment (FR-010)
+- The response-format prompt fragment (FR-010)
 - The three-step consumer pattern
 - Recommended LLM caller (bring-your-own)
 - Drift gate
@@ -27,7 +29,7 @@ export default defineConfig({
   generators: [
     entityFile(), queriesFile(), barrel(),
     promptRender(),    // render<Name>() per template.prompt (the send side)
-    outputParser(),    // parse*/safeParse* per template.output (the receive side)
+    outputParser(),    // parse*/safeParse* per responding template.prompt (the receive side)
   ],
 });
 ```
@@ -37,9 +39,10 @@ options.
 
 ## What it emits
 
-Per `template.output` (say named `NpcResponseOutput`, `@payloadRef:
-"NpcResponsePayload"`), `meta gen` writes a self-contained `NpcResponseOutput.output.ts`
-with a Zod schema + a dual API:
+Per responding `template.prompt` (say named `NpcReview`, `@responseRef:
+"NpcResponse"`), `meta gen` writes a self-contained `NpcReview.response.ts` with a Zod
+schema + a dual API. The strict tier is JSON-only — an `@responseFormat: xml` reply gets
+the tolerant `extract` and no `parse`/`safeParse`:
 
 ```ts
 import { z } from "zod";
@@ -76,11 +79,11 @@ including `field.enum` — falls through to `z.unknown()` in the strict
 in the entity insert/update schemas, not in this output parser; the lenient extract
 path carries the enum-as-string handling).
 
-## The output-format prompt fragment (FR-010)
+## The response-format prompt fragment (FR-010)
 
-For every json/xml-format `template.output`, the `outputPrompt()` generator (same
-import path, `@metaobjectsdev/codegen-ts/generators`) emits a
-`<TemplateName>.prompt.ts` exporting `render<TemplateName>Format(overrides?)` —
+For every responding `template.prompt`, the `outputPrompt()` generator (same import
+path, `@metaobjectsdev/codegen-ts/generators`) emits a
+`<PromptName>.responseFormat.ts` exporting `render<PromptName>Format(overrides?)` —
 backed by the render engine's `renderOutputFormat()`. This is the "produce your
 answer like this" fragment you splice into the prompt text so the model returns the
 shape the parser above expects:
@@ -99,14 +102,16 @@ export default defineConfig({
 });
 ```
 
-`@promptStyle` on the `template.output` (`guide` default / `inline` / `exampleOnly`)
+`@promptStyle` on the `template.prompt` (`guide` default / `inline` / `exampleOnly`)
 controls the fragment's presentation: `guide` is a prose field list + example
 skeleton, `inline` is one skeleton with inline placeholders/enum choices,
 `exampleOnly` is just the filled skeleton. Guidance is never emitted as comments —
-models ignore them. Skipped for non-json/xml `@format` outputs and for any output
-whose `@payloadRef` doesn't resolve to a value-object — the same skip contract as
-`outputParser()`. The baked spec's root name matches the payload class name, so the
-fragment and the parser's `extract()` agree on the same root.
+models ignore them. Skipped for `template.output` and for any prompt whose
+`@responseRef` doesn't resolve — the same skip contract as `outputParser()`. There is NO
+format gate: the old `@format ∈ {json,xml}` test read the syntax of the outbound BODY to
+decide whether to describe the REPLY. `@responseFormat` selects which syntax the fragment
+teaches. The baked spec's root name matches the response shape, so the fragment and the
+parser's `extract()` agree on the same root.
 
 ## The three-step consumer pattern
 
@@ -164,16 +169,17 @@ recorder.
 
 ## Drift gate
 
-`meta verify` walks every `template.output`'s `@payloadRef` resolution and fails the
-build (exit 1, `(output)`-prefixed diagnostic) if a reference can't be resolved —
-catching payload-VO ↔ parser drift at build time. The emitted parser imports `zod`;
+`meta verify` walks every template's `@payloadRef` resolution and fails the build
+(exit 1) if a reference can't be resolved. A `@responseRef` that does not resolve to a
+value-object (or sourceless projection) is caught one layer earlier — it is a LOAD
+error in every port. The emitted parser imports `zod`;
 it's usually already a dependency (Drizzle / `runtime-ts` lean on it), else
 `npm i zod`.
 
 ## See which fields a template consumes
 
 Run `meta docs` to emit the model surface to `./docs` — one page per
-`template.output` at `docs/<Template>.md`. Each template page has a
+`template.*` at `docs/<Template>.md`. Each template page has a
 `## Template source` section that shows the Mustache source with every `{{var}}`
 linked to that field's doc page (`docs/<Owner>.md#field-<name>`), plus a variables
 table — so you can see exactly which payload fields a template reads. Those links are
