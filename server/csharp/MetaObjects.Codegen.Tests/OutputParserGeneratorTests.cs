@@ -116,33 +116,106 @@ public sealed class OutputParserGeneratorTests
     }
 
     [Fact]
+    public void An_xml_reply_gets_the_tolerant_extract_and_no_strict_parser()
+    {
+        // ADR-0053: the strict Parse/TryParse tier is JSON-ONLY. Not for want of an XML
+        // reader — MetaObjects.Render ships a forgiving one — but because strict
+        // all-or-nothing semantics layered over a REPAIRING parser is incoherent: it would
+        // throw or accept based on how much repair happened, which is not a contract
+        // anyone can reason about. So an XML reply gets the tolerant extract and nothing
+        // strict. Before ADR-0052 it got `JsonSerializer.Deserialize` — a generated method
+        // that could never work.
+        const string m = """
+        { "metadata.root": { "package": "acme::ai", "children": [
+          { "object.value": { "name": "Answer", "children": [ { "field.string": { "name": "text" } } ] } },
+          { "template.prompt": { "name": "AskXml", "@payloadRef": "Answer", "@responseRef": "Answer",
+                                 "@textRef": "ask/x", "@format": "text", "@responseFormat": "xml" } }
+        ]}}
+        """;
+        var file = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(m))));
+        Assert.Equal("AskXml.response.cs", file.Path);
+
+        // No strict tier — nor any of the System.Text.Json machinery it needs.
+        // Match the PUBLIC signatures, not a bare "TryParse(": the tolerant tier's
+        // coercion mappers legitimately call int.TryParse / decimal.TryParse.
+        Assert.DoesNotContain("public static Answer Parse(string text)", file.Content);
+        Assert.DoesNotContain("public static bool TryParse(string text,", file.Content);
+        Assert.DoesNotContain("using System.Text.Json;", file.Content);
+        Assert.DoesNotContain("JsonSerializer", file.Content);
+
+        // The tolerant tier IS emitted, and dispatches on the XML reader.
+        Assert.Contains("using MetaObjects.Render.Extract;", file.Content);
+        Assert.Contains("Format.Xml", file.Content);
+        Assert.DoesNotContain("Format.Json", file.Content);
+        Assert.Contains("AnswerExtracted", file.Content);
+    }
+
+    [Fact]
+    public void A_json_reply_gets_both_tiers()
+    {
+        // The control for the XML case above: same model, same everything, one attribute
+        // different. Without this pair, "no strict tier" could be passing because the
+        // generator emits nothing useful for either format.
+        const string m = """
+        { "metadata.root": { "package": "acme::ai", "children": [
+          { "object.value": { "name": "Answer", "children": [ { "field.string": { "name": "text" } } ] } },
+          { "template.prompt": { "name": "AskJson", "@payloadRef": "Answer", "@responseRef": "Answer",
+                                 "@textRef": "ask/j", "@format": "text", "@responseFormat": "json" } }
+        ]}}
+        """;
+        var file = Assert.Single(new OutputParserGenerator().Generate(Ctx(Load(m))));
+        Assert.Contains("public static Answer Parse(string text)", file.Content);
+        Assert.Contains("public static bool TryParse(string text,", file.Content);
+        Assert.Contains("using System.Text.Json;", file.Content);
+        Assert.Contains("Format.Json", file.Content);
+        Assert.DoesNotContain("Format.Xml", file.Content);
+        // Both formats get the tolerant tier — it is the strict half that is format-gated.
+        Assert.Contains("AnswerExtracted", file.Content);
+    }
+
+    [Fact]
     public void Emitted_source_compiles_alongside_the_payload_record()
     {
         // End-to-end: payload-VO codegen + output-parser codegen should compile
         // together with no errors. Guards against C# language-level regressions
         // in the emitted shape (required keyword, nullable annotations, etc.).
+        //
+        // The payload half MUST come through PayloadGenerator.Generate — the registered
+        // generator seam `dotnet meta gen` actually runs — not through PayloadCodegen
+        // directly. Calling the codec directly with a hand-written ref proves only that a
+        // record CAN be produced for a name the test already knew; it cannot see the
+        // generator failing to emit that record at all. That is exactly the ADR-0052
+        // failure mode: the parser binds @responseRef, so if the generator does not walk
+        // @responseRef the parser references a type nobody declares. Routed through the
+        // seam, deleting the inbound walk turns this red with a CS0246.
+        //
+        // @responseRef is a DIFFERENT value-object from @payloadRef here on purpose: with
+        // the two equal, the outbound walk would emit the needed record by coincidence.
         const string m = """
         { "metadata.root": { "package": "acme::ai", "children": [
+          { "object.value": { "name": "NpcRequestPayload", "children": [
+            { "field.string": { "name": "setting" } }
+          ]}},
           { "object.value": { "name": "NpcResponsePayload", "children": [
             { "field.string": { "name": "name" } },
             { "field.int":    { "name": "age" } }
           ]}},
-          { "template.prompt": { "name": "NpcResponseOutput", "@payloadRef": "NpcResponsePayload", "@responseRef": "NpcResponsePayload",
+          { "template.prompt": { "name": "NpcResponseOutput", "@payloadRef": "NpcRequestPayload", "@responseRef": "NpcResponsePayload",
                                   "@textRef": "npc/output", "@format": "text", "@responseFormat": "json" } }
         ]}}
         """;
         var root = Load(m);
         var parserSrc = Assert.Single(new OutputParserGenerator().Generate(Ctx(root))).Content;
-        var payloadSrc = PayloadCodegen.GeneratePayloadRecords(root, "NpcResponsePayload");
+        var payloadFiles = new PayloadGenerator().Generate(Ctx(root)).ToList();
+        // The record the parser binds must be among what the generator emitted.
+        Assert.Contains(payloadFiles, f => f.Path == "NpcResponsePayload.payload.cs");
 
-        // Wrap the payload record in a namespace matching the parser's.
-        var wrappedPayload = "namespace Acme.Generated;\n" + payloadSrc;
-
-        var trees = new[]
-        {
-            CSharpSyntaxTree.ParseText(parserSrc,     new CSharpParseOptions(LanguageVersion.CSharp12)),
-            CSharpSyntaxTree.ParseText(wrappedPayload, new CSharpParseOptions(LanguageVersion.CSharp12)),
-        };
+        // PayloadGenerator already emits its own `namespace {ctx.Config.Namespace};` header,
+        // which is the same namespace the parser emits under — no wrapping needed.
+        var trees = payloadFiles
+            .Select(f => CSharpSyntaxTree.ParseText(f.Content, new CSharpParseOptions(LanguageVersion.CSharp12)))
+            .Prepend(CSharpSyntaxTree.ParseText(parserSrc, new CSharpParseOptions(LanguageVersion.CSharp12)))
+            .ToArray();
         var refs = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!)
             .Split(Path.PathSeparator).Where(p => p.Length > 0)
             .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
