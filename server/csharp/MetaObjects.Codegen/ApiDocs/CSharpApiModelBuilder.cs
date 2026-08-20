@@ -184,6 +184,27 @@ public sealed class CSharpApiModelBuilder
                 "renders the output template against a typed payload",
                 returns));
         }
+        // PAYLOAD (request) — the strict record PayloadGenerator emits from @payloadRef, for ANY
+        // template subtype. Gated by that generator's own AppliesTo, which is what keeps docs from
+        // claiming a record codegen did not emit; dropping this branch is what left a
+        // template.output's payload record emitted but documented nowhere.
+        if (PayloadGenerator.AppliesTo(tmpl, root)
+            && tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is string reqRef)
+        {
+            var reqPkg = global::MetaObjects.NamingRefs.EffectivePackage(tmpl);
+            // Name the symbol from the EMITTED name, never the authored ref: an FQN ref would
+            // otherwise print `record acme::ai::SupportAnswer`, and under an ADR-0044 collision
+            // the emitted record is package-qualified while the ref is not.
+            var reqName = PayloadCodegen.ResolveEmittedName(root, reqRef, reqPkg)
+                ?? CSharpNaming.StripPkg(reqRef);
+            var reqVo = PayloadGenerator.ResolvePayloadVo(root, reqRef, reqPkg);
+            if (reqVo is not null)
+                symbols.Add(new ApiSymbol(
+                    reqName, ApiSymbolKind.Payload, ns,
+                    $"record {reqName}",
+                    "the typed payload projection rendered INTO the template",
+                    Fields: PayloadFields(reqVo)));
+        }
         // ADR-0052: the inbound symbols belong to the RESPONDING PROMPT, not to an output.
         if (OutputPromptGenerator.AppliesTo(tmpl, root))
         {
@@ -207,13 +228,19 @@ public sealed class CSharpApiModelBuilder
             // the `@payloadRef` request record here would name a type the parser never mentions.
             if (FindInbound.ResponseShape(root, tmpl) is { } inbound)
             {
-                var payloadRef = inbound.Ref;
-                var vo = inbound.Vo;
-                symbols.Add(new ApiSymbol(
-                    payloadRef, ApiSymbolKind.Payload, ns,
-                    $"record {payloadRef}",
-                    "the typed payload projection bound to the template",
-                    Fields: PayloadFields(vo)));
+                // Same rule as the request record above: the EMITTED name, never the authored ref.
+                var resPkg = global::MetaObjects.NamingRefs.EffectivePackage(tmpl);
+                var resName = PayloadCodegen.ResolveEmittedName(root, inbound.Ref, resPkg)
+                    ?? CSharpNaming.StripPkg(inbound.Ref);
+                // Deduped by NAME: when @responseRef and @payloadRef name one shape, the record
+                // above IS this record — the C# convention names it for the value-object, so both
+                // walks land on one file and documenting it twice would claim two.
+                if (!symbols.Any(sym => sym.Kind == ApiSymbolKind.Payload && sym.Name == resName))
+                    symbols.Add(new ApiSymbol(
+                        resName, ApiSymbolKind.Payload, ns,
+                        $"record {resName}",
+                        "the typed response shape a model reply is parsed into",
+                        Fields: PayloadFields(inbound.Vo)));
             }
         }
 

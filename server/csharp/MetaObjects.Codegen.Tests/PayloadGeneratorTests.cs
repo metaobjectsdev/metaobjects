@@ -45,16 +45,42 @@ public sealed class PayloadGeneratorTests
     };
 
     [Fact]
-    public void Emits_no_files_when_no_template_output_nodes()
+    public void Emits_no_files_when_there_are_no_templates()
     {
+        // The record follows @payloadRef, not the subtype, so "no files" no longer means "no
+        // template.output" — a template.prompt gets one too (Emits_the_request_record_for_a_prompt).
+        // With @payloadRef both REQUIRED and loader-validated to an object.value / sourceless
+        // object.projection, a declared template that resolves to nothing is unreachable in a
+        // valid load; a root with no templates is the honest empty case. The generator's
+        // defensive skip for an unresolvable ref is covered where it IS reachable —
+        // OutputParserGeneratorTests.A_responseRef_that_is_not_a_value_object_emits_no_parser,
+        // which exists precisely because @responseRef has no such loader rule.
+        const string m = """
+        { "metadata.root": { "package": "acme::ai", "children": [
+          { "object.value": { "name": "Payload", "children": [ { "field.string": { "name": "x" } } ] } }
+        ]}}
+        """;
+        var files = new PayloadGenerator().Generate(Ctx(Load(m))).ToList();
+        Assert.Empty(files);
+    }
+
+    [Fact]
+    public void Emits_the_request_record_for_a_prompt()
+    {
+        // C# filtered this walk to template.output, so a prompt's REQUEST shape — the payload a
+        // consumer constructs by hand and passes to the render API — got no record in this port
+        // while Java, Kotlin and Python all emitted one. It looks unbound from inside codegen
+        // because the render HELPER is outbound-only in every port, but the shipped adopter docs
+        // show exactly that call for a prompt (docs/features/templates-and-payloads.md:224).
         const string m = """
         { "metadata.root": { "package": "acme::ai", "children": [
           { "object.value": { "name": "Payload", "children": [ { "field.string": { "name": "x" } } ] } },
           { "template.prompt": { "name": "promptOnly", "@payloadRef": "Payload", "@textRef": "p/x", "@format": "text" } }
         ]}}
         """;
-        var files = new PayloadGenerator().Generate(Ctx(Load(m))).ToList();
-        Assert.Empty(files);
+        var file = Assert.Single(new PayloadGenerator().Generate(Ctx(Load(m))));
+        Assert.Equal("Payload.payload.cs", file.Path);
+        Assert.Contains("public sealed record Payload", file.Content);
     }
 
     // Regression (the fix formerly proposed on the unmerged fix/csharp-payload-generator-bare-payloadref
@@ -125,16 +151,22 @@ public sealed class PayloadGeneratorTests
                                  "@format": "text", "@responseFormat": "json" } }
         ]}}
         """;
-        var file = Assert.Single(new PayloadGenerator().Generate(Ctx(Load(m))));
-        // Named after the resolved RESPONSE value-object — not the template, not the request.
-        Assert.Equal("SupportAnswer.payload.cs", file.Path);
-        Assert.Contains("public sealed record SupportAnswer", file.Content);
-        Assert.Contains("public string? answer { get; init; }", file.Content);
-        Assert.Contains("public decimal? confidence { get; init; }", file.Content);
-        // The request shape is not this generator's business: no C# generator emits code
-        // referencing a prompt's @payloadRef type (the render helper is template.output-only),
-        // so emitting a record for it would be output nothing binds to.
-        Assert.DoesNotContain("record SupportRequest", file.Content);
+        var files = new PayloadGenerator().Generate(Ctx(Load(m))).OrderBy(f => f.Path).ToList();
+
+        // BOTH shapes get a record, in different files: the request this prompt renders outbound
+        // and the reply its parser returns are different declared shapes. This test previously
+        // asserted the request record was ABSENT, on the reasoning that nothing generated binds
+        // it — true of generated code, false of the shipped consumer surface.
+        Assert.Equal(2, files.Count);
+        var answer = Assert.Single(files, f => f.Path == "SupportAnswer.payload.cs");
+        var request = Assert.Single(files, f => f.Path == "SupportRequest.payload.cs");
+
+        // Each is named after its resolved VALUE-OBJECT — not the template.
+        Assert.Contains("public sealed record SupportAnswer", answer.Content);
+        Assert.Contains("public string? answer { get; init; }", answer.Content);
+        Assert.Contains("public decimal? confidence { get; init; }", answer.Content);
+        Assert.Contains("public sealed record SupportRequest", request.Content);
+        Assert.Contains("public string? question { get; init; }", request.Content);
     }
 
     [Fact]

@@ -37,9 +37,18 @@ public class PayloadGenerator : IGenerator
 
     public virtual IEnumerable<EmittedFile> Generate(GenContext ctx)
     {
+        // EVERY template subtype (prompt / output / toolcall) carrying a @payloadRef, matching
+        // Java, Kotlin and Python. C# alone filtered to template.output, so a template.prompt's
+        // REQUEST shape — the payload a consumer constructs and hands to the render API — got no
+        // record in this port. That is a real consumer surface, not dead output: the shipped
+        // adopter docs show exactly this call for a prompt
+        // (docs/features/templates-and-payloads.md:224, `new WelcomePromptPayload(...)` passed to
+        // Renderer.render). The render HELPER is outbound-only in every port, which is what makes
+        // this look unbound from inside codegen; the binding is hand-written by the adopter.
+        //
         // ADR-0039: Children() — resolving root scan (behavior-identical; root has no super).
-        var outputs = ctx.Root.Children()
-            .Where(c => c.Type == TYPE_TEMPLATE && c.SubType == TEMPLATE_SUBTYPE_OUTPUT)
+        var outbound = ctx.Root.Children()
+            .Where(c => c.Type == TYPE_TEMPLATE)
             .OrderBy(t => t.Name, StringComparer.Ordinal)
             .ToList();
 
@@ -51,13 +60,13 @@ public class PayloadGenerator : IGenerator
         // and a prompt's response can legitimately be the same declared shape.
         var emittedVoFqns = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var tmpl in outputs)
+        foreach (var tmpl in outbound)
         {
             if (!AppliesTo(tmpl, ctx.Root))
             {
                 // ADR-0039: resolving — @payloadRef may be inherited via an abstract template base.
                 if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is null)
-                    ctx.Warn($"{Name}: template.output \"{tmpl.Name}\" missing @payloadRef — skipped.");
+                    ctx.Warn($"{Name}: {tmpl.Type}.{tmpl.SubType} \"{tmpl.Name}\" missing @payloadRef — skipped.");
                 continue;
             }
             var payloadRef = (string)tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF)!;
@@ -93,15 +102,17 @@ public class PayloadGenerator : IGenerator
     }
 
     /// <summary>
-    /// True iff this generator emits a strict payload record for <paramref name="tmpl"/>: a
-    /// <c>template.output</c> whose <c>@payloadRef</c> resolves to a root-level
-    /// <c>object.value</c>. Single source of truth shared by the generator loop AND the
-    /// api-docs builder (so docs never claim a payload record that is not emitted). Reuses
-    /// the SAME resolver <see cref="RenderHelperGenerator.AppliesTo"/> uses (no mirror).
+    /// True iff this generator emits a strict payload record for <paramref name="tmpl"/>: ANY
+    /// <c>template.*</c> whose <c>@payloadRef</c> resolves to a root-level <c>object.value</c>.
+    /// Single source of truth shared by the generator loop AND the api-docs builder (so docs
+    /// never claim a payload record that is not emitted). Reuses the SAME resolver
+    /// <see cref="RenderHelperGenerator.AppliesTo"/> uses (no mirror), but deliberately NOT its
+    /// subtype filter: the render helper is outbound-only, while a payload record is wanted for
+    /// any template a consumer renders — which includes a prompt.
     /// </summary>
     public static bool AppliesTo(MetaData tmpl, MetaRoot root)
     {
-        if (tmpl.Type != TYPE_TEMPLATE || tmpl.SubType != TEMPLATE_SUBTYPE_OUTPUT) return false;
+        if (tmpl.Type != TYPE_TEMPLATE) return false;
         // ADR-0039: resolving — @payloadRef may be inherited via an abstract template base.
         if (tmpl.Attr(TEMPLATE_ATTR_PAYLOAD_REF) is not string payloadRef) return false;
         // ADR-0042: a bare @payloadRef resolves in the template's package.

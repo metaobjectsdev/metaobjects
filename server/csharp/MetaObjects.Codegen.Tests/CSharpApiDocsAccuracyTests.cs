@@ -27,7 +27,7 @@ namespace MetaObjects.Codegen.Tests;
 ///     emitted because it is referenced);
 ///   • BaseNode abstract entity → NO unit (no symbols);
 ///   • SummaryOutput responding template.prompt → PAYLOAD/PROMPT/OUTPUT_PARSER (ADR-0052 inbound);
-///   • SummaryDoc template.output → RENDER only (ADR-0052 outbound — no parser, ever).
+///   • SummaryDoc template.output → RENDER + PAYLOAD (ADR-0052 outbound — no parser, ever).
 /// </summary>
 public sealed class CSharpApiDocsAccuracyTests
 {
@@ -329,19 +329,27 @@ public sealed class CSharpApiDocsAccuracyTests
     }
 
     [Fact]
-    public void Output_template_documents_render_only()
+    public void Output_template_documents_render_and_its_payload_only()
     {
         // The other half of the ADR-0052 split, and the control for it: `template.output`
-        // is OUTBOUND ONLY. It documents its render helper and nothing that reads a reply —
-        // no parser, no response-format fragment. api-docs claiming an OutputParser here
-        // would be documenting a symbol codegen no longer emits.
+        // is OUTBOUND ONLY. It documents its render helper and the payload record that
+        // helper binds — and nothing that reads a reply: no parser, no response-format
+        // fragment. api-docs claiming an OutputParser here would document a symbol codegen
+        // no longer emits.
+        //
+        // PAYLOAD is asserted PRESENT because PayloadGenerator emits `<VO>.payload.cs` for
+        // this template. Dropping the symbol left that record emitted but documented
+        // nowhere, contradicting PayloadGenerator's own "AppliesTo is the SINGLE SOURCE OF
+        // TRUTH the api-docs builder shares" contract.
         var tpl = WriteTemplates();
         try
         {
             var (model, _) = BuildAndGenerate(tpl);
             var doc = model.Units.Single(u => u.Node == "SummaryDoc");
             var kinds = doc.Symbols.Select(s => s.Kind).ToHashSet();
-            Assert.Equal(new HashSet<ApiSymbolKind> { ApiSymbolKind.Render }, kinds);
+            Assert.Equal(
+                new HashSet<ApiSymbolKind> { ApiSymbolKind.Render, ApiSymbolKind.Payload },
+                kinds);
         }
         finally { Directory.Delete(tpl, recursive: true); }
     }

@@ -151,9 +151,14 @@ public sealed class OutputParserGeneratorTests
             Root = load.Root,
             Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
         };
-        // No record, therefore no parser. The two must agree, and agreeing on "nothing" is
-        // the only safe agreement available for a target neither can legally emit.
-        Assert.Empty(new PayloadGenerator().Generate(ctx));
+        // No record for the entity, therefore no parser bound to it. The two must agree, and
+        // agreeing on "nothing" is the only safe agreement available for a target neither can
+        // legally emit. The prompt's @payloadRef (a real value-object) still gets its request
+        // record — that is a different ref, and it resolves.
+        var payloads = new PayloadGenerator().Generate(ctx).ToList();
+        Assert.Equal("Req.payload.cs", Assert.Single(payloads).Path);
+        Assert.DoesNotContain(payloads, f => f.Content.Contains("record Answer"));
+
         Assert.Empty(new OutputParserGenerator().Generate(ctx));
         Assert.Empty(new OutputPromptGenerator().Generate(ctx));
         Assert.Empty(new ExtractorGenerator().Generate(ctx));
