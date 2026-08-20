@@ -30,10 +30,18 @@ def _model():
     return PythonApiModelBuilder().build(r.root, "api-docs-fixture")
 
 
-def test_builds_the_four_shared_units() -> None:
+def test_builds_the_shared_units() -> None:
     model = _model()
     nodes = sorted(u.node for u in model.units)
-    assert nodes == ["Customer", "Order", "OrderSummary", "OrderSummaryPayload"]
+    assert nodes == [
+        "Customer",
+        "Order",
+        "OrderAdvice",
+        "OrderAdvicePayload",
+        "OrderAdviceResponse",
+        "OrderSummary",
+        "OrderSummaryPayload",
+    ]
 
 
 def test_entity_documents_model_validation_dataaccess_rest_filter() -> None:
@@ -61,21 +69,42 @@ def test_value_object_is_model_only() -> None:
     assert {s.kind for s in payload.symbols} == {ApiSymbolKind.MODEL}
 
 
-def test_template_documents_payload_render_prompt_parser_extractor() -> None:
+def test_output_template_documents_payload_and_render_only() -> None:
+    """ADR-0052 — ``template.output`` is OUTBOUND. It documents the render helper and
+    the payload record that helper binds, and nothing that reads a reply."""
     model = _model()
     summary = next(u for u in model.units if u.node == "OrderSummary")
     kinds = {s.kind for s in summary.symbols}
+    assert kinds == {ApiSymbolKind.PAYLOAD, ApiSymbolKind.RENDER}
+    render = next(s for s in summary.symbols if s.kind == ApiSymbolKind.RENDER)
+    assert render.name == "render_order_summary"
+
+
+def test_responding_prompt_documents_the_inbound_tier() -> None:
+    """ADR-0052 — the INBOUND symbols belong to a responding ``template.prompt``.
+
+    This is the case the shared corpus lost when ``@promptStyle`` was stripped from
+    ``OrderSummary`` (it is prompt-only vocabulary now): the corpus's only template
+    became outbound-only, and NOTHING failed, because no test asserted that the
+    inbound symbols were still reachable. The corpus carries ``OrderAdvice`` for
+    exactly this reason."""
+    model = _model()
+    advice = next(u for u in model.units if u.node == "OrderAdvice")
+    kinds = {s.kind for s in advice.symbols}
     assert kinds == {
         ApiSymbolKind.PAYLOAD,
-        ApiSymbolKind.RENDER,
         ApiSymbolKind.PROMPT,
         ApiSymbolKind.OUTPUT_PARSER,
         ApiSymbolKind.EXTRACTOR,
     }
-    render = next(s for s in summary.symbols if s.kind == ApiSymbolKind.RENDER)
-    assert render.name == "render_order_summary"
-    parse = next(s for s in summary.symbols if s.kind == ApiSymbolKind.OUTPUT_PARSER)
-    assert parse.name == "parse_order_summary"
+    # No RENDER: the render helper is emitted for template.output alone.
+    assert ApiSymbolKind.RENDER not in kinds
+    parse = next(s for s in advice.symbols if s.kind == ApiSymbolKind.OUTPUT_PARSER)
+    assert parse.name == "parse_order_advice"
+    # The parser returns the @responseRef record, NOT the @payloadRef request record.
+    assert parse.returns == "OrderAdviceResponse"
+    payloads = sorted(s.name for s in advice.symbols if s.kind == ApiSymbolKind.PAYLOAD)
+    assert payloads == ["OrderAdvicePayload", "OrderAdviceResponse"]
 
 
 def test_unit_page_carries_the_contract_back_link() -> None:

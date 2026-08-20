@@ -85,16 +85,21 @@ def _greeting_response() -> MetaObject:
     )
 
 
-def _prompt() -> MetaTemplate:
+def _prompt(
+    *, fmt: str | None = tc.TEMPLATE_FORMAT_JSON, response_format: str | None = None
+) -> MetaTemplate:
     tmpl = MetaTemplate(TYPE_TEMPLATE, tc.TEMPLATE_SUBTYPE_PROMPT, "GreetingPrompt")
     tmpl.set_attr(tc.TEMPLATE_ATTR_TEXT_REF, "tpl/greeting")
-    tmpl.set_attr(tc.TEMPLATE_ATTR_FORMAT, tc.TEMPLATE_FORMAT_JSON)
+    if fmt is not None:
+        tmpl.set_attr(tc.TEMPLATE_ATTR_FORMAT, fmt)
+    if response_format is not None:
+        tmpl.set_attr(tc.TEMPLATE_ATTR_RESPONSE_FORMAT, response_format)
     tmpl.set_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF, "GreetingRequest")
     tmpl.set_attr(tc.TEMPLATE_ATTR_RESPONSE_REF, "GreetingResponse")
     return tmpl
 
 
-def _greeting_call(base: MetaObject) -> MetaObject:
+def _greeting_call(base: MetaObject, prompt: MetaTemplate | None = None) -> MetaObject:
     entity = MetaObject(TYPE_OBJECT, "entity", "GreetingCall")
     entity.super_data = base  # resolved super chain → _extends_base sees LlmCallBase
 
@@ -105,19 +110,19 @@ def _greeting_call(base: MetaObject) -> MetaObject:
     identity = MetaIdentity(TYPE_IDENTITY, IDENTITY_SUBTYPE_PRIMARY, "primary")
     identity.set_attr("fields", ["spanId"])
 
-    for child in (source, identity, _prompt()):
+    for child in (source, identity, prompt if prompt is not None else _prompt()):
         entity.add_child(child)
     return entity
 
 
-def _root() -> MetaRoot:
+def _root(prompt: MetaTemplate | None = None) -> MetaRoot:
     base = _llm_call_base()
     response = _greeting_response()
     request = _value_object(
         "GreetingRequest",
         [_field("prompt", fc.FIELD_SUBTYPE_STRING, **{fc.FIELD_ATTR_REQUIRED: True})],
     )
-    call = _greeting_call(base)
+    call = _greeting_call(base, prompt)
     root = MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "test")
     root.package = "metaobjects::ai"
     for c in (base, response, request, call):
@@ -161,6 +166,51 @@ def test_render_emits_record_fn_and_schema_and_persist() -> None:
     assert 'row["voRequest"] = input.llm_request' in out
     # lost-required gate drives status/error_detail.
     assert "outcome.report.has_lost_required()" in out
+
+
+# ---------------------------------------------------------------------------
+# ADR-0053 — the REPLY's syntax is @responseFormat, never @format.
+#
+# @format is the syntax of the rendered prompt BODY; @responseFormat is the syntax
+# of the model's ANSWER. They are two different facts, and a plain-text prompt
+# eliciting an XML reply is the common shape (the shipped docs-site fixture is
+# exactly that). Each case below is DISCRIMINATING: reading either attribute alone
+# gets one of them wrong.
+# ---------------------------------------------------------------------------
+
+
+def test_reply_format_comes_from_response_format_not_format() -> None:
+    """The headline case: a TEXT-bodied prompt whose reply is XML."""
+    root = _root(
+        _prompt(
+            fmt=tc.TEMPLATE_FORMAT_TEXT, response_format=tc.RESPONSE_FORMAT_XML
+        )
+    )
+    out = render_trace_helper(_call_entity(root), root)
+    assert out is not None
+    assert 'ExtractSchema(Format.XML, "GreetingResponse"' in out
+    assert "Format.JSON" not in out
+
+
+def test_reply_format_ignores_an_xml_body_when_the_reply_is_json() -> None:
+    """The mirror of the case above — so neither attribute alone can satisfy both."""
+    root = _root(
+        _prompt(fmt=tc.TEMPLATE_FORMAT_XML, response_format=tc.RESPONSE_FORMAT_JSON)
+    )
+    out = render_trace_helper(_call_entity(root), root)
+    assert out is not None
+    assert 'ExtractSchema(Format.JSON, "GreetingResponse"' in out
+    assert "Format.XML" not in out
+
+
+def test_reply_format_defaults_to_json_when_response_format_is_absent() -> None:
+    """ADR-0053's default reproduces the pre-ADR fallback exactly: anything that was
+    not ``"xml"`` was treated as JSON, which is what makes the attribute's
+    introduction behaviour-preserving rather than a new policy."""
+    root = _root(_prompt(fmt=tc.TEMPLATE_FORMAT_XML, response_format=None))
+    out = render_trace_helper(_call_entity(root), root)
+    assert out is not None
+    assert 'ExtractSchema(Format.JSON, "GreetingResponse"' in out
 
 
 def test_render_skips_abstract_entity() -> None:

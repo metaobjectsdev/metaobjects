@@ -46,6 +46,7 @@ from metaobjects.codegen import extract_schema_emitter as rse
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
+from metaobjects.codegen.generators.find_inbound import response_format_of
 from metaobjects.codegen.generators.payload_vo_generator import resolve_payload_vo
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.core.object.object_constants import OBJECT_SUBTYPE_ENTITY
@@ -168,10 +169,14 @@ def render_trace_helper(entity: MetaObject, root: MetaData) -> str | None:
     record_fn = f"record_{snake}"
     result_class = f"{entity_name}TraceResult"
 
-    # Derive the parse format from the prompt's @format attr (default json) — the
-    # SAME rule the output-parser / extractor generators use.
-    fmt = prompt.get_meta_attr(tc.TEMPLATE_ATTR_FORMAT)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
-    fmt_str = fmt if isinstance(fmt, str) else tc.TEMPLATE_FORMAT_DEFAULT
+    # ADR-0053: the REPLY's syntax is @responseFormat, not @format.
+    #
+    # This site used to read @format — the syntax of the rendered prompt BODY — to
+    # decide how to parse the model's ANSWER. They are two different FACTS: a
+    # plain-text prompt can elicit an XML reply, and the shipped docs-site fixture is
+    # exactly that shape. The SAME rule the output-parser / extractor /
+    # response-format-fragment generators use — all four go through `response_format_of`.
+    reply_fmt = response_format_of(prompt)
 
     fqn = entity.fqn()
 
@@ -185,10 +190,10 @@ def render_trace_helper(entity: MetaObject, root: MetaData) -> str | None:
     # no response VO (only @payloadRef set) the schema is an empty descriptor whose
     # extract yields ``{}``.
     if response_vo is not None:
-        schema_literal = rse.schema_literal(response_vo, fmt_str, response_vo.name)
+        schema_literal = rse.schema_literal(response_vo, reply_fmt, response_vo.name)
         helpers = rse.extract_map_imports(response_vo)
     else:
-        schema_literal = f'ExtractSchema({_format_enum(fmt_str)}, "response", [])'
+        schema_literal = f'ExtractSchema({_format_enum(reply_fmt)}, "response", [])'
         helpers = []
 
     request_doc = payload_ref if payload_ref else "the structured request object"

@@ -51,7 +51,24 @@ from metaobjects.shared.structural import KEY_IS_ARRAY
 # ---------------------------------------------------------------------------
 
 
-def _rich_root(fmt: str = "json", style: str = "guide") -> MetaRoot:
+def _brief(name: str) -> MetaObject:
+    """A minimal REQUEST shape for a responding prompt's ``@payloadRef``.
+
+    ADR-0052: ``@payloadRef`` types what the prompt renders OUTBOUND and
+    ``@responseRef`` what it parses INBOUND. Keeping them distinct is what makes
+    every assertion below discriminate between the two."""
+    q = MetaField(TYPE_FIELD, fc.FIELD_SUBTYPE_STRING, "question")
+    vo = MetaObject(TYPE_OBJECT, "value", name)
+    vo.package = "acme::ai"
+    vo.add_child(q)
+    return vo
+
+
+def _template(root: MetaRoot, name: str) -> MetaTemplate:
+    return next(c for c in root.own_children() if c.name == name)
+
+
+def _rich_root(response_fmt: str = "json", style: str = "guide") -> MetaRoot:
     title = MetaField(TYPE_FIELD, fc.FIELD_SUBTYPE_STRING, "title")
     title.set_attr(fc.FIELD_ATTR_REQUIRED, True)
     title.set_attr(fc.FIELD_ATTR_EXAMPLE, "A short headline")
@@ -76,15 +93,23 @@ def _rich_root(fmt: str = "json", style: str = "guide") -> MetaRoot:
     for f in (title, priority, count, note, tags):
         vo.add_child(f)
 
-    tmpl = MetaTemplate(TYPE_TEMPLATE, tc.TEMPLATE_SUBTYPE_OUTPUT, "TaskOutput")
-    tmpl.set_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF, "TaskPayload")
+    brief = _brief("TaskBrief")
+
+    tmpl = MetaTemplate(TYPE_TEMPLATE, tc.TEMPLATE_SUBTYPE_PROMPT, "TaskPrompt")
+    tmpl.set_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF, "TaskBrief")
+    tmpl.set_attr(tc.TEMPLATE_ATTR_RESPONSE_REF, "TaskPayload")
     tmpl.set_attr(tc.TEMPLATE_ATTR_TEXT_REF, "ai/task")
-    tmpl.set_attr(tc.TEMPLATE_ATTR_FORMAT, fmt)
+    # @format is the syntax of the rendered prompt BODY — prose. The reply's syntax
+    # is @responseFormat (ADR-0053), and the two are deliberately different here so
+    # a tier that read @format would pick the wrong one.
+    tmpl.set_attr(tc.TEMPLATE_ATTR_FORMAT, tc.TEMPLATE_FORMAT_TEXT)
+    tmpl.set_attr(tc.TEMPLATE_ATTR_RESPONSE_FORMAT, response_fmt)
     tmpl.set_attr(tc.TEMPLATE_ATTR_PROMPT_STYLE, style)
 
     root = MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "test")
     root.package = "acme::ai"
     root.add_child(vo)
+    root.add_child(brief)
     root.add_child(tmpl)
     return root
 
@@ -138,7 +163,7 @@ def test_extract_schema_literal_bakes_enum_alias_and_values() -> None:
 def test_output_format_spec_literal_bakes_example_instruction_enum_doc() -> None:
     root = _rich_root(style="inline")
     vo = root.own_children()[0]
-    tmpl = root.own_children()[1]
+    tmpl = _template(root, "TaskPrompt")
     lit = ofs.spec_literal(vo, tmpl, "TaskPayload")
     assert lit.startswith('OutputFormatSpec(Format.JSON, "TaskPayload", PromptStyle.INLINE, [')
     assert 'example="A short headline"' in lit
@@ -147,25 +172,36 @@ def test_output_format_spec_literal_bakes_example_instruction_enum_doc() -> None
     assert 'array=True' in lit  # the tags array field
 
 
-def test_xml_format_selects_xml_enum_and_skips_extract_for_text() -> None:
-    xml_root = _rich_root(fmt="xml")
-    parser = render_output_parser(xml_root.own_children()[1], xml_root)
+def test_xml_response_format_selects_xml_enum_and_drops_the_strict_tier() -> None:
+    xml_root = _rich_root(response_fmt=tc.RESPONSE_FORMAT_XML)
+    parser = render_output_parser(_template(xml_root, "TaskPrompt"), xml_root)
     assert parser is not None
     # The single (loader-delegating) extract path passes Format.XML to the runtime extract.
     assert "extract_object(mo, text, Format.XML, opts)" in parser
-    assert "def extract_lenient_task_output_with_loader(" in parser
+    assert "def extract_lenient_task_prompt_with_loader(" in parser
     # No baked snapshot survives (Move 1).
     assert "ExtractSchema" not in parser
-    assert "def extract_lenient_task_output(" not in parser
+    assert "def extract_lenient_task_prompt(" not in parser
+    # ADR-0053 — the strict tier is JSON-only, so an XML reply gets no parse_*.
+    assert "def parse_task_prompt(" not in parser
 
-    text_root = _rich_root(fmt="text")
-    text_parser = render_output_parser(text_root.own_children()[1], text_root)
-    assert text_parser is not None
-    # text-format outputs get NO extract — strict parser only.
-    assert "def extract_lenient_task_output" not in text_parser
-    assert "extract_object" not in text_parser
-    # ...and no prompt fragment.
-    assert render_output_prompt(text_root.own_children()[1], text_root) is None
+
+def test_a_text_bodied_prompt_gets_the_full_inbound_tier() -> None:
+    """ADR-0052/0053 — the reply's syntax is ``@responseFormat``. ``_rich_root``
+    declares ``@format: text`` (a prompt BODY is prose) and ``@responseFormat: json``,
+    and the whole inbound tier is emitted off the latter. The pre-ADR-0052 code read
+    ``@format`` here and emitted NO extract and NO fragment for exactly this shape —
+    a text-bodied prompt asking for a JSON answer, which is the common case."""
+    root = _rich_root()
+    tmpl = _template(root, "TaskPrompt")
+    assert tmpl.get_meta_attr(tc.TEMPLATE_ATTR_FORMAT) == tc.TEMPLATE_FORMAT_TEXT
+
+    parser = render_output_parser(tmpl, root)
+    assert parser is not None
+    assert "def parse_task_prompt(" in parser
+    assert "extract_object(mo, text, Format.JSON, opts)" in parser
+    # ...and the response-format fragment is emitted too.
+    assert render_output_prompt(tmpl, root) is not None
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +221,7 @@ def test_generated_extract_folds_alias_and_classifies(tmp_path, monkeypatch) -> 
     _materialize(pkg_dir, [*payload_files, *parser_files, *prompt_files])
     _import_pkg(pkg_dir, monkeypatch)
 
-    parser_mod = importlib.import_module("_fr010_pkg.task_output_output_parser")
+    parser_mod = importlib.import_module("_fr010_pkg.task_prompt_response_parser")
 
     # Dirty input: preamble prose + ```json fence + off-vocab alias "medium"
     # (folds to LOW) + a missing optional ("note" absent). Mirrors the C# proof
@@ -201,7 +237,7 @@ def test_generated_extract_folds_alias_and_classifies(tmp_path, monkeypatch) -> 
         "```\n"
         "Hope that helps!"
     )
-    result = parser_mod.extract_lenient_task_output_with_loader(root, dirty)
+    result = parser_mod.extract_lenient_task_prompt_with_loader(root, dirty)
 
     # The @enumAlias fold: off-vocab "medium" -> canonical "LOW".
     assert result.data is not None
@@ -234,8 +270,8 @@ def test_generated_render_format_emits_comment_free_guide(tmp_path, monkeypatch)
     _materialize(pkg_dir, [*payload_files, *parser_files, *prompt_files])
     _import_pkg(pkg_dir, monkeypatch)
 
-    prompt_mod = importlib.import_module("_fr010_pkg.task_output_output_prompt")
-    fragment = prompt_mod.render_task_output_format()
+    prompt_mod = importlib.import_module("_fr010_pkg.task_prompt_response_format")
+    fragment = prompt_mod.render_task_prompt_format()
 
     assert isinstance(fragment, str) and fragment.strip()
     # The guide carries the field instructions/examples in PROSE, never in
@@ -250,7 +286,7 @@ def test_generated_render_format_emits_comment_free_guide(tmp_path, monkeypatch)
 def test_prompt_generator_emits_one_file_named_by_template(tmp_path) -> None:
     root = _rich_root()
     files = OutputPromptGenerator().generate(_ctx(root))
-    assert [f.path for f in files] == ["task_output_output_prompt.py"]
+    assert [f.path for f in files] == ["task_prompt_response_format.py"]
 
 
 # ---------------------------------------------------------------------------
@@ -276,15 +312,20 @@ def _fr011_root() -> MetaRoot:
     for f in (text, confidence):
         vo.add_child(f)
 
-    tmpl = MetaTemplate(TYPE_TEMPLATE, tc.TEMPLATE_SUBTYPE_OUTPUT, "OpinionOutput")
-    tmpl.set_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF, "OpinionPayload")
+    brief = _brief("OpinionBrief")
+
+    tmpl = MetaTemplate(TYPE_TEMPLATE, tc.TEMPLATE_SUBTYPE_PROMPT, "OpinionPrompt")
+    tmpl.set_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF, "OpinionBrief")
+    tmpl.set_attr(tc.TEMPLATE_ATTR_RESPONSE_REF, "OpinionPayload")
     tmpl.set_attr(tc.TEMPLATE_ATTR_TEXT_REF, "ai/opinion")
-    tmpl.set_attr(tc.TEMPLATE_ATTR_FORMAT, "json")
+    tmpl.set_attr(tc.TEMPLATE_ATTR_FORMAT, tc.TEMPLATE_FORMAT_TEXT)
+    tmpl.set_attr(tc.TEMPLATE_ATTR_RESPONSE_FORMAT, tc.RESPONSE_FORMAT_JSON)
     tmpl.set_attr(tc.TEMPLATE_ATTR_PROMPT_STYLE, "guide")
 
     root = MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "test")
     root.package = "acme::ai"
     root.add_child(vo)
+    root.add_child(brief)
     root.add_child(tmpl)
     return root
 
@@ -312,11 +353,11 @@ def test_generated_extract_folds_coerce_default_and_classifies_defaulted(
     _materialize(pkg_dir, [*payload_files, *parser_files, *prompt_files])
     _import_pkg(pkg_dir, monkeypatch)
 
-    parser_mod = importlib.import_module("_fr010_pkg.opinion_output_output_parser")
+    parser_mod = importlib.import_module("_fr010_pkg.opinion_prompt_response_parser")
 
     # Off-vocab confidence "banana" → folds to @coerceDefault "LOW", DEFAULTED.
     dirty = '{"text":"hi","confidence":"banana"}'
-    result = parser_mod.extract_lenient_opinion_output_with_loader(root, dirty)
+    result = parser_mod.extract_lenient_opinion_prompt_with_loader(root, dirty)
 
     assert result.data is not None
     assert result.data.text == "hi"
@@ -374,10 +415,14 @@ def _nested_root() -> MetaRoot:
     for f in (customer, address, items):
         order_vo.add_child(f)
 
-    tmpl = MetaTemplate(TYPE_TEMPLATE, tc.TEMPLATE_SUBTYPE_OUTPUT, "OrderOutput")
-    tmpl.set_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF, "OrderPayload")
+    brief = _brief("OrderBrief")
+
+    tmpl = MetaTemplate(TYPE_TEMPLATE, tc.TEMPLATE_SUBTYPE_PROMPT, "OrderPrompt")
+    tmpl.set_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF, "OrderBrief")
+    tmpl.set_attr(tc.TEMPLATE_ATTR_RESPONSE_REF, "OrderPayload")
     tmpl.set_attr(tc.TEMPLATE_ATTR_TEXT_REF, "ai/order")
-    tmpl.set_attr(tc.TEMPLATE_ATTR_FORMAT, "json")
+    tmpl.set_attr(tc.TEMPLATE_ATTR_FORMAT, tc.TEMPLATE_FORMAT_TEXT)
+    tmpl.set_attr(tc.TEMPLATE_ATTR_RESPONSE_FORMAT, tc.RESPONSE_FORMAT_JSON)
     tmpl.set_attr(tc.TEMPLATE_ATTR_PROMPT_STYLE, "guide")
 
     # Payload VOs first (so resolve_payload_vo + the nested @objectRef walk find them),
@@ -385,33 +430,34 @@ def _nested_root() -> MetaRoot:
     root.add_child(order_vo)
     root.add_child(address_vo)
     root.add_child(item_vo)
+    root.add_child(brief)
     root.add_child(tmpl)
     return root
 
 
-def _stub_order_payload() -> list[EmittedFile]:
-    """A minimal importable strict-parser payload module for the nested proof.
+def _stub_order_response() -> list[EmittedFile]:
+    """A minimal importable strict-parser response module for the nested proof.
 
-    The generated parser's strict ``parse_*`` does ``from .order_output_payload
-    import OrderOutputPayload``, so SOME payload module must exist on import. The
-    strict Pydantic emit for *nested-object* payload fields is an orthogonal,
+    The generated parser's strict ``parse_*`` does ``from .order_prompt_response
+    import OrderPromptResponse``, so SOME record module must exist on import. The
+    strict Pydantic emit for *nested-object* record fields is an orthogonal,
     pre-existing payload-VO codegen concern; this proof targets ONLY the
-    runtime-delegating extract path, which never touches the strict payload class.
+    runtime-delegating extract path, which never touches the strict record class.
     A hand-written stub keeps the proof focused and import-clean."""
     src = (
         "from __future__ import annotations\n\n"
         "from pydantic import BaseModel\n\n\n"
-        "class OrderOutputPayload(BaseModel):\n"
+        "class OrderPromptResponse(BaseModel):\n"
         "    customer: str\n"
     )
-    return [EmittedFile(path="order_output_payload.py", content=src)]
+    return [EmittedFile(path="order_prompt_response.py", content=src)]
 
 
 def test_nested_mirror_dataclasses_are_typed_not_object() -> None:
     """The emitted parser types the nested mirror fields as the nested ``*Extracted``
     dataclasses (+ ``list[...]``), not a flat ``object``/``str`` — the gap-closing shape."""
     root = _nested_root()
-    parser = render_output_parser(root.own_children()[-1], root)
+    parser = render_output_parser(_template(root, "OrderPrompt"), root)
     assert parser is not None
     # nested single object -> the nested mirror type
     assert 'address: "AddressPayloadExtracted" | None = None' in parser
@@ -422,7 +468,7 @@ def test_nested_mirror_dataclasses_are_typed_not_object() -> None:
     assert "class LineItemPayloadExtracted:" in parser
     # the delegating entry + baked payload name
     assert 'PAYLOAD_NAME = "OrderPayload"' in parser
-    assert "def extract_lenient_order_output_with_loader(" in parser
+    assert "def extract_lenient_order_prompt_with_loader(" in parser
     assert "extract_object(mo, text, Format.JSON, opts)" in parser
 
 
@@ -437,10 +483,10 @@ def test_delegating_extract_populates_nested_and_array_of_objects(
     assert len(parser_files) == 1
 
     pkg_dir = str(tmp_path / "_fr010_pkg")
-    _materialize(pkg_dir, [*_stub_order_payload(), *parser_files])
+    _materialize(pkg_dir, [*_stub_order_response(), *parser_files])
     _import_pkg(pkg_dir, monkeypatch)
 
-    parser_mod = importlib.import_module("_fr010_pkg.order_output_output_parser")
+    parser_mod = importlib.import_module("_fr010_pkg.order_prompt_response_parser")
 
     dirty = (
         "Here's the order:\n"
@@ -457,7 +503,7 @@ def test_delegating_extract_populates_nested_and_array_of_objects(
     )
 
     # --- the single (delegating) path: nested + array-of-objects FULLY populate ---
-    result = parser_mod.extract_lenient_order_output_with_loader(root, dirty)
+    result = parser_mod.extract_lenient_order_prompt_with_loader(root, dirty)
     assert result.data is not None
     assert result.data.customer == "Ada"
 
@@ -485,14 +531,14 @@ def test_delegating_extract_raises_on_unknown_payload(tmp_path, monkeypatch) -> 
     parser_files = OutputParserGenerator().generate(_ctx(root))
 
     pkg_dir = str(tmp_path / "_fr010_pkg")
-    _materialize(pkg_dir, [*_stub_order_payload(), *parser_files])
+    _materialize(pkg_dir, [*_stub_order_response(), *parser_files])
     _import_pkg(pkg_dir, monkeypatch)
 
-    parser_mod = importlib.import_module("_fr010_pkg.order_output_output_parser")
+    parser_mod = importlib.import_module("_fr010_pkg.order_prompt_response_parser")
 
     empty = MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "empty")
     empty.package = "acme::ai"
     import pytest
 
     with pytest.raises(ValueError, match="OrderPayload"):
-        parser_mod.extract_lenient_order_output_with_loader(empty, "{}")
+        parser_mod.extract_lenient_order_prompt_with_loader(empty, "{}")

@@ -1,17 +1,22 @@
-"""Output-prompt codegen — one ``<name>_output_prompt.py`` per json/xml
-``template.output`` declaration.
+"""Response-format fragment codegen — one ``<name>_response_format.py`` per
+responding ``template.prompt`` declaration.
 
-FR-010 artifact 1 (Python port). For each ``template.output`` whose ``@format`` is
-``json`` or ``xml`` and whose ``@payloadRef`` resolves to an ``object.value``, emits a
-module exposing ``render_<name>_format(overrides=None) -> str`` backed by the render
-engine's :func:`~metaobjects.render.render_output_format` (the "produce your answer
-like this" fragment).
+FR-010 artifact 1 (Python port). For each ``template.prompt`` whose ``@responseRef``
+resolves to a payload target, emits a module exposing
+``render_<name>_format(overrides=None) -> str`` backed by the render engine's
+:func:`~metaobjects.render.render_output_format` (the "produce your answer like this"
+fragment).
 
-The baked :class:`~metaobjects.render.OutputFormatSpec`'s ``root_name`` is the payload
-class name, so the prompt fragment and the ``extract_<name>()`` codegen agree on the
+ADR-0052/0053 — the gate is ``@responseRef`` PRESENCE, never a format value. The old
+``@format ∈ {json,xml}`` gate read the syntax of the OUTBOUND body to decide whether to
+instruct the model about the syntax of its REPLY, so a text-bodied prompt asking for a
+JSON answer — the common case — got no fragment at all. Both reply formats now get one;
+``@responseFormat`` only selects which.
+
+The baked :class:`~metaobjects.render.OutputFormatSpec`'s ``root_name`` is the RESPONSE
+record's class name, so the fragment and the ``extract_<name>()`` codegen agree on the
 root element/object name. Mirrors the C# ``OutputPromptGenerator`` / Java
-``SpringOutputPromptGenerator``. Skips: ``template.prompt``, missing/unresolved
-``@payloadRef``, and ``@format`` values other than json/xml.
+``SpringOutputPromptGenerator``.
 """
 from __future__ import annotations
 
@@ -22,20 +27,16 @@ from metaobjects.codegen import output_format_spec_emitter as ofs
 from metaobjects.codegen.constants import generated_header
 from metaobjects.codegen.format import ruff_format
 from metaobjects.codegen.generator import EmittedFile, GenContext, Generator
-from metaobjects.codegen.generators.payload_vo_generator import (
-    payload_class_name,
-    resolve_payload_vo,
+from metaobjects.codegen.generators.find_inbound import (
+    inbound_templates,
+    response_shape,
 )
+from metaobjects.codegen.generators.payload_vo_generator import response_class_name
 from metaobjects.meta.core.object.meta_object import MetaObject
 from metaobjects.meta.meta_data import MetaData
-from metaobjects.meta.template import template_constants as tc
-from metaobjects.shared.base_types import TYPE_TEMPLATE
 from metaobjects.shared.separators import PACKAGE_SEP
 
 _GENERATOR_NAME = "output-prompt-generator"
-
-# Only structured formats get a renderable output-format fragment.
-_PROMPT_FORMATS = frozenset({tc.TEMPLATE_FORMAT_JSON, tc.TEMPLATE_FORMAT_XML})
 
 
 def _pkg_of(node: MetaData) -> str:
@@ -64,34 +65,27 @@ def render_output_prompt(
     *,
     generator: "OutputPromptGenerator | None" = None,
 ) -> str | None:
-    """Render one output-prompt module for a json/xml ``template.output`` node.
+    """Render one response-format fragment module for a responding ``template.prompt``.
 
     When *generator* is supplied, its ``_emit_format_spec`` override is used to bake
     the ``OutputFormatSpec`` literal (the extension seam); when ``None`` the
     module-level default is used (byte-identical back-compat path).
 
-    Returns ``None`` when the format is unsupported (not json/xml) or the
-    ``@payloadRef`` can't be resolved to an ``object.value`` (defensive — the loader
-    validation pass / the parser generator share this contract)."""
-    fmt = template.get_meta_attr(tc.TEMPLATE_ATTR_FORMAT)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
-    fmt_str = fmt if isinstance(fmt, str) else tc.TEMPLATE_FORMAT_DEFAULT
-    if fmt_str.lower() not in _PROMPT_FORMATS:
+    Returns ``None`` when the template declares no ``@responseRef`` or the ref can't
+    be resolved to a payload target (defensive — the loader validation pass / the
+    parser generator share this contract)."""
+    # ADR-0052: the fragment describes the RESPONSE shape, so it binds @responseRef —
+    # never @payloadRef, which types the request this prompt renders outbound.
+    shape = response_shape(root, template, _pkg_of(template))
+    if shape is None:
         return None
-
-    payload_ref = template.get_meta_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF)  # ADR-0039: template attr resolves via extends (not origin; templates CAN extend)
-    if not isinstance(payload_ref, str) or not payload_ref:
-        return None
-    # ADR-0042 (#228): the referrer is THIS template — a bare @payloadRef resolves
-    # in ITS OWN package first.
-    payload = resolve_payload_vo(root, payload_ref, _pkg_of(template))
-    if payload is None:
-        return None
+    payload = shape.vo
 
     template_name = template.name
     snake = _snake_case(template_name)
     render_fn = f"render_{snake}_format"
-    # root_name == payload class name so the fragment and extract() agree.
-    root_name = payload_class_name(template_name)
+    # root_name == the RESPONSE record's class name so the fragment and extract() agree.
+    root_name = response_class_name(template_name)
     emit_spec = generator._emit_format_spec if generator is not None else _emit_format_spec
     spec_literal = emit_spec(payload, template, root_name)
 
@@ -116,12 +110,12 @@ def render_output_prompt(
         ")",
         "",
         "",
-        "# FR-010 artifact 1 — the baked output-format descriptor for this template.",
+        "# FR-010 artifact 1 — the baked response-format descriptor for this prompt.",
         f"_SPEC: OutputFormatSpec = {spec_literal}",
         "",
         "",
         f"def {render_fn}(overrides: PromptOverrides | None = None) -> str:",
-        '    """The output-format instruction fragment ("produce your answer like this").',
+        '    """The response-format instruction fragment ("produce your answer like this").',
         "",
         "    A comment-free guide / inline / example-only fragment teaching an LLM how to",
         "    shape its answer. Pass ``overrides`` to swap the style or override a field's",
@@ -136,8 +130,8 @@ def render_output_prompt(
 
 
 class OutputPromptGenerator:
-    """Generator wrapping :func:`render_output_prompt`. Emits one file per json/xml
-    ``template.output`` declared at root level."""
+    """Generator wrapping :func:`render_output_prompt`. Emits one file per responding
+    ``template.prompt`` declared at root level (ADR-0052)."""
 
     name = _GENERATOR_NAME
 
@@ -155,8 +149,8 @@ class OutputPromptGenerator:
         return _emit_format_spec(payload, template, root_name)
 
     def _render_module(self, template: MetaData, root: MetaData) -> str | None:
-        """EXTENSION SEAM — render the whole output-prompt module for one
-        ``template.output``. Defaults to :func:`render_output_prompt` (passing this
+        """EXTENSION SEAM — render the whole response-format module for one responding
+        ``template.prompt``. Defaults to :func:`render_output_prompt` (passing this
         instance so the ``_emit_format_spec`` override is honored). Override to
         pre/post-process the emitted source or replace the render path."""
         return render_output_prompt(template, root, generator=self)
@@ -166,24 +160,16 @@ class OutputPromptGenerator:
         if root is None:
             return []
         files: list[EmittedFile] = []
-        outputs = sorted(
-            (
-                # ADR-0039 sanctioned own: top-level scan on the loader ROOT (never extended, own == effective)
-                c
-                for c in root.own_children()
-                if c.type == TYPE_TEMPLATE and c.sub_type == tc.TEMPLATE_SUBTYPE_OUTPUT
-            ),
-            key=lambda c: c.name,
-        )
-        for tmpl in outputs:
+        # ADR-0052: the direction rule lives in FindInbound, never re-derived here.
+        for tmpl in inbound_templates(root):
             content = self._render_module(tmpl, root)
             if content is None:
-                # Not an error — text-format outputs and unresolved payloads are
-                # simply skipped (no prompt fragment), matching the C# contract.
+                # Not an error — an unresolvable @responseRef is simply skipped (no
+                # fragment), matching the C# contract.
                 continue
             files.append(
                 EmittedFile(
-                    path=f"{_snake_case(tmpl.name)}_output_prompt.py",
+                    path=f"{_snake_case(tmpl.name)}_response_format.py",
                     content=ruff_format(content),
                 )
             )

@@ -120,7 +120,7 @@ def test_output_parser_emits_both_colliding_mirrors_and_mappers() -> None:
     files = [
         f
         for f in OutputParserGenerator().generate(_ctx(_load_corpus_root()))
-        if f.path == "digest_doc_output_parser.py"
+        if f.path == "digest_prompt_response_parser.py"
     ]
     assert len(files) == 1
     src = files[0].content
@@ -158,7 +158,7 @@ def test_extractor_imports_and_maps_both_colliding_strict_payload_classes() -> N
     files = [
         f
         for f in ExtractorGenerator().generate(_ctx(_load_corpus_root()))
-        if f.path == "digest_doc_extractor.py"
+        if f.path == "digest_prompt_extractor.py"
     ]
     assert len(files) == 1
     src = files[0].content
@@ -189,7 +189,7 @@ def test_payload_module_emits_both_colliding_classes_never_bare_note() -> None:
     files = [
         f
         for f in PayloadVoGenerator().generate(_ctx(_load_corpus_root()))
-        if f.path == "digest_doc_payload.py"
+        if f.path == "digest_prompt_response.py"
     ]
     assert len(files) == 1
     src = files[0].content
@@ -210,7 +210,7 @@ def test_extract_and_extract_lenient_run_each_nested_vo_into_its_own_shape(
     root = _load_corpus_root()
     files = _all_files(root)
     _materialize_and_import(files, tmp_path, "_xpkg_collision_pkg")
-    ex = import_module("_xpkg_collision_pkg.digest_doc_extractor")
+    ex = import_module("_xpkg_collision_pkg.digest_prompt_extractor")
 
     text = json.dumps(
         {"fromAlpha": {"alphaText": "AA"}, "fromBeta": {"betaText": "BB"}}
@@ -218,14 +218,14 @@ def test_extract_and_extract_lenient_run_each_nested_vo_into_its_own_shape(
 
     # Tolerant delegating extract (never raises) — each nested field keeps its
     # OWN shape.
-    lenient = ex.extract_lenient_digest_doc(root, text)
+    lenient = ex.extract_lenient_digest_prompt(root, text)
     assert lenient.report.has_lost_required() is False
     assert lenient.data.fromAlpha.alphaText == "AA"
     assert lenient.data.fromBeta.betaText == "BB"
 
     # Strict extract — full type fidelity end-to-end (payload module + output
     # parser + extractor all agree on the SAME qualified classes).
-    strict = ex.extract_digest_doc(root, text)
+    strict = ex.extract_digest_prompt(root, text)
     assert strict.fromAlpha.alphaText == "AA"
     assert strict.fromBeta.betaText == "BB"
     assert type(strict.fromAlpha).__name__ == "AcmeAlphaNotePayload"
@@ -256,11 +256,13 @@ def _value_object(name: str, fields: list[MetaField]) -> MetaObject:
     return obj
 
 
-def _output_template(name: str, payload_ref: str) -> MetaTemplate:
-    tmpl = MetaTemplate(TYPE_TEMPLATE, tc.TEMPLATE_SUBTYPE_OUTPUT, name)
+def _responding_prompt(name: str, payload_ref: str, response_ref: str) -> MetaTemplate:
+    """ADR-0052 — the inbound tier keys on a ``template.prompt`` declaring
+    ``@responseRef``; a ``template.output`` emits no parser, extractor or fragment."""
+    tmpl = MetaTemplate(TYPE_TEMPLATE, tc.TEMPLATE_SUBTYPE_PROMPT, name)
     tmpl.set_attr(tc.TEMPLATE_ATTR_PAYLOAD_REF, payload_ref)
-    tmpl.set_attr(tc.TEMPLATE_ATTR_TEXT_REF, "tpl/output")
-    tmpl.set_attr(tc.TEMPLATE_ATTR_FORMAT, "json")
+    tmpl.set_attr(tc.TEMPLATE_ATTR_RESPONSE_REF, response_ref)
+    tmpl.set_attr(tc.TEMPLATE_ATTR_TEXT_REF, "tpl/prompt")
     return tmpl
 
 
@@ -279,7 +281,7 @@ def test_no_churn_non_colliding_nested_vo_keeps_bare_names() -> None:
             )
         ],
     )
-    tmpl = _output_template("WidgetOut", "Widget")
+    tmpl = _responding_prompt("WidgetPrompt", "Widget", "Widget")
     root = MetaRoot(TYPE_METADATA, SUBTYPE_ROOT, "test")
     root.package = "acme::demo"
     for c in (detail, widget, tmpl):
@@ -287,7 +289,11 @@ def test_no_churn_non_colliding_nested_vo_keeps_bare_names() -> None:
 
     parser_src = OutputParserGenerator().generate(_ctx(root))[0].content
     extractor_src = ExtractorGenerator().generate(_ctx(root))[0].content
-    payload_src = PayloadVoGenerator().generate(_ctx(root))[0].content
+    payload_src = next(
+        f
+        for f in PayloadVoGenerator().generate(_ctx(root))
+        if f.path == "widget_prompt_response.py"
+    ).content
 
     assert "class DetailExtracted:" in parser_src
     assert "def _from_detail_extracted(" in parser_src
@@ -332,8 +338,8 @@ def test_no_churn_non_colliding_nested_vo_keeps_bare_names() -> None:
 
 def _load_two_package_report_collision_root(*, beta_first: bool = False) -> MetaRoot:
     """Two packages, each declaring its OWN bare-colliding ``Report`` value-object
-    and a ``template.output`` that references it via a BARE (same-package)
-    ``@payloadRef`` — the realistic common case (mirrors the TS reference's
+    and a responding ``template.prompt`` that references it via a BARE (same-package)
+    ``@responseRef`` — the realistic common case (mirrors the TS reference's
     ``ReportDocAlpha``/``ReportDocBeta`` test). *beta_first* controls load order
     (``MetaDataLoader().load()`` processes an in-memory source list in the given
     order — unlike the CLI's directory scan, there is no filename to sort by)."""
@@ -350,11 +356,12 @@ def _load_two_package_report_collision_root(*, beta_first: bool = False) -> Meta
                     }
                 },
                 {
-                    "template.output": {
+                    "template.prompt": {
                         "name": "ReportDocAlpha",
                         "@payloadRef": "Report",
+                        "@responseRef": "Report",
                         "@textRef": "unused/a",
-                        "@format": "json",
+                        "@responseFormat": "json",
                     }
                 },
             ],
@@ -373,11 +380,12 @@ def _load_two_package_report_collision_root(*, beta_first: bool = False) -> Meta
                     }
                 },
                 {
-                    "template.output": {
+                    "template.prompt": {
                         "name": "ReportDocBeta",
                         "@payloadRef": "Report",
+                        "@responseRef": "Report",
                         "@textRef": "unused/b",
-                        "@format": "json",
+                        "@responseFormat": "json",
                     }
                 },
             ],
@@ -404,18 +412,18 @@ def test_colliding_own_payload_name_binds_own_package_bakes_fqn(
     root = _load_two_package_report_collision_root(beta_first=beta_first)
     files = OutputParserGenerator().generate(_ctx(root))
     alpha_src = next(
-        f for f in files if f.path == "report_doc_alpha_output_parser.py"
+        f for f in files if f.path == "report_doc_alpha_response_parser.py"
     ).content
     beta_src = next(
-        f for f in files if f.path == "report_doc_beta_output_parser.py"
+        f for f in files if f.path == "report_doc_beta_response_parser.py"
     ).content
 
     # Each template's STRICT parser binds its OWN package's shape — proves
     # round 2's build-time resolve_payload_vo fix (never load-order-dependent).
-    assert "def parse_report_doc_alpha(text: str) -> ReportDocAlphaPayload:" in alpha_src
-    assert "from .report_doc_alpha_payload import ReportDocAlphaPayload" in alpha_src
-    assert "def parse_report_doc_beta(text: str) -> ReportDocBetaPayload:" in beta_src
-    assert "from .report_doc_beta_payload import ReportDocBetaPayload" in beta_src
+    assert "def parse_report_doc_alpha(text: str) -> ReportDocAlphaResponse:" in alpha_src
+    assert "from .report_doc_alpha_response import ReportDocAlphaResponse" in alpha_src
+    assert "def parse_report_doc_beta(text: str) -> ReportDocBetaResponse:" in beta_src
+    assert "from .report_doc_beta_response import ReportDocBetaResponse" in beta_src
 
     # Each bakes ITS OWN FQN — never the bare "Report", never the other's FQN.
     assert 'PAYLOAD_NAME = "acme::alpha::Report"' in alpha_src
@@ -456,9 +464,9 @@ def test_colliding_own_payload_names_run_verified_each_extracts_its_own_shape(
     )
     _materialize_and_import(files, tmp_path, "_payload_collision_pkg")
     alpha_mod = import_module(
-        "_payload_collision_pkg.report_doc_alpha_output_parser"
+        "_payload_collision_pkg.report_doc_alpha_response_parser"
     )
-    beta_mod = import_module("_payload_collision_pkg.report_doc_beta_output_parser")
+    beta_mod = import_module("_payload_collision_pkg.report_doc_beta_response_parser")
 
     # Strict, throw-only parse (FR-006) — each binds its OWN package's shape.
     alpha_payload = alpha_mod.parse_report_doc_alpha(json.dumps({"alphaVal": "AV"}))
@@ -491,13 +499,13 @@ def test_no_churn_unique_payload_name_keeps_bare_scan_no_fqn_resolver() -> None:
     TODAY'S exact runtime lookup — bare ``PAYLOAD_NAME`` + the
     ``root.own_children()`` scan — with NO FQN bake and NO
     ``resolve_object_ref`` import/call. Reuses the xpkg-collision-json corpus's
-    ``DigestDoc`` template, whose OWN payload (``Digest``) is unique (only the
+    ``DigestPrompt`` template, whose OWN response shape (``Digest``) is unique (only the
     NESTED ``Note`` VOs collide — a different, already-fixed concern)."""
     root = _load_corpus_root()
     files = [
         f
         for f in OutputParserGenerator().generate(_ctx(root))
-        if f.path == "digest_doc_output_parser.py"
+        if f.path == "digest_prompt_response_parser.py"
     ]
     assert len(files) == 1
     src = files[0].content
