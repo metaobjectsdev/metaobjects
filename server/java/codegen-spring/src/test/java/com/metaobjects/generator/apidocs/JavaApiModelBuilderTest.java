@@ -12,6 +12,7 @@ import java.util.EnumSet;
 import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -124,8 +125,13 @@ public class JavaApiModelBuilderTest extends SharedRegistryTestBase {
         assertEquals("template unit kind", "template", tmpl.kind());
         assertTrue("PAYLOAD SummaryOutputPayload", has(tmpl, ApiSymbolKind.PAYLOAD, "SummaryOutputPayload"));
         assertTrue("RENDER SummaryOutputRenderHelper", has(tmpl, ApiSymbolKind.RENDER, "SummaryOutputRenderHelper"));
-        assertTrue("PROMPT SummaryOutputPrompt", has(tmpl, ApiSymbolKind.PROMPT, "SummaryOutputPrompt"));
-        assertTrue("OUTPUT_PARSER SummaryOutputParser", has(tmpl, ApiSymbolKind.OUTPUT_PARSER, "SummaryOutputParser"));
+        // ADR-0052: SummaryOutput is a template.output — OUTBOUND ONLY. The fragment and
+        // the parser describe how to READ a model's reply, so they belong to a responding
+        // template.prompt and must not appear on a template that only ever writes one.
+        assertFalse("no PROMPT fragment on a template.output",
+            has(tmpl, ApiSymbolKind.PROMPT, "SummaryOutputResponseFormat"));
+        assertFalse("no OUTPUT_PARSER on a template.output",
+            has(tmpl, ApiSymbolKind.OUTPUT_PARSER, "SummaryOutputParser"));
 
         // returns: a document render helper returns String.
         ApiSymbol render = symbol(summary, ApiSymbolKind.RENDER, "SummaryOutputRenderHelper");

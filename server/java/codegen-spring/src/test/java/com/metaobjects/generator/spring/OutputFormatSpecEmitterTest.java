@@ -171,11 +171,13 @@ public class OutputFormatSpecEmitterTest extends SharedRegistryTestBase {
                 { "object.value": { "name": "StylePayload", "children": [
                     { "field.string": { "name": "x" } }
                 ] } },
-                { "template.output": {
+                { "template.prompt": {
                     "name": "StyleTemplate",
                     "@payloadRef": "StylePayload",
+                    "@responseRef": "StylePayload",
                     "@textRef": "style/inline",
-                    "@format": "json",
+                    "@format": "text",
+                    "@responseFormat": "json",
                     "@promptStyle": "inline"
                 } }
               ] }
@@ -196,11 +198,13 @@ public class OutputFormatSpecEmitterTest extends SharedRegistryTestBase {
                 { "object.value": { "name": "StylePayload2", "children": [
                     { "field.string": { "name": "y" } }
                 ] } },
-                { "template.output": {
+                { "template.prompt": {
                     "name": "StyleTemplate2",
                     "@payloadRef": "StylePayload2",
+                    "@responseRef": "StylePayload2",
                     "@textRef": "style/exampleOnly",
-                    "@format": "json",
+                    "@format": "text",
+                    "@responseFormat": "json",
                     "@promptStyle": "exampleOnly"
                 } }
               ] }
@@ -238,11 +242,13 @@ public class OutputFormatSpecEmitterTest extends SharedRegistryTestBase {
                 { "object.value": { "name": "QuotePayload", "children": [
                     { "field.string": { "name": "msg", "@instruction": "say \\"hi\\"" } }
                 ] } },
-                { "template.output": {
+                { "template.prompt": {
                     "name": "QuoteTemplate",
                     "@payloadRef": "QuotePayload",
+                    "@responseRef": "QuotePayload",
                     "@textRef": "test/quote",
-                    "@format": "json"
+                    "@format": "text",
+                    "@responseFormat": "json"
                 } }
               ] }
             }
@@ -291,11 +297,13 @@ public class OutputFormatSpecEmitterTest extends SharedRegistryTestBase {
                                        "k10": "v10", "k11": "v11", "k12": "v12"
                                      } } }
                 ] } },
-                { "template.output": {
+                { "template.prompt": {
                     "name": "BigDocTemplate",
                     "@payloadRef": "BigDocPayload",
+                    "@responseRef": "BigDocPayload",
                     "@textRef": "test/big",
-                    "@format": "json"
+                    "@format": "text",
+                    "@responseFormat": "json"
                 } }
               ] }
             }

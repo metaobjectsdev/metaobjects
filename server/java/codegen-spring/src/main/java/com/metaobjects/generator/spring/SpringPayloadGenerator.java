@@ -160,13 +160,26 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
         Map<String, String> voOutPkg = new LinkedHashMap<>();
         List<String> orderedFqns = new ArrayList<>();
         for (MetaTemplate tmpl : templates) {
+            String nestedPkg = SpringNaming.promptsPackage(SpringNaming.splitFqn(tmpl.getName())[0]);
             MetaObject vo = resolveValueObject(loader, tmpl.getPayloadRef(),
                 com.metaobjects.util.MetaDataUtil.findPackageForMetaData(tmpl));
-            if (vo == null) continue;
-            String nestedPkg = SpringNaming.promptsPackage(SpringNaming.splitFqn(tmpl.getName())[0]);
-            Set<String> seen = new HashSet<>();
-            seen.add(vo.getName()); // primary is template-named — outside the VO-name collision domain
-            collectNestedClosure(vo, loader, nestedPkg, voOutPkg, orderedFqns, seen);
+            if (vo != null) {
+                Set<String> seen = new HashSet<>();
+                seen.add(vo.getName()); // primary is template-named — outside the VO-name collision domain
+                collectNestedClosure(vo, loader, nestedPkg, voOutPkg, orderedFqns, seen);
+            }
+            // ADR-0052 — the INBOUND half. A responding prompt's @responseRef closure emits
+            // records too, so its nested value-objects must enter the SAME name map; leaving
+            // them out would let a response-side nested VO collide with a request-side one
+            // and clobber its file, which is the exact ADR-0044 (#219) defect one tier down.
+            // The response ROOT is template-named (SpringNaming.responseName), so like the
+            // primary it is seeded into `seen` rather than named from the map.
+            FindInbound.InboundShape shape = FindInbound.responseShape(loader, tmpl);
+            if (shape != null) {
+                Set<String> seen = new HashSet<>();
+                seen.add(shape.vo().getName());
+                collectNestedClosure(shape.vo(), loader, nestedPkg, voOutPkg, orderedFqns, seen);
+            }
         }
         // Group by (output package, bare short name).
         Map<String, List<String>> byPkgShort = new LinkedHashMap<>();
@@ -293,28 +306,50 @@ public class SpringPayloadGenerator extends MultiFileDirectGeneratorBase<MetaObj
 
     protected void emit(MetaTemplate template, MetaDataLoader loader, Path outRoot,
                       Set<String> emittedNestedFqns, Map<String, String> nameMap) {
-        if (!appliesTo(template, loader)) {
-            return; // missing @payloadRef, or not a VO — same contract as Kotlin / C# / Python
-        }
-        MetaObject payloadVo = resolveValueObject(loader, template.getPayloadRef(),
-            com.metaobjects.util.MetaDataUtil.findPackageForMetaData(template));
-
         String[] split = SpringNaming.splitFqn(template.getName());
         String templatePkg = split[0];
         String templateShort = split[1];
         String outPkg = SpringNaming.promptsPackage(templatePkg);
-        String recordName = SpringNaming.payloadName(templateShort);
 
-        emitPayloadRecord(
-            outPkg,
-            recordName,
-            "GENERATED — payload for template `" + template.getName() + "`. "
-                + "Do not hand-edit; regenerated from metadata.",
-            payloadVo,
-            loader,
-            outRoot,
-            emittedNestedFqns,
-            nameMap);
+        if (appliesTo(template, loader)) {
+            MetaObject payloadVo = resolveValueObject(loader, template.getPayloadRef(),
+                com.metaobjects.util.MetaDataUtil.findPackageForMetaData(template));
+            emitPayloadRecord(
+                outPkg,
+                SpringNaming.payloadName(templateShort),
+                "GENERATED — payload for template `" + template.getName() + "`. "
+                    + "Do not hand-edit; regenerated from metadata.",
+                payloadVo,
+                loader,
+                outRoot,
+                emittedNestedFqns,
+                nameMap);
+        }
+        // else: missing @payloadRef, or not a VO — same contract as Kotlin / C# / Python.
+
+        // ADR-0052 — the INBOUND half. A responding prompt's @responseRef names the shape
+        // its generated parser RETURNS, so that shape needs a strict record of its own. It
+        // is NOT the prompt's @payloadRef, which types the request rendered outbound;
+        // emitting only the request record would leave SpringOutputParserGenerator
+        // referencing a type nobody declares, and the generated code would not compile.
+        //
+        // The record is TEMPLATE-named (`<Short>Response`), matching this port's existing
+        // convention for the primary record rather than mixing in a value-object-derived
+        // name. C# diverges deliberately: its records are VO-named, so there the response
+        // record just IS the VO's record, deduped by VO FQN.
+        FindInbound.InboundShape shape = FindInbound.responseShape(loader, template);
+        if (shape != null) {
+            emitPayloadRecord(
+                outPkg,
+                SpringNaming.responseName(templateShort),
+                "GENERATED — response shape for template.prompt `" + template.getName() + "`. "
+                    + "Do not hand-edit; regenerated from metadata.",
+                shape.vo(),
+                loader,
+                outRoot,
+                emittedNestedFqns,
+                nameMap);
+        }
     }
 
     /**

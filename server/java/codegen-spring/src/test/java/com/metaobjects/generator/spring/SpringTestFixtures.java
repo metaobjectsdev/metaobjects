@@ -68,7 +68,7 @@ public final class SpringTestFixtures {
      *   <li>{@code note}: string, optional</li>
      * </ul>
      *
-     * <p>Template: {@code template.output} named {@code AnswerOutput},
+     * <p>Template: {@code template.prompt} named {@code AnswerOutput},
      * {@code @payloadRef: AnswerOutputPayload}, {@code @textRef: "ai/answer"},
      * {@code @format: "xml"}, {@code @promptStyle: "guide"}.
      */
@@ -83,11 +83,13 @@ public final class SpringTestFixtures {
                                    "@enumDoc": { "HIGH": "Directly supported.", "OK": "Inference." } } },
                 { "field.string": { "name": "note" } }
             ] } },
-            { "template.output": {
+            { "template.prompt": {
                 "name": "AnswerOutput",
                 "@payloadRef": "AnswerOutputPayload",
+                "@responseRef": "AnswerOutputPayload",
                 "@textRef": "ai/answer",
-                "@format": "xml",
+                "@format": "text",
+                "@responseFormat": "xml",
                 "@promptStyle": "guide"
             } }
           ] }
@@ -96,7 +98,7 @@ public final class SpringTestFixtures {
 
     /**
      * Inline metadata combining {@link #EXTRACT_VO_FIXTURE}'s {@code AnswerOutputPayload}
-     * VO with a {@code template.output} named {@code AnswerOutput} ({@code @format: json})
+     * VO with a {@code template.prompt} named {@code AnswerOutput} (reply {@code @responseFormat: json})
      * for end-to-end {@link SpringOutputParserGenerator} extract-codegen tests.
      * Package: {@code acme::ai}.
      */
@@ -114,11 +116,13 @@ public final class SpringTestFixtures {
                                     "@coerceDefault": "LOW" } },
                 { "field.string":  { "name": "note" } }
             ] } },
-            { "template.output": {
+            { "template.prompt": {
                 "name": "AnswerOutput",
                 "@payloadRef": "AnswerOutputPayload",
+                "@responseRef": "AnswerOutputPayload",
                 "@textRef": "ai/answer",
-                "@format": "json"
+                "@format": "text",
+                "@responseFormat": "json"
             } }
           ] }
         }
@@ -126,7 +130,7 @@ public final class SpringTestFixtures {
 
     /**
      * Plan 2.1 nested fixture: an {@code object.value} payload with a single nested
-     * object field AND an array-of-objects field, plus a {@code template.output}
+     * object field AND an array-of-objects field, plus a responding {@code template.prompt}
      * (json) referencing it. Proves the runtime-delegating {@code extractLenient(loader, text)}
      * populates nested + array-of-object components (the historical FR-010 codegen gap).
      * Package: {@code acme::ai}.
@@ -156,18 +160,20 @@ public final class SpringTestFixtures {
                 { "field.object": { "name": "items", "@objectRef": "acme::ai::LineItemPayload",
                                     "isArray": true } }
             ] } },
-            { "template.output": {
+            { "template.prompt": {
                 "name": "NestedAnswer",
                 "@payloadRef": "NestedAnswerPayload",
+                "@responseRef": "NestedAnswerPayload",
                 "@textRef": "ai/nested",
-                "@format": "json"
+                "@format": "text",
+                "@responseFormat": "json"
             } }
           ] }
         }
         """;
 
     /**
-     * Typed-enums fixture: a json {@code template.output} whose payload carries a scalar
+     * Typed-enums fixture: a json-replying {@code template.prompt} whose response carries a scalar
      * {@code field.enum} ({@code priority}, values LOW/HIGH) AND an enum array
      * ({@code labels}, values A/B). Proves the strict {@code <Name>Payload} record types the
      * enum component as a generated nested Java {@code enum} (single → {@code Priority};
@@ -184,11 +190,13 @@ public final class SpringTestFixtures {
                 { "field.enum":   { "name": "labels", "isArray": true, "@required": true,
                                     "@values": ["A","B"] } }
             ] } },
-            { "template.output": {
+            { "template.prompt": {
                 "name": "Order",
                 "@payloadRef": "OrderPayload",
+                "@responseRef": "OrderPayload",
                 "@textRef": "ai/order",
-                "@format": "json"
+                "@format": "text",
+                "@responseFormat": "json"
             } }
           ] }
         }
@@ -210,11 +218,13 @@ public final class SpringTestFixtures {
                 { "field.enum":   { "name": "currentPriority",  "@required": true, "extends": "Priority" } },
                 { "field.enum":   { "name": "previousPriority", "@required": true, "extends": "Priority" } }
             ] } },
-            { "template.output": {
+            { "template.prompt": {
                 "name": "Ticket",
                 "@payloadRef": "TicketPayload",
+                "@responseRef": "TicketPayload",
                 "@textRef": "orders/ticket",
-                "@format": "json"
+                "@format": "text",
+                "@responseFormat": "json"
             } }
           ] }
         }

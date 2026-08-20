@@ -36,8 +36,12 @@ public class SpringNamingTest {
         // Template-helper names — capitalize(templateShort) + suffix.
         assertEquals("SummaryRenderHelper", SpringNaming.renderHelperName("summary"));
         assertEquals("SummaryPayload", SpringNaming.payloadName("summary"));
-        // Verified suffix is "Prompt" (SpringOutputPromptGenerator), not "OutputPrompt".
-        assertEquals("SummaryPrompt", SpringNaming.promptName("summary"));
+        // ADR-0052 D4: the fragment class is generated FROM a template.prompt now, so the
+        // old "Prompt" suffix produced SummaryPromptPrompt for a prompt named summaryPrompt.
+        assertEquals("SummaryResponseFormat", SpringNaming.responseFormatName("summary"));
+        // ADR-0052: a responding prompt's SECOND record — the @responseRef shape its parser
+        // returns, distinct from the @payloadRef request record above.
+        assertEquals("SummaryResponse", SpringNaming.responseName("summary"));
         // Verified suffix is "Parser" (SpringOutputParserGenerator), not "OutputParser".
         assertEquals("SummaryParser", SpringNaming.parserName("summary"));
 

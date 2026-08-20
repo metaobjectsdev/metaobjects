@@ -1,5 +1,6 @@
 package com.metaobjects.generator.apidocs;
 
+import com.metaobjects.generator.spring.FindInbound;
 import com.metaobjects.generator.spring.LlmTraceHelperGenerator;
 import com.metaobjects.generator.spring.SpringControllerGenerator;
 import com.metaobjects.generator.spring.SpringDtoGenerator;
@@ -267,19 +268,33 @@ public final class JavaApiModelBuilder {
                 "renders the output template against a payload",
                 renderReturns));
         }
+        // ADR-0052: the inbound symbols belong to the RESPONDING PROMPT, never to an output.
         if (SpringOutputPromptGenerator.appliesTo(tmpl, loader)) {
-            String prompt = SpringNaming.promptName(shortName);
+            String prompt = SpringNaming.responseFormatName(shortName);
             symbols.add(symbol(
                 prompt, ApiSymbolKind.PROMPT, fqn(promptsPkg, prompt),
                 "final class " + prompt,
-                "builds the output-format prompt fragment"));
+                "builds the response-format prompt fragment"));
         }
         if (SpringOutputParserGenerator.appliesTo(tmpl, loader)) {
             String parser = SpringNaming.parserName(shortName);
             symbols.add(symbol(
                 parser, ApiSymbolKind.OUTPUT_PARSER, fqn(promptsPkg, parser),
                 "final class " + parser,
-                "parses model output back into the typed payload"));
+                "parses a model reply back into the typed response shape"));
+
+            // The RESPONSE record the parser above actually returns — the `@responseRef`
+            // shape, not the `@payloadRef` request record documented higher up. Documenting
+            // only the request here would name a type the parser never mentions.
+            FindInbound.InboundShape shape = FindInbound.responseShape(loader, tmpl);
+            if (shape != null) {
+                String response = SpringNaming.responseName(shortName);
+                symbols.add(symbolWithFields(
+                    response, ApiSymbolKind.PAYLOAD, fqn(promptsPkg, response),
+                    "record " + response,
+                    "the typed response shape a model reply is parsed into",
+                    JavaFieldShapes.payloadFieldsOf(shape.vo(), loader)));
+            }
         }
 
         return new ApiUnit(shortName, javaPkg, "template", symbols, null);

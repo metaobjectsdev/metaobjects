@@ -35,11 +35,13 @@ public class SpringOutputParserGeneratorTest extends SharedRegistryTestBase {
                 { "field.string": { "name": "name" } },
                 { "field.int":    { "name": "age" } }
             ] } },
-            { "template.output": {
+            { "template.prompt": {
                 "name": "NpcResponseOutput",
                 "@payloadRef": "NpcResponsePayload",
+                "@responseRef": "NpcResponsePayload",
                 "@textRef": "npc/output",
-                "@format": "json"
+                "@format": "text",
+                "@responseFormat": "json"
             } }
           ] }
         }
@@ -73,12 +75,12 @@ public class SpringOutputParserGeneratorTest extends SharedRegistryTestBase {
             src.contains("private NpcResponseOutputParser() {"));
         assertTrue("expected static MAPPER field; saw:\n" + src,
             src.contains("private static final ObjectMapper MAPPER = new ObjectMapper();"));
-        assertTrue("expected `public static NpcResponseOutputPayload parse(String text)`; saw:\n" + src,
-            src.contains("public static NpcResponseOutputPayload parse(String text)"));
+        assertTrue("expected `public static NpcResponseOutputResponse parse(String text)`; saw:\n" + src,
+            src.contains("public static NpcResponseOutputResponse parse(String text)"));
         assertTrue("expected `throws JsonProcessingException`; saw:\n" + src,
             src.contains("throws JsonProcessingException"));
-        assertTrue("expected `MAPPER.readValue(text, NpcResponseOutputPayload.class)`; saw:\n" + src,
-            src.contains("MAPPER.readValue(text, NpcResponseOutputPayload.class)"));
+        assertTrue("expected `MAPPER.readValue(text, NpcResponseOutputResponse.class)`; saw:\n" + src,
+            src.contains("MAPPER.readValue(text, NpcResponseOutputResponse.class)"));
     }
 
     @Test
@@ -106,11 +108,13 @@ public class SpringOutputParserGeneratorTest extends SharedRegistryTestBase {
         // extractLenient() returns ExtractionResult<T> (intentional FR-010); that is distinct from
         // wrapping parse() in a Result return type, so we assert the parse signature is bare.
         assertTrue("parse() must be a direct (throw-only) return, not Result-wrapped; saw:\n" + src,
-            src.contains("public static NpcResponseOutputPayload parse(String text) throws JsonProcessingException"));
+            src.contains("public static NpcResponseOutputResponse parse(String text) throws JsonProcessingException"));
     }
 
     @Test
-    public void skipsPromptTemplates() throws Exception {
+    public void skipsPromptsThatDeclareNoResponse() throws Exception {
+        // ADR-0052 moved the parser ONTO template.prompt, but not onto every prompt: with
+        // no @responseRef nothing elicits a typed reply, so there is nothing to parse.
         String fixture = """
             {
               "metadata.root": { "package": "acme::ai", "children": [
@@ -139,7 +143,47 @@ public class SpringOutputParserGeneratorTest extends SharedRegistryTestBase {
         Path promptsDir = outDir.resolve("acme/ai/prompts");
         if (Files.exists(promptsDir)) {
             try (java.util.stream.Stream<Path> stream = Files.list(promptsDir)) {
-                assertEquals("template.prompt must NOT trigger parser emission", 0L, stream.count());
+                assertEquals("a prompt with no @responseRef must NOT trigger parser emission",
+                    0L, stream.count());
+            }
+        }
+    }
+
+    @Test
+    public void aTemplateOutputGetsNoParser() throws Exception {
+        // The ADR-0052 direction pin. The parser tier previously had NO format filter at
+        // all here, so a markdown document template got a generated Jackson readValue — a
+        // method that could never work — for text the system had just rendered itself.
+        // @format: json is deliberate: it is the case that most looked like it belonged.
+        String fixture = """
+            {
+              "metadata.root": { "package": "acme::ai", "children": [
+                { "object.value": { "name": "DocPayload", "children": [
+                    { "field.string": { "name": "body" } }
+                ] } },
+                { "template.output": {
+                    "name": "WelcomeDoc",
+                    "@payloadRef": "DocPayload",
+                    "@textRef": "mail/welcome",
+                    "@format": "json"
+                } }
+              ] }
+            }
+            """;
+        Path outDir = tempFolder.newFolder("parser-outbound").toPath();
+        Path workspace = tempFolder.newFolder("parser-outbound-fx").toPath();
+        MetaDataLoader loader = SpringTestFixtures.loadFixture(workspace, "parser-outbound", fixture);
+
+        SpringOutputParserGenerator gen = new SpringOutputParserGenerator();
+        Map<String, String> args = new HashMap<>();
+        args.put("outputDir", outDir.toString());
+        gen.setArgs(args);
+        gen.execute(loader);
+
+        Path promptsDir = outDir.resolve("acme/ai/prompts");
+        if (Files.exists(promptsDir)) {
+            try (java.util.stream.Stream<Path> stream = Files.list(promptsDir)) {
+                assertEquals("template.output must NOT trigger parser emission", 0L, stream.count());
             }
         }
     }

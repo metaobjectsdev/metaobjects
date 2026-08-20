@@ -214,9 +214,37 @@ public final class SpringNaming {
         return capitalize(templateShort) + "Payload";
     }
 
-    /** {@code SpringOutputPromptGenerator}: {@code capitalize(templateShort) + "Prompt"}. */
-    public static String promptName(String templateShort) {
-        return capitalize(templateShort) + "Prompt";
+    /**
+     * {@code SpringOutputPromptGenerator}: {@code capitalize(templateShort) +
+     * "ResponseFormat"} — the FR-010 fragment class that tells a model how to format its
+     * reply.
+     *
+     * <p>ADR-0052 D4 renamed this from {@code <Short>Prompt}: the fragment is now
+     * generated FROM a {@code template.prompt}, so the old suffix produced
+     * {@code ClassifyPromptPrompt}. Mirrors C#'s
+     * {@code CSharpNaming.ResponseFormatClassName}.
+     */
+    public static String responseFormatName(String templateShort) {
+        return capitalize(templateShort) + "ResponseFormat";
+    }
+
+    /**
+     * {@code SpringPayloadGenerator} / {@code SpringOutputParserGenerator}: the RESPONSE
+     * record for a responding prompt — {@code capitalize(templateShort) + "Response"}.
+     *
+     * <p>ADR-0052 gives a responding prompt a SECOND strict record: {@code @payloadRef}
+     * types the request it renders outbound, {@code @responseRef} the reply it parses, and
+     * the two are different shapes. Java's primary record is TEMPLATE-named
+     * ({@link #payloadName}), so the response record is template-named too — that keeps
+     * ONE naming convention in this generator rather than mixing a template-derived name
+     * with a value-object-derived one. It also matches the port's existing behaviour for
+     * two templates sharing a {@code @payloadRef}: each gets its own record.
+     *
+     * <p>(C# diverges deliberately: its records are named after the resolved VALUE-OBJECT,
+     * so there the response record is simply the VO's record, deduped by VO FQN.)
+     */
+    public static String responseName(String templateShort) {
+        return capitalize(templateShort) + "Response";
     }
 
     /** {@code SpringOutputParserGenerator}: {@code capitalize(templateShort) + "Parser"}. */

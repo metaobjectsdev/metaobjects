@@ -80,6 +80,19 @@
           "@payloadRef": "ClassifyPayloadVo",
           "@textRef": "blog/classify",
           "@format": "xml"
+      } },
+
+      { "object.value": { "name": "AnswerResponseVo", "children": [
+          { "field.string": { "name": "answer", "@required": true } }
+      ] } },
+
+      { "template.prompt": {
+          "name": "AnswerPrompt",
+          "@payloadRef": "ClassifyPayloadVo",
+          "@responseRef": "AnswerResponseVo",
+          "@textRef": "blog/answer",
+          "@format": "text",
+          "@responseFormat": "json"
       } }
 
     ]

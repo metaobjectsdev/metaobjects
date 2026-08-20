@@ -93,8 +93,8 @@ public class GeneratedOutputPromptCompileRunTest extends SharedRegistryTestBase 
 
         // Confirm the prompt file is present
         boolean hasPrompt = sources.stream()
-                .anyMatch(f -> f.getName().equals("AnswerOutputPrompt.java"));
-        assertTrue("AnswerOutputPrompt.java must be among generated files; got: " + sources, hasPrompt);
+                .anyMatch(f -> f.getName().equals("AnswerOutputResponseFormat.java"));
+        assertTrue("AnswerOutputResponseFormat.java must be among generated files; got: " + sources, hasPrompt);
 
         // -----------------------------------------------------------------------
         // 3. Compile in-memory
@@ -136,7 +136,7 @@ public class GeneratedOutputPromptCompileRunTest extends SharedRegistryTestBase 
         // -----------------------------------------------------------------------
         //
         // Fixture: PROMPT_VO_FIXTURE — acme::ai → package acme.ai.prompts
-        //   template.output "AnswerOutput" → AnswerOutputPrompt
+        //   template.prompt "AnswerOutput" → AnswerOutputResponseFormat
         //   @format: xml, @promptStyle: guide
         //   rootName = "AnswerOutputPayload"
         //
@@ -144,7 +144,7 @@ public class GeneratedOutputPromptCompileRunTest extends SharedRegistryTestBase 
                 new URL[]{ classes.toUri().toURL() },
                 getClass().getClassLoader())) {
 
-            Class<?> promptClass = cl.loadClass("acme.ai.prompts.AnswerOutputPrompt");
+            Class<?> promptClass = cl.loadClass("acme.ai.prompts.AnswerOutputResponseFormat");
 
             // -----------------------------------------------------------------------
             // 4a. No-arg renderFormat() — guide style
@@ -161,11 +161,13 @@ public class GeneratedOutputPromptCompileRunTest extends SharedRegistryTestBase 
             assertTrue("guide fragment must contain '(required)'; got:\n" + guideFragment,
                 guideFragment.contains("(required)"));
 
-            // XML format → skeleton uses AnswerOutputPayload as root element
-            assertTrue("guide fragment must contain '<AnswerOutputPayload>'; got:\n" + guideFragment,
-                guideFragment.contains("<AnswerOutputPayload>"));
-            assertTrue("guide fragment must contain '</AnswerOutputPayload>'; got:\n" + guideFragment,
-                guideFragment.contains("</AnswerOutputPayload>"));
+            // @responseFormat: xml → skeleton uses the RESPONSE record as root element.
+            // ADR-0052: the fragment describes the shape of the REPLY, so its root name is
+            // AnswerOutputResponse (from @responseRef) — not the @payloadRef request record.
+            assertTrue("guide fragment must contain '<AnswerOutputResponse>'; got:\n" + guideFragment,
+                guideFragment.contains("<AnswerOutputResponse>"));
+            assertTrue("guide fragment must contain '</AnswerOutputResponse>'; got:\n" + guideFragment,
+                guideFragment.contains("</AnswerOutputResponse>"));
 
             // Comment-free — no XML comments emitted
             assertFalse("guide fragment must contain no XML comments; got:\n" + guideFragment,
