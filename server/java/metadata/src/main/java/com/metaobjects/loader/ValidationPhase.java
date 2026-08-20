@@ -3237,6 +3237,30 @@ public final class ValidationPhase {
         // #210 — nested payload targets stay value-only (see the helper's doctrine).
         checkNestedPayloadRefsValueOnly(payloadVo, root, new java.util.HashSet<>());
 
+        // ADR-0052 — @responseRef obeys the SAME target rule as @payloadRef. It had no check at
+        // all in this port while TypeScript validated it, so a @responseRef naming an
+        // object.entity loaded clean here and failed there — and, once ADR-0052 made the inbound
+        // codegen tier key on it, that ref reached a generator whose parser binds a record the
+        // payload tier would not emit. Codegen also fails closed now, but a mistake this cheap to
+        // make belongs at the loader, where every port sees it.
+        // ADR-0039: getResponseRef() reads through getMetaAttr, which resolves via extends.
+        if (template instanceof PromptTemplate promptTmpl) {
+            String responseRef = promptTmpl.getResponseRef();
+            if (responseRef != null && !responseRef.isEmpty()) {
+                MetaObject responseVo = resolveRootObject(root, responseRef, referrerPkg);
+                if (responseVo == null || !isLegalPayloadTarget(responseVo)) {
+                    throw new MetaDataException(
+                        ErrorMessageConstants.ERR_INVALID_TEMPLATE
+                            + ": template '" + template.getName() + "' @responseRef '" + responseRef
+                            + "' does not resolve to an object.value or sourceless object.projection at root",
+                        ErrorCode.ERR_INVALID_TEMPLATE,
+                        ResolvedSource.from(template.getSource(), template.getShortName(), responseRef));
+                }
+                // #210 — the response closure's nested targets stay value-only too.
+                checkNestedPayloadRefsValueOnly(responseVo, root, new java.util.HashSet<>());
+            }
+        }
+
         // R3 — every @requiredSlots member must be a field on the payload VO
         if (!(template instanceof PromptTemplate prompt)) return;
         List<String> required = prompt.getRequiredSlots();

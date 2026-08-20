@@ -45,8 +45,7 @@
           "package": "acme::shop",
           "@payloadRef": "acme::shop::OrderSummaryPayload",
           "@textRef": "shop/order-summary",
-          "@format": "json",
-          "@promptStyle": "inline"
+          "@format": "json"
         }
       }
     ]

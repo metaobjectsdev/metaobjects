@@ -3446,6 +3446,30 @@ def _validate_templates(root: MetaData, errors: list[MetaError]) -> None:
         # #210 — nested payload targets stay value-only (see the helper's doctrine).
         _check_nested_payload_refs_value_only(payload, root, errors, nested_visited)
 
+        # ADR-0052 — @responseRef obeys the SAME target rule as @payloadRef. It had no check at
+        # all in this port while TypeScript validated it, so a @responseRef naming an
+        # object.entity loaded clean here and failed there — and, once ADR-0052 made the inbound
+        # codegen tier key on it, that ref reached a generator whose parser binds a record the
+        # payload tier would not emit. Codegen also fails closed now, but a mistake this cheap to
+        # make belongs at the loader, where every port sees it.
+        # ADR-0039: resolving — a template may inherit @responseRef via extends.
+        response_ref = tpl.get_meta_attr(tc.TEMPLATE_ATTR_RESPONSE_REF)
+        if isinstance(response_ref, str) and response_ref:
+            response_vo = resolve_object_ref(root, response_ref, referrer_pkg)
+            if response_vo is None or not _is_legal_payload_target(response_vo):
+                errors.append(MetaError(
+                    code=ErrorCode.ERR_INVALID_TEMPLATE,
+                    message=(
+                        f"template '{tpl.name}' @responseRef '{response_ref}' "
+                        f"does not resolve to an object.value or sourceless "
+                        f"object.projection at root"
+                    ),
+                    envelope=resolved_source(tpl.source, tpl.fqn(), response_ref),
+                ))
+            else:
+                # #210 — the response closure's nested targets stay value-only too.
+                _check_nested_payload_refs_value_only(response_vo, root, errors, nested_visited)
+
         # R3 — required-slots membership
         if is_prompt:
             # ADR-0039: resolving — a template may inherit @requiredSlots via extends.
