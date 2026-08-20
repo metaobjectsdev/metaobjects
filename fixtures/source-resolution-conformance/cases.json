@@ -264,6 +264,15 @@
       "symlinks": { "model/linked": "external" },
       "config": { "schema_version": 1, "sources": [{ "path": "model" }] },
       "expectFiles": ["model/meta.top.json", "model/linked/meta.linked.json"]
+    },
+    {
+      "name": "a-symlink-cycle-is-an-error",
+      "tree": {
+        "model/meta.a.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "symlinks": { "model/loop": "model" },
+      "config": { "schema_version": 1, "sources": [{ "path": "model" }] },
+      "expectError": true
     }
   ]
 }

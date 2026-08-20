@@ -44,6 +44,7 @@ import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
@@ -192,15 +193,25 @@ public class SourceResolutionConformanceTest {
             }
 
             if (testCase.expectError() != null) {
+                JsonElement expected = testCase.expectError();
+                boolean codePinned = expected.isJsonPrimitive() && expected.getAsJsonPrimitive().isString();
                 try {
                     SourceResolver.resolveCollection(invokeDir);
                     fail("expected " + testCase.expectError() + " for case " + testCase.name());
-                } catch (MetaDataException e) {
-                    JsonElement expected = testCase.expectError();
-                    // A string pins the exact code; `true` only pins that it raises —
-                    // see the Case record's javadoc above.
-                    if (expected.isJsonPrimitive() && expected.getAsJsonPrimitive().isString()) {
-                        assertEquals(expected.getAsString(), e.getCode().orElseThrow().name());
+                } catch (Exception e) {
+                    // `true` pins only that it RAISES, so the catch is on Exception.
+                    // Narrowing it to MetaDataException silently re-pinned the very thing
+                    // the corpus refuses to pin: the symlink-cycle guard surfaces a
+                    // FileSystemLoopException, which escaped this catch and failed the
+                    // case even though the port behaved exactly as the contract requires.
+                    // (`fail` above throws AssertionError, an Error — so it still escapes.)
+                    // A string still pins the exact code, and that arm needs the coded type.
+                    if (codePinned) {
+                        assertTrue("case " + testCase.name() + " pins code " + expected.getAsString()
+                                        + " so it must raise MetaDataException, got " + e,
+                                e instanceof MetaDataException);
+                        assertEquals(expected.getAsString(),
+                                ((MetaDataException) e).getCode().orElseThrow().name());
                     }
                 }
                 return;

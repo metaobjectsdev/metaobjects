@@ -127,12 +127,19 @@ public class SourceResolutionConformanceTests
 
             if (c.ExpectError is not null)
             {
-                var ex = Assert.ThrowsAny<MetaModelException>(() => SourceResolver.ResolveCollection(invokeDir));
-                // A string pins the exact code; `true` only pins that it raises —
-                // see the ExpectError field doc above.
+                // `true` pins only that resolution RAISES — deliberately not which type,
+                // so the assertion is on Exception. Narrowing it to MetaModelException
+                // would silently re-pin the very thing the corpus refuses to pin, and did:
+                // the symlink-cycle guard raises IOException (the natural type, and the
+                // one Java's FileSystemLoopException also derives from), which this
+                // runner scored as a FAILURE even though the port behaved correctly.
+                // A string still pins the exact code, and that arm requires the richer
+                // type — see the ExpectError field doc above.
+                var ex = Assert.ThrowsAny<Exception>(() => SourceResolver.ResolveCollection(invokeDir));
                 if (c.ExpectError.Value.ValueKind == JsonValueKind.String)
                 {
-                    Assert.Equal(c.ExpectError.Value.GetString(), ex.Code.ToString());
+                    var coded = Assert.IsAssignableFrom<MetaModelException>(ex);
+                    Assert.Equal(c.ExpectError.Value.GetString(), coded.Code.ToString());
                 }
                 return;
             }

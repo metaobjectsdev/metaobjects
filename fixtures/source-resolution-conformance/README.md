@@ -31,6 +31,36 @@ README.md
   `real/…`) — see "Order is deliberately NOT pinned" below for the parallel
   point about `expectFiles` being exact strings, not just "the same underlying
   file by any name". Every port's runner must honor this key.
+
+  Following symlinks is what makes a symlink CYCLE reachable, so
+  `a-symlink-cycle-is-an-error` gates the other half of the same contract: a
+  directory symlink that revisits a directory already on the current walk
+  branch must RAISE, not be walked. The failure it exists to catch is not a
+  hang — it is silent nonsense. Left unguarded, a walk yields the same real
+  file at ever-deeper phantom paths (`model/loop/model/loop/…/meta.a.json`),
+  and because de-duplication keys on the LEXICAL path those are all distinct,
+  so each is admitted as its own source and the same metadata loads over and
+  over. Which error is raised is deliberately not pinned (hence `expectError:
+  true`) — the ports raise their own native types. What is pinned is that a
+  cycle is loud.
+
+  "Already on the current walk BRANCH" is the precise rule, not "already
+  seen": the ancestor set must be carried down the recursion and never shared
+  between siblings, so a directory legitimately reachable by two different
+  symlinked paths — a diamond, not a cycle — still resolves rather than being
+  falsely rejected.
+
+  This case is a FLOOR, and deliberately so. On Linux the kernel refuses to
+  traverse past its own symlink-resolution depth (ELOOP around 40 levels), so
+  an unguarded walk in some runtimes raises anyway — late, and for the wrong
+  reason, but it raises, and `expectError: true` cannot tell that apart from a
+  real guard. What the case DOES discriminate is a port that swallows that
+  kernel error and reports success: C#'s `Directory.EnumerateFiles(...,
+  AllDirectories)` defaults to `IgnoreInaccessible`, so before this case it
+  completed normally and returned 41 phantom copies of one file. Because the
+  floor cannot pin immediacy, each port additionally owns a unit test that the
+  raise happens on REVISIT rather than at the kernel's limit — `sources.test.ts`,
+  `test_sources.py`, `DirectorySourceTest.java`, `DirectorySourceTests.cs`.
 - **`config`** — written verbatim to `.metaobjects/config.json`, under the
   directory named by `resolveFrom` (project root when `resolveFrom` is absent).
   When `null`, no config file is created at all.

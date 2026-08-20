@@ -68,13 +68,17 @@ def test_source_resolution_conformance(case: dict, tmp_path: Path) -> None:
     resolve_from = _materialize(case, tmp_path)
 
     if "expectError" in case:
-        with pytest.raises(ParseError) as e:
+        # `True` pins only that resolution RAISES, so the expected type is
+        # Exception. Catching ParseError instead silently re-pinned the very
+        # thing the corpus refuses to pin, and did: the symlink-cycle guard
+        # raises SymlinkLoopError, which this runner scored as a FAILURE even
+        # though the port behaved exactly as the contract requires. A string
+        # still pins the exact code, and that arm needs the coded type.
+        expected = case["expectError"]
+        with pytest.raises(ParseError if isinstance(expected, str) else Exception) as e:
             resolve_collection(resolve_from)
-        # A string pins the exact code; `True` only pins that resolution
-        # RAISES — the malformed-config error code is deliberately not
-        # pinned cross-port (see the corpus README).
-        if isinstance(case["expectError"], str):
-            assert e.value.code.value == case["expectError"]
+        if isinstance(expected, str):
+            assert e.value.code.value == expected
         return
 
     # `expectFiles` is project-root-relative even when `resolveFrom` points
