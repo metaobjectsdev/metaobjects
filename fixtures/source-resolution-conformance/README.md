@@ -145,14 +145,33 @@ README.md
   `.strict()` at the top level (`config.ts`) — so a key no version of
   TypeScript has ever declared throws a `ZodError` and resolution never
   reaches the source-listing step at all, while Java/C#/Python all resolve
-  successfully, silently ignoring it. Not added as a shared `expectFiles`
-  case here because doing so would need EITHER loosening `ConfigSchema`'s
-  top-level strictness (a reference-implementation behavior change with a
-  blast radius well beyond source resolution — every `loadConfig` caller,
-  not just this corpus) OR asserting a `true`-sentinel `expectError` that
-  TypeScript alone would satisfy, contradicting the other three ports'
-  actual success — neither of which this corpus is positioned to decide
-  unilaterally. Left as an open, human-reviewable follow-up.
+  successfully, silently ignoring it.
+
+  **RULED: the asymmetry is INTENDED, and neither side moves.** It is not a
+  defect that leaked; it falls out of who owns the file. `.metaobjects/config.json`
+  is TypeScript's, and TypeScript is the only port that models its whole
+  vocabulary — so it is the only port that CAN tell a typo from a key a sibling
+  owns. `.strict()` is what converts that knowledge into a diagnostic, and the
+  hazard is specific and proven: a stripped `scopes` (for `scope`) silently means
+  "everything in scope", and a stripped `migrate.scopee` silently governs the whole
+  database. Java, C# and Python know only `schema_version` + `sources`; for them
+  every other key is indistinguishable from a TS-owned one, so strictness there
+  could only be imitated by embedding TypeScript's key list and keeping it in
+  lockstep forever — at which point any port a release behind would REJECT a
+  config a newer `meta` had just written. Tolerance is the only coherent behaviour
+  for a partial reader, and strictness the only coherent behaviour for the owner.
+
+  So this stays OFF the shared corpus permanently — not deferred. A shared case
+  asserts ONE outcome, and the correct outcome here differs by port BY DESIGN;
+  adding one could only be done by making some port wrong. Each half is pinned in
+  the port that owns it instead: TypeScript's in `sdk/test/config.test.ts`
+  (unknown top-level key ⇒ throws, alongside the nested `scopes`/`scopee` cases),
+  and the tolerant half in `SourceResolverTests.cs`,
+  `tests/config/test_source_resolver.py` and `SourceResolverTest.java`
+  (unknown top-level key ⇒ resolves normally). The
+  forward-compatibility cost is real and accepted: a config written by a NEWER
+  `meta` hard-fails an OLDER one. That is what `schema_version` is for, and a loud
+  failure beats a `scope` that silently matched everything.
 
 ## Order is deliberately NOT pinned
 

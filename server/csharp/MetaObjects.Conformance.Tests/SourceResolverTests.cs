@@ -42,4 +42,45 @@ public sealed class SourceResolverTests
             Directory.Delete(root, recursive: true);
         }
     }
+
+    /// <summary>
+    /// A genuinely unknown top-level key resolves normally here, and THROWS in
+    /// TypeScript. That asymmetry is ruled INTENDED in the source-resolution corpus
+    /// README: TypeScript owns this file and models its whole vocabulary, so only it
+    /// can tell a typo from a key a sibling owns. This port models the neutral subset
+    /// (`schema_version` + `sources`), for which every other key is indistinguishable
+    /// from a TypeScript-owned one — imitating strictness would mean carrying TS's key
+    /// list and rejecting a config a newer `meta` had just written.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately NOT a shared corpus case: a shared case asserts one outcome and
+    /// the correct outcome differs by port, so adding one could only be done by making
+    /// some port wrong. This is the tolerant half.
+    /// </remarks>
+    [Fact]
+    public void AnUnknownTopLevelConfigKey_IsIgnored_NotRejected()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "source-resolver-unknownkey-" + System.Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var model = Path.Combine(root, "model");
+            Directory.CreateDirectory(model);
+            File.WriteAllText(Path.Combine(model, "meta.a.json"), "{\"metadata.root\":{\"children\":[]}}");
+
+            var dotMo = Path.Combine(root, ".metaobjects");
+            Directory.CreateDirectory(dotMo);
+            File.WriteAllText(Path.Combine(dotMo, "config.json"),
+                "{\"schema_version\":1,\"sources\":[{\"path\":\"model\"}],\"foo\":1}");
+
+            var resolved = SourceResolver.ResolveCollection(root);
+
+            Assert.Single(resolved);
+            Assert.Equal(Path.Combine(model, "meta.a.json"), resolved[0]);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
 }
