@@ -132,6 +132,45 @@ public sealed class MetadataDirFallbackTests : IDisposable
     }
 
     [Fact]
+    public void Gen_with_no_positional_metadataDir_excludes_pending_drafts()
+    {
+        // F5 — the ladder path used to discard SourceResolver.ResolveSources's own
+        // return value (the `_pending`-excluded file list) and hand
+        // MetaDataLoader.FromDirectory a bare directory instead, whose default
+        // DirectorySource.Options has ExcludePending = false — so a `_pending/`
+        // draft that TS/Java/Python all keep invisible to codegen leaked into the
+        // generated output here. `_pending/` is excluded at ANY depth under the
+        // declared source, matching the other three ports.
+        var modelDir = Path.Combine(_tmp, "model");
+        Directory.CreateDirectory(modelDir);
+        File.WriteAllText(Path.Combine(modelDir, "meta.acme.json"), Metadata);
+        var pendingDir = Path.Combine(modelDir, "_pending");
+        Directory.CreateDirectory(pendingDir);
+        File.WriteAllText(Path.Combine(pendingDir, "meta.draft.json"), """
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "DraftWidget", "children": [
+            { "source.rdb": { "@table": "draft_widgets" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]}}
+        ]}}
+        """);
+        var cfgDir = Path.Combine(_tmp, ".metaobjects");
+        Directory.CreateDirectory(cfgDir);
+        File.WriteAllText(
+            Path.Combine(cfgDir, "config.json"),
+            """{ "schema_version": 1, "sources": [ { "path": "model" } ] }""");
+
+        var outDir = Path.Combine(_tmp, "generated");
+        var (exitCode, stdout, stderr) = RunCli(_tmp, "gen", "--out", outDir, "--namespace", "Acme.Generated");
+
+        Assert.True(exitCode == 0, $"exit={exitCode}\nstdout={stdout}\nstderr={stderr}");
+        Assert.True(File.Exists(Path.Combine(outDir, "Subscriber.g.cs")), stdout + stderr);
+        Assert.False(File.Exists(Path.Combine(outDir, "DraftWidget.g.cs")),
+            "a _pending/ draft must never reach generated output: " + stdout + stderr);
+    }
+
+    [Fact]
     public void Gen_with_an_explicit_positional_metadataDir_is_unaffected()
     {
         // The explicit-argument path must stay byte-identical: no .metaobjects/

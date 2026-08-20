@@ -41,8 +41,20 @@ public static class DocsCommand
     public static Outcome Run(
         string metadataDir, string outDir, string project, string ns,
         string apiSubDir = DefaultApiSubDir, string? modelBaseUrl = null)
+        => Run(MetaDataLoader.FromDirectory(metadataDir), outDir, project, ns, apiSubDir, modelBaseUrl);
+
+    /// <summary>
+    /// Same as the <c>metadataDir</c> overload above, but starting from an
+    /// ALREADY-LOADED <paramref name="load"/> — see the identical overload on
+    /// <see cref="GenCommand"/> for why (the CLI's config-ladder path resolves +
+    /// loads once via <c>MetaDataLoader.FromUris</c>, correctly excluding
+    /// <c>_pending</c> drafts; a second <c>FromDirectory</c> call here would both
+    /// re-walk the tree and silently lose that exclusion).
+    /// </summary>
+    public static Outcome Run(
+        LoadResult load, string outDir, string project, string ns,
+        string apiSubDir = DefaultApiSubDir, string? modelBaseUrl = null)
     {
-        var load = MetaDataLoader.FromDirectory(metadataDir);
         var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
         if (loadErrors.Count > 0)
             return new Outcome(loadErrors, []);
