@@ -68,13 +68,19 @@ def test_source_resolution_conformance(case: dict, tmp_path: Path) -> None:
     resolve_from = _materialize(case, tmp_path)
 
     if "expectError" in case:
-        with pytest.raises(ParseError) as e:
+        # A string pins the exact code. `True` leaves the CODE unpinned but still
+        # requires ParseError — a malformed config that crashes with a raw
+        # TypeError must fail this case, not pass it. `errorIsNative` lifts only
+        # the type requirement, for the one case whose raise comes from the
+        # filesystem walk (SymlinkLoopError) and never reaches a coded-error
+        # constructor; widening the whole arm instead would quietly relax the six
+        # malformed-config cases from "a coded parse failure" to "anything".
+        expected = case["expectError"]
+        expected_type = Exception if case.get("errorIsNative") else ParseError
+        with pytest.raises(expected_type) as e:
             resolve_collection(resolve_from)
-        # A string pins the exact code; `True` only pins that resolution
-        # RAISES — the malformed-config error code is deliberately not
-        # pinned cross-port (see the corpus README).
-        if isinstance(case["expectError"], str):
-            assert e.value.code.value == case["expectError"]
+        if isinstance(expected, str):
+            assert e.value.code.value == expected
         return
 
     # `expectFiles` is project-root-relative even when `resolveFrom` points

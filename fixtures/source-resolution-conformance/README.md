@@ -11,7 +11,7 @@ are read, `scope` filters what is emitted from them.
 ## Shape
 
 ```
-cases.json   # { cases: [{ name, tree, symlinks?, config, resolveFrom?, expectFiles?, expectError? }] }
+cases.json   # { cases: [{ name, tree, symlinks?, config, resolveFrom?, expectFiles?, expectError?, errorIsNative? }] }
 README.md
 ```
 
@@ -31,6 +31,36 @@ README.md
   `real/…`) — see "Order is deliberately NOT pinned" below for the parallel
   point about `expectFiles` being exact strings, not just "the same underlying
   file by any name". Every port's runner must honor this key.
+
+  Following symlinks is what makes a symlink CYCLE reachable, so
+  `a-symlink-cycle-is-an-error` gates the other half of the same contract: a
+  directory symlink that revisits a directory already on the current walk
+  branch must RAISE, not be walked. The failure it exists to catch is not a
+  hang — it is silent nonsense. Left unguarded, a walk yields the same real
+  file at ever-deeper phantom paths (`model/loop/model/loop/…/meta.a.json`),
+  and because de-duplication keys on the LEXICAL path those are all distinct,
+  so each is admitted as its own source and the same metadata loads over and
+  over. Which error is raised is deliberately not pinned (hence `expectError:
+  true`) — the ports raise their own native types. What is pinned is that a
+  cycle is loud.
+
+  "Already on the current walk BRANCH" is the precise rule, not "already
+  seen": the ancestor set must be carried down the recursion and never shared
+  between siblings, so a directory legitimately reachable by two different
+  symlinked paths — a diamond, not a cycle — still resolves rather than being
+  falsely rejected.
+
+  This case is a FLOOR, and deliberately so. On Linux the kernel refuses to
+  traverse past its own symlink-resolution depth (ELOOP around 40 levels), so
+  an unguarded walk in some runtimes raises anyway — late, and for the wrong
+  reason, but it raises, and `expectError: true` cannot tell that apart from a
+  real guard. What the case DOES discriminate is a port that swallows that
+  kernel error and reports success: C#'s `Directory.EnumerateFiles(...,
+  AllDirectories)` defaults to `IgnoreInaccessible`, so before this case it
+  completed normally and returned 41 phantom copies of one file. Because the
+  floor cannot pin immediacy, each port additionally owns a unit test that the
+  raise happens on REVISIT rather than at the kernel's limit — `sources.test.ts`,
+  `test_sources.py`, `DirectorySourceTest.java`, `DirectorySourceTests.cs`.
 - **`config`** — written verbatim to `.metaobjects/config.json`, under the
   directory named by `resolveFrom` (project root when `resolveFrom` is absent).
   When `null`, no config file is created at all.
@@ -48,10 +78,26 @@ README.md
   `resolveFrom`), compared as an **UNORDERED SET**. See "Order is
   deliberately not pinned" below.
 - **`expectError`** — either a STRING error code the resolution must fail with
-  exactly, or the literal `true` meaning "must raise, but which error/code is
-  deliberately not pinned across ports" (see "Also deliberately NOT pinned:
-  the malformed-config error code" below for why the latter form exists).
-  Exactly one of `expectFiles` / `expectError` is present per case.
+  exactly, or the literal `true` meaning "must raise the port's own coded
+  metadata error, but WHICH code is deliberately not pinned across ports" (see
+  "Also deliberately NOT pinned: the malformed-config error code" below for why
+  the latter form exists). Exactly one of `expectFiles` / `expectError` is
+  present per case. Note what `true` still pins in a port that HAS a coded error
+  type: the type. Java, C# and Python all require `MetaDataException` /
+  `MetaModelException` / `ParseError` on this arm, so a malformed config that
+  crashes with a raw `NullPointerException` fails the case rather than passing
+  it. (TypeScript alone cannot: it propagates the raw parser error, which is the
+  whole reason the code is unpinned.)
+- **`errorIsNative`** — OPTIONAL boolean, only meaningful beside
+  `expectError: true`. Means the failure surfaces as a PLATFORM-native error
+  rather than the port's coded metadata error, so the type requirement above is
+  lifted for this case alone. Exactly one case sets it:
+  `a-symlink-cycle-is-an-error`, where the raise comes from the filesystem walk
+  (`IOException` in C#, `FileSystemLoopException` in Java, `SymlinkLoopError` in
+  Python) and never passes through a coded-error constructor. It exists so that
+  admitting that one case did not silently relax the other six `true` cases from
+  "a coded parse failure" to "anything at all" — which is precisely what a blanket
+  widening of the runners does, and did.
 
 ## Semantics pinned here
 
@@ -115,14 +161,33 @@ README.md
   `.strict()` at the top level (`config.ts`) — so a key no version of
   TypeScript has ever declared throws a `ZodError` and resolution never
   reaches the source-listing step at all, while Java/C#/Python all resolve
-  successfully, silently ignoring it. Not added as a shared `expectFiles`
-  case here because doing so would need EITHER loosening `ConfigSchema`'s
-  top-level strictness (a reference-implementation behavior change with a
-  blast radius well beyond source resolution — every `loadConfig` caller,
-  not just this corpus) OR asserting a `true`-sentinel `expectError` that
-  TypeScript alone would satisfy, contradicting the other three ports'
-  actual success — neither of which this corpus is positioned to decide
-  unilaterally. Left as an open, human-reviewable follow-up.
+  successfully, silently ignoring it.
+
+  **RULED: the asymmetry is INTENDED, and neither side moves.** It is not a
+  defect that leaked; it falls out of who owns the file. `.metaobjects/config.json`
+  is TypeScript's, and TypeScript is the only port that models its whole
+  vocabulary — so it is the only port that CAN tell a typo from a key a sibling
+  owns. `.strict()` is what converts that knowledge into a diagnostic, and the
+  hazard is specific and proven: a stripped `scopes` (for `scope`) silently means
+  "everything in scope", and a stripped `migrate.scopee` silently governs the whole
+  database. Java, C# and Python know only `schema_version` + `sources`; for them
+  every other key is indistinguishable from a TS-owned one, so strictness there
+  could only be imitated by embedding TypeScript's key list and keeping it in
+  lockstep forever — at which point any port a release behind would REJECT a
+  config a newer `meta` had just written. Tolerance is the only coherent behaviour
+  for a partial reader, and strictness the only coherent behaviour for the owner.
+
+  So this stays OFF the shared corpus permanently — not deferred. A shared case
+  asserts ONE outcome, and the correct outcome here differs by port BY DESIGN;
+  adding one could only be done by making some port wrong. Each half is pinned in
+  the port that owns it instead: TypeScript's in `sdk/test/config.test.ts`
+  (unknown top-level key ⇒ throws, alongside the nested `scopes`/`scopee` cases),
+  and the tolerant half in `SourceResolverTests.cs`,
+  `tests/config/test_source_resolver.py` and `SourceResolverTest.java`
+  (unknown top-level key ⇒ resolves normally). The
+  forward-compatibility cost is real and accepted: a config written by a NEWER
+  `meta` hard-fails an OLDER one. That is what `schema_version` is for, and a loud
+  failure beats a `scope` that silently matched everything.
 
 ## Order is deliberately NOT pinned
 

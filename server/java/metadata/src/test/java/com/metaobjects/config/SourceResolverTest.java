@@ -21,10 +21,13 @@ import org.junit.Test;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
@@ -63,6 +66,52 @@ public class SourceResolverTest {
                     !ex.getMessage().contains("zzz-missing"));
         } finally {
             Files.delete(root);
+        }
+    }
+
+    /**
+     * The tolerant half of a ruled asymmetry. A genuinely unknown top-level key
+     * resolves normally here and THROWS in TypeScript. Intended, and ruled in the
+     * source-resolution corpus README: TypeScript owns this file and models its whole
+     * vocabulary, so only it can tell a typo from a key a sibling owns. This port
+     * models the neutral subset ({@code schema_version} + {@code sources}), for which
+     * every other key is indistinguishable from a TypeScript-owned one — imitating
+     * strictness would mean carrying TS's key list and rejecting a config a newer
+     * {@code meta} had just written.
+     *
+     * <p>Deliberately NOT a shared corpus case: a shared case asserts one outcome and
+     * the correct outcome differs by port, so adding one could only make some port wrong.
+     */
+    @Test
+    public void anUnknownTopLevelConfigKeyIsIgnoredNotRejected() throws IOException {
+        Path root = Files.createTempDirectory("source-resolver-unknownkey-");
+        try {
+            Path model = Files.createDirectory(root.resolve("model"));
+            Path file = model.resolve("meta.a.json");
+            Files.writeString(file, "{\"metadata.root\":{\"children\":[]}}");
+
+            Path dotMo = Files.createDirectory(root.resolve(".metaobjects"));
+            Files.writeString(dotMo.resolve("config.json"),
+                    "{\"schema_version\":1,\"sources\":[{\"path\":\"model\"}],\"foo\":1}");
+
+            List<Path> resolved = SourceResolver.resolveCollection(root);
+
+            assertEquals(List.of(file.toAbsolutePath().normalize()), resolved);
+        } finally {
+            deleteRecursive(root);
+        }
+    }
+
+    private static void deleteRecursive(Path dir) throws IOException {
+        if (!Files.exists(dir)) return;
+        try (Stream<Path> walk = Files.walk(dir)) {
+            walk.sorted(Comparator.reverseOrder()).forEach(p -> {
+                try {
+                    Files.delete(p);
+                } catch (IOException ignored) {
+                    // best-effort temp-dir cleanup
+                }
+            });
         }
     }
 }

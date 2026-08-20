@@ -92,6 +92,30 @@ def test_collection_with_no_config_and_no_default_raises(tmp_path: Path) -> None
     assert e.value.code == ErrorCode.ERR_COLLECTION_NOT_FOUND
 
 
+def test_an_unknown_top_level_config_key_is_ignored_not_rejected(tmp_path: Path) -> None:
+    """The tolerant half of a ruled asymmetry.
+
+    A genuinely unknown top-level key resolves normally here and THROWS in
+    TypeScript. Intended, and ruled in the source-resolution corpus README:
+    TypeScript owns this file and models its whole vocabulary, so only it can tell
+    a typo from a key a sibling owns. This port models the neutral subset
+    (``schema_version`` + ``sources``), for which every other key is
+    indistinguishable from a TypeScript-owned one — imitating strictness would mean
+    carrying TS's key list and rejecting a config a newer ``meta`` had just written.
+
+    Deliberately NOT a shared corpus case: a shared case asserts one outcome and the
+    correct outcome differs by port, so adding one could only make some port wrong.
+    """
+    (tmp_path / ".metaobjects").mkdir()
+    (tmp_path / ".metaobjects" / "config.json").write_text(
+        json.dumps({"schema_version": 1, "sources": [{"path": "model"}], "foo": 1})
+    )
+    (tmp_path / "model").mkdir()
+    (tmp_path / "model" / "meta.a.json").write_text("{}")
+    got = resolve_collection(tmp_path)
+    assert _rel(tmp_path, got) == {"model/meta.a.json"}
+
+
 def test_declared_sources_replace_the_default(tmp_path: Path) -> None:
     (tmp_path / ".metaobjects").mkdir()
     (tmp_path / ".metaobjects" / "config.json").write_text(

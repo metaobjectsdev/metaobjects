@@ -27,14 +27,20 @@ public class SourceResolutionConformanceTests
         // count silently goes stale; the structural description above does not.)
         string ResolveFrom,
         string[]? ExpectFiles,
-        // A JSON string pins the exact error code raised; JSON `true` pins only
-        // that resolution RAISES — the malformed-config error code is
-        // deliberately not pinned cross-port (see the corpus README).
+        // A JSON string pins the exact error code raised; JSON `true` leaves the
+        // CODE unpinned but still requires the port's coded MetaModelException —
+        // the malformed-config error code is deliberately not pinned cross-port
+        // (see the corpus README), the TYPE is.
         JsonElement? ExpectError,
         // Optional: linkPath -> targetPath, both project-root-relative, materialized
         // AFTER `Tree` (I1 — a symlinked source root, or a symlinked subdirectory
         // inside a walked tree).
-        Dictionary<string, string> Symlinks);
+        Dictionary<string, string> Symlinks,
+        // Optional: this case's failure surfaces as a PLATFORM-native error rather
+        // than a coded MetaModelException, so the type requirement above is lifted
+        // for it alone (the symlink-cycle case, whose raise comes from the
+        // filesystem walk and never reaches a coded-error constructor).
+        bool ErrorIsNative);
 
     public static TheoryData<string> CaseNames()
     {
@@ -78,7 +84,8 @@ public class SourceResolutionConformanceTests
                 foreach (var p in sl.EnumerateObject()) symlinks[p.Name] = p.Value.GetString()!;
             }
 
-            cases.Add(new Case(el.GetProperty("name").GetString()!, tree, cfg, resolveFrom, expectFiles, expectError, symlinks));
+            bool errorIsNative = el.TryGetProperty("errorIsNative", out var ein) && ein.GetBoolean();
+            cases.Add(new Case(el.GetProperty("name").GetString()!, tree, cfg, resolveFrom, expectFiles, expectError, symlinks, errorIsNative));
         }
         return cases;
     }
@@ -127,12 +134,21 @@ public class SourceResolutionConformanceTests
 
             if (c.ExpectError is not null)
             {
-                var ex = Assert.ThrowsAny<MetaModelException>(() => SourceResolver.ResolveCollection(invokeDir));
-                // A string pins the exact code; `true` only pins that it raises —
-                // see the ExpectError field doc above.
-                if (c.ExpectError.Value.ValueKind == JsonValueKind.String)
+                // A string pins the exact code. `true` leaves the CODE unpinned but
+                // still requires MetaModelException — a malformed config that crashes
+                // with a raw NullReferenceException must FAIL this case, not pass it.
+                // `ErrorIsNative` lifts only the type requirement, for the one case
+                // whose raise comes from the filesystem walk (IOException) and never
+                // reaches a coded-error constructor; widening the whole arm instead
+                // would quietly relax the six malformed-config cases to "anything".
+                var ex = Assert.ThrowsAny<Exception>(() => SourceResolver.ResolveCollection(invokeDir));
+                if (!c.ErrorIsNative)
                 {
-                    Assert.Equal(c.ExpectError.Value.GetString(), ex.Code.ToString());
+                    var coded = Assert.IsAssignableFrom<MetaModelException>(ex);
+                    if (c.ExpectError.Value.ValueKind == JsonValueKind.String)
+                    {
+                        Assert.Equal(c.ExpectError.Value.GetString(), coded.Code.ToString());
+                    }
                 }
                 return;
             }

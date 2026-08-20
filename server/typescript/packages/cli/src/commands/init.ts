@@ -218,6 +218,23 @@ async function stackForAgentContext(opts: InitOptions, prior: Manifest | undefin
   return resolveStack(opts.cwd, overrides);
 }
 
+/** Writes `contents` to `path` (relative to `cwd`), unless `dryRun` — in which case
+ *  the write is skipped entirely and the caller still records what WOULD have
+ *  landed. Factors the mkdir+writeFile pair shared by every write site below. */
+async function writeUnlessDryRun(cwd: string, dryRun: boolean, path: string, contents: string): Promise<void> {
+  if (dryRun) return;
+  const abs = join(cwd, path);
+  await mkdir(dirname(abs), { recursive: true });
+  await writeFile(abs, contents, "utf8");
+}
+
+/** "would be VERBED" during a dry run, plain VERBED otherwise — the one tense
+ *  marker every reported write shares, so each call site states only its own
+ *  past participle instead of writing out both tenses of the whole sentence. */
+function verbed(dryRun: boolean, pastParticiple: string): string {
+  return dryRun ? `would be ${pastParticiple}` : pastParticiple;
+}
+
 async function writeAgentContext(opts: InitOptions, result: InitResult): Promise<void> {
   warnIfMonorepoSubdir(opts, result);
   const prior = await readManifest(opts.cwd);
@@ -244,32 +261,45 @@ async function writeAgentContext(opts: InitOptions, result: InitResult): Promise
     : decision.writes;
   const conflicts = opts.force ? [] : decision.conflicts;
 
+  // --print-only must win outright: a documented dry run must never write. Both
+  // callers of this function (`--docs-only` and `--refresh-docs`) return from
+  // `init()` ABOVE the full-scaffold path's own printOnly guard, so without this
+  // the dry run silently scaffolded for real — the same defect `--config-only`
+  // carried. The guard lives HERE rather than as a path list beside that one
+  // because this write set is dynamic (it depends on the resolved stack), and
+  // `decision` is already the complete plan: suppressing just the I/O reports
+  // exactly the paths a real run would touch, with no second list to drift.
+  const dryRun = opts.printOnly === true;
+
   for (const w of writes) {
-    const abs = join(opts.cwd, w.path);
-    await mkdir(dirname(abs), { recursive: true });
-    await writeFile(abs, w.contents, "utf8");
+    await writeUnlessDryRun(opts.cwd, dryRun, w.path, w.contents);
     result.created.push(w.path);
   }
   for (const c of conflicts) {
-    const abs = join(opts.cwd, c.newPath);
-    await mkdir(dirname(abs), { recursive: true });
-    await writeFile(abs, c.contents, "utf8");
+    await writeUnlessDryRun(opts.cwd, dryRun, c.newPath, c.contents);
     result.created.push(c.newPath);
-    result.warnings.push(`${c.path} appears hand-edited; refreshed version written to ${c.newPath}`);
+    // Past tense only when it actually happened — a dry run that reports "written
+    // to <path>.new" is claiming an edit-preserving side effect the user can go
+    // look for and will not find.
+    result.warnings.push(
+      `${c.path} appears hand-edited; refreshed version ${verbed(dryRun, "written")} to ${c.newPath}`,
+    );
   }
-  const manifestAbs = join(opts.cwd, AGENT_CONTEXT_MANIFEST_PATH);
-  await mkdir(dirname(manifestAbs), { recursive: true });
-  await writeFile(manifestAbs, JSON.stringify(decision.manifest, null, 2) + "\n", "utf8");
+  await writeUnlessDryRun(
+    opts.cwd, dryRun, AGENT_CONTEXT_MANIFEST_PATH,
+    JSON.stringify(decision.manifest, null, 2) + "\n",
+  );
+  result.created.push(AGENT_CONTEXT_MANIFEST_PATH);
 
   for (const orphan of decision.removed) {
     result.warnings.push(`${orphan} is no longer part of this stack; orphaned (safe to delete).`);
   }
 
-  if (opts.wireRoot) await wireRootMemory(opts.cwd, result);
+  if (opts.wireRoot) await wireRootMemory(opts.cwd, result, dryRun);
 }
 
 const ROOT_IMPORT_LINE = "@.metaobjects/AGENTS.md";
-async function wireRootMemory(cwd: string, result: InitResult): Promise<void> {
+async function wireRootMemory(cwd: string, result: InitResult, dryRun = false): Promise<void> {
   const claudePath = join(cwd, "CLAUDE.md");
   const agentsPath = join(cwd, "AGENTS.md");
   const claudeExists = await fileExists(claudePath);
@@ -277,8 +307,8 @@ async function wireRootMemory(cwd: string, result: InitResult): Promise<void> {
 
   // If neither root memory file exists, create CLAUDE.md (Claude Code's canonical) with the import.
   if (!claudeExists && !agentsExists) {
-    await writeFile(claudePath, `# Project memory\n\n${ROOT_IMPORT_LINE}\n`, "utf8");
-    result.created.push("CLAUDE.md (created with MetaObjects @import)");
+    await writeUnlessDryRun(cwd, dryRun, "CLAUDE.md", `# Project memory\n\n${ROOT_IMPORT_LINE}\n`);
+    result.created.push(`CLAUDE.md (${verbed(dryRun, "created")} with MetaObjects @import)`);
     return;
   }
   // Otherwise append the import to whichever exist (idempotent — never double-add).
@@ -286,8 +316,11 @@ async function wireRootMemory(cwd: string, result: InitResult): Promise<void> {
     if (!exists) continue;
     const body = await readFile(path, "utf8");
     if (body.includes(ROOT_IMPORT_LINE)) continue;
-    await writeFile(path, `${body.replace(/\n*$/, "\n")}\n${ROOT_IMPORT_LINE}\n`, "utf8");
-    result.warnings.push(`wired ${ROOT_IMPORT_LINE} into ${path.endsWith("AGENTS.md") ? "AGENTS.md" : "CLAUDE.md"} so the MetaObjects context loads`);
+    const target = path.endsWith("AGENTS.md") ? "AGENTS.md" : "CLAUDE.md";
+    await writeUnlessDryRun(cwd, dryRun, target, `${body.replace(/\n*$/, "\n")}\n${ROOT_IMPORT_LINE}\n`);
+    // Past tense only when it actually happened — this one mutates a file the user
+    // owns, so a dry run reporting it as done is the most misleading of the three.
+    result.warnings.push(`${verbed(dryRun, "wired")} ${ROOT_IMPORT_LINE} into ${target} so the MetaObjects context loads`);
   }
 }
 
