@@ -68,8 +68,24 @@ public static class GenCommand
     public static Outcome Run(
         string metadataDir, string outDir, string ns, bool emitAbstractShapes,
         IReadOnlyList<string>? generatorNames, string? templateRoot, string? templateSpecPath = null)
+        => Run(MetaDataLoader.FromDirectory(metadataDir), outDir, ns, emitAbstractShapes,
+            generatorNames, templateRoot, templateSpecPath);
+
+    /// <summary>
+    /// Same as the <c>metadataDir</c> overload above, but starting from an
+    /// ALREADY-LOADED <paramref name="load"/> — used by the CLI's
+    /// <c>.metaobjects/config.json</c> ladder path (<c>Program.cs</c>'s
+    /// <c>ResolveMetadataDirOrExit</c>), which resolves AND loads the declared
+    /// source set itself via <see cref="MetaDataLoader.FromUris(System.Collections.Generic.IReadOnlyList{Uri})"/>
+    /// (honoring the <c>_pending</c>-draft exclusion <c>SourceResolver</c> applies).
+    /// Calling <see cref="MetaDataLoader.FromDirectory(string, DirectorySource.Options?, bool)"/>
+    /// again here would re-walk the directory tree a second time AND silently lose
+    /// that exclusion (<c>FromDirectory</c>'s own default is to include <c>_pending</c>).
+    /// </summary>
+    public static Outcome Run(
+        LoadResult load, string outDir, string ns, bool emitAbstractShapes,
+        IReadOnlyList<string>? generatorNames, string? templateRoot, string? templateSpecPath = null)
     {
-        var load = MetaDataLoader.FromDirectory(metadataDir);
         var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
         if (loadErrors.Count > 0)
             return new Outcome(loadErrors, null);

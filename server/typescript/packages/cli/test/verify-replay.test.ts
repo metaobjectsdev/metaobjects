@@ -12,7 +12,7 @@
  * against a real project on disk.
  */
 import { describe, test, expect, afterAll } from "bun:test";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, readdir, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseVerifyArgs } from "../src/lib/args.js";
@@ -221,5 +221,33 @@ describe("verify --replay-snapshot runs BOTH tiers", () => {
     // A chain that APPLIES, so tier 1 passes and this isolates the snapshot half.
     await withApplyingChain(root);
     expect(await verifyCommand(["--replay-snapshot"], root)).toBe(0);
+  });
+
+  // F6 — the empty-chain early return in runReplayVerify fired unconditionally,
+  // before runReplaySnapshotTier ever ran — so `--replay-snapshot` against an
+  // EMPTY chain reported success having compared NOTHING, even when a real
+  // committed snapshot on disk records tables the (empty) replay could never
+  // produce. Reproduces both hazards the surrounding comment names: a
+  // `migrate.outDir` that no longer points at the real chain, and a project
+  // adopted via `migrate baseline --from-db` (whose own chain is empty by
+  // construction). Tier 1 (`--replay`) is right to pass here — an empty chain
+  // trivially "applies" — but tier 2 owes a real answer, and that answer must be
+  // "does not reproduce the snapshot", not silence mistaken for a pass.
+  test("an empty chain with a real committed snapshot fails under --replay-snapshot", async () => {
+    const root = await project();
+    await withGeneratedChain(root); // writes a chain AND a snapshot recording "jobs"
+
+    // Empty the chain while leaving the committed snapshot (a sibling file, not
+    // inside any migration folder) untouched — the exact shape of a stale
+    // `migrate.outDir` or a baseline-from-db adoption.
+    const migrationsDir = join(root, ".metaobjects", "migrations");
+    for (const entry of await readdir(migrationsDir)) {
+      if ((await stat(join(migrationsDir, entry))).isDirectory()) {
+        await rm(join(migrationsDir, entry), { recursive: true, force: true });
+      }
+    }
+
+    expect(await verifyCommand(["--replay"], root)).toBe(0); // tier 1: trivially applies
+    expect(await verifyCommand(["--replay-snapshot"], root)).toBe(1); // tier 2: must not pass vacuously
   });
 });

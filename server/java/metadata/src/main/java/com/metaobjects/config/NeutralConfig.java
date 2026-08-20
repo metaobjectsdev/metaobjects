@@ -19,10 +19,14 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
+import com.google.gson.stream.MalformedJsonException;
 import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaDataException;
 
 import java.io.IOException;
+import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -88,6 +92,31 @@ public final class NeutralConfig {
         } catch (IOException e) {
             throw new MetaDataException(
                     path + " exists but could not be read: " + e.getMessage(),
+                    ErrorCode.ERR_MALFORMED_JSON);
+        }
+
+        // `JsonParser.parseString` ALWAYS parses leniently, no matter how the
+        // caller would like to configure it — a well-known Gson quirk: both
+        // `JsonParser.parseReader` and `Gson#fromJson(JsonReader, ...)` force
+        // `setLenient(true)` on the reader internally before walking it, so
+        // unquoted keys, single-quoted strings, and `NaN`/`Infinity` literals all
+        // parse clean — silently accepting a file that is not actually valid JSON,
+        // contradicting this class's own javadoc and diverging from every other
+        // port's stock JSON parser (TS `JSON.parse`, Python `json.loads`, C#
+        // `System.Text.Json`, all strict by default). A `JsonReader` walked
+        // directly with `setLenient(false)` is the only way to get genuinely
+        // strict parsing out of Gson; used here purely to VALIDATE (the walked
+        // structure is discarded — `JsonParser.parseString` below still builds the
+        // actual `JsonElement` tree, unchanged).
+        try (JsonReader strict = new JsonReader(new StringReader(content))) {
+            strict.setLenient(false);
+            strict.skipValue();
+            if (strict.peek() != JsonToken.END_DOCUMENT) {
+                throw new MalformedJsonException("trailing content after the top-level value");
+            }
+        } catch (IOException e) {
+            throw new MetaDataException(
+                    path + " exists but could not be parsed as JSON: " + e.getMessage(),
                     ErrorCode.ERR_MALFORMED_JSON);
         }
 

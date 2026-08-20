@@ -332,15 +332,24 @@ export async function verifyCommand(
       // and a gate that is quiet when it checked nothing cannot be told from one that
       // passed. Every migration is pending against a fresh engine, so an empty
       // `pending` means the directory held none.
+      //
+      // This return is for TIER 1 ONLY: an empty chain trivially "applies" (there is
+      // nothing that could fail), so tier 1 is done. Tier 2 is NOT done — its job is
+      // "does the replay reproduce the committed snapshot?", and a wrong
+      // `migrate.outDir` or a project adopted via `migrate baseline --from-db` (whose
+      // own chain is empty by construction) both look identical to this point. Return
+      // ONLY when `--replay-snapshot` was not requested; otherwise fall through so an
+      // empty replay is still compared against a snapshot that may record dozens of
+      // tables, rather than reporting success having compared nothing.
       if (applied.pending.length === 0) {
         log.info(`meta verify --replay: no committed migrations — nothing to replay`);
-        return 0;
+        if (!flags.replaySnapshot) return 0;
+      } else {
+        log.info(
+          `meta verify --replay — the committed chain applies to an empty ${dialect} database ` +
+            `(${applied.applied.length} migration(s)).`,
+        );
       }
-
-      log.info(
-        `meta verify --replay — the committed chain applies to an empty ${dialect} database ` +
-          `(${applied.applied.length} migration(s)).`,
-      );
 
       if (!flags.replaySnapshot) return 0;
       return await runReplaySnapshotTier(engine, dialect, dir);

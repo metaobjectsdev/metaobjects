@@ -36,6 +36,10 @@ describe("forward drops tolerate an absent object (#313)", () => {
     expect(up).toContain('DROP INDEX IF EXISTS "idx_gone";');
   });
 
+  // F10 — `DROP CONSTRAINT IF EXISTS` alone only guards the constraint NAME;
+  // the enclosing `ALTER TABLE` needs its own `IF EXISTS` too, or a table this
+  // toolchain never created (only #285's constraint-backed index sits on it)
+  // still fails the replay with `relation "t" does not exist`.
   test("postgres drop-index, constraint-backed (#285)", () => {
     const { up } = renderPostgres([
       {
@@ -46,12 +50,12 @@ describe("forward drops tolerate an absent object (#313)", () => {
         restore: { name: "uq_gone", columns: ["a"], unique: true, constraint: "unique" },
       },
     ]);
-    expect(up).toContain('ALTER TABLE "t" DROP CONSTRAINT IF EXISTS "uq_gone";');
+    expect(up).toContain('ALTER TABLE IF EXISTS "t" DROP CONSTRAINT IF EXISTS "uq_gone";');
   });
 
   test("postgres drop-fk", () => {
     const { up } = renderPostgres([{ kind: "drop-fk", table: "t", fk: "fk_gone", status: ALLOWED }]);
-    expect(up).toContain('ALTER TABLE "t" DROP CONSTRAINT IF EXISTS "fk_gone";');
+    expect(up).toContain('ALTER TABLE IF EXISTS "t" DROP CONSTRAINT IF EXISTS "fk_gone";');
   });
 
   // drop-check IS produced by the diff (diff/index.ts:579, :592) — an evolved
@@ -61,7 +65,7 @@ describe("forward drops tolerate an absent object (#313)", () => {
     const { up } = renderPostgres([
       { kind: "drop-check", table: "t", check: "t_qty_chk", status: ALLOWED },
     ]);
-    expect(up).toContain('ALTER TABLE "t" DROP CONSTRAINT IF EXISTS "t_qty_chk";');
+    expect(up).toContain('ALTER TABLE IF EXISTS "t" DROP CONSTRAINT IF EXISTS "t_qty_chk";');
   });
 
   test("sqlite drop-table", () => {

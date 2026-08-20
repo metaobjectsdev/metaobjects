@@ -79,6 +79,17 @@ public static class VerifyCommand
     {
         /// <summary>Metadata directory (positional arg).</summary>
         public required string MetadataDir { get; init; }
+        /// <summary>
+        /// When set, the ALREADY-RESOLVED (and <c>_pending</c>-draft-excluded) file list
+        /// the CLI's <c>.metaobjects/config.json</c> ladder path computed
+        /// (<c>Program.cs</c>'s <c>ResolveMetadataDirOrExit</c>) — both subverb gates load
+        /// from this via <c>MetaDataLoader.FromUris</c> instead of re-walking
+        /// <see cref="MetadataDir"/> via <c>FromDirectory</c>, which would both duplicate
+        /// the walk already done to resolve it AND silently lose the exclusion
+        /// (<c>FromDirectory</c>'s own default is to include <c>_pending</c>). Null when
+        /// <see cref="MetadataDir"/> came from an explicit CLI argument instead.
+        /// </summary>
+        public IReadOnlyList<string>? MetadataFiles { get; init; }
         /// <summary>Templates root for the <c>--templates</c> gate (<c>--templates &lt;root&gt;</c>).</summary>
         public string? TemplatesRoot { get; init; }
         /// <summary>The committed output dir for the <c>--codegen</c> gate (<c>--out &lt;dir&gt;</c>).</summary>
@@ -153,7 +164,7 @@ public static class VerifyCommand
         Outcome? templatesOutcome = null;
         if (runTemplates)
         {
-            templatesOutcome = Run(opts.MetadataDir, opts.TemplatesRoot ?? "", opts.Strict);
+            templatesOutcome = Run(LoadMetadata(opts), opts.TemplatesRoot ?? "");
             if (!templatesOutcome.Ok) exit = Math.Max(exit, 1);
         }
 
@@ -186,6 +197,17 @@ public static class VerifyCommand
     }
 
     /// <summary>
+    /// Loads <paramref name="opts"/>'s metadata once, the same way for both subverb
+    /// gates: via the pre-resolved <see cref="Options.MetadataFiles"/> (config-ladder
+    /// path — <c>MetaDataLoader.FromUris</c>, no re-walk, <c>_pending</c> already
+    /// excluded) when present, else <c>FromDirectory(opts.MetadataDir)</c> (an
+    /// explicit CLI argument — the legacy, unfiltered directory load).
+    /// </summary>
+    private static LoadResult LoadMetadata(Options opts) => opts.MetadataFiles is { } files
+        ? MetaDataLoader.FromUris(files.Select(f => new Uri(f)).ToList(), opts.Strict)
+        : MetaDataLoader.FromDirectory(opts.MetadataDir, strict: opts.Strict);
+
+    /// <summary>
     /// Run the codegen-drift gate: load metadata, resolve the generator suite (default
     /// or the <c>--generators</c> selection), and diff a fresh regen against the
     /// committed <c>--out</c> dir. Loader / unknown-generator problems surface as a
@@ -201,7 +223,7 @@ public static class VerifyCommand
                         "generated output to diff against.",
             };
 
-        var load = MetaDataLoader.FromDirectory(opts.MetadataDir, strict: opts.Strict);
+        var load = LoadMetadata(opts);
         if (load.Errors.Count > 0)
             return new Codegen.CodegenDrift.Result
             {
@@ -252,8 +274,15 @@ public static class VerifyCommand
     }
 
     public static Outcome Run(string metadataDir, string templatesRoot, bool strict = true)
+        => Run(MetaDataLoader.FromDirectory(metadataDir, strict: strict), templatesRoot);
+
+    /// <summary>
+    /// Same as the <c>metadataDir</c> overload above, but starting from an
+    /// ALREADY-LOADED <paramref name="load"/> — see <see cref="LoadMetadata"/> /
+    /// <see cref="GenCommand"/>'s identical overload for why.
+    /// </summary>
+    public static Outcome Run(LoadResult load, string templatesRoot)
     {
-        var load = MetaDataLoader.FromDirectory(metadataDir, strict: strict);
         var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
 
         var provider = new FilesystemProvider(templatesRoot);

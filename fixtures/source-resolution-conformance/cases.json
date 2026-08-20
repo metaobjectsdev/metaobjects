@@ -178,7 +178,7 @@
       "expectError": "ERR_COLLECTION_NOT_FOUND"
     },
     {
-      "name": "unknown-top-level-keys-are-ignored",
+      "name": "typescript-owned-top-level-keys-do-not-affect-source-resolution",
       "tree": {
         "model/meta.a.json": "{\"metadata.root\":{\"children\":[]}}"
       },

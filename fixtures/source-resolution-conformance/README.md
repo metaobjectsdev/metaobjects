@@ -93,9 +93,36 @@ README.md
   loop) reports whichever error comes first in declaration order instead,
   diverging on exactly one of the two cases depending on which order it
   happens to process first.
-- **Unknown top-level config keys are IGNORED.** The file carries
-  TypeScript-owned keys no other port models. `schema_version` and `sources` are
-  the neutral subset; each port validates those strictly and ignores the rest.
+- **A TypeScript-owned top-level key does not affect source resolution in any
+  port.** `schema_version` and `sources` are the neutral subset every port
+  models; `pending_in_git` / `confidence_thresholds` / `extract` / `migrate`
+  are TypeScript's own, and `typescript-owned-top-level-keys-do-not-affect-
+  source-resolution` pins that their presence resolves the same file set
+  everywhere. Read that case name literally — it is narrower than "unknown
+  keys are ignored" on purpose. Those four keys are UNKNOWN to Java/C#/Python
+  (which ignore any key outside `schema_version`/`sources`, by design) but
+  KNOWN to TypeScript's own `ConfigSchema` (`sdk/src/config.ts`), which
+  recognizes and validates them as part of its own project state. A case
+  built only from keys TS recognizes cannot tell "TS ignored this because it
+  doesn't affect resolution" apart from "TS ignored this because it doesn't
+  affect resolution AND happened to also validate it" — the two are
+  indistinguishable from the outside, and only the first is what every other
+  port's "ignore the rest" behavior demonstrates.
+  **A genuinely unrecognized key (e.g. `"foo": 1`, unknown to all four ports)
+  is a real, confirmed, cross-port DIVERGENCE, not covered by this corpus.**
+  Verified empirically: `resolveCollection` (`collection.ts`) calls
+  `loadConfig`, which parses the WHOLE file through `ConfigSchema.parse` —
+  `.strict()` at the top level (`config.ts`) — so a key no version of
+  TypeScript has ever declared throws a `ZodError` and resolution never
+  reaches the source-listing step at all, while Java/C#/Python all resolve
+  successfully, silently ignoring it. Not added as a shared `expectFiles`
+  case here because doing so would need EITHER loosening `ConfigSchema`'s
+  top-level strictness (a reference-implementation behavior change with a
+  blast radius well beyond source resolution — every `loadConfig` caller,
+  not just this corpus) OR asserting a `true`-sentinel `expectError` that
+  TypeScript alone would satisfy, contradicting the other three ports'
+  actual success — neither of which this corpus is positioned to decide
+  unilaterally. Left as an open, human-reviewable follow-up.
 
 ## Order is deliberately NOT pinned
 

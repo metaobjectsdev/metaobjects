@@ -49,6 +49,7 @@ import {
   type D1Runner,
   type SchemaProvenance,
   type SchemaSnapshot,
+  type TableDescriptor,
 } from "@metaobjectsdev/migrate-ts";
 import {
   buildWranglerExecuteArgs,
@@ -303,8 +304,9 @@ function summarizeChanges(changes: Change[]): Record<string, number> {
 }
 
 /**
- * The qualified names of tables/views this diff proposes to DROP that the committed
- * snapshot never contained — i.e. objects this toolchain never managed (#313).
+ * The qualified names of tables/views/constraints this diff proposes to DROP that
+ * the committed snapshot never contained — i.e. objects this toolchain never
+ * managed (#313).
  *
  * FAILS OPEN. No snapshot on disk, or one that cannot be read, yields an empty list:
  * a project that has never generated one is not in an error state, and refusing there
@@ -312,10 +314,21 @@ function summarizeChanges(changes: Change[]): Record<string, number> {
  * migrate's own error to raise elsewhere, with its own message, not a silent refusal
  * here.
  *
- * Names come from `qualifiedDbName` and nothing else. Three independent sets already
- * have to agree on this spelling — the diff's identity maps, the `@unmanaged`
- * exclusion set, and the out-of-scope set — and a fourth encoding of "absent schema
- * means public" would silently un-guard every object it disagreed about.
+ * Table/view names come from `qualifiedDbName` and nothing else. Three independent
+ * sets already have to agree on this spelling — the diff's identity maps, the
+ * `@unmanaged` exclusion set, and the out-of-scope set — and a fourth encoding of
+ * "absent schema means public" would silently un-guard every object it disagreed
+ * about.
+ *
+ * `drop-fk`/`drop-check`/constraint-backed `drop-index` are checked at the
+ * CONSTRAINT grain, not just the table's: the emitter's `IF EXISTS` on the
+ * enclosing `ALTER TABLE` (the SQL half of this same #313 gap) only stops the
+ * replay from failing outright — it says nothing about whether AUTHORING the
+ * drop was ever supposed to be permission-free. A table can be fully managed
+ * while carrying a constraint another tool added directly against the live
+ * database; that constraint's name is absent from the snapshotted table's own
+ * `foreignKeys`/`checks`/`indexes`, exactly like a whole unmanaged table is
+ * absent from `snapshot.tables`.
  */
 async function snapshotAbsentDrops(changes: Change[], snapPath: string): Promise<string[]> {
   let snapshot: SchemaSnapshot | null;
@@ -326,17 +339,31 @@ async function snapshotAbsentDrops(changes: Change[], snapPath: string): Promise
   }
   if (snapshot === null) return [];
 
-  const managed = new Set<string>();
-  for (const t of snapshot.tables) managed.add(qualifiedDbName(t));
-  for (const v of snapshot.views) managed.add(qualifiedDbName(v));
+  const managedTables = new Map<string, TableDescriptor>();
+  for (const t of snapshot.tables) managedTables.set(qualifiedDbName(t), t);
+  const managedViews = new Set<string>();
+  for (const v of snapshot.views) managedViews.add(qualifiedDbName(v));
 
   const absent: string[] = [];
   for (const c of changes) {
-    const name =
-      c.kind === "drop-table" ? qualifiedDbName({ name: c.table, schema: c.schema })
-      : c.kind === "drop-view" ? qualifiedDbName({ name: c.view, schema: c.schema })
-      : undefined;
-    if (name !== undefined && !managed.has(name)) absent.push(name);
+    if (c.kind === "drop-table") {
+      const name = qualifiedDbName({ name: c.table, schema: c.schema });
+      if (!managedTables.has(name)) absent.push(name);
+    } else if (c.kind === "drop-view") {
+      const name = qualifiedDbName({ name: c.view, schema: c.schema });
+      if (!managedViews.has(name)) absent.push(name);
+    } else if (c.kind === "drop-fk" || c.kind === "drop-check" || c.kind === "drop-index") {
+      const tableName = qualifiedDbName({ name: c.table, schema: c.schema });
+      const table = managedTables.get(tableName);
+      const constraintName = c.kind === "drop-fk" ? c.fk : c.kind === "drop-check" ? c.check : c.index;
+      const recorded =
+        c.kind === "drop-fk" ? table?.foreignKeys
+        : c.kind === "drop-check" ? table?.checks
+        : table?.indexes;
+      if (recorded === undefined || !recorded.some((d) => d.name === constraintName)) {
+        absent.push(`${tableName}.${constraintName}`);
+      }
+    }
   }
   return absent;
 }

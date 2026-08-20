@@ -72,9 +72,18 @@ def resolve_sources(config_dir: Path, specs: list[dict[str, str]]) -> list[Path]
     # Whole-list kind validation FIRST — see `_validate_kinds`.
     _validate_kinds(specs)
 
+    # Resolve in CONTENT order (ordinal path-string sort), not declared order —
+    # mirrors `orderedPathSpecs` in `sources.ts` (kind-validated, then sorted by
+    # `JSON.stringify(spec)`, which for a validated `path`-only spec reduces to
+    # the path string alone). Does not change the resolved file SET (the `seen`
+    # de-dup below is order-independent); only decides which declared path's
+    # `ERR_SOURCE_UNRESOLVED` fires first when more than one is simultaneously
+    # unresolvable.
+    ordered_specs = sorted(specs, key=lambda s: s["path"])
+
     seen: dict[Path, None] = {}
 
-    for spec in specs:
+    for spec in ordered_specs:
         raw = Path(spec["path"])
         target = raw if raw.is_absolute() else (config_dir / raw)
 

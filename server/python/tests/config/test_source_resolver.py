@@ -65,6 +65,20 @@ def test_kind_error_precedes_unresolved_path_regardless_of_order(tmp_path: Path)
     assert e_resource_first.value.code == ErrorCode.ERR_SOURCE_KIND_UNSUPPORTED
 
 
+def test_two_unresolvable_paths_reports_the_content_first_one(tmp_path: Path) -> None:
+    # F12 — Pass 2 resolves in CONTENT order (ordinal path-string sort), not
+    # declared order, mirroring the TypeScript reference's `orderedPathSpecs`
+    # (verified empirically: `resolveSources(dir, [{path:"zzz-missing"},
+    # {path:"aaa-missing"}])` names "aaa-missing", the content-first one, even
+    # though "zzz-missing" is declared first). With BOTH paths unresolvable,
+    # only the port that content-sorts before Pass 2 names "aaa-missing" here;
+    # a declared-order implementation would name "zzz-missing" instead.
+    with pytest.raises(ParseError) as e:
+        resolve_sources(tmp_path, [{"path": "zzz-missing"}, {"path": "aaa-missing"}])
+    assert "aaa-missing" in str(e.value)
+    assert "zzz-missing" not in str(e.value)
+
+
 def test_collection_falls_back_to_default_dir(tmp_path: Path) -> None:
     (tmp_path / "metaobjects").mkdir()
     (tmp_path / "metaobjects" / "a.json").write_text("{}")

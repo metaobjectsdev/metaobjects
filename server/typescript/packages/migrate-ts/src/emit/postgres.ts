@@ -129,12 +129,20 @@ function renderUp(c: Change): string {
     // schema adopted from Drizzle has constraint-backed unique indexes.
     // Both arms carry the #313 `IF EXISTS`: they are two renderings of the SAME
     // `drop-index` change, and guarding one would leave the change kind half-covered.
+    // The constraint-backed arm ALSO guards the enclosing `ALTER TABLE` (not just
+    // the constraint name) — see the `drop-fk`/`drop-check` comment below for why.
     case "drop-index":
       return c.restore?.constraint !== undefined
-        ? `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT IF EXISTS ${quote(c.index)};`
+        ? `ALTER TABLE IF EXISTS ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT IF EXISTS ${quote(c.index)};`
         : `DROP INDEX IF EXISTS ${quoteIndexQualified(c.index, c.schema)};`;
     case "add-fk":                 return renderAddFk(c.table, c.schema, c.fk);
-    case "drop-fk":                return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT IF EXISTS ${quote(c.fk)};`;
+    // #313 (constraint-level): `DROP CONSTRAINT IF EXISTS` alone only guards the
+    // constraint NAME — Postgres still requires the TABLE to exist to parse an
+    // `ALTER TABLE` at all, so a table another tool owns (never created by any
+    // migration in this chain) still killed the replay with `relation "x" does
+    // not exist`. Postgres supports `ALTER TABLE IF EXISTS` directly; using it
+    // closes the gap the same way `DROP TABLE IF EXISTS` above already does.
+    case "drop-fk":                return `ALTER TABLE IF EXISTS ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT IF EXISTS ${quote(c.fk)};`;
     // `drop-check` IS produced by the diff — diff/index.ts:579 and :592 both push it,
     // and an evolved `field.enum @values` is a live producer. (A comment here used to
     // claim these arms were unreachable "declared, not yet produced" stubs; that was
@@ -148,7 +156,8 @@ function renderUp(c: Change): string {
     // references the dropped constraint. SQLite is already replay-safe by construction;
     // guarding Postgres makes the two dialects agree.
     case "add-check":              return `ALTER TABLE ${quoteQualified(c.table, c.schema)} ADD CONSTRAINT ${quote(c.check.name)} CHECK (${c.check.expression});`;
-    case "drop-check":             return `ALTER TABLE ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT IF EXISTS ${quote(c.check)};`;
+    // Same `ALTER TABLE IF EXISTS` gap as `drop-fk` above.
+    case "drop-check":             return `ALTER TABLE IF EXISTS ${quoteQualified(c.table, c.schema)} DROP CONSTRAINT IF EXISTS ${quote(c.check)};`;
     case "create-view":            return renderCreateView(c.view, c.schema, /* orReplace */ false);
     case "drop-view":              return renderDropView(c);
     case "replace-view":           return renderCreateView(c.view, c.schema, /* orReplace */ true);

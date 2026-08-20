@@ -65,6 +65,17 @@ def test_wrong_schema_version_raises(tmp_path: Path) -> None:
     assert e.value.code == ErrorCode.ERR_COLLECTION_NOT_FOUND
 
 
+def test_boolean_schema_version_raises(tmp_path: Path) -> None:
+    # Python's `True == 1` is a language quirk the other three ports don't
+    # share (Gson's `isNumber()` and System.Text.Json's `ValueKind` both
+    # reject a JSON boolean outright) — a boolean must never satisfy the
+    # `schema_version == 1` check.
+    _write_config(tmp_path, {"schema_version": True, "sources": [{"path": "model"}]})
+    with pytest.raises(ParseError) as e:
+        read_neutral_config(tmp_path)
+    assert e.value.code == ErrorCode.ERR_COLLECTION_NOT_FOUND
+
+
 def test_null_sources_raises(tmp_path: Path) -> None:
     # A present `sources: null` is present-but-wrong-typed, same as a bare
     # object — it must not silently read as "absent" (see the shared

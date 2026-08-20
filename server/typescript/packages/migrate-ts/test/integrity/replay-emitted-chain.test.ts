@@ -88,6 +88,48 @@ describe("an EMITTED chain applies to an empty database (#313)", () => {
     }
   });
 
+  // F10 — the CONSTRAINT-level analogue of the REPORTED case above: `theirs` is
+  // never created by this chain, and the diff proposes dropping an FK, a CHECK,
+  // and a constraint-backed (unique) index on it — the three change kinds whose
+  // renderer guards the CONSTRAINT name with `IF EXISTS` but leaves the
+  // enclosing `ALTER TABLE` bare, so it still fails against a virgin database
+  // with `relation "theirs" does not exist`; the #313 guarantee was partial for
+  // exactly these three kinds. Postgres-only: SQLite emits no standalone
+  // statement for drop-fk/drop-check at all (folded into a table recreate that
+  // rebuilds from the EXPECTED descriptor), so it cannot exhibit this bug.
+  test("postgres: dropping an fk/check/constraint-backed-index on a table the chain never created still applies", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "replay-emitted-unmanaged-constraint-"));
+    const engine = await openReplayEngine("postgres");
+    const unmanagedConstraintDrops: Change[] = [
+      {
+        kind: "create-table",
+        status: ALLOWED,
+        table: {
+          name: "mine",
+          columns: [{ name: "id", sqlType: { kind: "integer", bits: 64 }, nullable: false }],
+          indexes: [],
+          foreignKeys: [],
+          checks: [],
+          primaryKey: ["id"],
+        },
+      },
+      { kind: "drop-fk", table: "theirs", fk: "theirs_owner_fk", status: ALLOWED },
+      { kind: "drop-check", table: "theirs", check: "theirs_status_chk", status: ALLOWED },
+      {
+        kind: "drop-index", table: "theirs", index: "theirs_code_uniq", status: ALLOWED,
+        restore: { name: "theirs_code_uniq", columns: ["code"], unique: true, constraint: "unique" },
+      },
+    ];
+    try {
+      await writeMigration(emit(unmanagedConstraintDrops, { dialect: "postgres" }), { dir, slug: "init" });
+      const applied = await applyPending(engine.db, dir, { dryRun: false, dialect: "postgres" });
+      expect(applied.applied).toHaveLength(1);
+    } finally {
+      await engine.dispose();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   // The control: without it the cases above could pass because `applyPending`
   // swallows a failing statement rather than because the emitter stopped writing
   // one. This proves the assertion has teeth.

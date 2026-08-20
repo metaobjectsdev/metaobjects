@@ -40,7 +40,16 @@ public class URIHelper implements URIConstants {
     }
 
     public static URIModel toURIModel( URI in ) {
-        return toURIModel( in.toString() );
+        // NOT `in.toString()`: a URI built by `constructValidatedURI` below
+        // quotes characters that need it (a space -> "%20") in its string
+        // form, but `parseURIModel` is a dumb substring splitter with no
+        // percent-decoding of its own — feeding it the ENCODED string would
+        // hand a source string containing a literal "%20" downstream to
+        // `new File(...)`, silently looking for the wrong path.
+        // `getSchemeSpecificPart()` returns the DECODED form, so reassembling
+        // "<scheme>:<schemeSpecificPart>" round-trips back to exactly what
+        // was originally passed to `constructValidatedURI`.
+        return toURIModel( in.getScheme() + ":" + in.getSchemeSpecificPart() );
     }
 
     public static URI toURI( String in ) {
@@ -58,20 +67,31 @@ public class URIHelper implements URIConstants {
     }
 
     public static URI constructValidatedURI(String uriType, String uriSourceType, String source, Map<String,String> args) {
-        String uriStr = uriType + ":" + uriSourceType + ":" + source;
+        String ssp = uriSourceType + ":" + source;
         if ( args != null && !args.isEmpty() ) {
-            uriStr += ";";
+            ssp += ";";
             boolean first = true;
             for (String key : args.keySet() ) {
                 if ( first ) first = false;
-                else uriStr += "&";
-                uriStr += key+"="+args.get(key);
+                else ssp += "&";
+                ssp += key+"="+args.get(key);
             }
         }
         try {
-            return new URI(uriStr );
+            // The single-String `new URI(String)` constructor requires the input
+            // to already be fully well-formed RFC 2396 syntax and THROWS on any
+            // character that needs quoting — a raw space in an absolute
+            // filesystem path (e.g. a checkout under ".../My Projects/...") is
+            // the common case, and it is more common than the colon ambiguity
+            // this method's caller was previously hardened against. The 3-arg
+            // (scheme, scheme-specific-part, fragment) constructor QUOTES illegal
+            // characters instead of rejecting them — `toURIModel(URI)` above
+            // undoes the quoting on the way back out, so the round trip is
+            // lossless (verified: identical `toString()` output to the old
+            // single-arg construction whenever `source` needed no quoting at all).
+            return new URI(uriType, ssp, null);
         } catch( URISyntaxException e ) {
-            throw new IllegalArgumentException( "URI Syntax exception ["+uriStr+"]: "+ e.getMessage(), e );
+            throw new IllegalArgumentException( "URI Syntax exception ["+uriType+":"+ssp+"]: "+ e.getMessage(), e );
         }
     }
 

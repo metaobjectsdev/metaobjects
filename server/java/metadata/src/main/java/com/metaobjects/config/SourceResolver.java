@@ -18,13 +18,16 @@ package com.metaobjects.config;
 import com.metaobjects.ErrorCode;
 import com.metaobjects.MetaDataException;
 import com.metaobjects.loader.DirectorySource;
+import com.metaobjects.loader.FileSource;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 /**
  * Turns a declared source SET ({@code .metaobjects/config.json}'s {@code sources}, or
@@ -57,6 +60,16 @@ public final class SourceResolver {
      * an unresolved PATH regardless of which is declared first
      * ({@code unsupported-kind-precedes-unresolved-path-when-path-is-declared-first}/
      * {@code -second}).
+     *
+     * <p>Pass 2 processes the validated specs in CONTENT order (natural string
+     * ordering of each spec's {@code path}), not declared order — mirroring the
+     * reference implementation's {@code orderedPathSpecs}
+     * ({@code sources.ts}: kind-validated, then sorted by
+     * {@code JSON.stringify(spec)}, which for a validated {@code path}-only spec
+     * reduces to sorting by the path string alone). This does not change the
+     * resolved file SET — de-duplication is order-independent — only which
+     * declared path's {@code ERR_SOURCE_UNRESOLVED} fires first when more than one
+     * is simultaneously unresolvable, which order-independence alone cannot pin.
      */
     public static List<Path> resolveSources(Path configDir, List<Map<String, String>> specs) {
         // Pass 1 — kind validation across the WHOLE set, no filesystem I/O yet.
@@ -71,6 +84,7 @@ public final class SourceResolver {
             }
             pathSpecs.add(rawPath);
         }
+        Collections.sort(pathSpecs);
 
         // Pass 2 — resolve each validated path spec against the filesystem.
         LinkedHashSet<Path> seen = new LinkedHashSet<>();
@@ -97,8 +111,15 @@ public final class SourceResolver {
                 // DirectorySource directly gets every file) — this CLI-facing
                 // resolver turns it ON, since `_pending/` is the TypeScript CLI's
                 // pending/promote-workflow concept, not a loader concept.
-                new DirectorySource(target, new DirectorySource.Options().setExcludePending(true)).expand()
-                        .forEach(fs -> seen.add(fs.getPath().toAbsolutePath().normalize()));
+                // try-with-resources: expand() wraps Files.walk(), which the JDK
+                // documents as requiring prompt closing of its underlying
+                // directory-handle resource ("must be used within a try-with-resources
+                // statement or similar control structure") — a plain `.forEach()`
+                // with no `close()` leaks it on every directory source resolved.
+                try (Stream<FileSource> stream =
+                        new DirectorySource(target, new DirectorySource.Options().setExcludePending(true)).expand()) {
+                    stream.forEach(fs -> seen.add(fs.getPath().toAbsolutePath().normalize()));
+                }
             } else {
                 seen.add(target.toAbsolutePath().normalize());
             }

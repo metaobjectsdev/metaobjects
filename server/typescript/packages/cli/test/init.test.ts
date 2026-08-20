@@ -290,6 +290,30 @@ describe("init() --config-only", () => {
     expect(result.warnings).toContain("invalid .metaobjects/config.json replaced with defaults");
     const cfg = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
     expect(cfg.sources).toEqual([]);
+    // F11 — this destructive replacement must be reported in `result.created`
+    // (matching the OTHER two `writeFresh()` call sites in `writeConfigFile`),
+    // not silently omitted from both `created` and `preserved`. The CLI's
+    // `--config-only` summary keys on `result.created.includes(...)` alone to
+    // choose between "Wrote ..." and "already exists — left untouched." —
+    // without this, a config the caller just DESTROYED and replaced with
+    // defaults is reported as "left untouched", the opposite of what happened.
+    expect(result.created).toContain(".metaobjects/config.json");
+  });
+
+  test("preserving a valid existing config is reported separately from a fresh write", async () => {
+    // The sibling of the case above: a VALID existing config is genuinely left
+    // untouched (merged in place via saveConfig, not replaced with defaults) —
+    // `result.preserved`, not `result.created`, is the correct bucket for it.
+    mkdirSync(join(cwd, ".metaobjects"), { recursive: true });
+    writeFileSync(
+      join(cwd, ".metaobjects", "config.json"),
+      JSON.stringify({ schema_version: 1, sources: [{ path: "model" }] }),
+    );
+
+    const result = await init({ cwd, configOnly: true, force: true });
+
+    expect(result.preserved).toContain(".metaobjects/config.json");
+    expect(result.created).not.toContain(".metaobjects/config.json");
   });
 });
 

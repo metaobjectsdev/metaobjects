@@ -165,6 +165,19 @@ describe("renderPostgres — indexes + FKs", () => {
     expect(norm(up)).toBe(`DROP INDEX IF EXISTS "old_idx";`);
   });
 
+  // F10 — the constraint-backed arm ALSO guards the enclosing ALTER TABLE, not
+  // just the constraint name (see the `drop-fk` test below for the failure mode).
+  test("drop-index (constraint-backed)", () => {
+    const changes: Change[] = [{
+      kind: "drop-index", table: "work_items", index: "work_items_message_id_uniq", status: ALLOWED,
+      restore: { name: "work_items_message_id_uniq", columns: ["message_id"], unique: true, constraint: "unique" },
+    }];
+    const { up } = emit(changes, { dialect: "postgres" });
+    expect(norm(up)).toBe(
+      `ALTER TABLE IF EXISTS "work_items" DROP CONSTRAINT IF EXISTS "work_items_message_id_uniq";`,
+    );
+  });
+
   test("add-fk with ON DELETE CASCADE", () => {
     const changes: Change[] = [{
       kind: "add-fk", table: "weeks",
@@ -182,10 +195,15 @@ describe("renderPostgres — indexes + FKs", () => {
     );
   });
 
+  // F10 — `DROP CONSTRAINT IF EXISTS` alone only guards the constraint NAME;
+  // Postgres still requires the TABLE to exist to parse `ALTER TABLE` at all, so
+  // this failed to replay against a virgin database for a table another tool
+  // owns (never created by any migration in the chain) with `relation "x" does
+  // not exist`. `ALTER TABLE IF EXISTS` closes that gap.
   test("drop-fk", () => {
     const changes: Change[] = [{ kind: "drop-fk", table: "weeks", fk: "weeks_program_id_fk", status: ALLOWED }];
     const { up } = emit(changes, { dialect: "postgres" });
-    expect(norm(up)).toBe(`ALTER TABLE "weeks" DROP CONSTRAINT IF EXISTS "weeks_program_id_fk";`);
+    expect(norm(up)).toBe(`ALTER TABLE IF EXISTS "weeks" DROP CONSTRAINT IF EXISTS "weeks_program_id_fk";`);
   });
 });
 

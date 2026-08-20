@@ -24,7 +24,11 @@ public static class SourceResolver
     /// or missing path happens to sit first — the corpus pins that an unsupported
     /// KIND anywhere in the list wins over an unresolved PATH regardless of which
     /// is declared first (`unsupported-kind-precedes-unresolved-path-when-path-is-
-    /// declared-first`/`-second`).
+    /// declared-first`/`-second`). Pass 2 then resolves the validated specs in
+    /// CONTENT order (ordinal path-string sort), also matching `orderedPathSpecs`
+    /// — not the resolved file SET (de-dup is order-independent), only which
+    /// declared path's `ERR_SOURCE_UNRESOLVED` fires first when more than one is
+    /// simultaneously unresolvable.
     public static IReadOnlyList<string> ResolveSources(
         string configDir,
         IReadOnlyList<IReadOnlyDictionary<string, string>> specs)
@@ -45,6 +49,15 @@ public static class SourceResolver
                     ErrorCode.ERR_SOURCE_KIND_UNSUPPORTED);
             }
         }
+        // Content order (ordinal — matches the reference's UTF-16 code-unit
+        // comparison), not declared order — mirrors `orderedPathSpecs` in
+        // `sources.ts` (kind-validated, then sorted by `JSON.stringify(spec)`,
+        // which for a validated `path`-only spec reduces to the path string
+        // alone). Does not change the resolved file SET (de-dup is
+        // order-independent); only decides which declared path's
+        // `ERR_SOURCE_UNRESOLVED` fires first when more than one is
+        // simultaneously unresolvable.
+        pathSpecs.Sort(StringComparer.Ordinal);
 
         // Pass 2 — resolve each validated path spec against the filesystem.
         var seen = new List<string>();

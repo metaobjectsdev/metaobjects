@@ -189,13 +189,25 @@ class MetaDataLoader:
         uris: list[str],
         providers: list[Provider] | None = None,
         strict: bool = False,
+        libraries: list[str] | None = None,
     ) -> LoadResult:
         """Load metadata from a list of URIs (file:// or http(s)://).
 
         ``strict`` (ADR-0023) — see :meth:`from_directory`.
+
+        ``libraries`` — see :meth:`from_directory`; prepended the same way, so a
+        caller resolving an explicit file list (e.g. the CLI's
+        ``.metaobjects/config.json`` ``sources`` rung) can opt in to a shipped
+        library package exactly like a single-directory load can.
         """
         loader = cls(providers=providers, strict=strict)
-        return loader.load([UriSource(u) for u in uris])
+        sources: list[MetaDataSource] = []
+        if libraries:
+            from metaobjects.library import library_sources
+
+            sources.extend(library_sources(libraries))
+        sources.extend(UriSource(u) for u in uris)
+        return loader.load(sources)
 
     @classmethod
     def from_string(

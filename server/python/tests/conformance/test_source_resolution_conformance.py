@@ -134,3 +134,46 @@ def test_docs_with_no_positional_falls_back_to_neutral_config(
     rc = main(["docs", "--out", str(out)])
     assert rc == 0
     assert (out / "api" / "python" / "README.md").exists()
+
+
+def test_docs_with_metaobjects_config_yaml_honors_declared_libraries(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """`docs`'s no-positional branch loads `metaobjects.config.yaml` (rung 2 of
+    the ladder) purely to read its `metadata` key, then reloads via
+    `_load_root_from_paths` — which dropped both `config.providers` and
+    `config.libraries`, even though `config` was already sitting right there.
+    A project declaring `libraries: ["ai"]` and `extends:
+    metaobjects::ai::LlmCallBase` must resolve through `docs` exactly as it
+    already does through `gen` / `verify --codegen` (see
+    `test_shipped_library_ai.py::TestTheCliCanLoadTheLibrary`).
+    """
+    (tmp_path / "metadata").mkdir()
+    (tmp_path / "metadata" / "meta.app.yaml").write_text(
+        "metadata:\n"
+        "  package: app::trace\n"
+        "  children:\n"
+        "    - object.entity:\n"
+        "        name: AdopterCall\n"
+        "        extends: metaobjects::ai::LlmCallBase\n"
+        "        children:\n"
+        "          - source.rdb:       { table: adopter_call, role: primary }\n"
+        "          - identity.primary: { name: id, fields: [\"spanId\"] }\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "metaobjects.config.yaml").write_text(
+        "metadata: metadata\n"
+        'libraries: ["ai"]\n'
+        "targets:\n"
+        "  main:\n"
+        "    outDir: out\n",
+        encoding="utf-8",
+    )
+
+    from metaobjects.cli import main
+
+    monkeypatch.chdir(tmp_path)
+    out = tmp_path / "docs-out"
+    rc = main(["docs", "--out", str(out)])
+    assert rc == 0
+    assert (out / "api" / "python" / "README.md").exists()
