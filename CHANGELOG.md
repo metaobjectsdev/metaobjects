@@ -7,6 +7,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.24.0] — npm `0.24.0` · PyPI `0.24.0` · NuGet `0.24.0` · Maven `7.24.0`
+
+A coordinated **MINOR** across all four registries. It is a MINOR rather than a PATCH
+because two of its changes are DEFAULT FLIPS, not corrections of previously-wrong
+behaviour: the Java Maven plugin now fails a build that a silently-empty model used to
+let pass, and Java and Python now follow symlinked directories where they previously did
+not. Pre-1.0, `^0.23.x` resolves `<0.24.0`, so a MINOR is adopted deliberately while a
+PATCH would be taken automatically on a routine update — the same call, for the same
+reason, as `0.21.0`.
+
 ### Added — `sources` is read by all four CLI surfaces, plus `meta init --config-only`
 
 `.metaobjects/config.json`'s `sources` key stops being a Node-only concern. Adopter
@@ -51,8 +61,21 @@ guide: [`docs/features/metadata-sources.md`](docs/features/metadata-sources.md).
   including when a declared `sources` path is itself a symlink, or a symlink
   sits partway through a walked tree. TypeScript and C# already did; Java and
   Python now match (a symlinked `sources` path previously resolved to zero
-  files in Java, silently, exit 0). A symlink cycle is a loud error rather
-  than a hang. Gated by two new `symlinks`-bearing corpus cases.
+  files in Java, silently, exit 0). A symlink CYCLE is a loud error in every
+  port. Gated by three new `symlinks`-bearing corpus cases.
+
+  That last sentence was written before it was true, and the gap is worth
+  recording because "a loud error rather than a hang" understated what C# did.
+  `Directory.EnumerateFiles(dir, "*", AllDirectories)` follows symlinks but has
+  no loop guard, and its `EnumerationOptions` default of `IgnoreInaccessible`
+  SWALLOWS the kernel's own ELOOP refusal — so a self-referential directory
+  symlink neither hung nor threw. It **completed normally, returning ~40 copies
+  of one real file** at ever-deeper phantom paths, and because source
+  de-duplication keys on the LEXICAL path every phantom was admitted as its own
+  source, loading the same metadata once per level. C# now walks with a
+  per-branch real-ancestor guard and raises on revisit, matching the three ports
+  that already did. The claim is now carried by a corpus case
+  (`a-symlink-cycle-is-an-error`) rather than by prose.
 - **Behavior change (Java/Maven only): a `<loader>` naming neither
   `<sourceDir>` nor `<sources>`, with no `.metaobjects/config.json` `sources`
   and no default `metaobjects/` directory, now FAILS the build**
@@ -209,6 +232,23 @@ asserts its target equals the configured registry, checks it against a deny-list
 public registries, **parses `bun publish --dry-run`** rather than trusting bun, and runs with
 `HOME` redirected so a fall-back has no credential to use.
 
+### Fixed — `meta init --print-only` wrote the files it was previewing
+
+`--print-only` is documented as "print what would be written, don't write". It honoured
+that on the full scaffold, and — since the fix that moved `--config-only` below the
+guard — on `--config-only`. The two agent-context paths, **`--docs-only` and
+`--refresh-docs`**, return from `init()` ABOVE that guard and were missed, so both
+documented dry runs scaffolded for real: the docs, every stack-scoped skill reference,
+the manifest, and, with `--wire-root`, a newly created root `CLAUDE.md`.
+
+The guard now sits at the I/O rather than at the report. `writeAgentContext` already
+computes the complete plan before performing a single write, so a dry run reports
+exactly the set a real run would touch, with no second hardcoded list to drift out of
+step. Reporting is future-tense under a dry run: the old code announced `wired
+@.metaobjects/AGENTS.md into CLAUDE.md` and `refreshed version written to <path>.new`
+for edits it had not made — a side effect on a file you own, which you could go looking
+for and never find.
+
 ### Fixed — `scripts/release.mjs` preflighted only one package
 
 The target-version check ran `npm view @metaobjectsdev/cli@<version>` and nothing else, so a
@@ -266,11 +306,19 @@ the same migrations. Three changes are visible even to that project. Adopter gui
   naming the target it cannot find, never a half-resolved model — and the
   replacement is an explicit `{ "path": "../shared-model/metaobjects" }` source,
   which works in any layout and needs no topological ordering.
-- **`.metaobjects/config.json` rejects unknown keys.** `ConfigSchema` is `.strict()`
-  at every level, so a key that was previously stripped in silence is now a load
-  error naming the key. Silently dropping a key means the setting you wrote does not
-  exist: `{ "migrate": { "scopee": [...] } }` used to mean *unscoped*, governing
-  every table in a database you were trying to share.
+- **`.metaobjects/config.json` rejects unknown keys — in the Node CLI only, and that
+  asymmetry is deliberate.** `ConfigSchema` is `.strict()` at every level, so a key
+  that was previously stripped in silence is now a load error naming the key. Silently
+  dropping a key means the setting you wrote does not exist: `{ "migrate": { "scopee":
+  [...] } }` used to mean *unscoped*, governing every table in a database you were
+  trying to share. The C#, Python and Java CLIs read the neutral subset and IGNORE an
+  unknown key, so the same config loads there and fails here. That is intended and now
+  ruled: this file is TypeScript's, and TypeScript is the only port that models its
+  whole vocabulary — so it is the only one that CAN tell a typo from a key a sibling
+  owns. A partial reader could imitate strictness only by carrying TypeScript's key
+  list in lockstep, at which point a port one release behind would reject a config a
+  newer `meta` had just written. Consequence to plan for: a config written by a NEWER
+  `meta` hard-fails an OLDER one, which is what `schema_version` is for.
 - **`ExpectedView.fqn` is required.** On the public `@metaobjectsdev/codegen-ts`
   export, the declaring object's fully-qualified name is no longer optional —
   `migrate.scope` decides ownership on that name, and a view arriving without one
@@ -302,10 +350,12 @@ the same migrations. Three changes are visible even to that project. Adopter gui
   it a config: `meta init` writes one, and a `"sources": []` config is enough to
   claim the directory and take the default.
 
-## [0.23.3] — npm `0.23.3` · PyPI `0.23.3` · NuGet `0.23.3` · Maven `7.23.3`
+### Fixed — `meta gen` silently destroyed hand edits (was drafted as `0.23.3`)
 
-A coordinated **PATCH** across all four registries, and every one of them carries a real
-changed product file — the same defect had to be fixed four times, once per write path.
+Drafted as a standalone `0.23.3` PATCH and never released — no registry ever carried
+`0.23.3`. It ships here instead, because the `sources` work above forces this cut to a
+MINOR and a release cannot be two versions at once. Every registry carries a real changed
+product file for it: the same defect had to be fixed four times, once per write path.
 
 **`meta gen` was silently destroying hand edits, and the case it happened in was the
 normal one.** A generated file that existed, differed from fresh output, and had no
