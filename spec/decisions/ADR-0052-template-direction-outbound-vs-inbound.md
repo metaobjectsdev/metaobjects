@@ -1,6 +1,6 @@
 # ADR-0052 — A template's subtype axis is DIRECTION: `template.output` renders outbound, a response is parsed inbound
 
-_Status: accepted. 2026-08-19. Narrows [ADR-0010](ADR-0010-template-output-parser-codegen.md) (parser-on-receipt) and the FR-010 output-format fragment onto `template.prompt @responseRef`. Breaking; rides the coordinated pre-1.0 breaking slot alongside FR-037/FR-038._
+_Status: accepted. 2026-08-19. Narrows [ADR-0010](ADR-0010-template-output-parser-codegen.md) (parser-on-receipt) and the FR-010 output-format fragment onto `template.prompt @responseRef`. Breaking; rides **a** coordinated pre-1.0 breaking MINOR, alongside FR-037's `@mutability` and FR-038's `@verifiedBy` retirement. Not "the" slot — `0.21.0` was that, and it shipped; ADR-0035 §3 charters a WINDOW ("the next one or two releases"), so this is the next MINOR in it. It has to be pre-1.0: after the renumbering a metamodel-vocabulary break is a 2.0 event (ADR-0035 §1), and landing it resets the §G3 quiet-period clock, so it pushes GA out by at least one coordinated release._
 
 ## Context
 
@@ -73,7 +73,7 @@ together.
 **Breaking.** A project declaring a `template.output` purely to parse an LLM response must
 move that declaration to the eliciting `template.prompt`'s `@responseRef`. This is exactly
 the #309 adopter's shape, so the migration note is not hypothetical and must be written
-before the cut. Rides the coordinated pre-1.0 breaking slot; a migration guide belongs under
+before the cut. Rides a coordinated pre-1.0 breaking MINOR; a migration guide belongs under
 `docs/features/migrations/`.
 
 **Five ports.** The parser generator's filter, the FR-010 fragment emitter, and
