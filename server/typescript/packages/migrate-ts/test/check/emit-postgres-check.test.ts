@@ -22,6 +22,11 @@ describe("emit postgres — checks", () => {
   });
   test("drop-check → ALTER TABLE DROP CONSTRAINT", () => {
     const r = emit([{ kind: "drop-check", table: "orders", check: "orders_status_chk", status: ALLOWED } as unknown as Change], { dialect: "postgres" });
-    expect(r.up).toContain(`ALTER TABLE "orders" DROP CONSTRAINT "orders_status_chk";`);
+    // #313 — the forward drop carries IF EXISTS. The add-check test above asserts the
+    // matching DOWN, which stays bare; the two together pin the direction split.
+    // F10 — `IF EXISTS` on the enclosing `ALTER TABLE` too, not just the
+    // constraint name: `DROP CONSTRAINT IF EXISTS` alone still requires the
+    // TABLE to exist, so a table another tool owns still failed the replay.
+    expect(r.up).toContain(`ALTER TABLE IF EXISTS "orders" DROP CONSTRAINT IF EXISTS "orders_status_chk";`);
   });
 });

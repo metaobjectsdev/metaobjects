@@ -73,12 +73,22 @@ static int RunGen(string[] rest)
         return 0;
     }
 
-    if (metadataDir is null || outDir is null)
+    // Usage-first: a missing --out is a plain CLI-usage error, unconditional on
+    // whether metadata can be found — it must win over ResolveMetadataDirOrExit
+    // below, which can itself terminate the process with an unrelated
+    // ERR_COLLECTION_NOT_FOUND. Checking outDir after resolution would show that
+    // confusing error instead of this actionable usage line on the (common)
+    // first-run case where BOTH are missing.
+    if (outDir is null)
     {
         Console.Error.WriteLine("usage: dotnet meta gen <metadataDir> --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--template-spec <json>] [--emit-abstract-shapes]");
         Console.Error.WriteLine("       dotnet meta gen --list");
         return 2;
     }
+
+    // Rung 1 (explicit positional) is honored as-is; an omitted metadataDir
+    // falls back to the port-neutral .metaobjects/config.json ladder.
+    var resolvedMeta = ResolveMetadataDirOrExit(metadataDir);
 
     // Advisory: nudge a re-scaffold if the copied-in agent context predates this build.
     // Never throws, never changes the exit code (a missing/corrupt manifest is ignored).
@@ -87,7 +97,16 @@ static int RunGen(string[] rest)
     var generatorNames = generatorsCsv
         ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-    var outcome = GenCommand.Run(metadataDir, outDir, ns, emitAbstractShapes, generatorNames, templateRoot, templateSpecPath);
+    // A ladder-resolved (non-null Files) source loads via the already-resolved,
+    // `_pending`-excluded file list (MetaDataLoader.FromUris) — never a second
+    // FromDirectory walk of resolvedMeta.Directory, which would both duplicate
+    // the walk ResolveMetadataDirOrExit already did AND silently include `_pending`.
+    var outcome = resolvedMeta.Files is { } files
+        ? GenCommand.Run(
+            MetaObjects.Loader.MetaDataLoader.FromUris(files.Select(f => new Uri(f)).ToList()),
+            outDir, ns, emitAbstractShapes, generatorNames, templateRoot, templateSpecPath)
+        : GenCommand.Run(
+            resolvedMeta.Directory, outDir, ns, emitAbstractShapes, generatorNames, templateRoot, templateSpecPath);
     if (!outcome.Ok)
     {
         foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");
@@ -121,17 +140,30 @@ static int RunDocs(string[] rest)
         else if (!rest[i].StartsWith('-')) metadataDir ??= rest[i];
     }
 
-    if (metadataDir is null || outDir is null)
+    // Usage-first — see the identical comment in RunGen above; a missing --out
+    // must win over ResolveMetadataDirOrExit's own possible ERR_COLLECTION_NOT_FOUND.
+    if (outDir is null)
     {
         Console.Error.WriteLine("usage: dotnet meta docs <metadataDir> --out <dir> [--namespace <ns>] [--project <name>] [--model-base-url <url>]");
         return 2;
     }
 
+    // Rung 1 (explicit positional) is honored as-is; an omitted metadataDir
+    // falls back to the port-neutral .metaobjects/config.json ladder.
+    var resolvedMeta = ResolveMetadataDirOrExit(metadataDir);
+
     // Default the project label to the input directory's leaf name (cosmetic — surfaces
     // in the AGENT-API header). Trailing-separator-safe.
-    project ??= new DirectoryInfo(Path.TrimEndingDirectorySeparator(Path.GetFullPath(metadataDir))).Name;
+    project ??= new DirectoryInfo(Path.TrimEndingDirectorySeparator(Path.GetFullPath(resolvedMeta.Directory))).Name;
 
-    var outcome = DocsCommand.Run(metadataDir, outDir, project, ns, modelBaseUrl: modelBaseUrl);
+    // See the identical comment in RunGen above: a ladder-resolved source loads
+    // via its already-resolved, `_pending`-excluded file list, never a second
+    // (unfiltered) directory walk.
+    var outcome = resolvedMeta.Files is { } files
+        ? DocsCommand.Run(
+            MetaObjects.Loader.MetaDataLoader.FromUris(files.Select(f => new Uri(f)).ToList()),
+            outDir, project, ns, modelBaseUrl: modelBaseUrl)
+        : DocsCommand.Run(resolvedMeta.Directory, outDir, project, ns, modelBaseUrl: modelBaseUrl);
     if (!outcome.Ok)
     {
         foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");
@@ -147,6 +179,102 @@ static int RunDocs(string[] rest)
     foreach (var p in outcome.WrittenPaths) Console.WriteLine($"  written: {p}");
     Console.WriteLine($"dotnet meta docs: {outcome.WrittenPaths.Count} api page(s) written");
     return 0;
+}
+
+// The metadata-location ladder's rungs 3-4 (source-resolution design doc §3):
+// rung 1 is the explicit positional argument the caller already tried; rung 2
+// (a port-native config surface) doesn't exist in C#; rungs 3 (a declared
+// `sources` in .metaobjects/config.json) and 4 (the default "metaobjects"
+// directory) live in MetaObjects.Config.SourceResolver.ResolveCollection,
+// which this wraps. Called from all three metadataDir-taking commands (gen,
+// docs, verify) so an omitted positional argument is never a hard requirement
+// wherever a project's config can name the location instead.
+//
+// The metadata-location ladder's result: always a directory (explicit-arg
+// back-compat, and cosmetic labeling even on the ladder path), and — when
+// resolution went through the .metaobjects/config.json ladder rather than an
+// explicit CLI argument — the ladder's OWN already-resolved, `_pending`-draft-
+// excluded file list too. A caller with a non-null Files must load via
+// MetaDataLoader.FromUris(Files) rather than FromDirectory(Directory): the
+// latter would both re-walk a tree this function already walked once (via
+// SourceResolver) AND silently lose the `_pending` exclusion, since
+// DirectorySource.Options.ExcludePending defaults to false at the loader
+// level (SourceResolver is the one place that turns it on). Declared at file
+// scope below the entry point (top-level-statement files require type
+// declarations to follow every top-level statement / local function).
+
+// Never exits without a usable result: either hands back a real directory
+// (+ file list, when ladder-resolved), or prints a diagnostic and terminates
+// the process — callers may treat the result as always-present and keep
+// their existing (now-unreachable-when-omitted) null checks for the OTHER
+// positional/option they still require.
+static ResolvedMetadata ResolveMetadataDirOrExit(string? metadataDir)
+{
+    if (metadataDir is not null) return new ResolvedMetadata(metadataDir, null);
+
+    var cwd = Directory.GetCurrentDirectory();
+    try
+    {
+        var cfg = MetaObjects.Config.NeutralConfig.Read(cwd);
+        var specs = cfg?.Sources ?? Array.Empty<IReadOnlyDictionary<string, string>>();
+
+        if (specs.Count == 0)
+        {
+            // No declared sources — resolve + apply the DEFAULT directory through
+            // the same ladder the shared conformance corpus gates (raises
+            // ERR_COLLECTION_NOT_FOUND when the default is also absent). The
+            // returned file list IS the load — no second walk needed.
+            var defaultFiles = MetaObjects.Config.SourceResolver.ResolveCollection(cwd);
+            return new ResolvedMetadata(
+                Path.Combine(cwd, MetaObjects.Config.NeutralConfig.DefaultMetadataDir), defaultFiles);
+        }
+
+        if (specs.Count > 1)
+        {
+            // MetaDataLoader.FromDirectory takes ONE directory — it cannot express a
+            // multi-source SET. Fail loudly rather than silently loading just one of
+            // the declared sources; MetaDataLoader.Load(IReadOnlyList<IMetaDataSource>)
+            // (MetaDataLoader.cs:334) is the documented follow-up that lifts this.
+            Console.Error.WriteLine(
+                $"error: {cwd}: .metaobjects/config.json declares {specs.Count} metadata sources, but " +
+                "this CLI's loader accepts only one directory at a time. Pass <metadataDir> explicitly, " +
+                "or reduce \"sources\" to a single entry.");
+            Environment.Exit(2);
+            throw new InvalidOperationException("unreachable");
+        }
+
+        // Exactly one declared source. Resolve + validate it through the same
+        // kind/existence checks ResolveSources applies (ERR_SOURCE_KIND_UNSUPPORTED /
+        // ERR_SOURCE_UNRESOLVED) — its return value IS the (already `_pending`-
+        // excluded) file list to load, not just a validation signal to discard.
+        var files = MetaObjects.Config.SourceResolver.ResolveSources(cwd, specs);
+        var rawPath = specs[0]["path"]; // guaranteed present: ResolveSources above
+                                         // would already have thrown otherwise.
+        var resolved = Path.IsPathRooted(rawPath) ? rawPath : Path.GetFullPath(Path.Combine(cwd, rawPath));
+
+        if (!Directory.Exists(resolved))
+        {
+            // ResolveSources above already proved `resolved` exists, so this means
+            // it is a FILE. MetaDataLoader.FromDirectory below takes a directory —
+            // handing it a file path used to fail deep inside DirectorySource with
+            // an opaque ERR_UNKNOWN instead of naming the actual limit. Refuse
+            // clearly here instead, the same way the multi-source branch above does.
+            Console.Error.WriteLine(
+                $"error: {cwd}: .metaobjects/config.json's single \"sources\" entry (\"{rawPath}\") is a FILE, " +
+                "but this CLI's loader only accepts a directory source. Pass <metadataDir> explicitly, or point " +
+                "\"sources\" at the file's containing directory.");
+            Environment.Exit(2);
+            throw new InvalidOperationException("unreachable");
+        }
+
+        return new ResolvedMetadata(resolved, files);
+    }
+    catch (MetaObjects.MetaModelException e)
+    {
+        Console.Error.WriteLine($"error: {e.Code}: {e.Message}");
+        Environment.Exit(2);
+        throw;
+    }
 }
 
 static int Unknown(string cmd)
@@ -208,11 +336,9 @@ static int RunVerify(string[] rest)
         else templatesRoot ??= a;
     }
 
-    if (metadataDir is null)
-    {
-        Console.Error.WriteLine("usage: dotnet meta verify <metadataDir> [--templates <root>] [--codegen --out <dir> [--namespace <ns>]] [--db]");
-        return 2;
-    }
+    // Rung 1 (explicit positional) is honored as-is; an omitted metadataDir
+    // falls back to the port-neutral .metaobjects/config.json ladder.
+    var resolvedMeta = ResolveMetadataDirOrExit(metadataDir);
 
     // The templates gate needs a root. Bare verify (defaults to templates) and an
     // explicit --templates both require it; surface a clear usage error if absent.
@@ -234,7 +360,11 @@ static int RunVerify(string[] rest)
 
     var opts = new VerifyCommand.Options
     {
-        MetadataDir = metadataDir,
+        MetadataDir = resolvedMeta.Directory,
+        // A ladder-resolved source loads via this already-resolved,
+        // `_pending`-excluded file list (see VerifyCommand.LoadMetadata) — never a
+        // second (unfiltered) directory walk of MetadataDir.
+        MetadataFiles = resolvedMeta.Files,
         TemplatesRoot = templatesRoot,
         OutDir = outDir,
         Namespace = ns,
@@ -296,3 +426,6 @@ static int RunVerify(string[] rest)
 
     return result.ExitCode;
 }
+
+// See the doc comment on ResolveMetadataDirOrExit above.
+readonly record struct ResolvedMetadata(string Directory, IReadOnlyList<string>? Files);

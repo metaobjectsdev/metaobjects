@@ -15,7 +15,7 @@
 // sides import is the fix; a lazy `await import()` inside `loadMemory` is not
 // — that hides the cycle rather than removing it.
 import { extname, join } from "node:path";
-import { readdir, stat } from "node:fs/promises";
+import { readdir, realpath, stat } from "node:fs/promises";
 
 /**
  * The DEFAULT value of `sources` — the directory scanned when
@@ -86,10 +86,42 @@ const PENDING_DIR = "_pending";
  * read the directory itself still throws — that is the "you have no metadata
  * here" case callers report.
  *
+ * A symlink CYCLE (e.g. `metaobjects/link -> ..`) is a loud error rather than
+ * unbounded recursion — see {@link listMetadataFilesGuarded}.
+ *
  * Format selection (parsing) happens downstream in `FileSource` from
  * `@metaobjectsdev/metadata`, which infers the parser from file extension.
  */
 export async function listMetadataFiles(dir: string): Promise<string[]> {
+  return listMetadataFilesGuarded(dir, new Set());
+}
+
+/**
+ * {@link listMetadataFiles}'s recursive worker, carrying the REAL (symlink-
+ * resolved) ancestor directories already on this walk branch.
+ *
+ * This walk follows symlinked directories on purpose (`stat`, not `lstat`,
+ * below — matching `DirectorySource` in `@metaobjectsdev/metadata`), so an
+ * unguarded directory symlink that revisits an ancestor recurses forever:
+ * Java and Python both added this exact guard when this PR promoted
+ * symlink-following to a cross-port contract; the TypeScript reference itself
+ * did not, even though the corpus cites it as authoritative. `ancestors` is
+ * extended only on the recursive call (never mutated in place), so it
+ * reflects the current branch, not siblings visited earlier at the same
+ * level — a directory legitimately reachable via two different symlinked
+ * paths (not a cycle) is not falsely rejected.
+ */
+async function listMetadataFilesGuarded(dir: string, ancestors: ReadonlySet<string>): Promise<string[]> {
+  // `realpath` failing (e.g. `dir` vanished between being listed and now) is
+  // not this guard's problem — fall back to the given path and let `readdir`
+  // below raise its own coded error.
+  const real = await realpath(dir).catch(() => dir);
+  if (ancestors.has(real)) {
+    throw new Error(`symlink loop detected while expanding metadata directory: ${dir} revisits ${real}`);
+  }
+  const nextAncestors = new Set(ancestors);
+  nextAncestors.add(real);
+
   let entries: string[];
   try {
     entries = await readdir(dir);
@@ -120,7 +152,7 @@ export async function listMetadataFiles(dir: string): Promise<string[]> {
   // Recurse into subdirectories after collecting files at this level.
   // `subdirs` is already in sorted order (built from the sorted `entries` above).
   for (const sub of subdirs) {
-    paths.push(...(await listMetadataFiles(sub)));
+    paths.push(...(await listMetadataFilesGuarded(sub, nextAncestors)));
   }
   return paths;
 }

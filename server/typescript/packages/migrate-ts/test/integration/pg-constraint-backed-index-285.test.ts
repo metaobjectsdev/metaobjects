@@ -138,9 +138,15 @@ describe("#285 — constraint-backed index drops as a constraint (PG)", () => {
     expect(d.changes.some((c) => c.kind === "drop-index")).toBe(true);
 
     const sqlText = emit(d.changes, { dialect: "postgres" }).up;
-    // The whole point: a bare DROP INDEX here is what Postgres refuses.
-    expect(sqlText).not.toMatch(/DROP INDEX "?work_item_message_id_unique/);
-    expect(sqlText).toMatch(/ALTER TABLE .*DROP CONSTRAINT "work_item_message_id_unique"/);
+    // The whole point: a DROP INDEX here is what Postgres refuses.
+    //
+    // `(IF EXISTS )?` is load-bearing on the NEGATIVE assertion. #313 put `IF EXISTS`
+    // on every forward drop, so without the optional group this stops matching because
+    // the SPELLING changed — passing for a reason unrelated to #285, and continuing to
+    // pass if #285 fully regressed. Verified by reverting the drop-index arm and
+    // watching this line go red.
+    expect(sqlText).not.toMatch(/DROP INDEX (IF EXISTS )?"?work_item_message_id_unique/);
+    expect(sqlText).toMatch(/ALTER TABLE .*DROP CONSTRAINT IF EXISTS "work_item_message_id_unique"/);
 
     // Pre-fix this throws: cannot drop index … because constraint … requires it.
     await applyRaw(kysely, sqlText);

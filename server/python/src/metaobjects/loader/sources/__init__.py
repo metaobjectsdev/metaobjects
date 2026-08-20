@@ -9,7 +9,7 @@ See `docs/superpowers/specs/2026-05-25-cross-language-loader-architecture-unific
 """
 from __future__ import annotations
 
-from .directory_source import DirectorySource
+from .directory_source import DirectorySource, SymlinkLoopError
 from .file_source import FileSource
 from .meta_data_source import InMemoryStringSource, MetaDataFormat, MetaDataSource
 from .uri_source import UriSource
@@ -20,5 +20,6 @@ __all__ = [
     "InMemoryStringSource",
     "FileSource",
     "DirectorySource",
+    "SymlinkLoopError",
     "UriSource",
 ]

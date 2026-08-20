@@ -16,6 +16,7 @@ USAGE:
 COMMANDS:
   init                  Scaffold a MetaObjects project in the current repo
   init --refresh-docs   Refresh .metaobjects/AGENTS.md + CLAUDE.md after CLI upgrades
+  init --config-only    Write only .metaobjects/config.json — for a Maven- or pip-rooted project
   agent-docs            Scaffold only the agent-context (.metaobjects/ + .claude/skills/) — canonical redirect target for all language ports
   gen [<entity>...]     Codegen TS targets from your declared metadata
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description
@@ -110,7 +111,7 @@ or META_NO_ANTIPATTERNS=1.
 
 NOTE: outDir, dialect, dbImport, extStyle are read from metaobjects.config.ts
 `,
-  verify: `meta verify — drift gate (templates / DB schema / codegen)
+  verify: `meta verify — drift gate (templates / DB schema / codegen / migration replay)
 
 USAGE:
   meta verify [flags]
@@ -122,6 +123,17 @@ FLAGS:
   --db <url>            Schema drift — live DB URL enables the schema-drift gate.
                         Supports: file:, libsql:, postgres:, postgresql:
                         D1 has no URL — use --dialect d1 / --d1 <binding> instead.
+  --replay              Migration-chain drift — replay the committed chain into an
+                        EMPTY throwaway database and assert it applies. Needs no --db:
+                        the engine is in-process (PGlite for postgres, a temp file for
+                        sqlite) and provisions nothing. Dialect comes from --dialect,
+                        else migrate.dialect. flyway and d1 are refused.
+                        Postgres needs the optional peer '@electric-sql/pglite'.
+  --replay-snapshot     ...and assert the replayed schema EQUALS the committed
+                        snapshot — catches a hand-edited up.sql that still applies but
+                        no longer builds the recorded schema. Does NOT apply to a
+                        project adopted with 'migrate baseline --from-db' (its chain
+                        does not build the schema); use --replay there.
   --prompts <dir>       Directory of provider-resolved template text (default: prompts)
   --dialect sqlite|postgres|d1   Optional override (auto-detected from --db URL scheme)
   --allow <csv>         Accepted for parity with 'migrate'; does NOT affect the drift gate
@@ -177,6 +189,8 @@ FLAGS:
   --print-only          Print what would be written, don't write
   --d1                  Include D1 (Cloudflare) migration config
   --no-wire-root        Skip wiring root metaobjects.config.ts
+  --config-only         Write only .metaobjects/config.json (no TS scaffold) — declares
+                        metadata sources for the Node CLI from a Maven- or pip-rooted project
   --help, -h            Print this help
 `,
   "agent-docs": `meta agent-docs — scaffold the agent-context (.metaobjects/ always-on files + .claude/skills/)

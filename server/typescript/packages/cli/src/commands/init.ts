@@ -137,6 +137,14 @@ export interface InitOptions {
   wireRoot?: boolean;
   /** Scaffold ONLY the agent-context (always-on + skills + root wiring), skipping the metaobjects/ project scaffold — for dropping context into an existing/polyglot repo. */
   docsOnly?: boolean;
+  /**
+   * Write ONLY `.metaobjects/config.json` — no TypeScript scaffold (metaobjects.config.ts,
+   * codegen/generators/, package.json edits, .gitignore, agent-context files, or a
+   * metaobjects/ directory). For a Maven- or pip-rooted project that needs the Node CLI
+   * (which owns `migrate` and `verify --db` under ADR-0015) to discover its metadata
+   * without acquiring a TypeScript project it will never use.
+   */
+  configOnly?: boolean;
 }
 
 export interface InitResult {
@@ -210,6 +218,23 @@ async function stackForAgentContext(opts: InitOptions, prior: Manifest | undefin
   return resolveStack(opts.cwd, overrides);
 }
 
+/** Writes `contents` to `path` (relative to `cwd`), unless `dryRun` — in which case
+ *  the write is skipped entirely and the caller still records what WOULD have
+ *  landed. Factors the mkdir+writeFile pair shared by every write site below. */
+async function writeUnlessDryRun(cwd: string, dryRun: boolean, path: string, contents: string): Promise<void> {
+  if (dryRun) return;
+  const abs = join(cwd, path);
+  await mkdir(dirname(abs), { recursive: true });
+  await writeFile(abs, contents, "utf8");
+}
+
+/** "would be VERBED" during a dry run, plain VERBED otherwise — the one tense
+ *  marker every reported write shares, so each call site states only its own
+ *  past participle instead of writing out both tenses of the whole sentence. */
+function verbed(dryRun: boolean, pastParticiple: string): string {
+  return dryRun ? `would be ${pastParticiple}` : pastParticiple;
+}
+
 async function writeAgentContext(opts: InitOptions, result: InitResult): Promise<void> {
   warnIfMonorepoSubdir(opts, result);
   const prior = await readManifest(opts.cwd);
@@ -236,32 +261,45 @@ async function writeAgentContext(opts: InitOptions, result: InitResult): Promise
     : decision.writes;
   const conflicts = opts.force ? [] : decision.conflicts;
 
+  // --print-only must win outright: a documented dry run must never write. Both
+  // callers of this function (`--docs-only` and `--refresh-docs`) return from
+  // `init()` ABOVE the full-scaffold path's own printOnly guard, so without this
+  // the dry run silently scaffolded for real — the same defect `--config-only`
+  // carried. The guard lives HERE rather than as a path list beside that one
+  // because this write set is dynamic (it depends on the resolved stack), and
+  // `decision` is already the complete plan: suppressing just the I/O reports
+  // exactly the paths a real run would touch, with no second list to drift.
+  const dryRun = opts.printOnly === true;
+
   for (const w of writes) {
-    const abs = join(opts.cwd, w.path);
-    await mkdir(dirname(abs), { recursive: true });
-    await writeFile(abs, w.contents, "utf8");
+    await writeUnlessDryRun(opts.cwd, dryRun, w.path, w.contents);
     result.created.push(w.path);
   }
   for (const c of conflicts) {
-    const abs = join(opts.cwd, c.newPath);
-    await mkdir(dirname(abs), { recursive: true });
-    await writeFile(abs, c.contents, "utf8");
+    await writeUnlessDryRun(opts.cwd, dryRun, c.newPath, c.contents);
     result.created.push(c.newPath);
-    result.warnings.push(`${c.path} appears hand-edited; refreshed version written to ${c.newPath}`);
+    // Past tense only when it actually happened — a dry run that reports "written
+    // to <path>.new" is claiming an edit-preserving side effect the user can go
+    // look for and will not find.
+    result.warnings.push(
+      `${c.path} appears hand-edited; refreshed version ${verbed(dryRun, "written")} to ${c.newPath}`,
+    );
   }
-  const manifestAbs = join(opts.cwd, AGENT_CONTEXT_MANIFEST_PATH);
-  await mkdir(dirname(manifestAbs), { recursive: true });
-  await writeFile(manifestAbs, JSON.stringify(decision.manifest, null, 2) + "\n", "utf8");
+  await writeUnlessDryRun(
+    opts.cwd, dryRun, AGENT_CONTEXT_MANIFEST_PATH,
+    JSON.stringify(decision.manifest, null, 2) + "\n",
+  );
+  result.created.push(AGENT_CONTEXT_MANIFEST_PATH);
 
   for (const orphan of decision.removed) {
     result.warnings.push(`${orphan} is no longer part of this stack; orphaned (safe to delete).`);
   }
 
-  if (opts.wireRoot) await wireRootMemory(opts.cwd, result);
+  if (opts.wireRoot) await wireRootMemory(opts.cwd, result, dryRun);
 }
 
 const ROOT_IMPORT_LINE = "@.metaobjects/AGENTS.md";
-async function wireRootMemory(cwd: string, result: InitResult): Promise<void> {
+async function wireRootMemory(cwd: string, result: InitResult, dryRun = false): Promise<void> {
   const claudePath = join(cwd, "CLAUDE.md");
   const agentsPath = join(cwd, "AGENTS.md");
   const claudeExists = await fileExists(claudePath);
@@ -269,8 +307,8 @@ async function wireRootMemory(cwd: string, result: InitResult): Promise<void> {
 
   // If neither root memory file exists, create CLAUDE.md (Claude Code's canonical) with the import.
   if (!claudeExists && !agentsExists) {
-    await writeFile(claudePath, `# Project memory\n\n${ROOT_IMPORT_LINE}\n`, "utf8");
-    result.created.push("CLAUDE.md (created with MetaObjects @import)");
+    await writeUnlessDryRun(cwd, dryRun, "CLAUDE.md", `# Project memory\n\n${ROOT_IMPORT_LINE}\n`);
+    result.created.push(`CLAUDE.md (${verbed(dryRun, "created")} with MetaObjects @import)`);
     return;
   }
   // Otherwise append the import to whichever exist (idempotent — never double-add).
@@ -278,8 +316,11 @@ async function wireRootMemory(cwd: string, result: InitResult): Promise<void> {
     if (!exists) continue;
     const body = await readFile(path, "utf8");
     if (body.includes(ROOT_IMPORT_LINE)) continue;
-    await writeFile(path, `${body.replace(/\n*$/, "\n")}\n${ROOT_IMPORT_LINE}\n`, "utf8");
-    result.warnings.push(`wired ${ROOT_IMPORT_LINE} into ${path.endsWith("AGENTS.md") ? "AGENTS.md" : "CLAUDE.md"} so the MetaObjects context loads`);
+    const target = path.endsWith("AGENTS.md") ? "AGENTS.md" : "CLAUDE.md";
+    await writeUnlessDryRun(cwd, dryRun, target, `${body.replace(/\n*$/, "\n")}\n${ROOT_IMPORT_LINE}\n`);
+    // Past tense only when it actually happened — this one mutates a file the user
+    // owns, so a dry run reporting it as done is the most misleading of the three.
+    result.warnings.push(`${verbed(dryRun, "wired")} ${ROOT_IMPORT_LINE} into ${target} so the MetaObjects context loads`);
   }
 }
 
@@ -304,6 +345,72 @@ async function writeOwnedGenerators(opts: InitOptions, result: InitResult): Prom
   }
 }
 
+/**
+ * .metaobjects/config.json — write fresh defaults, or preserve+merge an existing
+ * valid config. Shared by the full scaffold and `--config-only` so the two paths
+ * cannot drift on the config's default content.
+ */
+async function writeConfigFile(opts: InitOptions, result: InitResult, agentDir: string, agentDirExists: boolean): Promise<void> {
+  const freshConfig = opts.d1
+    ? ConfigSchema.parse({ ...DEFAULT_CONFIG, migrate: buildD1MigrateBlock(opts.cwd) })
+    : DEFAULT_CONFIG;
+  const writeFresh = (): Promise<void> =>
+    writeFile(join(agentDir, "config.json"), JSON.stringify(freshConfig, null, 2) + "\n", "utf8");
+
+  if (!agentDirExists) {
+    await writeFresh();
+    result.created.push(".metaobjects/config.json");
+    return;
+  }
+
+  const configPath = join(agentDir, "config.json");
+  let priorContent: string | undefined;
+  try {
+    priorContent = await readFile(configPath, "utf8");
+    const parsed = ConfigSchema.parse(JSON.parse(priorContent));
+    const merged = ConfigSchema.parse({ ...DEFAULT_CONFIG, ...parsed });
+    // When a valid .metaobjects/config.json already exists and the user passes --force,
+    // we preserve the existing config and only re-scaffold support files. The --d1 flag
+    // only takes effect on fresh inits — retro-fitting D1 onto an existing project is
+    // the user's job (edit migrate.dialect and migrate.d1 in config.json directly).
+    await saveConfig(agentDir, merged);
+    result.preserved.push(".metaobjects/config.json");
+    return;
+  } catch {
+    if (priorContent === undefined) {
+      // The .metaobjects/ dir existed but config.json itself did not — a fresh write.
+      await writeFresh();
+      result.created.push(".metaobjects/config.json");
+      return;
+    }
+
+    // In the full-scaffold path this is only reachable once the caller has
+    // already required --force (the exists-guard at the top of `init()`
+    // throws before writeConfigFile runs otherwise), so opts.force is always
+    // true there. `--config-only` calls this function directly with no such
+    // guard, so without this check it would silently destroy an existing,
+    // merely-unparseable config on every run — the one thing `--force` is
+    // supposed to gate.
+    if (!opts.force) {
+      throw new Error(
+        `existing .metaobjects/config.json exists but could not be parsed; refusing to overwrite it. ` +
+        `Use --force to replace it with defaults. Prior content:\n${priorContent}`,
+      );
+    }
+    log.warn("existing .metaobjects/config.json was invalid — writing fresh defaults. Prior content:");
+    log.warn(priorContent);
+    result.warnings.push("invalid .metaobjects/config.json replaced with defaults");
+    await writeFresh();
+    // F11 — matches the OTHER two `writeFresh()` call sites above: this IS a
+    // fresh write (a destructive one, replacing content that could not be
+    // parsed), not a no-op. Omitting this left it in neither `created` nor
+    // `preserved`, so the `--config-only` CLI summary (which keys on
+    // `result.created.includes(...)` alone) reported "already exists — left
+    // untouched" for a config it had just overwritten with defaults.
+    result.created.push(".metaobjects/config.json");
+  }
+}
+
 export async function init(opts: InitOptions): Promise<InitResult> {
   const result: InitResult = { created: [], preserved: [], warnings: [] };
   const agentDir = join(opts.cwd, DEFAULT_METAOBJECTS_DIR);
@@ -316,6 +423,22 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   if (opts.docsOnly) {
     // Agent-context only: scaffold the always-on + skills + root wiring, never the metaobjects/ project.
     await writeAgentContext(opts, result);
+    return result;
+  }
+
+  if (opts.configOnly) {
+    // --print-only must win outright: a documented dry run must never write, and
+    // this branch used to return ABOVE the printOnly guard the full-scaffold path
+    // uses below, so `--config-only --print-only` silently wrote the real file.
+    if (opts.printOnly) {
+      result.created.push(".metaobjects/config.json");
+      return result;
+    }
+    // Config only: write/preserve .metaobjects/config.json and nothing else — no
+    // metaobjects/ dir, no agent-context, no TypeScript scaffold. `agentDirExists` is
+    // captured before the mkdir below so an existing valid config is still preserved.
+    await mkdir(agentDir, { recursive: true });
+    await writeConfigFile(opts, result, agentDir, agentDirExists);
     return result;
   }
 
@@ -372,45 +495,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   }
 
   // .metaobjects/config.json
-  const freshConfig = opts.d1
-    ? ConfigSchema.parse({ ...DEFAULT_CONFIG, migrate: buildD1MigrateBlock(opts.cwd) })
-    : DEFAULT_CONFIG;
-  if (agentDirExists) {
-    const configPath = join(agentDir, "config.json");
-    let priorContent: string | undefined;
-    try {
-      priorContent = await readFile(configPath, "utf8");
-      const parsed = ConfigSchema.parse(JSON.parse(priorContent));
-      const merged = ConfigSchema.parse({ ...DEFAULT_CONFIG, ...parsed });
-      // When a valid .metaobjects/config.json already exists and the user passes --force,
-      // we preserve the existing config and only re-scaffold support files. The --d1 flag
-      // only takes effect on fresh inits — retro-fitting D1 onto an existing project is
-      // the user's job (edit migrate.dialect and migrate.d1 in config.json directly).
-      await saveConfig(agentDir, merged);
-      result.preserved.push(".metaobjects/config.json");
-    } catch {
-      if (priorContent !== undefined) {
-        log.warn("existing .metaobjects/config.json was invalid — writing fresh defaults. Prior content:");
-        log.warn(priorContent);
-        result.warnings.push("invalid .metaobjects/config.json replaced with defaults");
-      }
-      await writeFile(
-        join(agentDir, "config.json"),
-        JSON.stringify(freshConfig, null, 2) + "\n",
-        "utf8",
-      );
-      if (priorContent === undefined) {
-        result.created.push(".metaobjects/config.json");
-      }
-    }
-  } else {
-    await writeFile(
-      join(agentDir, "config.json"),
-      JSON.stringify(freshConfig, null, 2) + "\n",
-      "utf8",
-    );
-    result.created.push(".metaobjects/config.json");
-  }
+  await writeConfigFile(opts, result, agentDir, agentDirExists);
 
   // .metaobjects/.gitignore
   await writeFile(join(agentDir, ".gitignore"), METAOBJECTS_GITIGNORE_BODY, "utf8");
@@ -653,6 +738,7 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
       noSkills: flags.noSkills,
       wireRoot: flags.wireRoot,
       docsOnly: flags.docsOnly,
+      configOnly: flags.configOnly,
     });
 
     if (flags.printOnly) {
@@ -666,6 +752,13 @@ export async function initCommand(args: string[], cwd: string): Promise<number> 
         log.info(`Scaffolded the MetaObjects agent context (${result.created.length} files): .metaobjects/AGENTS.md + .claude/skills/metaobjects-*.`);
         for (const w of result.warnings) log.info(`  ${w}`);
         log.info("Re-run --docs-only --refresh-docs to update; --no-wire-root to skip the root CLAUDE.md @import.");
+      } else if (flags.configOnly) {
+        if (result.created.includes(".metaobjects/config.json")) {
+          log.info("Wrote .metaobjects/config.json — declare your metadata sources there for the Node CLI (migrate, verify --db).");
+        } else {
+          log.info(".metaobjects/config.json already exists — left untouched.");
+        }
+        for (const w of result.warnings) log.warn(w);
       } else {
         log.info(nextStepsBlock());
         // Surface any scaffold warnings (e.g. the #77 monorepo-subdir agent-context

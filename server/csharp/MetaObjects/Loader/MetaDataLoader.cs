@@ -135,12 +135,19 @@ public class MetaDataLoader
         => FromUris(uris, DefaultRegistry());
 
     /// <summary>
+    /// Convenience: as above, with <paramref name="strict"/> (ADR-0023) — see
+    /// <see cref="FromDirectory(string, DirectorySource.Options?, bool)"/>.
+    /// </summary>
+    public static LoadResult FromUris(IReadOnlyList<Uri> uris, bool strict)
+        => FromUris(uris, DefaultRegistry(), strict);
+
+    /// <summary>
     /// Registry-aware overload: wrap each URI in a <see cref="UriSource"/> and
     /// load using the supplied <paramref name="registry"/>.
     /// </summary>
-    public static LoadResult FromUris(IReadOnlyList<Uri> uris, TypeRegistry registry)
+    public static LoadResult FromUris(IReadOnlyList<Uri> uris, TypeRegistry registry, bool strict = false)
     {
-        var loader = new MetaDataLoader(registry);
+        var loader = new MetaDataLoader(registry, strict: strict);
         var sources = uris.Select(u => (IMetaDataSource)new UriSource(u)).ToList();
         return loader.Load(sources);
     }

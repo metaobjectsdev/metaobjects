@@ -1,0 +1,279 @@
+{
+  "cases": [
+    {
+      "name": "no-config-uses-default-directory",
+      "tree": {
+        "metaobjects/meta.users.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": null,
+      "expectFiles": ["metaobjects/meta.users.json"]
+    },
+    {
+      "name": "empty-sources-uses-default-directory",
+      "tree": {
+        "metaobjects/meta.users.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [] },
+      "expectFiles": ["metaobjects/meta.users.json"]
+    },
+    {
+      "name": "declared-path-replaces-the-default-entirely",
+      "tree": {
+        "metaobjects/ignored.json": "{\"metadata.root\":{\"children\":[]}}",
+        "model/meta.orders.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "model" }] },
+      "expectFiles": ["model/meta.orders.json"]
+    },
+    {
+      "name": "directory-is-walked-recursively",
+      "tree": {
+        "model/meta.a.json": "{\"metadata.root\":{\"children\":[]}}",
+        "model/nested/meta.b.yaml": "metadata.root:\n  children: []\n",
+        "model/nested/deep/meta.c.yml": "metadata.root:\n  children: []\n"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "model" }] },
+      "expectFiles": [
+        "model/meta.a.json",
+        "model/nested/meta.b.yaml",
+        "model/nested/deep/meta.c.yml"
+      ]
+    },
+    {
+      "name": "non-metadata-extensions-are-ignored",
+      "tree": {
+        "model/meta.a.json": "{\"metadata.root\":{\"children\":[]}}",
+        "model/README.md": "not metadata",
+        "model/notes.txt": "not metadata",
+        "model/script.ts": "export {}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "model" }] },
+      "expectFiles": ["model/meta.a.json"]
+    },
+    {
+      "name": "metadata-extensions-are-matched-case-insensitively",
+      "tree": {
+        "model/meta.a.json": "{\"metadata.root\":{\"children\":[]}}",
+        "model/meta.b.JSON": "{\"metadata.root\":{\"children\":[]}}",
+        "model/meta.c.YAML": "metadata.root:\n  children: []\n",
+        "model/meta.d.Yml": "metadata.root:\n  children: []\n",
+        "model/notes.TXT": "not metadata"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "model" }] },
+      "expectFiles": [
+        "model/meta.a.json",
+        "model/meta.b.JSON",
+        "model/meta.c.YAML",
+        "model/meta.d.Yml"
+      ]
+    },
+    {
+      "name": "a-single-file-path-resolves-to-that-file",
+      "tree": {
+        "vendor/meta.catalog.json": "{\"metadata.root\":{\"children\":[]}}",
+        "vendor/meta.other.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "vendor/meta.catalog.json" }] },
+      "expectFiles": ["vendor/meta.catalog.json"]
+    },
+    {
+      "name": "two-sources-union",
+      "tree": {
+        "a/meta.a.json": "{\"metadata.root\":{\"children\":[]}}",
+        "b/meta.b.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "a" }, { "path": "b" }] },
+      "expectFiles": ["a/meta.a.json", "b/meta.b.json"]
+    },
+    {
+      "name": "overlapping-sources-yield-each-file-once",
+      "tree": {
+        "model/meta.a.json": "{\"metadata.root\":{\"children\":[]}}",
+        "model/nested/meta.b.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [{ "path": "model" }, { "path": "model/nested" }]
+      },
+      "expectFiles": ["model/meta.a.json", "model/nested/meta.b.json"]
+    },
+    {
+      "name": "source-order-does-not-change-the-resolved-set",
+      "tree": {
+        "a/meta.a.json": "{\"metadata.root\":{\"children\":[]}}",
+        "b/meta.b.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "b" }, { "path": "a" }] },
+      "expectFiles": ["a/meta.a.json", "b/meta.b.json"]
+    },
+    {
+      "name": "a-parent-relative-path-resolves-against-the-declaring-configs-directory",
+      "tree": {
+        "shared/meta.shared.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "../shared" }] },
+      "resolveFrom": "app",
+      "expectFiles": ["shared/meta.shared.json"]
+    },
+    {
+      "name": "a-declared-path-that-does-not-exist-is-an-error",
+      "tree": {
+        "metaobjects/meta.users.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "nope" }] },
+      "expectError": "ERR_SOURCE_UNRESOLVED"
+    },
+    {
+      "name": "an-empty-directory-source-resolves-to-no-files",
+      "tree": {
+        "model/.keep": ""
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "model" }] },
+      "expectFiles": []
+    },
+    {
+      "name": "resource-kind-is-unsupported",
+      "tree": {
+        "metaobjects/meta.users.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "resource": "com/acme/model" }] },
+      "expectError": "ERR_SOURCE_KIND_UNSUPPORTED"
+    },
+    {
+      "name": "package-kind-is-unsupported",
+      "tree": {
+        "metaobjects/meta.users.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "package": "acme-model" }] },
+      "expectError": "ERR_SOURCE_KIND_UNSUPPORTED"
+    },
+    {
+      "name": "unsupported-kind-precedes-unresolved-path-when-path-is-declared-first",
+      "tree": {
+        "metaobjects/meta.users.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [{ "path": "nope" }, { "resource": "com/acme/model" }]
+      },
+      "expectError": "ERR_SOURCE_KIND_UNSUPPORTED"
+    },
+    {
+      "name": "unsupported-kind-precedes-unresolved-path-when-path-is-declared-second",
+      "tree": {
+        "metaobjects/meta.users.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [{ "resource": "com/acme/model" }, { "path": "nope" }]
+      },
+      "expectError": "ERR_SOURCE_KIND_UNSUPPORTED"
+    },
+    {
+      "name": "no-config-and-no-default-directory-is-an-error",
+      "tree": {
+        "src/.keep": ""
+      },
+      "config": null,
+      "expectError": "ERR_COLLECTION_NOT_FOUND"
+    },
+    {
+      "name": "typescript-owned-top-level-keys-do-not-affect-source-resolution",
+      "tree": {
+        "model/meta.a.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [{ "path": "model" }],
+        "pending_in_git": true,
+        "confidence_thresholds": { "pending_promote": 0.8 },
+        "extract": { "metaignore": ".metaignore" },
+        "migrate": { "dialect": "postgres" }
+      },
+      "expectFiles": ["model/meta.a.json"]
+    },
+    {
+      "name": "sources-must-be-an-array-not-an-object",
+      "tree": {
+        "metaobjects/meta.stale.json": "{\"metadata.root\":{\"children\":[]}}",
+        "custom/meta.real.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": { "path": "custom" } },
+      "expectError": true
+    },
+    {
+      "name": "sources-null-is-an-error-not-the-default",
+      "tree": {
+        "metaobjects/meta.stale.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": null },
+      "expectError": true
+    },
+    {
+      "name": "an-empty-path-is-an-error",
+      "tree": {
+        "metaobjects/meta.users.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": "" }] },
+      "expectError": true
+    },
+    {
+      "name": "a-sources-entry-with-two-keys-is-an-error",
+      "tree": {
+        "metaobjects/meta.stale.json": "{\"metadata.root\":{\"children\":[]}}",
+        "custom/meta.real.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": {
+        "schema_version": 1,
+        "sources": [{ "path": "custom", "resource": "com/acme/model" }]
+      },
+      "expectError": true
+    },
+    {
+      "name": "an-unsupported-schema-version-is-an-error",
+      "tree": {
+        "metaobjects/meta.stale.json": "{\"metadata.root\":{\"children\":[]}}",
+        "model/meta.real.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 2, "sources": [{ "path": "model" }] },
+      "expectError": true
+    },
+    {
+      "name": "a-non-string-source-value-is-an-error",
+      "tree": {
+        "123/meta.real.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "config": { "schema_version": 1, "sources": [{ "path": 123 }] },
+      "expectError": true
+    },
+    {
+      "name": "a-symlinked-sources-path-resolves-through-it",
+      "tree": {
+        "real/meta.a.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "symlinks": { "link": "real" },
+      "config": { "schema_version": 1, "sources": [{ "path": "link" }] },
+      "expectFiles": ["link/meta.a.json"]
+    },
+    {
+      "name": "a-symlinked-subdirectory-inside-a-walked-tree-resolves-through-it",
+      "tree": {
+        "model/meta.top.json": "{\"metadata.root\":{\"children\":[]}}",
+        "external/meta.linked.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "symlinks": { "model/linked": "external" },
+      "config": { "schema_version": 1, "sources": [{ "path": "model" }] },
+      "expectFiles": ["model/meta.top.json", "model/linked/meta.linked.json"]
+    },
+    {
+      "name": "a-symlink-cycle-is-an-error",
+      "tree": {
+        "model/meta.a.json": "{\"metadata.root\":{\"children\":[]}}"
+      },
+      "symlinks": { "model/loop": "model" },
+      "config": { "schema_version": 1, "sources": [{ "path": "model" }] },
+      "expectError": true,
+      "errorIsNative": true
+    }
+  ]
+}

@@ -160,6 +160,20 @@ describe("ConfigSchema — phase-1 source resolution", () => {
       ConfigSchema.parse({ schema_version: 1, migrate: { d1: { bindingg: "DB" } } }),
     ).toThrow();
   });
+  test("rejects a genuinely unknown TOP-LEVEL key — TypeScript's half of a ruled asymmetry", () => {
+    // Java, C# and Python model only `schema_version` + `sources`, so they resolve
+    // this config successfully, ignoring `foo`. That divergence is INTENDED and is
+    // ruled in fixtures/source-resolution-conformance/README.md: TypeScript owns
+    // this file and is the only port that knows its whole vocabulary, so it is the
+    // only one that can tell a typo from a key a sibling owns. A partial reader
+    // could only imitate strictness by embedding TS's key list, and would then
+    // reject a config a newer `meta` had just written.
+    //
+    // Deliberately kept OFF the shared corpus: a shared case asserts one outcome,
+    // and the correct outcome here differs by port. This is TS's half; the tolerant
+    // half is pinned in each of the other three ports.
+    expect(() => ConfigSchema.parse({ schema_version: 1, foo: 1 })).toThrow();
+  });
   test("an existing config with no new keys still parses (back-compat)", () => {
     const p = ConfigSchema.parse({
       schema_version: 1, pending_in_git: true,

@@ -579,7 +579,8 @@ describe("view lifecycle — real Postgres", () => {
     // The banner lives in the committed migration file, where a reviewer sees it.
     expect(up).toContain("WARNING: CASCADE DROP");
     expect(up).toContain("reporting.downstream_report (view)");
-    expect(up).toContain(`DROP VIEW "v_program_summary" CASCADE;`);
+    // #313 — forward drops carry IF EXISTS so a committed chain replays from empty.
+    expect(up).toContain(`DROP VIEW IF EXISTS "v_program_summary" CASCADE;`);
 
     // Ours came back; theirs did not — which is exactly what the operator opted into.
     expect(await relationExists("v_program_summary")).toBe(true);

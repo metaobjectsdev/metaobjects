@@ -218,6 +218,113 @@ describe("init() — monorepo-subdir agent-context warning (#77)", () => {
   });
 });
 
+describe("init() --config-only", () => {
+  test("writes just the config, no TypeScript scaffold", async () => {
+    const result = await init({ cwd, configOnly: true });
+
+    // The one file it writes.
+    expect(result.created).toContain(".metaobjects/config.json");
+    const cfg = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
+    expect(cfg.schema_version).toBe(1);
+    expect(cfg.sources).toEqual([]);
+
+    // None of the TypeScript scaffold, none of the metaobjects/ metadata dir, none
+    // of the agent-context — this is the whole point of the flag: a Maven- or
+    // pip-rooted project declares its sources for the Node CLI without acquiring a
+    // TS project it will not use.
+    for (const unwanted of [
+      "metaobjects.config.ts",
+      "codegen/generators/entity.ts",
+      "package.json",
+      ".gitignore",
+      "metaobjects",
+      ".metaobjects/.gitignore",
+      ".metaobjects/AGENTS.md",
+    ]) {
+      expect(existsSync(join(cwd, unwanted))).toBe(false);
+    }
+  });
+
+  test("--print-only writes nothing to disk", async () => {
+    // --config-only used to return ABOVE the --print-only guard the full-scaffold
+    // path checks below it, so this documented dry run silently wrote the real file.
+    const result = await init({ cwd, configOnly: true, printOnly: true });
+
+    expect(result.created).toContain(".metaobjects/config.json");
+    expect(existsSync(join(cwd, ".metaobjects"))).toBe(false);
+    expect(existsSync(join(cwd, ".metaobjects", "config.json"))).toBe(false);
+  });
+
+  test("leaves an existing valid config untouched", async () => {
+    mkdirSync(join(cwd, ".metaobjects"), { recursive: true });
+    const existing = { schema_version: 1, sources: [{ path: "model" }] };
+    writeFileSync(join(cwd, ".metaobjects", "config.json"), JSON.stringify(existing));
+
+    const result = await init({ cwd, configOnly: true });
+
+    expect(result.preserved).toContain(".metaobjects/config.json");
+    const cfg = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
+    expect(cfg.sources).toEqual([{ path: "model" }]);
+  });
+
+  test("refuses to overwrite an existing config it cannot parse, without --force", async () => {
+    mkdirSync(join(cwd, ".metaobjects"), { recursive: true });
+    // Not valid against ConfigSchema.strict() — e.g. written by a newer `meta`
+    // or a typo'd key. Before --config-only existed, reaching this failure
+    // required an explicit --force; --config-only must not have quietly
+    // regressed that safety net.
+    writeFileSync(join(cwd, ".metaobjects", "config.json"), JSON.stringify({ schema_version: 1, unknownKey: true }));
+
+    await expect(init({ cwd, configOnly: true })).rejects.toThrow(/could not be parsed/);
+    // Unmodified — the refusal must be provable, not just declared.
+    const cfg = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
+    expect(cfg.unknownKey).toBe(true);
+  });
+
+  test("--force still replaces an existing unparseable config with defaults", async () => {
+    mkdirSync(join(cwd, ".metaobjects"), { recursive: true });
+    writeFileSync(join(cwd, ".metaobjects", "config.json"), JSON.stringify({ schema_version: 1, unknownKey: true }));
+
+    const result = await init({ cwd, configOnly: true, force: true });
+
+    expect(result.warnings).toContain("invalid .metaobjects/config.json replaced with defaults");
+    const cfg = JSON.parse(readFileSync(join(cwd, ".metaobjects", "config.json"), "utf8"));
+    expect(cfg.sources).toEqual([]);
+    // F11 — this destructive replacement must be reported in `result.created`
+    // (matching the OTHER two `writeFresh()` call sites in `writeConfigFile`),
+    // not silently omitted from both `created` and `preserved`. The CLI's
+    // `--config-only` summary keys on `result.created.includes(...)` alone to
+    // choose between "Wrote ..." and "already exists — left untouched." —
+    // without this, a config the caller just DESTROYED and replaced with
+    // defaults is reported as "left untouched", the opposite of what happened.
+    expect(result.created).toContain(".metaobjects/config.json");
+  });
+
+  test("preserving a valid existing config is reported separately from a fresh write", async () => {
+    // The sibling of the case above: a VALID existing config is genuinely left
+    // untouched (merged in place via saveConfig, not replaced with defaults) —
+    // `result.preserved`, not `result.created`, is the correct bucket for it.
+    mkdirSync(join(cwd, ".metaobjects"), { recursive: true });
+    writeFileSync(
+      join(cwd, ".metaobjects", "config.json"),
+      JSON.stringify({ schema_version: 1, sources: [{ path: "model" }] }),
+    );
+
+    const result = await init({ cwd, configOnly: true, force: true });
+
+    expect(result.preserved).toContain(".metaobjects/config.json");
+    expect(result.created).not.toContain(".metaobjects/config.json");
+  });
+});
+
+describe("initCommand --config-only", () => {
+  test("returns 0 and writes only the config", async () => {
+    expect(await initCommand(["--config-only"], cwd)).toBe(0);
+    expect(existsSync(join(cwd, ".metaobjects", "config.json"))).toBe(true);
+    expect(existsSync(join(cwd, "metaobjects.config.ts"))).toBe(false);
+  });
+});
+
 describe("init --d1", () => {
   test("scaffolds config with migrate.dialect = 'd1' and prefilled binding from wrangler.toml", async () => {
     writeFileSync(join(cwd, "wrangler.toml"), [

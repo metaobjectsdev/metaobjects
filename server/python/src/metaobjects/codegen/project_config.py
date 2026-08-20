@@ -71,6 +71,11 @@ class ProjectConfig:
     metadata: str
     #: Consumer provider refs (``module:symbol``), resolved config-relative.
     providers: list[str]
+    #: MetaObjects-shipped library packages to load alongside ``metadata``
+    #: (e.g. ``["ai"]`` for ``metaobjects::ai::LlmCallBase``). Without this the
+    #: CLI cannot load the metadata that shipped generators like ``trace-helper``
+    #: exist to consume, and an adopter's ``extends`` fails ERR_UNRESOLVED_SUPER.
+    libraries: list[str]
     #: Ordered run-specs (YAML map insertion order preserved).
     targets: list[TargetConfig]
 
@@ -126,6 +131,22 @@ def load_project_config(path: Path) -> ProjectConfig:
         raise ConfigError(f"{path}: 'metadata' must be a string (a directory path).")
 
     providers = _require_str_list(raw.get("providers", []), f"{path}: 'providers'")
+    libraries = _require_str_list(raw.get("libraries", []), f"{path}: 'libraries'")
+    if libraries:
+        # Validated HERE and not in library_sources(): the programmatic API skips an
+        # unknown package on purpose (cross-port parity with TS), but a name typed
+        # into a config file is a mistake worth failing on — silently skipping it
+        # resurfaces later as ERR_UNRESOLVED_SUPER pointing at the adopter's own
+        # metadata, which is the wrong place to go looking.
+        from metaobjects.library import known_packages
+
+        available = known_packages()
+        unknown = [name for name in libraries if name not in available]
+        if unknown:
+            raise ConfigError(
+                f"{path}: 'libraries' has unknown package(s) {unknown}; "
+                f"available: {available}"
+            )
 
     targets_raw = raw.get("targets")
     if not isinstance(targets_raw, dict) or not targets_raw:
@@ -156,5 +177,6 @@ def load_project_config(path: Path) -> ProjectConfig:
         config_dir=path.parent.resolve(),
         metadata=metadata,
         providers=providers,
+        libraries=libraries,
         targets=targets,
     )

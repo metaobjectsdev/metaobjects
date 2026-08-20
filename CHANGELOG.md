@@ -86,6 +86,170 @@ emits no diagnostic, only assertions that quietly cover less. The corpus now car
 README naming which case covers which path, so an edit that removes one has to remove its
 stated purpose too.
 
+## [0.24.0] — npm `0.24.0` · PyPI `0.24.0` · NuGet `0.24.0` · Maven `7.24.0`
+
+A coordinated **MINOR** across all four registries. It is a MINOR rather than a PATCH
+because two of its changes are DEFAULT FLIPS, not corrections of previously-wrong
+behaviour: the Java Maven plugin now fails a build that a silently-empty model used to
+let pass, and Java and Python now follow symlinked directories where they previously did
+not. Pre-1.0, `^0.23.x` resolves `<0.24.0`, so a MINOR is adopted deliberately while a
+PATCH would be taken automatically on a routine update — the same call, for the same
+reason, as `0.21.0`.
+
+### Added — `sources` is read by all four CLI surfaces, plus `meta init --config-only`
+
+`.metaobjects/config.json`'s `sources` key stops being a Node-only concern. Adopter
+guide: [`docs/features/metadata-sources.md`](docs/features/metadata-sources.md).
+
+- **`sources` is read by all four CLI surfaces**, not just the Node `meta` CLI —
+  the C#, Python and Java/Kotlin CLIs (Kotlin has no CLI of its own; it runs
+  through the same Maven plugin as Java) now resolve metadata from the
+  port-neutral `.metaobjects/config.json`, so one declaration serves every port
+  (C#'s CLI loader accepts only a single directory `path` source — see the
+  adopter guide). Each reads a **neutral subset** (`schema_version` + `sources`) and ignores
+  unknown top-level keys, so the TypeScript-owned keys in that file (`migrate`,
+  `scope`, `extract`, and the rest) never become a four-port change. Precedence
+  is a ladder — explicit CLI argument, then the port's own native surface (a
+  pom's `<sourceDir>`/`<sources>`, Python's `metadata` key), then `sources`,
+  then the default `metaobjects/` directory — and a config that exists but is
+  malformed errors at its own rung rather than silently falling through. Gated
+  by the new
+  [`fixtures/source-resolution-conformance/`](fixtures/source-resolution-conformance/)
+  corpus, which every port runs.
+- **`meta init --config-only`** writes `.metaobjects/config.json` and nothing
+  else, so a Maven- or pip-rooted project can declare its sources for the Node
+  CLI (which owns `migrate` and `verify --db`, ADR-0015) without acquiring a
+  TypeScript scaffold it will not use.
+- **`scope` / `migrate.scope` stay Node-CLI-only.** Java's shipped `<filters>`
+  grammar uses `*` to cross the `::` separator and `@` to match one segment —
+  respectively `scope`'s `**` and `*`, inverted — plus `!`-prefix exclusion and
+  a `.[attr]` predicate `scope` cannot express at all
+  (`GeneratorUtil.createRegexFromGlob` carries a `TODO` conceding its own
+  separator handling is wrong). Both are output filters over the same resolved
+  file set, so reconciling them is a separate, adopter-affecting decision
+  rather than a mechanical port. No cross-port behavior depends on `scope`.
+- **Resolved file order, and the malformed-config error code, are deliberately
+  NOT cross-port contracts.** The ports' directory walks already differ and
+  always have (Java sorts by basename, C# by full-path ordinal, Python by
+  basename, TypeScript walks depth-first); the corpus compares file **sets**.
+  A malformed config must raise rather than silently degrade to "no config",
+  but which error is each port's own — verified empirically: TypeScript raises
+  a raw `ZodError` with no code at all, Python raises
+  `ERR_COLLECTION_NOT_FOUND`, C# and Java both raise `ERR_BAD_ATTR_VALUE`.
+- **Directory expansion follows symlinked directories in all four ports** —
+  including when a declared `sources` path is itself a symlink, or a symlink
+  sits partway through a walked tree. TypeScript and C# already did; Java and
+  Python now match (a symlinked `sources` path previously resolved to zero
+  files in Java, silently, exit 0). A symlink CYCLE is a loud error in every
+  port. Gated by three new `symlinks`-bearing corpus cases.
+
+  That last sentence was written before it was true, and the gap is worth
+  recording because "a loud error rather than a hang" understated what C# did.
+  `Directory.EnumerateFiles(dir, "*", AllDirectories)` follows symlinks but has
+  no loop guard, and its `EnumerationOptions` default of `IgnoreInaccessible`
+  SWALLOWS the kernel's own ELOOP refusal — so a self-referential directory
+  symlink neither hung nor threw. It **completed normally, returning ~40 copies
+  of one real file** at ever-deeper phantom paths, and because source
+  de-duplication keys on the LEXICAL path every phantom was admitted as its own
+  source, loading the same metadata once per level. C# now walks with a
+  per-branch real-ancestor guard and raises on revisit, matching the three ports
+  that already did. The claim is now carried by a corpus case
+  (`a-symlink-cycle-is-an-error`) rather than by prose.
+- **Behavior change (Java/Maven only): a `<loader>` naming neither
+  `<sourceDir>` nor `<sources>`, with no `.metaobjects/config.json` `sources`
+  and no default `metaobjects/` directory, now FAILS the build**
+  (`ERR_COLLECTION_NOT_FOUND`) instead of silently producing an empty model
+  and passing. This is the one behavior change here that can break an
+  existing `mvn metaobjects:generate`/`:verify` — most likely to bite a
+  multi-module reactor where a parent pom configures `<loader>` and one child
+  module never adds its own `<sourceDir>`. To restore the old outcome, declare
+  `<sourceDir>`/`<sources>` explicitly in that module's pom, or give it a real
+  metadata source (a `metaobjects/` directory or a `.metaobjects/config.json`
+  `sources` entry).
+
+### Changed — a committed migration chain must replay from empty, and `meta migrate` stops writing chains that cannot ([#313](https://github.com/metaobjectsdev/metaobjects/issues/313))
+
+**`meta migrate --from-db` now REFUSES a drop for a table or view the committed schema
+snapshot never contained**, exiting 2 and naming each object. This is the one change here
+that can fail an existing project's `meta migrate`, so it leads. Pass
+**`--allow drop-unmanaged`** when the drop is genuinely intended.
+
+The refusal exists because the drop it blocks produces a migration nobody can replay. The
+live migrate path diffs metadata against introspection and never reads the snapshot, so a
+table another tool owns reads as "in the database, not in the model" and is proposed for a
+`DROP TABLE`. Every incremental migrate then keeps succeeding against the database that
+already has that table — the chain only fails the day someone provisions a fresh one, which
+for the reporter was **three months later**, by which point the only working database left
+was a leftover CI container. `drift/classify.ts` has always said objects present in the DB
+but not the snapshot "must never be treated as actionable drift or auto-dropped"; this is
+the first place that doctrine is enforced where it mattered.
+
+It does not false-fire on brownfield projects, and the reason is structural rather than
+special-cased: **both mechanisms ADD to the snapshot.** A `baseline --from-db` snapshot
+contains the foreign table; a project declaring `migrate.scope` carries its out-of-scope
+entries forward. The guard fires precisely when nothing ever claimed the object. It fails
+OPEN with no snapshot on disk — refusing there would break the first `meta migrate` of every
+greenfield project — and it lives on the live path only, because the offline path diffs
+against the snapshot and so cannot propose a snapshot-absent drop at all.
+
+**Emitted forward drops now carry `IF EXISTS`** — `drop-table`, `drop-view` (plain and
+CASCADE), `drop-index` (both the plain form and #285's constraint-backed
+`ALTER TABLE … DROP CONSTRAINT`), `drop-fk` and `drop-check` — in both dialects, so an
+already-absent object cannot break a replay. **Down statements stay bare, deliberately:**
+`rollbackTo` runs `down.sql` and the ledger delete in ONE transaction, so a guarded down
+would no-op and still record the rollback as done. Rollback is the one place a loud failure
+is load-bearing. Also left bare on purpose: the sqlite recreate-and-copy rebuild's
+`DROP TABLE` and d1-cascade's, each of which drops a table the same recipe just
+`INSERT…SELECT`ed from, where `IF EXISTS` converts a caught corruption into a silent one.
+`drop-column` is excluded as the one genuine dialect limit — sqlite has no
+`DROP COLUMN IF EXISTS` — and the new refusal covers it instead. D1 inherits the sqlite
+change, since `emit/d1.ts` renders through `renderSqlite`.
+
+**A chain creating a table or view in a non-default schema now emits
+`CREATE SCHEMA IF NOT EXISTS`** ahead of it. `CREATE SCHEMA` was emitted nowhere in either
+emitter — only by the ledger's own setup — so an `@schema` project's chain could never apply
+to a virgin database. Views count, not only tables: a first migration creating just a view in
+a non-default schema failed identically. The down does not drop the schema; it may hold
+objects this tool does not own and cannot restore.
+
+### Added — `meta verify --replay` and `--replay-snapshot`
+
+Two new verify subverbs that answer the question the toolchain was already promising an
+answer to. `docs/features/migrations-and-drift.md` and `meta migrate --help` both said
+`apply-pending` "is the way to provision a fresh or CI database"; that is true only of a
+chain that builds the schema, and nothing checked.
+
+- **`--replay`** replays the committed chain into an empty throwaway database and asserts it
+  **applies**. This is the #313 gate.
+- **`--replay-snapshot`** additionally asserts the replayed schema **equals the committed
+  snapshot**, finally wiring `verifyReplay` — built, exported, and without a CLI caller since
+  the 2026-05-31 design retained it as "the optional `verify --replay` integrity aid". It
+  catches a different defect: hand-edited structural DDL that still applies but no longer
+  builds the recorded schema.
+
+They are two tiers rather than one gate because the populations differ. A project adopted via
+`migrate baseline --from-db` passes the first trivially and **cannot** pass the second by
+construction — its snapshot is the whole introspected database against an empty chain. The
+reporter's failure was an *apply* error, so the weaker assertion is the one that answers the
+bug and is immune to that class. The limitation is documented rather than auto-detected: the
+only candidate signal has no production caller and would live in the *target* database's
+ledger, while the gate runs against a fresh engine with no ledger at all.
+
+Neither needs a `--db`. The engine is local and disposable — real Postgres in-process via
+**PGlite**, a throwaway temp file for sqlite — so there is nothing to provision, no
+credentials, and no scratch database to collide with or drop by mistake. **`@electric-sql/pglite`
+is a new OPTIONAL peer dependency of `@metaobjectsdev/migrate-ts`** (~22 MB of WASM, so it is
+not forced on every adopter): install it to replay a postgres chain. With no URL to infer from,
+the dialect precedence is `--dialect` > `migrate.dialect` > refuse naming `--dialect`.
+`--migration-format flyway` and `--dialect d1` are refused, mirroring `apply-pending`. An empty
+chain and a missing snapshot both pass and **say which**, because a gate that is silent when it
+checked nothing cannot be told apart from one that passed.
+
+`verifyReplay` also gains an optional `governed` so a project declaring `migrate.scope` can use
+the second tier at all: such a project carries the other owner's tables into its snapshot on
+purpose and its chain never creates them, so without this they were reported as missing on
+every replay.
+
 ### Added — pre-release publishing to a private registry (no more real releases just to test a change)
 
 Trying an unreleased change against a downstream project required cutting a real release on
@@ -147,6 +311,23 @@ asserts its target equals the configured registry, checks it against a deny-list
 public registries, **parses `bun publish --dry-run`** rather than trusting bun, and runs with
 `HOME` redirected so a fall-back has no credential to use.
 
+### Fixed — `meta init --print-only` wrote the files it was previewing
+
+`--print-only` is documented as "print what would be written, don't write". It honoured
+that on the full scaffold, and — since the fix that moved `--config-only` below the
+guard — on `--config-only`. The two agent-context paths, **`--docs-only` and
+`--refresh-docs`**, return from `init()` ABOVE that guard and were missed, so both
+documented dry runs scaffolded for real: the docs, every stack-scoped skill reference,
+the manifest, and, with `--wire-root`, a newly created root `CLAUDE.md`.
+
+The guard now sits at the I/O rather than at the report. `writeAgentContext` already
+computes the complete plan before performing a single write, so a dry run reports
+exactly the set a real run would touch, with no second hardcoded list to drift out of
+step. Reporting is future-tense under a dry run: the old code announced `wired
+@.metaobjects/AGENTS.md into CLAUDE.md` and `refreshed version written to <path>.new`
+for edits it had not made — a side effect on a file you own, which you could go looking
+for and never find.
+
 ### Fixed — `scripts/release.mjs` preflighted only one package
 
 The target-version check ran `npm view @metaobjectsdev/cli@<version>` and nothing else, so a
@@ -204,11 +385,19 @@ the same migrations. Three changes are visible even to that project. Adopter gui
   naming the target it cannot find, never a half-resolved model — and the
   replacement is an explicit `{ "path": "../shared-model/metaobjects" }` source,
   which works in any layout and needs no topological ordering.
-- **`.metaobjects/config.json` rejects unknown keys.** `ConfigSchema` is `.strict()`
-  at every level, so a key that was previously stripped in silence is now a load
-  error naming the key. Silently dropping a key means the setting you wrote does not
-  exist: `{ "migrate": { "scopee": [...] } }` used to mean *unscoped*, governing
-  every table in a database you were trying to share.
+- **`.metaobjects/config.json` rejects unknown keys — in the Node CLI only, and that
+  asymmetry is deliberate.** `ConfigSchema` is `.strict()` at every level, so a key
+  that was previously stripped in silence is now a load error naming the key. Silently
+  dropping a key means the setting you wrote does not exist: `{ "migrate": { "scopee":
+  [...] } }` used to mean *unscoped*, governing every table in a database you were
+  trying to share. The C#, Python and Java CLIs read the neutral subset and IGNORE an
+  unknown key, so the same config loads there and fails here. That is intended and now
+  ruled: this file is TypeScript's, and TypeScript is the only port that models its
+  whole vocabulary — so it is the only one that CAN tell a typo from a key a sibling
+  owns. A partial reader could imitate strictness only by carrying TypeScript's key
+  list in lockstep, at which point a port one release behind would reject a config a
+  newer `meta` had just written. Consequence to plan for: a config written by a NEWER
+  `meta` hard-fails an OLDER one, which is what `schema_version` is for.
 - **`ExpectedView.fqn` is required.** On the public `@metaobjectsdev/codegen-ts`
   export, the declaring object's fully-qualified name is no longer optional —
   `migrate.scope` decides ownership on that name, and a view arriving without one
@@ -240,10 +429,12 @@ the same migrations. Three changes are visible even to that project. Adopter gui
   it a config: `meta init` writes one, and a `"sources": []` config is enough to
   claim the directory and take the default.
 
-## [0.23.3] — npm `0.23.3` · PyPI `0.23.3` · NuGet `0.23.3` · Maven `7.23.3`
+### Fixed — `meta gen` silently destroyed hand edits (was drafted as `0.23.3`)
 
-A coordinated **PATCH** across all four registries, and every one of them carries a real
-changed product file — the same defect had to be fixed four times, once per write path.
+Drafted as a standalone `0.23.3` PATCH and never released — no registry ever carried
+`0.23.3`. It ships here instead, because the `sources` work above forces this cut to a
+MINOR and a release cannot be two versions at once. Every registry carries a real changed
+product file for it: the same defect had to be fixed four times, once per write path.
 
 **`meta gen` was silently destroying hand edits, and the case it happened in was the
 normal one.** A generated file that existed, differed from fresh output, and had no
@@ -560,6 +751,76 @@ Sharing the *guarantee* while letting the *mechanism* differ per port is the sam
 ADR-0015 makes for schema migrations. Refusing warns rather than failing the reactor,
 because failing a Maven build over a file the user chose to own would punish exactly the
 person the guard protects.
+
+### Added — Python port serves the shipped `ai` library (loader `libraries=[...]`)
+
+**No new vocabulary — this is port parity.** No type, subtype, or attribute is added, so
+`expected-registry.json` is untouched.
+
+The Python port shipped both halves of the AI trace stack *except* the metadata they
+operate on. `runtime/llm_recorder.py` (`build_llm_call_row` / `persist_llm_call_row`) and
+the registered `trace-helper` generator were both present, but there was no `library/`
+package and no `libraries` loader option — so `metaobjects::ai::LlmCallBase` could not be
+loaded on this port at all, and the documented `extends: metaobjects::ai::LlmCallBase`
+failed with `ERR_UNRESOLVED_SUPER`. A generator shipped without its input.
+
+That is the more useful lesson: the feature was complete on both sides of the metadata
+and absent in the middle, and nothing failed loudly, because *nothing could author the
+entity that would have exercised it*. The port's own docs described the path as working.
+
+Mirrors the TypeScript design rather than inventing a second one — same package names,
+same refs (path under `library/` minus `.yaml`), same on-disk-first resolution:
+
+- `metaobjects/library/` — `library_sources(packages)` returns a `FileSource` when the
+  repo-root `library/` tree is reachable (a checkout, so editing the canonical YAML takes
+  effect immediately) and falls back to the generated embed otherwise (the ordinary
+  wheel-in-site-packages case). An unrecognised package name contributes no sources
+  rather than raising: asking for a package this version does not ship must not stop a
+  consumer loading its own metadata.
+- `scripts/generate_embedded_library.py` — regenerates the embed from the canonical
+  repo-root YAML. Embedded as a `.py` module, not shipped as package data, so no build
+  backend configuration can silently drop it.
+- `MetaDataLoader.from_directory(..., libraries=["ai"])` (hence `load_directory`) —
+  opt-in, and imported lazily: a load that requests no libraries neither pays the import
+  nor gets extra names in its model. Sources are prepended for a deterministic,
+  TS-matching order, **not** because resolution needs it — `resolve_supers` runs once
+  after every root merges, so appending resolves identically.
+- **A `libraries` key on `metaobjects.config.yaml`, threaded into the CLI's load path.**
+  The option first landed only on the loader — which is also all TypeScript exposes — so
+  `metaobjects gen` still could not load `metaobjects::ai::LlmCallBase` even though the
+  `trace-helper` generator that consumes it is registered *for the CLI*. The generator was
+  reachable from the command line while its input was not. An unknown package name in the
+  config is a `ConfigError` naming the valid ones, while the programmatic API keeps
+  TypeScript's silent skip: a name typed into a config file is a mistake worth failing on,
+  where an API caller asking for a package this version does not ship should still load
+  its own metadata. (The TypeScript CLI still lacks the key — parity follow-up, not drift
+  introduced here.)
+
+Three gates ship with it, since each of these failed silently before:
+
+- the embed is byte-compared against the canonical YAML (the drift pattern already used
+  for `spec/metamodel/`), so a stale generated module cannot reach a wheel;
+- `extends: metaobjects::ai::LlmCallBase` is asserted to fail *without* the opt-in and to
+  resolve 18 inherited fields *with* it — the negative half is what proves the opt-in is
+  doing the work;
+- **ADR-0024 FIX #1 is now enforced**: `build_llm_call_row`'s keys are asserted equal to
+  `LlmCallBase`'s effective fields, both directions. The ADR asked for this gate; it did
+  not exist. A recorder writing an undeclared column fails at persist with "Unknown
+  field", and the two drifting apart is invisible until then.
+- the acceptance test **runs** the generated helper against a capturing recorder and
+  asserts every key it writes is a field the entity declares. Worth stating why: the first
+  version of that test asserted the strings `voRequest`/`voResponse` appeared in the
+  emitted source, against a fixture declaring neither column — so it passed while blessing
+  a helper that raises on its first write. That is the same bypass ADR-0024 already warns
+  about ("the green tests pass only because they bypass the shipped base with bespoke
+  entities"), reappearing one level up in a test written to prevent it. A substring
+  assertion over generated code is not an end-to-end test.
+
+Not addressed here, and worth knowing before adopting: the `ai` opt-in also brings the
+library's own **concrete** `LlmCall` entity (table `llm_call`) in alongside the abstract
+base, so it appears in codegen output and in a schema diff unless filtered. Documented in
+the Python prompts reference rather than changed, because `library/ai/llm-call.yaml` is
+shared by every port and splitting it is a cross-port decision.
 
 ## [0.23.2] — npm `0.23.2` · PyPI `0.23.2` · NuGet `0.23.2` · Maven `7.23.2`
 
