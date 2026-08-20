@@ -9,8 +9,9 @@ describe("drop-check: restore down + allow gating", () => {
   test("drop-check with restore → down re-adds the constraint", () => {
     const c = { kind: "drop-check", table: "orders", check: CHK.name, restore: CHK, status: { state: "allowed" } } as unknown as Change;
     const r = emit([c], { dialect: "postgres" });
-    // #313 — the forward drop carries IF EXISTS; the down (asserted below) stays bare.
-    expect(r.up).toContain(`ALTER TABLE "orders" DROP CONSTRAINT IF EXISTS "orders_qty_numeric_chk";`);
+    // #313 — the forward drop carries IF EXISTS on both the constraint AND the
+    // enclosing ALTER TABLE (F10); the down (asserted below) stays bare.
+    expect(r.up).toContain(`ALTER TABLE IF EXISTS "orders" DROP CONSTRAINT IF EXISTS "orders_qty_numeric_chk";`);
     expect(r.down).toContain(`ALTER TABLE "orders" ADD CONSTRAINT "orders_qty_numeric_chk" CHECK (qty >= 1);`);
   });
   test("drop-check is blocked unless allow.dropCheck", () => {
