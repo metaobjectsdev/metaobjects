@@ -29,9 +29,10 @@ import java.util.Set;
 import com.metaobjects.generator.util.GeneratedFileWriter;
 
 /**
- * Generator: one {@code <TemplateShortName>Parser} Java class per
- * {@code template.output} declaration, emitting a Jackson-backed throw-only
- * parser around the {@code @payloadRef} payload record produced by
+ * Generator: one {@code <TemplateShortName>Parser} Java class per RESPONDING
+ * {@code template.prompt} declaration (ADR-0052 — one carrying {@code @responseRef}),
+ * emitting a Jackson-backed throw-only parser around the {@code <TemplateShortName>Response}
+ * record produced by
  * {@link SpringPayloadGenerator} (no payload-shape re-declaration).
  *
  * <p>FR-006 — the Java port of the cross-language template-output parser
@@ -59,7 +60,12 @@ import com.metaobjects.generator.util.GeneratedFileWriter;
  *
  * <p>Skips and defensive cases (mirrors the cross-port behavior):
  * <ul>
- *   <li>{@code template.prompt} is ignored — only outputs need parsing.</li>
+ *   <li>{@code template.output} is ignored — it renders OUTBOUND and parses nothing.</li>
+ *   <li>A {@code template.prompt} with no {@code @responseRef} — nothing elicits a
+ *       typed reply, so there is nothing to parse.</li>
+ *   <li>A {@code @responseRef} that does not resolve to a payload target — skipped
+ *       fail-closed, so the parser can never bind a record the payload tier
+ *       refused to emit.</li>
  *   <li>Missing {@code @payloadRef} — skipped (loader's validation pass
  *       normally rejects this first; defensive only).</li>
  *   <li>{@code @payloadRef} resolves to a non-VO target (e.g. {@code object.entity}) —

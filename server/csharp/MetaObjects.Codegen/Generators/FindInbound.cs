@@ -60,21 +60,35 @@ internal static class FindInbound
     /// The single predicate shared by the generator loops AND the api-docs builder, so docs can
     /// never claim a symbol codegen suppressed.
     /// </summary>
-    public static bool IsInbound(MetaData tmpl, MetaData root) => ResponseShape(root, tmpl) is not null;
+    public static bool IsInbound(MetaData tmpl, MetaRoot root) => ResponseShape(root, tmpl) is not null;
 
     /// <summary>
     /// Resolve a prompt's response value-object and reply syntax, or <c>null</c> when the template
     /// declares no <c>@responseRef</c> or the ref does not resolve — callers skip rather than throw,
     /// matching the pre-ADR-0052 contract for an unresolvable payload ref.
     /// </summary>
-    public static InboundShape? ResponseShape(MetaData root, MetaData tmpl)
+    public static InboundShape? ResponseShape(MetaRoot root, MetaData tmpl)
     {
         // ADR-0039: resolving — @responseRef may be inherited via an abstract template base.
         if (tmpl.Attr(TEMPLATE_ATTR_RESPONSE_REF) is not string reference) return null;
         // ADR-0042/#228: resolve package-aware — a bare ref binds the template's OWN package first,
         // never a bare-tail/global scan that could bind the WRONG package's same-short-named object.
         var referrerPkg = global::MetaObjects.NamingRefs.EffectivePackage(tmpl);
-        var vo = global::MetaObjects.NamingRefs.ResolveObjectRef(root, reference, referrerPkg);
+        // Resolve through the SAME payload-target resolver @payloadRef obeys (object.value, or a
+        // sourceless object.projection) — NOT the any-object ResolveObjectRef.
+        //
+        // This must agree with PayloadGenerator, which emits the record this parser binds. It did
+        // not: ResolveObjectRef accepted an object.entity, so a @responseRef naming an entity
+        // resolved here, OutputParserGenerator emitted `static Answer Parse(string)`, and
+        // PayloadGenerator — which resolves value-only — emitted no record for it. The generated
+        // C# did not compile (CS0246). Verified: the model loads with ZERO errors, because unlike
+        // TypeScript (validation-passes.ts:336-345) the C# loader validates @payloadRef's target
+        // and never @responseRef's, so nothing upstream catches it either.
+        //
+        // Java is immune by construction — its FindInbound.responseShape already resolves through
+        // SpringPayloadGenerator.resolveValueObject. This makes C# fail closed the same way: an
+        // unresolvable-or-wrong-typed ref yields no parser rather than an uncompilable one.
+        var vo = PayloadGenerator.ResolvePayloadVo(root, reference, referrerPkg);
         if (vo is null) return null;
         return new InboundShape(vo, reference, ResponseFormatOf(tmpl));
     }

@@ -64,9 +64,14 @@ public class OutputParserGenerator : IGenerator
         // ADR-0052: the direction rule lives in FindInbound, never re-derived here.
         foreach (var tmpl in FindInbound.InboundTemplates(ctx.Root))
         {
-            // ADR-0039: resolving — @responseRef may be inherited via an abstract template base.
-            var responseRef = (string)tmpl.Attr(TEMPLATE_ATTR_RESPONSE_REF)!;
-            files.Add(EmitParser(tmpl, responseRef, ctx));
+            // Skip on RESOLUTION, not just presence. InboundTemplates filters on @responseRef
+            // presence (it has no root to resolve against), so this loop is the only place the
+            // ref's target is checked — and it was not checking. A @responseRef naming an
+            // object.entity therefore emitted `static Answer Parse(string)` while PayloadGenerator,
+            // which resolves value-only, emitted no such record: CS0246. Every sibling inbound
+            // generator already skipped on ResponseShape; this one alone did not.
+            if (FindInbound.ResponseShape(ctx.Root, tmpl) is not { } shape) continue;
+            files.Add(EmitParser(tmpl, shape.Ref, ctx));
         }
         return files;
     }
@@ -76,10 +81,7 @@ public class OutputParserGenerator : IGenerator
     /// <c>template.prompt</c> carrying a <c>@responseRef</c>. Single source of truth shared by
     /// the generator loop AND the api-docs builder.
     /// </summary>
-    public static bool AppliesTo(MetaData tmpl) =>
-        tmpl.Type == TYPE_TEMPLATE && tmpl.SubType == TEMPLATE_SUBTYPE_PROMPT &&
-        // ADR-0039: resolving — @responseRef may be inherited via an abstract template base.
-        tmpl.Attr(TEMPLATE_ATTR_RESPONSE_REF) is string;
+    public static bool AppliesTo(MetaData tmpl, MetaRoot root) => FindInbound.IsInbound(tmpl, root);
 
     protected virtual EmittedFile EmitParser(MetaData tmpl, string responseRef, GenContext ctx)
     {

@@ -21,9 +21,11 @@ import java.util.List;
 import com.metaobjects.generator.util.GeneratedFileWriter;
 
 /**
- * Generator: one {@code <TemplateShortName>OutputPrompt} Java class per
- * {@code template.output} declaration (where {@code @format} is {@code json}
- * or {@code xml}), emitting a static {@code renderFormat()} / {@code renderFormat(PromptOverrides)}
+ * Generator: one {@code <TemplateShortName>ResponseFormat} Java class per RESPONDING
+ * {@code template.prompt} declaration (ADR-0052 — one carrying {@code @responseRef};
+ * the reply's syntax comes from {@code @responseFormat}, never {@code @format}, which is
+ * the syntax of the rendered prompt BODY), emitting a static
+ * {@code renderFormat()} / {@code renderFormat(PromptOverrides)}
  * pair backed by {@code OutputFormatRenderer} from the {@code metaobjects-render} module.
  *
  * <p>FR-010 Plan 3 — the Java prompt-fragment codegen. Mirrors the structure of
@@ -56,9 +58,9 @@ import com.metaobjects.generator.util.GeneratedFileWriter;
  *
  * <p>Skips:
  * <ul>
- *   <li>{@code template.prompt} nodes — only outputs need prompt-fragment codegen.</li>
- *   <li>Missing or non-VO {@code @payloadRef}.</li>
- *   <li>{@code @format} values other than {@code json} or {@code xml}.</li>
+ *   <li>{@code template.output} nodes — outbound only; nothing instructs a model.</li>
+ *   <li>A {@code template.prompt} with no {@code @responseRef}.</li>
+ *   <li>A {@code @responseRef} that does not resolve to a payload target.</li>
  * </ul>
  *
  * <p>The {@code SPEC}'s {@code rootName} is the capitalized payload class name

@@ -116,6 +116,50 @@ public sealed class OutputParserGeneratorTests
     }
 
     [Fact]
+    public void A_responseRef_that_is_not_a_value_object_emits_no_parser()
+    {
+        // Fail-closed. @responseRef must resolve through the SAME payload-target resolver
+        // @payloadRef obeys (object.value, or a sourceless object.projection), because
+        // PayloadGenerator emits the record this parser binds using that resolver. When
+        // FindInbound used the any-object ResolveObjectRef instead, an entity target
+        // resolved HERE, the parser emitted `static Answer Parse(string)`, and
+        // PayloadGenerator emitted no record — CS0246, generated code that cannot compile.
+        //
+        // Nothing upstream catches it: unlike TypeScript, whose loader validates the
+        // @responseRef target (validation-passes.ts:336-345), the C# loader validates only
+        // @payloadRef — so this model loads with ZERO errors. Asserted below, because if the
+        // C# loader ever gains that rule this test would otherwise pass vacuously.
+        const string m = """
+        { "metadata.root": { "package": "acme::ai", "children": [
+          { "object.value": { "name": "Req", "children": [ { "field.string": { "name": "q" } } ] } },
+          { "object.entity": { "name": "Answer", "children": [
+            { "source.rdb": { "@table": "answers" } },
+            { "field.long": { "name": "id" } },
+            { "field.string": { "name": "text" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"], "@generation": "increment" } }
+          ]}},
+          { "template.prompt": { "name": "AskPrompt", "@payloadRef": "Req", "@responseRef": "Answer",
+                                 "@textRef": "a/x", "@format": "text", "@responseFormat": "json" } }
+        ]}}
+        """;
+        var load = new MetaDataLoader().Load([new InMemoryStringSource(m, id: "outputs.json")]);
+        Assert.Empty(load.Errors);
+
+        var ctx = new GenContext
+        {
+            Entities = load.Root.Objects(),
+            Root = load.Root,
+            Config = new GenConfig { OutDir = "/tmp", Namespace = "Acme.Generated" },
+        };
+        // No record, therefore no parser. The two must agree, and agreeing on "nothing" is
+        // the only safe agreement available for a target neither can legally emit.
+        Assert.Empty(new PayloadGenerator().Generate(ctx));
+        Assert.Empty(new OutputParserGenerator().Generate(ctx));
+        Assert.Empty(new OutputPromptGenerator().Generate(ctx));
+        Assert.Empty(new ExtractorGenerator().Generate(ctx));
+    }
+
+    [Fact]
     public void An_xml_reply_gets_the_tolerant_extract_and_no_strict_parser()
     {
         // ADR-0053: the strict Parse/TryParse tier is JSON-ONLY. Not for want of an XML

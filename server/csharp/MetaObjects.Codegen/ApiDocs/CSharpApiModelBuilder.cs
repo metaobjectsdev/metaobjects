@@ -193,7 +193,7 @@ public sealed class CSharpApiModelBuilder
                 $"static class {prompt}",
                 "builds the response-format prompt fragment"));
         }
-        if (OutputParserGenerator.AppliesTo(tmpl))
+        if (OutputParserGenerator.AppliesTo(tmpl, root))
         {
             var parser = CSharpNaming.ParserClassName(name);
             symbols.Add(new ApiSymbol(
