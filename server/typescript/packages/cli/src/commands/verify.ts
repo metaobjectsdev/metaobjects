@@ -15,7 +15,7 @@ import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
 import { FileProvider } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
-import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
+import { loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { computeCodegenDrift } from "../lib/codegen-drift.js";
 import { checkRequirements, summariseRequirements } from "../lib/requirement-check.js";
 import { checkVerifiedBy } from "../lib/verified-by-scan.js";
@@ -161,11 +161,10 @@ export async function verifyCommand(
   // The project root is whichever directory `resolveCollection` decided the
   // metadata belongs to (design §4.6.1: "Per-port generator config is then read
   // from that same directory"). The line this draws, applied throughout this
-  // command: anything named BY the metadata or its config resolves against
-  // `projectRoot` — `metaobjects.config.ts`, `.metaobjects/config.json`, the
-  // `outDir` and `wranglerConfigPath` they carry, the `prompts/` a `@textRef`
-  // resolves in, the test files a `@verifiedBy` names. Identical paths for a run
-  // from the project root.
+  // command: anything named BY the metadata or by `.metaobjects/config.json`
+  // resolves against `projectRoot` — that file's operational block, the migrations
+  // `outDir` and `wranglerConfigPath` it carries, the `prompts/` a `@textRef`
+  // resolves in. Identical paths for a run from the project root.
   //
   // The two advisory passes — the agent-context staleness nudge and the
   // anti-pattern scan — are rooted here too, matching `meta gen`. Both commands
@@ -173,6 +172,17 @@ export async function verifyCommand(
   // that false: a `verify` run from a subdirectory scanned only that subtree and
   // found no agent-context manifest at all, so the nudge silently never fired.
   const projectRoot = collection.configDir;
+
+  // The one thing NOT named by the metadata or its config: `metaobjects.config.ts`
+  // is this TypeScript package's own answer to a different question (design §4.6),
+  // so it gets its own nearest-ancestor walk and everything IT names follows —
+  // `outDir`/`targets` for `--codegen`, `verify.testFiles` for `@verifiedBy`. In a
+  // Maven- or pip-rooted monorepo the collection is declared at the repo root while
+  // the TS config sits in the app; reading the second from the first made
+  // `--codegen` report "no config" for a package that has one (#326). Identical to
+  // `projectRoot` whenever the two files sit together, which is every `meta init`
+  // project.
+  const genConfigDir = resolveGenConfigDir(cwd, collection.configDir);
 
   // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
   warnIfAgentContextStale(projectRoot);
@@ -190,7 +200,7 @@ export async function verifyCommand(
   // error (it can't diff without knowing where the committed output lives).
   let forgeConfig: MetaobjectsGenConfig | undefined;
   try {
-    forgeConfig = await loadMetaobjectsConfig(projectRoot);
+    forgeConfig = await loadMetaobjectsConfig(genConfigDir);
   } catch {
     forgeConfig = undefined;
   }
@@ -445,7 +455,7 @@ export async function verifyCommand(
     // authority — see the verified-by-scan header.
     const diags = [
       ...checkRequirements(root),
-      ...checkVerifiedBy(root, projectRoot, forgeConfig?.verify?.testFiles),
+      ...checkVerifiedBy(root, genConfigDir, forgeConfig?.verify?.testFiles),
     ];
 
     // Printed on EVERY run, clean or not — a gate that says nothing when it
@@ -941,7 +951,7 @@ export async function verifyCommand(
     // files should exist, reporting every out-of-scope entity as drift.
     let result;
     try {
-      result = await computeCodegenDrift(forgeConfig, root, projectRoot, collection.inScope);
+      result = await computeCodegenDrift(forgeConfig, root, genConfigDir, collection.inScope);
     } catch (err) {
       log.error(`verify --codegen: regeneration failed: ${(err as Error).message}`);
       return 1;

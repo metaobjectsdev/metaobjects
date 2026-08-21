@@ -14,7 +14,7 @@
 import { resolve as resolvePath, basename } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { log } from "../lib/log.js";
-import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
+import { loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { loadMemory, resolveCollection, resolveConfigDir, type Collection } from "@metaobjectsdev/sdk";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -66,6 +66,12 @@ interface DocsFlags {
   outProvided: boolean;
   /** Whether `--layout` was explicitly passed (same override semantics). */
   layoutProvided: boolean;
+  /** Whether the `<metadata>` positional was explicitly passed. An explicit path
+   *  DEFINES the source set (`resolveCollection`'s `explicitDir` pin); the default
+   *  cwd discovers one by walking up. Without this distinction the two are
+   *  indistinguishable at the call site, which is how an explicitly-scoped run came
+   *  to have an ancestor config's sources unioned into it (#327). */
+  metadataProvided: boolean;
   /** FR-033 S3 — document the METAMODEL ITSELF (the built-in type/subtype/attr
    *  vocabulary) instead of a user's entities. Needs NO metadata + NO config. */
   metamodel: boolean;
@@ -165,6 +171,7 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
     // `<metadata>` is the project root that contains metaobjects/; default cwd
     // (mirrors how migrate/gen treat the working directory as the root).
     metadata: metadata ?? cwd,
+    metadataProvided: metadata !== undefined,
     // Default out dir, resolved against the metadata root below. In --metamodel
     // mode the renderer writes under <out>/metamodel/, default ./docs/metamodel.
     out: out ?? (wantMetamodel ? "./docs/metamodel" : "./docs"),
@@ -210,7 +217,10 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   // scaffolding needs no metadata, but it must write where `emitSite` will READ
   // (below, under the resolved project root), and that is the same walk.
   if (flags.scaffoldSite) {
-    return scaffoldSiteCommand(await resolveConfigDir(metaRoot));
+    // `resolveGenConfigDir` over the bare walk: `emitSite` reads the owned theme
+    // from the directory holding `metaobjects.config.ts`, so scaffolding must write
+    // to the same one or the theme is scaffolded where nothing will ever read it.
+    return scaffoldSiteCommand(resolveGenConfigDir(metaRoot, await resolveConfigDir(metaRoot)));
   }
 
   // Discovery and load are two separate failure modes, kept in separate try
@@ -227,20 +237,44 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   // the config from the ambient `<metadata>` argument while the metadata came
   // from an ancestor renders the ancestor's model with the subdirectory's
   // (absent) providers. For a run at the project root the two are the same path.
+  //
+  // An EXPLICIT `<metadata>` positional pins the collection rather than seeding a
+  // walk (#327). The argument has always meant "document this": before sources were
+  // resolvable it read `<path>/metaobjects/` and nothing else, and passing it to
+  // discovery turned it into a starting point, so the nearest ancestor
+  // `.metaobjects/config.json` was found and ITS sources were unioned in — a command
+  // whose entire purpose is documenting one subset silently documenting the whole
+  // repo, at exit 0. Pinned, `<path>` governs: its own config if it has one, the
+  // default `<path>/metaobjects` if not. A bare `meta docs` still discovers, which is
+  // the right default for "document the project I am standing in".
   let collection: Awaited<ReturnType<typeof resolveCollection>>;
   try {
-    collection = await resolveCollection(metaRoot);
+    collection = await resolveCollection(
+      metaRoot,
+      flags.metadataProvided ? { explicitDir: metaRoot } : undefined,
+    );
   } catch (err) {
     log.error(`docs: ${(err as Error).message}`);
     return 2;
   }
+
+  // Which directory's `metaobjects.config.ts` governs is its OWN nearest-ancestor
+  // walk, not the collection's: the two files answer different questions (design
+  // §4.6), and in a Maven- or pip-rooted monorepo the collection is declared at the
+  // repo root while the TS config sits in the app. Reading the second from the
+  // first made docs silently drop that app's providers and skip its api surface
+  // entirely (#326). Everything that config names follows it — the `docs.outDir` it
+  // carries, the adopter `templates/` overrides and the owned `codegen/docs-site/`
+  // theme beside it. Same directory whenever the two files sit together, which is
+  // every `meta init` project.
+  const genConfigDir = resolveGenConfigDir(metaRoot, collection.configDir);
 
   // The project root used to resolve adopter `templates/` overrides; the
   // framework defaults sit underneath via projectProvider's chain. `--templates`
   // is the one explicit override.
   const projectRoot = flags.templates !== undefined
     ? resolvePath(cwd, flags.templates)
-    : collection.configDir;
+    : genConfigDir;
 
   // Best-effort load of metaobjects.config.ts to pick up consumer-supplied
   // providers (e.g. a project's custom field/object subtypes). Unlike `gen`,
@@ -253,10 +287,7 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   // hasConfig gates the api surface: api docs describe the GENERATED REST
   // surface, which only exists when there is a (loadable) gen config. A config
   // that EXISTS but fails to load degrades to model-only with a warning.
-  const hasConfig = existsSync(join(collection.configDir, "metaobjects.config.ts"));
-  // The config lives beside the `.metaobjects/` that declared this collection —
-  // `collection.configDir`, never ambient cwd. `projectRoot` only diverges from
-  // it when --templates overrides the template lookup.
+  const hasConfig = existsSync(join(genConfigDir, "metaobjects.config.ts"));
   // Only attempt the load when the file is actually present: absence is the
   // expected config-less case (stay silent), but a config that EXISTS yet fails
   // to load is surfaced as a warning rather than silently degrading to
@@ -264,7 +295,7 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   // cryptic unknown-subtype error instead of the real config error.
   if (hasConfig) {
     try {
-      loadedConfig = await loadMetaobjectsConfig(collection.configDir);
+      loadedConfig = await loadMetaobjectsConfig(genConfigDir);
       configProviders = loadedConfig.providers;
     } catch (err) {
       log.warn(
@@ -295,7 +326,11 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
     cliOverrides,
     loadedConfig?.outputLayout ?? "flat",
   );
-  const outDir = resolvePath(collection.configDir, docsCfg.outDir);
+  // Against `genConfigDir`, not the collection's: `docs.outDir` is declared in
+  // `metaobjects.config.ts`, so it resolves against the directory that config lives
+  // in — the same rule `meta gen` applies to its own `outDir`. Identical whenever
+  // the two files sit together.
+  const outDir = resolvePath(genConfigDir, docsCfg.outDir);
 
   // SITE surface has its OWN model loader (docs-site's loadModel — NOT the sdk
   // loadMemory below) and needs no gen config. When the site is the ONLY
@@ -303,7 +338,7 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   // WITHOUT building the markdown GenContext — decoupled and one fewer failure
   // surface. Combined with --model/--api it is emitted after them (below).
   if (flags.site && docsCfg.surfaces.length === 0) {
-    return emitSite(collection, projectRoot, outDir, configProviders, promptsDir);
+    return emitSite(collection, projectRoot, genConfigDir, outDir, configProviders, promptsDir);
   }
 
   // Load metadata standalone — same loader path as migrate/gen. Threads any
@@ -466,7 +501,7 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
 
   // SITE surface (additive) — emit after the markdown surfaces so both coexist.
   if (flags.site) {
-    const siteRc = await emitSite(collection, projectRoot, outDir, configProviders, promptsDir);
+    const siteRc = await emitSite(collection, projectRoot, genConfigDir, outDir, configProviders, promptsDir);
     if (siteRc !== 0) return siteRc;
   }
 
@@ -543,6 +578,11 @@ async function scaffoldSiteCommand(projectRoot: string): Promise<number> {
 async function emitSite(
   collection: Collection,
   projectRoot: string,
+  /** Directory holding `metaobjects.config.ts` — where `--scaffold-site` writes the
+   *  owned theme, so where this must read it from. Distinct from `collection.configDir`
+   *  since #326: in a polyglot monorepo the collection is declared at the repo root
+   *  while the TS package (and its owned theme) sits in the app. */
+  genConfigDir: string,
   outDir: string,
   configProviders?: readonly MetaDataTypeProvider[],
   promptsDir?: string,
@@ -580,11 +620,11 @@ async function emitSite(
   }
   // Scaffold-and-own: when the consumer has copied templates/assets into
   // codegen/docs-site/ (via --scaffold-site), use those; else the bundled defaults.
-  // Keyed on `configDir`, NOT `projectRoot`: `--templates` redirects the adopter
+  // Keyed on `genConfigDir`, NOT `projectRoot`: `--templates` redirects the adopter
   // RENDER template chain (the `templates/` above), and letting it also move the
   // docs-site theme would read it from somewhere `--scaffold-site` never writes.
-  const ownedTemplates = join(collection.configDir, "codegen/docs-site/templates");
-  const ownedAssets = join(collection.configDir, "codegen/docs-site/assets");
+  const ownedTemplates = join(genConfigDir, "codegen/docs-site/templates");
+  const ownedAssets = join(genConfigDir, "codegen/docs-site/assets");
   try {
     const r = await generateSite({
       sourceDirs,

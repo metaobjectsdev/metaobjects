@@ -41,7 +41,9 @@ EXPORT FLAGS:
   --out <file>          Write output to a file (default: stdout)
 
 DOCS FLAGS:
-  <metadata>            Project root to resolve metadata from (default: current directory)
+  <metadata>            Project root to resolve metadata from. Passing it SCOPES the run to
+                        that directory's own sources; no ancestor .metaobjects/config.json is
+                        consulted. Omitted (default), the project is discovered by walking up.
   --out <dir>, -o       Output directory for the pages (default: ./docs)
   --templates <dir>     Project root to resolve adopter templates/ overrides (default: <metadata>)
   --prompts <dir>       Extra dir holding prompt .mustache sources for --site (e.g. data/templates/)
@@ -165,7 +167,9 @@ USAGE:
   meta docs [<metadata>] [flags]
 
 FLAGS:
-  <metadata>            Project root to resolve metadata from (default: current directory)
+  <metadata>            Project root to resolve metadata from. Passing it SCOPES the run to
+                        that directory's own sources; no ancestor .metaobjects/config.json is
+                        consulted. Omitted (default), the project is discovered by walking up.
   --out <dir>, -o       Output directory for the pages (default: ./docs)
   --model               Emit the markdown model surface (entity + template pages)
   --api                 Emit the markdown api surface (generated SDK reference)

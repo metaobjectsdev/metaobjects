@@ -14,7 +14,7 @@ import { parsePromptSnapshotArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { FileProvider } from "../lib/file-provider.js";
 import { snapshotPaths, unifiedDiff } from "../lib/snapshot.js";
-import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
+import { loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
 import { TYPE_TEMPLATE, TEMPLATE_ATTR_TEXT_REF, TEMPLATE_ATTR_FORMAT } from "@metaobjectsdev/metadata";
 import { render, ESCAPERS, type RenderFormat } from "@metaobjectsdev/render";
@@ -59,7 +59,12 @@ export async function promptSnapshotCommand(args: string[], cwd: string): Promis
   // metadata that only uses core+forge subtypes.
   let configProviders: NonNullable<Awaited<ReturnType<typeof loadMetaobjectsConfig>>["providers"]> | undefined;
   try {
-    const forgeConfig = await loadMetaobjectsConfig(projectRoot);
+    // `metaobjects.config.ts` gets its own nearest-ancestor walk, not `projectRoot`:
+    // it answers a different question from `.metaobjects/config.json` (design §4.6)
+    // and in a Maven- or pip-rooted monorepo the two legitimately sit in different
+    // directories, so reading it from the collection's would silently drop this
+    // package's providers (#326). Same path whenever the two files sit together.
+    const forgeConfig = await loadMetaobjectsConfig(resolveGenConfigDir(cwd, projectRoot));
     configProviders = forgeConfig.providers;
   } catch {
     configProviders = undefined;

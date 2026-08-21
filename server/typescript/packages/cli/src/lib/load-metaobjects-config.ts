@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, unlinkSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
 import { createJiti } from "jiti";
@@ -147,6 +147,48 @@ function rewriteImportSpecifiers(source: string, aliasMap: Record<string, string
     );
   }
   return result;
+}
+
+/**
+ * The directory whose `metaobjects.config.ts` governs a run started in `startDir` —
+ * the nearest ancestor carrying that file, `fallback` when there is none.
+ *
+ * This is a SECOND walk, deliberately separate from `resolveCollection`'s. The two
+ * files answer different questions and design §4.6 already says so: `.metaobjects/
+ * config.json` declares where metadata comes from — port-neutral, read by all five
+ * CLIs, and reasonably repo-global in a polyglot monorepo — while
+ * `metaobjects.config.ts` declares how THIS TypeScript package generates code. Reading
+ * the second from the directory that carried the first (#326) meant a Maven- or
+ * pip-rooted repo with a JS app underneath could not run `meta gen` at all: the
+ * collection resolved to the repo root, and the app's config, sitting in the very
+ * directory the command was invoked from, was never looked at.
+ *
+ * Nearest wins, which is what keeps the opposite arm — the divergence commit
+ * 0c8fd136e fixed — closed: a run from a subdirectory that declares NO config of its
+ * own walks up to the project root's, exactly as before, rather than silently
+ * defaulting `columnNamingStrategy` and emitting a migration that renames every
+ * column. When the two files sit together, as they do in every `meta init` project,
+ * this walk and the collection walk return the same directory by construction.
+ *
+ * The `fallback` is the collection's directory, so a project with no
+ * `metaobjects.config.ts` anywhere keeps today's diagnostics unchanged: this walk can
+ * only ever move the answer CLOSER to the invocation, never further away.
+ *
+ * Boundaries mirror `discoverCollectionRoot` (sdk `discovery.ts`): the marker is
+ * checked before `.git`, so a repo-root project sharing its directory with `.git` is
+ * still reachable from any subdirectory, and the walk stops there so a monorepo can
+ * never adopt a parent checkout's codegen config.
+ */
+export function resolveGenConfigDir(startDir: string, fallback: string): string {
+  let dir = resolve(startDir);
+  for (;;) {
+    if (existsSync(join(dir, CONFIG_FILE))) return dir;
+    if (existsSync(join(dir, ".git"))) break;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return fallback;
 }
 
 export async function loadMetaobjectsConfig(projectRoot: string): Promise<MetaobjectsGenConfig> {

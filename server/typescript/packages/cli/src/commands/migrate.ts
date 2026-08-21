@@ -12,7 +12,7 @@ import { toonEncode } from "../lib/format.js";
 import { buildKyselyFromUrl, redactUrl } from "../lib/kysely.js";
 import { log } from "../lib/log.js";
 import { loadMemory, resolveCollection, resolveConfigDir, type Collection } from "@metaobjectsdev/sdk";
-import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
+import { loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { migrateScopeMismatch, outOfScopeNote } from "../lib/migrate-scope.js";
 import {
   buildExpectedSchemaWithProvenance,
@@ -452,6 +452,17 @@ export async function migrateCommand(
   // `discovery.ts`, not two that agree by construction), so the directory this
   // resolves and the directory the metadata comes from cannot diverge.
   const metaRoot = await resolveConfigDir(cwd);
+  // `metaobjects.config.ts` is the one thing here NOT governed by that walk. It
+  // answers a different question from `.metaobjects/config.json` (design §4.6 —
+  // per-port "how is code generated here?" versus port-neutral "where does metadata
+  // come from?"), and in a Maven- or pip-rooted monorepo the two legitimately sit in
+  // different directories. Reading it from `metaRoot` there silently defaults
+  // `columnNamingStrategy` for a package that declares one — the exact
+  // rename-every-column failure the co-location was introduced to prevent, arrived
+  // at from the other side (#326). Nearest wins, so a subdirectory declaring nothing
+  // still walks up to the project root's config; identical to `metaRoot` in every
+  // `meta init` project, where the two files sit together.
+  const genRoot = resolveGenConfigDir(cwd, metaRoot);
   const config = await resolveMigrateConfig(flags, metaRoot);
   // `resolveFormatOutDir`, not `resolvePath(metaRoot, config.outDir)`: under
   // `--migration-format flyway` with a default outDir the run writes to
@@ -555,7 +566,7 @@ export async function migrateCommand(
 
   // `migrate baseline` — seed the committed reference snapshot, emit no migration.
   if (config.baseline) {
-    return await runBaseline(config, metaRoot, fmt);
+    return await runBaseline(config, metaRoot, fmt, genRoot);
   }
 
   // `migrate apply-pending` — replay committed migration files; no diff, no metadata load.
@@ -567,7 +578,7 @@ export async function migrateCommand(
   // when explicitly requested via --from-db, when --apply needs a connection, or
   // for --rollback (which runs hand-authored down.sql against the live DB).
   if (!config.fromDb && !config.apply && config.rollback === undefined) {
-    return await runOfflineGenerate(config, metaRoot, fmt);
+    return await runOfflineGenerate(config, metaRoot, fmt, genRoot);
   }
 
   if (config.databaseUrl === undefined) {
@@ -592,7 +603,7 @@ export async function migrateCommand(
   // for columnNamingStrategy; we load it once here and reuse below.
   let postgresConfigProviders: readonly import("@metaobjectsdev/codegen-ts").MetaDataTypeProvider[] | undefined;
   try {
-    const forgeConfig = await loadMetaobjectsConfig(metaRoot);
+    const forgeConfig = await loadMetaobjectsConfig(genRoot);
     postgresConfigProviders = forgeConfig.providers;
   } catch {
     postgresConfigProviders = undefined;
@@ -643,7 +654,7 @@ export async function migrateCommand(
     // and projection view DDL — derive it once, up front, so every view path agrees.
     let columnNamingStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
     try {
-      const cfg = await loadMetaobjectsConfig(metaRoot);
+      const cfg = await loadMetaobjectsConfig(genRoot);
       if (cfg.columnNamingStrategy) columnNamingStrategy = cfg.columnNamingStrategy;
     } catch {
       // metaobjects.config.ts absent or invalid — use default snake_case
@@ -959,6 +970,10 @@ export async function runBaseline(
   config: ResolvedMigrateConfig,
   metaRoot: string,
   fmt: OutputFormat = "text",
+  /** Directory whose `metaobjects.config.ts` governs — see `migrateCommand`'s
+   *  `genRoot`. Defaults to `metaRoot`, the co-located case every `meta init`
+   *  project is in and the only one the direct-call test suites construct. */
+  genRoot: string = metaRoot,
 ): Promise<number> {
   if (config.dialect === undefined) {
     log.error(`migrate baseline: --dialect required (or set migrate.dialect in .metaobjects/config.json)`);
@@ -1022,7 +1037,7 @@ export async function runBaseline(
       | undefined;
     let baselineStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
     try {
-      const cfg = await loadMetaobjectsConfig(metaRoot);
+      const cfg = await loadMetaobjectsConfig(genRoot);
       baselineConfigProviders = cfg.providers;
       if (cfg.columnNamingStrategy) baselineStrategy = cfg.columnNamingStrategy;
     } catch {
@@ -1153,6 +1168,9 @@ export async function runOfflineGenerate(
   config: ResolvedMigrateConfig,
   metaRoot: string,
   fmt: OutputFormat = "text",
+  /** Directory whose `metaobjects.config.ts` governs — see `migrateCommand`'s
+   *  `genRoot`. Defaults to `metaRoot`, the co-located case. */
+  genRoot: string = metaRoot,
 ): Promise<number> {
   if (config.dialect === undefined) {
     log.error(`migrate: --dialect required for offline generation (or use --from-db)`);
@@ -1166,7 +1184,7 @@ export async function runOfflineGenerate(
     | undefined;
   let offlineStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
   try {
-    const cfg = await loadMetaobjectsConfig(metaRoot);
+    const cfg = await loadMetaobjectsConfig(genRoot);
     offlineConfigProviders = cfg.providers;
     if (cfg.columnNamingStrategy) offlineStrategy = cfg.columnNamingStrategy;
   } catch {
@@ -1372,6 +1390,12 @@ async function runD1Migrate(
   runner: WranglerRunner,
   fmt: OutputFormat = "text",
 ): Promise<number> {
+  // Same split as `migrateCommand`: `.metaobjects/` state hangs off `metaRoot`,
+  // `metaobjects.config.ts` off its own nearest-ancestor walk (#326). Recomputed
+  // rather than threaded — it is a pure function of the two arguments this already
+  // takes, so the two cannot disagree.
+  const genRoot = resolveGenConfigDir(cwd, metaRoot);
+
   // 1. Resolve wrangler.toml + binding.
   const wranglerConfigPath = config.d1.wranglerConfigPath
     ? resolvePath(metaRoot, config.d1.wranglerConfigPath)
@@ -1418,7 +1442,7 @@ async function runD1Migrate(
   //    back to default core+forge bundle if metaobjects.config.ts is absent.
   let d1ConfigProviders: readonly import("@metaobjectsdev/codegen-ts").MetaDataTypeProvider[] | undefined;
   try {
-    const forgeConfig = await loadMetaobjectsConfig(metaRoot);
+    const forgeConfig = await loadMetaobjectsConfig(genRoot);
     d1ConfigProviders = forgeConfig.providers;
   } catch {
     d1ConfigProviders = undefined;
@@ -1449,7 +1473,7 @@ async function runD1Migrate(
   // 4. Build expected schema + introspect actual.
   let columnNamingStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
   try {
-    const cfg = await loadMetaobjectsConfig(metaRoot);
+    const cfg = await loadMetaobjectsConfig(genRoot);
     if (cfg.columnNamingStrategy) columnNamingStrategy = cfg.columnNamingStrategy;
   } catch {
     // metaobjects.config.ts absent or invalid — use default snake_case

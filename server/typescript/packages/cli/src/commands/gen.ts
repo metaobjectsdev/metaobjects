@@ -1,7 +1,7 @@
 import { relative } from "node:path";
 import { parseGenArgs } from "../lib/args.js";
 import { resolveGenConfig } from "../lib/config.js";
-import { loadMetaobjectsConfig } from "../lib/load-metaobjects-config.js";
+import { loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { formatGenResult, formatGenResultToon, type GenFileEntry, type GenFileStatus } from "../lib/output.js";
 import { formatGenResultJson } from "../lib/output-json.js";
 import type { OutputFormat } from "../lib/format.js";
@@ -49,15 +49,11 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   // `resolveCollection` raises `ERR_COLLECTION_NOT_FOUND` with its own
   // message when nothing is discovered and no default directory exists.
   //
-  // Discovery runs BEFORE the config read, deliberately: the project root is
-  // whichever directory `resolveCollection` decided the metadata belongs to,
-  // and everything project-relative — `metaobjects.config.ts`, the `outDir`
-  // its generators name, `.metaobjects/.gen-state/` — has to come from that
-  // same directory. Reading the config from ambient cwd while the metadata
-  // came from an ancestor is the config-half of the very divergence this
-  // design exists to remove (design §4.6.1: "Per-port generator config is then
-  // read from that same directory"). For a run from the project root the two
-  // are the same path, which is the only invocation that worked before.
+  // Discovery runs BEFORE the config read, deliberately: everything named BY the
+  // metadata resolves against the directory `resolveCollection` decided the
+  // metadata belongs to. Reading THAT from ambient cwd while the metadata came
+  // from an ancestor is the divergence this design exists to remove (design
+  // §4.6.1).
   let collection;
   try {
     collection = await resolveCollection(cwd);
@@ -65,7 +61,18 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
     log.error((err as Error).message);
     return 2;
   }
-  const projectRoot = collection.configDir;
+  // ...but `metaobjects.config.ts` is not named by the metadata: it is this
+  // package's own answer to a different question (design §4.6 — "how is code
+  // generated here?", per-port, versus the port-neutral "where does metadata come
+  // from?"). It gets its own nearest-ancestor walk, so a JS app under a Maven- or
+  // pip-rooted repo generates with the config sitting beside it rather than
+  // demanding one at the repo root that no such repo has (#326). Everything the
+  // TS config names follows it — `outDir`, `targets`, and the
+  // `.metaobjects/.gen-state/` merge base that mirrors that output, which must be
+  // per-package or two apps sharing one collection would clobber each other's.
+  // Nearest wins, so a subdirectory declaring nothing still walks up to the
+  // project root's config exactly as before.
+  const projectRoot = resolveGenConfigDir(cwd, collection.configDir);
 
   // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
   // Rooted at `projectRoot`, not ambient cwd — the scaffolded agent context sits
