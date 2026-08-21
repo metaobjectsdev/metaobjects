@@ -12,10 +12,9 @@
 //   VERIFY  (conditional)    `@implementedBy` resolution, whose SEVERITY DEPENDS
 //                            ON `@status`. A loader `references` descriptor
 //                            always errors on an unresolved target, and an
-//                            `abandoned` requirement exists precisely to name
-//                            nodes that are gone — declaring it there would make
-//                            the entries carrying the mechanism's only controlled
-//                            evidence fail to load.
+//                            `planned` requirement names nodes that do not exist
+//                            YET — declaring it there would make every recorded
+//                            intention fail to load.
 //
 // Two kinds, opposite checks: `functional` fails when NOTHING implements it;
 // `architectural` fails when something VIOLATES it (v1: an empty claim set on a
@@ -329,8 +328,8 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
       const resolved = node !== undefined && (isObjectRef || resolveMember(node, path) !== undefined);
       if (!resolved) {
         // Severity is CONDITIONAL ON STATUS, and the asymmetry inverts as a pair.
-        // On abandoned/superseded the nodes are SUPPOSED to be gone — that is the
-        // entry doing its job, and the reason this check cannot live in the loader.
+        // On `planned` the nodes do not exist YET — that is the entry doing its
+        // job, and the reason this check cannot live in the loader.
         if (req.requiresLiveNodes()) {
           out.push({
             severity: "error", code: ERR_REQUIREMENT_DANGLING_REF, name: req.name,

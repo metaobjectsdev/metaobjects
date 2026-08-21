@@ -28,7 +28,7 @@ cite. (3) Whether anyone fills the ledger in is itself untested; advertising it 
 is the brochure failure this skill exists to avoid.
 
 TRIGGER to revisit — the release carrying `requirement.*` has shipped, AND either:
-  Arm A  a dogfooded project's `abandoned`/`superseded` entries are shown, retrospectively,
+  Arm A  a dogfooded project's retired capabilities are shown, retrospectively,
          to have been discoverable PRE-adoption from repo evidence at file:line standard
          (removal commit, dead flag, do-not-reintroduce comment);
   Arm B  a team that adopted via this assessment hits a resurrection the ledger would have

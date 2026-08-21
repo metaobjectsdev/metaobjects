@@ -87,14 +87,19 @@ in any port implemented the other half — two ports shipping halves of one prom
 fixture that could see it. A split is deliberate when no port makes a claim the corpus would
 have to check; it is a gap when some port already made one.
 
-**A hazard for whoever ships the scheduled removal.** Contract prose lives *inside* attr
-descriptions in `expected-registry.json`, where five ports byte-match it and nothing else
-gates it — `@verifiedBy` carries "verify checks each name EXISTS and is not skipped; it
-never runs them", and `@trackedBy` carries "NOT resolved by verify, which does not reach the
-network". Deleting an attribute deletes its description, and with it the only gated
-statement of that guarantee. Sweep every description being removed for contract prose and
-rehome it in the **same** change, not after — the same class as the ADR-0047 renumbering
-trap, where a string that reads like prose is actually a gated artifact.
+**A hazard for whoever removes an attribute — and it has now fired once.** Contract prose
+lives *inside* attr descriptions in `expected-registry.json`, where five ports byte-match it
+and nothing else gates it. `@trackedBy` still carries "NOT resolved by verify, which does not
+reach the network". `@verifiedBy` carried "verify checks each name EXISTS and is not skipped;
+it never runs them" — and that attribute was **retired in `0.24.0` (FR-038)**, which deleted
+the only gated statement of that guarantee along with it.
+
+That removal was done to the rule: the sentence was rehomed **in the same change**, to
+[`spec/capability-ledger.md`](../spec/capability-ledger.md) (§ "`verifiedBy` — RETIRED") and
+to the migration guide, before the description was deleted. Do the same for the next one.
+Sweep every description being removed for contract prose and rehome it in the **same**
+change, not after — the same class as the ADR-0047 renumbering trap, where a string that
+reads like prose is actually a gated artifact.
 
 Per-port runners + commands:
 

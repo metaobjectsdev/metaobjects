@@ -527,7 +527,7 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   }
   // NOTE: @implementedBy is deliberately NOT declared as a loader `references`
   // descriptor. That pass always ERRORS on an unresolved target, and a
-  // requirement with status `abandoned`/`superseded` exists precisely to name
+  // requirement with status `planned` names nodes that do not exist YET, so declaring
   // nodes that are GONE — declaring it here would make the entries that carry
   // the mechanism's only controlled evidence fail to load. The loader owns what
   // is unconditional (the status enum, shape, levels); `meta verify` owns the

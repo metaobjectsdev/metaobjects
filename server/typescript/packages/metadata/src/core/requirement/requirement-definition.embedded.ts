@@ -32,11 +32,9 @@ export const REQUIREMENT_DEFINITION: ProviderDefinition = {
           "allowedValues": [
             "planned",
             "live",
-            "partial",
-            "abandoned",
-            "superseded"
+            "partial"
           ],
-          "description": "planned intended but not built yet; live implemented and in use; partial implemented with known gaps; abandoned built then deliberately retired; superseded replaced by a different mechanism. A dangling @implementedBy is an ERROR on live/partial (the model moved, the requirement is stale) and ALLOWED on planned/abandoned/superseded — on planned the nodes do not exist YET, on the other two they are meant to be gone, and that is the entry doing its job. A planned requirement also never contributes to object coverage: planning a capability must not silence the warning that nothing implements it."
+          "description": "planned intended but not built yet; live implemented and in use; partial implemented with known gaps. A requirement is PRESCRIPTIVE — it states what SHOULD happen and is never a journal of what happened — so a capability that no longer applies is DELETED, not annotated as retired; the record of it having existed belongs to version control and to notes on the entries that survive. A dangling @implementedBy is an ERROR on live/partial (the model moved, the requirement is stale) and ALLOWED on planned, where the nodes do not exist YET. A planned requirement also never contributes to object coverage: planning a capability must not silence the warning that nothing implements it."
         },
         {
           "type": "attr",
@@ -57,7 +55,7 @@ export const REQUIREMENT_DEFINITION: ProviderDefinition = {
           "isArray": true,
           "min": 0,
           "max": 1,
-          "description": "Issue or ticket references for outstanding work — a URL, an owner/repo#123 shorthand, or a tracker key. Free-form and NOT resolved by verify, which does not reach the network; unlike @verifiedBy, nothing here is checked to exist. Its job is to stop a deferred gap becoming invisible, so verify warns when a deferred requirement names no ticket. Also the right place to link the ticket that a planned requirement will be built under."
+          "description": "Issue or ticket references for outstanding work — a URL, an owner/repo#123 shorthand, or a tracker key. Free-form and NOT resolved by verify, which does not reach the network; nothing here is checked to exist. Its job is to stop a deferred gap becoming invisible, so verify warns when a deferred requirement names no ticket. Also the right place to link the ticket that a planned requirement will be built under."
         },
         {
           "type": "attr",
@@ -83,23 +81,6 @@ export const REQUIREMENT_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "FQN references to the model nodes realising this requirement. Legal on level 4 (an object) and level 5 (a field, view or identity) only; an organisational level carrying it is ERR_REQUIREMENT_LINK_ABOVE_FLOOR. Many-to-many by construction — several requirements may name the same node."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "verifiedBy",
-          "isArray": true,
-          "min": 0,
-          "max": 1,
-          "description": "OPTIONAL — omit unless you have opened the test and read what it asserts. Names of tests that assert the behaviour. verify checks each name EXISTS and is not skipped; it never runs them, and it cannot tell whether the named test verifies this requirement — any occurrence in the test corpus satisfies it."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "supersededBy",
-          "min": 0,
-          "max": 1,
-          "description": "The requirement that replaced this one. Expected on status=superseded."
         },
         {
           "type": "requirement",
@@ -134,9 +115,7 @@ export const REQUIREMENT_DEFINITION: ProviderDefinition = {
           "allowedValues": [
             "planned",
             "live",
-            "partial",
-            "abandoned",
-            "superseded"
+            "partial"
           ],
           "description": "As on requirement.functional. A live or partial architectural requirement claimed by NOTHING is an error: a policy declared and applied to nothing. A planned one is exempt from that check — it is not applied yet by definition."
         },
@@ -185,23 +164,6 @@ export const REQUIREMENT_DEFINITION: ProviderDefinition = {
           "min": 0,
           "max": 1,
           "description": "FQN references to the nodes applying this policy. High fan-out is normal and expected: one uuid-primary-key requirement is claimed by every entity."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "verifiedBy",
-          "isArray": true,
-          "min": 0,
-          "max": 1,
-          "description": "OPTIONAL — omit unless you have opened the test and read what it asserts. Names of tests that assert the policy holds. verify checks each name EXISTS and is not skipped; it never runs them, and it cannot tell whether the named test verifies this requirement — any occurrence in the test corpus satisfies it."
-        },
-        {
-          "type": "attr",
-          "subType": "string",
-          "name": "supersededBy",
-          "min": 0,
-          "max": 1,
-          "description": "The requirement that replaced this one. Expected on status=superseded."
         },
         {
           "type": "requirement",

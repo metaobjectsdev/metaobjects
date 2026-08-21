@@ -74,8 +74,7 @@ public class RequirementTest extends SharedRegistryTestBase {
             + "      \"@status\": \"live\","
             + "      \"@statement\": \"A shopper can place an order.\","
             + "      \"@violation\": \"An order cannot be created through any surface.\","
-            + "      \"@implementedBy\": [\"acme::shop::Order\"],"
-            + "      \"@verifiedBy\": [\"OrderRoutesTest#placesAnOrder\"] } }"
+            + "      \"@implementedBy\": [\"acme::shop::Order\"] } }"
             + "] } }";
 
         MetaDataLoader loader = strictLoader("test-requirement-functional");
@@ -92,7 +91,6 @@ public class RequirementTest extends SharedRegistryTestBase {
         assertEquals(MetaRequirement.STATUS_LIVE, req.getStatus());
         assertEquals("A shopper can place an order.", req.getStatement());
         assertEquals(List.of("acme::shop::Order"), req.getImplementedBy());
-        assertEquals(List.of("OrderRoutesTest#placesAnOrder"), req.getVerifiedBy());
         assertTrue("L4 is at the link floor", req.mayReferenceModel());
         assertTrue("live requires live nodes", req.requiresLiveNodes());
     }

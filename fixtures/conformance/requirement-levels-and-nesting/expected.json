@@ -16,9 +16,6 @@
                 "@level": 3,
                 "@statement": "Every placed order is recorded before payment is attempted",
                 "@status": "live",
-                "@verifiedBy": [
-                  "OrderServiceTest"
-                ],
                 "@violation": "A payment attempted against an order that was never stored",
                 "children": [
                   {
@@ -46,15 +43,17 @@
                         },
                         {
                           "requirement.functional": {
-                            "name": "OrderTimer",
+                            "name": "OrderExpiry",
                             "@implementedBy": [
                               "acme::shop::Order.expiresAt"
                             ],
                             "@level": 5,
-                            "@statement": "An unpaid order expired on a wall-clock timer",
-                            "@status": "abandoned",
-                            "@supersededBy": "OrderRecord",
-                            "@violation": "An order cancelled by elapsed time rather than by the customer"
+                            "@statement": "An unpaid order carries the instant it stops being reservable",
+                            "@status": "planned",
+                            "@trackedBy": [
+                              "acme/shop#412"
+                            ],
+                            "@violation": "Stock held indefinitely against an order nobody paid for"
                           }
                         }
                       ]
@@ -80,9 +79,8 @@
       {
         "requirement.architectural": {
           "name": "SoftDeleteEverywhere",
-          "@statement": "Every table carried a soft-delete flag rather than deleting rows",
-          "@status": "superseded",
-          "@supersededBy": "UuidPrimaryKeys",
+          "@statement": "Every table carries a soft-delete flag rather than deleting rows",
+          "@status": "planned",
           "@violation": "A hard delete on a table that promised its rows were recoverable"
         }
       },

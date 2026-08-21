@@ -31,8 +31,6 @@ REQUIREMENT_ATTR_TRACKED_BY = "trackedBy"
 REQUIREMENT_ATTR_STATEMENT = "statement"
 REQUIREMENT_ATTR_VIOLATION = "violation"
 REQUIREMENT_ATTR_IMPLEMENTED_BY = "implementedBy"
-REQUIREMENT_ATTR_VERIFIED_BY = "verifiedBy"
-REQUIREMENT_ATTR_SUPERSEDED_BY = "supersededBy"
 
 # ---------------------------------------------------------------------------
 # Status — a closed enum, enforced by the registry via allowed_values.
@@ -43,15 +41,11 @@ REQUIREMENT_ATTR_SUPERSEDED_BY = "supersededBy"
 REQUIREMENT_STATUS_PLANNED = "planned"
 REQUIREMENT_STATUS_LIVE = "live"
 REQUIREMENT_STATUS_PARTIAL = "partial"
-REQUIREMENT_STATUS_ABANDONED = "abandoned"
-REQUIREMENT_STATUS_SUPERSEDED = "superseded"
 
 REQUIREMENT_STATUSES = (
     REQUIREMENT_STATUS_PLANNED,
     REQUIREMENT_STATUS_LIVE,
     REQUIREMENT_STATUS_PARTIAL,
-    REQUIREMENT_STATUS_ABANDONED,
-    REQUIREMENT_STATUS_SUPERSEDED,
 )
 
 #: Statuses whose implementing nodes are supposed to still exist. A dangling

@@ -42,7 +42,7 @@ public class MetaRequirement(TypeId typeId, string name) : MetaData(typeId, name
     }
 
     /// <summary>
-    /// The lifecycle status (a closed enum: planned / live / partial / abandoned / superseded).
+    /// The lifecycle status (a closed enum: planned / live / partial).
     /// ADR-0039: resolving — inheritable via extends.
     /// </summary>
     public string? Status => Attr(REQUIREMENT_ATTR_STATUS) as string;
@@ -61,20 +61,6 @@ public class MetaRequirement(TypeId typeId, string name) : MetaData(typeId, name
     }
 
     /// <summary>
-    /// Names of tests that ASSERT the behaviour. <c>verify</c> checks each exists and is
-    /// not skipped; it never runs them.
-    /// ADR-0039: resolving — inheritable via extends.
-    /// </summary>
-    public IReadOnlyList<string> VerifiedBy
-    {
-        get
-        {
-            var v = Attr(REQUIREMENT_ATTR_VERIFIED_BY);
-            return v is IReadOnlyList<string> list ? list : [];
-        }
-    }
-
-    /// <summary>
     /// What was DECIDED about the outstanding work — a different question from whether the
     /// work is done, which is what <c>@status</c> answers. <c>null</c> means UNDECIDED, a
     /// real state and the one a review exists to find.
@@ -84,7 +70,7 @@ public class MetaRequirement(TypeId typeId, string name) : MetaData(typeId, name
 
     /// <summary>
     /// Issue/ticket references for outstanding work. Free-form and NEVER resolved —
-    /// <c>verify</c> has no network, so unlike <c>@verifiedBy</c> nothing here is checked
+    /// <c>verify</c> has no network, so nothing here is checked
     /// to exist.
     /// ADR-0039: resolving — inheritable via extends.
     /// </summary>
@@ -131,7 +117,7 @@ public class MetaRequirement(TypeId typeId, string name) : MetaData(typeId, name
 
     /// <summary>
     /// True when a dangling <c>@implementedBy</c> is an ERROR rather than expected.
-    /// An abandoned or superseded requirement's nodes are supposed to be gone.
+    /// `planned` is the only exemption — there the nodes do not exist YET.
     /// </summary>
     public bool RequiresLiveNodes()
     {

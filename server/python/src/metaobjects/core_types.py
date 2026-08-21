@@ -71,9 +71,7 @@ from .meta.core.requirement.requirement_constants import (
     REQUIREMENT_ATTR_LEVEL,
     REQUIREMENT_ATTR_STATEMENT,
     REQUIREMENT_ATTR_STATUS,
-    REQUIREMENT_ATTR_SUPERSEDED_BY,
     REQUIREMENT_ATTR_TRACKED_BY,
-    REQUIREMENT_ATTR_VERIFIED_BY,
     REQUIREMENT_ATTR_VIOLATION,
     REQUIREMENT_DISPOSITIONS,
     REQUIREMENT_STATUSES,
@@ -584,7 +582,7 @@ for _idx_sub in INDEX_SUBTYPES:
 # the LOADER refuses a typo on. The axis is CHECK POLARITY, a genuine behaviour
 # difference (ADR-0037 §2): `functional` is checked by EXISTENCE (nothing
 # implements it -> fail), `architectural` by UNIVERSALITY (something violates it
-# -> fail). Architectural carries no @level and no @verifiedBy — levels come from
+# -> fail). Architectural carries no @level — levels come from
 # object-in-focus decomposition and an architectural requirement is
 # object-independent by definition.
 #
@@ -594,7 +592,7 @@ for _idx_sub in INDEX_SUBTYPES:
 #
 # @implementedBy is deliberately NOT declared as a loader `references` descriptor.
 # That pass always ERRORS on an unresolved target, and a requirement with status
-# `abandoned`/`superseded` exists precisely to name nodes that are GONE — declaring
+# `planned` names nodes that do not exist YET — declaring
 # it here would make those entries fail to load. The loader owns what is
 # unconditional; `verify` owns @implementedBy resolution, whose severity depends on
 # @status.
@@ -615,7 +613,7 @@ _REQUIREMENT_COMMON_ATTRS = [
         allowed_values=REQUIREMENT_DISPOSITIONS,
     ),
     # Issue/ticket references for outstanding work. Free-form and never resolved:
-    # verify has no network, so unlike @verifiedBy nothing here is checked to exist.
+    # verify has no network, so nothing here is checked to exist.
     AttrSchema(
         name=REQUIREMENT_ATTR_TRACKED_BY,
         value_type=ATTR_SUBTYPE_STRING,
@@ -630,13 +628,6 @@ _REQUIREMENT_COMMON_ATTRS = [
         required=False,
         is_array=True,
     ),
-    AttrSchema(
-        name=REQUIREMENT_ATTR_VERIFIED_BY,
-        value_type=ATTR_SUBTYPE_STRING,
-        required=False,
-        is_array=True,
-    ),
-    AttrSchema(name=REQUIREMENT_ATTR_SUPERSEDED_BY, value_type=ATTR_SUBTYPE_STRING, required=False),
 ]
 core_provider.add(
     TypeDefinition(

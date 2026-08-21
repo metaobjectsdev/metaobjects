@@ -12,18 +12,21 @@ by declaring, not by configuring.
 
 ## The problem it solves
 
-Given a feature brief, an agent working from your model alone finds existing implementations
-reliably. What it **cannot** see is that a capability was *deliberately retired*.
+Your model says what the system *is*. It does not say what any of it is **for**, which of
+its rules are deliberate, or what someone decided and chose not to close. A ledger of
+requirements says those things next to the entities they govern, in the same metadata the
+loader already validates — so the claim and the thing claimed cannot drift apart silently.
 
-In a controlled round, model-only runs flagged a retired capability **0 times out of 24** —
-every one proposed extending the abandoned feature, in near-identical words, each believing
-it was reusing rather than reviving. A retired feature is *more* attractive to a
-retrieval-driven agent than a live one: it was purpose-built for exactly the request and
-never got complicated by contact with production.
+Concretely, it answers questions the model alone cannot: *which capability does this entity
+serve?* *Is this rule universal, or does it have known exceptions somebody accepted?* *What
+did we say we would build and have not?* `meta verify` then checks the answers are still
+true — that every claim resolves, that a `live` policy is applied to something, that an
+entity nobody claimed gets flagged.
 
-The model cannot encode this. A comment reading "never do it this way" sits on a different
-node from the fields being revived. A requirement with `status: abandoned` connects the
-disproof to the thing being resurrected, in one line.
+**A requirement is PRESCRIPTIVE.** It states what *should* be true; it is never a journal of
+what happened. A capability that no longer applies is **deleted**, not annotated as retired —
+the record of it having existed belongs to version control, and anything worth carrying
+forward belongs in `notes` on the entries that survive.
 
 ## Declaring one
 
@@ -152,48 +155,27 @@ branch of their own.
 Requirements are metadata, so they are checked on **every** `meta verify` — no subverb.
 
 The rule worth knowing before you read a failure: **a dangling `@implementedBy` is an error
-on `live`/`partial` and allowed on `planned`/`abandoned`/`superseded`.** On `planned` the
-nodes do not exist *yet*; on the other two they are *supposed* to be gone — that is the entry
-doing its job. Do not "fix" the latter by deleting the entry; that destroys the record the
-mechanism exists to preserve.
+on `live`/`partial` and allowed on `planned`.** On `planned` the nodes do not exist *yet* —
+that is the entry doing its job. Anywhere else it means the model moved and the claim went
+stale, so repoint it or delete the entry.
 
-`@status` is a closed enum (`planned | live | partial | abandoned | superseded`) enforced by
-the **loader**, so a typo fails the load in every language rather than silently disabling the
-entry.
+`@status` is a closed enum (`planned | live | partial`) enforced by the **loader**, so a typo
+fails the load in every language rather than silently disabling the entry.
 
-`@verifiedBy` names tests: `verify` checks each exists and is not skipped. It never runs
-them. `@trackedBy` names issues or tickets and is **not** resolved — `verify` has no network.
+`@trackedBy` names issues or tickets and is **not** resolved — `verify` has no network.
 
-**What counts as a test file is your project's call.** The scan ships patterns for the
-conventions this repo ports to — jest/vitest/bun, JUnit, Maven Failsafe (`*IT`), xUnit/NUnit,
-pytest, Kotlin — and they are a *convenience, not an authority*: a built-in list is a guess
-about someone else's repository, and a wrong guess turns a real test into a "broken claim".
-Declare yours and they are added to the built-ins:
-
-```ts
-// metaobjects.config.ts
-export default defineConfig({
-  verify: { testFiles: ["**/*IT.kt", "**/*.feature"] },
-});
-```
-
-If a named test cannot be found in the corpus but *does* appear in some other source file,
-`verify` says so (`WARN_REQUIREMENT_TEST_UNCLASSIFIED`, naming the file) instead of claiming
-the requirement is broken — an unrecognised convention is the tool's ignorance, not your
-mistake. `ERR_REQUIREMENT_TEST_MISSING` is reserved for a name that appears **nowhere**.
-
-> **`@verifiedBy` is existence evidence, not proof — and the difference matters most to whoever
-> authored it.** The scan matches a name anywhere in the test corpus, as a whole word, in any
-> language; that generosity is deliberate (a "missing" verdict then means the name appears in no
-> test file at all, which is broken in any ecosystem) but it means the check **cannot tell whether
-> the named test verifies the claim.** Auditing a real 19-name ledger found four that did not: one
-> matched a **comment**, one a **dependency-injection key** in test setup, one a **real test of a
-> different claim**, and one a test of the entry's *output* where the claim was about its *source
-> text*. `verify` reported clean throughout. A comment-only match now warns
-> (`WARN_REQUIREMENT_TEST_COMMENT_ONLY`); the other three are semantic and no scan will ever reach
-> them. **After authoring `@verifiedBy`, open each named test and read what it asserts.** If the
-> claim has no test, write one rather than pointing at a name that happens to exist — a property
-> about source text (no forbidden identifier, no unbounded call) is testable by reading the file.
+> **`@verifiedBy` was retired in `0.24.0`, and `verify` no longer looks at your tests.** It asked
+> you to name a test and then checked only that the **name** occurred somewhere in the test
+> corpus — as a whole word, in any language. That generosity was deliberate (a "missing" verdict
+> then meant the name appeared in no test file at all, which is broken in any ecosystem) but it
+> meant the check **could not tell whether the named test verified the claim.** Auditing a real
+> 19-name ledger found four that did not: one matched a **comment**, one a **dependency-injection
+> key** in test setup, one a **real test of a different claim**, and one a test of the entry's
+> *output* where the claim was about its *source text*. `verify` reported clean throughout. The
+> author picks the string, so the cheapest way to satisfy the check was always to find a name that
+> already existed. Tying a requirement to a test is instead the job of a generator that emits the
+> test **from** the requirement, making the link structural rather than chosen. Migration:
+> [`docs/features/migrations/verified-by-retirement.md`](migrations/verified-by-retirement.md).
 
 **Every run prints a summary**, clean or not:
 
@@ -245,10 +227,10 @@ there will be no work.
 }}
 ```
 
-**What to do with a `partial` nobody intends to finish:** it is probably `abandoned`, not
-`partial`. `abandoned` means built then deliberately retired, and it is the one status where
-a dangling reference is *correct*. A feature that was declared, never wired and will never be
-wired is more honestly recorded as abandoned than as a gap that is perpetually about to close.
+**What to do with a `partial` nobody intends to finish:** say so, with
+`@disposition: accepted` — the gap is understood and deliberately not being closed. That is
+a more honest record than a gap perpetually about to close. If the capability itself is gone,
+**delete the requirement**; there is no status meaning "we used to do this".
 
 ## Locking in work you have not started
 

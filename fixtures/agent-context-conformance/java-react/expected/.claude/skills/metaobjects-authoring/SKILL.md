@@ -1007,7 +1007,7 @@ Reach for it when the project needs to answer any of:
 
 - **"Why is this field here?"** — an L5 requirement binds a claim to a specific member. Authoring these exhaustively is what surfaces columns nothing reads and vocabularies nobody documented.
 - **"What is broken but known?"** — `@status: partial` plus `@disposition: accepted | deferred`. Absent disposition means *undecided*, and `meta verify` counts those: the gaps nobody has ruled on.
-- **"What did we build and then retire?"** — `@status: abandoned` is the one status where a dangling `@implementedBy` is *correct*, so the record survives the deletion.
+- **"What did we say we would build and have not?"** — `@status: planned` is the one status where a dangling `@implementedBy` is *correct*, because the entry precedes the nodes.
 - **"What have we committed to build?"** — `@status: planned`. Its references may dangle, and it never counts toward object coverage.
 - **"Which ticket covers this?"** — `@trackedBy`.
 

@@ -156,19 +156,18 @@ describe("meta verify — requirements exit-code contract", () => {
     expect(await run(["verify", "--cwd", dir])).toBe(0);
   }, TIMEOUT_MS);
 
-  test("@verifiedBy naming a test that exists nowhere exits 1", async () => {
-    const dir = project(
-      req({ ...L4, "@implementedBy": ["Order"], "@verifiedBy": ["OrderServiceTest"] }),
-      { "test/other.test.ts": "test('something else', () => {});" },
-    );
-    expect(await run(["verify", "--cwd", dir])).toBe(1);
-  }, TIMEOUT_MS);
-
-  test("@verifiedBy naming a test that exists exits 0", async () => {
+  // FR-038: `@verifiedBy` is retired vocabulary. It used to be scanned against the
+  // test corpus; both arms of that scan (name found / name missing) are gone, and
+  // what replaces them is a LOAD failure — the sealed registry refuses the attr
+  // before verify runs at all. Pinning the load failure is the point: a silent
+  // accept would mean the retirement never happened in this port.
+  test("@verifiedBy is retired — metadata carrying it fails to load", async () => {
     const dir = project(
       req({ ...L4, "@implementedBy": ["Order"], "@verifiedBy": ["OrderServiceTest"] }),
       { "test/order.test.ts": "test('OrderServiceTest', () => {});" },
     );
-    expect(await run(["verify", "--cwd", dir])).toBe(0);
+    // Non-zero either way; the naming a real, present test is deliberate — under
+    // the old scan this exact project exited 0.
+    expect(await run(["verify", "--cwd", dir])).not.toBe(0);
   }, TIMEOUT_MS);
 });

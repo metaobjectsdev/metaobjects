@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_UNKNOWN_ATTR",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.requirements.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['requirement.architectural']"
+      }
+    }
+  ],
+  "warnings": []
+}

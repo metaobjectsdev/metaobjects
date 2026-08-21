@@ -17,9 +17,6 @@
                 "@status": "live",
                 "@statement": "Every placed order is recorded before payment is attempted",
                 "@violation": "A payment attempted against an order that was never stored",
-                "@verifiedBy": [
-                  "OrderServiceTest"
-                ],
                 "children": [
                   {
                     "requirement.functional": {
@@ -46,12 +43,14 @@
                         },
                         {
                           "requirement.functional": {
-                            "name": "OrderTimer",
+                            "name": "OrderExpiry",
                             "@level": 5,
-                            "@status": "abandoned",
-                            "@statement": "An unpaid order expired on a wall-clock timer",
-                            "@violation": "An order cancelled by elapsed time rather than by the customer",
-                            "@supersededBy": "OrderRecord",
+                            "@status": "planned",
+                            "@statement": "An unpaid order carries the instant it stops being reservable",
+                            "@violation": "Stock held indefinitely against an order nobody paid for",
+                            "@trackedBy": [
+                              "acme/shop#412"
+                            ],
                             "@implementedBy": [
                               "acme::shop::Order.expiresAt"
                             ]
@@ -80,10 +79,9 @@
       {
         "requirement.architectural": {
           "name": "SoftDeleteEverywhere",
-          "@status": "superseded",
-          "@statement": "Every table carried a soft-delete flag rather than deleting rows",
-          "@violation": "A hard delete on a table that promised its rows were recoverable",
-          "@supersededBy": "UuidPrimaryKeys"
+          "@status": "planned",
+          "@statement": "Every table carries a soft-delete flag rather than deleting rows",
+          "@violation": "A hard delete on a table that promised its rows were recoverable"
         }
       }
     ]

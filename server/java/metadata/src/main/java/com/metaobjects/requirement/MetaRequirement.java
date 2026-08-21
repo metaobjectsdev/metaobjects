@@ -78,8 +78,8 @@ public abstract class MetaRequirement extends MetaData {
     public static final String ATTR_DISPOSITION = "disposition";
 
     /** Issue/ticket references for outstanding work. Free-form and NEVER resolved:
-     *  verify has no network, so unlike {@code @verifiedBy} nothing here is checked
-     *  to exist. Its job is to stop a deferred gap becoming invisible. */
+     *  verify has no network, so nothing here is checked to exist. Its job is to
+     *  stop a deferred gap becoming invisible. */
     public static final String ATTR_TRACKED_BY = "trackedBy";
 
     /** What the capability / policy is, in one sentence. */
@@ -90,12 +90,6 @@ public abstract class MetaRequirement extends MetaData {
 
     /** FQN references to the model nodes realising this requirement. */
     public static final String ATTR_IMPLEMENTED_BY = "implementedBy";
-
-    /** Names of tests that ASSERT the behaviour (existence evidence, not proof). */
-    public static final String ATTR_VERIFIED_BY = "verifiedBy";
-
-    /** The requirement that replaced this one. Expected on {@code status=superseded}. */
-    public static final String ATTR_SUPERSEDED_BY = "supersededBy";
 
     // ------------------------------------------------------------------
     // Status — a closed enum, enforced by the registry via allowedValues.
@@ -112,15 +106,9 @@ public abstract class MetaRequirement extends MetaData {
     /** Implemented with known gaps. */
     public static final String STATUS_PARTIAL = "partial";
 
-    /** Built, then deliberately retired. */
-    public static final String STATUS_ABANDONED = "abandoned";
-
-    /** Replaced by a different mechanism. */
-    public static final String STATUS_SUPERSEDED = "superseded";
-
     /** The closed status set, in declaration order (load-bearing — the manifest emits it). */
     public static final List<String> STATUSES = Collections.unmodifiableList(
-            Arrays.asList(STATUS_PLANNED, STATUS_LIVE, STATUS_PARTIAL, STATUS_ABANDONED, STATUS_SUPERSEDED));
+            Arrays.asList(STATUS_PLANNED, STATUS_LIVE, STATUS_PARTIAL));
 
     /**
      * Statuses whose implementing nodes are supposed to STILL EXIST. A dangling
@@ -253,11 +241,6 @@ public abstract class MetaRequirement extends MetaData {
         return stringList(ATTR_IMPLEMENTED_BY);
     }
 
-    /** Names of tests that ASSERT the behaviour; empty when absent. */
-    public List<String> getVerifiedBy() {
-        return stringList(ATTR_VERIFIED_BY);
-    }
-
     /** What was DECIDED about the outstanding work; {@code null} means UNDECIDED. */
     public String getDisposition() {
         return hasMetaAttr(ATTR_DISPOSITION) ? getMetaAttr(ATTR_DISPOSITION).getValueAsString() : null;
@@ -276,12 +259,6 @@ public abstract class MetaRequirement extends MetaData {
     /** True when there is outstanding work, so a {@code @disposition} says something. */
     public boolean hasOutstandingWork() {
         return STATUSES_WITH_OUTSTANDING_WORK.contains(getStatus());
-    }
-
-    /** The requirement that replaced this one, or {@code null} when absent. */
-    public String getSupersededBy() {
-        return hasMetaAttr(ATTR_SUPERSEDED_BY)
-                ? getMetaAttr(ATTR_SUPERSEDED_BY).getValueAsString() : null;
     }
 
     /** The NESTED child requirements (hierarchy IS nesting). */
@@ -311,7 +288,7 @@ public abstract class MetaRequirement extends MetaData {
 
     /**
      * True when a dangling {@code @implementedBy} is an ERROR rather than expected.
-     * An abandoned or superseded requirement's nodes are supposed to be gone.
+     * `planned` is the only exemption — there the nodes do not exist YET.
      */
     public boolean requiresLiveNodes() {
         String status = getStatus();

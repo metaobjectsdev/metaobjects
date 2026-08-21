@@ -47,12 +47,6 @@ public static class RequirementSchema
         Required: false,
         IsArray: true);
 
-    /// <summary>@supersededBy — the requirement that replaced this one. Optional on both.</summary>
-    private static readonly AttrSchema SupersededByAttr = new AttrSchema(
-        Name: RequirementConstants.REQUIREMENT_ATTR_SUPERSEDED_BY,
-        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
-        Required: false);
-
     /// <summary>@disposition — what was DECIDED about the outstanding work, which is a
     /// different question from whether the work is done (that is @status). ABSENT means
     /// UNDECIDED, a real state and the one a review exists to find.</summary>
@@ -63,7 +57,7 @@ public static class RequirementSchema
         AllowedValues: [.. RequirementConstants.REQUIREMENT_DISPOSITIONS]);
 
     /// <summary>@trackedBy — issue/ticket references for outstanding work. Free-form and
-    /// never resolved: verify has no network, so unlike @verifiedBy nothing here is
+    /// never resolved: verify has no network, so nothing here is
     /// checked to exist.</summary>
     private static readonly AttrSchema TrackedByAttr = new AttrSchema(
         Name: RequirementConstants.REQUIREMENT_ATTR_TRACKED_BY,
@@ -87,14 +81,6 @@ public static class RequirementSchema
         ValueType: AttrConstants.ATTR_SUBTYPE_INT,
         Required: false);
 
-    /// <summary>@verifiedBy — names of tests that ASSERT the behaviour or the policy. Legal
-    /// on both subtypes; verify checks each exists and is not skipped, never runs them.</summary>
-    private static readonly AttrSchema VerifiedByAttr = new AttrSchema(
-        Name: RequirementConstants.REQUIREMENT_ATTR_VERIFIED_BY,
-        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
-        Required: false,
-        IsArray: true);
-
     private static readonly IReadOnlyList<AttrSchema> FunctionalAttrs =
     [
         LevelAttr,
@@ -104,8 +90,6 @@ public static class RequirementSchema
         StatementAttr,
         ViolationAttr,
         ImplementedByAttr,
-        VerifiedByAttr,
-        SupersededByAttr,
     ];
 
     private static readonly IReadOnlyList<AttrSchema> ArchitecturalAttrs =
@@ -117,8 +101,6 @@ public static class RequirementSchema
         StatementAttr,
         ViolationAttr,
         ImplementedByAttr,
-        VerifiedByAttr,
-        SupersededByAttr,
     ];
 
     /// <summary>

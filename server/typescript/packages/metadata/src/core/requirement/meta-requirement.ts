@@ -13,7 +13,6 @@ import {
   REQUIREMENT_ATTR_DISPOSITION,
   REQUIREMENT_ATTR_TRACKED_BY,
   REQUIREMENT_ATTR_IMPLEMENTED_BY,
-  REQUIREMENT_ATTR_VERIFIED_BY,
   REQUIREMENT_LINK_FLOOR_LEVEL,
   REQUIREMENT_STATUS_PLANNED,
   REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES,
@@ -78,11 +77,6 @@ export class MetaRequirement extends MetaData {
     return Array.isArray(v) ? (v as string[]) : [];
   }
 
-  verifiedBy(): string[] {
-    const v = this.attr(REQUIREMENT_ATTR_VERIFIED_BY);
-    return Array.isArray(v) ? (v as string[]) : [];
-  }
-
   /** True when this requirement is permitted to reference the model at all.
    *
    *  An UNLEVELLED architectural requirement always may — its claim set is the
@@ -98,7 +92,7 @@ export class MetaRequirement extends MetaData {
   }
 
   /** True when a dangling `@implementedBy` is an ERROR rather than expected.
-   *  An abandoned or superseded requirement's nodes are supposed to be gone. */
+   *  `planned` is the only exemption — there the nodes do not exist YET. */
   requiresLiveNodes(): boolean {
     const s = this.status();
     return s !== undefined && REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES.includes(s);

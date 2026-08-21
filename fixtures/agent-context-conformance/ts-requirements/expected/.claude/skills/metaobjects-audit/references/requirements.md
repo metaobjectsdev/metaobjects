@@ -10,14 +10,13 @@ effort re-deriving what a green run already proves.
 ## What verify has already proven (do not re-check by hand)
 
 Links sit at or below the L4 floor, nesting agrees with levels, `@status` values are legal,
-references resolve (with dangling allowed on `abandoned`/`superseded`), and named
-`@verifiedBy` tests exist and are not skipped.
+and references resolve (with dangling allowed on `planned`, whose nodes do not exist yet).
 
 ## What only a human or an agent reading the code can catch
 
 **1. Statuses that are false.** The highest-value finding in the whole dimension. A
 requirement marked `live` whose implementation was gutted; one marked `partial` that is now
-complete; one marked `abandoned` whose code is demonstrably still running. Sample the claims
+complete; one marked `planned` that was quietly built months ago. Sample the claims
 and read the nodes. `status` is the only payload with controlled evidence behind it — the
 resurrection protection rides entirely on it being true.
 
@@ -49,7 +48,7 @@ should be simplified rather than defended.
   coverage is explicitly rejected — plumbing members are covered by architectural
   requirements with high fan-out. L5 exists so a member claim *can* be made where it means
   something, never so every member must carry one.
-- **Dangling links on `abandoned` / `superseded`.** Correct, and load-bearing.
+- **Dangling links on `planned`.** Correct — the plan precedes the nodes.
 - **A project with no requirements at all.** The feature is opt-in by declaration; absence is
   not a finding.
 

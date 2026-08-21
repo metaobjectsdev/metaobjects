@@ -4,19 +4,18 @@ Capabilities are **metadata**, declared in `metaobjects/` beside the entities th
 describe. Read the existing requirement nodes before designing anything. Two rules matter
 more than the rest.
 
-**1. When you retire something, record it — at that moment.** Set the requirement's
-`status` to `abandoned` (built, then deliberately dropped) or `superseded` (something else
-does it now — name it in `supersededBy`), in the same change that removes the code.
+**1. A requirement is PRESCRIPTIVE — it states what should be true, never what happened.**
+So when a capability is retired, **delete its requirement** in the same change that removes
+the code. `status` is `planned | live | partial`; there is no member meaning "we used to do
+this", because every one of those three describes something meant to be true now or soon.
 
-This is the one thing a requirement does that the rest of the model cannot. Given a brief
-matching a retired feature, agents reading only the model proposed **reviving** it 24 times
-out of 24, each believing it was reusing. A retired feature is *more* attractive than a
-live one: purpose-built for exactly the request, never complicated by production.
+What a deleted entry leaves behind is a diff, which is the right home for it. If something
+about the retirement is worth carrying forward — why it went, what replaced it — put that in
+`notes` on the entry that survives, where a reader looking at today's model will find it.
 
-Leaving a dangling `implementedBy` on an `abandoned` or `superseded` requirement is
-**correct** — those nodes are supposed to be gone, and `verify` allows it deliberately. On
-`live` or `partial` the same dangling reference is an error: the model moved and the
-requirement went stale.
+Leaving a dangling `implementedBy` is **correct only on `planned`**: the entry precedes the
+nodes. On `live` or `partial` the same dangling reference is an error — the model moved and
+the requirement went stale.
 
 **2. When you add an entity, claim it.** Every `object.entity` should appear in some
 requirement's `implementedBy`, or `verify` says so.
@@ -108,8 +107,9 @@ usually one nobody read carefully. Then say what was DECIDED, which is a separat
 - **absent** — undecided, and that is a real state. `verify` counts these, because
   *"which gaps has nobody ruled on?"* is the question a review exists to answer.
 
-A `partial` nobody intends to finish is usually `abandoned` — built then deliberately
-retired, the one status where a dangling reference is correct.
+A `partial` nobody intends to finish is `partial` + `@disposition: accepted` — the gap is
+understood and deliberately not being closed. If the capability itself is gone, delete the
+requirement instead.
 
 **`status: planned` locks in work you have not started.** Its references may dangle (write
 the requirement before the entity), and it never counts toward object coverage — otherwise
@@ -125,13 +125,13 @@ ambition rather than work.
     violation: "A scene that advances on a clock rather than on the story"
     children:
       - requirement.functional:
-          name: TurnTimer
+          name: BeatProgression
           level: 4
-          status: abandoned          # retired deliberately -- do NOT revive
-          statement: "Pacing was driven by a per-turn wall-clock timer"
-          violation: "Pacing driven by elapsed time instead of beat completion"
-          supersededBy: BeatProgression
-          implementedBy: ["game::turn::TurnTimer"]   # gone, and that is the point
+          status: planned            # not built yet -- refs may dangle
+          statement: "A scene advances when its beat completes"
+          violation: "A scene that advances with its beat unresolved"
+          trackedBy: ["acme/game#412"]
+          implementedBy: ["game::turn::BeatProgression"]   # does not exist YET
 
 - requirement.architectural:
     name: UuidPrimaryKeys

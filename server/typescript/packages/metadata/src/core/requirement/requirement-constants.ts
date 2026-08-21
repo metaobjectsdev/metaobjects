@@ -36,8 +36,6 @@ export const REQUIREMENT_ATTR_TRACKED_BY = "trackedBy";
 export const REQUIREMENT_ATTR_STATEMENT = "statement";
 export const REQUIREMENT_ATTR_VIOLATION = "violation";
 export const REQUIREMENT_ATTR_IMPLEMENTED_BY = "implementedBy";
-export const REQUIREMENT_ATTR_VERIFIED_BY = "verifiedBy";
-export const REQUIREMENT_ATTR_SUPERSEDED_BY = "supersededBy";
 
 // ---------------------------------------------------------------------------
 // Status — a closed enum, enforced by the registry via `allowedValues`. This is
@@ -49,22 +47,17 @@ export const REQUIREMENT_ATTR_SUPERSEDED_BY = "supersededBy";
 export const REQUIREMENT_STATUS_PLANNED = "planned";
 export const REQUIREMENT_STATUS_LIVE = "live";
 export const REQUIREMENT_STATUS_PARTIAL = "partial";
-export const REQUIREMENT_STATUS_ABANDONED = "abandoned";
-export const REQUIREMENT_STATUS_SUPERSEDED = "superseded";
 
 export const REQUIREMENT_STATUSES = [
   REQUIREMENT_STATUS_PLANNED,
   REQUIREMENT_STATUS_LIVE,
   REQUIREMENT_STATUS_PARTIAL,
-  REQUIREMENT_STATUS_ABANDONED,
-  REQUIREMENT_STATUS_SUPERSEDED,
 ] as const;
 export type RequirementStatus = (typeof REQUIREMENT_STATUSES)[number];
 
 /** Statuses whose implementing nodes are supposed to still exist. A dangling
  *  `@implementedBy` on one of these means the model moved and the requirement is
- *  stale. On `planned` the nodes do not exist YET; on `abandoned`/`superseded`
- *  they are supposed to be GONE — which is the whole point of those entries. */
+ *  stale. `planned` is the only exemption — there the nodes do not exist YET. */
 export const REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES: readonly RequirementStatus[] = [
   REQUIREMENT_STATUS_LIVE,
   REQUIREMENT_STATUS_PARTIAL,

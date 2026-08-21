@@ -17,9 +17,8 @@ own reference machinery.
 | **`meta verify`** (conditional) | `@implementedBy` resolution, whose **severity depends on `@status`** |
 
 The split is forced, not stylistic. A loader `references` descriptor **always errors** on
-an unresolved target — and an `abandoned` requirement exists precisely to name nodes that
-are *gone*. Declaring `@implementedBy` there would make the entries carrying this
-mechanism's only controlled evidence fail to load.
+an unresolved target — and a `planned` requirement names nodes that do not exist *yet*.
+Declaring `@implementedBy` there would make every recorded intention fail to load.
 
 ## Why it exists
 
@@ -28,19 +27,26 @@ found every existing implementation with zero false reuse — measured under con
 favour retrieval (full-estate context, a high base rate of already-implemented briefs,
 single-shot runs). That refutes duplication as this mechanism's *justification*; it does
 not prove duplication never happens. What agents reliably cannot see is that a capability
-was **deliberately retired**. Across a controlled round,
-model-only runs flagged a retired capability **0 times out of 24**; every one of them
-proposed extending an abandoned feature, in near-identical words, each believing it was
-reusing rather than reviving. Ledger arms caught it **19 times out of 40**.
+was **deliberately retired**. Across a controlled round, model-only runs flagged a retired
+capability **0 times out of 24**; every one of them proposed extending the retired feature,
+in near-identical words, each believing it was reusing rather than reviving. Ledger arms
+caught it **19 times out of 40**. A retired feature is *more* attractive to a
+retrieval-driven agent than a live one, because it was purpose-built for exactly the request
+and never got complicated by contact with production. One run called it "a near-exact decoy".
 
-The failure prevented is **resurrection**, not duplication — and a retired feature is *more*
-attractive to a retrieval-driven agent than a live one, because it was purpose-built for
-exactly the request and never got complicated by contact with production. One run called it
-"a near-exact decoy".
+**That finding stands; the vocabulary answer to it changed (2026-08-20).** The ledger
+originally carried a `status: abandoned` entry to connect the disproof to the thing being
+revived. Those statuses are retired: they were the only thing creating a class of INVISIBLE
+staleness — one adopting estate held **29 `@implementedBy` refs that could never resolve**
+across 14 entries, and `verify` reported zero dangling refs, which was true and incomplete at
+once, because the check is silent on exactly those statuses. Retiring them deletes the bug
+class instead of patching it.
 
-The model cannot encode this. A comment reading "never by turn timers" sits on a different
-node from the fields being revived; nothing connects the disproof to the thing being
-resurrected. A ledger entry with `status: abandoned` does exactly that, in one line.
+So a requirement is **prescriptive only**: it states what should be true and never journals
+what happened. The retirement record lives in version control, and what is worth carrying
+forward lives in `notes` on the entries that survive — the shape one adopting estate had
+already adopted on its own initiative, reasoning that "what used to implement a retired
+capability is real information in the wrong field".
 
 ## Why the product validates it, rather than a convention
 
@@ -60,7 +66,7 @@ focus.
 |---|---|---|---|
 | **L1 Solution** | the whole solution; at enterprise scale, one of several | enterprise | — |
 | **L2 Segment** | a major segmentation — an application, a library, a deployable | app / library | — |
-| **L3 Service** | a service-grain capability, as one testable statement | service | `verifiedBy` |
+| **L3 Service** | a service-grain capability, as one testable statement | service | — |
 | **L4 Object** | the capability as it lands on a model **object** | object | `implementedBy` (object FQNs) |
 | **L5 Member** | the capability as it lands on a **field, view or identity** | member | `implementedBy` (dotted member refs) |
 
@@ -151,7 +157,6 @@ will do.
                 "name": "orders", "@level": 3, "@status": "live",
                 "@statement": "Every placed order is recorded before payment is attempted",
                 "@violation": "A payment attempted against an order that was never stored",
-                "@verifiedBy": ["OrderServiceTest"],
                 "children": [
                   { "requirement.functional": {
                       "name": "orderRecord", "@level": 4, "@status": "live",
@@ -192,22 +197,20 @@ the levels, not enumerate them. What it may not do is stay level or go back up.
 | `@statement` | both, **required** | What the capability is, in one sentence. |
 | `@violation` | both, **required** | What breaking it looks like, in one sentence. |
 | `@implementedBy` | L4, L5, architectural | FQN references. An error above the link floor. |
-| `@verifiedBy` | functional | Named tests. Typically L3. |
-| `@supersededBy` | both | What replaced this. Expected on `status: superseded`. |
 | `title` | any node | Common doc attr. A short **noun-phrase** label — `name` is an identifier, this is what an index shows. |
 | `description` | any node | Common doc attr, narrowed here by `@statement` already being the claim: use it for **scope** — what the requirement covers, what it deliberately does not, which sibling owns the rest. A `description` that paraphrases the `@statement` is padding; leave it off instead. |
 | `notes` | any node | Common doc attr. The **evidence** behind `@status` — citations, vocabularies, the control run to prove an absence was real. A sentence belongs here exactly when it would have to change because the implementation changed while the model did not. |
 
 The name is the node's identity and its address: nesting makes `commerce.orders.orderRecord`
 a dotted child-name path like any other, so no separate id scheme is needed.
-| `supersededBy` | any | What replaced this. |
 | `notes` | any | Free text. |
 
 ### `status` is a closed enum
 
-`live | partial | abandoned | superseded`. An unknown value is a **hard error** — this is
-the one payload with controlled evidence behind it, and leaving it an unchecked string
-would let a typo silently disable it.
+`planned | live | partial`. An unknown value is a **hard error** — this is the one payload
+with controlled evidence behind it, and leaving it an unchecked string would let a typo
+silently disable it. There is no member meaning "retired": a requirement is prescriptive,
+so a capability that no longer applies is DELETED.
 
 ### `implementedBy` resolution, severity conditional on status
 
@@ -219,35 +222,40 @@ exists in two packages resolves to nothing rather than to a coin flip.
 | status | dangling reference |
 |---|---|
 | `live`, `partial` | **error** — the model moved and the ledger is stale |
-| `abandoned`, `superseded` | **allowed** — those nodes are supposed to be gone |
+| `planned` | **allowed** — the nodes do not exist YET |
 
-The asymmetry inverts as a pair, and it is the entry doing its job: recording that something
-was retired, after the nodes went away.
+`planned` is the only exemption, and it is the entry doing its job: the plan is written
+before the thing it plans. Every other status asserts the nodes are there now.
 
 An **L4** reference must resolve to an object; an **L5** reference must be a dotted member
 reference *within* an object (`Order.reference`, `Order.total.display`), resolved by walking
 child names.
 
-### `verifiedBy` — the named tests must exist, and must not be skipped
+### `verifiedBy` — RETIRED in `0.24.0`
 
-`verify` checks each name in `@verifiedBy` appears in the project's test sources and is not
-disabled. **It never runs them** — that is the test runner's job, and a requirement gate
-that shelled out to one would be slow, ecosystem-specific, and wrong in CI.
+A requirement no longer links to a test, and `verify` does not read the test corpus at all.
 
-| status | a named test that appears nowhere |
-|---|---|
-| `live`, `partial` | **error** — renamed, removed, or never true |
-| `abandoned`, `superseded` | **allowed** — same asymmetry as `implementedBy` |
+`@verifiedBy` asked the author to name a test; `verify` then checked that the **name** occurred
+somewhere in the project's test sources, whole-word, in any language. It never ran them — that
+is the test runner's job — which meant the check could establish only that a name existed, and
+never that the named test verified the claim it was attached to.
 
-A test that exists but carries a skip marker is a **warning** naming the file and line: a
-skipped test proves nothing, and the requirement reads as verified while it is not.
+**The measurement that retired it.** Auditing one real ledger — 55 entries, 9 carrying
+`@verifiedBy`, 19 names — by opening each named test and reading its assertions found **4 of
+19 did not verify their claim**: one matched a **comment** (its only occurrence anywhere in
+the corpus), one a **dependency-injection key** in test setup, one a **real test of a
+different claim**, and one a test of the entry's *output* where the claim was about its
+*source text*. `verify` reported zero errors throughout.
 
-Two deliberate limits, because a nagging gate gets switched off. The scan **fails open** —
-a project with no test files it can see reports nothing rather than every name missing, so
-a monorepo whose tests live outside the working directory is not told its requirements are
-unverified. And matching is whole-word with `_` treated as a **separator**, so pytest's
-`def test_OrderServiceTest` satisfies a claim naming `OrderServiceTest`, while `Order` is
-still not satisfied by `OrderServiceTest`.
+The scan was not defective — it was precision-over-recall on purpose. It simply cannot
+distinguish verification from coincidence, and because the author chooses the string, the
+cheapest way to satisfy it is always to find a name that already exists. Retiring it removes a
+false comfort rather than a capability.
+
+The replacement inverts the direction: a generator emits the test **from** the requirement, so
+the link is structural rather than a name someone picked. That work is tracked separately and
+is additive — until it lands, a requirement simply carries no test link, which is a legitimate
+declared state.
 
 ### Object coverage
 

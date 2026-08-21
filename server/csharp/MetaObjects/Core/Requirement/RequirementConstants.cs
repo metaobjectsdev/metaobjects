@@ -47,8 +47,6 @@ public static class RequirementConstants
     public const string REQUIREMENT_ATTR_STATEMENT = "statement";
     public const string REQUIREMENT_ATTR_VIOLATION = "violation";
     public const string REQUIREMENT_ATTR_IMPLEMENTED_BY = "implementedBy";
-    public const string REQUIREMENT_ATTR_VERIFIED_BY = "verifiedBy";
-    public const string REQUIREMENT_ATTR_SUPERSEDED_BY = "supersededBy";
 
     // -----------------------------------------------------------------------
     // Status — a closed enum, enforced by the registry via allowedValues.
@@ -61,8 +59,6 @@ public static class RequirementConstants
 
     public const string REQUIREMENT_STATUS_LIVE = "live";
     public const string REQUIREMENT_STATUS_PARTIAL = "partial";
-    public const string REQUIREMENT_STATUS_ABANDONED = "abandoned";
-    public const string REQUIREMENT_STATUS_SUPERSEDED = "superseded";
 
     /// <summary>
     /// The closed status set, in DECLARATION order — the manifest emits
@@ -74,8 +70,6 @@ public static class RequirementConstants
         REQUIREMENT_STATUS_PLANNED,
         REQUIREMENT_STATUS_LIVE,
         REQUIREMENT_STATUS_PARTIAL,
-        REQUIREMENT_STATUS_ABANDONED,
-        REQUIREMENT_STATUS_SUPERSEDED,
     ];
 
     /// <summary>

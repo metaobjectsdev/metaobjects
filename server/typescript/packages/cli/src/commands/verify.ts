@@ -18,7 +18,6 @@ import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { computeCodegenDrift } from "../lib/codegen-drift.js";
 import { checkRequirements, summariseRequirements } from "../lib/requirement-check.js";
-import { checkVerifiedBy } from "../lib/verified-by-scan.js";
 import { resolveD1Config, resolveMigrateConfig } from "../lib/config.js";
 import {
   buildWranglerExecuteArgs,
@@ -74,6 +73,7 @@ import {
   TEMPLATE_ATTR_SUBJECT_REF,
   TEMPLATE_ATTR_HTML_BODY_REF,
   TEMPLATE_ATTR_TEXT_BODY_REF,
+  REQUIREMENT_STATUSES,
 } from "@metaobjectsdev/metadata";
 import { verify, ERR_REQUIRED_SLOT_UNUSED, ERR_PARTIAL_UNRESOLVED } from "@metaobjectsdev/render";
 
@@ -451,22 +451,23 @@ export async function verifyCommand(
 
   // -- requirements (#290) ---------------------------------------------------
   function runRequirementVerify(): number {
-    // `@verifiedBy` resolution needs the project on disk, so it is a separate
-    // scan; its diagnostics carry the same severities and share this reporter.
-    // `verify.testFiles` lets a project name its own test-file conventions. What counts
-    // as a test is project-specific, and the built-in patterns are a convenience, not an
-    // authority — see the verified-by-scan header.
-    const diags = [
-      ...checkRequirements(root),
-      ...checkVerifiedBy(root, genConfigDir, forgeConfig?.verify?.testFiles),
-    ];
+    // No test-corpus scan runs here any more. `@verifiedBy` asked the author to
+    // name a test and checked only that the NAME occurred somewhere in the test
+    // sources — an audit of one real 19-name ledger found 4 names that did not
+    // verify their claim (a comment, a DI key, a test of a different claim, a
+    // test of the output where the claim was about the source text) while verify
+    // reported zero errors throughout. Existence was never proof, and no lexical
+    // rule reaches the semantic cases. FR-038 retires the attribute rather than
+    // narrowing it; the replacement generates the test FROM the requirement, so
+    // the link is structural instead of a string the author picks.
+    const diags = [...checkRequirements(root)];
 
     // Printed on EVERY run, clean or not — a gate that says nothing when it
     // passes cannot be told apart from a gate that checked nothing, and the
     // recorded-gap counts are the whole reason to keep a ledger.
     const s = summariseRequirements(root);
     if (s !== undefined) {
-      const order = ["planned", "live", "partial", "abandoned", "superseded"];
+      const order = [...REQUIREMENT_STATUSES];
       const parts = order
         .filter((k) => (s.byStatus[k] ?? 0) > 0)
         .map((k) => `${s.byStatus[k]} ${k}`);

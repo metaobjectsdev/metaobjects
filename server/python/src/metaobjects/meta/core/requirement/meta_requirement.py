@@ -14,7 +14,6 @@ from .requirement_constants import (
     REQUIREMENT_ATTR_LEVEL,
     REQUIREMENT_ATTR_STATUS,
     REQUIREMENT_ATTR_TRACKED_BY,
-    REQUIREMENT_ATTR_VERIFIED_BY,
     REQUIREMENT_LINK_FLOOR_LEVEL,
     REQUIREMENT_STATUS_PLANNED,
     REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES,
@@ -53,12 +52,6 @@ class MetaRequirement(MetaData):
         v = self.get_meta_attr(REQUIREMENT_ATTR_IMPLEMENTED_BY)
         return [str(x) for x in v] if isinstance(v, list) else []
 
-    def verified_by(self) -> list[str]:
-        """ADR-0039: resolving. Names of tests that ASSERT the behaviour — existence
-        evidence only; verify cannot tell whether a named test verifies this."""
-        v = self.get_meta_attr(REQUIREMENT_ATTR_VERIFIED_BY)
-        return [str(x) for x in v] if isinstance(v, list) else []
-
     def disposition(self) -> str | None:
         """ADR-0039: resolving. What was DECIDED about the outstanding work — a
         different question from whether the work is done, which is what
@@ -69,8 +62,8 @@ class MetaRequirement(MetaData):
 
     def tracked_by(self) -> list[str]:
         """ADR-0039: resolving. Issue/ticket references for outstanding work.
-        Free-form and NEVER resolved — verify has no network, so unlike
-        ``verified_by`` nothing here is checked to exist."""
+        Free-form and NEVER resolved — verify has no network, so nothing here is
+        checked to exist."""
         v = self.get_meta_attr(REQUIREMENT_ATTR_TRACKED_BY)
         return [str(x) for x in v] if isinstance(v, list) else []
 
@@ -102,7 +95,7 @@ class MetaRequirement(MetaData):
 
     def requires_live_nodes(self) -> bool:
         """True when a dangling ``@implementedBy`` is an ERROR rather than
-        expected. An abandoned or superseded requirement's nodes are supposed to
+        expected. `planned` is the only exemption — there the nodes do not exist YET. The nodes are supposed to
         be gone."""
         s = self.status()
         return s is not None and s in REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES
