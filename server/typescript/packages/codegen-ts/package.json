@@ -115,6 +115,7 @@
     "@metaobjectsdev/render": "workspace:*",
     "@biomejs/js-api": "^0.7.0",
     "@biomejs/wasm-nodejs": "^1.9.4",
+    "@toon-format/toon": "^2.3.0",
     "ts-poet": "^6.10.0"
   },
   "peerDependencies": {

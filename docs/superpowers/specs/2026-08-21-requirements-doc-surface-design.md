@@ -221,6 +221,17 @@ does not exist. **That is the same false-assurance failure the scan was rejected
 — a document telling a reader a requirement is tested when nothing tests it. So the link stays
 gated on knowing the generator ran.
 
+**It is WORSE than the scan in one respect, which is why the gate must not be relaxed.** A
+derived path reads as authoritative in a way an author-chosen string never did: a reader who
+knows the string was typed by a colleague discounts it, while a path the tool computed carries
+the tool's credibility. So a wrong derived link is trusted harder than a wrong authored one.
+
+**The trap for the next reader, stated because it is genuinely inviting:** the path *is*
+computable from metadata alone, and computability will look like sufficiency. It is not. The
+check keys on **the generator being wired**, never on the path being derivable — and anyone
+relaxing it to "we can compute this, so emit it" reintroduces the defect this whole section
+exists to prevent.
+
 The precedent for that already exists in the same file: the `api` surface materialises only
 with a loadable gen config, *because* api docs describe a generated surface that only exists
 when there is one ([`docs.ts:412`](../../../server/typescript/packages/cli/src/commands/docs.ts)):
