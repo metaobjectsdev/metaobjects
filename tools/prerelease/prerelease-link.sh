@@ -94,9 +94,9 @@ has_py()    { [ -f "$PROJECT/pyproject.toml" ] || ls "$PROJECT"/requirements*.tx
 # fire for a real layout like MyApp.sln + src/MyApp/MyApp.csproj. obj/bin/node_modules are
 # build output and vendored deps, not this project's choice of ecosystem.
 has_nuget() {
-  [ -n "$(find "$PROJECT" \( -name '*.csproj' -o -name '*.fsproj' -o -name '*.vbproj' -o -name '*.sln' \) \
-             -not -path '*/obj/*' -not -path '*/bin/*' -not -path '*/node_modules/*' \
-             -print -quit 2>/dev/null)" ]
+  # `project_find` supplies the -print, so this takes the first line rather than -quit.
+  [ -n "$(project_find \( -name '*.csproj' -o -name '*.fsproj' -o -name '*.vbproj' -o -name '*.sln' \) \
+             -not -path '*/obj/*' -not -path '*/bin/*' | head -1)" ]
 }
 has_mvn()   { [ -f "$PROJECT/pom.xml" ]; }
 
@@ -132,6 +132,39 @@ local_exclude() {  # local_exclude <relative-path>
 
 tracked() { git -C "$PROJECT" ls-files --error-unmatch "$1" >/dev/null 2>&1; }
 
+# Directories under $PROJECT that are their own repository root — a linked git worktree,
+# a submodule, or a vendored unrelated checkout. Everything beneath one belongs to a
+# DIFFERENT working tree, on a different branch, with its own dependency pins.
+#
+# `-not -path '*/.git/*'` does not cover this and cannot: a linked worktree's `.git` is a
+# FILE (holding `gitdir: …`), not a directory, so nothing under it was ever pruned. The
+# damage is not a stray edit — `unlink` runs the same walk with `--to`, which defaults to
+# the current public `latest`, so a link/unlink round-trip silently RELOCATES an unrelated
+# branch's pin to a version it was never on. Matching `.git` of either kind is what makes
+# the prune correct, and it picks up submodules and vendored repos for free.
+foreign_roots() {
+  find "$PROJECT" -mindepth 2 -name .git -not -path '*/node_modules/*' -printf '%h\n' 2>/dev/null
+}
+
+# `find` over THIS worktree only. Callers pass the match expression; pruning is ours.
+project_find() {  # project_find <find-expression...>
+  local prune=( -name node_modules -o -name .git ) r
+  while IFS= read -r r; do prune+=( -o -path "$r" ); done < <(foreign_roots)
+  find "$PROJECT" \( "${prune[@]}" \) -prune -o \( "$@" \) -print 2>/dev/null
+}
+
+# Every independent npm install root: a directory owning a lockfile, plus $PROJECT.
+# npm and bun read `.npmrc` from the CURRENT directory and the user level — neither walks
+# up — so a sub-project with its own lockfile needs its own registry config or it resolves
+# the vendor scope against the public registry and fails `notarget` at install time.
+npm_install_roots() {
+  { echo "$PROJECT"
+    project_find \( -name package-lock.json -o -name npm-shrinkwrap.json -o -name yarn.lock \
+                 -o -name pnpm-lock.yaml -o -name bun.lock -o -name bun.lockb \) \
+      | while IFS= read -r f; do dirname "$f"; done
+  } | sort -u
+}
+
 # Does the registry serve reads without credentials? If it does, no project file ever has
 # to hold a token — which is worth a probe.
 anon_read_ok() {
@@ -158,22 +191,28 @@ repin_npm() {  # repin_npm <version|"">
       const fs=require("fs"), f=process.argv[1], v=process.argv[2], scope=process.argv[3];
       let raw; try { raw = fs.readFileSync(f,"utf8"); } catch { console.log(0); process.exit(0); }
       let p; try { p = JSON.parse(raw); } catch { console.log(0); process.exit(0); }
-      let n=0;
+      // PARSE to decide WHICH keys change; SUBSTITUTE textually to change them. The
+      // round-trip through JSON.stringify(p,null,2) rewrote the whole file: a tab-indented
+      // manifest produced 100 changed lines for one pin, and a \uXXXX escape inside a
+      // description came back as a literal character. That works directly against the rule
+      // this tool is trying to enforce — "never commit what link writes to a tracked file"
+      // is unenforceable if a reviewer has to find one pin among fifty reformatted lines.
+      // Substitution leaves the file byte-identical apart from the version literals, so
+      // indentation, escapes and line endings all survive without special-casing any of them.
+      const keys = new Set();
       for (const s of ["dependencies","devDependencies","peerDependencies","optionalDependencies"])
-        for (const k of Object.keys(p[s]||{})) if (k.startsWith(scope+"/")) { p[s][k]=v; n++; }
-      // Only WRITE when something changed. JSON.stringify normalizes indentation and
-      // line endings, so an unconditional write reformats a file it had no reason to
-      // touch — a whole-file diff (LF over CRLF) on a manifest with no vendor deps.
-      if (n) {
-        const nl = raw.includes("\r\n") ? "\r\n" : "\n";
-        fs.writeFileSync(f, JSON.stringify(p,null,2).split("\n").join(nl)+nl);
+        for (const k of Object.keys(p[s]||{})) if (k.startsWith(scope+"/")) keys.add(k);
+      let out = raw, n = 0;
+      for (const k of keys) {
+        const re = new RegExp("(\"" + k.replace(/[.*+?^${}()|[\]\\]/g,"\\$&") + "\"\\s*:\\s*\")[^\"]*(\")", "g");
+        out = out.replace(re, (_m,a,b) => { n++; return a + v + b; });
       }
+      if (n) fs.writeFileSync(f, out);
       console.log(n);
     ' "$f" "$v" "$NPM_SCOPE" 2>/dev/null || echo 0)"
     total=$(( total + n ))
     [ "$n" -gt 0 ] && changed=$(( changed + 1 ))
-  done < <(find "$PROJECT" -name package.json \
-             -not -path '*/node_modules/*' -not -path '*/.git/*' 2>/dev/null)
+  done < <(project_find -name package.json)
   say "repinned $total $NPM_SCOPE/* dependencies to $v across $changed manifest(s)"
 }
 
@@ -191,8 +230,8 @@ repin_nuget() {  # repin_nuget <version|"">
   local v="$1"; [ -n "$v" ] || return 0
   while IFS= read -r f; do
     sed -i -E "s|(<PackageReference[^>]*Include=\"${NUGET_PREFIX}[^\"]*\"[^>]*Version=\")[^\"]*(\")|\\1${v}\\2|g" "$f"
-  done < <(find "$PROJECT" \( -name '*.csproj' -o -name '*.fsproj' -o -name 'Directory.Packages.props' \) \
-             -not -path '*/obj/*' -not -path '*/bin/*' 2>/dev/null)
+  done < <(project_find \( -name '*.csproj' -o -name '*.fsproj' -o -name 'Directory.Packages.props' \) \
+             -not -path '*/obj/*' -not -path '*/bin/*')
   say "repinned ${NUGET_PREFIX}* package references to $v"
 }
 
@@ -223,14 +262,24 @@ repin_mvn() {  # repin_mvn <version|"">
 }
 
 drop_lockfiles() {
-  local dropped=()
-  for l in package-lock.json npm-shrinkwrap.json yarn.lock pnpm-lock.yaml bun.lock bun.lockb \
-           uv.lock poetry.lock Pipfile.lock packages.lock.json; do
+  local dropped=() root
+  # Every npm install root, not just $PROJECT — leaving a sub-project's lockfile behind
+  # lets the two roots disagree about the resolved version, which is the same split-brain
+  # the per-root .npmrc exists to prevent.
+  local prefix
+  while IFS= read -r root; do
+    # $PROJECT itself does not match the "$PROJECT/" strip, so name its files bare.
+    prefix="${root#"$PROJECT"/}"; [ "$prefix" = "$root" ] && prefix="" || prefix="$prefix/"
+    for l in package-lock.json npm-shrinkwrap.json yarn.lock pnpm-lock.yaml bun.lock bun.lockb; do
+      [ -e "$root/$l" ] && { rm -f "$root/$l"; dropped+=("${prefix}${l}"); }
+    done
+  done < <(npm_install_roots)
+  for l in uv.lock poetry.lock Pipfile.lock packages.lock.json; do
     [ -e "$PROJECT/$l" ] && { rm -f "$PROJECT/$l"; dropped+=("$l"); }
   done
   # A NuGet lock file can also sit next to each project file.
   while IFS= read -r f; do rm -f "$f"; dropped+=("$(basename "$(dirname "$f")")/packages.lock.json"); done \
-    < <(find "$PROJECT" -name packages.lock.json -not -path '*/obj/*' 2>/dev/null)
+    < <(project_find -name packages.lock.json -not -path '*/obj/*')
   [ ${#dropped[@]} -gt 0 ] && say "dropped lockfile(s): ${dropped[*]}" || true
 }
 
@@ -242,22 +291,33 @@ latest_public_npm() {
 
 # ── link ──────────────────────────────────────────────────────────────────────────────
 link_npm() {
-  local f="$PROJECT/.npmrc" auth=""
-  strip_block "$f" "$BEGIN" "$END"
+  local auth=""
   if ! anon_read_ok; then
     [ -n "$TOKEN" ] || die "the registry requires authentication for reads but no MO_REGISTRY_TOKEN is set"
     auth="//$HOSTPORT/api/packages/$OWNER/npm/:_authToken=$TOKEN"
   fi
-  { [ -f "$f" ] && cat "$f"; echo "$BEGIN"
-    echo "$NPM_SCOPE:registry=$BASE/api/packages/$OWNER/npm/"
-    [ -n "$auth" ] && echo "$auth"
-    echo "$END"; } > "$f.tmp" && mv "$f.tmp" "$f"
-  if tracked ".npmrc"; then
-    warn ".npmrc is TRACKED in this project — the managed block is committable. Remove it with 'unlink' before pushing."
-  else
-    local_exclude ".npmrc"
-    say "wrote .npmrc (scope $NPM_SCOPE only) + git local exclude"
-  fi
+  # One .npmrc per INSTALL ROOT, not one at the project root. `repin_npm` has always
+  # repinned every manifest it finds, so a sub-project with its own lockfile got the
+  # pre-release pin and no registry to resolve it from — `link` reported success and the
+  # breakage surfaced later as `notarget` inside that sub-project. `check` already walked
+  # nested roots; that asymmetry was the bug.
+  local wrote=0 root rel f
+  while IFS= read -r root; do
+    f="$root/.npmrc"
+    strip_block "$f" "$BEGIN" "$END"
+    { [ -f "$f" ] && cat "$f"; echo "$BEGIN"
+      echo "$NPM_SCOPE:registry=$BASE/api/packages/$OWNER/npm/"
+      [ -n "$auth" ] && echo "$auth"
+      echo "$END"; } > "$f.tmp" && mv "$f.tmp" "$f"
+    rel="${f#"$PROJECT"/}"; [ "$rel" = "$f" ] && rel=".npmrc"
+    if tracked "$rel"; then
+      warn "$rel is TRACKED in this project — the managed block is committable. Remove it with 'unlink' before pushing."
+    else
+      local_exclude "$rel"
+    fi
+    wrote=$(( wrote + 1 ))
+  done < <(npm_install_roots)
+  say "wrote $wrote .npmrc file(s) (scope $NPM_SCOPE only) + git local excludes"
   [ -n "$auth" ] && warn "the registry required a token, so .npmrc now holds a credential — do not commit it"
   repin_npm "$VERSION"
 }
@@ -393,7 +453,9 @@ run_detector() {
 
 # ── unlink ────────────────────────────────────────────────────────────────────────────
 unlink_all() {
-  strip_block "$PROJECT/.npmrc"        "$BEGIN"  "$END"
+  # Every root `link` could have written to, or a sub-project keeps a managed block
+  # pointing at a registry that will not serve it once the pre-release is gone.
+  while IFS= read -r root; do strip_block "$root/.npmrc" "$BEGIN" "$END"; done < <(npm_install_roots)
   strip_block "$PROJECT/pyproject.toml" "$BEGIN" "$END"
   strip_block "$PROJECT/NuGet.config"  "$XBEGIN" "$XEND"
   strip_block "$PROJECT/pom.xml"       "$XBEGIN" "$XEND"
