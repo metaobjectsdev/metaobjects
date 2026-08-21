@@ -30,6 +30,7 @@ public class LoaderConfigurationBuilder {
     private String sourceDir;
     private ClassLoader classLoader;
     private List<String> sources = new ArrayList<>();
+    private List<String> libraries = new ArrayList<>();
     private Map<String, String> arguments = new HashMap<>();
     
     public LoaderConfigurationBuilder() {
@@ -57,6 +58,20 @@ public class LoaderConfigurationBuilder {
         return this;
     }
     
+    /**
+     * MetaObjects-shipped library packages to load alongside the sources — see
+     * {@link LoaderConfigurable.LoaderConfiguration#getLibraries()}.
+     *
+     * @param libraries package names (e.g. {@code ["ai"]}); null is ignored
+     * @return this builder
+     */
+    public LoaderConfigurationBuilder libraries(List<String> libraries) {
+        if (libraries != null) {
+            this.libraries.addAll(libraries);
+        }
+        return this;
+    }
+
     public LoaderConfigurationBuilder argument(String key, String value) {
         this.arguments.put(key, value);
         return this;
@@ -82,7 +97,8 @@ public class LoaderConfigurationBuilder {
     }
     
     public LoaderConfigurable.LoaderConfiguration build() {
-        return new LoaderConfigurationImpl(sourceDir, classLoader, new ArrayList<>(sources), new HashMap<>(arguments));
+        return new LoaderConfigurationImpl(sourceDir, classLoader, new ArrayList<>(sources),
+                new ArrayList<>(libraries), new HashMap<>(arguments));
     }
     
     /**
@@ -92,13 +108,16 @@ public class LoaderConfigurationBuilder {
         private final String sourceDir;
         private final ClassLoader classLoader;
         private final List<String> sources;
+        private final List<String> libraries;
         private final Map<String, String> arguments;
-        
-        public LoaderConfigurationImpl(String sourceDir, ClassLoader classLoader, 
-                                     List<String> sources, Map<String, String> arguments) {
+
+        public LoaderConfigurationImpl(String sourceDir, ClassLoader classLoader,
+                                     List<String> sources, List<String> libraries,
+                                     Map<String, String> arguments) {
             this.sourceDir = sourceDir;
             this.classLoader = classLoader;
             this.sources = sources;
+            this.libraries = libraries;
             this.arguments = arguments;
         }
         
@@ -117,6 +136,11 @@ public class LoaderConfigurationBuilder {
             return sources;
         }
         
+        @Override
+        public List<String> getLibraries() {
+            return libraries;
+        }
+
         @Override
         public Map<String, String> getArguments() {
             return arguments;

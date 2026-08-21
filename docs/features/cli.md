@@ -181,6 +181,24 @@ libraries: [ai]
   was registered *for* the command line while its input was unreachable *through* it
   ([#333](https://github.com/metaobjectsdev/metaobjects/issues/333)).
 
+On the JVM the same opt-in is a pom element, read by `metaobjects:generate` and
+`metaobjects:verify`:
+
+```xml
+<loader>
+  <name>my-model</name>
+  <libraries><library>ai</library></libraries>
+</loader>
+```
+
+and programmatically, `MetaDataLoader.fromDirectory(name, dir, opts, List.of("ai"))` or
+`loader.setLibraries(List.of("ai"))` before `init()`. Java had neither the option nor an
+embed until [#332](https://github.com/metaobjectsdev/metaobjects/issues/332): the port
+shipped `LlmTraceHelperGenerator` with no way to load the metadata that generator exists to
+consume, and its tests stayed green only by declaring a bespoke `LlmCallBase` inline under
+a different package — the bypass ADR-0024 already named, and the reason a port can ship a
+generator it cannot feed without anyone noticing.
+
 ## `meta gen` / `meta verify` run an advisory anti-pattern pass (Node `meta`)
 
 Both `meta verify` and a real `meta gen` write run (not `--dry-run`) end with a

@@ -139,6 +139,13 @@ public class MetaDataLoader implements LoaderConfigurable {
     // If set before init(), sources are loaded automatically during init().
     private List<URI> sourceURIs = null;
 
+    // MetaObjects-shipped library packages this loader opts into (#332). If set before
+    // init(), their sources are loaded FIRST, so an `extends` onto a library-shipped
+    // abstract base resolves. Opt-in and empty by default: a library package registers
+    // real top-level nodes, and a project that never references one must not find them
+    // in its model.
+    private List<String> libraries = null;
+
     // Validation-phase warnings accumulator.
     //
     // Mirrors the TS/C#/Python warning surfaces (a per-load list of human-readable
@@ -654,10 +661,31 @@ public class MetaDataLoader implements LoaderConfigurable {
      * @return a fully-initialized loader with all directory files loaded
      */
     public static MetaDataLoader fromDirectory(String name, Path directory, DirectorySource.Options opts) {
+        return fromDirectory(name, directory, opts, null);
+    }
+
+    /**
+     * {@link #fromDirectory(String, Path, DirectorySource.Options)} plus an opt-in list of
+     * MetaObjects-shipped library packages, loaded BEFORE the directory's own files so that
+     * an {@code extends} onto a library base resolves (#332).
+     *
+     * <p>Mirrors the TypeScript {@code fromDirectory(dir, { libraries })} and the Python
+     * loader's {@code libraries=} keyword — same names, same semantics, same order.</p>
+     *
+     * @param name      the loader name
+     * @param directory the directory containing metadata files
+     * @param opts      expansion options (exclude list, recursion)
+     * @param libraries library package names (e.g. {@code ["ai"]}); null or empty loads none
+     * @return a fully-initialized loader with the libraries and all directory files loaded
+     */
+    public static MetaDataLoader fromDirectory(String name, Path directory,
+                                               DirectorySource.Options opts, List<String> libraries) {
         MetaDataLoader loader = createManual(false, name);
         try {
             loader.init();
-            List<MetaDataSource> sources = new DirectorySource(directory, opts).expandToList();
+            List<MetaDataSource> sources = new ArrayList<>(
+                com.metaobjects.library.LibrarySources.librarySources(libraries));
+            sources.addAll(new DirectorySource(directory, opts).expandToList());
             loader.load(sources);
             loader.register();
         } catch (MetaDataLoadingException e) {
@@ -1241,6 +1269,13 @@ public class MetaDataLoader implements LoaderConfigurable {
             processSources(configSourceDir, config.getSources());
         }
 
+        // Set BEFORE init(): both this and the URI list are read once during
+        // initialization, and configure() is the call that ends in init().
+        if (config.getLibraries() != null && !config.getLibraries().isEmpty()) {
+            if (log.isDebugEnabled()) log.debug("Processing libraries: " + config.getLibraries());
+            setLibraries(config.getLibraries());
+        }
+
         processArguments(config.getArguments());
         init();
     }
@@ -1376,6 +1411,11 @@ public class MetaDataLoader implements LoaderConfigurable {
         try {
             logInitializationStart();
             initializeRegistriesIfNeeded();
+            // Libraries BEFORE the project's own sources. Super resolution is deferred and
+            // order-independent, so this is determinism rather than correctness — but it
+            // matches every other port, and a load order that differs per port is the kind
+            // of difference that only shows up in someone else's bug report.
+            loadLibrarySourcesIfPresent();
             loadSourceURIsIfPresent();
             transitionToInitialized(startTime);
             registerIfRequested();
@@ -1399,6 +1439,45 @@ public class MetaDataLoader implements LoaderConfigurable {
      * from the file extension) and routed through the canonical
      * {@link #load(List)} method, ensuring a single parser-dispatch path.</p>
      */
+    /**
+     * Load the opted-into library packages, when {@link #setLibraries(List)} named any.
+     *
+     * <p>An unrecognised package contributes no sources and is not an error here — the
+     * cross-port contract, so a programmatic caller asking for a package this version does
+     * not ship can still load its own metadata. The caller that read the name from a human
+     * (the Maven mojo reading a pom) validates against
+     * {@link com.metaobjects.library.LibrarySources#knownPackages()} first.</p>
+     */
+    private void loadLibrarySourcesIfPresent() {
+        if (libraries == null || libraries.isEmpty()) return;
+        List<MetaDataSource> sources =
+            com.metaobjects.library.LibrarySources.librarySources(libraries);
+        if (!sources.isEmpty()) load(sources);
+    }
+
+    /**
+     * Set the MetaObjects-shipped library packages to load during {@link #init()}.
+     *
+     * <p>Must be called BEFORE {@code init()} — like {@link #setSourceURIs(List)}, this is
+     * read once during initialization.</p>
+     *
+     * @param libraries package names (e.g. {@code ["ai"]}); null or empty loads none
+     * @return this loader, for chaining
+     */
+    public MetaDataLoader setLibraries(List<String> libraries) {
+        this.libraries = (libraries == null) ? null : new ArrayList<>(libraries);
+        return this;
+    }
+
+    /**
+     * The library packages this loader will load (or has loaded) during {@link #init()}.
+     *
+     * @return the requested package names; never null
+     */
+    public List<String> getLibraries() {
+        return (libraries == null) ? Collections.emptyList() : Collections.unmodifiableList(libraries);
+    }
+
     private void loadSourceURIsIfPresent() {
         if (sourceURIs == null || sourceURIs.isEmpty()) return;
 

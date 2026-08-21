@@ -34,12 +34,33 @@ public class MavenLoaderConfiguration {
      * @param sourceDir The Maven source directory
      * @param classLoader The Maven project class loader
      * @param sources The list of source files
+     * @param libraries MetaObjects-shipped library packages to load first (#332)
      * @param globals The global arguments map
      */
-    public static void configure(LoaderConfigurable configurable, 
-                               String sourceDir, 
+    public static void configure(LoaderConfigurable configurable,
+                               String sourceDir,
                                ClassLoader classLoader,
-                               List<String> sources, 
+                               List<String> sources,
+                               Map<String, String> globals) {
+        configure(configurable, sourceDir, classLoader, sources, null, globals);
+    }
+
+    /**
+     * Configure a LoaderConfigurable instance, opting into MetaObjects-shipped library
+     * packages alongside the configured sources.
+     *
+     * @param configurable The loader to configure
+     * @param sourceDir The Maven source directory
+     * @param classLoader The Maven project class loader
+     * @param sources The list of source files
+     * @param libraries MetaObjects-shipped library packages to load first (#332); may be null
+     * @param globals The global arguments map
+     */
+    public static void configure(LoaderConfigurable configurable,
+                               String sourceDir,
+                               ClassLoader classLoader,
+                               List<String> sources,
+                               List<String> libraries,
                                Map<String, String> globals) {
         
         
@@ -54,6 +75,7 @@ public class MavenLoaderConfiguration {
                 .sourceDir(sourceDir)
                 .classLoader(classLoader)
                 .sources(sources)
+                .libraries(libraries)
                 .arguments(globals)
                 .build();
                 

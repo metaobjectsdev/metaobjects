@@ -269,8 +269,32 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
             sources = neutralSources;
         }
 
+        // An unknown <library> name is a HARD failure naming the ones this version ships,
+        // not a silent skip. `LibrarySources` skips deliberately for a programmatic caller
+        // — asking for a package a given version does not ship should not stop that caller
+        // loading its own metadata — but a name typed into a pom is a mistake worth failing
+        // on: skipped, it resurfaces later as ERR_UNRESOLVED_SUPER pointing at the module's
+        // OWN metadata, which is the wrong place to send someone looking. Same line the TS
+        // and Python config readers draw, in the same place.
+        List<String> libraries = loaderConfig.getLibraries();
+        if (libraries != null && !libraries.isEmpty()) {
+            List<String> available = com.metaobjects.library.LibrarySources.knownPackages();
+            List<String> unknown = new ArrayList<>();
+            for (String lib : libraries) {
+                if (!available.contains(lib)) unknown.add(lib);
+            }
+            if (!unknown.isEmpty()) {
+                // A MetaDataException, matching `failOnLoaderErrors` just below: this method
+                // is not declared to throw the checked Maven type, and both failures are the
+                // same kind of thing — the model this goal was asked to load cannot be.
+                throw new MetaDataException(
+                    "<loader><libraries> names unknown package(s) " + unknown
+                        + "; available: " + available);
+            }
+        }
+
         MavenLoaderConfiguration.configure(configurable, sourceDir, projectClassLoader,
-                                         sources, loaderArgs(strict));
+                                         sources, libraries, loaderArgs(strict));
 
         MetaDataLoader loader = configurable.getLoader();
 

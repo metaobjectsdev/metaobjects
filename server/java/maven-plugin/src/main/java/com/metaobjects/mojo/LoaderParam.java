@@ -14,6 +14,7 @@ public class LoaderParam {
     private String classname = null;
     private String sourceDir = null;
     private List<String> sources = null;
+    private List<String> libraries = null;
     private List<String> filters = null;
 
     public LoaderParam() {}
@@ -56,6 +57,25 @@ public class LoaderParam {
      */
     public void setClassname(String classname) {
         this.classname = classname;
+    }
+
+    /**
+     * MetaObjects-shipped library packages this module loads alongside its own metadata —
+     * {@code <libraries><library>ai</library></libraries>} makes
+     * {@code extends: metaobjects::ai::LlmCallBase} resolve (#332).
+     *
+     * @return the requested package names, or null if not set
+     */
+    public List<String> getLibraries() {
+        return libraries;
+    }
+
+    /**
+     * Set the MetaObjects-shipped library packages to load.
+     * @param libraries package names (e.g. {@code ["ai"]})
+     */
+    public void setLibraries(List<String> libraries) {
+        this.libraries = libraries;
     }
 
     /**

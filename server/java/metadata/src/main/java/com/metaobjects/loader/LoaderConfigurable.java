@@ -46,8 +46,28 @@ public interface LoaderConfigurable {
      */
     interface LoaderConfiguration {
         String getSourceDir();
-        ClassLoader getClassLoader(); 
+        ClassLoader getClassLoader();
         List<String> getSources();
         Map<String, String> getArguments();
+
+        /**
+         * MetaObjects-shipped library packages to load ALONGSIDE the configured sources
+         * (e.g. {@code ["ai"]} for {@code metaobjects::ai::LlmCallBase}). Prepended, so an
+         * {@code extends} onto a library-shipped abstract base resolves.
+         *
+         * <p>Opt-in, never automatic: a library package registers real top-level nodes, and
+         * a project that never references one should not find them in its model or its
+         * generated output.</p>
+         *
+         * <p>A {@code default} rather than an abstract method deliberately — this interface
+         * is the build-tool seam, and an existing implementor outside this repo must keep
+         * compiling. Absent an override the answer is "no libraries", which is exactly the
+         * behaviour every implementor had before the option existed.</p>
+         *
+         * @return the requested package names; never null
+         */
+        default List<String> getLibraries() {
+            return java.util.Collections.emptyList();
+        }
     }
 }
