@@ -42,7 +42,7 @@
 //   node scripts/check-metamodel-version.mjs              # gate (CI + ci-local `gates`)
 //   node scripts/check-metamodel-version.mjs --against v0.23.2
 //   node scripts/check-metamodel-version.mjs --explain    # classify + print, always exit 0
-//   node scripts/check-metamodel-version.mjs --set 1.0    # write the version to all 6 sites
+//   node scripts/check-metamodel-version.mjs --set 1.0    # write the version to all 5 sites
 //
 // See docs/RELEASING.md → "The two-contracts rule".
 
@@ -56,7 +56,7 @@ const MANIFEST = "fixtures/registry-conformance/expected-registry.json";
 
 /**
  * Every site that declares the metamodel version. The manifest is the one the
- * conformance corpus byte-matches; the five port constants are what each port EMITS
+ * conformance corpus byte-matches; the four port constants are what each port EMITS
  * into its own manifest, so a partial edit is caught by `registry-conformance` — but
  * only in the lane for the port you forgot. `--set` writes all of them at once so that
  * failure mode does not need catching. (Kotlin has no constant of its own: it emits
@@ -109,8 +109,15 @@ export function requiredBump(severity, base) {
 
 export function satisfies(bump, base, cur) {
   if (bump === "none") return true;
-  if (bump === "minor") return cur.major > base.major || cur.minor > base.minor;
-  return cur.major > base.major; // major
+  if (bump === "major") return cur.major > base.major;
+  // MINOR — compare the (major, minor) TUPLE, never the components independently.
+  // `cur.major > base.major || cur.minor > base.minor` reads as "moved somehow" and
+  // accepts a REGRESSION: 1.0 → 0.11 passes it (0 > 1 is false, but 11 > 0 is true), as
+  // does 2.0 → 1.9. That is not hypothetical — post-1.0, `--set 0.11` typed out of
+  // pre-1.0 habit, or a bad merge resolving the manifest to an older value, would ship a
+  // release declaring a LOWER metamodel version than the one before it, with every port
+  // byte-matching the manifest so registry-conformance stays green too.
+  return cur.major > base.major || (cur.major === base.major && cur.minor > base.minor);
 }
 
 // ---------------------------------------------------------------------------
@@ -196,9 +203,9 @@ function diffAttrs(baseAttrs, curAttrs, where, breaking, additive, prose) {
     if (ba.valueType !== ca.valueType) {
       breaking.push(`attr valueType changed: ${at} ${ba.valueType} → ${ca.valueType}`);
     }
-    if (Boolean(ba.isArray) !== Boolean(ca.isArray)) {
-      breaking.push(`attr isArray changed: ${at} ${Boolean(ba.isArray)} → ${Boolean(ca.isArray)}`);
-    }
+    const bArr = Boolean(ba.isArray);
+    const cArr = Boolean(ca.isArray);
+    if (bArr !== cArr) breaking.push(`attr isArray changed: ${at} ${bArr} → ${cArr}`);
 
     // allowedValues: a closed set. Removing a member, or closing a previously-open
     // attr, rejects a value that used to load. Adding one only permits more.
@@ -233,8 +240,10 @@ function diffChildren(baseKids, curKids, where, breaking, additive) {
     }
     const bk = b.get(k);
     const at = `${where} ← ${k}`;
-    if ((ck.min ?? 0) > (bk.min ?? 0)) breaking.push(`child min raised: ${at}`);
-    if ((bk.min ?? 0) > (ck.min ?? 0)) additive.push(`child min lowered: ${at}`);
+    const bMin = bk.min ?? 0;
+    const cMin = ck.min ?? 0;
+    if (cMin > bMin) breaking.push(`child min raised: ${at}`);
+    if (bMin > cMin) additive.push(`child min lowered: ${at}`);
 
     // max === null means unbounded; lowering a bound (or introducing one) rejects a
     // parent that already declares more children than the new cap.
@@ -262,12 +271,55 @@ function lastReleaseTag() {
   return tags[0] ?? null;
 }
 
-function manifestAt(ref) {
+/**
+ * Read the baseline manifest, distinguishing "genuinely not there yet" (skip) from
+ * "something went wrong" (fail). The previous form swallowed EVERY error into `null`,
+ * which `main()` reported as "pre-marker tag — skipping" and exited 0 — so a typo'd ref,
+ * a partial clone whose objects were never fetched, a renamed path or malformed JSON all
+ * produced a green tick having compared nothing. That is the exact failure the
+ * no-baseline branch already refuses by name; it does not get a side door.
+ *
+ * Returns `{ manifest }` or `{ skip }`; anything else calls `fail()`.
+ */
+function readManifestAt(ref) {
   try {
-    return JSON.parse(git("show", `${ref}:${MANIFEST}`));
+    git("rev-parse", "--verify", "--quiet", `${ref}^{commit}`);
   } catch {
-    return null;
+    fail(`--against ${JSON.stringify(ref)} is not a resolvable git ref.`);
   }
+
+  // Ask the TREE whether the path exists, rather than inferring absence from a failed
+  // `git show`. In a blobless/partial clone the ref and its trees resolve while the blob
+  // does not, and `git show` failing there means "not fetched", not "not present".
+  const listed = git("ls-tree", "-r", "--name-only", ref, "--", MANIFEST).trim();
+  if (!listed) return { skip: `${MANIFEST} does not exist at ${ref}` };
+
+  let raw;
+  try {
+    raw = git("show", `${ref}:${MANIFEST}`);
+  } catch (e) {
+    fail(
+      `${MANIFEST} is present in the tree at ${ref} but could not be read.\n` +
+        `  Usually a partial/blobless clone — fetch the objects, or pass a different\n` +
+        `  --against ref. Underlying error: ${e.message.split("\n")[0]}`,
+    );
+  }
+
+  let json;
+  try {
+    json = JSON.parse(raw);
+  } catch (e) {
+    fail(`${MANIFEST} at ${ref} is not valid JSON: ${e.message}`);
+  }
+
+  // The marker itself post-dates the manifest (added in PR #145), so a baseline older
+  // than that carries the file WITHOUT the key. Keying the skip on the file's existence
+  // instead made `--against v0.15.0` die with `metamodelVersion must be "<major>.<minor>"
+  // (got undefined)` — a confusing failure for a documented flag.
+  if (json.metamodelVersion === undefined) {
+    return { skip: `${MANIFEST} at ${ref} predates the metamodelVersion marker (PR #145)` };
+  }
+  return { manifest: json };
 }
 
 function fail(msg) {
@@ -310,7 +362,12 @@ function main() {
   const argv = process.argv.slice(2);
   const arg = (flag) => {
     const i = argv.indexOf(flag);
-    return i === -1 ? null : argv[i + 1];
+    if (i === -1) return null;
+    const value = argv[i + 1];
+    // Blindly taking the next token turns `--against --explain` into a ref named
+    // "--explain", which then resolves to nothing and (before the fix above) passed.
+    if (value === undefined || value.startsWith("--")) fail(`${flag} needs a value`);
+    return value;
   };
 
   if (argv.includes("--set")) {
@@ -340,20 +397,21 @@ function main() {
   }
 
   const current = JSON.parse(readFileSync(resolve(REPO, MANIFEST), "utf8"));
-  const baseline = manifestAt(against);
+  const read = readManifestAt(against);
 
-  if (!baseline) {
-    process.stdout.write(
-      `  metamodel-version: ${MANIFEST} does not exist at ${against} — skipping (pre-marker tag).\n`,
-    );
+  if (read.skip) {
+    process.stdout.write(`  metamodel-version: ${read.skip} — skipping.\n`);
     process.exit(0);
   }
+  const baseline = read.manifest;
 
   const baseVer = parseVersion(baseline.metamodelVersion, against);
   const curVer = parseVersion(current.metamodelVersion, "working tree");
 
   const { breaking, additive, prose } = classify(baseline, current);
-  const severity = breaking.length ? "breaking" : additive.length ? "additive" : "none";
+  let severity = "none";
+  if (breaking.length) severity = "breaking";
+  else if (additive.length) severity = "additive";
   const bump = requiredBump(severity, baseVer);
 
   if (explain) {

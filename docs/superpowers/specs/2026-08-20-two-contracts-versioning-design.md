@@ -39,7 +39,7 @@ its next housekeeping edit.
 | Number | Promises | Moves when |
 |---|---|---|
 | **Package version** (npm/PyPI/NuGet `1.x`, Maven `8.x`) | the SOFTWARE surface: exports, CLI flags, generated-code shape, runtime helpers | that surface changes — full SemVer, `2.0.0` / `9.0.0` for a break |
-| **`metamodelVersion`** (`"0.9"` today, `"1.0"` at the cut) | the METADATA contract: registered vocabulary, canonical authoring + interchange format, wire/normalization contract | that contract changes — its own major for a break |
+| **`metamodelVersion`** (`"1.0"` at the cut) | the METADATA contract: registered vocabulary, canonical authoring + interchange format, wire/normalization contract | that contract changes — its own major for a break |
 
 **A metamodel-vocabulary break moves `metamodelVersion`, and does NOT force a package
 major.** That clause of ADR-0035 §1 is severed.

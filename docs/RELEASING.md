@@ -177,7 +177,7 @@ contracts on two numbers:
 - **Package version** (npm/PyPI/NuGet `1.x`, Maven `8.x`) promises the SOFTWARE surface —
   exports, CLI flags, generated-code shape, runtime helpers. A break here is `2.0.0` /
   `9.0.0`.
-- **`metamodelVersion`** (`"0.9"` today, `"1.0"` at the cut; the first key of the
+- **`metamodelVersion`** (`"1.0"` at the cut; the current value is the first key of the
   byte-gated `expected-registry.json`) promises the METADATA contract — registered
   vocabulary, canonical/interchange format, wire contract. A break here moves ITS major,
   and **does not force a package major.**

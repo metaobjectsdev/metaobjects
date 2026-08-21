@@ -301,6 +301,15 @@ if (!sat("minor", "0.9", "0.10")) bad("0.9 → 0.10 satisfies a minor (numeric, 
 else ok("0.9 → 0.10 satisfies a minor (numeric, not lexical)");
 if (sat("minor", "0.10", "0.9")) bad("0.10 → 0.9 is a REGRESSION and must not satisfy");
 else ok("0.10 → 0.9 is a REGRESSION and must not satisfy");
+// CROSS-MAJOR regressions. `cur.major > base.major || cur.minor > base.minor` reads as
+// "moved somehow" and accepts both of these — 0 > 1 is false, but 11 > 0 is true. The
+// same-major case above passed under that bug, which is what made it look covered.
+if (sat("minor", "1.0", "0.11")) bad("1.0 → 0.11 is a REGRESSION across majors and must not satisfy");
+else ok("1.0 → 0.11 is a REGRESSION across majors and must not satisfy");
+if (sat("minor", "2.0", "1.9")) bad("2.0 → 1.9 is a REGRESSION across majors and must not satisfy");
+else ok("2.0 → 1.9 is a REGRESSION across majors and must not satisfy");
+if (!sat("minor", "1.9", "2.0")) bad("1.9 → 2.0 moves forward across a major and satisfies a minor");
+else ok("1.9 → 2.0 moves forward across a major and satisfies a minor");
 
 console.log(fails === 0 ? "\nmetamodel-version classifier: all checks passed" : `\n${fails} failure(s)`);
 process.exit(fails === 0 ? 0 : 1);

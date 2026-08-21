@@ -235,7 +235,7 @@ After this amendment:
 
 - **Package version** (npm/PyPI/NuGet `1.x`, Maven `8.x`) promises the software surface.
   Full SemVer; a break is `2.0.0` / `9.0.0`.
-- **`metamodelVersion`** (`"0.9"` today, `"1.0"` at the cut; the first key of the
+- **`metamodelVersion`** (`"1.0"` at the cut; the current value is the first key of the
   byte-gated `expected-registry.json`, shipped in all five ports since #145) promises the
   metadata contract. A break moves ITS major.
 - §1's covered set is unchanged in *content*. What changes is which number carries it:
