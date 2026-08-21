@@ -15,7 +15,7 @@ import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
 import { FileProvider } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
-import { loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
+import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { computeCodegenDrift } from "../lib/codegen-drift.js";
 import { checkRequirements, summariseRequirements } from "../lib/requirement-check.js";
 import { checkVerifiedBy } from "../lib/verified-by-scan.js";
@@ -204,7 +204,10 @@ export async function verifyCommand(
   } catch {
     forgeConfig = undefined;
   }
-  const configProviders = forgeConfig?.providers;
+  // Both of the gen config's contributions to the load, together — see
+  // `loadMemoryOptionsFrom`. Threading `providers` and forgetting `libraries` is how
+  // a shipped library became unloadable through the CLI (#333).
+  const configLoadOptions = loadMemoryOptionsFrom(forgeConfig);
 
   // ADR-0023 strict-by-default (#96): verify loads strict unless --lax is passed,
   // so an undeclared/typo'd own @attr fails verify (matching Java's Maven goal).
@@ -212,7 +215,7 @@ export async function verifyCommand(
   try {
     root = await loadMemory(collection.configDir, {
       files: collection.files,
-      ...(configProviders !== undefined ? { providers: configProviders } : {}),
+      ...configLoadOptions,
       strict: !flags.lax,
     });
   } catch (err) {

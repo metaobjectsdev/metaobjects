@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
 import { createJiti } from "jiti";
-import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
+import type { MetaDataTypeProvider, MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 
 const CONFIG_FILE = "metaobjects.config.ts";
 
@@ -147,6 +147,27 @@ function rewriteImportSpecifiers(source: string, aliasMap: Record<string, string
     );
   }
   return result;
+}
+
+/**
+ * The `loadMemory` options a project's gen config contributes.
+ *
+ * One helper rather than a spread pair repeated at each of the eight load sites,
+ * because threading one of these and forgetting the other is exactly how #333
+ * happened: `providers` reached every command while `libraries` reached none, so a
+ * generator was registered FOR the CLI with its input unreachable THROUGH it. Adding a
+ * third contribution later should not mean finding eight call sites again.
+ *
+ * Conditional spreads honour `exactOptionalPropertyTypes` — a key is omitted rather
+ * than set to `undefined`, which is what lets `loadMemory` apply its own defaults.
+ */
+export function loadMemoryOptionsFrom(
+  cfg: Pick<MetaobjectsGenConfig, "providers" | "libraries"> | undefined,
+): { providers?: readonly MetaDataTypeProvider[]; libraries?: readonly string[] } {
+  return {
+    ...(cfg?.providers !== undefined ? { providers: cfg.providers } : {}),
+    ...(cfg?.libraries !== undefined ? { libraries: cfg.libraries } : {}),
+  };
 }
 
 /**
@@ -295,6 +316,25 @@ export async function loadMetaobjectsConfig(projectRoot: string): Promise<Metaob
       : raw) as MetaobjectsGenConfig;
     if (!cfg || typeof cfg !== "object" || !Array.isArray(cfg.generators)) {
       throw new Error(`metaobjects.config.ts at ${fullPath} did not export a valid MetaobjectsGenConfig (missing 'generators' array).`);
+    }
+    // An unknown `libraries` name is a hard config error naming the valid ones, while
+    // `librarySources` keeps skipping one silently for a programmatic caller. The two
+    // are deliberately different: an API caller asking for a package this version does
+    // not ship should still be able to load its own metadata, but a name a human typed
+    // into a config file is a mistake worth failing on — skipped, it resurfaces later as
+    // ERR_UNRESOLVED_SUPER pointing at the adopter's own metadata, which is the wrong
+    // place to send someone looking. Python's `project_config` draws the same line in
+    // the same place, and the two ports agreeing here is the point.
+    if (cfg.libraries !== undefined && cfg.libraries.length > 0) {
+      const { knownLibraryPackages } = await import("@metaobjectsdev/metadata/library");
+      const available = knownLibraryPackages();
+      const unknown = cfg.libraries.filter((n) => !available.includes(n));
+      if (unknown.length > 0) {
+        throw new Error(
+          `metaobjects.config.ts at ${fullPath}: 'libraries' names unknown package(s) ` +
+            `${JSON.stringify(unknown)}; available: ${JSON.stringify(available)}.`,
+        );
+      }
     }
     return cfg;
   } finally {

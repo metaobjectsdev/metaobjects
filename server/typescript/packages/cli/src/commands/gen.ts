@@ -1,7 +1,7 @@
 import { relative } from "node:path";
 import { parseGenArgs } from "../lib/args.js";
 import { resolveGenConfig } from "../lib/config.js";
-import { loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
+import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { formatGenResult, formatGenResultToon, type GenFileEntry, type GenFileStatus } from "../lib/output.js";
 import { formatGenResultJson } from "../lib/output-json.js";
 import type { OutputFormat } from "../lib/format.js";
@@ -99,7 +99,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   try {
     metadata = await loadMemory(collection.configDir, {
       files: collection.files,
-      ...(forgeConfig.providers !== undefined ? { providers: forgeConfig.providers } : {}),
+      ...loadMemoryOptionsFrom(forgeConfig),
     });
   } catch (err) {
     log.error(`failed to load metadata: ${(err as Error).message}`);

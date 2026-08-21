@@ -14,7 +14,7 @@ import { parsePromptSnapshotArgs } from "../lib/args.js";
 import { log } from "../lib/log.js";
 import { FileProvider } from "../lib/file-provider.js";
 import { snapshotPaths, unifiedDiff } from "../lib/snapshot.js";
-import { loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
+import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { loadMemory, resolveCollection } from "@metaobjectsdev/sdk";
 import { TYPE_TEMPLATE, TEMPLATE_ATTR_TEXT_REF, TEMPLATE_ATTR_FORMAT } from "@metaobjectsdev/metadata";
 import { render, ESCAPERS, type RenderFormat } from "@metaobjectsdev/render";
@@ -53,28 +53,29 @@ export async function promptSnapshotCommand(args: string[], cwd: string): Promis
   // invocation that worked before metadata sources were resolvable at all.
   const projectRoot = collection.configDir;
 
-  // Best-effort load of metaobjects.config.ts to pick up consumer-supplied
-  // providers. prompt-snapshot doesn't require codegen config; if it's absent
+  // Best-effort load of metaobjects.config.ts to pick up consumer-supplied providers
+  // and shipped `libraries`. prompt-snapshot doesn't require codegen config; if it's absent
   // or invalid, fall back to defaults — the loader still works for any
   // metadata that only uses core+forge subtypes.
-  let configProviders: NonNullable<Awaited<ReturnType<typeof loadMetaobjectsConfig>>["providers"]> | undefined;
+  let configLoadOptions: ReturnType<typeof loadMemoryOptionsFrom> = {};
   try {
     // `metaobjects.config.ts` gets its own nearest-ancestor walk, not `projectRoot`:
     // it answers a different question from `.metaobjects/config.json` (design §4.6)
     // and in a Maven- or pip-rooted monorepo the two legitimately sit in different
     // directories, so reading it from the collection's would silently drop this
     // package's providers (#326). Same path whenever the two files sit together.
-    const forgeConfig = await loadMetaobjectsConfig(resolveGenConfigDir(cwd, projectRoot));
-    configProviders = forgeConfig.providers;
+    configLoadOptions = loadMemoryOptionsFrom(
+      await loadMetaobjectsConfig(resolveGenConfigDir(cwd, projectRoot)),
+    );
   } catch {
-    configProviders = undefined;
+    configLoadOptions = {};
   }
 
   let root;
   try {
     root = await loadMemory(collection.configDir, {
       files: collection.files,
-      ...(configProviders !== undefined ? { providers: configProviders } : {}),
+      ...configLoadOptions,
     });
   } catch (err) {
     log.error(`failed to load metadata: ${(err as Error).message}`);

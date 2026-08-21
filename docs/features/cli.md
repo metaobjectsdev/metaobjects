@@ -105,6 +105,7 @@ for editor autocomplete and non-Python validation.
 metadata: metaobjects            # optional, default "metaobjects" — relative to this file
 providers:                       # optional; "module:symbol" refs, resolved config-relative (no PYTHONPATH=)
   - my_project.providers:register_custom_types
+libraries: [ai]                  # optional; MetaObjects-shipped library packages (see below)
 targets:
   api:
     outDir: src/generated/api
@@ -141,6 +142,44 @@ targets:
   keeps the original flag-only path byte-identical — the config file is never
   consulted. Config mode activates only when no positional `<metadata_dir>`
   is given.
+
+## `libraries` — opting into a MetaObjects-shipped library package
+
+MetaObjects ships a small set of standard metadata packages under `library/`. A project
+opts into one by name, and its nodes become available to `extends`:
+
+```ts
+// metaobjects.config.ts  (Node `meta`)
+export default defineConfig({
+  libraries: ["ai"],             // makes metaobjects::ai::LlmCallBase resolvable
+  generators: [entityFile()],
+});
+```
+
+```yaml
+# metaobjects.config.yaml  (Python `metaobjects`)
+libraries: [ai]
+```
+
+```jsonc
+// then, in your own metadata
+{ "object.entity": { "name": "AgentCall", "extends": "metaobjects::ai::LlmCallBase", ... } }
+```
+
+- **Opt-in, never automatic.** A library package registers real top-level nodes. A project
+  that never references one should not find them in its model, its generated output or its
+  docs — so nothing is loaded until the key names it.
+- **An unknown name is a hard config error** that lists the packages this version ships.
+  The programmatic loader API skips an unrecognised package instead, deliberately: an API
+  caller asking for something a given version does not ship should still be able to load
+  its own metadata, but a name a human typed into a config file is a mistake worth failing
+  on — skipped, it resurfaces later as `ERR_UNRESOLVED_SUPER` pointing at the adopter's own
+  metadata, which is the wrong place to send someone looking.
+- **Every command that loads metadata honours it** — `gen`, `verify`, `docs`, `migrate`,
+  `prompt-snapshot`. It was previously reachable only from the programmatic
+  `MetaDataLoader.fromDirectory`, which no CLI uses, so a generator that consumes a library
+  was registered *for* the command line while its input was unreachable *through* it
+  ([#333](https://github.com/metaobjectsdev/metaobjects/issues/333)).
 
 ## `meta gen` / `meta verify` run an advisory anti-pattern pass (Node `meta`)
 

@@ -52,6 +52,20 @@ function getLibraryDir(): string | undefined {
 }
 
 /**
+ * The library package names this build ships, sorted.
+ *
+ * `librarySources` skips an unrecognised package silently — the right behaviour for a
+ * programmatic caller asking for something a given version may not ship. A name a human
+ * typed into a config file is a different case: skipping it silently resurfaces later as
+ * `ERR_UNRESOLVED_SUPER` pointing at the adopter's own metadata, which is the wrong place
+ * to go looking. Config readers use this to refuse an unknown name and say what IS
+ * available (Python's `project_config` draws the same line, in the same place).
+ */
+export function knownLibraryPackages(): string[] {
+  return Object.keys(REFS_BY_PACKAGE).sort();
+}
+
+/**
  * Returns a list of `MetaDataSource` instances for the requested library packages.
  *
  * - Recognized packages: `"ai"` (others contribute no sources).

@@ -41,9 +41,7 @@ EXPORT FLAGS:
   --out <file>          Write output to a file (default: stdout)
 
 DOCS FLAGS:
-  <metadata>            Project root to resolve metadata from. Passing it SCOPES the run to
-                        that directory's own sources; no ancestor .metaobjects/config.json is
-                        consulted. Omitted (default), the project is discovered by walking up.
+  <metadata>            Project root to resolve metadata from; passing it SCOPES the run (default: cwd)
   --out <dir>, -o       Output directory for the pages (default: ./docs)
   --templates <dir>     Project root to resolve adopter templates/ overrides (default: <metadata>)
   --prompts <dir>       Extra dir holding prompt .mustache sources for --site (e.g. data/templates/)

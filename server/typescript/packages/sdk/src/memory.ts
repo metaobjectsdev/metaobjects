@@ -48,6 +48,18 @@ export interface LoadMemoryOptions {
    * way; it can no longer diverge from what the config declares.
    */
   files?: readonly string[];
+  /**
+   * MetaObjects-shipped library packages to load ALONGSIDE the project's own files
+   * (e.g. `["ai"]` for `metaobjects::ai::LlmCallBase`). Prepended, so an
+   * `extends: "metaobjects::ai::LlmCallBase"` in project metadata resolves.
+   *
+   * Opt-in rather than always-on: a library package registers real top-level nodes, and
+   * a project that never references one should not have them appear in its model, its
+   * generated output or its docs. Without this the CLI could not load the metadata that
+   * shipped generators like `trace-helper` exist to consume, so the generator was
+   * reachable from the command line while its input was not (#333).
+   */
+  libraries?: readonly string[];
 }
 
 /** Default provider bundle threaded by {@link loadMemory} when no options
@@ -120,7 +132,19 @@ export async function loadMemory(
     registry,
     ...(options?.strict === true ? { strict: true } : {}),
   });
-  const result = await loader.load(paths.map((p) => new FileSource(p)));
+
+  // Library sources are imported lazily and only when asked for — the same reason
+  // `MetaDataLoader.fromDirectory` does it. `library-sources.ts` reads `node:fs`, so a
+  // static import from a root-reachable module drags Node built-ins into every consumer's
+  // graph; that is the #287 bundle defect, and the `./library` subpath exists for exactly
+  // the reason `./constants` does. Prepended, so a project's `extends` onto a
+  // library-shipped abstract base resolves — super resolution is order-independent, but
+  // prepending is the deterministic choice and matches `fromDirectory`.
+  const libSources =
+    options?.libraries !== undefined && options.libraries.length > 0
+      ? (await import("@metaobjectsdev/metadata/library")).librarySources([...options.libraries])
+      : [];
+  const result = await loader.load([...libSources, ...paths.map((p) => new FileSource(p))]);
 
   if (result.errors.length > 0) {
     const first = result.errors[0]!;

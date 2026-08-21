@@ -154,6 +154,21 @@ export interface MetaobjectsGenConfig extends Omit<ResolvedGenConfig, "dbImport"
    * loader. Composed AFTER the default core+forge bundle.
    */
   providers?: readonly MetaDataTypeProvider[];
+  /**
+   * MetaObjects-shipped library packages this project loads alongside its own metadata —
+   * `["ai"]` makes `extends: "metaobjects::ai::LlmCallBase"` resolve.
+   *
+   * Sits beside `providers` because it answers the same shape of question: what does this
+   * project's model need in scope beyond the files it declares. Opt-in, because a library
+   * registers real top-level nodes and a project that never references one should not find
+   * them in its model, its generated output or its docs.
+   *
+   * Threaded to `loadMemory` by every CLI command that loads metadata. Before it existed,
+   * `librarySources` was reachable only from `MetaDataLoader.fromDirectory` — which the
+   * CLI does not use — so a generator that consumes a library was registered FOR the CLI
+   * while its input was unreachable THROUGH it (#333).
+   */
+  libraries?: readonly string[];
   /** `meta verify` settings. Nothing here affects codegen. */
   verify?: VerifyConfig;
 }

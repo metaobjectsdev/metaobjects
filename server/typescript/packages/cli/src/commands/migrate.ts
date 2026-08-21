@@ -12,7 +12,7 @@ import { toonEncode } from "../lib/format.js";
 import { buildKyselyFromUrl, redactUrl } from "../lib/kysely.js";
 import { log } from "../lib/log.js";
 import { loadMemory, resolveCollection, resolveConfigDir, type Collection } from "@metaobjectsdev/sdk";
-import { loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
+import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { migrateScopeMismatch, outOfScopeNote } from "../lib/migrate-scope.js";
 import {
   buildExpectedSchemaWithProvenance,
@@ -601,12 +601,11 @@ export async function migrateCommand(
   // Best-effort load of metaobjects.config.ts to pick up consumer-supplied
   // providers. migrate's postgres/sqlite path also reads the config later
   // for columnNamingStrategy; we load it once here and reuse below.
-  let postgresConfigProviders: readonly import("@metaobjectsdev/codegen-ts").MetaDataTypeProvider[] | undefined;
+  let postgresLoadOptions: ReturnType<typeof loadMemoryOptionsFrom> = {};
   try {
-    const forgeConfig = await loadMetaobjectsConfig(genRoot);
-    postgresConfigProviders = forgeConfig.providers;
+    postgresLoadOptions = loadMemoryOptionsFrom(await loadMetaobjectsConfig(genRoot));
   } catch {
-    postgresConfigProviders = undefined;
+    postgresLoadOptions = {};
   }
 
   // Discovery and load are two separate failure modes, kept in separate try blocks
@@ -626,7 +625,7 @@ export async function migrateCommand(
   try {
     metadata = await loadMemory(collection.configDir, {
       files: collection.files,
-      ...(postgresConfigProviders !== undefined ? { providers: postgresConfigProviders } : {}),
+      ...postgresLoadOptions,
     });
   } catch (err) {
     log.error(`failed to load metadata: ${(err as Error).message}`);
@@ -1029,19 +1028,17 @@ export async function runBaseline(
       `your metadata; for a new/empty database run \`${greenfieldCreateCmd(config.dialect)}\` instead.`,
     );
     let metadata;
-    // Load metaobjects.config.ts ONCE, up front, for BOTH the consumer providers
+    // Load metaobjects.config.ts ONCE, up front, for BOTH the consumer providers/libraries
     // and the columnNamingStrategy — mirroring the DB path (and `meta gen`) so
     // offline baseline resolves config-registered custom subtypes too (#157).
-    let baselineConfigProviders:
-      | readonly import("@metaobjectsdev/codegen-ts").MetaDataTypeProvider[]
-      | undefined;
+    let baselineLoadOptions: ReturnType<typeof loadMemoryOptionsFrom> = {};
     let baselineStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
     try {
       const cfg = await loadMetaobjectsConfig(genRoot);
-      baselineConfigProviders = cfg.providers;
+      baselineLoadOptions = loadMemoryOptionsFrom(cfg);
       if (cfg.columnNamingStrategy) baselineStrategy = cfg.columnNamingStrategy;
     } catch {
-      // config absent — no custom providers, default snake_case
+      // config absent — no custom providers, no libraries, default snake_case
     }
     // `baseline` records a STARTING POINT, so it is deliberately NOT scoped: the
     // `--from-db` arm captures whatever the database holds (there is no provenance
@@ -1056,7 +1053,7 @@ export async function runBaseline(
       const collection = await resolveCollection(metaRoot);
       metadata = await loadMemory(collection.configDir, {
         files: collection.files,
-        ...(baselineConfigProviders !== undefined ? { providers: baselineConfigProviders } : {}),
+        ...baselineLoadOptions,
       });
     } catch (err) {
       log.error(`migrate baseline: failed to load metadata: ${(err as Error).message}`);
@@ -1176,19 +1173,17 @@ export async function runOfflineGenerate(
     log.error(`migrate: --dialect required for offline generation (or use --from-db)`);
     return 2;
   }
-  // Load metaobjects.config.ts ONCE, up front, for BOTH the consumer providers
+  // Load metaobjects.config.ts ONCE, up front, for BOTH the consumer providers/libraries
   // and the columnNamingStrategy — mirroring the DB path (and `meta gen`) so
   // offline generate resolves config-registered custom subtypes too (#157).
-  let offlineConfigProviders:
-    | readonly import("@metaobjectsdev/codegen-ts").MetaDataTypeProvider[]
-    | undefined;
+  let offlineLoadOptions: ReturnType<typeof loadMemoryOptionsFrom> = {};
   let offlineStrategy: "snake_case" | "literal" | "kebab-case" = "snake_case";
   try {
     const cfg = await loadMetaobjectsConfig(genRoot);
-    offlineConfigProviders = cfg.providers;
+    offlineLoadOptions = loadMemoryOptionsFrom(cfg);
     if (cfg.columnNamingStrategy) offlineStrategy = cfg.columnNamingStrategy;
   } catch {
-    // config absent — no custom providers, default snake_case
+    // config absent — no custom providers, no libraries, default snake_case
   }
 
   let metadata;
@@ -1197,7 +1192,7 @@ export async function runOfflineGenerate(
     collection = await resolveCollection(metaRoot);
     metadata = await loadMemory(collection.configDir, {
       files: collection.files,
-      ...(offlineConfigProviders !== undefined ? { providers: offlineConfigProviders } : {}),
+      ...offlineLoadOptions,
     });
   } catch (err) {
     log.error(`migrate: failed to load metadata: ${(err as Error).message}`);
@@ -1440,12 +1435,11 @@ async function runD1Migrate(
 
   // 3. Load metadata. Best-effort config read for consumer providers; falls
   //    back to default core+forge bundle if metaobjects.config.ts is absent.
-  let d1ConfigProviders: readonly import("@metaobjectsdev/codegen-ts").MetaDataTypeProvider[] | undefined;
+  let d1LoadOptions: ReturnType<typeof loadMemoryOptionsFrom> = {};
   try {
-    const forgeConfig = await loadMetaobjectsConfig(genRoot);
-    d1ConfigProviders = forgeConfig.providers;
+    d1LoadOptions = loadMemoryOptionsFrom(await loadMetaobjectsConfig(genRoot));
   } catch {
-    d1ConfigProviders = undefined;
+    d1LoadOptions = {};
   }
 
   // Discovery and load are separate failure modes (the `meta gen` pattern);
@@ -1463,7 +1457,7 @@ async function runD1Migrate(
   try {
     metadata = await loadMemory(collection.configDir, {
       files: collection.files,
-      ...(d1ConfigProviders !== undefined ? { providers: d1ConfigProviders } : {}),
+      ...d1LoadOptions,
     });
   } catch (err) {
     log.error(`migrate: failed to load metadata: ${(err as Error).message}`);

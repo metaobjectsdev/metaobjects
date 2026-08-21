@@ -14,7 +14,7 @@
 import { resolve as resolvePath, basename } from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 import { log } from "../lib/log.js";
-import { loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
+import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { loadMemory, resolveCollection, resolveConfigDir, type Collection } from "@metaobjectsdev/sdk";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -284,6 +284,10 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   // if the metadata genuinely uses an unregistered type.
   let loadedConfig: Awaited<ReturnType<typeof loadMetaobjectsConfig>> | undefined;
   let configProviders: NonNullable<Awaited<ReturnType<typeof loadMetaobjectsConfig>>["providers"]> | undefined;
+  // The same config's contributions to the metadata LOAD — providers plus the shipped
+  // `libraries` a project opts into (#333). `configProviders` stays separate because the
+  // site surface has its own loader and takes providers alone.
+  let configLoadOptions: ReturnType<typeof loadMemoryOptionsFrom> = {};
   // hasConfig gates the api surface: api docs describe the GENERATED REST
   // surface, which only exists when there is a (loadable) gen config. A config
   // that EXISTS but fails to load degrades to model-only with a warning.
@@ -297,6 +301,7 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
     try {
       loadedConfig = await loadMetaobjectsConfig(genConfigDir);
       configProviders = loadedConfig.providers;
+      configLoadOptions = loadMemoryOptionsFrom(loadedConfig);
     } catch (err) {
       log.warn(
         `docs: metaobjects.config.ts failed to load (${(err as Error).message}); ` +
@@ -304,6 +309,7 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
       );
       loadedConfig = undefined;
       configProviders = undefined;
+      configLoadOptions = {};
     }
   }
 
@@ -347,7 +353,7 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   try {
     root = await loadMemory(collection.configDir, {
       files: collection.files,
-      ...(configProviders !== undefined ? { providers: configProviders } : {}),
+      ...configLoadOptions,
     });
   } catch (err) {
     log.error(`docs: failed to load metadata: ${(err as Error).message}`);

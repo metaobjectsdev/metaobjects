@@ -16,6 +16,11 @@
       "types": "./dist/core/index.d.ts",
       "default": "./dist/core/index.js"
     },
+    "./library": {
+      "bun": "./src/library/library-sources.ts",
+      "types": "./dist/library/library-sources.d.ts",
+      "default": "./dist/library/library-sources.js"
+    },
     "./constants": {
       "bun": "./src/constants.ts",
       "types": "./dist/constants.d.ts",
