@@ -129,10 +129,18 @@ Task 1 rows by `@implementedBy`.
 **Tests first:** `--requirements` alone emits only this surface; no flag emits all three; a
 project with no ledger sees byte-identical output to before this plan.
 
-## Task 7 — the conformance fixture
+## Task 7 — the byte-level golden
 
-A `codegen-conformance` case whose model carries a nested `requirement.*` tree, gating both
-artifacts byte-for-byte — the mechanism that keeps the markdown and the TOON in agreement.
+**CORRECTION — this task originally said "a `codegen-conformance` case". That corpus is
+formally REJECTED** (`fixtures/codegen-conformance/README.md`: FR-007 rejected 2026-05-26,
+re-confirmed 2026-05-31, the README kept only so nobody re-proposes it). Adding a case there
+would have revived something the repo deliberately killed, on the reasoning that codegen is a
+substrate whose observable consequences are gated by the behaviour corpora.
+
+The real mechanism is `test/golden/docs-file-conformance.test.ts`: **any**
+`fixtures/conformance/<name>/expected/<Entity>.md` is byte-matched against `docsFile()` output,
+and fixtures without one are skipped. So the golden goes on an existing requirement fixture
+rather than into a new corpus.
 
 **The fixture must carry, or the gate is blind:**
 - **nesting** (Tasks 1 + 3 both fail silently on a flat corpus)
