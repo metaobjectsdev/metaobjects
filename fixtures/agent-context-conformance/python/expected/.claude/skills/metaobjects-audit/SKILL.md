@@ -61,6 +61,16 @@ code behind a grep hit; a "duplicate" validator's *divergence* is the finding.
   dataclasses shadowing a generated shape. Diff field-by-field; the divergence is the bug.
 - [ ] **D. Prompt pillar.** Every LLM prompt-construction site (see § Prompt anti-patterns).
 - [ ] **E. Owned generators & scaffold-and-own** (see § Owned-codegen assessment).
+- [ ] **E2. Capability ledger — `requirement.*`** (see `references/requirements.md` and the
+  Requirement axis of the capability checklist). The one axis whose hunt is hand-written
+  PROSE rather than hand-written code: a `CAPABILITIES.md`, a README features table, a
+  conventions doc, a known-and-tolerated gap recorded as a TODO, or a rule that exists only
+  as a comment above the field it governs. Prose goes stale in silence; `@implementedBy` is
+  a reference the loader resolves, so a rename that invalidates the claim is caught.
+  **Entirely opt-in — an absent ledger is NOT a defect** (object coverage is a warning by
+  design, and a real estate reports most of itself unclaimed on day one). Score the prose
+  it would replace, and prefer ONE concrete claim an author can check over a
+  whole-estate migration.
 - [ ] **F. Drift-gate adoption.** Is `meta verify` wired into CI / pre-commit? Which
   subverbs (`--codegen` / `--templates` / `--db`)? Committed-codegen freshness gate?
   Advisories heeded? Routine `--no-verify` bypass? Loader `ERR_*` / warnings addressed?

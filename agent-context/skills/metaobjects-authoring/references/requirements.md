@@ -52,6 +52,32 @@ service — these never reference the model. **L4** binds a declared top-level n
 validator, identity, or a template's child. `implementedBy` above L4 is an error.
 Regrouping *moves* a node; it does not edit a parent string.
 
+**Write an L5 ref as a dotted `pkg::Owner.member` path** — the level and the shape of the
+ref must agree, and this is the single easiest thing to get wrong:
+
+```yaml
+# L4 binds the OBJECT
+level: 4
+implementedBy: ["acme::orders::Order"]
+
+# L5 binds ONE MEMBER of it — dotted owner.member, not the object
+level: 5
+implementedBy: ["acme::orders::Order.placedAt"]
+```
+
+Both mismatches are caught and they are symmetric: an L5 whose ref names an object is
+`ERR_REQUIREMENT_L5_NOT_MEMBER`, an L4 whose ref names a member is
+`ERR_REQUIREMENT_L4_NOT_OBJECT`. **In both cases the fix is to move the entry to the other
+level, not to rewrite the ref** — the ref is usually right and the level is usually the
+mistake. The instinct that produces the error is reaching for the object a rule is *about*;
+what L5 wants is the member the rule is *carried by*. Copying an L4 block and changing only
+`level: 5` produces exactly this failure.
+
+Reach for L5 when the statement is about ONE column and its entity's own requirement could
+not express it — "this lifecycle is `resolvedAt IS NULL` and never `status`", "this id is
+nullable, which is why the parent is `partial`". Do NOT use L5 for a blanket rule that
+happens to touch many fields; that is an architectural requirement.
+
 Claim your prompts. A `template.prompt` is a model node realising a capability exactly as
 an entity is, and it is the node whose retirement is hardest to see later — a removed
 prompt leaves no table behind. A prompt estate with no requirement entries is the same

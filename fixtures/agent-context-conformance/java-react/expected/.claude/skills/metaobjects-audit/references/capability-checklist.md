@@ -200,6 +200,40 @@ soft-delete / status / type view it models.
   generator would own. Apply the ADR-0037 ordered test before proposing; advisory (VOCAB
   CANDIDATE); see SKILL.md axis I "New-vocabulary OPPORTUNITY".
 
+## Requirement — `requirement.*` (capability ledger)
+
+The only axis here whose hunt is not "hand-written code the metadata describes" but
+**hand-written PROSE that claims something about the code and nothing checks.** Two
+subtypes with opposite polarity: `requirement.functional` fails when NOTHING implements it
+(existence); `requirement.architectural` fails when something VIOLATES it (universality).
+
+- `requirement.functional` — `@statement`, `@status`, `@level`, `@violation` — hunt a
+  `CAPABILITIES.md`, a features table in a README, a `docs/status/` tree, or a spreadsheet
+  that lists what the system does and how done each item is. Prose goes stale silently; a
+  declared requirement is a node the loader resolves and `meta verify` reports on.
+- `requirement.architectural` — `@statement`, `@status`, `@violation`, optional `@level` —
+  hunt a conventions doc, a lint rule with no enforcement, or an ADR whose ruling is
+  restated in review comments ("we always do X"). `@level` is optional here on purpose:
+  absent keeps the flat object-independent form, present opts into a taxonomy.
+- `@implementedBy` — hunt the mapping from "capability" to "the code that provides it"
+  living only in someone's head, a wiki table, or a comment. This is the load-bearing
+  attribute: it is a REFERENCE the loader resolves, so a rename or deletion that
+  invalidates the claim is caught, where prose would not be.
+  - **L4 binds an object; L5 binds one MEMBER of it, as a dotted `pkg::Owner.member` path.**
+    Mismatches are errors at both levels (`ERR_REQUIREMENT_L5_NOT_MEMBER` /
+    `ERR_REQUIREMENT_L4_NOT_OBJECT`) and the fix is to move the entry to the other level,
+    not to change the ref. Reach for L5 for a rule about ONE column — the kind currently
+    recorded only as a comment above a field.
+- `@disposition` (`accepted` / `deferred`) + `@trackedBy` — hunt a known-and-tolerated gap
+  recorded as a TODO, or a ticket number in a comment. **ABSENT disposition means UNDECIDED**,
+  which is the point: a gap nobody has ruled on reads differently from one deliberately
+  accepted.
+- **CALIBRATION — entirely opt-in and warning-only where it counts.** A project declaring no
+  `requirement.*` nodes sees no diagnostics at all, and object coverage ("entities claimed
+  by nothing") ships as a WARNING deliberately — a real estate carrying one requirement will
+  report most of itself unclaimed on day one. Do NOT score an absent ledger as a defect;
+  score the hand-written prose it would replace.
+
 ## Common documentation attrs (any node)
 
 - `@description`, `@title`, `@summary`, `@notes`, `@deprecated`, `@replacedBy`, `@seeAlso`,
