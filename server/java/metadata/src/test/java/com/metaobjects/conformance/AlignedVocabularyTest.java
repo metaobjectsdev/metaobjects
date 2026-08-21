@@ -21,8 +21,8 @@ import static org.junit.Assert.*;
  * proxy, @javaRuntime) leaks back into canonical output.
  *
  * <p>Scope note: only {@code origin.passthrough} is exercised here; the
- * other origin subtypes ({@code origin.aggregate}, {@code origin.collection})
- * are covered by their own conformance corpus fixtures.</p>
+ * other origin subtypes ({@code origin.aggregate}, {@code origin.computed},
+ * {@code origin.first}) are covered by their own conformance corpus fixtures.</p>
  */
 public class AlignedVocabularyTest extends SharedRegistryTestBase {
 

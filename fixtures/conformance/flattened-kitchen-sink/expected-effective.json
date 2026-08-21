@@ -608,7 +608,7 @@
       {
         "object.projection": {
           "name": "ProductSummary",
-          "@description": "Read-only projection: aggregates, passthrough and a collection origin.",
+          "@description": "Read-only projection: a passthrough origin and a count aggregate.",
           "children": [
             {
               "source.rdb": {
@@ -642,20 +642,6 @@
                     "origin.aggregate": {
                       "@agg": "count",
                       "@of": "acme::catalog::Supplier.id",
-                      "@via": "acme::catalog::Product.suppliers"
-                    }
-                  }
-                ]
-              }
-            },
-            {
-              "field.object": {
-                "name": "supplierBriefs",
-                "isArray": true,
-                "@objectRef": "acme::common::BaseValue",
-                "children": [
-                  {
-                    "origin.collection": {
                       "@via": "acme::catalog::Product.suppliers"
                     }
                   }

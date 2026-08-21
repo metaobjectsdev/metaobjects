@@ -75,7 +75,7 @@ declared `field.<subType>` + `isArray` + `@objectRef`, and a nested payload is a
 declared `field.object @objectRef` to another `object.value` (`isArray: true` for a
 list — nested targets stay value-only, loader-enforced). The caller supplies the
 field values at render time. An `origin.*` child on a payload field is IGNORED for
-typing — and the assembly origins (`aggregate` / `collection` / `computed` /
+typing — and the assembly origins (`aggregate` / `computed` /
 `first`) are ILLEGAL on an `object.value` host (`ERR_SUBTYPE_RULE_VIOLATION`, #210):
 an origin-derived payload lives on the sourceless projection, which `@payloadRef`
 accepts. Projections generally are covered by the `metaobjects-authoring` skill and

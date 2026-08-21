@@ -114,7 +114,7 @@ separate `metaobjects-codegen-base` module instead.)
 only). Its `CREATE VIEW` DDL is emitted by the Node `meta migrate` from the
 projection's `origin.*` children — `origin.passthrough`, `origin.aggregate` (`@agg`
 `count`/`sum`/`avg`/`min`/`max`, plus the #195 `any`/`all` quantifiers over a `@filter`
-and `collect` array-rollup with `@distinct`/`@orderBy`), `origin.collection`,
+and `collect` array-rollup with `@distinct`/`@orderBy`),
 `origin.computed` (`@expr`), `origin.first`; an object-level `@filter` scopes the whole
 view's rows (#207 — lowers to the outer `WHERE`). Never hand-author the view SQL for a
 shape origins can express (an unmodeled view is unmanaged and drifts silently); carry a

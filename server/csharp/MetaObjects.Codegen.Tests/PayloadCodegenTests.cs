@@ -26,8 +26,7 @@ public class PayloadCodegenTests
           { "object.projection": { "name": "AuthorBrief", "children": [
             { "field.string": { "name": "displayName" } },
             { "field.int": { "name": "postCount" } },
-            { "field.object": { "name": "posts", "isArray": true, "@objectRef": "PostBrief",
-              "children": [ { "origin.collection": { "@via": "Author.posts" } } ] } }
+            { "field.object": { "name": "posts", "isArray": true, "@objectRef": "PostBrief" } }
           ]}},
           { "template.prompt": { "name": "contentStrategyPrompt",
             "@payloadRef": "AuthorBrief", "@textRef": "prompt/strategy", "@format": "xml" } }
@@ -68,8 +67,7 @@ public class PayloadCodegenTests
           ]}},
           { "object.projection": { "name": "AuthorBrief", "children": [
             { "field.string": { "name": "displayName" } },
-            { "field.object": { "name": "posts", "isArray": true, "@objectRef": "acme::ai::PostBrief",
-              "children": [ { "origin.collection": { "@via": "Author.posts" } } ] } }
+            { "field.object": { "name": "posts", "isArray": true, "@objectRef": "acme::ai::PostBrief" } }
           ]}}
         ]
       }

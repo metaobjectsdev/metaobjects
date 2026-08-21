@@ -104,7 +104,7 @@ the data access too.
   `origin.aggregate` (`@agg` `count`/`sum`/`avg`/`min`/`max`, plus the #195
   `any`/`all` predicate quantifiers over a `@filter` and `collect` array-rollup with
   optional `@distinct`/`@orderBy`; any aggregate may be row-scoped with `@filter`),
-  `origin.collection` (a nested array), `origin.computed` (a row-level `@expr`), and
+  `origin.computed` (a row-level `@expr`), and
   `origin.first` (one related row's column along `@via`/`@of`/`@orderBy`) — **and a
   read-only `source.rdb` `@kind: view` child** (codegen detects a projection by that
   read-only source, not by the subtype alone — omit it and nothing is generated).

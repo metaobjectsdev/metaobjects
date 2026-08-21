@@ -128,7 +128,6 @@ export {
   MetaOrigin,
   MetaPassthroughOrigin,
   MetaAggregateOrigin,
-  MetaCollectionOrigin,
   MetaComputedOrigin,
   MetaFirstOrigin,
 } from "./persistence/origin/meta-origin.js";

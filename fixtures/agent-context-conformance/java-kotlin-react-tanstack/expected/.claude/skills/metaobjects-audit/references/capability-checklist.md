@@ -67,7 +67,7 @@ classify it (using the classification scheme in `SKILL.md`) and route the cutove
 - **`@kind` = `view` / `materializedView`** — hunt hand-written SQL views where an authored
   read-only source belongs. Apply the **view-necessity test** (SKILL.md, drift signature 8): a
   hand-written `CREATE VIEW` (or read-only SQL mirroring a read model) is a CODEGEN CANDIDATE when
-  its shape is expressible via `origin.passthrough` / `origin.aggregate` / `origin.collection` /
+  its shape is expressible via `origin.passthrough` / `origin.aggregate` /
   `origin.computed` / `origin.first` + `extends`. Route by shape: an entity's OWN columns plus an
   extra (`SELECT o.*, …`) → an **entity read-view** (#214: a `@role: replica` view beside the
   writable `table`); a subset / renamed / row-filtered exposure → an `object.projection` (row-scope
@@ -132,8 +132,6 @@ classify it (using the classification scheme in `SKILL.md`) and route the cutove
   subqueries or in-app rollups a derived aggregate field models.
 - **`origin.passthrough`** (`@from`, `@via`, `@convert`) — hunt denormalized-by-hand copied fields
   that a passthrough origin pulls across a relationship.
-- **`origin.collection`** (`@via`) — hunt hand-assembled child-collection loading a collection
-  origin derives.
 - **`origin.computed`** (`@expr` — a closed `attr.expression` grammar) — hunt a hand-computed derived
   scalar (a formula over other fields) a computed origin models.
 - **`origin.first`** (`@of`, `@via`, `@orderBy`, `@filter`; `@orderBy` REQUIRED) — hunt a hand

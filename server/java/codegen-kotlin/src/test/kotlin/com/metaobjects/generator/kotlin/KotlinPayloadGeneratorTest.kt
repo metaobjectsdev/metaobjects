@@ -207,12 +207,15 @@ class KotlinPayloadGeneratorTest {
         }
     }
 
-    @Test fun originCollectionIgnoredNoNestedPayloadEmitted() {
-        // #270 — PayloadVo.posts is DECLARED `field.string` but carries
-        // `origin.collection @via "Author.posts"`. Expected:
+    @Test fun viaCarryingOriginIgnoredNoNestedPayloadEmitted() {
+        // #270 — PayloadVo.posts is DECLARED `field.string` but carries a
+        // `@via`-carrying origin walking to Post. Expected:
         //   - the DECLARED scalar type (`val posts: String`) — no List<PostPayload>
         //   - NO PostPayload.kt is emitted (a non-object field contributes no
         //     nested payload class; the @via target is never reached)
+        // Expressed with `origin.aggregate @agg:count` since FR-037 R2 retired
+        // `origin.collection` (#336); count's own type is numeric, so the declared
+        // String still has an origin-derived type to beat.
         val fx = """{
           "metadata.root": { "package": "acme::demo", "children": [
             { "object.entity": { "name": "Author", "children": [
@@ -226,7 +229,8 @@ class KotlinPayloadGeneratorTest {
             ] } },
             { "object.projection": { "name": "AuthorDetail", "children": [
                 { "field.string": { "name": "posts", "children": [
-                    { "origin.collection": { "@via": "Author.posts" } }
+                    { "origin.aggregate": { "@agg": "count", "@of": "Post.title",
+                        "@via": "Author.posts" } }
                 ] } }
             ] } },
             { "template.prompt": { "name": "AuthorView",
@@ -245,7 +249,7 @@ class KotlinPayloadGeneratorTest {
             assertTrue(Files.exists(parentFile),
                 "expected $parentFile; files=${Files.walk(outDir).toList()}")
             assertTrue(Files.notExists(nestedFile),
-                "PostPayload.kt must NOT be emitted (origin.collection is ignored); " +
+                "PostPayload.kt must NOT be emitted (the origin child is ignored); " +
                     "files=${Files.walk(outDir).toList()}")
 
             val parentSrc = Files.readString(parentFile)
@@ -256,14 +260,18 @@ class KotlinPayloadGeneratorTest {
         }
     }
 
-    @Test fun `disagreeing origin-collection is ignored — declared curated objectRef wins (issue-270)`() {
+    @Test fun `disagreeing origin is ignored — declared curated objectRef wins (issue-270)`() {
         // #270 load-bearing disagreement test — the payload field DECLARES a curated
         // value-object (`field.object @objectRef: Highlight, isArray: true`) AND carries an
-        // `origin.collection @via "Author.posts"` walking to a DIFFERENT, fuller entity (Post).
+        // `origin.aggregate @agg:collect` whose `@of` names a DIFFERENT, fuller VO.
         // Expected:
         //   (a) `val posts: List<HighlightPayload>` — the DECLARATION wins;
-        //   (b) HighlightPayload.kt (the curated VO) is emitted, PostPayload.kt is NOT —
+        //   (b) HighlightPayload.kt (the curated VO) is emitted, FullThumbPayload.kt is NOT —
         //       the silent payload-bloat leak the prompt pillar exists to prevent.
+        // Before FR-037 R2 this used `origin.collection @via`, whose target was an ENTITY
+        // (a node kind the closure never walks). `@of` naming an object COLUMN reaches an
+        // object.value — exactly the node kind the closure DOES walk — so the retirement
+        // made this pin sharper, not weaker.
         val fx = """{
           "metadata.root": { "package": "acme::demo", "children": [
             { "object.entity": { "name": "Author", "children": [
@@ -275,15 +283,20 @@ class KotlinPayloadGeneratorTest {
                 { "field.long":   { "name": "id" } },
                 { "field.string": { "name": "title" } },
                 { "field.string": { "name": "body" } },
-                { "field.string": { "name": "internalNotes" } }
+                { "field.string": { "name": "internalNotes" } },
+                { "field.object": { "name": "thumb", "@objectRef": "FullThumb" } }
             ] } },
             { "object.value": { "name": "Highlight", "children": [
                 { "field.string": { "name": "snippet" } }
             ] } },
+            { "object.value": { "name": "FullThumb", "children": [
+                { "field.string": { "name": "internalUrl" } }
+            ] } },
             { "object.projection": { "name": "AuthorDigest", "children": [
                 { "field.object": { "name": "posts", "@objectRef": "Highlight",
                     "isArray": true, "children": [
-                    { "origin.collection": { "@via": "Author.posts" } }
+                    { "origin.aggregate": { "@agg": "collect", "@of": "Post.thumb",
+                        "@via": "Author.posts" } }
                 ] } }
             ] } },
             { "template.prompt": { "name": "AuthorDigestView",
@@ -299,24 +312,31 @@ class KotlinPayloadGeneratorTest {
 
             val parentFile = outDir.resolve("acme/demo/prompts/AuthorDigestViewPayload.kt")
             val curatedFile = outDir.resolve("acme/demo/prompts/HighlightPayload.kt")
+            val originTargetFile = outDir.resolve("acme/demo/prompts/FullThumbPayload.kt")
             val entityFile = outDir.resolve("acme/demo/prompts/PostPayload.kt")
             assertTrue(Files.exists(parentFile),
                 "expected $parentFile; files=${Files.walk(outDir).toList()}")
             assertTrue(Files.exists(curatedFile),
                 "expected curated $curatedFile; files=${Files.walk(outDir).toList()}")
+            assertTrue(Files.notExists(originTargetFile),
+                "FullThumbPayload.kt (the @of target — an object.value, i.e. exactly the " +
+                    "node kind the closure DOES walk) must NOT be emitted; " +
+                    "files=${Files.walk(outDir).toList()}")
             assertTrue(Files.notExists(entityFile),
                 "PostPayload.kt (the @via entity) must NOT be emitted; " +
                     "files=${Files.walk(outDir).toList()}")
 
             val parentSrc = Files.readString(parentFile)
-            // (a) DECLARED wins: @objectRef + isArray, not the @via walk.
+            // (a) DECLARED wins: @objectRef + isArray, not the origin walk.
             assertTrue("val posts: List<HighlightPayload>" in parentSrc, parentSrc)
+            assertTrue("FullThumbPayload" !in parentSrc, parentSrc)
             assertTrue("PostPayload" !in parentSrc, parentSrc)
 
             val curatedSrc = Files.readString(curatedFile)
-            // (b) the closure emits the curated VO's shape, not the fuller entity's.
+            // (b) the closure emits the curated VO's shape, not the origin target's.
             assertTrue("data class HighlightPayload" in curatedSrc, curatedSrc)
             assertTrue("val snippet: String" in curatedSrc, curatedSrc)
+            assertTrue("internalUrl" !in curatedSrc, curatedSrc)
             assertTrue("internalNotes" !in curatedSrc, curatedSrc)
         } finally {
             outDir.toFile().deleteRecursively()

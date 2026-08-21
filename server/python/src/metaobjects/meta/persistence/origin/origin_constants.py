@@ -3,7 +3,13 @@ from ....shared.base_types import SUBTYPE_BASE
 
 ORIGIN_SUBTYPE_PASSTHROUGH = "passthrough"
 ORIGIN_SUBTYPE_AGGREGATE = "aggregate"
-ORIGIN_SUBTYPE_COLLECTION = "collection"
+# FR-037 R2 — `collection` is RESERVED, NOT REGISTERED. It duplicated
+# `origin.aggregate @agg: collect` on a strictly smaller attr set (@via only), and
+# nothing dispatched on it: its last real consumer, the payload-VO typing edge, was
+# deleted in 0.20.16 (#270) for being actively wrong. Re-entry bar (ADR-0007
+# Amendment 2): a member enters the registry only when a shipping consumer
+# dispatches on it. The designated re-entry shape is `@agg: collect` with `@of`
+# made OPTIONAL — filed as #335 — NOT a restored subtype.
 # #195 — computed: a row-level value from the base entity's own fields via a
 # structured @expr tree. first: the single related row picked by @orderBy along
 # @via, projecting @of.
@@ -13,7 +19,6 @@ ORIGIN_SUBTYPES = (
     SUBTYPE_BASE,
     ORIGIN_SUBTYPE_PASSTHROUGH,
     ORIGIN_SUBTYPE_AGGREGATE,
-    ORIGIN_SUBTYPE_COLLECTION,
     ORIGIN_SUBTYPE_COMPUTED,
     ORIGIN_SUBTYPE_FIRST,
 )
@@ -27,7 +32,6 @@ ORIGIN_SUBTYPES = (
 ASSEMBLY_ORIGIN_SUBTYPES = (
     ORIGIN_SUBTYPE_AGGREGATE,
     ORIGIN_SUBTYPE_COMPUTED,
-    ORIGIN_SUBTYPE_COLLECTION,
     ORIGIN_SUBTYPE_FIRST,
 )
 

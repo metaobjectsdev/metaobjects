@@ -162,7 +162,7 @@ Flyway / a hand-migration, use **`@unmanaged`**.
 A read-only projection (`object.projection` with a `source.rdb` `@kind: view` child)
 does **not** get a hand-written `CREATE VIEW`. `meta migrate` synthesizes the view
 DDL from the projection's `origin.*` children — `passthrough` columns, `aggregate`
-rollups (`count`/`sum`/`avg`/`min`/`max`), and `collection` joins — through the one
+rollups (`count`/`sum`/`avg`/`min`/`max`), and `collect` array rollups — through the one
 canonical view-SQL emitter shared with drift detection.
 
 - Change the projection (add a passthrough, change an aggregate) → `meta migrate`

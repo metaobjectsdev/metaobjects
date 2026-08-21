@@ -420,15 +420,15 @@ public static class ValidationPasses
                 {
                     // #210 — assembly origins live on projections. A value-hosted
                     // field may not carry origin.aggregate / origin.computed /
-                    // origin.collection / origin.first: a value is constructed —
-                    // by a caller or by embedding — never assembled from a backing
-                    // store. origin.passthrough STAYS legal on a value (FR-015
-                    // parameter lineage; the B5 exemption above).
+                    // origin.first: a value is constructed — by a caller or by
+                    // embedding — never assembled from a backing store.
+                    // origin.passthrough STAYS legal on a value (FR-015 parameter
+                    // lineage; the B5 exemption above).
                     if (isValueHost && ASSEMBLY_ORIGIN_SUBTYPES.Contains(origin.SubType))
                     {
                         errors.Add(new MetaError(
                             $"value object '{obj.Fqn()}' field '{field.Name}' hosts origin.{origin.SubType} — " +
-                            "assembly origins (aggregate, computed, collection, first) live on " +
+                            "assembly origins (aggregate, computed, first) live on " +
                             "object.projection; a value is constructed by a caller or by embedding, " +
                             "never assembled from a backing store. Re-host this field on a sourceless " +
                             "object.projection; origin.passthrough (FR-015 parameter lineage) remains " +

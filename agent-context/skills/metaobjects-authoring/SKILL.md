@@ -781,7 +781,7 @@ second identity declaration, and re-stating every passthrough column — for no 
 A derived read model that IS an independent exposure is an **`object.projection`**
 (FR-024): its fields `extends` entity fields (`extends: "Author.id"` — dotted
 child traversal, package only on the root segment) and/or carry `origin.*`
-children (`passthrough` / `aggregate` / `collection` / `computed` / `first`)
+children (`passthrough` / `aggregate` / `computed` / `first`)
 declaring assembly; its identity passes through via `extends` (`identity.primary:
 { name: id, extends: "Author.id" }`); it is read-only by construction and the
 declared field set IS the exposure (fail-closed). Give it a read-only `source.rdb`

@@ -46,7 +46,6 @@ import com.metaobjects.identity.ReferenceIdentity;
 import com.metaobjects.object.MetaObject;
 import com.metaobjects.attr.ExpressionAttribute;
 import com.metaobjects.origin.AggregateOrigin;
-import com.metaobjects.origin.CollectionOrigin;
 import com.metaobjects.origin.ComputedOrigin;
 import com.metaobjects.origin.FirstOrigin;
 import com.metaobjects.origin.MetaOrigin;
@@ -2097,7 +2096,7 @@ public final class ValidationPhase {
         boolean isValueHost = MetaObject.SUBTYPE_VALUE.equals(obj.getSubType());
 
         // #210 — assembly origins live on projections. A value-hosted field may not
-        // carry origin.aggregate / origin.computed / origin.collection / origin.first:
+        // carry origin.aggregate / origin.computed / origin.first:
         // a value is constructed — by a caller or by embedding — never assembled from
         // a backing store. origin.passthrough STAYS legal on a value (FR-015 parameter
         // lineage; the B5 exemption above).
@@ -2304,21 +2303,6 @@ public final class ValidationPhase {
                 base, ofTarget.entity, obj, field.getName(), of,
                 "origin.aggregate.@of", src);
             checkAggregateCardinality(hops, obj, field.getName(), src);
-            return;
-        }
-
-        // origin.collection — required-check only on @via; full path traversal
-        // is intentionally not enforced here (mirrors TS validateOriginPaths,
-        // which only validates passthrough + aggregate).
-        if (CollectionOrigin.SUBTYPE_COLLECTION.equals(subType)) {
-            String via = origin.getVia();
-            if (via == null || via.isEmpty()) {
-                throw new MetaDataException(
-                    ErrorMessageConstants.ERR_INVALID_ORIGIN
-                        + ": origin.collection on " + obj.getName() + "." + field.getName()
-                        + ": missing @via.",
-                    ErrorCode.ERR_INVALID_ORIGIN, origin.getSource());
-            }
             return;
         }
 
@@ -2825,8 +2809,8 @@ public final class ValidationPhase {
     // fields, and each must be ADDRESSABLE in a WHERE:
     //   - a plain (extends-bound / no-origin) or origin.passthrough or origin.computed
     //     field → addressable (a base/joined column, or an inlined row-level expression).
-    //   - an aggregate-derived field (origin.aggregate / origin.first / origin.collection —
-    //     anything OTHER than passthrough/computed) → NOT addressable: a WHERE runs before
+    //   - an aggregate-derived field (origin.aggregate / origin.first — anything
+    //     OTHER than passthrough/computed) → NOT addressable: a WHERE runs before
     //     aggregation, so it cannot see an aggregate. Fail-closed → ERR_BAD_ATTR_FILTER.
     //   - a ref naming no declared field → dangling → ERR_BAD_ATTR_FILTER.
     //

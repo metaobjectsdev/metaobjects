@@ -39,7 +39,7 @@ import {
 import { MetaRelationship } from "./core/relationship/meta-relationship.js";
 import { MetaLayout } from "./presentation/layout/meta-layout.js";
 import { MetaSource } from "./persistence/source/meta-source.js";
-import { MetaOrigin, MetaPassthroughOrigin, MetaAggregateOrigin, MetaCollectionOrigin, MetaComputedOrigin, MetaFirstOrigin } from "./persistence/origin/meta-origin.js";
+import { MetaOrigin, MetaPassthroughOrigin, MetaAggregateOrigin, MetaComputedOrigin, MetaFirstOrigin } from "./persistence/origin/meta-origin.js";
 import { defineProviderFromData, type FactoryMap } from "./provider-data.js";
 import { FIELD_DEFINITION } from "./core/field/field-definition.embedded.js";
 import { OBJECT_DEFINITION } from "./core/object/object-definition.embedded.js";
@@ -104,7 +104,6 @@ import {
   ORIGIN_SUBTYPES,
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
-  ORIGIN_SUBTYPE_COLLECTION,
   ORIGIN_SUBTYPE_COMPUTED,
   ORIGIN_SUBTYPE_FIRST,
 } from "./persistence/origin/origin-constants.js";
@@ -169,7 +168,6 @@ const IDENTITY_CLASS_MAP = new Map<string, NodeConstructor>([
 const ORIGIN_CLASS_MAP = new Map<string, NodeConstructor>([
   [ORIGIN_SUBTYPE_PASSTHROUGH, MetaPassthroughOrigin],
   [ORIGIN_SUBTYPE_AGGREGATE, MetaAggregateOrigin],
-  [ORIGIN_SUBTYPE_COLLECTION, MetaCollectionOrigin],
   [ORIGIN_SUBTYPE_COMPUTED, MetaComputedOrigin],
   [ORIGIN_SUBTYPE_FIRST, MetaFirstOrigin],
 ]);
@@ -377,8 +375,7 @@ function registerCoreTypeDefs(registry: TypeRegistry): void {
   // defineProviderFromData lowers it to TypeDefinitions; the factory (behavior)
   // stays code via ORIGIN_FACTORIES, dispatching subType→class:
   //   passthrough → MetaPassthroughOrigin, aggregate → MetaAggregateOrigin,
-  //   collection → MetaCollectionOrigin, base (and any unmapped subtype) →
-  //   MetaOrigin (fallback).
+  //   base (and any unmapped subtype) → MetaOrigin (fallback).
   // FR-033 S1-simple: origin is an ATTR-ONLY type — the "any attr" wildcard child
   // rule is DROPPED (strict/fail-closed) and childRules are left EMPTY; the named
   // attrs still enforce strictly, a misplaced STRUCTURAL child is now

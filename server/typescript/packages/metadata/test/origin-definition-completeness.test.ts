@@ -105,9 +105,9 @@ describe("origin provider externalization — completeness", () => {
     });
   }
 
-  // CRITICAL: requiredness — @from/@agg/@of/@via(collection) required;
-  // @via(passthrough)/@via(aggregate) optional.
-  test("requiredness: @from/@agg/@of/@via(collection) required; @via(passthrough)/@via(aggregate) optional", () => {
+  // CRITICAL: requiredness — @from/@agg required; @via(passthrough)/@via(aggregate)
+  // optional.
+  test("requiredness: @from/@agg required; @via(passthrough)/@via(aggregate) optional", () => {
     const attrOf = (subType: string, name: string) =>
       registry.find(TYPE_ORIGIN, subType)!.attributes.find((a) => a.name === name)!;
 
@@ -117,7 +117,6 @@ describe("origin provider externalization — completeness", () => {
     // #195 — @of relaxed to optional (per-@agg presence in validation).
     expect(attrOf("aggregate", "of").required).toBe(false);
     expect(attrOf("aggregate", "via").required).toBe(false);
-    expect(attrOf("collection", "via").required).toBe(true);
     // #195 — computed.@expr + first.@of/@orderBy required; first.@via optional.
     expect(attrOf("computed", "expr").required).toBe(true);
     expect(attrOf("first", "of").required).toBe(true);

@@ -7,9 +7,13 @@ import com.metaobjects.registry.MetaDataTypeProvider;
  * Origin Types MetaData provider.
  *
  * <p>Registers the abstract {@code origin.base} type plus the concrete subtypes
- * {@code origin.passthrough}, {@code origin.aggregate}, {@code origin.collection},
- * {@code origin.computed}, and {@code origin.first}. Depends on {@code core-types}
- * for {@code metadata.base} inheritance.</p>
+ * {@code origin.passthrough}, {@code origin.aggregate}, {@code origin.computed},
+ * and {@code origin.first}. Depends on {@code core-types} for
+ * {@code metadata.base} inheritance.</p>
+ *
+ * <p>{@code origin.collection} was RESERVED-NOT-REGISTERED by FR-037 R2 (#336):
+ * it duplicated {@code origin.aggregate @agg:collect} on a smaller attr set and
+ * nothing ever dispatched on it. Re-entry bar: ADR-0007 Amendment 2.</p>
  *
  * <p>Discovered via the standard {@link MetaDataTypeProvider} ServiceLoader
  * mechanism — wired through
@@ -25,7 +29,6 @@ public class OriginTypesMetaDataProvider implements MetaDataTypeProvider {
         // Register concrete origin subtypes.
         PassthroughOrigin.registerTypes(registry);
         AggregateOrigin.registerTypes(registry);
-        CollectionOrigin.registerTypes(registry);
         ComputedOrigin.registerTypes(registry);
         FirstOrigin.registerTypes(registry);
     }

@@ -267,8 +267,8 @@ signature class. Hunt all ten classes:
    @agg/@of/@via`, row-scoped with `@filter`), a predicate quantifier (`origin.aggregate
    @agg: any|all`), an array rollup (`origin.aggregate @agg: collect`), a non-aggregate
    derived scalar (`origin.computed @expr`), an argmax-style "one related row's column"
-   pick (`origin.first @via` — covers the common `DISTINCT ON` / lateral-join shape), a
-   child collection (`origin.collection`), a soft-delete/status/type row-scope (an
+   pick (`origin.first @via` — covers the common `DISTINCT ON` / lateral-join shape),
+   a soft-delete/status/type row-scope (an
    object-level `@filter` on `object.projection`), or `extends`-borrowed — and joins
    follow declared relationships/`identity.reference` FKs. Expressible → projection
    candidate (note: an unmodeled hand view is *unmanaged* — invisible to `verify --db`;
@@ -407,7 +407,7 @@ promising it or counting it in benefits:
 - hand `COUNT/SUM` subqueries, read-model SQL → `object.projection` + `origin.passthrough`
   / `origin.aggregate` (`count`/`sum`/`avg`/`min`/`max`, +`@filter` for scoped
   aggregates, +`any`/`all` predicate quantifiers, +`collect` array rollups) /
-  `origin.collection` / `origin.computed` (a non-aggregate derived scalar) /
+  `origin.computed` (a non-aggregate derived scalar) /
   `origin.first` (an argmax-style "one related row's column" pick — the usual
   `DISTINCT ON`/lateral-join case) — plus a soft-delete/status/type view via the
   object-level `@filter` on `object.projection` instead of a hand `WHERE`.

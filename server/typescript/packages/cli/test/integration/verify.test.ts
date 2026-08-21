@@ -11,8 +11,12 @@ const META = {
     children: [
       { "object.value": { name: "PostBrief", children: [{ "field.string": { name: "title" } }] } },
       {
-        // #210 — origin.collection is an ASSEMBLY origin: its host is a sourceless
-        // object.projection (a value may host only origin.passthrough).
+        // Sourceless object.projection host (#210 — a value may host only
+        // origin.passthrough). `posts` carried an `origin.collection @via "Author.posts"`
+        // until FR-037 R2 retired the subtype (#336); no surviving origin expresses a
+        // whole-object rollup (@agg:collect reduces a COLUMN via @of) until #335 lands.
+        // What `verify` reads off this payload is declared-authoritative (#270), so it
+        // is identical with or without the origin child.
         "object.projection": {
           name: "AuthorBrief",
           children: [
@@ -23,7 +27,6 @@ const META = {
                 name: "posts",
                 "isArray": true,
                 "@objectRef": "PostBrief",
-                children: [{ "origin.collection": { "@via": "Author.posts" } }],
               },
             },
           ],

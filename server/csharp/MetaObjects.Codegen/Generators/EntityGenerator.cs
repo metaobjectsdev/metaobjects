@@ -9,8 +9,8 @@
 // configured in the DbContext); the referenced value object is emitted as a POCO.
 // Enum-typed fields emit a nested C# enum + a property typed by it; EF Core
 // HasConversion<string>() is wired in the DbContext.
-// Object-typed fields on read-only projections (collection origins) are not mapped
-// here — that is a separate projection-materialization concern.
+// Object-typed fields on read-only projections are not mapped here — that is a
+// separate projection-materialization concern.
 
 using System.Text;
 using MetaObjects.Codegen.Docs;

@@ -276,10 +276,14 @@ public sealed class PayloadGeneratorTests
           ]}},
           { "object.entity": { "name": "Post", "children": [
             { "field.long": { "name": "id" } },
-            { "field.string": { "name": "internalNotes" } }
+            { "field.string": { "name": "internalNotes" } },
+            { "field.object": { "name": "thumb", "@objectRef": "FullThumb" } }
           ]}},
           { "object.value": { "name": "Highlight", "children": [
             { "field.string": { "name": "snippet" } }
+          ]}},
+          { "object.value": { "name": "FullThumb", "children": [
+            { "field.string": { "name": "internalUrl" } }
           ]}},
           { "object.projection": { "name": "Digest", "children": [
             { "field.string": { "name": "displayName", "extends": "Source.displayName" } },
@@ -287,10 +291,10 @@ public sealed class PayloadGeneratorTests
               { "origin.passthrough": { "@from": "Source.displayName", "@convert": true } }
             ]}},
             { "field.string": { "name": "summary", "children": [
-              { "origin.collection": { "@via": "Author.posts" } }
+              { "origin.aggregate": { "@agg": "count", "@of": "Post.id", "@via": "Author.posts" } }
             ]}},
             { "field.object": { "name": "posts", "@objectRef": "Highlight", "isArray": true, "children": [
-              { "origin.collection": { "@via": "Author.posts" } }
+              { "origin.aggregate": { "@agg": "collect", "@of": "Post.thumb", "@via": "Author.posts" } }
             ]}}
           ]}},
           { "template.output": { "name": "DigestDoc",
@@ -303,13 +307,19 @@ public sealed class PayloadGeneratorTests
         // Declared `field.int` wins over the (`@convert`-acknowledged) string passthrough.
         Assert.Contains("public int? alias { get; init; }", file.Content);
         Assert.DoesNotContain("string alias", file.Content);
-        // Declared `field.string` wins over origin.collection — no list, no via-target type.
+        // Declared `field.string` wins over the numeric count — no origin-derived type.
         Assert.Contains("public string? summary { get; init; }", file.Content);
-        // Declared `field.object @objectRef` + isArray wins over the disagreeing @via walk.
+        // Declared `field.object @objectRef` + isArray wins over the disagreeing @of walk.
         Assert.Contains("public IReadOnlyList<Highlight>? posts { get; init; }", file.Content);
         Assert.Contains("public sealed record Highlight", file.Content);
         Assert.Contains("public string? snippet { get; init; }", file.Content);
-        // The ignored @via entity never enters the closure.
+        // The ignored origin targets never enter the closure. FullThumb is the sharp one:
+        // it is an object.value reached through `@of`, i.e. exactly the node KIND the
+        // closure does walk — so this rules out an origin edge, not merely a type mismatch.
+        // (Before FR-037 R2 this arm used `origin.collection @via`, whose target was an
+        // ENTITY the closure would never walk regardless; the retirement made it stronger.)
+        Assert.DoesNotContain("record FullThumb", file.Content);
+        Assert.DoesNotContain("internalUrl", file.Content);
         Assert.DoesNotContain("record Post", file.Content);
         Assert.DoesNotContain("internalNotes", file.Content);
     }

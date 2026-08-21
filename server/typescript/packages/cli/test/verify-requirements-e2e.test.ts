@@ -111,12 +111,24 @@ describe("meta verify — requirements exit-code contract", () => {
     expect(await run(["verify", "--cwd", dir])).toBe(1);
   }, TIMEOUT_MS);
 
-  // The asymmetry that forced the loader/verify split: the SAME unresolved reference
-  // is an error on live and expected on abandoned, because those nodes are meant to
-  // be gone. If this ever goes red, the mechanism's whole point has regressed.
-  test("the SAME dangling reference on status=abandoned exits 0", async () => {
+  // FR-038 (#337) REVERSED this. It used to assert the opposite — that the SAME
+  // unresolved reference was an error on `live` and EXPECTED on `abandoned`, because
+  // those nodes were "meant to be gone". That exemption is what the retirement
+  // removed, and the deciding evidence was second-order: because `verify` was silent
+  // on exactly those two statuses, one adopting estate held 29 refs that could never
+  // resolve across 14 entries while `meta verify` reported zero dangling refs — true
+  // and incomplete at once. There is now no status that exempts a dangling ref, and
+  // the two that did no longer parse.
+  test("a legacy status=abandoned fails the LOAD — the exempting statuses are gone", async () => {
     const dir = project(req({ ...L4, "@status": "abandoned", "@implementedBy": ["Ordur"] }));
-    expect(await run(["verify", "--cwd", dir])).toBe(0);
+    expect(await run(["verify", "--cwd", dir])).toBe(1);
+  }, TIMEOUT_MS);
+
+  // The surviving statuses carry no exemption either: `partial` means there IS a gap,
+  // not that a reference may point at nothing.
+  test("a dangling reference on status=partial exits 1 — no status exempts it", async () => {
+    const dir = project(req({ ...L4, "@status": "partial", "@implementedBy": ["Ordur"] }));
+    expect(await run(["verify", "--cwd", dir])).toBe(1);
   }, TIMEOUT_MS);
 
   test("@implementedBy above the L4 link floor exits 1", async () => {

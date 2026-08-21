@@ -62,9 +62,16 @@ class KotlinGenUtilTest {
     // #270 / ADR-0044 — name-map closure gates on computePayloadNameMap.
     // The closure walks ONLY declared `field.object @objectRef` -> object.value
     // edges: an origin child on a field.object does NOT remove its declared
-    // edge (positive), and a field carrying ONLY origin.collection contributes
-    // nothing (negative). Both directions gate the nestedTargetOf edit that
-    // retired the `origin.collection @via` closure edge.
+    // edge (positive), and a field carrying ONLY an origin contributes nothing
+    // (negative). Both directions gate the nestedTargetOf edit that retired the
+    // origin closure edge.
+    //
+    // FR-037 R2 (#336) retired `origin.collection`, which is what these gates
+    // used to carry. The replacements are SHARPER: `origin.passthrough @from`
+    // and `origin.aggregate @of` name a COLUMN, which may be a
+    // `field.object @objectRef <object.value>` — exactly the node kind the
+    // closure does walk. `origin.collection @via` only ever reached an ENTITY,
+    // which the closure would have skipped on kind alone.
     // -----------------------------------------------------------------------
 
     private val alphaNoteFixture = """{
@@ -99,26 +106,32 @@ class KotlinGenUtilTest {
     }
 
     @Test fun `origin-carrying object field stays in the name-map closure (issue-270 positive gate)`() {
-        // fromAlpha DECLARES acme::alpha::Note AND carries an origin.collection whose
-        // @via walks to the Post entity; fromBeta declares acme::beta::Note plainly.
-        // Both same-short-named Notes must be package-qualified — if the origin child
+        // fromAlpha DECLARES acme::alpha::Note AND carries an origin.passthrough whose
+        // @from names Post.attachment — an object column pointing at the Attachment
+        // value object; fromBeta declares acme::beta::Note plainly. Both
+        // same-short-named Notes must be package-qualified — if the origin child
         // dropped the declared edge from the closure, the collision would go
         // undetected and both would fall back to a clobbered bare NotePayload.
         val appFixture = """{
           "metadata.root": { "package": "acme::app", "children": [
+            { "object.value": { "name": "Attachment", "children": [
+                { "field.string": { "name": "url" } }
+            ] } },
             { "object.entity": { "name": "Author", "children": [
                 { "field.long": { "name": "id" } },
-                { "relationship.aggregation": { "name": "posts",
-                    "@objectRef": "Post", "@cardinality": "many" } }
+                { "relationship.aggregation": { "name": "headline",
+                    "@objectRef": "Post", "@cardinality": "one" } }
             ] } },
             { "object.entity": { "name": "Post", "children": [
                 { "field.long":   { "name": "id" } },
-                { "field.string": { "name": "internalNotes" } }
+                { "field.string": { "name": "internalNotes" } },
+                { "field.object": { "name": "attachment", "@objectRef": "Attachment" } }
             ] } },
             { "object.projection": { "name": "Digest", "children": [
                 { "field.object": { "name": "fromAlpha",
                     "@objectRef": "acme::alpha::Note", "children": [
-                    { "origin.collection": { "@via": "Author.posts" } }
+                    { "origin.passthrough": { "@from": "Post.attachment",
+                        "@via": "Author.headline" } }
                 ] } },
                 { "field.object": { "name": "fromBeta",
                     "@objectRef": "acme::beta::Note" } }
@@ -135,16 +148,19 @@ class KotlinGenUtilTest {
             "origin-carrying declared edge must stay in the closure and qualify; map=$nameMap")
         assertEquals("AcmeBetaNotePayload", nameMap["acme::beta::Note"],
             "the plain declared edge must qualify against the colliding alpha Note; map=$nameMap")
+        assertFalse(nameMap.containsKey("acme::app::Attachment"),
+            "the @from target is an object.value — the kind the closure DOES walk — so it " +
+                "must be excluded on the EDGE, not on the node kind; map=$nameMap")
         assertFalse(nameMap.containsKey("acme::app::Post"),
             "the ignored @via entity must NOT enter the closure; map=$nameMap")
     }
 
-    @Test fun `origin-collection-only field contributes nothing to the name-map (issue-270 negative gate)`() {
-        // The `posts` field carries ONLY origin.collection; its @via walks to
-        // acme::beta::Note, which shares a bare short name with the DECLARED
-        // acme::alpha::Note. Were the retired collection edge still in the closure,
-        // the two would collide and both would qualify. Instead: the declared Note
-        // stays BARE and the @via target never enters the map.
+    @Test fun `origin-only field contributes nothing to the name-map (issue-270 negative gate)`() {
+        // The `posts` field carries ONLY an origin (no @objectRef of its own); its
+        // @via walks to acme::beta::Note, which shares a bare short name with the
+        // DECLARED acme::alpha::Note. Were an origin edge in the closure, the two
+        // would collide and both would qualify. Instead: the declared Note stays
+        // BARE and the origin target never enters the map.
         val appFixture = """{
           "metadata.root": { "package": "acme::app", "children": [
             { "object.entity": { "name": "Author", "children": [
@@ -156,7 +172,8 @@ class KotlinGenUtilTest {
                 { "field.object": { "name": "fromAlpha",
                     "@objectRef": "acme::alpha::Note" } },
                 { "field.string": { "name": "posts", "children": [
-                    { "origin.collection": { "@via": "Author.notes" } }
+                    { "origin.aggregate": { "@agg": "count",
+                        "@of": "acme::beta::Note.betaText", "@via": "Author.notes" } }
                 ] } }
             ] } },
             { "template.output": { "name": "DigestDoc",
@@ -170,6 +187,6 @@ class KotlinGenUtilTest {
         assertEquals("NotePayload", nameMap["acme::alpha::Note"],
             "no collision without the origin edge — the declared Note keeps its bare name; map=$nameMap")
         assertFalse(nameMap.containsKey("acme::beta::Note"),
-            "an origin.collection-only field must contribute nothing to the closure; map=$nameMap")
+            "an origin-only field must contribute nothing to the closure; map=$nameMap")
     }
 }

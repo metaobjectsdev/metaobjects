@@ -48,7 +48,7 @@ under **Shipped**; planned FRs under **Planned** + the **Release plan**. ✅ shi
 | FR-034 | Ecosystem tier — connected systems (`system`/`container`/`surface`/`environment`) | 📋 designed (**draft, deferred post-1.0**) | 1.1 | — |
 | FR-035 | Present-key PATCH tristate (mutation surface) | 🟢 shipped 5 ports (absent→untouched / present-null→clears / null-on-`@required`→400); coordinated **breaking** release held for FR-036 | 1.0 | — |
 | FR-036 | Constraint-validation enforcement + semantic pins | 🟢 shipped 5 ports in the coordinated `0.16.0`/`7.8.0` breaking release (required-string = non-empty·accept-whitespace · `@Pattern` = full-match · strictest-wins length; HTTP-tier enforcement all 5 ports; TPH tristate) | 1.0 | — |
-| FR-037 | Projection expressiveness (`origin.rank`) + field write-access modes (`@mutability`) | ⚪ requirements (pre-design), decisions resolved. **R1/R2 retire registered vocabulary (`@readOnly`), so the breaking half must ride a coordinated pre-1.0 breaking MINOR** — post-1.0 a metamodel-vocabulary break moves `metamodelVersion`'s major (ADR-0035 §1 + Am. 2) and should still ride the pre-1.0 slot, where the caret rule is a real gate. `origin.rank` + the rest are additive → 1.1. Design: `docs/superpowers/specs/2026-08-10-fr-037-projection-expressiveness-and-write-once-design.md` | 1.0 · 1.1 | — |
+| FR-037 | Projection expressiveness (`origin.rank`) + field write-access modes (`@mutability`) | ⚪ requirements (pre-design), decisions resolved. **R1/R2 retire registered vocabulary (`@readOnly`), so the breaking half must ride a coordinated pre-1.0 breaking MINOR** — post-1.0 a metamodel-vocabulary break moves `metamodelVersion`'s major (ADR-0035 §1 + Am. 2) and should still ride the pre-1.0 slot, where the caret rule is a real gate. `origin.rank` + the rest are additive → 1.1. **R2's designated re-entry shape — `@agg: collect` with `@of` OPTIONAL, i.e. whole-object rollup — is filed as [#335](https://github.com/metaobjectsdev/metaobjects/issues/335) and is ADDITIVE**, so it does not ride the breaking slot: `@of` is already `required: false` in the registry, the constraint lives in validation, and relaxing it makes previously-invalid metadata valid. Design: `docs/superpowers/specs/2026-08-10-fr-037-projection-expressiveness-and-write-once-design.md` | 1.0 · 1.1 | [#335](https://github.com/metaobjectsdev/metaobjects/issues/335) |
 | FR-038 | Requirement-derived test stubs (inverts `@verifiedBy`) | ⚪ proposed. Generate the test from the requirement so the link is structural, not a name the author picks — an audit of one 19-name ledger found 4 names that did not verify their claim. **The `@verifiedBy` retirement is breaking and rides the SAME pre-1.0 MINOR as FR-037's R1/R2, not a second one**; the stub generator is additive → 1.1. Design: `docs/superpowers/specs/2026-08-15-fr-038-requirement-derived-test-stubs-design.md` | 1.0 · 1.1 | — |
 
 _(FR-001 was the original metamodel foundation — pre-dates the FR-numbered tracking.)_
@@ -246,7 +246,13 @@ that retires registered vocabulary. Chartered to ride the next such MINOR:
 - **ADR-0052 / ADR-0053** — `@promptStyle` moves to `template.prompt`; `@responseFormat` is added
   (ADR-0053, a *separate* ADR — counting the batch from ADR-0052 alone under-counts it by one).
   A `@promptStyle` left on a `template.output` now fails the load.
-- **FR-037 R1/R2** — `@readOnly` retired in favour of `@mutability`. Its design records the cost
+- **FR-037 R2** — `origin.collection` retired to reserved-not-registered. It costs adopters
+  nothing functional: nothing ever dispatched on it (zero references in `codegen-ts/src`,
+  `migrate-ts/src`, `runtime-ts/src`; no `collection` view column kind), and its last real
+  consumer was deleted in 0.20.16 (#270) for being wrong. The capability it *named* —
+  whole-object rollup — is filed as **[#335](https://github.com/metaobjectsdev/metaobjects/issues/335)**
+  and is additive, so it can land in any later release.
+- **FR-037 R1** — `@readOnly` retired in favour of `@mutability`. Its design records the cost
   of missing the window: the project would carry both spellings plus the conflict rule
   *permanently*.
 - **FR-038** — the `@verifiedBy` retirement, explicitly "the same coordinated pre-1.0 breaking

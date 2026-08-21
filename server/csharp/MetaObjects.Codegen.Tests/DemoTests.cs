@@ -30,8 +30,7 @@ public class DemoTests
           { "object.projection": { "name": "AuthorBrief", "children": [
             { "field.string": { "name": "displayName", "@required": true } },
             { "field.int": { "name": "postCount", "@required": true } },
-            { "field.object": { "name": "posts", "isArray": true, "@objectRef": "PostBrief",
-              "children": [ { "origin.collection": { "@via": "Author.posts" } } ] } }
+            { "field.object": { "name": "posts", "isArray": true, "@objectRef": "PostBrief" } }
           ]}},
           { "template.prompt": { "name": "contentStrategyPrompt",
             "@payloadRef": "AuthorBrief", "@textRef": "prompt/strategy", "@format": "xml" } }

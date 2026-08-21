@@ -552,7 +552,6 @@ for payload typing per #270)
 - [`fixtures/conformance/origin-aggregate-count/`](../../fixtures/conformance/origin-aggregate-count/) — `origin.aggregate @agg=count`
 - [`fixtures/conformance/origin-aggregate-sum/`](../../fixtures/conformance/origin-aggregate-sum/) — `origin.aggregate @agg=sum`
 - [`fixtures/conformance/origin-multi-level-via/`](../../fixtures/conformance/origin-multi-level-via/) — dotted-path `@via` traversal across hops
-- [`fixtures/conformance/origin-collection-simple/`](../../fixtures/conformance/origin-collection-simple/) — `origin.collection` loads on a repeated-row shape
 - [`fixtures/conformance/error-origin-bad-via-path/`](../../fixtures/conformance/error-origin-bad-via-path/) — unresolvable `@via` rejected
 - [`fixtures/conformance/error-origin-bad-aggregate-fn/`](../../fixtures/conformance/error-origin-bad-aggregate-fn/) — unknown `@agg` rejected
 - [`fixtures/conformance/error-origin-passthrough-type-mismatch/`](../../fixtures/conformance/error-origin-passthrough-type-mismatch/) — a `passthrough` field whose `field.<subType>` differs from its `@from` source fails with `ERR_PASSTHROUGH_TYPE_MISMATCH`

@@ -49,24 +49,6 @@ _No subtype-specific attributes._
 
 _No structural children._
 
-### origin.collection
-
-A relationship-derived array of nested view-objects: walks @via to produce the collection (e.g. 'Author.posts'), or a wildcard selector for a package-spanning collection.
-
-**Owning provider:** metaobjects-core-types
-
-**When to use:** A projection needs an array of nested child view-objects (a parent with its children inline). Declare it instead of hand-assembling the nested query + mapping.
-
-**Attributes**
-
-| Attribute | Type | Required | Default | Allowed values | Provider | Description |
-| --- | --- | --- | --- | --- | --- | --- |
-| `@via` | string | yes |  |  | metaobjects-core-types | Dotted relationship path the collection walks to produce an array of nested view-objects (e.g. 'Author.posts'), or a wildcard selector for a package-spanning collection (e.g. '*.User'). |
-
-**Allowed children**
-
-_No structural children._
-
 ### origin.computed
 
 A row-level value computed from the base entity's own fields via a structured expression tree (@expr). No related rows, no @via. Read-only; the expression's inferred type must equal the field's declared subType.

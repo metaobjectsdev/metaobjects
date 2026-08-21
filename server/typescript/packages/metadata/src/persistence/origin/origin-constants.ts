@@ -13,7 +13,15 @@ import { SUBTYPE_BASE } from "../../shared/base-types.js";
 
 export const ORIGIN_SUBTYPE_PASSTHROUGH = "passthrough";
 export const ORIGIN_SUBTYPE_AGGREGATE   = "aggregate";
-export const ORIGIN_SUBTYPE_COLLECTION  = "collection";
+// FR-037 R2 — `collection` is RESERVED, NOT REGISTERED. It duplicated
+// `origin.aggregate @agg: collect` on a strictly smaller attr set (@via only —
+// no @filter, no @orderBy, no @distinct), and nothing dispatched on it: its last
+// real consumer, the payload-VO typing edge, was deleted in 0.20.16 (#270) for
+// being actively wrong. Re-entry bar (ADR-0007 Amendment 2): a member enters the
+// registry only when a shipping consumer dispatches on it. The designated
+// re-entry shape is `@agg: collect` with `@of` made OPTIONAL (absent = whole-
+// object rollup, typed by the field's declared @objectRef + isArray), NOT a
+// restored subtype.
 // #195 — computed: a row-level value from the base entity's own fields via a
 // structured @expr tree (no related rows). first: the single related row picked
 // by @orderBy along @via, projecting @of (argmax-then-project).
@@ -24,7 +32,6 @@ export const ORIGIN_SUBTYPES = [
   SUBTYPE_BASE,
   ORIGIN_SUBTYPE_PASSTHROUGH,
   ORIGIN_SUBTYPE_AGGREGATE,
-  ORIGIN_SUBTYPE_COLLECTION,
   ORIGIN_SUBTYPE_COMPUTED,
   ORIGIN_SUBTYPE_FIRST,
 ] as const;
@@ -38,7 +45,6 @@ export type OriginSubType = (typeof ORIGIN_SUBTYPES)[number];
 export const ASSEMBLY_ORIGIN_SUBTYPES = [
   ORIGIN_SUBTYPE_AGGREGATE,
   ORIGIN_SUBTYPE_COMPUTED,
-  ORIGIN_SUBTYPE_COLLECTION,
   ORIGIN_SUBTYPE_FIRST,
 ] as const;
 
@@ -49,11 +55,6 @@ export const ORIGIN_PASSTHROUGH_ATTR_VIA  = "via";
 // (#185). Suppresses ERR_PASSTHROUGH_TYPE_MISMATCH. Acknowledgement only — it
 // does NOT generate a cast; real type-converting projections are origin.computed (#195/#159).
 export const ORIGIN_PASSTHROUGH_ATTR_CONVERT = "convert";
-
-// collection attrs — a relationship-derived array of nested view-objects
-// (FR-004 R4). @via is the dotted relationship path (optionally wildcard-
-// prefixed, e.g. "*.User", for a package-spanning collection).
-export const ORIGIN_COLLECTION_ATTR_VIA = "via";
 
 // aggregate attrs
 export const ORIGIN_AGGREGATE_ATTR_AGG = "agg";

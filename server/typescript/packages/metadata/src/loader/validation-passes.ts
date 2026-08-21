@@ -1109,8 +1109,8 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
     for (const field of obj.ownChildren().filter((c) => c.type === TYPE_FIELD)) {
       for (const origin of field.ownChildren().filter((c) => c.type === TYPE_ORIGIN)) {
         // #210 — assembly origins live on projections. A value-hosted field may
-        // not carry origin.aggregate / origin.computed / origin.collection /
-        // origin.first: a value is constructed — by a caller or by embedding —
+        // not carry origin.aggregate / origin.computed / origin.first:
+        // a value is constructed — by a caller or by embedding —
         // never assembled from a backing store. origin.passthrough STAYS legal
         // on a value (FR-015 parameter lineage; the B5 exemption below).
         if (
@@ -1997,7 +1997,7 @@ function checkFilterClauses(
 //   - a plain (extends-bound / no-origin) or origin.passthrough or origin.computed
 //     field → addressable (a base/joined column, or an inlined row-level expression).
 //   - an aggregate-derived field (origin.aggregate — count/sum/…/any/all/collect —
-//     or origin.first / origin.collection) → NOT addressable: a WHERE runs before
+//     or origin.first) → NOT addressable: a WHERE runs before
 //     aggregation, so it cannot see an aggregate (post-aggregate filtering is HAVING,
 //     a separate later extension). Fail-closed → ERR_BAD_ATTR_FILTER.
 //   - a ref naming no declared field → dangling → ERR_BAD_ATTR_FILTER.

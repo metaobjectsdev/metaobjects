@@ -79,7 +79,6 @@ def test_assembly_origins_rejected_on_value_host() -> None:
                                            "@via": "t::ai::Author.books"}},
         "computed": {"origin.computed": {"@expr": {"op": "isNotNull",
                                                    "arg": {"field": "name"}}}},
-        "collection": {"origin.collection": {"@via": "t::ai::Author.posts"}},
         "first": {"origin.first": {"@of": "t::ai::Author.name",
                                    "@via": "t::ai::Author.posts",
                                    "@orderBy": ["name:desc"]}},
@@ -87,10 +86,7 @@ def test_assembly_origins_rejected_on_value_host() -> None:
     assert set(origin_by_subtype) == set(ASSEMBLY_ORIGIN_SUBTYPES)
     for sub, origin in origin_by_subtype.items():
         field = (
-            {"field.object": {"name": "x", "isArray": True,
-                              "@objectRef": "t::ai::NoteVO", "children": [origin]}}
-            if sub == "collection"
-            else {"field.boolean": {"name": "x", "children": [origin]}}
+            {"field.boolean": {"name": "x", "children": [origin]}}
             if sub == "computed"
             else {"field.string": {"name": "x", "children": [origin]}}
             if sub == "first"

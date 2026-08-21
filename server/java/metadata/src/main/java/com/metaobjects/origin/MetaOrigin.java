@@ -18,8 +18,6 @@ import java.util.Set;
  *   <li>{@link AggregateOrigin} ({@code origin.aggregate}) — the field's value is
  *       computed by aggregating values over a relationship path (count / sum / avg
  *       / min / max).</li>
- *   <li>{@link CollectionOrigin} ({@code origin.collection}) — the (array) field's
- *       value is a relationship-derived array of nested view-objects (FR-004 R4).</li>
  *   <li>{@link ComputedOrigin} ({@code origin.computed}) — a row-level value computed
  *       from the base entity's own fields via a structured expression tree (#195).</li>
  *   <li>{@link FirstOrigin} ({@code origin.first}) — one related row selected by
@@ -56,9 +54,10 @@ public abstract class MetaOrigin extends MetaData {
     /**
      * Dotted relationship path. On {@code origin.passthrough} it is optional and
      * identifies the path to reach the source entity (e.g. {@code "Program.weeks"}).
-     * On {@code origin.aggregate} and {@code origin.collection} it is required and
-     * identifies the relationship path the aggregate / collection walks
-     * (e.g. {@code "Program.weeks"} or {@code "Program.weeks.workouts"}).
+     * On {@code origin.aggregate} it identifies the relationship path the
+     * aggregate walks (e.g. {@code "Program.weeks"} or
+     * {@code "Program.weeks.workouts"}); it may be omitted only under the
+     * single-hop-unique inference rule (ADR-0029).
      */
     public static final String ATTR_VIA = "via";
 
@@ -145,9 +144,16 @@ public abstract class MetaOrigin extends MetaData {
     public static final Set<String> ASSEMBLY_ORIGIN_SUBTYPES = Set.of(
         AggregateOrigin.SUBTYPE_AGGREGATE,
         ComputedOrigin.SUBTYPE_COMPUTED,
-        CollectionOrigin.SUBTYPE_COLLECTION,
         FirstOrigin.SUBTYPE_FIRST
     );
+
+    // FR-037 R2 — `collection` is RESERVED, NOT REGISTERED. It duplicated
+    // `origin.aggregate @agg: collect` on a strictly smaller attr set (@via only),
+    // and nothing dispatched on it: its last real consumer, the payload-VO typing
+    // edge, was deleted in 0.20.16 (#270) for being actively wrong. Re-entry bar
+    // (ADR-0007 Amendment 2): a member enters the registry only when a shipping
+    // consumer dispatches on it. The designated re-entry shape is `@agg: collect`
+    // with `@of` made OPTIONAL — filed as #335 — NOT a restored subtype.
 
     // -----------------------------------------------------------------------
     // Constructor
@@ -179,7 +185,7 @@ public abstract class MetaOrigin extends MetaData {
                // attrs. A wildcard would also swallow a TYPO'd core attr, silently.
 
             // SP-G Unit 6a: the per-subtype attrs (@from / @via / @agg / @of) are
-            // declared on the CONCRETE subtypes (AggregateOrigin / CollectionOrigin /
+            // declared on the CONCRETE subtypes (AggregateOrigin /
             // PassthroughOrigin), each carrying exactly its own set with the correct
             // required-ness — matching the cross-port canonical (origin.base is
             // attr-free; no cross-leak between concrete origins). The dedicated

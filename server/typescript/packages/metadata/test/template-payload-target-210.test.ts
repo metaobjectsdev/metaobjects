@@ -79,7 +79,6 @@ describe("#210 — assembly origins are illegal on an object.value host", () => 
   const originNode: Record<string, unknown> = {
     aggregate: { "origin.aggregate": { "@agg": "count", "@of": "t::ai::Author.id", "@via": "t::ai::Author.books" } },
     computed: { "origin.computed": { "@expr": { op: "isNotNull", arg: { field: "name" } } } },
-    collection: { "origin.collection": { "@via": "t::ai::Author.posts" } },
     first: { "origin.first": { "@of": "t::ai::Author.name", "@via": "t::ai::Author.posts", "@orderBy": ["name:desc"] } },
   };
 
@@ -92,13 +91,11 @@ describe("#210 — assembly origins are illegal on an object.value host", () => 
   for (const sub of ASSEMBLY_ORIGIN_SUBTYPES) {
     test(`origin.${sub} on a value-hosted field → ERR_SUBTYPE_RULE_VIOLATION`, async () => {
       const fieldDecl =
-        sub === "collection"
-          ? { "field.object": { name: "x", isArray: true, "@objectRef": "t::ai::NoteVO", children: [originNode[sub]] } }
-          : sub === "computed"
-            ? { "field.boolean": { name: "x", children: [originNode[sub]] } }
-            : sub === "first"
-              ? { "field.string": { name: "x", children: [originNode[sub]] } }
-              : { "field.int": { name: "x", children: [originNode[sub]] } };
+        sub === "computed"
+          ? { "field.boolean": { name: "x", children: [originNode[sub]] } }
+          : sub === "first"
+            ? { "field.string": { name: "x", children: [originNode[sub]] } }
+            : { "field.int": { name: "x", children: [originNode[sub]] } };
       const r = await loadJson([
         { "object.value": { name: "NoteVO", children: [{ "field.string": { name: "n" } }] } },
         { "object.value": { name: "Bad", children: [fieldDecl] } },

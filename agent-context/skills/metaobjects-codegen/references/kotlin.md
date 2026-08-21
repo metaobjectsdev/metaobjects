@@ -129,7 +129,7 @@ wrapper (same column mapping, no write path). The `CREATE VIEW` DDL is emitted b
 Node `meta migrate` from the projection's `origin.*` children — `origin.passthrough`,
 `origin.aggregate` (`@agg` `count`/`sum`/`avg`/`min`/`max`, plus the #195 `any`/`all`
 quantifiers over a `@filter` and `collect` array-rollup with `@distinct`/`@orderBy`),
-`origin.collection`, `origin.computed` (`@expr`), `origin.first`; an object-level
+`origin.computed` (`@expr`), `origin.first`; an object-level
 `@filter` scopes the whole view's rows (#207 — lowers to the outer `WHERE`). Never
 hand-author the view SQL for a shape origins can express (an unmodeled view is unmanaged
 and drifts silently); carry a genuinely irreducible body (recursive CTE, window function,

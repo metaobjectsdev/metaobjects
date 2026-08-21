@@ -86,6 +86,25 @@ Create a directory; add `input/` and expectation files. No runner code changes �
 discovery is automatic. A new fixture a port cannot yet pass goes in that port's
 `conformance-expected-failures.json` ledger.
 
+## When a fixture is removed because its vocabulary was retired
+
+A corpus that stops exercising a path emits no diagnostic — removing a fixture is
+silent. So every removal records what it covered and where that coverage went.
+
+**FR-037 R2 (#336) — `origin.collection` retired to reserved-not-registered:**
+
+| Removed | What it covered | Where the coverage lives now |
+|---|---|---|
+| `origin-collection-simple` | the subtype parses + round-trips on a projection host | nothing to cover: the subtype is deregistered. Replaced by `error-origin-collection-retired`, which asserts the same declaration on the same legal host now fails `ERR_UNKNOWN_SUBTYPE` — the retirement is proved where the use was previously VALID |
+| `error-value-origin-collection` | #210 — an assembly origin is illegal on an `object.value` host | its three siblings, all present and green: `error-value-origin-aggregate`, `error-value-origin-computed`, `error-value-origin-first`. The rule is a property of the shared `ASSEMBLY_ORIGIN_SUBTYPES` constant, not of a per-subtype branch |
+
+**Coverage genuinely lost, stated rather than faked:** `flattened-kitchen-sink`
+dropped its `supplierBriefs` field, the corpus's only array-of-value-object
+carrying an origin. No surviving origin expresses a whole-object rollup along a
+relationship — `origin.aggregate @agg:collect` reduces a *column* via `@of`. That
+shape becomes expressible again when [#335](https://github.com/metaobjectsdev/metaobjects/issues/335)
+makes `@of` optional on `collect`; the fixture is the place to restore it.
+
 ## Generated fixtures (differential testing)
 
 `generated-*` directories are produced by the differential fixture generator

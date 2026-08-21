@@ -56,7 +56,7 @@ a renamed physical column).
 **Projections + entity read-views.** An `object.projection` (read-only `source.rdb`
 `@kind: view` child) gets a read-only Pydantic model from the `entity` generator; its
 `CREATE VIEW` DDL is emitted by the Node `meta migrate` from the projection's `origin.*`
-children (`passthrough` / `aggregate` / `collection` / `computed` / `first`) — never
+children (`passthrough` / `aggregate` / `computed` / `first`) — never
 hand-write the view SQL for a shape origins can express. An `object.entity` that adds a
 `@role: replica` `@kind: view` source alongside its writable `table` is a write-through
 **entity read-view** (#214): the generated read model carries the derived `origin.*`

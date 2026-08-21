@@ -76,15 +76,6 @@ public static class OriginSchema
             Description: "Ordering keys as 'field[:asc|desc]' over the related entity's fields; nulls sort last. On @agg:collect sets element order (non-distinct only)."),
     ];
 
-    private static readonly IReadOnlyList<AttrSchema> CollectionOriginAttrs =
-    [
-        new AttrSchema(
-            Name: OriginConstants.ORIGIN_COLLECTION_ATTR_VIA,
-            ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
-            Required: true,
-            Description: "Dotted relationship path the collection walks to produce an array of nested view-objects (e.g. 'Author.posts'), or a wildcard selector for a package-spanning collection (e.g. '*.User')."),
-    ];
-
     // #195 — computed: a row-level value via a structured @expr tree (attr.expression).
     private static readonly IReadOnlyList<AttrSchema> ComputedOriginAttrs =
     [
@@ -126,7 +117,7 @@ public static class OriginSchema
 
     /// <summary>
     /// Attrs per origin subtype. base has none; passthrough, aggregate,
-    /// collection, computed (#195), and first (#195) carry their respective attrs.
+    /// computed (#195), and first (#195) carry their respective attrs.
     /// </summary>
     public static readonly IReadOnlyDictionary<string, IReadOnlyList<AttrSchema>> OriginAttrsMap =
         new Dictionary<string, IReadOnlyList<AttrSchema>>
@@ -134,7 +125,6 @@ public static class OriginSchema
             [BaseTypes.SUBTYPE_BASE]                       = [],
             [OriginConstants.ORIGIN_SUBTYPE_PASSTHROUGH]   = [.. PassthroughOriginAttrs],
             [OriginConstants.ORIGIN_SUBTYPE_AGGREGATE]     = [.. AggregateOriginAttrs],
-            [OriginConstants.ORIGIN_SUBTYPE_COLLECTION]    = [.. CollectionOriginAttrs],
             [OriginConstants.ORIGIN_SUBTYPE_COMPUTED]      = [.. ComputedOriginAttrs],
             [OriginConstants.ORIGIN_SUBTYPE_FIRST]         = [.. FirstOriginAttrs],
         };

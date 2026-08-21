@@ -14,7 +14,6 @@ import {
   ORIGIN_AGGREGATE_ATTR_AGG,
   ORIGIN_AGGREGATE_ATTR_OF,
   ORIGIN_AGGREGATE_ATTR_VIA,
-  ORIGIN_COLLECTION_ATTR_VIA,
   ORIGIN_COMPUTED_ATTR_EXPR,
   ORIGIN_FIRST_ATTR_OF,
   ORIGIN_FIRST_ATTR_VIA,
@@ -73,21 +72,6 @@ export class MetaAggregateOrigin extends MetaOrigin {
   get via(): string | undefined {
     // ADR-0039: own — origin.* never inherits (ADR-0029), so own is correct.
     const v = this.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA);
-    return typeof v === "string" ? v : undefined;
-  }
-}
-
-/**
- * Collection origin — the (array) field's value is a relationship-derived
- * array of nested view-objects (FR-004 R4). Carries `@via` (required): the
- * dotted relationship path the collection walks (e.g. "Author.posts"), or a
- * wildcard-prefixed selector for a package-spanning collection (e.g. "*.User").
- */
-export class MetaCollectionOrigin extends MetaOrigin {
-  /** The dotted relationship path (or wildcard selector) this collection is sourced from. */
-  get via(): string | undefined {
-    // ADR-0039: own — origin.* never inherits (ADR-0029), so own is correct.
-    const v = this.ownAttr(ORIGIN_COLLECTION_ATTR_VIA);
     return typeof v === "string" ? v : undefined;
   }
 }

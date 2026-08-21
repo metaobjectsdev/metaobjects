@@ -13,7 +13,7 @@ provider owns. This is the ownership lens over the same vocabulary
 
 Core metaobjects metamodel types and subtypes.
 
-**Owns (registers):** `attr.base`, `attr.boolean`, `attr.class`, `attr.double`, `attr.expression`, `attr.filter`, `attr.int`, `attr.intMap`, `attr.long`, `attr.properties`, `attr.string`, `field.base`, `field.boolean`, `field.currency`, `field.date`, `field.decimal`, `field.double`, `field.enum`, `field.float`, `field.inet`, `field.int`, `field.long`, `field.map`, `field.object`, `field.string`, `field.time`, `field.timestamp`, `field.uri`, `field.uuid`, `identity.primary`, `identity.reference`, `identity.secondary`, `layout.base`, `layout.dataGrid`, `object.base`, `object.entity`, `object.projection`, `object.value`, `origin.aggregate`, `origin.base`, `origin.collection`, `origin.computed`, `origin.first`, `origin.passthrough`, `relationship.aggregation`, `relationship.association`, `relationship.base`, `relationship.composition`, `source.base`, `source.rdb`, `template.base`, `template.output`, `template.prompt`, `template.toolcall`, `validator.array`, `validator.atLeastOne`, `validator.base`, `validator.comparison`, `validator.length`, `validator.numeric`, `validator.presentIff`, `validator.regex`, `validator.required`, `validator.requiredWhen`, `view.base`, `view.currency`
+**Owns (registers):** `attr.base`, `attr.boolean`, `attr.class`, `attr.double`, `attr.expression`, `attr.filter`, `attr.int`, `attr.intMap`, `attr.long`, `attr.properties`, `attr.string`, `field.base`, `field.boolean`, `field.currency`, `field.date`, `field.decimal`, `field.double`, `field.enum`, `field.float`, `field.inet`, `field.int`, `field.long`, `field.map`, `field.object`, `field.string`, `field.time`, `field.timestamp`, `field.uri`, `field.uuid`, `identity.primary`, `identity.reference`, `identity.secondary`, `layout.base`, `layout.dataGrid`, `object.base`, `object.entity`, `object.projection`, `object.value`, `origin.aggregate`, `origin.base`, `origin.computed`, `origin.first`, `origin.passthrough`, `relationship.aggregation`, `relationship.association`, `relationship.base`, `relationship.composition`, `source.base`, `source.rdb`, `template.base`, `template.output`, `template.prompt`, `template.toolcall`, `validator.array`, `validator.atLeastOne`, `validator.base`, `validator.comparison`, `validator.length`, `validator.numeric`, `validator.presentIff`, `validator.regex`, `validator.required`, `validator.requiredWhen`, `view.base`, `view.currency`
 
 **Contributes attributes:**
 
@@ -32,7 +32,6 @@ Core metaobjects metamodel types and subtypes.
 - `object.entity`: `@discriminator`, `@discriminatorValue`
 - `object.projection`: `@filter`
 - `origin.aggregate`: `@agg`, `@distinct`, `@filter`, `@of`, `@orderBy`, `@via`
-- `origin.collection`: `@via`
 - `origin.computed`: `@expr`
 - `origin.first`: `@filter`, `@of`, `@orderBy`, `@via`
 - `origin.passthrough`: `@convert`, `@from`, `@via`

@@ -26,9 +26,13 @@ async function loadMultiPackageRoot(files: { package: string; children: unknown[
 const model = [
   { "object.value": { name: "PostBrief", children: [{ "field.string": { name: "title", "@required": true } }] } },
   {
-    // #210 — origin.collection is an ASSEMBLY origin: its host is a sourceless
-    // object.projection (a value may host only origin.passthrough); the nested
-    // element target (PostBrief) stays an object.value.
+    // The host stays a sourceless object.projection (#210 — a value may host only
+    // origin.passthrough). `posts` carried an `origin.collection @via "Author.posts"`
+    // until FR-037 R2 retired that subtype (#336); a whole-object rollup along a
+    // relationship has no surviving origin (@agg:collect reduces a COLUMN via @of),
+    // so the declared shape now stands alone. Re-expressible once #335 makes
+    // @agg:collect's @of optional — the payload SHAPE this file asserts is
+    // unaffected either way, because payload typing is declared-authoritative (#270).
     "object.projection": {
       name: "AuthorBrief",
       children: [
@@ -40,7 +44,6 @@ const model = [
             "isArray": true,
             "@objectRef": "PostBrief",
             "@required": true,
-            children: [{ "origin.collection": { "@via": "Author.posts" } }],
           },
         },
       ],
@@ -138,6 +141,9 @@ describe("payload-codegen — typed payload interface (types only, no class/VO)"
           children: [
             { "field.long": { name: "id" } },
             { "field.string": { name: "internalNotes" } },
+            // An OBJECT-typed column, so the origins below name a target the payload
+            // closure genuinely could walk (see the FullThumb note in the assertions).
+            { "field.object": { name: "thumb", "@objectRef": "FullThumb" } },
           ],
         },
       },
@@ -148,7 +154,13 @@ describe("payload-codegen — typed payload interface (types only, no class/VO)"
         },
       },
       {
-        // #210 — assembly origins (the two origin.collection fields) re-host the
+        "object.value": {
+          name: "FullThumb",
+          children: [{ "field.string": { name: "internalUrl", "@required": true } }],
+        },
+      },
+      {
+        // #210 — assembly origins (the two origin.aggregate fields) re-host the
         // payload on a sourceless object.projection. `displayName` extends-binds to
         // Source so the no-@via passthrough below can derive its base entity.
         "object.projection": {
@@ -163,22 +175,23 @@ describe("payload-codegen — typed payload interface (types only, no class/VO)"
                 children: [{ "origin.passthrough": { "@from": "Source.displayName", "@convert": true } }],
               },
             },
-            // Declared field.string carrying origin.collection — stays a scalar string.
+            // Declared field.string carrying a COUNT — the aggregate's own type is
+            // numeric, and the declared string wins (#270's `@agg count` arm).
             {
               "field.string": {
                 name: "summary",
                 "@required": true,
-                children: [{ "origin.collection": { "@via": "Author.posts" } }],
+                children: [{ "origin.aggregate": { "@agg": "count", "@of": "Post.id", "@via": "Author.posts" } }],
               },
             },
-            // Declared curated @objectRef + isArray with a DISAGREEING @via at the fuller entity.
+            // Declared curated @objectRef + isArray with a DISAGREEING @of at a fuller VO.
             {
               "field.object": {
                 name: "posts",
                 isArray: true,
                 "@objectRef": "Highlight",
                 "@required": true,
-                children: [{ "origin.collection": { "@via": "Author.posts" } }],
+                children: [{ "origin.aggregate": { "@agg": "collect", "@of": "Post.thumb", "@via": "Author.posts" } }],
               },
             },
           ],
@@ -189,13 +202,20 @@ describe("payload-codegen — typed payload interface (types only, no class/VO)"
     // Declared field.int wins over the string passthrough.
     expect(out).toContain("alias: number;");
     expect(out).not.toContain("alias: string;");
-    // Declared field.string wins over origin.collection — no list, no via-target type.
+    // Declared field.string wins over the numeric count — no list, no origin-derived type.
     expect(out).toContain("summary: string;");
-    // Declared curated @objectRef + isArray wins over the disagreeing @via walk.
+    // Declared curated @objectRef + isArray wins over the disagreeing @of walk.
     expect(out).toContain("posts: Highlight[];");
     expect(out).toContain("export interface Highlight {");
     expect(out).toContain("snippet: string;");
-    // The ignored @via entity never enters the closure.
+    // The ignored origin targets never enter the closure. FullThumb is the sharp one:
+    // it is an object.value reached through `@of`, i.e. exactly the node KIND the
+    // closure does walk — so this rules out an origin edge, not merely a type mismatch.
+    // (Before FR-037 R2 this arm used `origin.collection @via`, whose target was an
+    // ENTITY the closure would never walk regardless; the retirement made the pin
+    // stronger, not weaker.)
+    expect(out).not.toContain("export interface FullThumb");
+    expect(out).not.toContain("internalUrl");
     expect(out).not.toContain("export interface Post");
     expect(out).not.toContain("internalNotes");
   });

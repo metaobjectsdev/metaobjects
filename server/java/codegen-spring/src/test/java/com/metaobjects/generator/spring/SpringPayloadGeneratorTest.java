@@ -384,12 +384,15 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
     }
 
     @Test
-    public void originCollectionIgnoredNoNestedPayloadEmitted() throws Exception {
-        // #270 — PayloadVo.posts is DECLARED `field.string` but carries
-        // `origin.collection @via "Author.posts"`. Expected:
+    public void viaCarryingOriginIgnoredNoNestedPayloadEmitted() throws Exception {
+        // #270 — PayloadVo.posts is DECLARED `field.string` but carries a
+        // `@via`-carrying origin walking to Post. Expected:
         //   - the DECLARED scalar type (`String posts`) — no List<PostPayload>
         //   - NO PostPayload.java is emitted (a non-object field contributes no
         //     nested payload record; the @via target is never reached)
+        // Expressed with `origin.aggregate @agg:count` since FR-037 R2 retired
+        // `origin.collection` (#336); count's own type is numeric, so the declared
+        // String still has an origin-derived type to beat.
         String fixture = """
             {
               "metadata.root": { "package": "acme::demo", "children": [
@@ -404,7 +407,8 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
                 ] } },
                 { "object.projection": { "name": "AuthorDetail", "children": [
                     { "field.string": { "name": "posts", "children": [
-                        { "origin.collection": { "@via": "Author.posts" } }
+                        { "origin.aggregate": { "@agg": "count", "@of": "Post.title",
+                            "@via": "Author.posts" } }
                     ] } }
                 ] } },
                 { "template.prompt": { "name": "AuthorView",
@@ -425,7 +429,7 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
         Path parentFile = outDir.resolve("acme/demo/prompts/AuthorViewPayload.java");
         Path nestedFile = outDir.resolve("acme/demo/prompts/PostPayload.java");
         assertTrue("expected " + parentFile, Files.exists(parentFile));
-        assertFalse("PostPayload.java must NOT be emitted (origin.collection is ignored)",
+        assertFalse("PostPayload.java must NOT be emitted (the origin child is ignored)",
             Files.exists(nestedFile));
 
         String parentSrc = Files.readString(parentFile);
@@ -436,9 +440,9 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
     }
 
     @Test
-    public void originCollectionIgnoredAcrossMultipleTemplates() throws Exception {
+    public void viaCarryingOriginIgnoredAcrossMultipleTemplates() throws Exception {
         // #270 — two templates whose payload fields carry the same
-        // `origin.collection` both emit the declared scalar; NO nested
+        // `@via`-carrying origin both emit the declared scalar; NO nested
         // PostPayload record exists anywhere in the run.
         String fixture = """
             {
@@ -454,12 +458,14 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
                 ] } },
                 { "object.projection": { "name": "AuthorDetail", "children": [
                     { "field.string": { "name": "posts", "children": [
-                        { "origin.collection": { "@via": "Author.posts" } }
+                        { "origin.aggregate": { "@agg": "count", "@of": "Post.title",
+                            "@via": "Author.posts" } }
                     ] } }
                 ] } },
                 { "object.projection": { "name": "AuthorOverview", "children": [
                     { "field.string": { "name": "posts", "children": [
-                        { "origin.collection": { "@via": "Author.posts" } }
+                        { "origin.aggregate": { "@agg": "count", "@of": "Post.title",
+                            "@via": "Author.posts" } }
                     ] } }
                 ] } },
                 { "template.prompt": { "name": "DetailView",
@@ -542,12 +548,15 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
     }
 
     @Test
-    public void scalarArrayWithDisagreeingOriginCollectionStillEmitsListOfElementType() throws Exception {
+    public void scalarArrayWithDisagreeingOriginStillEmitsListOfElementType() throws Exception {
         // #270 fix round 2 — pins the regression shape specifically: a `field.string
-        // isArray:true` carrying a disagreeing `origin.collection @via` previously took
+        // isArray:true` carrying a disagreeing collection-shaped origin previously took
         // the collection arm (List<PostPayload>); post-#270 it must type from the
         // DECLARATION as `java.util.List<String>` — never a bare `String` (the interim
-        // regression) and never the @via entity's payload.
+        // regression) and never the origin target's payload. `@agg:collect` is the
+        // surviving collection-shaped origin after FR-037 R2 retired
+        // `origin.collection` (#336); it preserves the ELEMENT type, so the @of column
+        // is a String and the disagreement under test is the nested-payload walk.
         String fixture = """
             {
               "metadata.root": { "package": "acme::demo", "children": [
@@ -562,7 +571,8 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
                 ] } },
                 { "object.projection": { "name": "TagList", "children": [
                     { "field.string": { "name": "tags", "isArray": true, "children": [
-                        { "origin.collection": { "@via": "Author.posts" } }
+                        { "origin.aggregate": { "@agg": "collect",
+                            "@of": "Post.internalNotes", "@via": "Author.posts" } }
                     ] } }
                 ] } },
                 { "template.prompt": { "name": "TagView",
@@ -587,21 +597,25 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
             src.contains("java.util.List<String> tags"));
         assertFalse("must NOT drop to a bare String; saw:\n" + src,
             src.contains(" String tags"));
-        assertFalse("must NOT take the @via entity's payload type; saw:\n" + src,
+        assertFalse("must NOT take the origin target's payload type; saw:\n" + src,
             src.contains("PostPayload"));
         assertFalse("PostPayload.java must NOT be emitted",
             Files.exists(outDir.resolve("acme/demo/prompts/PostPayload.java")));
     }
 
     @Test
-    public void disagreeingOriginCollectionDeclaredObjectRefWins() throws Exception {
+    public void disagreeingOriginDeclaredObjectRefWins() throws Exception {
         // #270 load-bearing disagreement test — the payload field DECLARES a curated
         // value-object (`field.object @objectRef: Highlight, isArray: true`) AND carries
-        // an `origin.collection @via "Author.posts"` walking to a DIFFERENT, fuller
-        // entity (Post). Expected:
+        // an `origin.aggregate @agg:collect` whose `@of` names a DIFFERENT, fuller
+        // value object (FullThumb). Expected:
         //   (a) `java.util.List<HighlightPayload> posts` — the DECLARATION wins;
-        //   (b) HighlightPayload.java (the curated VO) is emitted, PostPayload.java is
-        //       NOT — the silent payload-bloat leak the prompt pillar exists to prevent.
+        //   (b) HighlightPayload.java (the curated VO) is emitted, FullThumbPayload.java
+        //       is NOT — the payload-bloat leak the prompt pillar exists to prevent.
+        // Before FR-037 R2 this used `origin.collection @via`, whose target was an
+        // ENTITY (a node kind the closure never walks). `@of` naming an object COLUMN
+        // reaches an object.value — exactly the node kind the closure DOES walk — so
+        // the retirement made this pin sharper, not weaker.
         String fixture = """
             {
               "metadata.root": { "package": "acme::demo", "children": [
@@ -614,15 +628,20 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
                     { "field.long":   { "name": "id" } },
                     { "field.string": { "name": "title" } },
                     { "field.string": { "name": "body" } },
-                    { "field.string": { "name": "internalNotes" } }
+                    { "field.string": { "name": "internalNotes" } },
+                    { "field.object": { "name": "thumb", "@objectRef": "FullThumb" } }
                 ] } },
                 { "object.value": { "name": "Highlight", "children": [
                     { "field.string": { "name": "snippet" } }
                 ] } },
+                { "object.value": { "name": "FullThumb", "children": [
+                    { "field.string": { "name": "internalUrl" } }
+                ] } },
                 { "object.projection": { "name": "AuthorDigest", "children": [
                     { "field.object": { "name": "posts", "@objectRef": "Highlight",
                         "isArray": true, "children": [
-                        { "origin.collection": { "@via": "Author.posts" } }
+                        { "origin.aggregate": { "@agg": "collect", "@of": "Post.thumb",
+                            "@via": "Author.posts" } }
                     ] } }
                 ] } },
                 { "template.prompt": { "name": "AuthorDigestView",
@@ -642,25 +661,33 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
 
         Path parentFile = outDir.resolve("acme/demo/prompts/AuthorDigestViewPayload.java");
         Path curatedFile = outDir.resolve("acme/demo/prompts/HighlightPayload.java");
+        Path originTargetFile = outDir.resolve("acme/demo/prompts/FullThumbPayload.java");
         Path entityFile = outDir.resolve("acme/demo/prompts/PostPayload.java");
         assertTrue("expected " + parentFile, Files.exists(parentFile));
         assertTrue("expected curated " + curatedFile, Files.exists(curatedFile));
+        assertFalse("FullThumbPayload.java (the @of target — an object.value, i.e. exactly "
+                + "the node kind the closure DOES walk) must NOT be emitted",
+            Files.exists(originTargetFile));
         assertFalse("PostPayload.java (the @via entity) must NOT be emitted",
             Files.exists(entityFile));
 
         String parentSrc = Files.readString(parentFile);
-        // (a) DECLARED wins: @objectRef + isArray, not the @via walk.
+        // (a) DECLARED wins: @objectRef + isArray, not the origin walk.
         assertTrue("expected `java.util.List<HighlightPayload> posts`; saw:\n" + parentSrc,
             parentSrc.contains("java.util.List<HighlightPayload> posts"));
+        assertFalse("parent must NOT reference FullThumbPayload; saw:\n" + parentSrc,
+            parentSrc.contains("FullThumbPayload"));
         assertFalse("parent must NOT reference PostPayload; saw:\n" + parentSrc,
             parentSrc.contains("PostPayload"));
 
         String curatedSrc = Files.readString(curatedFile);
-        // (b) the closure emits the curated VO's shape, not the fuller entity's.
+        // (b) the closure emits the curated VO's shape, not the origin target's.
         assertTrue("expected `public record HighlightPayload(`; saw:\n" + curatedSrc,
             curatedSrc.contains("public record HighlightPayload("));
         assertTrue("expected `String snippet`; saw:\n" + curatedSrc,
             curatedSrc.contains("String snippet"));
+        assertFalse("curated record must NOT carry the origin target's fields; saw:\n" + curatedSrc,
+            curatedSrc.contains("internalUrl"));
         assertFalse("curated record must NOT carry the entity's fields; saw:\n" + curatedSrc,
             curatedSrc.contains("internalNotes"));
     }
@@ -698,19 +725,24 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
         Files.writeString(fxDir.resolve("meta.app.json"), """
             {
               "metadata.root": { "package": "acme::app", "children": [
+                { "object.value": { "name": "Attachment", "children": [
+                    { "field.string": { "name": "url" } }
+                ] } },
                 { "object.entity": { "name": "Author", "children": [
                     { "field.long": { "name": "id" } },
-                    { "relationship.aggregation": { "name": "posts",
-                        "@objectRef": "Post", "@cardinality": "many" } }
+                    { "relationship.aggregation": { "name": "headline",
+                        "@objectRef": "Post", "@cardinality": "one" } }
                 ] } },
                 { "object.entity": { "name": "Post", "children": [
                     { "field.long":   { "name": "id" } },
-                    { "field.string": { "name": "internalNotes" } }
+                    { "field.string": { "name": "internalNotes" } },
+                    { "field.object": { "name": "attachment", "@objectRef": "Attachment" } }
                 ] } },
                 { "object.projection": { "name": "Digest", "children": [
                     { "field.object": { "name": "fromAlpha",
                         "@objectRef": "acme::alpha::Note", "children": [
-                        { "origin.collection": { "@via": "Author.posts" } }
+                        { "origin.passthrough": { "@from": "Post.attachment",
+                            "@via": "Author.headline" } }
                     ] } },
                     { "field.object": { "name": "fromBeta",
                         "@objectRef": "acme::beta::Note" } }
@@ -740,6 +772,10 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
             Files.exists(prompts.resolve("AcmeBetaNotePayload.java")));
         assertFalse("must NOT emit a clobbered bare NotePayload.java",
             Files.exists(prompts.resolve("NotePayload.java")));
+        assertFalse("must NOT emit AttachmentPayload.java — the @from target is an "
+                + "object.value, the kind the closure DOES walk, so it must be excluded "
+                + "on the EDGE rather than on the node kind",
+            Files.exists(prompts.resolve("AttachmentPayload.java")));
         assertFalse("must NOT emit PostPayload.java (the ignored @via entity)",
             Files.exists(prompts.resolve("PostPayload.java")));
         String digest = Files.readString(prompts.resolve("DigestDocPayload.java"));
@@ -750,15 +786,15 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
     }
 
     /**
-     * #270 / ADR-0044 name-map gate (negative direction) — a field carrying ONLY
-     * {@code origin.collection} (a non-object field) contributes NOTHING to the
-     * name-map closure. The {@code @via} walk reaches {@code acme::beta::Note},
-     * which shares a bare short name with the declared {@code acme::alpha::Note};
-     * were the retired collection edge still in the closure, the two would collide
-     * and both would qualify. Instead the declared Note stays BARE.
+     * #270 / ADR-0044 name-map gate (negative direction) — a NON-object field
+     * carrying ONLY an origin contributes NOTHING to the name-map closure. The
+     * {@code @via} walk reaches {@code acme::beta::Note}, which shares a bare short
+     * name with the declared {@code acme::alpha::Note}; were an origin edge in the
+     * closure, the two would collide and both would qualify. Instead the declared
+     * Note stays BARE.
      */
     @Test
-    public void originCollectionOnlyFieldContributesNothingToNameMap() throws Exception {
+    public void originOnlyFieldContributesNothingToNameMap() throws Exception {
         Path fxDir = tempFolder.newFolder("xpkg-origin-neg-fx").toPath();
         Files.writeString(fxDir.resolve("meta.alpha.json"), """
             {
@@ -790,7 +826,8 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
                     { "field.object": { "name": "fromAlpha",
                         "@objectRef": "acme::alpha::Note" } },
                     { "field.string": { "name": "posts", "children": [
-                        { "origin.collection": { "@via": "Author.notes" } }
+                        { "origin.aggregate": { "@agg": "count",
+                            "@of": "acme::beta::Note.betaText", "@via": "Author.notes" } }
                     ] } }
                 ] } },
                 { "template.output": { "name": "DigestDoc",
@@ -886,8 +923,8 @@ public class SpringPayloadGeneratorTest extends SharedRegistryTestBase {
 
     @Test
     public void fieldObjectIsArrayEmitsListType() throws Exception {
-        // A field.object with isArray:true must emit `java.util.List<<Target>Payload>`,
-        // mirroring origin.collection. Nested payload is emitted once.
+        // A field.object with isArray:true must emit `java.util.List<<Target>Payload>`.
+        // Nested payload is emitted once.
         String fixture = """
             {
               "metadata.root": { "package": "acme::ai", "children": [

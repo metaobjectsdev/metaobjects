@@ -11,13 +11,20 @@ namespace MetaObjects.Persistence.Origin;
 /// child of `field`: it says "this field's value comes from there."
 ///   passthrough: from &lt;Entity.field&gt; [via &lt;relationship path&gt;]
 ///   aggregate:   &lt;agg&gt; of &lt;Entity.field&gt; via &lt;relationship path&gt;
-///   collection:  a relationship-derived array of nested view-objects (FR-004 R4)
+///   computed:    a row-level expression over the base entity's own fields
+///   first:       one related row selected by an ordering, projecting a column
 /// </summary>
 public static class OriginConstants
 {
     public const string ORIGIN_SUBTYPE_PASSTHROUGH = "passthrough";
     public const string ORIGIN_SUBTYPE_AGGREGATE   = "aggregate";
-    public const string ORIGIN_SUBTYPE_COLLECTION  = "collection";
+    // FR-037 R2 — `collection` is RESERVED, NOT REGISTERED. It duplicated
+    // `origin.aggregate @agg: collect` on a strictly smaller attr set (@via only),
+    // and nothing dispatched on it: its last real consumer, the payload-VO typing
+    // edge, was deleted in 0.20.16 (#270) for being actively wrong. Re-entry bar
+    // (ADR-0007 Amendment 2): a member enters the registry only when a shipping
+    // consumer dispatches on it. The designated re-entry shape is `@agg: collect`
+    // with `@of` made OPTIONAL — filed as #335 — NOT a restored subtype.
     // #195 — computed: a row-level value from the base entity's own fields via a
     // structured @expr tree. first: the single related row picked by @orderBy
     // along @via, projecting @of (argmax-then-project).
@@ -29,7 +36,6 @@ public static class OriginConstants
         BaseTypes.SUBTYPE_BASE,
         ORIGIN_SUBTYPE_PASSTHROUGH,
         ORIGIN_SUBTYPE_AGGREGATE,
-        ORIGIN_SUBTYPE_COLLECTION,
         ORIGIN_SUBTYPE_COMPUTED,
         ORIGIN_SUBTYPE_FIRST,
     ];
@@ -44,7 +50,6 @@ public static class OriginConstants
     {
         ORIGIN_SUBTYPE_AGGREGATE,
         ORIGIN_SUBTYPE_COMPUTED,
-        ORIGIN_SUBTYPE_COLLECTION,
         ORIGIN_SUBTYPE_FIRST,
     };
 
@@ -79,11 +84,6 @@ public static class OriginConstants
     public const string ORIGIN_FIRST_ATTR_OF     = "of";
     public const string ORIGIN_FIRST_ATTR_VIA    = "via";
     public const string ORIGIN_FIRST_ATTR_FILTER = "filter";
-
-    // collection attrs — a relationship-derived array of nested view-objects.
-    // @via is the dotted relationship path (or a wildcard selector like "*.User"
-    // for a package-spanning collection).
-    public const string ORIGIN_COLLECTION_ATTR_VIA = "via";
 
     // aggregate function vocabulary.
     //

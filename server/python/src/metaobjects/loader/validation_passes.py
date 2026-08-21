@@ -2082,8 +2082,8 @@ def _validate_origin_paths(
             )
 
             # #210 — assembly origins live on projections. A value-hosted field
-            # may not carry origin.aggregate / origin.computed / origin.collection
-            # / origin.first: a value is constructed — by a caller or by embedding
+            # may not carry origin.aggregate / origin.computed / origin.first:
+            # a value is constructed — by a caller or by embedding
             # — never assembled from a backing store. origin.passthrough STAYS
             # legal on a value (FR-015 parameter lineage; the B5 exemption).
             if is_value_host and origin.sub_type in ASSEMBLY_ORIGIN_SUBTYPES:

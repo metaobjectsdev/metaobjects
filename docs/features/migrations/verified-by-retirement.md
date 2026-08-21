@@ -73,6 +73,47 @@ history, and history is not what a requirement is for.
 }}
 ```
 
+#### When nothing survives to carry the note
+
+The hardest case, and the one worth naming explicitly. A **prompt** estate feels this
+first, for a reason one adopting ledger states better than we would:
+
+> A retired entity leaves a table behind. A retired prompt leaves nothing — the only
+> trace is a `.mustache` that stops being referenced and a spec that still describes it
+> as current.
+
+That is a fair objection to "just delete it", and the answer is not "the absence stops
+mattering". It is that **hierarchy is nesting** (a requirement has no `parent` string;
+it is a child node), so a retired leaf almost always has a surviving *parent* — and the
+parent is the carrier:
+
+```jsonc
+{ "requirement.functional": {
+    "name": "Narration", "@level": 3, "@status": "live",
+    "@statement": "The narrator describes outcomes the player can act on",
+    "@violation": "Narration a player cannot act on",
+    "notes": "The `sceneRecap` prompt under this requirement was retired 2026-06 and left no artifact behind — its template was deleted with it. Do not reintroduce a recap turn: it restated state the player already had and consumed a third of the budget.",
+    "children": [ /* the surviving child requirements */ ]
+}}
+```
+
+Three rules for choosing where it goes:
+
+1. **A surviving parent or sibling takes the `notes` line.** Prefer the nearest
+   surviving ancestor — it is the node a reader arrives at when asking about that area.
+2. **If a whole subtree went, the deletion commit is the record.** `git log -- <ledger>`
+   with a message naming what went and why is strictly better than a stale entry: it is
+   dated, attributed, and cannot drift out of agreement with the model.
+3. **Never keep the node with a falsified status.** Re-labelling a gone capability
+   `live` or `partial` to preserve the prose puts a false statement into the set `verify`
+   reasons over, and `@implementedBy` refs that can never resolve come back with it —
+   which is precisely the bug class §3 below describes this change as deleting.
+
+A `planned` entry is **not** a substitute. `planned` means intended-and-not-yet-built, is
+exempt from the architectural universality check, and never counts toward object
+coverage — using it to mean "was built, then removed" reintroduces the exact ambiguity
+this cut removed.
+
 ### 3. Expect the dangling references those statuses were hiding
 
 This is the part that surprises people, and it is the reason the change is worth making.

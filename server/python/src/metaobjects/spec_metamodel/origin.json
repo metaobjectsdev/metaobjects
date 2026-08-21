@@ -34,15 +34,6 @@
     },
     {
       "type": "origin",
-      "subType": "collection",
-      "description": "A relationship-derived array of nested view-objects: walks @via to produce the collection (e.g. 'Author.posts'), or a wildcard selector for a package-spanning collection.",
-      "whenToUse": "A projection needs an array of nested child view-objects (a parent with its children inline). Declare it instead of hand-assembling the nested query + mapping.",
-      "children": [
-        { "type": "attr", "subType": "string", "name": "via", "min": 1, "max": 1, "description": "Dotted relationship path the collection walks to produce an array of nested view-objects (e.g. 'Author.posts'), or a wildcard selector for a package-spanning collection (e.g. '*.User')." }
-      ]
-    },
-    {
-      "type": "origin",
       "subType": "computed",
       "description": "A row-level value computed from the base entity's own fields via a structured expression tree (@expr). No related rows, no @via. Read-only; the expression's inferred type must equal the field's declared subType.",
       "whenToUse": "A projection field is a cheap derived value over the base row itself (e.g. 'payload IS NOT NULL' to avoid shipping a heavy column). Declare the expression tree instead of hand-writing the derived SELECT column.",

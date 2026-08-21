@@ -118,7 +118,7 @@ import static org.junit.Assert.assertTrue;
  * <p><strong>SP-G Unit 6a reconciled</strong> (registration-only structural items):
  * required-ness flips ({@code identity.primary/secondary/reference.fields},
  * {@code identity.reference.references}, {@code origin.aggregate.agg/of/via},
- * {@code origin.collection.via}, {@code origin.passthrough.from},
+ * {@code origin.passthrough.from},
  * {@code template.output.payloadRef} now {@code required:true}); base→leaf placement
  * ({@code source.*}/{@code template.*}/{@code origin.*} shared attrs moved off the
  * abstract base onto the concrete subtypes so each base row is attr-free and the

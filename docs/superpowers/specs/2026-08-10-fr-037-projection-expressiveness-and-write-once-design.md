@@ -396,6 +396,14 @@ it replaces, no shipping consumer dispatches on. The same Amendment-2 bar that r
 `collection` says the fold-in waits. Recommendation: retire now, and record the
 `@of`-optional fold-in as the designated re-entry form.
 
+**Filed 2026-08-21 as [#335](https://github.com/metaobjectsdev/metaobjects/issues/335)**, with
+the design worked out. It is **additive**, not breaking — `@of` is already `required: false`
+in the registry and the constraint lives in validation, so relaxing it makes previously-invalid
+metadata valid. It therefore does NOT need the pre-1.0 breaking slot, and retiring
+`origin.collection` without it costs adopters nothing functional: nothing ever dispatched on
+the subtype. The issue also satisfies the Amendment-2 bar properly, by shipping the CONSUMER
+(the view lowering) rather than the vocabulary alone.
+
 **Considered and REJECTED — also merging `origin.first` into `origin.aggregate`** (so
 it is not re-litigated): `first`'s attrs are exactly `aggregate`'s minus
 `@agg`/`@distinct`, and both reduce a `@via` set to one value per host row — but

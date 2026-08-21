@@ -48,6 +48,31 @@ Core attr: **`@fields`** — an ordered field-name list (single or composite), r
 
 Each reserved subtype has genuinely distinct behavior and attributes, which is why it earns a subtype designation under ADR-0037 — but only `index.lookup` enters the registry now.
 
+**The reserved-not-registered treatment, as a reusable pattern.** This section is
+the project's reference application of it, and it has since been applied twice more
+— both times to REMOVE registered vocabulary rather than to withhold new vocabulary:
+
+| Applied to | Cut | Why it failed the bar |
+|---|---|---|
+| `source.rdb @role` members `index` / `cache` / `publish` / `mirror` | 0.21.0 (#212) | ADR-0007 Amendment 2 — every read of `@role` in all five ports was an equality test against `primary`; no port ever built the role-routing dispatch |
+| `origin.collection` | 0.24.0 ([#336](https://github.com/metaobjectsdev/metaobjects/issues/336), FR-037 R2) | it duplicated `origin.aggregate @agg: collect` on a strictly smaller attr set (`@via` only — no `@filter`, no `@orderBy`, no `@distinct`), and nothing dispatched on it: its last real consumer, the payload-VO typing edge, was deleted in 0.20.16 (#270) for being actively **wrong** — it discarded the field's declared `@objectRef` and substituted the `@via` relationship's target entity |
+
+The governing re-entry bar in every case is ADR-0007 Amendment 2: *a member enters
+the registry only when a shipping consumer dispatches on it.* Reserving is cheap
+(one paragraph for a future adopter) and re-entry is additive; removal after 1.0
+would be a major-version event, which is why these cuts ride the pre-1.0 window.
+
+`origin.collection` carries a **designated re-entry shape**, recorded so the next
+attempt does not re-derive it: `origin.aggregate @agg: collect` with `@of`
+**OPTIONAL** — absent meaning a whole-object rollup, typed by the field's declared
+`@objectRef` + `isArray` per the #270 declared-authoritative doctrine, never derived
+from the `@via` relationship's target. That is
+[#335](https://github.com/metaobjectsdev/metaobjects/issues/335), and it is
+**additive** (`@of` is already `required: false` in the manifest; the constraint
+lives in loader validation), so it needs no breaking slot. It clears the Amendment-2
+bar only because it ships the CONSUMER — the projection view lowering — rather than
+the vocabulary alone.
+
 ### 3. Physical RDB escapes — attributes, not subtypes
 
 The RDB-overfitted attrs remain attrs, contributed by the **db provider** (not core), registered on **both** `identity.secondary` and `index.lookup`:

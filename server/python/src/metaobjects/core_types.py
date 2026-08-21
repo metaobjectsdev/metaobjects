@@ -103,7 +103,6 @@ from .meta.persistence.origin.origin_constants import (
     ORIGIN_ATTR_ORDER_BY,
     ORIGIN_ATTR_VIA,
     ORIGIN_SUBTYPE_AGGREGATE,
-    ORIGIN_SUBTYPE_COLLECTION,
     ORIGIN_SUBTYPE_COMPUTED,
     ORIGIN_SUBTYPE_FIRST,
     ORIGIN_SUBTYPE_PASSTHROUGH,
@@ -850,21 +849,6 @@ core_provider.add(
             AttrSchema(name=ORIGIN_ATTR_VIA, value_type=ATTR_SUBTYPE_STRING, required=False),
             AttrSchema(name=ORIGIN_ATTR_ORDER_BY, value_type=ATTR_SUBTYPE_STRING, required=True, is_array=True),
             AttrSchema(name=ORIGIN_ATTR_FILTER, value_type=ATTR_SUBTYPE_FILTER, required=False),
-        ],
-        child_rules=[ChildRule(TYPE_ATTR, "*")],
-    )
-)
-
-# origin.collection — owned-array origin (@via required, points at a relationship path).
-# Mirrors Java's CollectionOrigin / TS origin.collection. Path traversal is intentionally
-# NOT enforced here (matches TS).
-core_provider.add(
-    TypeDefinition(
-        type=TYPE_ORIGIN,
-        sub_type=ORIGIN_SUBTYPE_COLLECTION,
-        factory=MetaOrigin,
-        attrs=[
-            AttrSchema(name=ORIGIN_ATTR_VIA, value_type=ATTR_SUBTYPE_STRING, required=True),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )

@@ -219,9 +219,12 @@ describe("requirement.* — it is metadata", () => {
               implementedBy: ["acme::shop::Order"]
 `), OTHER);
     expect(r.loadError ?? "").toContain("not one of the allowed values");
-    // The FULL set, `planned` included. Asserting the tail alone passed by
-    // substring luck and would have stayed green if `planned` were dropped.
-    expect(r.loadError ?? "").toContain("planned, live, partial, abandoned, superseded");
+    // The FULL set. Asserting a tail alone passes by substring luck and would stay
+    // green if a member were dropped — which is exactly what FR-038 (#337) did to
+    // `abandoned` and `superseded`, so the whole list is spelled out.
+    expect(r.loadError ?? "").toContain("planned, live, partial");
+    expect(r.loadError ?? "").not.toContain("abandoned");
+    expect(r.loadError ?? "").not.toContain("superseded");
   });
 
   test("THE LOADER rejects an undeclared attr on a requirement (ADR-0023)", async () => {

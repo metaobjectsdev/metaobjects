@@ -235,7 +235,6 @@ public static class CoreTypes
     {
         [ORIGIN_SUBTYPE_PASSTHROUGH] = (tid, n) => new MetaPassthroughOrigin(tid, n),
         [ORIGIN_SUBTYPE_AGGREGATE]   = (tid, n) => new MetaAggregateOrigin(tid, n),
-        [ORIGIN_SUBTYPE_COLLECTION]  = (tid, n) => new MetaCollectionOrigin(tid, n),
     };
 
     // -------------------------------------------------------------------------

@@ -37,7 +37,6 @@ from metaobjects.meta.persistence.origin.origin_constants import (
     ORIGIN_ATTR_OF,
     ORIGIN_ATTR_VIA,
     ORIGIN_SUBTYPE_AGGREGATE,
-    ORIGIN_SUBTYPE_COLLECTION,
     ORIGIN_SUBTYPE_PASSTHROUGH,
 )
 from metaobjects.meta.template import template_constants as tc
@@ -78,9 +77,11 @@ def _object_field(name: str, object_ref: str, *, is_array: bool = False) -> Meta
     return f
 
 
-def _passthrough(from_ref: str) -> MetaOrigin:
+def _passthrough(from_ref: str, *, via: str | None = None) -> MetaOrigin:
     o = MetaOrigin(TYPE_ORIGIN, ORIGIN_SUBTYPE_PASSTHROUGH, "from")
     o.set_attr(ORIGIN_ATTR_FROM, from_ref)
+    if via is not None:
+        o.set_attr(ORIGIN_ATTR_VIA, via)
     return o
 
 
@@ -89,12 +90,6 @@ def _aggregate(agg: str, *, of: str | None = None, via: str = "Parent.rel") -> M
     o.set_attr(ORIGIN_ATTR_AGG, agg)
     if of is not None:
         o.set_attr(ORIGIN_ATTR_OF, of)
-    o.set_attr(ORIGIN_ATTR_VIA, via)
-    return o
-
-
-def _collection(via: str) -> MetaOrigin:
-    o = MetaOrigin(TYPE_ORIGIN, ORIGIN_SUBTYPE_COLLECTION, "via")
     o.set_attr(ORIGIN_ATTR_VIA, via)
     return o
 
@@ -297,10 +292,14 @@ def test_origin_aggregate_sum_ignored_declared_type_wins() -> None:
     assert "totalCents: int" not in out
 
 
-def test_origin_collection_ignored_no_nested_payload_emitted() -> None:
-    """#270 — ``origin.collection @via`` on a NON-object field contributes no
+def test_via_carrying_origin_ignored_no_nested_payload_emitted() -> None:
+    """#270 — a ``@via``-carrying origin on a NON-object field contributes no
     nested payload class and no ``list[...]``; the declared ``field.string``
-    types ``str`` and the ``@via`` target VO is never reached."""
+    types ``str`` and the ``@via`` target VO is never reached.
+
+    Expressed with ``origin.aggregate @agg:count`` since FR-037 R2 retired
+    ``origin.collection`` (#336); count's own type is numeric, so the declared
+    ``str`` still has an origin-derived type to beat."""
     post = _value_object(
         "Post",
         [_field("title", fc.FIELD_SUBTYPE_STRING), _field("body", fc.FIELD_SUBTYPE_STRING)],
@@ -312,7 +311,13 @@ def test_origin_collection_ignored_no_nested_payload_emitted() -> None:
     )
     payload = _value_object(
         "AuthorSummary",
-        [_field_with_origin("posts", fc.FIELD_SUBTYPE_STRING, _collection("Author.posts"))],
+        [
+            _field_with_origin(
+                "posts",
+                fc.FIELD_SUBTYPE_STRING,
+                _aggregate("count", of="Post.title", via="Author.posts"),
+            )
+        ],
     )
     tmpl = _template("AuthorSummaryOutput", "AuthorSummary")
     root = _root([post, author, payload, tmpl])
@@ -325,9 +330,9 @@ def test_origin_collection_ignored_no_nested_payload_emitted() -> None:
     assert '__all__ = ["AuthorSummaryOutputPayload"]' in out
 
 
-def test_origin_collection_ignored_in_every_template_file() -> None:
+def test_via_carrying_origin_ignored_in_every_template_file() -> None:
     """#270 — each emitted payload module independently ignores origins: two
-    templates whose payload fields carry the same ``origin.collection`` both
+    templates whose payload fields carry the same ``@via``-carrying origin both
     emit the declared scalar type, and NEITHER file declares a nested
     ``PostPayload`` class."""
     post = _value_object(
@@ -340,11 +345,19 @@ def test_origin_collection_ignored_in_every_template_file() -> None:
     )
     summary_a = _value_object(
         "SummaryA",
-        [_field_with_origin("posts", fc.FIELD_SUBTYPE_STRING, _collection("Author.posts"))],
+        [
+            _field_with_origin(
+                "posts", fc.FIELD_SUBTYPE_STRING, _aggregate("count", of="Post.title", via="Author.posts")
+            )
+        ],
     )
     summary_b = _value_object(
         "SummaryB",
-        [_field_with_origin("posts", fc.FIELD_SUBTYPE_STRING, _collection("Author.posts"))],
+        [
+            _field_with_origin(
+                "posts", fc.FIELD_SUBTYPE_STRING, _aggregate("count", of="Post.title", via="Author.posts")
+            )
+        ],
     )
     tmpl_a = _template("SummaryAOutput", "SummaryA")
     tmpl_b = _template("SummaryBOutput", "SummaryB")
@@ -364,8 +377,8 @@ def test_origin_collection_ignored_in_every_template_file() -> None:
     assert "class PostPayload(BaseModel):" not in b_content
 
 
-def test_origin_collection_ignored_for_multiple_fields_in_one_file() -> None:
-    """#270 — multiple fields carrying ``origin.collection`` in one payload
+def test_via_carrying_origin_ignored_for_multiple_fields_in_one_file() -> None:
+    """#270 — multiple fields carrying a ``@via`` origin in one payload
     module all type from their declarations; no nested class is emitted."""
     post = _value_object("Post", [_field("title", fc.FIELD_SUBTYPE_STRING)])
     author = _entity(
@@ -376,8 +389,12 @@ def test_origin_collection_ignored_for_multiple_fields_in_one_file() -> None:
     summary = _value_object(
         "Combined",
         [
-            _field_with_origin("posts", fc.FIELD_SUBTYPE_STRING, _collection("Author.posts")),
-            _field_with_origin("drafts", fc.FIELD_SUBTYPE_STRING, _collection("Author.drafts")),
+            _field_with_origin(
+                "posts", fc.FIELD_SUBTYPE_STRING, _aggregate("count", of="Post.title", via="Author.posts")
+            ),
+            _field_with_origin(
+                "drafts", fc.FIELD_SUBTYPE_STRING, _aggregate("count", of="Post.title", via="Author.drafts")
+            ),
         ],
     )
     tmpl = _template("CombinedOutput", "Combined")
@@ -389,17 +406,25 @@ def test_origin_collection_ignored_for_multiple_fields_in_one_file() -> None:
     assert "drafts: str" in out
 
 
-def test_disagreeing_origin_collection_declared_object_ref_wins() -> None:
+def test_disagreeing_origin_declared_object_ref_wins() -> None:
     """#270 load-bearing disagreement test — a payload VO field declared
     ``field.object @objectRef: <CuratedVO> @isArray: true`` that ALSO carries an
-    ``origin.collection @via`` walking to a DIFFERENT, fuller entity must:
+    ``origin.aggregate @agg:collect`` whose ``@of`` names a DIFFERENT, fuller
+    value object must:
 
     (a) type as ``list[<CuratedVO>Payload]`` — the DECLARATION wins; and
-    (b) emit the CURATED VO's payload class in the closure, never the ``@via``
-        entity's — the payload-bloat leak the prompt pillar exists to prevent.
-    """
+    (b) emit the CURATED VO's payload class in the closure, never the origin
+        target's — the payload-bloat leak the prompt pillar exists to prevent.
+
+    Before FR-037 R2 this used ``origin.collection @via``, whose target was an
+    ENTITY (a node kind the closure never walks). ``@of`` naming an object
+    COLUMN reaches an ``object.value`` — exactly the node kind the closure DOES
+    walk — so the retirement made this pin sharper, not weaker."""
     highlight = _value_object(
         "Highlight", [_field("snippet", fc.FIELD_SUBTYPE_STRING)], package="acme::ai"
+    )
+    full_thumb = _value_object(
+        "FullThumb", [_field("internalUrl", fc.FIELD_SUBTYPE_STRING)], package="acme::ai"
     )
     post = _entity(
         "Post",
@@ -408,6 +433,7 @@ def test_disagreeing_origin_collection_declared_object_ref_wins() -> None:
             _field("title", fc.FIELD_SUBTYPE_STRING),
             _field("body", fc.FIELD_SUBTYPE_STRING),
             _field("internalNotes", fc.FIELD_SUBTYPE_STRING),
+            _object_field("thumb", "acme::ai::FullThumb"),
         ],
     )
     author = _entity(
@@ -416,17 +442,19 @@ def test_disagreeing_origin_collection_declared_object_ref_wins() -> None:
         relationships=[_relationship("posts", "Post")],
     )
     disagreeing = _object_field("posts", "acme::ai::Highlight", is_array=True)
-    disagreeing.add_child(_collection("Author.posts"))
+    disagreeing.add_child(_aggregate("collect", of="Post.thumb", via="Author.posts"))
     payload = _value_object("AuthorDigest", [disagreeing], package="acme::ai")
     tmpl = _template("AuthorDigestOutput", "AuthorDigest")
-    root = _root([highlight, post, author, payload, tmpl])
+    root = _root([highlight, full_thumb, post, author, payload, tmpl])
     out = render_payload_vo(tmpl, root)
     assert out is not None
-    # (a) DECLARED wins: @objectRef + @isArray, not the @via walk.
+    # (a) DECLARED wins: @objectRef + @isArray, not the origin walk.
     assert "posts: list[HighlightPayload]" in out
-    # (b) closure emits the curated VO's class, NOT the @via entity's.
+    # (b) closure emits the curated VO's class, NOT the origin target's.
     assert "class HighlightPayload(BaseModel):" in out
     assert "snippet: str" in out
+    assert "class FullThumbPayload(BaseModel):" not in out
+    assert "internalUrl" not in out
     assert "class PostPayload(BaseModel):" not in out
     assert "internalNotes" not in out
     assert '__all__ = ["AuthorDigestOutputPayload", "HighlightPayload"]' in out
@@ -436,7 +464,7 @@ def test_disagreeing_origin_collection_declared_object_ref_wins() -> None:
 # #270 / ADR-0044 name-map closure gates — the closure walks ONLY declared
 # `field.object @objectRef` -> object.value edges. Positive: an origin child on
 # a field.object does NOT remove its declared edge from the closure. Negative:
-# a field carrying ONLY origin.collection contributes nothing to the map.
+# a field carrying ONLY an origin contributes nothing to the map.
 # ---------------------------------------------------------------------------
 
 
@@ -449,9 +477,16 @@ def test_origin_carrying_object_field_stays_in_name_map_closure() -> None:
     would emit under a shadowed bare ``NotePayload``."""
     alpha = _value_object("Note", [_field("alphaText", fc.FIELD_SUBTYPE_STRING)], package="acme::alpha")
     beta = _value_object("Note", [_field("betaText", fc.FIELD_SUBTYPE_STRING)], package="acme::beta")
+    full_thumb = _value_object(
+        "FullThumb", [_field("internalUrl", fc.FIELD_SUBTYPE_STRING)], package="acme::app"
+    )
     post = _entity(
         "Post",
-        [_field("id", fc.FIELD_SUBTYPE_LONG), _field("internalNotes", fc.FIELD_SUBTYPE_STRING)],
+        [
+            _field("id", fc.FIELD_SUBTYPE_LONG),
+            _field("internalNotes", fc.FIELD_SUBTYPE_STRING),
+            _object_field("thumb", "acme::app::FullThumb"),
+        ],
     )
     author = _entity(
         "Author",
@@ -459,14 +494,14 @@ def test_origin_carrying_object_field_stays_in_name_map_closure() -> None:
         relationships=[_relationship("posts", "Post")],
     )
     from_alpha = _object_field("fromAlpha", "acme::alpha::Note")
-    from_alpha.add_child(_collection("Author.posts"))
+    from_alpha.add_child(_passthrough("Post.thumb"))
     digest = _value_object(
         "Digest",
         [from_alpha, _object_field("fromBeta", "acme::beta::Note")],
         package="acme::app",
     )
     tmpl = _template("DigestOut", "acme::app::Digest")
-    root = _root([alpha, beta, post, author, digest, tmpl])
+    root = _root([alpha, beta, full_thumb, post, author, digest, tmpl])
     out = render_payload_vo(tmpl, root)
     assert out is not None
     # Both colliding VOs package-qualify — the origin-carrying declared edge is
@@ -476,18 +511,20 @@ def test_origin_carrying_object_field_stays_in_name_map_closure() -> None:
     assert "class NotePayload(BaseModel):" not in out
     assert "fromAlpha: AcmeAlphaNotePayload | None = None" in out
     assert "fromBeta: AcmeBetaNotePayload | None = None" in out
-    # The ignored @via entity contributes nothing.
+    # The ignored origin target contributes nothing — FullThumb is an object.value
+    # reached through `@from`, i.e. exactly the node KIND the closure does walk.
+    assert "class FullThumbPayload(BaseModel):" not in out
+    assert "internalUrl" not in out
     assert "class PostPayload(BaseModel):" not in out
     assert "internalNotes" not in out
 
 
-def test_origin_collection_only_field_contributes_nothing_to_name_map() -> None:
-    """#270 / ADR-0044 gate (negative) — a field carrying ONLY
-    ``origin.collection`` (a non-object field) contributes NOTHING to the
-    name-map closure. Its ``@via`` walk reaches ``acme::beta::Note``, which
-    shares a bare short name with the declared ``acme::alpha::Note``; were the
-    retired collection edge still in the closure, the two would collide and both
-    would qualify. Instead the declared Note stays BARE."""
+def test_origin_only_field_contributes_nothing_to_name_map() -> None:
+    """#270 / ADR-0044 gate (negative) — a NON-object field carrying ONLY an
+    origin contributes NOTHING to the name-map closure. Its ``@via`` walk
+    reaches ``acme::beta::Note``, which shares a bare short name with the
+    declared ``acme::alpha::Note``; were an origin edge in the closure, the two
+    would collide and both would qualify. Instead the declared Note stays BARE."""
     alpha = _value_object("Note", [_field("alphaText", fc.FIELD_SUBTYPE_STRING)], package="acme::alpha")
     beta = _value_object("Note", [_field("betaText", fc.FIELD_SUBTYPE_STRING)], package="acme::beta")
     author = _entity(
@@ -499,7 +536,11 @@ def test_origin_collection_only_field_contributes_nothing_to_name_map() -> None:
         "Digest",
         [
             _object_field("fromAlpha", "acme::alpha::Note"),
-            _field_with_origin("posts", fc.FIELD_SUBTYPE_STRING, _collection("Author.notes")),
+            _field_with_origin(
+                "posts",
+                fc.FIELD_SUBTYPE_STRING,
+                _aggregate("count", of="acme::beta::Note.betaText", via="Author.notes"),
+            ),
         ],
         package="acme::app",
     )
