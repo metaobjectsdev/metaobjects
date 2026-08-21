@@ -943,7 +943,14 @@ first draft of that assertion passed on the envelope. Plus `TraceHelperOnShipped
 which runs the generator against the **shipped** base with ADR-0024 FIX #1 asserted both
 directions. The freshness gate was proven by breaking it, not by its silence.
 
-C# has the same gap and is not addressed here.
+**C#** closes the same gap in the same shape — `MetaObjects.Library.EmbeddedLibrary` (generated
+by the same script, now emitting three ports from one walk), `LibrarySources`, and
+`MetaDataLoader.FromDirectory(dir, libraries)` overloads on both the default- and
+registry-aware paths. Its gap was less acute than Java's, since C# ships no generator that
+consumes the library — but four ports being able to load a shipped package and one not is
+drift, and the port that cannot is the one nobody would have noticed.
+
+All five ports now resolve `metaobjects::ai::LlmCallBase`.
 
 ### Fixed — two files, two questions: a sub-project's config governs its own codegen ([#326](https://github.com/metaobjectsdev/metaobjects/issues/326), [#327](https://github.com/metaobjectsdev/metaobjects/issues/327))
 
@@ -991,6 +998,43 @@ this fails **open**: exit 0, just more pages than anyone asked for, invisible un
 counts them. An explicit positional now pins the collection (`resolveCollection`'s existing
 `explicitDir`); a bare `meta docs` still discovers. Both help blocks say so, since the old text
 described the argument as a root without saying what it does to the source set.
+
+### Fixed — the agent context shipped an instruction that cannot be run ([#331](https://github.com/metaobjectsdev/metaobjects/issues/331))
+
+Every project scaffolded by `meta init` carried a cross-port command table telling agents to
+run `meta verify --db`. That form takes no URL, so it always exits 2. The table now reads
+`meta verify --db <url>`, and the `agent-context-conformance` expected fixtures moved with it.
+
+Scoped to the **imperative** use only. `meta verify --db` stays bare where the surrounding
+text is *referential* — naming the subverb while explaining which port owns schema drift —
+because there the string is the name of a capability, not a command anyone is being told to
+type. A blanket rename would have been the easier edit and the wrong one.
+
+### Fixed — the requirements summary published the denominator it counted over
+
+`meta verify`'s object-coverage fraction is computed over whatever LOADED, so a `sources`
+declaration covering half an estate reports the covered half as fully claimed. An adopter read
+**`76/76` entities claimed while two of their four metadata trees were not in `sources` at
+all** — which is why the seven unclaimed templates living in those trees had never been
+flagged by anything.
+
+No check can detect a tree it was never pointed at; the missing input is invisible by
+construction. So the fix is provenance rather than a new check: the summary now says
+`counted over N metadata file(s)`, and a number far below what the author expects is the
+signal. That converts a silently-wrong denominator into a visibly-wrong one, which is the most
+the tool can honestly offer here.
+
+It also pins the summary line itself, which had **no test at all** — not the new clause, the
+whole line. It is printed on every run precisely so a gate that passes is distinguishable from
+a gate that checked nothing (0.23.0), and nothing asserted it printed. That is the same shape
+of hole the summary exists to close.
+
+### Fixed — the agent context's requirements guidance was thinner than the check enforcing it ([#317](https://github.com/metaobjectsdev/metaobjects/issues/317))
+
+The scaffolded audit never asked about `requirement.*` nodes at all, and the L5 member-grain
+rule — `ERR_REQUIREMENT_L5_NOT_MEMBER` is an ERROR — was undocumented in the context an agent
+actually reads. An agent following the shipped guidance could author a ledger that fails
+`verify` on a rule it was never told about.
 
 ### Fixed — the private-host check asks where packages come from, not what strings a build file holds ([#334](https://github.com/metaobjectsdev/metaobjects/issues/334))
 

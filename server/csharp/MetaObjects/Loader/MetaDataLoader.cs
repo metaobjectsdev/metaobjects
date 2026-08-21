@@ -94,12 +94,36 @@ public class MetaDataLoader
         => FromDirectory(directory, DefaultRegistry(), opts, strict);
 
     /// <summary>
+    /// <see cref="FromDirectory(string, DirectorySource.Options?, bool)"/> plus an opt-in list
+    /// of MetaObjects-shipped library packages, loaded BEFORE the directory's own files so that
+    /// an <c>extends</c> onto a library base resolves (#332 / #333).
+    ///
+    /// <para>Mirrors the TypeScript <c>fromDirectory(dir, { libraries })</c>, the Python
+    /// <c>libraries=</c> keyword and the Java overload — same names, same semantics, same
+    /// order. An unrecognised package contributes no sources rather than raising; see
+    /// <see cref="Library.LibrarySources.Resolve"/> for why that asymmetry is deliberate.</para>
+    /// </summary>
+    public static LoadResult FromDirectory(string directory, IEnumerable<string>? libraries,
+        DirectorySource.Options? opts = null, bool strict = false)
+        => FromDirectory(directory, DefaultRegistry(), libraries, opts, strict);
+
+    /// <summary>
     /// Registry-aware overload: build a <see cref="DirectorySource"/> and load
     /// using the supplied <paramref name="registry"/>. A directory-read failure
     /// is surfaced as a collected <see cref="MetaError"/> on a synthetic empty
     /// root (no throw) — mirrors the TS <c>loadDirectory</c> behavior.
     /// </summary>
     public static LoadResult FromDirectory(string directory, TypeRegistry registry, DirectorySource.Options? opts = null, bool strict = false)
+        => FromDirectory(directory, registry, null, opts, strict);
+
+    /// <summary>
+    /// Registry-aware overload carrying the library opt-in. Library sources are PREPENDED:
+    /// super resolution is deferred and order-independent, so this is determinism rather than
+    /// correctness — but a load order that differs per port is the kind of difference that only
+    /// shows up in someone else's bug report.
+    /// </summary>
+    public static LoadResult FromDirectory(string directory, TypeRegistry registry,
+        IEnumerable<string>? libraries, DirectorySource.Options? opts = null, bool strict = false)
     {
         var src = new DirectorySource(directory, opts);
         List<IMetaDataSource> sources;
@@ -125,6 +149,8 @@ public class MetaDataLoader
             };
             return new LoadResult(root, Array.Empty<string>(), errors.AsReadOnly(), "error");
         }
+        var libSources = Library.LibrarySources.Resolve(libraries);
+        if (libSources.Count > 0) sources.InsertRange(0, libSources);
         return new MetaDataLoader(registry, strict: strict).Load(sources);
     }
 

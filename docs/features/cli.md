@@ -199,6 +199,11 @@ consume, and its tests stayed green only by declaring a bespoke `LlmCallBase` in
 a different package — the bypass ADR-0024 already named, and the reason a port can ship a
 generator it cannot feed without anyone noticing.
 
+On C# the opt-in is loader-only — `MetaDataLoader.FromDirectory(dir, new[] { "ai" })` — because
+the `dotnet meta` CLI has no project-config file to carry a key. All five ports resolve
+`metaobjects::ai::LlmCallBase`; three of them (Node `meta`, Python `metaobjects`, Maven) expose
+it declaratively.
+
 ## `meta gen` / `meta verify` run an advisory anti-pattern pass (Node `meta`)
 
 Both `meta verify` and a real `meta gen` write run (not `--dry-run`) end with a
