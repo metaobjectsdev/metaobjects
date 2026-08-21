@@ -49,6 +49,8 @@ export { buildTemplateDocData } from "./template-doc-builder.js";
 // primitives beside it are the real escape hatch, so an app needing different
 // behaviour composes its own generator instead of filing an issue here.
 export { requirementTests } from "./requirement-tests.js";
+export { requirementsFile } from "./requirements-file.js";
+export type { RequirementRow } from "./requirements-view.js";
 export type {
   RequirementTestsOpts,
   RequirementTestRenderer,

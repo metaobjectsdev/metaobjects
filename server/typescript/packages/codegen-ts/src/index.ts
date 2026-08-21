@@ -202,6 +202,8 @@ export { buildTemplateDocData } from "./generators/template-doc-builder.js";
 // behaviour must reimplement the requirement walk, and reimplementing it badly is
 // worse than the bug report this is meant to avoid.
 export { requirementTests } from "./generators/requirement-tests.js";
+export { requirementsFile } from "./generators/requirements-file.js";
+export type { RequirementRow } from "./generators/requirements-view.js";
 export type {
   RequirementTestsOpts,
   RequirementTestRenderer,
