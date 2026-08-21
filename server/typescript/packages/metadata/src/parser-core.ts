@@ -29,6 +29,8 @@ import { MetaRoot } from "./shared/meta-root.js";
 import { MetaAttr } from "./core/attr/meta-attr.js";
 import { canonicalSerialize, inferAttrSubType } from "./serializer-json.js";
 import { ParseError, type ErrorCode } from "./errors.js";
+// #337 — see retired-vocabulary.ts. Diagnostic only; no load outcome changes.
+import { retiredSubType, retirementHint } from "./retired-vocabulary.js";
 import { resolvedSource, type ErrorSource, type LoaderWarning, type Contributor } from "./source.js";
 import { semanticDiff } from "./semantic-diff.js";
 import {
@@ -427,8 +429,13 @@ export function buildTree(parsed: unknown, opts: ParseOptions): ParseResult {
       _currentPath!.pushKey(rootKey);
       const src = errSource();
       _currentPath!.pop();
+      // Same hint at the ROOT door. No retired subtype is root-legal today, so this arm
+      // is currently unreachable — wired anyway, because "fixed one door, left the
+      // other" is how a rule ends up half-true and passing every probe.
+      const retiredRoot = retiredSubType(rootType, rootSubType);
       throw new ParseError(
-        `Unknown root type "${rootType}.${rootSubType}" — not registered`,
+        `Unknown root type "${rootType}.${rootSubType}" — ` +
+          (retiredRoot !== undefined ? retirementHint(retiredRoot) : "not registered"),
         { code: rootTypeCode, source: src },
       );
     }
@@ -1264,9 +1271,13 @@ function processChildren(
         const childTypeCode = explicit && registry.allSubTypesOf(childType).length > 0
           ? "ERR_UNKNOWN_SUBTYPE" as const
           : "ERR_UNKNOWN_TYPE" as const;
+        // #337: a subtype we RETIRED (origin.collection) gets its retirement and its
+        // migration, not a bare "not registered" that reads like a broken install.
+        const retiredChild = retiredSubType(childType, childSubType);
         errors.push(
           new ParseError(
-            `Unknown type "${childType}.${childSubType}" — not registered`,
+            `Unknown type "${childType}.${childSubType}" — ` +
+              (retiredChild !== undefined ? retirementHint(retiredChild) : "not registered"),
             { code: childTypeCode, source: errSource() },
           ),
         );

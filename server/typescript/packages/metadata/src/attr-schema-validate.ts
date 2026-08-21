@@ -47,6 +47,9 @@ import type { AttrSchema, TypeRegistry } from "./registry.js";
 import { childRuleMatches } from "./registry.js";
 import { TYPE_FIELD, TYPE_METADATA } from "./shared/base-types.js";
 import { ATTR_SUBTYPE_PROPERTIES } from "./core/attr/attr-constants.js";
+// #337: turns "unknown X" into "retired in V — here is the migration". Changes no load
+// outcome; retired vocabulary still fails with the same code.
+import { retiredAttr, retiredAttrValue, retirementHint } from "./retired-vocabulary.js";
 import {
   FIELD_SUBTYPE_ENUM,
   FIELD_ATTR_VALUES,
@@ -164,10 +167,17 @@ function validateNode(
       // @-attr still fails — only the `properties` subtype is exempt.)
       if (inst.subType === ATTR_SUBTYPE_PROPERTIES) continue;
       if (!byName.has(inst.name)) {
+        // #337: if we RETIRED this name, say so. "Not declared by any registered
+        // provider" is true and reads as "your metadata is malformed", which sent one
+        // adopter to file a registration bug against a deliberate, documented breaking
+        // change. Unrecognised names still report generically — a typo is a typo.
+        const retired = retiredAttr(typeKey, inst.name);
         errors.push(
           new ParseError(
             `Unknown attribute '@${inst.name}' on ${nodeLabel(node)} — ` +
-              `not declared by any registered provider for ${typeKey}`,
+              (retired !== undefined
+                ? retirementHint(retired)
+                : `not declared by any registered provider for ${typeKey}`),
             { code: "ERR_UNKNOWN_ATTR", source: node.source },
           ),
         );
@@ -290,11 +300,16 @@ function validateNode(
           ? []
           : [value];
       for (const bad of offenders) {
+        // #337: a member we REMOVED reads very differently from a member that never
+        // existed. `@status: abandoned` was valid one release ago, so "not one of the
+        // allowed values" invites the reader to conclude the enum is broken.
+        const retiredValue = retiredAttrValue(typeKey, inst.name, bad);
         errors.push(
           new ParseError(
             `${nodeLabel(node)} attribute '@${inst.name}' has value ` +
               `'${String(bad)}' which is not one of the allowed values: ` +
-              `${allowed.map((v) => String(v)).join(", ")}`,
+              `${allowed.map((v) => String(v)).join(", ")}` +
+              (retiredValue !== undefined ? ` — ${retirementHint(retiredValue)}` : ""),
             { code: "ERR_BAD_ATTR_VALUE", source: node.source },
           ),
         );
