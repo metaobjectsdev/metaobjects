@@ -42,13 +42,14 @@ MVN_GROUP='com.metaobjects'
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PROJECT="$PWD"
 ACTION="${1:-}"; shift || true
-VERSION=""; TO=""
+VERSION=""; TO=""; FRESH=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --project)  PROJECT="$(cd "$2" && pwd)"; shift 2 ;;
     --version)  VERSION="$2"; shift 2 ;;
     --to)       TO="$2"; shift 2 ;;
+    --fresh)    FRESH=1; shift ;;
     --registry) MO_REGISTRY_BASE="$2"; shift 2 ;;
     --owner)    MO_REGISTRY_OWNER="$2"; shift 2 ;;
     -h|--help)  sed -n '2,12p' "$0"; exit 0 ;;
@@ -87,8 +88,13 @@ py_version()    { echo "$1" | sed -E 's/-rc\.([0-9]+)$/rc\1/'; }
 maven_version() { echo "$1" | sed -E 's/^[0-9]+\./7./'; }
 
 # ── ecosystem detection ───────────────────────────────────────────────────────────────
-has_npm()   { [ -f "$PROJECT/package.json" ]; }
-has_py()    { [ -f "$PROJECT/pyproject.toml" ] || ls "$PROJECT"/requirements*.txt >/dev/null 2>&1; }
+# Detection walks the project, it does not test the root. A Maven- or pip-rooted monorepo
+# with JS apps in sub-directories has no root package.json, so a root-only test skipped npm
+# ENTIRELY — no .npmrc, no repin, nothing — and `link` still reported success. Every vendor
+# dependency silently stayed on the previous release while the adopter believed they were
+# testing the RC: a false green, which is worse than a hard failure for an evaluation.
+has_npm()   { [ -n "$(project_find -name package.json | head -1)" ]; }
+has_py()    { [ -n "$(project_find \( -name pyproject.toml -o -name 'requirements*.txt' \) | head -1)" ]; }
 # Any .NET project/solution file at ANY depth — a single `ls a b c` would require ALL its
 # arguments to exist (ls exits non-zero when ANY one is missing) and so essentially never
 # fire for a real layout like MyApp.sln + src/MyApp/MyApp.csproj. obj/bin/node_modules are
@@ -158,7 +164,9 @@ project_find() {  # project_find <find-expression...>
 # up — so a sub-project with its own lockfile needs its own registry config or it resolves
 # the vendor scope against the public registry and fails `notarget` at install time.
 npm_install_roots() {
-  { echo "$PROJECT"
+  { # $PROJECT only when it is itself a JS root — a Maven- or pip-rooted repo would
+    # otherwise collect a stray .npmrc it has no manifest to use.
+    [ -f "$PROJECT/package.json" ] && echo "$PROJECT"
     project_find \( -name package-lock.json -o -name npm-shrinkwrap.json -o -name yarn.lock \
                  -o -name pnpm-lock.yaml -o -name bun.lock -o -name bun.lockb \) \
       | while IFS= read -r f; do dirname "$f"; done
@@ -261,7 +269,36 @@ repin_mvn() {  # repin_mvn <version|"">
   say "repinned $MVN_GROUP dependencies to $mv"
 }
 
+# Which package manager owns a root, from the lockfile it keeps. Decides the command we
+# tell the adopter to run: printing `npm install` at a bun-managed repo silently migrates
+# it to a different package manager and a different resolution, and the .npmrc we wrote is
+# read by both tools, so the install SUCCEEDS and the swap goes unnoticed.
+npm_manager_for() {  # npm_manager_for <root>
+  [ -e "$1/bun.lock" ] || [ -e "$1/bun.lockb" ] && { echo "bun install"; return; }
+  [ -e "$1/pnpm-lock.yaml" ] && { echo "pnpm install"; return; }
+  [ -e "$1/yarn.lock" ] && { echo "yarn"; return; }
+  echo "npm install"
+}
+
+# The install line for the npm ecosystem, derived from what each root actually uses.
+npm_install_hint() {
+  local root cmds=() c
+  while IFS= read -r root; do
+    c="$(npm_manager_for "$root")"
+    case " ${cmds[*]-} " in *" $c "*) ;; *) cmds+=("$c") ;; esac
+  done < <(npm_install_roots)
+  [ ${#cmds[@]} -eq 0 ] && cmds=("npm install")
+  printf '%s' "$(IFS=' / '; echo "${cmds[*]}")"
+}
+
+# Lockfiles are NOT dropped by default. Deleting one is a destructive edit to committed
+# state that `unlink` cannot undo, and it turns a targeted pin into a full re-resolution of
+# every unrelated transitive dependency — so a pre-release evaluation ends up testing "does
+# the RC work" and "does a fresh resolve work" in the same diff, with any breakage landing
+# in both. Repin-then-reconcile moves exactly the vendor packages and nothing else.
+# `--fresh` opts into the old behaviour when a clean re-resolve is genuinely wanted.
 drop_lockfiles() {
+  [ "$FRESH" = "1" ] || return 0
   local dropped=() root
   # Every npm install root, not just $PROJECT — leaving a sub-project's lockfile behind
   # lets the two roots disagree about the resolved version, which is the same split-brain
@@ -271,11 +308,15 @@ drop_lockfiles() {
     # $PROJECT itself does not match the "$PROJECT/" strip, so name its files bare.
     prefix="${root#"$PROJECT"/}"; [ "$prefix" = "$root" ] && prefix="" || prefix="$prefix/"
     for l in package-lock.json npm-shrinkwrap.json yarn.lock pnpm-lock.yaml bun.lock bun.lockb; do
-      [ -e "$root/$l" ] && { rm -f "$root/$l"; dropped+=("${prefix}${l}"); }
+      [ -e "$root/$l" ] || continue
+      tracked "${prefix}${l}" && warn "${prefix}${l} is TRACKED and is being DELETED — 'unlink' cannot restore it (git checkout -- ${prefix}${l})"
+      rm -f "$root/$l"; dropped+=("${prefix}${l}")
     done
   done < <(npm_install_roots)
   for l in uv.lock poetry.lock Pipfile.lock packages.lock.json; do
-    [ -e "$PROJECT/$l" ] && { rm -f "$PROJECT/$l"; dropped+=("$l"); }
+    [ -e "$PROJECT/$l" ] || continue
+    tracked "$l" && warn "$l is TRACKED and is being DELETED — 'unlink' cannot restore it (git checkout -- $l)"
+    rm -f "$PROJECT/$l"; dropped+=("$l")
   done
   # A NuGet lock file can also sit next to each project file.
   while IFS= read -r f; do rm -f "$f"; dropped+=("$(basename "$(dirname "$f")")/packages.lock.json"); done \
@@ -389,6 +430,18 @@ link_mvn() {
       print "      <snapshots><enabled>true</enabled><updatePolicy>always</updatePolicy></snapshots>"
       print "    </repository>"
       print "  </repositories>"
+      # Maven resolves PLUGINS exclusively from <pluginRepositories>; <repositories> does
+      # not apply to them. Without this, `metaobjects-maven-plugin` is looked up in central
+      # only and the build fails right after `link` reports success — and Maven-side codegen
+      # is the main reason to depend on MetaObjects from Maven at all.
+      print "  <pluginRepositories>"
+      print "    <pluginRepository>"
+      print "      <id>metaobjects-prerelease</id>"
+      print "      <url>" url "</url>"
+      print "      <releases><enabled>true</enabled><updatePolicy>always</updatePolicy></releases>"
+      print "      <snapshots><enabled>true</enabled><updatePolicy>always</updatePolicy></snapshots>"
+      print "    </pluginRepository>"
+      print "  </pluginRepositories>"
       print "  " e
       done=1
     }
@@ -494,7 +547,10 @@ case "$ACTION" in
     drop_lockfiles
     echo
     ok "linked. Install/restore, then iterate:"
-    has_npm   && say "npm    rm -f package-lock.json && npm install"
+    # Derived from each root's own lockfile — see npm_manager_for. With lockfiles now kept
+    # (no --fresh), the reconcile is just an install against the edited manifest, which
+    # moves the vendor packages and leaves every unrelated transitive dependency alone.
+    has_npm   && say "npm    $(npm_install_hint)"
     has_py    && say "python uv lock && uv sync"
     has_nuget && say "nuget  dotnet restore --force-evaluate --no-cache   # both flags: NuGet caches the service index"
     has_mvn   && say "maven  mvn -U compile"
