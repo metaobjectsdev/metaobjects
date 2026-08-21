@@ -68,7 +68,7 @@ history, and history is not what a requirement is for.
     "name": "BeatProgression", "@level": 4, "@status": "live",
     "@statement": "A scene advances when its beat completes",
     "@violation": "A scene that advances with its beat unresolved",
-    "notes": "Replaced the per-turn wall-clock timer retired in 2026-06; do not reintroduce clock-driven pacing — it advanced scenes with beats unresolved.",
+    "@notes": "Replaced the per-turn wall-clock timer retired in 2026-06; do not reintroduce clock-driven pacing — it advanced scenes with beats unresolved.",
     "@implementedBy": ["game::turn::BeatProgression"]
 }}
 ```
@@ -92,7 +92,7 @@ parent is the carrier:
     "name": "Narration", "@level": 3, "@status": "live",
     "@statement": "The narrator describes outcomes the player can act on",
     "@violation": "Narration a player cannot act on",
-    "notes": "The `sceneRecap` prompt under this requirement was retired 2026-06 and left no artifact behind — its template was deleted with it. Do not reintroduce a recap turn: it restated state the player already had and consumed a third of the budget.",
+    "@notes": "The `sceneRecap` prompt under this requirement was retired 2026-06 and left no artifact behind — its template was deleted with it. Do not reintroduce a recap turn: it restated state the player already had and consumed a third of the budget.",
     "children": [ /* the surviving child requirements */ ]
 }}
 ```
