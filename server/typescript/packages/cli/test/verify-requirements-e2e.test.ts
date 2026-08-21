@@ -10,11 +10,20 @@
 // Each case drives the real command dispatcher, so a regression in the wiring —
 // requirements silently unhooked from the exit-code max, say — fails here.
 
-import { test, expect, describe } from "bun:test";
+import { test, expect, describe, spyOn } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "../src/index.js";
+import { log } from "../src/lib/log.js";
+
+/** Collects `log.info` lines emitted while `fn` runs. */
+async function captureInfo(fn: () => Promise<unknown>): Promise<string[]> {
+  const seen: string[] = [];
+  const spy = spyOn(log, "info").mockImplementation((m: string) => { seen.push(m); });
+  try { await fn(); } finally { spy.mockRestore(); }
+  return seen;
+}
 
 // verify lazily imports its (heavy) command module on first dispatch; a cold runner
 // can exceed bun's default 5s. Generous timeout, still fails loudly on a real hang.
@@ -69,6 +78,25 @@ describe("meta verify — requirements exit-code contract", () => {
   test("a clean requirement tree exits 0", async () => {
     const dir = project(req({ ...L4, "@implementedBy": ["Order"] }));
     expect(await run(["verify", "--cwd", dir])).toBe(0);
+  }, TIMEOUT_MS);
+
+  // The summary is printed on EVERY run precisely so a gate that passes is
+  // distinguishable from a gate that checked nothing — and until now nothing asserted
+  // that it prints at all, which is the same shape of hole it exists to close.
+  test("a CLEAN run still prints the summary, with the denominator's provenance", async () => {
+    const dir = project(req({ ...L4, "@implementedBy": ["Order"] }));
+    const lines = await captureInfo(() => run(["verify", "--cwd", dir]));
+
+    const summary = lines.find((l) => l.includes("requirements:"));
+    expect(summary).toBeDefined();
+    expect(summary).toContain("1 entries");
+    expect(summary).toContain("1/1 entities claimed");
+
+    // `entitiesTotal` is only ever computed over what LOADED, so a spine covering half
+    // an estate reports the covered half as fully claimed. No check can see a tree it
+    // was never pointed at; publishing the count it was taken over is what makes a
+    // wrong denominator noticeable. Two files here: the entities and the requirements.
+    expect(summary).toContain("counted over 2 metadata file(s)");
   }, TIMEOUT_MS);
 
   test("a model with NO requirements exits 0 — opt-in by declaration", async () => {

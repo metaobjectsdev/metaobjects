@@ -457,10 +457,18 @@ export async function verifyCommand(
       const parts = order
         .filter((k) => (s.byStatus[k] ?? 0) > 0)
         .map((k) => `${s.byStatus[k]} ${k}`);
+      // The file count is the DENOMINATOR'S PROVENANCE, and it is here because
+      // `entitiesTotal` is only ever computed over what actually loaded. A spine that
+      // covers half an estate reports the covered half as fully claimed — an adopter
+      // found `76/76` while two of their four metadata trees were not in `sources` at
+      // all, which is why nothing had ever flagged the templates living in them. No
+      // check can see a tree it was never pointed at, so the honest fix is to publish
+      // what the count was taken over and let a wrong number be noticeable.
       log.info(
         `meta verify — requirements: ${s.total} entries (${s.functional} functional, ` +
         `${s.architectural} architectural) — ${parts.join(", ")}; ` +
-        `${s.entitiesClaimed}/${s.entitiesTotal} entities claimed.`,
+        `${s.entitiesClaimed}/${s.entitiesTotal} entities claimed, ` +
+        `counted over ${collection.files.length} metadata file(s).`,
       );
       if (s.undecided > 0) {
         log.info(
