@@ -192,17 +192,34 @@ nothing there changes.
    `["model", "api", "requirements"]`. Rule 2 is what makes that a no-op for every project
    without a ledger.
 
-## 7. The test link returns structurally, later
+## 7. The test link returns structurally — and the generator already ships
 
-When `requirementTests()` ships (FR-038 slice 1,
-[plan](../plans/2026-08-16-fr-038-requirement-test-codegen.md), targeting 1.1), it emits
-`tests/requirements/<requirement dotted path>.<concern>.test.ts`. The link then becomes a
+**Correction to an earlier reading of this, recorded because it changes the sequencing.**
+FR-038 slice 1 is **not** pending: `requirementTests()` is implemented and exported in
+TypeScript today
+([`generators/requirement-tests.ts`](../../../server/typescript/packages/codegen-ts/src/generators/requirement-tests.ts),
+exported from `src/index.ts:204`), built on
+[`requirement-walk.ts`](../../../server/typescript/packages/codegen-ts/src/requirement-walk.ts).
+The "targeting 1.1" note in the coordinated batch plan scopes *that* plan's work, not the
+generator's existence.
+
+It emits `requirements/<requirement dotted path>.<concern>.test.ts`. The link is therefore a
 **derived path, not an inference** — no scanning, nothing matched, nothing guessed.
 
-**One tension must be resolved before that lands, and it is not resolved here.** The stub's
-location is an app seam (design §6, `path`) and §13 leaves "where do stubs live" an open
-default. So the stub path lives in **gen config** — which rule 1 above says this command does
-not read.
+**And the path is metadata-alone-derivable**, since `RequirementView.path` and the concern key
+both come from `walkRequirements()`. So rule 1 does *not* block computing it.
+
+**The tension is sharper than "can we compute the path", and it is the reason this still
+waits.** `requirementTests()` is **not** in `generator-registry.ts` — a project must wire it
+explicitly in `metaobjects.config.ts` (deliberately, per §10's opt-in). So:
+
+- **the path** is a metadata fact — computable here;
+- **whether a stub exists at it** is a gen-config fact — *not* computable here.
+
+Rendering a derived path for a project that never wired the generator would assert a file that
+does not exist. **That is the same false-assurance failure the scan was rejected for**, relocated
+— a document telling a reader a requirement is tested when nothing tests it. So the link stays
+gated on knowing the generator ran.
 
 The precedent for that already exists in the same file: the `api` surface materialises only
 with a loadable gen config, *because* api docs describe a generated surface that only exists
