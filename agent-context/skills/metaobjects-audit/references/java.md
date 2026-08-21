@@ -49,7 +49,7 @@ plugin `<configuration>` — that is the source of truth for which generators ru
 | Hand-written `@RestController` on a CRUD entity | `SpringControllerGenerator` should own this; trust the `pom.xml` `<generators>` configuration, not stale docs |
 | `interface <Entity>Repository` with no `@generated` comment | `SpringRepositoryGenerator` emits the stub; compare field by field |
 | `// keep in sync with` / `// mirrors the` | second-source-of-truth comment — always a finding |
-| `ObjectMapper.readValue(` outside a `*Parser.java` file | check if a `template.output` node exists — output-parser codegen ships in Java |
+| `ObjectMapper.readValue(` outside a `*Parser.java` file | check if a responding `template.prompt` (`@responseRef`) exists — output-parser codegen ships in Java |
 | `LIMIT ?` / `OFFSET ?` assembled by hand | generated CRUD routes handle pagination; OMDB `getObjects` accepts `QueryOptions` |
 
 ---
@@ -92,7 +92,8 @@ versioning — **do not flag it** (only intra-port skew matters).
   *generates* the typed `<Name>Parser` class; the Jackson `readValue` call lives inside that
   generated file. It is NOT a defect to see Jackson deserialization in a generated `*Parser.java`
   file. **Do not flag Jackson `readValue` calls in generated `*Parser.java` files.** DO flag a
-  hand-rolled parser in a *non*-generated file where a `template.output` node exists.
+  hand-rolled parser in a *non*-generated file where a responding `template.prompt`
+  (`@responseRef`) exists — per ADR-0052 a `template.output` emits no parser.
 - **Core filter-operator codegen ships in Java — do NOT treat it as deferred.**
   `SpringControllerGenerator` generates the `?filter[field][op]=value` grammar (all 9 operators
   `eq/ne/gt/gte/lt/lte/in/like/isNull`): it parses via the runtime `FilterParser`, validates

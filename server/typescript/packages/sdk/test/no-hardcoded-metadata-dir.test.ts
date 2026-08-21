@@ -94,7 +94,7 @@ const ALLOWED: ReadonlyMap<string, string> = new Map([
   ],
   [
     "sdk/src/agent-docs/body.ts",
-    "the agent-docs PROSE `meta init` scaffolds beside that layout — documentation content, reachable by no read path; it teaches the default a fresh project gets. A project that declares `sources` elsewhere is given docs that name the default, which is a known wording gap, not a resolution one.",
+    "the agent-docs PROSE `meta init` scaffolds beside that layout — documentation content, reachable by no read path; it teaches the default a fresh project gets. The prose now states outright that `metaobjects/` IS the default value of `sources` and must not be assumed to exist, so a project declaring `sources` elsewhere is told so rather than being left with the old wording gap.",
   ],
 ]);
 

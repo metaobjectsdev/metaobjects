@@ -114,9 +114,9 @@ All live in `metaobjects-codegen-kotlin` under
 | `KotlinSpringControllerGenerator` | `<Entity>Controller.kt` — Spring `@RestController`, five CRUD endpoints on the cross-port REST contract, for writable entities (`source.rdb` `@kind="table"`). A TPH `@discriminator` base emits ONE controller: polymorphic `GET /<base>(+/{id})` plus a per-subtype CRUD set at `/<base>/<discriminatorValue lowercased>` — create injects the discriminator from the URL (never the body); get/update/delete are scoped to the subtype (cross-subtype → 404); the discriminator is immutable. |
 | `KotlinRepositoryGenerator` | `<Entity>RepositoryBase.kt` — an `open class` consumer persistence seam per writable entity (the Kotlin peer of Java's `SpringRepositoryGenerator`, but with method bodies). Carries the #203 `@autoSet` CRUD stamping: `onCreate` columns stamped once at insert, `onUpdate` columns re-stamped on every write, both excluded from the caller-supplied set. |
 | `KotlinPayloadGenerator` | `<Template>Payload.kt` — `@Serializable` payload data class from a template's `@payloadRef` |
-| `KotlinOutputParserGenerator` | the `template.output` strict parser-on-receipt (see the prompts reference) |
-| `KotlinExtractorGenerator` | the FR-010 tolerant `extract` mapper for a `template.output` (all-nullable mirror → strict payload) |
-| `KotlinOutputPromptGenerator` | the FR-010 output-format prompt fragment for a `template.output` (presentation via `@promptStyle: guide`/`inline`/`exampleOnly`) |
+| `KotlinOutputParserGenerator` | the strict parser-on-receipt for a **responding `template.prompt`** — one carrying `@responseRef` (ADR-0052: INBOUND; a `template.output` emits no parser). See the prompts reference. |
+| `KotlinExtractorGenerator` | the FR-010 tolerant `extract` mapper for a responding `template.prompt` (all-nullable mirror → strict payload) |
+| `KotlinOutputPromptGenerator` | the FR-010 output-format prompt fragment for a responding `template.prompt` (presentation via `@promptStyle: guide`/`inline`/`exampleOnly`) |
 | `KotlinRenderHelperGenerator` | the typed render helper for a `template.prompt` payload |
 | `KotlinValidatorGenerator` | `MetadataStartupValidator.kt` + `ExposedTableValidator.kt` (once per project) |
 | `KotlinSpringConfigGenerator` | `MetadataExposedConfig.kt` — `@Configuration` wiring `Database.connect()` + the startup validator (once per project) |

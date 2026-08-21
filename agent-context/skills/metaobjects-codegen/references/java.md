@@ -101,8 +101,8 @@ separate `metaobjects-codegen-base` module instead.)
 | `SpringRepositoryGenerator` | `<Entity>Repository.java` — a hand-stubbed `interface` the consumer implements with their persistence layer (Spring Data JPA / jOOQ / JDBC). For a TPH base the interface is polymorphic + per-subtype-scoped (`listByType`/`findByIdAndType`/`createWithType`/`updateByIdAndType`/`deleteByIdAndType`) over the single table; subtype entities emit no own controller/DTO/repository — they fold into the base. |
 | `SpringValueObjectGenerator` | a Java 21 `record` per `object.value` reached through a `field.object @storage: jsonb` column (single or `@isArray`, transitively through nested VOs) — the typed component the Jackson jsonb codec serializes to/from (carries jakarta validation, unlike a plain payload record). Program D typed-jsonb VOs. |
 | `SpringPayloadGenerator` | a Java 21 `record` per `template` payload VO |
-| `SpringOutputParserGenerator` | the `template.output` strict parser-on-receipt (see the prompts reference) |
-| `SpringOutputPromptGenerator` | the FR-010 output-format prompt fragment for a `template.output` (presentation via `@promptStyle: guide`/`inline`/`exampleOnly`) |
+| `SpringOutputParserGenerator` | the strict parser-on-receipt for a **responding `template.prompt`** — one carrying `@responseRef` (ADR-0052: INBOUND; a `template.output` emits no parser). See the prompts reference. |
+| `SpringOutputPromptGenerator` | the FR-010 output-format prompt fragment for a responding `template.prompt` (presentation via `@promptStyle: guide`/`inline`/`exampleOnly`) |
 | `SpringRenderHelperGenerator` | the typed render helper for a `template.prompt` payload |
 | `LlmTraceHelperGenerator` | `<Entity>TraceHelper.java` per concrete entity — the LLM-trace helper |
 | `SpringFilterAllowlistGenerator` | per-entity filter allowlist |

@@ -61,8 +61,9 @@ name** (kebab-case) that surfaces in diagnostics — reference generators by tha
 name, never by inlining what they emit. Typical generators cover: the entity
 type/model, the DB table/schema, query/finder helpers, REST routes, client
 form/grid/hook artifacts, filter + sort allowlists, payload value-objects, and
-`template.output` parsers. You enable the subset your project needs; an abstract
-entity never emits instance/write artifacts regardless.
+parsers for a responding `template.prompt` (one carrying `@responseRef`). You
+enable the subset your project needs; an abstract entity never emits
+instance/write artifacts regardless.
 
 Per-entity opt-outs exist (e.g. skipping client-side artifacts for a given
 entity) and are set as attributes on the entity in metadata, not in code.

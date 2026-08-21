@@ -104,4 +104,5 @@ version across these packages is an intra-port skew finding.
   TS-only — do NOT flag its absence in C#.
 - **Output-parser codegen ships in C#.** `output-parser` / `extractor` / `render-helper`
   generators are available (`dotnet meta gen --generators output-parser`). Absence of
-  wired output parsers where `template.output` nodes exist IS a finding.
+  wired output parsers where a **responding `template.prompt`** (`@responseRef`) exists IS a
+  finding. ADR-0052: a `template.output` is outbound only and generates no parser.

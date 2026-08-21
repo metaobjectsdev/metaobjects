@@ -347,10 +347,12 @@ Per finding: `file:line` → what → generated-equivalent exists? → recommend
   `object.value` fail load with `ERR_SUBTYPE_RULE_VIOLATION`; `@payloadRef` accepts the sourceless
   projection).
 - Silent-degradation hack (`try/except KeyError` or `?? ''` around formatting) — flag every instance.
-- Hand-rolled output parsing (regex / XML / ad-hoc JSON) vs declared `template.output` +
-  generated `parse*` / `safeParse*` / `extract*` parser — **generated in all five ports**
-  (Java's generated `<Name>Parser` owns the Jackson `readValue`); flag a hand-rolled parser
-  in a **non-generated** file where a `template.output` node exists.
+- Hand-rolled output parsing (regex / XML / ad-hoc JSON) vs a declared **responding
+  `template.prompt`** (one carrying `@responseRef`) + generated `parse*` / `safeParse*` /
+  `extract*` parser — **generated in all five ports** (Java's generated `<Name>Parser` owns
+  the Jackson `readValue`); flag a hand-rolled parser in a **non-generated** file where a
+  responding `template.prompt` exists. ADR-0052: a `template.output` is outbound only and
+  generates no parser, so it is not the node to look for here.
 - Engine-side formatting breaking byte-identical render (prompt-cache exact-prefix hits
   depend on byte-stability).
 - `template.toolcall` candidates: LLM tool schemas hand-defined per call vs modeled
@@ -477,7 +479,8 @@ The audit never edits code. Pattern: **dry-run → review the diff → apply**.
   leading-wildcard gating — do NOT flag the absence of those in a non-TS port.
 - **Output-parser codegen** ships in **all five ports** — Java's `SpringOutputParserGenerator`
   *generates* the `<Name>Parser` (the Jackson `readValue` lives inside that generated file). A
-  hand-rolled parser in a **non-generated** file where a `template.output` node exists IS a finding.
+  hand-rolled parser in a **non-generated** file where a **responding `template.prompt`**
+  (`@responseRef`) exists IS a finding. Per ADR-0052 a `template.output` emits no parser.
 - **Python** still hand-wires the FastAPI router + repository impl around a generated
   `APIRouter`; relationship / non-`table` source-kind / `field.object flattened` codegen is partial.
 - **C#** has no ObjectManager runtime tier (EF Core is the runtime) — hand services over the generated `DbContext` are expected.

@@ -107,7 +107,7 @@ via `metamodelVersion` (see the Phase 0 cross-language consistency item).
 TypeScript is the reference implementation — it ships the full feature set:
 
 - Filter-operator codegen: **complete** — the core `?filter[field][op]` grammar (all 9 operators `eq/ne/gt/gte/lt/lte/in/like/isNull`, `<Entity>FilterAllowlist`) generates in every port; TS additionally ships the richer surface (`?search=`, `filter[or][N]` / `filter[and][N]` combinators, leading-wildcard gating).
-- Output-parser codegen: **complete** (`outputParser()` generator; `parse*`/`safeParse*`/`extract*` per `template.output`).
+- Output-parser codegen: **complete** (`outputParser()` generator; `parse*`/`safeParse*`/`extract*` emitted as `<Name>.response.ts` per **responding `template.prompt`** — one carrying `@responseRef`; ADR-0052).
 - ObjectManager: **complete** (`@metaobjectsdev/runtime-ts`; `kyselyDriver` / `inMemoryDriver`).
 - Schema migrate / `meta verify --db`: **complete** (TS owns the shared migrate engine — ADR-0015).
 - D1 dialect: **TS-only by design** — `dialect: "d1"` in `metaobjects.config.ts` targets Cloudflare D1 via the Wrangler CLI layout. Do NOT recommend porting D1 support to other languages.

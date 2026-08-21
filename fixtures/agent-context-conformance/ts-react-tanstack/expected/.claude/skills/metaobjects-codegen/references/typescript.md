@@ -78,7 +78,7 @@ From `@metaobjectsdev/codegen-ts/generators` (server-side, framework-neutral):
 | `routesFile()` | `<Entity>.routes.ts` — Fastify CRUD routes on the cross-port REST contract. `routesFileHono()` is the Hono/Workers variant. A TPH `@discriminator` base mounts polymorphic `GET /<base>(+/:id)` plus a per-subtype CRUD set at `<basePath>/<discriminatorValue lowercased>` — create omits the discriminator (the URL names the subtype; the runtime injects it); get/update/delete scoped to the subtype (cross-subtype → 404); discriminator immutable via the runtime `discriminator` option. |
 | `barrel()` | `index.ts` re-exporting each `<Entity>.ts` (one-shot, not per-entity) |
 | `promptRender()` | `render<Name>()` per `template.prompt` |
-| `outputParser()` | `<Name>.output.ts` (`parse*` / `safeParse*`) per `template.output` |
+| `outputParser()` | `<Name>.response.ts` (`parse*` / `safeParse*`) per **responding `template.prompt`** — one carrying `@responseRef` (ADR-0052: this tier is INBOUND; `template.output` is outbound only and emits nothing here). Siblings: `outputPrompt()` → `<Name>.responseFormat.ts` (the FR-010 output-format fragment, presentation via `@promptStyle`), `extractor()` → `<Name>.extractor.ts` (the tolerant `extract` mapper). |
 | `callableFile()` | `<Entity>.callable.ts` — an FR-015 `call<Entity>` wrapper for a `source.rdb` `@kind: storedProc`/`tableFunction` (args from the `@parameterRef` value object, in declaration order) |
 
 **Projections (read-only views).** For an `object.projection` (a read-only `source.rdb`

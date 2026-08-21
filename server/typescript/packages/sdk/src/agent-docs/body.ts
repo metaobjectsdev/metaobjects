@@ -222,7 +222,7 @@ export default defineConfig({
 
 Filters live on the generator entry: \`routesFile({ filter: e => e.name !== "AuditLog" })\`
 
-\`.metaobjects/config.json\` is unchanged — it still holds static project state (schema_version, pending_in_git, confidence_thresholds). Generator wiring belongs in \`metaobjects.config.ts\` so TypeScript can type-check the imports.
+\`.metaobjects/config.json\` holds static project state (schema_version, pending_in_git, confidence_thresholds) **and \`sources\` — the set of places your metadata comes from** (see "Where metadata comes from" below). Generator wiring belongs in \`metaobjects.config.ts\` so TypeScript can type-check the imports.
 
 ## Generated hooks + grids (TanStack)
 
@@ -503,12 +503,34 @@ metaobjects/
 └── _pending/<pkg>.json       proposed packages awaiting review
 
 .metaobjects/
-├── config.json               static project state
+├── config.json               static project state + \`sources\`
 ├── migrations/               written by meta migrate
 └── .gen-state/               codegen merge base (gitignored)
 
 metaobjects.config.ts         generator wiring (committed)
 \`\`\`
+
+### Where metadata comes from — the \`sources\` set
+
+**\`metaobjects/\` is the DEFAULT VALUE of \`sources\`, not a requirement.** When \`sources\` is absent or empty in \`.metaobjects/config.json\`, it takes that default — the \`metaobjects/\` directory beside the \`.metaobjects/\` folder holding the config. \`meta init\` scaffolds \`"sources": []\`, so a project that does nothing takes the default.
+
+Do NOT assume that directory exists. A project may declare \`sources\` and put its metadata anywhere — a sibling module, a shared model repository, a single file — and need not have a directory of that name at all:
+
+\`\`\`json
+{
+  "schema_version": 1,
+  "sources": [
+    { "path": "../model/src/main/resources/metadata" },
+    { "path": "metaobjects" }
+  ]
+}
+\`\`\`
+
+\`meta gen\`, \`meta migrate\`, \`meta verify\`, \`meta docs\` and \`meta export\` all read exactly that set, so pointing \`sources\` elsewhere moves every command together. A \`path\` is read **in place and never installed** or copied.
+
+\`sources\` is read by **all four CLI surfaces** — the Node \`meta\` CLI, \`dotnet meta\` (C#), \`metaobjects\` (Python) and \`metaobjects:generate\` (Java and Kotlin, via Maven). Each resolves the same files from the same declaration.
+
+**\`sources\` is a set, not an ordered list** — resolution is order-independent, so declaration order never changes what loads. \`config.json\` also rejects unknown top-level keys, so a misspelled key is an error rather than a silently ignored one.
 
 ## Worked example
 

@@ -171,17 +171,26 @@ soft-delete / status / type view it models.
 
 ## Template — `template.*` (prompt pillar)
 
-- **`template.prompt`** (`@payloadRef`, `@textRef`, `@responseRef`, `@requiredSlots`,
-  `@requiredTags`, `@maxTokens`, `@maxChars`, `@format`, `@model`) — hunt prompt strings
-  assembled inline in services, payloads built ad-hoc, output parsing without a typed
-  `@responseRef`, or token/char budgets enforced by hand.
-- **`template.output`** (`@kind` = `document` | `email`; `@subjectRef`, `@htmlBodyRef`,
-  `@textBodyRef`, `@promptStyle`, `@requiredTags`) — hunt hand-built document/email rendering +
-  hand-written parse-on-receipt the output template + generated render helper/parser cover.
-  (`@promptStyle` — the FR-010 output-format presentation — is on `template.output` ONLY;
-  authoring it on `template.prompt` fails load with `ERR_UNKNOWN_ATTR`.)
-- **`template.toolcall`** (`@toolName`, `@payloadRef`) — hunt hand-declared LLM tool schemas
-  a modeled tool call describes.
+**A template subtype's axis is DIRECTION** (ADR-0052): `template.prompt` owns everything about
+talking to a model — both the request and the reply — while `template.output` renders an
+artifact for a person or a file and generates **no parser**.
+
+- **`template.prompt`** (`@payloadRef`, `@textRef`, `@responseRef`, `@responseFormat`,
+  `@promptStyle`, `@requiredSlots`, `@requiredTags`, `@maxTokens`, `@maxChars`, `@format`,
+  `@model`) — hunt prompt strings assembled inline in services, payloads built ad-hoc,
+  token/char budgets enforced by hand, and **hand-written parse-on-receipt**: a prompt
+  declaring `@responseRef` owns the inbound half, so the strict parser, the tolerant
+  `extract` mapper and the FR-010 output-format fragment are all generated from it.
+  (`@promptStyle` — the FR-010 output-format presentation, `guide` / `inline` /
+  `exampleOnly` — is on `template.prompt` ONLY; authoring it on `template.output` fails load
+  with `ERR_UNKNOWN_ATTR`.)
+- **`template.output`** (`@kind` = `document` | `email`; `@textRef`, `@subjectRef`,
+  `@htmlBodyRef`, `@textBodyRef`, `@payloadRef`, `@format`, `@maxChars`, `@requiredTags`) —
+  **outbound only.** Hunt hand-built document/email rendering the output template + generated
+  render helper cover. It parses nothing: a parser here would be reading back text the system
+  just rendered and sent.
+- **`template.toolcall`** (`@toolName`, `@payloadRef`, `@maxTokens`) — hunt hand-declared LLM
+  tool schemas a modeled tool call describes.
 - **`template.base`** — abstract base.
 
 ## Attr — `attr.*`
@@ -256,8 +265,10 @@ subtypes with opposite polarity: `requirement.functional` fails when NOTHING imp
     is **generated in all five ports** (api-contract corpus, both lanes) — **flag hand-rolled
     filter parsing anywhere.** Only the richer surface (`?search=`, explicit
     `filter[or][N]` / `filter[and][N]` combinators, leading-wildcard gating) is TS-only.
-    Output-parser codegen also ships in **all five ports** — Java's `SpringOutputParserGenerator`
-    *generates* the parser (the Jackson `readValue` lives inside that generated file). **Python**
+    Output-parser codegen also ships in **all five ports**, keyed on a **responding
+    `template.prompt`** (`@responseRef`), never on a `template.output` (ADR-0052) — Java's
+    `SpringOutputParserGenerator` *generates* the parser (the Jackson `readValue` lives inside
+    that generated file). **Python**
     still hand-wires the FastAPI router around a generated `APIRouter` (relationship /
     non-`table` source-kind / flattened-object codegen is partial). **C#** has no
     ObjectManager runtime tier (EF Core *is* the runtime) — hand services over the generated

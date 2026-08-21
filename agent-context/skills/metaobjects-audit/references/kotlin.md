@@ -101,7 +101,8 @@ cross-port versioning — **do not flag it** (only intra-port skew matters).
   `KotlinOutputParserGenerator` generates the typed parser class AND its deserialization body
   (a kotlinx `Json.decodeFromString` call inside the generated file — kotlinx, not Jackson: the
   #187 Jackson move was jsonb-codec-only, prompt payloads/parsers stay on kotlinx). Only flag
-  a hand-rolled parser in a NON-generated file where a `template.output` node exists.
+  a hand-rolled parser in a NON-generated file where a responding `template.prompt`
+  (`@responseRef`) exists — per ADR-0052 a `template.output` emits no parser.
 - **Core filter-operator codegen ships in Kotlin — do NOT treat it as deferred.**
   `KotlinSpringControllerGenerator` generates the `?filter[field][op]=value` grammar (all 9
   operators `eq/ne/gt/gte/lt/lte/in/like/isNull`) validated against the generated filter allowlist
