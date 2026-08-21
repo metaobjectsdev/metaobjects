@@ -183,7 +183,14 @@ open class KotlinSpringControllerGenerator : MultiFileDirectGeneratorBase<MetaOb
                 !(writeThrough && KotlinGenUtil.isDerivedField(it)) &&
                 // #203/ADR-0045: an @autoSet column is server-owned — the generated controller
                 // stamps it (the API surface owns the write semantic); a caller cannot set it via PATCH.
-                !KotlinGenUtil.isAutoSetField(it)
+                !KotlinGenUtil.isAutoSetField(it) &&
+                // FR-037 R1: both non-readWrite @mutability modes leave the PATCH settable set —
+                // `readOnly` is never written at all, `writeOnce` is frozen after create. A value
+                // presented for one is STRIPPED (it is simply not in the settable set), not 400'd:
+                // that is the uniform behaviour of every excluded key on this path, and the
+                // generated edit form submits every registered field.
+                !KotlinGenUtil.isReadOnlyMutability(it) &&
+                !KotlinGenUtil.isWriteOnceMutability(it)
         }
         val hasPatchFields = patchSettableFields.isNotEmpty()
 

@@ -138,8 +138,9 @@ export const ERROR_CODES = [
   "ERR_PHYSICAL_NAME_KIND_MISMATCH",
   "ERR_PHYSICAL_NAME_MULTIPLE",
   // FR-013 — field-level @readOnly cross-attribute validation.
+  "ERR_MUTABILITY_AUTOSET_CONFLICT",
+  "ERR_MUTABILITY_DOWNGRADE",
   "ERR_READONLY_ASSIGNED_PRIMARY",
-  "ERR_READONLY_DOWNGRADE",
   // FR-015 — source.rdb @parameterRef typed-input validation.
   "ERR_PARAMETER_REF_UNRESOLVED",
   "ERR_PARAMETER_REF_NOT_VALUE_OBJECT",
@@ -238,7 +239,8 @@ export const WARNING_CODES = [
   // FR-013 — @readOnly on a field child of object.value. The persistence
   // implication does not apply to value-objects; the attr is retained for
   // language-specific record/struct treatment (e.g. Kotlin `val` vs `var`).
-  "WARN_READONLY_VALUE_OBJECT",
+  "WARN_MUTABILITY_VALUE_OBJECT",
+  "WARN_MUTABILITY_READONLY_HOST",
   // #208 — a host object whose source carries @unmanaged also declares an
   // origin.*-bearing (derived) field. Deliberate asymmetry with
   // ERR_ORIGIN_UNDER_SQL_BODY: @unmanaged acts on nothing (the tool never

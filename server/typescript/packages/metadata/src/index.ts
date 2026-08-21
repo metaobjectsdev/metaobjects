@@ -27,6 +27,14 @@ export * from "./shared/base-types.js";
 export * from "./shared/structural.js";
 export * from "./core/object/object-constants.js";
 export * from "./core/field/field-constants.js";
+// FR-037 R1 — THE mutability accessors. Every consumer deciding "may this be
+// written, and when?" must go through these rather than reading the attr, so the
+// absent-means-readWrite default lives in exactly one place per port.
+export {
+  fieldMutability,
+  isReadOnlyMutability,
+  isWriteOnceMutability,
+} from "./core/field/validate-field-mutability.js";
 export * from "./core/attr/attr-constants.js";
 export * from "./core/documentation/doc-constants.js";
 export * from "./core/validator/validator-constants.js";

@@ -356,9 +356,27 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
         List<MetaField> out = new ArrayList<>();
         for (MetaField field : minusPk(entity, dtoComponentFields(entity), null)) {
             if (AutoSetSupport.isAutoSet(field)) continue;
+            // FR-037 R1: both non-readWrite @mutability modes leave the PATCH settable
+            // set — `readOnly` is never written at all, `writeOnce` is frozen after
+            // create. A value presented for one is STRIPPED (simply not in the settable
+            // set), never 400'd — the uniform behaviour of every excluded key here.
+            if (isNonReadWriteMutability(field)) continue;
             out.add(field);
         }
         return out;
+    }
+
+    /**
+     * FR-037 R1 — true when the field's EFFECTIVE {@code @mutability} is anything other
+     * than {@code readWrite}, i.e. it is excluded from the PATCH settable set. Resolving
+     * (ADR-0039), so a mode inherited through {@code extends} is honoured.
+     *
+     * <p>The two modes differ on CREATE, not here: {@code readOnly} is additionally
+     * dropped from the create shape, while {@code writeOnce} stays settable there
+     * exactly once. That split lives in the create-shape emitters.</p>
+     */
+    static boolean isNonReadWriteMutability(MetaField field) {
+        return !MetaField.MUTABILITY_READ_WRITE.equals(field.getMutability());
     }
 
     /**
@@ -384,6 +402,11 @@ public class SpringDtoGenerator extends MultiFileDirectGeneratorBase<MetaObject>
             // used by the non-TPH <Entity>Patch, applies the identical exclusion — review-gate fix,
             // see its javadoc.)
             if (AutoSetSupport.isAutoSet(field)) continue;
+            // FR-037 R1: the same exclusion as the vanilla overload above — ADR-0045
+            // says the OUTERMOST generated write artifact enforces the mode, and TPH is
+            // a separate code path (the 0.19.4 lesson), so it is stated here too rather
+            // than assumed to fall out of the vanilla walk.
+            if (isNonReadWriteMutability(field)) continue;
             out.add(field);
         }
         return out;

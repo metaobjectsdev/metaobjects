@@ -150,8 +150,9 @@ public enum ErrorCode
     // commits e255c631 / 13cf4f8e). C# port has not yet shipped FR-013; codes
     // are listed here for cross-port enum parity, and the deferred fixtures
     // are tracked in conformance-expected-failures.json.
+    ERR_MUTABILITY_AUTOSET_CONFLICT,
+    ERR_MUTABILITY_DOWNGRADE,
     ERR_READONLY_ASSIGNED_PRIMARY,
-    ERR_READONLY_DOWNGRADE,
     // FR-015 — source.rdb @parameterRef typed-input validation (TS reference).
     // C# port has not yet shipped FR-015; the cross-port vocabulary is registered
     // here, deferred fixtures listed in conformance-expected-failures.json.
@@ -236,7 +237,8 @@ public static class WarningCodes
     /// Value-objects have no persistence semantics, so the read-only contract is
     /// advisory (codegen may use it for record/struct treatment).
     /// </summary>
-    public const string WARN_READONLY_VALUE_OBJECT = "WARN_READONLY_VALUE_OBJECT";
+    public const string WARN_MUTABILITY_VALUE_OBJECT = "WARN_MUTABILITY_VALUE_OBJECT";
+    public const string WARN_MUTABILITY_READONLY_HOST = "WARN_MUTABILITY_READONLY_HOST";
 
     /// <summary>
     /// #208 (R6) — an origin.*-bearing (derived) own field sits under a host object

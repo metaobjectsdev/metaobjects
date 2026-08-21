@@ -133,8 +133,66 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
     // additive in SP-G Unit 4 — the parallel physical db* attrs coexist until the
     // Unit 7 physical-vocabulary convergence.
 
-    /** FR-013: read-only field marker (boolean). */
-    public static final String ATTR_READ_ONLY = "readOnly";
+    /**
+     * FR-037 R1: who may write this field, and when (string). One axis, three
+     * mutually exclusive modes, so the illegal pair is unrepresentable and
+     * inheritance has a total order. Absent =&gt; {@link #MUTABILITY_READ_WRITE}.
+     */
+    public static final String ATTR_MUTABILITY = "mutability";
+
+    /** readWrite — settable on create, changeable on update (the default). */
+    public static final String MUTABILITY_READ_WRITE = "readWrite";
+
+    /**
+     * writeOnce — settable on create, then excluded from the update shape; a value
+     * presented on PATCH is IGNORED, not rejected.
+     */
+    public static final String MUTABILITY_WRITE_ONCE = "writeOnce";
+
+    /** readOnly — nobody writes it; populated by the DB, replication or another owner. */
+    public static final String MUTABILITY_READ_ONLY = "readOnly";
+
+    /**
+     * Declaration order IS the tightening order — index is the mode's rank, so
+     * "may only tighten" is an index comparison rather than a lookup table.
+     */
+    public static final java.util.List<String> MUTABILITY_MODES = java.util.List.of(
+            MUTABILITY_READ_WRITE, MUTABILITY_WRITE_ONCE, MUTABILITY_READ_ONLY);
+
+    /**
+     * FR-037 R1 — this field's EFFECTIVE {@code @mutability} mode: who may write it,
+     * and when. Absent =&gt; {@link #MUTABILITY_READ_WRITE}. THE accessor every consumer
+     * should use, so the absent-means-readWrite default lives in exactly one place.
+     *
+     * <p>ADR-0039: RESOLVING — a concrete field may inherit the mode from an abstract
+     * base via {@code extends}. An own-only read here would report {@code readWrite}
+     * for a field whose parent declared {@code readOnly}, and codegen would emit a
+     * setter for a column nothing may write.</p>
+     */
+    public String getMutability() {
+        if (!hasMetaAttr(ATTR_MUTABILITY, true)) return MUTABILITY_READ_WRITE;
+        Object v = getMetaAttr(ATTR_MUTABILITY, true).getValue();
+        return (v instanceof String && MUTABILITY_MODES.contains(v))
+                ? (String) v
+                : MUTABILITY_READ_WRITE;
+    }
+
+    /**
+     * FR-037 R1 — true when NOBODY writes this field: excluded from the create shape
+     * AND the patch settable set; the DB / trigger / replication owns the value.
+     */
+    public boolean isReadOnlyMutability() {
+        return MUTABILITY_READ_ONLY.equals(getMutability());
+    }
+
+    /**
+     * FR-037 R1 — true when the field is settable on create and frozen thereafter:
+     * present in the create shape, absent from the patch settable set. A value
+     * presented on PATCH is STRIPPED, never rejected.
+     */
+    public boolean isWriteOnceMutability() {
+        return MUTABILITY_WRITE_ONCE.equals(getMutability());
+    }
 
     /** Auto-set policy (string) — when/how the runtime auto-populates the field. */
     public static final String ATTR_AUTO_SET = "autoSet";
@@ -254,8 +312,11 @@ public abstract class MetaField<T> extends MetaData  implements DataTypeAware<T>
 
                 def.optionalAttributeWithConstraints(ATTR_REQUIRED)
                    .ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
-                def.optionalAttributeWithConstraints(ATTR_READ_ONLY)
-                   .ofType(BooleanAttribute.SUBTYPE_BOOLEAN).asSingle();
+                // FR-037 R1 — @mutability is a closed enum; its allowedValues and
+                // description are enriched from spec/metamodel/field.json at
+                // registration (the same path field.timestamp's @autoSet takes).
+                def.optionalAttributeWithConstraints(ATTR_MUTABILITY)
+                   .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
                 def.optionalAttributeWithConstraints(ATTR_AUTO_SET)
                    .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
                 // FR-033: @filterable / @sortable / @sortableDefaultOrder are

@@ -46,11 +46,16 @@ export const FIELD_DEFINITION: ProviderDefinition = {
         },
         {
           "type": "attr",
-          "subType": "boolean",
-          "name": "readOnly",
+          "subType": "string",
+          "name": "mutability",
           "min": 0,
           "max": 1,
-          "description": "FR-013: when true, the field is read-only — codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas mark it read-only on input variants. The value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner."
+          "allowedValues": [
+            "readWrite",
+            "writeOnce",
+            "readOnly"
+          ],
+          "description": "FR-037 R1: who may write this field, and when. 'readWrite' (the default when absent) — the caller may set it on create and change it on update. 'writeOnce' — the caller sets it on create; it is excluded from the update shape thereafter, so a value presented on PATCH is ignored rather than rejected. 'readOnly' — nobody writes it: codegen emits no setter / writable property, the persistence layer skips the column on INSERT/UPDATE, and Zod/Pydantic/class-validator schemas omit it from input variants; the value is populated by the database (computed column, default expression, trigger), by replication, or by another external owner. The three are mutually exclusive modes of ONE axis — who may write, and when — so the illegal pair is unrepresentable and inheritance has a total order: a subtype may TIGHTEN an inherited mode (readWrite < writeOnce < readOnly) and never loosen it (ERR_MUTABILITY_DOWNGRADE). Pairing a non-readWrite mode with @autoSet is ERR_MUTABILITY_AUTOSET_CONFLICT: @autoSet already says the SERVER supplies the value, which is a different axis from who may write it."
         },
         {
           "type": "attr",

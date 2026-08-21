@@ -130,7 +130,7 @@ export function renderUpdateFn(entity: MetaObject, ctx: RenderContext): Code {
   const fnName = updateFnName(entityName);
   const findByIdFn = findByIdFnName(entityName);
   // PATCH contract (FR-035): validate the caller's assignments against the
-  // UPDATE schema (all-optional, PK/@readOnly excluded, no insert-time transforms
+  // UPDATE schema (all-optional; PK, @mutability readOnly AND writeOnce excluded; no insert-time transforms
   // like @autoSet-onCreate → now() or the InsertSchema's discriminator handling)
   // — NOT `InsertSchema.partial()`. The typed `<Entity>Patch` param makes a
   // renamed/dropped field a compile error at every call site (PATCH-1..4);

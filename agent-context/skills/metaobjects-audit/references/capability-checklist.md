@@ -50,8 +50,11 @@ classify it (using the classification scheme in `SKILL.md`) and route the cutove
 - **`field.map`** (`@valueType`) — hunt ad-hoc open-keyed key/value bags stuffed into a jsonb
   column by hand.
 - **Common field attrs** — `@column` (hand column-name mapping), `@default` (hand default
-  assignment), `@required` (hand presence checks), `@unique` (hand uniqueness), `@readOnly`
-  (hand write-guards), `@filterable` / `@sortable` (hand filter/sort allowlists),
+  assignment), `@required` (hand presence checks), `@unique` (hand uniqueness),
+  `@mutability` (hand write-guards: `readOnly` for a column the DB/replication owns,
+  `writeOnce` for one set at create and never changed — hunt hand-written
+  "cannot be modified after creation" checks), `@filterable` / `@sortable`
+  (hand filter/sort allowlists),
   `@dbColumnType` (hand native-type override), `@example` / `@instruction` (hand prompt
   hints), `@xmlText` (hand XML-text mapping). The `@db.indexed` attr suppresses the
   *`@filterable`-without-index* Loader warning (you assert the column is indexed by other

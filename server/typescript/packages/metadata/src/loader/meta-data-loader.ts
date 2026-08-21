@@ -24,7 +24,7 @@ import { validateSourceRoles } from "../persistence/source/validate-source-roles
 import { validateSourceEscapes } from "../persistence/source/validate-source-escapes.js";
 import { validateSourcePhysicalNames } from "../persistence/source/validate-source-physical-names.js";
 import { validateSourceParameterRef } from "../persistence/source/validate-source-parameter-ref.js";
-import { validateFieldReadOnly } from "../core/field/validate-field-readonly.js";
+import { validateFieldMutability } from "../core/field/validate-field-mutability.js";
 import { validateEnumNormalizeAmbiguity } from "../core/field/validate-enum-normalize-ambiguity.js";
 import { validateDiscriminator } from "../core/object/validate-discriminator.js";
 import { resolveDeferredSupers, EXTENDS_TARGET_MISMATCH_RULE } from "../super-resolve.js";
@@ -650,12 +650,13 @@ export class MetaDataLoader {
       errors.push(...physicalNameResult.errors);
       envelopeWarnings.push(...physicalNameResult.warnings);
 
-      // FR-013 — field-level @readOnly cross-attribute rules
-      // (ERR_READONLY_DOWNGRADE / ERR_READONLY_ASSIGNED_PRIMARY /
-      // WARN_READONLY_VALUE_OBJECT).
-      const readOnlyResult = validateFieldReadOnly(root);
-      errors.push(...readOnlyResult.errors);
-      envelopeWarnings.push(...readOnlyResult.warnings);
+      // FR-037 R1 — field-level @mutability cross-attribute rules
+      // (ERR_MUTABILITY_AUTOSET_CONFLICT / ERR_MUTABILITY_DOWNGRADE /
+      // ERR_READONLY_ASSIGNED_PRIMARY / WARN_MUTABILITY_VALUE_OBJECT /
+      // WARN_MUTABILITY_READONLY_HOST).
+      const mutabilityResult = validateFieldMutability(root);
+      errors.push(...mutabilityResult.errors);
+      envelopeWarnings.push(...mutabilityResult.warnings);
 
       // Authoring guard — a field.enum vocabulary that is ambiguous under the
       // default `@normalize: strip` (a member equal to the concatenation of

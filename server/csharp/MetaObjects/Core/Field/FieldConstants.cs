@@ -115,12 +115,27 @@ public static class FieldConstants
     /// </summary>
     public const string FIELD_ATTR_LENIENT              = "lenient";
     /// <summary>
-    /// FR-013: when true, the field is read-only — codegen emits no setter, the
-    /// persistence layer skips the column on INSERT/UPDATE, and input schemas mark
-    /// it read-only. The value is populated by the database, replication, or an
-    /// external owner.
+    /// FR-037 R1: who may write this field, and when. One axis, three mutually
+    /// exclusive modes, so the illegal pair is unrepresentable and inheritance has
+    /// a total order. Absent =&gt; readWrite.
     /// </summary>
-    public const string FIELD_ATTR_READ_ONLY            = "readOnly";
+    public const string FIELD_ATTR_MUTABILITY            = "mutability";
+
+    /// <summary>readWrite — settable on create, changeable on update (the default).</summary>
+    public const string MUTABILITY_READ_WRITE            = "readWrite";
+
+    /// <summary>writeOnce — settable on create, then excluded from the update shape;
+    /// a value presented on PATCH is IGNORED, not rejected.</summary>
+    public const string MUTABILITY_WRITE_ONCE            = "writeOnce";
+
+    /// <summary>readOnly — nobody writes it; populated by the DB, replication, or
+    /// another external owner.</summary>
+    public const string MUTABILITY_READ_ONLY             = "readOnly";
+
+    /// <summary>Declaration order IS the tightening order — index is the mode's rank,
+    /// so "may only tighten" is an index comparison rather than a lookup table.</summary>
+    public static readonly string[] MUTABILITY_MODES =
+        [MUTABILITY_READ_WRITE, MUTABILITY_WRITE_ONCE, MUTABILITY_READ_ONLY];
     public const string FIELD_ATTR_DEFAULT               = "default";
     public const string FIELD_ATTR_MAX_LENGTH            = "maxLength";
     public const string FIELD_ATTR_PRECISION             = "precision";

@@ -1,0 +1,51 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "BaseEntity",
+          "abstract": true,
+          "children": [
+            {
+              "field.timestamp": {
+                "name": "createdAt",
+                "@mutability": "readOnly"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Downgrader",
+          "extends": "demo::BaseEntity",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "downgraders"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.timestamp": {
+                "name": "createdAt",
+                "@mutability": "readWrite"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

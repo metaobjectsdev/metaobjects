@@ -147,6 +147,29 @@ public object KotlinGenUtil {
     fun isDerivedField(field: MetaField<*>): Boolean = field.isDerived
 
     /**
+     * FR-037 R1 — a field's EFFECTIVE `@mutability` mode: who may write it, and when.
+     * Absent => `readWrite`. THE accessor every Kotlin consumer should use, so the
+     * default lives in exactly one place. Delegates to the JVM loader's resolving
+     * reader (ADR-0039), so a mode inherited through `extends` is honoured.
+     */
+    fun mutabilityOf(field: MetaField<*>): String = field.mutability
+
+    /**
+     * FR-037 R1 — true when NOBODY writes this field: excluded from the create shape
+     * and the patch settable set alike.
+     */
+    fun isReadOnlyMutability(field: MetaField<*>): Boolean =
+        mutabilityOf(field) == MetaField.MUTABILITY_READ_ONLY
+
+    /**
+     * FR-037 R1 — true when the field is settable on create and frozen thereafter:
+     * present in the create shape, absent from the patch settable set. A value
+     * presented on PATCH is STRIPPED (not in the settable set), never rejected.
+     */
+    fun isWriteOnceMutability(field: MetaField<*>): Boolean =
+        mutabilityOf(field) == MetaField.MUTABILITY_WRITE_ONCE
+
+    /**
      * Split `"A.b"` into `("A","b")`; null if the ref isn't a single-dot ref
      * (no dot, leading dot, or trailing dot).
      */

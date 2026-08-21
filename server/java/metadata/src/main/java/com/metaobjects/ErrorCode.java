@@ -315,6 +315,10 @@ public enum ErrorCode {
      * {@code identity.primary} with {@code @generation: "assigned"}. The
      * application has no path to populate the identity value.
      */
+    ERR_MUTABILITY_AUTOSET_CONFLICT,
+
+    ERR_MUTABILITY_DOWNGRADE,
+
     ERR_READONLY_ASSIGNED_PRIMARY,
 
     /**
@@ -322,7 +326,6 @@ public enum ErrorCode {
      * whose extends-chain parent declares {@code @readOnly: true}. Read-only-ness
      * can only be upgraded, never downgraded.
      */
-    ERR_READONLY_DOWNGRADE,
 
     /** FR-015: source.rdb @parameterRef names an object that does not exist. */
     ERR_PARAMETER_REF_UNRESOLVED,

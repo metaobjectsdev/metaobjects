@@ -1,0 +1,44 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Invoice",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "invoices"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "issuedCurrency",
+                "@mutability": "writeOnce"
+              }
+            },
+            {
+              "field.string": {
+                "name": "memo"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+

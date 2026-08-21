@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_MUTABILITY_AUTOSET_CONFLICT",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.demo.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['object.entity'].children[2]['field.timestamp']"
+      }
+    }
+  ],
+  "warnings": []
+}

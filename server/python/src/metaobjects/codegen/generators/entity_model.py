@@ -10,6 +10,13 @@ from metaobjects.meta.core.object.object_constants import (
     OBJECT_SUBTYPE_VALUE,
 )
 from metaobjects.meta.core.field import field_constants as fc
+# FR-037 R1 — THE mutability accessors. Every consumer deciding "may this be
+# written, and when?" goes through these, so the absent-means-readWrite default
+# lives in exactly one place per port.
+from metaobjects.loader.validate_field_mutability import (
+    is_read_only_mutability,
+    is_write_once_mutability,
+)
 from metaobjects.meta.core.identity.identity_constants import (
     GENERATION_INCREMENT,
     GENERATION_UUID,
@@ -566,8 +573,9 @@ class EntityModelGenerator:
                 continue  # pinned below (prepended), never as a normal field line
             if f.name in auto_gen_pk:
                 continue  # FR-036 #2 — a server-generated PK is never in the create body
-            if f.attrs().get(fc.FIELD_ATTR_READ_ONLY) is True:
-                continue  # FR-013 — a read-only column is DB/owner-written, not create input
+            if is_read_only_mutability(f):
+                continue  # FR-037 R1 — readOnly is DB/owner-written, not create input.
+                # writeOnce is deliberately NOT skipped: settable exactly once is the mode.
             if f.is_derived():
                 continue  # FR-024 §7 (#214) — a derived (origin.*) field is view-computed, not create input
             line, used = _create_field_line(
@@ -607,6 +615,13 @@ class EntityModelGenerator:
                 continue  # FR-036 #4 — the PK is route-authoritative, never patched
             if f.is_derived():
                 continue  # FR-024 §7 (#214) — a derived (origin.*) field is view-computed, never patched
+            if is_read_only_mutability(f) or is_write_once_mutability(f):
+                # FR-037 R1 — both non-readWrite modes leave the PATCH shape: readOnly is
+                # never written at all, writeOnce is frozen after create. Omitted rather
+                # than rejected, matching the TS reference (a key absent from the settable
+                # set is STRIPPED on this path) — and clearing counts as a write, so the
+                # FR-035 present-null arm never reaches them either.
+                continue
             line, used = _patch_field_line(f, imports, cfg)
             uses_field = uses_field or used
             lines.append(line)
@@ -701,8 +716,9 @@ class EntityModelGenerator:
                 "",
                 "",
                 f"class {entity.name}Create(BaseModel):",
-                '    """GENERATED — CREATE input: auto-gen PK / @readOnly omitted; '
-                '@default/@autoSet optional; present values validated (FR-036)."""',
+                '    """GENERATED — CREATE input: auto-gen PK / @mutability readOnly omitted '
+                '(writeOnce is settable here, once); @default/@autoSet optional; present '
+                'values validated (FR-036)."""',
                 *create_lines,
             ]
         if emit_patch:
@@ -710,7 +726,8 @@ class EntityModelGenerator:
                 "",
                 "",
                 f"class {entity.name}Patch(BaseModel):",
-                '    """GENERATED — PATCH input: all fields optional (PK excluded); present values validated (FR-036)."""',
+                '    """GENERATED — PATCH input: all fields optional (PK, @mutability '
+                'readOnly and writeOnce excluded); present values validated (FR-036)."""',
                 *patch_lines,
             ]
         parts += [""]

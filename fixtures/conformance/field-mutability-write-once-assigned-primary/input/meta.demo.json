@@ -1,0 +1,37 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Ledger",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "ledger"
+              }
+            },
+            {
+              "field.string": {
+                "name": "id",
+                "@mutability": "writeOnce"
+              }
+            },
+            {
+              "field.string": {
+                "name": "memo"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id",
+                "@generation": "assigned"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -15,7 +15,7 @@ from ..errors import ErrorCode, MetaError
 from ..source.error_source import LoaderWarning
 from .validate_source_physical_names import validate_source_physical_names
 from .validate_enum_normalize_ambiguity import validate_enum_normalize_ambiguity
-from .validate_field_readonly import validate_field_readonly
+from .validate_field_mutability import validate_field_mutability
 from .validate_discriminator import validate_discriminator
 from .validate_source_parameter_ref import validate_source_parameter_ref
 from .validate_source_escapes import validate_source_escapes
@@ -200,7 +200,7 @@ def run_validations(
     # FR-016 / ADR-0018 — per-kind physical-name aliases on source.rdb.
     validate_source_physical_names(root, errors, envelope_warnings, warnings)
     # FR-013 — field-level @readOnly cross-attribute rules.
-    validate_field_readonly(root, errors, envelope_warnings, warnings)
+    validate_field_mutability(root, errors, envelope_warnings, warnings)
     # Authoring guard — a field.enum vocabulary ambiguous under the default
     # @normalize: strip. WARN_ENUM_NORMALIZE_AMBIGUOUS.
     validate_enum_normalize_ambiguity(root, envelope_warnings, warnings)

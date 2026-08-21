@@ -61,9 +61,23 @@ FIELD_SUBTYPES = (
 # Reserved field attribute names (read by codegen; open attrs at load time).
 # Mirrors server/typescript/packages/metadata/src/core/field/field-constants.ts.
 FIELD_ATTR_REQUIRED = "required"
-# @readOnly — boolean; the field is exposed read-only (omitted from create/update
-# input DTOs). On every field subtype. Mirrors TS FIELD_ATTR_READ_ONLY.
-FIELD_ATTR_READ_ONLY = "readOnly"
+# @mutability — FR-037 R1; who may write this field, and when. One axis, three
+# mutually exclusive modes, so the illegal pair is unrepresentable and inheritance
+# has a total order. Absent => readWrite. On every field subtype.
+# Mirrors TS FIELD_ATTR_MUTABILITY.
+FIELD_ATTR_MUTABILITY = "mutability"
+
+# readWrite — settable on create, changeable on update (the default when absent).
+MUTABILITY_READ_WRITE = "readWrite"
+# writeOnce — settable on create, then excluded from the update shape; a value
+# presented on PATCH is IGNORED, not rejected.
+MUTABILITY_WRITE_ONCE = "writeOnce"
+# readOnly — nobody writes it; populated by the DB, replication, or another owner.
+MUTABILITY_READ_ONLY = "readOnly"
+
+# Declaration order IS the tightening order — index is the mode's rank, so
+# "may only tighten" is an index comparison rather than a lookup table.
+MUTABILITY_MODES = (MUTABILITY_READ_WRITE, MUTABILITY_WRITE_ONCE, MUTABILITY_READ_ONLY)
 FIELD_ATTR_UNIQUE = "unique"
 # @currency — ISO 4217 code on a field.currency. Storage is integer minor units;
 # defaults to "USD" when omitted. Only on field.currency. Mirrors TS FIELD_ATTR_CURRENCY.

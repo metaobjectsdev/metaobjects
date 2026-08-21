@@ -1,0 +1,39 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.projection": {
+          "name": "ProgramSummary",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_program_summary"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id",
+                "@mutability": "readOnly"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name",
+                "@mutability": "readOnly"
+              }
+            },
+            {
+              "field.int": {
+                "name": "memberCount",
+                "@mutability": "readOnly"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+

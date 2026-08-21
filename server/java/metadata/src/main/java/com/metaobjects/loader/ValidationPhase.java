@@ -181,7 +181,7 @@ public final class ValidationPhase {
         pass(collected, () -> validateSourceAttrs(root));
         pass(collected, () -> validateSourcePhysicalNames(root, loader));
         // FR-013 — field-level @readOnly cross-attribute rules.
-        pass(collected, () -> validateFieldReadOnly(root, loader));
+        pass(collected, () -> validateFieldMutability(root, loader));
         // Authoring guard — a field.enum vocabulary ambiguous under the default
         // @normalize: strip. WARN_ENUM_NORMALIZE_AMBIGUOUS.
         pass(collected, () -> validateEnumNormalizeAmbiguity(root, loader));
@@ -4169,63 +4169,114 @@ public final class ValidationPhase {
     }
 
     // =========================================================================
-    // FR-013 — field-level @readOnly cross-attribute rules.
-    //   ERR_READONLY_ASSIGNED_PRIMARY / ERR_READONLY_DOWNGRADE / WARN_READONLY_VALUE_OBJECT
-    // Mirrors TS core/field/validate-field-readonly.ts.
+    // FR-037 R1 — field-level @mutability cross-attribute rules.
+    //   ERR_MUTABILITY_AUTOSET_CONFLICT / ERR_MUTABILITY_DOWNGRADE /
+    //   ERR_READONLY_ASSIGNED_PRIMARY / WARN_MUTABILITY_VALUE_OBJECT /
+    //   WARN_MUTABILITY_READONLY_HOST
+    // Mirrors TS core/field/validate-field-mutability.ts.
+    //
+    // @mutability is ONE axis — who may write this field, and when — with three
+    // mutually exclusive modes, readWrite (default) < writeOnce < readOnly.
+    // Modelling it as one enum rather than two booleans is what makes the illegal
+    // pair unrepresentable and gives inheritance a total order.
     // =========================================================================
 
-    static void validateFieldReadOnly(MetaRoot root, MetaDataLoader loader) {
+    static void validateFieldMutability(MetaRoot root, MetaDataLoader loader) {
         for (MetaData rc : root.getChildren(MetaData.class, false)) {
             if (!(rc instanceof MetaObject)) continue;
             MetaObject obj = (MetaObject) rc;
             boolean isValueObject = MetaObject.SUBTYPE_VALUE.equals(obj.getSubType());
+            boolean hostNeverWritten = writeHostIsReadOnly(obj);
 
-            // 1) WARN_READONLY_VALUE_OBJECT — any @readOnly field child of object.value.
-            if (isValueObject) {
-                for (MetaField f : ownFieldsRaw(obj)) {
-                    if (Boolean.TRUE.equals(readOnlyFlag(f)) && loader != null) {
-                        loader.addEnvelopeWarning(new LoaderWarning(
-                            ErrorMessageConstants.WARN_READONLY_VALUE_OBJECT,
-                            "field \"" + shortNameOf(f) + "\" on object.value \""
-                                + shortNameOf(obj) + "\" declares @readOnly: true; "
-                                + "value-objects have no persistence semantics so the "
-                                + "read-only contract is advisory (codegen may use it "
-                                + "for record/struct treatment).",
-                            f.getSource()));
+            for (MetaField ownField : ownFieldsRaw(obj)) {
+                String ownMode = declaredMutability(ownField);
+
+                // 1) WARN_MUTABILITY_VALUE_OBJECT — a non-default mode DECLARED on a
+                //    value's own field. Advisory: a value has no persistence semantics.
+                if (isValueObject && ownMode != null
+                        && !MetaField.MUTABILITY_READ_WRITE.equals(ownMode) && loader != null) {
+                    loader.addEnvelopeWarning(new LoaderWarning(
+                        ErrorMessageConstants.WARN_MUTABILITY_VALUE_OBJECT,
+                        "field \"" + shortNameOf(ownField) + "\" on object.value \""
+                            + shortNameOf(obj) + "\" declares @mutability: \"" + ownMode
+                            + "\"; value objects have no persistence semantics, so the "
+                            + "write contract is advisory (codegen may use it for "
+                            + "record/struct treatment).",
+                        ownField.getSource()));
+                }
+
+                // 2) ERR_MUTABILITY_DOWNGRADE — a subtype may TIGHTEN an inherited mode,
+                //    never loosen it. Rank comparison over the declaration order.
+                if (ownMode != null) {
+                    MetaField inherited = inheritedMutabilityField(obj, shortNameOf(ownField));
+                    String inheritedMode = inherited != null ? declaredMutability(inherited) : null;
+                    if (inheritedMode != null && mutabilityRank(ownMode) < mutabilityRank(inheritedMode)) {
+                        throw new MetaDataException(
+                            "ERR_MUTABILITY_DOWNGRADE"
+                                + ": field \"" + shortNameOf(ownField) + "\" on \""
+                                + shortNameOf(obj) + "\" sets @mutability: \"" + ownMode
+                                + "\", but its extends-chain parent declares \"" + inheritedMode
+                                + "\". A subtype may only TIGHTEN an inherited mode ("
+                                + String.join(" < ", MetaField.MUTABILITY_MODES)
+                                + "), never loosen it (FR-037 R1).",
+                            ErrorCode.ERR_MUTABILITY_DOWNGRADE, ownField.getSource());
                     }
                 }
             }
 
-            // 2) ERR_READONLY_DOWNGRADE — only the explicit own @readOnly: false case.
-            for (MetaField ownField : ownFieldsRaw(obj)) {
-                if (!Boolean.FALSE.equals(readOnlyFlag(ownField))) continue;
-                MetaField inherited = inheritedReadOnlyField(obj, shortNameOf(ownField));
-                if (inherited != null && Boolean.TRUE.equals(readOnlyFlag(inherited))) {
+            // Rules 3 + 5 read the EFFECTIVE tree — an inherited mode binds exactly as
+            // hard as a declared one for "is this combination coherent?".
+            for (MetaField f : obj.getChildren(MetaField.class, true)) {
+                String mode = fieldMutability(f);
+
+                // 3) ERR_MUTABILITY_AUTOSET_CONFLICT — @autoSet with a non-readWrite mode.
+                //    Both arms: readOnly (representable-but-unvalidated in the boolean
+                //    era) and writeOnce (new). @autoSet means the SERVER supplies the
+                //    value, so constraining who ELSE may write it is contradictory.
+                if (!MetaField.MUTABILITY_READ_WRITE.equals(mode)
+                        && f.hasMetaAttr(MetaField.ATTR_AUTO_SET, true)) {
                     throw new MetaDataException(
-                        "ERR_READONLY_DOWNGRADE"
-                            + ": field \"" + shortNameOf(ownField) + "\" on \""
-                            + shortNameOf(obj) + "\" sets @readOnly: false, but the "
-                            + "extends-chain parent declares @readOnly: true. "
-                            + "Read-only-ness can only be upgraded, not downgraded (FR-013).",
-                        ErrorCode.ERR_READONLY_DOWNGRADE, ownField.getSource());
+                        "ERR_MUTABILITY_AUTOSET_CONFLICT"
+                            + ": field \"" + shortNameOf(f) + "\" on \"" + shortNameOf(obj)
+                            + "\" declares @autoSet together with @mutability: \"" + mode
+                            + "\". @autoSet already means the SERVER supplies the value; "
+                            + "@mutability says who may write it. Drop @mutability (an "
+                            + "@autoSet field is already excluded from every input shape) "
+                            + "or drop @autoSet (FR-037 R1).",
+                        ErrorCode.ERR_MUTABILITY_AUTOSET_CONFLICT, f.getSource());
+                }
+
+                // 5) WARN_MUTABILITY_READONLY_HOST — writeOnce on a host nothing writes.
+                if (MetaField.MUTABILITY_WRITE_ONCE.equals(mode) && hostNeverWritten && loader != null) {
+                    loader.addEnvelopeWarning(new LoaderWarning(
+                        ErrorMessageConstants.WARN_MUTABILITY_READONLY_HOST,
+                        "field \"" + shortNameOf(f) + "\" on \"" + shortNameOf(obj)
+                            + "\" declares @mutability: \"writeOnce\", but its host is never "
+                            + "written (a projection, or a read-only source @kind). The "
+                            + "declaration is inert — nothing creates a row here for it to "
+                            + "be settable on.",
+                        f.getSource()));
                 }
             }
 
-            // 3) ERR_READONLY_ASSIGNED_PRIMARY — @readOnly: true on a field used in an
-            //    identity.primary with @generation: "assigned" (effective tree).
+            // 4) ERR_READONLY_ASSIGNED_PRIMARY — readOnly on an ASSIGNED primary key.
+            //    Note what is NOT here: writeOnce on an assigned key is legal, and is
+            //    the natural declaration for one. That asymmetry is why this code keeps
+            //    its readOnly-specific name.
             if (!isValueObject) {
                 Set<String> assigned = primaryAssignedFieldNames(obj);
                 if (!assigned.isEmpty()) {
-                    for (MetaField f : ownFieldsRaw(obj)) {
+                    for (MetaField f : obj.getChildren(MetaField.class, true)) {
                         if (!assigned.contains(shortNameOf(f))) continue;
-                        if (!Boolean.TRUE.equals(readOnlyFlag(f))) continue;
+                        if (!MetaField.MUTABILITY_READ_ONLY.equals(fieldMutability(f))) continue;
                         throw new MetaDataException(
                             "ERR_READONLY_ASSIGNED_PRIMARY"
                                 + ": field \"" + shortNameOf(f) + "\" on \""
-                                + shortNameOf(obj) + "\" is @readOnly: true AND the target "
-                                + "of identity.primary with @generation: \"assigned\"; the "
-                                + "application has no path to populate the identity value "
-                                + "(FR-013).",
+                                + shortNameOf(obj) + "\" is @mutability: \"readOnly\" AND the "
+                                + "target of identity.primary with @generation: \"assigned\"; "
+                                + "the application has no path to populate the identity "
+                                + "value. Use @mutability: \"writeOnce\" if the intent is "
+                                + "\"set once on create, never changed\" (FR-037 R1).",
                             ErrorCode.ERR_READONLY_ASSIGNED_PRIMARY, f.getSource());
                     }
                 }
@@ -4245,18 +4296,47 @@ public final class ValidationPhase {
         return out;
     }
 
-    /** Explicit own @readOnly value (TRUE/FALSE) or null when absent. */
-    private static Boolean readOnlyFlag(MetaField field) {
-        if (!field.hasMetaAttr(MetaField.ATTR_READ_ONLY, false)) return null;
-        Object v = field.getMetaAttr(MetaField.ATTR_READ_ONLY, false).getValue();
-        if (v instanceof Boolean) return (Boolean) v;
-        if (v instanceof String) return Boolean.valueOf("true".equalsIgnoreCase((String) v));
-        return null;
+    /**
+     * A field's EFFECTIVE mutability mode. Absent =&gt; readWrite. THE accessor every
+     * consumer should use, so the default lives in exactly one place per port.
+     * ADR-0039: RESOLVING ({@code true} = include the super chain) — an own-only read
+     * would report readWrite for a field whose abstract parent declared readOnly.
+     */
+    static String fieldMutability(MetaField field) {
+        return field.getMutability();
+    }
+
+    /** The mode a node DECLARED (own), or null when it declared none.
+     *  ADR-0039 sanctioned own: the downgrade rule needs the EXPLICIT mode on the
+     *  DECLARING node — resolving would report a child's own value back at itself. */
+    private static String declaredMutability(MetaField field) {
+        if (!field.hasMetaAttr(MetaField.ATTR_MUTABILITY, false)) return null;
+        Object v = field.getMetaAttr(MetaField.ATTR_MUTABILITY, false).getValue();
+        return (v instanceof String && MetaField.MUTABILITY_MODES.contains(v)) ? (String) v : null;
+    }
+
+    /** Rank on the tightening order. Declaration order IS the order, so "may only
+     *  tighten" is an index comparison rather than a lookup table. */
+    private static int mutabilityRank(String mode) {
+        return MetaField.MUTABILITY_MODES.indexOf(mode);
+    }
+
+    /** True when no write path reaches this object: an object.projection, or an
+     *  object whose every source is a read-only {@code @kind}. */
+    private static boolean writeHostIsReadOnly(MetaObject obj) {
+        if (MetaObject.SUBTYPE_PROJECTION.equals(obj.getSubType())) return true;
+        // ADR-0039: resolving — a source may be inherited via extends.
+        List<MetaSource> sources = obj.getChildren(MetaSource.class, true);
+        if (sources.isEmpty()) return false;
+        for (MetaSource src : sources) {
+            if (!src.isReadOnly()) return false;
+        }
+        return true;
     }
 
     /** Walk the extends chain for a field with {@code name}; return its declaring
      *  node (own attrs intact). */
-    private static MetaField inheritedReadOnlyField(MetaObject obj, String name) {
+    private static MetaField inheritedMutabilityField(MetaObject obj, String name) {
         MetaData cursor = obj.getSuperData();
         while (cursor != null) {
             if (cursor instanceof MetaObject) {

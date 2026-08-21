@@ -3372,17 +3372,55 @@ public static class ValidationPasses
     }
 
     // =========================================================================
-    // FR-013 — field-level @readOnly cross-attribute rules.
-    //   ERR_READONLY_ASSIGNED_PRIMARY / ERR_READONLY_DOWNGRADE / WARN_READONLY_VALUE_OBJECT
-    // Mirrors TS core/field/validate-field-readonly.ts.
+    // FR-037 R1 — field-level @mutability cross-attribute rules.
+    //   ERR_MUTABILITY_AUTOSET_CONFLICT / ERR_MUTABILITY_DOWNGRADE /
+    //   ERR_READONLY_ASSIGNED_PRIMARY / WARN_MUTABILITY_VALUE_OBJECT /
+    //   WARN_MUTABILITY_READONLY_HOST
+    // Mirrors TS core/field/validate-field-mutability.ts.
     // =========================================================================
 
-    /// <summary>Result of the FR-013 @readOnly validation pass.</summary>
-    public sealed record ReadOnlyValidationResult(
+    /// <summary>Result of the FR-037 R1 @mutability validation pass.</summary>
+    public sealed record MutabilityValidationResult(
         IReadOnlyList<MetaError> Errors,
         IReadOnlyList<LoaderWarning> Warnings);
 
-    public static ReadOnlyValidationResult ValidateFieldReadOnly(MetaData root)
+    /// <summary>
+    /// A field's EFFECTIVE mutability mode — RESOLVING (ADR-0039), so a concrete
+    /// field inheriting from an abstract parent sees the parent's declaration.
+    /// Absent =&gt; readWrite. THE accessor every consumer should use.
+    /// </summary>
+    public static string FieldMutability(MetaField field)
+    {
+        var v = field.Attr(FIELD_ATTR_MUTABILITY) as string;
+        return v != null && MUTABILITY_MODES.Contains(v)
+            ? v
+            : MUTABILITY_READ_WRITE;
+    }
+
+    /// <summary>True when nothing may write this field.</summary>
+    public static bool IsReadOnlyMutability(MetaField field) =>
+        FieldMutability(field) == MUTABILITY_READ_ONLY;
+
+    /// <summary>True when the field is settable on create but frozen thereafter.</summary>
+    public static bool IsWriteOnceMutability(MetaField field) =>
+        FieldMutability(field) == MUTABILITY_WRITE_ONCE;
+
+    /// <summary>The mode a node DECLARED (own), or null when it declared none.</summary>
+    private static string? DeclaredMutability(MetaField field)
+    {
+        // ADR-0039 sanctioned own: the downgrade rule needs the EXPLICIT mode on THIS
+        // node — resolving would report a child's own value back at itself, and would
+        // warn on a value object that merely INHERITED the mode.
+        var v = field.OwnAttr(FIELD_ATTR_MUTABILITY) as string;
+        return v != null && MUTABILITY_MODES.Contains(v) ? v : null;
+    }
+
+    /// <summary>Rank on the tightening order. Declaration order IS the order, so
+    /// "may only tighten" is an index comparison rather than a lookup table.</summary>
+    private static int MutabilityRank(string mode) =>
+        Array.IndexOf(MUTABILITY_MODES, mode);
+
+    public static MutabilityValidationResult ValidateFieldMutability(MetaData root)
     {
         var errors = new List<MetaError>();
         var warnings = new List<LoaderWarning>();
@@ -3390,58 +3428,106 @@ public static class ValidationPasses
         foreach (var obj in root.OwnChildren().Where(c => c.Type == TYPE_OBJECT))
         {
             bool isValueObject = obj.SubType == OBJECT_SUBTYPE_VALUE;
+            bool hostNeverWritten = IsWriteHostReadOnly(obj);
             var ownFields = obj.OwnChildren().Where(c => c.Type == TYPE_FIELD).Cast<MetaField>().ToList();
+            // ADR-0039: resolving — the coherence rules read the EFFECTIVE tree, since
+            // an inherited mode binds exactly as hard as a declared one.
+            var allFields = obj.Children().Where(c => c.Type == TYPE_FIELD).Cast<MetaField>().ToList();
 
-            // 1) WARN_READONLY_VALUE_OBJECT — any @readOnly field child of object.value.
-            if (isValueObject)
+            foreach (var ownField in ownFields)
             {
-                foreach (var f in ownFields)
+                var ownMode = DeclaredMutability(ownField);
+
+                // 1) WARN_MUTABILITY_VALUE_OBJECT — a non-default mode DECLARED on a
+                //    value's own field. Advisory: a value has no persistence semantics.
+                if (isValueObject && ownMode != null && ownMode != MUTABILITY_READ_WRITE)
                 {
-                    if (ReadOnlyFlag(f) == true)
+                    warnings.Add(new LoaderWarning(
+                        Code: WarningCodes.WARN_MUTABILITY_VALUE_OBJECT,
+                        Message:
+                            $"field \"{ownField.Name}\" on object.value \"{obj.Name}\" declares " +
+                            $"@mutability: \"{ownMode}\"; value objects have no persistence semantics, " +
+                            "so the write contract is advisory (codegen may use it for record/struct " +
+                            "treatment).",
+                        Source: ownField.Source));
+                }
+
+                // 2) ERR_MUTABILITY_DOWNGRADE — a subtype may TIGHTEN an inherited mode,
+                //    never loosen it. Rank comparison over the declaration order.
+                if (ownMode != null)
+                {
+                    var inherited = InheritedMutabilityField(obj, ownField.Name);
+                    var inheritedMode = inherited != null ? DeclaredMutability(inherited) : null;
+                    if (inheritedMode != null && MutabilityRank(ownMode) < MutabilityRank(inheritedMode))
                     {
-                        warnings.Add(new LoaderWarning(
-                            Code: WarningCodes.WARN_READONLY_VALUE_OBJECT,
-                            Message:
-                                $"field \"{f.Name}\" on object.value \"{obj.Name}\" declares " +
-                                "@readOnly: true; value-objects have no persistence semantics so " +
-                                "the read-only contract is advisory (codegen may use it for " +
-                                "record/struct treatment).",
-                            Source: f.Source));
+                        errors.Add(new MetaError(
+                            $"field \"{ownField.Name}\" on \"{obj.Name}\" sets @mutability: " +
+                            $"\"{ownMode}\", but its extends-chain parent declares " +
+                            $"\"{inheritedMode}\". A subtype may only TIGHTEN an inherited mode " +
+                            $"({string.Join(" < ", MUTABILITY_MODES)}), never loosen " +
+                            "it (FR-037 R1).",
+                            ErrorCode.ERR_MUTABILITY_DOWNGRADE,
+                            Envelope: ownField.Source));
                     }
                 }
             }
 
-            // 2) ERR_READONLY_DOWNGRADE — only the explicit own @readOnly: false case.
-            foreach (var ownField in ownFields)
+            foreach (var f in allFields)
             {
-                if (ReadOnlyFlag(ownField) != false) continue;
-                var inherited = InheritedReadOnlyField(obj, ownField.Name);
-                if (inherited != null && ReadOnlyFlag(inherited) == true)
+                var mode = FieldMutability(f);
+
+                // 3) ERR_MUTABILITY_AUTOSET_CONFLICT — @autoSet with a non-readWrite mode.
+                //    Both arms: readOnly (representable-but-unvalidated in the boolean era)
+                //    and writeOnce (new). @autoSet means the SERVER supplies the value, so
+                //    constraining who ELSE may write it is contradictory, not additive.
+                if (mode != MUTABILITY_READ_WRITE
+                    && f.Attr(FIELD_ATTR_AUTO_SET) != null)
                 {
                     errors.Add(new MetaError(
-                        $"field \"{ownField.Name}\" on \"{obj.Name}\" sets @readOnly: false, but the " +
-                        "extends-chain parent declares @readOnly: true. Read-only-ness can only be " +
-                        "upgraded, not downgraded (FR-013).",
-                        ErrorCode.ERR_READONLY_DOWNGRADE,
-                        Envelope: ownField.Source));
+                        $"field \"{f.Name}\" on \"{obj.Name}\" declares @autoSet together with " +
+                        $"@mutability: \"{mode}\". @autoSet already means the SERVER supplies the " +
+                        "value; @mutability says who may write it. Drop @mutability (an @autoSet " +
+                        "field is already excluded from every input shape) or drop @autoSet " +
+                        "(FR-037 R1).",
+                        ErrorCode.ERR_MUTABILITY_AUTOSET_CONFLICT,
+                        Envelope: f.Source));
+                }
+
+                // 5) WARN_MUTABILITY_READONLY_HOST — writeOnce on a host nothing writes.
+                //    Benign: the declaration is inert, not wrong, and a projection may
+                //    legitimately inherit it from the entity it extends.
+                if (mode == MUTABILITY_WRITE_ONCE && hostNeverWritten)
+                {
+                    warnings.Add(new LoaderWarning(
+                        Code: WarningCodes.WARN_MUTABILITY_READONLY_HOST,
+                        Message:
+                            $"field \"{f.Name}\" on \"{obj.Name}\" declares @mutability: " +
+                            "\"writeOnce\", but its host is never written (a projection, or a " +
+                            "read-only source @kind). The declaration is inert — nothing creates a " +
+                            "row here for it to be settable on.",
+                        Source: f.Source));
                 }
             }
 
-            // 3) ERR_READONLY_ASSIGNED_PRIMARY — @readOnly: true on a field used in an
-            //    identity.primary with @generation: "assigned" (effective tree).
+            // 4) ERR_READONLY_ASSIGNED_PRIMARY — readOnly on an ASSIGNED primary key.
+            //    Note what is NOT here: writeOnce on an assigned key is legal, and is the
+            //    natural declaration for one. That asymmetry is why this code keeps its
+            //    readOnly-specific name.
             if (!isValueObject)
             {
                 var assigned = PrimaryAssignedFieldNames(obj);
                 if (assigned.Count > 0)
                 {
-                    foreach (var f in ownFields)
+                    foreach (var f in allFields)
                     {
                         if (!assigned.Contains(f.Name)) continue;
-                        if (ReadOnlyFlag(f) != true) continue;
+                        if (!IsReadOnlyMutability(f)) continue;
                         errors.Add(new MetaError(
-                            $"field \"{f.Name}\" on \"{obj.Name}\" is @readOnly: true AND the target " +
-                            "of identity.primary with @generation: \"assigned\"; the application has " +
-                            "no path to populate the identity value (FR-013).",
+                            $"field \"{f.Name}\" on \"{obj.Name}\" is @mutability: \"readOnly\" " +
+                            "AND the target of identity.primary with @generation: \"assigned\"; the " +
+                            "application has no path to populate the identity value. Use " +
+                            "@mutability: \"writeOnce\" if the intent is \"set once on create, never " +
+                            "changed\" (FR-037 R1).",
                             ErrorCode.ERR_READONLY_ASSIGNED_PRIMARY,
                             Envelope: f.Source));
                     }
@@ -3449,21 +3535,26 @@ public static class ValidationPasses
             }
         }
 
-        return new ReadOnlyValidationResult(errors.AsReadOnly(), warnings.AsReadOnly());
+        return new MutabilityValidationResult(errors.AsReadOnly(), warnings.AsReadOnly());
     }
 
-    private static bool? ReadOnlyFlag(MetaField field) => field.OwnAttr(FIELD_ATTR_READ_ONLY) switch
+    /// <summary>True when no write path reaches this object: an object.projection, or
+    /// an object whose every source is a read-only @kind.</summary>
+    private static bool IsWriteHostReadOnly(MetaData obj)
     {
-        bool b => b,
-        string s => string.Equals(s, "true", StringComparison.OrdinalIgnoreCase),
-        _ => null,
-    };
+        if (obj.SubType == OBJECT_SUBTYPE_PROJECTION) return true;
+        // ADR-0039: resolving — a source may be inherited via extends.
+        var sources = obj.Children().OfType<MetaSource>().ToList();
+        return sources.Count > 0 && sources.All(src => src.IsReadOnly());
+    }
 
-    private static MetaField? InheritedReadOnlyField(MetaData obj, string name)
+    private static MetaField? InheritedMutabilityField(MetaData obj, string name)
     {
         var cursor = obj.SuperData;
         while (cursor != null)
         {
+            // ADR-0039 sanctioned own: super-chain walk reading each level's OWN fields
+            // to find the DECLARING node (the comparison needs its own mode).
             var f = cursor.OwnChildren()
                 .FirstOrDefault(c => c.Type == TYPE_FIELD && c.Name == name) as MetaField;
             if (f != null) return f;
@@ -3478,8 +3569,7 @@ public static class ValidationPasses
         foreach (var id in obj.Children().OfType<MetaIdentity>())
         {
             if (!id.IsPrimary()) continue;
-            // ADR-0039: resolving — an identity may inherit @generation / @fields via extends
-            // (TS validate-field-readonly.ts:142,144). id.Fields is the resolving getter.
+            // ADR-0039: resolving — an identity may inherit @generation / @fields via extends.
             if (id.Attr(IDENTITY_ATTR_GENERATION) as string != GENERATION_ASSIGNED) continue;
             foreach (var fn in id.Fields) outNames.Add(fn);
         }

@@ -25,7 +25,8 @@ from .meta.core.field.field_constants import (
     FIELD_ATTR_MAX_LENGTH,
     FIELD_ATTR_OBJECT_REF,
     FIELD_ATTR_PRECISION,
-    FIELD_ATTR_READ_ONLY,
+    FIELD_ATTR_MUTABILITY,
+    MUTABILITY_MODES,
     FIELD_ATTR_REQUIRED,
     FIELD_ATTR_SCALE,
     FIELD_ATTR_STORAGE,
@@ -334,9 +335,15 @@ _FIELD_COMMON_ATTRS = [
         allowed_values=STORAGE_VALUES,
     ),
     AttrSchema(name=FIELD_ATTR_REQUIRED, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
-    # @readOnly — field exposed read-only (omitted from create/update input DTOs).
-    # Cross-port logical field attr (every field subtype). Mirrors TS commonFieldAttrs.
-    AttrSchema(name=FIELD_ATTR_READ_ONLY, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
+    # @mutability — FR-037 R1; who may write this field, and when. One axis, three
+    # mutually exclusive modes. Cross-port logical field attr (every field subtype).
+    # Mirrors TS commonFieldAttrs.
+    AttrSchema(
+        name=FIELD_ATTR_MUTABILITY,
+        value_type=ATTR_SUBTYPE_STRING,
+        required=False,
+        allowed_values=MUTABILITY_MODES,
+    ),
     AttrSchema(name=FIELD_ATTR_UNIQUE, value_type=ATTR_SUBTYPE_BOOLEAN, required=False),
     # @db.indexed — DB-domain index-intent flag on every field subtype. The TS
     # port registers it through a dedicated metaobjects-db provider; Python keeps

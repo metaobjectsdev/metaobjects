@@ -587,8 +587,8 @@ public class MetaDataLoader
                 }
             }
 
-            // FR-013: field-level @readOnly cross-attribute rules.
-            var roResult = ValidationPasses.ValidateFieldReadOnly(root);
+            // FR-037 R1: field-level @mutability cross-attribute rules.
+            var roResult = ValidationPasses.ValidateFieldMutability(root);
             errors.AddRange(roResult.Errors);
             if (roResult.Warnings.Count > 0)
             {

@@ -22,7 +22,8 @@ import {
   IDENTITY_ATTR_FIELDS, IDENTITY_ATTR_GENERATION,
   FIELD_ATTR_STRING_FORMAT, FIELD_ATTR_LENIENT, STRING_FORMAT_EMAIL, STRING_FORMAT_HOSTNAME,
   FIELD_ATTR_REQUIRED, FIELD_ATTR_MAX_LENGTH, FIELD_ATTR_DEFAULT,
-  FIELD_ATTR_AUTO_SET, FIELD_ATTR_OBJECT_REF, FIELD_ATTR_VALUE_TYPE, FIELD_ATTR_READ_ONLY,
+  FIELD_ATTR_AUTO_SET, FIELD_ATTR_OBJECT_REF, FIELD_ATTR_VALUE_TYPE,
+  isReadOnlyMutability, isWriteOnceMutability,
   FIELD_ATTR_DB_COLUMN_TYPE, DB_COLUMN_TYPE_JSONB,
   AUTO_SET_ON_CREATE, AUTO_SET_ON_UPDATE,
   VALIDATOR_ATTR_MAX, VALIDATOR_ATTR_MIN, VALIDATOR_ATTR_PATTERN,
@@ -215,12 +216,13 @@ export function renderInsertSchemaOnly(obj: MetaObject, ctx?: RenderContext): Co
   const insertFieldLines: Code[] = [];
   for (const child of obj.fields()) {
     if (autoGenPkFields.has(child.name)) continue;
-    // FR-013: @readOnly fields are populated by DB / replication / external
-    // owner; the application has no path to write them. Exclude from the
-    // create-shape schema entirely.
+    // FR-037 R1: an @mutability:"readOnly" field is populated by DB / replication /
+    // external owner; the application has no path to write it. Exclude from the
+    // create-shape schema entirely. ("writeOnce" is NOT excluded here — that is
+    // the whole point of the mode: settable on create, frozen after.)
     // #213 — a derived (origin-bearing) field is read-only (FR-024 §7 / ADR-0028):
-    // excluded from the Insert/Update/preserving schemas, exactly like @readOnly.
-    if (child.attr(FIELD_ATTR_READ_ONLY) === true || child.isDerived()) continue;
+    // excluded from the Insert/Update/preserving schemas, exactly like readOnly.
+    if (isReadOnlyMutability(child) || child.isDerived()) continue;
 
     // FR-017 Tier 1: TPH subtype pins its discriminator field to z.literal(...).
     if (tphPin !== undefined && child.name === tphPin.fieldName) {
@@ -300,8 +302,9 @@ export function insertSchemaFields(obj: MetaObject): SchemaFieldShape[] {
   for (const child of obj.fields()) {
     if (autoGenPkFields.has(child.name)) continue;
     // #213 — a derived (origin-bearing) field is read-only (FR-024 §7 / ADR-0028):
-    // excluded from the Insert/Update/preserving schemas, exactly like @readOnly.
-    if (child.attr(FIELD_ATTR_READ_ONLY) === true || child.isDerived()) continue;
+    // excluded from the Insert/Update/preserving schemas, exactly like readOnly.
+    // "writeOnce" stays IN the create shape — it is settable exactly once.
+    if (isReadOnlyMutability(child) || child.isDerived()) continue;
     if (tphPin !== undefined && child.name === tphPin.fieldName) {
       out.push({ name: child.name, optional: false, pinnedLiteral: tphPin.value });
       continue;
@@ -335,8 +338,16 @@ export function updateSchemaFields(obj: MetaObject): SchemaFieldShape[] {
   for (const child of obj.fields()) {
     if (autoGenPkFields.has(child.name)) continue;
     // #213 — a derived (origin-bearing) field is read-only (FR-024 §7 / ADR-0028):
-    // excluded from the Insert/Update/preserving schemas, exactly like @readOnly.
-    if (child.attr(FIELD_ATTR_READ_ONLY) === true || child.isDerived()) continue;
+    // excluded from the Insert/Update/preserving schemas, exactly like readOnly.
+    if (isReadOnlyMutability(child) || child.isDerived()) continue;
+    // FR-037 R1 — "writeOnce" leaves the UPDATE shape, and only the update shape.
+    // Omitted, not rejected: a key absent from the settable set is STRIPPED on this
+    // path today (D1), and the generated edit form submits EVERY registered field
+    // (0.19.2 switched the resolver to UpdateSchema on edit and does not
+    // diff-and-omit), so 400-on-present would fail every save on every generated
+    // edit form for an entity carrying one. Clearing counts as a write, so the
+    // FR-035 present-null arm never reaches it either.
+    if (isWriteOnceMutability(child)) continue;
     // TPH subtype discriminator: omitted from the update schema entirely.
     if (tphPin !== undefined && child.name === tphPin.fieldName) continue;
     const autoSet = child.attr(FIELD_ATTR_AUTO_SET);
@@ -370,13 +381,13 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
   const emitPreserving = hasAutoSetFields(obj);
   for (const child of obj.fields()) {
     if (autoGenPkFields.has(child.name)) continue;
-    // FR-013: @readOnly fields appear in neither InsertSchema nor UpdateSchema.
-    // The DB / trigger / replication owns the write path; the app must not
-    // pass these values in POST/PATCH bodies (routesFile enforces the same
+    // FR-037 R1: an @mutability:"readOnly" field appears in neither InsertSchema
+    // nor UpdateSchema. The DB / trigger / replication owns the write path; the app
+    // must not pass these values in POST/PATCH bodies (routesFile enforces the same
     // contract at the boundary with a 400 response).
     // #213 — a derived (origin-bearing) field is read-only (FR-024 §7 / ADR-0028):
-    // excluded from the Insert/Update/preserving schemas, exactly like @readOnly.
-    if (child.attr(FIELD_ATTR_READ_ONLY) === true || child.isDerived()) continue;
+    // excluded from the Insert/Update/preserving schemas, exactly like readOnly.
+    if (isReadOnlyMutability(child) || child.isDerived()) continue;
 
     // FR-017 Tier 1: TPH subtype pins its discriminator field to z.literal(...).
     // The discriminator is implicit on subtype rows (controlled by URL / insert
@@ -412,6 +423,12 @@ export function renderZodValidators(obj: MetaObject, ctx?: RenderContext): Code 
       insertFieldLines.push(fieldLine);
       preservingFieldLines.push(fieldLine);
     }
+
+    // FR-037 R1 — "writeOnce": present in Insert + preserving (both are CREATE
+    // shapes), absent from Update. Same mechanism that drops @autoSet onCreate
+    // below; a value presented on PATCH is stripped, not 400'd (see
+    // updateSchemaFields for the grounding).
+    if (isWriteOnceMutability(child)) continue;
 
     // Update schema: @autoSet onCreate → omit entirely; onUpdate → transform
     if (autoSet === AUTO_SET_ON_CREATE) {

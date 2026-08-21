@@ -32,10 +32,21 @@ but the semantics are one contract — call them **PATCH-1..7** (FR-035):
   *omitted* field is left alone. This is JSON-Merge-Patch present-key semantics
   with `null` meaning *set null*, not *delete*.
 - **PATCH-3 (settable set).** Never settable: the primary key, the TPH
-  discriminator, `@readOnly` fields, `origin.*`-derived fields. `@autoSet:onUpdate`
-  columns are stamped server-side regardless of the caller; `@autoSet:onCreate`
-  columns are not patch-settable. At the HTTP tier an unknown or non-settable key
-  is a `400 {"error":"validation"}`.
+  discriminator, `@mutability: "readOnly"` fields, `@mutability: "writeOnce"` fields
+  (settable on POST, frozen thereafter), `origin.*`-derived fields.
+  `@autoSet:onUpdate` columns are stamped server-side regardless of the caller;
+  `@autoSet:onCreate` columns are not patch-settable.
+  **A non-settable key present in a PATCH body is STRIPPED, not rejected.** The
+  generated `<Entity>UpdateSchema` is a plain `z.object()` (never `.strict()`) that
+  simply omits every non-settable field, and Zod drops unknown keys — so
+  `safeParse` succeeds and the key never reaches the `SET`. The TPH discriminator
+  is additionally deleted by hand after parse, the same convention. A malformed
+  *value* on a settable key is still `400 {"error":"validation"}`.
+  This matters for `writeOnce` specifically: the generated edit form submits EVERY
+  registered field (`handleSubmit` passes all values, and 0.19.2 switched the
+  resolver to `UpdateSchema` on edit rather than diff-and-omit), so rejecting a
+  present-but-frozen key would fail every save on every generated edit form for an
+  entity carrying one.
 - **PATCH-4 (validation).** Assigned values run the same per-field validation and
   the same write codec as `create`.
 - **PATCH-5 (empty patch).** Zero assignments is a no-op — the current row is read

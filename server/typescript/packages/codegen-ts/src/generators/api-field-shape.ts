@@ -9,7 +9,7 @@
 //     emitter uses) and the optional/nullable rule from `isFieldRequired` (the
 //     SAME rule the docs Storage/Constraints nullable column uses).
 //   • create-payload     → `insertSchemaFields` (the EXACT field set + optionality
-//     the zod InsertSchema emitter walks: auto-gen PK omitted, @readOnly omitted,
+//     the zod InsertSchema emitter walks: auto-gen PK omitted, @mutability:"readOnly" omitted,
 //     TPH discriminator pinned, @autoSet optional, else `fieldWillBeOptional`).
 //   • update-payload     → `updateSchemaFields` (the UpdateSchema walk: TPH
 //     discriminator + @autoSet-onCreate omitted, everything else optional).

@@ -1069,10 +1069,12 @@ public class EntityGenerator : IGenerator
         var init = defaultInit.Length > 0
             ? defaultInit
             : (nonNull && !isValue ? " = default!;" : string.Empty);
-        // FR-013 — a @readOnly scalar is read-after-insert-only: EF materializes it on
-        // read via a private setter; application code cannot write it, and the
-        // DbContext excludes the column from INSERT / UPDATE (SetAfterSaveBehavior.Ignore).
-        var setter = field.ReadOnly ? "get; private set;" : "get; set;";
+        // FR-037 R1 — only `readOnly` takes a private setter: EF materializes it on read,
+        // and application code cannot write it at all (the DbContext additionally excludes
+        // the column from UPDATE). `writeOnce` keeps a PUBLIC setter on purpose — the caller
+        // must be able to supply it on insert; freezing it afterwards is the DbContext's
+        // SetAfterSaveBehavior(Ignore), not the property's job.
+        var setter = field.IsReadOnlyMutability ? "get; private set;" : "get; set;";
         sb.Append($"    public {type} {propName} {{ {setter} }}{init}");
         return sb.ToString();
     }

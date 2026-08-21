@@ -17,7 +17,7 @@ Core metaobjects metamodel types and subtypes.
 
 **Contributes attributes:**
 
-- `field.base`: `@default`, `@readOnly`, `@required`, `@unique`
+- `field.base`: `@default`, `@mutability`, `@required`, `@unique`
 - `field.currency`: `@currency`
 - `field.decimal`: `@precision`, `@scale`
 - `field.enum`: `@intValueMap`, `@provided`, `@values`

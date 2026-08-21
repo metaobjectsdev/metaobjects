@@ -89,11 +89,15 @@ public class DbContextGenerator : IGenerator
             // the write entity carries flattened VOs too (its per-column spread is mapped here).
             EmitFieldTypeConfig(owner, e, configFields, ctx, modelLines, jsonbObjectsOnly: false);
 
-            // FR-013 — a @readOnly field is read-after-insert-only. The property carries a
-            // private setter (EntityGenerator), and EF must skip the column on writes:
-            // SetAfterSaveBehavior(Ignore) excludes it from UPDATE, and ValueGeneratedOnAdd
-            // (paired below) lets the DB / trigger / default own the value on INSERT.
-            foreach (var f in configFields.Where(f => !f.ResolvedIsArray() && f.ReadOnly))
+            // FR-037 R1 — both non-readWrite modes are excluded from UPDATE, which EF
+            // expresses the same way: SetAfterSaveBehavior(Ignore). They differ on INSERT,
+            // and that difference lives in the PROPERTY, not here:
+            //   readOnly  — private setter (EntityGenerator), so application code cannot
+            //               supply a value on insert either; the DB / trigger / default owns it.
+            //   writeOnce — public setter, so the caller sets it exactly once on insert;
+            //               frozen from then on.
+            foreach (var f in configFields.Where(f => !f.ResolvedIsArray()
+                                                      && f.Mutability != MUTABILITY_READ_WRITE))
             {
                 var prop = CSharpNaming.Pascal(f.Name);
                 modelLines.Add(
@@ -147,7 +151,8 @@ public class DbContextGenerator : IGenerator
         // read-only field is present so models without one stay byte-identical.
         var needsMetadataUsing = objects
             .Where(o => o.IsEntity() && !o.IsReadOnlyProjection())
-            .Any(o => o.Fields().Any(f => !f.ResolvedIsArray() && f.ReadOnly));
+            .Any(o => o.Fields().Any(f => !f.ResolvedIsArray()
+                                          && f.Mutability != MUTABILITY_READ_WRITE));
 
         var sb = new StringBuilder();
         EmitUsings(sb, needsMetadataUsing, ctx);

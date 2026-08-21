@@ -12,6 +12,6 @@ class PostBrief(BaseModel):
 
 
 class PostBriefCreate(BaseModel):
-    """GENERATED — CREATE input: auto-gen PK / @readOnly omitted; @default/@autoSet optional; present values validated (FR-036)."""
+    """GENERATED — CREATE input: auto-gen PK / @mutability readOnly omitted (writeOnce is settable here, once); @default/@autoSet optional; present values validated (FR-036)."""
 
     title: str | None = None

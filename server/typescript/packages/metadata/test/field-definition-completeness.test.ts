@@ -5,7 +5,7 @@
 // (+ valueType + required) and dataType.
 //
 // FR-033 S1-field-B made the field model STRICT and per-subtype:
-//   - field.base carries the UNIVERSAL core attrs (@required/@readOnly/@default/
+//   - field.base carries the UNIVERSAL core attrs (@required/@mutability/@default/
 //     @unique). Every concrete subtype extendsBase:true to inherit them.
 //   - each concrete subtype adds ONLY its subtype-specific core attrs:
 //       string   → @maxLength
@@ -52,7 +52,7 @@ const registry = composeRegistry([...coreProviders]);
 type AttrExp = { valueType: string | null; required: boolean };
 
 /** The UNIVERSAL attrs every field subtype carries after composing the full
- *  coreProviders bundle: the core base attrs (@required/@readOnly/@default/
+ *  coreProviders bundle: the core base attrs (@required/@mutability/@default/
  *  @unique) + the always-on db column attrs + the always-on ui markers + the
  *  always-on prompt markers. Subtype-specific core attrs (@maxLength/@precision/
  *  @scale/@objectRef/@currency/@values/@provided) and scoped concern attrs
@@ -60,7 +60,7 @@ type AttrExp = { valueType: string | null; required: boolean };
 const UNIVERSAL: Record<string, AttrExp> = {
   // core-types base — universal intrinsic shape
   required: { valueType: "boolean", required: false },
-  readOnly: { valueType: "boolean", required: false },
+  mutability: { valueType: "string", required: false },
   unique: { valueType: "boolean", required: false },
   default: { valueType: null, required: false },
   // metaobjects-db — every field is a column
