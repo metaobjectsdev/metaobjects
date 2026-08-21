@@ -306,6 +306,61 @@ emits no diagnostic, only assertions that quietly cover less. The corpus now car
 README naming which case covers which path, so an edit that removes one has to remove its
 stated purpose too.
 
+### Fixed — the agent-facing docs described `@promptStyle` backwards, and never mentioned `sources`
+
+Two shipped-and-wrong agent-facing surfaces, both corrections of documentation rather than
+behaviour. The human-facing docs were right in both cases; only the agent context missed the
+pass, which is the worse half to miss — an agent reads it as ground truth and acts on it
+without a second source.
+
+**`@promptStyle` was documented exactly backwards.** The audit skill's capability checklist
+claimed it "is on `template.output` ONLY; authoring it on `template.prompt` fails load with
+`ERR_UNKNOWN_ATTR`". The registry says the opposite — `@promptStyle` is registered on
+`template.prompt` (`spec/metamodel/template.json`, byte-gated in `expected-registry.json`). An
+agent following the checklist would have authored the attribute on the one subtype where it
+genuinely fails to load, and then been told by the same file that the resulting error was
+impossible. The claim appeared **twice** in one block (the attr inventory and a parenthetical),
+so deleting either alone left it standing.
+
+ADR-0052's rollout swept the `metaobjects-prompts` skill and its five per-port references;
+**`metaobjects-codegen` and `metaobjects-audit` were missed.** Both now carry the ruling: a
+template subtype's axis is DIRECTION — `template.prompt` owns both halves of talking to a model
+(a prompt carrying `@responseRef` owns the parser-on-receipt, the tolerant `extract` mapper and
+the FR-010 output-format fragment), while `template.output` is outbound only and emits no parser.
+
+**The load-bearing part was the audit heuristics, not the prose.** Six statements told an
+auditor to flag a hand-rolled parser "where a `template.output` node exists" — now the wrong
+node to look for, so that check would have missed every real finding *and* manufactured false
+ones against email and document templates that legitimately have no parser. All six are re-keyed
+onto a responding `template.prompt`, plus two capability statements that described parser
+codegen as a `template.output` tier.
+
+**Reconciling the attr inventories against the registry — rather than inverting the one wrong
+sentence — surfaced four more errors nobody had reported:** `template.prompt` was missing
+`@promptStyle` and `@responseFormat`, `template.output` was missing `@payloadRef` / `@textRef` /
+`@format` / `@maxChars`, and `template.toolcall` was missing `@maxTokens`. The documented TS
+output filenames were stale too — `<Name>.output.ts` is now `<Name>.response.ts`, alongside
+`<Name>.responseFormat.ts` and `<Name>.extractor.ts`. Those were verified against the generators
+rather than against the ADR: an accepted ADR is a decision, and the emitter is the fact. The
+generator *class* names (`SpringOutputParserGenerator`, `KotlinOutputParserGenerator`,
+`OutputParserGenerator`) are unchanged and kept.
+
+**`sources` was absent from the scaffolded agent context entirely** — `grep -c sources` on the
+agent-docs body returned **0** — while the same file actively asserted that
+`.metaobjects/config.json` "is unchanged — it still holds static project state". It holds
+`sources` (see *Added — `sources` is read by all four CLI surfaces* below). So every project
+scaffolded by `meta init` received agent docs that could not describe where its own metadata
+comes from, and positively said nothing had changed.
+
+`meta init` now scaffolds a **"Where metadata comes from"** section stating the rule the feature
+documentation reserves that file for: **`metaobjects/` is the DEFAULT VALUE of `sources`, never
+a requirement, and must not be assumed to exist.** It covers the declaration shape, that every
+command reads the same set (so pointing `sources` elsewhere moves all of them together), that a
+`path` is read in place and never installed, four-CLI-surface support, set-not-list ordering, and
+strict unknown-key rejection. Refresh an existing project's copy with `meta init --refresh-docs`.
+
+All five byte-gated `agent-context-conformance` expected trees are regenerated.
+
 ### Metamodel version — `metamodelVersion` moves to `0.10`, and is now gated
 
 **Metamodel version: `0.9` → `0.10`.** ADR-0035 Amendment 2 made `metamodelVersion` the
