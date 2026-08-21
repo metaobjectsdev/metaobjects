@@ -193,6 +193,9 @@ class AuthorRepository:
             '    name VARCHAR(100) NOT NULL,'
             '    bio VARCHAR(1000),'
             '    "createdAt" TIMESTAMP NOT NULL,'
+            # FR-037 R1: the @mutability "writeOnce" column — settable on create,
+            # frozen after (it is simply absent from the update allowlist below).
+            '    "issuedCurrency" VARCHAR(3),'
             # #203/ADR-0045: @autoSet timestamp columns (nullable — no @required).
             '    "autoCreatedAt" TIMESTAMP,'
             '    "autoUpdatedAt" TIMESTAMP'
@@ -220,13 +223,15 @@ class AuthorRepository:
                     # must be observed to bump autoUpdatedAt away from it.
                     cur.execute(
                         'INSERT INTO "authors" '
-                        '(id, name, bio, "createdAt", "autoCreatedAt", "autoUpdatedAt") '
-                        'VALUES (%s, %s, %s, %s, %s, %s)',
+                        '(id, name, bio, "createdAt", "issuedCurrency", '
+                        '"autoCreatedAt", "autoUpdatedAt") '
+                        'VALUES (%s, %s, %s, %s, %s, %s, %s)',
                         (
                             int(r["id"]),
                             r["name"],
                             r.get("bio"),
                             _parse_timestamp(r["createdAt"]),
+                            r.get("issuedCurrency"),
                             _seed_timestamp(r.get("autoCreatedAt")),
                             _seed_timestamp(r.get("autoUpdatedAt")),
                         ),
@@ -251,7 +256,8 @@ class AuthorRepository:
         where_params: list[Any] | None = None,
     ) -> list[dict[str, Any]]:
         sql = (
-            'SELECT id, name, bio, "createdAt", "autoCreatedAt", "autoUpdatedAt" '
+            'SELECT id, name, bio, "createdAt", "issuedCurrency", '
+            '"autoCreatedAt", "autoUpdatedAt" '
             'FROM "authors"'
         )
         sql += where_clause
@@ -294,7 +300,8 @@ class AuthorRepository:
             cur = conn.cursor()
             try:
                 cur.execute(
-                    'SELECT id, name, bio, "createdAt", "autoCreatedAt", "autoUpdatedAt" '
+                    'SELECT id, name, bio, "createdAt", "issuedCurrency", '
+                    '"autoCreatedAt", "autoUpdatedAt" '
                     'FROM "authors" WHERE id = %s',
                     (int(ident),),
                 )
@@ -313,12 +320,15 @@ class AuthorRepository:
             try:
                 cur.execute(
                     'INSERT INTO "authors" '
-                    '(name, bio, "createdAt", "autoCreatedAt", "autoUpdatedAt") '
-                    'VALUES (%s, %s, %s, %s, %s) RETURNING id',
+                    '(name, bio, "createdAt", "issuedCurrency", '
+                    '"autoCreatedAt", "autoUpdatedAt") '
+                    'VALUES (%s, %s, %s, %s, %s, %s) RETURNING id',
                     (
                         dto.get("name"),
                         dto.get("bio"),
                         _parse_timestamp(dto.get("createdAt")),
+                        # FR-037 R1: writeOnce IS bound here — settable exactly once.
+                        dto.get("issuedCurrency"),
                         now,
                         now,
                     ),
@@ -345,6 +355,11 @@ class AuthorRepository:
         if "createdAt" in dto:
             set_clauses.append('"createdAt" = %s')
             values.append(_parse_timestamp(dto["createdAt"]))
+        # FR-037 R1: issuedCurrency is @mutability "writeOnce" — DELIBERATELY absent
+        # from this allowlist. A presented value is STRIPPED (never reaches the SET),
+        # not rejected, matching every other excluded key on this path. Do not add a
+        # branch for it: that would make the mode unenforced. The omission also
+        # covers the FR-035 present-null arm for free, since clearing is a write.
         # #203/ADR-0045: bump the onUpdate @autoSet column (autoUpdatedAt) to now()
         # on EVERY update (server-owned; any caller value is ignored), and NEVER
         # write autoCreatedAt (onCreate is immutable — the lost-update guard). This
@@ -528,15 +543,17 @@ def _fmt_ts(value: Any) -> str | None:
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
     """Normalize an
-    ``(id, name, bio, createdAt, autoCreatedAt, autoUpdatedAt)`` tuple to the wire
-    shape. Timestamps are normalized to ISO-8601-without-zone matching the seed.
+    ``(id, name, bio, createdAt, issuedCurrency, autoCreatedAt, autoUpdatedAt)``
+    tuple to the wire shape. Timestamps are normalized to ISO-8601-without-zone
+    matching the seed.
     """
-    ident, name, bio, created, auto_created, auto_updated = row
+    ident, name, bio, created, issued_currency, auto_created, auto_updated = row
     return {
         "id": int(ident),
         "name": name,
         "bio": bio,
         "createdAt": _fmt_ts(created),
+        "issuedCurrency": issued_currency,
         "autoCreatedAt": _fmt_ts(auto_created),
         "autoUpdatedAt": _fmt_ts(auto_updated),
     }

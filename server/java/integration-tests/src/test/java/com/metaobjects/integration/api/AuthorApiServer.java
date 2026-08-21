@@ -89,6 +89,9 @@ final class AuthorApiServer implements AutoCloseable {
                         name VARCHAR(100) NOT NULL,
                         bio VARCHAR(1000),
                         "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+                        -- FR-037 R1: the @mutability "writeOnce" column — settable on create,
+                        -- frozen after (simply absent from the UPDATE allowlist below).
+                        "issuedCurrency" VARCHAR(3),
                         "autoCreatedAt" TIMESTAMP WITH TIME ZONE,
                         "autoUpdatedAt" TIMESTAMP WITH TIME ZONE
                     )""");
@@ -124,19 +127,23 @@ final class AuthorApiServer implements AutoCloseable {
         truncate();
         try (Connection c = connect()) {
             try (PreparedStatement ps = c.prepareStatement(
-                "INSERT INTO \"authors\" (id, name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\") "
-                    + "VALUES (?, ?, ?, ?, ?, ?)")) {
+                "INSERT INTO \"authors\" (id, name, bio, \"createdAt\", \"issuedCurrency\", "
+                    + "\"autoCreatedAt\", \"autoUpdatedAt\") "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?)")) {
                 for (Map<String, Object> r : rows) {
                     ps.setLong(1, ((Number) r.get("id")).longValue());
                     ps.setString(2, (String) r.get("name"));
                     ps.setString(3, (String) r.get("bio"));
                     ps.setObject(4, parseInstant((String) r.get("createdAt")));
+                    // FR-037 R1: seed the writeOnce column so a later PATCH is observed to
+                    // leave it alone.
+                    ps.setString(5, (String) r.get("issuedCurrency"));
                     // Issue #203 / ADR-0045: the SEED writes the @autoSet columns VERBATIM (a direct
                     // insert, NOT a stamping create) so a seeded row keeps its OLD sentinel — that is
                     // what lets a later PATCH's bumped autoUpdatedAt diverge from the preserved
                     // autoCreatedAt (the fieldsNotEqual gate).
-                    ps.setObject(5, seedInstantOrNull(r.get("autoCreatedAt")));
-                    ps.setObject(6, seedInstantOrNull(r.get("autoUpdatedAt")));
+                    ps.setObject(6, seedInstantOrNull(r.get("autoCreatedAt")));
+                    ps.setObject(7, seedInstantOrNull(r.get("autoUpdatedAt")));
                     ps.executeUpdate();
                 }
             }
@@ -230,7 +237,7 @@ final class AuthorApiServer implements AutoCloseable {
         List<Object> bindParams = new ArrayList<>();
         String whereClause = buildWhere(filter.predicates(), bindParams);
 
-        StringBuilder sql = new StringBuilder("SELECT id, name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\"");
+        StringBuilder sql = new StringBuilder("SELECT id, name, bio, \"createdAt\", \"issuedCurrency\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\"");
         sql.append(whereClause);
         sql.append(" ORDER BY \"").append(sortField).append("\" ").append(sortDir);
         if (limit != null) sql.append(" LIMIT ").append(limit);
@@ -408,7 +415,7 @@ final class AuthorApiServer implements AutoCloseable {
         if (id == null) { sendJson(exchange, 400, Map.of("error", "invalid_id")); return; }
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement(
-                 "SELECT id, name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\" WHERE id = ?")) {
+                 "SELECT id, name, bio, \"createdAt\", \"issuedCurrency\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\" WHERE id = ?")) {
             ps.setLong(1, id);
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) { sendJson(exchange, 404, Map.of("error", "not_found")); return; }
@@ -436,13 +443,16 @@ final class AuthorApiServer implements AutoCloseable {
         long newId;
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement(
-                 "INSERT INTO \"authors\" (name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\") "
-                     + "VALUES (?, ?, ?, ?, ?) RETURNING id")) {
+                 "INSERT INTO \"authors\" (name, bio, \"createdAt\", \"issuedCurrency\", "
+                     + "\"autoCreatedAt\", \"autoUpdatedAt\") "
+                     + "VALUES (?, ?, ?, ?, ?, ?) RETURNING id")) {
             ps.setString(1, (String) body.get("name"));
             ps.setString(2, (String) body.get("bio"));
             ps.setObject(3, parseInstant((String) body.get("createdAt")));
-            ps.setObject(4, nowStamp);
+            // FR-037 R1: writeOnce IS bound on create — settable exactly once.
+            ps.setString(4, (String) body.get("issuedCurrency"));
             ps.setObject(5, nowStamp);
+            ps.setObject(6, nowStamp);
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 newId = rs.getLong(1);
@@ -451,7 +461,7 @@ final class AuthorApiServer implements AutoCloseable {
         Map<String, Object> row;
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement(
-                 "SELECT id, name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\" WHERE id = ?")) {
+                 "SELECT id, name, bio, \"createdAt\", \"issuedCurrency\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\" WHERE id = ?")) {
             ps.setLong(1, newId);
             try (ResultSet rs = ps.executeQuery()) { rs.next(); row = rowToMap(rs); }
         }
@@ -489,6 +499,11 @@ final class AuthorApiServer implements AutoCloseable {
             setClauses.add("\"createdAt\" = ?");
             values.add(parseInstant(cAt));
         }
+        // FR-037 R1: issuedCurrency is @mutability "writeOnce" — DELIBERATELY absent from
+        // this allowlist. A presented value is STRIPPED (never reaches the SET), not
+        // rejected, matching every other excluded key on this path. Do NOT add a branch:
+        // that would leave the mode unenforced. The omission covers the FR-035
+        // present-null arm too, since clearing a column is itself a write.
         if (setClauses.isEmpty()) { sendJson(exchange, 400, Map.of("error", "validation")); return; }
 
         // Issue #203 / ADR-0045: honor @autoSet onUpdate — bump autoUpdatedAt to now() on EVERY
@@ -515,7 +530,7 @@ final class AuthorApiServer implements AutoCloseable {
         Map<String, Object> row;
         try (Connection c = connect();
              PreparedStatement ps = c.prepareStatement(
-                 "SELECT id, name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\" WHERE id = ?")) {
+                 "SELECT id, name, bio, \"createdAt\", \"issuedCurrency\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\" WHERE id = ?")) {
             ps.setLong(1, id);
             try (ResultSet rs = ps.executeQuery()) { rs.next(); row = rowToMap(rs); }
         }
@@ -566,6 +581,9 @@ final class AuthorApiServer implements AutoCloseable {
         // Normalize to a UTC instant on the wire: yyyy-MM-ddTHH:mm:ssZ (instant contract).
         row.put("createdAt", ts == null ? null : formatInstant(ts.toInstant()));
         // Issue #203 / ADR-0045 @autoSet timestamp columns — same instant wire form as createdAt.
+        // FR-037 R1 — the writeOnce column surfaces on the wire so the
+        // writeonce-patch-stripped scenario can assert it survives a PATCH.
+        row.put("issuedCurrency", rs.getString("issuedCurrency"));
         OffsetDateTime autoCreated = rs.getObject("autoCreatedAt", OffsetDateTime.class);
         row.put("autoCreatedAt", autoCreated == null ? null : formatInstant(autoCreated.toInstant()));
         OffsetDateTime autoUpdated = rs.getObject("autoUpdatedAt", OffsetDateTime.class);

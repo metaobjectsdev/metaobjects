@@ -101,7 +101,7 @@ final class InMemoryAuthorRepositorySource {
                 // AuthorDto.stampForInsert(dto) before calling create — the repo just persists
                 // the incoming (already-stamped) values verbatim.
                 AuthorDto saved = new AuthorDto(nextId.getAndIncrement(), dto.name(), dto.bio(),
-                    dto.createdAt(), dto.autoCreatedAt(), dto.autoUpdatedAt());
+                    dto.createdAt(), dto.issuedCurrency(), dto.autoCreatedAt(), dto.autoUpdatedAt());
                 rows.add(saved);
                 return saved;
             }
@@ -116,6 +116,7 @@ final class InMemoryAuthorRepositorySource {
                             dto.name() != null ? dto.name() : cur.name(),
                             dto.bio()  != null ? dto.bio()  : cur.bio(),
                             dto.createdAt() != null ? dto.createdAt() : cur.createdAt(),
+                            dto.issuedCurrency() != null ? dto.issuedCurrency() : cur.issuedCurrency(),
                             dto.autoCreatedAt() != null ? dto.autoCreatedAt() : cur.autoCreatedAt(),
                             dto.autoUpdatedAt() != null ? dto.autoUpdatedAt() : cur.autoUpdatedAt());
                         rows.set(i, merged);
@@ -142,6 +143,12 @@ final class InMemoryAuthorRepositorySource {
                             patch.hasName()          ? patch.name()          : cur.name(),
                             patch.hasBio()           ? patch.bio()           : cur.bio(),
                             patch.hasCreatedAt()     ? patch.createdAt()     : cur.createdAt(),
+                            // FR-037 R1: issuedCurrency is @mutability "writeOnce" — the
+                            // generated AuthorPatch has NO accessor for it at all (it is not in
+                            // settableFields), so the stored value is the only thing that can be
+                            // read here. That absence IS the enforcement: this line cannot be
+                            // written any other way without a compile error.
+                            cur.issuedCurrency(),
                             cur.autoCreatedAt(),
                             (java.time.Instant) patch.assignedValues().getOrDefault("autoUpdatedAt", cur.autoUpdatedAt()));
                         rows.set(i, merged);

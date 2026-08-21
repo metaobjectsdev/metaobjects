@@ -86,6 +86,10 @@ internal sealed class GeneratedAuthorServerFactory : IAsyncDisposable
                     -- the generated EF model binds CreatedAt to DateTimeOffset, which Npgsql
                     -- reads from a `timestamp with time zone` (timestamptz) column.
                     ""createdAt"" TIMESTAMPTZ NOT NULL,
+                    -- FR-037 R1: the @mutability ""writeOnce"" column. The GENERATED artifact
+                    -- must be the thing that freezes it after create — that is the point of
+                    -- this lane (the DbContext emits SetAfterSaveBehavior(Ignore) for it).
+                    ""issuedCurrency"" VARCHAR(3),
                     -- Issue #203 / ADR-0045: the @autoSet timestamp columns (onCreate / onUpdate).
                     -- Not @required → nullable DateTimeOffset? in the generated EF model; the
                     -- generated CRUD stamps them (insert stamps both, update bumps autoUpdatedAt).
@@ -290,12 +294,14 @@ internal sealed class GeneratedAuthorServerFactory : IAsyncDisposable
         {
             await using var ins = c.CreateCommand();
             ins.CommandText =
-                "INSERT INTO \"authors\" (id, name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\") "
-                + "VALUES (@id, @name, @bio, @ct, @ac, @au)";
+                "INSERT INTO \"authors\" (id, name, bio, \"createdAt\", \"issuedCurrency\", \"autoCreatedAt\", \"autoUpdatedAt\") "
+                + "VALUES (@id, @name, @bio, @ct, @ic, @ac, @au)";
             ins.Parameters.AddWithValue("@id", Convert.ToInt64(r["id"]));
             ins.Parameters.AddWithValue("@name", (string)r["name"]!);
             ins.Parameters.AddWithValue("@bio", r["bio"] is string b ? b : (object)DBNull.Value);
             ins.Parameters.AddWithValue("@ct", ParseTimestamp((string)r["createdAt"]!));
+            ins.Parameters.AddWithValue("@ic",
+                r.GetValueOrDefault("issuedCurrency") is string ic ? ic : (object)DBNull.Value);
             // Issue #203 / ADR-0045 — seed the OLD @autoSet sentinel via a DIRECT insert (NOT the
             // stamping generated POST) so the seeded row keeps the old value; the generated PATCH
             // then bumps autoUpdatedAt while autoCreatedAt stays old → the asserted divergence.

@@ -81,6 +81,9 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
                     it[name] = r["name"] as String
                     it[bio] = r["bio"] as String?
                     it[createdAt] = parseTimestamp(r["createdAt"] as String)
+                    // FR-037 R1: seed the writeOnce column so a later PATCH is observed to
+                    // leave it alone.
+                    it[issuedCurrency] = r["issuedCurrency"] as String?
                     // #203/ADR-0045: write the seed's @autoSet values VERBATIM (the old sentinel) —
                     // NOT stamped — so a later PATCH bumping autoUpdatedAt makes the two diverge.
                     it[autoCreatedAt] = parseTimestamp(r["autoCreatedAt"] as String)
@@ -194,6 +197,8 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
                 it[name] = body["name"] as String
                 it[bio] = body["bio"] as String?
                 it[createdAt] = parseTimestamp(body["createdAt"] as String)
+                // FR-037 R1: writeOnce IS bound on create — settable exactly once.
+                it[issuedCurrency] = body["issuedCurrency"] as String?
                 it[autoCreatedAt] = now
                 it[autoUpdatedAt] = now
             }[AuthorTable.id]
@@ -224,6 +229,11 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
                 (body["name"] as? String)?.let { v -> it[name] = v }
                 if (body.containsKey("bio")) it[bio] = body["bio"] as String?
                 (body["createdAt"] as? String)?.let { v -> it[createdAt] = parseTimestamp(v) }
+                // FR-037 R1: issuedCurrency is @mutability "writeOnce" — DELIBERATELY absent
+                // from this update block. A presented value is STRIPPED (it never reaches the
+                // UPDATE), not rejected, matching every other excluded key on this path. Do NOT
+                // add a line for it: that would leave the mode unenforced. The omission also
+                // covers the FR-035 present-null arm, since clearing a column is a write.
                 // #203/ADR-0045: bump the onUpdate @autoSet column on EVERY write (even an empty
                 // body) and NEVER rewrite the onCreate column — so autoCreatedAt (old sentinel) and
                 // autoUpdatedAt (now()) diverge after a PATCH.
@@ -276,6 +286,9 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
             // ADR-0036 Wave 2: createdAt is an absolute instant — normalize to the UTC wire
             // form yyyy-MM-ddTHH:mm:ssZ.
             "createdAt" to formatInstant(ts),
+            // FR-037 R1: the writeOnce column is part of the response shape so the
+            // writeonce-patch-stripped scenario can assert it survives a PATCH.
+            "issuedCurrency" to row[AuthorTable.issuedCurrency],
             // #203/ADR-0045: the @autoSet columns are part of the response shape (same instant
             // wire form as createdAt) so the fieldsNotEqual gate can compare them field-vs-field.
             "autoCreatedAt" to formatInstant(row[AuthorTable.autoCreatedAt]),
@@ -535,6 +548,9 @@ class AuthorApiServer(private val pg: PostgresContainer) : AutoCloseable {
         val name = varchar("name", 100)
         val bio = varchar("bio", 1000).nullable()
         val createdAt = timestamp("createdAt")
+        // FR-037 R1 — the @mutability "writeOnce" column: bound on insert, DELIBERATELY
+        // absent from the update block below (settable exactly once).
+        val issuedCurrency = varchar("issuedCurrency", 3).nullable()
         // #203/ADR-0045 @autoSet columns — server-owned timestamps. onCreate is stamped once at
         // insert and never rewritten; onUpdate is re-stamped on every write. Both are seeded
         // verbatim in applySeed (so a PATCH can diverge them from the old sentinel).

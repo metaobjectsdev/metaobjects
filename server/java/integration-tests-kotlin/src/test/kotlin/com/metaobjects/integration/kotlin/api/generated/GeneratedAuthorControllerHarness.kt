@@ -217,6 +217,9 @@ class GeneratedAuthorControllerHarness(
                         stmt[columnFor("name")] = r["name"] as String?
                         stmt[columnFor("bio")] = r["bio"] as String?
                         stmt[columnFor("createdAt")] = parseSeedInstant(r["createdAt"] as String)
+                        // FR-037 R1: the @mutability "writeOnce" column, seeded verbatim so a
+                        // later PATCH can be observed to leave it alone.
+                        stmt[columnFor("issuedCurrency")] = r["issuedCurrency"] as String?
                         stmt[columnFor("autoCreatedAt")] = parseSeedInstant(r["autoCreatedAt"] as String)
                         stmt[columnFor("autoUpdatedAt")] = parseSeedInstant(r["autoUpdatedAt"] as String)
                     }

@@ -66,6 +66,9 @@ export interface AuthorRow {
   name: string;
   bio?: string | null;
   createdAt: string;
+  // FR-037 R1 — @mutability: "writeOnce". Settable on create, frozen after; the
+  // seed supplies it so a PATCH can prove the presented value is STRIPPED.
+  issuedCurrency?: string | null;
   // #203 / ADR-0045 — @autoSet timestamps. Present verbatim in the seed (an OLD
   // sentinel) so a PATCH can prove it bumps autoUpdatedAt (onUpdate) while
   // leaving autoCreatedAt (onCreate) untouched.
@@ -99,6 +102,9 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
     .addColumn("name", "varchar(100)", (c) => c.notNull())
     .addColumn("bio", "varchar(1000)")
     .addColumn("createdAt", "timestamp", (c) => c.notNull())
+    // FR-037 R1 — the @mutability: "writeOnce" column. Nullable at the DDL tier;
+    // the create path supplies it and the update path never touches it.
+    .addColumn("issuedCurrency", "varchar(3)")
     // #203 / ADR-0045 — @autoSet timestamp columns (literal naming = field name).
     // Nullable at the DDL tier; the seed / POST / PATCH paths always supply a
     // value, so the reference server owns the @autoSet stamping explicitly.
@@ -194,7 +200,18 @@ export async function startServer(connectionUri: string, root: MetaRoot): Promis
     // update; NEVER write autoCreatedAt (onCreate is immutable — dropping it here
     // guards the lost-update bug of rewriting the creation stamp). The runtime OM
     // does not stamp @autoSet, so the reference server does it explicitly.
-    const { autoCreatedAt: _dropOnCreate, ...rest } = (req.body as Record<string, unknown>) ?? {};
+    // FR-037 R1 — a @mutability: "writeOnce" column is not in the PATCH settable
+    // set: drop it here exactly as @autoSet:onCreate is dropped. STRIPPED, never
+    // 400'd — the uniform behaviour of every excluded key on this path, and what
+    // the generated routes do (their UpdateSchema simply omits the field, and a
+    // plain z.object() discards unknown keys). Dropping it also covers the
+    // present-NULL arm for free: clearing is a write, so an explicit null must
+    // not reach the column either.
+    const {
+      autoCreatedAt: _dropOnCreate,
+      issuedCurrency: _dropWriteOnce,
+      ...rest
+    } = (req.body as Record<string, unknown>) ?? {};
     const body = { ...rest, autoUpdatedAt: new Date().toISOString() };
     // A ValidationError (e.g. FR-035 present-null on a @required field) propagates
     // to the shared setErrorHandler above → 400 {error:"validation"}.

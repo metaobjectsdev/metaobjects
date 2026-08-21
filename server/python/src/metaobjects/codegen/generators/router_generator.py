@@ -51,6 +51,10 @@ from metaobjects.codegen.generators.tph_plan import TphPlan, is_tph_subtype, tph
 from metaobjects.codegen.instance_artifacts import emits_instance_artifacts
 from metaobjects.codegen.type_map import PyType, py_type_for
 from metaobjects.meta.core.field import field_constants as fc
+from metaobjects.loader.validate_field_mutability import (
+    is_read_only_mutability,
+    is_write_once_mutability,
+)
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.persistence.db import db_constants as dbc
 from metaobjects.meta.core.identity.identity_constants import (
@@ -117,6 +121,39 @@ def _is_auto_set(field: MetaField) -> bool:
         fc.AUTO_SET_ON_CREATE,
         fc.AUTO_SET_ON_UPDATE,
     )
+
+
+def _frozen_names(entity: MetaObject) -> list[str]:
+    """FR-037 R1 — the field names a PATCH must never write: `@mutability`
+    ``readOnly`` (nobody writes it) and ``writeOnce`` (frozen after create).
+
+    ADR-0045: the OUTERMOST generated write artifact enforces the mode, and for
+    FastAPI that is the ROUTER, not the ``<Entity>Patch`` model — the handler binds
+    ``dto: dict[str, Any]`` (the raw body) and passes THAT to the repository, so a
+    field merely absent from the patch model still reaches the row. @autoSet gets
+    away with it because the router OVERWRITES its key server-side; a writeOnce
+    field has no server value to overwrite, so it must be popped explicitly."""
+    return [
+        f.name
+        for f in entity.fields()
+        if is_read_only_mutability(f) or is_write_once_mutability(f)
+    ]
+
+
+def _frozen_strip_lines(entity: MetaObject, indent: str = "    ") -> list[str]:
+    """The pop-loop for :func:`_frozen_names`. Empty for an entity declaring no
+    non-readWrite mode — so output stays byte-identical for every existing model."""
+    names = _frozen_names(entity)
+    if not names:
+        return []
+    return [
+        f"{indent}# FR-037 R1: @mutability readOnly / writeOnce are not PATCH-settable.",
+        f"{indent}# STRIPPED, never 400'd — the uniform behaviour of every excluded key",
+        f"{indent}# on this path. Popping also covers the FR-035 present-null arm, since",
+        f"{indent}# clearing a column is itself a write.",
+        f"{indent}for _frozen in _FROZEN_FIELDS:",
+        f"{indent}    dto.pop(_frozen, None)",
+    ]
 
 
 def _auto_set_split(entity: MetaObject) -> tuple[list[MetaField], list[MetaField]]:
@@ -328,6 +365,7 @@ class RouterGenerator:
         patch_model: str,
         create_autoset: list[str] = (),
         update_autoset: list[str] = (),
+        frozen_strip: list[str] = (),
     ) -> list[str]:
         """One CRUD route handler block, dispatched by *name*
         (``list`` / ``get`` / ``create`` / ``update`` / ``delete``). Override to
@@ -418,6 +456,7 @@ class RouterGenerator:
                 # above the repo seam — a server-inserted present key (compatible with the PATCH
                 # present-key tristate); onCreate columns are never touched here.
                 *update_autoset,
+                *frozen_strip,
                 f"    saved = repo.update({pk_param}, dto)",
                 "    if saved is None:",
                 '        return JSONResponse(status_code=404, content={"error": "not_found"})',
@@ -533,6 +572,28 @@ class RouterGenerator:
                     req_seen.add(name)
                     required_names.append(name)
         required_set_body = _py_set_literal(required_names, frozen=True)
+        # FR-037 R1 — non-readWrite @mutability across the base AND every subtype.
+        # Union, stable order: ADR-0045 says the OUTERMOST artifact enforces the mode,
+        # and a TPH per-subtype handler is a SEPARATE code path (the 0.19.4 lesson).
+        frozen_names: list[str] = _frozen_names(entity)
+        frozen_seen = set(frozen_names)
+        for st in plan.subtypes:
+            for name in _frozen_names(st.entity):
+                if name not in frozen_seen:
+                    frozen_seen.add(name)
+                    frozen_names.append(name)
+        frozen_set_body = _py_set_literal(frozen_names, frozen=True)
+        frozen_strip_tph = _frozen_strip_lines(entity) if frozen_names else []
+        if frozen_names and not _frozen_names(entity):
+            # A subtype-only frozen field still needs the strip emitted.
+            frozen_strip_tph = [
+                "    # FR-037 R1: @mutability readOnly / writeOnce are not PATCH-settable.",
+                "    # STRIPPED, never 400'd — the uniform behaviour of every excluded key",
+                "    # on this path. Popping also covers the FR-035 present-null arm, since",
+                "    # clearing a column is itself a write.",
+                "    for _frozen in _FROZEN_FIELDS:",
+                "        dto.pop(_frozen, None)",
+            ]
 
         h = generated_header(short_name, _effective_fqn(entity)).rstrip()
         parts: list[str] = []
@@ -583,6 +644,12 @@ class RouterGenerator:
         parts.append("")
         parts.append("")
         parts.append(f"_REQUIRED_FIELDS: frozenset[str] = {required_set_body}")
+        parts.append("")
+        parts.append("")
+        # FR-037 R1 — the names a PATCH must never write. Emitted even when EMPTY so
+        # the generated module always carries the seam (an entity that later gains a
+        # writeOnce field changes one literal, not the module's shape).
+        parts.append(f"_FROZEN_FIELDS: frozenset[str] = {frozen_set_body}")
         parts.append("")
         parts.append("")
         parts.append("def _parse_sort(raw: str) -> _SortClause | None:")
@@ -690,6 +757,7 @@ class RouterGenerator:
             # #203/ADR-0045: pop the write-once onCreate column(s), bump onUpdate — ABOVE
             # the repo seam (empty for a non-@autoSet hierarchy — byte-identical output).
             parts.extend(update_autoset)
+            parts.extend(frozen_strip_tph)
             parts.append(f'    saved = repo.update("{val}", {pk_param}, dto)')
             parts.append("    if saved is None:")
             parts.append('        return JSONResponse(status_code=404, content={"error": "not_found"})')
@@ -788,6 +856,8 @@ class RouterGenerator:
         # FR-035 PATCH-2: an explicit null on a @required field (scalar or jsonb)
         # is a 400 — the update handler guards these before the repo call.
         required_set_body = _py_set_literal(_required_field_names(entity), frozen=True)
+        # FR-037 R1 — the names a PATCH must never write (readOnly / writeOnce).
+        frozen_set_body = _py_set_literal(_frozen_names(entity), frozen=True)
 
         # #203/ADR-0045: @autoSet stamp lines for the create/update handlers (empty for a
         # non-@autoSet entity → byte-identical output). insert stamps onCreate+onUpdate from one
@@ -860,6 +930,12 @@ class RouterGenerator:
         parts.append(f"_REQUIRED_FIELDS: frozenset[str] = {required_set_body}")
         parts.append("")
         parts.append("")
+        # FR-037 R1 — the names a PATCH must never write. Emitted even when EMPTY so
+        # the generated module always carries the seam (an entity that later gains a
+        # writeOnce field changes one literal, not the module's shape).
+        parts.append(f"_FROZEN_FIELDS: frozenset[str] = {frozen_set_body}")
+        parts.append("")
+        parts.append("")
         parts.append('def _parse_sort(raw: str) -> _SortClause | None:')
         parts.append('    """Parse `field:asc|desc`; return None for malformed / disallowed input."""')
         parts.append('    parts = raw.split(":", 1)')
@@ -894,6 +970,10 @@ class RouterGenerator:
             patch_model=f"{short_name}Patch",
             create_autoset=create_autoset,
             update_autoset=update_autoset,
+            # FR-037 R1 — ADR-0045: the ROUTER is the outermost write artifact for
+            # FastAPI (the handler binds the RAW body dict and hands THAT to the
+            # repository), so the strip has to live here, not in <Entity>Patch.
+            frozen_strip=_frozen_strip_lines(entity),
         )
         for i, hname in enumerate(("list", "get", "create", "update", "delete")):
             if i > 0:

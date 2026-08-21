@@ -106,6 +106,8 @@ public class RoutesGenerator : PerEntityGenerator
         // InsertPreserving escape hatch is emitted when any exist).
         var autoSetFields = AutoSetFields(entity);
         var autoSetNavs = autoSetFields.Select(a => a.Nav).ToList();
+        // FR-037 R1 — readOnly / writeOnce are excluded from the PATCH merge.
+        var frozenNavs = FrozenNavs(entity);
         // Physical table + PK column for the post-save array-null clear (EF OwnsMany ToJson
         // writes [] for a null nav, so a nullable array column is NULLed via raw SQL).
         var table = CSharpNaming.Table(entity);
@@ -242,7 +244,7 @@ public class RoutesGenerator : PerEntityGenerator
             sb.AppendLine("                .Value.SerializerOptions;");
             sb.AppendLine("            var entry = db.Entry(existing);");
             AppendUpdateAutoSet(sb, autoSetFields);
-            AppendPartialMergeLoop(sb, null, voFields, autoSetNavs);
+            AppendPartialMergeLoop(sb, null, voFields, autoSetNavs, frozenNavs);
             sb.AppendLine("            await db.SaveChangesAsync();");
             AppendArrayNullClears(sb, voFields, table, pkColumn);
             // #214 — writes target the table; for a write-through entity re-read the row
@@ -489,6 +491,23 @@ public class RoutesGenerator : PerEntityGenerator
     // The @autoSet fields (effective — inherited @autoSet resolves) whose CLR type is a
     // temporal that has a now() form. A non-temporal @autoSet field (not expected per the
     // spec) is skipped rather than emitting an ill-typed assignment.
+    /// <summary>
+    /// FR-037 R1 — the CLR property names a PATCH must never write: <c>@mutability</c>
+    /// <c>readOnly</c> (nobody writes it) and <c>writeOnce</c> (frozen after create).
+    ///
+    /// <para>ADR-0045: the OUTERMOST generated write artifact enforces the mode, and for
+    /// ASP.NET that is the ROUTE. <c>SetAfterSaveBehavior(Ignore)</c> is not sufficient on
+    /// its own: the merge loop assigns <c>entry.CurrentValues[target]</c> and the handler
+    /// returns the in-memory <c>existing</c> entity, so a caller-supplied value would be
+    /// echoed in the RESPONSE even where EF omitted the column from the UPDATE. Skipping
+    /// the key here is what makes the response and the row agree.</para>
+    /// </summary>
+    private static List<string> FrozenNavs(MetaObject entity) =>
+        entity.Fields()
+            .Where(f => f.Mutability != MetaObjects.Core.Field.FieldConstants.MUTABILITY_READ_WRITE)
+            .Select(f => CSharpNaming.Pascal(f.Name))
+            .ToList();
+
     private static List<AutoSetField> AutoSetFields(MetaObject entity)
     {
         var list = new List<AutoSetField>();
@@ -738,7 +757,7 @@ public class RoutesGenerator : PerEntityGenerator
     // and `jsonOpts` are in scope.
     private static void AppendPartialMergeLoop(
         StringBuilder sb, string? discProp, IReadOnlyList<VoField> voFields,
-        IReadOnlyList<string> autoSetNavs)
+        IReadOnlyList<string> autoSetNavs, IReadOnlyList<string> frozenNavs)
     {
         // A nullable array-of-VO column that a request clears to null (present-null) can NOT be
         // NULLed by an owned-nav assignment — EF OwnsMany(...).ToJson writes `[]` for a null
@@ -798,6 +817,12 @@ public class RoutesGenerator : PerEntityGenerator
         // never set them via the PATCH/PUT body, so skip any present key.
         foreach (var nav in autoSetNavs)
             sb.AppendLine($"                if (string.Equals(target.Name, \"{nav}\", System.StringComparison.Ordinal)) continue; // @autoSet: server-owned");
+        // FR-037 R1 — @mutability readOnly / writeOnce are not PATCH-settable. STRIPPED,
+        // never 400'd: the uniform behaviour of every excluded key on this path. Skipping
+        // BEFORE the null branch also covers the FR-035 present-null arm, since clearing a
+        // column is itself a write.
+        foreach (var nav in frozenNavs)
+            sb.AppendLine($"                if (string.Equals(target.Name, \"{nav}\", System.StringComparison.Ordinal)) continue; // @mutability: not patch-settable");
         sb.AppendLine("                if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Null)");
         sb.AppendLine("                {");
         sb.AppendLine("                    // FR-035 PATCH-2: explicit null clears a nullable column; on a");
@@ -836,6 +861,9 @@ public class RoutesGenerator : PerEntityGenerator
         // create/update and skipped in the merge, exactly like a vanilla entity.
         var autoSetFields = AutoSetFields(st.Entity);
         var autoSetNavs = autoSetFields.Select(a => a.Nav).ToList();
+        // FR-037 R1 — readOnly / writeOnce on the SUBTYPE's effective fields (a shared
+        // base's mode is inherited by every subtype), excluded from the PATCH merge.
+        var frozenNavs = FrozenNavs(st.Entity);
 
         // Per-subtype list: GET /<base>/<seg>
         sb.AppendLine();
@@ -899,7 +927,9 @@ public class RoutesGenerator : PerEntityGenerator
         sb.AppendLine("                .Value.SerializerOptions;");
         sb.AppendLine("            var entry = db.Entry(existing);");
         AppendUpdateAutoSet(sb, autoSetFields);
-        AppendPartialMergeLoop(sb, discProp, [], autoSetNavs);
+        // ADR-0045 + the 0.19.4 lesson: TPH is a SEPARATE code path per port, so the
+        // per-subtype merge states the same exclusion rather than inheriting it.
+        AppendPartialMergeLoop(sb, discProp, [], autoSetNavs, frozenNavs);
         sb.AppendLine("            await db.SaveChangesAsync();");
         sb.AppendLine("            return Results.Ok(existing);");
         sb.AppendLine("        }");

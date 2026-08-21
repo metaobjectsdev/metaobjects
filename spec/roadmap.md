@@ -230,7 +230,38 @@ properly without holding the GA.
   read the source / watch the drift gate catch a rename); (3) keep it ≤ one published line behind —
   fold "bump the reference app" into the release checklist so it never lags.
 
-### The next coordinated pre-1.0 breaking MINOR — what it carries, and why it precedes GA
+### The coordinated pre-1.0 breaking MINOR — SHIPPED as `0.24.0` (2026-08-21)
+
+**STATUS: LANDED.** All four chartered retirements are in `0.24.0` / Maven `7.24.0`
+(unreleased at time of writing; the cut was held for this batch). `metamodelVersion` moved
+`0.9` → `0.10` — once, covering all four — and the gate
+(`scripts/check-metamodel-version.mjs`) confirms the move satisfies the classification.
+
+| unit | retires | state |
+|---|---|---|
+| ADR-0052 / ADR-0053 | `@promptStyle` on `template.output`; inbound tier moves to `template.prompt` | ✅ shipped |
+| FR-038 | `@verifiedBy`, `@supersededBy`, `@status: abandoned\|superseded` | ✅ shipped |
+| FR-037 R1 | `@readOnly` → `@mutability` enum | ✅ shipped |
+| FR-037 R2 | `origin.collection` → reserved-not-registered | ✅ shipped |
+
+**The ruling that ordered it (2026-08-21): the batch ships BEFORE the 1.0 renumbering, and
+all of it rides ONE minor.** That resolves the open tension named at the end of this section,
+which is left in place below as the record of what was decided and why.
+
+**What it cost, recorded rather than discovered:** the §G3 quiet-period clock in
+`docs/1.0-readiness.md` **resets to `0.24.0`**, so 1.0 now needs at least one coordinated
+release after this one with no metamodel-breaking change. That was adjudicated as the price
+of converting four adopter migrations into one — under ADR-0023's sealed strict registry a
+retirement has no deprecation shim, so each breaking MINOR is a migration somebody must
+perform.
+
+Still open from FR-037: **R3/R4/R5** and the FR-038 **requirement-test stub generator**
+remain 1.1 work, and all of them are additive — none needs a breaking slot.
+[#335](https://github.com/metaobjectsdev/metaobjects/issues/335) (`@agg: collect` with `@of`
+optional) is likewise additive and is the designated re-entry shape for the capability
+`origin.collection` named.
+
+### What the window carried, and why it precedes GA
 
 `0.21.0` was **a** pre-1.0 breaking slot, not **the** one: ADR-0035 §3 charters "the next one or
 two releases as the window to land every breaking change we still want, then freeze", and
@@ -246,17 +277,22 @@ that retires registered vocabulary. Chartered to ride the next such MINOR:
 - **ADR-0052 / ADR-0053** — `@promptStyle` moves to `template.prompt`; `@responseFormat` is added
   (ADR-0053, a *separate* ADR — counting the batch from ADR-0052 alone under-counts it by one).
   A `@promptStyle` left on a `template.output` now fails the load.
-- **FR-037 R2** — `origin.collection` retired to reserved-not-registered. It costs adopters
+- **FR-037 R2 — ✅ SHIPPED** — `origin.collection` retired to reserved-not-registered. It costs adopters
   nothing functional: nothing ever dispatched on it (zero references in `codegen-ts/src`,
   `migrate-ts/src`, `runtime-ts/src`; no `collection` view column kind), and its last real
   consumer was deleted in 0.20.16 (#270) for being wrong. The capability it *named* —
   whole-object rollup — is filed as **[#335](https://github.com/metaobjectsdev/metaobjects/issues/335)**
   and is additive, so it can land in any later release.
-- **FR-037 R1** — `@readOnly` retired in favour of `@mutability`. Its design records the cost
-  of missing the window: the project would carry both spellings plus the conflict rule
-  *permanently*.
-- **FR-038** — the `@verifiedBy` retirement, explicitly "the same coordinated pre-1.0 breaking
-  slot as FR-037's `@mutability`, not a second one".
+- **FR-037 R1 — ✅ SHIPPED** — `@readOnly` retired in favour of `@mutability`. Its design records
+  the cost of missing the window: the project would carry both spellings plus the conflict rule
+  *permanently*. Adopter cost measured at **zero** across three estates (14,860 `field.*` nodes,
+  two independent counting methods), so the migration was almost entirely this repository's own
+  corpus — which also makes the corpus the only thing exercising the three modes, and is why
+  `writeOnce` fixtures were added rather than assumed.
+- **FR-038 — ✅ SHIPPED** — the requirement-vocabulary retirement, explicitly "the same
+  coordinated pre-1.0 breaking slot as FR-037's `@mutability`, not a second one". Scope grew
+  from `@verifiedBy` alone to all four items (`@verifiedBy`, `@supersededBy`, and the two
+  retired `@status` members) on the 2026-08-20 ruling.
 
 **Why not carry the break in the `1.0` cut itself?** `1.0.0` is a MAJOR under semver, so a
 break landing *in* the renumbering is neither a pre-1.0 MINOR nor a 2.0 event — it looks like a
@@ -283,12 +319,17 @@ line to announce it. Landing this batch before the cut is landing it with the st
 still available. See
 [`docs/superpowers/specs/2026-08-20-two-contracts-versioning-design.md`](../docs/superpowers/specs/2026-08-20-two-contracts-versioning-design.md).
 
-**The open tension, named:** `CLAUDE.md` and the "Before 1.0" section above both say GA is the
-next release move and that nothing outstanding blocks the promotion. This section says a
-breaking MINOR comes first. Those are reconcilable only by deciding which goes first — and
-#210's reversal trigger is the mechanism for deciding it: if 1.0 is scheduled imminently, ship
-the break as documentation-and-rule-of-thumb instead and let the vocabulary changes become 2.0
-work. What is NOT available is targeting the breaking half at `1.1`.
+**The open tension — RESOLVED 2026-08-21.** `CLAUDE.md` and the "Before 1.0" section above
+both said GA was the next release move and that nothing outstanding blocked the promotion;
+this section said a breaking MINOR came first. They were reconcilable only by deciding which
+goes first, and **the ruling is: the breaking batch first, then 1.0.** So `0.24.0` carries all
+four retirements and GA follows the §G3 quiet period.
+
+The alternative #210's reversal trigger offered — ship the break as
+documentation-and-rule-of-thumb and let the vocabulary changes become 2.0 work — was NOT
+taken, because 1.0 was not in fact scheduled imminently and deferring would have made every
+one of these a major-version event. What was never available, and still is not, is targeting
+the breaking half at `1.1`.
 
 ### 1.1 — Serialization foundation + connected-systems tier
 

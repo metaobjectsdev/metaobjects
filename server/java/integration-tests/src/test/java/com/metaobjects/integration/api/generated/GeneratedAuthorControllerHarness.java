@@ -95,7 +95,7 @@ public final class GeneratedAuthorControllerHarness implements AutoCloseable {
     private final ObjectMapper mapper;
     private final URLClassLoader classLoader;
     private final Class<?> dtoClass;
-    private final Constructor<?> dtoCtor;       // (Long id, String name, String bio, Instant createdAt, Instant autoCreatedAt, Instant autoUpdatedAt)
+    private final Constructor<?> dtoCtor;       // (Long id, String name, String bio, Instant createdAt, String issuedCurrency, Instant autoCreatedAt, Instant autoUpdatedAt)
     private final Constructor<?> controllerCtor;
     private final Constructor<?> repoCtor;       // (List<AuthorDto> seed)
     private final List<Map<String, Object>> seedRows;
@@ -165,10 +165,12 @@ public final class GeneratedAuthorControllerHarness implements AutoCloseable {
         this.classLoader = new URLClassLoader(
             new URL[]{ classesDir.toUri().toURL() }, getClass().getClassLoader());
         this.dtoClass = classLoader.loadClass(DTO_FQCN);
-        // Issue #203 / ADR-0045: the DTO record now carries the two @autoSet timestamp columns
-        // (autoCreatedAt onCreate, autoUpdatedAt onUpdate) as trailing components, in declared order.
+        // The DTO record's components follow DECLARED field order: id, name, bio, createdAt,
+        // issuedCurrency (FR-037 R1 @mutability "writeOnce"), then the two @autoSet timestamp
+        // columns (autoCreatedAt onCreate, autoUpdatedAt onUpdate) — issue #203 / ADR-0045.
         this.dtoCtor = dtoClass.getDeclaredConstructor(
-            Long.class, String.class, String.class, Instant.class, Instant.class, Instant.class);
+            Long.class, String.class, String.class, Instant.class, String.class,
+            Instant.class, Instant.class);
         Class<?> repoInterface = classLoader.loadClass(REPO_FQCN);
         Class<?> controllerClass = classLoader.loadClass(CONTROLLER_FQCN);
         this.controllerCtor = controllerClass.getDeclaredConstructor(
@@ -302,11 +304,14 @@ public final class GeneratedAuthorControllerHarness implements AutoCloseable {
         String bio = (String) row.get("bio");
         Object createdRaw = row.get("createdAt");
         Instant createdAt = createdRaw == null ? null : parseInstant(String.valueOf(createdRaw));
+        // FR-037 R1: the @mutability "writeOnce" column, seeded verbatim so a later
+        // PATCH can be observed to leave it alone.
+        String issuedCurrency = (String) row.get("issuedCurrency");
         Object autoCreatedRaw = row.get("autoCreatedAt");
         Instant autoCreatedAt = autoCreatedRaw == null ? null : parseInstant(String.valueOf(autoCreatedRaw));
         Object autoUpdatedRaw = row.get("autoUpdatedAt");
         Instant autoUpdatedAt = autoUpdatedRaw == null ? null : parseInstant(String.valueOf(autoUpdatedRaw));
-        return dtoCtor.newInstance(id, name, bio, createdAt, autoCreatedAt, autoUpdatedAt);
+        return dtoCtor.newInstance(id, name, bio, createdAt, issuedCurrency, autoCreatedAt, autoUpdatedAt);
     }
 
     /**

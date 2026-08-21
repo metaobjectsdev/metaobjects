@@ -1,0 +1,71 @@
+name: writeonce-patch-stripped
+description: >
+  FR-037 R1 / ADR-0045 — `@mutability: "writeOnce"` is honored by the deployed API
+  surface (the generated controller/routes AND the reference server). The field is
+  settable on create and frozen thereafter, and a value presented on PATCH is
+  STRIPPED, never rejected.
+
+  Seed row 1 carries issuedCurrency "USD". A PATCH that carries a NEW value for it
+  must return 200 (not 400) with the stored value UNCHANGED, while the ordinary
+  readWrite field in the same body IS applied — that pairing is what makes the
+  assertion about the MODE rather than about the request being ignored wholesale.
+
+  Why stripped rather than 400: it is the uniform behaviour of every key excluded
+  from the settable set on this path (the TPH discriminator and @autoSet:onCreate
+  both behave this way today), and the generated edit form submits EVERY registered
+  field — 0.19.2 switched its resolver to UpdateSchema on edit rather than
+  diff-and-omit — so 400-on-present would fail every save on every generated edit
+  form for an entity carrying a writeOnce field.
+
+  r3 covers the arm a naive implementation misses: clearing IS a write, so the
+  FR-035 present-null path must not reach a writeOnce column either.
+requests:
+  - id: r1
+    method: PATCH
+    path: /api/authors/1
+    body:
+      name: "Ada L. (writeOnce probe)"
+      issuedCurrency: "EUR"
+    expect:
+      status: 200
+      body:
+        row:
+          id: 1
+          # The readWrite sibling IS applied...
+          name: "Ada L. (writeOnce probe)"
+          # ...while the writeOnce column keeps its created value. Not 400 — 200.
+          issuedCurrency: "USD"
+  - id: r2
+    method: PUT
+    path: /api/authors/1
+    body:
+      name: "Ada L. (writeOnce probe 2)"
+      issuedCurrency: "JPY"
+    expect:
+      status: 200
+      body:
+        row:
+          id: 1
+          name: "Ada L. (writeOnce probe 2)"
+          issuedCurrency: "USD"
+  - id: r3
+    method: PATCH
+    path: /api/authors/1
+    body:
+      # A readWrite field rides along DELIBERATELY. Sending the null ALONE would
+      # also probe the empty-PATCH contract, which this corpus has never settled
+      # cross-port (TS no-ops and returns the row; the C# reference 400s on an
+      # empty SET) — and settling that is not this scenario's business. With a
+      # settable sibling present, the request is unambiguously non-empty and the
+      # only thing under test is the writeOnce column's response to a null.
+      bio: "cleared-currency probe"
+      issuedCurrency: null
+    expect:
+      status: 200
+      body:
+        row:
+          id: 1
+          bio: "cleared-currency probe"
+          # FR-035 present-null CLEARS a nullable readWrite column; a writeOnce
+          # column is not in the settable set at all, so the null never lands.
+          issuedCurrency: "USD"

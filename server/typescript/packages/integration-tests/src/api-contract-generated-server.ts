@@ -121,6 +121,7 @@ export const db = drizzle(pool);
        "name" varchar(100) NOT NULL,
        "bio" varchar(1000),
        "created_at" timestamp NOT NULL,
+       "issued_currency" varchar(3),
        "auto_created_at" timestamp,
        "auto_updated_at" timestamp
      )`,
@@ -153,11 +154,12 @@ export const db = drizzle(pool);
         // autoUpdatedAt and leaves autoCreatedAt — so the two diverge.
         await executeSql(
           connectionUri,
-          `INSERT INTO "authors" ("id", "name", "bio", "created_at", "auto_created_at", "auto_updated_at") VALUES (${
+          `INSERT INTO "authors" ("id", "name", "bio", "created_at", "issued_currency", "auto_created_at", "auto_updated_at") VALUES (${
             r.id ?? "DEFAULT"
           }, ${sqlStr(r.name)}, ${r.bio == null ? "NULL" : sqlStr(r.bio)}, ${sqlStr(r.createdAt)}, ${
-            r.autoCreatedAt == null ? "NULL" : sqlStr(r.autoCreatedAt)
-          }, ${r.autoUpdatedAt == null ? "NULL" : sqlStr(r.autoUpdatedAt)})`,
+            r.issuedCurrency == null ? "NULL" : sqlStr(r.issuedCurrency)
+          }, ${r.autoCreatedAt == null ? "NULL" : sqlStr(r.autoCreatedAt)}, ${
+            r.autoUpdatedAt == null ? "NULL" : sqlStr(r.autoUpdatedAt)})`,
         );
       }
       // Advance the bigserial sequence past the max seeded id so the next

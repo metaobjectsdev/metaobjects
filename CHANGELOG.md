@@ -9,13 +9,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [0.24.0] — npm `0.24.0` · PyPI `0.24.0` · NuGet `0.24.0` · Maven `7.24.0`
 
-> ### ⚠️ BREAKING FOR METADATA AUTHORS — a template subtype's axis is DIRECTION
+> ### ⚠️ BREAKING FOR METADATA AUTHORS — four vocabulary retirements in ONE window
 >
 > This is the pre-1.0 breaking slot (MINOR), not a patch, **specifically so it is not
 > auto-adopted**: on a caret range `^0.23.x` resolves `<0.24.0`, so you pick this up only by
-> deliberately bumping your range. Read
-> **[the migration guide](docs/features/migrations/template-direction-outbound-vs-inbound.md)**
-> before upgrading — it carries the exact loader error and a rewrite rule for each change.
+> deliberately bumping your range.
+>
+> **Everything breaking rides this one release on purpose.** Under ADR-0023's sealed strict
+> registry a retirement has no deprecation shim — a legacy model fails to LOAD — so every one
+> of these is a migration you must perform. Two breaking MINORs back to back would mean two
+> migrations for work that was budgeted as one. Hence: one window, four retirements, one
+> `metamodelVersion` move.
+>
+> Read the guide for each change you are affected by; each carries the exact loader error and
+> a rewrite rule.
+>
+> **A. A template subtype's axis is DIRECTION** —
+> [migration guide](docs/features/migrations/template-direction-outbound-vs-inbound.md)
 >
 > 1. **A `@promptStyle` left on a `template.output` now fails the LOAD**
 >    (`ERR_INVALID_TEMPLATE`) — it is prompt-only vocabulary, as is the new
@@ -31,17 +41,183 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 >    Java and Python checked only `@payloadRef`, so the same metadata failed one port's load
 >    and passed four.
 >
+> **B. The requirement vocabulary becomes PRESCRIPTIVE-ONLY** —
+> [migration guide](docs/features/migrations/verified-by-retirement.md)
+>
+> `@verifiedBy` and `@supersededBy` are deregistered (`ERR_UNKNOWN_ATTR`), and `@status`
+> shrinks to **`planned | live | partial`** — `abandoned` and `superseded` now fail
+> `ERR_BAD_ATTR_VALUE`. A requirement states what SHOULD be true; it is not a journal of what
+> happened. **Retiring a capability is now DELETION of its requirement**, and the guide says
+> where the record goes — including the hard case where no sibling survives to carry it.
+>
+> **C. `@readOnly` becomes the `@mutability` enum** —
+> [migration guide](docs/features/migrations/readonly-to-mutability.md)
+>
+> `@mutability: readWrite | writeOnce | readOnly` replaces the boolean on every `field.*`
+> subtype. `@readOnly: true` → `@mutability: "readOnly"`; `@readOnly: false` → delete it.
+> The point is the new middle mode: **`writeOnce` — set on create, frozen after** — which the
+> boolean could not express at all, and which an assigned primary key has always wanted.
+>
+> **D. `origin.collection` is retired to reserved-not-registered** —
+> [migration guide](docs/features/migrations/origin-collection-retirement.md)
+>
+> Any use now fails `ERR_UNKNOWN_SUBTYPE`. It duplicated `origin.aggregate @agg: collect` on
+> a strictly smaller attr set and **nothing ever dispatched on it** — so unless you declared
+> it, nothing changes, and if you did, deleting the child changes no generated output.
+>
 > **This release also moves `metamodelVersion`, `0.9` → `0.10`** — the first time that
 > number has ever moved. It is the one that tells you your *metadata* needs work, as
-> distinct from your build.
+> distinct from your build. One move covers all four retirements.
 
-A coordinated **MINOR** across all four registries, and the **pre-1.0 breaking slot**: the
-ADR-0052 template-direction split makes previously-valid metadata fail to load. Two further
-changes are DEFAULT FLIPS rather than corrections of previously-wrong behaviour — the Java
-Maven plugin now fails a build that a silently-empty model used to let pass, and Java and
-Python now follow symlinked directories where they previously did not. Pre-1.0, `^0.23.x`
-resolves `<0.24.0`, so all three are adopted deliberately while a PATCH would be taken
-automatically on a routine update — the same call, for the same reason, as `0.21.0`.
+A coordinated **MINOR** across all four registries, and the **pre-1.0 breaking slot** — the
+one release in this cycle where previously-valid metadata is allowed to stop loading. It
+carries **four** vocabulary retirements, batched deliberately: the ADR-0052
+template-direction split, the requirement vocabulary going prescriptive-only (FR-038), the
+`@readOnly` → `@mutability` enum (FR-037 R1), and `origin.collection` (FR-037 R2). Two
+further changes are DEFAULT FLIPS rather than corrections of previously-wrong behaviour —
+the Java Maven plugin now fails a build that a silently-empty model used to let pass, and
+Java and Python now follow symlinked directories where they previously did not. Pre-1.0,
+`^0.23.x` resolves `<0.24.0`, so all of it is adopted deliberately while a PATCH would be
+taken automatically on a routine update — the same call, for the same reason, as `0.21.0`.
+
+**Why one window.** Under ADR-0023's sealed strict registry a retirement has no deprecation
+shim, so each one is a migration an adopter must perform. Two breaking MINORs back to back
+means two migrations for changes that were budgeted as one. The cost of batching is paid
+elsewhere and stated plainly in `docs/1.0-readiness.md`: the §G3 quiet-period clock resets,
+so 1.0 now needs at least one coordinated release after this one with **no**
+metamodel-breaking change, to prove the rate actually dropped. That was adjudicated, not
+discovered.
+
+### BREAKING — the requirement vocabulary becomes prescriptive-only (FR-038)
+
+**A requirement states what SHOULD be true. It is never a journal of what happened.** Four
+pieces of `requirement.*` vocabulary retire on that one rule, on both subtypes, in all five
+ports: `@verifiedBy` and `@supersededBy` deregister (`ERR_UNKNOWN_ATTR`), and `@status`
+shrinks from five members to three — `planned | live | partial` — so `abandoned` and
+`superseded` fail `ERR_BAD_ATTR_VALUE`.
+
+**The ruling was forced by two SHIPPED statements contradicting each other.** The byte-gated
+registry justified the dangling-`@implementedBy` exemption on `abandoned`/`superseded`
+because those nodes "are meant to be gone, and that is the entry doing its job"; the
+authoring guidance said deleting such an entry "destroys the record". Only one could be the
+rule.
+
+**The deciding argument is second-order, and it is why this is worth a breaking slot.**
+Because `verify` was *silent* on unresolved `@implementedBy` refs for exactly those two
+statuses, one adopting estate was found holding **29 references that could never resolve,
+across 14 entries**, while `meta verify` reported zero dangling refs — true and incomplete at
+the same time. Retiring the statuses deletes that bug class; the exemption is the only thing
+that created it.
+
+`@verifiedBy` goes for a different reason: it asked you to name a test, and `verify` then
+checked that the **name** occurred somewhere in your test sources — whole-word, any language,
+never running anything. It could prove a name existed and never that the named test verified
+the claim. Auditing one ledger by hand — 19 named tests — found **4 of 19 did not verify
+their claim**: one matched a comment, one a dependency-injection key, one a real test of a
+different claim, one a test of the entry's *output* where the claim was about its *source
+text*. `verify` reported zero errors throughout. The defect is structural, not a tuning
+problem: the author picks the string, so the cheapest way to satisfy the check is to find a
+name that already exists.
+
+The `@verifiedBy` scan tier retires with it — `verify.testFiles` in `metaobjects.config.ts`,
+and the codes `ERR_REQUIREMENT_TEST_MISSING` / `WARN_REQUIREMENT_TEST_COMMENT_ONLY`. Note the
+irony rather than hiding it: **0.23.1 shipped the Failsafe fix and `verify.testFiles` for this
+exact scan, days before it is retired.** Nothing replaces the test link yet, deliberately —
+the replacement inverts the direction (a generator emits the test *from* the requirement), is
+additive, and ships separately. Until then a requirement carries no test link, and **that is
+a legitimate declared state**.
+
+Migration cost measured across three estates (262 / 75 / 288 entries): **0, 15 and 88 edits**,
+with ~85% landing on one ledger and one estate untouched.
+[Migration guide](docs/features/migrations/verified-by-retirement.md) — including the case
+adopters ask about most, what to do when a whole subtree retires and no sibling survives to
+carry the note.
+
+### BREAKING — `@readOnly` becomes the `@mutability` enum (FR-037 R1)
+
+`@mutability: readWrite | writeOnce | readOnly` replaces the boolean `@readOnly` on every
+`field.*` subtype (18 registry entries), registered by the CORE field provider. A legacy
+`@readOnly` fails a strict load with `ERR_UNKNOWN_ATTR`; `@readOnly: true` becomes
+`@mutability: "readOnly"`, and `@readOnly: false` is simply deleted.
+
+**The change exists because a real modelling need had no expression: "set once on create,
+never changed."** An assigned primary key is the clearest case — the caller must supply it
+and must never be able to change it, and neither boolean value could say that.
+
+**Why an enum and not a second boolean.** `readOnly` and `writeOnce` are mutually exclusive
+modes of ONE axis — who may write, and when. One enum makes the illegal pair
+(`readOnly` + `writeOnce`) unrepresentable and gives inheritance a total order,
+`readWrite < writeOnce < readOnly`, so "a subtype may only tighten" is an index comparison
+over the declaration order rather than a lookup table.
+
+`writeOnce` leaves the UPDATE shape and only the update shape, through each port's existing
+excluded-settable-set seam. **A value presented for it on PATCH is STRIPPED, not rejected —
+200, not 400.** That was verified rather than assumed: the emitted `<Entity>UpdateSchema` is
+a plain `z.object()` (never `.strict()`), Zod drops unknown keys, and the mounted route
+`safeParse`s that same schema — the TPH discriminator is additionally hand-stripped after
+parse, the same convention. Rejecting would break our own shipped client, because the
+generated edit form submits EVERY registered field (0.19.2 switched its resolver to
+`UpdateSchema` on edit rather than diff-and-omit), so 400-on-present would fail every save on
+every generated edit form for an entity carrying one.
+
+Three loader rules come with it, all five ports:
+`ERR_MUTABILITY_AUTOSET_CONFLICT` (new — `@autoSet` with a non-`readWrite` mode; the boolean
+era left `readOnly` × `@autoSet` representable but **unvalidated**),
+`ERR_MUTABILITY_DOWNGRADE` (renamed from `ERR_READONLY_DOWNGRADE`, because a code named
+READONLY would misdescribe a `writeOnce → readWrite` loosening), and
+`ERR_READONLY_ASSIGNED_PRIMARY`, which **keeps** its name — the condition is genuinely
+readOnly-specific, and the asymmetry is the enum's justification: `writeOnce` on an assigned
+primary key is legal and is in fact the natural declaration for one. Two warnings replace
+their boolean-era predecessors: `WARN_MUTABILITY_VALUE_OBJECT` and the new
+`WARN_MUTABILITY_READONLY_HOST`.
+
+**Adopter cost: measured at zero.** Across three estates — 826, 8 and 75 metadata files,
+**14,860 `field.*` nodes** — `@readOnly` is used zero times, by two independent counting
+methods with controls confirming the method finds `@autoSet` and `identity.primary` in the
+same trees. `ERR_MUTABILITY_AUTOSET_CONFLICT` likewise has no existing instance to migrate;
+it is purely forward-looking, and "we found zero" is a different claim from "we did not
+look." The attribute's heaviest use was this repository's own conformance corpus, which is
+therefore also the only thing that exercises the three modes — so the corpus gained fixtures
+for `writeOnce`, which previously had no coverage at all.
+
+**Two real defects were caught by the api-contract corpus, not by unit tests**, and both are
+the same shape — the ADR-0045 rule that the OUTERMOST generated write artifact enforces the
+mode. Excluding `writeOnce` from the Python `<Entity>Patch` model was NOT enough: the
+generated FastAPI handler binds `dto: dict[str, Any]` (the raw body) and passes THAT to the
+repository, so the field still reached the row. (`@autoSet` survives this only because the
+router *overwrites* its key server-side; `writeOnce` has no server value to clobber.) The C#
+generated route had the twin: `SetAfterSaveBehavior(Ignore)` governs EF's save, but the merge
+loop assigns `entry.CurrentValues[target]` and the handler returns the in-memory entity, so a
+caller-supplied value was echoed in the RESPONSE. Both now strip at the route, vanilla and
+TPH.
+
+Metadata declaring no `@mutability` generates byte-identically to before, and an explicit
+`@mutability: "readWrite"` emits byte-identically to declaring nothing — pinned in TS and C#.
+[Migration guide](docs/features/migrations/readonly-to-mutability.md).
+
+### BREAKING — `origin.collection` retires to reserved-not-registered (FR-037 R2)
+
+Any use now fails `ERR_UNKNOWN_SUBTYPE` in all five ports, and
+`ASSEMBLY_ORIGIN_SUBTYPES` shrinks to `aggregate | computed | first` in lockstep — so #210's
+value-host rule stays a property of the shared constant rather than of four branches.
+
+**It cost adopters nothing functional, and that is the honest headline.** The subtype
+duplicated `origin.aggregate @agg: collect` on a strictly smaller attr set (`@via` only — no
+`@filter`, no `@orderBy`, no `@distinct`, so the split was a capability *loss*), and
+**nothing dispatched on it**: zero references in `codegen-ts`, `migrate-ts` or `runtime-ts`,
+no `collection` column kind in the view lowering, and its last real consumer — the payload-VO
+typing edge — was deleted in 0.20.16 (#270) for being actively **wrong**, substituting the
+`@via` relationship's target entity for the field's declared `@objectRef`. It was
+declarable-but-inert; deleting the child changes no generated output.
+
+The one real gap is stated rather than papered over: **no surviving origin expresses a
+whole-object rollup along a relationship** — `@agg: collect` reduces a *column* via `@of`.
+That returns additively with [#335](https://github.com/metaobjectsdev/metaobjects/issues/335),
+which makes `@of` optional on `collect` and ships the view lowering with it. Reserved-not-
+registered, the re-entry bar (ADR-0007 Amendment 2) and that designated re-entry shape are
+recorded in [ADR-0040](spec/decisions/ADR-0040-index-type-and-secondary-key-purity.md), which
+now documents the treatment as a reusable pattern with all three applications to date.
+[Migration guide](docs/features/migrations/origin-collection-retirement.md).
 
 ### BREAKING — a template subtype's axis is DIRECTION (ADR-0052 / ADR-0053)
 

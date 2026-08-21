@@ -91,6 +91,9 @@ internal sealed class AuthorApiServer : IAsyncDisposable
                     name VARCHAR(100) NOT NULL,
                     bio VARCHAR(1000),
                     ""createdAt"" TIMESTAMP NOT NULL,
+                    -- FR-037 R1: the @mutability ""writeOnce"" column. Settable on create,
+                    -- frozen after — it is simply absent from the UPDATE allowlist below.
+                    ""issuedCurrency"" VARCHAR(3),
                     -- Issue #203 / ADR-0045: the @autoSet timestamp columns (onCreate / onUpdate).
                     -- Nullable (not @required); the seed writes them verbatim, create stamps both,
                     -- update bumps only autoUpdatedAt.
@@ -140,12 +143,16 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         {
             await using var ins = c.CreateCommand();
             ins.CommandText =
-                "INSERT INTO \"authors\" (id, name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\") "
-                + "VALUES (@id, @name, @bio, @ct, @ac, @au)";
+                "INSERT INTO \"authors\" (id, name, bio, \"createdAt\", \"issuedCurrency\", \"autoCreatedAt\", \"autoUpdatedAt\") "
+                + "VALUES (@id, @name, @bio, @ct, @ic, @ac, @au)";
             ins.Parameters.AddWithValue("@id", Convert.ToInt64(r["id"]));
             ins.Parameters.AddWithValue("@name", (string)r["name"]!);
             ins.Parameters.AddWithValue("@bio", r["bio"] is string b ? b : (object)DBNull.Value);
             ins.Parameters.AddWithValue("@ct", ParseTimestamp((string)r["createdAt"]!));
+            // FR-037 R1 — the seed supplies the writeOnce column so a later PATCH can be
+            // observed to leave it alone.
+            ins.Parameters.AddWithValue("@ic",
+                r.GetValueOrDefault("issuedCurrency") is string ic ? ic : (object)DBNull.Value);
             // Issue #203 / ADR-0045 — the seed writes the OLD @autoSet sentinel VERBATIM (a direct
             // insert, NOT a stamping create) so the seeded row keeps the old value; the PATCH then
             // bumps autoUpdatedAt while autoCreatedAt stays old → a robust field-vs-field divergence.
@@ -275,7 +282,7 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         string whereClause = BuildWhere(filter.Predicates, bindParams);
 
         var sql = new StringBuilder(
-            "SELECT id, name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\"");
+            "SELECT id, name, bio, \"createdAt\", \"issuedCurrency\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\"");
         sql.Append(whereClause);
         sql.Append(" ORDER BY \"").Append(sortField).Append("\" ").Append(sortDir);
         if (limit is int lim) sql.Append(" LIMIT ").Append(lim);
@@ -487,7 +494,7 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         await using var c = new NpgsqlConnection(_pg.ConnectionString);
         await c.OpenAsync();
         await using var cmd = c.CreateCommand();
-        cmd.CommandText = "SELECT id, name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\" WHERE id = @id";
+        cmd.CommandText = "SELECT id, name, bio, \"createdAt\", \"issuedCurrency\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\" WHERE id = @id";
         cmd.Parameters.AddWithValue("@id", id.Value);
         await using var rdr = await cmd.ExecuteReaderAsync();
         if (!await rdr.ReadAsync())
@@ -531,11 +538,14 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         await using (var ins = c.CreateCommand())
         {
             ins.CommandText =
-                "INSERT INTO \"authors\" (name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\") "
-                + "VALUES (@name, @bio, @ct, @ac, @au) RETURNING id";
+                "INSERT INTO \"authors\" (name, bio, \"createdAt\", \"issuedCurrency\", \"autoCreatedAt\", \"autoUpdatedAt\") "
+                + "VALUES (@name, @bio, @ct, @ic, @ac, @au) RETURNING id";
             ins.Parameters.AddWithValue("@name", body.GetValueOrDefault("name") as string ?? "");
             ins.Parameters.AddWithValue("@bio", body.GetValueOrDefault("bio") is string b ? b : (object)DBNull.Value);
             ins.Parameters.AddWithValue("@ct", ParseTimestamp((string)body["createdAt"]!));
+            // FR-037 R1 — writeOnce IS bound on create: settable exactly once.
+            ins.Parameters.AddWithValue("@ic",
+                body.GetValueOrDefault("issuedCurrency") is string ic2 ? ic2 : (object)DBNull.Value);
             ins.Parameters.AddWithValue("@ac", autoNow);
             ins.Parameters.AddWithValue("@au", autoNow);
             newId = Convert.ToInt64(await ins.ExecuteScalarAsync());
@@ -543,7 +553,7 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         Dictionary<string, object?> row;
         await using (var sel = c.CreateCommand())
         {
-            sel.CommandText = "SELECT id, name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\" WHERE id = @id";
+            sel.CommandText = "SELECT id, name, bio, \"createdAt\", \"issuedCurrency\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\" WHERE id = @id";
             sel.Parameters.AddWithValue("@id", newId);
             await using var rdr = await sel.ExecuteReaderAsync();
             await rdr.ReadAsync();
@@ -588,6 +598,11 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         {
             sets.Add("\"createdAt\" = @p" + vals.Count); vals.Add(ParseTimestamp(cs));
         }
+        // FR-037 R1: issuedCurrency is @mutability "writeOnce" — DELIBERATELY absent from
+        // this allowlist. A presented value is STRIPPED (it never reaches the SET), never
+        // 400'd, matching every other excluded key on this path. Do NOT add a branch for
+        // it: that would leave the mode unenforced. The omission also covers the FR-035
+        // present-null arm for free, since clearing a column is itself a write.
         if (sets.Count == 0)
         {
             await SendJsonAsync(ctx, 400, new Dictionary<string, object?> { ["error"] = "validation" });
@@ -619,7 +634,7 @@ internal sealed class AuthorApiServer : IAsyncDisposable
         Dictionary<string, object?> row;
         await using (var sel = c.CreateCommand())
         {
-            sel.CommandText = "SELECT id, name, bio, \"createdAt\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\" WHERE id = @id";
+            sel.CommandText = "SELECT id, name, bio, \"createdAt\", \"issuedCurrency\", \"autoCreatedAt\", \"autoUpdatedAt\" FROM \"authors\" WHERE id = @id";
             sel.Parameters.AddWithValue("@id", id.Value);
             await using var rdr = await sel.ExecuteReaderAsync();
             await rdr.ReadAsync();
@@ -654,6 +669,11 @@ internal sealed class AuthorApiServer : IAsyncDisposable
             ["name"] = rdr.GetString(rdr.GetOrdinal("name")),
             ["bio"] = rdr.IsDBNull(rdr.GetOrdinal("bio")) ? null : rdr.GetString(rdr.GetOrdinal("bio")),
             ["createdAt"] = ReadTimestamp(rdr, "createdAt"),
+            // FR-037 R1 — the writeOnce column surfaces on the wire so the
+            // writeonce-patch-stripped scenario can assert it survives a PATCH.
+            ["issuedCurrency"] = rdr.IsDBNull(rdr.GetOrdinal("issuedCurrency"))
+                ? null
+                : rdr.GetString(rdr.GetOrdinal("issuedCurrency")),
             // Issue #203 / ADR-0045 — the @autoSet columns surface on the wire so the
             // autoset-patch scenario can assert autoCreatedAt (onCreate, preserved) !=
             // autoUpdatedAt (onUpdate, bumped) after a PATCH.
