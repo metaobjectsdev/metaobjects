@@ -31,7 +31,7 @@ import type {
   ResolvedDocsConfig,
   DocsSurface,
 } from "@metaobjectsdev/codegen-ts";
-import { docsFile, apiDocsFile } from "@metaobjectsdev/codegen-ts/generators";
+import { docsFile, apiDocsFile, requirementsFile } from "@metaobjectsdev/codegen-ts/generators";
 import { composeRegistry, coreProviders, renderCoreMetamodelDocs } from "@metaobjectsdev/metadata";
 import type { MetaDataTypeProvider } from "@metaobjectsdev/metadata";
 import { generateSite, SITE_TEMPLATE_NAMES, SITE_ASSET_NAMES, readSiteFile } from "@metaobjectsdev/docs-site";
@@ -101,6 +101,7 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
   let baseUrl: string | undefined;
   let wantModel = false;
   let wantApi = false;
+  let wantRequirements = false;
   let wantMetamodel = false;
   let wantSite = false;
   let wantScaffoldSite = false;
@@ -126,6 +127,8 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
       wantModel = true;
     } else if (a === "--api") {
       wantApi = true;
+    } else if (a === "--requirements") {
+      wantRequirements = true;
     } else if (a === "--metamodel") {
       wantMetamodel = true;
     } else if (a === "--site") {
@@ -167,6 +170,7 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
   const surfaces: DocsSurface[] = [];
   if (wantModel) surfaces.push("model");
   if (wantApi) surfaces.push("api");
+  if (wantRequirements) surfaces.push("requirements");
   return {
     // `<metadata>` is the project root that contains metaobjects/; default cwd
     // (mirrors how migrate/gen treat the working directory as the root).
@@ -448,6 +452,16 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
     emit.push(...modelFiles);
   }
 
+  // REQUIREMENTS surface — the declared ledger as documentation (requirements.md +
+  // requirements.toon). Metadata-alone like the model surface: it reads ctx.loadedRoot
+  // and nothing else, so it is NOT gated on a loadable gen config the way `api` is.
+  //
+  // Emits ZERO files when the project declares no `requirement.*` node, which is what
+  // makes this surface safe to default ON — a project without a ledger sees no change.
+  if (docsCfg.surfaces.includes("requirements")) {
+    emit.push(...(await requirementsFile().generate(ctx)));
+  }
+
   // API surface — the SDK reference for the GENERATED REST surface, side by side
   // under each surface's subDir. THIS command only OWNS the surfaces it can
   // generate — i.e. its own port (lang "ts"). Surfaces owned by other ports are
@@ -525,7 +539,12 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   const apiSummary = apiFiles.length > 0
     ? `${apiFiles.length} api page(s)`
     : "no api pages";
-  log.info(`meta docs — wrote ${modelSummary}; ${apiSummary} → ${outDir}`);
+  // Reported only when it actually wrote something. A project with no ledger emits no
+  // requirements file, and saying "0 requirement pages" would advertise a surface that
+  // did not run — the opposite of the silence the empty-ledger guard exists to produce.
+  const requirementFiles = emit.filter((f) => f.path.startsWith("requirements.")).length;
+  const reqSummary = requirementFiles > 0 ? `; ${requirementFiles} requirement file(s)` : "";
+  log.info(`meta docs — wrote ${modelSummary}; ${apiSummary}${reqSummary} → ${outDir}`);
   return 0;
 }
 

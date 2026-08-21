@@ -171,6 +171,8 @@ FLAGS:
   --out <dir>, -o       Output directory for the pages (default: ./docs)
   --model               Emit the markdown model surface (entity + template pages)
   --api                 Emit the markdown api surface (generated SDK reference)
+  --requirements        Emit the declared requirement ledger (requirements.md + .toon).
+                        Emits nothing when the project declares no requirement.* node.
   --metamodel           Document the built-in metamodel vocabulary (no metadata needed)
   --site                Generate the browsable HTML documentation site (<out>/site/)
   --scaffold-site       Copy the site's templates + assets into codegen/docs-site/ to own (theme) them

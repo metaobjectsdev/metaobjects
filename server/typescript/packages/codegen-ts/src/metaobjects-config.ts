@@ -192,7 +192,7 @@ export interface NormalizedMetaobjectsGenConfig
   targets: Record<string, ResolvedTarget>;
 }
 
-export type DocsSurface = "model" | "api";
+export type DocsSurface = "model" | "api" | "requirements";
 
 export interface ApiSurface {
   lang: string;
@@ -231,7 +231,11 @@ export function resolveDocsConfig(
     outDir: cli.outDir ?? block?.outDir ?? "./docs",
     layout: cli.layout ?? block?.layout ?? fallbackLayout,
     baseUrl: cli.baseUrl ?? block?.baseUrl ?? "",
-    surfaces: cli.surfaces ?? block?.surfaces ?? ["model", "api"],
+    // `requirements` defaults ON. Safe ONLY because requirementsFile() emits ZERO
+    // files for a project declaring no `requirement.*` node — not an empty page. A
+    // project without a ledger sees byte-identical output to before the surface
+    // existed; see requirements-file.ts.
+    surfaces: cli.surfaces ?? block?.surfaces ?? ["model", "api", "requirements"],
     apiSurfaces: cli.apiSurfaces ?? block?.apiSurfaces ?? [{ lang: "ts", subDir: "api" }],
   };
 }
