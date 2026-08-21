@@ -374,7 +374,7 @@ public static class RegistryManifest
     /// unstable (semver major-0). The 1.0 cut flips this to <c>"1.0"</c>.
     /// Emitted as the FIRST top-level key in the registry manifest (C4).
     /// </summary>
-    public const string MetamodelVersion = "0.9";
+    public const string MetamodelVersion = "0.10";
 
     /// <summary>
     /// Emit the canonical registry manifest as a byte-stable JSON string.

@@ -235,7 +235,7 @@ After this amendment:
 
 - **Package version** (npm/PyPI/NuGet `1.x`, Maven `8.x`) promises the software surface.
   Full SemVer; a break is `2.0.0` / `9.0.0`.
-- **`metamodelVersion`** (`"0.9"` today, `"1.0"` at the cut; the first key of the
+- **`metamodelVersion`** (`"1.0"` at the cut; the current value is the first key of the
   byte-gated `expected-registry.json`, shipped in all five ports since #145) promises the
   metadata contract. A break moves ITS major.
 - §1's covered set is unchanged in *content*. What changes is which number carries it:
@@ -262,6 +262,16 @@ deferred with written triggers in the design doc.
 
 **Cadence is a separate lever and is free.** Nothing forces one release per merged change;
 batching removes most of the number pressure without any policy change at all.
+
+**Enforced, because it was not before.** `metamodelVersion` read `"0.9"` from PR #145
+through 57 releases — including `0.21.0`, which deliberately broke the metamodel. This
+amendment hands it the compat promise, so it ships with
+`scripts/check-metamodel-version.mjs` (the `gates` lane): a diff of
+`expected-registry.json` against the last release tag, classified, requiring the declared
+version to have moved by at least that much. Its one blind spot is stated rather than
+hidden — a rule can change with no machine-readable footprint (#210's only manifest edit
+was a `rules` prose string), so prose changes prompt a question instead of being
+classified. Operational detail: `docs/RELEASING.md` → "The two-contracts rule".
 
 ## Consequences
 

@@ -26,6 +26,8 @@ spine; generated code is the disposable artifact. Regenerate with `mvn metaobjec
 ## Keep all MetaObjects ports in sync
 MetaObjects ships as separate packages per language on DIFFERENT version lines (npm/PyPI/NuGet `0.x`/`1.x`, Maven Central `7.x`/`8.x`). Because the numbers differ by ecosystem, a stale port is INVISIBLE — an old TS client next to a new Java backend *looks* fine. Ports are only truly in sync when every one implements the same **Metamodel spec version** (`metamodelVersion`, on the registry manifest). Upgrade ALL ports together and confirm they land on the same Metamodel version; a lagging port silently disagrees on vocabulary + wire behavior.
 
+`metamodelVersion` is also the number that tells you whether YOUR METADATA needs work, separately from the package version, which tells you whether your BUILD does. A package major means imports/CLI/generated-code shape may need attention; a metamodel major means your model may. A release can move one without the other — so when you upgrade, read the changelog for a metamodel-version move, not just the package number.
+
 ## Going deeper (Claude Code)
 For authoring, codegen, runtime/UI, prompts, verify, or adoption-audit work, use the
 matching `metaobjects-*` skill — its body links the `references/<lang>.md` fragment

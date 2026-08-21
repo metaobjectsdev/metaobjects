@@ -499,6 +499,21 @@ Preserve the following contracts exactly across all language ports:
 - TS: named constants in `packages/metadata/src/constants.ts`. Never inline metamodel strings as literals in code.
 - New type or subtype names: add to TS constants first; add the parallel in other language implementations.
 
+**Two contracts, two numbers — `metamodelVersion` moves when the metamodel does (ADR-0035 Amendment 2).**
+The package version promises the SOFTWARE surface (exports, CLI flags, generated-code shape);
+**`metamodelVersion`** promises the METADATA contract (registered vocabulary, canonical/interchange
+format, wire contract). A breaking metamodel change moves `metamodelVersion`'s major and does **not**
+force a package major. So **any change to the registered vocabulary is also a version edit** — bump it
+with `node scripts/check-metamodel-version.mjs --set <version>`, which writes the manifest and all four
+port constants at once (Kotlin emits through the JVM's; a partial edit only fails in the forgotten
+port's lane). The gate `node scripts/check-metamodel-version.mjs` runs in `ci-local.sh`'s `gates` lane:
+it diffs `expected-registry.json` against the last release tag, classifies, and fails if the version
+did not move enough. **Pre-1.0 a breaking change moves the MINOR**, as the package line does at `0.x`.
+Its one blind spot is stated, not hidden — a rule can change with no machine-readable footprint (#210's
+only manifest edit was a `rules` prose string), so prose changes prompt a question rather than being
+classified, and answering it is a human step. Post-1.0 the caret rule no longer gates the metadata
+axis, so **a release that moves `metamodelVersion` must say so in the CHANGELOG.**
+
 ## Design judgment (durable principles)
 
 These are the load-bearing principles that have emerged through implementation. Apply them every time.

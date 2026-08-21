@@ -103,11 +103,16 @@ interface ManifestType {
  * manifest (the byte-exact bill of materials), NOT a per-provider or per-file marker:
  * every port emits the same string, asserted by registry-conformance. Pre-1.0 the
  * vocabulary is still `0.x` (semver = unstable, may change) but largely settled going
- * into the quiet period, so this is `"0.9"` (near-final); the 1.0 cut (readiness G1)
- * freezes it to `"1.0"`. Decoupled from every package line — it is the spec version,
- * not a package version.
+ * into the quiet period; the 1.0 cut (readiness G1) freezes it to `"1.0"`. Decoupled
+ * from every package line — it is the spec version, not a package version.
+ *
+ * The current value is the declaration below and nothing else. Do not restate it in
+ * prose: `scripts/check-metamodel-version.mjs --set` rewrites the declaration, so any
+ * copy in a comment goes stale on the very next bump (it said `"0.9"` here while the
+ * constant read `"0.10"`). Bump with that script — never by hand — so the manifest and
+ * all four port constants move together.
  */
-export const METAMODEL_VERSION = "0.9";
+export const METAMODEL_VERSION = "0.10";
 
 /** The full canonical manifest. All collections are sorted for byte-stability. */
 interface RegistryManifest {

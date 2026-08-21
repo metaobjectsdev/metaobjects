@@ -39,6 +39,7 @@ Do not bump or publish anything until every check is green. Print each result.
 | Published vs local version | `npm view @metaobjectsdev/cli dist-tags.latest`; compare to `package.json` | you know current `latest` and the target bump |
 | **Target version is free** | `npm view @metaobjectsdev/cli@<version> version` (a 404 = free); `git tag -l v<version>` | the target version is NOT already published or tagged (npm versions are permanent — a taken version can never be reused) |
 | CHANGELOG ready | `sed -n '1,20p' CHANGELOG.md` | an entry exists or you will add one (see Phase 8) |
+| **`metamodelVersion` moved if the metamodel did** | `node scripts/check-metamodel-version.mjs` | exit 0. It diffs `expected-registry.json` against the last release tag and fails if the vocabulary changed without the version moving. Read its PROSE warning too — a rule can change with no machine-readable footprint (#210 changed only a `rules` string). Fix with `--set <version>`; detail with `--explain`. |
 
 If the code-review check fails (no PR, or unmerged/dirty tree): **stop** — releases
 ship reviewed, merged `main`, never a working tree.
@@ -50,6 +51,23 @@ in-workspace, so the test passes; only a clean external install fails), the stal
 `bun.lock` sibling-pinning bug, or pnpm-strict resolution bugs. Local green tells
 you nothing about whether the *published artifact* installs. That is what the RC +
 external smoke test (Phases 4–5) exist to prove. Do not let urgency skip them.
+
+### Two numbers, two contracts
+
+**The package version and `metamodelVersion` answer different questions, and a release
+may move either, both, or neither** (ADR-0035 Amendment 2):
+
+- **package version** — did the SOFTWARE surface change? (exports, CLI flags,
+  generated-code shape). This is what you publish.
+- **`metamodelVersion`** — did the METADATA contract change? (registered vocabulary,
+  canonical/interchange format, wire contract). A breaking metamodel change moves ITS
+  major and **does not** force a package major.
+
+Post-1.0 the caret rule no longer gates the metadata axis (`^1.0.0` accepts `1.1.0`), so
+**a release that moves `metamodelVersion` must say so in the CHANGELOG** — that line is
+the adopter's only signal. Bump with `node scripts/check-metamodel-version.mjs --set
+<version>`, which writes all five declaring sites at once; a port left behind fails
+`registry-conformance`, but only in that port's lane.
 
 ## Phase 1 — Decide scope + version
 

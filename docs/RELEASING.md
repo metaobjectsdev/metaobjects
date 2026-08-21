@@ -177,7 +177,7 @@ contracts on two numbers:
 - **Package version** (npm/PyPI/NuGet `1.x`, Maven `8.x`) promises the SOFTWARE surface —
   exports, CLI flags, generated-code shape, runtime helpers. A break here is `2.0.0` /
   `9.0.0`.
-- **`metamodelVersion`** (`"0.9"` today, `"1.0"` at the cut; the first key of the
+- **`metamodelVersion`** (`"1.0"` at the cut; the current value is the first key of the
   byte-gated `expected-registry.json`) promises the METADATA contract — registered
   vocabulary, canonical/interchange format, wire contract. A break here moves ITS major,
   and **does not force a package major.**
@@ -187,15 +187,45 @@ dragged npm to `2.0.0` and Maven to `9.0.0`, so the package majors became a runn
 of metamodel edits. Measured cadence at the time of the amendment: **19 minor lines in 87
 days**.
 
+**The gate: `node scripts/check-metamodel-version.mjs`** (runs in the `gates` lane, so
+`scripts/ci-local.sh` and hosted CI both enforce it). It diffs
+`expected-registry.json` — already the byte-exact bill of materials every port is gated
+against — against its content at the **last release tag**, classifies every difference,
+and fails if the declared version did not move by at least the amount the change
+requires. Same shape as `buf breaking --against '.git#tag=…'` / `oasdiff`.
+
+| Change | Required move |
+|---|---|
+| a type/subtype removed; an attr removed; an attr made required, retyped or re-arrayed; an enum member removed or an open attr closed; a child rule removed, its `min` raised or its `max` lowered; a default subtype changed | **major** (pre-1.0: minor — see below) |
+| a type/subtype added; an optional attr added; an enum member added; a child rule added or relaxed; a default subtype added | **minor** |
+| prose only (`description` / `rules` / `whenToUse`) | none — but read the warning |
+
+**Pre-1.0 a breaking change moves the MINOR**, for the same reason the package line
+works that way while it is `0.x`: `0.y` makes no compatibility claim there is anything to
+break. At `1.0` the major becomes real.
+
+**What the gate cannot see, and says so.** A rule can change with NO machine-readable
+footprint. #210 is the proof: retiring assembly origins from `object.value` was a
+breaking metamodel change whose only manifest edit was a `rules` PROSE string. So prose
+changes are reported as a WARNING with a direct question — *did the rule change, or only
+its wording?* — rather than classified, because a typo fix and a semantics change are
+indistinguishable here and failing on every wording edit trains people to ignore the
+gate. **Answering that question is a human step in every release.**
+
 **When you cut a release that moves `metamodelVersion`:**
 
-1. Bump `METAMODEL_VERSION` in all five ports (it is byte-gated — `registry-conformance`
-   fails until every port agrees) and regenerate `expected-registry.json`.
+1. `node scripts/check-metamodel-version.mjs --set <version>` — it writes the manifest
+   **and all four port constants** in one go (Kotlin emits through the JVM's). A partial
+   edit is caught by `registry-conformance`, but only in the lane for the port you
+   forgot, so do not hand-edit. Then re-run the corpus in every port.
 2. The changelog entry MUST say the metamodel version moved, and to what. Post-1.0 the
    caret rule is no longer a gate (`^1.0.0` accepts `1.1.0`), so **the changelog is the
    adopter's only signal** until the deferred loader check exists.
 3. Ship a migration guide under `docs/features/migrations/`, as every breaking metamodel
    change already does.
+
+`--explain` prints the full classified diff and always exits 0; `--against <ref>` picks a
+different baseline.
 
 Design + deferral triggers:
 [`docs/superpowers/specs/2026-08-20-two-contracts-versioning-design.md`](superpowers/specs/2026-08-20-two-contracts-versioning-design.md).
