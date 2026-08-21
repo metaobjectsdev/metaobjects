@@ -161,6 +161,17 @@ gate_publish_set() { node scripts/publish-set.mjs --check && node scripts/test-p
 # pre-release version silently shrinks the set the next real release publishes.
 gate_no_prerelease_versions() { scripts/check-no-prerelease-versions.sh; }
 
+# ── metamodelVersion must move when the metamodel does ────────────────────────
+# ADR-0035 Amendment 2 made `metamodelVersion` the METADATA-compatibility axis: a
+# breaking metamodel change moves ITS major, not the package major. That handed the
+# compat promise to a number nobody had ever moved — it read "0.9" from PR #145
+# (2026-07-02) through 57 releases, including 0.21.0, which deliberately retired
+# assembly origins from object.value. This diffs expected-registry.json (already the
+# byte-exact bill of materials every port is gated against) against its content at the
+# last release tag, classifies each difference, and requires the declared version to
+# have moved by at least that much. Offline; git + one JSON file.
+gate_metamodel_version() { node scripts/check-metamodel-version.mjs && node scripts/test-metamodel-version.mjs; }
+
 # ── peer ranges must have a finite upper bound ────────────────────────────────
 # An open `>=` peer silently accepts a future breaking major. `@tanstack/react-table:
 # ">=8.20.0"` accepted v9 — a rewrite that deleted useReactTable/getCoreRowModel, both
@@ -390,6 +401,7 @@ if want gates; then step    "bun-version parity"               gate_bun_version;
 if want gates; then step    "publish-intent parity"            gate_publish_intent;         fi
 if want gates; then step    "publish-set parity"               gate_publish_set;            fi
 if want gates; then step    "no committed pre-release version" gate_no_prerelease_versions; fi
+if want gates; then step    "metamodel-version bump"           gate_metamodel_version;      fi
 if want gates; then step_if bun "peer-range bounds"            gate_peer_ranges;            fi
 if want gates; then step_if bun "fixture-lint"                 gate_fixture_lint;           fi
 # The ts port is split into two lanes so CI can run them as separate jobs (see

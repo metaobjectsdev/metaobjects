@@ -107,7 +107,7 @@ interface ManifestType {
  * freezes it to `"1.0"`. Decoupled from every package line — it is the spec version,
  * not a package version.
  */
-export const METAMODEL_VERSION = "0.9";
+export const METAMODEL_VERSION = "0.10";
 
 /** The full canonical manifest. All collections are sorted for byte-stability. */
 interface RegistryManifest {

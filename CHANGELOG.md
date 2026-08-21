@@ -7,6 +7,38 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Metamodel version — `metamodelVersion` moves to `0.10`, and is now gated
+
+**Metamodel version: `0.9` → `0.10`.** ADR-0035 Amendment 2 made `metamodelVersion` the
+METADATA-compatibility axis — a breaking metamodel change moves ITS major, not the package
+major. The ADR-0052 work below is exactly such a change (`@promptStyle` is retired from
+`template.output`), so the number moves with it.
+
+It is the first time it ever has. `metamodelVersion` read `"0.9"` from the day it shipped
+(PR #145, 2026-07-02) through **57 releases** — including `0.21.0`, the deliberate pre-1.0
+breaking slot that retired assembly origins from `object.value` and shrank `@role`. The
+amendment handed the compatibility promise to a number nobody was maintaining.
+
+So it now has a gate. **`node scripts/check-metamodel-version.mjs`** (in `ci-local.sh`'s
+`gates` lane) diffs `expected-registry.json` — already the byte-exact bill of materials
+every port is gated against — against its content at the last release tag, classifies each
+difference, and fails if the declared version did not move by at least as much. Removal
+and narrowing are breaking; addition and relaxation are additive; **pre-1.0 a breaking
+change moves the minor**, as the package line does at `0.x`. `--set <version>` writes the
+manifest and all four port constants in one go; `--explain` prints the classified diff.
+
+**Its blind spot is stated rather than hidden.** A rule can change with no
+machine-readable footprint — #210 retired assembly origins from `object.value` and its
+only manifest edit was a `rules` PROSE string. So prose changes (`description` / `rules` /
+`whenToUse`) are reported as a warning asking *did the rule change, or only its wording?*
+rather than classified, because a typo fix and a semantics change are indistinguishable
+there and failing on every wording edit trains people to ignore the gate. Answering it is
+a human step in every release.
+
+Adopter-facing: `metamodelVersion` tells you whether **your metadata** needs work; the
+package version tells you whether **your build** does. A release may move either, both or
+neither — so read the changelog for a metamodel move, not just the package number.
+
 ### BREAKING — a template subtype's axis is DIRECTION (ADR-0052 / ADR-0053)
 
 `template.output` renders OUTBOUND — a document, an email, an export — and generates
