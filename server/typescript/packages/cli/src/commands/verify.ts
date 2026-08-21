@@ -176,7 +176,8 @@ export async function verifyCommand(
   // The one thing NOT named by the metadata or its config: `metaobjects.config.ts`
   // is this TypeScript package's own answer to a different question (design §4.6),
   // so it gets its own nearest-ancestor walk and everything IT names follows —
-  // `outDir`/`targets` for `--codegen`, `verify.testFiles` for `@verifiedBy`. In a
+  // `outDir`/`targets` for `--codegen`. (It also carried `verify.testFiles` until
+  // 0.24.0 retired the `@verifiedBy` scan; both are gone.) In a
   // Maven- or pip-rooted monorepo the collection is declared at the repo root while
   // the TS config sits in the app; reading the second from the first made
   // `--codegen` report "no config" for a package that has one (#326). Identical to
