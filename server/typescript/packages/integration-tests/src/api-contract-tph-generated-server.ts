@@ -33,6 +33,10 @@ export interface TphSeed {
     quantity: number | null;
     copayAmount: string | null;
     approver: string | null;
+    // FR-037 R1 — the @mutability "writeOnce" column, declared on the TPH BASE so
+    // every subtype inherits it (which also exercises the resolving-accessor rule:
+    // an own-only read would see readWrite on each subtype).
+    issuedCurrency?: string | null;
     // #203 / ADR-0045 — @autoSet timestamp columns (TPH leg). Present verbatim
     // in the seed (an OLD sentinel) so a PATCH can prove it bumps
     // autoUpdatedAt (onUpdate) while leaving autoCreatedAt (onCreate) untouched.
@@ -99,6 +103,7 @@ export const db = drizzle(pool);
       "quantity"        integer,
       "copay_amount"    numeric(10,2),
       "approver"        varchar(80),
+      "issued_currency" varchar(3),
       "auto_created_at" timestamp,
       "auto_updated_at" timestamp
     );
@@ -142,8 +147,8 @@ export async function seedTph(connectionUri: string, seed: TphSeed): Promise<voi
     // tph-autoset-patch scenario asserts.
     await executeSql(
       connectionUri,
-      `INSERT INTO "auths" ("id","type","reference","quantity","copay_amount","approver","auto_created_at","auto_updated_at")
-       VALUES (${a.id}, ${str(a.type)}, ${str(a.reference)}, ${num(a.quantity)}, ${num(a.copayAmount)}, ${str(a.approver)}, ${str(a.autoCreatedAt ?? null)}, ${str(a.autoUpdatedAt ?? null)})`,
+      `INSERT INTO "auths" ("id","type","reference","quantity","copay_amount","approver","issued_currency","auto_created_at","auto_updated_at")
+       VALUES (${a.id}, ${str(a.type)}, ${str(a.reference)}, ${num(a.quantity)}, ${num(a.copayAmount)}, ${str(a.approver)}, ${str(a.issuedCurrency ?? null)}, ${str(a.autoCreatedAt ?? null)}, ${str(a.autoUpdatedAt ?? null)})`,
     );
   }
   // Seeding explicit ids into the bigserial PK does NOT advance its sequence, so

@@ -1,0 +1,53 @@
+name: tph-writeonce-patch-stripped
+description: >
+  FR-037 R1 / ADR-0045 (TPH leg) — `@mutability: "writeOnce"` is honored by the deployed
+  TPH per-subtype API surface, not merely by the vanilla one.
+
+  This scenario exists because TPH is a SEPARATE code path in every port — the 0.19.4
+  lesson, where @autoSet stamping was correct on the vanilla route and absent on the TPH
+  per-subtype route in three ports at once. Java has a distinct `settableFields` overload
+  for the per-subtype patch, C# a distinct `AppendTphSubtypeRoutes` merge, Python a distinct
+  TPH router branch, Kotlin a distinct TPH controller. Each of those was written to exclude
+  the mode; without this scenario none of them is GATED, and "written" is not "enforced".
+
+  `issuedCurrency` is declared on the TPH BASE (`Auth`), so every subtype inherits it — which
+  also exercises the resolving-accessor requirement (ADR-0039): a port reading the mode
+  own-only would see `readWrite` on every subtype and let the write through.
+
+  Seeded Bridge row 1 carries "USD". A PATCH on the per-subtype path carrying a NEW value
+  must return 200 with the stored value unchanged, while the ordinary readWrite field in the
+  same body IS applied — the pairing is what makes this about the MODE rather than about the
+  request being dropped wholesale.
+requests:
+  - id: r1
+    method: PATCH
+    path: /api/auths/bridge/1
+    body:
+      reference: "REF-1-writeOnce"
+      issuedCurrency: "JPY"
+    expect:
+      status: 200
+      body:
+        row:
+          id: 1
+          # The readWrite sibling IS applied...
+          reference: "REF-1-writeOnce"
+          # ...while the inherited writeOnce column keeps its created value. 200, not 400.
+          issuedCurrency: "USD"
+  - id: r2
+    method: PATCH
+    path: /api/auths/bridge/1
+    body:
+      # A readWrite field rides along deliberately — see the vanilla
+      # writeonce-patch-stripped scenario for why (the empty-PATCH contract is not
+      # settled cross-port, and settling it is not this scenario's business).
+      reference: "REF-1-null-probe"
+      issuedCurrency: null
+    expect:
+      status: 200
+      body:
+        row:
+          id: 1
+          reference: "REF-1-null-probe"
+          # Clearing is a write, so the FR-035 present-null path must not reach it either.
+          issuedCurrency: "USD"

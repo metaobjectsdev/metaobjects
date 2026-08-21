@@ -180,16 +180,24 @@ look." The attribute's heaviest use was this repository's own conformance corpus
 therefore also the only thing that exercises the three modes — so the corpus gained fixtures
 for `writeOnce`, which previously had no coverage at all.
 
-**Two real defects were caught by the api-contract corpus, not by unit tests**, and both are
-the same shape — the ADR-0045 rule that the OUTERMOST generated write artifact enforces the
-mode. Excluding `writeOnce` from the Python `<Entity>Patch` model was NOT enough: the
-generated FastAPI handler binds `dto: dict[str, Any]` (the raw body) and passes THAT to the
-repository, so the field still reached the row. (`@autoSet` survives this only because the
-router *overwrites* its key server-side; `writeOnce` has no server value to clobber.) The C#
-generated route had the twin: `SetAfterSaveBehavior(Ignore)` governs EF's save, but the merge
-loop assigns `entry.CurrentValues[target]` and the handler returns the in-memory entity, so a
-caller-supplied value was echoed in the RESPONSE. Both now strip at the route, vanilla and
-TPH.
+**THREE real defects were caught by the api-contract corpus, not by the unit tests that
+already passed** — and all three are the ADR-0045 rule biting: the OUTERMOST generated write
+artifact enforces the mode, and in three ports that artifact was not the one first fixed.
+
+1. **Python.** Excluding `writeOnce` from `<Entity>Patch` was NOT enough — the generated
+   FastAPI handler binds `dto: dict[str, Any]` (the RAW body), validates against the patch
+   model, then hands the raw dict to the repository, so the field still reached the row.
+   `@autoSet` survives this only because the router OVERWRITES its key server-side;
+   `writeOnce` has no server value to clobber. Now stripped in the router.
+2. **C#.** `SetAfterSaveBehavior(Ignore)` governs EF's SAVE, but the merge loop assigns
+   `entry.CurrentValues[target]` and the handler returns the in-memory entity — so a
+   caller-supplied value was echoed in the RESPONSE even where EF omitted the column from
+   the UPDATE. Now skipped in the merge loop, exactly as `@autoSet` is.
+3. **Kotlin — and this one is the 0.19.4 lesson landing exactly as predicted.** The vanilla
+   lane passed and the **TPH** lane did not: `KotlinTphPlan.subtypeSettableFields` is a
+   separate SSOT from the vanilla controller's `patchSettableFields`, and only the latter had
+   been taught the modes. Nothing but a TPH-flavoured scenario could have found it, which is
+   why the acceptance criteria demanded one.
 
 Metadata declaring no `@mutability` generates byte-identically to before, and an explicit
 `@mutability: "readWrite"` emits byte-identically to declaring nothing — pinned in TS and C#.

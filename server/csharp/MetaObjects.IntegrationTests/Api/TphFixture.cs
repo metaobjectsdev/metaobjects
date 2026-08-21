@@ -34,6 +34,9 @@ internal static class TphFixture
           "quantity" INTEGER,
           "copayAmount" NUMERIC(10,2),
           "approver" VARCHAR(80),
+          -- FR-037 R1: the @mutability "writeOnce" column, declared on the TPH BASE so
+          -- every subtype inherits it.
+          "issuedCurrency" VARCHAR(3),
           "autoCreatedAt" TIMESTAMPTZ,
           "autoUpdatedAt" TIMESTAMPTZ,
           CONSTRAINT "auths_pkey" PRIMARY KEY ("id"),
@@ -42,7 +45,7 @@ internal static class TphFixture
         """;
 
     private static readonly string[] Cols =
-        { "id", "type", "reference", "quantity", "copayAmount", "approver", "autoCreatedAt", "autoUpdatedAt" };
+        { "id", "type", "reference", "quantity", "copayAmount", "approver", "issuedCurrency", "autoCreatedAt", "autoUpdatedAt" };
 
     /// <summary>Create the single `auths` table on a fresh container.</summary>
     public static async Task ProvisionSchemaAsync(string connString)

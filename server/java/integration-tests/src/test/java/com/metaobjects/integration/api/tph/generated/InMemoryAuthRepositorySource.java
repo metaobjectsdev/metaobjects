@@ -110,6 +110,8 @@ final class InMemoryAuthRepositorySource {
                 // persists the incoming (already-stamped) autoCreatedAt/autoUpdatedAt verbatim.
                 AuthDto saved = new AuthDto(
                     nextId.getAndIncrement(), AuthDto.AuthType.valueOf(discriminator), dto.reference(),
+                    // FR-037 R1: writeOnce IS bound on create — settable exactly once.
+                    dto.issuedCurrency(),
                     dto.autoCreatedAt(), dto.autoUpdatedAt(),
                     dto.quantity(), dto.copayAmount(), dto.approver());
                 rows.add(saved);
@@ -125,6 +127,7 @@ final class InMemoryAuthRepositorySource {
                     AuthDto merged = new AuthDto(
                         id, cur.type(),
                         dto.reference()     != null ? dto.reference()     : cur.reference(),
+                        dto.issuedCurrency() != null ? dto.issuedCurrency() : cur.issuedCurrency(),
                         dto.autoCreatedAt() != null ? dto.autoCreatedAt() : cur.autoCreatedAt(),
                         dto.autoUpdatedAt() != null ? dto.autoUpdatedAt() : cur.autoUpdatedAt(),
                         dto.quantity()      != null ? dto.quantity()      : cur.quantity(),
@@ -152,6 +155,11 @@ final class InMemoryAuthRepositorySource {
                     AuthDto merged = new AuthDto(
                         id, cur.type(),
                         assigned.containsKey("reference")     ? (String) assigned.get("reference")       : cur.reference(),
+                        // FR-037 R1: issuedCurrency is @mutability "writeOnce", so the generated
+                        // <Sub>Patch has NO accessor for it and it can never appear in `assigned`
+                        // — the stored value is the only thing readable here. Written as a plain
+                        // read rather than a containsKey branch so the absence is visible.
+                        cur.issuedCurrency(),
                         assigned.containsKey("autoCreatedAt") ? (Instant) assigned.get("autoCreatedAt")  : cur.autoCreatedAt(),
                         assigned.containsKey("autoUpdatedAt") ? (Instant) assigned.get("autoUpdatedAt")  : cur.autoUpdatedAt(),
                         assigned.containsKey("quantity")      ? (Integer) assigned.get("quantity")       : cur.quantity(),

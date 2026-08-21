@@ -156,8 +156,10 @@ public final class GeneratedTphControllerHarness implements AutoCloseable {
         // ADR-0045 (#203/#229): the DTO record now carries the two @autoSet timestamp columns
         // (autoCreatedAt onCreate, autoUpdatedAt onUpdate) right after the base's own scalars, in
         // declared order — before the folded-in subtype-only columns.
+        // FR-037 R1 adds `issuedCurrency` (@mutability "writeOnce") on the BASE, so it lands
+        // among the base's own scalars in declared order, before the @autoSet pair.
         this.dtoCtor = dtoClass.getDeclaredConstructor(
-            Long.class, authTypeClass, String.class, Instant.class, Instant.class,
+            Long.class, authTypeClass, String.class, String.class, Instant.class, Instant.class,
             Integer.class, BigDecimal.class, String.class);
         Class<?> repoInterface = classLoader.loadClass(REPO_FQCN);
         this.controllerCtor = classLoader.loadClass(CONTROLLER_FQCN)
@@ -216,6 +218,8 @@ public final class GeneratedTphControllerHarness implements AutoCloseable {
         Long id = row.get("id") == null ? null : ((Number) row.get("id")).longValue();
         String type = (String) row.get("type");
         String reference = (String) row.get("reference");
+        // FR-037 R1: the @mutability "writeOnce" column, seeded verbatim.
+        String issuedCurrency = (String) row.get("issuedCurrency");
         Object autoCreatedRaw = row.get("autoCreatedAt");
         Instant autoCreatedAt = autoCreatedRaw == null ? null : parseInstant(String.valueOf(autoCreatedRaw));
         Object autoUpdatedRaw = row.get("autoUpdatedAt");
@@ -228,7 +232,8 @@ public final class GeneratedTphControllerHarness implements AutoCloseable {
         @SuppressWarnings({ "unchecked", "rawtypes" })
         Object typeEnum = type == null ? null : Enum.valueOf((Class) authTypeClass, type);
         return dtoCtor.newInstance(
-            id, typeEnum, reference, autoCreatedAt, autoUpdatedAt, quantity, copayAmount, approver);
+            id, typeEnum, reference, issuedCurrency, autoCreatedAt, autoUpdatedAt,
+            quantity, copayAmount, approver);
     }
 
     /**

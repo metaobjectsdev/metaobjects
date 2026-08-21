@@ -37,6 +37,9 @@ const auths = pgTable(
     quantity: integer("quantity"),
     copayAmount: numeric("copay_amount", { precision: 10, scale: 2 }),
     approver: varchar("approver", { length: 80 }),
+    // FR-037 R1 — the @mutability "writeOnce" column (declared on the TPH base, so
+    // every subtype has it).
+    issuedCurrency: varchar("issued_currency", { length: 3 }),
     // #203 / ADR-0045 — @autoSet timestamp columns (TPH leg). Nullable at the
     // DDL tier; the seed / POST / PATCH paths always supply a value via the
     // per-subtype Zod schemas below (mirrors api-contract-server.ts).
@@ -74,10 +77,19 @@ const autoSetUpdateShape = {
   autoUpdatedAt: z.string().optional().transform(() => new Date().toISOString()),
 };
 
+// FR-037 R1 — the @mutability "writeOnce" shape. It appears in the INSERT shapes and
+// has NO update counterpart, which IS the mode: settable exactly once, then excluded
+// from the update shape so a presented value is stripped rather than rejected. The
+// deliberate absence of a `writeOnceUpdateShape` is the enforcement — mirroring how
+// autoSetUpdateShape above omits the onCreate column.
+const writeOnceInsertShape = {
+  issuedCurrency: z.string().max(3).nullable().optional(),
+};
+
 // Per-subtype insert schemas (discriminator pinned, omitted at the route boundary).
-const BridgeInsert = z.object({ reference: z.string().min(1).max(80), quantity: z.number().int(), ...autoSetInsertShape });
-const CopayInsert = z.object({ reference: z.string().min(1).max(80), copayAmount: z.string().nullable().optional(), ...autoSetInsertShape });
-const PriorAuthInsert = z.object({ reference: z.string().min(1).max(80), approver: z.string().max(80).nullable().optional(), ...autoSetInsertShape });
+const BridgeInsert = z.object({ reference: z.string().min(1).max(80), quantity: z.number().int(), ...writeOnceInsertShape, ...autoSetInsertShape });
+const CopayInsert = z.object({ reference: z.string().min(1).max(80), copayAmount: z.string().nullable().optional(), ...writeOnceInsertShape, ...autoSetInsertShape });
+const PriorAuthInsert = z.object({ reference: z.string().min(1).max(80), approver: z.string().max(80).nullable().optional(), ...writeOnceInsertShape, ...autoSetInsertShape });
 
 // Per-subtype update schemas — NOT derived via `<Insert>.partial()` (that would
 // carry autoCreatedAt's stamping transform into every PATCH, re-writing the
@@ -120,6 +132,7 @@ export async function startTphServer(connectionUri: string): Promise<TphServerHa
       "quantity"        integer,
       "copay_amount"    numeric(10,2),
       "approver"        varchar(80),
+      "issued_currency" varchar(3),
       "auto_created_at" timestamp,
       "auto_updated_at" timestamp
     )`);

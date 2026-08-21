@@ -131,7 +131,14 @@ object KotlinTphPlan {
             it is ObjectField || it is MapField || KotlinTypeMapper.isJsonbOpenBag(it)
         }.filter {
             it.name != pk && it.name != discField &&
-                !KotlinGenUtil.isAutoSetField(it)   // #203/ADR-0045: server-owned; controller stamps it
+                !KotlinGenUtil.isAutoSetField(it) &&  // #203/ADR-0045: server-owned; controller stamps it
+                // FR-037 R1: both non-readWrite @mutability modes leave the PATCH settable set —
+                // readOnly is never written, writeOnce is frozen after create. Stated HERE and not
+                // only in the vanilla controller's patchSettableFields because TPH is a SEPARATE
+                // code path (the 0.19.4 lesson), and this is its SSOT: the per-subtype patch shape,
+                // the <Sub>Validation shape and the settable-name list all read it.
+                !KotlinGenUtil.isReadOnlyMutability(it) &&
+                !KotlinGenUtil.isWriteOnceMutability(it)
         }
     }
 

@@ -36,6 +36,10 @@ internal sealed class TphReferenceServer : IAsyncDisposable
     };
 
     // Every column the `auths` table carries (base + every subtype-only column).
+    // FR-037 R1: `issuedCurrency` is @mutability "writeOnce" — it is DELIBERATELY absent
+    // from this caller-settable projection, so a presented value is STRIPPED on PATCH
+    // rather than rejected (the same treatment autoCreatedAt/autoUpdatedAt get by being
+    // absent here). It IS written on create, explicitly, below. Do NOT add it here.
     private static readonly string[] AllCols = { "id", "type", "reference", "quantity", "copayAmount", "approver" };
 
     private readonly PostgresContainer _pg;
@@ -266,6 +270,11 @@ internal sealed class TphReferenceServer : IAsyncDisposable
         // body-driven loop above never sets them from the request). A fresh row's
         // autoUpdatedAt therefore equals its autoCreatedAt.
         var autoNow = DateTimeOffset.UtcNow;
+        // FR-037 R1: writeOnce IS bound on create — settable exactly once.
+        if (body is not null && body.TryGetPropertyValue("issuedCurrency", out var __ic) && __ic is not null)
+        {
+            cols.Add("issuedCurrency"); vals.Add(__ic.GetValue<string>());
+        }
         cols.Add("autoCreatedAt"); vals.Add(autoNow);
         cols.Add("autoUpdatedAt"); vals.Add(autoNow);
 

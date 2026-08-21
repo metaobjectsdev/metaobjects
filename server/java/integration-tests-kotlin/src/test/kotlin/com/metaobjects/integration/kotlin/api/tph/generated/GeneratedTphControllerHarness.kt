@@ -152,6 +152,9 @@ class GeneratedTphControllerHarness(
                 authTable.insert { stmt ->
                     stmt[columnFor("type")] = enumValueFor(r["type"] as String)
                     stmt[columnFor("reference")] = r["reference"] as String?
+                    // FR-037 R1: the @mutability "writeOnce" column (declared on the TPH base),
+                    // seeded verbatim so a later PATCH is observed to leave it alone.
+                    stmt[columnFor("issuedCurrency")] = r["issuedCurrency"] as String?
                     stmt[columnFor("autoCreatedAt")] = parseSeedInstant(r["autoCreatedAt"] as String)
                     stmt[columnFor("autoUpdatedAt")] = parseSeedInstant(r["autoUpdatedAt"] as String)
                     stmt[columnFor("quantity")] = (r["quantity"] as? Number)?.toInt()
