@@ -212,13 +212,63 @@ nobody can observe is a gate you no longer have when something real needs it.
 
 This amendment changes cadence policy only. It does not touch §1's post-1.0 compat
 promise: after 1.0, a **breaking** change to the metamodel vocabulary still requires a
-MAJOR, whether the break is an attribute, a subtype, or a type. Operational form of the
-rule (with worked rows): `docs/RELEASING.md` → "Versioning policy (pre-1.0)".
+MAJOR, whether the break is an attribute, a subtype, or a type — **but see Amendment 2
+for WHICH major: the metamodel's own, not the package's.** Operational form of the
+rule (with worked rows): `docs/RELEASING.md` → "Versioning policy".
+
+## Amendment 2 (2026-08-20) — two contracts, two numbers
+
+**Severs §1's clause "and forces a major on every affected package."** A breaking change
+to the METAMODEL moves `metamodelVersion` and does **not**, by itself, move a package
+major. Design: [`docs/superpowers/specs/2026-08-20-two-contracts-versioning-design.md`](../../docs/superpowers/specs/2026-08-20-two-contracts-versioning-design.md).
+
+§1 bound two unrelated promises to one number: the SOFTWARE surface (exports, CLI flags,
+generated-code shape) and the METADATA contract (registered vocabulary, canonical format,
+wire contract). Under that binding, one vocabulary retirement drags npm to `2.0.0` and
+Maven to `9.0.0`, and the package majors become a running count of metamodel edits. The
+measured cadence — **19 minor lines in 87 days** across 90 tags — is what makes the
+consequence concrete rather than theoretical, and the ADR-0052 roadmap correction
+(2026-08-19) is where it first bit: a post-1.0 `1.1` could not carry FR-037's or FR-038's
+vocabulary retirements *because of this clause*.
+
+After this amendment:
+
+- **Package version** (npm/PyPI/NuGet `1.x`, Maven `8.x`) promises the software surface.
+  Full SemVer; a break is `2.0.0` / `9.0.0`.
+- **`metamodelVersion`** (`"0.9"` today, `"1.0"` at the cut; the first key of the
+  byte-gated `expected-registry.json`, shipped in all five ports since #145) promises the
+  metadata contract. A break moves ITS major.
+- §1's covered set is unchanged in *content*. What changes is which number carries it:
+  the metamodel vocabulary, the canonical/interchange format and the wire contract are now
+  borne by `metamodelVersion`; the CLI surface and the scaffold-and-own contract stay on
+  the package version, where they belong.
+- **A package MINOR is "never breaking ON THE SOFTWARE SURFACE."** A release that breaks
+  the metadata contract also moves `metamodelVersion` and says so in the changelog.
+
+**The cost, stated so it is not discovered later.** Post-1.0 the caret rule stops being a
+gate — `^1.0.0` accepts `1.1.0` — so the package MAJOR is the only coordinate a resolver
+refuses to cross. Severing this link removes the only *mechanical* protection against
+auto-adopting a metadata break. What replaces it today is that the adopter set is
+**enumerable and reachable** (six projects). That is a true statement about 2026 and a
+coherent basis for the trade; it is written here because it is a premise that expires.
+
+**Deferred, with triggers.** A declared metadata target plus a loader/`verify`
+compatibility check — the mechanical replacement — is deferred until the adopter set stops
+being reachable. It is more expensive than it looks: `metamodelVersion` is a property of
+the LIBRARY, and there is nowhere an adopter declares *"my metadata targets Metamodel
+1.0"*; adding that is new vocabulary in five ports plus a compatibility matrix.
+Per-item `experimental`/`stable` markers (Kubernetes) and editions (Rust) are likewise
+deferred with written triggers in the design doc.
+
+**Cadence is a separate lever and is free.** Nothing forces one release per merged change;
+batching removes most of the number pressure without any policy change at all.
 
 ## Consequences
 
-- After 1.0, a breaking change to the metamodel vocabulary, the canonical/wire
-  format, the CLI surface, or the scaffold-and-own contract requires a **2.0**. The
+- After 1.0, a breaking change to the CLI surface or the scaffold-and-own contract
+  requires a package **2.0** / **9.0**; a breaking change to the metamodel vocabulary,
+  the canonical/wire format or the interchange format moves **`metamodelVersion`'s**
+  major instead (**Amendment 2**). The
   small stable surface (a consequence of scaffold-and-own) makes that a realistic
   commitment, not a straitjacket.
 - The deprecation removal and the version-line re-baselining (npm/PyPI/NuGet `→1.0.0`,

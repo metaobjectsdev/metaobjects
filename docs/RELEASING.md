@@ -136,7 +136,7 @@ Publish in tier order so a dependent never lands before its dependency. **`forge
    version against **every** package in the set (it used to check only the cli), and
    `bun run prerelease` skips burned numbers when choosing an iteration.
 
-## Versioning policy (pre-1.0)
+## Versioning policy
 
 **The version number's only mechanical meaning today is npm's caret rule.** For
 `0.y.z`, `^0.19.3` resolves `>=0.19.3 <0.20.0`, so: **PATCH is auto-adopted by every
@@ -164,9 +164,45 @@ bytes**, not "did output change."
 | New **attribute** on an existing type/subtype | `@intValueMap`, `@lenient`, `@maxTokens` | **PATCH** | MINOR |
 | New **subtype** of an existing type | `field.uri`, `index.lookup`, `attr.intMap` | **PATCH** when inert (see the vocabulary rule below); **MINOR** when it changes existing metadata's meaning/output, narrows something previously permitted, or headlines a feature | MINOR |
 | New top-level metadata **type** | `requirement.*`, `index.*`, `api.*` | **MINOR** | MINOR |
-| Wire-contract / conformance behavior change of already-valid deployments | FR-036 enforcement | **MINOR**, loud notice (pre-1.0 MINOR *is* the breaking slot) | MAJOR |
+| **Breaking** metamodel-vocabulary change (retire an attr/subtype/type; narrow what is permitted) | FR-037 `@readOnly`, FR-038 `@verifiedBy`, ADR-0052 `@promptStyle` re-homing | **MINOR** (pre-1.0 MINOR *is* the breaking slot) | **`metamodelVersion` MAJOR**, package MINOR (ADR-0035 Am. 2) |
+| Wire-contract / conformance behavior change of already-valid deployments | FR-036 enforcement | **MINOR**, loud notice (pre-1.0 MINOR *is* the breaking slot) | **`metamodelVersion` MAJOR** (Metamodel 2.0) + package MINOR — see the two-contracts rule below |
 | Wire behavior fixed to match the documented/conformance contract | 0.19.1 `@min` clamp | PATCH | PATCH |
 | No changed product file in a port | PyPI/NuGet/Maven at 0.20.14 | **Version-parity bump at the shared patch number** — publish identical content at the new version; never skip a registry (single-shared-patch policy, standing since 0.20.13) | same |
+
+### The two-contracts rule (post-1.0; ADR-0035 Amendment 2)
+
+**Package 1.0 does not freeze the metamodel.** After the cut, the project versions two
+contracts on two numbers:
+
+- **Package version** (npm/PyPI/NuGet `1.x`, Maven `8.x`) promises the SOFTWARE surface —
+  exports, CLI flags, generated-code shape, runtime helpers. A break here is `2.0.0` /
+  `9.0.0`.
+- **`metamodelVersion`** (`"0.9"` today, `"1.0"` at the cut; the first key of the
+  byte-gated `expected-registry.json`) promises the METADATA contract — registered
+  vocabulary, canonical/interchange format, wire contract. A break here moves ITS major,
+  and **does not force a package major.**
+
+That severance is the whole point: under the pre-amendment rule one vocabulary retirement
+dragged npm to `2.0.0` and Maven to `9.0.0`, so the package majors became a running count
+of metamodel edits. Measured cadence at the time of the amendment: **19 minor lines in 87
+days**.
+
+**When you cut a release that moves `metamodelVersion`:**
+
+1. Bump `METAMODEL_VERSION` in all five ports (it is byte-gated — `registry-conformance`
+   fails until every port agrees) and regenerate `expected-registry.json`.
+2. The changelog entry MUST say the metamodel version moved, and to what. Post-1.0 the
+   caret rule is no longer a gate (`^1.0.0` accepts `1.1.0`), so **the changelog is the
+   adopter's only signal** until the deferred loader check exists.
+3. Ship a migration guide under `docs/features/migrations/`, as every breaking metamodel
+   change already does.
+
+Design + deferral triggers:
+[`docs/superpowers/specs/2026-08-20-two-contracts-versioning-design.md`](superpowers/specs/2026-08-20-two-contracts-versioning-design.md).
+
+**Cadence is a separate lever, and it is free.** Nothing forces one release per merged
+change; batching a fortnight of work into one coordinated cut removes most of the number
+pressure without touching policy at all.
 
 ### The vocabulary rule (corrected 2026-08-17)
 
