@@ -256,6 +256,21 @@ export interface EntityDocData {
   /** Present-and-non-empty flag for the usedBy section. */
   hasUsedBy?: boolean;
 
+  /** "Required by" (shape C) — the `requirement.*` nodes whose `@implementedBy`
+   *  resolves to THIS entity. Same list+flag pattern as `usedBy`.
+   *
+   *  ABSENT — not empty, not false — when nothing claims the entity, so the
+   *  Mustache section does not render and an unclaimed entity's page stays
+   *  BYTE-IDENTICAL to its pre-feature output. That is the no-churn contract:
+   *  a project with no ledger, or an entity nothing claims, must see no diff.
+   *
+   *  ENTITY-GRAIN ONLY. Object coverage is entity-grain (`spec/capability-ledger.md`),
+   *  so a claimed `object.value` / `object.projection` gets nothing here — surfacing
+   *  one would imply a coverage rule the ledger does not actually have. */
+  claimedBy?: UsedByDoc[];
+  /** Present-and-non-empty flag for the claimedBy section. */
+  hasClaimedBy?: boolean;
+
   /** Present flag for the storage section. */
   hasStorage?: boolean;
 

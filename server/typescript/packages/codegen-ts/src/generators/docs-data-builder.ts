@@ -11,7 +11,9 @@ import {
   type MetaRoot,
   TYPE_TEMPLATE,
   TEMPLATE_ATTR_PAYLOAD_REF,
+  REQUIREMENT_ATTR_STATEMENT,
   OBJECT_SUBTYPE_VALUE,
+  OBJECT_SUBTYPE_ENTITY,
   IDENTITY_SUBTYPE_PRIMARY,
   IDENTITY_SUBTYPE_SECONDARY,
   IDENTITY_SUBTYPE_REFERENCE,
@@ -52,6 +54,9 @@ import { enumValues } from "../enum-meta.js";
 import { hasWritableRdbSource } from "../source-detect.js";
 import { GENERATED_HEADER } from "../constants.js";
 import { renderEntityNeighborhoodErBlock } from "../templates/mermaid-er.js";
+// Shape C reuses the SAME walk the stub generator and the requirements index use, so
+// all three agree about what the ledger contains by construction.
+import { walkRequirements } from "../requirement-walk.js";
 import type {
   EntityDocData,
   StorageFieldDoc,
@@ -684,6 +689,34 @@ export function buildEntityDocData(
   }
   const usedBy = usedByMatches.length > 0 ? usedByMatches : undefined;
 
+  // ---- ClaimedBy (shape C) — the requirements whose `@implementedBy` resolves HERE.
+  //
+  // Matched on the RESOLVED NODE, never on the reference string: `@implementedBy` may
+  // be authored fully-qualified or bare, and a bare ref binds package-locally under
+  // ADR-0042. `walkRequirements` already did that resolution (it is what the stub
+  // generator uses), so comparing nodes inherits the correct binding rather than
+  // re-deriving it here and drifting from it.
+  //
+  // ENTITY-GRAIN. Object coverage is entity-grain, so a claimed value/projection gets
+  // nothing — surfacing one would imply a coverage rule the ledger does not have.
+  const claimedByMatches: UsedByDoc[] = [];
+  if (entity.subType === OBJECT_SUBTYPE_ENTITY) {
+    for (const walked of walkRequirements(root)) {
+      if (!walked.targets.some((t) => t.node === entity)) continue;
+      const v = walked.view;
+      const level = v.level === undefined ? "" : ` · **L${v.level}**`;
+      const status = v.status === undefined ? "" : ` · status: \`${v.status}\``;
+      const statement = walked.node.attr(REQUIREMENT_ATTR_STATEMENT);
+      const said = typeof statement === "string" && statement.length > 0 ? ` — ${statement}` : "";
+      claimedByMatches.push({
+        bullet: `\`requirement.${v.subType} ${v.path}\`${level}${status}${said}`,
+      });
+    }
+  }
+  // ABSENT, not empty: the Mustache gate must not render for an unclaimed entity, so
+  // its page stays byte-identical to its pre-feature output.
+  const claimedBy = claimedByMatches.length > 0 ? claimedByMatches : undefined;
+
   // Preamble header — built up exactly as the legacy emitter did.
   const preambleLines: string[] = [];
   const typeStr = `${entity.type}.${entity.subType}`;
@@ -760,6 +793,10 @@ export function buildEntityDocData(
   if (usedBy !== undefined) {
     data.usedBy = usedBy;
     data.hasUsedBy = true;
+  }
+  if (claimedBy !== undefined) {
+    data.claimedBy = claimedBy;
+    data.hasClaimedBy = true;
   }
   // Cross-link to the api surfaces — present ONLY when the caller computed the
   // hrefs (api surfaces emitted alongside model); model-only runs stay identical.
