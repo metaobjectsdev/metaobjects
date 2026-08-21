@@ -7,37 +7,41 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-### Metamodel version — `metamodelVersion` moves to `0.10`, and is now gated
+## [0.24.0] — npm `0.24.0` · PyPI `0.24.0` · NuGet `0.24.0` · Maven `7.24.0`
 
-**Metamodel version: `0.9` → `0.10`.** ADR-0035 Amendment 2 made `metamodelVersion` the
-METADATA-compatibility axis — a breaking metamodel change moves ITS major, not the package
-major. The ADR-0052 work below is exactly such a change (`@promptStyle` is retired from
-`template.output`), so the number moves with it.
+> ### ⚠️ BREAKING FOR METADATA AUTHORS — a template subtype's axis is DIRECTION
+>
+> This is the pre-1.0 breaking slot (MINOR), not a patch, **specifically so it is not
+> auto-adopted**: on a caret range `^0.23.x` resolves `<0.24.0`, so you pick this up only by
+> deliberately bumping your range. Read
+> **[the migration guide](docs/features/migrations/template-direction-outbound-vs-inbound.md)**
+> before upgrading — it carries the exact loader error and a rewrite rule for each change.
+>
+> 1. **A `@promptStyle` left on a `template.output` now fails the LOAD**
+>    (`ERR_INVALID_TEMPLATE`) — it is prompt-only vocabulary, as is the new
+>    `@responseFormat`.
+> 2. **A `template.output` no longer generates an inbound tier.** Its parser, tolerant
+>    extractor and response-format fragment are not emitted, and `verify --codegen` names
+>    the committed ones as files a fresh regen would not produce. The inbound tier belongs
+>    to a `template.prompt` carrying `@responseRef`.
+> 3. **Emitted paths follow the direction** — `.output.*` → `.response.*`, `.prompt.*` →
+>    `.responseFormat.*`, and (Python) `_output_parser.py` → `_response_parser.py`,
+>    `_output_prompt.py` → `_response_format.py`.
+> 4. **`@responseRef` now obeys the same target rule as `@payloadRef` in every port.** C#,
+>    Java and Python checked only `@payloadRef`, so the same metadata failed one port's load
+>    and passed four.
+>
+> **This release also moves `metamodelVersion`, `0.9` → `0.10`** — the first time that
+> number has ever moved. It is the one that tells you your *metadata* needs work, as
+> distinct from your build.
 
-It is the first time it ever has. `metamodelVersion` read `"0.9"` from the day it shipped
-(PR #145, 2026-07-02) through **57 releases** — including `0.21.0`, the deliberate pre-1.0
-breaking slot that retired assembly origins from `object.value` and shrank `@role`. The
-amendment handed the compatibility promise to a number nobody was maintaining.
-
-So it now has a gate. **`node scripts/check-metamodel-version.mjs`** (in `ci-local.sh`'s
-`gates` lane) diffs `expected-registry.json` — already the byte-exact bill of materials
-every port is gated against — against its content at the last release tag, classifies each
-difference, and fails if the declared version did not move by at least as much. Removal
-and narrowing are breaking; addition and relaxation are additive; **pre-1.0 a breaking
-change moves the minor**, as the package line does at `0.x`. `--set <version>` writes the
-manifest and all four port constants in one go; `--explain` prints the classified diff.
-
-**Its blind spot is stated rather than hidden.** A rule can change with no
-machine-readable footprint — #210 retired assembly origins from `object.value` and its
-only manifest edit was a `rules` PROSE string. So prose changes (`description` / `rules` /
-`whenToUse`) are reported as a warning asking *did the rule change, or only its wording?*
-rather than classified, because a typo fix and a semantics change are indistinguishable
-there and failing on every wording edit trains people to ignore the gate. Answering it is
-a human step in every release.
-
-Adopter-facing: `metamodelVersion` tells you whether **your metadata** needs work; the
-package version tells you whether **your build** does. A release may move either, both or
-neither — so read the changelog for a metamodel move, not just the package number.
+A coordinated **MINOR** across all four registries, and the **pre-1.0 breaking slot**: the
+ADR-0052 template-direction split makes previously-valid metadata fail to load. Two further
+changes are DEFAULT FLIPS rather than corrections of previously-wrong behaviour — the Java
+Maven plugin now fails a build that a silently-empty model used to let pass, and Java and
+Python now follow symlinked directories where they previously did not. Pre-1.0, `^0.23.x`
+resolves `<0.24.0`, so all three are adopted deliberately while a PATCH would be taken
+automatically on a routine update — the same call, for the same reason, as `0.21.0`.
 
 ### BREAKING — a template subtype's axis is DIRECTION (ADR-0052 / ADR-0053)
 
@@ -118,15 +122,37 @@ emits no diagnostic, only assertions that quietly cover less. The corpus now car
 README naming which case covers which path, so an edit that removes one has to remove its
 stated purpose too.
 
-## [0.24.0] — npm `0.24.0` · PyPI `0.24.0` · NuGet `0.24.0` · Maven `7.24.0`
+### Metamodel version — `metamodelVersion` moves to `0.10`, and is now gated
 
-A coordinated **MINOR** across all four registries. It is a MINOR rather than a PATCH
-because two of its changes are DEFAULT FLIPS, not corrections of previously-wrong
-behaviour: the Java Maven plugin now fails a build that a silently-empty model used to
-let pass, and Java and Python now follow symlinked directories where they previously did
-not. Pre-1.0, `^0.23.x` resolves `<0.24.0`, so a MINOR is adopted deliberately while a
-PATCH would be taken automatically on a routine update — the same call, for the same
-reason, as `0.21.0`.
+**Metamodel version: `0.9` → `0.10`.** ADR-0035 Amendment 2 made `metamodelVersion` the
+METADATA-compatibility axis — a breaking metamodel change moves ITS major, not the package
+major. The ADR-0052 work above is exactly such a change (`@promptStyle` is retired from
+`template.output`), so the number moves with it.
+
+It is the first time it ever has. `metamodelVersion` read `"0.9"` from the day it shipped
+(PR #145, 2026-07-02) through **57 releases** — including `0.21.0`, the deliberate pre-1.0
+breaking slot that retired assembly origins from `object.value` and shrank `@role`. The
+amendment handed the compatibility promise to a number nobody was maintaining.
+
+So it now has a gate. **`node scripts/check-metamodel-version.mjs`** (in `ci-local.sh`'s
+`gates` lane) diffs `expected-registry.json` — already the byte-exact bill of materials
+every port is gated against — against its content at the last release tag, classifies each
+difference, and fails if the declared version did not move by at least as much. Removal
+and narrowing are breaking; addition and relaxation are additive; **pre-1.0 a breaking
+change moves the minor**, as the package line does at `0.x`. `--set <version>` writes the
+manifest and all four port constants in one go; `--explain` prints the classified diff.
+
+**Its blind spot is stated rather than hidden.** A rule can change with no
+machine-readable footprint — #210 retired assembly origins from `object.value` and its
+only manifest edit was a `rules` PROSE string. So prose changes (`description` / `rules` /
+`whenToUse`) are reported as a warning asking *did the rule change, or only its wording?*
+rather than classified, because a typo fix and a semantics change are indistinguishable
+there and failing on every wording edit trains people to ignore the gate. Answering it is
+a human step in every release.
+
+Adopter-facing: `metamodelVersion` tells you whether **your metadata** needs work; the
+package version tells you whether **your build** does. A release may move either, both or
+neither — so read the changelog for a metamodel move, not just the package number.
 
 ### Added — `sources` is read by all four CLI surfaces, plus `meta init --config-only`
 
