@@ -243,7 +243,22 @@ top of it. Treat a failure as a build break.
    `link` passes the address through, so the linked consumer gets it; the other four
    checks are host-independent and always run — check 3 in particular catches a
    pre-release pin no matter where it came from;
-2. any private-network or loopback registry host (someone else's self-hosted instance);
+2. any private-network or loopback host **declared as a package source** (someone else's
+   self-hosted instance). "Declared as a package source" is load-bearing and was once
+   merely "appears in a manifest": an Android module's
+   `buildConfigField("SERVER_URL", "http://10.0.0.5:8000")` is where the built app looks
+   for its own backend and says nothing about where Gradle resolves dependencies, yet it
+   failed the gate with no way for that project ever to pass — and a permanent false
+   positive is how the true positive this exists to catch gets waved through. Files that
+   are package-resolution config end to end (`.npmrc`, lockfiles, `pip.conf`,
+   `NuGet.config`, `settings.xml`, `requirements*.txt`…) are still scanned whole; files
+   that carry both kinds of content are scanned only inside the region that declares a
+   source — a Gradle `repositories { }` / `pluginManagement { }` block, a pom's
+   `<repositories>`/`<pluginRepositories>`/`<distributionManagement>`, a `package.json`
+   dependency block or `registry` key, a `[[tool.uv.index]]`/`[[tool.poetry.source]]`
+   section, a `*.csproj` `<RestoreSources>`, or a `gradle.properties` key naming a repo.
+   This is the same principle the file list already applies *between* files, carried one
+   level down into the files where both kinds live together;
 3. a vendor dependency pinned to a pre-release version, in any of the four spellings — the
    only signal that survives `pip freeze`, which records no index provenance at all. In
    manifests the name and the version share a line, so the match is namespace-anchored

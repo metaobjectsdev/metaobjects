@@ -17,9 +17,14 @@
 # ── what it looks for ─────────────────────────────────────────────────────────────────
 # 1. The pre-release registry's host. Defaulted, so a consumer repo that has never seen
 #    the publisher's config still catches it; MO_REGISTRY_BASE adds another.
-# 2. ANY private-network or loopback host in a manifest/lockfile — RFC1918, loopback,
+# 2. A private-network or loopback host DECLARED AS A PACKAGE SOURCE — RFC1918, loopback,
 #    link-local, and the .local/.lan/.internal/.home suffixes. A consumer usually does
 #    not have the publisher's registry.env, so pattern 1 alone would silently pass.
+#    "Declared as a package source" is the whole point and was once merely "appears in a
+#    manifest": a Gradle `buildConfigField("SERVER_URL", "http://10.0.0.5:8000")` is where
+#    the built app looks for its OWN backend and says nothing about where Gradle resolves
+#    dependencies, yet it failed the gate permanently, with no way for such a project to
+#    pass. See the two-tier split below.
 # 3. A vendor dependency pinned to a pre-release version. This is the only signal that
 #    survives `pip freeze`, which records no index provenance whatsoever.
 # 4. An npm dependency declared as a bare dist-tag — it floats, so it resolves to
@@ -87,7 +92,47 @@ MANIFESTS=(
   --include=packages.config --include=paket.dependencies
   # maven / gradle
   --include=pom.xml --include='build.gradle' --include='build.gradle.kts'
+  --include='settings.gradle' --include='settings.gradle.kts'
   --include=gradle.properties --include=settings.xml --include=libs.versions.toml
+)
+
+# Check 2 splits those in two, because "is this file a manifest?" is the wrong question
+# to ask of a host string. The right one is "is this host declared as a place packages
+# come from?", and the answer depends on WHERE in the file it sits.
+#
+# Tier A — files that are package-resolution config end to end. Every host in one is a
+# package source by construction, so the whole file is scanned, exactly as before. This is
+# also where a real link leaves its fingerprints: `.npmrc` gets the registry line and the
+# lockfile records the resolved URL, so narrowing tier B costs no detection on the npm
+# path at all.
+RESOLUTION_CONFIG=(
+  --include=.npmrc --include=.yarnrc.yml
+  --include=package-lock.json --include=npm-shrinkwrap.json --include=yarn.lock
+  --include=pnpm-lock.yaml --include=bun.lock
+  --include=pip.conf --include=.pypirc --include='requirements*.txt'
+  --include='constraints*.txt' --include=uv.lock --include=poetry.lock
+  --include=Pipfile --include=Pipfile.lock
+  --include=NuGet.config --include=nuget.config --include=packages.lock.json
+  --include=packages.config --include=paket.dependencies
+  --include=settings.xml
+)
+
+# Tier B — files that carry BOTH package sources and project or application configuration.
+# A host here counts only inside the region that declares a source: a Gradle
+# `repositories { }` / `pluginManagement { }` block, a pom's `<repositories>`, a
+# package.json dependency block or `registry` key, a pyproject index/source section. The
+# rest of the file is the project's own business. This is the same principle the manifest
+# list above already applies between files — a source file starting a server on 127.0.0.1
+# is not a dependency on anything — carried one level down, into the files where both
+# kinds of content live together.
+MIXED_MANIFESTS=(
+  --include=package.json --include=pyproject.toml --include=setup.cfg
+  --include='*.csproj' --include='*.fsproj' --include='*.vbproj'
+  --include='Directory.*.props' --include='Directory.*.targets'
+  --include=pom.xml
+  --include='build.gradle' --include='build.gradle.kts'
+  --include='settings.gradle' --include='settings.gradle.kts'
+  --include=gradle.properties --include=libs.versions.toml
 )
 
 # Arm 3b below applies ONLY to these. In a lockfile the package name and its version sit
@@ -124,13 +169,127 @@ scan() {  # scan <label> <grep-args...>
   echo "$out" | sed 's/^/      /' >&2
 }
 
+# Print every line of a file, `grep -n` style. The tier-A extractor.
+cat_all() { grep -nE '' -- "$1"; }
+
+# Print only the lines of a file that sit inside a region declaring a PACKAGE SOURCE.
+# The tier-B extractor; the caller then matches the host pattern against what comes back.
+#
+# The region rules are per format family, keyed off the filename:
+#
+#   gradle  `repositories { }`, `pluginManagement { }`, `dependencyResolutionManagement { }`
+#           — brace-tracked, so a nested `maven { url = uri(...) }` is inside and a
+#           `buildConfigField`, `manifestPlaceholders` or `resValue` elsewhere is not.
+#   xml     `<repositories>`, `<pluginRepositories>`, `<distributionManagement>`,
+#           `<mirrors>`, `<packageSources>`, `<RestoreSources>` and their singular forms.
+#           Opens are counted before the line is emitted, so a single-line
+#           `<RestoreSources>http://…</RestoreSources>` is caught.
+#   json    a dependency-family block (brace-tracked) or an explicit `registry` /
+#           `resolved` / `resolution` / `tarball` key.
+#   ini     a section header naming a source (`[[tool.uv.index]]`, `[[tool.poetry.source]]`,
+#           `[easy_install]`…) or an index/registry key on the line itself.
+#   props   no sections at all, so the KEY must name one (repo/registry/maven/mirror/index).
+#
+# Braces and tags inside string literals are counted naively. A URL containing one is not
+# a thing that occurs, and the alternative is a parser per format.
+source_section_lines() {
+  local f="$1" kind
+  case "$f" in
+    *build.gradle|*build.gradle.kts|*settings.gradle|*settings.gradle.kts) kind=gradle ;;
+    *pom.xml|*.csproj|*.fsproj|*.vbproj|*Directory.*.props|*Directory.*.targets) kind=xml ;;
+    *package.json) kind=json ;;
+    *pyproject.toml|*setup.cfg|*libs.versions.toml) kind=ini ;;
+    *gradle.properties) kind=props ;;
+    *) kind=props ;;
+  esac
+  awk -v kind="$kind" '
+    function count(s, c,   n, i) {
+      n = 0
+      for (i = 1; i <= length(s); i++) if (substr(s, i, 1) == c) n++
+      return n
+    }
+    # Brace-tracked block opened by a keyword line. Shared by gradle and json.
+    function braces(   opened) {
+      if (!sect && $0 ~ opener) { sect = 1; depth = 0; opened = 1 }
+      if (!sect) return 0
+      depth += count($0, "{") - count($0, "}")
+      # The opening line itself counts: a one-liner closes on the same line, after
+      # having been emitted.
+      if (depth <= 0 && !opened) { sect = 0; return 1 }
+      if (depth <= 0 && opened) { sect = 0; return 1 }
+      return 1
+    }
+    BEGIN {
+      if (kind == "gradle")
+        opener = "(^|[^A-Za-z0-9_.])(repositories|pluginManagement|dependencyResolutionManagement)[[:space:]]*\\{"
+      else if (kind == "json")
+        opener = "\"(dependencies|devDependencies|peerDependencies|optionalDependencies|overrides|resolutions|publishConfig)\"[[:space:]]*:[[:space:]]*\\{"
+      xopen  = "<(repositories|pluginRepositories|repository|pluginRepository|snapshotRepository|distributionManagement|mirrors|mirror|packageSources|RestoreSources)([[:space:]][^>]*)?>"
+      xclose = "</(repositories|pluginRepositories|repository|pluginRepository|snapshotRepository|distributionManagement|mirrors|mirror|packageSources|RestoreSources)>"
+      # A key that names a package source wherever it appears.
+      jsonkey = "\"(registry|resolved|resolution|tarball)\"[[:space:]]*:"
+      inikey  = "(^|[^A-Za-z_-])(index[-_]url|extra[-_]index[-_]url|find[-_]links|registry|repository)[[:space:]]*="
+      inisect = "^[[:space:]]*\\[\\[?[^]]*(index|source|repos|repositor|registr|easy_install)[^]]*\\]\\]?"
+      # Matched against a lower-cased copy of the line: property keys are camelCase by
+      # convention (`prereleaseRepoUrl`), so a case-sensitive pattern misses the ones
+      # that matter most.
+      propkey = "^[[:space:]]*[a-z0-9_.-]*(repo|registry|maven|mirror|index)[a-z0-9_.-]*[[:space:]]*[=:]"
+    }
+    kind == "gradle" || kind == "json" {
+      hit = braces()
+      if (!hit && kind == "json" && $0 ~ jsonkey) hit = 1
+      if (hit) print NR": "$0
+      next
+    }
+    kind == "xml" {
+      sect += gsub(xopen, "&")
+      if (sect > 0) print NR": "$0
+      sect -= gsub(xclose, "&")
+      if (sect < 0) sect = 0
+      next
+    }
+    kind == "ini" {
+      if ($0 ~ /^[[:space:]]*\[/) sect = ($0 ~ inisect) ? 1 : 0
+      if (sect || $0 ~ inikey) print NR": "$0
+      next
+    }
+    { if (tolower($0) ~ propkey) print NR": "$0 }
+  ' "$f"
+}
+
+# scan_files <label> <newline-separated file list> <extractor>
+#
+# Runs `extractor <file>` and reports whichever of its lines carry a private host. Split
+# from `scan` because the tier-B answer is not a property of the file — it is a property
+# of the region, so the candidate lines have to be produced before the match runs.
+scan_files() {
+  local label="$1" files="$2" extractor="$3" f out
+  [ -n "$files" ] || return 0
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    out=$("$extractor" "$f" | grep -E -- "$PRIVATE_HOST_RE" | head -20)
+    [ -n "$out" ] || continue
+    hit "$label"
+    # shellcheck disable=SC2001
+    echo "$out" | sed "s|^|      $f:|" >&2
+  done <<< "$files"
+}
+
 # 1 + 2 — registry addresses.
 if [ -n "$REGISTRY_HOST" ]; then
   scan "project points at the pre-release registry ($REGISTRY_HOST)" -- "$REGISTRY_HOST"
 else
   echo "  · check 1 NOT RUN: set MO_REGISTRY_BASE to scan for the pre-release registry's address" >&2
 fi
-scan "project points at a private-network or loopback package registry" -- "$PRIVATE_HOST_RE"
+
+# Tier A: whole file — every host in a resolution-config file is a package source.
+scan_files "project points at a private-network or loopback package registry" \
+  "$(grep -rIlE --binary-files=without-match "${RESOLUTION_CONFIG[@]}" "${EXCLUDES[@]}" \
+       -- "$PRIVATE_HOST_RE" "$ROOT" 2>/dev/null)" cat_all
+# Tier B: only the regions that declare a package source.
+scan_files "project points at a private-network or loopback package registry" \
+  "$(grep -rIlE --binary-files=without-match "${MIXED_MANIFESTS[@]}" "${EXCLUDES[@]}" \
+       -- "$PRIVATE_HOST_RE" "$ROOT" 2>/dev/null)" source_section_lines
 
 # 3 — a vendor dependency pinned to a pre-release version.
 scan "vendor dependency pinned to a pre-release version" -- "($NS_RE).*$PRERELEASE_RE"
