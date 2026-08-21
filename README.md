@@ -112,7 +112,7 @@ first-week wedge plan — and `meta init` picks up from there.
 | Templates + render (FR-004) | Yes | Yes | Yes (wraps Java) | Yes | Yes |
 | Payload-VO codegen | Yes (via projection) | Yes (`SpringPayloadGenerator`) | Yes (`@Serializable`) | Yes | Yes (`payload_vo_generator`) |
 | Migration emission | `meta migrate` (Postgres / SQLite / D1) | Via TS toolchain (`@metaobjectsdev/cli migrate`) | Via TS toolchain (`@metaobjectsdev/cli migrate`) | Via TS toolchain (ADR-0015) | Via TS toolchain (ADR-0015) |
-| DB-drift verify | `meta verify --db` | Template-drift: `Verify.check`; schema-drift is TS-owned (ADR-0015) | Template-drift: `Verify.check`; startup: `MetadataStartupValidator` | `dotnet meta verify` (codegen-drift) | Schema-drift is TS-owned (ADR-0015) |
+| DB-drift verify | `meta verify --db <url>` | Template-drift: `Verify.check`; schema-drift is TS-owned (ADR-0015) | Template-drift: `Verify.check`; startup: `MetadataStartupValidator` | `dotnet meta verify` (codegen-drift) | Schema-drift is TS-owned (ADR-0015) |
 | Template-drift verify | Yes | Yes (`Verify.check`) | Yes (via Java) | Yes (`dotnet meta verify`) | Yes (`metaobjects.render.verify`) |
 | YAML authoring (sigil-free → JSON) | Yes | Yes | Yes (via Java) | Yes | Yes |
 | Capability requirements (`requirement.*`) | Registered + `meta verify` gate | Registered (loads + validates) | Registered (via Java) | Registered (loads + validates) | Registered (loads + validates) |
