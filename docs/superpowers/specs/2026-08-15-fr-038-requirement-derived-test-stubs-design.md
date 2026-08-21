@@ -1,8 +1,50 @@
 # FR-038 — Requirement-derived tests: generate the proof, retire the claim
 
-**Status:** proposed · **Date:** 2026-08-15 · **Revised:** 2026-08-16 (owner review — see
-§0) · **Depends on:** the `requirement.*` family (0.22.0, 0.23.0) · **Supersedes:**
-`@verifiedBy` (§4), which this retires rather than narrows.
+**Status:** §4 vocabulary RULED (2026-08-20) · rest proposed · **Date:** 2026-08-15 ·
+**Revised:** 2026-08-16 (owner review — see §0) · **Depends on:** the `requirement.*`
+family (0.22.0, 0.23.0) · **Supersedes:** `@verifiedBy` (§4), which this retires rather
+than narrows.
+
+## 0b. The §4 ruling (2026-08-20)
+
+**Ruled: retire all three together** — `abandoned`/`superseded` from `@status`,
+`@supersededBy`, and `@verifiedBy` — as §4 specifies, in one breaking change rather than
+split into separate decisions. The rest of FR-038 (the generator, §5 app-owned policy, the
+§4 emission table) remains proposed and is NOT ruled by this.
+
+**What forced the ruling now.** Two shipped statements contradicted each other about the
+same vocabulary. The byte-gated registry description justifies the dangling-`@implementedBy`
+exemption on `abandoned`/`superseded` because those nodes "are meant to be gone, and that is
+the entry doing its job", and CLAUDE.md adds that deleting the entry "destroys the record" —
+the record matters. §4 says a requirement "is not a record of what happened" — the record
+does not belong here. Both could not stand.
+
+**The deciding argument was second-order.** An adopting estate was found carrying **29
+`@implementedBy` refs that could never resolve**, across 14 entries, every one invisible
+because the check is silent on exactly these two statuses — `meta verify` reported zero
+dangling refs, which was true and incomplete at the same time. The obvious fix was to emit
+INFO for that case. Retiring the statuses is better than fixing it: it **deletes the bug
+class** rather than making it visible, because the exemption is the only thing that created
+it. A patch would have been built on vocabulary this ruling removes.
+
+**Migration cost, measured across three adopting estates rather than estimated** — 262, 75
+and 288 entries respectively:
+
+| | `abandoned` | `superseded` | `@verifiedBy` | `@supersededBy` | edits |
+|---|---:|---:|---:|---:|---:|
+| estate A | 0 | 0 | 0 | 0 | **0** |
+| estate B | 3 | 0 | 12 | 0 | 15 |
+| estate C | 48 | 12 | 4 | 24 | 88 |
+
+~85% of the migration lands on one ledger; one estate is untouched. Estate C had already
+moved retirement history out of `@implementedBy` and into `notes` prose on its own
+initiative, reasoning that "what used to implement a retired capability is real information
+in the wrong field" — which is this ruling's direction reached independently, one step
+short of deleting the entry.
+
+**Consequence for the migration guide:** it must say where the record goes, because
+"deletion" is the part adopters will resist. Git history plus `notes` on the surviving
+entries is the answer, and estate C's precedent is the worked example.
 
 ## 0. What the 2026-08-16 review changed
 
