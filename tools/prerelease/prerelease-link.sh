@@ -291,6 +291,57 @@ npm_install_hint() {
   printf '%s' "$(IFS=' / '; echo "${cmds[*]}")"
 }
 
+# Lockfiles that STILL resolve from the pre-release after a repin — the residue `unlink`
+# leaves behind and cannot fix by editing manifests.
+#
+# WHY THIS EXISTS (#336). Before the #330 fix, `link` deleted the lockfile, so the
+# post-unlink install regenerated it from the public registry and this state was
+# unreachable. Keeping the lockfile closed one hole (a destructive edit to committed state,
+# and a full re-resolve that confounded "does the RC work" with "does a fresh resolve
+# work") and opened another: a repin rewrites the MANIFEST, while the lockfile keeps its
+# `-rc` versions and private-registry tarball URLs. `npm ci` then resolves straight from
+# the lockfile, sending every other machine and every CI run to a registry it cannot reach.
+#
+# Matched against the SAME `PRERELEASE_RE` the detector uses, sourced from it rather than
+# restated here — a second copy of that regex would drift, and this function exists to
+# explain the detector's own verdict.
+lockfiles_with_prerelease() {
+  local detector="$PROJECT/tools/prerelease/detect-prerelease-pins.sh"
+  [ -x "$detector" ] || detector="$HERE/detect-prerelease-pins.sh"
+  local re
+  re="$(grep -m1 "^PRERELEASE_RE=" "$detector" | cut -d"'" -f2)"
+  [ -n "$re" ] || return 0
+
+  local root prefix f
+  while IFS= read -r root; do
+    prefix="${root#"$PROJECT"/}"; [ "$prefix" = "$root" ] && prefix="" || prefix="$prefix/"
+    for f in package-lock.json npm-shrinkwrap.json yarn.lock pnpm-lock.yaml bun.lock; do
+      [ -e "$root/$f" ] || continue
+      grep -Eq -- "$re" "$root/$f" 2>/dev/null && printf '%s\n' "${prefix}${f}"
+    done
+  done < <(npm_install_roots)
+  # The same residue exists for every other ecosystem whose lockfile `link` used to drop.
+  for f in uv.lock poetry.lock Pipfile.lock packages.lock.json; do
+    [ -e "$PROJECT/$f" ] || continue
+    grep -Eq -- "$re" "$PROJECT/$f" 2>/dev/null && printf '%s\n' "$f"
+  done
+}
+
+# The reconcile command per ecosystem that still holds pre-release residue. `unlink` PRINTS
+# these rather than running them: an install is network-dependent, can fail, and — the
+# reason that matters — running the wrong one silently migrates a project's package manager,
+# which is exactly what npm_manager_for exists to avoid.
+reconcile_hints() {
+  local residue="$1"
+  case "$residue" in *package-lock.json*|*npm-shrinkwrap.json*|*yarn.lock*|*pnpm-lock.yaml*|*bun.lock*)
+    printf '  %s\n' "$(npm_install_hint)" ;;
+  esac
+  case "$residue" in *uv.lock*)           printf '  %s\n' "uv lock && uv sync" ;; esac
+  case "$residue" in *poetry.lock*)       printf '  %s\n' "poetry lock --no-update && poetry install" ;; esac
+  case "$residue" in *Pipfile.lock*)      printf '  %s\n' "pipenv lock && pipenv sync" ;; esac
+  case "$residue" in *packages.lock.json*) printf '  %s\n' "dotnet restore --force-evaluate" ;; esac
+}
+
 # Lockfiles are NOT dropped by default. Deleting one is a destructive edit to committed
 # state that `unlink` cannot undo, and it turns a targeted pin into a full re-resolution of
 # every unrelated transitive dependency — so a pre-release evaluation ends up testing "does
@@ -574,8 +625,24 @@ case "$ACTION" in
     has_mvn   && repin_mvn   "$TO"
     drop_lockfiles
     echo
+    # #336: a repin rewrites MANIFESTS; a kept lockfile still resolves the pre-release. Say
+    # so BEFORE the detector runs, so its verdict reads as confirmation rather than a
+    # mystery the user has to diagnose.
+    residue="$(lockfiles_with_prerelease)"
+    if [ -n "$residue" ]; then
+      warn "these lockfiles still resolve from the pre-release — repinning cannot fix a lockfile:"
+      printf '    %s\n' $residue
+      say "reconcile with:"
+      reconcile_hints "$residue"
+      echo
+    fi
     if run_detector; then
-      ok "unlinked and verified clean — reinstall to regenerate the lockfile from public registries"
+      ok "unlinked and verified clean"
+    elif [ -n "$residue" ]; then
+      # The detector is RIGHT and this is not a false positive — the residue is real and
+      # would send every `npm ci` to a private registry. It just has a one-command fix,
+      # which the old message left the user to work out.
+      die "unlink is incomplete: the lockfile(s) above still carry the pre-release. Run the reconcile command, then 'check'."
     else
       die "unlink left pre-release references behind (listed above) — fix them before pushing"
     fi

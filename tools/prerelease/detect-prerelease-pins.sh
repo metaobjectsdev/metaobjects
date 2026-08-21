@@ -355,8 +355,13 @@ Fix — from the project directory:
 
     tools/prerelease/prerelease-link.sh unlink --to <released-version>
 
-That removes the registry config, repins every vendor dependency, drops the lockfile,
-and re-runs this check.
+That removes the registry config, repins every vendor dependency, and re-runs this check.
+
+It does NOT delete or rewrite your lockfile — a lockfile is committed state `unlink` could
+not restore. So if the references above are in one (`package-lock.json`, `uv.lock`, …),
+repinning cannot clear them: reconcile with your project's own install command
+(`npm install` / `uv sync` / `dotnet restore --force-evaluate`) and run `check` again.
+`unlink` names the offending lockfiles and the exact command for them.
 MSG
   exit 1
 fi
