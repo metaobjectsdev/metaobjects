@@ -851,8 +851,7 @@ same refs (path under `library/` minus `.yaml`), same on-disk-first resolution:
   config is a `ConfigError` naming the valid ones, while the programmatic API keeps
   TypeScript's silent skip: a name typed into a config file is a mistake worth failing on,
   where an API caller asking for a package this version does not ship should still load
-  its own metadata. (The TypeScript CLI still lacks the key — parity follow-up, not drift
-  introduced here.)
+  its own metadata. (The TypeScript CLI gained the same key in this release — see below.)
 
 Three gates ship with it, since each of these failed silently before:
 
@@ -879,6 +878,153 @@ library's own **concrete** `LlmCall` entity (table `llm_call`) in alongside the 
 base, so it appears in codegen output and in a schema diff unless filtered. Documented in
 the Python prompts reference rather than changed, because `library/ai/llm-call.yaml` is
 shared by every port and splitting it is a cross-port decision.
+
+### Added — `libraries` on the TypeScript CLI and the whole feature on Java ([#333](https://github.com/metaobjectsdev/metaobjects/issues/333), [#332](https://github.com/metaobjectsdev/metaobjects/issues/332))
+
+**No new vocabulary — port parity, twice.** `expected-registry.json` is untouched.
+
+The Python entry above closes with "the TypeScript CLI still lacks the key". Both remaining
+ports now have it, and the Java gap was the larger of the two.
+
+**TypeScript (#333)** — `libraries` existed only on `MetaDataLoader.fromDirectory`. No CLI
+command uses that factory; every one of them goes through `loadMemory` with a resolved file
+list. So the option reached nothing, while the generators that consume a library are
+registered *for the CLI* — the generator was reachable from the command line with its input
+unreachable through it, and an adopter following the documented
+`extends: "metaobjects::ai::LlmCallBase"` got `ERR_UNRESOLVED_SUPER` pointing at their own
+metadata. `metaobjects.config.ts` now takes `libraries?: readonly string[]`, beside
+`providers` because it answers the same shape of question — what does this project's model
+need in scope beyond the files it declares.
+
+Threaded to `loadMemory` at all eight load sites (`gen`, `verify`, `docs`, `prompt-snapshot`,
+and `migrate`'s four) through one `loadMemoryOptionsFrom` helper, not a spread pair copied
+eight times. That is the actual lesson of the bug: `providers` reached every command and
+`libraries` reached none, so a fix leaving eight independent opportunities to thread one and
+forget the other has not fixed the class.
+
+`librarySources` is reached through a new **`@metaobjectsdev/metadata/library`** subpath and
+imported lazily, never from the root barrel — it reads `node:fs`, and a root-reachable static
+import drags Node built-ins into every consumer's module graph, which is the
+[#287](https://github.com/metaobjectsdev/metaobjects/issues/287) bundle defect. The subpath
+exists for exactly the reason `./constants` does.
+
+**Java (#332)** — the port shipped `LlmTraceHelperGenerator` and *no way at all* to load the
+metadata it consumes: no `libraries` option, no embed. What let that survive is the more
+useful half: every test of that generator declares its own `LlmCallBase` inline under a
+different package, so the suite could not tell a world where the library loads from one where
+it does not exist. That is the bypass ADR-0024 already names — "the green tests pass only
+because they bypass the shipped base with bespoke entities."
+
+- `com.metaobjects.library.EmbeddedLibrary` — a generated **class** of string constants, not a
+  `src/main/resources` copy. A resource can be dropped or mangled by build configuration
+  (resource filtering, shading, repackaging) and the failure surfaces much later as
+  `ERR_UNRESOLVED_SUPER` against the adopter's own metadata; a class constant cannot go
+  missing without the class going missing. Same rationale Python records for its source module.
+  Emitted by the **existing** `scripts/generate-embedded-library.ts` rather than a second
+  script — two scripts walking one tree are two things that can drift, and an embed's whole job
+  is to be byte-identical to its source.
+- `com.metaobjects.library.LibrarySources` — on-disk-first, embedded fallback, and an
+  unrecognised package contributing no sources, matching every other port.
+- The opt-in: `MetaDataLoader.setLibraries(...)`, a `fromDirectory(..., libraries)` overload,
+  `LoaderConfiguration.getLibraries()` (a `default` method — this interface is the build-tool
+  seam and an implementor outside this repo must keep compiling), and a pom
+  `<loader><libraries><library>ai</library></libraries>`.
+
+An unknown name in a pom or a `metaobjects.config.ts` is a **hard error listing the packages
+this version ships**, while the programmatic door keeps the silent skip. Both ports draw the
+same line Python did: an API caller asking for a package this version does not ship should
+still load its own metadata, but a name a human typed into a config file is a mistake worth
+failing on — skipped, it resurfaces as `ERR_UNRESOLVED_SUPER` pointing at the wrong file.
+
+Gated on Java by the freshness comparison, the positive arm, and a negative arm asserting the
+same model still fails **and that the failure names `LlmCallBase`** — the loader wraps the real
+diagnostic in a "Failed to load from directory <path>" envelope that names nothing, and the
+first draft of that assertion passed on the envelope. Plus `TraceHelperOnShippedLibraryTest`,
+which runs the generator against the **shipped** base with ADR-0024 FIX #1 asserted both
+directions. The freshness gate was proven by breaking it, not by its silence.
+
+C# has the same gap and is not addressed here.
+
+### Fixed — two files, two questions: a sub-project's config governs its own codegen ([#326](https://github.com/metaobjectsdev/metaobjects/issues/326), [#327](https://github.com/metaobjectsdev/metaobjects/issues/327))
+
+Both are regressions from the metadata-source-resolution work in this same release, both
+reported by an adopter evaluating `0.24.0-rc.3`, and both come from one conflation: treating a
+single directory as the answer to two different questions. Design §4.6 already draws the line —
+`.metaobjects/config.json` says where metadata comes from (port-neutral, read by all five CLIs,
+reasonably repo-global in a polyglot monorepo); `metaobjects.config.ts` says how **this**
+TypeScript package generates code.
+
+**#326 — `meta gen` could not run at all in a Maven- or pip-rooted monorepo.** Setting
+`projectRoot = collection.configDir` closed a real divergence (a subdirectory run silently
+defaulting `columnNamingStrategy` and emitting a migration that renamed every column), but it
+assumed the two files are always co-located. When they are not — repo root declares the
+collection, the JS app underneath carries the TS config — `gen` demanded `metaobjects.config.ts`
+at the ancestor and exited 2 against a directory that has one sitting in it. `0.23.1` wrote 376
+files on the same tree. The obvious workaround did not reach CI either, since `.metaobjects/` is
+gitignored in such sub-projects, so the file existed only on developer machines.
+
+`metaobjects.config.ts` now gets its **own** nearest-ancestor walk from the invocation
+directory, with collection discovery untouched. Nearest wins, so a subdirectory declaring
+nothing still walks up to the project root's config exactly as before; the fallback is the
+collection's directory, so this can only ever move the answer *closer* to the invocation, and
+a project with no TS config anywhere keeps today's diagnostics unchanged. In every `meta init`
+project the two walks return the same directory by construction.
+
+Applied at all five sites, not only the one that failed loudly. `gen` was the sole hard
+failure; `verify --codegen` reported "no config" for a package that has one, `docs` silently
+dropped its providers and skipped the api surface, `prompt-snapshot` lost its providers, and
+`migrate` defaulted `columnNamingStrategy` — the identical rename-every-column failure the
+co-location existed to prevent, reached from the other side. Everything each config **names**
+follows it: `outDir`/`targets` and the `.metaobjects/.gen-state/` merge base that mirrors that
+output (per-package, or two apps sharing one collection clobber each other's), `docs.outDir`,
+the adopter `templates/` chain, the owned `codegen/docs-site/` theme, and `verify.testFiles`.
+`.metaobjects/` state — migrations, snapshots, the operational block, `wrangler.toml`
+discovery — stays on the collection's directory.
+
+**#327 — `meta docs <path>` stopped scoping.** The positional has always meant "document this",
+and before sources were resolvable it read `<path>/metaobjects/` and nothing else. Routing docs
+through `resolveCollection(<path>)` turned the argument into a *starting point for an upward
+walk*, so the nearest ancestor config was found and its declared sources were unioned in.
+Nothing was lost — a set-diff of an adopter's page lists shows zero pages dropped — but pages
+from unrelated trees appeared inside a tree meant to hold prompt contracts only. Unlike `gen`
+this fails **open**: exit 0, just more pages than anyone asked for, invisible until someone
+counts them. An explicit positional now pins the collection (`resolveCollection`'s existing
+`explicitDir`); a bare `meta docs` still discovers. Both help blocks say so, since the old text
+described the argument as a root without saying what it does to the source set.
+
+### Fixed — the private-host check asks where packages come from, not what strings a build file holds ([#334](https://github.com/metaobjectsdev/metaobjects/issues/334))
+
+`tools/prerelease/detect-prerelease-pins.sh` flagged any RFC1918, loopback or link-local host
+anywhere in a manifest. An Android module with a LAN default for its own backend —
+`buildConfigField("String", "SERVER_URL", … "http://10.0.0.5:8000")` — failed it permanently.
+That string is application config, where the built app looks for its own server; it says
+nothing about where Gradle resolves dependencies. The project had never been linked to a
+private registry and still exited 1 after a full, verified `unlink`.
+
+The header calls this check load-bearing and says to treat a failure as a build break, never as
+advice. A permanent false positive inverts that: the only route to a green build is to stop
+running the check or to train everyone to ignore it — which is how the true positive it exists
+to catch gets waved through. It also made the `unlink` round-trip unverifiable, since `unlink`
+ends by running the detector.
+
+The script already stated the right principle one level up — "Only DEPENDENCY DECLARATIONS are
+scanned… a check that cries wolf is a check people learn to ignore" — and that reasoning does
+not stop at the file boundary. The host scan now splits the manifest list in two: files that
+are package-resolution config end to end (`.npmrc`, every lockfile, `pip.conf`, `NuGet.config`,
+`settings.xml`, `requirements*.txt`, …) are scanned whole, exactly as before; files carrying
+both package sources and project configuration are scanned only inside the region that declares
+a source — a Gradle `repositories { }` / `pluginManagement { }` block, a pom's
+`<repositories>`/`<pluginRepositories>`/`<distributionManagement>`, an msbuild
+`<RestoreSources>`, a `package.json` dependency block or `registry` key, a
+`[[tool.uv.index]]`/`[[tool.poetry.source]]` section, a `gradle.properties` key naming a repo.
+
+Checks 1, 3, 4 and 5 are untouched, and narrowing costs no detection on the npm path: a real
+link writes the registry line into `.npmrc` and the resolved URL into the lockfile, both still
+scanned whole. `settings.gradle`/`settings.gradle.kts` join the manifest list while here —
+`pluginManagement { repositories { } }` lives there, so a private registry declared in one was
+invisible to *every* check. Proven both directions against a fixture carrying each format twice,
+once as app config and once as a real declaration; the negative half caught a case-sensitivity
+bug in the properties rule on its first run.
 
 ## [0.23.2] — npm `0.23.2` · PyPI `0.23.2` · NuGet `0.23.2` · Maven `7.23.2`
 
