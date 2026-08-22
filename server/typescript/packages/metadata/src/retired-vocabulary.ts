@@ -77,7 +77,7 @@ export interface RetiredEntry extends RetirementNote {
 const REQUIREMENT_MIGRATION = "docs/features/migrations/verified-by-retirement.md";
 
 export const RETIRED_VOCABULARY: readonly RetiredEntry[] = [
-  // ── 0.25.0: `@violation` is renamed `@counterexample` ──
+  // ── 0.24.0: `@violation` is renamed `@counterexample` ──
   //
   // Pure rename — no semantics change. The field always held a static falsifiability test
   // ("what would contradict this"), authored once, never a state. `@violation` READ as a
@@ -89,7 +89,7 @@ export const RETIRED_VOCABULARY: readonly RetiredEntry[] = [
   // rather than a hand sweep. This entry is the first real user of that tool.
   {
     type: "requirement", subType: "*", attr: "violation",
-    since: "0.25.0",
+    since: "0.24.0",
     why: "it named a static falsifiability test but read as a status — 'this requirement " +
          "is in violation' — which is not what the field has ever held",
     replacedBy: "@counterexample",

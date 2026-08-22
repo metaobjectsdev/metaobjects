@@ -1,4 +1,4 @@
-# Migration — `@violation` becomes `@counterexample` (`0.25.0` / Maven `7.25.0`)
+# Migration — `@violation` becomes `@counterexample` (`0.24.0` / Maven `7.24.0`)
 
 **Breaking, and fully automatic.** Run:
 
