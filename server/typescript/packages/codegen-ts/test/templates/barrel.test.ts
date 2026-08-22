@@ -4,7 +4,7 @@ import { GENERATED_HEADER } from "../../src/constants.js";
 import type { ResolvedTarget } from "../../src/import-path.js";
 
 const tgt = (outputLayout: "flat" | "package"): ResolvedTarget =>
-  ({ name: "default", outDir: "x", importBase: "@mf/db/generated", outputLayout, dbImport: "../index", runtime: true });
+  ({ name: "default", outDir: "x", importBase: "@acme/db/generated", outputLayout, dbImport: "../index", runtime: true });
 
 describe("renderBarrel", () => {
   test("emits alphabetical exports + @generated header", () => {

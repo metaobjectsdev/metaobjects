@@ -20,11 +20,11 @@ describe("makeRenderContext — targets", () => {
   });
 
   it("passes through explicit selfTarget + entityModuleTarget", () => {
-    const em: ResolvedTarget = { name: "default", outDir: "db/gen", importBase: "@mf/db/generated", outputLayout: "package", dbImport: "../index", runtime: true };
+    const em: ResolvedTarget = { name: "default", outDir: "db/gen", importBase: "@acme/db/generated", outputLayout: "package", dbImport: "../index", runtime: true };
     const web: ResolvedTarget = { name: "web", outDir: "web/gen", importBase: undefined, outputLayout: "package", dbImport: "../index", runtime: true };
     const ctx = makeRenderContext({ ...baseInput, outputLayout: "package", selfTarget: web, entityModuleTarget: em });
     expect(ctx.selfTarget.name).toBe("web");
-    expect(ctx.entityModuleTarget.importBase).toBe("@mf/db/generated");
+    expect(ctx.entityModuleTarget.importBase).toBe("@acme/db/generated");
   });
 });
 

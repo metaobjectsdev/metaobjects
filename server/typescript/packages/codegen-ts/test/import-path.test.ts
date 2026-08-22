@@ -13,7 +13,7 @@ import {
 } from "../src/import-path.js";
 
 const model = (over: Partial<ResolvedTarget> = {}): ResolvedTarget => ({
-  name: "default", outDir: "db/gen", importBase: "@mf/db/generated",
+  name: "default", outDir: "db/gen", importBase: "@acme/db/generated",
   outputLayout: "package", dbImport: "../index", runtime: true, ...over,
 });
 const web = (over: Partial<ResolvedTarget> = {}): ResolvedTarget => ({
@@ -23,50 +23,50 @@ const web = (over: Partial<ResolvedTarget> = {}): ResolvedTarget => ({
 
 describe("entityModuleSpecifier", () => {
   it("same target → relative (honors extStyle), package layout", () => {
-    expect(entityModuleSpecifier(model(), model(), "mikes::commerce", "Program", "none"))
+    expect(entityModuleSpecifier(model(), model(), "shop::commerce", "Program", "none"))
       .toBe("./Program");
-    expect(entityModuleSpecifier(model(), model(), "mikes::commerce", "Program", "js"))
+    expect(entityModuleSpecifier(model(), model(), "shop::commerce", "Program", "js"))
       .toBe("./Program.js");
   });
   it("same target → relative, flat layout", () => {
-    expect(entityModuleSpecifier(model({ outputLayout: "flat" }), model({ outputLayout: "flat" }), "mikes::commerce", "Program", "none"))
+    expect(entityModuleSpecifier(model({ outputLayout: "flat" }), model({ outputLayout: "flat" }), "shop::commerce", "Program", "none"))
       .toBe("./Program");
   });
   it("cross target, package layout → extension-less importBase path (extStyle ignored)", () => {
-    expect(entityModuleSpecifier(web(), model(), "mikes::commerce", "Program", "js"))
-      .toBe("@mf/db/generated/mikes/commerce/Program");
+    expect(entityModuleSpecifier(web(), model(), "shop::commerce", "Program", "js"))
+      .toBe("@acme/db/generated/shop/commerce/Program");
   });
   it("cross target, flat layout → importBase + entity, no package path", () => {
-    expect(entityModuleSpecifier(web({ outputLayout: "flat" }), model({ outputLayout: "flat" }), "mikes::commerce", "Program", "none"))
-      .toBe("@mf/db/generated/Program");
+    expect(entityModuleSpecifier(web({ outputLayout: "flat" }), model({ outputLayout: "flat" }), "shop::commerce", "Program", "none"))
+      .toBe("@acme/db/generated/Program");
   });
   it("cross target, entity at root package → importBase + entity", () => {
     expect(entityModuleSpecifier(web(), model(), undefined, "Tag", "none"))
-      .toBe("@mf/db/generated/Tag");
+      .toBe("@acme/db/generated/Tag");
   });
   it("cross target without importBase → throws", () => {
-    expect(() => entityModuleSpecifier(web(), model({ importBase: undefined }), "mikes::commerce", "Program", "none"))
+    expect(() => entityModuleSpecifier(web(), model({ importBase: undefined }), "shop::commerce", "Program", "none"))
       .toThrow(/importBase/);
   });
 });
 
 describe("siblingSpecifier", () => {
   it("always same-target relative, package layout", () => {
-    expect(siblingSpecifier(web(), "mikes::commerce", "Program.columns", "none")).toBe("./Program.columns");
+    expect(siblingSpecifier(web(), "shop::commerce", "Program.columns", "none")).toBe("./Program.columns");
   });
   it("honors extStyle", () => {
-    expect(siblingSpecifier(web(), "mikes::commerce", "Program.columns", "js")).toBe("./Program.columns.js");
+    expect(siblingSpecifier(web(), "shop::commerce", "Program.columns", "js")).toBe("./Program.columns.js");
   });
 });
 
 describe("barrelModuleSpecifier", () => {
   it("same target (package) → './<pkg-path>/<entity>'", () => {
-    expect(barrelModuleSpecifier(model(), model(), "mikes::commerce", "Program", "none"))
-      .toBe("./mikes/commerce/Program");
+    expect(barrelModuleSpecifier(model(), model(), "shop::commerce", "Program", "none"))
+      .toBe("./shop/commerce/Program");
   });
   it("cross target → extension-less importBase path", () => {
-    expect(barrelModuleSpecifier(web(), model(), "mikes::commerce", "Program", "none"))
-      .toBe("@mf/db/generated/mikes/commerce/Program");
+    expect(barrelModuleSpecifier(web(), model(), "shop::commerce", "Program", "none"))
+      .toBe("@acme/db/generated/shop/commerce/Program");
   });
 });
 

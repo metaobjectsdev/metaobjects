@@ -8,7 +8,7 @@ import { FileSource } from "@metaobjectsdev/metadata/core";
 // Product lives in package "shop::commerce" → package-layout path "shop/commerce/Product".
 const FIXTURE = resolve(import.meta.dir, "fixtures", "packaged-entity.json");
 
-const model: ResolvedTarget = { name: "default", outDir: "db/gen", importBase: "@mf/db/generated", outputLayout: "package", dbImport: "../index", runtime: true };
+const model: ResolvedTarget = { name: "default", outDir: "db/gen", importBase: "@acme/db/generated", outputLayout: "package", dbImport: "../index", runtime: true };
 const web:   ResolvedTarget = { name: "web", outDir: "web/gen", importBase: undefined, outputLayout: "package", dbImport: "../index", runtime: true };
 
 async function ctxFor(self: ResolvedTarget, em: ResolvedTarget) {
@@ -28,7 +28,7 @@ describe("form-file — cross target", () => {
   it("imports entity via importBase package path, not relative", async () => {
     const { entity, ctx } = await ctxFor(web, model);
     const out = renderFormFile(entity, ctx);
-    expect(out).toContain(`from "@mf/db/generated/shop/commerce/Product"`);
+    expect(out).toContain(`from "@acme/db/generated/shop/commerce/Product"`);
     expect(out).not.toContain(`from "./Product"`);
   });
   it("same target stays relative", async () => {

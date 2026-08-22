@@ -6,9 +6,9 @@ describe("resolveTargets", () => {
   const base = { outDir: "db/gen", extStyle: "none" as const, dbImport: "../index", dialect: "sqlite" as const, generators: [] };
 
   test("synthesizes a 'default' target from top-level fields", () => {
-    const t = resolveTargets({ ...base, importBase: "@mf/db/generated", outputLayout: "package" });
+    const t = resolveTargets({ ...base, importBase: "@acme/db/generated", outputLayout: "package" });
     expect(t[DEFAULT_TARGET_NAME]).toEqual({
-      name: "default", outDir: "db/gen", importBase: "@mf/db/generated",
+      name: "default", outDir: "db/gen", importBase: "@acme/db/generated",
       outputLayout: "package", dbImport: "../index", runtime: true,
     });
   });
@@ -21,13 +21,13 @@ describe("resolveTargets", () => {
 
   test("named targets resolve; outputLayout + dbImport fall back to top-level, importBase does NOT inherit", () => {
     const t = resolveTargets({
-      ...base, outputLayout: "package", importBase: "@mf/db/generated",
+      ...base, outputLayout: "package", importBase: "@acme/db/generated",
       targets: {
-        api: { outDir: "api/gen", dbImport: "@mf/database" },
+        api: { outDir: "api/gen", dbImport: "@acme/database" },
         web: { outDir: "web/gen" },
       },
     });
-    expect(t.api).toEqual({ name: "api", outDir: "api/gen", importBase: undefined, outputLayout: "package", dbImport: "@mf/database", runtime: true });
+    expect(t.api).toEqual({ name: "api", outDir: "api/gen", importBase: undefined, outputLayout: "package", dbImport: "@acme/database", runtime: true });
     expect(t.web).toEqual({ name: "web", outDir: "web/gen", importBase: undefined, outputLayout: "package", dbImport: "../index", runtime: true });
   });
 

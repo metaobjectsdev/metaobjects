@@ -153,7 +153,7 @@ describe("runGen — multi-target", () => {
     const result = await runGen({
       config: defineConfig({
         outDir: tmp, extStyle: "none", dbImport: "../index", dialect: "sqlite",
-        importBase: "@mf/db/generated",
+        importBase: "@acme/db/generated",
         targets: { api: { outDir: apiDir } },
         generators: [entity, routes],
       }),

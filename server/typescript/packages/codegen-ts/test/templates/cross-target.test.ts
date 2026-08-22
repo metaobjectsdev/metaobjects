@@ -25,8 +25,8 @@ async function ctxFor(self: ResolvedTarget, em: ResolvedTarget) {
   return { entity, ctx };
 }
 
-const model: ResolvedTarget = { name: "default", outDir: "db/gen", importBase: "@mf/db/generated", outputLayout: "package", dbImport: "../index", runtime: true };
-const api:   ResolvedTarget = { name: "api", outDir: "api/gen", importBase: undefined, outputLayout: "package", dbImport: "@mf/database", runtime: true };
+const model: ResolvedTarget = { name: "default", outDir: "db/gen", importBase: "@acme/db/generated", outputLayout: "package", dbImport: "../index", runtime: true };
+const api:   ResolvedTarget = { name: "api", outDir: "api/gen", importBase: undefined, outputLayout: "package", dbImport: "@acme/database", runtime: true };
 
 describe("queries-file — same target stays relative", () => {
   it("imports entity via './<Entity>'", async () => {
@@ -39,8 +39,8 @@ describe("routes-file — cross target", () => {
   it("imports entity via importBase package path, db via per-target dbImport", async () => {
     const { entity, ctx } = await ctxFor(api, model);
     const out = renderRoutesFile(entity, ctx);
-    expect(out).toContain(`from "@mf/db/generated/shop/commerce/${entity.name}"`);
-    expect(out).toContain(`from "@mf/database"`);          // per-target db import
+    expect(out).toContain(`from "@acme/db/generated/shop/commerce/${entity.name}"`);
+    expect(out).toContain(`from "@acme/database"`);          // per-target db import
     expect(out).not.toContain(`from "./${entity.name}"`);
   });
 });

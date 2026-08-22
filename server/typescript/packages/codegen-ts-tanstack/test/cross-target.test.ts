@@ -9,7 +9,7 @@ import { FileSource } from "@metaobjectsdev/metadata/core";
 // Product lives in package "shop::commerce" → package-layout path "shop/commerce/Product".
 const FIXTURE = resolve(import.meta.dir, "fixtures", "packaged-grid-entity.json");
 
-const model: ResolvedTarget = { name: "default", outDir: "db/gen", importBase: "@mf/db/generated", outputLayout: "package", dbImport: "../index", runtime: true };
+const model: ResolvedTarget = { name: "default", outDir: "db/gen", importBase: "@acme/db/generated", outputLayout: "package", dbImport: "../index", runtime: true };
 const web:   ResolvedTarget = { name: "web", outDir: "web/gen", importBase: undefined, outputLayout: "package", dbImport: "../index", runtime: true };
 
 async function ctxFor(self: ResolvedTarget, em: ResolvedTarget) {
@@ -29,7 +29,7 @@ describe("hooks-file — cross target", () => {
   it("imports entity via importBase package path, not relative", async () => {
     const { entity, ctx } = await ctxFor(web, model);
     const out = renderHooksFile(entity, ctx);
-    expect(out).toContain(`from "@mf/db/generated/shop/commerce/Product"`);
+    expect(out).toContain(`from "@acme/db/generated/shop/commerce/Product"`);
     expect(out).not.toContain(`from "./Product"`);
   });
   it("same target stays relative", async () => {
@@ -42,7 +42,7 @@ describe("columns-file — cross target", () => {
   it("imports entity types via importBase package path, not relative", async () => {
     const { entity, ctx } = await ctxFor(web, model);
     const out = renderColumnsFile(entity, ctx);
-    expect(out).toContain(`from "@mf/db/generated/shop/commerce/Product"`);
+    expect(out).toContain(`from "@acme/db/generated/shop/commerce/Product"`);
     expect(out).not.toContain(`from "./Product"`);
   });
 });

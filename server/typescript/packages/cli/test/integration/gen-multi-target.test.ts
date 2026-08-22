@@ -18,7 +18,7 @@ function setupRepo(): string {
       children: [
         { "object.entity": {
           name: "Program",
-          package: "mikes::commerce",
+          package: "shop::commerce",
           children: [
             { "source.rdb": {} },
             { "field.long": { name: "id", children: [
@@ -38,10 +38,10 @@ import { entityFile, queriesFile, routesFile } from "@metaobjectsdev/codegen-ts/
 import { tanstackQuery } from "@metaobjectsdev/codegen-ts-tanstack";
 export default defineConfig({
   outDir: ${JSON.stringify(join(root, "packages/database/src/generated"))},
-  importBase: "@mf/database/generated",
+  importBase: "@acme/database/generated",
   extStyle: "none", dbImport: "../index", dialect: "sqlite", outputLayout: "package", apiPrefix: "/api",
   targets: {
-    api: { outDir: ${JSON.stringify(join(root, "apps/api/src/generated"))}, dbImport: "@mf/database" },
+    api: { outDir: ${JSON.stringify(join(root, "apps/api/src/generated"))}, dbImport: "@acme/database" },
     web: { outDir: ${JSON.stringify(join(root, "apps/web/src/generated"))} },
   },
   generators: [ entityFile(), queriesFile(), routesFile({ target: "api" }), tanstackQuery({ target: "web" }) ],
@@ -57,20 +57,20 @@ describe("meta gen — multi-target end-to-end", () => {
       const exit = await run(["gen", "--cwd", root]);
       expect(exit).toBe(0);
 
-      const entityPath = join(root, "packages/database/src/generated/mikes/commerce/Program.ts");
-      const routesPath = join(root, "apps/api/src/generated/mikes/commerce/Program.routes.ts");
-      const hooksPath  = join(root, "apps/web/src/generated/mikes/commerce/Program.hooks.ts");
+      const entityPath = join(root, "packages/database/src/generated/shop/commerce/Program.ts");
+      const routesPath = join(root, "apps/api/src/generated/shop/commerce/Program.routes.ts");
+      const hooksPath  = join(root, "apps/web/src/generated/shop/commerce/Program.hooks.ts");
       expect(existsSync(entityPath)).toBe(true);
       expect(existsSync(routesPath)).toBe(true);
       expect(existsSync(hooksPath)).toBe(true);
 
       const routes = readFileSync(routesPath, "utf-8");
-      expect(routes).toContain("@mf/database/generated/mikes/commerce/Program");
-      expect(routes).toContain('from "@mf/database"');     // per-target db import
+      expect(routes).toContain("@acme/database/generated/shop/commerce/Program");
+      expect(routes).toContain('from "@acme/database"');     // per-target db import
       expect(routes).not.toContain('"./Program"');
 
       const hooks = readFileSync(hooksPath, "utf-8");
-      expect(hooks).toContain("@mf/database/generated/mikes/commerce/Program");
+      expect(hooks).toContain("@acme/database/generated/shop/commerce/Program");
       expect(hooks).not.toContain('"./Program"');
     } finally {
       rmSync(root, { recursive: true, force: true });
