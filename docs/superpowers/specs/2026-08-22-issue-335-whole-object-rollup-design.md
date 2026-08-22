@@ -228,13 +228,22 @@ server/typescript/packages/metadata/src/persistence/origin/origin-definition.emb
 
 All seven change in lockstep or `registry-conformance` goes red in every port.
 
-## A7. `metamodelVersion`: `0.10` → `0.11` (additive)
+## A7. `metamodelVersion`: rides the existing `0.11` — no further bump
 
-This is #210 in reverse — a rule change whose only machine-readable footprint is prose, which
-`check-metamodel-version.mjs` can only **WARN** about (`:36`). No gate forces the call, so it is
-made here: **additive**, because previously-invalid metadata becomes valid and nothing that
-loaded before stops loading. Set with `node scripts/check-metamodel-version.mjs --set 0.11`
-(writes all five sites).
+Classification: **additive**. Previously-invalid metadata becomes valid; nothing that loaded
+before stops loading. This is #210 in reverse — a rule change whose only machine-readable
+footprint is prose, which `check-metamodel-version.mjs` can only **WARN** about (`:36`), so no
+gate forces the call and it is made here.
+
+**But no edit is required.** `#342` (`e96bbe329`) already moved `metamodelVersion` `0.10` →
+`0.11`, and that bump is **unreleased** — `v0.24.0` shipped `0.10`. The gate baselines against
+the last **release tag**, not `HEAD~1`, precisely so that a release cycle needs one bump rather
+than one per PR. So `0.11` already covers this change.
+
+Two conditions would change that, and the plan must re-check both at implementation time:
+- If `0.11` ships in a release **before** this lands, this needs `0.12`.
+- If Half B is judged breaking rather than additive (see B2's note), the classification —
+  though not necessarily the number, pre-1.0 — changes with it.
 
 ---
 
