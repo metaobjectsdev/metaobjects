@@ -52,7 +52,6 @@ public class SecondaryIdentity extends MetaIdentity {
                .description("Secondary identity for business keys and alternate identifiers")
                .inheritsFrom(MetaData.TYPE_METADATA, MetaData.SUBTYPE_BASE);
 
-            // @fields is REQUIRED on identity.secondary (cross-port canonical).
             // @generation is NOT a secondary-identity attr in the canonical (it is
             // primary-only) — intentionally not declared here.
             // @unique is removed: secondary identities ALWAYS enforce uniqueness —

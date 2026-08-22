@@ -3549,17 +3549,42 @@ def _validate_index_lookup_fields(root: MetaData, errors: list[MetaError]) -> No
             if not (is_lookup or is_secondary):
                 continue
             label = f"{node.type}.{node.sub_type}"
+            # PRESENCE vs CONTENT are two different questions, and conflating them is
+            # a bug in both directions. The CONTRADICTION check needs PRESENCE — an
+            # explicit `@fields: []` beside @expr is still a declaration of both, and
+            # keying it on non-emptiness let that spelling load clean while
+            # `@fields: ["x"]` + @expr was refused. The KEY-RESOLUTION check needs
+            # normalized CONTENT, which folds absent/scalar/empty together — the
+            # normalization is the fix for one and the obstacle for the other, so the
+            # two questions are asked separately. attrs() is the RESOLVING accessor in
+            # Python (attr() is own-only — ADR-0039).
+            attrs = node.attrs()
+            has_fields_attr = IDENTITY_ATTR_FIELDS in attrs
             if isinstance(node, MetaIndex):
                 fields = node.fields()
             else:
-                # identity nodes expose the same @fields attr; attrs() is the
-                # RESOLVING accessor in Python (attr() is own-only — ADR-0039).
-                raw = node.attrs().get(IDENTITY_ATTR_FIELDS)
+                raw = attrs.get(IDENTITY_ATTR_FIELDS)
                 fields = list(raw) if isinstance(raw, (list, tuple)) else []
-            expr = node.attrs().get(IDENTITY_ATTR_EXPR)
+            expr = attrs.get(IDENTITY_ATTR_EXPR)
             has_expr = isinstance(expr, str) and expr.strip() != ""
 
-            # Rule 1: the key is @fields XOR @expr.
+            # Rule 1a: exactly one of @fields / @expr may be DECLARED.
+            if has_fields_attr and has_expr:
+                errors.append(MetaError(
+                    code=ErrorCode.ERR_INVALID_INDEX,
+                    message=(
+                        f'{label} "{node.name}" on "{obj.name}" declares BOTH '
+                        f"@{INDEX_ATTR_FIELDS} and @{IDENTITY_ATTR_EXPR}; they are the "
+                        f"two mutually exclusive ways to key an index. "
+                        f"@{IDENTITY_ATTR_EXPR} is used INSTEAD of @{INDEX_ATTR_FIELDS} "
+                        f"— drop one. (Declaring both previously loaded but silently "
+                        f"discarded @{INDEX_ATTR_FIELDS}.)"
+                    ),
+                    envelope=node.source,
+                ))
+                continue
+
+            # Rule 1b: whichever is declared must actually supply a key.
             # envelope=node.source — FR5a/ADR-0009 provenance. TS, Java and C# have
             # always attached it here; Python did not, so these errors arrived with an
             # empty envelope. The cross-port corpus asserts envelope SHAPE, which is
@@ -3571,20 +3596,6 @@ def _validate_index_lookup_fields(root: MetaData, errors: list[MetaError]) -> No
                         f'{label} "{node.name}" on "{obj.name}" declares no key: '
                         f"it must have @{INDEX_ATTR_FIELDS} (one or more columns) "
                         f"or @{IDENTITY_ATTR_EXPR} (a key expression)"
-                    ),
-                    envelope=node.source,
-                ))
-                continue
-            if len(fields) > 0 and has_expr:
-                errors.append(MetaError(
-                    code=ErrorCode.ERR_INVALID_INDEX,
-                    message=(
-                        f'{label} "{node.name}" on "{obj.name}" declares BOTH '
-                        f"@{INDEX_ATTR_FIELDS} and @{IDENTITY_ATTR_EXPR}; they are the "
-                        f"two mutually exclusive ways to key an index. "
-                        f"@{IDENTITY_ATTR_EXPR} is used INSTEAD of @{INDEX_ATTR_FIELDS} "
-                        f"— drop one. (Declaring both previously loaded but silently "
-                        f"discarded @{INDEX_ATTR_FIELDS}.)"
                     ),
                     envelope=node.source,
                 ))

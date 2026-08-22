@@ -43,6 +43,24 @@ lives in the TYPE — `identity.secondary` IS a unique index, keys itself identi
 carries `@expr` from the same db provider. `identity.primary` and `identity.reference` are
 untouched: a primary key or an FK is always plain columns and carries no `@expr` at all.
 
+**A third refusal, stated plainly because it is not obvious from the rule.** Field
+resolution (Rule 2) now also runs on `identity.secondary`, which nothing validated before —
+only `@fields`'s bare presence was checked. A secondary key naming a field that does not
+exist on the owning entity's **effective** (resolved-via-`extends`) field set therefore
+stops loading. That is the same check `index.lookup` has always had, and the same class of
+silent defect: a unique constraint pointing at a column that isn't there.
+
+**The contradiction check keys on attr PRESENCE, not on emptiness.** `@fields: []` beside
+`@expr` is still a declaration of both, and it is the case where the discard is *total* —
+keying the check on non-emptiness let exactly that spelling load clean while
+`@fields: ["x"]` + `@expr` was refused. Relatedly, the guarded `fields` accessor is now
+used everywhere instead of a raw attr read: in TypeScript a non-array `@fields` previously
+threw an uncaught `TypeError` out of `load()` where the other three ports reported a clean
+error, and C# hand-rolled a type test that disagreed with `MetaIdentity.Fields`, so the
+validator and the rest of the port could disagree about whether an index had a key. The two
+needs pull in opposite directions — normalization *fixes* the crash and *hides* the empty
+array — so presence and content are asked as separate questions.
+
 **`metamodelVersion` moves `0.10` → `0.11`** — `@fields` becomes optional on both node
 types, which the gate classifies as additive. The package line stays a PATCH; that
 severance is exactly what [ADR-0035 Amendment 2](docs/RELEASING.md) is for, and post-1.0
@@ -56,9 +74,21 @@ found by the new cross-port fixture, not by any port's own suite. And Python's i
 errors were emitted with an **empty provenance envelope** while the other three attached
 `node.source`; the corpus asserts envelope shape, which is what surfaced it.
 
-Gated by two new shared conformance fixtures — `index-expr-keys-without-fields` (both node
-types keyed by expression, loads clean) and `error-index-fields-and-expr` — plus per-port
-tests. All five ports green.
+**The shipped authoring guidance taught the spelling this now refuses.** The
+`metaobjects-authoring` skill's index section documented `@fields` as unconditionally
+required and gave `{"@fields": ["email"], "@expr": "lower(email)"}` as a worked example —
+so an agent following our own guidance authored metadata the loader rejects. Corrected
+there, in the `metaobjects-audit` capability checklist, and in the five byte-gated
+`agent-context-conformance` copies.
+
+Gated by three new shared conformance fixtures — `index-expr-keys-without-fields` (both
+node types keyed by expression, loads clean), `error-index-fields-and-expr`, and
+`error-identity-secondary-fields-and-expr` — plus per-port tests. The `identity.secondary`
+negative case is deliberately its own fixture: the `index.lookup` arm alone would have
+stayed green through the Java identity divergence this release had to fix, which is the
+same blindness that let the original defect ship. `migrate-ts`'s `loadFixture` now fails on
+loader errors instead of discarding them — a checked-in fixture had been declaring the
+illegal form and driving those suites green. All five ports green.
 
 ## [0.24.0] — npm `0.24.0` · PyPI `0.24.0` · NuGet `0.24.0` · Maven `7.24.0`
 

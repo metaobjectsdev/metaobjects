@@ -4582,11 +4582,16 @@ public final class ValidationPhase {
     }
 
     // =========================================================================
-    // index.lookup @fields resolution
+    // Index-key resolution — index.lookup AND identity.secondary (#342)
     //
-    // Every index.lookup on an entity must name at least one field (Rule 1), and
-    // every named field must exist in the entity's EFFECTIVE (resolved) field set
-    // — inherited fields via extends: count as valid (Rule 2).
+    // The key is @fields XOR @expr: exactly one must be DECLARED (Rule 1a), and
+    // whichever is declared must actually supply a key (Rule 1b). Every named field
+    // must exist in the entity's EFFECTIVE (resolved) field set — inherited fields
+    // via extends: count as valid (Rule 2). @expr has no @fields to resolve; it is
+    // raw SQL over the physical columns and is deliberately not parsed.
+    //
+    // identity.secondary is covered because per ADR-0040 uniqueness lives in the
+    // TYPE — it IS a unique index and keys itself identically.
     //
     // ADR-0039: uses resolving getChildren(MetaField.class, true) so that fields
     // inherited via extends: are visible; mirrors the TS validateIndexLookupFields
@@ -4633,33 +4638,29 @@ public final class ValidationPhase {
         // the TYPE — identity.secondary IS a unique index and keys itself the same
         // way, carrying @expr from the same db provider.
         for (MetaData child : obj.getChildren(MetaData.class, false)) {
-            final String label;
             final java.util.List<String> fields;
-            final boolean hasExpr;
             if (child instanceof LookupIndex) {
-                label = "index.lookup";
                 fields = ((LookupIndex) child).getFields();
-                hasExpr = hasNonBlankAttr(child, Index.ATTR_EXPR);
             } else if (child instanceof SecondaryIdentity) {
-                label = "identity.secondary";
                 fields = ((SecondaryIdentity) child).getFields();
-                hasExpr = hasNonBlankAttr(child, SecondaryIdentity.ATTR_EXPR);
             } else {
                 continue;
             }
+            // Derived, not hardcoded per branch — matches the other three ports and
+            // leaves one place to update if a third keyed type is ever added.
+            final String label = child.getType() + "." + child.getSubType();
+            final boolean hasExpr = hasNonBlankAttr(child, Index.ATTR_EXPR);
+            // PRESENCE vs CONTENT are two different questions, and conflating them is a
+            // bug in both directions. The CONTRADICTION check needs PRESENCE — an explicit
+            // `@fields: []` beside @expr is still a declaration of both, and keying it on
+            // non-emptiness let that spelling load clean while `@fields: ["x"]` + @expr was
+            // refused. The KEY-RESOLUTION check needs normalized CONTENT (getFields() folds
+            // absent/non-list/empty together) — the normalization is the fix for one and
+            // the obstacle for the other, so the two are asked separately.
+            final boolean hasFieldsAttr = child.hasMetaAttr(Index.ATTR_FIELDS, true);
 
-            // Rule 1: the key is @fields XOR @expr.
-            if (fields.isEmpty() && !hasExpr) {
-                throw new MetaDataException(
-                    ErrorMessageConstants.ERR_INVALID_INDEX
-                        + ": " + label + " \"" + child.getName()
-                        + "\" on \"" + obj.getName()
-                        + "\" declares no key: it must have @" + Index.ATTR_FIELDS
-                        + " (one or more columns) or @" + Index.ATTR_EXPR
-                        + " (a key expression)",
-                    ErrorCode.ERR_INVALID_INDEX, child.getSource());
-            }
-            if (!fields.isEmpty() && hasExpr) {
+            // Rule 1a: exactly one of @fields / @expr may be DECLARED.
+            if (hasFieldsAttr && hasExpr) {
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_INVALID_INDEX
                         + ": " + label + " \"" + child.getName()
@@ -4670,6 +4671,18 @@ public final class ValidationPhase {
                         + Index.ATTR_EXPR + " is used INSTEAD of @" + Index.ATTR_FIELDS
                         + " — drop one. (Declaring both previously loaded but silently"
                         + " discarded @" + Index.ATTR_FIELDS + ".)",
+                    ErrorCode.ERR_INVALID_INDEX, child.getSource());
+            }
+
+            // Rule 1b: whichever is declared must actually supply a key.
+            if (fields.isEmpty() && !hasExpr) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_INDEX
+                        + ": " + label + " \"" + child.getName()
+                        + "\" on \"" + obj.getName()
+                        + "\" declares no key: it must have @" + Index.ATTR_FIELDS
+                        + " (one or more columns) or @" + Index.ATTR_EXPR
+                        + " (a key expression)",
                     ErrorCode.ERR_INVALID_INDEX, child.getSource());
             }
 

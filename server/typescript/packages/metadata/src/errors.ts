@@ -174,8 +174,10 @@ export const ERROR_CODES = [
   // clash / required-child cycle / conflicting attr redefinition. The detail names
   // which of the six checks fired and the offending type(s).
   "ERR_INVALID_METAMODEL_CONSTRAINT",
-  // index.lookup field-resolution: @fields is empty or names a field that does
-  // not exist on the owning entity's effective (resolved via extends) field set.
+  // Index-key resolution for index.lookup AND identity.secondary (#342) — the key is
+  // @fields XOR @expr: neither declared, BOTH declared (@expr is used INSTEAD of
+  // @fields), whichever is declared supplies no key, or a named field does not exist
+  // on the owning entity's effective (resolved via extends) field set.
   "ERR_INVALID_INDEX",
   // #195 — origin.computed @expr: the expression tree's inferred root type does
   // not equal the carrying field's declared field.<subType>. A computed column's

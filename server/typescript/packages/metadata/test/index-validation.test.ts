@@ -248,6 +248,51 @@ describe("#342 — index key is @fields XOR @expr", () => {
     expect(errorsWithCode(secondary.errors, "ERR_INVALID_INDEX")).toHaveLength(1);
   });
 
+  // The BOTH check keys on attr PRESENCE, not on emptiness. Keying it on
+  // `fields.length > 0` let the total-discard spelling through: an author who wrote
+  // `@fields: []` beside @expr got nothing from it and no diagnostic, while
+  // `@fields: ["x"]` beside the same @expr was refused.
+  it("empty @fields declared alongside @expr is still BOTH", async () => {
+    const { errors } = await load(
+      entityWith({
+        "index.lookup": { name: "emptyBoth", "@fields": [], "@expr": "lower(id)" },
+      }),
+    );
+    const e = errorsWithCode(errors, "ERR_INVALID_INDEX");
+    expect(e).toHaveLength(1);
+    expect(String((e[0] as { message: string }).message)).toContain("BOTH");
+  });
+
+  it("empty @fields declared alongside @expr is BOTH on identity.secondary too", async () => {
+    const { errors } = await load(
+      entityWith({
+        "identity.secondary": { name: "emptyBothUk", "@fields": [], "@expr": "lower(id)" },
+      }),
+    );
+    expect(errorsWithCode(errors, "ERR_INVALID_INDEX")).toHaveLength(1);
+  });
+
+  // A non-array @fields must produce a clean ParseError, never an uncaught throw.
+  // TS read the raw attr with an `as string[]` cast, so a scalar crashed load()
+  // with `TypeError: number is not iterable` while Java/Python/C# reported an error.
+  // (A bare STRING is not in this set: the parser legitimately coerces "id" to
+  // ["id"], so it is a valid single-field spelling, asserted separately below.)
+  it("a non-array @fields yields a clean error, not an uncaught TypeError", async () => {
+    for (const bad of [5, true]) {
+      const { errors } = await load(
+        entityWith({ "identity.secondary": { name: "scalarUk", "@fields": bad } }),
+      );
+      expect(errorsWithCode(errors, "ERR_INVALID_INDEX").length).toBeGreaterThan(0);
+    }
+  });
+
+  it("a bare-string @fields is coerced to a single-element array and loads", async () => {
+    const { errors } = await load(
+      entityWith({ "identity.secondary": { name: "strUk", "@fields": "id" } }),
+    );
+    expect(errors).toHaveLength(0);
+  });
+
   it("an @expr index resolves nothing against the field set (no false positive)", async () => {
     // @expr is raw SQL over physical columns and is deliberately NOT parsed, so a
     // column named inside it must not be mistaken for an unresolvable @fields entry.

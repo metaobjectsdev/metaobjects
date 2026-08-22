@@ -106,7 +106,7 @@
                 "@fields": ["storageKey"],
                 "@where": "caption IS NOT NULL"
             } },
-            { "index.lookup": { "name": "byCaptionLower", "@fields": ["caption"], "@expr": "lower(caption)" } },
+            { "index.lookup": { "name": "byCaptionLower", "@expr": "lower(caption)" } },
             { "index.lookup": { "name": "byCreated", "@fields": ["createdAt"], "@orders": ["desc"] } }
           ]
         }

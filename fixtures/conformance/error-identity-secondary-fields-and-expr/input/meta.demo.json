@@ -1,0 +1,26 @@
+{
+  "metadata.root": {
+    "package": "demo::indexing",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Notification",
+          "children": [
+            { "source.rdb": { "@table": "notifications" } },
+            { "field.string": { "name": "id", "@required": true } },
+            { "field.timestamp": { "name": "deliveredAt" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+
+            {
+              "identity.secondary": {
+                "name": "bothUk",
+                "@fields": ["deliveredAt"],
+                "@expr": "lower(id)"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -122,7 +122,7 @@ classify it (using the classification scheme in `SKILL.md`) and route the cutove
 
 ## Index — `index.*` (non-unique retrieval)
 
-- **`index.lookup`** (`@fields` required; physical escapes `@using`/`@expr`/`@where`/`@orders`) —
+- **`index.lookup`** (keys off `@fields` XOR `@expr` — exactly one, never both; physical escapes `@using`/`@where`/`@orders`) —
   a NON-unique retrieval index (uniqueness is what distinguishes it from `identity.secondary`);
   hunt hand-created lookup / recency indexes (`CREATE INDEX …`) it models.
 

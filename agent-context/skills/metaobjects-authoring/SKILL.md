@@ -590,16 +590,26 @@ does NOT enforce uniqueness. Choose the right construct by what the constraint I
 | Unique alternate key (e.g. email, slug) | `identity.secondary` — uniqueness is the type |
 | Query-performance index, no uniqueness | `index.lookup` |
 
-`@fields` names the indexed columns and is **required** (at least one). The db provider
-contributes physical-tuning attrs: `@orders` (per-column sort direction), `@using` (access
-method — `gin`/`gist`/`hash`; default `btree`), `@expr` (key expression derived from
-`@fields`, e.g. for a functional index), and `@where` (partial-index predicate).
+**An index keys off EXACTLY ONE of `@fields` or `@expr`.** `@fields` names the indexed
+columns; `@expr` is a raw key expression used **instead of** `@fields` (a functional index).
+Declaring **neither** — or **both** — is `ERR_INVALID_INDEX`. This applies to
+`identity.secondary` as well as `index.lookup`: uniqueness lives in the type, so a unique
+index keys itself the same way.
+
+The db provider contributes physical-tuning attrs alongside either form: `@orders`
+(per-column sort direction), `@using` (access method — `gin`/`gist`/`hash`; default
+`btree`), and `@where` (partial-index predicate).
 
 ```json
 { "index.lookup": { "name": "byCreatedAt", "@fields": ["createdAt"], "@orders": ["desc"] } }
 { "index.lookup": { "name": "byStatusCreatedAt", "@fields": ["status", "createdAt"] } }
-{ "index.lookup": { "name": "byEmailCI", "@fields": ["email"], "@expr": "lower(email)" } }
+{ "index.lookup": { "name": "byEmailCI", "@expr": "lower(email)" } }
+{ "identity.secondary": { "name": "uniqLowerEmail", "@expr": "lower(email)" } }
 ```
+
+> **Do not write `@fields` and `@expr` together.** It reads as "index this column, by this
+> expression", but the expression is the whole key — the `@fields` list was silently
+> discarded. It is now refused rather than half-honoured.
 
 `index.lookup` is a sibling of `identity.*` — declare it as a direct child of an `object.entity`,
 at the same level as fields and identities.

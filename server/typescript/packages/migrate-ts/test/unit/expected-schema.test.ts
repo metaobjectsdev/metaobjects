@@ -9,6 +9,16 @@ import type { SchemaSnapshot, ColumnDescriptor } from "../../src/types.js";
 async function loadFixture(name: string) {
   const json = readFileSync(join(import.meta.dir, "..", "fixtures", `${name}.json`), "utf8");
   const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
+  // Fail on loader errors instead of discarding them. Dropping `errors` let a fixture
+  // declaring an illegal shape keep driving these suites green — #342's `@fields` +
+  // `@expr` sat in trainer-website-entities.json and no migrate-ts test noticed,
+  // because a schema built from rejected metadata still looks plausible.
+  if (result.errors.length) {
+    throw new Error(
+      `fixture "${name}" did not load cleanly:\n` +
+        result.errors.map((e) => `  [${(e as { code?: string }).code}] ${e}`).join("\n"),
+    );
+  }
   return result.root;
 }
 

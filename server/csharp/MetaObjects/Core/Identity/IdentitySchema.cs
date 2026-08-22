@@ -9,7 +9,11 @@ namespace MetaObjects.Core.Identity;
 /// <summary>Attribute schemas for the identity concern.</summary>
 public static class IdentitySchema
 {
-    /// <summary>@fields is required on identity.primary / identity.secondary.</summary>
+    /// <summary>
+    /// @fields is required on identity.primary / identity.reference — both key off plain
+    /// columns and carry no @expr. identity.secondary uses <see cref="SecondaryFieldsAttr"/>
+    /// instead, where @fields is optional because @expr may supply the key (#342).
+    /// </summary>
     public static readonly AttrSchema IdentityFieldsAttr = new AttrSchema(
         Name: IdentityConstants.IDENTITY_ATTR_FIELDS,
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,

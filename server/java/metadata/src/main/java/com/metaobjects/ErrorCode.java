@@ -386,9 +386,11 @@ public enum ErrorCode {
     ERR_RELATIVE_REF_IN_CANONICAL,
 
     /**
-     * An {@code index.lookup}'s {@code @fields} is empty (at least one field is
-     * required) or names a field that does not exist on the owning entity's
-     * effective (resolved, via {@code extends:}) field set.
+     * Index-key resolution for {@code index.lookup} AND {@code identity.secondary}
+     * (#342) — the key is {@code @fields} XOR {@code @expr}: neither declared, BOTH
+     * declared ({@code @expr} is used INSTEAD of {@code @fields}), whichever is
+     * declared supplies no key, or a named field does not exist on the owning
+     * entity's effective (resolved, via {@code extends:}) field set.
      */
     ERR_INVALID_INDEX,
 

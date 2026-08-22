@@ -33,6 +33,7 @@ import {
   INDEX_ATTR_FIELDS,
 } from "../core/index/index-constants.js";
 import { IDENTITY_SUBTYPE_SECONDARY } from "../core/identity/identity-constants.js";
+import type { MetaIdentity } from "../core/identity/meta-identity.js";
 import { MetaIndex } from "../core/index/meta-index.js";
 import {
   TEMPLATE_ATTR_PAYLOAD_REF,
@@ -1931,28 +1932,32 @@ export function validateIndexLookupFields(root: MetaData): ParseError[] {
     );
     for (const node of keyed) {
       const label = `${node.type}.${node.subType}`;
-      // MetaIndex.fields() uses the resolving attr() accessor per ADR-0039;
-      // identity nodes expose the same @fields attr, read the same way.
+      // PRESENCE vs CONTENT are two different questions here, and conflating them
+      // is a bug in both directions:
+      //
+      //   - The CONTRADICTION check needs PRESENCE. `@fields: []` alongside @expr
+      //     is still a declaration of both, and keying it on non-emptiness let the
+      //     total-discard spelling load clean while `@fields: ["x"]` + @expr was
+      //     refused — the rule missing exactly the case it exists to catch.
+      //   - The KEY-RESOLUTION check needs normalized CONTENT, via the guarded
+      //     accessor. Reading the raw attr with a cast meant a scalar `@fields: 5`
+      //     threw an uncaught TypeError out of load() in TS while the other three
+      //     ports reported a clean error.
+      //
+      // The guarded accessor is the fix for the second and the OBSTACLE for the
+      // first — it collapses absent, scalar and explicit `[]` to the same `[]` —
+      // so the two questions are asked separately and never routed through one
+      // predicate. ADR-0039: both reads resolve through extends.
+      const hasFieldsAttr = node.attr(IDENTITY_ATTR_FIELDS) !== undefined;
+      // MetaIndex.fields() / MetaIdentity.fields are the same guarded read
+      // (`Array.isArray(f) ? f : []`); never re-hand-roll it.
       const fields =
-        node instanceof MetaIndex
-          ? node.fields()
-          : ((node.attr(IDENTITY_ATTR_FIELDS) as string[] | undefined) ?? []);
+        node instanceof MetaIndex ? node.fields() : (node as MetaIdentity).fields;
       const exprRaw = node.attr(IDENTITY_ATTR_EXPR);
       const hasExpr = typeof exprRaw === "string" && exprRaw.trim().length > 0;
 
-      // Rule 1: the key is @fields XOR @expr.
-      if (fields.length === 0 && !hasExpr) {
-        errors.push(
-          new ParseError(
-            `${label} "${node.name}" on "${obj.name}" declares no key: ` +
-              `it must have @${INDEX_ATTR_FIELDS} (one or more columns) or ` +
-              `@${IDENTITY_ATTR_EXPR} (a key expression)`,
-            { code: "ERR_INVALID_INDEX", source: node.source },
-          ),
-        );
-        continue;
-      }
-      if (fields.length > 0 && hasExpr) {
+      // Rule 1a: exactly one of @fields / @expr may be DECLARED.
+      if (hasFieldsAttr && hasExpr) {
         errors.push(
           new ParseError(
             `${label} "${node.name}" on "${obj.name}" declares BOTH ` +
@@ -1967,6 +1972,18 @@ export function validateIndexLookupFields(root: MetaData): ParseError[] {
         continue;
       }
 
+      // Rule 1b: whichever is declared must actually supply a key.
+      if (fields.length === 0 && !hasExpr) {
+        errors.push(
+          new ParseError(
+            `${label} "${node.name}" on "${obj.name}" declares no key: ` +
+              `it must have @${INDEX_ATTR_FIELDS} (one or more columns) or ` +
+              `@${IDENTITY_ATTR_EXPR} (a key expression)`,
+            { code: "ERR_INVALID_INDEX", source: node.source },
+          ),
+        );
+        continue;
+      }
       // Rule 2: every named field must resolve against the entity's effective field set.
       // An expression index has no @fields to resolve — @expr is raw SQL over the
       // physical columns, deliberately not parsed here (ADR-0023 keeps the grammar

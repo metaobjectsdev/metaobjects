@@ -3799,10 +3799,16 @@ public static class ValidationPasses
     }
 
     // =========================================================================
-    // ValidateIndexLookupFields — index.lookup @fields resolution
+    // ValidateIndexLookupFields — index-key resolution for index.lookup AND
+    // identity.secondary (#342)
     //
-    // Every index.lookup on an entity must name at least one field, and every
-    // named field must exist in the entity's EFFECTIVE (resolved) field set.
+    // The key is @fields XOR @expr: exactly one must be DECLARED, and whichever is
+    // declared must actually supply a key. Every named field must exist in the
+    // entity's EFFECTIVE (resolved) field set. @expr has no @fields to resolve — it
+    // is raw SQL over the physical columns and is deliberately not parsed.
+    //
+    // identity.secondary is covered because per ADR-0040 uniqueness lives in the
+    // TYPE — it IS a unique index and keys itself identically.
     //
     // ADR-0039: use Children() / MetaIndex.Fields — never own* — so that a
     // field inherited via extends still resolves correctly.
@@ -3836,28 +3842,25 @@ public static class ValidationPasses
                   || (c.Type == TYPE_IDENTITY && c.SubType == IDENTITY_SUBTYPE_SECONDARY)))
             {
                 string label = $"{node.Type}.{node.SubType}";
-                // MetaIndex.Fields uses the resolving Attr() accessor per ADR-0039;
-                // identity nodes expose the same @fields attr, read the same way.
-                IReadOnlyList<string> fields = node is MetaIndex mi
-                    ? mi.Fields
-                    : (node.Attr(IDENTITY_ATTR_FIELDS) as IEnumerable<object>)?
-                        .Select(o => o?.ToString() ?? string.Empty).ToList()
-                      ?? (IReadOnlyList<string>)Array.Empty<string>();
+                // PRESENCE vs CONTENT are two different questions, and conflating them is
+                // a bug in both directions. The CONTRADICTION check needs PRESENCE — an
+                // explicit `@fields: []` beside @expr is still a declaration of both, and
+                // keying it on non-emptiness let that spelling load clean while
+                // `@fields: ["x"]` + @expr was refused. The KEY-RESOLUTION check needs
+                // normalized CONTENT, which folds absent/scalar/empty together — the
+                // normalization is the fix for one and the obstacle for the other, so the
+                // two are asked separately. Both reads resolve per ADR-0039.
+                bool hasFieldsAttr = node.Attr(IDENTITY_ATTR_FIELDS) is not null;
+                // MetaIndex.Fields / MetaIdentity.Fields are the SAME guarded read
+                // (`f is IReadOnlyList<string> list ? list : []`). Hand-rolling it here
+                // with a different type test let the validator and the rest of the port
+                // disagree about whether an index has a key.
+                IReadOnlyList<string> fields = node is MetaIndex mi ? mi.Fields : ((MetaIdentity)node).Fields;
                 var exprRaw = node.Attr(IDENTITY_ATTR_EXPR) as string;
                 bool hasExpr = !string.IsNullOrWhiteSpace(exprRaw);
 
-                // Rule 1: the key is @fields XOR @expr.
-                if (fields.Count == 0 && !hasExpr)
-                {
-                    errors.Add(new MetaError(
-                        $"{label} \"{node.Name}\" on \"{obj.Name}\" declares no key: it must have " +
-                        $"@{INDEX_ATTR_FIELDS} (one or more columns) or @{IDENTITY_ATTR_EXPR} " +
-                        "(a key expression)",
-                        ErrorCode.ERR_INVALID_INDEX,
-                        Envelope: node.Source));
-                    continue;
-                }
-                if (fields.Count > 0 && hasExpr)
+                // Rule 1a: exactly one of @fields / @expr may be DECLARED.
+                if (hasFieldsAttr && hasExpr)
                 {
                     errors.Add(new MetaError(
                         $"{label} \"{node.Name}\" on \"{obj.Name}\" declares BOTH " +
@@ -3865,6 +3868,18 @@ public static class ValidationPasses
                         $"mutually exclusive ways to key an index. @{IDENTITY_ATTR_EXPR} is used " +
                         $"INSTEAD of @{INDEX_ATTR_FIELDS} — drop one. (Declaring both previously " +
                         $"loaded but silently discarded @{INDEX_ATTR_FIELDS}.)",
+                        ErrorCode.ERR_INVALID_INDEX,
+                        Envelope: node.Source));
+                    continue;
+                }
+
+                // Rule 1b: whichever is declared must actually supply a key.
+                if (fields.Count == 0 && !hasExpr)
+                {
+                    errors.Add(new MetaError(
+                        $"{label} \"{node.Name}\" on \"{obj.Name}\" declares no key: it must have " +
+                        $"@{INDEX_ATTR_FIELDS} (one or more columns) or @{IDENTITY_ATTR_EXPR} " +
+                        "(a key expression)",
                         ErrorCode.ERR_INVALID_INDEX,
                         Envelope: node.Source));
                     continue;
