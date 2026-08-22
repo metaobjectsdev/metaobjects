@@ -193,6 +193,10 @@ repin_npm() {  # repin_npm <version|"">
   # pre-release. The next clean install then fails `notarget`, which is the same failure
   # this function's other half exists to prevent, reached from a different direction.
   # (The nuget and python paths already walk/glob; npm was the odd one out.)
+  # Which manifests were actually rewritten, for the caller to report on. `link_npm` warns
+  # per TRACKED entry (#338); `unlink_all` deliberately does not — there the repin restores
+  # the public version, which is exactly what you DO want to commit.
+  REPINNED_NPM_MANIFESTS=()
   local total=0 changed=0 n
   while IFS= read -r f; do
     n="$(node -e '
@@ -219,7 +223,10 @@ repin_npm() {  # repin_npm <version|"">
       console.log(n);
     ' "$f" "$v" "$NPM_SCOPE" 2>/dev/null || echo 0)"
     total=$(( total + n ))
-    [ "$n" -gt 0 ] && changed=$(( changed + 1 ))
+    if [ "$n" -gt 0 ]; then
+      changed=$(( changed + 1 ))
+      REPINNED_NPM_MANIFESTS+=( "$f" )
+    fi
   done < <(project_find -name package.json)
   say "repinned $total $NPM_SCOPE/* dependencies to $v across $changed manifest(s)"
 }
@@ -445,6 +452,19 @@ link_npm() {
   say "wrote $wrote .npmrc file(s) (scope $NPM_SCOPE only) + git local excludes"
   [ -n "$auth" ] && warn "the registry required a token, so .npmrc now holds a credential — do not commit it"
   repin_npm "$VERSION"
+  # Name every TRACKED manifest the repin rewrote, one line each (#338). `link_py` and
+  # `link_mvn` already warn for pyproject.toml and pom.xml; package.json is tracked by
+  # definition too and got only a bare count — and a count names no file. That is not
+  # tidiness: the same repin rode into a commit about something else TWICE in one
+  # repository, in two different manifests, and neither was caught in review, because six
+  # version-string lines in a large diff read as noise. One of them sat on the default
+  # branch for weeks. The global "this project now depends on private artifacts" warning
+  # does not cover it — that is a statement about the project, printed before the work
+  # starts, naming nothing a reviewer will see in `git status`.
+  for f in ${REPINNED_NPM_MANIFESTS+"${REPINNED_NPM_MANIFESTS[@]}"}; do
+    rel="${f#"$PROJECT"/}"; [ "$rel" = "$f" ] && rel="package.json"
+    tracked "$rel" && warn "$rel is TRACKED — the repin is committable; 'unlink' reverts it"
+  done
 }
 
 link_py() {
