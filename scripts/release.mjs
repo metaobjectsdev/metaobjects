@@ -17,15 +17,27 @@
 // refuses an already-taken version/tag.
 
 import { execSync } from "node:child_process";
-import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, existsSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { tmpdir, homedir } from "node:os";
 import { createInterface } from "node:readline/promises";
 import { publishSet } from "./publish-set.mjs";
 
 const VERSION = process.argv[2];
 const DRY = process.argv.includes("--dry-run");
 const YES = process.argv.includes("--yes");
+
+// A scratch root for the post-publish smoke that no stray node_modules can shadow.
+// See PHASE 11. Kept beside the other helpers so the reason travels with the call.
+const smokeRoot = () => {
+  const root = join(homedir(), ".cache", "metaobjects-release-smoke");
+  mkdirSync(root, { recursive: true });
+  for (let d = root; d !== dirname(d); d = dirname(d)) {
+    if (existsSync(join(d, "node_modules")))
+      die(`${join(d, "node_modules")} would shadow the smoke test — remove it and re-run`);
+  }
+  return root;
+};
 
 const sh = (cmd, o = {}) => execSync(cmd, { encoding: "utf8", stdio: o.quiet ? "pipe" : "inherit", ...o });
 const out = (cmd) => execSync(cmd, { encoding: "utf8" }).trim();
@@ -50,6 +62,25 @@ const dirty = out("git status --porcelain").split("\n")
 if (dirty.length) die(`uncommitted changes:\n${dirty.join("\n")}\n(commit or stash first; CHANGELOG is allowed)`);
 
 if (out(`git tag -l v${VERSION}`)) die(`tag v${VERSION} already exists`);
+
+// Can we publish AT ALL? Checked here, before the version bump, because the bump is
+// committed and pushed long before the first `bun publish` — so discovering a dead
+// credential at the publish step strands the release mid-flight. The 0.24.0 cut found
+// BOTH npm paths dead at once (the local token had been revoked per this doc's own
+// advice, and the NPM_TOKEN secret was empty), after PyPI and NuGet had already shipped
+// irreversibly. Note npm answers 404, not 401, for an unauthorized scoped package, so
+// the raw failure reads like "the package does not exist".
+try {
+  const who = out("npm whoami").trim();
+  ok(`npm auth: ${who}`);
+} catch {
+  die("npm is not authenticated (`npm whoami` failed) — publishing would fail after the\n" +
+      "  version bump is already committed. Set a token that BYPASSES 2FA:\n" +
+      "    npm config set //registry.npmjs.org/:_authToken=<token>\n" +
+      "  It must be an Automation / bypass-2FA token. A 'Publish' token authenticates and\n" +
+      "  reads fine, then returns EOTP on every write, and `bun publish` falls back to an\n" +
+      "  interactive browser flow that cannot complete in CI or a non-interactive shell.");
+}
 
 // The lockstep set = every non-private package at the CURRENT version (cli's version),
 // in tier order. Derived by scripts/publish-set.mjs, which .github/workflows/publish-npm.yml
@@ -149,7 +180,13 @@ sh(`git tag v${VERSION} && git push origin v${VERSION}`, { quiet: true });
 ok(`pushed main + tag v${VERSION}`);
 
 // --- PHASE 11: post-publish smoke (the RC's safety net) -------------------
-const sm = mkdtempSync(join(tmpdir(), "rel-smoke-"));
+// NOT under tmpdir(). Node's resolution walks UP from the scratch dir, so a stale
+// /tmp/node_modules shadows anything the throwaway project does not hoist itself. That
+// is not hypothetical: /tmp/node_modules on the release box held a 0.24.0-era smoke's
+// 0.21.5 install and made a real external smoke report a MISSING export that shipped
+// fine. It fails both ways — the false GREEN is the dangerous one, since a genuinely
+// absent export resolves against the stale copy and the gate passes.
+const sm = mkdtempSync(join(smokeRoot(), "rel-smoke-"));
 sh(`cd ${sm} && npm init -y`, { quiet: true });
 sh(`cd ${sm} && npm i @metaobjectsdev/cli --prefer-online`, { quiet: true });
 const v = out(`cd ${sm} && ./node_modules/.bin/meta --version`);
