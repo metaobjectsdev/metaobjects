@@ -27,7 +27,7 @@ describe("mechanical rewrites", () => {
     ]
   }
 }`;
-    const r = rewriteDocument(src, { typeKeyHint: "requirement.functional" });
+    const r = rewriteDocument(src);
     expect(r.text).not.toContain("@verifiedBy");
     expect(r.text).toContain('"@statement"');
     expect(r.text).toContain('"@level": 4');
@@ -41,7 +41,7 @@ describe("mechanical rewrites", () => {
 
   test("rewrites key AND value for @readOnly", () => {
     const src = `{ "field.string": { "name": "ref", "@readOnly": true } }`;
-    const r = rewriteDocument(src, { typeKeyHint: "field.string" });
+    const r = rewriteDocument(src);
     expect(r.text).toContain('"@mutability": "readOnly"');
     expect(r.text).not.toContain("@readOnly");
   });
@@ -49,7 +49,7 @@ describe("mechanical rewrites", () => {
   test("drops a retired VALUE without touching live values of the same attr", () => {
     const src = `{ "field.uuid": { "name": "refs", "@dbColumnType": "uuid_array" },
   "field.object": { "name": "blob", "@dbColumnType": "jsonb" } }`;
-    const r = rewriteDocument(src, { typeKeyHint: "field.uuid" });
+    const r = rewriteDocument(src);
     // `jsonb` is live vocabulary on the SAME attribute — dropping it would silently change
     // the column type, which is worse than leaving the retired one in place.
     expect(r.text).toContain('"@dbColumnType": "jsonb"');
@@ -68,7 +68,7 @@ describe("surgical editing", () => {
     "@level": 4                  /* organisational level */
   }
 }`;
-    const r = rewriteDocument(src, { typeKeyHint: "requirement.functional" });
+    const r = rewriteDocument(src);
     expect(r.text).toContain("// the ledger's root — do not reorder");
     expect(r.text).toContain("// stable id, cited in tickets");
     expect(r.text).toContain("/* organisational level */");
@@ -90,7 +90,7 @@ describe("surgical editing", () => {
     "@verifiedBy": ["MoneyRoundingTest"]
   }
 }`;
-    const r = rewriteDocument(src, { typeKeyHint: "requirement.architectural" });
+    const r = rewriteDocument(src);
     expect(r.text).not.toContain("@verifiedBy");
     // The real assertion: the result must still parse.
     expect(() => JSON.parse(r.text)).not.toThrow();
@@ -101,7 +101,7 @@ describe("surgical editing", () => {
 
   test("dropping the ONLY key leaves a valid empty object", () => {
     const src = `{ "requirement.functional": { "@verifiedBy": ["T"] } }`;
-    const r = rewriteDocument(src, { typeKeyHint: "requirement.functional" });
+    const r = rewriteDocument(src);
     expect(() => JSON.parse(r.text)).not.toThrow();
   });
 
@@ -113,26 +113,30 @@ describe("surgical editing", () => {
     "@level": 4
   }
 }`;
-    const r = rewriteDocument(src, { typeKeyHint: "requirement.functional" });
+    const r = rewriteDocument(src);
     expect(r.text).toBe(src);
     expect(r.changes).toHaveLength(0);
     expect(r.refusals).toHaveLength(0);
   });
 
-  test("handles YAML's sigil-free form", () => {
-    // YAML authoring is sigil-free — the desugar re-adds `@` when lowering to canonical
-    // JSON — so a rename there targets the BARE key.
-    const src = `requirement.functional:\n  name: orderRecord\n  verifiedBy:\n    - OrderServiceTest\n  level: 4\n`;
-    const r = rewriteDocument(src, { typeKeyHint: "requirement.functional", format: "yaml" });
-    expect(r.text).not.toContain("verifiedBy");
-    expect(r.text).toContain("level: 4");
+  // YAML is NOT rewritten here, and must not be touched at all. A hand-rolled YAML mode
+  // shipped and corrupted files: a multi-item block sequence lost every item but the first
+  // (the value scanner stops at a newline), and the dominant in-repo authoring style — flow
+  // mappings, `{ name: x, readOnly: true }` — was not matched at all, so the rename silently
+  // did nothing. `meta upgrade` refuses YAML files by name instead; this pins that the
+  // rewriter leaves such text strictly alone rather than half-editing it.
+  test("leaves YAML text untouched rather than half-editing it", () => {
+    const src = `requirement.functional:\n  name: orderRecord\n  verifiedBy:\n    - OrderServiceTest\n    - SecondTest\n  level: 4\n`;
+    const r = rewriteDocument(src);
+    expect(r.text).toBe(src);
+    expect(r.changes).toHaveLength(0);
   });
 });
 
 describe("refusals — the honest half", () => {
   test("REFUSES a judgment case instead of guessing", () => {
     const src = `{ "requirement.functional": { "name": "x", "@status": "abandoned" } }`;
-    const r = rewriteDocument(src, { typeKeyHint: "requirement.functional" });
+    const r = rewriteDocument(src);
     // Untouched: deleting the node, retyping it, or fixing the residue are all defensible
     // and only a human knows which. Guessing would emit metadata that LOADS and means
     // something different.
@@ -145,7 +149,7 @@ describe("refusals — the honest half", () => {
   test("a refusal still reports the mechanical changes made alongside it", () => {
     const src = `{ "requirement.functional": {
       "name": "x", "@verifiedBy": ["T"], "@status": "abandoned" } }`;
-    const r = rewriteDocument(src, { typeKeyHint: "requirement.functional" });
+    const r = rewriteDocument(src);
     expect(r.changes).toHaveLength(1);
     expect(r.refusals).toHaveLength(1);
     expect(r.text).not.toContain("@verifiedBy");
@@ -158,8 +162,65 @@ describe("scoping", () => {
     // `@unique` is retired on identity.secondary and LIVE on a field. A name-only match
     // would silently delete a valid declaration.
     const src = `{ "field.string": { "name": "email", "@unique": true } }`;
-    const r = rewriteDocument(src, { typeKeyHint: "field.string" });
+    const r = rewriteDocument(src);
     expect(r.text).toBe(src);
     expect(r.changes).toHaveLength(0);
+  });
+
+  // The case the type-scope test above could NOT see, because it fed a document containing
+  // only the live type. The scope of a retirement is a property of where the attribute
+  // sits, so a retired-elsewhere name sitting beside its retired type must still be left
+  // alone — the earlier file-level scoping refused this field's `@unique` at exit code 1,
+  // and with a `dropAttr` entry the same mechanism would have DELETED it.
+  test("a retired name on a LIVE type is untouched even when its retired type is present", () => {
+    const src = `{
+  "metadata.root": { "children": [
+    { "field.string": { "name": "email", "@unique": true } },
+    { "identity.secondary": { "name": "byEmail", "@fields": ["email"] } }
+  ]}
+}`;
+    const r = rewriteDocument(src);
+    expect(r.text).toBe(src);
+    expect(r.changes).toHaveLength(0);
+    expect(r.refusals).toHaveLength(0);
+  });
+
+  // A wildcard entry (`requirement.*`) governs every subtype. Scoping per FILE meant one
+  // pass per subtype key present, so a single occurrence was reported once per pass — two
+  // refusals, and a summary claiming two declarations, for one line of metadata.
+  test("reports ONE refusal per occurrence, not one per subtype in the file", () => {
+    const src = `{
+  "metadata.root": { "children": [
+    { "requirement.functional": { "name": "a", "@status": "abandoned" } },
+    { "requirement.architectural": { "name": "b", "@statement": "always" } }
+  ]}
+}`;
+    const r = rewriteDocument(src);
+    expect(r.refusals).toHaveLength(1);
+    expect(r.refusals[0]?.subject).toBe("@status");
+  });
+});
+
+describe("nothing exits clean while the metadata still will not load", () => {
+  // A retired SUBTYPE was filtered out of the rewriter entirely (the applicable filter
+  // required an `attr`), so `meta upgrade` reported "no retired vocabulary found" and
+  // exited 0 on a document that fails ERR_UNKNOWN_SUBTYPE.
+  test("REFUSES a retired subtype instead of ignoring it", () => {
+    const src = `{ "origin.collection": { "@via": "Program.weeks" } }`;
+    const r = rewriteDocument(src);
+    expect(r.refusals).toHaveLength(1);
+    expect(r.refusals[0]?.subject).toBe("origin.collection");
+    expect(r.refusals[0]?.migration).toContain("origin-collection-retirement");
+    expect(r.text).toBe(src);
+  });
+
+  // `@readOnly` is deregistered for EVERY value. The `false` arm fell through to `continue`,
+  // so the attribute survived, the load kept failing, and the run reported success.
+  test("drops @readOnly: false rather than silently skipping it", () => {
+    const src = `{ "field.string": { "name": "x", "@readOnly": false } }`;
+    const r = rewriteDocument(src);
+    expect(r.text).not.toContain("@readOnly");
+    expect(r.changes).toHaveLength(1);
+    expect(() => JSON.parse(r.text)).not.toThrow();
   });
 });

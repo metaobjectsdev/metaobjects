@@ -6,8 +6,13 @@
 meta upgrade --apply
 ```
 
-That is the whole migration. `@violation` is a pure rename with no semantic change, so the
-tool rewrites every occurrence and there is nothing to decide.
+That is the whole migration for **canonical-JSON** metadata. `@violation` is a pure rename
+with no semantic change, so the tool rewrites every occurrence and there is nothing to
+decide.
+
+**If you author in YAML, this one is by hand.** `meta upgrade` does not edit YAML — it names
+each YAML file it found and exits non-zero rather than reporting a success it did not
+deliver. The edit is the bare-key rename shown below; there is nothing subtle about it.
 
 Under the strict, sealed registry (ADR-0023) there is no deprecation shim — metadata still
 carrying `@violation` fails the **load**, in every language port, with a message naming the

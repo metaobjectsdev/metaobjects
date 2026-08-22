@@ -115,4 +115,21 @@ describe("meta upgrade", () => {
     const root = await project(CLEAN);
     expect(await upgradeCommand([root, "--nope"], root)).toBe(2);
   });
+
+  // YAML metadata is loadable (ADR-0006) but is not rewritable — see vocabulary-rewrite.ts.
+  // The failure this pins is SILENCE: a YAML project used to be handed exit 0 and "no
+  // retired vocabulary found" while its metadata still would not load, because the scope
+  // scan only matched quoted JSON keys and the yaml format was never requested. Naming the
+  // file and exiting non-zero is the whole fix.
+  test("NAMES YAML metadata it cannot rewrite and exits non-zero", async () => {
+    const root = await mkdtemp(join(tmpdir(), "meta-upgrade-yaml-"));
+    dirs.push(root);
+    await mkdir(join(root, "metaobjects"), { recursive: true });
+    const yaml = "metadata:\n  children:\n    - requirement.functional:\n        name: r\n        verifiedBy: [T]\n";
+    await writeFile(join(root, "metaobjects", "meta.yaml"), yaml, "utf8");
+
+    expect(await upgradeCommand([root, "--apply"], root)).toBe(1);
+    // And never half-edited on the way out.
+    expect(await readFile(join(root, "metaobjects", "meta.yaml"), "utf8")).toBe(yaml);
+  });
 });

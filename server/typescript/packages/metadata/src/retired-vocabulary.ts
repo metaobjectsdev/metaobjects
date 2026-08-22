@@ -55,8 +55,24 @@ export type VocabularyRewrite =
   | { readonly kind: "renameAttr"; readonly to: string }
   /** The attribute went away with no replacement — drop it. */
   | { readonly kind: "dropAttr" }
-  /** Both the name and the value changed (`@readOnly: true` → `@mutability: "readOnly"`). */
-  | { readonly kind: "renameAttrValue"; readonly toAttr: string; readonly fromValue: unknown; readonly toValue: unknown };
+  /**
+   * Both the name and the value changed (`@readOnly: true` → `@mutability: "readOnly"`).
+   *
+   * `otherwise` is REQUIRED, and that is the point. The attribute is retired for EVERY
+   * value it could hold, so an entry that names only the value it can rewrite has said
+   * nothing about the rest — and the rewriter's only honest options are to drop them or to
+   * refuse them. Leaving it implicit is how `@readOnly: false` came to be silently skipped:
+   * the entry's prose said "treated as a drop", the code fell through to `continue`, and
+   * `meta upgrade` exited 0 on a file that still would not load.
+   */
+  | {
+      readonly kind: "renameAttrValue";
+      readonly toAttr: string;
+      readonly fromValue: unknown;
+      readonly toValue: unknown;
+      /** What happens to every value other than `fromValue`. */
+      readonly otherwise: "drop" | "refuse";
+    };
 
 /** One retirement. `subType: "*"` means every subtype of `type`. */
 export interface RetiredEntry extends RetirementNote {
@@ -132,11 +148,18 @@ export const RETIRED_VOCABULARY: readonly RetiredEntry[] = [
     why: "a boolean could not express write-once, so the axis became an enum",
     replacedBy: "@mutability",
     migration: "docs/features/migrations/readonly-to-mutability.md",
-    // Key AND value: `@readOnly: true` becomes `@mutability: "readOnly"`. Only the `true`
-    // arm is mechanical — `@readOnly: false` was the default and simply goes away, which
-    // the rewriter treats as a drop rather than inventing a mutability the author never
-    // stated.
-    rewrite: { kind: "renameAttrValue", toAttr: "mutability", fromValue: true, toValue: "readOnly" },
+    // Key AND value: `@readOnly: true` becomes `@mutability: "readOnly"`. `@readOnly: false`
+    // was the default and simply goes away — hence `otherwise: "drop"` rather than inventing
+    // a mutability the author never stated. Both arms must be stated: the attribute is
+    // deregistered for every value, so an unhandled arm is a file that still fails to load
+    // after a run that reported success.
+    rewrite: {
+      kind: "renameAttrValue",
+      toAttr: "mutability",
+      fromValue: true,
+      toValue: "readOnly",
+      otherwise: "drop",
+    },
   },
 
   // ── FR-037 R2: origin.collection retires to reserved-not-registered (0.24.0) ──
@@ -180,23 +203,34 @@ export const RETIRED_VOCABULARY: readonly RetiredEntry[] = [
   },
 ];
 
-/** True when `entry` governs `typeKey` (`"<type>.<subType>"`). */
-function scopeMatches(entry: RetiredEntry, typeKey: string): boolean {
+/**
+ * True when `entry` governs `typeKey` (`"<type>.<subType>"`).
+ *
+ * Exported because the rewriter scopes every occurrence with the SAME rule. It used to
+ * carry its own copy, and a scoping rule that lives in two files is one that will be fixed
+ * in one of them.
+ */
+export function scopeMatches(entry: RetiredEntry, typeKey: string): boolean {
   const dot = typeKey.indexOf(".");
   if (dot < 0) return false;
-  const type = typeKey.slice(0, dot);
-  const subType = typeKey.slice(dot + 1);
-  if (entry.type !== type) return false;
-  return entry.subType === "*" || entry.subType === subType;
+  if (entry.type !== typeKey.slice(0, dot)) return false;
+  return entry.subType === "*" || entry.subType === typeKey.slice(dot + 1);
 }
 
-function note(entry: RetiredEntry): RetirementNote {
-  const out: RetirementNote = { since: entry.since, why: entry.why };
+/** The reader-facing half of an entry, without the matching machinery. */
+export function note(entry: RetiredEntry): RetirementNote {
   return {
-    ...out,
+    since: entry.since,
+    why: entry.why,
     ...(entry.replacedBy !== undefined ? { replacedBy: entry.replacedBy } : {}),
     ...(entry.migration !== undefined ? { migration: entry.migration } : {}),
   };
+}
+
+/** First entry satisfying `match`, as a note. The three lookups below differ only in it. */
+function noted(match: (e: RetiredEntry) => boolean): RetirementNote | undefined {
+  const hit = RETIRED_VOCABULARY.find(match);
+  return hit === undefined ? undefined : note(hit);
 }
 
 /**
@@ -207,10 +241,9 @@ function note(entry: RetiredEntry): RetirementNote {
  * deliberately not matched here: `@status` is still perfectly good vocabulary.
  */
 export function retiredAttr(typeKey: string, attrName: string): RetirementNote | undefined {
-  const hit = RETIRED_VOCABULARY.find(
+  return noted(
     (e) => e.attr === attrName && e.attrValues === undefined && scopeMatches(e, typeKey),
   );
-  return hit === undefined ? undefined : note(hit);
 }
 
 /** A specific VALUE of a surviving attribute was retired. */
@@ -220,18 +253,14 @@ export function retiredAttrValue(
   value: unknown,
 ): RetirementNote | undefined {
   if (typeof value !== "string") return undefined;
-  const hit = RETIRED_VOCABULARY.find(
+  return noted(
     (e) => e.attr === attrName && e.attrValues?.includes(value) === true && scopeMatches(e, typeKey),
   );
-  return hit === undefined ? undefined : note(hit);
 }
 
 /** The SUBTYPE itself was retired (`origin.collection`). */
 export function retiredSubType(type: string, subType: string): RetirementNote | undefined {
-  const hit = RETIRED_VOCABULARY.find(
-    (e) => e.isSubTypeRetirement === true && e.type === type && e.subType === subType,
-  );
-  return hit === undefined ? undefined : note(hit);
+  return noted((e) => e.isSubTypeRetirement === true && e.type === type && e.subType === subType);
 }
 
 /**
@@ -240,8 +269,12 @@ export function retiredSubType(type: string, subType: string): RetirementNote | 
  * recognises the next.
  */
 export function retirementHint(n: RetirementNote): string {
+  // Sentences are built WITHOUT their terminator and punctuated once at the end. The
+  // previous form appended a period to each fragment and then repaired the doubling with a
+  // global `".." → "."` — which would silently rewrite an ellipsis, or a `../` in a
+  // migration path, inside the user-facing load error.
   const parts = [`retired in ${n.since} — ${n.why}`];
-  if (n.replacedBy !== undefined) parts.push(`Use ${n.replacedBy} instead.`);
-  if (n.migration !== undefined) parts.push(`Migration: ${n.migration}.`);
-  return parts.join(". ").replace(/\.\./g, ".");
+  if (n.replacedBy !== undefined) parts.push(`Use ${n.replacedBy} instead`);
+  if (n.migration !== undefined) parts.push(`Migration: ${n.migration}`);
+  return `${parts.join(". ")}.`;
 }

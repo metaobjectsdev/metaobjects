@@ -31,6 +31,7 @@ command surface splits in two:
 | **Schema drift** (`verify --db`) | **Node `meta`** | `meta verify --db` | **any backend** — live-DB drift, Node-only |
 | **Codegen drift** (`verify --codegen`) | **Node `meta`** | `meta verify --codegen` | TS reference (ADR-0021 D2) — regen-to-temp + diff committed output |
 | **Template/prompt drift** (`verify --templates`) | **Node `meta`** | `meta verify --templates` | TS reference (ADR-0021 D2) — `{{field}}`↔payload; the bare-`verify` default |
+| **Vocabulary upgrade** (`upgrade`) | **Node `meta`** | `meta upgrade [--to <version>] [--apply]` | **any backend** — rewrites RETIRED metadata vocabulary (`@violation` → `@counterexample`, `@readOnly` → `@mutability`, dropping `@verifiedBy`). Node-only because it edits the metadata documents themselves, which every port shares; a non-TS project runs `npx meta upgrade` against its own `metaobjects/`. Previews by default. **Canonical JSON only** — YAML files are named and refused, not silently skipped (see below). Retirements needing a human decision are refused and the run exits non-zero, so CI cannot record a partial migration as finished |
 | **Vocabulary search** (`types`) | **Node `meta`** | `meta types [query]` | **any backend** — apropos/`kubectl explain` over the live metamodel registry (names + descriptions + when-to-use); the vocabulary is cross-port identical (registry-conformance) |
 | TS codegen | Node `meta` | `meta gen` | TS projects |
 | C# codegen | `dotnet meta` | `dotnet meta gen` / `verify --templates` / `verify --codegen` | a .NET tool (`ToolCommandName=dotnet-meta`); invoked `dotnet meta` so it never shadows the Node `meta`; ships the ADR-0021 D2 subverbs (`--db` rejected, exit 2; bare `verify` = `--templates`). `gen` also accepts `--template-spec <json>` (+ `--template-root <dir>`, default `templates`) — the declarative Mustache template-codegen surface (the cross-port JSON contract shared with Python); see [declarative template scopes](codegen-concepts.md#declarative-template-scopes) |
@@ -222,6 +223,31 @@ a >15% false-positive rate is a project kill criterion). Suppress it with
 `--no-antipatterns` on either command, or `META_NO_ANTIPATTERNS=1` in the
 environment. This pass is **Node-`meta`-specific**; the C#/Java/Kotlin/Python
 codegen surfaces do not run it.
+
+## `meta upgrade` — retired vocabulary, not schema
+
+Deliberately **not** a `migrate` subverb. `migrate` owns database schema and is the most
+destructive command in the toolchain; overloading it with a metadata rewrite would make
+"what does this touch?" ambiguous at exactly the wrong moment.
+
+It **cannot load the metadata, and does not try**. Once vocabulary is deregistered, metadata
+carrying it fails the load — which is the state this command exists to repair. So it reads
+each file's raw text and replaces spans, which is also what keeps JSONC comments and key
+order intact; a parse-and-reprint would destroy both while reporting success.
+
+Three properties worth knowing before you wire it into CI:
+
+- **Dry-run by default.** `--apply` writes. `--to <version>` bounds which retirements apply.
+- **It refuses what needs a decision, and exits non-zero.** `@status: abandoned` can be
+  resolved by deleting the node, retyping it, or fixing the residue it describes — a guess
+  would emit metadata that *loads* and means something else, which is worse than refusing
+  because you would believe the migration finished. The non-zero exit stands even when every
+  mechanical change succeeded, so a pipeline cannot record a partial upgrade as complete.
+- **Canonical JSON only.** YAML metadata is loadable ([ADR-0006](../../spec/decisions/ADR-0006-ai-first-yaml-authoring.md))
+  but is not rewritten: a correct YAML editor needs a CST, and the rewriter lives in a
+  browser-safe module that cannot import a YAML parser. YAML files are **named in the output
+  and the run exits non-zero** rather than passed over — migrate them by hand from the guide
+  each retirement links.
 
 ## Schema is Node-only — by design
 

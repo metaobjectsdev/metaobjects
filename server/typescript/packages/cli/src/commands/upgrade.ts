@@ -17,10 +17,13 @@
 // CI cannot mistake a partial upgrade for a finished one.
 
 import { readFile, writeFile } from "node:fs/promises";
-import { relative } from "node:path";
+import { extname, relative } from "node:path";
 import { resolveCollection } from "@metaobjectsdev/sdk";
-import { rewriteDocument, type RewriteResult } from "@metaobjectsdev/metadata";
+import { rewriteDocument } from "@metaobjectsdev/metadata";
 import { log } from "../lib/log.js";
+
+/** Authoring formats the rewriter cannot edit — see `vocabulary-rewrite.ts` for why. */
+const UNREWRITABLE_EXTENSIONS = new Set([".yaml", ".yml"]);
 
 interface UpgradeFlags {
   apply: boolean;
@@ -43,40 +46,6 @@ function parseArgs(argv: string[]): UpgradeFlags {
     else throw new Error(`unknown option: ${a}`);
   }
   return flags;
-}
-
-/**
- * The node type a document's keys belong to.
- *
- * Retirements are TYPE-SCOPED — `@unique` is retired on `identity.secondary` and live on a
- * field — so the rewriter needs a scope per occurrence, not per file. A metadata file holds
- * many types, so we run the rewriter once per type key present in the text. Cheap, and it
- * keeps the scoping decision in one place (the map) rather than smeared across a parser we
- * deliberately do not have.
- */
-function typeKeysIn(text: string): string[] {
-  const keys = new Set<string>();
-  const re = /"([a-z]+)\.([A-Za-z*]+)"\s*:/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) keys.add(`${m[1]}.${m[2]}`);
-  return [...keys];
-}
-
-/** Run every type scope present in the document, threading the text through each pass. */
-function rewriteAllScopes(text: string, maxVersion: string | undefined): RewriteResult {
-  const changes: RewriteResult["changes"][number][] = [];
-  const refusals: RewriteResult["refusals"][number][] = [];
-  let current = text;
-  for (const typeKeyHint of typeKeysIn(text)) {
-    const r = rewriteDocument(current, {
-      typeKeyHint,
-      ...(maxVersion !== undefined ? { maxVersion } : {}),
-    });
-    current = r.text;
-    changes.push(...r.changes);
-    refusals.push(...r.refusals);
-  }
-  return { text: current, changes, refusals };
 }
 
 export async function upgradeCommand(args: string[], cwd: string): Promise<number> {
@@ -109,18 +78,30 @@ export async function upgradeCommand(args: string[], cwd: string): Promise<numbe
   let totalChanges = 0;
   let totalRefusals = 0;
   let filesChanged = 0;
+  const skipped: string[] = [];
 
   for (const file of files) {
+    const rel = relative(projectRoot, file);
+
+    // A file we cannot rewrite is NAMED, never passed over. Silently skipping it is the
+    // failure this command exists to prevent: the adopter runs the documented migration,
+    // reads "no retired vocabulary found", and ships metadata that does not load.
+    if (UNREWRITABLE_EXTENSIONS.has(extname(file).toLowerCase())) {
+      skipped.push(rel);
+      continue;
+    }
+
     const before = await readFile(file, "utf8");
-    const r = rewriteAllScopes(before, flags.maxVersion);
+    const r = rewriteDocument(before, {
+      ...(flags.maxVersion !== undefined ? { maxVersion: flags.maxVersion } : {}),
+    });
     if (r.changes.length === 0 && r.refusals.length === 0) continue;
 
-    const rel = relative(projectRoot, file);
     log.info(`\n${rel}`);
     for (const c of r.changes) log.info(`  ${c.line}: @${c.from} → ${c.to}`);
     for (const f of r.refusals) {
       log.warn(
-        `  ${f.line}: @${f.attr}${f.value !== undefined ? `: ${f.value}` : ""} — needs a decision. ` +
+        `  ${f.line}: ${f.subject}${f.value !== undefined ? `: ${f.value}` : ""} — needs a decision. ` +
           `Retired in ${f.since}. ${f.migration !== undefined ? `See ${f.migration}` : f.why}`,
       );
     }
@@ -134,12 +115,25 @@ export async function upgradeCommand(args: string[], cwd: string): Promise<numbe
   }
 
   log.info("");
-  if (totalChanges === 0 && totalRefusals === 0) {
-    log.info("meta upgrade — no retired vocabulary found.");
-    return 0;
+  if (skipped.length > 0) {
+    log.warn(
+      `${skipped.length} YAML file(s) cannot be rewritten automatically and were NOT ` +
+        `checked — migrate them by hand:\n  ${skipped.join("\n  ")}`,
+    );
   }
 
-  if (flags.apply) {
+  if (totalChanges === 0 && totalRefusals === 0) {
+    log.info(
+      skipped.length > 0
+        ? "meta upgrade — no retired vocabulary found in the JSON metadata."
+        : "meta upgrade — no retired vocabulary found.",
+    );
+  } else if (totalChanges === 0) {
+    // Refusals only. Reporting "rewrote 0 declarations", or advertising `--apply`, both
+    // promise an action guaranteed to change nothing and bury the fact that the remaining
+    // work is entirely human.
+    log.info("meta upgrade — nothing here can be rewritten automatically.");
+  } else if (flags.apply) {
     log.info(`meta upgrade — rewrote ${totalChanges} declaration(s) across ${filesChanged} file(s).`);
   } else {
     log.info(
@@ -149,7 +143,8 @@ export async function upgradeCommand(args: string[], cwd: string): Promise<numbe
   }
 
   // Non-zero while ANY refusal stands, applied or not. A partial upgrade that exited 0 would
-  // let CI record the migration as done while metadata still fails to load.
+  // let CI record the migration as done while metadata still fails to load. A file we could
+  // not read at all counts the same way, for the same reason.
   if (totalRefusals > 0) {
     log.error(
       `${totalRefusals} declaration(s) need a human decision and were left untouched — ` +
@@ -157,5 +152,5 @@ export async function upgradeCommand(args: string[], cwd: string): Promise<numbe
     );
     return 1;
   }
-  return 0;
+  return skipped.length > 0 ? 1 : 0;
 }
