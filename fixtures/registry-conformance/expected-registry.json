@@ -1,5 +1,5 @@
 {
-  "metamodelVersion": "0.10",
+  "metamodelVersion": "0.11",
   "types": [
     {
       "type": "attr",
@@ -2924,8 +2924,8 @@
           "name": "fields",
           "valueType": "string",
           "isArray": true,
-          "required": true,
-          "description": "The field name(s) composing this identity. Single-element for a simple unique index, multiple for a composite unique constraint."
+          "required": false,
+          "description": "The field name(s) composing this identity. Single-element for a simple unique index, multiple for a composite unique constraint. Required UNLESS @expr is present — a unique index keys off plain columns (@fields) or a key expression (@expr), never both; declaring both is ERR_INVALID_INDEX."
         },
         {
           "name": "orders",
@@ -2972,8 +2972,8 @@
           "name": "fields",
           "valueType": "string",
           "isArray": true,
-          "required": true,
-          "description": "The field name(s) this index covers (at least one). When @expr is present, it is the key expression derived from these fields."
+          "required": false,
+          "description": "The field name(s) this index covers. Required UNLESS @expr is present — an index keys off plain columns (@fields) or a key expression (@expr), never both; declaring both is ERR_INVALID_INDEX."
         },
         {
           "name": "orders",

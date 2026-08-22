@@ -37,6 +37,7 @@ import com.metaobjects.field.StringField;
 import com.metaobjects.field.TimeField;
 import com.metaobjects.field.TimestampField;
 import com.metaobjects.field.UuidField;
+import com.metaobjects.identity.SecondaryIdentity;
 import com.metaobjects.index.Index;
 import com.metaobjects.index.LookupIndex;
 import com.metaobjects.layout.DataGridLayout;
@@ -2640,6 +2641,17 @@ public final class ValidationPhase {
         boolean hasFields = identity.getSuperData() != null
             ? identity.hasMetaAttr(MetaIdentity.ATTR_FIELDS, true)
             : identity.hasMetaAttr(MetaIdentity.ATTR_FIELDS, false);
+        // #342: identity.secondary keys off @fields XOR @expr, so an expression-keyed
+        // unique index legitimately has no @fields. Only SECONDARY — a primary key or
+        // an FK reference is always plain columns and carries no @expr at all. This
+        // check is Java-only (TS/C#/Python have no bespoke equivalent), which is why
+        // relaxing the registry declaration alone left Java refusing what the other
+        // three ports accepted.
+        if (!hasFields
+                && identity instanceof SecondaryIdentity
+                && hasNonBlankAttr(identity, SecondaryIdentity.ATTR_EXPR)) {
+            hasFields = true;
+        }
         if (!hasFields) {
             throw new MetaDataException(
                 ErrorMessageConstants.ERR_MISSING_REQUIRED_ATTR
@@ -4607,38 +4619,88 @@ public final class ValidationPhase {
             if (f.getName() != null) effectiveFieldNames.add(f.getName());
         }
 
-        // Validate each own index.lookup child.
+        // Validate each own index.lookup / identity.secondary child (#342).
+        //
+        // The key is @fields XOR @expr. @expr has always been registered as "used
+        // INSTEAD of @fields" (Index.ATTR_EXPR's own javadoc says @fields "may be
+        // omitted when ATTR_EXPR provides a functional expression instead") and
+        // migrate-ts has always keyed off it — only the loader required @fields
+        // unconditionally, which made an expression index undeclarable. Declaring
+        // BOTH previously loaded and had @fields silently discarded downstream,
+        // which is the silent-wrong-output the strict registry exists to prevent.
+        //
+        // identity.secondary is included because per ADR-0040 uniqueness lives in
+        // the TYPE — identity.secondary IS a unique index and keys itself the same
+        // way, carrying @expr from the same db provider.
         for (MetaData child : obj.getChildren(MetaData.class, false)) {
-            if (!(child instanceof LookupIndex)) continue;
-            LookupIndex idx = (LookupIndex) child;
-            java.util.List<String> fields = idx.getFields();
-
-            // Rule 1: at least one field required.
-            if (fields.isEmpty()) {
-                throw new MetaDataException(
-                    ErrorMessageConstants.ERR_INVALID_INDEX
-                        + ": index.lookup \"" + idx.getName()
-                        + "\" on \"" + obj.getName()
-                        + "\" has no @" + Index.ATTR_FIELDS
-                        + "; at least one field is required",
-                    ErrorCode.ERR_INVALID_INDEX, idx.getSource());
+            final String label;
+            final java.util.List<String> fields;
+            final boolean hasExpr;
+            if (child instanceof LookupIndex) {
+                label = "index.lookup";
+                fields = ((LookupIndex) child).getFields();
+                hasExpr = hasNonBlankAttr(child, Index.ATTR_EXPR);
+            } else if (child instanceof SecondaryIdentity) {
+                label = "identity.secondary";
+                fields = ((SecondaryIdentity) child).getFields();
+                hasExpr = hasNonBlankAttr(child, SecondaryIdentity.ATTR_EXPR);
+            } else {
+                continue;
             }
 
-            // Rule 2: every named field must resolve.
+            // Rule 1: the key is @fields XOR @expr.
+            if (fields.isEmpty() && !hasExpr) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_INDEX
+                        + ": " + label + " \"" + child.getName()
+                        + "\" on \"" + obj.getName()
+                        + "\" declares no key: it must have @" + Index.ATTR_FIELDS
+                        + " (one or more columns) or @" + Index.ATTR_EXPR
+                        + " (a key expression)",
+                    ErrorCode.ERR_INVALID_INDEX, child.getSource());
+            }
+            if (!fields.isEmpty() && hasExpr) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_INVALID_INDEX
+                        + ": " + label + " \"" + child.getName()
+                        + "\" on \"" + obj.getName()
+                        + "\" declares BOTH @" + Index.ATTR_FIELDS
+                        + " and @" + Index.ATTR_EXPR
+                        + "; they are the two mutually exclusive ways to key an index. @"
+                        + Index.ATTR_EXPR + " is used INSTEAD of @" + Index.ATTR_FIELDS
+                        + " — drop one. (Declaring both previously loaded but silently"
+                        + " discarded @" + Index.ATTR_FIELDS + ".)",
+                    ErrorCode.ERR_INVALID_INDEX, child.getSource());
+            }
+
+            // Rule 2: every named field must resolve. An @expr index has no @fields
+            // to resolve — @expr is raw SQL over physical columns, deliberately not
+            // parsed here.
             for (String fieldName : fields) {
                 if (!effectiveFieldNames.contains(fieldName)) {
                     throw new MetaDataException(
                         ErrorMessageConstants.ERR_INVALID_INDEX
-                            + ": index.lookup \"" + idx.getName()
+                            + ": " + label + " \"" + child.getName()
                             + "\" on \"" + obj.getName()
                             + "\" references field \"" + fieldName
                             + "\" which does not exist on \"" + obj.getName()
                             + "\". Available fields: "
                             + (effectiveFieldNames.isEmpty() ? "(none)" : String.join(", ", effectiveFieldNames)),
-                        ErrorCode.ERR_INVALID_INDEX, idx.getSource());
+                        ErrorCode.ERR_INVALID_INDEX, child.getSource());
                 }
             }
         }
+    }
+
+    /**
+     * Is {@code name} present on {@code node} with a non-blank string value?
+     * Resolving (includeParentData=true) per ADR-0039, so a value inherited via
+     * {@code extends} counts.
+     */
+    private static boolean hasNonBlankAttr(MetaData node, String name) {
+        if (!node.hasMetaAttr(name, true)) return false;
+        String v = node.getMetaAttr(name, true).getValueAsString();
+        return v != null && !v.trim().isEmpty();
     }
 
     // =========================================================================

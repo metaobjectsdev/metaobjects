@@ -58,7 +58,10 @@ public class SecondaryIdentity extends MetaIdentity {
             // @unique is removed: secondary identities ALWAYS enforce uniqueness —
             // it is an inherent property of the subtype, not an attr to be toggled.
             // For a non-unique query-performance index, use index.lookup instead.
-            def.requiredAttributeWithConstraints(ATTR_FIELDS).ofType(StringAttribute.SUBTYPE_STRING).asArray();
+            // @fields: OPTIONAL at the schema tier (#342) — the real rule is
+            // @fields XOR @expr, enforced by ValidationPhase (ERR_INVALID_INDEX),
+            // because an exclusive-or is not expressible as a per-attr required flag.
+            def.optionalAttributeWithConstraints(ATTR_FIELDS).ofType(StringAttribute.SUBTYPE_STRING).asArray();
             def.optionalAttributeWithConstraints(ATTR_DESCRIPTION).ofType(StringAttribute.SUBTYPE_STRING).asSingle();
             // RDB-physical index attrs (@orders / @where / @expr / @using) are
             // contributed by CoreDBMetaDataProvider via registry.extendType, mirroring

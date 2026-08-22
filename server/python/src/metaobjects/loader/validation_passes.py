@@ -124,8 +124,14 @@ from ..meta.core.object.object_constants import (
     OBJECT_SUBTYPE_PROJECTION,
     OBJECT_SUBTYPE_VALUE,
 )
-from ..meta.core.identity.identity_constants import IDENTITY_ATTR_FIELDS
+from ..meta.core.identity.identity_constants import (
+    IDENTITY_ATTR_FIELDS,
+    IDENTITY_SUBTYPE_SECONDARY,
+)
 from ..meta.core.index.index_constants import INDEX_ATTR_FIELDS, INDEX_SUBTYPE_LOOKUP
+from ..meta.persistence.db.db_constants import (
+    IDENTITY_SECONDARY_ATTR_EXPR as IDENTITY_ATTR_EXPR,
+)
 from ..source import resolved_source
 from ..naming_refs import did_you_mean_hint, resolve_object_ref
 
@@ -3509,12 +3515,22 @@ def _parse_string_list(raw: object) -> tuple[str, ...]:
 
 
 # ---------------------------------------------------------------------------
-# Pass: index.lookup @fields resolution
+# Pass: index-key resolution for index.lookup AND identity.secondary (#342)
 #
-# Every index.lookup on an entity must name at least one field, and every
-# named field must exist in the entity's EFFECTIVE (resolved) field set.
-# ADR-0039: use children() / MetaIndex.fields() — never own* — so that a
-# field inherited via extends still resolves correctly.
+# The key is @fields XOR @expr. @expr has always been registered as "used
+# INSTEAD of @fields" and migrate-ts has always keyed off it
+# (`columns: expr ? [] : cols`), but the loader required @fields
+# unconditionally — so an expression index could not be declared, and the one
+# spelling that DID load (@fields AND @expr) had its @fields silently discarded
+# downstream. Declaring both is now refused rather than half-honored, which is
+# the silent-wrong-output the sealed strict registry exists to prevent.
+#
+# identity.secondary is included because per ADR-0040 uniqueness lives in the
+# TYPE — identity.secondary IS a unique index and keys itself identically,
+# carrying @expr from the same db provider.
+#
+# ADR-0039: children() / MetaIndex.fields() — never own* — so a field inherited
+# via extends still resolves correctly.
 # ---------------------------------------------------------------------------
 
 def _validate_index_lookup_fields(root: MetaData, errors: list[MetaError]) -> None:
@@ -3525,30 +3541,66 @@ def _validate_index_lookup_fields(root: MetaData, errors: list[MetaError]) -> No
             f.name for f in obj.children() if f.type == TYPE_FIELD
         }
         for node in obj.children():
-            if node.type != TYPE_INDEX or node.sub_type != INDEX_SUBTYPE_LOOKUP:
+            is_lookup = node.type == TYPE_INDEX and node.sub_type == INDEX_SUBTYPE_LOOKUP
+            is_secondary = (
+                node.type == TYPE_IDENTITY
+                and node.sub_type == IDENTITY_SUBTYPE_SECONDARY
+            )
+            if not (is_lookup or is_secondary):
                 continue
-            if not isinstance(node, MetaIndex):
-                continue
-            fields = node.fields()
+            label = f"{node.type}.{node.sub_type}"
+            if isinstance(node, MetaIndex):
+                fields = node.fields()
+            else:
+                # identity nodes expose the same @fields attr; attrs() is the
+                # RESOLVING accessor in Python (attr() is own-only — ADR-0039).
+                raw = node.attrs().get(IDENTITY_ATTR_FIELDS)
+                fields = list(raw) if isinstance(raw, (list, tuple)) else []
+            expr = node.attrs().get(IDENTITY_ATTR_EXPR)
+            has_expr = isinstance(expr, str) and expr.strip() != ""
 
-            if len(fields) == 0:
+            # Rule 1: the key is @fields XOR @expr.
+            # envelope=node.source — FR5a/ADR-0009 provenance. TS, Java and C# have
+            # always attached it here; Python did not, so these errors arrived with an
+            # empty envelope. The cross-port corpus asserts envelope SHAPE, which is
+            # what surfaced it.
+            if len(fields) == 0 and not has_expr:
                 errors.append(MetaError(
                     code=ErrorCode.ERR_INVALID_INDEX,
                     message=(
-                        f'index.lookup "{node.name}" on "{obj.name}" has no '
-                        f"@{INDEX_ATTR_FIELDS}; at least one field is required"
+                        f'{label} "{node.name}" on "{obj.name}" declares no key: '
+                        f"it must have @{INDEX_ATTR_FIELDS} (one or more columns) "
+                        f"or @{IDENTITY_ATTR_EXPR} (a key expression)"
                     ),
+                    envelope=node.source,
+                ))
+                continue
+            if len(fields) > 0 and has_expr:
+                errors.append(MetaError(
+                    code=ErrorCode.ERR_INVALID_INDEX,
+                    message=(
+                        f'{label} "{node.name}" on "{obj.name}" declares BOTH '
+                        f"@{INDEX_ATTR_FIELDS} and @{IDENTITY_ATTR_EXPR}; they are the "
+                        f"two mutually exclusive ways to key an index. "
+                        f"@{IDENTITY_ATTR_EXPR} is used INSTEAD of @{INDEX_ATTR_FIELDS} "
+                        f"— drop one. (Declaring both previously loaded but silently "
+                        f"discarded @{INDEX_ATTR_FIELDS}.)"
+                    ),
+                    envelope=node.source,
                 ))
                 continue
 
+            # Rule 2: every named field must resolve. An @expr index has no
+            # @fields to resolve — @expr is raw SQL, deliberately not parsed here.
             for field_name in fields:
                 if field_name not in effective_field_names:
                     errors.append(MetaError(
                         code=ErrorCode.ERR_INVALID_INDEX,
                         message=(
-                            f'index.lookup "{node.name}" on "{obj.name}" references '
+                            f'{label} "{node.name}" on "{obj.name}" references '
                             f'field "{field_name}" which does not exist on "{obj.name}". '
                             f"Available fields: "
                             f"{', '.join(sorted(effective_field_names)) or '(none)'}"
                         ),
+                        envelope=node.source,
                     ))

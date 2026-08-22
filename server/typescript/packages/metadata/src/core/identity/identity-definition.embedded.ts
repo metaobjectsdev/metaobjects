@@ -52,9 +52,9 @@ export const IDENTITY_DEFINITION: ProviderDefinition = {
           "subType": "string",
           "name": "fields",
           "isArray": true,
-          "min": 1,
+          "min": 0,
           "max": 1,
-          "description": "The field name(s) composing this identity. Single-element for a simple unique index, multiple for a composite unique constraint."
+          "description": "The field name(s) composing this identity. Single-element for a simple unique index, multiple for a composite unique constraint. Required UNLESS @expr is present — a unique index keys off plain columns (@fields) or a key expression (@expr), never both; declaring both is ERR_INVALID_INDEX."
         }
       ]
     },

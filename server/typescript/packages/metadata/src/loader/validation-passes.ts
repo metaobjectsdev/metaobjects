@@ -32,6 +32,7 @@ import {
   INDEX_SUBTYPE_LOOKUP,
   INDEX_ATTR_FIELDS,
 } from "../core/index/index-constants.js";
+import { IDENTITY_SUBTYPE_SECONDARY } from "../core/identity/identity-constants.js";
 import { MetaIndex } from "../core/index/meta-index.js";
 import {
   TEMPLATE_ATTR_PAYLOAD_REF,
@@ -81,7 +82,7 @@ import {
   FIELD_SUBTYPE_TIMESTAMP,
   FIELD_SUBTYPE_UUID,
 } from "../core/field/field-constants.js";
-import { FIELD_ATTR_DB_INDEXED } from "../persistence/db/db-constants.js";
+import { FIELD_ATTR_DB_INDEXED, IDENTITY_ATTR_EXPR } from "../persistence/db/db-constants.js";
 import {
   IDENTITY_ATTR_FIELDS,
   IDENTITY_SUBTYPE_REFERENCE,
@@ -1887,12 +1888,32 @@ export function validateRelationships(root: MetaData): ParseError[] {
 // (defaultValidationRegistry → a declarative reference descriptor with dottedFieldPath).
 
 // ---------------------------------------------------------------------------
-// index.lookup @fields resolution (Task 3)
+// Index-key resolution for index.lookup AND identity.secondary (#342)
 //
-// Every index.lookup on an entity must name at least one field, and every
-// named field must exist in the entity's EFFECTIVE (resolved) field set.
-// ADR-0039: use children() / MetaIndex.fields() — never own* — so that a
-// field inherited via extends still resolves correctly.
+// An index declares its key EXACTLY ONE of two ways: plain columns (@fields) or
+// a key expression (@expr, e.g. `lower(email)` / `(payload->>'device_id')`).
+// The registry has always said so — @expr is described as "Used INSTEAD of
+// @fields" — and `migrate-ts` has always implemented it that way
+// (`columns: expr ? [] : cols`, expected-schema.ts). Only the LOADER disagreed,
+// requiring @fields unconditionally, which made an expression index
+// unreachable: omitting @fields failed to load, and the one spelling that DID
+// load (@fields AND @expr) had its @fields silently discarded by the engine.
+//
+// So the two rules below are one rule — the key is @fields XOR @expr:
+//   - NEITHER: nothing declares the key.
+//   - BOTH: contradictory, and previously half-honored. Rejected rather than
+//     given a precedence rule, because an accepted-but-half-ignored declaration
+//     is exactly the silent-wrong-output the sealed strict registry exists to
+//     prevent (cf. ERR_SQL_BODY_WITH_UNMANAGED — @sql vs @unmanaged is the same
+//     "two mutually exclusive non-default states of one axis" shape).
+//
+// Applies to identity.secondary too: per ADR-0040 uniqueness lives in the TYPE,
+// so identity.secondary IS a unique index and keys itself identically. Both
+// carry @expr from the same db provider, and migrate-ts branches on @expr for
+// both — the loader was the only tier treating them differently.
+//
+// ADR-0039: children() / MetaIndex.fields() — never own* — so a field inherited
+// via extends still resolves.
 // ---------------------------------------------------------------------------
 
 export function validateIndexLookupFields(root: MetaData): ParseError[] {
@@ -1903,34 +1924,61 @@ export function validateIndexLookupFields(root: MetaData): ParseError[] {
     const effectiveFieldNames = new Set(
       obj.children().filter((c) => c.type === TYPE_FIELD).map((f) => f.name),
     );
-    for (const node of obj.children().filter(
-      (c) => c.type === TYPE_INDEX && c.subType === INDEX_SUBTYPE_LOOKUP,
-    )) {
-      // MetaIndex.fields() uses the resolving attr() accessor per ADR-0039.
-      const idx = node as MetaIndex;
-      const fields = idx.fields();
+    const keyed = obj.children().filter(
+      (c) =>
+        (c.type === TYPE_INDEX && c.subType === INDEX_SUBTYPE_LOOKUP) ||
+        (c.type === TYPE_IDENTITY && c.subType === IDENTITY_SUBTYPE_SECONDARY),
+    );
+    for (const node of keyed) {
+      const label = `${node.type}.${node.subType}`;
+      // MetaIndex.fields() uses the resolving attr() accessor per ADR-0039;
+      // identity nodes expose the same @fields attr, read the same way.
+      const fields =
+        node instanceof MetaIndex
+          ? node.fields()
+          : ((node.attr(IDENTITY_ATTR_FIELDS) as string[] | undefined) ?? []);
+      const exprRaw = node.attr(IDENTITY_ATTR_EXPR);
+      const hasExpr = typeof exprRaw === "string" && exprRaw.trim().length > 0;
 
-      // Rule 1: must have at least one field.
-      if (fields.length === 0) {
+      // Rule 1: the key is @fields XOR @expr.
+      if (fields.length === 0 && !hasExpr) {
         errors.push(
           new ParseError(
-            `index.lookup "${idx.name}" on "${obj.name}" has no @${INDEX_ATTR_FIELDS}; ` +
-              `at least one field is required`,
-            { code: "ERR_INVALID_INDEX", source: idx.source },
+            `${label} "${node.name}" on "${obj.name}" declares no key: ` +
+              `it must have @${INDEX_ATTR_FIELDS} (one or more columns) or ` +
+              `@${IDENTITY_ATTR_EXPR} (a key expression)`,
+            { code: "ERR_INVALID_INDEX", source: node.source },
+          ),
+        );
+        continue;
+      }
+      if (fields.length > 0 && hasExpr) {
+        errors.push(
+          new ParseError(
+            `${label} "${node.name}" on "${obj.name}" declares BOTH ` +
+              `@${INDEX_ATTR_FIELDS} and @${IDENTITY_ATTR_EXPR}; they are the two ` +
+              `mutually exclusive ways to key an index. @${IDENTITY_ATTR_EXPR} is used ` +
+              `INSTEAD of @${INDEX_ATTR_FIELDS} — drop one. ` +
+              `(Declaring both previously loaded but silently discarded ` +
+              `@${INDEX_ATTR_FIELDS}.)`,
+            { code: "ERR_INVALID_INDEX", source: node.source },
           ),
         );
         continue;
       }
 
       // Rule 2: every named field must resolve against the entity's effective field set.
+      // An expression index has no @fields to resolve — @expr is raw SQL over the
+      // physical columns, deliberately not parsed here (ADR-0023 keeps the grammar
+      // closed only where the loader owns it).
       for (const fieldName of fields) {
         if (!effectiveFieldNames.has(fieldName)) {
           errors.push(
             new ParseError(
-              `index.lookup "${idx.name}" on "${obj.name}" references field "${fieldName}" ` +
+              `${label} "${node.name}" on "${obj.name}" references field "${fieldName}" ` +
                 `which does not exist on "${obj.name}". ` +
                 `Available fields: ${[...effectiveFieldNames].join(", ") || "(none)"}`,
-              { code: "ERR_INVALID_INDEX", source: idx.source },
+              { code: "ERR_INVALID_INDEX", source: node.source },
             ),
           );
         }

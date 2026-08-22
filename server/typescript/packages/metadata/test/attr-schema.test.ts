@@ -293,9 +293,15 @@ describe("Phase A2 — core attribute schemas", () => {
     expect(attrs.get("generation")!.allowedValues).toEqual(["increment", "uuid", "assigned"]);
   });
 
-  it("identity.secondary declares required @fields and no @unique (removed — use index.lookup for non-unique indexes)", () => {
+  it("identity.secondary declares OPTIONAL @fields (#342 — @expr keys instead) and no @unique (removed — use index.lookup for non-unique indexes)", () => {
     const attrs = byName(TYPE_IDENTITY, IDENTITY_SUBTYPE_SECONDARY);
-    expect(attrs.get("fields")!.required).toBe(true);
+    // #342: @fields is no longer unconditionally required at the schema tier. The real
+    // rule is @fields XOR @expr, which a child-rule `min` cannot express — it is
+    // enforced by validateIndexLookupFields (ERR_INVALID_INDEX) and covered in
+    // index-validation.test.ts. Leaving min:1 here made an expression index
+    // undeclarable, since the schema check fired before the XOR rule could run.
+    expect(attrs.get("fields")!.required).toBe(false);
+    expect(attrs.get("expr")).toBeDefined();
     expect(attrs.get("unique")).toBeUndefined();
     expect(attrs.get("generation")).toBeUndefined();
   });

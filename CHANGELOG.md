@@ -7,6 +7,59 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.24.1] — npm `0.24.1` · PyPI `0.24.1` · NuGet `0.24.1` · Maven `7.24.1`
+
+### Fixed — an expression index was undeclarable, and the one spelling that loaded was half-ignored ([#342](https://github.com/metaobjectsdev/metaobjects/issues/342))
+
+**`@expr` was registered, built and rendered — and unreachable.** The registry has always
+described it as *"Used **INSTEAD of** `@fields`"*, `migrate-ts` has always keyed off it
+(`columns: expr ? [] : cols`), the Postgres emitter has always rendered it, and
+introspection has always read expression keys back via `pg_get_expr`. Only the **loader**
+disagreed, requiring `@fields` unconditionally. So the three-row matrix an adopter hit was:
+
+| Node | attrs | Before |
+|---|---|---|
+| `index.lookup` | `@expr` only | ❌ fails to load |
+| `identity.secondary` | `@expr` only | ❌ fails to load |
+| either | `@fields` **+** `@expr` | ⚠️ loads — and `@fields` is **silently discarded** |
+
+An expression index therefore had to live as hand-written SQL outside the migration
+ledger, which then reported as permanent `verify --db` drift.
+
+**The rule is now stated once and enforced once: the index key is `@fields` XOR `@expr`.**
+Declaring neither is an error (as before); declaring **both is now also an error**
+(`ERR_INVALID_INDEX`) rather than being accepted and half-honored. Failing closed matches
+the sealed-strict-registry posture and the existing `ERR_SQL_BODY_WITH_UNMANAGED`
+precedent — `@sql` vs `@unmanaged` is the same "two mutually exclusive non-default states
+of one axis" shape. **This is a PATCH, not a MINOR:** a declaration that loaded while
+silently throwing half of itself away was never validly expressible, so refusing it
+corrects previously-wrong acceptance rather than changing a contract — the same call, for
+the same reason, as the `@min` clamp in `0.19.1` and the `like` case-sensitivity fix in
+`0.21.6`.
+
+**Applies to `identity.secondary` as well as `index.lookup`**, because per
+[ADR-0040](spec/decisions/ADR-0040-index-type-and-secondary-key-purity.md) uniqueness
+lives in the TYPE — `identity.secondary` IS a unique index, keys itself identically, and
+carries `@expr` from the same db provider. `identity.primary` and `identity.reference` are
+untouched: a primary key or an FK is always plain columns and carries no `@expr` at all.
+
+**`metamodelVersion` moves `0.10` → `0.11`** — `@fields` becomes optional on both node
+types, which the gate classifies as additive. The package line stays a PATCH; that
+severance is exactly what [ADR-0035 Amendment 2](docs/RELEASING.md) is for, and post-1.0
+the changelog is the only signal on the metadata axis.
+
+**Two things this took, worth recording.** The Java port needed a fix the other three did
+not: beyond the registry declaration, `ValidationPhase.validateIdentityNode` carried a
+**bespoke, Java-only** `@fields` requirement applied to every identity, so relaxing the
+schema tier alone left Java refusing metadata that TypeScript, C# and Python accepted —
+found by the new cross-port fixture, not by any port's own suite. And Python's index
+errors were emitted with an **empty provenance envelope** while the other three attached
+`node.source`; the corpus asserts envelope shape, which is what surfaced it.
+
+Gated by two new shared conformance fixtures — `index-expr-keys-without-fields` (both node
+types keyed by expression, loads clean) and `error-index-fields-and-expr` — plus per-port
+tests. All five ports green.
+
 ## [0.24.0] — npm `0.24.0` · PyPI `0.24.0` · NuGet `0.24.0` · Maven `7.24.0`
 
 > ### ⚠️ BREAKING FOR METADATA AUTHORS — five vocabulary changes in ONE window

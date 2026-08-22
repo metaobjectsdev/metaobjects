@@ -3823,25 +3823,56 @@ public static class ValidationPasses
                 obj.Children().Where(c => c.Type == TYPE_FIELD).Select(f => f.Name),
                 StringComparer.Ordinal);
 
+            // #342 — the index key is @fields XOR @expr, on index.lookup AND
+            // identity.secondary. @expr has always been registered as "used INSTEAD of
+            // @fields" and migrate-ts has always keyed off it, but the loader required
+            // @fields unconditionally, making an expression index undeclarable; the one
+            // spelling that DID load (@fields AND @expr) had its @fields silently
+            // discarded downstream. identity.secondary is included because per ADR-0040
+            // uniqueness lives in the TYPE — it IS a unique index and keys itself the
+            // same way, carrying @expr from the same db provider.
             foreach (var node in obj.Children().Where(
-                c => c.Type == TYPE_INDEX && c.SubType == INDEX_SUBTYPE_LOOKUP))
+                c => (c.Type == TYPE_INDEX && c.SubType == INDEX_SUBTYPE_LOOKUP)
+                  || (c.Type == TYPE_IDENTITY && c.SubType == IDENTITY_SUBTYPE_SECONDARY)))
             {
-                // MetaIndex.Fields uses the resolving Attr() accessor per ADR-0039.
-                var idx = (MetaIndex)node;
-                var fields = idx.Fields;
+                string label = $"{node.Type}.{node.SubType}";
+                // MetaIndex.Fields uses the resolving Attr() accessor per ADR-0039;
+                // identity nodes expose the same @fields attr, read the same way.
+                IReadOnlyList<string> fields = node is MetaIndex mi
+                    ? mi.Fields
+                    : (node.Attr(IDENTITY_ATTR_FIELDS) as IEnumerable<object>)?
+                        .Select(o => o?.ToString() ?? string.Empty).ToList()
+                      ?? (IReadOnlyList<string>)Array.Empty<string>();
+                var exprRaw = node.Attr(IDENTITY_ATTR_EXPR) as string;
+                bool hasExpr = !string.IsNullOrWhiteSpace(exprRaw);
 
-                // Rule 1: must have at least one field.
-                if (fields.Count == 0)
+                // Rule 1: the key is @fields XOR @expr.
+                if (fields.Count == 0 && !hasExpr)
                 {
                     errors.Add(new MetaError(
-                        $"index.lookup \"{idx.Name}\" on \"{obj.Name}\" has no @{INDEX_ATTR_FIELDS}; " +
-                        "at least one field is required",
+                        $"{label} \"{node.Name}\" on \"{obj.Name}\" declares no key: it must have " +
+                        $"@{INDEX_ATTR_FIELDS} (one or more columns) or @{IDENTITY_ATTR_EXPR} " +
+                        "(a key expression)",
                         ErrorCode.ERR_INVALID_INDEX,
-                        Envelope: idx.Source));
+                        Envelope: node.Source));
+                    continue;
+                }
+                if (fields.Count > 0 && hasExpr)
+                {
+                    errors.Add(new MetaError(
+                        $"{label} \"{node.Name}\" on \"{obj.Name}\" declares BOTH " +
+                        $"@{INDEX_ATTR_FIELDS} and @{IDENTITY_ATTR_EXPR}; they are the two " +
+                        $"mutually exclusive ways to key an index. @{IDENTITY_ATTR_EXPR} is used " +
+                        $"INSTEAD of @{INDEX_ATTR_FIELDS} — drop one. (Declaring both previously " +
+                        $"loaded but silently discarded @{INDEX_ATTR_FIELDS}.)",
+                        ErrorCode.ERR_INVALID_INDEX,
+                        Envelope: node.Source));
                     continue;
                 }
 
-                // Rule 2: every named field must resolve against the entity's effective field set.
+                // Rule 2: every named field must resolve against the entity's effective field
+                // set. An @expr index has no @fields to resolve — @expr is raw SQL over the
+                // physical columns, deliberately not parsed here.
                 foreach (var fieldName in fields)
                 {
                     if (!effectiveFieldNames.Contains(fieldName))
@@ -3850,11 +3881,11 @@ public static class ValidationPasses
                             ? string.Join(", ", effectiveFieldNames)
                             : "(none)";
                         errors.Add(new MetaError(
-                            $"index.lookup \"{idx.Name}\" on \"{obj.Name}\" references field \"{fieldName}\" " +
+                            $"{label} \"{node.Name}\" on \"{obj.Name}\" references field \"{fieldName}\" " +
                             $"which does not exist on \"{obj.Name}\". " +
                             $"Available fields: {available}",
                             ErrorCode.ERR_INVALID_INDEX,
-                            Envelope: idx.Source));
+                            Envelope: node.Source));
                     }
                 }
             }

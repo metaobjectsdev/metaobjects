@@ -42,7 +42,12 @@ const EXPECTED: Record<string, Record<string, ExpectedAttr>> = {
     },
   },
   secondary: {
-    fields: FIELDS,
+    // #342: OPTIONAL here, unlike primary/reference. The real rule is @fields XOR
+    // @expr — a unique index may key off a raw expression instead of columns — and a
+    // child-rule `min` cannot express an exclusive-or, so it is enforced by
+    // validateIndexLookupFields (ERR_INVALID_INDEX). Keeping min:1 fired the schema
+    // check first and made an expression index undeclarable.
+    fields: { valueType: "string", required: false, isArray: true },
     // @unique removed — identity.secondary always means unique constraint.
     // @orders / @where / @expr / @using are physical RDB attrs contributed by
     // the db provider (registry.extend), NOT core — absent from core-only registry.

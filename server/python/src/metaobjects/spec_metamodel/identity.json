@@ -19,7 +19,7 @@
       "description": "A secondary unique index on one or more fields. Always enforces uniqueness — use index.lookup for non-unique query-performance indexes.",
       "whenToUse": "A column or set of columns must be unique (e.g. email, slug, composite business key). For a plain non-unique index, use index.lookup instead.",
       "children": [
-        { "type": "attr", "subType": "string", "name": "fields", "isArray": true, "min": 1, "max": 1, "description": "The field name(s) composing this identity. Single-element for a simple unique index, multiple for a composite unique constraint." }
+        { "type": "attr", "subType": "string", "name": "fields", "isArray": true, "min": 0, "max": 1, "description": "The field name(s) composing this identity. Single-element for a simple unique index, multiple for a composite unique constraint. Required UNLESS @expr is present — a unique index keys off plain columns (@fields) or a key expression (@expr), never both; declaring both is ERR_INVALID_INDEX." }
       ]
     },
     {

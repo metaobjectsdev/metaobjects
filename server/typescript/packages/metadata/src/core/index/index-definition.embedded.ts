@@ -20,9 +20,9 @@ export const INDEX_DEFINITION: ProviderDefinition = {
           "subType": "string",
           "name": "fields",
           "isArray": true,
-          "min": 1,
+          "min": 0,
           "max": 1,
-          "description": "The field name(s) this index covers (at least one). When @expr is present, it is the key expression derived from these fields."
+          "description": "The field name(s) this index covers. Required UNLESS @expr is present — an index keys off plain columns (@fields) or a key expression (@expr), never both; declaring both is ERR_INVALID_INDEX."
         }
       ]
     }

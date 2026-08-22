@@ -541,7 +541,13 @@ core_provider.add(
         sub_type=IDENTITY_SUBTYPE_SECONDARY,
         factory=MetaIdentity,
         attrs=[
-            AttrSchema(name=IDENTITY_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRING, required=True, is_array=True),
+            # #342: OPTIONAL, unlike identity.primary/reference. The real rule is
+            # @fields XOR @expr — a unique index may key off a raw expression
+            # instead of columns — and an exclusive-or is not expressible as a
+            # per-attr required flag, so it is enforced by the index-key
+            # validation pass (ERR_INVALID_INDEX). Required=True here fired first
+            # and made an expression index undeclarable.
+            AttrSchema(name=IDENTITY_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRING, required=False, is_array=True),
         ],
         child_rules=[ChildRule(TYPE_ATTR, "*")],
     )
@@ -576,7 +582,9 @@ for _idx_sub in INDEX_SUBTYPES:
             sub_type=_idx_sub,
             factory=MetaIndex,
             attrs=[
-                AttrSchema(name=INDEX_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRING, required=True, is_array=True),
+                # #342: OPTIONAL — the key is @fields XOR @expr, enforced by the
+                # index-key validation pass (ERR_INVALID_INDEX), not by this flag.
+                AttrSchema(name=INDEX_ATTR_FIELDS, value_type=ATTR_SUBTYPE_STRING, required=False, is_array=True),
             ],
             child_rules=[ChildRule(TYPE_ATTR, "*")],
         )

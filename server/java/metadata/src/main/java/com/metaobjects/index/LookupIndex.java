@@ -53,10 +53,14 @@ public class LookupIndex extends Index {
                    + "identity.secondary for unique constraints instead.")
                .inheritsFrom(MetaData.TYPE_METADATA, MetaData.SUBTYPE_BASE);
 
-            // @fields: required — at least one field. The db provider adds the physical
-            // attrs (@orders / @expr / @where / @using) via registry.extendType; when
-            // @expr is present it is the key expression derived from these fields.
-            def.requiredAttributeWithConstraints(ATTR_FIELDS)
+            // @fields: OPTIONAL at the schema tier (#342). The real rule is
+            // @fields XOR @expr — an index keys off plain columns or a key
+            // expression, never both — and an exclusive-or cannot be expressed as a
+            // per-attr required flag, so ValidationPhase enforces it
+            // (ERR_INVALID_INDEX). Declaring it required here fired BEFORE that rule
+            // and made an expression index undeclarable. The db provider adds the
+            // physical attrs (@orders / @expr / @where / @using) via registry.extendType.
+            def.optionalAttributeWithConstraints(ATTR_FIELDS)
                .ofType(StringAttribute.SUBTYPE_STRING).asArray();
 
             def.optionalAttributeWithConstraints(ATTR_DESCRIPTION)

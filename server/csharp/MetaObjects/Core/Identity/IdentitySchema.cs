@@ -28,9 +28,24 @@ public static class IdentitySchema
             Description: "Primary-key value generation strategy: 'increment' (auto-increment), 'uuid', or 'assigned' (caller-supplied)."),
     ];
 
+    /// <summary>
+    /// @fields on identity.secondary is OPTIONAL, unlike primary/reference (#342). The
+    /// real rule is @fields XOR @expr — a unique index may key off a raw expression
+    /// instead of columns — and an exclusive-or is not expressible as a per-attr
+    /// Required flag, so ValidationPasses.ValidateIndexLookupFields enforces it
+    /// (ERR_INVALID_INDEX). Required:true here fired first and made an expression
+    /// index undeclarable.
+    /// </summary>
+    private static readonly AttrSchema SecondaryFieldsAttr = new AttrSchema(
+        Name: IdentityConstants.IDENTITY_ATTR_FIELDS,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+        Required: false,
+        IsArray: true,
+        Description: "The field name(s) composing this identity. Single-element for a simple unique index, multiple for a composite unique constraint. Required UNLESS @expr is present — a unique index keys off plain columns (@fields) or a key expression (@expr), never both; declaring both is ERR_INVALID_INDEX.");
+
     private static readonly IReadOnlyList<AttrSchema> SecondaryIdentityAttrs =
     [
-        IdentityFieldsAttr,
+        SecondaryFieldsAttr,
         // NOTE: @unique is REMOVED from identity.secondary. identity.secondary is
         // always a unique constraint by definition. Non-unique indexes are expressed
         // via index.lookup — the dedicated type for query-performance indexes.

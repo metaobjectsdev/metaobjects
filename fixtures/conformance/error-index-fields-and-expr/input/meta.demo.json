@@ -1,0 +1,27 @@
+{
+  "metadata.root": {
+    "package": "demo::indexing",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Notification",
+          "children": [
+            { "source.rdb": { "@table": "notifications" } },
+            { "field.string": { "name": "id", "@required": true } },
+            { "field.timestamp": { "name": "deliveredAt" } },
+            { "field.string": { "name": "payload" } },
+            { "identity.primary": { "name": "pk", "@fields": ["id"] } },
+
+            {
+              "index.lookup": {
+                "name": "bothIdx",
+                "@fields": ["deliveredAt"],
+                "@expr": "(payload->>'device_id')"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
