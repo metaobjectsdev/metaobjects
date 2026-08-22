@@ -195,10 +195,28 @@ version FAILS by design — skip what's done, never force.
 - About to `bun publish` to `latest` without human confirmation → stop.
 - About to push the site repo without confirming the live deploy → stop.
 
-## Future improvement (research-backed, not yet adopted)
-Best practice for npm/TS monorepos is **Changesets** (per-PR intent files → a
-reviewable "Version Packages" PR → automated bump + CHANGELOG) on a GitHub Action,
-plus **OIDC Trusted Publishing** (short-lived tokens + automatic provenance, no
-long-lived `NPM_TOKEN`). Caveat: OIDC can't drive `npm dist-tag` yet, so RC→promote
-still needs a token. Adopting these would replace Phases 1/3/7/9's manual steps;
-the preflight gate, smoke test, and stop-and-confirm in this skill stay.
+## OIDC Trusted Publishing — now DATED, not optional
+npm removes **direct publishing from 2FA-bypass tokens around January 2027**
+([changelog](https://github.blog/changelog/2026-07-31-restricting-npm-bypass-2fa-granular-access-tokens/));
+since 2026-07-31 such tokens already cannot change package access — including
+**deleting a dist-tag**, which breaks Phase 9's `npm dist-tag rm` and needs an
+interactive-2FA session. The replacement is **OIDC Trusted Publishing** via
+`publish-npm.yml` (which exists), the same mechanism `publish-csharp.yml` already
+uses for NuGet; the remaining work is a trusted-publisher registration per package
+on npmjs.com. Caveat: OIDC can't drive `npm dist-tag` yet, so RC→promote still needs
+a token.
+
+Separately, and still genuinely optional: **Changesets** (per-PR intent files → a
+reviewable "Version Packages" PR → automated bump + CHANGELOG). Adopting it would
+replace Phases 1/3/7's manual steps; the preflight gate, smoke test, and
+stop-and-confirm in this skill stay.
+
+## Phase 0 addendum — check that you CAN publish
+`scripts/release.mjs` now runs `npm whoami` in preflight. Do the same by hand if you
+are publishing manually, and use an **Automation / bypass-2FA** token: a "Publish"
+token passes `whoami`, shows `read-write`, passes `--dry-run`, and then `EOTP`s on
+every write, at which point `bun publish` falls back to a browser flow that cannot
+complete non-interactively (`--otp=` is ignored; a code must be piped on stdin).
+Verify BEFORE the version bump — the bump is committed and pushed well before the
+first publish, so a dead credential strands the cut with other registries already
+shipped. See `docs/RELEASING.md` → Prerequisites.

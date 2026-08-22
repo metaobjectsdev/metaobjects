@@ -290,8 +290,40 @@ diff explained.
   resolve uniformly at publish time — don't move it.
 - npm auth as an owner of the `metaobjectsdev` org. The account has 2FA **auth-and-writes**, so for
   an unattended publish use a **Granular/Automation token with the bypass-2FA option**, scoped
-  read+write to `@metaobjectsdev`, in `~/.npmrc` (`//registry.npmjs.org/:_authToken=...`). Revoke
-  it after the release. (Without it, every `bun publish` prompts for an OTP.)
+  read+write to `@metaobjectsdev`, in `~/.npmrc` (`//registry.npmjs.org/:_authToken=...`).
+
+  > **The token TYPE is the whole game, and a wrong one looks right.** A classic **"Publish"**
+  > token authenticates fine — `npm whoami` returns your username, `npm access list packages`
+  > shows `read-write`, and `bun publish --dry-run` passes — and then returns **`EOTP`** on
+  > every actual write. Worse, `bun publish` defaults to `--auth-type=web`, so it falls back to
+  > an interactive **browser** flow (`https://www.npmjs.com/auth/cli/…`) that cannot complete
+  > in CI or any non-interactive shell; `--otp=` is silently IGNORED (bun prompts `Enter OTP:`
+  > regardless, so a code must be piped on **stdin**). And if the account's 2FA is a security
+  > key rather than TOTP, there is no 6-digit code to supply at all. Use **Classic → Automation**
+  > (or a granular token with 2FA-bypass enabled). Verify before you need it, with a reversible
+  > write rather than a read:
+  > ```bash
+  > npm dist-tag add @metaobjectsdev/cli@<current-latest> auth-probe   # must SUCCEED
+  > npm dist-tag rm  @metaobjectsdev/cli auth-probe
+  > ```
+  > **Note the second command now FAILS with a bypass-2FA token** (`403`, "Granular access
+  > tokens that bypass two-factor authentication may not perform this action"). Since
+  > 2026-07-31 such tokens may still *publish* but may not change package access — including
+  > **deleting a dist-tag**. So the probe above is only half-reversible: prefer probing on a
+  > throwaway package, or accept that removing the tag needs an interactive-2FA session.
+  > `scripts/release.mjs` now runs `npm whoami` in phase 0 so a dead credential is caught
+  > BEFORE the version bump is committed, not after other registries have shipped.
+
+  Revoking the token after each release is a deliberate trade — it is also why the credential
+  is reliably dead at the start of the next cut. Whichever you choose, do it knowingly.
+
+  > **Deadline: npm removes direct publishing from 2FA-bypass tokens around January 2027**
+  > ([changelog](https://github.blog/changelog/2026-07-31-restricting-npm-bypass-2fa-granular-access-tokens/)).
+  > The replacement is **Trusted Publishing (OIDC)** — the same mechanism `publish-csharp.yml`
+  > already uses for NuGet — via `publish-npm.yml`, which exists and needs a trusted-publisher
+  > registration per package on npmjs.com. This is a dated requirement, not the "future
+  > improvement (research-backed, not yet adopted)" that `.claude/skills/releasing/SKILL.md`
+  > still files it under.
 - `bun publish` does **not** apply `publishConfig` field overrides (bin/main/exports) — only
   `access`/`tag` (oven-sh/bun#19205). So fields like `bin` must be correct at the top level, not
   swapped via `publishConfig`.
