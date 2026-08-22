@@ -1,0 +1,51 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "object.entity": {
+          "name": "BaseEntity",
+          "abstract": true,
+          "children": [
+            {
+              "field.string": {
+                "name": "issuedCurrency",
+                "@mutability": "readOnly"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Loosener",
+          "extends": "demo::BaseEntity",
+          "children": [
+            {
+              "source.rdb": {
+                "@table": "looseners"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "issuedCurrency",
+                "@mutability": "writeOnce"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": "id"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_MUTABILITY_DOWNGRADE",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.demo.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[1]['object.entity'].children[2]['field.string']"
+      }
+    }
+  ],
+  "warnings": []
+}
