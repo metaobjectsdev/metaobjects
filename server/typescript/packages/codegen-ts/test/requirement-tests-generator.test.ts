@@ -36,7 +36,7 @@ const MODEL = {
           "@level": 3,
           "@status": "live",
           "@statement": "Links are shareable.",
-          "@violation": "an opaque id in the URL",
+          "@counterexample": "an opaque id in the URL",
           children: [
             {
               "requirement.functional": {
@@ -44,7 +44,7 @@ const MODEL = {
                 "@level": 4,
                 "@status": "live",
                 "@statement": "A council has a human-readable slug.",
-                "@violation": "a council with no slug",
+                "@counterexample": "a council with no slug",
                 "@implementedBy": ["Council", "Council.slug", "Council.slug.display"],
               },
             },

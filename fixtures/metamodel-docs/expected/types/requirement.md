@@ -20,13 +20,13 @@ How the system is built, applied uniformly across the model. Its check is UNIVER
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
+| `@counterexample` | string | yes |  |  | — | What breaking it looks like — the node that would contradict it. A STATIC falsifiability test, not a state. This is what makes universality checkable. Renamed from @violation in 0.25.0, which read as a status. |
 | `@disposition` | string | no |  | `accepted`, `deferred` | — | As on requirement.functional. On an architectural requirement, accepted is the common and important case: a policy that is genuinely not universal, where the exceptions are known and tolerated, is more honest as partial+accepted than as a live claim nobody audits. |
 | `@implementedBy` | string[] | no |  |  | — | FQN references to the nodes applying this policy. High fan-out is normal and expected: one uuid-primary-key requirement is claimed by every entity. |
 | `@level` | int | no |  |  | — | OPTIONAL here, unlike on a functional requirement where it is required. ABSENT means a flat, object-independent policy that may reference the model directly — the original and still the default form. PRESENT means this node sits in a levelled tree, and then the same rules as functional apply: nesting must agree with the level, and only L4/L5 may carry @implementedBy. Levelling is opt-in so that adding a taxonomy on top of existing flat policies does not invalidate them. |
 | `@statement` | string | yes |  |  | — | The policy, in one sentence. |
 | `@status` | string | yes |  | `planned`, `live`, `partial` | — | As on requirement.functional. A live or partial architectural requirement claimed by NOTHING is an error: a policy declared and applied to nothing. A planned one is exempt from that check — it is not applied yet by definition. |
 | `@trackedBy` | string[] | no |  |  | — | As on requirement.functional. Issue or ticket references for outstanding work; free-form, not resolved. |
-| `@violation` | string | yes |  |  | — | What breaking it looks like — the node that would contradict it. This is what makes universality checkable. |
 
 **Allowed children**
 
@@ -42,13 +42,13 @@ What the product does for a user, stated as one violable claim. Its check is EXI
 
 | Attribute | Type | Required | Default | Allowed values | Provider | Description |
 | --- | --- | --- | --- | --- | --- | --- |
+| `@counterexample` | string | yes |  |  | — | What breaking it looks like, in one sentence — a STATIC falsifiability test, authored once, never a state. A requirement MUST be violable: 'every entity has a uuid primary key' is (point at one with a composite string key); 'things are persisted' is not, and is a description rather than a requirement. Renamed from @violation in 0.25.0, which read as a status. |
 | `@disposition` | string | no |  | `accepted`, `deferred` | — | What has been DECIDED about outstanding work — a different question from whether the work is done, which is what @status answers. accepted: the gap is understood and deliberately not being closed. deferred: it will be closed, but not now. ABSENT MEANS UNDECIDED, which is a real and useful state — it is what an unreviewed gap looks like, and it is the one a review should be able to find. Meaningful on planned and partial only; on a status with no outstanding work it is a WARNING. Deliberately NOT a workflow vocabulary: which sprint, who owns it and whether it is in progress belong in the tracker named by @trackedBy, because two systems holding that answer will drift and only one of them is refreshed daily. |
 | `@implementedBy` | string[] | no |  |  | — | FQN references to the model nodes realising this requirement. Legal on level 4 (an object) and level 5 (a field, view or identity) only; an organisational level carrying it is ERR_REQUIREMENT_LINK_ABOVE_FLOOR. Many-to-many by construction — several requirements may name the same node. |
 | `@level` | int | yes |  |  | — | 1 solution, 2 segment, 3 service, 4 object, 5 member. L1-L3 are levels of abstraction and ownership in the problem domain, NOT of code structure. Nesting depth must agree with it; skipping a level is legal, going back up is not. |
 | `@statement` | string | yes |  |  | — | What the capability is, in one sentence. |
 | `@status` | string | yes |  | `planned`, `live`, `partial` | — | planned intended but not built yet; live implemented and in use; partial implemented with known gaps. A requirement is PRESCRIPTIVE — it states what SHOULD happen and is never a journal of what happened — so a capability that no longer applies is DELETED, not annotated as retired; the record of it having existed belongs to version control and to notes on the entries that survive. A dangling @implementedBy is an ERROR on live/partial (the model moved, the requirement is stale) and ALLOWED on planned, where the nodes do not exist YET. A planned requirement also never contributes to object coverage: planning a capability must not silence the warning that nothing implements it. |
 | `@trackedBy` | string[] | no |  |  | — | Issue or ticket references for outstanding work — a URL, an owner/repo#123 shorthand, or a tracker key. Free-form and NOT resolved by verify, which does not reach the network; nothing here is checked to exist. Its job is to stop a deferred gap becoming invisible, so verify warns when a deferred requirement names no ticket. Also the right place to link the ticket that a planned requirement will be built under. |
-| `@violation` | string | yes |  |  | — | What breaking it looks like, in one sentence. A requirement MUST be violable: 'every entity has a uuid primary key' is (point at one with a composite string key); 'things are persisted' is not, and is a description rather than a requirement. |
 
 **Allowed children**
 

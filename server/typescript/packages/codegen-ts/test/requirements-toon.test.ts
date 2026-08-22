@@ -21,7 +21,7 @@ const row = (over: Partial<RequirementRow> & Pick<RequirementRow, "path" | "dept
   disposition: undefined,
   trackedBy: [],
   statement: undefined,
-  violation: undefined,
+  counterexample: undefined,
   description: undefined,
   implementedBy: [],
   claimedConcerns: [],

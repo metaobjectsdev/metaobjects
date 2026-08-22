@@ -86,7 +86,7 @@ public abstract class MetaRequirement extends MetaData {
     public static final String ATTR_STATEMENT = "statement";
 
     /** What breaking it looks like — a requirement MUST be violable. */
-    public static final String ATTR_VIOLATION = "violation";
+    public static final String ATTR_COUNTEREXAMPLE = "counterexample";
 
     /** FQN references to the model nodes realising this requirement. */
     public static final String ATTR_IMPLEMENTED_BY = "implementedBy";
@@ -232,8 +232,8 @@ public abstract class MetaRequirement extends MetaData {
     }
 
     /** What breaking it looks like, in one sentence, or {@code null} when absent. */
-    public String getViolation() {
-        return hasMetaAttr(ATTR_VIOLATION) ? getMetaAttr(ATTR_VIOLATION).getValueAsString() : null;
+    public String getCounterexample() {
+        return hasMetaAttr(ATTR_COUNTEREXAMPLE) ? getMetaAttr(ATTR_COUNTEREXAMPLE).getValueAsString() : null;
     }
 
     /** FQN references to the model nodes realising this requirement; empty when absent. */

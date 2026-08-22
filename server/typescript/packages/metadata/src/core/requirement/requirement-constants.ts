@@ -34,7 +34,7 @@ export const REQUIREMENT_ATTR_STATUS = "status";
 export const REQUIREMENT_ATTR_DISPOSITION = "disposition";
 export const REQUIREMENT_ATTR_TRACKED_BY = "trackedBy";
 export const REQUIREMENT_ATTR_STATEMENT = "statement";
-export const REQUIREMENT_ATTR_VIOLATION = "violation";
+export const REQUIREMENT_ATTR_COUNTEREXAMPLE = "counterexample";
 export const REQUIREMENT_ATTR_IMPLEMENTED_BY = "implementedBy";
 
 // ---------------------------------------------------------------------------

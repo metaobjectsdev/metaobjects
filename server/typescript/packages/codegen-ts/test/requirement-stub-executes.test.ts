@@ -23,7 +23,7 @@ function args(status: string): RequirementTestArgs {
     },
     concern: "object.entity",
     statement: "A council has a human-readable slug.",
-    violation: "a council with no slug",
+    counterexample: "a council with no slug",
     targets: [],
   };
 }

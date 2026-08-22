@@ -71,7 +71,7 @@ const L4 = {
   "@level": 4,
   "@status": "live",
   "@statement": "An order is a durable record.",
-  "@violation": "An order vanishes on restart.",
+  "@counterexample": "An order vanishes on restart.",
 };
 
 describe("meta verify — requirements exit-code contract", () => {
@@ -150,7 +150,7 @@ describe("meta verify — requirements exit-code contract", () => {
           name: "uuidPks",
           "@status": "live",
           "@statement": "Every entity has a uuid primary key.",
-          "@violation": "An entity keyed by a composite string.",
+          "@counterexample": "An entity keyed by a composite string.",
         },
         "architectural",
       ),

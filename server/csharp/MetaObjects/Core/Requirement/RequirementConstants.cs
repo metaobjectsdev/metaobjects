@@ -45,7 +45,7 @@ public static class RequirementConstants
     public const string REQUIREMENT_ATTR_DISPOSITION = "disposition";
     public const string REQUIREMENT_ATTR_TRACKED_BY = "trackedBy";
     public const string REQUIREMENT_ATTR_STATEMENT = "statement";
-    public const string REQUIREMENT_ATTR_VIOLATION = "violation";
+    public const string REQUIREMENT_ATTR_COUNTEREXAMPLE = "counterexample";
     public const string REQUIREMENT_ATTR_IMPLEMENTED_BY = "implementedBy";
 
     // -----------------------------------------------------------------------

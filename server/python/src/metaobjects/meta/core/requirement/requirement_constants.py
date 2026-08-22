@@ -29,7 +29,7 @@ REQUIREMENT_ATTR_STATUS = "status"
 REQUIREMENT_ATTR_DISPOSITION = "disposition"
 REQUIREMENT_ATTR_TRACKED_BY = "trackedBy"
 REQUIREMENT_ATTR_STATEMENT = "statement"
-REQUIREMENT_ATTR_VIOLATION = "violation"
+REQUIREMENT_ATTR_COUNTEREXAMPLE = "counterexample"
 REQUIREMENT_ATTR_IMPLEMENTED_BY = "implementedBy"
 
 # ---------------------------------------------------------------------------

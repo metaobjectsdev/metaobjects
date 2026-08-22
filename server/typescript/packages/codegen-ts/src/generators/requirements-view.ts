@@ -25,7 +25,7 @@
 import {
   DOC_ATTR_DESCRIPTION,
   REQUIREMENT_ATTR_STATEMENT,
-  REQUIREMENT_ATTR_VIOLATION,
+  REQUIREMENT_ATTR_COUNTEREXAMPLE,
 } from "@metaobjectsdev/metadata";
 import type { MetaData } from "@metaobjectsdev/metadata";
 import { walkRequirements } from "../requirement-walk.js";
@@ -44,7 +44,7 @@ export interface RequirementRow {
   readonly disposition: string | undefined;
   readonly trackedBy: readonly string[];
   readonly statement: string | undefined;
-  readonly violation: string | undefined;
+  readonly counterexample: string | undefined;
   /** Chartered user-facing. `notes` has no counterpart here, by design. */
   readonly description: string | undefined;
   /** `@implementedBy` exactly as authored — provenance a reader can grep for. */
@@ -84,7 +84,7 @@ export function requirementRows(root: MetaData): RequirementRow[] {
       disposition: node.disposition(),
       trackedBy: node.trackedBy(),
       statement: stringAttr(node, REQUIREMENT_ATTR_STATEMENT),
-      violation: stringAttr(node, REQUIREMENT_ATTR_VIOLATION),
+      counterexample: stringAttr(node, REQUIREMENT_ATTR_COUNTEREXAMPLE),
       description: stringAttr(node, DOC_ATTR_DESCRIPTION),
       implementedBy: node.implementedBy(),
       claimedConcerns: [...new Set(targets.map((t) => t.concern))],

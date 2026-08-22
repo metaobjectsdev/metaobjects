@@ -76,7 +76,7 @@ const L4 = {
   "@level": 4,
   "@status": "live",
   "@statement": "The assistant greets the user by name.",
-  "@violation": "A greeting addressed to nobody.",
+  "@counterexample": "A greeting addressed to nobody.",
 };
 
 describe("@implementedBy — templates are claimable model nodes", () => {
@@ -97,7 +97,7 @@ describe("@implementedBy — templates are claimable model nodes", () => {
           name: "promptsDeclareTheirPayload",
           "@status": "live",
           "@statement": "Every declared prompt names the payload it renders.",
-          "@violation": "A prompt whose fields nobody can diff.",
+          "@counterexample": "A prompt whose fields nobody can diff.",
           "@implementedBy": ["acme::shop::greeting"],
         },
         "architectural",
@@ -130,7 +130,7 @@ const L5 = {
   "@level": 5,
   "@status": "live",
   "@statement": "The order price is money and says so.",
-  "@violation": "A price summed with a price of another currency.",
+  "@counterexample": "A price summed with a price of another currency.",
 };
 
 describe("@implementedBy — L5 member grains", () => {

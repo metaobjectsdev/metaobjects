@@ -49,7 +49,7 @@ name the remedy; this table exists so you can act on one without re-deriving the
 | `ERR_REQUIREMENT_ARCH_NO_IMPLEMENTERS` | a `live`/`partial` `requirement.architectural` that nothing implements | a policy declared and applied to nothing. Claim the nodes it governs, or drop it to `planned` — which is exempt, because it is not applied yet by definition. |
 | `ERR_REQUIREMENT_LEVEL_NESTING` | a node's `@level` disagrees with the level of the parent it nests under | nesting IS the hierarchy. Move the node to the right parent rather than editing the level to match where it happens to sit. |
 | `ERR_REQUIREMENT_BAD_LEVEL` | `@level` is not an integer inside the allowed range | levels are L1–L5 and nothing else. |
-| `ERR_MISSING_REQUIRED_ATTR` | a required attr is absent | `@statement`, `@status` and `@violation` are required on both subtypes; `@level` is required on `functional` and optional on `architectural`. |
+| `ERR_MISSING_REQUIRED_ATTR` | a required attr is absent | `@statement`, `@status` and `@counterexample` are required on both subtypes; `@level` is required on `functional` and optional on `architectural`. |
 | `ERR_BAD_ATTR_VALUE` | a closed-enum attr has an unknown value | `@status` and `@disposition` are enforced by the LOADER, so a typo fails the load in every port rather than passing in some. |
 
 **A note on the L4/L5 pair.** They are enforced at the same site and fail for opposite

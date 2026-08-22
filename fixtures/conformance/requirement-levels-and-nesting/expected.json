@@ -5,45 +5,46 @@
       {
         "requirement.functional": {
           "name": "Storefront",
+          "@counterexample": "Nothing can be sold",
           "@level": 1,
           "@statement": "The storefront solution",
           "@status": "live",
-          "@violation": "Nothing can be sold",
           "children": [
             {
               "requirement.functional": {
                 "name": "OrderService",
+                "@counterexample": "A payment attempted against an order that was never stored",
                 "@level": 3,
                 "@statement": "Every placed order is recorded before payment is attempted",
                 "@status": "live",
-                "@violation": "A payment attempted against an order that was never stored",
                 "children": [
                   {
                     "requirement.functional": {
                       "name": "OrderRecord",
+                      "@counterexample": "An order row that cannot say who placed it",
                       "@implementedBy": [
                         "acme::shop::Order"
                       ],
                       "@level": 4,
                       "@statement": "An order records what was bought and for how much",
                       "@status": "live",
-                      "@violation": "An order row that cannot say who placed it",
                       "children": [
                         {
                           "requirement.functional": {
                             "name": "TranscribableReference",
+                            "@counterexample": "A reference that is a raw uuid",
                             "@implementedBy": [
                               "acme::shop::Order.reference"
                             ],
                             "@level": 5,
                             "@statement": "An order carries a reference a customer can read down a phone line",
-                            "@status": "live",
-                            "@violation": "A reference that is a raw uuid"
+                            "@status": "live"
                           }
                         },
                         {
                           "requirement.functional": {
                             "name": "OrderExpiry",
+                            "@counterexample": "Stock held indefinitely against an order nobody paid for",
                             "@implementedBy": [
                               "acme::shop::Order.expiresAt"
                             ],
@@ -52,8 +53,7 @@
                             "@status": "planned",
                             "@trackedBy": [
                               "acme/shop#412"
-                            ],
-                            "@violation": "Stock held indefinitely against an order nobody paid for"
+                            ]
                           }
                         }
                       ]
@@ -68,20 +68,20 @@
       {
         "requirement.architectural": {
           "name": "UuidPrimaryKeys",
+          "@counterexample": "An entity keyed by a composite string",
           "@implementedBy": [
             "acme::shop::Order"
           ],
           "@statement": "Every entity has a uuid primary key",
-          "@status": "live",
-          "@violation": "An entity keyed by a composite string"
+          "@status": "live"
         }
       },
       {
         "requirement.architectural": {
           "name": "SoftDeleteEverywhere",
+          "@counterexample": "A hard delete on a table that promised its rows were recoverable",
           "@statement": "Every table carries a soft-delete flag rather than deleting rows",
-          "@status": "planned",
-          "@violation": "A hard delete on a table that promised its rows were recoverable"
+          "@status": "planned"
         }
       },
       {

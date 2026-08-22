@@ -151,23 +151,23 @@ will do.
       { "requirement.functional": {
           "name": "commerce", "@level": 1, "@status": "live",
           "@statement": "The commerce solution",
-          "@violation": "There is no way to buy anything",
+          "@counterexample": "There is no way to buy anything",
           "children": [
             { "requirement.functional": {
                 "name": "orders", "@level": 3, "@status": "live",
                 "@statement": "Every placed order is recorded before payment is attempted",
-                "@violation": "A payment attempted against an order that was never stored",
+                "@counterexample": "A payment attempted against an order that was never stored",
                 "children": [
                   { "requirement.functional": {
                       "name": "orderRecord", "@level": 4, "@status": "live",
                       "@statement": "An order records what was bought, by whom, and for how much",
-                      "@violation": "An order row that cannot say who placed it",
+                      "@counterexample": "An order row that cannot say who placed it",
                       "@implementedBy": ["acme::shop::Order"],
                       "children": [
                         { "requirement.functional": {
                             "name": "humanReference", "@level": 5, "@status": "live",
                             "@statement": "An order carries a reference a customer can read down a phone line",
-                            "@violation": "A reference that is a raw uuid",
+                            "@counterexample": "A reference that is a raw uuid",
                             "@implementedBy": ["acme::shop::Order.reference"]
                         }}
                       ]
@@ -180,7 +180,7 @@ will do.
       { "requirement.architectural": {
           "name": "uuidPrimaryKeys", "@status": "live",
           "@statement": "Every entity has a uuid primary key",
-          "@violation": "An entity keyed by a composite string",
+          "@counterexample": "An entity keyed by a composite string",
           "@implementedBy": ["acme::shop::Order", "acme::shop::Customer"]
       }}
     ]
@@ -195,7 +195,7 @@ the levels, not enumerate them. What it may not do is stay level or go back up.
 | `@level` | functional **required**, architectural *optional* | `1`–`5`. Absent on architectural means a flat policy; present opts it into a tree and the same nesting and link-floor rules apply. |
 | `@status` | both, **required** | Closed enum — see below. |
 | `@statement` | both, **required** | What the capability is, in one sentence. |
-| `@violation` | both, **required** | What breaking it looks like, in one sentence. |
+| `@counterexample` | both, **required** | What breaking it looks like, in one sentence. |
 | `@implementedBy` | L4, L5, architectural | FQN references. An error above the link floor. |
 | `title` | any node | Common doc attr. A short **noun-phrase** label — `name` is an identifier, this is what an index shows. |
 | `description` | any node | Common doc attr, narrowed here by `@statement` already being the claim: use it for **scope** — what the requirement covers, what it deliberately does not, which sibling owns the rest. A `description` that paraphrases the `@statement` is padding; leave it off instead. |

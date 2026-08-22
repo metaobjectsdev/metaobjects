@@ -32,10 +32,10 @@ public static class RequirementSchema
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: true);
 
-    /// <summary>@violation — what breaking it looks like. Required on both: a requirement
+    /// <summary>@counterexample — what breaking it looks like. Required on both: a requirement
     /// that cannot be violated is a description, not a requirement.</summary>
-    private static readonly AttrSchema ViolationAttr = new AttrSchema(
-        Name: RequirementConstants.REQUIREMENT_ATTR_VIOLATION,
+    private static readonly AttrSchema CounterexampleAttr = new AttrSchema(
+        Name: RequirementConstants.REQUIREMENT_ATTR_COUNTEREXAMPLE,
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: true);
 
@@ -88,7 +88,7 @@ public static class RequirementSchema
         DispositionAttr,
         TrackedByAttr,
         StatementAttr,
-        ViolationAttr,
+        CounterexampleAttr,
         ImplementedByAttr,
     ];
 
@@ -99,7 +99,7 @@ public static class RequirementSchema
         DispositionAttr,
         TrackedByAttr,
         StatementAttr,
-        ViolationAttr,
+        CounterexampleAttr,
         ImplementedByAttr,
     ];
 

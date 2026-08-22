@@ -43,7 +43,7 @@ const MODEL = {
           "@level": 2,
           "@status": "live",
           "@statement": "A shopper can pay for a basket.",
-          "@violation": "A basket that cannot be paid for.",
+          "@counterexample": "A basket that cannot be paid for.",
           "@description": "Covers the payment path, not fulfilment.",
           "@notes": NOTES_SENTINEL,
           children: [
@@ -53,7 +53,7 @@ const MODEL = {
                 "@level": 3,
                 "@status": "live",
                 "@statement": "Payment is captured exactly once.",
-                "@violation": "A basket charged twice.",
+                "@counterexample": "A basket charged twice.",
                 children: [
                   {
                     "requirement.functional": {
@@ -61,7 +61,7 @@ const MODEL = {
                       "@level": 4,
                       "@status": "partial",
                       "@statement": "An order records what was captured.",
-                      "@violation": "An order that cannot say what was charged.",
+                      "@counterexample": "An order that cannot say what was charged.",
                       "@implementedBy": ["acme::shop::Order"],
                       "@trackedBy": ["#412"],
                       "@disposition": "accepted",
@@ -128,7 +128,7 @@ describe("requirementRows — the docs projection", () => {
     expect(capture?.status).toBe("partial");
     expect(capture?.subType).toBe("functional");
     expect(capture?.statement).toBe("An order records what was captured.");
-    expect(capture?.violation).toBe("An order that cannot say what was charged.");
+    expect(capture?.counterexample).toBe("An order that cannot say what was charged.");
     expect(capture?.disposition).toBe("accepted");
     expect(capture?.trackedBy).toEqual(["#412"]);
   });

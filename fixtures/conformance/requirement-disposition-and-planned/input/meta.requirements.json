@@ -7,7 +7,7 @@
           "name": "MoneyIsExactMinorUnits",
           "@status": "live",
           "@statement": "Monetary amounts are stored as exact integer minor units, never as floating point",
-          "@violation": "A cent that disappears when a total is split three ways",
+          "@counterexample": "A cent that disappears when a total is split three ways",
           "@implementedBy": ["acme::shop::Invoice"]
         }
       },
@@ -17,7 +17,7 @@
           "@level": 1,
           "@status": "partial",
           "@statement": "The system protects the data it holds and the actions it permits",
-          "@violation": "A record readable by someone with no claim to it",
+          "@counterexample": "A record readable by someone with no claim to it",
           "children": [
             {
               "requirement.architectural": {
@@ -25,7 +25,7 @@
                 "@level": 2,
                 "@status": "partial",
                 "@statement": "Stored data is unreadable to anyone without an authorised key or session",
-                "@violation": "A database copy that reads in plain text",
+                "@counterexample": "A database copy that reads in plain text",
                 "children": [
                   {
                     "requirement.architectural": {
@@ -33,7 +33,7 @@
                       "@level": 4,
                       "@status": "planned",
                       "@statement": "Invoice monetary columns are encrypted at rest, in the primary store and in every backup",
-                      "@violation": "A restored backup that opens in a text editor",
+                      "@counterexample": "A restored backup that opens in a text editor",
                       "@disposition": "deferred",
                       "@trackedBy": ["acme/platform#412"],
                       "@implementedBy": ["acme::shop::Invoice"]
@@ -51,7 +51,7 @@
           "@level": 1,
           "@status": "live",
           "@statement": "A customer is billed for what they bought and can see why",
-          "@violation": "A charge nobody can explain",
+          "@counterexample": "A charge nobody can explain",
           "children": [
             {
               "requirement.functional": {
@@ -59,7 +59,7 @@
                 "@level": 4,
                 "@status": "live",
                 "@statement": "An invoice records its own reference and total",
-                "@violation": "A charge with no invoice behind it",
+                "@counterexample": "A charge with no invoice behind it",
                 "@implementedBy": ["acme::shop::Invoice"],
                 "children": [
                   {
@@ -68,7 +68,7 @@
                       "@level": 5,
                       "@status": "partial",
                       "@statement": "An invoice reference can be read down a phone line without ambiguity",
-                      "@violation": "A reference where a support agent cannot tell O from 0",
+                      "@counterexample": "A reference where a support agent cannot tell O from 0",
                       "@disposition": "accepted",
                       "@implementedBy": ["acme::shop::Invoice.reference"]
                     }
@@ -79,7 +79,7 @@
                       "@level": 5,
                       "@status": "planned",
                       "@statement": "An invoice total declares the currency it is denominated in",
-                      "@violation": "Two totals in different currencies summed as one",
+                      "@counterexample": "Two totals in different currencies summed as one",
                       "@trackedBy": ["acme/platform#older-than-time", "PLAT-77"],
                       "@implementedBy": ["acme::shop::Invoice.totalCents"]
                     }

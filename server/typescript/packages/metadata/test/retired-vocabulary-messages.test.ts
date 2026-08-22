@@ -24,7 +24,7 @@ const requirement = (extra: Record<string, unknown>) => ({
           "@level": 4,
           "@status": "live",
           "@statement": "An order records what was bought.",
-          "@violation": "An order that cannot say what was bought.",
+          "@counterexample": "An order that cannot say what was bought.",
           ...extra,
         },
       },

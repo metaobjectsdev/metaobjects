@@ -5,33 +5,34 @@
       {
         "requirement.architectural": {
           "name": "MoneyIsExactMinorUnits",
+          "@counterexample": "A cent that disappears when a total is split three ways",
           "@implementedBy": [
             "acme::shop::Invoice"
           ],
           "@statement": "Monetary amounts are stored as exact integer minor units, never as floating point",
-          "@status": "live",
-          "@violation": "A cent that disappears when a total is split three ways"
+          "@status": "live"
         }
       },
       {
         "requirement.architectural": {
           "name": "Security",
+          "@counterexample": "A record readable by someone with no claim to it",
           "@level": 1,
           "@statement": "The system protects the data it holds and the actions it permits",
           "@status": "partial",
-          "@violation": "A record readable by someone with no claim to it",
           "children": [
             {
               "requirement.architectural": {
                 "name": "Confidentiality",
+                "@counterexample": "A database copy that reads in plain text",
                 "@level": 2,
                 "@statement": "Stored data is unreadable to anyone without an authorised key or session",
                 "@status": "partial",
-                "@violation": "A database copy that reads in plain text",
                 "children": [
                   {
                     "requirement.architectural": {
                       "name": "InvoiceTotalsAreEncryptedAtRest",
+                      "@counterexample": "A restored backup that opens in a text editor",
                       "@disposition": "deferred",
                       "@implementedBy": [
                         "acme::shop::Invoice"
@@ -41,8 +42,7 @@
                       "@status": "planned",
                       "@trackedBy": [
                         "acme/platform#412"
-                      ],
-                      "@violation": "A restored backup that opens in a text editor"
+                      ]
                     }
                   }
                 ]
@@ -54,38 +54,39 @@
       {
         "requirement.functional": {
           "name": "Billing",
+          "@counterexample": "A charge nobody can explain",
           "@level": 1,
           "@statement": "A customer is billed for what they bought and can see why",
           "@status": "live",
-          "@violation": "A charge nobody can explain",
           "children": [
             {
               "requirement.functional": {
                 "name": "InvoiceRecord",
+                "@counterexample": "A charge with no invoice behind it",
                 "@implementedBy": [
                   "acme::shop::Invoice"
                 ],
                 "@level": 4,
                 "@statement": "An invoice records its own reference and total",
                 "@status": "live",
-                "@violation": "A charge with no invoice behind it",
                 "children": [
                   {
                     "requirement.functional": {
                       "name": "ReferenceIsHumanReadable",
+                      "@counterexample": "A reference where a support agent cannot tell O from 0",
                       "@disposition": "accepted",
                       "@implementedBy": [
                         "acme::shop::Invoice.reference"
                       ],
                       "@level": 5,
                       "@statement": "An invoice reference can be read down a phone line without ambiguity",
-                      "@status": "partial",
-                      "@violation": "A reference where a support agent cannot tell O from 0"
+                      "@status": "partial"
                     }
                   },
                   {
                     "requirement.functional": {
                       "name": "TotalsCarryTheirCurrency",
+                      "@counterexample": "Two totals in different currencies summed as one",
                       "@implementedBy": [
                         "acme::shop::Invoice.totalCents"
                       ],
@@ -95,8 +96,7 @@
                       "@trackedBy": [
                         "acme/platform#older-than-time",
                         "PLAT-77"
-                      ],
-                      "@violation": "Two totals in different currencies summed as one"
+                      ]
                     }
                   }
                 ]

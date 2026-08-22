@@ -8,7 +8,7 @@
           "@level": 1,
           "@status": "live",
           "@statement": "The storefront solution",
-          "@violation": "Nothing can be sold",
+          "@counterexample": "Nothing can be sold",
           "children": [
             {
               "requirement.functional": {
@@ -16,7 +16,7 @@
                 "@level": 3,
                 "@status": "live",
                 "@statement": "Every placed order is recorded before payment is attempted",
-                "@violation": "A payment attempted against an order that was never stored",
+                "@counterexample": "A payment attempted against an order that was never stored",
                 "children": [
                   {
                     "requirement.functional": {
@@ -24,7 +24,7 @@
                       "@level": 4,
                       "@status": "live",
                       "@statement": "An order records what was bought and for how much",
-                      "@violation": "An order row that cannot say who placed it",
+                      "@counterexample": "An order row that cannot say who placed it",
                       "@implementedBy": [
                         "acme::shop::Order"
                       ],
@@ -35,7 +35,7 @@
                             "@level": 5,
                             "@status": "live",
                             "@statement": "An order carries a reference a customer can read down a phone line",
-                            "@violation": "A reference that is a raw uuid",
+                            "@counterexample": "A reference that is a raw uuid",
                             "@implementedBy": [
                               "acme::shop::Order.reference"
                             ]
@@ -47,7 +47,7 @@
                             "@level": 5,
                             "@status": "planned",
                             "@statement": "An unpaid order carries the instant it stops being reservable",
-                            "@violation": "Stock held indefinitely against an order nobody paid for",
+                            "@counterexample": "Stock held indefinitely against an order nobody paid for",
                             "@trackedBy": [
                               "acme/shop#412"
                             ],
@@ -70,7 +70,7 @@
           "name": "UuidPrimaryKeys",
           "@status": "live",
           "@statement": "Every entity has a uuid primary key",
-          "@violation": "An entity keyed by a composite string",
+          "@counterexample": "An entity keyed by a composite string",
           "@implementedBy": [
             "acme::shop::Order"
           ]
@@ -81,7 +81,7 @@
           "name": "SoftDeleteEverywhere",
           "@status": "planned",
           "@statement": "Every table carries a soft-delete flag rather than deleting rows",
-          "@violation": "A hard delete on a table that promised its rows were recoverable"
+          "@counterexample": "A hard delete on a table that promised its rows were recoverable"
         }
       }
     ]

@@ -217,11 +217,11 @@ The only axis here whose hunt is not "hand-written code the metadata describes" 
 subtypes with opposite polarity: `requirement.functional` fails when NOTHING implements it
 (existence); `requirement.architectural` fails when something VIOLATES it (universality).
 
-- `requirement.functional` — `@statement`, `@status`, `@level`, `@violation` — hunt a
+- `requirement.functional` — `@statement`, `@status`, `@level`, `@counterexample` — hunt a
   `CAPABILITIES.md`, a features table in a README, a `docs/status/` tree, or a spreadsheet
   that lists what the system does and how done each item is. Prose goes stale silently; a
   declared requirement is a node the loader resolves and `meta verify` reports on.
-- `requirement.architectural` — `@statement`, `@status`, `@violation`, optional `@level` —
+- `requirement.architectural` — `@statement`, `@status`, `@counterexample`, optional `@level` —
   hunt a conventions doc, a lint rule with no enforcement, or an ADR whose ruling is
   restated in review comments ("we always do X"). `@level` is optional here on purpose:
   absent keeps the flat object-independent form, present opts into a taxonomy.

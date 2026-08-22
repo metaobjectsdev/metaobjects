@@ -78,21 +78,21 @@ const COVER = `
               level: 4
               status: live
               statement: "Orders are recorded"
-              violation: "An order placed and never stored"
+              counterexample: "An order placed and never stored"
               implementedBy: ["acme::shop::Order"]
           - requirement.functional:
               name: CustomerRecording
               level: 4
               status: live
               statement: "Customers are recorded"
-              violation: "A customer that cannot be found again"
+              counterexample: "A customer that cannot be found again"
               implementedBy: ["acme::shop::Customer"]
           - requirement.functional:
               name: BillingOrders
               level: 4
               status: live
               statement: "Billing orders are recorded"
-              violation: "An invoice with no order behind it"
+              counterexample: "An invoice with no order behind it"
               implementedBy: ["acme::billing::Order"]
 `;
 
@@ -115,14 +115,14 @@ metadata:
         level: 1
         status: live
         statement: "The commerce solution"
-        violation: "Nothing can be sold"
+        counterexample: "Nothing can be sold"
         children:
           - requirement.functional:
               name: OrderService
               level: 3
               status: live
               statement: "Every placed order is recorded before payment"
-              violation: "A payment against an order that was never stored"
+              counterexample: "A payment against an order that was never stored"
               children:
 ${indented}
 `;
@@ -215,7 +215,7 @@ describe("requirement.* — it is metadata", () => {
               level: 4
               status: abandonned
               statement: "Typo'd status"
-              violation: "The status says nothing"
+              counterexample: "The status says nothing"
               implementedBy: ["acme::shop::Order"]
 `), OTHER);
     expect(r.loadError ?? "").toContain("not one of the allowed values");
@@ -234,7 +234,7 @@ describe("requirement.* — it is metadata", () => {
               level: 4
               status: live
               statement: "s"
-              violation: "v"
+              counterexample: "v"
               madeUpAttr: "x"
 `), OTHER);
     expect(r.loadError ?? "").toMatch(/madeUpAttr|Unknown attribute|ERR_UNKNOWN_ATTR/);
@@ -275,7 +275,7 @@ describe("requirement.* — status x resolution matrix", () => {
               level: 4
               status: ${c.status}
               statement: "Under test"
-              violation: "The thing under test is broken"
+              counterexample: "The thing under test is broken"
               implementedBy: ["${c.ref}"]
 `), OTHER);
       expect(r.loadError).toBeUndefined();
@@ -302,7 +302,7 @@ describe("requirement.* — the link boundary", () => {
               level: 4
               status: live
               statement: "Wrong grain"
-              violation: "An object-grain entry naming a field"
+              counterexample: "An object-grain entry naming a field"
               implementedBy: ["acme::shop::Order.reference"]
 `), OTHER);
     expect(codes(r.diags)).toContain(ERR_REQUIREMENT_L4_NOT_OBJECT);
@@ -315,7 +315,7 @@ describe("requirement.* — the link boundary", () => {
               level: 5
               status: live
               statement: "An order reference is readable down a phone line"
-              violation: "A reference that is a raw uuid"
+              counterexample: "A reference that is a raw uuid"
               implementedBy: ["acme::shop::Order.reference"]
 `), OTHER);
     expect(r.diags).toEqual([]);
@@ -328,7 +328,7 @@ describe("requirement.* — the link boundary", () => {
               level: 5
               status: live
               statement: "Wrong grain"
-              violation: "A member-grain entry naming an object"
+              counterexample: "A member-grain entry naming an object"
               implementedBy: ["acme::shop::Order"]
 `), OTHER);
     expect(codes(r.diags)).toContain(ERR_REQUIREMENT_L5_NOT_MEMBER);
@@ -343,7 +343,7 @@ describe("requirement.* — the link boundary", () => {
               level: 5
               status: live
               statement: "Renamed out from under the requirement"
-              violation: "The requirement cites a field that no longer exists"
+              counterexample: "The requirement cites a field that no longer exists"
               implementedBy: ["acme::shop::Order.wasRenamed"]
 `), OTHER);
     expect(codes(r.diags)).toContain(ERR_REQUIREMENT_DANGLING_REF);
@@ -356,7 +356,7 @@ describe("requirement.* — the link boundary", () => {
               level: 6
               status: live
               statement: "Off the ladder"
-              violation: "A level nobody defined"
+              counterexample: "A level nobody defined"
 `), OTHER);
     expect(codes(r.diags)).toContain(ERR_REQUIREMENT_BAD_LEVEL);
   });
@@ -370,7 +370,7 @@ describe("requirement.* — the link boundary", () => {
               level: 2
               status: live
               statement: "Nested under an L3 but claims L2"
-              violation: "The tree and the level disagree"
+              counterexample: "The tree and the level disagree"
 `), OTHER);
     expect(codes(r.diags)).toContain(ERR_REQUIREMENT_LEVEL_NESTING);
   });
@@ -387,7 +387,7 @@ describe("requirement.* — reference resolution", () => {
               level: 4
               status: live
               statement: "Bare ref"
-              violation: "A bare name binding whichever package loaded first"
+              counterexample: "A bare name binding whichever package loaded first"
               implementedBy: ["Order"]
 `), OTHER);
     const dangling = r.diags.filter((x) => x.code === ERR_REQUIREMENT_DANGLING_REF);
@@ -418,7 +418,7 @@ describe("requirement.architectural — universality", () => {
         name: ChangeAttribution
         status: live
         statement: "Every entity records who changed it and when"
-        violation: "An entity with no change-attribution columns"
+        counterexample: "An entity with no change-attribution columns"
 `, OTHER);
     const arch = r.diags.filter((x) => x.code === ERR_REQUIREMENT_ARCH_NO_IMPLEMENTERS);
     expect(arch.length).toBe(1);
@@ -431,7 +431,7 @@ describe("requirement.architectural — universality", () => {
         name: UuidPrimaryKeys
         status: live
         statement: "Every entity has a uuid primary key"
-        violation: "An entity keyed by a composite string"
+        counterexample: "An entity keyed by a composite string"
         implementedBy: ["acme::shop::Order", "acme::shop::Customer", "acme::billing::Order"]
 `, OTHER);
     expect(r.diags).toEqual([]);
@@ -443,7 +443,7 @@ describe("requirement.architectural — universality", () => {
         name: SoftDeleteEverywhere
         status: abandoned
         statement: "Every table carried a soft-delete flag"
-        violation: "A hard delete on a table that promised soft deletes"
+        counterexample: "A hard delete on a table that promised soft deletes"
 `, OTHER);
     expect(r.diags).toEqual([]);
   });
@@ -461,7 +461,7 @@ describe("requirement.architectural — universality", () => {
         level: 1
         status: live
         statement: "The system protects the data it holds"
-        violation: "A record readable by someone with no claim to it"
+        counterexample: "A record readable by someone with no claim to it"
         implementedBy: ["acme::shop::Order"]
 `, OTHER);
     expect(r.diags.map((d) => d.code)).toContain("ERR_REQUIREMENT_LINK_ABOVE_FLOOR");
@@ -478,21 +478,21 @@ describe("requirement.architectural — universality", () => {
         level: 1
         status: live
         statement: "The system protects the data it holds"
-        violation: "A record readable by someone with no claim to it"
+        counterexample: "A record readable by someone with no claim to it"
         children:
           - requirement.architectural:
               name: Confidentiality
               level: 2
               status: live
               statement: "Stored data is unreadable without an authorised key"
-              violation: "A database copy that reads in plain text"
+              counterexample: "A database copy that reads in plain text"
               children:
                 - requirement.architectural:
                     name: OrdersAreEncryptedAtRest
                     level: 4
                     status: live
                     statement: "Order rows are encrypted at rest"
-                    violation: "A restored backup that opens in a text editor"
+                    counterexample: "A restored backup that opens in a text editor"
                     implementedBy: ["acme::shop::Order"]
 `, OTHER);
     expect(r.loadError).toBeUndefined();
@@ -510,7 +510,7 @@ describe("requirement.* — planned, disposition and tracking", () => {
         level: 4
         status: planned
         statement: "Orders will carry a settlement reference"
-        violation: "A settled order with nothing to reconcile against"
+        counterexample: "A settled order with nothing to reconcile against"
         implementedBy: ["acme::shop::DoesNotExistYet"]
 `, OTHER);
     expect(r.diags.map((d) => d.code)).not.toContain("ERR_REQUIREMENT_DANGLING_REF");
@@ -531,7 +531,7 @@ describe("requirement.* — planned, disposition and tracking", () => {
         level: 4
         status: planned
         statement: "Billing orders will be recorded"
-        violation: "An invoice with no order behind it"
+        counterexample: "An invoice with no order behind it"
         implementedBy: ["acme::billing::Order"]
 `, OTHER);
     expect(r.loadError).toBeUndefined();
@@ -544,7 +544,7 @@ describe("requirement.* — planned, disposition and tracking", () => {
         name: NotBuiltYet
         status: planned
         statement: "Every table will carry a tenant column"
-        violation: "A row reachable from the wrong tenant"
+        counterexample: "A row reachable from the wrong tenant"
 `, OTHER);
     expect(r.diags.map((d) => d.code)).not.toContain("ERR_REQUIREMENT_ARCH_NO_IMPLEMENTERS");
   });
@@ -556,7 +556,7 @@ describe("requirement.* — planned, disposition and tracking", () => {
         status: live
         disposition: accepted
         statement: "Money is stored as integer minor units"
-        violation: "A rounding error in a split total"
+        counterexample: "A rounding error in a split total"
         implementedBy: ["acme::shop::Order"]
 `, OTHER);
     expect(r.diags.map((d) => d.code)).toContain("WARN_REQUIREMENT_DISPOSITION_NOT_APPLICABLE");
@@ -570,7 +570,7 @@ describe("requirement.* — planned, disposition and tracking", () => {
         disposition: deferred
         ${tracked}
         statement: "Every money field declares its currency"
-        violation: "Two amounts in different currencies summed as one"
+        counterexample: "Two amounts in different currencies summed as one"
         implementedBy: ["acme::shop::Order"]
 `;
     const untracked = await run(body(""), OTHER);
@@ -587,7 +587,7 @@ describe("requirement.* — planned, disposition and tracking", () => {
         level: 1
         status: live
         statement: "Customers can export their order history"
-        violation: "A customer who asks for their data and cannot be given it"
+        counterexample: "A customer who asks for their data and cannot be given it"
 `, OTHER);
     expect(r.diags.map((d) => d.code)).toContain("WARN_REQUIREMENT_NOTHING_IMPLEMENTS");
   });
@@ -625,7 +625,7 @@ metadata:
         name: EveryRowIsAddressable
         status: live
         statement: "Every persisted row declares the identity it is addressed by"
-        violation: "A row that can be inserted but never pointed at"
+        counterexample: "A row that can be inserted but never pointed at"
         implementedBy: ["acme::common::BaseEntity"]
 `, BASE);
     const unclaimed = r.diags
@@ -662,7 +662,7 @@ metadata:
         level: 4
         status: live
         statement: "Base entities are recorded"
-        violation: "A row nobody kept"
+        counterexample: "A row nobody kept"
         implementedBy: ["acme::common::BaseEntity"]
 `, BASE);
     const unclaimed = r.diags
@@ -679,7 +679,7 @@ metadata:
         status: partial
         disposition: accepted
         statement: "Every money field declares its currency"
-        violation: "Two amounts in different currencies summed as one"
+        counterexample: "Two amounts in different currencies summed as one"
         implementedBy: ["acme::shop::Order"]
 `, OTHER);
     expect(r.diags).toEqual([]);
@@ -696,7 +696,7 @@ describe("requirement.* — object coverage", () => {
               level: 4
               status: live
               statement: "Orders are recorded"
-              violation: "An order placed and never stored"
+              counterexample: "An order placed and never stored"
               implementedBy: ["acme::shop::Order"]
 `;
 
@@ -758,14 +758,14 @@ describe("requirement.architectural — a levelled node obeys the level rules", 
         level: 2
         status: live
         statement: "The system protects the data it holds"
-        violation: "A record readable by someone with no claim to it"
+        counterexample: "A record readable by someone with no claim to it"
         children:
           - requirement.architectural:
               name: Confidentiality
               level: 1
               status: live
               statement: "Stored data is unreadable without an authorised key"
-              violation: "A database copy that reads in plain text"
+              counterexample: "A database copy that reads in plain text"
 `, OTHER);
     expect(codes(r.diags)).toContain(ERR_REQUIREMENT_LEVEL_NESTING);
   });
@@ -777,7 +777,7 @@ describe("requirement.architectural — a levelled node obeys the level rules", 
         level: 7
         status: live
         statement: "The system protects the data it holds"
-        violation: "A record readable by someone with no claim to it"
+        counterexample: "A record readable by someone with no claim to it"
 `, OTHER);
     expect(codes(r.diags)).toContain(ERR_REQUIREMENT_BAD_LEVEL);
   });
@@ -790,7 +790,7 @@ describe("requirement.architectural — a levelled node obeys the level rules", 
         name: UuidPrimaryKeys
         status: live
         statement: "Every entity has a uuid primary key"
-        violation: "An entity keyed by a composite string"
+        counterexample: "An entity keyed by a composite string"
         implementedBy: ["acme::shop::Order"]
 `, OTHER);
     expect(codes(r.diags)).not.toContain(ERR_REQUIREMENT_BAD_LEVEL);
@@ -829,14 +829,14 @@ metadata:
               level: 4
               status: live
               statement: "Orders are recorded"
-              violation: "An order placed and never stored"
+              counterexample: "An order placed and never stored"
               implementedBy: ["acme::shop::Order"]
           - requirement.functional:
               name: CustomerRecording
               level: 4
               status: live
               statement: "Customers are recorded"
-              violation: "A customer that cannot be found again"
+              counterexample: "A customer that cannot be found again"
               implementedBy: ["acme::shop::Customer"]
 `;
 
@@ -846,7 +846,7 @@ metadata:
         name: EveryRowIsAddressable
         status: live
         statement: "Every persisted row declares its identity"
-        violation: "A row that can be inserted but never pointed at"
+        counterexample: "A row that can be inserted but never pointed at"
         implementedBy: ["acme::base::BaseEntity"]
 `, ABSTRACT_MODEL);
     expect(errors(r.diags)).toEqual([]);

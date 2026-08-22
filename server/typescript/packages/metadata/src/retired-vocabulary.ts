@@ -77,6 +77,26 @@ export interface RetiredEntry extends RetirementNote {
 const REQUIREMENT_MIGRATION = "docs/features/migrations/verified-by-retirement.md";
 
 export const RETIRED_VOCABULARY: readonly RetiredEntry[] = [
+  // ── 0.25.0: `@violation` is renamed `@counterexample` ──
+  //
+  // Pure rename — no semantics change. The field always held a static falsifiability test
+  // ("what would contradict this"), authored once, never a state. `@violation` READ as a
+  // status, and did so to the person who approved the vocabulary, who asked whether it
+  // meant "we know this requirement is currently violated". A name that misleads its own
+  // owner has earned replacing.
+  //
+  // Fully mechanical, which is the point: adopters migrate with `meta upgrade --apply`
+  // rather than a hand sweep. This entry is the first real user of that tool.
+  {
+    type: "requirement", subType: "*", attr: "violation",
+    since: "0.25.0",
+    why: "it named a static falsifiability test but read as a status — 'this requirement " +
+         "is in violation' — which is not what the field has ever held",
+    replacedBy: "@counterexample",
+    migration: "docs/features/migrations/violation-to-counterexample.md",
+    rewrite: { kind: "renameAttr", to: "counterexample" },
+  },
+
   // ── FR-038: the requirement vocabulary becomes prescriptive-only (0.24.0) ──
   {
     type: "requirement", subType: "*", attr: "verifiedBy",

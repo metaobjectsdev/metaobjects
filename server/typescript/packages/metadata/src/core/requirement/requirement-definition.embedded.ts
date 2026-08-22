@@ -68,10 +68,10 @@ export const REQUIREMENT_DEFINITION: ProviderDefinition = {
         {
           "type": "attr",
           "subType": "string",
-          "name": "violation",
+          "name": "counterexample",
           "min": 1,
           "max": 1,
-          "description": "What breaking it looks like, in one sentence. A requirement MUST be violable: 'every entity has a uuid primary key' is (point at one with a composite string key); 'things are persisted' is not, and is a description rather than a requirement."
+          "description": "What breaking it looks like, in one sentence — a STATIC falsifiability test, authored once, never a state. A requirement MUST be violable: 'every entity has a uuid primary key' is (point at one with a composite string key); 'things are persisted' is not, and is a description rather than a requirement. Renamed from @violation in 0.25.0, which read as a status."
         },
         {
           "type": "attr",
@@ -151,10 +151,10 @@ export const REQUIREMENT_DEFINITION: ProviderDefinition = {
         {
           "type": "attr",
           "subType": "string",
-          "name": "violation",
+          "name": "counterexample",
           "min": 1,
           "max": 1,
-          "description": "What breaking it looks like — the node that would contradict it. This is what makes universality checkable."
+          "description": "What breaking it looks like — the node that would contradict it. A STATIC falsifiability test, not a state. This is what makes universality checkable. Renamed from @violation in 0.25.0, which read as a status."
         },
         {
           "type": "attr",

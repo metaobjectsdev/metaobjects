@@ -8,7 +8,7 @@
           "@level": 4,
           "@status": "abandoned",
           "@statement": "An unpaid order expires on a wall-clock timer",
-          "@violation": "An order cancelled by elapsed time rather than by the customer"
+          "@counterexample": "An order cancelled by elapsed time rather than by the customer"
         }
       }
     ]

@@ -74,7 +74,7 @@ public class FunctionalRequirement extends MetaRequirement {
             def.requiredAttributeWithConstraints(ATTR_STATEMENT)
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
 
-            def.requiredAttributeWithConstraints(ATTR_VIOLATION)
+            def.requiredAttributeWithConstraints(ATTR_COUNTEREXAMPLE)
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
 
             def.optionalAttributeWithConstraints(ATTR_IMPLEMENTED_BY)

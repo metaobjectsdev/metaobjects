@@ -34,7 +34,7 @@ const WITH_LEDGER = {
           "@level": 2,
           "@status": "live",
           "@statement": "A shopper can pay for a basket.",
-          "@violation": "A basket that cannot be paid for.",
+          "@counterexample": "A basket that cannot be paid for.",
           children: [
             {
               "requirement.functional": {
@@ -42,7 +42,7 @@ const WITH_LEDGER = {
                 "@level": 4,
                 "@status": "live",
                 "@statement": "An order records what was captured.",
-                "@violation": "An order that cannot say what was charged.",
+                "@counterexample": "An order that cannot say what was charged.",
                 "@implementedBy": ["acme::shop::Order"],
               },
             },

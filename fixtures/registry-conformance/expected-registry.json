@@ -3803,6 +3803,13 @@
       "whenToUse": "Something exists because every entity here looks like this — a uuid primary key, an @autoSet createdAt, a change-attribution column, tenant scoping. The discriminator is mechanical: did this exist because someone asked for something, or because it is the architecture? For a non-functional tree, an established quality taxonomy makes a good fixed upper structure (e.g. an ISO/IEC 25010 characteristic at L1, its sub-characteristic or a control-catalogue category at L2), with the model-binding claims at L4 and L5 as usual.",
       "attrs": [
         {
+          "name": "counterexample",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "What breaking it looks like — the node that would contradict it. A STATIC falsifiability test, not a state. This is what makes universality checkable. Renamed from @violation in 0.25.0, which read as a status."
+        },
+        {
           "name": "disposition",
           "valueType": "string",
           "isArray": false,
@@ -3852,13 +3859,6 @@
           "isArray": true,
           "required": false,
           "description": "As on requirement.functional. Issue or ticket references for outstanding work; free-form, not resolved."
-        },
-        {
-          "name": "violation",
-          "valueType": "string",
-          "isArray": false,
-          "required": true,
-          "description": "What breaking it looks like — the node that would contradict it. This is what makes universality checkable."
         }
       ],
       "children": [
@@ -3877,6 +3877,13 @@
       "description": "What the product does for a user, stated as one violable claim. Its check is EXISTENCE: it fails when nothing implements it. Hierarchy is nesting — an L1 solution contains its L2 segments, which contain L3 services, and so on down to the levels that reference the model.",
       "whenToUse": "Something exists because someone asked for it. L1-L3 are levels of ABSTRACTION AND OWNERSHIP in the problem domain — whose need is this, and at what altitude — and are never a directory, package, deployable or module. Binding to technical constructs happens only at L4 (an object) and L5 (a member), which is the allocation step. Test every node: if a refactor that changes no behaviour would force it to move, its level is wrong.",
       "attrs": [
+        {
+          "name": "counterexample",
+          "valueType": "string",
+          "isArray": false,
+          "required": true,
+          "description": "What breaking it looks like, in one sentence — a STATIC falsifiability test, authored once, never a state. A requirement MUST be violable: 'every entity has a uuid primary key' is (point at one with a composite string key); 'things are persisted' is not, and is a description rather than a requirement. Renamed from @violation in 0.25.0, which read as a status."
+        },
         {
           "name": "disposition",
           "valueType": "string",
@@ -3927,13 +3934,6 @@
           "isArray": true,
           "required": false,
           "description": "Issue or ticket references for outstanding work — a URL, an owner/repo#123 shorthand, or a tracker key. Free-form and NOT resolved by verify, which does not reach the network; nothing here is checked to exist. Its job is to stop a deferred gap becoming invisible, so verify warns when a deferred requirement names no ticket. Also the right place to link the ticket that a planned requirement will be built under."
-        },
-        {
-          "name": "violation",
-          "valueType": "string",
-          "isArray": false,
-          "required": true,
-          "description": "What breaking it looks like, in one sentence. A requirement MUST be violable: 'every entity has a uuid primary key' is (point at one with a composite string key); 'things are persisted' is not, and is a description rather than a requirement."
         }
       ],
       "children": [

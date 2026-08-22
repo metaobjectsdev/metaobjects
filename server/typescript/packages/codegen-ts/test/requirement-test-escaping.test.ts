@@ -23,12 +23,12 @@ const view = {
   implementedByTypes: [],
 } as const;
 
-function render(statement: string, violation: string): string {
+function render(statement: string, counterexample: string): string {
   return renderRequirementTest({
     view: { ...view },
     concern: "object.entity",
     statement,
-    violation,
+    counterexample,
     targets: [],
   });
 }
@@ -100,7 +100,7 @@ describe("every author-supplied field is escaped, not just the two obvious ones"
       view: { ...view },
       concern: "object.entity",
       statement: "Notes are private.",
-      violation: "the GM sees a player's notes",
+      counterexample: "the GM sees a player's notes",
       targets: [],
       ...extra,
     });
@@ -150,7 +150,7 @@ describe("a retired requirement does not redden the suite forever", () => {
         view: { ...view, status },
         concern: "object.entity",
         statement: "s",
-        violation: "v",
+        counterexample: "v",
         targets: [],
       });
       expect(src).toContain("test.skip");
@@ -164,7 +164,7 @@ describe("a retired requirement does not redden the suite forever", () => {
         view: { ...view, status },
         concern: "object.entity",
         statement: "s",
-        violation: "v",
+        counterexample: "v",
         targets: [],
       });
       expect(src).toContain("expect.unreachable");

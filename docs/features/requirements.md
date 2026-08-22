@@ -39,12 +39,12 @@ Requirements live beside the entities they describe (by default in `metaobjects/
       { "requirement.functional": {
           "name": "ordering", "@level": 3, "@status": "live",
           "@statement": "Every placed order is recorded before payment is attempted.",
-          "@violation": "A payment attempted against an order that was never stored.",
+          "@counterexample": "A payment attempted against an order that was never stored.",
           "children": [
             { "requirement.functional": {
                 "name": "orderRecord", "@level": 4, "@status": "live",
                 "@statement": "An order records what was bought, by whom, and when.",
-                "@violation": "An order row that cannot say who placed it.",
+                "@counterexample": "An order row that cannot say who placed it.",
                 "@implementedBy": ["acme::shop::Order"]
             }}
           ]
@@ -70,7 +70,7 @@ identity, or a template's child.
 { "requirement.functional": {
     "name": "sceneBrief", "@level": 4, "@status": "live",
     "@statement": "The game master is told what the party can currently see.",
-    "@violation": "A scene narrated from world state the party has no way to know.",
+    "@counterexample": "A scene narrated from world state the party has no way to know.",
     "@implementedBy": ["acme::play::sceneBrief"]   // a template.prompt
 }}
 ```
@@ -97,7 +97,7 @@ split up front. `@statement` already occupies the "what is this" role that a com
 |---|---|---|
 | `title` | A short noun-phrase label. `name` is an identifier; this is what an index shows. | Is it a phrase, not a sentence? |
 | `@statement` | **The claim**, in one sentence. This IS the description of what the requirement is. | Could someone disagree with it? |
-| `@violation` | **The counterexample** that makes the claim checkable. | Can you point at the thing that breaks it? |
+| `@counterexample` | **The counterexample** that makes the claim checkable. | Can you point at the thing that breaks it? |
 | `description` | **The scope**: what the claim covers, what it deliberately does not, and which sibling entry owns the rest. | Does it help someone decide whether their new field falls under this? |
 | `notes` | **The evidence**: how you know the `@status` is true — file/line citations, enum vocabularies, the control you ran to prove an absence was real. | Would this sentence have to change if the code changed but the model did not? |
 
@@ -222,7 +222,7 @@ there will be no work.
     "@disposition": "deferred",
     "@trackedBy": ["acme/platform#412", "PLAT-77"],
     "@statement": "A field holding money declares that it holds money, and in which currency.",
-    "@violation": "A long summed with another long of a different currency, and nobody notices.",
+    "@counterexample": "A long summed with another long of a different currency, and nobody notices.",
     "@implementedBy": ["acme::billing::Invoice"]
 }}
 ```

@@ -19,7 +19,7 @@ import {
   REQUIREMENT_SUBTYPE_FUNCTIONAL,
   REQUIREMENT_LINK_FLOOR_LEVEL,
   REQUIREMENT_ATTR_STATEMENT,
-  REQUIREMENT_ATTR_VIOLATION,
+  REQUIREMENT_ATTR_COUNTEREXAMPLE,
 } from "@metaobjectsdev/metadata";
 import type { Generator, EmittedFile, GenContext } from "../generator.js";
 import {
@@ -150,7 +150,7 @@ export function requirementTests(opts: RequirementTestsOpts = {}): Generator {
             concern,
             targets,
             statement: attrString(walked.node, REQUIREMENT_ATTR_STATEMENT),
-            violation: attrString(walked.node, REQUIREMENT_ATTR_VIOLATION),
+            counterexample: attrString(walked.node, REQUIREMENT_ATTR_COUNTEREXAMPLE),
             disposition: walked.node.disposition(),
             trackedBy: walked.node.trackedBy(),
           };

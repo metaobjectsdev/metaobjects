@@ -33,7 +33,7 @@ const WITH_RETIRED = `{
           "@level": 4,
           "@status": "live",
           "@statement": "An order records what was bought",
-          "@violation": "An order that cannot say what was bought",
+          "@counterexample": "An order that cannot say what was bought",
           "@verifiedBy": ["OrderServiceTest"]
       }}
     ]
@@ -49,7 +49,7 @@ const NEEDS_DECISION = `{
           "@level": 4,
           "@status": "abandoned",
           "@statement": "Something we stopped doing",
-          "@violation": "n/a"
+          "@counterexample": "n/a"
       }}
     ]
   }
@@ -64,7 +64,7 @@ const CLEAN = `{
           "@level": 4,
           "@status": "live",
           "@statement": "An order records what was bought",
-          "@violation": "An order that cannot say what was bought"
+          "@counterexample": "An order that cannot say what was bought"
       }}
     ]
   }

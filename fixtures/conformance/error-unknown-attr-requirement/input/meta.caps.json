@@ -8,7 +8,7 @@
           "@level": 3,
           "@status": "live",
           "@statement": "Every placed order is recorded before payment is attempted.",
-          "@violation": "A payment attempted against an order that was never stored.",
+          "@counterexample": "A payment attempted against an order that was never stored.",
           "@madeUpAttr": "nope"
         }
       }

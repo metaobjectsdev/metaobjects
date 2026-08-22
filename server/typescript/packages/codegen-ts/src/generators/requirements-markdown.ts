@@ -40,9 +40,9 @@ function renderOne(r: RequirementRow): string {
   const out: string[] = [`${heading(r.depth)} ${r.path}`, "", facts(r), ""];
 
   if (r.statement !== undefined) out.push(r.statement, "");
-  // The prescriptive pair. A requirement MUST be violable, so the violation is not
+  // The prescriptive pair. A requirement MUST be violable, so the counterexample is not
   // decoration — it is what makes the statement checkable, and it reads beside it.
-  if (r.violation !== undefined) out.push(`**Violated by:** ${r.violation}`, "");
+  if (r.counterexample !== undefined) out.push(`**Counterexample:** ${r.counterexample}`, "");
   if (r.description !== undefined) out.push(r.description, "");
 
   if (r.implementedBy.length > 0) {

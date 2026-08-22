@@ -7,7 +7,7 @@
           "name": "MoneyIsExactMinorUnits",
           "@status": "live",
           "@statement": "Monetary amounts are stored as exact integer minor units, never as floating point",
-          "@violation": "A cent that disappears when a total is split three ways",
+          "@counterexample": "A cent that disappears when a total is split three ways",
           "@verifiedBy": ["MoneyRoundingTest"]
         }
       }

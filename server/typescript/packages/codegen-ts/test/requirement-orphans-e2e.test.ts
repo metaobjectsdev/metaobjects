@@ -28,7 +28,7 @@ function model(withDrop: boolean): string {
       "@level": 4,
       "@status": "live",
       "@statement": `${name} works.`,
-      "@violation": `${name} does not work`,
+      "@counterexample": `${name} does not work`,
       "@implementedBy": ["Council"],
     },
   });

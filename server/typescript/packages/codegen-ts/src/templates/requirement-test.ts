@@ -2,7 +2,7 @@
 //
 // "Default" is the operative word: an application owns its testing style, so this
 // is what it gets when it registers no renderer of its own. The library supplies
-// DATA (statement, violation, status, claimed refs); a renderer supplies SYNTAX.
+// DATA (statement, counterexample, status, claimed refs); a renderer supplies SYNTAX.
 // That separation is what keeps bun / vitest / jest / pytest / JUnit / xUnit from
 // each being an upstream change to this package.
 //
@@ -17,7 +17,7 @@ export interface RequirementTestArgs {
   readonly view: RequirementView;
   readonly concern: string;
   readonly statement: string;
-  readonly violation: string;
+  readonly counterexample: string;
   readonly targets: readonly ResolvedClaim[];
   readonly disposition?: string | undefined;
   readonly trackedBy?: readonly string[] | undefined;
@@ -51,7 +51,7 @@ const SKIPPED_STATUSES: ReadonlySet<string> = new Set([
  * compiles it.
  *
  * Applied to EVERY value that reaches a literal, not only the two obviously-prose ones.
- * `@statement` and `@violation` are the fields that look dangerous, but the requirement
+ * `@statement` and `@counterexample` are the fields that look dangerous, but the requirement
  * path and the concern land in the same two literals, and escaping only what looks like
  * prose leaves the identical hole open one line down.
  */
@@ -102,7 +102,7 @@ function gapLine(a: RequirementTestArgs): string {
 export function renderRequirementTest(a: RequirementTestArgs): string {
   const skipped = a.view.status !== undefined && SKIPPED_STATUSES.has(a.view.status);
   const statement = forDocComment(a.statement);
-  const violation = forDocComment(a.violation);
+  const counterexample = forDocComment(a.counterexample);
   const runner = skipped ? "test.skip" : "test";
   // The test NAME is the link between the ledger entry and the assertion, so it is
   // built from the same two values every time — but it is still a string literal, and
@@ -116,7 +116,7 @@ export function renderRequirementTest(a: RequirementTestArgs): string {
     ? `  // Intended, not built. Write the assertion when this becomes live.`
     : `  expect.unreachable(\n` +
       `    "unimplemented requirement stub: ${testName} — " +\n` +
-      `    "replace this with an assertion that fails when: ${forStringLiteral(a.violation)}",\n` +
+      `    "replace this with an assertion that fails when: ${forStringLiteral(a.counterexample)}",\n` +
       `  );`;
 
   return (
@@ -128,7 +128,7 @@ export function renderRequirementTest(a: RequirementTestArgs): string {
     `/**\n` +
     ` * ${statement}\n` +
     ` *\n` +
-    ` * Violated by: ${violation}${gapLine(a)}\n` +
+    ` * Violated by: ${counterexample}${gapLine(a)}\n` +
     ` *\n` +
     ` * Claims:\n` +
     `${claimLines(a.targets)}\n` +

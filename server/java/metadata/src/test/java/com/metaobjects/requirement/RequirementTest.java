@@ -73,7 +73,7 @@ public class RequirementTest extends SharedRegistryTestBase {
             + "      \"@level\": 4,"
             + "      \"@status\": \"live\","
             + "      \"@statement\": \"A shopper can place an order.\","
-            + "      \"@violation\": \"An order cannot be created through any surface.\","
+            + "      \"@counterexample\": \"An order cannot be created through any surface.\","
             + "      \"@implementedBy\": [\"acme::shop::Order\"] } }"
             + "] } }";
 
@@ -106,19 +106,19 @@ public class RequirementTest extends SharedRegistryTestBase {
             + "      \"@level\": 1,"
             + "      \"@status\": \"live\","
             + "      \"@statement\": \"The shop sells things.\","
-            + "      \"@violation\": \"Nothing can be bought.\","
+            + "      \"@counterexample\": \"Nothing can be bought.\","
             + "      \"children\": ["
             + "        { \"requirement.functional\": { \"name\": \"checkout\","
             + "            \"@level\": 2,"
             + "            \"@status\": \"partial\","
             + "            \"@statement\": \"A shopper can check out.\","
-            + "            \"@violation\": \"Checkout cannot complete.\","
+            + "            \"@counterexample\": \"Checkout cannot complete.\","
             + "            \"children\": ["
             + "              { \"requirement.functional\": { \"name\": \"payment\","
             + "                  \"@level\": 3,"
             + "                  \"@status\": \"live\","
             + "                  \"@statement\": \"A shopper can pay.\","
-            + "                  \"@violation\": \"No payment can be taken.\" } }"
+            + "                  \"@counterexample\": \"No payment can be taken.\" } }"
             + "            ] } }"
             + "      ] } }"
             + "] } }";
@@ -152,7 +152,7 @@ public class RequirementTest extends SharedRegistryTestBase {
             + "  { \"requirement.architectural\": { \"name\": \"uuidPrimaryKeys\","
             + "      \"@status\": \"live\","
             + "      \"@statement\": \"Every entity has a uuid primary key.\","
-            + "      \"@violation\": \"An entity with a composite string key.\","
+            + "      \"@counterexample\": \"An entity with a composite string key.\","
             + "      \"@implementedBy\": [\"acme::shop::Order\", \"acme::shop::Customer\"] } }"
             + "] } }";
 
@@ -192,13 +192,13 @@ public class RequirementTest extends SharedRegistryTestBase {
             + "  { \"requirement.architectural\": { \"name\": \"uuidPrimaryKeys\","
             + "      \"@status\": \"live\","
             + "      \"@statement\": \"Every entity has a uuid primary key.\","
-            + "      \"@violation\": \"An entity with a composite string key.\","
+            + "      \"@counterexample\": \"An entity with a composite string key.\","
             + "      \"children\": ["
             + "        { \"requirement.functional\": { \"name\": \"nested\","
             + "            \"@level\": 4,"
             + "            \"@status\": \"live\","
             + "            \"@statement\": \"A capability.\","
-            + "            \"@violation\": \"It is gone.\" } }"
+            + "            \"@counterexample\": \"It is gone.\" } }"
             + "      ] } }"
             + "] } }";
 
@@ -229,7 +229,7 @@ public class RequirementTest extends SharedRegistryTestBase {
             + "      \"@level\": 1,"
             + "      \"@status\": \"live\","
             + "      \"@statement\": \"The system protects the data it holds.\","
-            + "      \"@violation\": \"A record readable by someone with no claim to it.\","
+            + "      \"@counterexample\": \"A record readable by someone with no claim to it.\","
             + "      \"children\": ["
             + "        { \"requirement.architectural\": { \"name\": \"integrity\","
             + "            \"@level\": 2,"
@@ -237,13 +237,13 @@ public class RequirementTest extends SharedRegistryTestBase {
             + "            \"@disposition\": \"deferred\","
             + "            \"@trackedBy\": [\"acme/platform#412\"],"
             + "            \"@statement\": \"A stored value changes only under control.\","
-            + "            \"@violation\": \"A number that changed with nothing explaining it.\","
+            + "            \"@counterexample\": \"A number that changed with nothing explaining it.\","
             + "            \"children\": ["
             + "              { \"requirement.architectural\": { \"name\": \"ordersAreAppendOnly\","
             + "                  \"@level\": 4,"
             + "                  \"@status\": \"live\","
             + "                  \"@statement\": \"An order row is appended, never mutated.\","
-            + "                  \"@violation\": \"An order total edited in place.\","
+            + "                  \"@counterexample\": \"An order total edited in place.\","
             + "                  \"@implementedBy\": [\"acme::shop::Order\"] } }"
             + "            ] } }"
             + "      ] } }"
@@ -287,7 +287,7 @@ public class RequirementTest extends SharedRegistryTestBase {
             + "      \"@level\": 4,"
             + "      \"@status\": \"abandonned\","
             + "      \"@statement\": \"A capability.\","
-            + "      \"@violation\": \"It is gone.\" } }"
+            + "      \"@counterexample\": \"It is gone.\" } }"
             + "] } }";
 
         MetaDataLoader loader = strictLoader("test-requirement-bad-status");
@@ -320,7 +320,7 @@ public class RequirementTest extends SharedRegistryTestBase {
             + "      \"@level\": 4,"
             + "      \"@status\": \"live\","
             + "      \"@statement\": \"A capability.\","
-            + "      \"@violation\": \"It is gone.\","
+            + "      \"@counterexample\": \"It is gone.\","
             + "      \"@parent\": \"somethingElse\" } }"
             + "] } }";
 
