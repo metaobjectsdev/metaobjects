@@ -62,11 +62,11 @@ describe("introspectPostgres — schema namespacing", () => {
     }
     const { kysely, pool } = makeRealPgKysely(PG_URL);
     try {
-      await sql`DROP SCHEMA IF EXISTS p3_api CASCADE`.execute(kysely);
+      await sql`DROP SCHEMA IF EXISTS acme_api CASCADE`.execute(kysely);
       await sql`DROP TABLE IF EXISTS "Orders"`.execute(kysely);
-      await sql`CREATE SCHEMA p3_api`.execute(kysely);
+      await sql`CREATE SCHEMA acme_api`.execute(kysely);
       await sql`CREATE TABLE "Orders" (id bigserial PRIMARY KEY)`.execute(kysely);
-      await sql`CREATE TABLE p3_api.cases_v1 (id bigserial PRIMARY KEY)`.execute(kysely);
+      await sql`CREATE TABLE acme_api.cases_v1 (id bigserial PRIMARY KEY)`.execute(kysely);
 
       const snapshot = await introspectPostgres(kysely);
 
@@ -76,9 +76,9 @@ describe("introspectPostgres — schema namespacing", () => {
 
       const cases = snapshot.tables.find((t) => t.name === "cases_v1");
       expect(cases).toBeDefined();
-      expect(cases?.schema).toBe("p3_api");
+      expect(cases?.schema).toBe("acme_api");
     } finally {
-      await sql`DROP SCHEMA IF EXISTS p3_api CASCADE`.execute(kysely);
+      await sql`DROP SCHEMA IF EXISTS acme_api CASCADE`.execute(kysely);
       await sql`DROP TABLE IF EXISTS "Orders"`.execute(kysely);
       await pool.end();
     }

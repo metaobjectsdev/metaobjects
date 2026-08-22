@@ -1,6 +1,6 @@
 {
   "metadata.root": {
-    "package": "p3::api",
+    "package": "acme::api",
     "children": [
       {
         "object.projection": {
@@ -9,7 +9,7 @@
             {
               "source.rdb": {
                 "@kind": "view",
-                "@schema": "p3_api",
+                "@schema": "acme_api",
                 "@view": "cases_v1"
               }
             },

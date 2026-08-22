@@ -28,7 +28,7 @@ describe("diff — schema-aware table identity", () => {
       views: [],
     };
     const actual: SchemaSnapshot = {
-      tables: [makeOrdersTable("p3_api")],
+      tables: [makeOrdersTable("acme_api")],
       views: [],
     };
 
@@ -38,10 +38,10 @@ describe("diff — schema-aware table identity", () => {
       allow: { dropTable: true },
       // Explicitly scope to BOTH schemas so this test exercises cross-schema table
       // IDENTITY (same name, different schema → distinct, not a rename). With the
-      // default auto-scope the `p3_api` table would be out of the expected model's
+      // default auto-scope the `acme_api` table would be out of the expected model's
       // declared scope ({public}) and thus left untouched — that default is covered
       // by diff-schema-scope.test.ts.
-      scopeSchemas: ["public", "p3_api"],
+      scopeSchemas: ["public", "acme_api"],
     });
 
     const kinds = result.changes.map((c) => c.kind).sort();
@@ -57,7 +57,7 @@ describe("diff — schema-aware table identity", () => {
 
     if (drop?.kind !== "drop-table") throw new Error("expected a drop-table change");
     expect(drop.table).toBe("orders");
-    expect(drop.schema).toBe("p3_api");
+    expect(drop.schema).toBe("acme_api");
   });
 
   test("treats schema=undefined and schema='public' as equivalent for Postgres", async () => {

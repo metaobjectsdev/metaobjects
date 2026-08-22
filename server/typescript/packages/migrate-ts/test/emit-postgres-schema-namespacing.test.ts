@@ -23,7 +23,7 @@ describe("emit (postgres) — schema namespacing end-to-end", () => {
                 "name": "AuditEvent",
                 "children": [
                   { "field.long": { "name": "id" } },
-                  { "source.rdb": { "name": "src", "@table": "audit_events", "@schema": "p3_api" } },
+                  { "source.rdb": { "name": "src", "@table": "audit_events", "@schema": "acme_api" } },
                   { "identity.primary": { "name": "pk", "@fields": ["id"] } },
                 ],
               },
@@ -51,7 +51,7 @@ describe("emit (postgres) — schema namespacing end-to-end", () => {
       const sql = emit(result.changes, { dialect: "postgres" });
 
       // Schema-qualified for non-default schema
-      expect(sql.up).toMatch(/CREATE TABLE "p3_api"\."audit_events"/);
+      expect(sql.up).toMatch(/CREATE TABLE "acme_api"\."audit_events"/);
 
       // Unqualified for no @schema (default schema should not be prefixed for back-compat)
       expect(sql.up).toMatch(/CREATE TABLE "customers"/);

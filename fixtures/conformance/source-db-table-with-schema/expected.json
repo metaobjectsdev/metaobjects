@@ -1,6 +1,6 @@
 {
   "metadata.root": {
-    "package": "p3",
+    "package": "acme",
     "children": [
       {
         "object.entity": {

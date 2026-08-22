@@ -445,16 +445,16 @@ describe("introspectPostgres — multi-schema", () => {
     const db = new Kysely<Record<string, unknown>>({
       dialect: new PostgresDialect({ pool: new Pool() }),
     });
-    await mem.public.none(`CREATE SCHEMA p3_api`);
+    await mem.public.none(`CREATE SCHEMA acme_api`);
     await mem.public.none(`CREATE TABLE "Orders" (id integer PRIMARY KEY)`);
-    await mem.public.none(`CREATE TABLE p3_api."cases_v1" (id integer PRIMARY KEY)`);
+    await mem.public.none(`CREATE TABLE acme_api."cases_v1" (id integer PRIMARY KEY)`);
 
     const snapshot = await introspectPostgres(db);
     const orders = snapshot.tables.find((t) => t.name === "Orders");
     const casesV1 = snapshot.tables.find((t) => t.name === "cases_v1");
 
     expect(orders?.schema).toBe("public");
-    expect(casesV1?.schema).toBe("p3_api");
+    expect(casesV1?.schema).toBe("acme_api");
   });
 
   it("excludes system schemas (pg_catalog, information_schema)", async () => {
@@ -554,12 +554,12 @@ describe("diff — schema-aware", () => {
       views: [],
     };
     const actual: SchemaSnapshot = {
-      tables: [{ name: "orders", schema: "p3_api", ...emptyCols }],
+      tables: [{ name: "orders", schema: "acme_api", ...emptyCols }],
       views: [],
     };
     const result = diff({ expected, actual, allow: { dropTable: true } });
 
-    // We expect a create-table for public.orders and a drop-table for p3_api.orders,
+    // We expect a create-table for public.orders and a drop-table for acme_api.orders,
     // NOT a rename (because schemas differ).
     const creates = result.changes.filter((c) => c.kind === "create-table");
     const drops   = result.changes.filter((c) => c.kind === "drop-table");
@@ -674,10 +674,10 @@ describe("emit (postgres) — schema namespacing end-to-end", () => {
   it("emits CREATE TABLE schema.table for a non-default schema", () => {
     const root = loadFromString(JSON.stringify({
       "metadata.root": {
-        "package": "p3",
+        "package": "acme",
         "children": [
           { "object.entity": { "name": "CaseV1", "children": [
-            { "source.dbView": { "@name": "cases_v1", "@schema": "p3_api" } },
+            { "source.dbView": { "@name": "cases_v1", "@schema": "acme_api" } },
             { "field.long":    { "name": "id" } },
             { "identity.primary": { "@fields": "id" } },
           ]}},
@@ -695,7 +695,7 @@ describe("emit (postgres) — schema namespacing end-to-end", () => {
     const sql = emit(changes.changes, { dialect: "postgres" });
 
     // Non-default schema → qualified DDL.
-    expect(sql.up).toMatch(/CREATE TABLE "p3_api"\."cases_v1"/);
+    expect(sql.up).toMatch(/CREATE TABLE "acme_api"\."cases_v1"/);
     // Default schema → unqualified DDL (back-compat with all existing tests).
     expect(sql.up).toMatch(/CREATE TABLE "customers"/);
     expect(sql.up).not.toMatch(/CREATE TABLE "public"\."customers"/);
@@ -840,7 +840,7 @@ Create `fixtures/conformance/source-db-table-with-schema/input/meta.demo.json`:
 ```json
 {
   "metadata.root": {
-    "package": "p3",
+    "package": "acme",
     "children": [
       {
         "object.entity": {
@@ -863,7 +863,7 @@ Create `fixtures/conformance/source-db-table-with-schema/expected.json` with the
 ```json
 {
   "metadata.root": {
-    "package": "p3",
+    "package": "acme",
     "children": [
       {
         "object.entity": {
@@ -890,13 +890,13 @@ Create `fixtures/conformance/source-db-view-with-schema/input/meta.demo.json`:
 ```json
 {
   "metadata.root": {
-    "package": "p3::api",
+    "package": "acme::api",
     "children": [
       {
         "object.entity": {
           "name": "CaseV1",
           "children": [
-            { "source.dbView": { "@name": "cases_v1", "@schema": "p3_api" } },
+            { "source.dbView": { "@name": "cases_v1", "@schema": "acme_api" } },
             { "field.long":   { "name": "id" } },
             { "field.string": { "name": "case_number" } },
             { "identity.primary": { "@fields": "id" } }
@@ -913,13 +913,13 @@ Create `fixtures/conformance/source-db-view-with-schema/expected.json`:
 ```json
 {
   "metadata.root": {
-    "package": "p3::api",
+    "package": "acme::api",
     "children": [
       {
         "object.entity": {
           "name": "CaseV1",
           "children": [
-            { "source.dbView": { "@name": "cases_v1", "@schema": "p3_api" } },
+            { "source.dbView": { "@name": "cases_v1", "@schema": "acme_api" } },
             { "field.long":   { "name": "id" } },
             { "field.string": { "name": "case_number" } },
             { "identity.primary": { "@fields": ["id"] } }
@@ -938,7 +938,7 @@ Create `fixtures/conformance/source-db-table-default-schema-omitted/input/meta.d
 ```json
 {
   "metadata.root": {
-    "package": "p3",
+    "package": "acme",
     "children": [
       {
         "object.entity": {
@@ -960,7 +960,7 @@ Create `fixtures/conformance/source-db-table-default-schema-omitted/expected.jso
 ```json
 {
   "metadata.root": {
-    "package": "p3",
+    "package": "acme",
     "children": [
       {
         "object.entity": {

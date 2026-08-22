@@ -231,7 +231,7 @@ Per FR-014:
 - FR-017 spec doc landed.
 - FR-014's 9 metamodel fixtures green.
 - FR-017's API-contract conformance scenarios green across 5 ports.
-- An adopter project (the C# CareMetx P3 CRM is the driver) can model their workflow-task / authorization / payment polymorphism in metadata and codegen produces working CRUD.
+- An adopter project (a C# CRM adopter is the driver) can model its workflow-task / authorization / payment polymorphism in metadata and codegen produces working CRUD.
 
 ---
 

@@ -154,7 +154,7 @@ export async function diff(
   const declaredSchemas = new Set([
     ...args.expected.tables.map((t) => t.schema ?? DEFAULT_DB_SCHEMA_POSTGRES),
     // A model that declares views in a schema with no table of its own (e.g. an
-    // API/read-model schema like `p3_api` sitting alongside an all-`public`
+    // API/read-model schema like `acme_api` sitting alongside an all-`public`
     // entity model) must still bring that schema into scope — otherwise its
     // views are silently excluded from BOTH sides of the diff (never compared,
     // so real drift in an opaque @sql body or a genuine missing/extra view goes
