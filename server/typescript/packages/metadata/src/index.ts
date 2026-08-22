@@ -287,3 +287,17 @@ export {
   stripPackage,
 } from "./naming.js";
 export type { EntityNameMap, ColumnNamingStrategy } from "./naming.js";
+
+// Retired vocabulary: the map the loader reads to explain a retirement, and the raw-document
+// rewriter `meta upgrade` drives from the SAME entries — so the error message and the fix
+// cannot drift apart.
+export {
+  RETIRED_VOCABULARY,
+  retiredAttr,
+  retiredAttrValue,
+  retiredSubType,
+  retirementHint,
+} from "./retired-vocabulary.js";
+export type { RetirementNote, RetiredEntry, VocabularyRewrite } from "./retired-vocabulary.js";
+export { rewriteDocument } from "./vocabulary-rewrite.js";
+export type { RewriteResult, RewriteChange, RewriteRefusal, RewriteOpts } from "./vocabulary-rewrite.js";

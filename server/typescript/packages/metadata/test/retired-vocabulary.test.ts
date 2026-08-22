@@ -112,3 +112,42 @@ describe("the map itself", () => {
     }
   });
 });
+
+// ── `rewrite`: what `meta upgrade` can do mechanically, and what it must refuse ──
+//
+// The split is the honest half of the feature. A tool that silently skipped the judgment
+// cases would report success on a half-migrated ledger — worse than refusing outright,
+// because the adopter would believe the migration was finished.
+describe("mechanical rewrites", () => {
+  test("every entry either rewrites mechanically OR names a guide for the human", () => {
+    for (const e of RETIRED_VOCABULARY) {
+      if (e.rewrite === undefined && e.migration === undefined) {
+        throw new Error(`${e.type}.${e.subType} ${e.attr ?? ""}: no rewrite and no guide — a dead end`);
+      }
+    }
+  });
+
+  test("a VALUE retirement never claims a plain key rename", () => {
+    // `@status: abandoned` cannot be fixed by renaming the key. Claiming otherwise would
+    // emit metadata that loads and means something different — the worst outcome available.
+    for (const e of RETIRED_VOCABULARY) {
+      if (e.attrValues !== undefined && e.rewrite?.kind === "renameAttr") {
+        throw new Error(`${String(e.attr)}: a value retirement cannot be a key rename`);
+      }
+    }
+  });
+
+  test("@verifiedBy is mechanically droppable", () => {
+    expect(RETIRED_VOCABULARY.find((x) => x.attr === "verifiedBy")?.rewrite?.kind).toBe("dropAttr");
+  });
+
+  test("@status: abandoned is JUDGMENT — no rewrite, guide required", () => {
+    const e = RETIRED_VOCABULARY.find((x) => x.attrValues?.includes("abandoned") === true);
+    expect(e?.rewrite).toBeUndefined();
+    expect(e?.migration).toBeDefined();
+  });
+
+  test("@readOnly carries a key+value rewrite, not a bare rename", () => {
+    expect(RETIRED_VOCABULARY.find((x) => x.attr === "readOnly")?.rewrite?.kind).toBe("renameAttrValue");
+  });
+});

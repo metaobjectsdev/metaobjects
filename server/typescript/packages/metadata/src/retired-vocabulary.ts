@@ -42,7 +42,23 @@ export interface RetirementNote {
   readonly migration?: string;
 }
 
-/** One retirement. `subTypes: "*"` means every subtype of `type`. */
+/**
+ * The mechanical fix, when one exists.
+ *
+ * ABSENT MEANS JUDGMENT — `@status: abandoned` can be resolved by deleting the node, by
+ * retyping it, or by fixing the residue it describes, and only a human knows which. A tool
+ * that guessed would emit metadata that LOADS and means something different, which is worse
+ * than refusing: the adopter would believe the migration finished.
+ */
+export type VocabularyRewrite =
+  /** The attribute name changed; the value is untouched. */
+  | { readonly kind: "renameAttr"; readonly to: string }
+  /** The attribute went away with no replacement — drop it. */
+  | { readonly kind: "dropAttr" }
+  /** Both the name and the value changed (`@readOnly: true` → `@mutability: "readOnly"`). */
+  | { readonly kind: "renameAttrValue"; readonly toAttr: string; readonly fromValue: unknown; readonly toValue: unknown };
+
+/** One retirement. `subType: "*"` means every subtype of `type`. */
 export interface RetiredEntry extends RetirementNote {
   readonly type: string;
   /** `*` for every subtype of `type`, else the exact subtype. */
@@ -53,6 +69,9 @@ export interface RetiredEntry extends RetirementNote {
   readonly attrValues?: readonly string[];
   /** Set when the SUBTYPE itself was retired (`attr`/`attrValues` absent). */
   readonly isSubTypeRetirement?: boolean;
+  /** How `meta upgrade` fixes it. Absent ⇒ the human decides; the tool refuses and
+   *  prints `migration`. */
+  readonly rewrite?: VocabularyRewrite;
 }
 
 const REQUIREMENT_MIGRATION = "docs/features/migrations/verified-by-retirement.md";
@@ -65,6 +84,9 @@ export const RETIRED_VOCABULARY: readonly RetiredEntry[] = [
     why: "it asked you to name a test, and verify could only check that the NAME occurred " +
          "somewhere in your test sources — never that the named test verified the claim",
     migration: REQUIREMENT_MIGRATION,
+    // Nothing replaced it, so the fix is removal. Safe to automate: the attribute drove no
+    // behaviour anyone else can observe.
+    rewrite: { kind: "dropAttr" },
   },
   {
     type: "requirement", subType: "*", attr: "supersededBy",
@@ -72,6 +94,7 @@ export const RETIRED_VOCABULARY: readonly RetiredEntry[] = [
     why: "a requirement is prescriptive — it states what should be true and is never a " +
          "journal of what happened",
     migration: REQUIREMENT_MIGRATION,
+    rewrite: { kind: "dropAttr" },
   },
   {
     type: "requirement", subType: "*", attr: "status",
@@ -89,6 +112,11 @@ export const RETIRED_VOCABULARY: readonly RetiredEntry[] = [
     why: "a boolean could not express write-once, so the axis became an enum",
     replacedBy: "@mutability",
     migration: "docs/features/migrations/readonly-to-mutability.md",
+    // Key AND value: `@readOnly: true` becomes `@mutability: "readOnly"`. Only the `true`
+    // arm is mechanical — `@readOnly: false` was the default and simply goes away, which
+    // the rewriter treats as a drop rather than inventing a mutability the author never
+    // stated.
+    rewrite: { kind: "renameAttrValue", toAttr: "mutability", fromValue: true, toValue: "readOnly" },
   },
 
   // ── FR-037 R2: origin.collection retires to reserved-not-registered (0.24.0) ──
@@ -119,6 +147,16 @@ export const RETIRED_VOCABULARY: readonly RetiredEntry[] = [
     why: "array-ness is DERIVED from `isArray`, so an array-flavoured physical type restated " +
          "something the model already knew",
     replacedBy: "isArray: true on the field",
+    // On a VALUE-scoped entry, `dropAttr` means "drop it when the value is one of the
+    // retired ones" — never unconditionally. `@dbColumnType: jsonb` is live vocabulary on
+    // the same attribute, and removing it would silently change the column type.
+    //
+    // Safe because the attribute said nothing the model did not already know: the field
+    // carrying `uuid_array` necessarily has `isArray: true`, which is where array-ness now
+    // comes from. There is no guide for this one, so without the rewrite an adopter would
+    // be told it is retired and given nowhere to go — which is what the dead-end test that
+    // caught this exists to prevent.
+    rewrite: { kind: "dropAttr" },
   },
 ];
 
