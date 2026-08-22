@@ -302,29 +302,62 @@ npm_install_hint() {
 # `-rc` versions and private-registry tarball URLs. `npm ci` then resolves straight from
 # the lockfile, sending every other machine and every CI run to a registry it cannot reach.
 #
-# Matched against the SAME `PRERELEASE_RE` the detector uses, sourced from it rather than
-# restated here — a second copy of that regex would drift, and this function exists to
-# explain the detector's own verdict.
+# Does this lockfile pin a VENDOR package to a pre-release? Mirrors the detector's arm 3b:
+# in a lockfile the package name and its version sit on different lines, so the signal is a
+# vendor-namespace token within a few lines of a pre-release version.
+#
+# The namespace half is not optional. Matching the version regex alone reports any
+# third-party pre-release — `drizzle-orm@1.0.0-rc.4` is published, and named in this repo's
+# own CHANGELOG — as residue this tool then demands you reconcile, which it cannot, because
+# there is nothing wrong. The detector's own comment says it: a check that cries wolf is a
+# check people learn to ignore.
+vendor_prerelease_in() {
+  awk -v ns="$2" -v re="$3" '
+    { lines[NR] = $0 }
+    END {
+      pat = "\"" re "\"" "|==" re "|Version=\"" re
+      for (i = 1; i <= NR; i++) {
+        if (lines[i] !~ pat) continue
+        for (j = i - 4; j <= i + 4; j++)
+          if (j >= 1 && j <= NR && lines[j] ~ ns) exit 0
+      }
+      exit 1
+    }
+  ' "$1" 2>/dev/null
+}
+
+# Both regexes are SOURCED from the detector rather than restated here — a second copy would
+# drift, and this function exists to explain the detector's own verdict, so a disagreement
+# between them is the one failure it must not have.
 lockfiles_with_prerelease() {
   local detector="$PROJECT/tools/prerelease/detect-prerelease-pins.sh"
   [ -x "$detector" ] || detector="$HERE/detect-prerelease-pins.sh"
-  local re
-  re="$(grep -m1 "^PRERELEASE_RE=" "$detector" | cut -d"'" -f2)"
-  [ -n "$re" ] || return 0
+  local re ns
+  # `|| true` on both: under `set -euo pipefail` a failing command substitution in a bare
+  # assignment aborts the script on the spot, which would make the guard below dead code and
+  # turn a renamed detector into a silent half-finished `unlink`.
+  re="$(grep -m1 "^PRERELEASE_RE_AWK=" "$detector" | cut -d"'" -f2 || true)"
+  ns="$(grep -m1 "^NS_RE_AWK=" "$detector" | cut -d"'" -f2 || true)"
+  [ -n "$re" ] && [ -n "$ns" ] || return 0
 
   local root prefix f
   while IFS= read -r root; do
     prefix="${root#"$PROJECT"/}"; [ "$prefix" = "$root" ] && prefix="" || prefix="$prefix/"
     for f in package-lock.json npm-shrinkwrap.json yarn.lock pnpm-lock.yaml bun.lock; do
       [ -e "$root/$f" ] || continue
-      grep -Eq -- "$re" "$root/$f" 2>/dev/null && printf '%s\n' "${prefix}${f}"
+      vendor_prerelease_in "$root/$f" "$ns" "$re" && printf '%s\n' "${prefix}${f}"
     done
   done < <(npm_install_roots)
   # The same residue exists for every other ecosystem whose lockfile `link` used to drop.
   for f in uv.lock poetry.lock Pipfile.lock packages.lock.json; do
     [ -e "$PROJECT/$f" ] || continue
-    grep -Eq -- "$re" "$PROJECT/$f" 2>/dev/null && printf '%s\n' "$f"
+    vendor_prerelease_in "$PROJECT/$f" "$ns" "$re" && printf '%s\n' "$f"
   done
+  # The loops above end on a test that is FALSE in the common case (a lockfile with no
+  # residue), and a function returns its last command's status — so without this the caller's
+  # `residue="$(lockfiles_with_prerelease)"` aborts `unlink` under `set -e`, after the repin
+  # and before the detector runs, with no message.
+  return 0
 }
 
 # The reconcile command per ecosystem that still holds pre-release residue. `unlink` PRINTS
