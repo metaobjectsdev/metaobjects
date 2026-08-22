@@ -67,7 +67,7 @@ public class CallableGenerator : PerEntityGenerator
         var hasArgs = argsObject is not null;
         var ctxType = ctx.Config.ContextTypeName;
         // Use the resolved args VO's C# type name — @parameterRef (and source.ParameterRef)
-        // can be a package-qualified FQN ("p3::reporting::FooArgs"), and the "::" separator
+        // can be a package-qualified FQN ("acme::reporting::FooArgs"), and the "::" separator
         // is invalid in a C# parameter type (CS7000). Pascal(Name) yields the emitted type.
         var argsType = hasArgs ? CSharpNaming.Pascal(argsObject!.Name) : null;
         var signature = hasArgs ? $"{ctxType} db, {argsType} args" : $"{ctxType} db";

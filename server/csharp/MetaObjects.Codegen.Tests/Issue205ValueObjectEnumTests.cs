@@ -19,7 +19,7 @@ public class Issue205ValueObjectEnumTests
     // a cross-package extends, and that value object owned (jsonb) by an entity so it is
     // emitted as a POCO.
     private const string ProvidedEnum = """
-    { "metadata.root": { "package": "p3::common", "children": [
+    { "metadata.root": { "package": "acme::common", "children": [
       { "field.enum": { "name": "ContactMethod", "abstract": true, "@provided": true, "@values": ["Phone","Email","Fax"] } }
     ]}}
     """;
@@ -33,7 +33,7 @@ public class Issue205ValueObjectEnumTests
         { "identity.primary": { "@fields": "id" } }
       ]}},
       { "object.value": { "name": "ContactInfo", "children": [
-        { "field.enum": { "name": "contactMethod", "@required": true, "extends": "p3::common::ContactMethod" } }
+        { "field.enum": { "name": "contactMethod", "@required": true, "extends": "acme::common::ContactMethod" } }
       ]}}
     ]}}
     """;
@@ -56,7 +56,7 @@ public class Issue205ValueObjectEnumTests
         {
             OutDir = "/tmp",
             Namespace = "Acme.Generated",
-            PackageNamespaces = new() { ["p3::common"] = "Acme.DataEnums" },
+            PackageNamespaces = new() { ["acme::common"] = "Acme.DataEnums" },
         },
     };
 
