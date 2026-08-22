@@ -9,7 +9,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [0.24.0] — npm `0.24.0` · PyPI `0.24.0` · NuGet `0.24.0` · Maven `7.24.0`
 
-> ### ⚠️ BREAKING FOR METADATA AUTHORS — four vocabulary retirements in ONE window
+> ### ⚠️ BREAKING FOR METADATA AUTHORS — five vocabulary changes in ONE window
 >
 > This is the pre-1.0 breaking slot (MINOR), not a patch, **specifically so it is not
 > auto-adopted**: on a caret range `^0.23.x` resolves `<0.24.0`, so you pick this up only by
@@ -18,8 +18,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 > **Everything breaking rides this one release on purpose.** Under ADR-0023's sealed strict
 > registry a retirement has no deprecation shim — a legacy model fails to LOAD — so every one
 > of these is a migration you must perform. Two breaking MINORs back to back would mean two
-> migrations for work that was budgeted as one. Hence: one window, four retirements, one
-> `metamodelVersion` move.
+> migrations for work that was budgeted as one. Hence: one window, **four retirements plus one
+> rename**, one `metamodelVersion` move.
+>
+> **Most of it is now one command: `meta upgrade --apply`.** The rewriter is driven by the same
+> retirement map the loader's errors come from, so the fixer and the diagnosis cannot drift
+> apart. What it will NOT do is guess: `@status: abandoned` is refused rather than rewritten,
+> because deciding what happens to a retired capability's record is judgment, not a substitution.
 >
 > Read the guide for each change you are affected by; each carries the exact loader error and
 > a rewrite rule.
@@ -65,15 +70,29 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 > a strictly smaller attr set and **nothing ever dispatched on it** — so unless you declared
 > it, nothing changes, and if you did, deleting the child changes no generated output.
 >
+> **E. `@violation` becomes `@counterexample` on `requirement.*`** —
+> [migration guide](docs/features/migrations/violation-to-counterexample.md)
+>
+> A rename, not a retirement: semantics, requiredness and legality on both subtypes are
+> unchanged. The attribute holds a requirement's **falsifiability test** — *what would
+> contradict this* — authored once and never a state, but `@violation` sitting beside
+> `@status` read as one. `meta upgrade --apply` rewrites it. Per-port constants rename with
+> it (`REQUIREMENT_ATTR_VIOLATION` → `..._COUNTEREXAMPLE`; Java's `getViolation()` →
+> `getCounterexample()`).
+>
 > **This release also moves `metamodelVersion`, `0.9` → `0.10`** — the first time that
 > number has ever moved. It is the one that tells you your *metadata* needs work, as
-> distinct from your build. One move covers all four retirements.
+> distinct from your build. One move covers all five.
 
 A coordinated **MINOR** across all four registries, and the **pre-1.0 breaking slot** — the
 one release in this cycle where previously-valid metadata is allowed to stop loading. It
-carries **four** vocabulary retirements, batched deliberately: the ADR-0052
+carries **four** vocabulary retirements plus **one rename**, batched deliberately: the ADR-0052
 template-direction split, the requirement vocabulary going prescriptive-only (FR-038), the
-`@readOnly` → `@mutability` enum (FR-037 R1), and `origin.collection` (FR-037 R2). Two
+`@readOnly` → `@mutability` enum (FR-037 R1), `origin.collection` (FR-037 R2), and
+`@violation` → `@counterexample` on `requirement.*`. The fifth was caught *before* ship and
+folded in rather than held for `0.25.0` — holding it out would have made every adopter with a
+ledger edit the same files twice, the second pass landing on the hand-judgment `abandoned`
+cases they had just finished. Concentrating breaking vocabulary is what the window is for. Two
 further changes are DEFAULT FLIPS rather than corrections of previously-wrong behaviour —
 the Java Maven plugin now fails a build that a silently-empty model used to let pass, and
 Java and Python now follow symlinked directories where they previously did not. Pre-1.0,
@@ -132,6 +151,33 @@ with ~85% landing on one ledger and one estate untouched.
 [Migration guide](docs/features/migrations/verified-by-retirement.md) — including the case
 adopters ask about most, what to do when a whole subtree retires and no sibling survives to
 carry the note.
+
+### BREAKING — `@violation` becomes `@counterexample` (`requirement.*`)
+
+The attribute holding a requirement's falsifiability test is renamed, on both subtypes, in all
+five ports. **Semantics, requiredness and legality are unchanged** — this is a name, not a
+behaviour.
+
+**Why a rename is worth a breaking slot.** The field holds a STATIC test — *what would
+contradict this requirement* — authored once alongside `@statement` and never a state. Sitting
+beside `@status`, `@violation` read as one, to the point that the person who approved the
+vocabulary asked outright whether it meant "we know this requirement is currently in
+violation." A name that misleads its own approver has earned replacing, and the only slot where
+renaming registered vocabulary is cheap is this one.
+
+**It rides 0.24.0 rather than 0.25.0, and that is the whole point of the window.** Holding it
+out would have made every adopter with a ledger migrate the same files twice —
+`@verifiedBy`/`@supersededBy`/`@status` now, `@violation` later — with the second pass landing
+on the `abandoned` entries that need hand judgment rather than a substitution. A fifth change
+caught *before* the release ships is what a batching window is for.
+
+**The migration is one command:** `meta upgrade --apply`. This is the first real user of the
+new rewriter — the retirement map carries the rename as `rewrite: renameAttr`, so the loader's
+error message and the fixer are generated from one declaration and cannot drift apart.
+[Migration guide](docs/features/migrations/violation-to-counterexample.md).
+
+Per-port constants rename with it: `REQUIREMENT_ATTR_VIOLATION` → `REQUIREMENT_ATTR_COUNTEREXAMPLE`,
+and Java's `getViolation()` → `getCounterexample()`.
 
 ### BREAKING — `@readOnly` becomes the `@mutability` enum (FR-037 R1)
 
@@ -305,6 +351,87 @@ corpus, and **all five ports stayed green**: a corpus that stops exercising a co
 emits no diagnostic, only assertions that quietly cover less. The corpus now carries a
 README naming which case covers which path, so an edit that removes one has to remove its
 stated purpose too.
+
+### Added — `meta upgrade`, the fixer for everything above
+
+A new Node-`meta` subcommand that rewrites retired vocabulary in your metadata. Four of this
+release's five vocabulary changes are mechanical, and asking every adopter to hand-sweep them
+is asking for the same edit to be made slightly differently in every project.
+
+```
+meta upgrade            # preview
+meta upgrade --apply    # write
+```
+
+**It is driven by the retirement map the loader's own errors come from**, not by
+`--from`/`--to` arguments. One declaration produces both the diagnosis and the fix, so they
+cannot drift, and you are never asked to supply the mapping you ran the tool to be told.
+
+**It does not load your metadata, and cannot.** Retired vocabulary fails the load — that is
+the state the command exists to repair — so it rewrites raw text, replacing spans. That is
+also what keeps JSONC comments and key order intact; a parse-and-reprint would destroy both
+while reporting success.
+
+**It refuses what needs a decision, and exits non-zero.** `@status: abandoned` can be
+resolved by deleting the node, retyping it, or fixing the residue it describes. A guess would
+emit metadata that *loads* and means something else — worse than refusing, because you would
+believe the migration finished. The non-zero exit stands even when every mechanical change
+succeeded, so a pipeline cannot record a partial upgrade as complete.
+
+**Canonical JSON only.** YAML metadata is loadable (ADR-0006) but is not rewritten — a
+correct YAML editor needs a CST, and the rewriter lives in a browser-safe module that cannot
+import a YAML parser. YAML files are **named in the output and the run exits non-zero**
+rather than passed over. Deliberately: a refusal you can act on beats a success you cannot
+trust. See [the CLI matrix](docs/features/cli.md#meta-upgrade--retired-vocabulary-not-schema).
+
+Retirement diagnostics changed no load outcome anywhere. Metadata carrying retired vocabulary
+still fails, with the same error code at the same site; the message gains one sentence naming
+the release, the reason and the guide. Making any of them load again would silently undo an
+adjudicated breaking change ([#337](https://github.com/metaobjectsdev/metaobjects/issues/337)).
+
+### Fixed — the fixer reported success on work it had not done (pre-release review)
+
+Five defects in `meta upgrade`, all found reviewing this batch **before** it shipped and each
+reproduced against the real code. None reached a registry; they are recorded because they
+share one shape worth naming — *a tool that exits 0 on metadata that still will not load* —
+and because two of them were invisible to a green suite.
+
+- **Scope was a property of the FILE, not the occurrence.** The command ran one whole-document
+  pass per type key present, so the `identity.secondary` scope reached a `field.string`'s
+  `@unique` — live registered vocabulary — and refused it, failing a valid project. `@unique`
+  carries no rewrite; with a `dropAttr` entry the same mechanism **deletes the declaration**.
+  This is precisely what the retirement map's own header forbids, and the existing scoping
+  test could not see it because it fed a document containing only the live type. Scope is now
+  resolved per occurrence from the enclosing node.
+- **The same loop double-counted refusals** — a wildcard entry (`requirement.*`) matched every
+  subtype, so one `@status: abandoned` was reported once per subtype key in the file, with
+  later passes computing line numbers against already-rewritten text.
+- **A retired SUBTYPE was invisible.** `origin.collection` produced no change and no refusal —
+  "no retired vocabulary found", exit 0, on a document that fails `ERR_UNKNOWN_SUBTYPE`.
+- **`@readOnly: false` was silently skipped** while the map entry's prose claimed it was
+  "treated as a drop". The rewrite type now *requires* an `otherwise: "drop" | "refuse"`, so
+  an entry naming only the value it can rewrite no longer type-checks — the gap could not have
+  survived a type that made stating it mandatory.
+- **YAML was skipped silently, and corrupted when it was not.** A multi-item block sequence
+  lost every item but the first, and the dominant flow style (`{ name: x, readOnly: true }`)
+  was not matched at all. The mode is removed in favour of the refusal described above.
+
+### Fixed — the shipped authoring skill still taught `@violation`
+
+The rename swept the metamodel in all five ports, the registry manifest, the fixtures and the
+migration guide — and missed the skill `meta init` installs. An agent following
+`references/requirements.md` authored `violation:`, which fails the load twice:
+`ERR_UNKNOWN_ATTR`, then `ERR_MISSING_REQUIRED_ATTR` on the `@counterexample` it never wrote.
+
+The conformance corpus could not catch it. Its five `expected/` trees are **copies** of the
+same source, so stale source produced stale expectations and the gate stayed green — it can
+only ever catch an assembler bug, never wrong content. The generated requirement test's
+doc-comment label is corrected in the same pass (`Violated by:` → `Counterexample:`), which
+had left two generated artifacts naming one field two ways.
+
+This is the second retirement to leave a shipped skill teaching metadata the loader refuses.
+The durable correction is not another sweep: **agent-facing content authors the metadata**, so
+it belongs inside a retirement the way a language port does.
 
 ### Fixed — the agent-facing docs described `@promptStyle` backwards, and never mentioned `sources`
 
@@ -607,6 +734,24 @@ that published a pre-release to public npm while this was being built: `bun publ
 asserts its target equals the configured registry, checks it against a deny-list of the
 public registries, **parses `bun publish --dry-run`** rather than trusting bun, and runs with
 `HOME` redirected so a fall-back has no credential to use.
+
+### Fixed — the pre-release lockfile check cried wolf, and could abort `unlink` silently
+
+`unlink`'s residue check claimed to use the detector's own regex, and did — but dropped the
+half that makes its verdict mean anything. In a lockfile the package name and its version sit
+on different lines, so the detector correlates the version pattern with a **vendor namespace**
+token nearby; the check matched the bare version alone. Any third-party pre-release therefore
+read as residue — `drizzle-orm` is published at `1.0.0-rc.4` — so `unlink` printed "these
+lockfiles still resolve from the pre-release", handed over reconcile instructions, and then
+printed "unlinked and verified clean" two lines later. The detector's own comment says why
+this matters: a check that cries wolf is a check people learn to ignore.
+
+Two `set -euo pipefail` hazards in the same helper, both reproduced against the pre-fix code:
+a bare command-substitution assignment aborted the script outright, making the graceful
+degradation below it dead code; and the helper's trailing loop ends on a test that is false in
+the common case, so a present-but-clean `packages.lock.json` made it return 1 — aborting
+`unlink` after the repin and before the detector ran, with no message
+([#336](https://github.com/metaobjectsdev/metaobjects/issues/336)).
 
 ### Fixed — `meta init --print-only` wrote the files it was previewing
 
