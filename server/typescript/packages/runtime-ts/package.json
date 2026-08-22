@@ -1,6 +1,6 @@
 {
   "name": "@metaobjectsdev/runtime-ts",
-  "version": "0.23.2",
+  "version": "0.24.0",
   "description": "Node-side runtime helpers for MetaObjects: Fastify route builders, Drizzle filter/sort integration, Kysely drivers.",
   "type": "module",
   "main": "./dist/index.js",
