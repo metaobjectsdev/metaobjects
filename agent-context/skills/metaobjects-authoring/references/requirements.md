@@ -20,7 +20,7 @@ the requirement went stale.
 **2. When you add an entity, claim it.** Every `object.entity` should appear in some
 requirement's `implementedBy`, or `verify` says so.
 
-**Every requirement states its violation.** One sentence: what breaking it looks like.
+**Every requirement states its counterexample.** One sentence: what breaking it looks like.
 *"Every entity has a uuid primary key"* is violable — point at one with a composite string
 key. *"Things are persisted"* is not, and is a description rather than a requirement. Same
 rule kills *"the system is reliable"*. If you cannot say what breaking it looks like,
@@ -32,7 +32,7 @@ decide the split before writing any of them:
 
 - `title` — a short **noun-phrase** label (`name` is an identifier; this is what an index shows)
 - `statement` — **the claim**. This IS the description of what the requirement is
-- `violation` — **the counterexample** that makes the claim checkable
+- `counterexample` — **what would falsify the claim**, which is what makes it checkable
 - `description` — **the scope**: what the claim covers, what it deliberately does not, and
   which sibling entry owns the rest
 - `notes` — **the evidence**: how you know the `status` is true — citations, vocabularies, the
@@ -122,14 +122,14 @@ ambition rather than work.
     level: 3
     status: live
     statement: "Scene pacing follows story beats"
-    violation: "A scene that advances on a clock rather than on the story"
+    counterexample: "A scene that advances on a clock rather than on the story"
     children:
       - requirement.functional:
           name: BeatProgression
           level: 4
           status: planned            # not built yet -- refs may dangle
           statement: "A scene advances when its beat completes"
-          violation: "A scene that advances with its beat unresolved"
+          counterexample: "A scene that advances with its beat unresolved"
           trackedBy: ["acme/game#412"]
           implementedBy: ["game::turn::BeatProgression"]   # does not exist YET
 
@@ -137,7 +137,7 @@ ambition rather than work.
     name: UuidPrimaryKeys
     status: live
     statement: "Every entity has a uuid primary key"
-    violation: "An entity keyed by a composite string"
+    counterexample: "An entity keyed by a composite string"
     implementedBy: ["game::turn::Turn", "game::world::Location"]
 ```
 

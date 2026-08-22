@@ -128,7 +128,7 @@ export function renderRequirementTest(a: RequirementTestArgs): string {
     `/**\n` +
     ` * ${statement}\n` +
     ` *\n` +
-    ` * Violated by: ${counterexample}${gapLine(a)}\n` +
+    ` * Counterexample: ${counterexample}${gapLine(a)}\n` +
     ` *\n` +
     ` * Claims:\n` +
     `${claimLines(a.targets)}\n` +

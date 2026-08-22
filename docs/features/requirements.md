@@ -82,7 +82,7 @@ apply to every node: *if a refactor that changes no behaviour would force this n
 its level is wrong.* Splitting a service, merging two packages or renaming a module must not
 touch the tree.
 
-**Every requirement states its violation.** *"Every entity has a uuid primary key"* is
+**Every requirement states its counterexample.** *"Every entity has a uuid primary key"* is
 violable — point at one with a composite key. *"Things are persisted"* is not, and is a
 description rather than a requirement. If you cannot say what breaking it looks like, delete
 it.

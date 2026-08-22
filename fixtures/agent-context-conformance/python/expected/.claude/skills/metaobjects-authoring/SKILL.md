@@ -1020,7 +1020,7 @@ If the project declares any `requirement.*` node, `references/requirements.md` i
     name: everyStoredRowIsAddressable
     status: live
     statement: Every persisted row declares the identity by which it is addressed.
-    violation: A row that can be inserted but never pointed at.
+    counterexample: A row that can be inserted but never pointed at.
     implementedBy: [acme::shop::Order]
 ```
 
