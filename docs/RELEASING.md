@@ -300,19 +300,26 @@ diff explained.
   > in CI or any non-interactive shell; `--otp=` is silently IGNORED (bun prompts `Enter OTP:`
   > regardless, so a code must be piped on **stdin**). And if the account's 2FA is a security
   > key rather than TOTP, there is no 6-digit code to supply at all. Use **Classic → Automation**
-  > (or a granular token with 2FA-bypass enabled). Verify before you need it, with a reversible
-  > write rather than a read:
+  > (or a granular token with 2FA-bypass enabled).
+  >
+  > **Do NOT try to prove the token type with a write against a published package.** The
+  > obvious probe — `npm dist-tag add … auth-probe` then `rm` — is **not reversible**: since
+  > 2026-07-31 a bypass-2FA token may still *publish* but may not change package access,
+  > so the `add` succeeds and the `rm` returns `403` ("Granular access tokens that bypass
+  > two-factor authentication may not perform this action"). That strands a stray tag on a
+  > public package needing an interactive-2FA session to clear. It was tried on the 0.24.0
+  > cut; don't repeat it.
+  >
+  > Verify what can be verified read-only, and let the publish itself be the rest:
   > ```bash
-  > npm dist-tag add @metaobjectsdev/cli@<current-latest> auth-probe   # must SUCCEED
-  > npm dist-tag rm  @metaobjectsdev/cli auth-probe
+  > node scripts/release-verify.mjs --preflight       # auth + scope, no writes
   > ```
-  > **Note the second command now FAILS with a bypass-2FA token** (`403`, "Granular access
-  > tokens that bypass two-factor authentication may not perform this action"). Since
-  > 2026-07-31 such tokens may still *publish* but may not change package access — including
-  > **deleting a dist-tag**. So the probe above is only half-reversible: prefer probing on a
-  > throwaway package, or accept that removing the tag needs an interactive-2FA session.
-  > `scripts/release.mjs` now runs `npm whoami` in phase 0 so a dead credential is caught
-  > BEFORE the version bump is committed, not after other registries have shipped.
+  > `whoami` and `access list` are both READS, so neither proves write capability — the
+  > preflight says so rather than implying otherwise. **The tier-0 publish is the real
+  > probe**: `metadata` publishes first, so a wrong token fails there, before anything
+  > depends on it. `scripts/release.mjs` also runs `npm whoami` in phase 0, so a dead
+  > credential is caught BEFORE the version bump is committed rather than after other
+  > registries have shipped irreversibly.
 
   Revoking the token after each release is a deliberate trade — it is also why the credential
   is reliably dead at the start of the next cut. Whichever you choose, do it knowingly.

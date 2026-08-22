@@ -211,6 +211,15 @@ reviewable "Version Packages" PR → automated bump + CHANGELOG). Adopting it wo
 replace Phases 1/3/7's manual steps; the preflight gate, smoke test, and
 stop-and-confirm in this skill stay.
 
+## Verify with the committed script, not ad-hoc shell
+`node scripts/release-verify.mjs [--preflight] [<version>] [--smoke]` is the one place
+release verification lives — auth preflight, all four registries, stray dist-tags, and a
+real external install in npm + pnpm (outside `/tmp`, so nothing shadows it). Use it
+instead of improvising checks per release: the 0.24.0 cut was verified by a dozen
+throwaway scripts, and the improvised auth check was a **write** against a published
+package that could not be undone. **Never probe credentials by mutating a published
+package.** It is read-only; extend it there when a release needs a check it lacks.
+
 ## Phase 0 addendum — check that you CAN publish
 `scripts/release.mjs` now runs `npm whoami` in preflight. Do the same by hand if you
 are publishing manually, and use an **Automation / bypass-2FA** token: a "Publish"
