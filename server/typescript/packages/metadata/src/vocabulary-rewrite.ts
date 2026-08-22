@@ -222,15 +222,29 @@ export function rewriteDocument(source: string, opts: RewriteOpts): RewriteResul
         changes.push({ attr, from: attr, to: rw.to, line });
       } else if (rw.kind === "dropAttr") {
         if (span === undefined) continue;
-        // Take the trailing comma and the line's own whitespace with it, so removing a
-        // middle key does not leave a dangling `,` or a blank line behind.
+        // Take the TRAILING comma and the line's own whitespace, so removing a middle key
+        // leaves neither a dangling `,` nor a blank line.
         let end = span.end;
         while (end < source.length && /[ \t]/.test(source[end] ?? "")) end++;
-        if (source[end] === ",") end++;
+        const hadTrailingComma = source[end] === ",";
+        if (hadTrailingComma) end++;
+
         let start = keyStart;
         while (start > 0 && /[ \t]/.test(source[start - 1] ?? "")) start--;
+
+        // THE LAST-KEY CASE, found by dogfooding rather than by the unit tests above: when
+        // the retired attr is last in its object there IS no trailing comma — the comma
+        // belongs to the PRECEDING key. Dropping without taking it leaves `"...",\n}`,
+        // which does not parse. A tool whose whole job is producing loadable metadata
+        // cannot emit invalid JSON.
+        if (!hadTrailingComma) {
+          let back = start;
+          while (back > 0 && /[\s]/.test(source[back - 1] ?? "")) back--;
+          if (source[back - 1] === ",") start = back - 1;
+        }
+
         if (source[start - 1] === "\n" && source[end] === "\n") end++;
-        else if (start > 0 && source[start - 1] !== "\n") start = keyStart;
+        else if (start > 0 && source[start - 1] !== "\n" && hadTrailingComma) start = keyStart;
         edits.push({ start, end, text: "" });
         changes.push({ attr, from: attr, to: "(removed)", line });
       } else {

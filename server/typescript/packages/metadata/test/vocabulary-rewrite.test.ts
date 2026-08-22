@@ -33,6 +33,10 @@ describe("mechanical rewrites", () => {
     expect(r.text).toContain('"@level": 4');
     expect(r.changes).toHaveLength(1);
     expect(r.changes[0]?.attr).toBe("verifiedBy");
+    // Substring assertions alone are what let the trailing-comma bug through — they were
+    // all true of a document that no longer parsed. Every drop case now proves the result
+    // is still valid JSON.
+    expect(() => JSON.parse(r.text)).not.toThrow();
   });
 
   test("rewrites key AND value for @readOnly", () => {
@@ -71,6 +75,34 @@ describe("surgical editing", () => {
     // key order intact
     expect(r.text.indexOf('"name"')).toBeLessThan(r.text.indexOf('"@statement"'));
     expect(r.text.indexOf('"@statement"')).toBeLessThan(r.text.indexOf('"@level"'));
+  });
+
+  // Caught by dogfooding against a real fixture, not by the tests above — the drop cases
+  // there all had a following key, so the trailing comma was always there to consume. When
+  // the retired attr is LAST, the comma belongs to the PRECEDING key and dropping naively
+  // leaves `"...",\n}` — invalid JSON, from a tool whose entire job is producing loadable
+  // metadata.
+  test("dropping the LAST key does not leave a trailing comma", () => {
+    const src = `{
+  "requirement.architectural": {
+    "name": "MoneyIsExactMinorUnits",
+    "@statement": "Amounts are exact integer minor units",
+    "@verifiedBy": ["MoneyRoundingTest"]
+  }
+}`;
+    const r = rewriteDocument(src, { typeKeyHint: "requirement.architectural" });
+    expect(r.text).not.toContain("@verifiedBy");
+    // The real assertion: the result must still parse.
+    expect(() => JSON.parse(r.text)).not.toThrow();
+    expect(JSON.parse(r.text)["requirement.architectural"]["@statement"]).toBe(
+      "Amounts are exact integer minor units",
+    );
+  });
+
+  test("dropping the ONLY key leaves a valid empty object", () => {
+    const src = `{ "requirement.functional": { "@verifiedBy": ["T"] } }`;
+    const r = rewriteDocument(src, { typeKeyHint: "requirement.functional" });
+    expect(() => JSON.parse(r.text)).not.toThrow();
   });
 
   test("a document with nothing to change comes back BYTE-IDENTICAL", () => {

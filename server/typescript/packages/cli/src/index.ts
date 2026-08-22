@@ -23,6 +23,7 @@ COMMANDS:
   export                Flatten loaded metadata to one canonical JSON artifact
   docs <metadata> --out <dir>  Generate neutral metadata documentation (entity + template pages; --site for HTML site)
   verify                Drift gate — subverbs: --templates / --db / --codegen (bare = --templates)
+  upgrade               Rewrite retired metadata vocabulary (previews; --apply writes)
   prompt-snapshot       Snapshot rendered template.* output; --check gates drift
   migrate               Diff metadata vs live DB; emit migration SQL files
   --version, -v         Print version
@@ -376,6 +377,10 @@ export async function run(argv: string[]): Promise<number> {
     case "verify": {
       const { verifyCommand } = await import("./commands/verify.js");
       return verifyCommand(rest, cwd);
+    }
+    case "upgrade": {
+      const { upgradeCommand } = await import("./commands/upgrade.js");
+      return upgradeCommand(rest, cwd);
     }
     case "prompt-snapshot": {
       const { promptSnapshotCommand } = await import("./commands/prompt-snapshot.js");
