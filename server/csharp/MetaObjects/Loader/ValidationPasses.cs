@@ -523,9 +523,9 @@ public static class ValidationPasses
                         var viaObj = origin.OwnAttr(ORIGIN_PASSTHROUGH_ATTR_VIA);
                         if (viaObj is string via && via != "")
                         {
-                            var hops = ValidateViaPath(via, root, obj, field.Name, errors, origin.Source);
-                            if (hops is not null)
-                                CheckPassthroughCardinality(hops, obj, field.Name, origin.Source, errors);
+                            var walked = ValidateViaPath(via, root, obj, field.Name, errors, origin.Source);
+                            if (walked is WalkedViaPath wp)
+                                CheckPassthroughCardinality(wp.Hops, obj, field.Name, origin.Source, errors);
                         }
                         else if (fromTarget is ResolvedFromTarget ft2 && !isValueHost)
                         {
@@ -606,19 +606,95 @@ public static class ValidationPasses
                                     ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
                             else
                             {
-                                var predHops = ValidateViaPath(predVia, root, obj, field.Name, errors, src);
-                                if (predHops is not null) CheckAggregateCardinality(predHops, obj, field.Name, src, errors);
+                                var predWalked = ValidateViaPath(predVia, root, obj, field.Name, errors, src);
+                                if (predWalked is WalkedViaPath pw) CheckAggregateCardinality(pw.Hops, obj, field.Name, src, errors);
                             }
                             continue;
                         }
 
-                        // --- count/sum/avg/min/max/collect: @of REQUIRED ---
+                        // --- @of: REQUIRED for count/sum/avg/min/max; OPTIONAL for collect ---
+                        // #335 — an @of-absent collect is a WHOLE-OBJECT rollup: collect the
+                        // related rows as an array of the field's declared @objectRef value
+                        // object rather than an array of one scalar column.
                         if (!ofPresent)
                         {
-                            // Missing-attr — keep origin's own source envelope.
-                            errors.Add(new MetaError(
-                                $"origin.aggregate on {obj.Name}.{field.Name}: missing @of.",
-                                ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+                            if (!isCollect)
+                            {
+                                // Missing-attr — keep origin's own source envelope.
+                                errors.Add(new MetaError(
+                                    $"origin.aggregate on {obj.Name}.{field.Name}: missing @of.",
+                                    ErrorCode.ERR_INVALID_ORIGIN, Envelope: src));
+                                continue;
+                            }
+                            // Whole-object rollup. The carrying field must be a field.object
+                            // naming a value object, and @via must be explicit (there is no @of
+                            // entity to infer the single-hop relation from).
+                            // ADR-0039: resolving — @objectRef may be inherited via extends.
+                            var objectRefObj = field.Attr(FIELD_ATTR_OBJECT_REF);
+                            if (field.SubType != FIELD_SUBTYPE_OBJECT
+                                || objectRefObj is not string objectRef || objectRef == "")
+                            {
+                                errors.Add(new MetaError(
+                                    $"origin.aggregate @agg:collect on {obj.Name}.{field.Name}: @of is omitted, so this is a " +
+                                    "whole-object rollup — the carrying field must be a field.object declaring @objectRef " +
+                                    "(add @of to collect a single column instead).",
+                                    ErrorCode.ERR_COLLECT_WHOLE_OBJECT, Envelope: src));
+                                continue;
+                            }
+                            // #210's value-only rule is PAYLOAD-scoped and never reaches a
+                            // projection-hosted field, so this branch enforces it itself.
+                            // Without it an @objectRef to an entity silently rolls up the FULL
+                            // entity — the #270 shape, this time baked into DDL.
+                            // ADR-0042 — a bare @objectRef resolves in the DECLARING owner's
+                            // package (an inherited field resolves in the package that declared it).
+                            var refTarget = FindObject(root, objectRef,
+                                NamingRefs.EffectivePackage(field.Parent ?? obj));
+                            if (refTarget is not null && refTarget.SubType != OBJECT_SUBTYPE_VALUE)
+                            {
+                                errors.Add(new MetaError(
+                                    $"origin.aggregate @agg:collect on {obj.Name}.{field.Name}: @objectRef '{objectRef}' " +
+                                    $"resolves to {TYPE_OBJECT}.{refTarget.SubType} — a whole-object rollup must target an " +
+                                    "object.value (#210, ADR-0028).",
+                                    ErrorCode.ERR_SUBTYPE_RULE_VIOLATION, Envelope: src));
+                                continue;
+                            }
+                            // ADR-0039: own — origin.* never inherits (ADR-0029).
+                            if (origin.OwnAttr(ORIGIN_AGGREGATE_ATTR_VIA) is not string woVia || woVia == "")
+                            {
+                                errors.Add(new MetaError(
+                                    $"origin.aggregate @agg:collect on {obj.Name}.{field.Name}: @via is required on a " +
+                                    "whole-object rollup — there is no @of entity to infer the relationship from.",
+                                    ErrorCode.ERR_COLLECT_WHOLE_OBJECT, Envelope: src));
+                                continue;
+                            }
+                            // @distinct is refused on the object form. It is NOT an engine limit
+                            // (both engines dedupe JSON objects); it is a guaranteed no-op
+                            // whenever the value object carries the entity's primary key, which
+                            // is the common case, and a silent no-op is worse than a refusal.
+                            if (hasDistinct)
+                            {
+                                errors.Add(new MetaError(
+                                    $"origin.aggregate @agg:collect on {obj.Name}.{field.Name}: @distinct is not supported on a " +
+                                    "whole-object rollup (it is a no-op whenever the value object carries the primary key).",
+                                    ErrorCode.ERR_COLLECT_WHOLE_OBJECT, Envelope: src));
+                                continue;
+                            }
+                            // One walk yields both the hops (cardinality) and the terminal entity
+                            // (@orderBy keys, member resolution). An invalid @via (e.g. a single-
+                            // segment "A") returns null having already pushed its own error, so
+                            // everything downstream is skipped and no second, misleadingly-scoped
+                            // error is emitted.
+                            var woWalked = ValidateViaPath(woVia, root, obj, field.Name, errors, src);
+                            if (woWalked is WalkedViaPath ww)
+                            {
+                                CheckAggregateCardinality(ww.Hops, obj, field.Name, src, errors);
+                                // @orderBy keys resolve against the @via TERMINAL entity, not @of.
+                                ValidateOrderByKeys(orderBy, ww.Terminal, obj, field.Name,
+                                    "origin.aggregate @agg:collect", src, errors,
+                                    ErrorCode.ERR_COLLECT_WHOLE_OBJECT);
+                                if (refTarget is not null)
+                                    CheckCollectMembers(refTarget, ww.Terminal, obj, field, src, errors);
+                            }
                             continue;
                         }
                         string of = (string)ofObj!;
@@ -640,9 +716,9 @@ public static class ValidationPasses
                         var viaObj = origin.OwnAttr(ORIGIN_AGGREGATE_ATTR_VIA);
                         if (viaObj is string via && via != "")
                         {
-                            var hops = ValidateViaPath(via, root, obj, field.Name, errors, src);
-                            if (hops is not null)
-                                CheckAggregateCardinality(hops, obj, field.Name, src, errors);
+                            var walked = ValidateViaPath(via, root, obj, field.Name, errors, src);
+                            if (walked is WalkedViaPath aw)
+                                CheckAggregateCardinality(aw.Hops, obj, field.Name, src, errors);
                             continue;
                         }
                         // FR-024 §6 — no @via on an aggregate: inference applies only
@@ -736,8 +812,8 @@ public static class ValidationPasses
                         var viaObj = origin.OwnAttr(ORIGIN_FIRST_ATTR_VIA);
                         if (viaObj is string via && via != "")
                         {
-                            var hops = ValidateViaPath(via, root, obj, field.Name, errors, src);
-                            if (hops is not null) CheckAggregateCardinality(hops, obj, field.Name, src, errors);
+                            var walked = ValidateViaPath(via, root, obj, field.Name, errors, src);
+                            if (walked is WalkedViaPath fw) CheckAggregateCardinality(fw.Hops, obj, field.Name, src, errors);
                         }
                         else if (ofTarget is ResolvedFromTarget inferTarget)
                         {
@@ -775,9 +851,67 @@ public static class ValidationPasses
     /// order) and <c>origin.first</c> (row selection). A null related entity means a
     /// prior error already fired — skip silently. Mirrors TS <c>_validateOrderByKeys</c>.
     /// </summary>
+    /// A field's declared type on BOTH axes — <c>field.&lt;subType&gt;</c> plus <c>[]</c> when it
+    /// is an array. ADR-0039: ResolvedIsArray(), so array-ness inherited via extends counts.
+    /// Mirrors the TS <c>_typeLabel</c>.
+    private static string TypeLabel(MetaData field)
+        => $"field.{field.SubType}{(field.ResolvedIsArray() ? "[]" : "")}";
+
+    /// #335 — a whole-object <c>@agg:collect</c> projects EXACTLY the declared value object's
+    /// members, matched BY NAME against the <c>@via</c> terminal entity's fields:
+    /// <list type="bullet">
+    ///   <item>an unmatched member is an error, never a silent drop. Failing open here is how
+    ///     #270 turned a curated value object into the full entity, invisible in a diff because
+    ///     the metadata still read as curated.</item>
+    ///   <item>a matched member must agree on BOTH type axes (#185 type-preserving doctrine),
+    ///     so a scalar member cannot bind an array field or vice versa.</item>
+    /// </list>
+    /// Both refusals carry a whole-object-specific code — ERR_COLLECT_MEMBER_UNRESOLVED for the
+    /// unmatched member, ERR_COLLECT_WHOLE_OBJECT for the type disagreement. The latter is
+    /// deliberately NOT the scalar arm's ERR_INVALID_ORIGIN: a loader that still requires @of
+    /// rejects this metadata with ERR_INVALID_ORIGIN too, so sharing the code would make a
+    /// corpus fixture pass on a port that implements nothing.
+    /// Mirrors the TS <c>_checkCollectMembers</c>.
+    private static void CheckCollectMembers(
+        MetaData refTarget, MetaData terminal, MetaData obj, MetaData field,
+        ErrorSource src, List<MetaError> errors)
+    {
+        // ADR-0039: resolving — a value object may inherit members via extends, and the
+        // terminal entity may inherit fields; own-only would silently skip inherited
+        // members, which is exactly the #270 bug class this guards.
+        var terminalFields = terminal.Children().Where(c => c.Type == TYPE_FIELD).ToList();
+        foreach (var member in refTarget.Children().Where(c => c.Type == TYPE_FIELD))
+        {
+            var match = terminalFields.FirstOrDefault(f => f.Name == member.Name);
+            if (match is null)
+            {
+                errors.Add(new MetaError(
+                    $"origin.aggregate @agg:collect on {obj.Name}.{field.Name}: value-object member " +
+                    $"'{member.Name}' has no matching field on '{terminal.Name}' — a whole-object " +
+                    "rollup projects exactly the declared members.",
+                    ErrorCode.ERR_COLLECT_MEMBER_UNRESOLVED, Envelope: src));
+                continue;
+            }
+            string memberLabel = TypeLabel(member);
+            string matchLabel = TypeLabel(match);
+            if (memberLabel != matchLabel)
+            {
+                errors.Add(new MetaError(
+                    $"origin.aggregate @agg:collect on {obj.Name}.{field.Name}: value-object member " +
+                    $"'{member.Name}' is {memberLabel} but '{terminal.Name}.{match.Name}' is " +
+                    $"{matchLabel} — a whole-object rollup preserves each member's type.",
+                    ErrorCode.ERR_COLLECT_WHOLE_OBJECT, Envelope: src));
+            }
+        }
+    }
+
+    /// <paramref name="code"/> lets #335's whole-object <c>@agg:collect</c> arm report
+    /// ERR_COLLECT_WHOLE_OBJECT instead; it defaults to ERR_INVALID_ORIGIN so the scalar
+    /// <c>@of</c> and <c>origin.first</c> call sites keep their existing envelope byte-for-byte.
     private static void ValidateOrderByKeys(
         object? orderBy, MetaData? relatedEntity, MetaData obj, string fieldName,
-        string label, ErrorSource originSource, List<MetaError> errors)
+        string label, ErrorSource originSource, List<MetaError> errors,
+        ErrorCode code = ErrorCode.ERR_INVALID_ORIGIN)
     {
         // @orderBy is a declared string[] attr → stored as IReadOnlyList<string>.
         if (orderBy is not IReadOnlyList<string> keys || relatedEntity is null) return;
@@ -793,13 +927,13 @@ public static class ValidationPasses
             {
                 errors.Add(new MetaError(
                     $"{label} on {obj.Name}.{fieldName}: @orderBy key \"{raw}\" — no such field \"{key}\" on {relatedEntity.Name}.",
-                    ErrorCode.ERR_INVALID_ORIGIN, Envelope: originSource));
+                    code, Envelope: originSource));
             }
             else if (dir is not null && !SORT_ORDER_VALUES.Contains(dir))
             {
                 errors.Add(new MetaError(
                     $"{label} on {obj.Name}.{fieldName}: @orderBy key \"{raw}\" — direction must be one of {string.Join("|", SORT_ORDER_VALUES)}.",
-                    ErrorCode.ERR_INVALID_ORIGIN, Envelope: originSource));
+                    code, Envelope: originSource));
             }
         }
     }
@@ -951,7 +1085,13 @@ public static class ValidationPasses
     /// Validate an explicit `@via` "Entity.rel[.rel...]" path. Returns the walked
     /// relationship hop nodes (in path order) on full success — FR-024 B5 runs
     /// the cardinality checks over them — or null when any error was pushed.
-    private static List<MetaData>? ValidateViaPath(
+    /// A fully-walked <c>@via</c> path: the relationship hop nodes in path order, plus the
+    /// entity they terminate at. Returned as a pair (rather than re-walking for the terminal)
+    /// because a second walk means a second copy of the ADR-0042 package-resolution rule —
+    /// mirrors the TS <c>WalkedViaPath</c>.
+    private readonly record struct WalkedViaPath(List<MetaData> Hops, MetaData Terminal);
+
+    private static WalkedViaPath? ValidateViaPath(
         string viaAttr,
         MetaData root,
         MetaData projection,
@@ -1051,7 +1191,8 @@ public static class ValidationPasses
             currentObj = nextObj;
         }
 
-        return hops;
+        // currentObj is the terminal: every earlier exit returned null.
+        return new WalkedViaPath(hops, currentObj);
     }
 
     // -------------------------------------------------------------------------

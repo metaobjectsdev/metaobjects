@@ -1584,6 +1584,16 @@ def _validate_entity_field_ref(
     return (entity, field_node)
 
 
+class WalkedViaPath(NamedTuple):
+    """A fully-walked ``@via`` path: the relationship hop nodes in path order,
+    plus the entity they terminate at. Returned as a pair (rather than re-walking
+    for the terminal) because a second walk means a second copy of the ADR-0042
+    package-resolution rule — mirrors the TS ``WalkedViaPath``."""
+
+    hops: list[MetaData]
+    terminal: MetaData
+
+
 def _validate_via_path(
     via: str,
     context: str,
@@ -1592,12 +1602,15 @@ def _validate_via_path(
     errors: list[MetaError],
     origin_node: MetaData,
     referrer: str,
-) -> list[MetaData] | None:
+) -> WalkedViaPath | None:
     """Validate a dotted relationship path 'Entity.rel1[.rel2...]'.
 
-    Returns the walked relationship hop nodes (in path order) on full success
-    (FR-024 B5 runs the cardinality checks over them); appends ERR_INVALID_ORIGIN
-    and returns None if not.
+    Returns the walked relationship hop nodes (in path order) together with the
+    TERMINAL entity node on full success (FR-024 B5 runs the cardinality checks
+    over the hops; #335's whole-object @agg:collect has no @of entity, so its
+    @orderBy keys and value-object members resolve against the terminal);
+    appends ERR_INVALID_ORIGIN and returns None if not. ``terminal`` is defined
+    exactly when ``hops`` is — every early exit returns None.
 
     *origin_node* carries the parse-time envelope (files/json_path); *referrer*
     is the canonical referrer FQN (``<projection-FQN>::<fieldName>``) attached
@@ -1695,7 +1708,8 @@ def _validate_via_path(
         hops.append(rel_node)
         current_entity = next_entity
 
-    return hops
+    # current_entity is the terminal: every earlier exit returned None.
+    return WalkedViaPath(hops, current_entity)
 
 
 # ---------------------------------------------------------------------------
@@ -2004,6 +2018,61 @@ def _check_passthrough_type(
     )
 
 
+def _type_label(field: MetaData) -> str:
+    """A field's declared type on BOTH axes — ``field.<subType>`` plus ``[]`` when it is
+    an array. ADR-0039: resolved_is_array(), so array-ness inherited via extends counts.
+    Mirrors the TS ``_typeLabel``."""
+    return f"field.{field.sub_type}{'[]' if field.resolved_is_array() else ''}"
+
+
+def _check_collect_members(
+    ref_target: MetaData,
+    terminal: MetaData,
+    obj: MetaData,
+    field: MetaData,
+    src: object,
+    errors: list[MetaError],
+) -> None:
+    """#335 — a whole-object @agg:collect projects EXACTLY the declared value object's
+    members, matched BY NAME against the @via terminal entity's fields:
+
+     - an unmatched member is an error, never a silent drop. Failing open here is how
+       #270 turned a curated value object into the full entity, invisible in a diff
+       because the metadata still read as curated.
+     - a matched member must agree on BOTH type axes (#185 type-preserving doctrine),
+       so a scalar member cannot bind an array field or vice versa.
+
+    Both refusals carry a whole-object-specific code — ERR_COLLECT_MEMBER_UNRESOLVED for
+    the unmatched member, ERR_COLLECT_WHOLE_OBJECT for the type disagreement. The latter
+    is deliberately NOT the scalar arm's ERR_INVALID_ORIGIN: a loader that still requires
+    @of rejects this metadata with ERR_INVALID_ORIGIN too, so sharing the code would make
+    a corpus fixture pass on a port that implements nothing.
+
+    Mirrors the TS ``_checkCollectMembers``."""
+    # ADR-0039: resolving — a value object may inherit members via extends, and the
+    # terminal entity may inherit fields; own-only would silently skip inherited
+    # members, which is exactly the #270 bug class this guards.
+    terminal_fields = [c for c in terminal.children() if c.type == TYPE_FIELD]
+    for member in (c for c in ref_target.children() if c.type == TYPE_FIELD):
+        match = next((f for f in terminal_fields if f.name == member.name), None)
+        if match is None:
+            errors.append(MetaError(
+                f"origin.aggregate @agg:collect on {obj.name}.{field.name}: value-object "
+                f"member '{member.name}' has no matching field on '{terminal.name}' — a "
+                f"whole-object rollup projects exactly the declared members.",
+                ErrorCode.ERR_COLLECT_MEMBER_UNRESOLVED, envelope=src))
+            continue
+        member_label = _type_label(member)
+        match_label = _type_label(match)
+        if member_label != match_label:
+            errors.append(MetaError(
+                f"origin.aggregate @agg:collect on {obj.name}.{field.name}: value-object "
+                f"member '{member.name}' is {member_label} but "
+                f"'{terminal.name}.{match.name}' is {match_label} — a whole-object rollup "
+                f"preserves each member's type.",
+                ErrorCode.ERR_COLLECT_WHOLE_OBJECT, envelope=src))
+
+
 def _validate_order_by_keys(
     order_by: object,
     related_entity: MetaData | None,
@@ -2012,12 +2081,17 @@ def _validate_order_by_keys(
     label: str,
     origin_source: object,
     errors: list[MetaError],
+    code: ErrorCode = ErrorCode.ERR_INVALID_ORIGIN,
 ) -> None:
     """#195 — validate that ``@orderBy`` keys ('field[:asc|desc]') resolve against the
     RELATED entity's effective fields (the entity reached via @via/@of), and that any
     direction suffix is asc/desc. Shared by @agg:collect (element order) and origin.first
     (row selection). A missing related entity means a prior error already fired — skip.
-    Mirrors the TS _validateOrderByKeys."""
+    Mirrors the TS _validateOrderByKeys.
+
+    *code* lets #335's whole-object @agg:collect arm report ERR_COLLECT_WHOLE_OBJECT
+    instead; it defaults to ERR_INVALID_ORIGIN so the scalar @of and origin.first call
+    sites keep their existing envelope byte-for-byte."""
     if not isinstance(order_by, (list, tuple)) or related_entity is None:
         return
     for raw in order_by:
@@ -2036,7 +2110,7 @@ def _validate_order_by_keys(
                 MetaError(
                     f'{label} on {obj.name}.{field_name}: @orderBy key "{raw}" — no such '
                     f'field "{key}" on {related_entity.name}.',
-                    ErrorCode.ERR_INVALID_ORIGIN,
+                    code,
                     envelope=origin_source,
                 )
             )
@@ -2045,7 +2119,7 @@ def _validate_order_by_keys(
                 MetaError(
                     f'{label} on {obj.name}.{field_name}: @orderBy key "{raw}" — direction '
                     f"must be one of {'|'.join(SORT_ORDER_VALUES)}.",
-                    ErrorCode.ERR_INVALID_ORIGIN,
+                    code,
                     envelope=origin_source,
                 )
             )
@@ -2139,7 +2213,8 @@ def _validate_origin_paths(
                     )
                 via = origin.attr(ORIGIN_ATTR_VIA)
                 if isinstance(via, str) and via:
-                    hops = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
+                    walked = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
+                    hops = walked.hops if walked is not None else None
                     if hops is not None:
                         _check_passthrough_cardinality(hops, node.name, origin.source, errors)
                 elif from_target is not None and not is_value_host:
@@ -2235,20 +2310,94 @@ def _validate_origin_paths(
                             f"explicit @via (a quantifier has no @of to infer the path from).",
                             ErrorCode.ERR_INVALID_ORIGIN, envelope=src))
                     else:
-                        hops = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
+                        walked = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
+                        hops = walked.hops if walked is not None else None
                         if hops is not None:
                             _check_aggregate_cardinality(hops, node.name, src, errors)
                     continue
 
-                # --- count/sum/avg/min/max/collect: @of REQUIRED ---
+                # --- @of: REQUIRED for count/sum/avg/min/max; OPTIONAL for collect ---
+                # #335 — an @of-absent collect is a WHOLE-OBJECT rollup: collect the
+                # related rows as an array of the field's declared @objectRef value
+                # object rather than an array of one scalar column.
                 if not of_present:
-                    errors.append(
-                        MetaError(
-                            f"{ctx} is missing required attribute '@{ORIGIN_ATTR_OF}'",
-                            ErrorCode.ERR_INVALID_ORIGIN,
-                            envelope=src,
+                    if not is_collect:
+                        errors.append(
+                            MetaError(
+                                f"{ctx} is missing required attribute '@{ORIGIN_ATTR_OF}'",
+                                ErrorCode.ERR_INVALID_ORIGIN,
+                                envelope=src,
+                            )
                         )
-                    )
+                        continue
+                    # Whole-object rollup. The carrying field must be a field.object
+                    # naming a value object, and @via must be explicit (there is no @of
+                    # entity to infer the single-hop relation from).
+                    # ADR-0039: resolving — @objectRef may be inherited via extends.
+                    object_ref = node.get_meta_attr(FIELD_ATTR_OBJECT_REF)
+                    if node.sub_type != FIELD_SUBTYPE_OBJECT or not isinstance(object_ref, str) \
+                            or not object_ref:
+                        errors.append(MetaError(
+                            f"origin.aggregate @agg:collect on {obj.name}.{node.name}: @of is "
+                            f"omitted, so this is a whole-object rollup — the carrying field "
+                            f"must be a field.object declaring @objectRef (add @of to collect a "
+                            f"single column instead).",
+                            ErrorCode.ERR_COLLECT_WHOLE_OBJECT, envelope=src))
+                        continue
+                    # #210's value-only rule is PAYLOAD-scoped and never reaches a
+                    # projection-hosted field, so this branch enforces it itself.
+                    # Without it an @objectRef to an entity silently rolls up the FULL
+                    # entity — the #270 shape, this time baked into DDL.
+                    # ADR-0042 — a bare @objectRef resolves in the DECLARING owner's
+                    # package (an inherited field resolves in the package that declared it).
+                    ref_owner = node.parent or obj
+                    ref_pkg = ref_owner.package or ref_owner.file_default_package or ""
+                    ref_target = resolve_object_ref(root, object_ref, ref_pkg)
+                    if ref_target is not None and ref_target.sub_type != OBJECT_SUBTYPE_VALUE:
+                        errors.append(MetaError(
+                            f"origin.aggregate @agg:collect on {obj.name}.{node.name}: "
+                            f"@objectRef '{object_ref}' resolves to "
+                            f"{TYPE_OBJECT}.{ref_target.sub_type} — a whole-object rollup must "
+                            f"target an object.value (#210, ADR-0028).",
+                            ErrorCode.ERR_SUBTYPE_RULE_VIOLATION, envelope=src))
+                        continue
+                    # ADR-0039: own — origin.* never inherits (ADR-0029).
+                    via_attr = origin.attr(ORIGIN_ATTR_VIA)
+                    if not isinstance(via_attr, str) or not via_attr:
+                        errors.append(MetaError(
+                            f"origin.aggregate @agg:collect on {obj.name}.{node.name}: @via is "
+                            f"required on a whole-object rollup — there is no @of entity to "
+                            f"infer the relationship from.",
+                            ErrorCode.ERR_COLLECT_WHOLE_OBJECT, envelope=src))
+                        continue
+                    # @distinct is refused on the object form. It is NOT an engine limit
+                    # (both engines dedupe JSON objects); it is a guaranteed no-op
+                    # whenever the value object carries the entity's primary key, which
+                    # is the common case, and a silent no-op is worse than a refusal.
+                    if has_distinct:
+                        errors.append(MetaError(
+                            f"origin.aggregate @agg:collect on {obj.name}.{node.name}: @distinct "
+                            f"is not supported on a whole-object rollup (it is a no-op whenever "
+                            f"the value object carries the primary key).",
+                            ErrorCode.ERR_COLLECT_WHOLE_OBJECT, envelope=src))
+                        continue
+                    # One walk yields both the hops (cardinality) and the terminal entity
+                    # (@orderBy keys, member resolution). An invalid @via (e.g. a single-
+                    # segment "A") returns None having already pushed its own error, so
+                    # everything downstream is skipped and no second, misleadingly-scoped
+                    # error is emitted.
+                    walked = _validate_via_path(
+                        via_attr, ctx, root, host_pkg, errors, origin, referrer)
+                    if walked is not None:
+                        _check_aggregate_cardinality(walked.hops, node.name, src, errors)
+                        # @orderBy keys resolve against the @via TERMINAL entity, not @of.
+                        _validate_order_by_keys(
+                            order_by, walked.terminal, obj, node.name,
+                            "origin.aggregate @agg:collect", src, errors,
+                            ErrorCode.ERR_COLLECT_WHOLE_OBJECT)
+                        if ref_target is not None:
+                            _check_collect_members(
+                                ref_target, walked.terminal, obj, node, src, errors)
                     continue
                 # NOTE (FR-024 B6): NO extends/origin agreement on aggregates —
                 # an aggregate computes something new (spec §4 is passthrough-only).
@@ -2270,7 +2419,8 @@ def _validate_origin_paths(
                         obj, node.name, "origin.aggregate @agg:collect", src, errors)
                 via = origin.attr(ORIGIN_ATTR_VIA)
                 if isinstance(via, str) and via:
-                    hops = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
+                    walked = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
+                    hops = walked.hops if walked is not None else None
                     if hops is not None:
                         _check_aggregate_cardinality(hops, node.name, src, errors)
                     continue
@@ -2381,7 +2531,8 @@ def _validate_origin_paths(
                 # @via — explicit (validated + cardinality) or single-hop-unique inferred.
                 via = origin.attr(ORIGIN_ATTR_VIA)
                 if isinstance(via, str) and via:
-                    hops = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
+                    walked = _validate_via_path(via, ctx, root, host_pkg, errors, origin, referrer)
+                    hops = walked.hops if walked is not None else None
                     if hops is not None:
                         _check_aggregate_cardinality(hops, node.name, src, errors)
                 elif of_target is not None:
