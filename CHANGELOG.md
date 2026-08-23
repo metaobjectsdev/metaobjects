@@ -90,6 +90,126 @@ same blindness that let the original defect ship. `migrate-ts`'s `loadFixture` n
 loader errors instead of discarding them — a checked-in fixture had been declaring the
 illegal form and driving those suites green. All five ports green.
 
+### Fixed — `meta upgrade` rewrote nothing on a YAML estate, then called it clean ([#339](https://github.com/metaobjectsdev/metaobjects/issues/339))
+
+`meta upgrade` is the fixer for everything `0.24.0` retired. On a **YAML** estate it
+rewrote nothing, skipped every file, and finished with `no retired vocabulary found in
+the JSON metadata` — while **405 retired constructs** sat in those files (321 ×
+`violation:` alone, every one a mechanical single-token rename). The skip notice printed
+first, but as the header of a 161-line file list, so the line that stuck said the
+opposite of the truth. It also exited **1**, giving a script no way to tell "nothing to
+do" from "could not look". YAML is first-class authoring (ADR-0006), so for these
+adopters the tooling for a breaking change was a no-op and the whole migration manual.
+
+**YAML is now rewritten.** The arm lives in its own module behind its own package
+subpath, dynamic-imported by the CLI, because `vocabulary-rewrite.ts` is reachable from
+`metadata`'s root entry and may not import the Node-only `yaml` package — the same split,
+for the same reason, as `yaml-positions.ts` / `yaml-positions-walker.ts`.
+
+It is **parser-driven** where the JSON arm is regex-driven, and that is the whole
+difference: a hand-rolled YAML mode was tried in the JSON arm first and withdrawn after
+it corrupted files — a multi-item block sequence lost every item but the first, and the
+dominant authoring style (flow mappings, `{ name: x, readOnly: true }`) was not matched
+at all, so the rename silently did nothing. Both are the same failure, because YAML's
+value extent is not derivable by scanning. Asking the parser for each span makes a
+four-line block sequence and a one-line flow mapping stop being special cases. It stays
+**surgical, not parse-and-reprint** — spans are located by the parse and replaced in the
+original text, so comments, key order and quoting survive byte-for-byte, and
+`doc.toString()` never reflows an adopter's file.
+
+Reporting and exit codes, which were the other half of the report:
+
+- every conclusion now names how many files it is a conclusion **about**, so a bare
+  "not found" can no longer stand in for "nothing was examined";
+- a file that does not **parse** is reported as NOT checked rather than counted clean —
+  the same defect arriving by a different route;
+- **exit 3** now means "some files could not be read", leaving `1` for "refusals remain",
+  `2` for bad usage and `0` for genuinely clean.
+
+Gated end-to-end through the built binary and by unit cases covering both authoring
+styles, the multi-item sequence, flow-mapping comma handling, scope discipline,
+idempotence and an unparseable file. The load gate asserts the rewritten output **loads
+clean** after first proving the input fails, so it cannot pass vacuously.
+
+### Fixed — a sub-project's generated tree absorbed unrelated metadata ([#340](https://github.com/metaobjectsdev/metaobjects/issues/340))
+
+The gen-side remainder of #326/#327. Once source resolution learned to walk upward,
+`meta gen` in a package whose `metaobjects.config.ts` sits below the collection root
+loaded the **ancestor's entire source set**: one adopter's web app went from **376
+generated files to 831**, the surplus being another module's server-side prompt payload
+DTOs — absent from the app's own metadata directory entirely. It fails **open** (`tsc`
+passes, tests pass), so the only symptom is a generated tree that quietly doubled.
+
+The rule is #326's own principle carried to its other half: **an ancestor
+`.metaobjects/config.json` is the DEFAULT for a package that declares no sources, never
+an ADDITION to one that does.** It can only ever narrow, and only where the shape could
+not have worked before — when the two configs sit together (every `meta init` project)
+the original collection is returned untouched, and a package that declares no sources of
+its own still inherits the ancestor, which is #326's shape and is gated as its own arm.
+
+`verify --codegen` gets the same treatment, and that is not optional: it regenerates and
+diffs against committed output, so narrowing `gen` alone would make every sub-project
+report the ancestor's whole contribution as drift. `.metaobjects/` **state** — migrations,
+snapshots, the operational block — stays keyed on the discovered collection's directory,
+which #326 settled; this narrows what is LOADED, not where state lives.
+
+### Fixed — generated enum types were value imports (TS1484) ([#341](https://github.com/metaobjectsdev/metaobjects/issues/341))
+
+A materialized shared `field.enum` exports two symbols from one module — the TS type `E`
+and the Zod value `EEnum`. The value-object emitter imported the type by bare name, so
+both merged into a single value import:
+
+```ts
+import { DispositionEnum, DispositionEnumEnum } from "./enums";  // TS1484
+```
+
+Under `verbatimModuleSyntax: true` — the default in current Vite/TS templates — that is a
+hard error on generated code the adopter cannot edit. A regression against `0.23.1`, and
+invisible to any project that has not enabled the flag, which is why it shipped.
+
+The regression gate for this class (#165) already existed and already compiled real
+output under that exact flag. It missed this because its fixture had no enum — and fixing
+it needed the right **shape**, not just an enum: an entity types its enum column through
+Drizzle's `InferSelectModel` and only ever imports the Zod const (correctly a value), so
+an entity fixture compiles clean with the bug fully present. A **value object** declares
+an explicit interface member and imports the type by name, which is where the defect
+lives and where the adopter hit it.
+
+### Fixed — generated SQLite did not compile on two minors the peer range admitted
+
+Generated table calls pass `extraConfig` in Drizzle's **array** form. `pgTable` has
+accepted that since `0.36.0`, but `sqliteTable` only since **`0.38.0`** — below it the
+only overloads take the legacy `SQLiteTableExtraConfig` Record, so generated SQLite fails
+to type-check (`Type 'CheckBuilder[]' is not assignable to type 'SQLiteTableExtraConfig'`).
+The peer range was `>=0.36.0 <1.0.0`, so it admitted two minors on which our own output
+does not compile — the same class as the `0.21.5` peer-range work: a compatibility the
+package promised and never had. Floored at `0.38.0`; Postgres is unaffected.
+
+This reached no gate because nothing compiled a SQLite table that passed `extraConfig` at
+all — the compile gate's entity had a single-column inline primary key and no enum, index
+or table-level constraint, the one shape that avoids that argument entirely. The fixture
+now carries an enum, whose CHECK travels the same code path every other `extraConfig`
+source uses, and the devDependency moves in lockstep so the suite type-checks generated
+output **at** the declared floor rather than above it.
+
+### Fixed — the AI-facing docs taught vocabulary this release removed ([#343](https://github.com/metaobjectsdev/metaobjects/issues/343))
+
+`docs/llms/{llms.txt,llms-full.txt}` — the entry point `metaobjects.dev` serves to
+assistants — still taught `@verifiedBy` as live and gave `@status` as the pre-`0.24.0`
+four-value enum. Both now fail the load, so an assistant scaffolding from the published
+index produced a ledger that **cannot load**. Corrected to `planned | live | partial`,
+with the retirements named AS retirements (pointing at `meta upgrade`) rather than
+deleted silently — a reader arriving with a `0.23.x` ledger needs to be told what
+happened to it. The other three `0.24.0` retirements appear in neither file, so the drift
+was confined to the requirement paragraph.
+
+This is the **third** instance of one family (#337, #342, #343): shipped documentation
+teaching metadata the loader rejects, each found by an adopter or a review rather than by
+a gate, each fixed by hand in a different file. The durable fix these keep pointing at —
+extracting the authored examples from shipped docs, skills and fixtures and loading them
+under a strict loader — is tracked separately; `meta upgrade`'s retirement map is already
+the natural source of truth for "what must no longer appear in an example".
+
 ## [0.24.0] — npm `0.24.0` · PyPI `0.24.0` · NuGet `0.24.0` · Maven `7.24.0`
 
 > ### ⚠️ BREAKING FOR METADATA AUTHORS — five vocabulary changes in ONE window
