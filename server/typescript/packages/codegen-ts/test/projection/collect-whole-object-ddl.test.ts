@@ -56,11 +56,17 @@ describe("emitViewDdl — #335 whole-object collect", () => {
     );
   });
 
-  test("sqlite: json_group_array of json_object, related-PK ascending, empty-set guarded", () => {
+  // SQLite needs the json_each re-wrap. Measured on 3.44.0: the in-aggregate ORDER BY
+  // destroys the JSON subtype, so json_group_array(json_object(...) ORDER BY ...) returns
+  // an array of QUOTED STRINGS — and a json() wrapper on the argument does not survive it
+  // either. json_each iterates in array order, so re-wrapping element-by-element restores
+  // the objects while keeping the ordering. Found by the real-engine probe.
+  test("sqlite: the ordered array is re-wrapped through json_each so elements stay OBJECTS", () => {
     const sql = emitViewDdl(wholeObject(), { dialect: "sqlite", ...OPTS });
     expect(sql).toContain(
+      "(SELECT json_group_array(json(mo_je.value)) FROM json_each(" +
       "COALESCE(json_group_array(json_object('id', s.id, 'name', s.supplier_name) ORDER BY s.id ASC) " +
-      "FILTER (WHERE s.id IS NOT NULL), json_array()) AS supplier_briefs",
+      "FILTER (WHERE s.id IS NOT NULL), json_array())) mo_je) AS supplier_briefs",
     );
   });
 

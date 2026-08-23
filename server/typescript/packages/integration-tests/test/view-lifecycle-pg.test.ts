@@ -432,6 +432,13 @@ describe("view lifecycle — real Postgres", () => {
         { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
         { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
       ] } },
+      // #335 — the curated value object a WHOLE-OBJECT collect rolls Week rows up into.
+      // Week also declares programId / durationMinutes / createdAt; the brief omits them,
+      // and the emitted jsonb must contain ONLY the two declared members.
+      { "object.value": { name: "WeekBrief", children: [
+        { "field.long": { name: "id" } },
+        { "field.string": { name: "label" } },
+      ] } },
       { "object.projection": { name: "ProgramSummary", children: [
         { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
         { "identity.primary": { name: "id", extends: "Program.id", "@fields": "id" } },
@@ -445,6 +452,10 @@ describe("view lifecycle — real Postgres", () => {
         // collectAgg — the week labels as a native array, ordered for determinism.
         { "field.string": { name: "weekLabels", isArray: true, children: [
           { "origin.aggregate": { "@agg": "collect", "@of": "Week.label", "@via": "Program.weeks", "@orderBy": ["label:asc"] } } ] } },
+        // #335 collectObjectAgg — the whole WeekBrief per related row, beside the scalar
+        // collect above, so both collect arms are exercised in ONE view on one engine.
+        { "field.object": { name: "weekBriefs", isArray: true, "@objectRef": "WeekBrief", children: [
+          { "origin.aggregate": { "@agg": "collect", "@via": "Program.weeks" } } ] } },
         // first — the most-recent week's label (null over an empty related set).
         { "field.string": { name: "latestWeekLabel", children: [
           { "origin.first": { "@of": "Week.label", "@via": "Program.weeks", "@orderBy": ["createdAt:desc"] } } ] } },
@@ -459,6 +470,11 @@ describe("view lifecycle — real Postgres", () => {
     expect(up).toMatch(/COALESCE\(bool_or\([^)]*\) FILTER \(WHERE [^)]*\), FALSE\) AS "anyLongWeek"/);
     expect(up).toMatch(/COALESCE\(bool_and\([^)]*\) FILTER \(WHERE [^)]*\), TRUE\) AS "allLongWeeks"/);
     expect(up).toMatch(/COALESCE\(array_agg\([^)]*\) FILTER \(WHERE [^)]*\), '\{\}'\) AS "weekLabels"/);
+    // #335 — jsonb, not json: PG's `json` has no equality or ordering operator, so the
+    // json_agg(json_build_object(…) ORDER BY …) form does not even run.
+    expect(up).toContain(
+      `COALESCE(jsonb_agg(jsonb_build_object('id', w.id, 'label', w.label) ORDER BY w.id ASC) FILTER (WHERE w.id IS NOT NULL), '[]'::jsonb) AS "weekBriefs"`,
+    );
     // THE gate: the view (aggregates + correlated-subquery + computed) round-trips.
     await assertConverged(expected);
 
@@ -471,12 +487,13 @@ describe("view lifecycle — real Postgres", () => {
     ).execute(k);
 
     const rows = await sql.raw(
-      `SELECT "id","anyLongWeek","allLongWeeks","weekLabels","latestWeekLabel","isPublished"
+      `SELECT "id","anyLongWeek","allLongWeeks","weekLabels","weekBriefs","latestWeekLabel","isPublished"
          FROM "v_program_summary" ORDER BY "id"`,
     ).execute(k);
     type Row = {
       id: string; anyLongWeek: boolean; allLongWeeks: boolean;
-      weekLabels: string[]; latestWeekLabel: string | null; isPublished: boolean;
+      weekLabels: string[]; weekBriefs: { id: number; label: string }[];
+      latestWeekLabel: string | null; isPublished: boolean;
     };
     const byId = new Map((rows.rows as Row[]).map((r) => [String(r.id), r]));
 
@@ -485,6 +502,22 @@ describe("view lifecycle — real Postgres", () => {
     expect(full.anyLongWeek).toBe(true);        // 90 > 60
     expect(full.allLongWeeks).toBe(false);      // 30 is NOT > 60
     expect(full.weekLabels).toEqual(["A", "B"]); // native PG array, ordered by label
+    // #335 — the node-postgres driver parses jsonb, so this is a real array of OBJECTS
+    // (not a string). Members are the DECLARED two, in related-PK order; if programId /
+    // durationMinutes / createdAt appear, "the declared VO IS the exposure" (#270) has
+    // broken at the SQL tier.
+    //
+    // NOTE the id types, which are deliberately asserted rather than normalised away:
+    // `Week.id` is a field.long -> BIGINT, and a TOP-LEVEL bigint column arrives as the
+    // STRING "1" (node-postgres stringifies bigint to avoid precision loss) — see the
+    // `id: string` row type above. The SAME value inside the rollup arrives as the NUMBER
+    // 1, because jsonb_build_object serialises it as a JSON number and JSON has no bigint.
+    // That asymmetry is inherent to a JSON-valued rollup, not a codegen bug, and it is
+    // lossy above 2^53. Pinned here so a future change to either tier has to face it.
+    expect(full.weekBriefs).toEqual([
+      { id: 1, label: "A" },
+      { id: 2, label: "B" },
+    ]);
     expect(full.latestWeekLabel).toBe("B");     // most recent by createdAt
     expect(full.isPublished).toBe(true);        // status = 'PUBLISHED'
 
@@ -493,6 +526,7 @@ describe("view lifecycle — real Postgres", () => {
     expect(empty.anyLongWeek).toBe(false);      // any over ∅ = false
     expect(empty.allLongWeeks).toBe(true);      // all over ∅ = true (vacuous)
     expect(empty.weekLabels).toEqual([]);       // collect over ∅ = [] (NOT null)
+    expect(empty.weekBriefs).toEqual([]);       // whole-object collect over ∅ = [] too
     expect(empty.latestWeekLabel).toBeNull();   // first over ∅ = null
     expect(empty.isPublished).toBe(false);      // status = 'DRAFT'
   });

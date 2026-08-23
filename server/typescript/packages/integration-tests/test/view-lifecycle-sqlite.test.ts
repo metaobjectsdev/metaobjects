@@ -45,6 +45,13 @@ const META = JSON.stringify({ "metadata.root": { package: "acme", children: [
     { "identity.primary": { name: "id", "@fields": "id", "@generation": "increment" } },
     { "identity.reference": { name: "ref_program", "@fields": "programId", "@references": "Program" } },
   ] } },
+  // #335 — the curated value object a WHOLE-OBJECT collect rolls Week rows up into.
+  // Week declares `programId`, `durationMinutes` and `createdAt` too; the brief omits
+  // them, and the emitted JSON must contain ONLY the two declared members.
+  { "object.value": { name: "WeekBrief", children: [
+    { "field.long": { name: "id" } },
+    { "field.string": { name: "label" } },
+  ] } },
   { "object.projection": { name: "ProgramSummary", children: [
     { "source.rdb": { "@kind": "view", "@table": "v_program_summary" } },
     { "identity.primary": { name: "id", extends: "Program.id", "@fields": "id" } },
@@ -56,6 +63,8 @@ const META = JSON.stringify({ "metadata.root": { package: "acme", children: [
       { "origin.aggregate": { "@agg": "all", "@via": "Program.weeks", "@filter": { durationMinutes: { gt: 60 } } } } ] } },
     { "field.string": { name: "weekLabels", isArray: true, children: [
       { "origin.aggregate": { "@agg": "collect", "@of": "Week.label", "@via": "Program.weeks", "@orderBy": ["label:asc"] } } ] } },
+    { "field.object": { name: "weekBriefs", isArray: true, "@objectRef": "WeekBrief", children: [
+      { "origin.aggregate": { "@agg": "collect", "@via": "Program.weeks" } } ] } },
     { "field.string": { name: "latestWeekLabel", children: [
       { "origin.first": { "@of": "Week.label", "@via": "Program.weeks", "@orderBy": ["createdAt:desc"] } } ] } },
     { "field.boolean": { name: "isPublished", children: [
@@ -103,6 +112,11 @@ describe("view value-probe — real SQLite (#195 origins)", () => {
     // SQLite lowers collect to json_group_array (a JSON string), any/all to MAX/MIN over 1/0.
     expect(up).toContain(`CREATE VIEW "v_program_summary" AS`);
     expect(up).toContain("json_group_array");
+    // #335 whole-object rollup: json_object per row, related-PK ascending, [] on empty.
+    // #335 whole-object rollup: an ordered json_object array re-wrapped through json_each
+    // (SQLite's in-aggregate ORDER BY destroys the JSON subtype — see view-ddl-emit).
+    expect(up).toContain("json_group_array(json_object('id', w.id, 'label', w.label) ORDER BY w.id ASC)");
+    expect(up).toContain("SELECT json_group_array(json(mo_je.value)) FROM json_each(");
     expect(up).toMatch(/COALESCE\(MAX\(CASE WHEN[^)]*\)[^,]*, 0\) AS "anyLongWeek"/);
     expect(up).toMatch(/COALESCE\(MIN\(CASE WHEN[^)]*\)[^,]*, 1\) AS "allLongWeeks"/);
     await applyRaw(up);
@@ -124,12 +138,12 @@ describe("view value-probe — real SQLite (#195 origins)", () => {
     ).execute(k);
 
     const rows = await sql.raw(
-      `SELECT "id","anyLongWeek","allLongWeeks","weekLabels","latestWeekLabel","isPublished"
+      `SELECT "id","anyLongWeek","allLongWeeks","weekLabels","weekBriefs","latestWeekLabel","isPublished"
          FROM "v_program_summary" ORDER BY "id"`,
     ).execute(k);
     type Row = {
       id: number; anyLongWeek: number; allLongWeeks: number;
-      weekLabels: string; latestWeekLabel: string | null; isPublished: number;
+      weekLabels: string; weekBriefs: string; latestWeekLabel: string | null; isPublished: number;
     };
     const byId = new Map((rows.rows as Row[]).map((r) => [String(r.id), r]));
 
@@ -139,6 +153,13 @@ describe("view value-probe — real SQLite (#195 origins)", () => {
     expect(full.anyLongWeek).toBe(1);                    // 90 > 60
     expect(full.allLongWeeks).toBe(0);                   // 30 is NOT > 60
     expect(JSON.parse(full.weekLabels)).toEqual(["A", "B"]);
+    // #335 — the DECLARED members only, in related-PK order. Week also has programId /
+    // durationMinutes / createdAt; if any of those appear the "declared VO IS the
+    // exposure" guarantee (#270) has broken at the SQL tier.
+    expect(JSON.parse(full.weekBriefs)).toEqual([
+      { id: 1, label: "A" },
+      { id: 2, label: "B" },
+    ]);
     expect(full.latestWeekLabel).toBe("B");              // most recent by createdAt
     expect(full.isPublished).toBe(1);                    // status = 'PUBLISHED'
 
@@ -147,6 +168,7 @@ describe("view value-probe — real SQLite (#195 origins)", () => {
     expect(empty.anyLongWeek).toBe(0);                   // any over ∅ = false (0)
     expect(empty.allLongWeeks).toBe(1);                  // all over ∅ = true (1, vacuous)
     expect(JSON.parse(empty.weekLabels)).toEqual([]);    // collect over ∅ = [] (NOT null)
+    expect(JSON.parse(empty.weekBriefs)).toEqual([]);    // whole-object collect over ∅ = [] too
     expect(empty.latestWeekLabel).toBeNull();            // first over ∅ = null
     expect(empty.isPublished).toBe(0);                   // status = 'DRAFT'
   });
