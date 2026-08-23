@@ -197,6 +197,29 @@ now carries an enum, whose CHECK travels the same code path every other `extraCo
 source uses, and the devDependency moves in lockstep so the suite type-checks generated
 output **at** the declared floor rather than above it.
 
+### Fixed — a blank optional form field submitted `""` instead of clearing ([#223](https://github.com/metaobjectsdev/metaobjects/issues/223))
+
+A generated form passed raw values straight to `onSubmit`, so a blank optional control
+submitted `""`. An HTML control cannot distinguish "empty" from "not provided" — a blank
+text/date/number input, an unselected `<option value="">` and an empty textarea all yield
+the empty string — so on a nullable date/timestamp column that is not a legal value, and
+everywhere else it makes a `!= null` check read a blank field as SET.
+
+The obvious fix is wrong, which is why this waited: deleting `""`-valued keys (what a
+downstream project did) breaks the EDIT path, because under FR-035's present-key tristate
+an ABSENT key means "leave untouched" — so clearing a previously-set field silently fails
+to clear it. The resolution is create-vs-edit aware, keyed on `defaultValues` exactly as
+the resolver already is (#227):
+
+- **CREATE** (no `defaultValues`) — the key is OMITTED, so the column's `DEFAULT`/NULL applies.
+- **EDIT** (`defaultValues` present) — the key is sent as explicit `null`, which CLEARS it.
+
+Scope is decided at codegen time from the metadata. A `@required` field is excluded —
+blank there is a validation error the schema already owns, and rewriting it would turn a
+caught error into a silent null. A checkbox and a `view.image` are excluded because
+neither can produce `""`. An entity with no blankable optional field emits no normalizer,
+so its output is byte-identical.
+
 ### Fixed — the AI-facing docs taught vocabulary this release removed ([#343](https://github.com/metaobjectsdev/metaobjects/issues/343))
 
 `docs/llms/{llms.txt,llms-full.txt}` — the entry point `metaobjects.dev` serves to
