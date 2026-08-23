@@ -270,10 +270,33 @@ and nothing validates it. Add the subtype/array check that `@filterable` has, so
 `@sortable: true` on a JSON or array column is a load error rather than a generated sort over a
 JSON column.
 
-**Note:** B1 and B2 are potentially breaking for a project that today declares
-`@filterable`/`@sortable` on an array field. That declaration currently generates a rule that
-cannot work, so this converts a runtime failure into a load failure. Call it out in the
-changelog.
+### B3. How breaking is this, precisely
+
+B1 and B2 make previously-loading metadata fail to load, so they are breaking on the metadata
+contract. Three things bound it, and the bound should be stated rather than the label:
+
+1. **In-repo cost is zero.** A structural scan (per field node) of 1321 JSON and 124 YAML files
+   found **no** field carrying both `isArray: true` and `@filterable`/`@sortable: true`. Nothing
+   here breaks.
+2. **What breaks was already broken.** Such a declaration emits a `like`/`eq` rule against a
+   `text[]` column — SQL that cannot execute. This converts a runtime failure into a load
+   failure, which is the direction this project already treats as a fix rather than a
+   regression.
+3. **There is no mechanism by which an adopter was taught to write it.** This is the distinction
+   that matters, and it is worth stating because a sibling change in the same release window is
+   the *same category* and a **different magnitude**: #342's retired `@fields` + `@expr`
+   spelling appeared as a worked example in a shipped skill, so there is a plausible route by
+   which adopters acquired it. The array-`@filterable` form was never documented, never
+   exemplified, and never emitted by any generator — it is a silently-wrong emission nobody was
+   told to write.
+
+So: same category (breaking only for metadata outside this repo), materially lower exposure.
+Changelog must still call it out — an adopter who wrote it independently gets a load error with
+no warning — but the "we handed out the recipe" argument does not apply here.
+
+**Do not bundle this decision with another release's.** The version question for #335 is asked
+when #335 is cut, on this evidence. Folding it into a ruling already made about a different
+change would be deciding it on the wrong facts.
 
 ---
 
