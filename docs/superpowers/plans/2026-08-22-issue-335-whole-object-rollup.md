@@ -913,7 +913,9 @@ git commit -m "test(conformance): gate the whole-object rollup and its six error
 - Modify: `server/python/src/metaobjects/loader/validation_passes.py`
 
 **Interfaces:**
-- Consumes: Tasks 5–7. The seven fixtures are the contract.
+- Consumes: Tasks 5–7. The NINE fixtures are the contract (8 negative + 1 positive).
+  Task 7 shipped eight rules, not the six this plan was written against — the ledger
+  recorded the scope correction; this text was stale. Port all EIGHT.
 - Produces: four ports green on the whole corpus.
 
 - [ ] **Step 1: Locate each port's gate**
@@ -924,9 +926,12 @@ grep -rn "missing @of" server/csharp server/java server/python
 
 Python phrases it differently — search for its `AGG_COLLECT` handling near the `collect produces a list` message instead.
 
-- [ ] **Step 2: Implement the same six rules per port**
+- [ ] **Step 2: Implement the same EIGHT rules per port**
 
-Object-ref required; ref must be `object.value`; `@via` required; cardinality; member resolution; `@distinct` refused. Use each port's **resolving** accessors throughout (see Task 4, Step 2).
+Object-ref required; ref must be `object.value`; `@via` required; cardinality; member
+resolution; member TYPE agreement (subtype AND array-ness — compare the
+`field.<subType>[]` label, as TS does); `@orderBy` keys resolve against the `@via`
+TERMINAL entity (not the head or a middle hop); `@distinct` refused. Use each port's **resolving** accessors throughout (see Task 4, Step 2).
 
 - [ ] **Step 3: Run each port's conformance suite**
 
@@ -936,7 +941,14 @@ cd server/csharp && dotnet build && dotnet test --filter "FullyQualifiedName~Con
 cd server/java && mvn -q -pl metadata test
 ```
 
-Expected: green on all seven new fixtures. Same two traps as Task 4, Step 4.
+Expected: green on all nine new fixtures. Same two traps as Task 4, Step 4.
+
+**Green is NOT proof here.** Five of the eight negatives (no-via, no-object-ref,
+distinct, member-type-mismatch, orderby-not-terminal) assert `ERR_INVALID_ORIGIN`,
+which is ALSO what an unported loader emits for the old "missing @of" — so they pass
+vacuously before you write a line. Verify each rule fires for its OWN reason: neutralise
+one guard at a time (`if (false && <cond>)`) in a COPY under /tmp and re-run that
+fixture. Never `git stash` — worktrees share one stash list.
 
 - [ ] **Step 4: Commit**
 
