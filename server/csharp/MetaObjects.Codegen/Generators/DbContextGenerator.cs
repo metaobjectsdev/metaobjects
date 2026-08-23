@@ -10,6 +10,7 @@ using MetaObjects.Codegen.Docs;
 using MetaObjects.Meta;
 using MetaObjects.Persistence.Db;
 using static MetaObjects.Core.Field.FieldConstants;
+using static MetaObjects.Core.Relationship.RelationshipConstants;
 
 namespace MetaObjects.Codegen.Generators;
 
@@ -53,6 +54,20 @@ public class DbContextGenerator : IGenerator
 
         // OnModelCreating body lines (8-space indented), in a stable order.
         var modelLines = new List<string>();
+
+        // #294 — entities serving as an M:N junction have BOTH their FK sides configured
+        // by UsingEntityConfig below (that call is what establishes those relationships).
+        // Emitting a standalone HasOne/WithMany for the same junction column would
+        // configure the same foreign key a second time, so the per-reference pass skips
+        // them. Self-joins are excluded here because their navigation is [NotMapped]
+        // (route-traversed) and therefore gets NO UsingEntity call — the junction's own
+        // references are the only thing that can carry its actions.
+        var m2mJunctions = new HashSet<string>(
+            objects.Where(o => o.IsEntity())
+                .SelectMany(o => M2MNavigationBuilder.For(o, ctx.Root))
+                .Where(n => !n.IsSelfJoin)
+                .Select(n => n.Junction.Name),
+            StringComparer.Ordinal);
         foreach (var p in objects.Where(o => o.IsReadOnlyProjection()))
         {
             var name = CSharpNaming.Pascal(p.Name);
@@ -112,7 +127,7 @@ public class DbContextGenerator : IGenerator
             // Self-joins (directed/symmetric) are [NotMapped] (route-traversed) — see
             // EntityGenerator.M2mNavProperty — so they are skipped here.
             foreach (var nav in M2MNavigationBuilder.For(e, ctx.Root).Where(n => !n.IsSelfJoin))
-                modelLines.Add(UsingEntityConfig(nav));
+                modelLines.Add(UsingEntityConfig(nav, ctx));
 
             // FR-017 TPH — single-table inheritance mapping. The base maps its concrete
             // subtypes onto the shared table via the discriminator property:
@@ -121,8 +136,19 @@ public class DbContextGenerator : IGenerator
             // its HasConversion<string>() (emitted by the enum loop above) stores the
             // symbol as text, matching the TS-owned TEXT column. EF folds every subtype's
             // own columns into the base table as nullable.
-            if (TphPlanBuilder.For(e, ctx.Root) is { } tph)
+            var tph = TphPlanBuilder.For(e, ctx.Root);
+            if (tph is not null)
                 modelLines.Add(HasDiscriminatorConfig(owner, e, tph));
+
+            // ADR-0047 / #294 — explicit 1:N relationship configuration, with the
+            // referential action INLINE on the call that establishes the foreign key.
+            // Without this EF Core sees no relationship at all for a plain reference (the
+            // generated class carries a bare scalar FK property and no navigation), so
+            // every DeleteBehavior fell back to EF's own convention regardless of what the
+            // metadata — or the database — said. A junction's sides are owned by
+            // UsingEntityConfig; see the m2mJunctions note above.
+            if (!m2mJunctions.Contains(e.Name))
+                EmitReferenceConfig(owner, e, tph, ctx, modelLines);
         }
 
         // #214 (FR-024 §7) — register the write-through read model against its replica view.
@@ -305,6 +331,166 @@ public class DbContextGenerator : IGenerator
         return sb.ToString();
     }
 
+    /// <summary>
+    /// ADR-0047 / #294 — emit one explicit EF relationship per enforced
+    /// <c>identity.reference</c>, so EF Core actually HAS the foreign key the metadata
+    /// declares and the referential action can ride on the establishing call:
+    ///
+    /// <code>
+    /// modelBuilder.Entity&lt;Week&gt;().HasOne&lt;Program&gt;().WithMany()
+    ///     .HasForeignKey(nameof(Week.ProgramId)).OnDelete(DeleteBehavior.Cascade);
+    /// </code>
+    ///
+    /// <para>Inline, never a post-hoc <c>GetForeignKeys().Single(...)</c> mutation: TPH
+    /// relationship reconciliation runs AFTER <c>OnModelCreating</c> returns and can
+    /// replace the FK metadata object, so a later mutation is silently discarded for a
+    /// base+subtype dual-declared FK (#294's repro). Configuring the relationship as it
+    /// is established is durable by construction.</para>
+    ///
+    /// <para><c>WithMany()</c> is left inverse-less: the port emits no reverse collection
+    /// navigations at all (ADR-0038 replaced them with explicit FK finders), so there is
+    /// no navigation to name on either side.</para>
+    ///
+    /// <para>TPH: the base's own pass covers the shared table's references. A concrete
+    /// subtype may additionally declare its OWN reference (folded into the base's single
+    /// table), so each subtype contributes only what it declares itself — and only when
+    /// the base did not already configure the same FK columns, which is exactly the
+    /// base+subtype dual declaration that made the adopter's mutation unreliable.</para>
+    /// </summary>
+    private void EmitReferenceConfig(
+        string owner, MetaObject entity, TphPlan? tph, GenContext ctx, List<string> modelLines)
+    {
+        var emitted = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var reference in entity.ReferenceIdentities().Where(r => r.Enforce))
+            if (ReferenceConfig(owner, entity, reference, ctx) is { } line)
+            {
+                modelLines.Add(line);
+                emitted.Add(FkKey(reference));
+            }
+
+        if (tph is null) return;
+        foreach (var st in tph.Subtypes)
+        {
+            // ADR-0039 sanctioned own-accessor case: the base's resolving pass above
+            // already emitted every inherited reference. Reading the subtype RESOLVED
+            // would re-emit each of them once per subtype — the duplicate configuration
+            // this fix exists to avoid.
+            foreach (var reference in st.Entity.OwnIdentities()
+                         .OfType<MetaReferenceIdentity>().Where(r => r.Enforce))
+            {
+                if (!emitted.Add(FkKey(reference))) continue;
+                if (ReferenceConfig(CSharpNaming.Pascal(st.Entity.Name), st.Entity, reference, ctx) is { } line)
+                    modelLines.Add(line);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Identity of the physical foreign key a reference defines: its ordered FK field
+    /// names. A TPH subtype re-declaring its base's reference (to add an inverse, or just
+    /// restating it) produces the same key, so the shared column is configured once.
+    /// </summary>
+    private static string FkKey(MetaReferenceIdentity reference) =>
+        string.Join(",", ReferentialActions.ReadIdentityFields(reference));
+
+    /// <summary>
+    /// The relationship-configuration line for one reference, or <c>null</c> when it
+    /// cannot be expressed: an unresolvable / non-persisted target, or an FK field the
+    /// emitted class does not declare. Silent by design — a dangling <c>@references</c>
+    /// is already a load error, and the other cases are shapes this generator
+    /// deliberately does not map.
+    /// </summary>
+    private string? ReferenceConfig(
+        string owner, MetaObject entity, MetaReferenceIdentity reference, GenContext ctx)
+    {
+        if (reference.TargetEntity is not { } targetName) return null;
+        // ADR-0042: a bare @references resolves in the DECLARING owner's package.
+        var target = NamingRefs.ResolveObjectRef(
+            ctx.Root, targetName,
+            NamingRefs.EffectivePackage(reference.Parent ?? entity)) as MetaObject;
+        if (target is null || !target.IsEntity() || !InstanceArtifacts.EmitsInstanceArtifacts(target))
+            return null;
+
+        var fkFields = ReferentialActions.ReadIdentityFields(reference);
+        if (fkFields.Count == 0) return null;
+
+        var props = new List<string>(fkFields.Count);
+        foreach (var name in fkFields)
+        {
+            // #214 — a write-through entity's WRITE class omits the derived (origin.*)
+            // fields, so naming one here would reference a property the class does not
+            // declare (a compile error in the generated file).
+            if (entity.Fields().FirstOrDefault(f => f.Name == name) is not { } field) return null;
+            if (entity.IsWriteThrough() && field.IsDerived()) return null;
+            props.Add($"nameof({owner}.{CSharpNaming.Pascal(name)})");
+        }
+
+        var actions = ReferentialActions.Resolve(entity, reference);
+        return $"        modelBuilder.Entity<{owner}>().HasOne<{CSharpNaming.Pascal(target.Name)}>()"
+             + $".WithMany().HasForeignKey({string.Join(", ", props)})"
+             + $"{OnDeleteCall(entity, fkFields, actions.OnDelete, ctx)};";
+    }
+
+    /// <summary>
+    /// The <c>.OnDelete(...)</c> suffix for a resolved action, or <c>""</c> for none.
+    ///
+    /// <para><c>no-action</c> resolves to null upstream (it IS the database default), so
+    /// it correctly emits no clause and leaves EF's convention in place.</para>
+    ///
+    /// <para><c>@onUpdate</c> has no EF Core representation — <c>DeleteBehavior</c> covers
+    /// deletes only. It stays a DDL-level fact, emitted by the TS-owned migration
+    /// engine (ADR-0015), and is deliberately not surfaced here.</para>
+    ///
+    /// <para>SET NULL requires every FK property to be nullable; EF fails MODEL VALIDATION
+    /// otherwise, which would take down the whole DbContext rather than one relationship.
+    /// A resolved set-null over a <c>@required</c> FK therefore warns and emits no clause.
+    /// The inferred case is already dropped by the tier-3 guard in
+    /// <see cref="ReferentialActions"/>, so reaching here means the action was declared
+    /// explicitly — a model the TS migrate engine also rejects (SetNullNotNullableError).</para>
+    /// </summary>
+    private string OnDeleteCall(
+        MetaObject entity, IReadOnlyList<string> fkFields, string? onDelete, GenContext ctx)
+    {
+        if (onDelete is null) return string.Empty;
+
+        if (onDelete == ACTION_SET_NULL)
+        {
+            var required = fkFields
+                .Where(n => entity.Fields().FirstOrDefault(f => f.Name == n) is { IsRequired: true })
+                .ToList();
+            if (required.Count > 0)
+            {
+                ctx.Warn($"{Name}: \"{entity.Name}\" resolves ON DELETE SET NULL over required " +
+                         $"field(s) {string.Join(", ", required)} — SET NULL cannot fire on a NOT NULL " +
+                         "column, so no DeleteBehavior is configured for that foreign key.");
+                return string.Empty;
+            }
+        }
+
+        return onDelete switch
+        {
+            ACTION_CASCADE => ".OnDelete(DeleteBehavior.Cascade)",
+            ACTION_SET_NULL => ".OnDelete(DeleteBehavior.SetNull)",
+            ACTION_RESTRICT => ".OnDelete(DeleteBehavior.Restrict)",
+            _ => string.Empty,
+        };
+    }
+
+    /// <summary>
+    /// The <c>.OnDelete(...)</c> suffix for one side of an M:N junction, resolved from the
+    /// junction's OWN <c>identity.reference</c> for that FK column (ADR-0047 names an M:N
+    /// junction's FK sides as a reference-level case). Empty when the junction declares no
+    /// matching enforced reference.
+    /// </summary>
+    private string JunctionSideOnDelete(MetaObject junction, string fkField, GenContext ctx)
+    {
+        var reference = junction.ReferenceIdentities().FirstOrDefault(r =>
+            r.Enforce && ReferentialActions.ReadIdentityFields(r) is [var only] && only == fkField);
+        if (reference is null) return string.Empty;
+        return OnDeleteCall(junction, [fkField], ReferentialActions.Resolve(junction, reference).OnDelete, ctx);
+    }
+
     // FR-018 — EF skip-navigation config for a hetero M:N navigation through its
     // explicit junction entity. The junction's FK PROPERTIES are the PascalCased
     // junction FK field names (the EntityGenerator emits them as scalar properties on
@@ -317,7 +503,11 @@ public class DbContextGenerator : IGenerator
     // `WithMany()` is left inverse-less (no reciprocal collection on the target) — the
     // contract is one-directional traversal from the source, and the route does the
     // explicit join regardless.
-    private static string UsingEntityConfig(M2MNavigation nav)
+    // ADR-0047 / #294 — each side additionally carries its referential action inline,
+    // resolved from the junction's own identity.reference for that column. This call is
+    // what establishes the junction's foreign keys, so it is where the action belongs;
+    // the per-reference pass skips junction entities for exactly that reason.
+    private string UsingEntityConfig(M2MNavigation nav, GenContext ctx)
     {
         var source = CSharpNaming.Pascal(nav.Source.Name);
         var target = CSharpNaming.Pascal(nav.Target.Name);
@@ -325,10 +515,12 @@ public class DbContextGenerator : IGenerator
         var navProp = CSharpNaming.Pascal(nav.Name);
         var sourceFkProp = CSharpNaming.Pascal(nav.SourceField);
         var targetFkProp = CSharpNaming.Pascal(nav.TargetField);
+        var targetOnDelete = JunctionSideOnDelete(nav.Junction, nav.TargetField, ctx);
+        var sourceOnDelete = JunctionSideOnDelete(nav.Junction, nav.SourceField, ctx);
         return
             $"        modelBuilder.Entity<{source}>().HasMany(x => x.{navProp}).WithMany().UsingEntity<{through}>(" +
-            $"l => l.HasOne<{target}>().WithMany().HasForeignKey(nameof({through}.{targetFkProp})), " +
-            $"r => r.HasOne<{source}>().WithMany().HasForeignKey(nameof({through}.{sourceFkProp})));";
+            $"l => l.HasOne<{target}>().WithMany().HasForeignKey(nameof({through}.{targetFkProp})){targetOnDelete}, " +
+            $"r => r.HasOne<{source}>().WithMany().HasForeignKey(nameof({through}.{sourceFkProp})){sourceOnDelete});";
     }
 
     /// <summary>

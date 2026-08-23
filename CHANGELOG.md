@@ -95,6 +95,52 @@ same blindness that let the original defect ship. `migrate-ts`'s `loadFixture` n
 loader errors instead of discarding them — a checked-in fixture had been declaring the
 illegal form and driving those suites green. All five ports green.
 
+### Fixed — the C# EF Core target had no foreign keys at all, so `@onDelete` was inert ([#294](https://github.com/metaobjectsdev/metaobjects/issues/294))
+
+**The issue reports that `DbContextGenerator` ignores `@onDelete`. It is worse than that:
+the generator emitted no 1:N relationship configuration whatsoever.** A generated entity
+carries a bare scalar FK property (`public long ProgramId`) and — since ADR-0038 replaced
+reverse navigation with explicit FK finders — no navigation property on either side. EF
+Core builds a relationship from a navigation or an explicit `HasOne`; with neither, it
+built **nothing**. `HasOne` appeared exactly once in the whole generated `AppDbContext`,
+inside the M:N `UsingEntity` call. So `modelBuilder.Entity<Week>().Metadata.GetForeignKeys()`
+returned an **empty collection**, and there was no foreign key for a delete behaviour to
+attach to — on a port where the database, whose DDL the TypeScript engine owns (ADR-0015),
+has carried `ON DELETE CASCADE` correctly all along.
+
+**Now every enforced `identity.reference` emits an explicit relationship with the action
+INLINE on the establishing call**, which is what the issue asks for and the reason is
+specific: EF reconciles TPH relationships *after* `OnModelCreating` returns and may replace
+the FK metadata object, so a later `GetForeignKeys().Single(...).DeleteBehavior = ...` is
+silently discarded. The adopter measured exactly that — 134 of 135 FKs took the mutation;
+the one that did not was a TPH base+subtype dual-declared FK, reading back as EF's
+convention default with nothing thrown. Configuring the relationship as it is *established*
+is durable by construction.
+
+The precedence is a **port of `migrate-ts`'s `referential-actions.ts`**, the cross-port SSOT,
+tier for tier: reference-level `@onDelete` → a correlated sibling relationship → the
+parent-side reverse relationship, package-aware (ADR-0042), with `@through` excluded, the
+more-than-one-reference-to-the-same-target ambiguity guard, and the inferred-`set-null`-on-
+NOT-NULL satisfiability guard. Three behaviours are decided rather than inherited: a TPH
+base and subtype declaring the **same** FK configure it **once**, on the base that owns the
+shared column (a duplicate is the ambiguity the adopter was working around); an M:N
+junction's FK sides ride on the `UsingEntity` call that creates them, so the per-reference
+pass skips junction entities rather than configuring one FK twice; and a resolved
+`set-null` over a `@required` FK **warns and emits no clause**, because EF fails MODEL
+VALIDATION there and would take down the entire `DbContext` rather than one relationship.
+`@onUpdate` is deliberately not surfaced — `DeleteBehavior` covers deletes only, so it
+remains a DDL-level fact.
+
+**The durable lesson is the familiar one: the thing that would have caught this did not
+exist.** [`docs/features/relationships.md`](docs/features/relationships.md) has shown the
+exact `HasOne<Author>().WithMany().HasForeignKey(...).OnDelete(DeleteBehavior.Cascade)`
+snippet as the C# port's output for releases, and nothing ever compared it to what the
+generator emits. A string assertion over generated source would not have closed it either —
+it passes just as happily for the post-hoc mutation that does not stick. The new gate builds
+the **real** EF model from the generated code and reads `DeleteBehavior` back off the
+finalized `IModel` (model-only, no container), and it was confirmed to fail without the fix
+with `Collection: []` — the empty FK set above.
+
 ### Fixed — `meta upgrade` rewrote nothing on a YAML estate, then called it clean ([#339](https://github.com/metaobjectsdev/metaobjects/issues/339))
 
 `meta upgrade` is the fixer for everything `0.24.0` retired. On a **YAML** estate it

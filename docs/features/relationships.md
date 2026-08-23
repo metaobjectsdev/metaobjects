@@ -238,12 +238,19 @@ KEY ... ON DELETE CASCADE` in the Postgres DDL.
 
 ```csharp
 // generated/AppDbContext.cs (excerpt)
-modelBuilder.Entity<Post>()
-    .HasOne<Author>()
-    .WithMany()
-    .HasForeignKey(p => p.AuthorId)
-    .OnDelete(DeleteBehavior.Cascade);
+modelBuilder.Entity<Post>().HasOne<Author>().WithMany()
+    .HasForeignKey(nameof(Post.AuthorId)).OnDelete(DeleteBehavior.Cascade);
 ```
+
+The action rides on the call that establishes the foreign key, never a later
+`GetForeignKeys(...)` mutation: EF Core reconciles TPH relationships *after*
+`OnModelCreating` returns and can replace the foreign-key metadata object, which
+silently discards a post-hoc assignment ([#294](https://github.com/metaobjectsdev/metaobjects/issues/294)).
+`WithMany()` is inverse-less because the port emits no reverse collection
+navigations at all — reverse traversal is the explicit FK finders of ADR-0038.
+
+`@onUpdate` has no EF Core representation (`DeleteBehavior` covers deletes only),
+so it stays a DDL-level fact emitted by the TypeScript-owned migration engine.
 
 ```sql
 -- emitted by `meta migrate`

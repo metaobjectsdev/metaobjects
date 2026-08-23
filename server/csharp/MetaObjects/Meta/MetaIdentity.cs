@@ -103,4 +103,20 @@ public class MetaReferenceIdentity(TypeId typeId, string name) : MetaIdentity(ty
 
     /// <summary>Whether the reference is physically enforced (default true; <c>@enforce: false</c> = logical-only).</summary>
     public bool Enforce => Attr(IDENTITY_REFERENCE_ATTR_ENFORCE) is not false;
+
+    /// <summary>
+    /// Referential action on parent delete, declared directly on the FK-defining
+    /// reference (cascade / set-null / restrict / no-action). Null when not set —
+    /// callers fall back to a correlated relationship's <c>@onDelete</c>, then the
+    /// relationship-subtype default (ADR-0047). The FK is declared here, so the
+    /// action may be declared here too rather than only on a sibling relationship.
+    /// </summary>
+    // ADR-0039: resolving Attr() — @onDelete may be inherited via extends.
+    public string? OnDelete =>
+        Attr(IDENTITY_ATTR_ON_DELETE) is string s && s.Length > 0 ? s : null;
+
+    /// <summary>Referential action on key update, declared directly on the reference. Null when not set.</summary>
+    // ADR-0039: resolving Attr() — @onUpdate may be inherited via extends.
+    public string? OnUpdate =>
+        Attr(IDENTITY_ATTR_ON_UPDATE) is string s && s.Length > 0 ? s : null;
 }
