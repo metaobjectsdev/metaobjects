@@ -443,6 +443,26 @@ export function validateFilterableHasSupportedOps(root: MetaData): ParseError[] 
     for (const field of obj.children().filter((c) => c.type === TYPE_FIELD)) {
       // ADR-0039: resolving — a concrete field may inherit @filterable via extends.
       if (field.attr(FIELD_ATTR_FILTERABLE) !== true) continue;
+
+      // #335 Half B — an ARRAY field has no operator band either. Every FR-009
+      // operator (eq/ne/gt/gte/lt/lte/in/like/isNull) is a scalar comparison;
+      // none applies to a collection column. The allowlist template does not
+      // consult isArray and falls through to the "string" band, so this
+      // previously emitted a `like` rule against a text[] column — SQL that
+      // cannot execute. Same reason as the subtype check below, so same code.
+      // ADR-0039: resolvedIsArray(), never the own `isArray` flag.
+      if (field.resolvedIsArray()) {
+        errors.push(
+          new ParseError(
+            `Field "${obj.name}.${field.name}" has @filterable: true but is an array ` +
+              `(isArray: true). No filter operator applies to a collection column. ` +
+              `Remove @filterable from this field.`,
+            { code: "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE", source: field.source },
+          ),
+        );
+        continue;
+      }
+
       if (opsForSubType(field.subType).length > 0) continue;
       errors.push(
         new ParseError(
