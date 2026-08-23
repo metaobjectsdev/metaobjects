@@ -59,10 +59,16 @@ gain `@filter`, `@orderBy` and `@distinct`, none of which `collection` could exp
 `collect` preserves the **element** type: the array field's own `field.<subType>` must equal
 the `@of` column's, and the field must be `isArray: true`.
 
-### 2. A whole-object rollup → delete the child
+### 2. A whole-object rollup → depends on the HOST
 
-If the field collected whole nested value objects (`field.object @objectRef … isArray: true`),
-**delete the `origin.collection` child and change nothing else**:
+What to do splits by where the field lives, and getting it wrong on a projection is
+**silent** — read both cases before editing.
+
+#### 2a. On a payload / `object.value` host → delete the child
+
+If the field collected whole nested value objects (`field.object @objectRef … isArray: true`)
+and its host is a payload or value object, **delete the `origin.collection` child and change
+nothing else**:
 
 ```jsonc
 { "field.object": {
@@ -78,15 +84,40 @@ The declared shape is unchanged, and payload typing has been **declared-authorit
 0.20.16** (#270) — the type came from `field.object` + `isArray` + `@objectRef`, never from the
 origin. Generated payload records, output parsers and render helpers are byte-identical.
 
-**State it plainly, because it is the one real gap:** no surviving origin expresses a
-whole-object rollup along a relationship — `@agg: collect` reduces a *column* via `@of`. If
-that field was on a `source.rdb @kind: view` **projection** and you were relying on the view
-DDL, note that no port ever emitted DDL for `origin.collection` either, so nothing regresses;
-but you also cannot now declare the provenance. That shape returns with
-[#335](https://github.com/metaobjectsdev/metaobjects/issues/335), which makes `@of` **optional**
-on `@agg: collect` (absent = whole-object rollup, typed by the declared `@objectRef` +
-`isArray`, never derived from the `@via` target) and ships the view lowering with it. It is
-**additive**, so it needs no breaking window.
+#### 2b. On a view-kind PROJECTION host → replace the child, never delete it
+
+**Deleting the child here produces metadata that loads clean and generates a broken view.**
+A projection field with no `origin.*` is treated as a plain base column, so the emitted DDL
+becomes `SELECT base."supplierBriefs"` against a column that does not exist. The load says
+nothing; the failure surfaces at apply.
+
+Replace the child instead:
+
+```jsonc
+{ "field.object": {
+    "name": "supplierBriefs", "isArray": true,
+    "@objectRef": "acme::catalog::SupplierBrief",
+    "children": [
+-     { "origin.collection": { "@via": "acme::catalog::Product.suppliers" } }
++     { "origin.aggregate": {
++         "@agg": "collect",
++         "@via": "acme::catalog::Product.suppliers" } }
+    ]
+}}
+```
+
+That is [#335](https://github.com/metaobjectsdev/metaobjects/issues/335)'s whole-object
+rollup: `@of` is **optional** on `@agg: collect`, and omitting it means "collect the related
+rows as the declared `@objectRef` value object". The element type comes from the declared
+`@objectRef` + `isArray`, never from the `@via` target (#270), and the view lowering ships
+with it — `jsonb_agg(jsonb_build_object(…))` on Postgres, `json_group_array(json_object(…))`
+on SQLite, `[]` on an empty related set.
+
+Three constraints the old `origin.collection` did not have: `@via` is **required** (there is
+no `@of` entity to infer a single hop from), `@distinct` is **refused** (it is a guaranteed
+no-op whenever the value object carries the primary key), and every value-object member must
+match a field on the `@via` **terminal** entity by name, with the same `field.<subType>` and
+array-ness. Each is a load error, so a mistake here fails loudly rather than silently.
 
 ### 3. `ASSEMBLY_ORIGIN_SUBTYPES` shrinks to three
 

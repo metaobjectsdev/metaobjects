@@ -158,13 +158,15 @@ silent. So every removal records what it covered and where that coverage went.
 **Coverage genuinely lost, stated rather than faked:** `flattened-kitchen-sink`
 dropped its `supplierBriefs` field, the corpus's only array-of-value-object
 carrying an origin. No surviving origin expresses a whole-object rollup along a
-relationship — `origin.aggregate @agg:collect` reduces a *column* via `@of`. That
-shape becomes expressible again when [#335](https://github.com/metaobjectsdev/metaobjects/issues/335)
-makes `@of` optional on `collect`; the fixture is the place to restore it.
-**Restored** — see "Whole-object rollup (#335)" below: `collect-whole-object` is
-a dedicated fixture, not a restoration of `flattened-kitchen-sink` itself (that
-fixture stays scoped to its own concern), but it is the corpus's positive case
-for exactly this shape.
+relationship — `origin.aggregate @agg:collect` reduces a *column* via `@of`. **RESTORED by [#335](https://github.com/metaobjectsdev/metaobjects/issues/335)**,
+which makes `@of` optional on `collect` — see "Whole-object rollup (#335)" below.
+The coverage lives in a DEDICATED fixture, `collect-whole-object`, rather than
+back in `flattened-kitchen-sink`: that fixture's concern is `@storage: flattened`,
+and a whole-object rollup exercises none of it, so folding the two would make
+each harder to read in a five-language investigation. `collect-whole-object` is
+an array-of-value-object carrying an origin — the exact shape recorded as lost —
+and it is round-tripped against real Postgres and SQLite in
+`server/typescript/packages/integration-tests/test/view-lifecycle-{pg,sqlite}.test.ts`.
 
 ## Generated fixtures (differential testing)
 
