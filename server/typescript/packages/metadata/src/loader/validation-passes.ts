@@ -766,6 +766,50 @@ function _validateViaPath(
   return hops;
 }
 
+/**
+ * #335 — walk an explicit `@via` "Entity.rel[.rel...]" path and return its
+ * TERMINAL entity node (the entity reached after the last hop), or undefined
+ * if any segment fails to resolve. Mirrors `_validateViaPath`'s hop-walking
+ * exactly but returns the terminal object instead of the walked hop nodes,
+ * and pushes no errors — callers use it only once `_validateViaPath` has
+ * already validated the same path and returned successfully.
+ *
+ * A whole-object `@agg:collect` has no `@of` entity to resolve `@orderBy`
+ * keys against (the #195 scalar path resolves them against the `@of` column's
+ * entity); this is the terminal-entity equivalent for the whole-object path.
+ * Codegen-side equivalent: `codegen-ts/src/projection/extract-view-spec.ts`'s
+ * `viaTerminalEntity`.
+ */
+function _viaTerminalEntityNode(
+  viaAttr: string,
+  root: MetaData,
+  projection: MetaData,
+): MetaData | undefined {
+  const segments = viaAttr.split(".");
+  const entityName = segments[0];
+  if (entityName === undefined) return undefined;
+  // ADR-0042 — a bare @via HEAD resolves in the projection's package.
+  const referrerPkg = projection.package ?? projection.fileDefaultPackage ?? "";
+  let currentObj = _findObject(root, entityName, referrerPkg);
+  if (!currentObj) return undefined;
+  for (const relName of segments.slice(1)) {
+    const rel = _findRelationship(currentObj, relName) ?? _findReference(currentObj, relName);
+    if (!rel) return undefined;
+    const refTarget = _hopTargetName(rel);
+    if (typeof refTarget !== "string" || refTarget === "") return undefined;
+    // ADR-0042 — the hop target resolves in the package of the entity that
+    // DECLARES the relationship/reference, i.e. currentObj.
+    const nextObj = _findObject(
+      root,
+      refTarget,
+      currentObj.package ?? currentObj.fileDefaultPackage ?? "",
+    );
+    if (!nextObj) return undefined;
+    currentObj = nextObj;
+  }
+  return currentObj;
+}
+
 // ---------------------------------------------------------------------------
 // FR-024 B5 — base-entity derivation, single-hop-unique @via inference, and
 // origin cardinality checks (spec §5–§6; ADR-0029 decisions 5–6).
@@ -1306,11 +1350,75 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             continue;
           }
 
-          // --- count/sum/avg/min/max/collect: @of REQUIRED ---
+          // --- @of: REQUIRED for count/sum/avg/min/max; OPTIONAL for collect ---
+          // #335 — an @of-absent collect is a WHOLE-OBJECT rollup: collect the
+          // related rows as an array of the field's declared @objectRef value
+          // object rather than an array of one scalar column.
           if (!ofPresent) {
-            errors.push(new ParseError(
-              `origin.aggregate on ${obj.name}.${field.name}: missing @of.`,
-              { code: "ERR_INVALID_ORIGIN", source: src }));
+            if (!isCollect) {
+              errors.push(new ParseError(
+                `origin.aggregate on ${obj.name}.${field.name}: missing @of.`,
+                { code: "ERR_INVALID_ORIGIN", source: src }));
+              continue;
+            }
+            // Whole-object rollup. The carrying field must be a field.object
+            // naming a value object, and @via must be explicit (there is no @of
+            // entity to infer the single-hop relation from).
+            // ADR-0039: resolving — @objectRef may be inherited via extends.
+            const objectRef = field.attr(FIELD_ATTR_OBJECT_REF);
+            if (field.subType !== FIELD_SUBTYPE_OBJECT || typeof objectRef !== "string" || objectRef === "") {
+              errors.push(new ParseError(
+                `origin.aggregate @agg:collect on ${obj.name}.${field.name}: @of is omitted, so this is a ` +
+                  `whole-object rollup — the carrying field must be a field.object declaring @objectRef ` +
+                  `(add @of to collect a single column instead).`,
+                { code: "ERR_INVALID_ORIGIN", source: src }));
+              continue;
+            }
+            // #210's value-only rule is PAYLOAD-scoped and never reaches a
+            // projection-hosted field, so this branch enforces it itself.
+            // Without it an @objectRef to an entity silently rolls up the FULL
+            // entity — the #270 shape, this time baked into DDL.
+            // ADR-0042 — a bare @objectRef resolves in the DECLARING owner's
+            // package (an inherited field resolves in the package that
+            // declared it) — same rule _checkNestedPayloadRefsValueOnly uses.
+            const refOwner = field.parent ?? obj;
+            const refPkg = refOwner.package ?? refOwner.fileDefaultPackage ?? "";
+            const refTarget = resolveObjectRef(root, objectRef, refPkg).node;
+            if (refTarget !== undefined && refTarget.subType !== OBJECT_SUBTYPE_VALUE) {
+              errors.push(new ParseError(
+                `origin.aggregate @agg:collect on ${obj.name}.${field.name}: @objectRef '${objectRef}' ` +
+                  `resolves to ${TYPE_OBJECT}.${refTarget.subType} — a whole-object rollup must target an ` +
+                  `object.value (#210, ADR-0028).`,
+                { code: "ERR_SUBTYPE_RULE_VIOLATION", source: src }));
+              continue;
+            }
+            // ADR-0039: own — origin.* never inherits (ADR-0029).
+            const viaAttr = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA);
+            if (typeof viaAttr !== "string" || viaAttr === "") {
+              errors.push(new ParseError(
+                `origin.aggregate @agg:collect on ${obj.name}.${field.name}: @via is required on a ` +
+                  `whole-object rollup — there is no @of entity to infer the relationship from.`,
+                { code: "ERR_INVALID_ORIGIN", source: src }));
+              continue;
+            }
+            // @distinct is refused on the object form. It is NOT an engine limit
+            // (both engines dedupe JSON objects); it is a guaranteed no-op
+            // whenever the value object carries the entity's primary key, which
+            // is the common case, and a silent no-op is worse than a refusal.
+            if (hasDistinct) {
+              errors.push(new ParseError(
+                `origin.aggregate @agg:collect on ${obj.name}.${field.name}: @distinct is not supported on a ` +
+                  `whole-object rollup (it is a no-op whenever the value object carries the primary key).`,
+                { code: "ERR_INVALID_ORIGIN", source: src }));
+              continue;
+            }
+            const hops = _validateViaPath(viaAttr, root, obj, field.name, src, errors);
+            if (hops !== undefined) _checkAggregateCardinality(hops, obj, field.name, src, errors);
+            // @orderBy keys resolve against the @via TERMINAL entity, not @of.
+            if (hasOrderBy) {
+              const terminal = _viaTerminalEntityNode(viaAttr, root, obj);
+              _validateOrderByKeys(orderBy, terminal, obj, field.name, "origin.aggregate @agg:collect", src, errors);
+            }
             continue;
           }
           // NOTE (FR-024 B6): NO extends/origin agreement check on aggregates —
