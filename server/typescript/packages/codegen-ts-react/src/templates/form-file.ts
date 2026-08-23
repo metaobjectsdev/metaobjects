@@ -300,24 +300,29 @@ function enumValues(field: MetaField): string[] {
  * all (it fails the column's type), and for every other nullable column it makes a
  * `!= null` check read a blank field as SET.
  *
- * Excluded because they cannot produce `""`: a checkbox (always boolean) and a
- * `view.image` (Controller-managed, carries a storage key). A `@required` field is
- * excluded too — blank there is a validation error the schema already owns, and
- * rewriting it would convert a caught error into a silent null.
+ * Excluded because they cannot produce `""`, and naming one anyway would be a claim about
+ * a control that does not exist:
+ *   - a checkbox — always a boolean, and `false` is a real answer, never "blank";
+ *   - a `view.image` — Controller-managed, and its value is an opaque storage key;
+ *   - a nested `field.object` and any array field — rendered as a nested block or a
+ *     `useFieldArray` list, so what they submit is an object or an array.
+ * A `@required` field is excluded too: blank there is a validation error the schema
+ * already owns, and rewriting it would turn a caught error into a silent null.
  */
-/** Names of the two symbols the blank-normalizer emits, kept out of the template string. */
-const BLANK_FIELDS_CONST = "BLANK_OPTIONAL_FIELDS";
-const BLANK_NORMALIZER = "normalizeBlankOptionals";
-
 function blankableOptionalFields(fields: readonly MetaField[]): string[] {
   return fields
     .filter((f) => f.attr(FIELD_ATTR_REQUIRED) !== true)
+    .filter((f) => f.subType !== FIELD_SUBTYPE_OBJECT && !f.resolvedIsArray())
     .filter((f) => {
       const kind = viewKindFor(f, f.views()[0]); // resolving accessor (ADR-0039)
       return kind !== VIEW_SUBTYPE_CHECKBOX && kind !== VIEW_SUBTYPE_IMAGE;
     })
     .map((f) => f.name);
 }
+
+/** Names of the two symbols the blank-normalizer emits, kept out of the template string. */
+const BLANK_FIELDS_CONST = "BLANK_OPTIONAL_FIELDS";
+const BLANK_NORMALIZER = "normalizeBlankOptionals";
 
 export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
   const entityName = entity.name;

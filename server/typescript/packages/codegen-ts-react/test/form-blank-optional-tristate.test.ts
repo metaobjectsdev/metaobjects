@@ -21,11 +21,16 @@ import { makeRenderContext, buildPkMap, buildRelationMap } from "@metaobjectsdev
 import type { GenContext } from "@metaobjectsdev/codegen-ts";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 
-async function formFor(entityChildren: unknown[], name = "Booking"): Promise<string> {
+async function formFor(
+  entityChildren: unknown[],
+  name = "Booking",
+  extraRoots: unknown[] = [],
+): Promise<string> {
   const json = JSON.stringify({
     "metadata.root": {
       package: "acme",
       children: [
+        ...extraRoots,
         {
           "object.entity": {
             name,
@@ -143,6 +148,24 @@ describe("generated form — blank optional fields are tristate-aware (#223)", (
       confirmed: false,
       note: null,
     });
+  });
+
+  // Caught by regenerating the advanced-modeling example: a jsonb value-object field was
+  // being listed, because "optional and not a checkbox" was too coarse a test. It could
+  // never fire (its value is an object, never `""`), but the list is a statement about
+  // which controls can be blank, and naming one that has no scalar control at all is
+  // wrong in the direction that invites a real bug later.
+  test("a nested value object and an array field are excluded — neither has a scalar control", async () => {
+    const src = await formFor(
+      [
+        OPTIONAL_TEXT,
+        { "field.string": { name: "tags", isArray: true } },
+        { "field.object": { name: "profile", "@objectRef": "Profile", "@storage": "jsonb" } },
+      ],
+      "Listing",
+      [{ "object.value": { name: "Profile", children: [{ "field.string": { name: "bio" } }] } }],
+    );
+    expect(blankFieldList(src)).toEqual(["note"]);
   });
 
   test("an all-required form emits no normalizer at all — output stays byte-identical", async () => {
