@@ -181,6 +181,15 @@ gate_metamodel_version() { node scripts/check-metamodel-version.mjs && node scri
 # adopter resolves. The check reads MANIFESTS, so it needs no network.
 gate_peer_ranges() { bun scripts/check-peer-ranges.ts; }
 
+# ── shipped metadata examples must still load ─────────────────────────────────
+# Three times an adopter — never a gate — found that a doc or an agent-context skill
+# taught vocabulary the loader had already retired (#337 @verifiedBy, #342 @fields with
+# @expr, #343 the pre-0.24.0 @status enum). Each was fixed by hand in a different file,
+# so the family recurred instead of converging. This loads every fenced metadata example
+# we ship against the strict registry, classifying by ERROR KIND so a deliberately
+# partial fragment stays quiet. The self-test replays all three incidents.
+gate_doc_examples() { bun scripts/check-doc-examples.ts && bun scripts/test-doc-examples.ts; }
+
 # ── conformance.yml — fixture lint + workspace typecheck ──────────────────────
 gate_fixture_lint() {
   bun_install && ( cd server/typescript/packages/conformance && bun bin/conformance.ts lint ../../../../fixtures/conformance )
@@ -403,6 +412,7 @@ if want gates; then step    "publish-set parity"               gate_publish_set;
 if want gates; then step    "no committed pre-release version" gate_no_prerelease_versions; fi
 if want gates; then step    "metamodel-version bump"           gate_metamodel_version;      fi
 if want gates; then step_if bun "peer-range bounds"            gate_peer_ranges;            fi
+if want gates; then step_if bun "shipped doc examples load"    gate_doc_examples;           fi
 if want gates; then step_if bun "fixture-lint"                 gate_fixture_lint;           fi
 # The ts port is split into two lanes so CI can run them as separate jobs (see
 # .github/workflows/local-ci.yml): a FAST lane (build+typecheck, conformance,

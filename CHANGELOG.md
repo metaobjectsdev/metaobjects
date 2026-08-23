@@ -284,6 +284,46 @@ extracting the authored examples from shipped docs, skills and fixtures and load
 under a strict loader — is tracked separately; `meta upgrade`'s retirement map is already
 the natural source of truth for "what must no longer appear in an example".
 
+### Added — every shipped metadata example is now gated against the strict registry ([#337](https://github.com/metaobjectsdev/metaobjects/issues/337))
+
+**The same failure has now landed three times, and an adopter found it every time.** A doc
+or an agent-context skill taught vocabulary the loader had already retired, so metadata
+written by following our own instructions did not load: **#337** described `@verifiedBy` as
+live a release after FR-038 retired it; **#342** gave `{"@fields": [...], "@expr": ...}` as a
+worked example, the exact spelling that release turned into a load error; **#343** taught
+`@verifiedBy` and the pre-`0.24.0` `@status` enum a full release after both went. Each was
+fixed by hand, in a different file — which is why the family recurred instead of converging.
+
+`scripts/check-doc-examples.ts` now loads every fenced JSON example under `docs/` and the
+`agent-context` skills against the **strict** registry, in the `gates` lane.
+
+**The hard part was never extraction, it was telling a real drift from an illustration**,
+because most doc blocks are deliberately partial. The rule is the KIND of error, not a
+marker anyone has to remember: **fail on errors about vocabulary the block USES** (an
+attribute that no longer exists, a value outside its enum, an illegal combination — wrong at
+any size); **allow errors about what it OMITS or REFERENCES** (a required attribute elided, an
+`extends` target living in the next code block — that IS fragment-ness). A fragment is
+wrapped in a synthetic host, and the fields its `@fields` names are synthesised with it, so
+the scaffolding cannot manufacture a finding the document never committed. **An error code in
+neither list stops the gate as "unclassified"** rather than defaulting: one default silently
+widens the blind spot, the other floods hundreds of fragments — the same posture, for the
+same reason, as `VocabularyRewrite.otherwise`. It earned its keep immediately, stopping on
+`ERR_ENUM_INT_VALUE_MAP_ARRAY`, a code that is not in the main error ledger at all.
+
+Two trees are deliberately out of scope, and the reason is the same one that makes deleting
+an `@status: abandoned` node data loss rather than a migration: **`docs/superpowers/` and
+`docs/features/migrations/` are records, not instructions.** A plan documents what was decided
+at a time, and a migration guide's whole purpose is to show the retired spelling beside its
+replacement — editing either to satisfy a gate would falsify it. One narrow opt-out marker
+(`<!-- meta-example: external-provider -->`) covers the provider-extension recipes, whose
+subject is an attribute the consumer registers themselves; it is counted in the gate's own
+summary, because a blind spot nobody can see growing is how this family started.
+
+`scripts/test-doc-examples.ts` replays all three incidents as fixtures and asserts the gate
+rejects each one — and that a partial fragment, an unresolved reference and a plain config
+block stay quiet, since a gate that flags illustrations gets switched off and then catches
+nothing at all.
+
 ## [0.24.0] — npm `0.24.0` · PyPI `0.24.0` · NuGet `0.24.0` · Maven `7.24.0`
 
 > ### ⚠️ BREAKING FOR METADATA AUTHORS — five vocabulary changes in ONE window

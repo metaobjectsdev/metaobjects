@@ -109,6 +109,8 @@ tooling sees the same metamodel.
 
 ## 3. Author metadata that uses the new subtype
 
+<!-- meta-example: external-provider -->
+
 ```jsonc
 // metaobjects/meta.toolcalls.json
 { "metadata.root": {
