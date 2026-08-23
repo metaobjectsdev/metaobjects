@@ -219,6 +219,15 @@ public final class ErrorMessageConstants {
     public static final String ERR_SORTABLE_UNSUPPORTED_SUBTYPE = "ERR_SORTABLE_UNSUPPORTED_SUBTYPE";
 
     /**
+     * #335 Half A — a whole-object {@code @agg:collect}'s value-object member has no
+     * matching field (by name) on the {@code @via} terminal entity. The lowering
+     * projects exactly the declared members; failing open here is how #270 turned a
+     * curated value object into the full entity.
+     * Cross-language contract: {@code ERR_COLLECT_MEMBER_UNRESOLVED}.
+     */
+    public static final String ERR_COLLECT_MEMBER_UNRESOLVED = "ERR_COLLECT_MEMBER_UNRESOLVED";
+
+    /**
      * Error code emitted when a {@code layout.dataGrid @defaultSortField} value
      * does not name a real field on the owning entity.
      * Cross-language contract: {@code ERR_BAD_DEFAULT_SORT_FIELD}.

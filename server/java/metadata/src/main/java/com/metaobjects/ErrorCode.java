@@ -375,6 +375,14 @@ public enum ErrorCode {
     ERR_SORTABLE_UNSUPPORTED_SUBTYPE,
 
     /**
+     * #335 Half A — a whole-object {@code @agg:collect}'s value-object member has no
+     * matching field (by name) on the {@code @via} terminal entity. The lowering
+     * projects exactly the declared members; failing open here is how #270 turned a
+     * curated value object into the full entity.
+     */
+    ERR_COLLECT_MEMBER_UNRESOLVED,
+
+    /**
      * ADR-0023 Decision 2: a registration ({@code register}/{@code extendType}/
      * {@code registerCommonAttribute}/{@code addConstraint}/{@code registerType}/
      * {@code setDefaultSubType}/{@code addGlobalChildRequirement}/{@code registerProviders})

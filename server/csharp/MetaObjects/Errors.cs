@@ -177,6 +177,11 @@ public enum ErrorCode
     // filter-operator band (e.g. field.object). Would silently emit a sort
     // entry over a column no dialect can ORDER BY.
     ERR_SORTABLE_UNSUPPORTED_SUBTYPE,
+    // #335 Half A — a whole-object @agg:collect's value-object member has no
+    // matching field (by name) on the @via terminal entity. The lowering
+    // projects exactly the declared members; failing open here is how #270
+    // turned a curated value object into the full entity.
+    ERR_COLLECT_MEMBER_UNRESOLVED,
     // Index-key resolution for index.lookup AND identity.secondary (#342) — the key is
     // @fields XOR @expr: neither declared, BOTH declared (@expr is used INSTEAD of
     // @fields), whichever is declared supplies no key, or a named field does not exist

@@ -1423,6 +1423,46 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
               const terminal = _viaTerminalEntityNode(viaAttr, root, obj);
               _validateOrderByKeys(orderBy, terminal, obj, field.name, "origin.aggregate @agg:collect", src, errors);
             }
+            // Member resolution — the lowering projects EXACTLY the declared
+            // value object's members, matched by NAME against the @via
+            // TERMINAL entity. An unmatched member must error: failing open
+            // here is how #270 turned a curated value object into the full
+            // entity, invisible in a diff because the metadata still read as
+            // curated. Gated on hops !== undefined for the same reason the
+            // @orderBy check above is: _viaTerminalEntityNode does not
+            // reproduce _validateViaPath's malformed-shape guard.
+            if (hops !== undefined) {
+              const terminal = _viaTerminalEntityNode(viaAttr, root, obj);
+              if (terminal !== undefined && refTarget !== undefined) {
+                // ADR-0039: resolving — a value object may inherit members via
+                // extends, and the terminal entity may inherit fields;
+                // own-only would silently skip inherited members, which is
+                // exactly the #270 bug class this guard exists to prevent.
+                const terminalFields = terminal.children().filter((c) => c.type === TYPE_FIELD);
+                for (const member of refTarget.children().filter((c) => c.type === TYPE_FIELD)) {
+                  const match = terminalFields.find((f) => f.name === member.name);
+                  if (match === undefined) {
+                    errors.push(new ParseError(
+                      `origin.aggregate @agg:collect on ${obj.name}.${field.name}: value-object member ` +
+                        `'${member.name}' has no matching field on '${terminal.name}' — a whole-object ` +
+                        `rollup projects exactly the declared members.`,
+                      { code: "ERR_COLLECT_MEMBER_UNRESOLVED", source: src }));
+                    continue;
+                  }
+                  // Per-member type agreement — the object-form analogue of
+                  // the scalar element-type check below (#185 type-preserving
+                  // doctrine), reusing ERR_INVALID_ORIGIN for the same "types
+                  // disagree" shape rather than minting a second code.
+                  if (member.subType !== match.subType) {
+                    errors.push(new ParseError(
+                      `origin.aggregate @agg:collect on ${obj.name}.${field.name}: value-object member ` +
+                        `'${member.name}' is field.${member.subType} but '${terminal.name}.${match.name}' ` +
+                        `is field.${match.subType} — a whole-object rollup preserves each member's type.`,
+                      { code: "ERR_INVALID_ORIGIN", source: src }));
+                  }
+                }
+              }
+            }
             continue;
           }
           // NOTE (FR-024 B6): NO extends/origin agreement check on aggregates —

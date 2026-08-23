@@ -37,8 +37,17 @@ import { describe, test, expect } from "bun:test";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
 import { InMemoryStringSource } from "../src/loader/meta-data-source.js";
 
-/** Product 1:N Supplier, plus a projection rolling suppliers up as objects. */
-const model = (collectField: string) => `{
+/** SupplierBrief's default member set — mirrors Supplier.id + Supplier.name exactly. */
+const DEFAULT_SUPPLIER_BRIEF_FIELDS =
+  `{ "field.long": { "name": "id" } }, { "field.string": { "name": "name" } }`;
+
+/**
+ * Product 1:N Supplier, plus a projection rolling suppliers up as objects.
+ * `voFields` parameterises SupplierBrief's member list (#335 Half A member
+ * resolution) — defaults to the field set every pre-existing arm in this file
+ * assumes, so no existing call site needs updating.
+ */
+const model = (collectField: string, voFields: string = DEFAULT_SUPPLIER_BRIEF_FIELDS) => `{
   "metadata.root": {
     "package": "acme::shop",
     "children": [
@@ -56,10 +65,7 @@ const model = (collectField: string) => `{
           { "identity.primary": { "name": "id", "@fields": ["id"] } },
           { "relationship.association": { "name": "suppliers", "@cardinality": "many", "@objectRef": "Supplier" } }
       ]}},
-      { "object.value": { "name": "SupplierBrief", "children": [
-          { "field.long": { "name": "id" } },
-          { "field.string": { "name": "name" } }
-      ]}},
+      { "object.value": { "name": "SupplierBrief", "children": [ ${voFields} ] }},
       { "object.projection": { "name": "ProductWithSuppliers", "children": [
           { "source.rdb": { "@kind": "view", "@view": "v_product_suppliers" } },
           { "field.long": { "name": "productId", "extends": "Product.id" } },
@@ -217,5 +223,36 @@ describe("@of-absent collect (whole-object rollup)", () => {
     }}`);
     const errors = await loadErrors(src);
     expect(errors).toEqual([]);
+  });
+
+  // #335 Half A — member resolution. The lowering projects EXACTLY the
+  // declared value object's members, matched by NAME against the @via
+  // TERMINAL entity (Supplier, here). Failing open on an unresolved member is
+  // how #270 turned a curated value object into the full entity.
+
+  test("a VO member with no matching field on the @via terminal fails", async () => {
+    // SupplierBrief declares "nickname"; Supplier has no such field.
+    const src = model(
+      WHOLE_OBJECT,
+      `{ "field.long": { "name": "id" } }, { "field.string": { "name": "nickname" } }`,
+    );
+    const errors = await loadErrors(src);
+    const hit = errors.find((e) => e.code === "ERR_COLLECT_MEMBER_UNRESOLVED");
+    expect(hit).toBeDefined();
+    expect(hit?.message).toContain("nickname");
+    expect(hit?.message).toContain("Supplier");
+  });
+
+  test("a VO member whose type differs from the matched field fails", async () => {
+    // SupplierBrief declares "name" as a field.long; Supplier.name is a field.string.
+    const src = model(
+      WHOLE_OBJECT,
+      `{ "field.long": { "name": "id" } }, { "field.long": { "name": "name" } }`,
+    );
+    const errors = await loadErrors(src);
+    const hit = errors.find((e) => e.code === "ERR_INVALID_ORIGIN" && e.message.includes("value-object member"));
+    expect(hit).toBeDefined();
+    expect(hit?.message).toContain("'name' is field.long");
+    expect(hit?.message).toContain("Supplier.name' is field.string");
   });
 });
