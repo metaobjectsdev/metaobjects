@@ -119,7 +119,7 @@
     "ts-poet": "^6.10.0"
   },
   "peerDependencies": {
-    "drizzle-orm": ">=0.36.0 <1.0.0",
+    "drizzle-orm": ">=0.38.0 <1.0.0",
     "zod": ">=3.23.0 <5.0.0"
   },
   "devDependencies": {
@@ -128,7 +128,7 @@
     "@metaobjectsdev/migrate-ts": "workspace:*",
     "@metaobjectsdev/runtime-ts": "workspace:*",
     "bun-types": "latest",
-    "drizzle-orm": "^0.36.0",
+    "drizzle-orm": "^0.38.0",
     "hono": "^4.6.0",
     "typescript": "^5.6.0",
     "zod": "^3.23.0"

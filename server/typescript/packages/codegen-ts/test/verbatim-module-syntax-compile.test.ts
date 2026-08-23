@@ -54,6 +54,15 @@ async function loadRoot() {
               // annotation, so the type-only *-core import is exercised.
               { "field.int": { name: "parentId" } },
               { "field.string": { name: "label" } },
+              // An inline enum emits a table-level CHECK, i.e. the first entity here
+              // whose table call passes `extraConfig` at all. That argument is emitted
+              // in Drizzle's ARRAY form, which `pgTable` has accepted since 0.36.0 but
+              // `sqliteTable` only since 0.38.0 — so on 0.36.x/0.37.x the generated
+              // SQLite table does not type-check (TS2769), while Postgres is fine. The
+              // peer range admitted those versions; it now floors at 0.38.0. Every
+              // other extraConfig source (composite PK, index, table-level FK) shares
+              // this single code path, so covering the enum covers the class.
+              { "field.enum": { name: "kind", "@values": ["alpha", "beta"] } },
               { "identity.primary": { name: "id", "@fields": "id" } },
               {
                 "identity.reference": {
