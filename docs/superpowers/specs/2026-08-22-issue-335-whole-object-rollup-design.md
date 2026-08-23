@@ -228,22 +228,30 @@ server/typescript/packages/metadata/src/persistence/origin/origin-definition.emb
 
 All seven change in lockstep or `registry-conformance` goes red in every port.
 
-## A7. `metamodelVersion`: rides the existing `0.11` — no further bump
+## A7. `metamodelVersion`: `0.12` — SETTLED and SHIPPED
 
 Classification: **additive**. Previously-invalid metadata becomes valid; nothing that loaded
 before stops loading. This is #210 in reverse — a rule change whose only machine-readable
 footprint is prose, which `check-metamodel-version.mjs` can only **WARN** about (`:36`), so no
-gate forces the call and it is made here.
+gate forces the call and it is made by a human.
 
-**But no edit is required.** `#342` (`e96bbe329`) already moved `metamodelVersion` `0.10` →
-`0.11`, and that bump is **unreleased** — `v0.24.0` shipped `0.10`. The gate baselines against
-the last **release tag**, not `HEAD~1`, precisely so that a release cycle needs one bump rather
-than one per PR. So `0.11` already covers this change.
+**The number is `0.12`, set by `7c99536a7` via `check-metamodel-version.mjs --set 0.12`** (all
+five sites at once: the manifest plus the four port constants).
 
-Two conditions would change that, and the plan must re-check both at implementation time:
-- If `0.11` ships in a release **before** this lands, this needs `0.12`.
-- If Half B is judged breaking rather than additive (see B2's note), the classification —
-  though not necessarily the number, pre-1.0 — changes with it.
+This section previously said the change rode `#342`'s unreleased `0.11` and needed no edit. That
+reasoning held only while `0.11` was unclaimed, and it stopped holding during implementation:
+`origin/main`'s `2af77e7cd` names **`0.24.1` as the sole claimant of `0.11`**. The re-check this
+section itself demanded — *"if `0.11` ships in a release before this lands, this needs `0.12`"* —
+therefore fired. Doug ruled `0.12` on 2026-08-23.
+
+Worth keeping, because a reviewer re-derived the superseded answer and called the `0.11` ride
+correct: "`v0.24.0` shipped `0.10` and main already carries the unreleased bump" is true and
+still gives the wrong answer, because it never asks *who else has already claimed `0.11`*. The
+gate baselines against the last release TAG, so an unreleased bump looks free right up until
+another change in the same cycle spends it.
+
+One condition remains open: if Half B is judged breaking rather than additive (see B2's note),
+the classification — though not necessarily the number, pre-1.0 — changes with it.
 
 ---
 

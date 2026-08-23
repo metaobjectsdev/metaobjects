@@ -49,9 +49,9 @@ export const ORIGIN_DEFINITION: ProviderDefinition = {
     {
       "type": "origin",
       "subType": "aggregate",
-      "description": "A value reduced from the related row-set reached along a relationship path (@via) from the base entity: count/sum/avg/min/max over a column (@of); any/all predicate quantifiers over a @filter; or collect (an array rollup of @of).",
+      "description": "A value reduced from the related row-set reached along a relationship path (@via) from the base entity: count/sum/avg/min/max over a column (@of); any/all predicate quantifiers over a @filter; or collect (an array rollup — of the @of column, or of the carrying field.object's declared @objectRef value object when @of is omitted).",
       "whenToUse": "A projection needs a value derived by reducing related rows — a count/sum/avg/min/max, a 'did any/every related row match' flag, or an array of collected values. Declare it instead of hand-writing the aggregate query — it stays consistent and regenerates.",
-      "rules": "@via may be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (single-hop-unique inference; FR-024, ADR-0029). Multi-hop paths must always be stated explicitly. @of is required for count/sum/avg/min/max/collect and forbidden for any/all (which quantify over rows via @filter, not a column). @filter is required for any/all. The field must be isArray:true for collect and isArray:false for every other @agg. @distinct and @orderBy are collect-only.",
+      "rules": "@via may be omitted only when exactly one single-hop relationship leads from the base entity to the @of entity (single-hop-unique inference; FR-024, ADR-0029). Multi-hop paths must always be stated explicitly. @of is required for count/sum/avg/min/max and forbidden for any/all (which quantify over rows via @filter, not a column). @filter is required for any/all. The field must be isArray:true for collect and isArray:false for every other @agg. @distinct and @orderBy are collect-only. On @agg:collect @of is OPTIONAL: omitting it declares a WHOLE-OBJECT rollup, which collects each related row as the carrying field's declared @objectRef value object instead of one scalar column. A whole-object rollup requires a field.object carrying @objectRef, requires that @objectRef to name an object.value, requires an explicit @via (there is no @of entity to infer the path from), and refuses @distinct. Its @orderBy keys resolve against the @via TERMINAL entity, not the head or a middle hop. Its value-object members bind to the terminal entity's fields BY NAME — member name == terminal field name, deliberately NOT extends, so one value object stays collectable from two different entities — and every member must match a terminal field agreeing on BOTH field.<subType> and array-ness.",
       "children": [
         {
           "type": "attr",
@@ -69,7 +69,7 @@ export const ORIGIN_DEFINITION: ProviderDefinition = {
             "all",
             "collect"
           ],
-          "description": "The reducing function applied over the related row-set: count/sum/avg/min/max (numeric/ordinal reduces over @of); any/all (predicate quantifiers over @filter — @of forbidden; empty set → any=false, all=true); collect (array rollup of @of — the field must be isArray)."
+          "description": "The reducing function applied over the related row-set: count/sum/avg/min/max (numeric/ordinal reduces over @of); any/all (predicate quantifiers over @filter — @of forbidden; empty set → any=false, all=true); collect (array rollup — of the @of column, or of the carrying field.object's declared @objectRef value object when @of is omitted; the field must be isArray)."
         },
         {
           "type": "attr",
@@ -77,7 +77,7 @@ export const ORIGIN_DEFINITION: ProviderDefinition = {
           "name": "of",
           "min": 0,
           "max": 1,
-          "description": "Dotted Entity.field reference identifying the column being aggregated (e.g. 'Week.durationMinutes'). Required for count/sum/avg/min/max/collect; forbidden for any/all (which quantify over rows via @filter, not a column)."
+          "description": "Dotted Entity.field reference identifying the column being aggregated (e.g. 'Week.durationMinutes'). Required for count/sum/avg/min/max; OPTIONAL for collect, where absent means a whole-object rollup of the field's declared @objectRef value object; forbidden for any/all (which quantify over rows via @filter, not a column)."
         },
         {
           "type": "attr",
@@ -101,7 +101,7 @@ export const ORIGIN_DEFINITION: ProviderDefinition = {
           "name": "distinct",
           "min": 0,
           "max": 1,
-          "description": "Set (collect-only) to dedupe collected values (set semantics)."
+          "description": "Set (collect-only) to dedupe collected values (set semantics). Not supported on a whole-object collect (@of omitted): it is a guaranteed no-op whenever the value object carries the primary key, and a silent no-op is worse than a refusal."
         },
         {
           "type": "attr",
