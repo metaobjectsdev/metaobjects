@@ -1453,11 +1453,20 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
                   // the scalar element-type check below (#185 type-preserving
                   // doctrine), reusing ERR_INVALID_ORIGIN for the same "types
                   // disagree" shape rather than minting a second code.
-                  if (member.subType !== match.subType) {
+                  // Compare BOTH axes via the type-label, exactly as the
+                  // sibling _checkPassthroughType does: subtype names never
+                  // contain "[]", so equal labels ⇔ same subType AND same
+                  // array-ness. Judging subType alone would let a scalar
+                  // member match an array field on the terminal (and vice
+                  // versa) and project an array into a scalar member.
+                  // ADR-0039: resolvedIsArray(), never the own `isArray` flag.
+                  const memberLabel = `field.${member.subType}${member.resolvedIsArray() ? "[]" : ""}`;
+                  const matchLabel = `field.${match.subType}${match.resolvedIsArray() ? "[]" : ""}`;
+                  if (memberLabel !== matchLabel) {
                     errors.push(new ParseError(
                       `origin.aggregate @agg:collect on ${obj.name}.${field.name}: value-object member ` +
-                        `'${member.name}' is field.${member.subType} but '${terminal.name}.${match.name}' ` +
-                        `is field.${match.subType} — a whole-object rollup preserves each member's type.`,
+                        `'${member.name}' is ${memberLabel} but '${terminal.name}.${match.name}' ` +
+                        `is ${matchLabel} — a whole-object rollup preserves each member's type.`,
                       { code: "ERR_INVALID_ORIGIN", source: src }));
                   }
                 }

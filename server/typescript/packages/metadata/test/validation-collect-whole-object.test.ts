@@ -255,4 +255,22 @@ describe("@of-absent collect (whole-object rollup)", () => {
     expect(hit?.message).toContain("'name' is field.long");
     expect(hit?.message).toContain("Supplier.name' is field.string");
   });
+
+  test("a VO member whose ARRAY-NESS differs from the matched field fails", async () => {
+    // SupplierBrief declares "name" as field.string isArray; Supplier.name is a
+    // scalar field.string. Same subType, different array-ness — the #185
+    // type-preserving doctrine this rule cites judges BOTH axes (the sibling
+    // _checkPassthroughType compares the `field.<subType>[]` label for exactly
+    // this reason). Comparing subType alone would project an array into a
+    // scalar member.
+    const src = model(
+      WHOLE_OBJECT,
+      `{ "field.long": { "name": "id" } }, { "field.string": { "name": "name", "isArray": true } }`,
+    );
+    const errors = await loadErrors(src);
+    const hit = errors.find((e) => e.code === "ERR_INVALID_ORIGIN" && e.message.includes("value-object member"));
+    expect(hit).toBeDefined();
+    expect(hit?.message).toContain("'name' is field.string[]");
+    expect(hit?.message).toContain("Supplier.name' is field.string");
+  });
 });
