@@ -307,16 +307,20 @@ function valueObjectFieldType(entity: MetaObject, field: MetaField, ctx?: Render
     if (values !== undefined) {
       const alias = enumUnionAliasName(ownerName, field);
       // FR-019: a shared/provided enum's type lives in another module (./enums or
-      // the provided module). Use imp() so ts-poet hoists `import { type E }` —
-      // the local interface can then reference E. Inline enums reference the
-      // locally-declared `<Entity><Field>` alias as before.
+      // the provided module). The `t:` prefix is load-bearing (#341) — it is what
+      // makes ts-poet hoist `import { type E }` rather than a VALUE import. Without
+      // it the enum's TYPE and its Zod VALUE (`<E>Enum`) merge into one value
+      // import, which is a hard TS1484 under `verbatimModuleSyntax: true` — the
+      // default in current Vite/TS templates — so generated code the adopter cannot
+      // edit fails to compile. Invisible with the flag off, which is why it shipped.
+      // Inline enums reference the locally-declared `<Entity><Field>` alias.
       if (ctx !== undefined) {
         const shared = sharedEnumForField(field);
         if (shared !== undefined) {
           const spec = shared.provided
             ? providedEnumImportSpecifier(ctx, shared.name)
             : sharedEnumImportSpecifier(ctx, entity.package);
-          const sym = imp(`${shared.name}@${spec}`);
+          const sym = imp(`t:${shared.name}@${spec}`);
           return field.resolvedIsArray() ? code`${sym}[]` : code`${sym}`;
         }
       }

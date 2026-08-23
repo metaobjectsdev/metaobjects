@@ -31,6 +31,19 @@ async function loadRoot() {
     "metadata.root": {
       package: "test",
       children: [
+        // #341: a shared abstract enum materialized into ./enums. It emits BOTH a
+        // type (`DispositionEnum`) and a Zod value (`DispositionEnumEnum`) from the
+        // same module, so a consumer that imports the type as a VALUE merges the two
+        // into one statement — a hard TS1484 under verbatimModuleSyntax. The name
+        // deliberately ends in `Enum` to reproduce the adopter's exact pair of
+        // symbols; nothing depends on the suffix.
+        {
+          "field.enum": {
+            name: "DispositionEnum",
+            abstract: true,
+            "@values": ["friendly", "neutral", "hostile"],
+          },
+        },
         {
           "object.entity": {
             name: "Node",
@@ -49,6 +62,22 @@ async function loadRoot() {
                   "@references": "Node",
                 },
               },
+            ],
+          },
+        },
+        // #341 lives on the VALUE-OBJECT path, not the entity path: an entity types
+        // its enum column through Drizzle's InferSelectModel and only ever imports
+        // the Zod const (correctly a value), whereas a value object declares an
+        // explicit `disposition: DispositionEnum` interface member and so imports
+        // the TYPE by name — right alongside the Zod value from the same module.
+        // An entity-only fixture therefore compiles clean with the bug fully
+        // present, which is exactly why this gate existed and still missed #341.
+        {
+          "object.value": {
+            name: "NodeSummary",
+            children: [
+              { "field.string": { name: "label" } },
+              { "field.enum": { name: "disposition", extends: "DispositionEnum" } },
             ],
           },
         },
