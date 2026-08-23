@@ -288,7 +288,22 @@ lost"* and names #335 as the restore path. Restore it there, expressed the new w
 | Conformance (5 ports) | `@of`-absent collect loads on a `field.object @objectRef isArray`; each error arm fails: no `@objectRef`, non-value target, missing `@via`, all-to-one `@via`, unresolved member, member type mismatch |
 | No-churn | a `collect` **with** `@of` emits byte-identical SQL — pinned, since the scalar arm shares the branch |
 | Real engine, both dialects | emit → apply → introspect → **re-diff must be empty**, then read rows back and assert the array-of-objects shape, including the empty-set case returning `[]` not `null` |
-| Half B | a `@filterable` array field fails to load; a `@sortable` array field fails to load |
+| Half B | a `@filterable` array field fails to load; a `@sortable` array field fails to load — **as shared `fixtures/conformance/` cases, not port-local unit tests** |
+
+**Every new load error needs a corpus fixture that TRIGGERS it, in the shared corpus.** A rule
+with no negative fixture is the same blind spot one layer up: "no fixture covers it" and "every
+port enforces it" are indistinguishable from a green suite. Three separate findings in #342 were
+this shape — a BOTH-fixture that covered `index.lookup` but not `identity.secondary`, which is
+the exact arm where the JVM had diverged; and `@expr` built and shipped end-to-end with no
+fixture ever declaring one, so one port was free to refuse it for months.
+
+A port-local unit test does not substitute. It proves *one* port enforces the rule, which is
+precisely the assertion that was true-and-insufficient in every one of those cases. This
+matters more than usual here because Half B's in-repo blast radius is **zero** — a structural
+scan of 1321 JSON and 124 YAML files found no field carrying both `isArray: true` and
+`@filterable`/`@sortable: true`. Nothing in the corpus exercises an array field through the
+filter tier at all, which is why the tier has been free to be wrong about it since it shipped.
+The fixture is the only thing that changes that.
 
 **The round-trip tests live in a separate package.** `view-lifecycle-{pg,sqlite}.test.ts` are in
 `server/typescript/packages/integration-tests`, which only the `ts-slow` lane runs — they will
