@@ -27,14 +27,18 @@
 // `scopeRanges` below recovers the enclosing `"<type>.<subType>"` for each occurrence, so
 // one pass over the document answers both correctly.
 //
-// CANONICAL JSON ONLY. YAML authoring is real (ADR-0006) but is not rewritable here: a
-// correct YAML editor needs the `yaml` package's CST, and this module is reachable from
-// `src/index.ts`, which the browser-safety test forbids from importing it. A hand-rolled
-// YAML mode was tried and shipped a file-corrupting bug — a multi-item block sequence lost
-// every item but the first, because the value scanner stops at a newline — while the
-// dominant in-repo authoring style (flow mappings, `{ name: x, readOnly: true }`) was not
-// matched at all, so the rename silently did nothing. `meta upgrade` refuses YAML by name
-// instead; a refusal an adopter can act on beats a success they cannot trust.
+// CANONICAL JSON ONLY — YAML lives in `core/vocabulary-rewrite-yaml.ts`, not here. This
+// module is reachable from `src/index.ts`, which may not import the Node-only `yaml`
+// package, so the YAML arm sits behind its own package subpath and `meta upgrade`
+// dynamic-imports it. The split is a bundling constraint, not a difference in contract: both
+// arms return the same result shape, scope every occurrence the same way, and refuse the
+// same retirements.
+//
+// The reason YAML gets a parser and this arm does not: a hand-rolled YAML mode was tried
+// here first and shipped a file-corrupting bug — a multi-item block sequence lost every item
+// but the first, because a scanner stops at a newline — while the dominant authoring style
+// (flow mappings, `{ name: x, readOnly: true }`) was not matched at all. YAML's value extent
+// is not derivable by scanning; JSON's is.
 //
 // IT REFUSES WHAT IT CANNOT KNOW. A retirement with no `rewrite` (`@status: abandoned`) is
 // reported, never guessed at. Deleting the node, retyping it, and fixing the residue it

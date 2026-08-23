@@ -25,6 +25,11 @@
       "bun": "./src/constants.ts",
       "types": "./dist/constants.d.ts",
       "default": "./dist/constants.js"
+    },
+    "./vocabulary-rewrite-yaml": {
+      "bun": "./src/core/vocabulary-rewrite-yaml.ts",
+      "types": "./dist/core/vocabulary-rewrite-yaml.d.ts",
+      "default": "./dist/core/vocabulary-rewrite-yaml.js"
     }
   },
   "files": [

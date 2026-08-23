@@ -116,20 +116,91 @@ describe("meta upgrade", () => {
     expect(await upgradeCommand([root, "--nope"], root)).toBe(2);
   });
 
-  // YAML metadata is loadable (ADR-0006) but is not rewritable — see vocabulary-rewrite.ts.
-  // The failure this pins is SILENCE: a YAML project used to be handed exit 0 and "no
-  // retired vocabulary found" while its metadata still would not load, because the scope
-  // scan only matched quoted JSON keys and the yaml format was never requested. Naming the
-  // file and exiting non-zero is the whole fix.
-  test("NAMES YAML metadata it cannot rewrite and exits non-zero", async () => {
+  // ── YAML estates (#339) ──
+  //
+  // These replace a test that pinned the OPPOSITE behaviour: YAML used to be named and
+  // skipped, and the command exited 1 having examined nothing. That was the honest reading
+  // of a rewriter that could not edit YAML; it is not a contract, and #339 is the report of
+  // what it cost — a 161-file YAML estate carrying 405 retired constructs was handed
+  // "no retired vocabulary found".
+
+  async function yamlProject(...docs: string[]): Promise<string> {
     const root = await mkdtemp(join(tmpdir(), "meta-upgrade-yaml-"));
     dirs.push(root);
     await mkdir(join(root, "metaobjects"), { recursive: true });
-    const yaml = "metadata:\n  children:\n    - requirement.functional:\n        name: r\n        verifiedBy: [T]\n";
-    await writeFile(join(root, "metaobjects", "meta.yaml"), yaml, "utf8");
+    for (const [i, d] of docs.entries()) {
+      await writeFile(join(root, "metaobjects", `meta${i}.yaml`), d, "utf8");
+    }
+    return root;
+  }
 
-    expect(await upgradeCommand([root, "--apply"], root)).toBe(1);
-    // And never half-edited on the way out.
-    expect(await readFile(join(root, "metaobjects", "meta.yaml"), "utf8")).toBe(yaml);
+  /** Run the command capturing everything it printed, so the CONCLUSION can be asserted. */
+  async function run(args: string[], cwd: string): Promise<{ code: number; out: string }> {
+    const lines: string[] = [];
+    const [origLog, origErr] = [console.log, console.error];
+    console.log = (m?: unknown) => void lines.push(String(m));
+    console.error = (m?: unknown) => void lines.push(String(m));
+    try {
+      return { code: await upgradeCommand(args, cwd), out: lines.join("\n") };
+    } finally {
+      [console.log, console.error] = [origLog, origErr];
+    }
+  }
+
+  const YAML_RETIRED =
+    "metadata:\n" +
+    "  package: acme::shop\n" +
+    "  children:\n" +
+    "    - requirement.functional:\n" +
+    "        name: orderRecord\n" +
+    "        statement: An order records what was bought\n" +
+    "        level: 4\n" +
+    "        violation: an order that cannot say what was bought\n" +
+    "        verifiedBy:\n" +
+    "          - OrderServiceTest\n" +
+    "          - OrderIT\n";
+
+  test("rewrites a YAML estate — previewing by default, writing under --apply", async () => {
+    const root = await yamlProject(YAML_RETIRED);
+    const file = join(root, "metaobjects", "meta0.yaml");
+
+    expect((await run([root], root)).code).toBe(0);
+    expect(await readFile(file, "utf8")).toBe(YAML_RETIRED);
+
+    expect((await run([root, "--apply"], root)).code).toBe(0);
+    const after = await readFile(file, "utf8");
+    expect(after).toContain("counterexample: an order that cannot say what was bought");
+    expect(after).not.toContain("verifiedBy");
+    expect(after).not.toContain("OrderIT");
+    // Untouched regions survive byte-for-byte.
+    expect(after).toContain("        statement: An order records what was bought\n");
+  });
+
+  // The half of #339 that is not about coverage: the conclusion must never be a bare
+  // "not found", because it is the last line and it is the one that sticks.
+  test("its conclusion states how many files it is a conclusion ABOUT", async () => {
+    const clean = "metadata:\n  package: acme::shop\n  children: []\n";
+    const { code, out } = await run([await yamlProject(clean, clean)], ".");
+    expect(code).toBe(0);
+    expect(out).toContain("no retired vocabulary found (2 file(s) checked)");
+  });
+
+  // "I could not look" and "I looked and it is clean" must not share an exit code.
+  test("a file it cannot parse is reported as NOT checked, with its own exit code", async () => {
+    const broken = "metadata:\n  children:\n   - requirement.functional: { name: r, violation: x\n";
+    const root = await yamlProject(broken);
+    const { code, out } = await run([root, "--apply"], root);
+
+    expect(code).toBe(3);
+    expect(out).toContain("could not be parsed and were NOT checked");
+    expect(out).toContain("0 file(s) checked, 1 NOT checked");
+    expect(await readFile(join(root, "metaobjects", "meta0.yaml"), "utf8")).toBe(broken);
+  });
+
+  test("a YAML retirement needing a decision still exits 1, not 3", async () => {
+    const root = await yamlProject(
+      "metadata:\n  children:\n    - requirement.functional: { name: r, status: abandoned }\n",
+    );
+    expect((await run([root, "--apply"], root)).code).toBe(1);
   });
 });

@@ -22,8 +22,8 @@ import { resolveCollection } from "@metaobjectsdev/sdk";
 import { rewriteDocument } from "@metaobjectsdev/metadata";
 import { log } from "../lib/log.js";
 
-/** Authoring formats the rewriter cannot edit — see `vocabulary-rewrite.ts` for why. */
-const UNREWRITABLE_EXTENSIONS = new Set([".yaml", ".yml"]);
+/** YAML authoring (ADR-0006). Rewritten by the `yaml`-backed arm, loaded on demand below. */
+const YAML_EXTENSIONS = new Set([".yaml", ".yml"]);
 
 interface UpgradeFlags {
   apply: boolean;
@@ -56,8 +56,10 @@ export async function upgradeCommand(args: string[], cwd: string): Promise<numbe
     if ((err as Error).message === "__help__") {
       log.info(
         "meta upgrade [<project>] [--to <version>] [--apply]\n\n" +
-          "  Rewrites retired metadata vocabulary. Previews by default; --apply writes.\n" +
-          "  Retirements needing a human decision are REFUSED and listed with their guide.",
+          "  Rewrites retired metadata vocabulary in JSON and YAML metadata alike.\n" +
+          "  Previews by default; --apply writes.\n" +
+          "  Retirements needing a human decision are REFUSED and listed with their guide.\n\n" +
+          "  Exit: 0 clean · 1 refusals remain · 2 bad usage · 3 some files could not be read.",
       );
       return 0;
     }
@@ -78,23 +80,38 @@ export async function upgradeCommand(args: string[], cwd: string): Promise<numbe
   let totalChanges = 0;
   let totalRefusals = 0;
   let filesChanged = 0;
-  const skipped: string[] = [];
+  let checked = 0;
+  // Files we could not READ AT ALL. Distinct from "checked and clean" in every report and in
+  // the exit code — conflating them is the whole of #339.
+  const notChecked: string[] = [];
+
+  // The YAML arm carries the `yaml` package, so it lives behind its own subpath and is
+  // loaded only when the estate actually contains YAML. Importing it eagerly would pull a
+  // Node-only dependency into every `meta` invocation.
+  const hasYaml = files.some((f) => YAML_EXTENSIONS.has(extname(f).toLowerCase()));
+  const rewriteYaml = hasYaml
+    ? (await import("@metaobjectsdev/metadata/vocabulary-rewrite-yaml")).rewriteYamlDocument
+    : undefined;
+
+  const opts = flags.maxVersion !== undefined ? { maxVersion: flags.maxVersion } : {};
 
   for (const file of files) {
     const rel = relative(projectRoot, file);
-
-    // A file we cannot rewrite is NAMED, never passed over. Silently skipping it is the
-    // failure this command exists to prevent: the adopter runs the documented migration,
-    // reads "no retired vocabulary found", and ships metadata that does not load.
-    if (UNREWRITABLE_EXTENSIONS.has(extname(file).toLowerCase())) {
-      skipped.push(rel);
-      continue;
-    }
-
     const before = await readFile(file, "utf8");
-    const r = rewriteDocument(before, {
-      ...(flags.maxVersion !== undefined ? { maxVersion: flags.maxVersion } : {}),
-    });
+
+    let r;
+    if (YAML_EXTENSIONS.has(extname(file).toLowerCase())) {
+      const y = rewriteYaml?.(before, opts);
+      // A document that does not parse was not examined, and must never be counted as clean.
+      if (y === undefined || y.unparseable) {
+        notChecked.push(rel);
+        continue;
+      }
+      r = y;
+    } else {
+      r = rewriteDocument(before, opts);
+    }
+    checked++;
     if (r.changes.length === 0 && r.refusals.length === 0) continue;
 
     log.info(`\n${rel}`);
@@ -115,19 +132,20 @@ export async function upgradeCommand(args: string[], cwd: string): Promise<numbe
   }
 
   log.info("");
-  if (skipped.length > 0) {
+  if (notChecked.length > 0) {
     log.warn(
-      `${skipped.length} YAML file(s) cannot be rewritten automatically and were NOT ` +
-        `checked — migrate them by hand:\n  ${skipped.join("\n  ")}`,
+      `${notChecked.length} file(s) could not be parsed and were NOT checked — fix these ` +
+        `first, then re-run:\n  ${notChecked.join("\n  ")}`,
     );
   }
 
+  // Every conclusion states how many files it is a conclusion ABOUT. "No retired vocabulary
+  // found" read on its own says the estate is clean, and it is the last line, so it is the
+  // one that sticks — on the estate that reported this, it was the opposite of the truth.
+  const scope = `${checked} file(s) checked${notChecked.length > 0 ? `, ${notChecked.length} NOT checked` : ""}`;
+
   if (totalChanges === 0 && totalRefusals === 0) {
-    log.info(
-      skipped.length > 0
-        ? "meta upgrade — no retired vocabulary found in the JSON metadata."
-        : "meta upgrade — no retired vocabulary found.",
-    );
+    log.info(`meta upgrade — no retired vocabulary found (${scope}).`);
   } else if (totalChanges === 0) {
     // Refusals only. Reporting "rewrote 0 declarations", or advertising `--apply`, both
     // promise an action guaranteed to change nothing and bury the fact that the remaining
@@ -143,8 +161,7 @@ export async function upgradeCommand(args: string[], cwd: string): Promise<numbe
   }
 
   // Non-zero while ANY refusal stands, applied or not. A partial upgrade that exited 0 would
-  // let CI record the migration as done while metadata still fails to load. A file we could
-  // not read at all counts the same way, for the same reason.
+  // let CI record the migration as done while metadata still fails to load.
   if (totalRefusals > 0) {
     log.error(
       `${totalRefusals} declaration(s) need a human decision and were left untouched — ` +
@@ -152,5 +169,11 @@ export async function upgradeCommand(args: string[], cwd: string): Promise<numbe
     );
     return 1;
   }
-  return skipped.length > 0 ? 1 : 0;
+
+  // "I could not look" gets its OWN code. It used to share exit 1 with "work remains", so a
+  // script could not tell an estate needing decisions from one the tool never opened — and
+  // an adopter whose whole estate was skipped got a failure exit next to a message saying
+  // nothing was found.
+  if (notChecked.length > 0) return 3;
+  return 0;
 }
