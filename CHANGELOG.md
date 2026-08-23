@@ -7,6 +7,86 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added — `@of` becomes optional on `@agg: collect`: the whole-object rollup ([#335](https://github.com/metaobjectsdev/metaobjects/issues/335))
+
+**A projection could roll related rows up into an array of one COLUMN, and had no way to
+roll them up into an array of OBJECTS.** `origin.aggregate @agg: collect` required `@of`, so
+"every supplier's `{id, name}` for this product" was inexpressible — the shape had to be a
+second round-trip, or a hand-written view, which is unmanaged and invisible to
+`meta verify --db`. When `origin.collection` retired in `0.24.0` this became the one
+coverage gap the retirement guide had to state rather than close.
+
+**`@of` is now OPTIONAL on `collect`, and omitting it means a whole-object rollup:** the
+carrying `field.object @isArray @objectRef` collects each related row as its declared value
+object.
+
+```jsonc
+{ "field.object": {
+    "name": "supplierBriefs", "isArray": true, "@objectRef": "SupplierBrief",
+    "children": [
+      { "origin.aggregate": { "@agg": "collect", "@via": "Product.suppliers" } }
+    ]
+}}
+```
+
+**The declared value object IS the exposure.** Members bind to the `@via` terminal entity's
+fields BY NAME, and a field the entity has but the value object omits is simply not
+projected. That is deliberate — it is the [#270](https://github.com/metaobjectsdev/metaobjects/issues/270)
+guarantee (a curated value object must not silently become the full entity) carried down to
+the DDL tier. Name matching, rather than `extends`, is also deliberate: it keeps one value
+object collectable from two different entities, which `extends` would forbid. The convention
+is written into the byte-gated `origin.aggregate` registry prose so no port has to infer it.
+
+**Eight load errors, in all five ports.** The carrying field must be a `field.object`
+declaring `@objectRef`; that `@objectRef` must name an `object.value`; `@via` is required
+(there is no `@of` entity to infer a single hop from); the path must be to-many; `@distinct`
+is refused; `@orderBy` keys must resolve against the `@via` **terminal** entity; every value
+object member must match a terminal field; and a matched member must agree on **both** type
+axes — subtype and array-ness. `@distinct` is refused by CHOICE, not engine limit: it works
+on both engines, but it is a guaranteed no-op whenever the value object carries the primary
+key, and a silent no-op is worse than a refusal.
+
+**A new error code, `ERR_COLLECT_WHOLE_OBJECT`,** carries the five refusals that would
+otherwise have shared `ERR_INVALID_ORIGIN`. That is not taxonomy for its own sake: the shared
+corpus compares error **code + source** and never message text, and `ERR_INVALID_ORIGIN` is
+exactly what a loader that still *requires* `@of` emits for this same metadata — so five of
+the eight negative fixtures passed against three ports containing none of the rules. With the
+distinct code they fail, and Task-by-task porting has a real signal.
+
+**View lowering, both dialects.** Postgres emits
+`COALESCE(jsonb_agg(jsonb_build_object(…) ORDER BY <pk> ASC) FILTER (WHERE <pk> IS NOT NULL), '[]'::jsonb)`.
+`jsonb`, not `json`: PG's `json` type has neither an equality nor an ordering operator, so
+the `json_agg(json_build_object(… ORDER BY …))` form does not run at all. Default element
+order is the related entity's **primary key** ascending — ordering rows by a serialized
+object is meaningless — and an explicit `@orderBy` leads with the PK appended as a tie-break.
+The scalar `@of` arm deliberately keeps its existing no-tie-break behaviour, since changing
+it would move the emitted SQL of every project already using `@orderBy`.
+
+**SQLite needed a shape nobody would have guessed, and only a real engine found it.** On
+SQLite 3.44 (D1's pinned baseline) the in-aggregate `ORDER BY` clause **destroys the JSON
+subtype**: `json_group_array(json_object(…) ORDER BY …)` returns an array of quoted STRINGS
+rather than objects, and wrapping the argument in `json()` does not survive it either.
+Dropping the `ORDER BY` was not an option — element order would stop being deterministic and
+an author's `@orderBy` would silently do nothing. So the ordered array is built first and
+re-wrapped element-by-element through `json_each`, which iterates in array order. The
+emitted SQL text alone could never have shown this; it was caught by the emit → apply →
+introspect → re-diff round-trip against a real engine, which is the standing rule that
+golden SQL is not evidence for new DDL.
+
+Also worth knowing: inside the rollup a `field.long` member arrives as a JSON **number**,
+while the same value as a top-level `BIGINT` column arrives as a string from
+node-postgres. That is inherent to JSON, not a codegen choice, and it is lossy above 2^53.
+
+**Also in this change — array fields are not filterable or sortable.** A
+`field.<scalar> isArray: true` carrying `@filterable: true` or `@sortable: true` is now a
+load error in all five ports (`ERR_FILTERABLE_UNSUPPORTED_SUBTYPE` /
+`ERR_SORTABLE_UNSUPPORTED_SUBTYPE`): no operator in the FR-009 scalar band applies to a
+collection column, and no dialect can `ORDER BY` one. `@sortable` also gains the subtype
+validation `@filterable` already had.
+
+`metamodelVersion` moves `0.11` → `0.12`.
+
+
 ## [0.24.1] — npm `0.24.1` · PyPI `0.24.1` · NuGet `0.24.1` · Maven `7.24.1`
 
 ### Fixed — an expression index was undeclarable, and the one spelling that loaded was half-ignored ([#342](https://github.com/metaobjectsdev/metaobjects/issues/342))

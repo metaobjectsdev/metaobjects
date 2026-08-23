@@ -838,8 +838,16 @@ amendment 2026-08-06.)
 
 **Origin vocabulary (#195).** `origin.aggregate @agg` takes `count`/`sum`/`avg`/`min`/`max`
 (numeric reduces over `@of`), `any`/`all` (predicate quantifiers over a `@filter`; `@of`
-forbidden; empty set → `any=false`, `all=true`), and `collect` (an array rollup of `@of`
-into an `isArray` field, with optional `@distinct` / `@orderBy`). Any aggregate may be
+forbidden; empty set → `any=false`, `all=true`), and `collect` (an array rollup
+into an `isArray` field, with optional `@distinct` / `@orderBy`). **`collect` is the one
+`@agg` where `@of` is OPTIONAL (#335):** name a column with `@of` to collect scalars, or
+omit `@of` on a `field.object @objectRef` to collect each related row as that declared
+value object — a **whole-object rollup**, lowered to `jsonb_agg(jsonb_build_object(…))`
+on Postgres. The whole-object form requires an explicit `@via`, refuses `@distinct` (it is
+a no-op whenever the value object carries the primary key), and requires every value-object
+member to match a field on the `@via` **terminal** entity by name, with the same subtype
+and array-ness. The declared value object IS the exposure: a field the entity has and the
+value object omits is not projected. Any aggregate may be
 row-scoped with `@filter`. `origin.computed` carries a closed structured `@expr` tree (a
 derived scalar). `origin.first` picks one related row's column (`@of`) along `@via`,
 ordered by a **required `@orderBy`** (`["field:asc|desc", …]`, with the PK as tie-break) —
