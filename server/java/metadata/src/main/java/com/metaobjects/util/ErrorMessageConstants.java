@@ -210,6 +210,15 @@ public final class ErrorMessageConstants {
     public static final String ERR_FILTERABLE_UNSUPPORTED_SUBTYPE = "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE";
 
     /**
+     * #335 Half B — a field carries {@code @sortable: true} but is an array, or its
+     * subtype has no filter-operator band (the same band {@code @sortable} borrows
+     * its ordering test from). A sort entry over such a column has no dialect that
+     * can order it meaningfully.
+     * Cross-language contract: {@code ERR_SORTABLE_UNSUPPORTED_SUBTYPE}.
+     */
+    public static final String ERR_SORTABLE_UNSUPPORTED_SUBTYPE = "ERR_SORTABLE_UNSUPPORTED_SUBTYPE";
+
+    /**
      * Error code emitted when a {@code layout.dataGrid @defaultSortField} value
      * does not name a real field on the owning entity.
      * Cross-language contract: {@code ERR_BAD_DEFAULT_SORT_FIELD}.

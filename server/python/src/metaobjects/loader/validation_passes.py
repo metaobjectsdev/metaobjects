@@ -230,8 +230,10 @@ def run_validations(
     _validate_identity_passthrough(root, errors)
     _validate_max_occurs(root, registry, errors)
     _validate_filterable_has_index(root, warnings)
-    # SP-H Unit9 — @filterable on a subtype with no operator band → error.
+    # SP-H Unit9 — @filterable on a subtype with no operator band, or an array → error.
     _validate_filterable_has_supported_ops(root, errors)
+    # #335 Half B — @sortable on an array field, or a subtype with no operator band → error.
+    _validate_sortable_has_supported_subtype(root, errors)
     _validate_index_lookup_fields(root, errors)
 
 
@@ -3129,6 +3131,24 @@ def _validate_filterable_has_supported_ops(
         for field in node.fields():
             if field.attrs().get("filterable") is not True:
                 continue
+
+            # #335 Half B — an ARRAY field has no operator band either. Every
+            # FR-009 operator (eq/ne/gt/gte/lt/lte/in/like/isNull) is a scalar
+            # comparison; none applies to a collection column. Same reason as
+            # the subtype check below, so same code.
+            # ADR-0039: resolved_is_array(), never the own `is_array` flag.
+            if field.resolved_is_array():
+                errors.append(
+                    MetaError(
+                        f'Field "{node.name}.{field.name}" has @filterable: true but is an array '
+                        f"(isArray: true). No filter operator applies to a collection column. "
+                        f"Remove @filterable from this field.",
+                        ErrorCode.ERR_FILTERABLE_UNSUPPORTED_SUBTYPE,
+                        envelope=field.source,
+                    )
+                )
+                continue
+
             if ops_for_subtype(field.sub_type):
                 continue
             errors.append(
@@ -3138,6 +3158,46 @@ def _validate_filterable_has_supported_ops(
                     f"field subtype that supports filtering "
                     f"(string/enum/uuid/number/currency/date/boolean).",
                     ErrorCode.ERR_FILTERABLE_UNSUPPORTED_SUBTYPE,
+                    envelope=field.source,
+                )
+            )
+
+
+# ---------------------------------------------------------------------------
+# Pass: @sortable on an array field or unsupported subtype (#335 Half B)
+# ---------------------------------------------------------------------------
+# @sortable defaults FROM @filterable, so it is checked independently only
+# when explicit — nothing validated it before, while @filterable has had a
+# hard error since SP-H Unit9. A @sortable JSON or array column emits a sort
+# entry over a column no dialect can ORDER BY meaningfully.
+# → ERR_SORTABLE_UNSUPPORTED_SUBTYPE.
+
+
+def _validate_sortable_has_supported_subtype(
+    root: MetaData,
+    errors: list[MetaError],
+) -> None:
+    for node in _walk(root):
+        if node.type != TYPE_OBJECT or not isinstance(node, MetaObject):
+            continue
+        for field in node.fields():
+            if field.attrs().get("sortable") is not True:
+                continue
+            # ADR-0039: resolved_is_array(), never the own `is_array` flag.
+            is_array = field.resolved_is_array()
+            if not is_array and ops_for_subtype(field.sub_type):
+                continue
+
+            reason = (
+                "is an array (isArray: true) — a collection column has no ordering."
+                if is_array
+                else f'its subtype "{field.sub_type}" cannot be ordered.'
+            )
+            errors.append(
+                MetaError(
+                    f'Field "{node.name}.{field.name}" has @sortable: true but {reason} '
+                    f"Remove @sortable from this field.",
+                    ErrorCode.ERR_SORTABLE_UNSUPPORTED_SUBTYPE,
                     envelope=field.source,
                 )
             )

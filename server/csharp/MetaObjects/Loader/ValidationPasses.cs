@@ -376,12 +376,71 @@ public static class ValidationPasses
             {
                 // ADR-0039: resolving — a concrete field may inherit @filterable via extends (TS validation-passes.ts:332).
                 if (field.Attr(FIELD_ATTR_FILTERABLE) is not true) continue;
+
+                // #335 Half B — an ARRAY field has no operator band either. Every FR-009
+                // operator (eq/ne/gt/gte/lt/lte/in/like/isNull) is a scalar comparison;
+                // none applies to a collection column. Same reason as the subtype check
+                // below, so same code.
+                // ADR-0039: ResolvedIsArray(), never the own `isArray` flag.
+                if (field.ResolvedIsArray())
+                {
+                    errors.Add(new MetaError(
+                        $"Field \"{obj.Name}.{field.Name}\" has @filterable: true but is an array " +
+                        "(isArray: true). No filter operator applies to a collection column. " +
+                        "Remove @filterable from this field.",
+                        ErrorCode.ERR_FILTERABLE_UNSUPPORTED_SUBTYPE,
+                        Envelope: field.Source));
+                    continue;
+                }
+
                 if (OpsForSubType(field.SubType).Length > 0) continue;
                 errors.Add(new MetaError(
                     $"Field \"{obj.Name}.{field.Name}\" has @filterable: true but its subtype " +
                     $"\"{field.SubType}\" has no filter-operator band. Remove @filterable, or use a " +
                     "field subtype that supports filtering (string/enum/uuid/number/currency/date/boolean).",
                     ErrorCode.ERR_FILTERABLE_UNSUPPORTED_SUBTYPE,
+                    Envelope: field.Source));
+            }
+        }
+
+        return errors.AsReadOnly();
+    }
+
+    // =========================================================================
+    // Pass 4c: ValidateSortableHasSupportedSubtype (#335 Half B)
+    //   - @sortable: true on an ARRAY field, or a field subtype with NO entry in
+    //     OPS_BY_SUBTYPE → error ERR_SORTABLE_UNSUPPORTED_SUBTYPE. @sortable
+    //     defaults FROM @filterable, so it is independently checked only when
+    //     explicit — a @sortable JSON or array column emits a sort entry over a
+    //     column no dialect can ORDER BY meaningfully.
+    //
+    // Ported from typescript/packages/metadata/src/loader/validation-passes.ts
+    // validateSortableHasSupportedSubtype.
+    // =========================================================================
+
+    public static IReadOnlyList<MetaError> ValidateSortableHasSupportedSubtype(MetaData root)
+    {
+        var errors = new List<MetaError>();
+
+        foreach (var obj in root.OwnChildren()
+                     .Where(c => c.Type == TYPE_OBJECT))
+        {
+            // Children() (effective) — inherited @sortable fields are visible.
+            foreach (var field in obj.Children().Where(c => c.Type == TYPE_FIELD))
+            {
+                // ADR-0039: resolving — a concrete field may inherit @sortable via extends.
+                if (field.Attr(FIELD_ATTR_SORTABLE) is not true) continue;
+                // ADR-0039: ResolvedIsArray(), never the own `isArray` flag.
+                bool isArray = field.ResolvedIsArray();
+                if (!isArray && OpsForSubType(field.SubType).Length > 0) continue;
+
+                var reason = isArray
+                    ? "is an array (isArray: true) — a collection column has no ordering."
+                    : $"its subtype \"{field.SubType}\" cannot be ordered.";
+                errors.Add(new MetaError(
+                    $"Field \"{obj.Name}.{field.Name}\" has @sortable: true but {reason} " +
+                    "Remove @sortable from this field.",
+                    ErrorCode.ERR_SORTABLE_UNSUPPORTED_SUBTYPE,
                     Envelope: field.Source));
             }
         }

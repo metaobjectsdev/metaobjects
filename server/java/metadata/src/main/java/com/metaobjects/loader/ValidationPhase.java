@@ -230,6 +230,7 @@ public final class ValidationPhase {
         pass(collected, () -> validateTemplates(root));
         pass(collected, () -> validateEntityHasPrimaryIdentity(root, loader));
         pass(collected, () -> validateFilterableHasSupportedOps(root));
+        pass(collected, () -> validateSortableHasSupportedSubtype(root));
         pass(collected, () -> validateIndexLookupFields(root));
         // The capability ledger's closed status enum (requirements-as-metadata
         // ruling, Amendment 3) — the loader owns what is UNCONDITIONAL.
@@ -3017,8 +3018,24 @@ public final class ValidationPhase {
                     : (v instanceof String) ? "true".equalsIgnoreCase((String) v)
                     : false;
                 if (!filterable) continue;
-                if (subtypeSupportsFiltering(field.getSubType())) continue;
                 String objName = obj.getShortName() != null ? obj.getShortName() : obj.getName();
+
+                // #335 Half B — an ARRAY field has no operator band either. Every
+                // FR-009 operator (eq/ne/gt/gte/lt/lte/in/like/isNull) is a scalar
+                // comparison; none applies to a collection column. Same reason as
+                // the subtype check below, so same code.
+                // ADR-0039: isArrayType(), the resolving accessor, never isArray().
+                if (field.isArrayType()) {
+                    throw new MetaDataException(
+                        ErrorMessageConstants.ERR_FILTERABLE_UNSUPPORTED_SUBTYPE
+                            + ": field \"" + objName + "." + field.getShortName()
+                            + "\" has @filterable: true but is an array (isArray: true)."
+                            + " No filter operator applies to a collection column."
+                            + " Remove @filterable from this field.",
+                        ErrorCode.ERR_FILTERABLE_UNSUPPORTED_SUBTYPE, field.getSource());
+                }
+
+                if (subtypeSupportsFiltering(field.getSubType())) continue;
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_FILTERABLE_UNSUPPORTED_SUBTYPE
                         + ": field \"" + objName + "." + field.getShortName()
@@ -3027,6 +3044,47 @@ public final class ValidationPhase {
                         + " subtype that supports filtering"
                         + " (string/enum/uuid/number/currency/date/boolean).",
                     ErrorCode.ERR_FILTERABLE_UNSUPPORTED_SUBTYPE, field.getSource());
+            }
+        }
+    }
+
+    // =========================================================================
+    // @sortable on an array field or unsupported subtype — error pass (#335 Half B)
+    //
+    // @sortable defaults FROM @filterable, so it is checked independently only
+    // when explicit — nothing validated it before, while @filterable has had a
+    // hard error since SP-H Unit9. A @sortable array/unsupported-subtype column
+    // emits a sort entry over a column no dialect can ORDER BY meaningfully.
+    // → ERR_SORTABLE_UNSUPPORTED_SUBTYPE.
+    // =========================================================================
+
+    private static void validateSortableHasSupportedSubtype(MetaRoot root) {
+        for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
+            if (!(rootChild instanceof MetaObject)) continue;
+            MetaObject obj = (MetaObject) rootChild;
+            // Effective fields (includes inherited via extends:/super:).
+            for (MetaField field : obj.getChildren(MetaField.class, true)) {
+                if (!field.hasMetaAttr(MetaField.ATTR_SORTABLE, true)) continue;
+                Object v = field.getMetaAttr(MetaField.ATTR_SORTABLE, true).getValue();
+                boolean sortable =
+                    (v instanceof Boolean) ? (Boolean) v
+                    : (v instanceof String) ? "true".equalsIgnoreCase((String) v)
+                    : false;
+                if (!sortable) continue;
+                // ADR-0039: isArrayType(), the resolving accessor, never isArray().
+                boolean isArray = field.isArrayType();
+                if (!isArray && subtypeSupportsFiltering(field.getSubType())) continue;
+
+                String objName = obj.getShortName() != null ? obj.getShortName() : obj.getName();
+                String reason = isArray
+                    ? "is an array (isArray: true) — a collection column has no ordering."
+                    : "its subtype \"" + field.getSubType() + "\" cannot be ordered.";
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_SORTABLE_UNSUPPORTED_SUBTYPE
+                        + ": field \"" + objName + "." + field.getShortName()
+                        + "\" has @sortable: true but " + reason
+                        + " Remove @sortable from this field.",
+                    ErrorCode.ERR_SORTABLE_UNSUPPORTED_SUBTYPE, field.getSource());
             }
         }
     }
