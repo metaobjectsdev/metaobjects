@@ -367,6 +367,14 @@ public enum ErrorCode {
     ERR_FILTERABLE_UNSUPPORTED_SUBTYPE,
 
     /**
+     * #335 Half B — a field carries {@code @sortable: true} but is an array or
+     * its subtype has no filter-operator band (e.g. {@code field.object}), the
+     * same subtype-support signal {@code @filterable} uses. Generating a sort
+     * entry for it would emit an ORDER BY no dialect can execute.
+     */
+    ERR_SORTABLE_UNSUPPORTED_SUBTYPE,
+
+    /**
      * ADR-0023 Decision 2: a registration ({@code register}/{@code extendType}/
      * {@code registerCommonAttribute}/{@code addConstraint}/{@code registerType}/
      * {@code setDefaultSubType}/{@code addGlobalChildRequirement}/{@code registerProviders})

@@ -61,6 +61,7 @@ import {
 } from "../presentation/layout/layout-constants.js";
 import {
   FIELD_ATTR_FILTERABLE,
+  FIELD_ATTR_SORTABLE,
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_STORAGE,
   STORAGE_FLATTENED,
@@ -470,6 +471,40 @@ export function validateFilterableHasSupportedOps(root: MetaData): ParseError[] 
             `"${field.subType}" has no filter-operator band. Remove @filterable, or use a ` +
             `field subtype that supports filtering (string/enum/uuid/number/currency/date/boolean).`,
           { code: "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE", source: field.source },
+        ),
+      );
+    }
+  }
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// @sortable on a subtype or shape that cannot be ordered (#335 Half B)
+// ---------------------------------------------------------------------------
+// @sortable defaults FROM @filterable, so it is independently set only when
+// explicit — and nothing validated it, while @filterable has had a hard error
+// since SP-H Unit9. A @sortable JSON or array column emits a sort entry over a
+// column no dialect can ORDER BY meaningfully. → ERR_SORTABLE_UNSUPPORTED_SUBTYPE.
+
+export function validateSortableHasSupportedSubtype(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
+    // children() — inherited @sortable fields (via extends:/super:) are visible.
+    for (const field of obj.children().filter((c) => c.type === TYPE_FIELD)) {
+      // ADR-0039: resolving — a concrete field may inherit @sortable via extends.
+      if (field.attr(FIELD_ATTR_SORTABLE) !== true) continue;
+      // ADR-0039: resolvedIsArray(), never the own `isArray` flag.
+      const isArray = field.resolvedIsArray();
+      if (!isArray && opsForSubType(field.subType).length > 0) continue;
+      errors.push(
+        new ParseError(
+          `Field "${obj.name}.${field.name}" has @sortable: true but ` +
+            (isArray
+              ? `is an array (isArray: true) — a collection column has no ordering.`
+              : `its subtype "${field.subType}" cannot be ordered.`) +
+            ` Remove @sortable from this field.`,
+          { code: "ERR_SORTABLE_UNSUPPORTED_SUBTYPE", source: field.source },
         ),
       );
     }

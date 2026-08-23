@@ -18,7 +18,7 @@ import { ParseError } from "../errors.js";
 import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
-import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateIndexLookupFields, validateProjectionFilter } from "./validation-passes.js";
+import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateSortableHasSupportedSubtype, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateIndexLookupFields, validateProjectionFilter } from "./validation-passes.js";
 import { runRegisteredValidation } from "./validation-registry.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
 import { validateSourceEscapes } from "../persistence/source/validate-source-escapes.js";
@@ -577,6 +577,10 @@ export class MetaDataLoader {
       // SP-H Unit9 — @filterable on a subtype with no operator band → error
       // (would silently generate a filter that rejects every request).
       errors.push(...validateFilterableHasSupportedOps(root));
+
+      // #335 Half B — @sortable on an array field or a subtype with no operator
+      // band → error (would silently emit a sort entry no dialect can execute).
+      errors.push(...validateSortableHasSupportedSubtype(root));
 
       // Sixth pass: origin path validation — validates passthrough.@from,
       // aggregate.@of, and .@via relationship chains.

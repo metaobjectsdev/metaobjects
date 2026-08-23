@@ -173,6 +173,10 @@ public enum ErrorCode
     // SP-H Unit9 — @filterable: true on a field subtype with no filter-operator
     // band (e.g. field.object). Would silently generate an empty-ops filter.
     ERR_FILTERABLE_UNSUPPORTED_SUBTYPE,
+    // #335 Half B — @sortable: true on an array field or a subtype with no
+    // filter-operator band (e.g. field.object). Would silently emit a sort
+    // entry over a column no dialect can ORDER BY.
+    ERR_SORTABLE_UNSUPPORTED_SUBTYPE,
     // Index-key resolution for index.lookup AND identity.secondary (#342) — the key is
     // @fields XOR @expr: neither declared, BOTH declared (@expr is used INSTEAD of
     // @fields), whichever is declared supplies no key, or a named field does not exist
