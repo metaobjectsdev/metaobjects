@@ -1,7 +1,7 @@
 import { relative } from "node:path";
 import { parseGenArgs } from "../lib/args.js";
 import { resolveGenConfig } from "../lib/config.js";
-import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
+import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenCollection, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { formatGenResult, formatGenResultToon, type GenFileEntry, type GenFileStatus } from "../lib/output.js";
 import { formatGenResultJson } from "../lib/output-json.js";
 import type { OutputFormat } from "../lib/format.js";
@@ -74,6 +74,12 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
   // project root's config exactly as before.
   const projectRoot = resolveGenConfigDir(cwd, collection.configDir);
 
+  // ...and a package that declares its own sources GENERATES from them (#340). An
+  // ancestor collection is the default for a package that declares none, never an
+  // addition to one that does — otherwise a sub-project's output silently absorbs
+  // metadata from unrelated trees. Identical object when the two configs sit together.
+  const genCollection = await resolveGenCollection(collection, projectRoot);
+
   // Advisory: nudge to refresh the .claude/skills docs if they predate this CLI.
   // Rooted at `projectRoot`, not ambient cwd — the scaffolded agent context sits
   // with the project that declares the metadata, so a run from a subdirectory
@@ -97,8 +103,8 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
 
   let metadata;
   try {
-    metadata = await loadMemory(collection.configDir, {
-      files: collection.files,
+    metadata = await loadMemory(genCollection.configDir, {
+      files: genCollection.files,
       ...loadMemoryOptionsFrom(forgeConfig),
     });
   } catch (err) {
@@ -120,7 +126,7 @@ export async function genCommand(args: string[], cwd: string, fmt: OutputFormat 
       // GENERATED entities, never over what the collection loads. Always
       // passed: an unconfigured project's predicate admits everything, so this
       // is a no-op for the common case, not a behavior change.
-      scope: collection.inScope,
+      scope: genCollection.inScope,
       ...(cliConfig.entities.length > 0 ? { entityFilter: cliConfig.entities } : {}),
     });
   } catch (err) {

@@ -15,7 +15,7 @@ import { warnIfManifestIgnored } from "../lib/manifest-ignored-check.js";
 import { scanSourceForAntiPatterns } from "../lib/anti-patterns.js";
 import { FileProvider } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
-import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
+import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenCollection, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { computeCodegenDrift } from "../lib/codegen-drift.js";
 import { checkRequirements, summariseRequirements } from "../lib/requirement-check.js";
 import { resolveD1Config, resolveMigrateConfig } from "../lib/config.js";
@@ -954,9 +954,33 @@ export async function verifyCommand(
     // question 3) — a `gen` that committed under a narrowed scope and a
     // `verify --codegen` that regenerates unscoped would disagree about which
     // files should exist, reporting every out-of-scope entity as drift.
+    //
+    // The same argument governs the SOURCE SET (#340), and it is the reason this
+    // resolves its own collection instead of reusing the outer one: `gen` in a
+    // sub-project generates from that package's own sources, so a `--codegen` gate
+    // that regenerated from the ancestor's wider set would report every file the
+    // ancestor contributes as drift — turning the #340 fix into a broken gate. It is
+    // re-resolved rather than hoisted because `verify`'s subverbs COMPOSE: `--db` and
+    // `--templates` are answering a question about the whole declared collection, and
+    // narrowing the outer `root` would silently change what they check.
+    const genCollection = await resolveGenCollection(collection, genConfigDir);
+    let codegenRoot = root;
+    if (genCollection !== collection) {
+      try {
+        codegenRoot = await loadMemory(genCollection.configDir, {
+          files: genCollection.files,
+          ...configLoadOptions,
+          strict: !flags.lax,
+        });
+      } catch (err) {
+        log.error(`verify --codegen: failed to load this package's metadata: ${(err as Error).message}`);
+        return 2;
+      }
+    }
+
     let result;
     try {
-      result = await computeCodegenDrift(forgeConfig, root, genConfigDir, collection.inScope);
+      result = await computeCodegenDrift(forgeConfig, codegenRoot, genConfigDir, genCollection.inScope);
     } catch (err) {
       log.error(`verify --codegen: regeneration failed: ${(err as Error).message}`);
       return 1;

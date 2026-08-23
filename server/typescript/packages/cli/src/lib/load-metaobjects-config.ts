@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
 import { createJiti } from "jiti";
 import type { MetaDataTypeProvider, MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
+import { resolveCollection, type Collection } from "@metaobjectsdev/sdk";
 
 const CONFIG_FILE = "metaobjects.config.ts";
 
@@ -210,6 +211,50 @@ export function resolveGenConfigDir(startDir: string, fallback: string): string 
     dir = parent;
   }
   return fallback;
+}
+
+/**
+ * The collection a TypeScript package GENERATES FROM (#340).
+ *
+ * #326/#327 established that the two config files answer different questions, and gave
+ * `metaobjects.config.ts` its own walk. This is the remaining half of the same split:
+ * a sub-project whose TS config sits below the collection root was still LOADING the
+ * ancestor's whole source set, so its `src/generated` absorbed metadata belonging to
+ * unrelated parts of the repository — one adopter's web app went from 376 files to 831,
+ * the surplus being another module's server-side prompt payload DTOs. It fails OPEN
+ * (`tsc` passes, tests pass), so the only symptom is a directory that quietly doubled.
+ *
+ * The rule: an ancestor `.metaobjects/config.json` is the DEFAULT for a package that
+ * declares no sources of its own, never an ADDITION to one that does. So when the TS
+ * config sits somewhere the collection did not, that directory is re-resolved as a
+ * collection in its own right, and it wins if it actually resolves any metadata.
+ *
+ * It can only ever NARROW, and only in a shape that could not have worked before:
+ *   - the two directories coincide (every `meta init` project, and every run from a
+ *     project root) — returns the original, untouched, without a second resolve;
+ *   - the sub-project declares no sources — the pinned resolve throws
+ *     `ERR_SOURCE_UNRESOLVED` or comes back empty, and the ancestor stands, so a
+ *     package that genuinely lives off an ancestor tree keeps working;
+ *   - the sub-project has its own metadata — it generates from exactly that, which is
+ *     what it did before source resolution learned to walk upward.
+ *
+ * Deliberately NOT applied to `.metaobjects/` STATE. Migrations, snapshots and the
+ * operational block stay keyed on the discovered collection's directory (#326 settled
+ * that); this narrows what is LOADED, and nothing about where state lives.
+ */
+export async function resolveGenCollection(
+  collection: Collection,
+  genConfigDir: string,
+): Promise<Collection> {
+  if (resolve(genConfigDir) === resolve(collection.configDir)) return collection;
+  try {
+    const pinned = await resolveCollection(genConfigDir, { explicitDir: genConfigDir });
+    return pinned.files.length > 0 ? pinned : collection;
+  } catch {
+    // The sub-project declares nothing resolvable of its own — inherit, exactly as a
+    // package with no config always has.
+    return collection;
+  }
 }
 
 export async function loadMetaobjectsConfig(projectRoot: string): Promise<MetaobjectsGenConfig> {
