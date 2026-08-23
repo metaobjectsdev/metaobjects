@@ -10,12 +10,13 @@
 // today (`DEFAULT_SOURCES` in `sources.ts`); a project that declares
 // `sources` can point anywhere. No other call site may assume the directory
 // name — this is where that assumption is allowed to live, exactly once.
-import { join, resolve } from "node:path";
-import { ParseError, codeSource } from "@metaobjectsdev/metadata";
+import { dirname, extname, join, resolve } from "node:path";
+import { readdir, readFile } from "node:fs/promises";
+import { ParseError, codeSource, SUBTYPE_ROOT, TYPE_METADATA } from "@metaobjectsdev/metadata";
 import { CONFIG_FILE, loadConfig, type Config } from "./config.js";
 import { discoverCollectionRoot, exists, isDir } from "./discovery.js";
 import { compileScope, matchesScope, type Scope } from "./scope.js";
-import { DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR } from "./metadata-files.js";
+import { DEFAULT_METADATA_DIR, DEFAULT_METAOBJECTS_DIR, isMetadataFile } from "./metadata-files.js";
 import {
   DEFAULT_SOURCES,
   orderedPathSpecs,
@@ -66,6 +67,71 @@ export interface Collection {
    *  matched nothing" refusal can name the patterns that missed. Always in
    *  lockstep with `inMigrateScope`: both undefined, or both present. */
   readonly migrateScopePatterns: readonly string[] | undefined;
+}
+
+/** The canonical-JSON document root key (`metadata.root`) and the sigil-free
+ *  YAML root mapping key (`metadata:`, at column 0 — ADR-0006), built from the
+ *  metamodel constants rather than spelled out. */
+const JSON_ROOT_KEY = `${TYPE_METADATA}.${SUBTYPE_ROOT}`;
+const YAML_ROOT_KEY = new RegExp(`^${TYPE_METADATA}\\s*:`, "m");
+
+/** Bound on the sniff below: one hit is enough to diagnose, and this runs only
+ *  on a path that has already failed. */
+const MAX_SNIFFED_FILES = 20;
+
+/**
+ * Cheap "is this file a metadata DOCUMENT?" sniff — for a diagnostic, never for
+ * loading. It decides whether to change an error MESSAGE; nothing downstream
+ * reads its answer, and a false negative costs only the generic message.
+ *
+ * A file-EXTENSION test cannot answer this: `package.json` and `tsconfig.json`
+ * carry a recognized metadata extension ({@link isMetadataFile}), so every JS
+ * project root that has no metadata yet would be misdiagnosed as a metadata
+ * directory — a confidently wrong hint, which is worse than the generic one it
+ * would replace. The document root is `metadata.root` in canonical JSON and the
+ * sigil-free `metadata:` key in YAML authoring (ADR-0006), so those are what
+ * this looks for.
+ */
+async function sniffsAsMetadataDocument(file: string): Promise<boolean> {
+  const text = await readFile(file, "utf8").catch(() => undefined);
+  if (text === undefined) return false;
+  if (extname(file).toLowerCase() !== ".json") {
+    // YAML: the root mapping key, at column 0. Not a parse — this package has
+    // no YAML parser, and acquiring one to improve an error message would be a
+    // dependency bought with nothing.
+    return YAML_ROOT_KEY.test(text);
+  }
+  try {
+    const doc: unknown = JSON.parse(text);
+    return typeof doc === "object" && doc !== null && JSON_ROOT_KEY in doc;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Does `dir` hold metadata but carry no project marker — i.e. is it the
+ * METADATA directory, handed to a command whose directory argument is the
+ * PROJECT ROOT? (#344)
+ *
+ * That mistake is predictable rather than careless: the sibling `docs`
+ * positionals in the Python and C# ports ARE the metadata directory, and all
+ * three are spelled the same way. The generic diagnostic then advises declaring
+ * `sources`, which from inside the metadata directory is a dead end.
+ *
+ * Only the top level is scanned. A metadata directory has metadata files in it;
+ * recursing would walk `node_modules/` on the very input this must NOT
+ * misdiagnose.
+ */
+async function holdsMetadataButIsNoRoot(dir: string, hasConfig: boolean): Promise<boolean> {
+  // A directory carrying the marker IS a project root, by the only definition
+  // of one there is (`discovery.ts`). Nothing to diagnose.
+  if (hasConfig) return false;
+  const entries = await readdir(dir).catch(() => [] as string[]);
+  for (const entry of entries.filter(isMetadataFile).slice(0, MAX_SNIFFED_FILES)) {
+    if (await sniffsAsMetadataDocument(join(dir, entry))) return true;
+  }
+  return false;
 }
 
 /** Narrow the zod-inferred `Config["scope"]` (whose `.optional()` fields are
@@ -155,9 +221,28 @@ export async function resolveCollection(
   // whenever a discovered config declares no `sources`, where nothing has
   // probed it at all.
   if (specs === DEFAULT_SOURCES && !(await isDir(join(configDir, DEFAULT_METADATA_DIR)))) {
+    // #344 — name the one wrong answer worth naming before falling back to the
+    // generic advice. Told "declare sources" while standing in the metadata
+    // directory, an author declares the metadata FILES, and the config schema
+    // then rejects a bare string (a `sources` entry is `{ "path": … }`) — two
+    // dead ends in a row for a caller whose only mistake was passing the
+    // directory the sibling ports' `docs` positional wants.
+    if (await holdsMetadataButIsNoRoot(configDir, hasConfig)) {
+      const parent = dirname(configDir);
+      const near = await discoverCollectionRoot(parent);
+      const suggested = near.hasConfig ? near.dir : parent;
+      throw new ParseError(
+        `${configDir} looks like a metadata directory, not a project root — it holds metadata ` +
+          `files but carries no ${DEFAULT_METAOBJECTS_DIR}/${CONFIG_FILE}. A directory argument here is ` +
+          `the PROJECT ROOT that CONTAINS your metadata; where the metadata lives is then the root's ` +
+          `"sources" (default: the "${DEFAULT_METADATA_DIR}" directory beneath it). Try ${suggested} instead.`,
+        { code: "ERR_COLLECTION_NOT_FOUND", source: codeSource("resolveCollection") },
+      );
+    }
     throw new ParseError(
       `no metadata sources declared in ${configDir} and no default "${DEFAULT_METADATA_DIR}" directory found. ` +
-        `Declare "sources" in ${DEFAULT_METAOBJECTS_DIR}/config.json, or run 'meta init' to scaffold.`,
+        `Declare "sources" in ${DEFAULT_METAOBJECTS_DIR}/${CONFIG_FILE} — each entry is an OBJECT, ` +
+        `e.g. "sources": [{ "path": "model" }] — or run 'meta init' to scaffold.`,
       { code: "ERR_COLLECTION_NOT_FOUND", source: codeSource("resolveCollection") },
     );
   }

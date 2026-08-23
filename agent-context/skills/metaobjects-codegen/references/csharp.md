@@ -72,6 +72,16 @@ dotnet meta docs metaobjects --out Docs   # → Docs/api/csharp (AGENT-API.md + 
 `AGENT-API.md` — the exact imports, signatures, and payload field shapes for the
 generated code. **Before calling any generated code, read `api/csharp/AGENT-API.md`.**
 
+**The two `docs` positionals are NOT the same argument.** This one is the METADATA
+directory. The Node `meta docs` positional — used by every stack, since `migrate`,
+`verify --db` and the neutral model docs are Node-only — is the PROJECT ROOT that
+CONTAINS the metadata. Run `meta docs` with no positional, from the project root:
+
+```bash
+dotnet meta docs metaobjects --out Docs   # C#: the METADATA dir
+meta docs --out Docs                      # Node: run from the PROJECT ROOT (no positional)
+```
+
 ## Persistence + routes are the deployed artifact
 
 C# generates a *complete* server stack: the entity classes + `AppDbContext` ARE the

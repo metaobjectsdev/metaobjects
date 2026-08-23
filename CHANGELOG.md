@@ -301,6 +301,55 @@ extracting the authored examples from shipped docs, skills and fixtures and load
 under a strict loader — is tracked separately; `meta upgrade`'s retirement map is already
 the natural source of truth for "what must no longer appear in an example".
 
+### Fixed — `meta docs metaobjects` sent you down a dead end, twice ([#344](https://github.com/metaobjectsdev/metaobjects/issues/344))
+
+**Nothing here is a regression, and the CLI was behaving as designed** — which is the
+point. The Node `meta docs` positional is the **project root**; the Python and C# `docs`
+positionals are the **metadata directory** (`metaobjects docs ./metadata`, `dotnet meta
+docs metaobjects`), and all three are spelled the same way in help text. The Node one was
+literally named `<metadata>`. So `meta docs metaobjects --out out` told Node "the project
+root is `./metaobjects`", which asks it to find a `metaobjects/metaobjects/`.
+
+It then reported *"no metadata sources declared … Declare `sources` in
+`.metaobjects/config.json`, or run `meta init` to scaffold"* — and **following that advice
+does not work either.** Declaring `"sources": ["metaobjects/meta.x.yaml"]` fails config-schema
+validation, because a `sources` entry is a tagged-union OBJECT (`{ "path": … }`), never a
+bare string. Two dead ends in a row for a caller whose only mistake was passing the
+directory a sibling port's `docs` wants. Reproduced on this repo's own unmodified
+`examples/advanced-modeling`.
+
+**The error now names the mistake.** `resolveCollection` fires the targeted diagnostic when
+the directory it resolved holds metadata but carries no `.metaobjects/config.json` — the
+only project marker there is — and points at the directory to pass instead:
+
+```
+<dir>/metaobjects looks like a metadata directory, not a project root — it holds metadata
+files but carries no .metaobjects/config.json. A directory argument here is the PROJECT
+ROOT that CONTAINS your metadata … Try <dir> instead.
+```
+
+**The discriminator is the document ROOT, not the file extension**, and that distinction is
+load-bearing: `package.json` and `tsconfig.json` carry a recognized metadata extension, so
+an extension test would misdiagnose every JS project root that has no metadata yet — a
+confidently wrong hint, which is worse than the generic one it replaces. A cheap sniff for
+`metadata.root` (canonical JSON) / a top-level `metadata:` (sigil-free YAML, ADR-0006)
+decides it, on the already-failing path only, and both arms are pinned. The generic message
+also gained the shape it was asking for: `"sources": [{ "path": "model" }]`.
+
+**The positional is renamed `[<project-root>]`** in `meta --help` and `meta docs --help`,
+along with `DocsFlags.metadata` → `projectRoot` — cosmetic, no behavioural change, but the
+explanatory sentence was already there and did not prevent the trap; the internal name is
+what kept regenerating the misleading word. The agent-context `metaobjects-codegen`
+references gained the cross-port note beside their own `docs` examples (the C# reference
+shipped `dotnet meta docs metaobjects`, the exact string that misleads on Node), and the
+`sources` entry shape — which appeared in **no** installed skill — is now in the TypeScript
+reference.
+
+**TypeScript-only, deliberately.** The sibling ports' directory arguments are metadata
+directories throughout, so the mistake is structurally unreachable there; their identically
+worded `ERR_COLLECTION_NOT_FOUND` is untouched. The cross-port `source-resolution-conformance`
+corpus pins error CODES, not message text, and the code is unchanged.
+
 ### Added — every shipped metadata example is now gated against the strict registry ([#337](https://github.com/metaobjectsdev/metaobjects/issues/337))
 
 **The same failure has now landed three times, and an adopter found it every time.** A doc

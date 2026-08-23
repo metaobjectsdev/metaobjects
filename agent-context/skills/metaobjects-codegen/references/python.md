@@ -38,6 +38,16 @@ metaobjects docs ./metadata --out ./docs   # → ./docs/api/python (AGENT-API.md
 `AGENT-API.md` — the exact imports, signatures, and payload field shapes for the
 generated code. **Before calling any generated code, read `api/python/AGENT-API.md`.**
 
+**The two `docs` positionals are NOT the same argument.** This one is the METADATA
+directory. The Node `meta docs` positional — used by every stack, since `migrate`,
+`verify --db` and the neutral model docs are Node-only — is the PROJECT ROOT that
+CONTAINS the metadata. Run `meta docs` with no positional, from the project root:
+
+```bash
+metaobjects docs ./metadata --out ./docs   # Python: the METADATA dir
+meta docs --out ./docs                     # Node: run from the PROJECT ROOT (no positional)
+```
+
 ## Generators
 
 Wire generators by their stable name (`--generators <names>`), or run the default set.

@@ -132,3 +132,81 @@ describe("resolveCollection", () => {
     expect(c.files.map((f) => f.replace(root + "/", ""))).toEqual(["model/meta.a.json"]);
   });
 });
+
+// #344 — the one wrong answer worth naming. Every command's directory argument
+// is the PROJECT ROOT; the sibling ports' `docs` positional is the METADATA
+// directory, so pointing this one at `metaobjects/` is the predictable mistake.
+// The generic diagnostic then advises declaring `sources` — which, from inside
+// the metadata directory, is a dead end.
+describe("resolveCollection — pointed at a metadata directory (#344)", () => {
+  const rejectedMessage = async (p: Promise<unknown>): Promise<string> => {
+    try {
+      await p;
+      throw new Error("expected a rejection");
+    } catch (err) {
+      return (err as Error).message;
+    }
+  };
+
+  test("an explicit metadata directory is named as the mistake, not sent to declare sources", async () => {
+    config(".", {}); // the real project root, one level up
+    write("metaobjects/meta.a.yaml", "metadata:\n  package: acme\n");
+    const msg = await rejectedMessage(
+      resolveCollection(root, { explicitDir: join(root, "metaobjects") }),
+    );
+    expect(msg).toContain("project root");
+    // Names the directory it is complaining about, and the one to pass instead.
+    // The suggestion is asserted WITH its surrounding words on purpose: a parent
+    // path is always a substring of its own child, so a bare `toContain(root)`
+    // would pass on a message that only ever named `<root>/metaobjects`.
+    expect(msg).toContain(join(root, "metaobjects"));
+    expect(msg).toContain(`Try ${root} instead`);
+    // The dead-end advice must NOT be the headline for this case.
+    expect(msg).not.toContain("run 'meta init' to scaffold");
+    expect(
+      await rejectedCode(resolveCollection(root, { explicitDir: join(root, "metaobjects") })),
+    ).toBe("ERR_COLLECTION_NOT_FOUND");
+  });
+
+  test("standing INSIDE the metadata directory gets the same diagnosis", async () => {
+    // No config anywhere, so the discovery walk falls back to the start dir.
+    write("metaobjects/meta.a.yaml", "metadata:\n  package: acme\n");
+    const msg = await rejectedMessage(resolveCollection(join(root, "metaobjects")));
+    expect(msg).toContain("project root");
+    expect(msg).toContain(`Try ${root} instead`);
+  });
+
+  test("EXTENSION is not evidence — a JSON file that is not a metadata document does not trigger it", async () => {
+    // The discriminator is the document ROOT (`metadata.root` / `metadata:`),
+    // not the file extension, so a directory of same-extension non-metadata is
+    // correctly left to the generic message.
+    config(".", {});
+    write("model/package.json", JSON.stringify({ name: "x" }));
+    write("model/data.yaml", "services:\n  db: {}\n");
+    const msg = await rejectedMessage(
+      resolveCollection(root, { explicitDir: join(root, "model") }),
+    );
+    expect(msg).not.toContain("looks like a metadata directory");
+    expect(msg).toContain("no metadata sources declared");
+  });
+
+  test("a genuine project root holding stray .json files does NOT get the hint", async () => {
+    // `package.json`/`tsconfig.json` carry a recognized metadata EXTENSION, so
+    // an extension-only test would misdiagnose every JS project root that has
+    // no metadata yet. The parent of a project root is not itself a root.
+    write("package.json", "{}");
+    write("tsconfig.json", "{}");
+    const msg = await rejectedMessage(resolveCollection(root));
+    expect(msg).not.toContain("project root");
+    expect(msg).toContain("no metadata sources declared");
+  });
+
+  test("the generic advice shows the source-entry SHAPE, which is an object", async () => {
+    // Following "declare sources" with a bare string (`["metaobjects/meta.a.yaml"]`)
+    // fails config-schema validation — a `sources` entry is a tagged-union
+    // object. An example in the message ends that second dead end.
+    mkdirSync(join(root, "apps/ui"), { recursive: true });
+    const msg = await rejectedMessage(resolveCollection(join(root, "apps/ui")));
+    expect(msg).toContain('{ "path"');
+  });
+});

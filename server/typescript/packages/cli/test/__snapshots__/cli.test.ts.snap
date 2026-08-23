@@ -14,7 +14,7 @@ COMMANDS:
   gen [<entity>...]     Codegen TS targets from your declared metadata
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description
   export                Flatten loaded metadata to one canonical JSON artifact
-  docs <metadata> --out <dir>  Generate neutral metadata documentation (entity + template pages; --site for HTML site)
+  docs [<project-root>] --out <dir>  Generate neutral metadata documentation (entity + template pages; --site for HTML site)
   verify                Drift gate — subverbs: --templates / --db / --codegen (bare = --templates)
   upgrade               Rewrite retired metadata vocabulary (previews; --apply writes)
   prompt-snapshot       Snapshot rendered template.* output; --check gates drift
@@ -35,9 +35,11 @@ EXPORT FLAGS:
   --out <file>          Write output to a file (default: stdout)
 
 DOCS FLAGS:
-  <metadata>            Project root to resolve metadata from; passing it SCOPES the run (default: cwd)
+  [<project-root>]      PROJECT ROOT to resolve metadata from — the directory that CONTAINS
+                        your metadata, NOT the metadata directory. Passing it SCOPES the run
+                        (default: cwd)
   --out <dir>, -o       Output directory for the pages (default: ./docs)
-  --templates <dir>     Project root to resolve adopter templates/ overrides (default: <metadata>)
+  --templates <dir>     Project root to resolve adopter templates/ overrides (default: <project-root>)
   --prompts <dir>       Extra dir holding prompt .mustache sources for --site (e.g. data/templates/)
 
 VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drift):

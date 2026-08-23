@@ -1,4 +1,4 @@
-import { describe, test, expect, afterAll, beforeEach, afterEach } from "bun:test";
+import { describe, test, expect, afterAll, beforeEach, afterEach, spyOn } from "bun:test";
 import { mkdtemp, rm, mkdir, writeFile, readFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -545,5 +545,39 @@ describe("meta docs --scaffold-site — own your theme", () => {
     const out = join(root, "out-owned-asset");
     expect(await docsCommand([root, "--site", "--out", out], root)).toBe(0);
     expect(await readFile(join(out, "site/assets/site.css"), "utf8")).toBe("/* OWNED-ASSET-MARKER */");
+  });
+});
+
+// #344 — `meta docs metaobjects` is the predictable wrong invocation: the
+// Python and C# `docs` positionals ARE the metadata directory, and all three
+// are spelled the same way in help text. It has never worked on Node, and the
+// generic diagnostic sent the caller to declare `sources`, which from inside
+// the metadata directory is a dead end.
+describe("meta docs pointed at the metadata directory (#344)", () => {
+  test("the error names the mistake and the directory to pass instead", async () => {
+    const root = await project();
+    const stderr: string[] = [];
+    const spy = spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      stderr.push(args.map(String).join(" "));
+    });
+    let code: number;
+    try {
+      code = await docsCommand([join(root, "metaobjects"), "--out", join(root, "out")], root);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(code).toBe(2);
+    const msg = stderr.join("\n");
+    expect(msg).toContain("looks like a metadata directory, not a project root");
+    expect(msg).toContain(`Try ${root} instead`);
+    // The advice that made this a two-step dead end must not be the headline.
+    expect(msg).not.toContain("run 'meta init' to scaffold");
+  });
+
+  test("the working form — the project root — still emits", async () => {
+    const root = await project();
+    const out = join(root, "out-ok");
+    expect(await docsCommand([root, "--out", out], root)).toBe(0);
+    expect(existsSync(join(out, "Welcome.md"))).toBe(true);
   });
 });

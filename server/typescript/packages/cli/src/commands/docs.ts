@@ -1,4 +1,4 @@
-// `meta docs <metadata> --out <dir>` — STANDALONE neutral metadata docs.
+// `meta docs [<project-root>] --out <dir>` — STANDALONE neutral metadata docs.
 //
 // Emits one neutral page per entity (`<Entity>.md`) and one per
 // `template.output` (`<Template>.md`) from metadata ALONE — no gen config, no
@@ -39,8 +39,12 @@ import { generateSite, SITE_TEMPLATE_NAMES, SITE_ASSET_NAMES, readSiteFile } fro
 type DocsLayout = "flat" | "package";
 
 interface DocsFlags {
-  /** Project root holding `metaobjects/` (the metadata to document). */
-  metadata: string;
+  /** The PROJECT ROOT to resolve metadata from — the directory that CONTAINS
+   *  the metadata, never the metadata directory itself (#344). Named for what
+   *  it is: while it was called `metadata` the help text spelled the positional
+   *  `<metadata>`, which is what the Python and C# `docs` positionals actually
+   *  mean, and pointing this one at `metaobjects/` fails. */
+  projectRoot: string;
   /** Output directory for the rendered pages. */
   out: string;
   /** Page-placement layout. `flat` (default) writes `<Name>.md` at the out
@@ -48,7 +52,7 @@ interface DocsFlags {
    *  for multi-package models with repeated short names). */
   layout: DocsLayout;
   /** Optional override for the project root used to resolve adopter
-   *  `templates/` overrides. Defaults to the metadata root. */
+   *  `templates/` overrides. Defaults to the project root. */
   templates?: string;
   /** Optional directory holding the prompt `.mustache` sources, for a project
    *  whose templates live outside the conventional `metaobjects/` or `templates/`
@@ -66,12 +70,12 @@ interface DocsFlags {
   outProvided: boolean;
   /** Whether `--layout` was explicitly passed (same override semantics). */
   layoutProvided: boolean;
-  /** Whether the `<metadata>` positional was explicitly passed. An explicit path
+  /** Whether the `<project-root>` positional was explicitly passed. An explicit path
    *  DEFINES the source set (`resolveCollection`'s `explicitDir` pin); the default
    *  cwd discovers one by walking up. Without this distinction the two are
    *  indistinguishable at the call site, which is how an explicitly-scoped run came
    *  to have an ancestor config's sources unioned into it (#327). */
-  metadataProvided: boolean;
+  projectRootProvided: boolean;
   /** FR-033 S3 — document the METAMODEL ITSELF (the built-in type/subtype/attr
    *  vocabulary) instead of a user's entities. Needs NO metadata + NO config. */
   metamodel: boolean;
@@ -93,7 +97,7 @@ function parseLayout(v: string | undefined, flag: string): DocsLayout {
 }
 
 function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
-  let metadata: string | undefined;
+  let projectRoot: string | undefined;
   let out: string | undefined;
   let templates: string | undefined;
   let prompts: string | undefined;
@@ -155,8 +159,8 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
       prompts = a.slice("--prompts=".length);
     } else if (a.startsWith("-")) {
       throw new Error(`unknown flag: ${a}`);
-    } else if (metadata === undefined) {
-      metadata = a;
+    } else if (projectRoot === undefined) {
+      projectRoot = a;
     } else {
       throw new Error(`unexpected argument: ${a}`);
     }
@@ -172,11 +176,11 @@ function parseDocsArgs(argv: string[], cwd: string): DocsFlags {
   if (wantApi) surfaces.push("api");
   if (wantRequirements) surfaces.push("requirements");
   return {
-    // `<metadata>` is the project root that contains metaobjects/; default cwd
-    // (mirrors how migrate/gen treat the working directory as the root).
-    metadata: metadata ?? cwd,
-    metadataProvided: metadata !== undefined,
-    // Default out dir, resolved against the metadata root below. In --metamodel
+    // `<project-root>` is the project root that CONTAINS the metadata; default
+    // cwd (mirrors how migrate/gen treat the working directory as the root).
+    projectRoot: projectRoot ?? cwd,
+    projectRootProvided: projectRoot !== undefined,
+    // Default out dir, resolved against the project root below. In --metamodel
     // mode the renderer writes under <out>/metamodel/, default ./docs/metamodel.
     out: out ?? (wantMetamodel ? "./docs/metamodel" : "./docs"),
     // Default flat preserves today's single-package output (+ existing goldens).
@@ -210,7 +214,7 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
     return metamodelDocsCommand(cwd, flags.out);
   }
 
-  const metaRoot = resolvePath(cwd, flags.metadata);
+  const metaRoot = resolvePath(cwd, flags.projectRoot);
   // Absolute prompt-source dir for the site (--prompts), for a project whose
   // templates live outside metaobjects/ or templates/ (e.g. data/templates/).
   const promptsDir = flags.prompts !== undefined ? resolvePath(cwd, flags.prompts) : undefined;
@@ -238,11 +242,11 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   // everything project-relative — `metaobjects.config.ts` and its providers,
   // the `docs.outDir` it names, the adopter `templates/` overrides, the owned
   // `codegen/docs-site/` theme — has to come from that same directory. Reading
-  // the config from the ambient `<metadata>` argument while the metadata came
+  // the config from the ambient `<project-root>` argument while the metadata came
   // from an ancestor renders the ancestor's model with the subdirectory's
   // (absent) providers. For a run at the project root the two are the same path.
   //
-  // An EXPLICIT `<metadata>` positional pins the collection rather than seeding a
+  // An EXPLICIT `<project-root>` positional pins the collection rather than seeding a
   // walk (#327). The argument has always meant "document this": before sources were
   // resolvable it read `<path>/metaobjects/` and nothing else, and passing it to
   // discovery turned it into a starting point, so the nearest ancestor
@@ -255,7 +259,7 @@ export async function docsCommand(args: string[], cwd: string): Promise<number> 
   try {
     collection = await resolveCollection(
       metaRoot,
-      flags.metadataProvided ? { explicitDir: metaRoot } : undefined,
+      flags.projectRootProvided ? { explicitDir: metaRoot } : undefined,
     );
   } catch (err) {
     log.error(`docs: ${(err as Error).message}`);

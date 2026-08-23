@@ -67,6 +67,17 @@ block, and the inferred types.
 A second file, `.metaobjects/config.json`, holds static project state parseable by
 non-TS tooling; `meta init` scaffolds both plus the `metaobjects/` source dir.
 
+`sources` in that file is where the metadata lives — `metaobjects/` is only its
+DEFAULT value, so a project can point it anywhere. **Every entry is an OBJECT, never
+a bare string**, and it names a DIRECTORY or a file:
+
+```jsonc
+{ "schema_version": 1, "sources": [{ "path": "model" }, { "path": "../shared/metadata" }] }
+```
+
+Every command's directory argument (`meta docs <project-root>`, `--cwd`) is the
+PROJECT ROOT that CONTAINS the metadata — never the metadata directory itself.
+
 ## The generators
 
 From `@metaobjectsdev/codegen-ts/generators` (server-side, framework-neutral):

@@ -193,6 +193,30 @@ through to the default and quietly generate from a stale `metaobjects/`.
 were declared anywhere up the walk, **and** no default `metaobjects/` directory
 exists either.
 
+### Every directory argument is the PROJECT ROOT
+
+`--cwd`, and the `meta docs` positional, name the project root — the directory that
+**contains** your metadata. They are never the metadata directory itself; where the
+metadata lives is `sources`' answer, and pointing a command at `metaobjects/` asks it
+to find a `metaobjects/metaobjects/`.
+
+That is worth stating because the mistake is predictable rather than careless: the
+**Python and C# `docs` positionals ARE the metadata directory** (`metaobjects docs
+./metadata`, `dotnet meta docs metaobjects`), and each port spells its own the same
+way in help text. The Node CLI is the one every stack uses for `migrate`,
+`verify --db` and the neutral model docs, so the two conventions meet on one machine.
+
+```bash
+meta docs --out ./docs            # ✅ from the project root — the normal form
+meta docs ./apps/api --out ./docs # ✅ a project root elsewhere (SCOPES the run to it)
+meta docs metaobjects --out ./docs # ❌ that is the metadata directory
+```
+
+Pointed at a metadata directory, `ERR_COLLECTION_NOT_FOUND` now says so and names the
+directory to pass instead
+([#344](https://github.com/metaobjectsdev/metaobjects/issues/344)) — it used to advise
+declaring `sources`, which from inside the metadata directory leads nowhere.
+
 ---
 
 ## `scope` — an output filter over fully-qualified names

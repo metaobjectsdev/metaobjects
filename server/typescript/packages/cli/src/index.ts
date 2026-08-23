@@ -21,7 +21,7 @@ COMMANDS:
   gen [<entity>...]     Codegen TS targets from your declared metadata
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description
   export                Flatten loaded metadata to one canonical JSON artifact
-  docs <metadata> --out <dir>  Generate neutral metadata documentation (entity + template pages; --site for HTML site)
+  docs [<project-root>] --out <dir>  Generate neutral metadata documentation (entity + template pages; --site for HTML site)
   verify                Drift gate — subverbs: --templates / --db / --codegen (bare = --templates)
   upgrade               Rewrite retired metadata vocabulary (previews; --apply writes)
   prompt-snapshot       Snapshot rendered template.* output; --check gates drift
@@ -42,9 +42,11 @@ EXPORT FLAGS:
   --out <file>          Write output to a file (default: stdout)
 
 DOCS FLAGS:
-  <metadata>            Project root to resolve metadata from; passing it SCOPES the run (default: cwd)
+  [<project-root>]      PROJECT ROOT to resolve metadata from — the directory that CONTAINS
+                        your metadata, NOT the metadata directory. Passing it SCOPES the run
+                        (default: cwd)
   --out <dir>, -o       Output directory for the pages (default: ./docs)
-  --templates <dir>     Project root to resolve adopter templates/ overrides (default: <metadata>)
+  --templates <dir>     Project root to resolve adopter templates/ overrides (default: <project-root>)
   --prompts <dir>       Extra dir holding prompt .mustache sources for --site (e.g. data/templates/)
 
 VERIFY FLAGS (ADR-0021 D2 — explicit subverbs; combine any; exit 1 on ANY drift):
@@ -163,12 +165,15 @@ FLAGS:
   docs: `meta docs — generate neutral metadata documentation (entity + template pages)
 
 USAGE:
-  meta docs [<metadata>] [flags]
+  meta docs [<project-root>] [flags]
 
 FLAGS:
-  <metadata>            Project root to resolve metadata from. Passing it SCOPES the run to
-                        that directory's own sources; no ancestor .metaobjects/config.json is
-                        consulted. Omitted (default), the project is discovered by walking up.
+  [<project-root>]      PROJECT ROOT to resolve metadata from — the directory that CONTAINS
+                        your metadata, NOT the metadata directory itself. (The Python and C#
+                        'docs' positionals mean the metadata dir; this one does not.) Passing
+                        it SCOPES the run to that directory's own sources; no ancestor
+                        .metaobjects/config.json is consulted. Omitted (default), the project
+                        is discovered by walking up.
   --out <dir>, -o       Output directory for the pages (default: ./docs)
   --model               Emit the markdown model surface (entity + template pages)
   --api                 Emit the markdown api surface (generated SDK reference)
@@ -177,7 +182,7 @@ FLAGS:
   --metamodel           Document the built-in metamodel vocabulary (no metadata needed)
   --site                Generate the browsable HTML documentation site (<out>/site/)
   --scaffold-site       Copy the site's templates + assets into codegen/docs-site/ to own (theme) them
-  --templates <dir>     Project root to resolve adopter templates/ overrides (default: <metadata>)
+  --templates <dir>     Project root to resolve adopter templates/ overrides (default: <project-root>)
   --prompts <dir>       Extra dir holding prompt .mustache sources (for --site) when they
                         live outside the metadata sources or templates/ (e.g. data/templates/)
   --help, -h            Print this help
