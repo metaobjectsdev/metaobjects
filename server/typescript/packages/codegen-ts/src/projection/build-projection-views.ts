@@ -315,10 +315,11 @@ function collectViewColumns(
 
   const out: ExpectedViewColumn[] = [];
   for (const c of spec.selectSpec.columns) {
-    // #195: the four new origin column kinds (predicateAgg/collectAgg/computed/first) do
-    // not resolve to a single (table, column) SqlType via the prefix rule — computed is
-    // an expression, first is a correlated subquery, and the array/boolean aggregate
-    // result types are richer than the OR-REPLACE prefix check models. Per this module's
+    // #195/#335: the five non-scalar origin column kinds (predicateAgg / collectAgg /
+    // collectObjectAgg / computed / first) do not resolve to a single (table, column)
+    // SqlType via the prefix rule — computed is an expression, first is a correlated
+    // subquery, and the array/jsonb/boolean aggregate result types are richer than the
+    // OR-REPLACE prefix check models. Per this module's
     // fail-safe doctrine (unknown → drop+create, never a wrong-but-confident replace),
     // an unknown column drops the whole list so migrate routes through a gated
     // drop+create. Precise native typing is a later phase.

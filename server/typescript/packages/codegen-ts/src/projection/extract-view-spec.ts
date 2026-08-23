@@ -1,5 +1,6 @@
 import {
   TYPE_FIELD,
+  FIELD_ATTR_OBJECT_REF,
   TYPE_IDENTITY,
   TYPE_ORIGIN,
   TYPE_RELATIONSHIP,
@@ -886,6 +887,59 @@ function buildSelectSpec(
         continue;
       }
 
+      // #335 — @of ABSENT on collect is a WHOLE-OBJECT rollup. This arm sits ABOVE
+      // the `if (!of_) continue;` guard on purpose: that guard used to swallow this
+      // shape, so the metadata LOADED and the column was silently dropped from the
+      // CREATE VIEW while the generated type still declared the field.
+      // The related entity comes from @via's terminal hop, not from @of — exactly as
+      // the any/all arm above resolves it.
+      const wholeObjectCollect =
+        agg === AGG_COLLECT && origin.ownAttr(ORIGIN_AGGREGATE_ATTR_OF) === undefined;
+      if (wholeObjectCollect) {
+        // Every `continue` below is a loader-guaranteed impossibility (the load fails
+        // with ERR_COLLECT_WHOLE_OBJECT / ERR_SUBTYPE_RULE_VIOLATION /
+        // ERR_COLLECT_MEMBER_UNRESOLVED before codegen runs); they are defence for a
+        // caller that reached codegen without loading, never a silent-drop path.
+        const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA) as string | undefined;
+        if (!via) continue;
+        // ADR-0039: resolving — @objectRef may be inherited via extends.
+        const objectRef = field.attr(FIELD_ATTR_OBJECT_REF) as string | undefined;
+        if (!objectRef) continue;
+        const relatedName = viaTerminalEntity(via, root, projPkg);
+        if (!relatedName) continue;
+        const relatedEntity = resolveEntityRef(root, relatedName, projPkg);
+        if (!relatedEntity) continue;
+        const sourceAlias = findAliasInTree(joinTree, relatedEntity.resolutionKey());
+        if (sourceAlias === undefined) continue;
+        const joinedPk = primaryKeyColumn(relatedEntity, ctx);
+        if (joinedPk === undefined) continue;
+        // ADR-0042 — a bare @objectRef resolves in the projection's package.
+        const vo = resolveObjectRef(root, objectRef, projPkg).node;
+        if (!vo) continue;
+        // ADR-0039: resolving — a value object may inherit members via extends, and the
+        // terminal entity may inherit fields. The VO's member list IS the exposure: a
+        // field the terminal has but the VO omits is deliberately not projected (#270).
+        const members: { memberName: string; sourceColumn: string }[] = [];
+        for (const m of vo.children().filter((c): c is MetaField => c.type === TYPE_FIELD)) {
+          const target = relatedEntity.fields().find((f) => f.name === m.name);
+          if (target === undefined) continue; // loader: ERR_COLLECT_MEMBER_UNRESOLVED
+          members.push({ memberName: m.name, sourceColumn: sourceColumnNameFor(target, ctx) });
+        }
+        if (members.length === 0) continue;
+        columns.push({
+          kind: "collectObjectAgg",
+          fieldName: field.name,
+          dbColAlias: dbCol,
+          sourceAlias,
+          joinedPkColumn: joinedPk,
+          members,
+          // @orderBy resolves against the @via TERMINAL entity, not @of — there is no
+          // @of entity. Empty ⇒ the emitter's default of related-PK ascending.
+          orderBy: resolveOrderByKeys(origin.ownAttr(ORIGIN_ATTR_ORDER_BY), relatedEntity, ctx),
+        });
+        continue;
+      }
+
       // collect + the scalar reduces (count/sum/avg/min/max) all name @of.
       const of_ = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_OF) as string | undefined;
       if (!of_) continue;
@@ -1003,6 +1057,9 @@ function buildSelectSpec(
 function isInflationSensitive(c: SelectColumn): boolean {
   if (c.kind === "aggregate") return c.agg === "sum" || c.agg === "avg";
   if (c.kind === "collectAgg") return !c.distinct;
+  // #335 — a whole-object collect is ALWAYS non-distinct (the loader refuses @distinct
+  // on this form), so it is unconditionally inflation-sensitive.
+  if (c.kind === "collectObjectAgg") return true;
   return false;
 }
 
@@ -1015,10 +1072,12 @@ function countManyBranches(joinTree: JoinTree): number {
 }
 
 function buildGroupBy(spec: SelectSpec): string[] {
-  // predicateAgg (bool_or/bool_and) and collectAgg (array_agg) are real aggregates and
-  // force GROUP BY too; computed/first are scalar-per-row and never grouped.
+  // predicateAgg (bool_or/bool_and), collectAgg (array_agg) and collectObjectAgg
+  // (jsonb_agg) are real aggregates and force GROUP BY too; computed/first are
+  // scalar-per-row and never grouped.
   const hasAgg = spec.columns.some(
-    (c) => c.kind === "aggregate" || c.kind === "predicateAgg" || c.kind === "collectAgg",
+    (c) => c.kind === "aggregate" || c.kind === "predicateAgg"
+      || c.kind === "collectAgg" || c.kind === "collectObjectAgg",
   );
   if (!hasAgg) return [];
   return spec.columns

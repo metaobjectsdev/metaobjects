@@ -200,6 +200,33 @@ function renderColumn(c: SelectColumn, options: EmitOptions, baseAlias: string):
     return `COALESCE(array_agg(${distinctKw}${src} ${orderClause}) FILTER (WHERE ${guard}), '{}') AS ${alias}`;
   }
 
+  if (c.kind === "collectObjectAgg") {
+    // #335 whole-object rollup. jsonb, not json: PG's `json` has neither an equality
+    // nor an ordering operator, so `json_agg(json_build_object(…) ORDER BY …)` does not
+    // run — verified against a real PG 15.
+    const guard = `${c.sourceAlias}.${quoteIfNeeded(c.joinedPkColumn)} IS NOT NULL`;
+    const pk = `${c.sourceAlias}.${quoteIfNeeded(c.joinedPkColumn)}`;
+    // Element order: the related entity's PK ascending by default — "value ascending"
+    // is meaningless for an object (and does not parse on PG json). An explicit
+    // @orderBy leads, with the PK appended as a tie-break so equal-order rows stay
+    // byte-deterministic. The SCALAR arm above deliberately keeps its no-tie-break
+    // behaviour: adding one there would alter emitted SQL for every existing project.
+    const orderClause = c.orderBy.length > 0
+      ? `ORDER BY ${renderOrderKeys(c.orderBy, c.sourceAlias)}, ${pk} ASC`
+      : `ORDER BY ${pk} ASC`;
+    // The JSON key is the VO MEMBER name; the value reads the TERMINAL entity's
+    // physical column. Those two differ whenever a field carries @column.
+    const pairs = c.members
+      .map((m) => `'${m.memberName}', ${c.sourceAlias}.${quoteIfNeeded(m.sourceColumn)}`)
+      .join(", ");
+    // In-aggregate ORDER BY needs SQLite >= 3.44 — not a new constraint: the scalar
+    // collect above already emits it, and D1's baseline is pinned at 3.44.0.
+    if (dialect === "sqlite") {
+      return `COALESCE(json_group_array(json_object(${pairs}) ${orderClause}) FILTER (WHERE ${guard}), json_array()) AS ${alias}`;
+    }
+    return `COALESCE(jsonb_agg(jsonb_build_object(${pairs}) ${orderClause}) FILTER (WHERE ${guard}), '[]'::jsonb) AS ${alias}`;
+  }
+
   if (c.kind === "computed") {
     return `${renderExpr(c.expr, dialect)} AS ${alias}`;
   }
