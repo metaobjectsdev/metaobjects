@@ -103,16 +103,15 @@ public static class ReferentialActions
             // an EXPLICIT @onUpdate is honored (dropping it would be the original bug).
             if (reverse is not null)
             {
-                var reverseOnDeleteRaw = RawAttr(reverse, RELATIONSHIP_ATTR_ON_DELETE);
                 var unsatisfiableInferredSetNull =
-                    reverseOnDeleteRaw is null
+                    reverse.OnDelete is null
                     && ON_DELETE_DEFAULT_BY_SUBTYPE.TryGetValue(reverse.SubType, out var def)
                     && def == ACTION_SET_NULL
                     && ReadIdentityFields(reference).Any(n =>
-                        entity.Fields().FirstOrDefault(f => f.Name == n) is { IsRequired: true });
+                        entity.FindField(n) is { IsRequired: true });
 
                 if (unsatisfiableInferredSetNull)
-                    suppressedReverseOnUpdate = RawAttr(reverse, RELATIONSHIP_ATTR_ON_UPDATE);
+                    suppressedReverseOnUpdate = reverse.OnUpdate;
                 else
                     rel = reverse;
             }
@@ -182,16 +181,11 @@ public static class ReferentialActions
         var raw = identity.Attr(IDENTITY_ATTR_FIELDS);
         if (raw is string s)
             return s.Split(',').Select(p => p.Trim()).Where(p => p.Length > 0).ToArray();
-        if (raw is System.Collections.IEnumerable en and not string)
+        if (raw is System.Collections.IEnumerable en)
             return en.Cast<object?>().Select(v => (v?.ToString() ?? "").Trim())
                      .Where(p => p.Length > 0).ToArray();
         return [];
     }
-
-    /// <summary>The raw (explicitly declared) value of an attr, or null when absent/empty.</summary>
-    // ADR-0039: resolving Attr() — an action may be inherited via the relationship's extends.
-    private static string? RawAttr(MetaRelationship rel, string attr) =>
-        rel.Attr(attr) is string s && s.Length > 0 ? s : null;
 
     /// <summary>
     /// Values are load-validated against REFERENTIAL_ACTIONS (allowedValues on both

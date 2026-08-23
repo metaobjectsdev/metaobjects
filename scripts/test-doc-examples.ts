@@ -64,6 +64,22 @@ const CASES: readonly Case[] = [
     ].join("\n"),
   },
   {
+    // ADR-0006 makes YAML the universal authoring front-end, and the authoring skill
+    // teaches in it — so a YAML example carrying retired vocabulary is the #337 shape
+    // exactly. This case fails if the YAML path is ever skipped again.
+    name: "retired attribute in a sigil-free YAML block",
+    shouldFail: true,
+    because: "ERR_UNKNOWN_ATTR",
+    markdown: [
+      "```yaml",
+      "requirement.functional:",
+      "  name: recallMeasurement",
+      "  level: 4",
+      "  verifiedBy: [MeasurementTest]",
+      "```",
+    ].join("\n"),
+  },
+  {
     // The everyday case: a fragment that omits everything around it must stay silent,
     // or the gate is noise and gets disabled.
     name: "partial fragment stays quiet",

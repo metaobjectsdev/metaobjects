@@ -115,12 +115,40 @@ public class Issue294ReferentialActionTests
     }
 
     [Fact]
-    public void No_action_emits_no_clause_because_it_is_the_database_default()
+    public void No_action_is_stated_explicitly_rather_than_left_to_EF_s_convention()
     {
+        // Tempting to emit nothing here — `no-action` IS the database default, and the
+        // TS-owned DDL writes no ON DELETE clause for it. But EF does not treat an absent
+        // OnDelete as "no action": it applies its own convention, which for a REQUIRED
+        // foreign key is Cascade. Omitting the call would therefore make the generated
+        // context delete rows the database would refuse to orphan.
         var (source, _) = Generate(TwoEntityModel(referenceAttrs: """, "@onDelete": "no-action" """));
-        var line = WeekFkLine(source);
-        Assert.Contains("HasForeignKey(nameof(Week.ProgramId));", line);
-        Assert.DoesNotContain(".OnDelete(", line);
+        Assert.Contains(".OnDelete(DeleteBehavior.NoAction)", WeekFkLine(source));
+    }
+
+    [Fact]
+    public void An_uncorrelated_reference_is_NoAction_too()
+    {
+        // No @onDelete, and no relationship on either side to correlate with: the resolved
+        // action is "none", which must still be stated for the reason above.
+        var (source, _) = Generate("""
+        { "metadata.root": { "package": "acme", "children": [
+          { "object.entity": { "name": "Program", "children": [
+            { "source.rdb": { "@table": "programs" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "@fields": "id" } }
+          ]}},
+          { "object.entity": { "name": "Week", "children": [
+            { "source.rdb": { "@table": "weeks" } },
+            { "field.long": { "name": "id" } },
+            { "field.long": { "name": "programId" } },
+            { "identity.primary": { "@fields": "id" } },
+            { "identity.reference": { "name": "refProgram", "@fields": "programId",
+              "@references": "Program" } }
+          ]}}
+        ]}}
+        """);
+        Assert.Contains(".OnDelete(DeleteBehavior.NoAction)", WeekFkLine(source));
     }
 
     [Fact]
@@ -132,7 +160,10 @@ public class Issue294ReferentialActionTests
             referenceAttrs: """, "@onDelete": "set-null" """,
             programIdAttrs: ""","@required": true"""));
 
-        Assert.DoesNotContain(".OnDelete(", WeekFkLine(source));
+        // NoAction rather than nothing: an omitted call would leave EF's convention in
+        // charge, and for this REQUIRED foreign key that convention is Cascade — turning
+        // an unsatisfiable set-null into destructive cascade deletes.
+        Assert.Contains(".OnDelete(DeleteBehavior.NoAction)", WeekFkLine(source));
         Assert.Contains(warnings, w => w.Contains("SET NULL") && w.Contains("programId"));
     }
 

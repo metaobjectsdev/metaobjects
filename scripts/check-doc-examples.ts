@@ -46,6 +46,7 @@ import { isAbsolute, join, relative } from "node:path";
 // node_modules and is not reachable from `scripts/`. The source import also means the
 // gate reads the loader as it is NOW, with no build step between edit and gate.
 import { MetaDataLoader } from "../server/typescript/packages/metadata/src/index.js";
+import type { MetaDataFormat } from "../server/typescript/packages/metadata/src/loader/meta-data-source.js";
 
 const REPO_ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 
@@ -116,7 +117,6 @@ const FAIL_CODES = new Set([
   "ERR_RELATIVE_REF_IN_CANONICAL",
   "ERR_TOO_MANY_OCCURRENCES",
   "ERR_UNKNOWN_EXPR_NODE",
-  "ERR_BAD_ATTR_FILTER",
   "ERR_YAML_COERCION",
   "ERR_MISSING_SUBTYPE",
 ]);
@@ -195,12 +195,24 @@ interface Block {
   readonly body: string;
 }
 
-function markdownFiles(dir: string, out: string[] = []): string[] {
+/** A block rendered back into something the loader will accept, in its own format. */
+interface LoadableModel {
+  readonly content: string;
+  readonly format: MetaDataFormat;
+}
+
+/**
+ * Documents that carry shipped examples. `.txt` is included deliberately: `docs/llms/`
+ * ships `llms.txt` / `llms-full.txt`, and #343 — one of the three incidents this gate
+ * exists for — landed in exactly those files. Scanning only `.md` would have left the
+ * gate blind to the surface that motivated it.
+ */
+function documentFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
     if (entry === "node_modules" || entry.startsWith(".")) continue;
     const full = join(dir, entry);
-    if (statSync(full).isDirectory()) markdownFiles(full, out);
-    else if (entry.endsWith(".md")) out.push(full);
+    if (statSync(full).isDirectory()) documentFiles(full, out);
+    else if (entry.endsWith(".md") || entry.endsWith(".txt")) out.push(full);
   }
   return out;
 }
@@ -292,20 +304,30 @@ const HOST_DEPENDENT_TYPES = new Set(["origin"]);
  * synthetic root so the loader sees a well-formed document. That wrapping is what makes
  * fragment-ness mechanical: nothing about the block has to be annotated.
  */
-function asLoadableModel(block: Block): string | undefined {
-  const text = block.lang === "yaml" || block.lang === "yml" ? undefined : stripJsonComments(block.body);
-  if (text === undefined) return undefined; // YAML handled separately (see gate docs)
+function asLoadableModel(block: Block): LoadableModel | undefined {
+  const isYaml = block.lang === "yaml" || block.lang === "yml";
+  // YAML authoring is sigil-free (ADR-0006) and the loader desugars it, so a YAML block
+  // is parsed, wrapped like any other fragment, and handed BACK to the loader as YAML —
+  // re-emitting keeps the bare attribute keys the desugar expects, where canonical JSON
+  // would demand `@` sigils this gate must not invent. ADR-0006 makes YAML the universal
+  // authoring front-end, so a YAML example teaching a retired attribute is exactly the
+  // #337 shape and must not sail through unchecked.
+  const format: MetaDataFormat = isYaml ? "yaml" : "json";
+  const emit = (value: unknown): LoadableModel => ({
+    content: isYaml ? Bun.YAML.stringify(value) : JSON.stringify(value),
+    format,
+  });
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(text);
+    parsed = isYaml ? Bun.YAML.parse(block.body) : JSON.parse(stripJsonComments(block.body));
   } catch {
     return undefined; // an elision or a prose snippet — makes no metadata claim
   }
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
 
   const keys = Object.keys(parsed as Record<string, unknown>);
-  if (keys.includes("metadata.root")) return JSON.stringify(parsed);
+  if (keys.includes("metadata.root")) return emit(parsed);
   if (keys.length !== 1 || !NODE_KEY.test(keys[0]!)) return undefined;
 
   const key = keys[0]!;
@@ -327,7 +349,7 @@ function asLoadableModel(block: Block): string | undefined {
       .map((n) => ({ "field.string": { name: n } }));
     node = { "object.entity": { name: "DocExample", children: [...fields, parsed] } };
   }
-  return JSON.stringify({ "metadata.root": { package: "docexample", children: [node] } });
+  return emit({ "metadata.root": { package: "docexample", children: [node] } });
 }
 
 interface Finding {
@@ -346,7 +368,7 @@ async function main(): Promise<void> {
   for (const root of roots) {
     const dir = isAbsolute(root) ? root : join(REPO_ROOT, root);
     try { statSync(dir); } catch { continue; }
-    for (const file of markdownFiles(dir)) {
+    for (const file of documentFiles(dir)) {
       const path = relative(REPO_ROOT, file);
       if (SKIP_PREFIXES.some((p) => path.startsWith(p))) continue;
       blocks.push(...fencedBlocks(file));
@@ -364,15 +386,15 @@ async function main(): Promise<void> {
 
     let errors: readonly Error[];
     try {
-      ({ errors } = await MetaDataLoader.fromString(model, "json", { strict: true }));
+      ({ errors } = await MetaDataLoader.fromString(model.content, model.format, { strict: true }));
     } catch (e) {
       errors = [e as Error];
     }
 
     for (const error of errors) {
       const code = (error as { code?: string }).code ?? "ERR_UNCODED";
-      const finding: Finding = { block, code, message: error.message };
       if (FRAGMENT_CODES.has(code)) continue;
+      const finding: Finding = { block, code, message: error.message };
       if (FAIL_CODES.has(code)) { findings.push(finding); continue; }
       if (!unclassified.has(code)) unclassified.set(code, finding);
     }

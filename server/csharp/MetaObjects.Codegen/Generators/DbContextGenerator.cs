@@ -55,19 +55,36 @@ public class DbContextGenerator : IGenerator
         // OnModelCreating body lines (8-space indented), in a stable order.
         var modelLines = new List<string>();
 
-        // #294 — entities serving as an M:N junction have BOTH their FK sides configured
-        // by UsingEntityConfig below (that call is what establishes those relationships).
-        // Emitting a standalone HasOne/WithMany for the same junction column would
-        // configure the same foreign key a second time, so the per-reference pass skips
-        // them. Self-joins are excluded here because their navigation is [NotMapped]
-        // (route-traversed) and therefore gets NO UsingEntity call — the junction's own
-        // references are the only thing that can carry its actions.
-        var m2mJunctions = new HashSet<string>(
-            objects.Where(o => o.IsEntity())
-                .SelectMany(o => M2MNavigationBuilder.For(o, ctx.Root))
-                .Where(n => !n.IsSelfJoin)
-                .Select(n => n.Junction.Name),
-            StringComparer.Ordinal);
+        // The M:N navigations, derived ONCE. M2MNavigationBuilder.For re-walks the
+        // relationships and re-derives the junction FK columns on every call, and both the
+        // junction map below and the per-entity UsingEntity emission need the same answer.
+        // Self-joins are excluded here, in one place rather than two: their navigation is
+        // [NotMapped] (route-traversed — see EntityGenerator.M2mNavProperty), so they get
+        // NO UsingEntity call and the junction's own references are the only thing that
+        // can carry their actions.
+        var m2mNavs = new Dictionary<MetaObject, List<M2MNavigation>>();
+        foreach (var o in objects.Where(o => o.IsEntity()))
+            m2mNavs[o] = M2MNavigationBuilder.For(o, ctx.Root).Where(n => !n.IsSelfJoin).ToList();
+
+        // #294 — the FK COLUMNS that UsingEntityConfig already configures, per junction
+        // entity. That call is what establishes those two relationships, so a standalone
+        // HasOne/WithMany for the same column would configure one foreign key twice.
+        //
+        // Keyed per COLUMN, not per entity: a junction may carry a third reference of its
+        // own (an `assignedById` beside the two join sides), and UsingEntityConfig names
+        // only the two. Skipping the whole entity would leave that FK configured nowhere.
+        //
+        // Keyed by NODE IDENTITY, not by name: two entities in different packages may
+        // share a bare short name (ADR-0041/0042), and a name-keyed set would let a
+        // junction suppress an unrelated same-named entity's foreign keys entirely.
+        var junctionOwnedFks = new Dictionary<MetaObject, HashSet<string>>();
+        foreach (var nav in m2mNavs.Values.SelectMany(navs => navs))
+        {
+            if (!junctionOwnedFks.TryGetValue(nav.Junction, out var owned))
+                junctionOwnedFks[nav.Junction] = owned = new HashSet<string>(StringComparer.Ordinal);
+            owned.Add(nav.SourceField);
+            owned.Add(nav.TargetField);
+        }
         foreach (var p in objects.Where(o => o.IsReadOnlyProjection()))
         {
             var name = CSharpNaming.Pascal(p.Name);
@@ -126,7 +143,8 @@ public class DbContextGenerator : IGenerator
             //       r => r.HasOne<Source>().WithMany().HasForeignKey("<SourceFkProp>"));
             // Self-joins (directed/symmetric) are [NotMapped] (route-traversed) — see
             // EntityGenerator.M2mNavProperty — so they are skipped here.
-            foreach (var nav in M2MNavigationBuilder.For(e, ctx.Root).Where(n => !n.IsSelfJoin))
+            // Self-joins are already excluded from m2mNavs (see above).
+            foreach (var nav in m2mNavs[e])
                 modelLines.Add(UsingEntityConfig(nav, ctx));
 
             // FR-017 TPH — single-table inheritance mapping. The base maps its concrete
@@ -147,8 +165,8 @@ public class DbContextGenerator : IGenerator
             // every DeleteBehavior fell back to EF's own convention regardless of what the
             // metadata — or the database — said. A junction's sides are owned by
             // UsingEntityConfig; see the m2mJunctions note above.
-            if (!m2mJunctions.Contains(e.Name))
-                EmitReferenceConfig(owner, e, tph, ctx, modelLines);
+            junctionOwnedFks.TryGetValue(e, out var ownedByUsingEntity);
+            EmitReferenceConfig(owner, e, tph, ctx, modelLines, ownedByUsingEntity);
         }
 
         // #214 (FR-024 §7) — register the write-through read model against its replica view.
@@ -358,16 +376,20 @@ public class DbContextGenerator : IGenerator
     /// base+subtype dual declaration that made the adopter's mutation unreliable.</para>
     /// </summary>
     private void EmitReferenceConfig(
-        string owner, MetaObject entity, TphPlan? tph, GenContext ctx, List<string> modelLines)
+        string owner, MetaObject entity, TphPlan? tph, GenContext ctx, List<string> modelLines,
+        IReadOnlySet<string>? ownedByUsingEntity)
     {
-        var emitted = new HashSet<string>(StringComparer.Ordinal);
+        // Seeded with the junction columns UsingEntityConfig already configures, so those
+        // two are skipped while any OTHER reference the junction declares is still emitted.
+        var emitted = ownedByUsingEntity is null
+            ? new HashSet<string>(StringComparer.Ordinal)
+            : new HashSet<string>(ownedByUsingEntity, StringComparer.Ordinal);
 
         foreach (var reference in entity.ReferenceIdentities().Where(r => r.Enforce))
-            if (ReferenceConfig(owner, entity, reference, ctx) is { } line)
-            {
-                modelLines.Add(line);
-                emitted.Add(FkKey(reference));
-            }
+        {
+            if (!emitted.Add(FkKey(reference))) continue;
+            if (ReferenceConfig(owner, entity, reference, ctx) is { } line) modelLines.Add(line);
+        }
 
         if (tph is null) return;
         foreach (var st in tph.Subtypes)
@@ -416,13 +438,14 @@ public class DbContextGenerator : IGenerator
         if (fkFields.Count == 0) return null;
 
         var props = new List<string>(fkFields.Count);
+        var isWriteThrough = entity.IsWriteThrough();
         foreach (var name in fkFields)
         {
             // #214 — a write-through entity's WRITE class omits the derived (origin.*)
             // fields, so naming one here would reference a property the class does not
             // declare (a compile error in the generated file).
-            if (entity.Fields().FirstOrDefault(f => f.Name == name) is not { } field) return null;
-            if (entity.IsWriteThrough() && field.IsDerived()) return null;
+            if (entity.FindField(name) is not { } field) return null;
+            if (isWriteThrough && field.IsDerived()) return null;
             props.Add($"nameof({owner}.{CSharpNaming.Pascal(name)})");
         }
 
@@ -452,19 +475,17 @@ public class DbContextGenerator : IGenerator
     private string OnDeleteCall(
         MetaObject entity, IReadOnlyList<string> fkFields, string? onDelete, GenContext ctx)
     {
-        if (onDelete is null) return string.Empty;
+        const string noAction = ".OnDelete(DeleteBehavior.NoAction)";
 
         if (onDelete == ACTION_SET_NULL)
         {
-            var required = fkFields
-                .Where(n => entity.Fields().FirstOrDefault(f => f.Name == n) is { IsRequired: true })
-                .ToList();
+            var required = fkFields.Where(n => entity.FindField(n) is { IsRequired: true }).ToList();
             if (required.Count > 0)
             {
                 ctx.Warn($"{Name}: \"{entity.Name}\" resolves ON DELETE SET NULL over required " +
                          $"field(s) {string.Join(", ", required)} — SET NULL cannot fire on a NOT NULL " +
-                         "column, so no DeleteBehavior is configured for that foreign key.");
-                return string.Empty;
+                         "column, so the foreign key is configured NoAction instead.");
+                return noAction;
             }
         }
 
@@ -473,7 +494,14 @@ public class DbContextGenerator : IGenerator
             ACTION_CASCADE => ".OnDelete(DeleteBehavior.Cascade)",
             ACTION_SET_NULL => ".OnDelete(DeleteBehavior.SetNull)",
             ACTION_RESTRICT => ".OnDelete(DeleteBehavior.Restrict)",
-            _ => string.Empty,
+            // No resolved action — no correlated relationship, or an explicit `no-action`.
+            // The TS-owned DDL emits no ON DELETE clause for this FK, so the database
+            // behaves as NO ACTION, and saying so EXPLICITLY is the whole point: omitting
+            // the call hands the decision to EF's convention, which for a REQUIRED foreign
+            // key is Cascade. That would make the generated context delete rows the
+            // database would have refused to orphan — a destructive disagreement with the
+            // schema, introduced by the very change meant to end the disagreement.
+            _ => noAction,
         };
     }
 
@@ -488,7 +516,17 @@ public class DbContextGenerator : IGenerator
         var reference = junction.ReferenceIdentities().FirstOrDefault(r =>
             r.Enforce && ReferentialActions.ReadIdentityFields(r) is [var only] && only == fkField);
         if (reference is null) return string.Empty;
-        return OnDeleteCall(junction, [fkField], ReferentialActions.Resolve(junction, reference).OnDelete, ctx);
+
+        var resolved = ReferentialActions.Resolve(junction, reference).OnDelete;
+        // Only a DECLARED action is applied here — no NoAction default, unlike the 1:N
+        // path. These two relationships are established by UsingEntityConfig and have
+        // existed since FR-018 with EF's own convention deciding their delete behaviour;
+        // pinning them to NoAction now would stop EF clearing junction rows on a tracked
+        // delete, a behaviour change for every existing M:N adopter that has nothing to do
+        // with #294. The 1:N path defaults precisely because those relationships are NEW
+        // here: there is no prior behaviour to preserve, only EF's convention to prevent.
+        if (resolved is null) return string.Empty;
+        return OnDeleteCall(junction, [fkField], resolved, ctx);
     }
 
     // FR-018 — EF skip-navigation config for a hetero M:N navigation through its

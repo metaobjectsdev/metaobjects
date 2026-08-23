@@ -46,12 +46,12 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Asset>().Property(x => x.Payload).HasColumnType("jsonb");
         modelBuilder.Entity<Auth>().Property(x => x.Type).HasConversion<string>();
         modelBuilder.Entity<Auth>().HasDiscriminator(e => e.Type).HasValue<BridgeAuth>(Auth.AuthType.Bridge).HasValue<CopayAuth>(Auth.AuthType.Copay).HasValue<PriorAuthAuth>(Auth.AuthType.PriorAuth);
-        modelBuilder.Entity<Follow>().HasOne<Person>().WithMany().HasForeignKey(nameof(Follow.FollowerId));
-        modelBuilder.Entity<Follow>().HasOne<Person>().WithMany().HasForeignKey(nameof(Follow.FolloweeId));
-        modelBuilder.Entity<Friendship>().HasOne<Person>().WithMany().HasForeignKey(nameof(Friendship.PersonAId));
-        modelBuilder.Entity<Friendship>().HasOne<Person>().WithMany().HasForeignKey(nameof(Friendship.PersonBId));
+        modelBuilder.Entity<Follow>().HasOne<Person>().WithMany().HasForeignKey(nameof(Follow.FollowerId)).OnDelete(DeleteBehavior.NoAction);
+        modelBuilder.Entity<Follow>().HasOne<Person>().WithMany().HasForeignKey(nameof(Follow.FolloweeId)).OnDelete(DeleteBehavior.NoAction);
+        modelBuilder.Entity<Friendship>().HasOne<Person>().WithMany().HasForeignKey(nameof(Friendship.PersonAId)).OnDelete(DeleteBehavior.NoAction);
+        modelBuilder.Entity<Friendship>().HasOne<Person>().WithMany().HasForeignKey(nameof(Friendship.PersonBId)).OnDelete(DeleteBehavior.NoAction);
         modelBuilder.Entity<Measurement>().Property(x => x.PreciseKg).HasPrecision(9, 4);
-        modelBuilder.Entity<Node>().HasOne<Node>().WithMany().HasForeignKey(nameof(Node.ParentId));
+        modelBuilder.Entity<Node>().HasOne<Node>().WithMany().HasForeignKey(nameof(Node.ParentId)).OnDelete(DeleteBehavior.NoAction);
         modelBuilder.Entity<Post>().HasMany(x => x.Tags).WithMany().UsingEntity<PostTag>(l => l.HasOne<Tag>().WithMany().HasForeignKey(nameof(PostTag.TagId)), r => r.HasOne<Post>().WithMany().HasForeignKey(nameof(PostTag.PostId)));
         modelBuilder.Entity<Program>().Property(x => x.Status).HasConversion<string>();
         modelBuilder.Entity<Program>().Property(x => x.CreatedAt).HasColumnType("timestamp without time zone");

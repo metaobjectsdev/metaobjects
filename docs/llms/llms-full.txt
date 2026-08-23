@@ -229,7 +229,7 @@ metadata.root:
         children:
           - field.long:    { name: id }
           - field.string:  { name: email }
-          - field.string:  { name: createdAt, autoSet: onCreate }
+          - field.timestamp: { name: createdAt, autoSet: onCreate }
           - identity.primary: { fields: [id] }
 ```
 

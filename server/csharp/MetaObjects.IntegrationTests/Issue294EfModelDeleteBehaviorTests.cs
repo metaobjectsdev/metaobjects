@@ -57,9 +57,39 @@ public class Issue294EfModelDeleteBehaviorTests
       { "object.entity": { "name": "BetaItem", "extends": "Item", "@discriminatorValue": "Beta",
         "children": [
         { "field.string": { "name": "note", "@maxLength": 40 } }
+      ]}},
+      { "object.entity": { "name": "Audit", "children": [
+        { "source.rdb": { "@table": "audits" } },
+        { "field.long": { "name": "id" } },
+        { "field.long": { "name": "userId", "@required": true } },
+        { "identity.primary": { "@fields": "id", "@generation": "increment" } },
+        { "identity.reference": { "name": "refUser", "@fields": "userId", "@references": "User" } }
       ]}}
     ]}}
     """;
+
+    [Fact]
+    public void An_uncorrelated_fk_is_NoAction_not_EF_s_cascade_default()
+    {
+        // Audit.userId has no @onDelete and no relationship correlating with it, so the
+        // resolved action is "none" and the TS-owned DDL emits no ON DELETE clause — the
+        // database therefore behaves as NO ACTION.
+        //
+        // Emitting the relationship without a DeleteBehavior does NOT reproduce that. EF
+        // fills in its own convention, and for a REQUIRED (non-nullable) foreign key that
+        // convention is Cascade — so a bare `.HasForeignKey(...)` would make the generated
+        // context cascade-delete rows the database would have refused to orphan. Before
+        // this feature EF had no relationship at all and did nothing; establishing one and
+        // leaving it unconfigured is a behaviour change in the destructive direction, which
+        // is the opposite of the point.
+        using var context = BuildGeneratedContext();
+        var auditType = FindEntityType(context.Model, "Audit");
+
+        var fk = Assert.Single(
+            auditType.GetForeignKeys(),
+            f => f.Properties.Select(p => p.Name).SequenceEqual(new[] { "UserId" }));
+        Assert.Equal(DeleteBehavior.NoAction, fk.DeleteBehavior);
+    }
 
     [Fact]
     public void A_tph_dual_declared_fk_keeps_its_cascade_through_model_finalization()

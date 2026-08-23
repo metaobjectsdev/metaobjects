@@ -121,13 +121,30 @@ The precedence is a **port of `migrate-ts`'s `referential-actions.ts`**, the cro
 tier for tier: reference-level `@onDelete` → a correlated sibling relationship → the
 parent-side reverse relationship, package-aware (ADR-0042), with `@through` excluded, the
 more-than-one-reference-to-the-same-target ambiguity guard, and the inferred-`set-null`-on-
-NOT-NULL satisfiability guard. Three behaviours are decided rather than inherited: a TPH
-base and subtype declaring the **same** FK configure it **once**, on the base that owns the
-shared column (a duplicate is the ambiguity the adopter was working around); an M:N
-junction's FK sides ride on the `UsingEntity` call that creates them, so the per-reference
-pass skips junction entities rather than configuring one FK twice; and a resolved
-`set-null` over a `@required` FK **warns and emits no clause**, because EF fails MODEL
-VALIDATION there and would take down the entire `DbContext` rather than one relationship.
+NOT-NULL satisfiability guard. Four behaviours are decided rather than inherited:
+
+- **An FK with no resolved action is `DeleteBehavior.NoAction`, stated explicitly.** This is
+  the one that is easy to get backwards, and a pre-merge review caught it: `no-action` IS
+  the database default and the DDL writes no `ON DELETE` clause for it, so emitting nothing
+  looks right — but EF does not read an absent `OnDelete` as "no action". It applies its own
+  convention, and for a **required** FK that convention is **`Cascade`**. Leaving the call
+  off would have made the generated context delete rows the database would have refused to
+  orphan: a destructive disagreement with the schema, introduced by the change meant to end
+  the disagreement. Confirmed against a real EF model, which reported `Cascade` where the
+  DDL says nothing.
+- **A TPH base and subtype declaring the same FK configure it once**, on the base that owns
+  the shared column — a duplicate is the ambiguity the adopter was working around.
+- **An M:N junction's two join columns ride on the `UsingEntity` call** that creates them,
+  so the per-reference pass skips *those columns* rather than the whole entity (a junction
+  carrying a third reference of its own still gets it configured). Those two keep EF's
+  existing convention unless the metadata declares an action: they have been configured that
+  way since FR-018, and pinning them to `NoAction` now would stop EF clearing junction rows
+  on a tracked delete — a behaviour change for every M:N adopter, and nothing to do with
+  this issue. The 1:N path defaults precisely because those relationships are **new** here.
+- **A resolved `set-null` over a `@required` FK warns and falls back to `NoAction`**, because
+  EF fails MODEL VALIDATION there and would take down the entire `DbContext` rather than one
+  relationship.
+
 `@onUpdate` is deliberately not surfaced — `DeleteBehavior` covers deletes only, so it
 remains a DDL-level fact.
 
@@ -294,8 +311,16 @@ worked example, the exact spelling that release turned into a load error; **#343
 `@verifiedBy` and the pre-`0.24.0` `@status` enum a full release after both went. Each was
 fixed by hand, in a different file — which is why the family recurred instead of converging.
 
-`scripts/check-doc-examples.ts` now loads every fenced JSON example under `docs/` and the
-`agent-context` skills against the **strict** registry, in the `gates` lane.
+`scripts/check-doc-examples.ts` now loads every fenced JSON **and YAML** example under
+`docs/` and the `agent-context` skills against the **strict** registry, in the `gates` lane.
+YAML is not optional coverage: ADR-0006 makes it the universal authoring front-end and the
+authoring skill teaches in it, so a sigil-free YAML block carrying a retired attribute is
+the #337 shape exactly. `.txt` is scanned alongside `.md` because `docs/llms/` ships
+`llms.txt` / `llms-full.txt` — the very files #343 landed in, which an `.md`-only sweep
+would have left invisible to the gate built for them. It found one on its first full run:
+`llms-full.txt`'s headline "defining metadata" example declared `createdAt` as a
+`field.string` carrying `@autoSet`, an attribute registered on `field.timestamp` — a broken
+model in the file whose entire audience is agents copying it.
 
 **The hard part was never extraction, it was telling a real drift from an illustration**,
 because most doc blocks are deliberately partial. The rule is the KIND of error, not a

@@ -61,26 +61,28 @@ public class MetaRelationship(TypeId typeId, string name) : MetaData(typeId, nam
     /// <c>@onDelete</c>, else the per-subtype default
     /// (<see cref="ON_DELETE_DEFAULT_BY_SUBTYPE"/>).
     /// </summary>
-    public string EffectiveOnDelete
-    {
-        get
-        {
-            if (Attr(RELATIONSHIP_ATTR_ON_DELETE) is string s && s != "") return s;
-            return ON_DELETE_DEFAULT_BY_SUBTYPE.TryGetValue(SubType, out var def)
-                ? def : ACTION_RESTRICT;
-        }
-    }
+    public string EffectiveOnDelete =>
+        OnDelete ?? (ON_DELETE_DEFAULT_BY_SUBTYPE.TryGetValue(SubType, out var def)
+            ? def : ACTION_RESTRICT);
+
+    /// <summary>
+    /// The explicitly declared <c>@onDelete</c>, or null when absent. Mirrors TS
+    /// <c>MetaRelationship.onDelete</c>: the ADR-0047 precedence has to tell "the author
+    /// wrote an action" apart from "the subtype default applies", so the RAW value is a
+    /// separate question from <see cref="EffectiveOnDelete"/>.
+    /// </summary>
+    // ADR-0039: resolving Attr() — @onDelete may be inherited via extends.
+    public string? OnDelete =>
+        Attr(RELATIONSHIP_ATTR_ON_DELETE) is string s && s.Length > 0 ? s : null;
+
+    /// <summary>The explicitly declared <c>@onUpdate</c>, or null when absent.</summary>
+    // ADR-0039: resolving Attr() — @onUpdate may be inherited via extends.
+    public string? OnUpdate =>
+        Attr(RELATIONSHIP_ATTR_ON_UPDATE) is string s && s.Length > 0 ? s : null;
 
     /// <summary>
     /// The effective FK referential action on parent key update — the explicit
     /// <c>@onUpdate</c>, else <see cref="ON_UPDATE_DEFAULT"/>.
     /// </summary>
-    public string EffectiveOnUpdate
-    {
-        get
-        {
-            if (Attr(RELATIONSHIP_ATTR_ON_UPDATE) is string s && s != "") return s;
-            return ON_UPDATE_DEFAULT;
-        }
-    }
+    public string EffectiveOnUpdate => OnUpdate ?? ON_UPDATE_DEFAULT;
 }
