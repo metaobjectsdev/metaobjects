@@ -1,0 +1,142 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Supplier",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "table",
+                "@table": "suppliers"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name"
+              }
+            },
+            {
+              "field.long": {
+                "name": "productId"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "identity.reference": {
+                "name": "product",
+                "@references": "Product",
+                "@fields": [
+                  "productId"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "Product",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "table",
+                "@table": "products"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "suppliers",
+                "@cardinality": "many",
+                "@objectRef": "Supplier"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "SupplierBrief",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "ProductWithSuppliers",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_product_suppliers"
+              }
+            },
+            {
+              "field.long": {
+                "name": "productId",
+                "extends": "Product.id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "Product.id"
+              }
+            },
+            {
+              "field.object": {
+                "name": "supplierBriefs",
+                "isArray": true,
+                "@objectRef": "SupplierBrief",
+                "children": [
+                  {
+                    "origin.aggregate": {
+                      "@agg": "collect",
+                      "@via": "Product.suppliers"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

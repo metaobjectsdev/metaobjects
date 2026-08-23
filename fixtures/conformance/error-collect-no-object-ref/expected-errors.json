@@ -1,0 +1,25 @@
+{
+  "errors": [
+    {
+      "code": "ERR_INVALID_ORIGIN",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.demo.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[3]['object.projection'].children[3]['field.object'].children[0]['origin.aggregate']"
+      }
+    },
+    {
+      "code": "ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.demo.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[3]['object.projection'].children[3]['field.object']"
+      }
+    }
+  ],
+  "warnings": []
+}

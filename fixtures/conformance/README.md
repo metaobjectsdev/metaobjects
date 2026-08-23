@@ -96,6 +96,47 @@ exercise an array field through the filter/sort tier, so they are what makes the
 rule (added to the TypeScript loader for #335) a cross-port contract rather than
 a TS-only unit test.
 
+## Whole-object rollup (#335)
+
+`origin.aggregate @agg:collect` with `@of` omitted is a whole-object rollup: the
+carrying field must be a `field.object @isArray @objectRef`, and the origin
+assembles the related rows as an array of that declared value object — each
+member matched by name against the `@via` path's TERMINAL entity — instead of
+an array of one scalar column.
+
+- `collect-whole-object` — the positive case: a `field.object @isArray
+  @objectRef` collects the related entity's rows as an array of the declared
+  value object. **This is the corpus's only whole-object rollup** — every other
+  `@agg:collect` fixture (`origin-agg-collect`, `error-agg-collect-*`) collects a
+  single scalar column via `@of`.
+- `error-collect-no-object-ref` — the carrying field declares no `@objectRef`.
+  Gates `ERR_INVALID_ORIGIN` (the whole-object-rollup rule itself) **and**
+  `ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF` (a `field.object` always requires
+  `@objectRef`, independent of collect) — both fire on the same shape, so both
+  are asserted.
+- `error-collect-ref-not-value` — `@objectRef` resolves to an `object.entity`
+  instead of an `object.value`. Gates `ERR_SUBTYPE_RULE_VIOLATION` (#210,
+  ADR-0028: a whole-object rollup must target a value).
+- `error-collect-no-via` — `@via` is absent, and with no `@of` there is no
+  entity to infer the relationship from. Gates `ERR_INVALID_ORIGIN`.
+- `error-collect-via-to-one` — every hop on `@via` is to-one (a passthrough
+  shape, not a rollup). Gates `ERR_ORIGIN_CARDINALITY`.
+- `error-collect-distinct` — `@distinct` is declared on a whole-object rollup (a
+  no-op once the value object carries the primary key). Gates
+  `ERR_INVALID_ORIGIN`.
+- `error-collect-member-unresolved` — a declared value-object member has no
+  matching field, by name, on the `@via` terminal entity. Gates
+  `ERR_COLLECT_MEMBER_UNRESOLVED` — failing open here is how #270 turned a
+  curated value object into the full entity, invisible in a diff.
+- `error-collect-member-type-mismatch` — a declared value-object member's
+  `field.<subType>` differs from the matched terminal-entity field's. Gates
+  `ERR_INVALID_ORIGIN` (a whole-object rollup preserves each member's declared
+  type).
+- `error-collect-orderby-not-terminal` — `@orderBy` names a field that exists on
+  a middle hop of a multi-hop `@via` path but not on the path's TERMINAL entity.
+  Gates `ERR_INVALID_ORIGIN` — `@orderBy` keys always resolve against the
+  terminal, never the head or an intermediate hop.
+
 ## Adding a fixture
 
 Create a directory; add `input/` and expectation files. No runner code changes —
@@ -120,6 +161,10 @@ carrying an origin. No surviving origin expresses a whole-object rollup along a
 relationship — `origin.aggregate @agg:collect` reduces a *column* via `@of`. That
 shape becomes expressible again when [#335](https://github.com/metaobjectsdev/metaobjects/issues/335)
 makes `@of` optional on `collect`; the fixture is the place to restore it.
+**Restored** — see "Whole-object rollup (#335)" below: `collect-whole-object` is
+a dedicated fixture, not a restoration of `flattened-kitchen-sink` itself (that
+fixture stays scoped to its own concern), but it is the corpus's positive case
+for exactly this shape.
 
 ## Generated fixtures (differential testing)
 
