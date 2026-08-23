@@ -1415,7 +1415,11 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             const hops = _validateViaPath(viaAttr, root, obj, field.name, src, errors);
             if (hops !== undefined) _checkAggregateCardinality(hops, obj, field.name, src, errors);
             // @orderBy keys resolve against the @via TERMINAL entity, not @of.
-            if (hasOrderBy) {
+            // Gated on hops !== undefined — _viaTerminalEntityNode does not
+            // reproduce _validateViaPath's malformed-shape guard, so an
+            // invalid @via (e.g. single-segment "A") must not also emit a
+            // second, misleadingly-scoped @orderBy error.
+            if (hasOrderBy && hops !== undefined) {
               const terminal = _viaTerminalEntityNode(viaAttr, root, obj);
               _validateOrderByKeys(orderBy, terminal, obj, field.name, "origin.aggregate @agg:collect", src, errors);
             }
