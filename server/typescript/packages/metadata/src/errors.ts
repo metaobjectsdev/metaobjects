@@ -163,6 +163,14 @@ export const ERROR_CODES = [
   // filter-operator band (e.g. field.object). Would silently emit a sort
   // entry over a column no dialect can ORDER BY.
   "ERR_SORTABLE_UNSUPPORTED_SUBTYPE",
+  // #335 Half A — a whole-object @agg:collect (no @of; the carrying field.object
+  // rolls related rows up as its declared @objectRef value object) is malformed:
+  // carrier is not a field.object with @objectRef, @via absent, @distinct declared
+  // (refused — a no-op whenever the value object carries the primary key), an
+  // @orderBy key not on the @via TERMINAL entity, or a member's declared type
+  // disagreeing with the matched terminal field's. Distinct from ERR_INVALID_ORIGIN
+  // so a fixture can tell this arm from a loader that still requires @of.
+  "ERR_COLLECT_WHOLE_OBJECT",
   // #335 Half A — a whole-object @agg:collect's value-object member has no
   // matching field (by name) on the @via terminal entity. The lowering
   // projects exactly the declared members; failing open here is how #270

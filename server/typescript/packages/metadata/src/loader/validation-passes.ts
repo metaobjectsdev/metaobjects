@@ -13,7 +13,7 @@
 import type { MetaData } from "../shared/meta-data.js";
 import type { MetaObject } from "../core/object/meta-object.js";
 import type { MetaReferenceIdentity } from "../core/identity/meta-identity.js";
-import { ParseError } from "../errors.js";
+import { ParseError, type ErrorCode } from "../errors.js";
 import { resolveObjectRef, didYouMeanHint } from "../naming-refs.js";
 import { PACKAGE_SEPARATOR, CHILD_REF_SEPARATOR } from "../shared/structural.js";
 import { resolvedSource, type ErrorSource } from "../source.js";
@@ -1040,8 +1040,12 @@ function _checkAggregateCardinality(
  *  - a matched member must agree on BOTH type axes (#185 type-preserving
  *    doctrine), so a scalar member cannot bind an array field or vice versa.
  *
- * Reuses ERR_INVALID_ORIGIN for the type disagreement rather than minting a
- * second code — it is the same "types disagree" shape the scalar arm reports.
+ * Both refusals carry a whole-object-specific code — ERR_COLLECT_MEMBER_UNRESOLVED
+ * for the unmatched member, ERR_COLLECT_WHOLE_OBJECT for the type disagreement.
+ * The latter is deliberately NOT the scalar arm's ERR_INVALID_ORIGIN: a loader
+ * that still requires @of rejects this metadata with ERR_INVALID_ORIGIN too, so
+ * sharing the code would make a corpus fixture pass on a port that implements
+ * nothing (the corpus compares only code + source, never message text).
  */
 function _checkCollectMembers(
   refTarget: MetaData,
@@ -1072,7 +1076,7 @@ function _checkCollectMembers(
         `origin.aggregate @agg:collect on ${obj.name}.${field.name}: value-object member ` +
           `'${member.name}' is ${memberLabel} but '${terminal.name}.${match.name}' ` +
           `is ${matchLabel} — a whole-object rollup preserves each member's type.`,
-        { code: "ERR_INVALID_ORIGIN", source: src }));
+        { code: "ERR_COLLECT_WHOLE_OBJECT", source: src }));
     }
   }
 }
@@ -1186,6 +1190,10 @@ function _checkPassthroughType(
  * and carries no vocabulary. Shared by `@agg:collect` (element order) and
  * `origin.first` (row selection). A missing related entity means a prior error
  * already fired — skip silently.
+ *
+ * `code` lets the whole-object `@agg:collect` arm report ERR_COLLECT_WHOLE_OBJECT
+ * instead; it defaults to ERR_INVALID_ORIGIN so the scalar `@of` and `origin.first`
+ * call sites keep their existing envelope byte-for-byte.
  */
 function _validateOrderByKeys(
   orderBy: unknown,
@@ -1195,6 +1203,7 @@ function _validateOrderByKeys(
   label: string,
   originSource: ErrorSource,
   errors: ParseError[],
+  code: ErrorCode = "ERR_INVALID_ORIGIN",
 ): void {
   if (!Array.isArray(orderBy) || relatedEntity === undefined) return;
   for (const raw of orderBy) {
@@ -1208,14 +1217,14 @@ function _validateOrderByKeys(
       errors.push(
         new ParseError(
           `${label} on ${obj.name}.${fieldName}: @orderBy key "${raw}" — no such field "${key}" on ${relatedEntity.name}.`,
-          { code: "ERR_INVALID_ORIGIN", source: originSource },
+          { code, source: originSource },
         ),
       );
     } else if (dir !== undefined && !(SORT_ORDER_VALUES as readonly string[]).includes(dir)) {
       errors.push(
         new ParseError(
           `${label} on ${obj.name}.${fieldName}: @orderBy key "${raw}" — direction must be one of ${SORT_ORDER_VALUES.join("|")}.`,
-          { code: "ERR_INVALID_ORIGIN", source: originSource },
+          { code, source: originSource },
         ),
       );
     }
@@ -1399,7 +1408,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
                 `origin.aggregate @agg:collect on ${obj.name}.${field.name}: @of is omitted, so this is a ` +
                   `whole-object rollup — the carrying field must be a field.object declaring @objectRef ` +
                   `(add @of to collect a single column instead).`,
-                { code: "ERR_INVALID_ORIGIN", source: src }));
+                { code: "ERR_COLLECT_WHOLE_OBJECT", source: src }));
               continue;
             }
             // #210's value-only rule is PAYLOAD-scoped and never reaches a
@@ -1426,7 +1435,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
               errors.push(new ParseError(
                 `origin.aggregate @agg:collect on ${obj.name}.${field.name}: @via is required on a ` +
                   `whole-object rollup — there is no @of entity to infer the relationship from.`,
-                { code: "ERR_INVALID_ORIGIN", source: src }));
+                { code: "ERR_COLLECT_WHOLE_OBJECT", source: src }));
               continue;
             }
             // @distinct is refused on the object form. It is NOT an engine limit
@@ -1437,7 +1446,7 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
               errors.push(new ParseError(
                 `origin.aggregate @agg:collect on ${obj.name}.${field.name}: @distinct is not supported on a ` +
                   `whole-object rollup (it is a no-op whenever the value object carries the primary key).`,
-                { code: "ERR_INVALID_ORIGIN", source: src }));
+                { code: "ERR_COLLECT_WHOLE_OBJECT", source: src }));
               continue;
             }
             // One walk yields both the hops (cardinality) and the terminal
@@ -1449,7 +1458,8 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
             if (via !== undefined) {
               _checkAggregateCardinality(via.hops, obj, field.name, src, errors);
               // @orderBy keys resolve against the @via TERMINAL entity, not @of.
-              _validateOrderByKeys(orderBy, via.terminal, obj, field.name, "origin.aggregate @agg:collect", src, errors);
+              _validateOrderByKeys(orderBy, via.terminal, obj, field.name, "origin.aggregate @agg:collect", src, errors,
+                "ERR_COLLECT_WHOLE_OBJECT");
               if (refTarget !== undefined) {
                 _checkCollectMembers(refTarget, via.terminal, obj, field, src, errors);
               }

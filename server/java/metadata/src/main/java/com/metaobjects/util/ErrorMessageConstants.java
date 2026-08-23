@@ -219,6 +219,19 @@ public final class ErrorMessageConstants {
     public static final String ERR_SORTABLE_UNSUPPORTED_SUBTYPE = "ERR_SORTABLE_UNSUPPORTED_SUBTYPE";
 
     /**
+     * #335 Half A — a whole-object {@code @agg:collect} (no {@code @of}; the carrying
+     * {@code field.object} rolls related rows up as its declared {@code @objectRef} value
+     * object) is malformed: the carrier is not a {@code field.object} with {@code @objectRef},
+     * {@code @via} is absent, {@code @distinct} is declared (refused — a no-op whenever the
+     * value object carries the primary key), an {@code @orderBy} key does not resolve against
+     * the {@code @via} TERMINAL entity, or a member's declared type disagrees with the matched
+     * terminal field's. Distinct from {@code ERR_INVALID_ORIGIN} so a conformance fixture can
+     * tell this arm from a loader that still requires {@code @of}.
+     * Cross-language contract: {@code ERR_COLLECT_WHOLE_OBJECT}.
+     */
+    public static final String ERR_COLLECT_WHOLE_OBJECT = "ERR_COLLECT_WHOLE_OBJECT";
+
+    /**
      * #335 Half A — a whole-object {@code @agg:collect}'s value-object member has no
      * matching field (by name) on the {@code @via} terminal entity. The lowering
      * projects exactly the declared members; failing open here is how #270 turned a

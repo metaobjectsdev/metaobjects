@@ -905,6 +905,71 @@ git commit -m "test(conformance): gate the whole-object rollup and its six error
 
 ---
 
+## Task 7b: Half A — mint `ERR_COLLECT_WHOLE_OBJECT` so the fixtures discriminate
+
+**Added after Task 7, ruled by Doug 2026-08-23.** Not in the original plan.
+
+**Files:**
+- Modify: the six error ledgers — `fixtures/conformance/ERROR-CODES.json`,
+  `server/typescript/packages/metadata/src/errors.ts`,
+  `server/python/src/metaobjects/errors.py`, `server/csharp/MetaObjects/Errors.cs`,
+  `server/java/.../com/metaobjects/ErrorCode.java`,
+  `server/java/.../com/metaobjects/util/ErrorMessageConstants.java`
+- Modify: `server/typescript/packages/metadata/src/loader/validation-passes.ts`
+- Modify: the five fixtures' `expected-errors.json`
+- Modify: `server/typescript/packages/metadata/test/validation-collect-whole-object.test.ts`
+
+**Interfaces:**
+- Consumes: Tasks 5–7 (the eight rules and the nine fixtures).
+- Produces: a corpus that goes RED on an unported port, which is Task 8's signal.
+
+**Why:** five of the eight negative fixtures assert `ERR_INVALID_ORIGIN` — the same code
+a loader that still REQUIRES `@of` emits for that same metadata. The corpus compares only
+`code` + `source` (`spec/conformance-tests.md` §"Errors and warnings"; *"Error message text
+is never compared"*), so those five pass **vacuously** on a port that implements nothing.
+Verified: Python conformance failed 4 of the 9 before this task.
+
+**Scope — the five arms that move**, all inside the `@of`-absent branch:
+carrier-not-`field.object`/no-`@objectRef`; `@via` required; `@distinct` refused;
+`@orderBy` key not on the `@via` TERMINAL entity; value-object member type disagreement.
+Rules 2/5/7 keep their existing distinct codes (`ERR_SUBTYPE_RULE_VIOLATION`,
+`ERR_ORIGIN_CARDINALITY`, `ERR_COLLECT_MEMBER_UNRESOLVED`) — untouched.
+
+- [x] **Step 1: Six ledgers.** Mirror the `ERR_COLLECT_MEMBER_UNRESOLVED` entries added in
+  `e67cd9340`. Java needs BOTH `ErrorCode.java` and `ErrorMessageConstants.java`.
+  The TS ledger test compares SORTED sets, so placement is free — keep it beside its sibling.
+
+- [x] **Step 2: The `@orderBy` arm goes through a SHARED helper.** `_validateOrderByKeys` is
+  also called by the scalar `@of` arm and by `origin.first`. Give it a trailing
+  `code: ErrorCode = "ERR_INVALID_ORIGIN"` parameter and pass the new code from the
+  whole-object call site only — the other two call sites keep their envelope byte-for-byte.
+
+- [x] **Step 3: Retarget the five fixtures.** In `error-collect-no-object-ref` change only the
+  FIRST entry; `ERR_OBJECT_FIELD_WITHOUT_OBJECT_REF` stays second (the envelope assertion is
+  positional, and all four ports run origin validation before field-object-storage validation).
+
+- [x] **Step 4: Prove the signal is real.** Run an UNPORTED port's corpus and confirm the
+  failure count rises from 4 to 9.
+
+```bash
+cd server/python && uv run --extra integration pytest -q -k conformance
+```
+
+- [x] **Step 5: Commit**
+
+```bash
+git add fixtures/conformance/ERROR-CODES.json fixtures/conformance/error-collect-* \
+        server/typescript/packages/metadata/src/errors.ts \
+        server/typescript/packages/metadata/src/loader/validation-passes.ts \
+        server/typescript/packages/metadata/test/validation-collect-whole-object.test.ts \
+        server/python/src/metaobjects/errors.py server/csharp/MetaObjects/Errors.cs \
+        server/java/metadata/src/main/java/com/metaobjects/ErrorCode.java \
+        server/java/metadata/src/main/java/com/metaobjects/util/ErrorMessageConstants.java
+git commit -m "feat(metamodel): the whole-object arm gets its own error code (#335)"
+```
+
+---
+
 ## Task 8: Half A — port the loader rules to C#, Java, Python
 
 **Files:**
@@ -943,12 +1008,16 @@ cd server/java && mvn -q -pl metadata test
 
 Expected: green on all nine new fixtures. Same two traps as Task 4, Step 4.
 
-**Green is NOT proof here.** Five of the eight negatives (no-via, no-object-ref,
-distinct, member-type-mismatch, orderby-not-terminal) assert `ERR_INVALID_ORIGIN`,
-which is ALSO what an unported loader emits for the old "missing @of" — so they pass
-vacuously before you write a line. Verify each rule fires for its OWN reason: neutralise
-one guard at a time (`if (false && <cond>)`) in a COPY under /tmp and re-run that
-fixture. Never `git stash` — worktrees share one stash list.
+**Task 7b closed the vacuous-pass hole.** Those five negatives used to assert
+`ERR_INVALID_ORIGIN` — what an unported loader emits for the old "missing @of" — so they
+passed before a line was written. They now assert `ERR_COLLECT_WHOLE_OBJECT`, and all NINE
+fail on an unported port (Python: 9 failed / 568 passed, measured). So the corpus IS a
+red-before/green-after signal per rule.
+
+It still is not proof that each fixture fails for its OWN reason rather than a neighbour's
+guard. Verify that the way Task 7's review did: neutralise one guard at a time
+(`if (false && <cond>)`) in a COPY under /tmp and re-run that fixture. Never `git stash` —
+worktrees share one stash list, so a stash op reaches other sessions' work.
 
 - [ ] **Step 4: Commit**
 

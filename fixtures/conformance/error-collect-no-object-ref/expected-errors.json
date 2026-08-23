@@ -1,7 +1,7 @@
 {
   "errors": [
     {
-      "code": "ERR_INVALID_ORIGIN",
+      "code": "ERR_COLLECT_WHOLE_OBJECT",
       "source": {
         "format": "json",
         "files": [

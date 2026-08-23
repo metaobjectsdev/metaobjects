@@ -29,9 +29,15 @@
 // _validateViaPath/_checkAggregateCardinality call AND the entire
 // `_viaTerminalEntityNode` call site (every caller of the helper) still
 // passed all six original tests. Two arms added below close that gap, and
-// the three arms that previously discriminated only by the shared
-// ERR_INVALID_ORIGIN code now also assert each rule's distinctive message
-// fragment.
+// the three arms that previously discriminated only by a shared code now
+// also assert each rule's distinctive message fragment.
+//
+// The five arms that once shared ERR_INVALID_ORIGIN now carry
+// ERR_COLLECT_WHOLE_OBJECT. ERR_INVALID_ORIGIN is what a loader still
+// REQUIRING @of emits for this same metadata, so the shared code could not
+// tell "the whole-object arm rejected this" from "nothing is implemented" —
+// which is precisely how five of the shared conformance fixtures passed
+// against three unported ports.
 
 import { describe, test, expect } from "bun:test";
 import { MetaDataLoader } from "../src/loader/meta-data-loader.js";
@@ -145,7 +151,7 @@ describe("@of-absent collect (whole-object rollup)", () => {
       "children": [ { "origin.aggregate": { "@agg": "collect", "@via": "Product.suppliers" } } ]
     }}`);
     const errors = await loadErrors(src);
-    const hit = errors.find((e) => e.code === "ERR_INVALID_ORIGIN");
+    const hit = errors.find((e) => e.code === "ERR_COLLECT_WHOLE_OBJECT");
     expect(hit).toBeDefined();
     expect(hit?.message).toContain("supplierBriefs");
     expect(hit?.message).toContain("must be a field.object");
@@ -168,7 +174,7 @@ describe("@of-absent collect (whole-object rollup)", () => {
       "children": [ { "origin.aggregate": { "@agg": "collect" } } ]
     }}`);
     const errors = await loadErrors(src);
-    const hit = errors.find((e) => e.code === "ERR_INVALID_ORIGIN");
+    const hit = errors.find((e) => e.code === "ERR_COLLECT_WHOLE_OBJECT");
     expect(hit).toBeDefined();
     expect(hit?.message).toContain("supplierBriefs");
     expect(hit?.message).toContain("@via is required");
@@ -180,7 +186,7 @@ describe("@of-absent collect (whole-object rollup)", () => {
       "children": [ { "origin.aggregate": { "@agg": "collect", "@via": "Product.suppliers", "@distinct": true } } ]
     }}`);
     const errors = await loadErrors(src);
-    const hit = errors.find((e) => e.code === "ERR_INVALID_ORIGIN");
+    const hit = errors.find((e) => e.code === "ERR_COLLECT_WHOLE_OBJECT");
     expect(hit).toBeDefined();
     expect(hit?.message).toContain("supplierBriefs");
     expect(hit?.message).toContain("@distinct is not supported");
@@ -211,7 +217,7 @@ describe("@of-absent collect (whole-object rollup)", () => {
     // regression that stops at the first hop would name "B", and deleting
     // the `if (hasOrderBy...)` call site entirely emits no such error at all.
     const errors = await loadErrors(CHAIN_MODEL);
-    const hit = errors.find((e) => e.code === "ERR_INVALID_ORIGIN" && e.message.includes("@orderBy"));
+    const hit = errors.find((e) => e.code === "ERR_COLLECT_WHOLE_OBJECT" && e.message.includes("@orderBy"));
     expect(hit).toBeDefined();
     expect(hit?.message).toContain('no such field "name" on C');
   });
@@ -250,7 +256,7 @@ describe("@of-absent collect (whole-object rollup)", () => {
       `{ "field.long": { "name": "id" } }, { "field.long": { "name": "name" } }`,
     );
     const errors = await loadErrors(src);
-    const hit = errors.find((e) => e.code === "ERR_INVALID_ORIGIN" && e.message.includes("value-object member"));
+    const hit = errors.find((e) => e.code === "ERR_COLLECT_WHOLE_OBJECT" && e.message.includes("value-object member"));
     expect(hit).toBeDefined();
     expect(hit?.message).toContain("'name' is field.long");
     expect(hit?.message).toContain("Supplier.name' is field.string");
@@ -268,7 +274,7 @@ describe("@of-absent collect (whole-object rollup)", () => {
       `{ "field.long": { "name": "id" } }, { "field.string": { "name": "name", "isArray": true } }`,
     );
     const errors = await loadErrors(src);
-    const hit = errors.find((e) => e.code === "ERR_INVALID_ORIGIN" && e.message.includes("value-object member"));
+    const hit = errors.find((e) => e.code === "ERR_COLLECT_WHOLE_OBJECT" && e.message.includes("value-object member"));
     expect(hit).toBeDefined();
     expect(hit?.message).toContain("'name' is field.string[]");
     expect(hit?.message).toContain("Supplier.name' is field.string");
