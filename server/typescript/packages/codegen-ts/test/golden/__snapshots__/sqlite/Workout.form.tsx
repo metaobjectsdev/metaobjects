@@ -7,6 +7,28 @@ import { useEntityForm } from "@metaobjectsdev/react";
 import type { ReactElement } from "react";
 import type { SubmitHandler } from "react-hook-form";
 
+const BLANK_OPTIONAL_FIELDS = ["durationMinutes"] as const;
+
+/**
+ * Normalize blank optional inputs on the way out of the form (#223).
+ * On create a blank field is OMITTED (the column defaults); on edit it is sent as
+ * explicit `null` (present-null clears, per the FR-035 PATCH tristate).
+ */
+function normalizeBlankOptionals(values: Record<string, unknown>, isEdit: boolean): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...values };
+  for (const key of BLANK_OPTIONAL_FIELDS) {
+    if (out[key] !== "") {
+      continue;
+    }
+    if (isEdit) {
+      out[key] = null;
+    } else {
+      delete out[key];
+    }
+  }
+  return out;
+}
+
 export interface WorkoutFormProps {
   onSubmit: SubmitHandler<Partial<WorkoutRow>>;
   defaultValues?: Partial<WorkoutRow>;
@@ -34,7 +56,13 @@ export function WorkoutForm(props: WorkoutFormProps): ReactElement {
     <form
       className={props.className ?? "metaobjects-form"}
       data-entity={Workout.$entity}
-      onSubmit={form.handleSubmit(props.onSubmit as never)}
+      onSubmit={form.handleSubmit(
+        ((values: Record<string, unknown>, event?: unknown) =>
+          props.onSubmit(
+            normalizeBlankOptionals(values, props.defaultValues !== undefined) as never,
+            event as never,
+          )) as never,
+      )}
     >
       <div className="metaobjects-field" key="weekId">
         <label className="metaobjects-field-label" htmlFor={Workout.weekId.name}>{Workout.weekId.label}</label>

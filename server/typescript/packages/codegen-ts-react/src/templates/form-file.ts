@@ -291,6 +291,34 @@ function enumValues(field: MetaField): string[] {
   return (field.attr(FIELD_ATTR_VALUES) as string[] | undefined) ?? [];
 }
 
+/**
+ * Fields whose control can submit `""` for "the user left it blank" (#223).
+ *
+ * An HTML control has no way to distinguish "empty" from "not provided" — a blank text,
+ * date or number input, an unselected `<option value="">`, and an empty textarea all
+ * yield the empty string. For a nullable date/timestamp column that is not a value at
+ * all (it fails the column's type), and for every other nullable column it makes a
+ * `!= null` check read a blank field as SET.
+ *
+ * Excluded because they cannot produce `""`: a checkbox (always boolean) and a
+ * `view.image` (Controller-managed, carries a storage key). A `@required` field is
+ * excluded too — blank there is a validation error the schema already owns, and
+ * rewriting it would convert a caught error into a silent null.
+ */
+/** Names of the two symbols the blank-normalizer emits, kept out of the template string. */
+const BLANK_FIELDS_CONST = "BLANK_OPTIONAL_FIELDS";
+const BLANK_NORMALIZER = "normalizeBlankOptionals";
+
+function blankableOptionalFields(fields: readonly MetaField[]): string[] {
+  return fields
+    .filter((f) => f.attr(FIELD_ATTR_REQUIRED) !== true)
+    .filter((f) => {
+      const kind = viewKindFor(f, f.views()[0]); // resolving accessor (ADR-0039)
+      return kind !== VIEW_SUBTYPE_CHECKBOX && kind !== VIEW_SUBTYPE_IMAGE;
+    })
+    .map((f) => f.name);
+}
+
 export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
   const entityName = entity.name;
   // Import the entity's own file. Same target → relative "./Entity"; cross
@@ -327,6 +355,45 @@ export function renderFormFile(entity: MetaObject, ctx: RenderContext): string {
   const ReactElementSym = imp("t:ReactElement@react");
   const SubmitHandlerSym = imp("t:SubmitHandler@react-hook-form");
   const useEntityFormSym = imp("useEntityForm@@metaobjectsdev/react");
+
+  // #223 — a blank optional control submits `""`, which is not what the user meant and,
+  // on a nullable date/timestamp column, is not even a legal value. The correct handling
+  // is a TRISTATE and it needs create-vs-edit awareness, which is why it cannot be the
+  // blanket "strip empty strings" a downstream project reached for: under FR-035's
+  // present-key PATCH semantics an ABSENT key means "leave untouched", so stripping a
+  // cleared field on the edit path silently fails to clear it.
+  //
+  //   CREATE (no defaultValues) — omit the key, so the column's DEFAULT/NULL applies.
+  //   EDIT   (defaultValues)    — send explicit null, which is what CLEARS the column.
+  //
+  // Emitted only when the entity actually has a blankable optional field, so an
+  // all-required form's output is byte-identical to before.
+  const blankFields = blankableOptionalFields(fields);
+  const blankHelper = blankFields.length === 0 ? "" : `
+const ${BLANK_FIELDS_CONST} = ${JSON.stringify(blankFields)} as const;
+
+/**
+ * Normalize blank optional inputs on the way out of the form (#223).
+ * On create a blank field is OMITTED (the column defaults); on edit it is sent as
+ * explicit \`null\` (present-null clears, per the FR-035 PATCH tristate).
+ */
+function ${BLANK_NORMALIZER}(values: Record<string, unknown>, isEdit: boolean): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...values };
+  for (const key of ${BLANK_FIELDS_CONST}) {
+    if (out[key] !== '') continue;
+    if (isEdit) out[key] = null;
+    else delete out[key];
+  }
+  return out;
+}
+`;
+  // The cast chain is unchanged in spirit from the previous `props.onSubmit as never`:
+  // RHF's SubmitHandler is generic over the form's own inferred shape, which is not the
+  // Row type this component's prop is declared against.
+  const submitHandlerExpr = blankFields.length === 0
+    ? "props.onSubmit as never"
+    : `((values: Record<string, unknown>, event?: unknown) =>\n        props.onSubmit(` +
+      `${BLANK_NORMALIZER}(values, props.defaultValues !== undefined) as never, event as never)) as never`;
 
   // The flat scalar block: a label + pre-bound input + error span, driven
   // entirely by the entity constants via `form.input.<field>`. Unchanged.
@@ -473,7 +540,7 @@ import {
 import type { ${entityName} as ${entityName}Row } from ${JSON.stringify(entityFileSpec)};
 ${useFieldArrayImport}${imageImports}`;
 
-  const body = code`
+  const body = code`${blankHelper}
 export interface ${entityName}FormProps {
   onSubmit: ${SubmitHandlerSym}<Partial<${entityName}Row>>;
   defaultValues?: Partial<${entityName}Row>;
@@ -501,7 +568,7 @@ export function ${entityName}Form(props: ${entityName}FormProps): ${ReactElement
     <form
       className={props.className ?? 'metaobjects-form'}
       data-entity={${entityName}.$entity}
-      onSubmit={form.handleSubmit(props.onSubmit as never)}
+      onSubmit={form.handleSubmit(${submitHandlerExpr})}
     >
 ${fieldBlocks}
       <div className="metaobjects-form-actions">
