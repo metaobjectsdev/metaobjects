@@ -80,6 +80,22 @@ API-surface checks; a fixture may have both.
 Fixtures assert error *codes*, never message prose. Codes are registered in
 `ERROR-CODES.json`. Adding a code is an additive edit to that file.
 
+## Array fields through the filter/sort tier (#335)
+
+- `error-filterable-array-field` — a `field.string @isArray @filterable` fails
+  `ERR_FILTERABLE_UNSUPPORTED_SUBTYPE`: no FR-009 operator (eq/ne/gt/gte/lt/lte/in/like/isNull)
+  applies to a collection column.
+- `error-sortable-array-field` — the same shape with `@sortable` in place of
+  `@filterable` fails `ERR_SORTABLE_UNSUPPORTED_SUBTYPE`: a collection column has
+  no ordering.
+
+A structural scan of the whole repo (1321 JSON + 124 YAML files) found **zero**
+fields carrying both `isArray: true` and `@filterable`/`@sortable: true` before
+these two fixtures were added — they are the **only** cases in the corpus that
+exercise an array field through the filter/sort tier, so they are what makes the
+rule (added to the TypeScript loader for #335) a cross-port contract rather than
+a TS-only unit test.
+
 ## Adding a fixture
 
 Create a directory; add `input/` and expectation files. No runner code changes —
