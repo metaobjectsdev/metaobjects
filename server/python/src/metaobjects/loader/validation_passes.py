@@ -26,6 +26,7 @@ from ..meta.core.field.field_constants import (
     FIELD_ATTR_INT_VALUE_MAP,
     FIELD_ATTR_OBJECT_REF,
     FIELD_ATTR_REQUIRED,
+    FIELD_ATTR_SORTABLE,
     FIELD_ATTR_STORAGE,
     FIELD_ATTR_VALUE_TYPE,
     FIELD_ATTR_VALUES,
@@ -3181,7 +3182,7 @@ def _validate_sortable_has_supported_subtype(
         if node.type != TYPE_OBJECT or not isinstance(node, MetaObject):
             continue
         for field in node.fields():
-            if field.attrs().get("sortable") is not True:
+            if field.attrs().get(FIELD_ATTR_SORTABLE) is not True:
                 continue
             # ADR-0039: resolved_is_array(), never the own `is_array` flag.
             is_array = field.resolved_is_array()

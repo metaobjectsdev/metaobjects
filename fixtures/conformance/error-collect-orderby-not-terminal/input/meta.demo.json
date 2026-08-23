@@ -82,6 +82,11 @@
               }
             },
             {
+              "field.string": {
+                "name": "name"
+              }
+            },
+            {
               "relationship.association": {
                 "name": "b",
                 "@cardinality": "many",
