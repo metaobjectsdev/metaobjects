@@ -515,6 +515,35 @@ git commit -m "fix(metamodel): array filter/sort rules in the remaining three po
 
 **Why:** Today `@of` is required for `collect`, so only a single scalar column can be rolled up. `@of` is already `"required": false` in the registry — the constraint is validation-only.
 
+> ### CORRECTION — use this model, not the one written below
+>
+> The model in Step 1 is **wrong** and was verified so by execution. It produces two structural
+> errors that have nothing to do with #335: `ERR_SUBTYPE_RULE_VIOLATION` (*"a projection may
+> only extend another projection"* — it has `object.projection extends "Product"`, an entity)
+> and `ERR_PROJECTION_IDENTITY_NOT_EXTENDED` (a projection identity must `extends` an entity
+> identity, not declare fresh `@fields`).
+>
+> Use this shape instead — copied from the corpus's own `error-origin-aggregate-no-to-many`
+> and **verified**: the scalar baseline loads with **0 errors**, and the whole-object form
+> produces **exactly one** error, `ERR_INVALID_ORIGIN … missing @of`.
+>
+> ```jsonc
+> { "object.projection": { "name": "ProductWithSuppliers", "children": [
+>     { "field.uuid": { "name": "productId", "extends": "acme::Product.id" } },
+>     <the collect field under test>,
+>     { "identity.primary": { "name": "id", "extends": "acme::Product.id" } }
+> ]}}
+> ```
+>
+> The projection carries **no** object-level `extends`; each field carries its own, and the
+> identity uses `extends` rather than `@fields`. Entities are plain: `source.rdb @table`,
+> `field.uuid id`, `identity.primary { name: "id", @fields: ["id"] }`, and `Product` holds
+> `relationship.association { name: "suppliers", @objectRef: "acme::Supplier", @cardinality: "many" }`.
+>
+> Also note: `MetaDataLoader.load()` is **async** and returns errors on the result — it does
+> not throw. `await` it. Copy the exact harness from
+> `server/typescript/packages/metadata/test/validation-filterable-array.test.ts`.
+
 - [ ] **Step 1: Write the failing test**
 
 Create `server/typescript/packages/metadata/test/validation-collect-whole-object.test.ts`. Include a **positive** case and each **negative** arm:
@@ -933,10 +962,14 @@ git commit -m "feat(metamodel): whole-object rollup in the remaining three ports
 - [ ] **Step 1: Find every copy**
 
 ```bash
-grep -rln "Required for count/sum/avg/min/max/collect" .
+grep -rln "Required for count/sum/avg/min/max/collect" . --exclude-dir=docs
 ```
 
-Expected: exactly 7 files.
+Expected: exactly **7 product files** — the seven listed under **File Structure**.
+
+**Exclude `docs/superpowers/`.** Without that flag the grep returns **9**, because this plan and
+its spec both quote the sentence. Verified. Editing those two is harmless but pointless; they
+are prose about the change, not copies of the contract.
 
 - [ ] **Step 2: Rewrite the sentence identically in all seven**
 
