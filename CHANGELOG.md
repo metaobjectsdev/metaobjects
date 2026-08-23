@@ -64,7 +64,12 @@ array — so presence and content are asked as separate questions.
 **`metamodelVersion` moves `0.10` → `0.11`** — `@fields` becomes optional on both node
 types, which the gate classifies as additive. The package line stays a PATCH; that
 severance is exactly what [ADR-0035 Amendment 2](docs/RELEASING.md) is for, and post-1.0
-the changelog is the only signal on the metadata axis.
+the changelog is the only signal on the metadata axis. **This relaxation is `0.11`'s sole
+claimant** — the slot is spent by shipping it, so the next registered-vocabulary change
+moves to `0.12`, whatever else is in flight when it lands. Worth stating because it has
+already been misread once: unreleased work on another branch touched the same number on
+the reasoning that `0.11` was still unclaimed, which would have surfaced as a red gate at
+the end of that work rather than at its start.
 
 **Two things this took, worth recording.** The Java port needed a fix the other three did
 not: beyond the registry declaration, `ValidationPhase.validateIdentityNode` carried a
