@@ -1,6 +1,6 @@
 # MetaObjects Roadmap
 
-_Last refreshed 2026-08-05._
+_Last refreshed 2026-08-24._
 
 > **This file is the single source of truth for the roadmap.** GitHub Milestones + Issues +
 > the Project board mirror it. Keeping them in sync: `docs/ROADMAP-PROCESS.md`.
@@ -48,8 +48,8 @@ under **Shipped**; planned FRs under **Planned** + the **Release plan**. ✅ shi
 | FR-034 | Ecosystem tier — connected systems (`system`/`container`/`surface`/`environment`) | 📋 designed (**draft, deferred post-1.0**) | 1.1 | — |
 | FR-035 | Present-key PATCH tristate (mutation surface) | 🟢 shipped 5 ports (absent→untouched / present-null→clears / null-on-`@required`→400); coordinated **breaking** release held for FR-036 | 1.0 | — |
 | FR-036 | Constraint-validation enforcement + semantic pins | 🟢 shipped 5 ports in the coordinated `0.16.0`/`7.8.0` breaking release (required-string = non-empty·accept-whitespace · `@Pattern` = full-match · strictest-wins length; HTTP-tier enforcement all 5 ports; TPH tristate) | 1.0 | — |
-| FR-037 | Projection expressiveness (`origin.rank`) + field write-access modes (`@mutability`) | ⚪ requirements (pre-design), decisions resolved. **R1/R2 retire registered vocabulary (`@readOnly`), so the breaking half must ride a coordinated pre-1.0 breaking MINOR** — post-1.0 a metamodel-vocabulary break moves `metamodelVersion`'s major (ADR-0035 §1 + Am. 2) and should still ride the pre-1.0 slot, where the caret rule is a real gate. `origin.rank` + the rest are additive → 1.1. **R2's designated re-entry shape — `@agg: collect` with `@of` OPTIONAL, i.e. whole-object rollup — is filed as [#335](https://github.com/metaobjectsdev/metaobjects/issues/335) and is ADDITIVE**, so it does not ride the breaking slot: `@of` is already `required: false` in the registry, the constraint lives in validation, and relaxing it makes previously-invalid metadata valid. Design: `docs/superpowers/specs/2026-08-10-fr-037-projection-expressiveness-and-write-once-design.md` | 1.0 · 1.1 | [#335](https://github.com/metaobjectsdev/metaobjects/issues/335) |
-| FR-038 | Requirement-derived test stubs (inverts `@verifiedBy`) | ⚪ proposed. Generate the test from the requirement so the link is structural, not a name the author picks — an audit of one 19-name ledger found 4 names that did not verify their claim. **The `@verifiedBy` retirement is breaking and rides the SAME pre-1.0 MINOR as FR-037's R1/R2, not a second one**; the stub generator is additive → 1.1. Design: `docs/superpowers/specs/2026-08-15-fr-038-requirement-derived-test-stubs-design.md` | 1.0 · 1.1 | — |
+| FR-037 | Projection expressiveness (`origin.rank`) + field write-access modes (`@mutability`) | 🟢 R1 + R2 shipped `0.24.0`; #335 shipped `0.24.1`; R3/R4/R5 open. **R1/R2 retire registered vocabulary (`@readOnly`), so the breaking half must ride a coordinated pre-1.0 breaking MINOR** — post-1.0 a metamodel-vocabulary break moves `metamodelVersion`'s major (ADR-0035 §1 + Am. 2) and should still ride the pre-1.0 slot, where the caret rule is a real gate. `origin.rank` + the rest are additive → 1.1. **R1 and R2 SHIPPED in the coordinated `0.24.0` breaking MINOR** (`@readOnly` → `@mutability`; `origin.collection` → reserved-not-registered). **R2's designated re-entry shape — `@agg: collect` with `@of` OPTIONAL, the whole-object rollup, [#335](https://github.com/metaobjectsdev/metaobjects/issues/335) — SHIPPED in `0.24.1`** and was additive as predicted: `@of` was already `required: false` in the registry, the constraint lived in validation, and relaxing it made previously-invalid metadata valid. **R3/R4/R5 remain**, all additive → 1.1. Design: `docs/superpowers/specs/2026-08-10-fr-037-projection-expressiveness-and-write-once-design.md` | 1.0 · 1.1 | [#335](https://github.com/metaobjectsdev/metaobjects/issues/335) |
+| FR-038 | Requirement-derived test stubs (inverts `@verifiedBy`) | 🟢 the vocabulary retirement shipped `0.24.0`; the stub generator remains. Generate the test from the requirement so the link is structural, not a name the author picks — an audit of one 19-name ledger found 4 names that did not verify their claim. **The `@verifiedBy` retirement was breaking and rode the SAME pre-1.0 MINOR as FR-037's R1/R2, not a second one — SHIPPED in `0.24.0`** (`@verifiedBy`, `@supersededBy`, and `@status: abandoned|superseded` all deregistered). The stub generator is additive and remains → 1.1. Design: `docs/superpowers/specs/2026-08-15-fr-038-requirement-derived-test-stubs-design.md` | 1.0 · 1.1 | — |
 
 _(FR-001 was the original metamodel foundation — pre-dates the FR-numbered tracking.)_
 _(FR-032 was developed under the working number "FR-026" — see commit history; renumbered to avoid the FR-026=Forms collision. Design: `docs/superpowers/specs/2026-06-13-fr-032-canonical-fqn-refs-design.md`, ADR-0032.)_
@@ -258,8 +258,30 @@ perform.
 Still open from FR-037: **R3/R4/R5** and the FR-038 **requirement-test stub generator**
 remain 1.1 work, and all of them are additive — none needs a breaking slot.
 [#335](https://github.com/metaobjectsdev/metaobjects/issues/335) (`@agg: collect` with `@of`
-optional) is likewise additive and is the designated re-entry shape for the capability
-`origin.collection` named.
+optional) was the designated re-entry shape for the capability `origin.collection` named, and
+**shipped in `0.24.1`** — see the section below.
+
+### `0.24.1` (2026-08-24) — the re-entry shape lands, and a G3 question opens
+
+Coordinated PATCH across all four registries (npm / PyPI / NuGet `0.24.1`, Maven `7.24.1`).
+Headline is **[#335](https://github.com/metaobjectsdev/metaobjects/issues/335), the whole-object
+rollup** — `@of` becomes OPTIONAL on `@agg: collect`, closing the one coverage gap
+`origin.collection`'s retirement had to state rather than close. Additive, as FR-037 predicted.
+
+**But the release also moved `metamodelVersion` `0.11` → `0.12` and made two previously-LOADING
+forms fail to load** — an index key carrying both `@fields` and `@expr`
+([#342](https://github.com/metaobjectsdev/metaobjects/issues/342)), and `@filterable`/`@sortable`
+on an `isArray` field (#335 Half B). Both were cut as PATCH on the previously-wrong-acceptance
+doctrine this project has now applied four times (the `0.19.1` `@min` clamp, the `0.21.6` `like`
+case-sensitivity fix, and both of these): each corrects acceptance that was always wrong rather
+than changing a contract, and in both cases the adopter fix is deleting an attribute that was
+doing nothing.
+
+**That opens a question §G3 has to answer explicitly, and it is not answered yet** — see
+[`docs/1.0-readiness.md`](../docs/1.0-readiness.md) §G3. The quiet-period clock reset to `0.24.0`;
+whether `0.24.1` is the quiet release that satisfies it, or resets it again, depends on whether a
+previously-wrong-acceptance correction counts as "metamodel-breaking" for G3's purpose. **This is
+unratified.** The recommendation recorded there is the conservative one: it does NOT satisfy G3.
 
 ### What the window carried, and why it precedes GA
 
