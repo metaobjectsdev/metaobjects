@@ -1,0 +1,164 @@
+{
+  "metadata.root": {
+    "package": "acme::chain",
+    "children": [
+      {
+        "object.entity": {
+          "name": "C",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "table",
+                "@table": "cs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "B",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "table",
+                "@table": "bs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "c",
+                "@cardinality": "many",
+                "@objectRef": "C"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.entity": {
+          "name": "A",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "table",
+                "@table": "as"
+              }
+            },
+            {
+              "field.long": {
+                "name": "id"
+              }
+            },
+            {
+              "field.string": {
+                "name": "name"
+              }
+            },
+            {
+              "relationship.association": {
+                "name": "b",
+                "@cardinality": "many",
+                "@objectRef": "B"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "@fields": [
+                  "id"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.value": {
+          "name": "CBrief",
+          "children": [
+            {
+              "field.long": {
+                "name": "id"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "object.projection": {
+          "name": "AWithCs",
+          "children": [
+            {
+              "source.rdb": {
+                "@kind": "view",
+                "@view": "v_a_cs"
+              }
+            },
+            {
+              "field.long": {
+                "name": "aId",
+                "extends": "A.id"
+              }
+            },
+            {
+              "identity.primary": {
+                "name": "id",
+                "extends": "A.id"
+              }
+            },
+            {
+              "field.object": {
+                "name": "items",
+                "isArray": true,
+                "@objectRef": "CBrief",
+                "children": [
+                  {
+                    "origin.aggregate": {
+                      "@agg": "collect",
+                      "@via": "A.b.c",
+                      "@orderBy": [
+                        "name"
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

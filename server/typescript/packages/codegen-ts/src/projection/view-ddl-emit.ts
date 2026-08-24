@@ -68,6 +68,11 @@ function renderFilterCond(clause: ViewFilterClause, dialect: EmitOptions["dialec
   return `${lhs} ${op} ${sqlLiteral(clause.value, dialect)}`;
 }
 
+/** Subquery alias for the json_each re-wrap in the SQLite whole-object collect. Scoped to
+ *  its own scalar subquery, so it cannot collide with a JOIN-tree alias; named distinctly
+ *  anyway so it is obvious in emitted DDL where it came from. */
+const JSON_EACH_ALIAS = "mo_je";
+
 /**
  * Render resolved ordering keys, applying the #195 nulls-last pin (`NULLS LAST` in
  * both directions — PG + SQLite ≥ 3.30). `alias` qualifies each key's column.
@@ -198,6 +203,55 @@ function renderColumn(c: SelectColumn, options: EmitOptions, baseAlias: string):
       return `COALESCE(json_group_array(${distinctKw}${src} ${orderClause}) FILTER (WHERE ${guard}), json_array()) AS ${alias}`;
     }
     return `COALESCE(array_agg(${distinctKw}${src} ${orderClause}) FILTER (WHERE ${guard}), '{}') AS ${alias}`;
+  }
+
+  if (c.kind === "collectObjectAgg") {
+    // #335 whole-object rollup. jsonb, not json: PG's `json` has neither an equality
+    // nor an ordering operator, so `json_agg(json_build_object(…) ORDER BY …)` does not
+    // run — verified against a real PG 15.
+    const guard = `${c.sourceAlias}.${quoteIfNeeded(c.joinedPkColumn)} IS NOT NULL`;
+    const pk = `${c.sourceAlias}.${quoteIfNeeded(c.joinedPkColumn)}`;
+    // Element order: the related entity's PK ascending by default — "value ascending"
+    // is meaningless for an object (and does not parse on PG json). An explicit
+    // @orderBy leads, with the PK appended as a tie-break so equal-order rows stay
+    // byte-deterministic. The SCALAR arm above deliberately keeps its no-tie-break
+    // behaviour: adding one there would alter emitted SQL for every existing project.
+    const orderClause = c.orderBy.length > 0
+      ? `ORDER BY ${renderOrderKeys(c.orderBy, c.sourceAlias)}, ${pk} ASC`
+      : `ORDER BY ${pk} ASC`;
+    // The JSON key is the VO MEMBER name; the value reads the TERMINAL entity's
+    // physical column. Those two differ whenever a field carries @column.
+    const pairs = c.members
+      .map((m) => `'${m.memberName}', ${c.sourceAlias}.${quoteIfNeeded(m.sourceColumn)}`)
+      .join(", ");
+    // In-aggregate ORDER BY needs SQLite >= 3.44 — not a new constraint: the scalar
+    // collect above already emits it, and D1's baseline is pinned at 3.44.0.
+    if (dialect === "sqlite") {
+      // SQLite cannot do BOTH in-aggregate ORDER BY and JSON nesting in one call.
+      // Measured on SQLite 3.44.0, D1's pinned baseline:
+      //
+      //   json_group_array(json_object(…))                   -> nests correctly
+      //   json_group_array(json_object(…) ORDER BY …)        -> array of QUOTED STRINGS
+      //   json_group_array(json(json_object(…)) ORDER BY …)  -> array of QUOTED STRINGS
+      //
+      // The ORDER BY clause itself destroys the JSON subtype, and a json() wrapper on the
+      // argument does not survive it. Dropping ORDER BY is not an option: element order
+      // would stop being deterministic and an author's @orderBy would silently do nothing.
+      //
+      // So build the ordered array first (elements quoted), then re-wrap element by
+      // element through json_each — which iterates in ARRAY ORDER, so the ordering
+      // survives while json(value) restores each element's JSON subtype. Still a grouped
+      // LEFT JOIN: unlike origin.first this needs no correlation info, so a multi-hop
+      // @via lowers here exactly as a single-hop one does.
+      //
+      // Found by the real-engine probe in integration-tests. Emitted SQL text cannot show
+      // this, which is exactly why golden SQL is not evidence for new DDL.
+      const ordered = `COALESCE(json_group_array(json_object(${pairs}) ${orderClause}) FILTER (WHERE ${guard}), json_array())`;
+      return `(SELECT json_group_array(json(${JSON_EACH_ALIAS}.value)) FROM json_each(${ordered}) ${JSON_EACH_ALIAS}) AS ${alias}`;
+    }
+    // PG's jsonb_build_object already yields real jsonb, so jsonb_agg nests it correctly
+    // with no wrapper — verified against a real engine, not assumed by symmetry.
+    return `COALESCE(jsonb_agg(jsonb_build_object(${pairs}) ${orderClause}) FILTER (WHERE ${guard}), '[]'::jsonb) AS ${alias}`;
   }
 
   if (c.kind === "computed") {

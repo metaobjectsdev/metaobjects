@@ -1,0 +1,18 @@
+{
+  "metadata.root": {
+    "package": "acme::shop",
+    "children": [
+      {
+        "object.entity": {
+          "name": "Product",
+          "children": [
+            { "source.rdb": { "@kind": "table", "@table": "products" } },
+            { "field.long": { "name": "id" } },
+            { "identity.primary": { "@fields": ["id"] } },
+            { "field.string": { "name": "tags", "isArray": true, "@sortable": true } }
+          ]
+        }
+      }
+    ]
+  }
+}

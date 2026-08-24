@@ -230,6 +230,7 @@ public final class ValidationPhase {
         pass(collected, () -> validateTemplates(root));
         pass(collected, () -> validateEntityHasPrimaryIdentity(root, loader));
         pass(collected, () -> validateFilterableHasSupportedOps(root));
+        pass(collected, () -> validateSortableHasSupportedSubtype(root));
         pass(collected, () -> validateIndexLookupFields(root));
         // The capability ledger's closed status enum (requirements-as-metadata
         // ruling, Amendment 3) — the loader owns what is UNCONDITIONAL.
@@ -2132,7 +2133,7 @@ public final class ValidationPhase {
             String via = origin.getVia();
             if (via != null && !via.isEmpty()) {
                 java.util.List<MetaData> hops =
-                    validateViaPath(via, root, obj, field.getName(), origin.getSource());
+                    validateViaPath(via, root, obj, field.getName(), origin.getSource()).hops();
                 checkPassthroughCardinality(hops, obj, field.getName(), origin.getSource());
             } else if (!isValueHost) {
                 // FR-024 §6 — no @via: derive the base entity; a @from targeting the
@@ -2248,18 +2249,94 @@ public final class ValidationPhase {
                         ErrorCode.ERR_INVALID_ORIGIN, src);
                 }
                 java.util.List<MetaData> hops =
-                    validateViaPath(via, root, obj, field.getName(), src);
+                    validateViaPath(via, root, obj, field.getName(), src).hops();
                 checkAggregateCardinality(hops, obj, field.getName(), src);
                 return;
             }
 
-            // --- count/sum/avg/min/max/collect: @of REQUIRED ---
+            // --- @of: REQUIRED for count/sum/avg/min/max; OPTIONAL for collect ---
+            // #335 — an @of-absent collect is a WHOLE-OBJECT rollup: collect the related
+            // rows as an array of the field's declared @objectRef value object rather than
+            // an array of one scalar column.
             if (!ofPresent) {
-                throw new MetaDataException(
-                    ErrorMessageConstants.ERR_INVALID_ORIGIN
-                        + ": origin.aggregate on " + obj.getName() + "." + field.getName()
-                        + ": missing @of.",
-                    ErrorCode.ERR_INVALID_ORIGIN, src);
+                if (!isCollect) {
+                    throw new MetaDataException(
+                        ErrorMessageConstants.ERR_INVALID_ORIGIN
+                            + ": origin.aggregate on " + obj.getName() + "." + field.getName()
+                            + ": missing @of.",
+                        ErrorCode.ERR_INVALID_ORIGIN, src);
+                }
+                // Whole-object rollup. The carrying field must be a field.object naming a
+                // value object, and @via must be explicit (there is no @of entity to infer
+                // the single-hop relation from).
+                // ADR-0039: resolving (hasMetaAttr/getMetaAttr default to includeParentData)
+                // — @objectRef may be inherited via extends.
+                Object objectRefVal = field.hasMetaAttr(ObjectField.ATTR_OBJECTREF)
+                    ? field.getMetaAttr(ObjectField.ATTR_OBJECTREF).getValue()
+                    : null;
+                String objectRef = objectRefVal instanceof String ? (String) objectRefVal : null;
+                if (!ObjectField.SUBTYPE_OBJECT.equals(field.getSubType())
+                        || objectRef == null || objectRef.isEmpty()) {
+                    throw new MetaDataException(
+                        ErrorMessageConstants.ERR_COLLECT_WHOLE_OBJECT
+                            + ": origin.aggregate @agg:collect on " + obj.getName() + "." + field.getName()
+                            + ": @of is omitted, so this is a whole-object rollup — the carrying field"
+                            + " must be a field.object declaring @objectRef (add @of to collect a"
+                            + " single column instead).",
+                        ErrorCode.ERR_COLLECT_WHOLE_OBJECT, src);
+                }
+                // #210's value-only rule is PAYLOAD-scoped and never reaches a projection-hosted
+                // field, so this branch enforces it itself. Without it an @objectRef to an entity
+                // silently rolls up the FULL entity — the #270 shape, this time baked into DDL.
+                // ADR-0042 — a bare @objectRef resolves in the DECLARING owner's package.
+                String refPkg = obj.getPackage() == null ? "" : obj.getPackage();
+                MetaObject refTarget = resolveRootObject(root, objectRef, refPkg);
+                if (refTarget != null && !MetaObject.SUBTYPE_VALUE.equals(refTarget.getSubType())) {
+                    throw new MetaDataException(
+                        "ERR_SUBTYPE_RULE_VIOLATION"
+                            + ": origin.aggregate @agg:collect on " + obj.getName() + "." + field.getName()
+                            + ": @objectRef '" + objectRef + "' resolves to "
+                            + MetaObject.TYPE_OBJECT + "." + refTarget.getSubType()
+                            + " — a whole-object rollup must target an object.value (#210, ADR-0028).",
+                        ErrorCode.ERR_SUBTYPE_RULE_VIOLATION, src);
+                }
+                // ADR-0039: own — origin.* never inherits (ADR-0029); getVia() reads the
+                // origin's own @via, as every other arm of this method does.
+                String woVia = origin.getVia();
+                if (woVia == null || woVia.isEmpty()) {
+                    throw new MetaDataException(
+                        ErrorMessageConstants.ERR_COLLECT_WHOLE_OBJECT
+                            + ": origin.aggregate @agg:collect on " + obj.getName() + "." + field.getName()
+                            + ": @via is required on a whole-object rollup — there is no @of entity"
+                            + " to infer the relationship from.",
+                        ErrorCode.ERR_COLLECT_WHOLE_OBJECT, src);
+                }
+                // @distinct is refused on the object form. It is NOT an engine limit (both
+                // engines dedupe JSON objects); it is a guaranteed no-op whenever the value
+                // object carries the entity's primary key, which is the common case, and a
+                // silent no-op is worse than a refusal.
+                if (hasDistinct) {
+                    throw new MetaDataException(
+                        ErrorMessageConstants.ERR_COLLECT_WHOLE_OBJECT
+                            + ": origin.aggregate @agg:collect on " + obj.getName() + "." + field.getName()
+                            + ": @distinct is not supported on a whole-object rollup (it is a no-op"
+                            + " whenever the value object carries the primary key).",
+                        ErrorCode.ERR_COLLECT_WHOLE_OBJECT, src);
+                }
+                // One walk yields both the hops (cardinality) and the terminal entity
+                // (@orderBy keys, member resolution). An invalid @via throws out of
+                // validateViaPath with its own error, so nothing downstream runs and no
+                // second, misleadingly-scoped error is produced.
+                WalkedViaPath woWalked = validateViaPath(woVia, root, obj, field.getName(), src);
+                checkAggregateCardinality(woWalked.hops(), obj, field.getName(), src);
+                // @orderBy keys resolve against the @via TERMINAL entity, not @of.
+                validateOrderByKeys(originOrderBy(origin), woWalked.terminal(), obj, field.getName(),
+                    "origin.aggregate @agg:collect", src,
+                    ErrorCode.ERR_COLLECT_WHOLE_OBJECT, ErrorMessageConstants.ERR_COLLECT_WHOLE_OBJECT);
+                if (refTarget != null) {
+                    checkCollectMembers(refTarget, woWalked.terminal(), obj, field, src);
+                }
+                return;
             }
             OriginTarget ofTarget = validateFromOrOfPath(of, root, obj, field.getName(),
                 "origin.aggregate.@of", src);
@@ -2283,7 +2360,7 @@ public final class ValidationPhase {
             String via = origin.getVia();
             if (via != null && !via.isEmpty()) {
                 java.util.List<MetaData> hops =
-                    validateViaPath(via, root, obj, field.getName(), src);
+                    validateViaPath(via, root, obj, field.getName(), src).hops();
                 checkAggregateCardinality(hops, obj, field.getName(), src);
                 return;
             }
@@ -2392,7 +2469,7 @@ public final class ValidationPhase {
             String via = origin.getVia();
             if (via != null && !via.isEmpty()) {
                 java.util.List<MetaData> hops =
-                    validateViaPath(via, root, obj, field.getName(), src);
+                    validateViaPath(via, root, obj, field.getName(), src).hops();
                 checkAggregateCardinality(hops, obj, field.getName(), src);
             } else {
                 // (A value host never reaches here — the #210 assembly-origin
@@ -2475,6 +2552,72 @@ public final class ValidationPhase {
     }
 
     /**
+     * A field's declared type on BOTH axes — {@code field.<subType>} plus {@code []} when it is
+     * an array. ADR-0039: {@code isArrayType()} (resolving), so array-ness inherited via
+     * {@code extends} counts. Mirrors the TS {@code _typeLabel}.
+     */
+    private static String typeLabel(MetaField<?> field) {
+        return "field." + field.getSubType() + (field.isArrayType() ? "[]" : "");
+    }
+
+    /**
+     * #335 — a whole-object {@code @agg:collect} projects EXACTLY the declared value object's
+     * members, matched BY NAME against the {@code @via} terminal entity's fields:
+     * <ul>
+     *   <li>an unmatched member is an error, never a silent drop. Failing open here is how #270
+     *       turned a curated value object into the full entity, invisible in a diff because the
+     *       metadata still read as curated.</li>
+     *   <li>a matched member must agree on BOTH type axes (#185 type-preserving doctrine), so a
+     *       scalar member cannot bind an array field or vice versa.</li>
+     * </ul>
+     * Both refusals carry a whole-object-specific code — ERR_COLLECT_MEMBER_UNRESOLVED for the
+     * unmatched member, ERR_COLLECT_WHOLE_OBJECT for the type disagreement. The latter is
+     * deliberately NOT the scalar arm's ERR_INVALID_ORIGIN: a loader that still requires
+     * {@code @of} rejects this metadata with ERR_INVALID_ORIGIN too, so sharing the code would
+     * make a corpus fixture pass on a port that implements nothing.
+     * Mirrors the TS {@code _checkCollectMembers}.
+     */
+    private static void checkCollectMembers(MetaObject refTarget, MetaObject terminal,
+            MetaObject obj, MetaField<?> field,
+            com.metaobjects.source.ErrorSource src) {
+        // ADR-0039: resolving (includeParentData=true) — a value object may inherit members via
+        // extends, and the terminal entity may inherit fields; own-only would silently skip
+        // inherited members, which is exactly the #270 bug class this guards.
+        java.util.List<MetaField<?>> terminalFields = new java.util.ArrayList<>();
+        for (MetaData c : terminal.getChildren(MetaData.class, true)) {
+            if (c instanceof MetaField) terminalFields.add((MetaField<?>) c);
+        }
+        for (MetaData c : refTarget.getChildren(MetaData.class, true)) {
+            if (!(c instanceof MetaField)) continue;
+            MetaField<?> member = (MetaField<?>) c;
+            MetaField<?> match = null;
+            for (MetaField<?> f : terminalFields) {
+                if (nameMatches(f, member.getName())) { match = f; break; }
+            }
+            if (match == null) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_COLLECT_MEMBER_UNRESOLVED
+                        + ": origin.aggregate @agg:collect on " + obj.getName() + "." + field.getName()
+                        + ": value-object member '" + member.getName()
+                        + "' has no matching field on '" + terminal.getName()
+                        + "' — a whole-object rollup projects exactly the declared members.",
+                    ErrorCode.ERR_COLLECT_MEMBER_UNRESOLVED, src);
+            }
+            String memberLabel = typeLabel(member);
+            String matchLabel = typeLabel(match);
+            if (!memberLabel.equals(matchLabel)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_COLLECT_WHOLE_OBJECT
+                        + ": origin.aggregate @agg:collect on " + obj.getName() + "." + field.getName()
+                        + ": value-object member '" + member.getName() + "' is " + memberLabel
+                        + " but '" + terminal.getName() + "." + match.getName() + "' is " + matchLabel
+                        + " — a whole-object rollup preserves each member's type.",
+                    ErrorCode.ERR_COLLECT_WHOLE_OBJECT, src);
+            }
+        }
+    }
+
+    /**
      * #195 — validate {@code @orderBy} keys ({@code 'field[:asc|desc]'}) resolve
      * against the RELATED entity's effective fields (the entity reached via
      * {@code @via}/{@code @of}), and that any direction suffix is {@code asc}/{@code desc}.
@@ -2482,10 +2625,22 @@ public final class ValidationPhase {
      * {@code @agg:collect} (element order) and {@code origin.first} (row selection).
      * A {@code null} related entity means a prior error already fired — skip silently.
      * Mirrors the TS {@code _validateOrderByKeys}.
+     *
+     * <p>{@code code}/{@code codeName} let #335's whole-object {@code @agg:collect} arm report
+     * ERR_COLLECT_WHOLE_OBJECT instead. The 6-arg overload keeps ERR_INVALID_ORIGIN, so the
+     * scalar {@code @of} and {@code origin.first} call sites are byte-identical.</p>
      */
     private static void validateOrderByKeys(List<String> orderBy, MetaObject relatedEntity,
             MetaObject obj, String fieldName, String label,
             com.metaobjects.source.ErrorSource originSource) {
+        validateOrderByKeys(orderBy, relatedEntity, obj, fieldName, label, originSource,
+            ErrorCode.ERR_INVALID_ORIGIN, ErrorMessageConstants.ERR_INVALID_ORIGIN);
+    }
+
+    private static void validateOrderByKeys(List<String> orderBy, MetaObject relatedEntity,
+            MetaObject obj, String fieldName, String label,
+            com.metaobjects.source.ErrorSource originSource,
+            ErrorCode code, String codeName) {
         if (orderBy == null || relatedEntity == null) return;
         for (String raw : orderBy) {
             if (raw == null) continue;
@@ -2502,18 +2657,18 @@ public final class ValidationPhase {
             }
             if (target == null) {
                 throw new MetaDataException(
-                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                    codeName
                         + ": " + label + " on " + obj.getName() + "." + fieldName
                         + ": @orderBy key \"" + raw + "\" — no such field \"" + key
                         + "\" on " + relatedEntity.getName() + ".",
-                    ErrorCode.ERR_INVALID_ORIGIN, originSource);
+                    code, originSource);
             }
             if (dir != null && !SORT_ORDER_VALUES.contains(dir)) {
                 throw new MetaDataException(
-                    ErrorMessageConstants.ERR_INVALID_ORIGIN
+                    codeName
                         + ": " + label + " on " + obj.getName() + "." + fieldName
                         + ": @orderBy key \"" + raw + "\" — direction must be one of asc|desc.",
-                    ErrorCode.ERR_INVALID_ORIGIN, originSource);
+                    code, originSource);
             }
         }
     }
@@ -3017,8 +3172,24 @@ public final class ValidationPhase {
                     : (v instanceof String) ? "true".equalsIgnoreCase((String) v)
                     : false;
                 if (!filterable) continue;
-                if (subtypeSupportsFiltering(field.getSubType())) continue;
                 String objName = obj.getShortName() != null ? obj.getShortName() : obj.getName();
+
+                // #335 Half B — an ARRAY field has no operator band either. Every
+                // FR-009 operator (eq/ne/gt/gte/lt/lte/in/like/isNull) is a scalar
+                // comparison; none applies to a collection column. Same reason as
+                // the subtype check below, so same code.
+                // ADR-0039: isArrayType(), the resolving accessor, never isArray().
+                if (field.isArrayType()) {
+                    throw new MetaDataException(
+                        ErrorMessageConstants.ERR_FILTERABLE_UNSUPPORTED_SUBTYPE
+                            + ": field \"" + objName + "." + field.getShortName()
+                            + "\" has @filterable: true but is an array (isArray: true)."
+                            + " No filter operator applies to a collection column."
+                            + " Remove @filterable from this field.",
+                        ErrorCode.ERR_FILTERABLE_UNSUPPORTED_SUBTYPE, field.getSource());
+                }
+
+                if (subtypeSupportsFiltering(field.getSubType())) continue;
                 throw new MetaDataException(
                     ErrorMessageConstants.ERR_FILTERABLE_UNSUPPORTED_SUBTYPE
                         + ": field \"" + objName + "." + field.getShortName()
@@ -3027,6 +3198,47 @@ public final class ValidationPhase {
                         + " subtype that supports filtering"
                         + " (string/enum/uuid/number/currency/date/boolean).",
                     ErrorCode.ERR_FILTERABLE_UNSUPPORTED_SUBTYPE, field.getSource());
+            }
+        }
+    }
+
+    // =========================================================================
+    // @sortable on an array field or unsupported subtype — error pass (#335 Half B)
+    //
+    // @sortable defaults FROM @filterable, so it is checked independently only
+    // when explicit — nothing validated it before, while @filterable has had a
+    // hard error since SP-H Unit9. A @sortable array/unsupported-subtype column
+    // emits a sort entry over a column no dialect can ORDER BY meaningfully.
+    // → ERR_SORTABLE_UNSUPPORTED_SUBTYPE.
+    // =========================================================================
+
+    private static void validateSortableHasSupportedSubtype(MetaRoot root) {
+        for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
+            if (!(rootChild instanceof MetaObject)) continue;
+            MetaObject obj = (MetaObject) rootChild;
+            // Effective fields (includes inherited via extends:/super:).
+            for (MetaField field : obj.getChildren(MetaField.class, true)) {
+                if (!field.hasMetaAttr(MetaField.ATTR_SORTABLE, true)) continue;
+                Object v = field.getMetaAttr(MetaField.ATTR_SORTABLE, true).getValue();
+                boolean sortable =
+                    (v instanceof Boolean) ? (Boolean) v
+                    : (v instanceof String) ? "true".equalsIgnoreCase((String) v)
+                    : false;
+                if (!sortable) continue;
+                // ADR-0039: isArrayType(), the resolving accessor, never isArray().
+                boolean isArray = field.isArrayType();
+                if (!isArray && subtypeSupportsFiltering(field.getSubType())) continue;
+
+                String objName = obj.getShortName() != null ? obj.getShortName() : obj.getName();
+                String reason = isArray
+                    ? "is an array (isArray: true) — a collection column has no ordering."
+                    : "its subtype \"" + field.getSubType() + "\" cannot be ordered.";
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_SORTABLE_UNSUPPORTED_SUBTYPE
+                        + ": field \"" + objName + "." + field.getShortName()
+                        + "\" has @sortable: true but " + reason
+                        + " Remove @sortable from this field.",
+                    ErrorCode.ERR_SORTABLE_UNSUPPORTED_SUBTYPE, field.getSource());
             }
         }
     }
@@ -3448,7 +3660,15 @@ public final class ValidationPhase {
      * {@code @references} (FR-024). The resolved target must be an entity at root,
      * which becomes the next hop's current entity.
      */
-    private static java.util.List<MetaData> validateViaPath(String viaAttr, MetaRoot root,
+    /**
+     * A fully-walked {@code @via} path: the relationship hop nodes in path order, plus the
+     * entity they terminate at. Returned as a pair (rather than re-walking for the terminal)
+     * because a second walk means a second copy of the ADR-0042 package-resolution rule —
+     * mirrors the TS {@code WalkedViaPath}.
+     */
+    private record WalkedViaPath(java.util.List<MetaData> hops, MetaObject terminal) { }
+
+    private static WalkedViaPath validateViaPath(String viaAttr, MetaRoot root,
                                         MetaObject projection, String fieldName,
                                         com.metaobjects.source.ErrorSource envelope) {
         // FR5d — referrer is `<projection-bare-name>::<fieldName>` (matches
@@ -3541,7 +3761,8 @@ public final class ValidationPhase {
             hops.add(hop);
             currentObj = nextObj;
         }
-        return hops;
+        // currentObj is the terminal: every earlier exit threw.
+        return new WalkedViaPath(hops, currentObj);
     }
 
     // =========================================================================

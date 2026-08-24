@@ -13,7 +13,7 @@
 import type { MetaData } from "../shared/meta-data.js";
 import type { MetaObject } from "../core/object/meta-object.js";
 import type { MetaReferenceIdentity } from "../core/identity/meta-identity.js";
-import { ParseError } from "../errors.js";
+import { ParseError, type ErrorCode } from "../errors.js";
 import { resolveObjectRef, didYouMeanHint } from "../naming-refs.js";
 import { PACKAGE_SEPARATOR, CHILD_REF_SEPARATOR } from "../shared/structural.js";
 import { resolvedSource, type ErrorSource } from "../source.js";
@@ -61,6 +61,7 @@ import {
 } from "../presentation/layout/layout-constants.js";
 import {
   FIELD_ATTR_FILTERABLE,
+  FIELD_ATTR_SORTABLE,
   FIELD_ATTR_OBJECT_REF,
   FIELD_ATTR_STORAGE,
   STORAGE_FLATTENED,
@@ -443,6 +444,26 @@ export function validateFilterableHasSupportedOps(root: MetaData): ParseError[] 
     for (const field of obj.children().filter((c) => c.type === TYPE_FIELD)) {
       // ADR-0039: resolving — a concrete field may inherit @filterable via extends.
       if (field.attr(FIELD_ATTR_FILTERABLE) !== true) continue;
+
+      // #335 Half B — an ARRAY field has no operator band either. Every FR-009
+      // operator (eq/ne/gt/gte/lt/lte/in/like/isNull) is a scalar comparison;
+      // none applies to a collection column. The allowlist template does not
+      // consult isArray and falls through to the "string" band, so this
+      // previously emitted a `like` rule against a text[] column — SQL that
+      // cannot execute. Same reason as the subtype check below, so same code.
+      // ADR-0039: resolvedIsArray(), never the own `isArray` flag.
+      if (field.resolvedIsArray()) {
+        errors.push(
+          new ParseError(
+            `Field "${obj.name}.${field.name}" has @filterable: true but is an array ` +
+              `(isArray: true). No filter operator applies to a collection column. ` +
+              `Remove @filterable from this field.`,
+            { code: "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE", source: field.source },
+          ),
+        );
+        continue;
+      }
+
       if (opsForSubType(field.subType).length > 0) continue;
       errors.push(
         new ParseError(
@@ -450,6 +471,40 @@ export function validateFilterableHasSupportedOps(root: MetaData): ParseError[] 
             `"${field.subType}" has no filter-operator band. Remove @filterable, or use a ` +
             `field subtype that supports filtering (string/enum/uuid/number/currency/date/boolean).`,
           { code: "ERR_FILTERABLE_UNSUPPORTED_SUBTYPE", source: field.source },
+        ),
+      );
+    }
+  }
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// @sortable on a subtype or shape that cannot be ordered (#335 Half B)
+// ---------------------------------------------------------------------------
+// @sortable defaults FROM @filterable, so it is independently set only when
+// explicit — and nothing validated it, while @filterable has had a hard error
+// since SP-H Unit9. A @sortable JSON or array column emits a sort entry over a
+// column no dialect can ORDER BY meaningfully. → ERR_SORTABLE_UNSUPPORTED_SUBTYPE.
+
+export function validateSortableHasSupportedSubtype(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+  // ADR-0039: root has no super; children()==ownChildren() but resolving is the default.
+  for (const obj of root.children().filter((c) => c.type === TYPE_OBJECT)) {
+    // children() — inherited @sortable fields (via extends:/super:) are visible.
+    for (const field of obj.children().filter((c) => c.type === TYPE_FIELD)) {
+      // ADR-0039: resolving — a concrete field may inherit @sortable via extends.
+      if (field.attr(FIELD_ATTR_SORTABLE) !== true) continue;
+      // ADR-0039: resolvedIsArray(), never the own `isArray` flag.
+      const isArray = field.resolvedIsArray();
+      if (!isArray && opsForSubType(field.subType).length > 0) continue;
+      errors.push(
+        new ParseError(
+          `Field "${obj.name}.${field.name}" has @sortable: true but ` +
+            (isArray
+              ? `is an array (isArray: true) — a collection column has no ordering.`
+              : `its subtype "${field.subType}" cannot be ordered.`) +
+            ` Remove @sortable from this field.`,
+          { code: "ERR_SORTABLE_UNSUPPORTED_SUBTYPE", source: field.source },
         ),
       );
     }
@@ -594,10 +649,25 @@ function _validateFromPath(
   return { entity: sourceObj, field: sourceField };
 }
 
+/** A fully-walked `@via` path: the relationship hop nodes in path order, and
+ *  the TERMINAL entity reached after the last hop. Both fall out of one walk,
+ *  so they are returned together — recovering the terminal with a second walk
+ *  means maintaining a second copy of the ADR-0042 package-resolution rule.
+ *  Shape mirrors `_validateFromPath`'s `ResolvedFromTarget`, which returns a
+ *  pair for the same reason. */
+interface WalkedViaPath {
+  hops: MetaData[];
+  terminal: MetaData;
+}
+
 /**
- * Validate an explicit `@via` "Entity.rel[.rel...]" path. Returns the walked
- * relationship hop nodes (in path order) on full success — FR-024 B5 runs the
- * cardinality checks over them — or undefined when any error was pushed.
+ * Validate an explicit `@via` "Entity.rel[.rel...]" path. On full success
+ * returns the walked relationship hop nodes (in path order) — FR-024 B5 runs
+ * the cardinality checks over them — together with the terminal entity node
+ * (#335: a whole-object `@agg:collect` has no `@of` entity, so `@orderBy` keys
+ * and value-object members resolve against the terminal instead). Returns
+ * undefined when any error was pushed, so `terminal` is defined exactly when
+ * `hops` is.
  */
 function _validateViaPath(
   viaAttr: string,
@@ -606,7 +676,7 @@ function _validateViaPath(
   fieldName: string,
   originSource: ErrorSource,
   errors: ParseError[],
-): MetaData[] | undefined {
+): WalkedViaPath | undefined {
   const projectionName = projection.name;
   // FR5d — referrer is `<projection-FQN>::<fieldName>`.
   const referrer = `${projection.fqn()}::${fieldName}`;
@@ -708,7 +778,8 @@ function _validateViaPath(
     hops.push(rel);
     currentObj = nextObj;
   }
-  return hops;
+  // currentObj is the terminal: every earlier exit returned undefined.
+  return { hops, terminal: currentObj };
 }
 
 // ---------------------------------------------------------------------------
@@ -959,6 +1030,58 @@ function _checkAggregateCardinality(
 }
 
 /**
+ * #335 — a whole-object `@agg:collect` projects EXACTLY the declared value
+ * object's members, each matched by NAME against the `@via` terminal entity.
+ *
+ * Two rules, both fail-closed:
+ *  - a member with no matching field on the terminal is unresolvable. Failing
+ *    OPEN here is how #270 turned a curated value object into the full entity,
+ *    invisible in a diff because the metadata still read as curated.
+ *  - a matched member must agree on BOTH type axes (#185 type-preserving
+ *    doctrine), so a scalar member cannot bind an array field or vice versa.
+ *
+ * Both refusals carry a whole-object-specific code — ERR_COLLECT_MEMBER_UNRESOLVED
+ * for the unmatched member, ERR_COLLECT_WHOLE_OBJECT for the type disagreement.
+ * The latter is deliberately NOT the scalar arm's ERR_INVALID_ORIGIN: a loader
+ * that still requires @of rejects this metadata with ERR_INVALID_ORIGIN too, so
+ * sharing the code would make a corpus fixture pass on a port that implements
+ * nothing (the corpus compares only code + source, never message text).
+ */
+function _checkCollectMembers(
+  refTarget: MetaData,
+  terminal: MetaData,
+  obj: MetaData,
+  field: MetaData,
+  src: ErrorSource,
+  errors: ParseError[],
+): void {
+  // ADR-0039: resolving — a value object may inherit members via extends, and
+  // the terminal entity may inherit fields; own-only would silently skip
+  // inherited members, which is exactly the #270 bug class this guards.
+  const terminalFields = terminal.children().filter((c) => c.type === TYPE_FIELD);
+  for (const member of refTarget.children().filter((c) => c.type === TYPE_FIELD)) {
+    const match = terminalFields.find((f) => f.name === member.name);
+    if (match === undefined) {
+      errors.push(new ParseError(
+        `origin.aggregate @agg:collect on ${obj.name}.${field.name}: value-object member ` +
+          `'${member.name}' has no matching field on '${terminal.name}' — a whole-object ` +
+          `rollup projects exactly the declared members.`,
+        { code: "ERR_COLLECT_MEMBER_UNRESOLVED", source: src }));
+      continue;
+    }
+    const memberLabel = _typeLabel(member);
+    const matchLabel = _typeLabel(match);
+    if (memberLabel !== matchLabel) {
+      errors.push(new ParseError(
+        `origin.aggregate @agg:collect on ${obj.name}.${field.name}: value-object member ` +
+          `'${member.name}' is ${memberLabel} but '${terminal.name}.${match.name}' ` +
+          `is ${matchLabel} — a whole-object rollup preserves each member's type.`,
+        { code: "ERR_COLLECT_WHOLE_OBJECT", source: src }));
+    }
+  }
+}
+
+/**
  * FR-024 B6 (spec §4; ADR-0029 decision 7) — extends/origin agreement.
  *
  * When a field declares BOTH an entity-nested `extends` (shape lineage) and
@@ -1023,6 +1146,17 @@ function _checkExtendsOriginAgreement(
  * FR-015 stored-proc parameter refs the retired ERR_PARAMETER_REF_PASSTHROUGH_
  * TYPE_MISMATCH used to cover).
  */
+/**
+ * Both type axes in one comparable token. Subtype names never contain "[]", so
+ * equal labels ⇔ same subType AND same array-ness. Nullability is deliberately
+ * NOT judged — an outer-join view legitimately widens NOT NULL.
+ * ADR-0039: resolvedIsArray(), never the own `isArray` flag — a field may
+ * inherit its array-ness via extends.
+ */
+function _typeLabel(field: MetaData): string {
+  return `field.${field.subType}${field.resolvedIsArray() ? "[]" : ""}`;
+}
+
 function _checkPassthroughType(
   field: MetaData,
   fromField: MetaData,
@@ -1033,11 +1167,8 @@ function _checkPassthroughType(
   errors: ParseError[],
 ): void {
   if (convert) return; // deliberate type change acknowledged
-  // Compare both axes at once via the type-label: subtype names never contain
-  // "[]", so equal labels ⇔ same subType AND same array-ness (nullability is
-  // deliberately not judged — an outer-join view legitimately widens NOT NULL).
-  const declared = `field.${field.subType}${field.resolvedIsArray() ? "[]" : ""}`;
-  const source = `field.${fromField.subType}${fromField.resolvedIsArray() ? "[]" : ""}`;
+  const declared = _typeLabel(field);
+  const source = _typeLabel(fromField);
   if (declared === source) return;
   errors.push(
     new ParseError(
@@ -1059,6 +1190,10 @@ function _checkPassthroughType(
  * and carries no vocabulary. Shared by `@agg:collect` (element order) and
  * `origin.first` (row selection). A missing related entity means a prior error
  * already fired — skip silently.
+ *
+ * `code` lets the whole-object `@agg:collect` arm report ERR_COLLECT_WHOLE_OBJECT
+ * instead; it defaults to ERR_INVALID_ORIGIN so the scalar `@of` and `origin.first`
+ * call sites keep their existing envelope byte-for-byte.
  */
 function _validateOrderByKeys(
   orderBy: unknown,
@@ -1068,6 +1203,7 @@ function _validateOrderByKeys(
   label: string,
   originSource: ErrorSource,
   errors: ParseError[],
+  code: ErrorCode = "ERR_INVALID_ORIGIN",
 ): void {
   if (!Array.isArray(orderBy) || relatedEntity === undefined) return;
   for (const raw of orderBy) {
@@ -1081,14 +1217,14 @@ function _validateOrderByKeys(
       errors.push(
         new ParseError(
           `${label} on ${obj.name}.${fieldName}: @orderBy key "${raw}" — no such field "${key}" on ${relatedEntity.name}.`,
-          { code: "ERR_INVALID_ORIGIN", source: originSource },
+          { code, source: originSource },
         ),
       );
     } else if (dir !== undefined && !(SORT_ORDER_VALUES as readonly string[]).includes(dir)) {
       errors.push(
         new ParseError(
           `${label} on ${obj.name}.${fieldName}: @orderBy key "${raw}" — direction must be one of ${SORT_ORDER_VALUES.join("|")}.`,
-          { code: "ERR_INVALID_ORIGIN", source: originSource },
+          { code, source: originSource },
         ),
       );
     }
@@ -1158,9 +1294,9 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           // ADR-0039: own — origin.* never inherits (ADR-0029).
           const via = origin.ownAttr(ORIGIN_PASSTHROUGH_ATTR_VIA);
           if (typeof via === "string" && via !== "") {
-            const hops = _validateViaPath(via, root, obj, field.name, origin.source, errors);
-            if (hops !== undefined) {
-              _checkPassthroughCardinality(hops, obj, field.name, origin.source, errors);
+            const walked = _validateViaPath(via, root, obj, field.name, origin.source, errors);
+            if (walked !== undefined) {
+              _checkPassthroughCardinality(walked.hops, obj, field.name, origin.source, errors);
             }
           } else if (fromTarget !== undefined && !isValueHost) {
             // FR-024 §6 — no @via: derive the base entity; a @from targeting
@@ -1245,17 +1381,89 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
                 `origin.aggregate @agg:${String(agg)} on ${obj.name}.${field.name}: requires an explicit @via (a quantifier has no @of to infer the path from).`,
                 { code: "ERR_INVALID_ORIGIN", source: src }));
             } else {
-              const hops = _validateViaPath(via, root, obj, field.name, src, errors);
-              if (hops !== undefined) _checkAggregateCardinality(hops, obj, field.name, src, errors);
+              const walked = _validateViaPath(via, root, obj, field.name, src, errors);
+              if (walked !== undefined) _checkAggregateCardinality(walked.hops, obj, field.name, src, errors);
             }
             continue;
           }
 
-          // --- count/sum/avg/min/max/collect: @of REQUIRED ---
+          // --- @of: REQUIRED for count/sum/avg/min/max; OPTIONAL for collect ---
+          // #335 — an @of-absent collect is a WHOLE-OBJECT rollup: collect the
+          // related rows as an array of the field's declared @objectRef value
+          // object rather than an array of one scalar column.
           if (!ofPresent) {
-            errors.push(new ParseError(
-              `origin.aggregate on ${obj.name}.${field.name}: missing @of.`,
-              { code: "ERR_INVALID_ORIGIN", source: src }));
+            if (!isCollect) {
+              errors.push(new ParseError(
+                `origin.aggregate on ${obj.name}.${field.name}: missing @of.`,
+                { code: "ERR_INVALID_ORIGIN", source: src }));
+              continue;
+            }
+            // Whole-object rollup. The carrying field must be a field.object
+            // naming a value object, and @via must be explicit (there is no @of
+            // entity to infer the single-hop relation from).
+            // ADR-0039: resolving — @objectRef may be inherited via extends.
+            const objectRef = field.attr(FIELD_ATTR_OBJECT_REF);
+            if (field.subType !== FIELD_SUBTYPE_OBJECT || typeof objectRef !== "string" || objectRef === "") {
+              errors.push(new ParseError(
+                `origin.aggregate @agg:collect on ${obj.name}.${field.name}: @of is omitted, so this is a ` +
+                  `whole-object rollup — the carrying field must be a field.object declaring @objectRef ` +
+                  `(add @of to collect a single column instead).`,
+                { code: "ERR_COLLECT_WHOLE_OBJECT", source: src }));
+              continue;
+            }
+            // #210's value-only rule is PAYLOAD-scoped and never reaches a
+            // projection-hosted field, so this branch enforces it itself.
+            // Without it an @objectRef to an entity silently rolls up the FULL
+            // entity — the #270 shape, this time baked into DDL.
+            // ADR-0042 — a bare @objectRef resolves in the DECLARING owner's
+            // package (an inherited field resolves in the package that
+            // declared it) — same rule _checkNestedPayloadRefsValueOnly uses.
+            const refOwner = field.parent ?? obj;
+            const refPkg = refOwner.package ?? refOwner.fileDefaultPackage ?? "";
+            const refTarget = resolveObjectRef(root, objectRef, refPkg).node;
+            if (refTarget !== undefined && refTarget.subType !== OBJECT_SUBTYPE_VALUE) {
+              errors.push(new ParseError(
+                `origin.aggregate @agg:collect on ${obj.name}.${field.name}: @objectRef '${objectRef}' ` +
+                  `resolves to ${TYPE_OBJECT}.${refTarget.subType} — a whole-object rollup must target an ` +
+                  `object.value (#210, ADR-0028).`,
+                { code: "ERR_SUBTYPE_RULE_VIOLATION", source: src }));
+              continue;
+            }
+            // ADR-0039: own — origin.* never inherits (ADR-0029).
+            const viaAttr = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA);
+            if (typeof viaAttr !== "string" || viaAttr === "") {
+              errors.push(new ParseError(
+                `origin.aggregate @agg:collect on ${obj.name}.${field.name}: @via is required on a ` +
+                  `whole-object rollup — there is no @of entity to infer the relationship from.`,
+                { code: "ERR_COLLECT_WHOLE_OBJECT", source: src }));
+              continue;
+            }
+            // @distinct is refused on the object form. It is NOT an engine limit
+            // (both engines dedupe JSON objects); it is a guaranteed no-op
+            // whenever the value object carries the entity's primary key, which
+            // is the common case, and a silent no-op is worse than a refusal.
+            if (hasDistinct) {
+              errors.push(new ParseError(
+                `origin.aggregate @agg:collect on ${obj.name}.${field.name}: @distinct is not supported on a ` +
+                  `whole-object rollup (it is a no-op whenever the value object carries the primary key).`,
+                { code: "ERR_COLLECT_WHOLE_OBJECT", source: src }));
+              continue;
+            }
+            // One walk yields both the hops (cardinality) and the terminal
+            // entity (@orderBy keys, member resolution). An invalid @via
+            // (e.g. single-segment "A") returns undefined having already
+            // pushed its own error, so everything downstream is skipped and
+            // no second, misleadingly-scoped error is emitted.
+            const via = _validateViaPath(viaAttr, root, obj, field.name, src, errors);
+            if (via !== undefined) {
+              _checkAggregateCardinality(via.hops, obj, field.name, src, errors);
+              // @orderBy keys resolve against the @via TERMINAL entity, not @of.
+              _validateOrderByKeys(orderBy, via.terminal, obj, field.name, "origin.aggregate @agg:collect", src, errors,
+                "ERR_COLLECT_WHOLE_OBJECT");
+              if (refTarget !== undefined) {
+                _checkCollectMembers(refTarget, via.terminal, obj, field, src, errors);
+              }
+            }
             continue;
           }
           // NOTE (FR-024 B6): NO extends/origin agreement check on aggregates —
@@ -1276,9 +1484,9 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           // ADR-0039: own — origin.* never inherits (ADR-0029).
           const via = origin.ownAttr(ORIGIN_AGGREGATE_ATTR_VIA);
           if (typeof via === "string" && via !== "") {
-            const hops = _validateViaPath(via, root, obj, field.name, src, errors);
-            if (hops !== undefined) {
-              _checkAggregateCardinality(hops, obj, field.name, src, errors);
+            const walked = _validateViaPath(via, root, obj, field.name, src, errors);
+            if (walked !== undefined) {
+              _checkAggregateCardinality(walked.hops, obj, field.name, src, errors);
             }
             continue;
           }
@@ -1371,8 +1579,8 @@ export function validateOriginPaths(root: MetaData): ParseError[] {
           // @via — explicit (validated + cardinality) or single-hop-unique inferred.
           const via = origin.ownAttr(ORIGIN_FIRST_ATTR_VIA);
           if (typeof via === "string" && via !== "") {
-            const hops = _validateViaPath(via, root, obj, field.name, src, errors);
-            if (hops !== undefined) _checkAggregateCardinality(hops, obj, field.name, src, errors);
+            const walked = _validateViaPath(via, root, obj, field.name, src, errors);
+            if (walked !== undefined) _checkAggregateCardinality(walked.hops, obj, field.name, src, errors);
           } else if (ofTarget !== undefined) {
             // (A value host never reaches here — the #210 assembly-origin
             // check above already rejected origin.first on a value.)

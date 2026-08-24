@@ -29,6 +29,13 @@ Most "I need a new type" needs die here. Before you register anything:
 - **Is it a one-off author-supplied property?** The registered `attr.properties` bag
   is the sanctioned escape hatch for arbitrary key/values — it does not require a new
   attribute and stays inside strict provenance (ADR-0023).
+- **Do you need an array of OBJECTS on a projection?** That is
+  `origin.aggregate @agg: collect` with **`@of` omitted** — the whole-object rollup
+  (#335), on a `field.object @isArray @objectRef`. It is the case most often
+  mistaken for missing vocabulary, because the `@of` form reads as the only form and
+  the natural next thought is a hand-written view. Its declared value object is the
+  exposure, and the `CREATE VIEW` is generated — a hand-written one is unmanaged and
+  therefore invisible to `meta verify --db`.
 
 ## Step 1 — check whether core (or the roadmap) already models it
 

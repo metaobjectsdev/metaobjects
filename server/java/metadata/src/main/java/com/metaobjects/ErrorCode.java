@@ -367,6 +367,34 @@ public enum ErrorCode {
     ERR_FILTERABLE_UNSUPPORTED_SUBTYPE,
 
     /**
+     * #335 Half B — a field carries {@code @sortable: true} but is an array or
+     * its subtype has no filter-operator band (e.g. {@code field.object}), the
+     * same subtype-support signal {@code @filterable} uses. Generating a sort
+     * entry for it would emit an ORDER BY no dialect can execute.
+     */
+    ERR_SORTABLE_UNSUPPORTED_SUBTYPE,
+
+    /**
+     * #335 Half A — a whole-object {@code @agg:collect} (no {@code @of}; the carrying
+     * {@code field.object} rolls related rows up as its declared {@code @objectRef} value
+     * object) is malformed: the carrier is not a {@code field.object} with {@code @objectRef},
+     * {@code @via} is absent, {@code @distinct} is declared (refused — a no-op whenever the
+     * value object carries the primary key), an {@code @orderBy} key does not resolve against
+     * the {@code @via} TERMINAL entity, or a member's declared type disagrees with the matched
+     * terminal field's. Distinct from {@code ERR_INVALID_ORIGIN} so a conformance fixture can
+     * tell this arm from a loader that still requires {@code @of}.
+     */
+    ERR_COLLECT_WHOLE_OBJECT,
+
+    /**
+     * #335 Half A — a whole-object {@code @agg:collect}'s value-object member has no
+     * matching field (by name) on the {@code @via} terminal entity. The lowering
+     * projects exactly the declared members; failing open here is how #270 turned a
+     * curated value object into the full entity.
+     */
+    ERR_COLLECT_MEMBER_UNRESOLVED,
+
+    /**
      * ADR-0023 Decision 2: a registration ({@code register}/{@code extendType}/
      * {@code registerCommonAttribute}/{@code addConstraint}/{@code registerType}/
      * {@code setDefaultSubType}/{@code addGlobalChildRequirement}/{@code registerProviders})

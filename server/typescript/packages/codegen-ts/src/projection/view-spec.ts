@@ -125,6 +125,31 @@ export type SelectColumn =
       readonly orderBy: readonly ViewOrderKey[];
     }
   | {
+      // #335 — origin.aggregate @agg:collect with NO @of — a WHOLE-OBJECT rollup: each
+      // related row is collected as the carrying field.object's declared @objectRef value
+      // object rather than as one scalar column. Lowered to
+      // COALESCE(jsonb_agg(jsonb_build_object(...) ORDER BY <pk> ASC) FILTER (WHERE
+      // joined.pk IS NOT NULL), '[]'::jsonb) on PG; json_group_array(json_object(...)) on
+      // SQLite. Empty set → []. Default element order is the RELATED entity's PK ascending
+      // — ordering rows by a serialized object is meaningless, and on PG `json` it does not
+      // even parse (no ordering operator), which is also why the column is jsonb not json.
+      //
+      // A separate kind rather than an arm of collectAgg: the payloads differ (a member
+      // list vs one source column), so a union would force every consumer to re-narrow.
+      // @distinct never appears — the loader refuses it on this form.
+      readonly kind: "collectObjectAgg";
+      readonly fieldName: string;
+      readonly dbColAlias: string;
+      readonly sourceAlias: string;
+      readonly joinedPkColumn: string;   // related entity's PK column — the LEFT-JOIN phantom guard
+      /** The declared value object's members, in declaration order. `memberName` is the
+       *  emitted JSON key; `sourceColumn` is the TERMINAL entity's physical column it reads.
+       *  The loader guarantees every member resolves (ERR_COLLECT_MEMBER_UNRESOLVED). */
+      readonly members: readonly { readonly memberName: string; readonly sourceColumn: string }[];
+      /** Element ordering over the @via terminal entity's columns; empty ⇒ PK ascending. */
+      readonly orderBy: readonly ViewOrderKey[];
+    }
+  | {
       // #195 — origin.computed — a row-level value from the base entity's own fields via
       // a structured @expr tree (no related rows). Lowered by a tree-walk to a SQL scalar
       // expression over the base alias's columns.

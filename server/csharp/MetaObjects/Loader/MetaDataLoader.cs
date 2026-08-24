@@ -503,8 +503,11 @@ public class MetaDataLoader
             // Pass 4: filterable-without-index drift warning
             warnings.AddRange(ValidationPasses.ValidateFilterableHasIndex(root));
 
-            // Pass 4b: @filterable on a subtype with no operator band → error (SP-H Unit9)
+            // Pass 4b: @filterable on a subtype with no operator band, or an array → error (SP-H Unit9 / #335)
             errors.AddRange(ValidationPasses.ValidateFilterableHasSupportedOps(root));
+
+            // Pass 4c: @sortable on a subtype with no operator band, or an array → error (#335 Half B)
+            errors.AddRange(ValidationPasses.ValidateSortableHasSupportedSubtype(root));
 
             // Pass 5: origin path validation (FR-024 B5/B6 — @via inference,
             // cardinality, extends/origin agreement)

@@ -39,7 +39,7 @@ public static class OriginSchema
             Required: true,
             // #195 — the full @agg vocabulary (numeric reduces + any/all quantifiers + collect).
             AllowedValues: [.. OriginConstants.ORIGIN_AGG_VALUES],
-            Description: "The reducing function applied over the related row-set: count/sum/avg/min/max, any/all (predicate quantifiers over @filter), or collect (array rollup of @of)."),
+            Description: "The reducing function applied over the related row-set: count/sum/avg/min/max, any/all (predicate quantifiers over @filter), or collect (array rollup — of the @of column, or of the carrying field.object's declared @objectRef value object when @of is omitted)."),
 
         // #195 — @of relaxed to optional (any/all forbid it, the rest require it);
         // presence is enforced per-@agg in the origin-path validation pass.
@@ -47,7 +47,7 @@ public static class OriginSchema
             Name: OriginConstants.ORIGIN_AGGREGATE_ATTR_OF,
             ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
             Required: false,
-            Description: "Dotted Entity.field reference identifying the column being aggregated (e.g. 'Week.durationMinutes'). Required for count/sum/avg/min/max/collect; forbidden for any/all."),
+            Description: "Dotted Entity.field reference identifying the column being aggregated (e.g. 'Week.durationMinutes'). Required for count/sum/avg/min/max; OPTIONAL for collect, where absent means a whole-object rollup of the field's declared @objectRef value object; forbidden for any/all."),
 
         new AttrSchema(
             Name: OriginConstants.ORIGIN_AGGREGATE_ATTR_VIA,
@@ -66,7 +66,7 @@ public static class OriginSchema
             Name: OriginConstants.ORIGIN_ATTR_DISTINCT,
             ValueType: AttrConstants.ATTR_SUBTYPE_BOOLEAN,
             Required: false,
-            Description: "Set (collect-only) to dedupe collected values (set semantics)."),
+            Description: "Set (collect-only) to dedupe collected values (set semantics). Not supported on a whole-object collect (@of omitted): it is a guaranteed no-op whenever the value object carries the primary key."),
 
         new AttrSchema(
             Name: OriginConstants.ORIGIN_ATTR_ORDER_BY,
