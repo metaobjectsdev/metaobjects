@@ -6,9 +6,101 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
 ## [Unreleased]
+### Added — `meta verify` lints how a requirement is AUTHORED, in a section of its own
+
+`meta verify` already gated the requirement ledger for **referential integrity** — links at
+or below the L4 floor, nesting that agrees with levels, `@implementedBy` that still resolves.
+That gate answers one question: *does the ledger disagree with the model?* It has nothing to
+say about the other failure, which is a ledger that agrees with the model perfectly and
+**records less than its author thinks**. Six new warnings cover that, printed under their own
+heading:
+
+| Code | Fires when |
+|---|---|
+| `WARN_REQUIREMENT_NAME_NOT_ADDRESSABLE` | the `name` holds a character that breaks the dotted path or the generated stub filename |
+| `WARN_REQUIREMENT_NAME_READS_AS_PROSE` | the `name` is a sentence rather than an identifier |
+| `WARN_REQUIREMENT_NAME_RESTATES_STATEMENT` | `name` and `@statement` say the same thing |
+| `WARN_REQUIREMENT_PROSE_EMPTY` | `@statement` or `@counterexample` is declared but blank |
+| `WARN_REQUIREMENT_PROSE_DUPLICATED` | `description` repeats `@statement` (whole, or as its opening sentence), or `@counterexample` does |
+| `WARN_REQUIREMENT_INERT_DOC_SLOT` | `summary` is set — `@statement` is required and already the one-line sentence |
+| `WARN_REQUIREMENT_TITLE_IS_AN_ID` | `title` opens with a catalogue or ticket id, so a label and a reference share one slot |
+
+**The name checks are not a style opinion.** A requirement's `name` is its **address** — the
+segment of the dotted path every other node is addressed by — and that path is also the
+filename of its generated test stub (`requirements/<path>.test.ts`). A `.` in a name is
+therefore indistinguishable from nesting: a single node named `Orders.Recorded` and a node
+`Orders` containing a node `Recorded` produce the **identical** path, so the address stops
+identifying one node and both derive the same stub file. `/` and `\` redirect the stub into
+a directory nobody declared, and a `..` segment walks it out of the output tree entirely.
+Every one of these loads today — the loader constrains a requirement's
+name no more than any other node's, and nothing downstream re-checked it.
+
+**`title` is CHARTERED on a requirement; `summary` is not — and an earlier cut of this change
+had that backwards.** The requirement attribute table in `spec/capability-ledger.md` names
+`title` for exactly this node type ("a short noun-phrase label — `name` is an identifier, this
+is what an index shows"), which is a requirement's situation precisely: its address renders as
+a dotted camelCase path. `summary` appears nowhere in that spec, and `@statement` is required
+and already the one-line sentence, so a summary can only repeat it.
+
+The correction came from running the lint against **three real adopter ledgers**. A blanket
+title/summary check produced **355 findings, 100% of them `title`**, on the two ledgers that
+use the slot as chartered — 123 of those titles carry words the name does not. The genuine
+defect is narrower and lives in the third ledger: **201 of its 321 requirements** put a
+catalogue id at the head of the label. That is *field overloading*, which the requirements
+doc-surface design already diagnosed as a separate defect and routed to `@trackedBy`. So the
+warning now fires on an **id-shaped** title only, and it says **split** rather than move — the
+real values are `"FR-448 — prompt construction as typed payloads through a render engine"`, an
+id *and* a noun phrase, and relocating the whole string would throw the label away. After the
+narrowing the two well-authored ledgers report **zero**.
+
+`notes` is never flagged, for the opposite reason: chartered internal-only, so being unrendered
+is the point of it.
+
+**A declaration is reported once, at the node that declares it.** `title` set on an abstract
+requirement is inherited by everything extending it, so reading it through the resolving
+accessor reported it once per child — at addresses where the author finds no `title` to
+delete. The checks now split by what they are ABOUT: a check on what a node effectively
+*says* (two slots holding one sentence) reads resolving, because a child may override one
+slot and inherit the other; a check on a *declaration*, whose fix is one edit at one node,
+reads own-only. Both are sanctioned `own*()` uses under ADR-0039 and say so at the call site.
+### Changed — a requirement diagnostic is addressed by its dotted path, not its bare name
+
+`meta verify` printed requirement findings as `ERR_… [orderRecord]`. Hierarchy is nesting, so
+two branches of a ledger may reuse a name, and a bare one does not locate the node — while
+the dotted path is the address every other node in the model already uses, and is what the
+generated test stub is named for. Findings now print as `ERR_… [Ordering.Placement.Recorded]`.
+Only the bracketed address changes; codes and severities are untouched, and ADR-0009 says to
+match on the `code` rather than the rendered line. The gate and the lint now share one
+collection, so they cannot address the same node two different ways.
+
+**Every finding is a warning and none can fail a build**, stated as the rule for the next
+check added here. A prose check that turns `verify` red on upgrade teaches people to switch
+the gate off, which costs more than the padding it caught — the same call as object coverage,
+which stayed a warning because on one real estate it reported every entity in the repository.
+Promotion is a one-line flip on `REQUIREMENT_LINT_SEVERITY`.
+
+**The separate section is load-bearing, not cosmetic.** `verify` prints at most 20 warnings
+per section, and a ledger of a few hundred entries can produce hundreds of prose findings —
+under one shared cap those would push every `WARN_REQUIREMENT_OBJECT_UNCLAIMED` off the end
+of the list, so the lint would silence the gate it was added beside.
+
+Two things it deliberately will not do. It reports only **exact** repeats, never a
+paraphrase, because a similarity threshold on prose produces findings an author can argue
+with and a gate people argue with is a gate people mute. And it never asks whether a statement
+is *true* or a counterexample *sufficient* — those are the judgements the ledger exists to
+record, and no check reaches them.
+
+**Mute it with `--no-requirement-lint`** or `META_NO_REQUIREMENT_LINT=1`, the same pair the
+anti-pattern advisory already offered. It silences the advisory half only — the gate still
+runs and can still fail the build, so the flag can never be mistaken for "turn requirements
+checking off".
+
+The lint reads the **loaded model**, never the metadata files: extensions and overlays mean
+the text on disk is not the effective model, so an attr arriving through `extends` or an
+overlay is linted on what the node effectively carries (ADR-0039 resolving accessors
+throughout). TypeScript-CLI-only, like the rest of the requirements gate.
 
 ## [0.24.1] — npm `0.24.1` · PyPI `0.24.1` · NuGet `0.24.1` · Maven `7.24.1`
-
 ### Fixed — an expression index was undeclarable, and the one spelling that loaded was half-ignored ([#342](https://github.com/metaobjectsdev/metaobjects/issues/342))
 
 **`@expr` was registered, built and rendered — and unreachable.** The registry has always

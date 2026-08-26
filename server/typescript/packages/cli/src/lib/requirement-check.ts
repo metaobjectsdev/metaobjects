@@ -48,8 +48,12 @@ export type Severity = "error" | "warn";
 export interface Diagnostic {
   severity: Severity;
   code: string;
-  /** The requirement node's name, when the diagnostic belongs to one. */
-  name?: string;
+  /** The subject's ADDRESS, when the diagnostic has one — the dotted child-name
+   *  path. Two branches of a ledger may reuse a NAME, so a bare name does not
+   *  locate the node, and a diagnostic you cannot locate is one you cannot act on.
+   *  Absent on a diagnostic whose subject is not a requirement (object coverage
+   *  names the entity in its message instead). */
+  path?: string;
   message: string;
 }
 
@@ -151,19 +155,68 @@ function subtreeClaimsAnything(req: MetaRequirement): boolean {
   return false;
 }
 
-/** Every `requirement.*` node in the tree, at any nesting depth. Hierarchy IS
- *  nesting — an L1 solution contains its L2 segments — so this is a walk, not a
- *  scan of a flat list keyed by a `parent` string. */
-export function collectRequirements(root: MetaData): MetaRequirement[] {
-  const out: MetaRequirement[] = [];
-  const walk = (n: MetaData): void => {
+/** A requirement paired with its ADDRESS — the dotted child-name path from the
+ *  root, which is how every other node in the model is addressed, and which the
+ *  requirement-test generator also turns into the stub's filename. */
+export interface AddressedRequirement {
+  readonly node: MetaRequirement;
+  readonly path: string;
+}
+
+/**
+ * Every `requirement.*` node in the tree, at any nesting depth, each with its
+ * dotted path. Hierarchy IS nesting — an L1 solution contains its L2 segments —
+ * so this is a walk, not a scan of a flat list keyed by a `parent` string.
+ *
+ * ONE derivation of the address for the gate AND the authoring lint, deliberately.
+ * They are two sections of a single `meta verify` run, and when they walked
+ * separately they addressed the same node two different ways — the gate by bare
+ * `name`, which is ambiguous the moment two branches of a ledger reuse one, and the
+ * lint by path. A reader cannot reconcile two addressings of one tree.
+ *
+ * The traversal descends through EVERY node rather than only through requirements:
+ * a requirement somewhere the child rules did not anticipate is still gated, which
+ * is the fail-closed direction for a gate.
+ */
+export function collectAddressedRequirements(root: MetaData): AddressedRequirement[] {
+  const out: AddressedRequirement[] = [];
+  const walk = (n: MetaData, prefix: string): void => {
     for (const c of n.children()) {
-      if (c.type === TYPE_REQUIREMENT) out.push(c as MetaRequirement);
-      walk(c);
+      // Only a requirement contributes a path segment. An intervening non-requirement
+      // node is traversed THROUGH, so the address stays the requirement hierarchy.
+      const isReq = c.type === TYPE_REQUIREMENT;
+      const path = isReq ? (prefix === "" ? c.name : `${prefix}.${c.name}`) : prefix;
+      if (isReq) out.push({ node: c as MetaRequirement, path });
+      walk(c, path);
     }
   };
-  walk(root);
+  walk(root, "");
   return out;
+}
+
+/** The nodes alone, for callers with no use for the address. */
+export function collectRequirements(root: MetaData): MetaRequirement[] {
+  return collectAddressedRequirements(root).map((r) => r.node);
+}
+
+/**
+ * What one `meta verify` run computes once and both requirement passes read.
+ *
+ * The gate and the summary each need the same two things, and each used to derive
+ * both for itself — so a run walked the model twice and resolved every
+ * `@implementedBy` claim twice, the second of which is the expensive half
+ * (resolution is O(claims x root objects)). Threading the result rather than the
+ * function is what the "SHARED by the gate and the summary" note on
+ * `claimedObjectKeys` was always asking for.
+ */
+export interface RequirementScan {
+  readonly addressed: readonly AddressedRequirement[];
+  readonly claimedObjects: ReadonlySet<string>;
+}
+
+export function scanRequirements(root: MetaData): RequirementScan {
+  const addressed = collectAddressedRequirements(root);
+  return { addressed, claimedObjects: claimedObjectKeys(root, addressed.map((r) => r.node)) };
 }
 
 /**
@@ -232,14 +285,12 @@ function coverableEntities(root: MetaData): MetaData[] {
  * prove: that a status is *true*, or that a node actually implements the
  * requirement claiming it. No test can. That truth is the adopter's job.
  */
-export function checkRequirements(root: MetaData): Diagnostic[] {
+export function checkRequirements(root: MetaData, scan: RequirementScan = scanRequirements(root)): Diagnostic[] {
   const out: Diagnostic[] = [];
-  const reqs = collectRequirements(root);
-  if (reqs.length === 0) return out; // opt-in by declaration — no requirements, nothing to say
+  const { addressed, claimedObjects } = scan;
+  if (addressed.length === 0) return out; // opt-in by declaration — no requirements, nothing to say
 
-  const claimedObjects = claimedObjectKeys(root, reqs);
-
-  for (const req of reqs) {
+  for (const { node: req, path: reqPath } of addressed) {
     const architectural = req.subType === REQUIREMENT_SUBTYPE_ARCHITECTURAL;
     const level = req.level();
     const refs = req.implementedBy();
@@ -258,7 +309,7 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
       if (!levelled || !Number.isInteger(level)
           || level < REQUIREMENT_MIN_LEVEL || level > REQUIREMENT_MAX_LEVEL) {
         out.push({
-          severity: "error", code: ERR_REQUIREMENT_BAD_LEVEL, name: req.name,
+          severity: "error", code: ERR_REQUIREMENT_BAD_LEVEL, path: reqPath,
           message: `level must be an integer ${REQUIREMENT_MIN_LEVEL}-${REQUIREMENT_MAX_LEVEL} (got ${String(level)}). ` +
             `L1 solution, L2 segment (app/library), L3 service, L4 object, L5 member.` +
             (architectural ? ` On an architectural requirement the level is optional — omit it for a flat policy.` : ``),
@@ -270,7 +321,7 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
         const pl = (parent as MetaRequirement).level();
         if (pl !== undefined && level !== undefined && level <= pl) {
           out.push({
-            severity: "error", code: ERR_REQUIREMENT_LEVEL_NESTING, name: req.name,
+            severity: "error", code: ERR_REQUIREMENT_LEVEL_NESTING, path: reqPath,
             message: `nested under "${parent.name}" (level ${pl}) but declares level ${level}. ` +
               `Nesting is the hierarchy — a child sits strictly below its parent.`,
           });
@@ -281,7 +332,7 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
     // -- the link boundary ----------------------------------------------------
     if (refs.length > 0 && !req.mayReferenceModel()) {
       out.push({
-        severity: "error", code: ERR_REQUIREMENT_LINK_ABOVE_FLOOR, name: req.name,
+        severity: "error", code: ERR_REQUIREMENT_LINK_ABOVE_FLOOR, path: reqPath,
         message: `'implementedBy' is legal at L${REQUIREMENT_LINK_FLOOR_LEVEL} (object) and ` +
           `L${REQUIREMENT_MAX_LEVEL} (member) only. L1-L3 are organisational and never reference ` +
           `the model — move the links to a nested L${REQUIREMENT_LINK_FLOOR_LEVEL} child.`,
@@ -310,7 +361,7 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
       // promised.
       if (!architectural && level === REQUIREMENT_LINK_FLOOR_LEVEL && !isObjectRef) {
         out.push({
-          severity: "error", code: ERR_REQUIREMENT_L4_NOT_OBJECT, name: req.name,
+          severity: "error", code: ERR_REQUIREMENT_L4_NOT_OBJECT, path: reqPath,
           message: `L${REQUIREMENT_LINK_FLOOR_LEVEL} references an object; '${ref}' names a member. ` +
             `Move it to a nested L${REQUIREMENT_LEVEL_MEMBER} child, or reference the object itself.`,
         });
@@ -318,7 +369,7 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
       }
       if (!architectural && level === REQUIREMENT_LEVEL_MEMBER && isObjectRef) {
         out.push({
-          severity: "error", code: ERR_REQUIREMENT_L5_NOT_MEMBER, name: req.name,
+          severity: "error", code: ERR_REQUIREMENT_L5_NOT_MEMBER, path: reqPath,
           message: `L${REQUIREMENT_LEVEL_MEMBER} references a member (field, view or identity); ` +
             `'${ref}' names an object. Move it to its L${REQUIREMENT_LINK_FLOOR_LEVEL} parent.`,
         });
@@ -332,7 +383,7 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
         // job, and the reason this check cannot live in the loader.
         if (req.requiresLiveNodes()) {
           out.push({
-            severity: "error", code: ERR_REQUIREMENT_DANGLING_REF, name: req.name,
+            severity: "error", code: ERR_REQUIREMENT_DANGLING_REF, path: reqPath,
             message: `'${ref}' does not resolve in the loaded model (status '${String(req.status())}' — ` +
               `the model moved and the requirement is stale).` + didYouMeanHint(root, owner),
           });
@@ -362,7 +413,7 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
     // levelled one, true again at the link floor.
     if (architectural && live && refs.length === 0 && req.mayReferenceModel()) {
       out.push({
-        severity: "error", code: ERR_REQUIREMENT_ARCH_NO_IMPLEMENTERS, name: req.name,
+        severity: "error", code: ERR_REQUIREMENT_ARCH_NO_IMPLEMENTERS, path: reqPath,
         message: `architectural requirement is '${String(status)}' but nothing implements it. ` +
           `Its check is universality — a claim set of zero means the policy is declared and unapplied.`,
       });
@@ -372,7 +423,7 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
     const disposition = req.disposition();
     if (disposition !== undefined && !req.hasOutstandingWork()) {
       out.push({
-        severity: "warn", code: WARN_REQUIREMENT_DISPOSITION_NOT_APPLICABLE, name: req.name,
+        severity: "warn", code: WARN_REQUIREMENT_DISPOSITION_NOT_APPLICABLE, path: reqPath,
         message: `carries @disposition '${disposition}' but its status is '${String(status)}', which has no ` +
           `outstanding work to decide about. A disposition is meaningful on 'planned' and 'partial' only — ` +
           `on any other status the decision IS the status.`,
@@ -387,7 +438,7 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
     // is empty is a capability declared and built by nobody.
     if (!architectural && live && !subtreeClaimsAnything(req)) {
       out.push({
-        severity: "warn", code: WARN_REQUIREMENT_NOTHING_IMPLEMENTS, name: req.name,
+        severity: "warn", code: WARN_REQUIREMENT_NOTHING_IMPLEMENTS, path: reqPath,
         message: `is '${String(status)}' but neither it nor anything nested under it names an ` +
           `implementing node. A functional requirement's check is existence — a subtree that claims ` +
           `nothing is a capability nobody built.`,
@@ -396,7 +447,7 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
 
     if (disposition === REQUIREMENT_DISPOSITION_DEFERRED && req.trackedBy().length === 0) {
       out.push({
-        severity: "warn", code: WARN_REQUIREMENT_DEFERRED_UNTRACKED, name: req.name,
+        severity: "warn", code: WARN_REQUIREMENT_DEFERRED_UNTRACKED, path: reqPath,
         message: `is deferred but names no @trackedBy issue. Deferring without a ticket is how a known gap ` +
           `becomes an unknown one — nothing will raise it again.`,
       });
@@ -447,8 +498,11 @@ export function checkRequirements(root: MetaData): Diagnostic[] {
  * are deliberately the ones an author would otherwise have to write a script to
  * get: how many gaps are recorded, and how many of those nobody has ruled on.
  */
-export function summariseRequirements(root: MetaData): RequirementSummary | undefined {
-  const reqs = collectRequirements(root);
+export function summariseRequirements(
+  root: MetaData,
+  scan: RequirementScan = scanRequirements(root),
+): RequirementSummary | undefined {
+  const reqs = scan.addressed.map((r) => r.node);
   if (reqs.length === 0) return undefined; // opt-in by declaration
 
   const summary: RequirementSummary = {
@@ -475,9 +529,10 @@ export function summariseRequirements(root: MetaData): RequirementSummary | unde
     }
   }
 
-  // Both sides of the ratio come from the SAME helpers the gate uses, so the
-  // printed summary cannot disagree with the diagnostics printed beneath it.
-  const claimed = claimedObjectKeys(root, reqs);
+  // Both sides of the ratio come from the SAME scan the gate read, so the printed
+  // summary cannot disagree with the diagnostics printed beneath it — previously
+  // the same helper, now literally the same result.
+  const claimed = scan.claimedObjects;
   for (const ent of coverableEntities(root)) {
     summary.entitiesTotal++;
     if (claimed.has(ent.resolutionKey())) summary.entitiesClaimed++;

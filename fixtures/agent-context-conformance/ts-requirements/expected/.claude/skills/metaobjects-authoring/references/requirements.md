@@ -27,10 +27,9 @@ rule kills *"the system is reliable"*. If you cannot say what breaking it looks 
 delete it.
 
 **Four prose slots, and `statement` is the one that means "description".** A requirement can
-also carry the common `title`, `description` and `notes`, and they overlap badly unless you
-decide the split before writing any of them:
+also carry the common `description` and `notes`, and they overlap badly unless you decide the
+split before writing any of them:
 
-- `title` — a short **noun-phrase** label (`name` is an identifier; this is what an index shows)
 - `statement` — **the claim**. This IS the description of what the requirement is
 - `counterexample` — **what would falsify the claim**, which is what makes it checkable
 - `description` — **the scope**: what the claim covers, what it deliberately does not, and
@@ -38,12 +37,32 @@ decide the split before writing any of them:
 - `notes` — **the evidence**: how you know the `status` is true — citations, vocabularies, the
   control you ran to prove an absence was real
 
+**`title` is a LABEL and is chartered here; `summary` is not.** A requirement's `name` is an
+identifier and its address renders as a dotted camelCase path, so a short noun-phrase `title` is
+what an index shows — the requirement attribute table in `spec/capability-ledger.md` says so by
+name. `summary` is different: `statement` is already the required one-line sentence, so a
+`summary` can only repeat it and nothing reads it (`verify` warns,
+`WARN_REQUIREMENT_INERT_DOC_SLOT`). `notes` is unrendered on purpose — chartered internal-only.
+
+**Never put a catalogue or ticket id in `title`.** A title is a noun phrase; an id is not a name.
+`title: "FR-467 — Order recording"` is two things in one slot — put the id in `trackedBy` and
+keep the phrase as the title. `verify` warns (`WARN_REQUIREMENT_TITLE_IS_AN_ID`).
+
+**The `name` is an address, so write it as an identifier.** It is the segment of the dotted
+path (`Ordering.Placement.Recorded`) and the filename of the generated test stub. A `.` in a
+name is indistinguishable from nesting — `Orders.Recorded` and `Orders` containing `Recorded`
+produce the same path — and a sentence for a name puts the claim somewhere nothing reads it.
+Both load; `verify` warns (`WARN_REQUIREMENT_NAME_NOT_ADDRESSABLE`,
+`WARN_REQUIREMENT_NAME_READS_AS_PROSE`, `WARN_REQUIREMENT_NAME_RESTATES_STATEMENT`).
+
 Two failure modes, both of which look like diligence. A `description` that **paraphrases the
 statement** is padding, and it makes every later reader trust the ledger less — leave it off
 instead, it is optional. A `description` that **narrates the evidence** belongs in `notes`;
 the tell is a fact you had to read the implementation to learn. Mechanical test for the last
 line: *would this sentence have to change if the code changed but the model did not?* Then it
-is `notes`.
+is `notes`. `verify` warns on the exact repeats (`WARN_REQUIREMENT_PROSE_DUPLICATED`), and on
+a `statement` or `counterexample` that is present but blank (`WARN_REQUIREMENT_PROSE_EMPTY`) —
+the loader requires those attrs to exist, never to say anything.
 
 **Hierarchy is nesting, and links live at the bottom.** L1 solution, L2 segment, L3
 service — these never reference the model. **L4** binds a declared top-level node — an

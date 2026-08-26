@@ -260,6 +260,14 @@ export interface VerifyFlags {
   /** Suppress the advisory anti-pattern (verify-as-teacher) pass. */
   noAntipatterns: boolean;
   /**
+   * Suppress the advisory requirement AUTHORING lint — the second, prose-quality
+   * section, never the gate above it. Its own findings argue that a noisy advisory
+   * gets switched off wholesale, and a ledger mid-migration can print its capped
+   * twenty lines on every run for weeks; a mute for the advisory half is what keeps
+   * the half that CAN fail a build switched on. Same shape as --no-antipatterns.
+   */
+  noRequirementLint: boolean;
+  /**
    * ADR-0023 strict-attr load opt-OUT (#96). `verify` is strict-by-default — an
    * undeclared/typo'd own `@attr` fails verify (ERR_UNKNOWN_ATTR). `--lax`
    * restores the legacy open-attr load (today's behavior). Default false (strict).
@@ -281,6 +289,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
       replay: { type: "boolean", default: false },
       "replay-snapshot": { type: "boolean", default: false },
       "no-antipatterns": { type: "boolean", default: false },
+      "no-requirement-lint": { type: "boolean", default: false },
       lax: { type: "boolean", default: false },
       "d1": { type: "string" },
       "remote": { type: "boolean", default: false },
@@ -330,6 +339,7 @@ export function parseVerifyArgs(argv: string[]): VerifyFlags {
     replaySnapshot,
     anyExplicit,
     noAntipatterns: !!values["no-antipatterns"],
+    noRequirementLint: !!values["no-requirement-lint"],
     lax: !!values.lax,
     d1: values.d1 as string | undefined,
     remote: !!values.remote,

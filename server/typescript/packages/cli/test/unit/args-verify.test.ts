@@ -5,7 +5,7 @@ describe("parseVerifyArgs", () => {
   test("defaults: prompts/db/dialect undefined, allow empty, skipSchema false, no explicit subverb", () => {
     expect(parseVerifyArgs([])).toEqual({
       prompts: undefined, db: undefined, dialect: undefined, allow: [], skipSchema: false,
-      templates: false, codegen: false, anyExplicit: false, noAntipatterns: false, lax: false,
+      templates: false, codegen: false, anyExplicit: false, noAntipatterns: false, noRequirementLint: false, lax: false,
       replay: false, replaySnapshot: false,
       d1: undefined, remote: false,
     });
@@ -13,7 +13,7 @@ describe("parseVerifyArgs", () => {
   test("--prompts <dir> is captured", () => {
     expect(parseVerifyArgs(["--prompts", "templates"])).toEqual({
       prompts: "templates", db: undefined, dialect: undefined, allow: [], skipSchema: false,
-      templates: false, codegen: false, anyExplicit: false, noAntipatterns: false, lax: false,
+      templates: false, codegen: false, anyExplicit: false, noAntipatterns: false, noRequirementLint: false, lax: false,
       replay: false, replaySnapshot: false,
       d1: undefined, remote: false,
     });
@@ -21,7 +21,7 @@ describe("parseVerifyArgs", () => {
   test("--db / --dialect / --skip-schema are captured", () => {
     expect(parseVerifyArgs(["--db", "file:x.db", "--dialect", "sqlite", "--skip-schema"])).toEqual({
       prompts: undefined, db: "file:x.db", dialect: "sqlite", allow: [], skipSchema: true,
-      templates: false, codegen: false, anyExplicit: true, noAntipatterns: false, lax: false,
+      templates: false, codegen: false, anyExplicit: true, noAntipatterns: false, noRequirementLint: false, lax: false,
       replay: false, replaySnapshot: false,
       d1: undefined, remote: false,
     });
@@ -31,7 +31,7 @@ describe("parseVerifyArgs", () => {
   test("--dialect d1 --d1 <binding> --remote are captured; --dialect d1 alone is an explicit subverb", () => {
     expect(parseVerifyArgs(["--dialect", "d1", "--d1", "DB", "--remote"])).toEqual({
       prompts: undefined, db: undefined, dialect: "d1", allow: [], skipSchema: false,
-      templates: false, codegen: false, anyExplicit: true, noAntipatterns: false, lax: false,
+      templates: false, codegen: false, anyExplicit: true, noAntipatterns: false, noRequirementLint: false, lax: false,
       replay: false, replaySnapshot: false,
       d1: "DB", remote: true,
     });
@@ -55,7 +55,7 @@ describe("parseVerifyArgs", () => {
     expect(parseVerifyArgs(["--allow", "drop-column,drop-table"])).toEqual({
       prompts: undefined, db: undefined, dialect: undefined,
       allow: ["drop-column", "drop-table"], skipSchema: false,
-      templates: false, codegen: false, anyExplicit: false, noAntipatterns: false, lax: false,
+      templates: false, codegen: false, anyExplicit: false, noAntipatterns: false, noRequirementLint: false, lax: false,
       replay: false, replaySnapshot: false,
       d1: undefined, remote: false,
     });
@@ -79,6 +79,13 @@ describe("parseVerifyArgs", () => {
     expect(f.templates).toBe(true);
     expect(f.codegen).toBe(true);
     expect(f.anyExplicit).toBe(true);
+  });
+  test("--no-requirement-lint mutes the advisory lint, and defaults off", () => {
+    expect(parseVerifyArgs([]).noRequirementLint).toBe(false);
+    expect(parseVerifyArgs(["--no-requirement-lint"]).noRequirementLint).toBe(true);
+    // It is a mute for the ADVISORY half only — nothing here touches the gate, which
+    // is the whole reason the two print as separate sections.
+    expect(parseVerifyArgs(["--no-requirement-lint"]).anyExplicit).toBe(false);
   });
   test("throws on an invalid --dialect", () => {
     expect(() => parseVerifyArgs(["--dialect", "oracle"])).toThrow(/invalid --dialect 'oracle'/);

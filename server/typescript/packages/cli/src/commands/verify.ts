@@ -17,7 +17,10 @@ import { FileProvider } from "../lib/file-provider.js";
 import { derivePayloadFieldTree } from "../lib/payload-field-tree.js";
 import { loadMemoryOptionsFrom, loadMetaobjectsConfig, resolveGenCollection, resolveGenConfigDir } from "../lib/load-metaobjects-config.js";
 import { computeCodegenDrift } from "../lib/codegen-drift.js";
-import { checkRequirements, summariseRequirements } from "../lib/requirement-check.js";
+import {
+  checkRequirements, summariseRequirements, scanRequirements, type Diagnostic,
+} from "../lib/requirement-check.js";
+import { lintRequirements } from "../lib/requirement-lint.js";
 import { resolveD1Config, resolveMigrateConfig } from "../lib/config.js";
 import {
   buildWranglerExecuteArgs,
@@ -461,12 +464,16 @@ export async function verifyCommand(
     // rule reaches the semantic cases. FR-038 retires the attribute rather than
     // narrowing it; the replacement generates the test FROM the requirement, so
     // the link is structural instead of a string the author picks.
-    const diags = [...checkRequirements(root)];
+    // ONE scan for all three passes. The gate and the summary each used to walk the
+    // model AND resolve every @implementedBy claim for themselves — the resolution
+    // being the expensive half — and the lint added a third walk on top.
+    const scan = scanRequirements(root);
+    const diags = [...checkRequirements(root, scan)];
 
     // Printed on EVERY run, clean or not — a gate that says nothing when it
     // passes cannot be told apart from a gate that checked nothing, and the
     // recorded-gap counts are the whole reason to keep a ledger.
-    const s = summariseRequirements(root);
+    const s = summariseRequirements(root, scan);
     if (s !== undefined) {
       const order = [...REQUIREMENT_STATUSES];
       const parts = order
@@ -493,15 +500,51 @@ export async function verifyCommand(
       }
     }
 
-    if (diags.length === 0) return 0;
     const errors = diags.filter((d) => d.severity === "error");
     const warns = diags.filter((d) => d.severity === "warn");
     const CAP = 20;
-    for (const d of errors) log.error(`  ${d.code}${d.name !== undefined ? ` [${d.name}]` : ""}: ${d.message}`);
-    for (const d of warns.slice(0, CAP)) {
-      log.warn(`  ${d.code}${d.name !== undefined ? ` [${d.name}]` : ""}: ${d.message}`);
+    const fmt = (d: Diagnostic): string =>
+      `  ${d.code}${d.path !== undefined ? ` [${d.path}]` : ""}: ${d.message}`;
+    /** Print a capped run of warnings. Capped per SECTION, never across them: a
+     *  ledger of a few hundred entries can produce hundreds of prose findings, and a
+     *  shared cap would let the advisory lint push every gate warning off the end. */
+    const warnCapped = (ds: readonly Diagnostic[]): void => {
+      for (const d of ds.slice(0, CAP)) log.warn(fmt(d));
+      if (ds.length > CAP) log.warn(`  …and ${ds.length - CAP} more.`);
+    };
+    for (const d of errors) log.error(fmt(d));
+    warnCapped(warns);
+
+    // -- the authoring lint: its own section, its own cap ----------------------
+    // Separate from the gate above because it makes a different claim. The gate
+    // says the ledger DISAGREES WITH THE MODEL; the lint says it agrees but
+    // records less than its author thinks — a name that is not an address, two
+    // slots holding one sentence, prose written where no surface reads it.
+    //
+    // The separate cap is the load-bearing part. A ledger of a few hundred
+    // entries can produce hundreds of prose findings, and under one shared cap
+    // those would push every WARN_REQUIREMENT_OBJECT_UNCLAIMED off the end of the
+    // list — the lint would silence the gate it was added beside. Nothing here
+    // reaches the exit code: every lint finding is a warning by construction.
+    // Muted with --no-requirement-lint or META_NO_REQUIREMENT_LINT=1, the same pair
+    // its sibling advisory offers. It mutes the ADVISORY half only — the gate above
+    // still runs and can still fail the build, which is the point of the split.
+    // `s === undefined` means the model declares no requirements at all, which the
+    // two passes above have already established: opt-in by declaration, decided
+    // without a third walk to rediscover it.
+    const lint = s === undefined
+        || flags.noRequirementLint
+        || process.env.META_NO_REQUIREMENT_LINT === "1"
+      ? []
+      : lintRequirements(root, scan.addressed);
+    if (lint.length > 0) {
+      log.warn(
+        `meta verify — requirements: ${lint.length} authoring warning(s) ` +
+        `(advisory — does not fail the build):`,
+      );
+      warnCapped(lint);
     }
-    if (warns.length > CAP) log.warn(`  …and ${warns.length - CAP} more.`);
+
     if (errors.length > 0) {
       log.error(`meta verify — requirements: ${errors.length} error(s).`);
       return 1;

@@ -145,6 +145,7 @@ FLAGS:
   --remote              Target remote D1 instead of local (only with --dialect d1) —
                         the ONLY way to verify the actual deployed D1 database
   --no-antipatterns     Suppress the advisory "hand-rolled what MetaObjects can model" pass
+  --no-requirement-lint Suppress the advisory requirement AUTHORING lint (not the gate)
   --help, -h            Print this help
 
 A bare 'meta verify' also runs an ADVISORY anti-pattern pass: it scans your authored
@@ -152,6 +153,12 @@ source for hand-rolled aggregates, money-as-float, and CHECK-IN enums and points
 at the construct that models them (origin.aggregate / field.currency / field.enum).
 Warnings only — it never fails the build. Opt out with --no-antipatterns or
 META_NO_ANTIPATTERNS=1.
+
+If the project declares requirement.* nodes, verify also prints an ADVISORY authoring
+lint in its own section: names that are not addressable, prose slots holding one
+sentence twice, content written where no surface reads it. Warnings only — it can
+never fail the build. Opt out with --no-requirement-lint or META_NO_REQUIREMENT_LINT=1.
+The requirements GATE itself (dangling refs, link floor, levels) always runs.
 `,
   export: `meta export — flatten loaded metadata to one canonical JSON artifact
 

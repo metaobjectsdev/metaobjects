@@ -25,6 +25,14 @@ async function captureInfo(fn: () => Promise<unknown>): Promise<string[]> {
   return seen;
 }
 
+/** Collects `log.warn` lines emitted while `fn` runs. */
+async function captureWarn(fn: () => Promise<unknown>): Promise<string[]> {
+  const seen: string[] = [];
+  const spy = spyOn(log, "warn").mockImplementation((m: string) => { seen.push(m); });
+  try { await fn(); } finally { spy.mockRestore(); }
+  return seen;
+}
+
 // verify lazily imports its (heavy) command module on first dispatch; a cold runner
 // can exceed bun's default 5s. Generous timeout, still fails loudly on a real hang.
 const TIMEOUT_MS = 30_000;
@@ -47,12 +55,14 @@ const ENTITIES = JSON.stringify({
   },
 });
 
-/** A project with the given requirements file (raw JSON string). */
-function project(requirements: string, extra?: Record<string, string>): string {
+/** A project with the given requirements file (raw JSON string), or none at all. */
+function project(requirements?: string, extra?: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "vreq-"));
   mkdirSync(join(dir, "metaobjects"), { recursive: true });
   writeFileSync(join(dir, "metaobjects", "meta.shop.json"), ENTITIES);
-  writeFileSync(join(dir, "metaobjects", "meta.requirements.json"), requirements);
+  if (requirements !== undefined) {
+    writeFileSync(join(dir, "metaobjects", "meta.requirements.json"), requirements);
+  }
   for (const [rel, body] of Object.entries(extra ?? {})) {
     const abs = join(dir, rel);
     mkdirSync(join(abs, ".."), { recursive: true });
@@ -181,5 +191,75 @@ describe("meta verify — requirements exit-code contract", () => {
     // Non-zero either way; the naming a real, present test is deliberate — under
     // the old scan this exact project exited 0.
     expect(await run(["verify", "--cwd", dir])).not.toBe(0);
+  }, TIMEOUT_MS);
+
+  // -- the authoring lint reaches the command, and stops there ----------------
+  // The unit tests prove what `lintRequirements()` returns. These prove `meta
+  // verify` prints it and that it cannot reach the exit code — which is the whole
+  // safety argument for turning a new check on by default in a shipping gate.
+
+  test("an authoring warning is printed under its own heading and still exits 0", async () => {
+    const dir = project(
+      req({
+        ...L4,
+        "@implementedBy": ["Order"],
+        "@title": "FR-467 — Order recording",
+      }),
+    );
+    const warns = await captureWarn(async () => {
+      expect(await run(["verify", "--cwd", dir])).toBe(0);
+    });
+    // Its OWN heading, separate from the gate's warnings — the separate cap is
+    // what stops a few hundred prose findings burying every unclaimed-entity line.
+    expect(warns.some((w) => w.includes("authoring warning"))).toBe(true);
+    expect(warns.some((w) => w.includes("WARN_REQUIREMENT_TITLE_IS_AN_ID"))).toBe(true);
+  }, TIMEOUT_MS);
+
+  test("a cleanly authored ledger prints no lint section at all", async () => {
+    // Carries a well-formed `@title` deliberately: it is CHARTERED on a requirement
+    // (spec/capability-ledger.md's requirement attribute table), so a lint that fires
+    // here would be telling two real adopters to delete 355 authored labels.
+    const dir = project(req({ ...L4, "@implementedBy": ["Order"], "@title": "Order recording" }));
+    const warns = await captureWarn(async () => {
+      expect(await run(["verify", "--cwd", dir])).toBe(0);
+    });
+    expect(warns.some((w) => w.includes("authoring warning"))).toBe(false);
+  }, TIMEOUT_MS);
+
+  test("--no-requirement-lint mutes the lint but leaves the GATE failing", async () => {
+    // The split is the point: muting the advisory half must not mute the half that
+    // can fail a build, or the flag becomes "turn off requirements checking".
+    const dir = project(
+      req({
+        ...L4,
+        "@implementedBy": ["NoSuchEntity"],
+        "@title": "FR-467 — Order recording",
+      }),
+    );
+    const warns = await captureWarn(async () => {
+      expect(await run(["verify", "--cwd", dir, "--no-requirement-lint"])).toBe(1);
+    });
+    expect(warns.some((w) => w.includes("authoring warning"))).toBe(false);
+  }, TIMEOUT_MS);
+
+  test("META_NO_REQUIREMENT_LINT=1 mutes it too", async () => {
+    const dir = project(req({ ...L4, "@implementedBy": ["Order"], "@title": "FR-467" }));
+    process.env.META_NO_REQUIREMENT_LINT = "1";
+    try {
+      const warns = await captureWarn(async () => {
+        expect(await run(["verify", "--cwd", dir])).toBe(0);
+      });
+      expect(warns.some((w) => w.includes("authoring warning"))).toBe(false);
+    } finally {
+      delete process.env.META_NO_REQUIREMENT_LINT;
+    }
+  }, TIMEOUT_MS);
+
+  test("a project with no requirements is never linted", async () => {
+    const dir = project();
+    const warns = await captureWarn(async () => {
+      expect(await run(["verify", "--cwd", dir])).toBe(0);
+    });
+    expect(warns.some((w) => w.includes("authoring warning"))).toBe(false);
   }, TIMEOUT_MS);
 });

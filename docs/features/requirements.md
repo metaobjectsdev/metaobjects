@@ -89,17 +89,38 @@ it.
 
 ### Which slot does this sentence go in?
 
-A requirement can carry four prose slots, and they overlap badly if you do not decide the
+A requirement carries **four** prose slots, and they overlap badly if you do not decide the
 split up front. `@statement` already occupies the "what is this" role that a common
 `description` usually holds, so the other three narrow around it:
 
 | Slot | Holds | Test |
 |---|---|---|
-| `title` | A short noun-phrase label. `name` is an identifier; this is what an index shows. | Is it a phrase, not a sentence? |
+| `title` | A short noun-phrase **label**. `name` is an identifier; this is what an index shows. Not one of the four — it names the entry rather than saying anything about it. | Is it a phrase, not a sentence? |
 | `@statement` | **The claim**, in one sentence. This IS the description of what the requirement is. | Could someone disagree with it? |
 | `@counterexample` | **The counterexample** that makes the claim checkable. | Can you point at the thing that breaks it? |
 | `description` | **The scope**: what the claim covers, what it deliberately does not, and which sibling entry owns the rest. | Does it help someone decide whether their new field falls under this? |
 | `notes` | **The evidence**: how you know the `@status` is true — file/line citations, enum vocabularies, the control you ran to prove an absence was real. | Would this sentence have to change if the code changed but the model did not? |
+
+**Do not use `summary` on a requirement.** It is legal — it is a common attr registered on
+every node — but `@statement` is already the required one-line sentence, so `summary` can only
+repeat it, and no requirement surface reads it. `verify` warns
+(`WARN_REQUIREMENT_INERT_DOC_SLOT`). `title` is the opposite case: it is chartered for a
+requirement by name (`spec/capability-ledger.md`, the requirement attribute table) precisely
+because a requirement's `name` is an identifier and its address renders as a dotted camelCase
+path — a label is what an index wants.
+
+**Do not put a catalogue or ticket id in `title`.** A title is a noun phrase and an id is not a
+name, so `title: "FR-467 — Order recording"` is two things in one slot. Split it: the id goes in
+`@trackedBy`, which is read and is the slot for exactly that, and the noun phrase stays as the
+title. `verify` warns (`WARN_REQUIREMENT_TITLE_IS_AN_ID`).
+
+`notes` is unrendered on purpose: it is chartered internal-only, so being absent from every
+published surface is the point of it.
+
+> **Known gap.** `title` is chartered but the generated requirements page does not render it
+> yet — it headings each entry by its dotted path. Until that is fixed a title is authored and
+> not shown; `verify` does not warn about that, because a tool reporting its own backlog in your
+> terminal is noise.
 
 Two failure modes are worth naming because both look like diligence:
 
@@ -109,6 +130,25 @@ Two failure modes are worth naming because both look like diligence:
 - **A `description` that narrates the evidence.** The tell is a fact you had to read the
   implementation to learn — a file, a value, a count, a verified absence. That is `notes`.
   Keep the two disjoint and neither has to hedge.
+
+### The `name` is an address, not a sentence
+
+A requirement's `name` is the segment of its **dotted path** — `Ordering.Placement.Recorded`,
+the same addressing every other node uses — and that path is also the filename of its
+generated test stub (`requirements/<path>.test.ts`). So a name is an identifier, and two
+habits break it:
+
+- **A `.` in the name** makes it indistinguishable from nesting. A single node named
+  `Orders.Recorded` and a node `Orders` containing a node `Recorded` produce the *identical*
+  path, so the address stops identifying one node and both derive the same stub file. `/` and
+  `\` redirect the stub into a directory nobody declared — a `..` segment walks it out of the
+  output tree entirely — and the characters illegal in a Windows filename mean the stub
+  cannot be written there at all.
+- **A sentence for a name** puts the claim in the address instead of in `@statement`, where
+  every surface reads it.
+
+The loader constrains a requirement's name no more than any other node's, so both load
+cleanly. `verify` warns about them.
 
 ## Two kinds, opposite checks
 
@@ -187,6 +227,51 @@ meta verify — requirements: 62 recorded gap(s) with no @disposition.
 
 A gate that says nothing when it passes cannot be told apart from a gate that checked
 nothing — and a ledger that skipped an entire grain reads exactly like a complete one.
+
+### The authoring lint
+
+Alongside the gate, `verify` runs an **authoring lint** and prints it under its own heading:
+
+```
+meta verify — requirements: 6 authoring warning(s) (advisory — does not fail the build):
+  WARN_REQUIREMENT_NAME_NOT_ADDRESSABLE [Ordering.Orders.Recorded]: name "Orders.Recorded" …
+  WARN_REQUIREMENT_PROSE_DUPLICATED [Ordering.Orders.Recorded]: description opens by …
+```
+
+Every diagnostic is addressed by the requirement's **dotted path**, not its bare name — two
+branches of a ledger may reuse a name, and a finding you cannot locate is a finding you
+cannot act on. The gate above prints the same way.
+
+The two make different claims, which is why they are separate sections with separate
+caps. The **gate** says the ledger *disagrees with the model* — a link above the floor,
+nesting that contradicts a level, a reference that no longer resolves. The **lint** says the
+ledger agrees with the model but *records less than its author thinks*.
+
+| Code | Fires when |
+|---|---|
+| `WARN_REQUIREMENT_NAME_NOT_ADDRESSABLE` | The `name` holds a character that breaks the dotted path or the generated stub filename — `.`, `/`, `\`, `:`, `*`, `?`, `"`, `<`, `>`, `\|`, a control character, or stray surrounding whitespace. |
+| `WARN_REQUIREMENT_NAME_READS_AS_PROSE` | The `name` is a sentence rather than an identifier. |
+| `WARN_REQUIREMENT_NAME_RESTATES_STATEMENT` | The `name` and `@statement` say the same thing, so the claim is written twice and the address is one of the copies. |
+| `WARN_REQUIREMENT_PROSE_EMPTY` | `@statement` or `@counterexample` is declared but blank. The loader requires the attribute to be *present*, never to say anything. |
+| `WARN_REQUIREMENT_PROSE_DUPLICATED` | `description` repeats `@statement` — whole, or as its opening sentence — or `@counterexample` does. |
+| `WARN_REQUIREMENT_INERT_DOC_SLOT` | `summary` is set on a requirement, where `@statement` already holds the one-line sentence and nothing reads it. `title` is NOT flagged — it is chartered as the entry's label. |
+| `WARN_REQUIREMENT_TITLE_IS_AN_ID` | `title` opens with a catalogue or ticket id. Split it: the id to `@trackedBy`, the noun phrase stays the title. |
+
+**Every lint finding is a warning and none of them can fail your build.** That is deliberate
+rather than cautious: a prose check that turns `verify` red on upgrade teaches people to
+switch the gate off, which costs more than the padding it caught. It is the same call as
+object coverage, which stayed a warning because on one real estate it reported every entity
+in the repository.
+
+**Mute it with `--no-requirement-lint`** (or `META_NO_REQUIREMENT_LINT=1`) — the same pair
+the anti-pattern advisory offers. It silences the advisory half only: the gate above still
+runs and can still fail the build, which is the point of printing them as two sections.
+
+Two things the lint deliberately will **not** do. It never reports a *paraphrase* — only an
+exact repeat — because a similarity threshold on prose produces findings an author can argue
+with, and a gate people argue with is a gate people mute. And it never asks whether a
+statement is *true*, a description *useful*, or a counterexample *sufficient*; those are the
+judgements the ledger exists to record, and no check reaches them.
 
 ## Recording gaps: `partial` is a feature, not a failure
 

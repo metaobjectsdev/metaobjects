@@ -56,6 +56,40 @@ name the remedy; this table exists so you can act on one without re-deriving the
 reasons, so reading only the code you hit can send you the wrong way. The question is not
 "is this ref valid?" — usually it is — but "does the LEVEL match the shape of the ref?"
 
+## The authoring lint — a second section, never an error
+
+`verify` also prints an **authoring lint** under its own heading, after the gate's own
+warnings:
+
+```
+meta verify — requirements: 6 authoring warning(s) (advisory — does not fail the build):
+```
+
+Read it as a different claim from everything above. The gate says the ledger **disagrees with
+the model**; the lint says it agrees but **records less than its author thinks**. Every finding
+is a warning and none can change the exit code, so a lint-only run is a passing run.
+
+| code | what it means | fix |
+|---|---|---|
+| `WARN_REQUIREMENT_NAME_NOT_ADDRESSABLE` | the `name` holds a character that breaks the dotted path or the generated stub filename | rename it. A `.` is the common one and the worst: `Orders.Recorded` and `Orders` containing `Recorded` produce the **same** path, so the address stops identifying one node. |
+| `WARN_REQUIREMENT_NAME_READS_AS_PROSE` | the `name` is a sentence | the name is an address — make it an identifier and put the prose in `@statement`. |
+| `WARN_REQUIREMENT_NAME_RESTATES_STATEMENT` | `name` and `@statement` say the same thing | the claim is written twice. Keep `@statement` (every surface reads it) and shorten the name. |
+| `WARN_REQUIREMENT_PROSE_EMPTY` | `@statement` or `@counterexample` is present but blank | the loader requires the attr to EXIST, never to say anything. Write the sentence, or delete the entry. |
+| `WARN_REQUIREMENT_PROSE_DUPLICATED` | `description` repeats `@statement` (whole, or as its opening sentence), or `@counterexample` does | `@statement` is already the description. `description` holds the SCOPE; drop it entirely if the scope is obvious. |
+| `WARN_REQUIREMENT_INERT_DOC_SLOT` | `summary` is set on a requirement | `@statement` is already the required one-line sentence, so a summary can only repeat it, and nothing reads it. Delete it. (`title` is NOT flagged — it is chartered as the entry's label.) |
+| `WARN_REQUIREMENT_TITLE_IS_AN_ID` | `title` holds a catalogue or ticket id | a title is a noun phrase and an id is not a name. **Split** it — the id to `@trackedBy`, the phrase stays the title. Do not move the whole string; that throws the label away. |
+
+Findings from both sections are addressed by the requirement's **dotted path**, never its
+bare name — two branches of a ledger may reuse a name, so a bare one can be ambiguous.
+
+Mute the lint with `--no-requirement-lint` or `META_NO_REQUIREMENT_LINT=1`. That silences the
+advisory half **only** — the gate above still runs and can still exit 1.
+
+Two deliberate silences. The lint reports only **exact** repeats, never a paraphrase — a
+similarity threshold on prose produces findings you can argue with. And it never judges
+whether a statement is true or a counterexample sufficient; those are the judgements the
+ledger exists to record.
+
 ## `verify` does not look at your tests
 
 It used to. `@verifiedBy` asked you to name a test, and `verify` checked that the **name**
