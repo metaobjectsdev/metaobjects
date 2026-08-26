@@ -46,6 +46,28 @@ Two more are caught structurally rather than by a command: **generated-edited**
 **migration-vs-metadata** (migrations are emitted *from* metadata diffs, so they
 can't drift by construction).
 
+## Before any of this: the metadata has to LOAD — `meta upgrade` for retired vocabulary
+
+`verify` cannot report drift in a model it could not read. The registry is sealed
+(ADR-0023), so a retired name has **no deprecation shim** — it is a load error, and
+the run stops before the first drift check. Retirements that bite an existing estate:
+`@readOnly` → `@mutability` and `origin.collection` → `origin.aggregate @agg: collect`
+(0.24.0); `@violation` → `@counterexample`, plus `@verifiedBy`, `@supersededBy` and
+`@status: abandoned | superseded` on `requirement.*` (0.24.0, FR-038); and an index key
+declaring **both** `@fields` and `@expr`, refused since 0.24.1.
+
+```
+meta upgrade            # previews every rewrite; writes nothing
+meta upgrade --apply    # makes them
+```
+
+Node-only, because it edits the metadata documents every port shares — a Java, Python
+or C# project runs `npx meta upgrade` against its own sources. Canonical JSON and YAML
+alike. It rewrites from the same table the loader's errors are generated from, fixes
+only what has one correct answer, and **refuses the rest with a non-zero exit** so a
+pipeline cannot record a partial migration as done. See
+`references/requirements.md` for what it refuses on a ledger and why.
+
 ## Run `meta verify` before you call a build done
 
 Make a bare `meta verify` the last step before you consider any MetaObjects work

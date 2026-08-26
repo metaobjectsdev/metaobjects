@@ -33,6 +33,14 @@ const DELIBERATELY_NAMED_RETIRED_OR_CUT = new Set<string>([
   // retired @attrs (pre-v2 renamed forms; the audit skill names them as what to grep for)
   "@dbColumn",  // renamed to @column (ADR-0007)
   "@name",      // pre-v2 source physical name; now @table on source.rdb
+  // FR-038 (0.24.0) — retired requirement.* vocabulary. Named for a different reason than
+  // the rows above: not "grep adopter code for this bad pattern" but "an estate carrying it
+  // does not LOAD, so meta verify never runs and the whole requirements audit is blocked
+  // until `meta upgrade` clears it". The audit skill's E2 item states that precondition, so
+  // it must be able to name what triggers it.
+  "@violation",     // renamed to @counterexample
+  "@verifiedBy",    // dropped — it proved a NAME existed, never that the test verified the claim
+  "@supersededBy",  // dropped — a requirement is prescriptive, never a journal
   // (Wave 4 — ADR-0038 reverse navigation — shipped as explicit generated FK finders with
   // NO metamodel attribute: the finder name derives from source + FK field, unique by
   // construction. The predicted-but-never-built @reverseName is therefore NOT named by the

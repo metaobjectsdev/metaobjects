@@ -13,6 +13,38 @@ subverb**: requirements are metadata, so they are checked on *every* `meta verif
 A typo'd `@status` fails the **load** ("failed to load metadata"), before verify runs. If you
 see that, no other diagnostic in the run is trustworthy — fix it first and re-run.
 
+## A load failure on RETIRED vocabulary — run `meta upgrade`, do not hand-sweep
+
+`@status` is not the only way the load fails before any of this runs. **0.24.0** retired
+`@violation` (→ `@counterexample`), `@verifiedBy`, `@supersededBy` and the `abandoned` /
+`superseded` members of `@status`; **0.24.1** made an index key `@fields` **XOR** `@expr`, so a
+node declaring both is now `ERR_INVALID_INDEX`. There is no deprecation shim for any of them —
+the registry is sealed (ADR-0023), so a legacy document does not load at all and every check on
+this page is unreachable until it does.
+
+```
+meta upgrade            # previews every rewrite; writes nothing
+meta upgrade --apply    # makes them
+```
+
+It rewrites from the same table the loader's error text is generated from, so the fix you are
+told about and the edit the tool makes cannot drift apart. It fixes only what has one correct
+answer and **refuses the rest, exiting non-zero** — a partial migration can never be recorded
+as finished by CI. Two refusals are expected on a real ledger and both are yours to decide:
+
+- **`@status: abandoned` / `superseded`.** What happens to a retired capability's record is a
+  judgement nobody wrote down. Under FR-038 a requirement is prescriptive — it states what
+  should be true and is never a journal — so the entry is normally **deleted** (version control
+  holds that it existed) with anything a future reader still needs moved to `notes` on the
+  surviving entry.
+- **`origin.collection`.** Retired to `origin.aggregate @agg: collect`; the attribute sets
+  differ, so the tool will not guess.
+
+`@fields` beside `@expr` **is** rewritten, and the survivor is not a coin toss: that pair loaded
+before 0.24.1 with `@fields` silently discarded, so the index already in your database is the
+expression one. `upgrade` drops `@fields` — which reproduces the object that exists and emits no
+DDL change. Do not hand-pick the other survivor; that invents a new index and migrates live data.
+
 ## The status asymmetry — the one that surprises people
 
 The **same** unresolved `@implementedBy` reference is:

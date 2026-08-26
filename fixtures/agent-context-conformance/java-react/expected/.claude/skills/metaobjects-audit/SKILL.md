@@ -71,10 +71,28 @@ code behind a grep hit; a "duplicate" validator's *divergence* is the finding.
   design, and a real estate reports most of itself unclaimed on day one). Score the prose
   it would replace, and prefer ONE concrete claim an author can check over a
   whole-estate migration.
+  **First establish the estate LOADS.** An older ledger fails the load outright, so
+  `meta verify` never runs and everything in `references/requirements.md` is unavailable:
+  `@violation`, `@verifiedBy`, `@supersededBy` and `@status: abandoned | superseded` were
+  retired in **0.24.0** (no deprecation shim — ADR-0023 seals the registry), and an index key
+  declaring both `@fields` and `@expr` is refused since **0.24.1**. Run **`meta upgrade`**
+  (previews by default; `--apply` writes) before auditing, and audit the upgraded tree. It
+  rewrites only what has one correct answer and **refuses the rest, exiting non-zero** —
+  `@status: abandoned` is refused because what happens to a retired capability's record is
+  judgment, not substitution. **A refusal is itself the finding**: it names the entries whose
+  disposition nobody recorded.
 - [ ] **F. Drift-gate adoption.** Is `meta verify` wired into CI / pre-commit? Which
   subverbs (`--codegen` / `--templates` / `--db`)? Committed-codegen freshness gate?
   Advisories heeded? Routine `--no-verify` bypass? Loader `ERR_*` / warnings addressed?
   Parse the stable `code` field, not message text (ADR-0009).
+  **Is any advisory half switched OFF?** A gate can be wired, green, and muted. The
+  requirements authoring lint is advisory and mutable — `--no-requirement-lint` or
+  `META_NO_REQUIREMENT_LINT=1` silences it while the gate above it still runs and can still
+  exit 1, so a green pipeline says nothing about the seven `WARN_REQUIREMENT_*` authoring
+  checks. Grep CI config and scripts for both spellings. Muted is not automatically a defect —
+  a project that made a deliberate call is fine — but it moves those checks back onto the
+  auditor (see `references/requirements.md`), so **say which it is** rather than reporting the
+  ledger as lint-clean.
   **Coverage completeness — "wired" is not "covers it all."** A gate can be present
   yet blind to a whole artifact class. Confirm each subverb actually covers what the
   project HAS: (a) **templates** — `verify --templates` on a CLI before the #193 fix

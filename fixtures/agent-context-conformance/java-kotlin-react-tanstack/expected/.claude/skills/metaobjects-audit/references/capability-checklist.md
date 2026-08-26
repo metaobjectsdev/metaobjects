@@ -114,8 +114,10 @@ classify it (using the classification scheme in `SKILL.md`) and route the cutove
 
 - **`identity.primary`** (`@generation`) — hunt hand-assigned primary keys / ID generation
   the primary identity's `@generation` strategy models.
-- **`identity.secondary`** (`@fields`; physical escapes `@using`/`@expr`/`@where`/`@orders`) — a
-  UNIQUE alternate key (uniqueness is the type — the legacy `@unique` attr was removed from it);
+- **`identity.secondary`** (keys off `@fields` XOR `@expr` — exactly one, never both; physical
+  escapes `@using`/`@where`/`@orders`) — a UNIQUE alternate key (uniqueness is the type — the
+  legacy `@unique` attr was removed from it, and the same XOR rule as `index.lookup` applies here
+  because ADR-0040 puts uniqueness in the TYPE: a secondary identity IS a unique index);
   hunt hand-rolled unique constraints or raw-SQL partial/functional unique indexes it models.
 - **`identity.reference`** (`@references`, `@enforce`) — hunt hand-written FK constraints /
   reference enforcement the reference identity already declares.
@@ -238,6 +240,12 @@ subtypes with opposite polarity: `requirement.functional` fails when NOTHING imp
   recorded as a TODO, or a ticket number in a comment. **ABSENT disposition means UNDECIDED**,
   which is the point: a gap nobody has ruled on reads differently from one deliberately
   accepted.
+- **The doc slots behave differently on this node type** — do not audit them by the generic
+  rule below. `title` is CHARTERED here (a requirement's `name` is an identifier, so the label
+  lives in `title`) and is **rendered** by `meta docs`, heading each entry after its dotted
+  path; `summary` is INERT (nothing reads it, and `@statement` is already the required
+  one-liner) and `meta verify` warns on one. So an absent `summary` is correct, a populated
+  one is the finding, and a populated `title` is correct.
 - **CALIBRATION — entirely opt-in and warning-only where it counts.** A project declaring no
   `requirement.*` nodes sees no diagnostics at all, and object coverage ("entities claimed
   by nothing") ships as a WARNING deliberately — a real estate carrying one requirement will
