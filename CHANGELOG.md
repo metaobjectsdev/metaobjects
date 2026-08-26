@@ -13,7 +13,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 or below the L4 floor, nesting that agrees with levels, `@implementedBy` that still resolves.
 That gate answers one question: *does the ledger disagree with the model?* It has nothing to
 say about the other failure, which is a ledger that agrees with the model perfectly and
-**records less than its author thinks**. Six new warnings cover that, printed under their own
+**records less than its author thinks**. Seven new warnings cover that, printed under their own
 heading:
 
 | Code | Fires when |
@@ -217,6 +217,58 @@ adds nothing machine-readable; a test now pins that widening the projection did 
 wire. Whitespace inside a title is collapsed at the render tier, not in the projection — a
 newline in a heading re-parents every line after it and silently costs the document its
 structure, but that is a markdown fact rather than a fact about the ledger.
+
+### Fixed — the scaffolded agent-context skills caught up with the requirement + upgrade work
+
+`meta init` scaffolds seven skills into an adopter's repo, and three of them had gone stale by
+**omission** rather than by saying anything false — the failure mode that costs an agent the
+most, because it reads as complete.
+
+**`metaobjects-audit` told an auditor to hand-check what the tool now proves.** Its
+`references/requirements.md` listed only referential integrity under *"what verify has already
+proven (do not re-check by hand)"*. `verify` now also runs the seven-warning authoring lint
+above, so an auditor working from that file re-derives naming and prose findings a green run
+already settled. The file now carries the lint table, plus the two limits that put work back on
+the auditor: the lint is **mutable** (`--no-requirement-lint` / `META_NO_REQUIREMENT_LINT=1`
+silence it while the gate above still runs and can still exit 1), and it reports only **exact**
+repeats, so a paraphrased duplicate stays a hand finding. §F of the checklist gained the
+matching question — *is any advisory half switched off?* — because a gate can be wired, green,
+and muted.
+
+**A ledger on retired vocabulary does not LOAD, so none of the above runs.** Neither the audit
+nor the verify skill named `meta upgrade`, which is the one command that exists to repair
+exactly that. Both do now: the verify skill states the precondition before its drift sections
+(a retired name has no deprecation shim — the registry is sealed, so the run stops before the
+first check), and the audit skill's ledger item tells an auditor to upgrade first and audit the
+upgraded tree — where **a refusal is itself the finding**, since `upgrade` refuses
+`@status: abandoned` precisely because nobody recorded what should happen to that entry.
+
+**`title` is now rendered, which makes it auditable.** It was an inert slot; it now heads every
+entry on the generated requirements page, so a title that restates the statement is visible
+noise rather than a private habit. Added as a sixth human-only audit item — and paired with the
+explicit instruction NOT to flag a *populated* `title` as a defect, which is the mistake a
+reader of the `WARN_REQUIREMENT_INERT_DOC_SLOT` rule would otherwise make by symmetry.
+
+**Two capability-checklist corrections.** `identity.secondary` was described as taking `@fields`
+with `@expr` among its physical escapes, while `index.lookup` two sections later stated the
+`@fields` **XOR** `@expr` rule — the same file disagreeing with itself. #342 applies that rule to
+both (ADR-0040: uniqueness lives in the TYPE, so a secondary identity *is* a unique index), and
+both entries now read the same way. And the generic documentation-attr guidance does not hold on
+`requirement.*`: `title` is chartered there and `summary` is inert, so an absent `summary` is
+correct and a populated one is the finding.
+
+**`metaobjects-fit-assessment` was grounded against `0.17.x` and still promised a parser for a
+`template.output`.** ADR-0052 (0.24.0) made the subtype's axis DIRECTION: the whole inbound tier
+— parser-on-receipt, the tolerant `extract`, the output-format fragment — keys off `@responseRef`
+on a **responding `template.prompt`**, and a `template.output` is outbound-only and emits none of
+it. A pre-adoption assessment promising it would have been promising a capability the current
+release refuses to generate. Corrected in all three places it appeared, along with the
+whole-object rollup (`@agg: collect` with `@of` omitted, 0.24.1) in the view-necessity test, which
+widens what an assessment can call expressible. Its deliberate `requirement.*` deferral is
+**kept**, but its stated first reason — *"`requirement.*` is not in a release yet"* — was simply
+false (0.22.0), so the comment now records where the trigger actually stands: shipped, Arm A
+fired, and the deferral resting on the one reason that was always load-bearing — whether anyone
+fills a ledger in unprompted, still unmeasured.
 
 ## [0.24.1] — npm `0.24.1` · PyPI `0.24.1` · NuGet `0.24.1` · Maven `7.24.1`
 

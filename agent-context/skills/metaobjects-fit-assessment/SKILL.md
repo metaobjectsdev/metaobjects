@@ -18,13 +18,14 @@ DEFERRED, ON PURPOSE — capability requirements (`requirement.functional` /
 `requirement.architectural`). This skill deliberately says NOTHING about them, and that is a
 decision, not an omission.
 
-Why not now: (1) the grounding rule above requires every capability claim be verifiable
-against the CURRENT RELEASE, and `requirement.*` is not in one yet. (2) The signal->feature
-mapping is unvalidated against this skill's own kill criterion: the controlled evidence
-(0/24 model-only revivals) measures POST-adoption model-reading, and the feature's premise --
-that the disproof lives nowhere in the model -- cuts against pre-adoption detectability. If
-the reasoning was never written down, there is nothing for an evidence-cited assessment to
-cite. (3) Whether anyone fills the ledger in is itself untested; advertising it pre-adoption
+Why not now: (1) SPENT -- this read "not in a release yet", and it is now. `requirement.*`
+shipped in 0.22.0 and has evolved twice since (0.23.0 added `planned` / `@disposition` /
+`@trackedBy`; 0.24.0 made the vocabulary prescriptive-only). Do not repeat this reason.
+(2) The signal->feature mapping is unvalidated against this skill's own kill criterion: the
+controlled evidence (0/24 model-only revivals) measures POST-adoption model-reading, and the
+feature's premise -- that the disproof lives nowhere in the model -- cuts against pre-adoption
+detectability. If the reasoning was never written down, there is nothing for an evidence-cited
+assessment to cite. (3) Whether anyone fills the ledger in is itself untested; advertising it pre-adoption
 is the brochure failure this skill exists to avoid.
 
 TRIGGER to revisit — the release carrying `requirement.*` has shipped, AND either:
@@ -33,6 +34,23 @@ TRIGGER to revisit — the release carrying `requirement.*` has shipped, AND eit
          (removal commit, dead flag, do-not-reintroduce comment);
   Arm B  a team that adopted via this assessment hits a resurrection the ledger would have
          caught, or asks why the assessment never mentioned it.
+
+ARM A HAS FIRED (dogfooded adopter estate, 2026-08-13). Three retired or reversed capability
+decisions were each citable PRE-adoption at file:line -- a removal commit, two explicit
+do-not-reintroduce comments on the very constant an agent would revive, an .env.example line
+saying the knob does not exist. The ANTI-TRIGGER did NOT fire: every one traced to committed
+prose. Bound it honestly -- n=1, and that estate is unusually disciplined about recording
+reversals in co-located prose, which is precisely the manual work `requirement.*` systematizes,
+so it is a confound rather than a clean sample. It also partly falsifies the feature's own
+premise that the disproof lives nowhere in the model.
+
+SO THE DEFERRAL NOW RESTS ON (3) ALONE, which makes it a judgement about VALUE rather than a
+fact about the release. Unprompted uptake is still unmeasured, and a later cross-estate reading
+sharpened the question: ledger value tracks whether the ledger is EXECUTABLE -- whether some
+mechanism can falsify a claim -- not when it was written. The largest ledger measured carried
+no harness and produced no defect found by any mechanism. Advertising that to a team that will
+hand-maintain it is the brochure failure this skill exists to avoid. Revisiting means deciding
+the SHAPE below is worth spending, not re-checking whether the capability exists.
 
 ANTI-TRIGGER (defer -> never): if dogfooded entries trace only to tribal knowledge with no
 repo artifact, this assessment structurally cannot speak to the feature as a finding.
@@ -46,8 +64,10 @@ R0 verdict line: no verdict may turn on it.
 
 # MetaObjects Fit & Migration Assessment
 
-_Assessment prompt v1 (post-Phase-0 refinement). Grounded against MetaObjects npm `0.17.x` /
-Maven `7.9.x` — verify every capability claim against the current release before asserting it._
+_Assessment prompt v1 (post-Phase-0 refinement). Body originally grounded against MetaObjects
+npm `0.17.x` / Maven `7.9.x`; capability claims re-swept against npm `0.24.x` / Maven `7.24.x`
+on 2026-08-25, but not every line has been re-derived since — verify every capability claim
+against the current release before asserting it._
 
 You are an AI assistant running a **pre-adoption fit assessment** for MetaObjects
 (https://github.com/metaobjectsdev/metaobjects — the cross-language metadata standard:
@@ -265,11 +285,13 @@ signature class. Hunt all ten classes:
    **necessity test**: expressible when every output column is a passthrough
    (`origin.passthrough @from/@via`), a count/sum/avg/min/max (`origin.aggregate
    @agg/@of/@via`, row-scoped with `@filter`), a predicate quantifier (`origin.aggregate
-   @agg: any|all`), an array rollup (`origin.aggregate @agg: collect`), a non-aggregate
-   derived scalar (`origin.computed @expr`), an argmax-style "one related row's column"
-   pick (`origin.first @via` — covers the common `DISTINCT ON` / lateral-join shape),
-   a soft-delete/status/type row-scope (an
-   object-level `@filter` on `object.projection`), or `extends`-borrowed — and joins
+   @agg: any|all`), an array rollup (`origin.aggregate @agg: collect` — with `@of`
+   naming one column, or `@of` OMITTED since 0.24.1 to collect each related row as the
+   carrying field's declared value object, which is the `json_agg(row_to_json(...))` shape),
+   a non-aggregate derived scalar (`origin.computed @expr`), an argmax-style "one related
+   row's column" pick (`origin.first @via` — covers the common `DISTINCT ON` / lateral-join
+   shape), a soft-delete/status/type row-scope (an object-level `@filter` on
+   `object.projection`), or `extends`-borrowed — and joins
    follow declared relationships/`identity.reference` FKs. Expressible → projection
    candidate (note: an unmodeled hand view is *unmanaged* — invisible to `verify --db`;
    modeling it is what makes it gateable). `DISTINCT ON` and lateral join are **not**
@@ -313,7 +335,7 @@ concrete — lead with it.
 | schema vs model (5 + the DDL copy in 6) | spine owns DDL via `meta migrate`; **`meta verify --db`** (Node `meta` only; PG/SQLite/D1) |
 | opaque JSON columns (6-implicit) | `object.value` + `field.object @storage: jsonb` — the shape gets ONE checkable declaration + generated codecs |
 | read-model SQL (8) | `object.projection` + `origin.*` generate the view DDL |
-| scattered prompts (10) | `template.prompt` + typed payload VO + external text; **`meta verify --templates`** / `Renderer.verify` fails when a `{{field}}` no longer matches the payload; `template.output` (FR-006) + the tolerant `extract` parser and output-format fragment (FR-010) generate both sides of the tag contract |
+| scattered prompts (10) | `template.prompt` + typed payload VO + external text; **`meta verify --templates`** / `Renderer.verify` fails when a `{{field}}` no longer matches the payload; a **responding** `template.prompt` — one carrying `@responseRef` — generates parser-on-receipt (FR-006) plus the output-format fragment and tolerant `extract` (FR-010), i.e. both sides of the tag contract. A `template.output` is **outbound only** and emits no parser (ADR-0052, 0.24.0) |
 | the metadata itself | strict provenance (ADR-0023): unknown attrs fail load |
 
 State the honest limits in the same section: `verify` cannot catch semantic mismodeling
@@ -428,8 +450,11 @@ promising it or counting it in benefits:
   count them).
 - email/URL/IP regexes → `@stringFormat: email` / `field.uri` / `field.inet`.
 - opaque JSON columns → `object.value` + `field.object @storage: jsonb` (from P2-b).
-- inline prompts / ad-hoc payload dicts / regex output parsing → `template.prompt` /
-  `template.output` / `template.toolcall`.
+- inline prompts / ad-hoc payload dicts → `template.prompt` / `template.toolcall`; a
+  hand-rolled regex or JSON-scrape of an LLM **reply** → a *responding* `template.prompt`
+  (one carrying `@responseRef`), never `template.output` — the subtype's axis is DIRECTION
+  and an output is outbound only (ADR-0052). Rendered emails / documents / config exports
+  are what `template.output` is for.
 - doc comments hand-written in migrations (`COMMENT ON`) → the common `description` attr.
 - a recurring closed variant-set as N sibling modules → project-registered provider
   subtype — VOCAB CANDIDATE, advisory only, never load-bearing for the verdict.
@@ -572,9 +597,11 @@ Every prose prediction gets a claim. Ceiling statements (P5-b) MUST carry
   runtime; consumer hand-wires the FastAPI router + repository impl; `metaobjects`
   console script `gen`/`verify` (no migrate).
 - **Prompt pillar** (all five ports): render + payload-VO codegen + `verify` templates +
-  `template.output` parser-on-receipt (FR-006) + output-format fragment & tolerant
-  `extract` (FR-010). MCP exposure of declared prompts/tools: not shipped — never
-  promise it.
+  parser-on-receipt for a **responding `template.prompt`** (FR-006) + output-format fragment
+  & tolerant `extract` (FR-010). Since 0.24.0 that whole inbound tier keys off `@responseRef`
+  on a `template.prompt`; a `template.output` is outbound-only and emits none of it
+  (ADR-0052) — do not promise a parser for one. MCP exposure of declared
+  prompts/tools: not shipped — never promise it.
 - **Not shipped, never promise**: `api.*`/`operation.*`/`binding.*` declared-API surface;
   the cut `byte`/`short`/`class` field stubs (non-functional, removed from the registry);
   `index.fulltext`/`vector`/`spatial` (reserved, unregistered); native PG enums /
