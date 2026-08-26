@@ -101,6 +101,89 @@ overlay is linted on what the node effectively carries (ADR-0039 resolving acces
 throughout). TypeScript-CLI-only, like the rest of the requirements gate.
 
 ## [0.24.1] — npm `0.24.1` · PyPI `0.24.1` · NuGet `0.24.1` · Maven `7.24.1`
+### Fixed — `meta upgrade` now repairs the `@fields` + `@expr` index key ([#342](https://github.com/metaobjectsdev/metaobjects/issues/342))
+
+`0.24.1` made an index key **`@fields` XOR `@expr`**, correcting a spelling that used to load
+while silently throwing half of itself away. That is the right rule, and it left a hole: the
+one command that exists to repair metadata the current loader refuses did not know about it.
+An estate carrying the legacy spelling therefore ran `meta upgrade --apply`, watched it rewrite
+every retirement it *did* know, exited 0 — and still would not load. Three files had to be
+hand-edited, and the first attempt at automating it by proximity ("a `fields` with an `expr`
+nearby") deleted a `fields` belonging to a **sibling** node, trading one load error for
+another.
+
+**Dropping `@fields` is not a coin toss, which is the only reason this is automated at all.**
+`meta upgrade` refuses `@status: abandoned` because the correct edit depends on intent nobody
+recorded. Here the metadata's own history says what the declaration MEANT: the pair loaded
+before `0.24.1` with `@fields` **discarded** — `migrate-ts` has always run
+`columns: expr ? [] : cols` — so the index in the adopter's database is the expression one.
+Dropping `@fields` reproduces the object that already exists; keeping it and dropping `@expr`
+would invent a different index and emit a migration against live data. The deployed schema is
+the evidence, and there is one answer.
+
+**A new table, deliberately not a new row in the old one.** `retired-vocabulary.ts` answers
+"this name is gone"; a contradiction is two names that are both perfectly live and may not sit
+together. Different match shape (a pair on one node, not one key), different fix shape (delete
+one of two, not rewrite a value) — folding them together would give every retirement entry
+fields it can never use. The new `attr-contradictions.ts` keeps the property that matters
+instead: **the loader's `ERR_INVALID_INDEX` message and the rewriter's edit come from the same
+entry**, so what an adopter is told and what the tool does cannot drift apart. That error now
+names `meta upgrade --apply` — #337's lesson exactly, where an adopter shown only that their
+metadata was invalid concluded the tool had a bug, because nothing pointed at the way out.
+
+**Matched per NODE, in both authoring forms.** The JSON arm already recovered the enclosing
+`"<type>.<subType>"` body for every occurrence; it now also asks whether two keys share the
+**same** body, which is the question proximity cannot express — a node body contains its
+children's bodies, so containment alone would have reached a nested node. The YAML arm walks
+node bodies for the same reason. **The two sides are asked different questions**, mirroring the
+loader's Rule 1a exactly: the dropped side counts on PRESENCE (`@fields: []` beside `@expr` is
+still a declaration of both, and is the case where the discard is *total*), while the surviving
+side counts only when it supplies a key — so a blank `@expr: ""` beside `@fields` is a plain
+column index the loader accepts and the rewriter must not touch. If those predicates ever
+diverge, the tool deletes an attribute from a document that was loading; a test pins each.
+
+`identity.secondary` is covered alongside `index.lookup` per
+[ADR-0040](spec/decisions/ADR-0040-index-type-and-secondary-key-purity.md) — uniqueness lives
+in the TYPE, so a unique key keys itself identically. `identity.primary` and
+`identity.reference` are deliberately absent: they carry no `@expr` to contradict, so a scope
+reaching them would delete the only key they have.
+
+**One case stays the loader's refusal, and is stated rather than papered over:** a node
+declaring `@expr` while INHERITING `@fields` through `extends` contradicts itself in the loaded
+model and not on the page. No raw-document rewriter can resolve a super-reference, and the fix
+is on the parent — which is the adopter's call.
+
+**The "changes no emitted DDL" claim is GATED, not asserted.** That sentence is the whole
+reason this is automated rather than refused, so it gets the round trip this repo requires of
+any migrate change. It cannot diff before against after — the "before" no longer loads, which
+is what #342 changed — so it checks the two statements the claim decomposes into: `upgrade(both)`
+emits **byte-identical** DDL to hand-authored `@expr`-only, and that DDL **differs** from
+hand-authored `@fields`-only. The second is what makes the first mean anything (identity would
+also hold if every arm emitted the same wrong index) and is the evidence for the other half of
+the advice: keeping `@fields` really would migrate a live database. Then emit → apply to a real
+engine → introspect → **re-diff empty**, and a read of the engine's own catalogue to ask what it
+built rather than trusting the SQL this repo just printed.
+
+**Both dialects, and the split is deliberate.** The emit comparison needs no database — a diff
+against an empty snapshot is enough — so `sqlite` and `postgres` are both compared on every run
+in the fast lane. Only the engine round trip needs a server: sqlite gets one from libsql
+unconditionally, and the Postgres arm self-skips without `MIGRATE_TS_PG_URL` exactly like every
+other pg suite, running in `ts-slow`. Postgres is where `@expr` originally shipped and where
+introspection reads an expression key back through `pg_get_expr`, so gating the claim on sqlite
+alone would have left the original dialect uncovered.
+
+**Writing that gate found two migrate tests standing on metadata no adopter can author.**
+`expression-index.test.ts` and `sqlite-index-escapes.test.ts` both declared `@fields` beside
+`@expr` — `expression-index.test.ts` under a comment claiming "`@fields` anchors the underlying
+column for the loader", which had stopped being true a release earlier. They passed because
+each took `.root` off the load result and never read `.errors`. Both now author the legal
+spelling and **throw when the fixture does not load**, and both still pass — which is itself a
+third, independent confirmation that `@fields` was contributing nothing to the DDL.
+
+**Also corrected while here: `docs/features/cli.md` said `meta upgrade` was "Canonical JSON
+only" and that YAML files were "named and refused".** The YAML arm shipped with #339; the doc
+had been describing a limitation that no longer existed, on the exact command an adopter reads
+before running it against their estate.
 ### Fixed — an expression index was undeclarable, and the one spelling that loaded was half-ignored ([#342](https://github.com/metaobjectsdev/metaobjects/issues/342))
 
 **`@expr` was registered, built and rendered — and unreachable.** The registry has always

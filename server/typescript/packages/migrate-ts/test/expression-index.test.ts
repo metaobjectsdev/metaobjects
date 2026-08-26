@@ -4,9 +4,13 @@ import { buildExpectedSchema } from "../src/expected-schema.js";
 import { emit } from "../src/emit/index.js";
 import type { Change } from "../src/types.js";
 
-// Expression/functional indexes: identity.secondary @expr (key expression) + @using
-// (access method). @fields anchors the underlying column for the loader; @expr is
-// the actual key. Covers a btree functional index and a GIN expression index.
+// Expression/functional indexes: `@expr` (key expression) + `@using` (access method).
+// Covers a btree functional index and a GIN expression index.
+//
+// NEITHER NODE CARRIES `@fields`. An index key is `@fields` XOR `@expr` (#342). Both did
+// until that gate landed, under a comment claiming "@fields anchors the underlying column
+// for the loader" — which had stopped being true, and this file did not notice because it
+// took `.root` off the result and never read `.errors`. The load verdict is checked now.
 async function load(): Promise<import("@metaobjectsdev/metadata").MetaData> {
   const json = JSON.stringify({ "metadata.root": { package: "p", children: [
     { "object.entity": { name: "User", children: [
@@ -14,14 +18,18 @@ async function load(): Promise<import("@metaobjectsdev/metadata").MetaData> {
       { "field.string": { name: "email" } },
       { "field.string": { name: "tags" } },
       { "identity.primary": { name: "pk", "@fields": ["id"], "@generation": "increment" } },
-      { "index.lookup": { name: "ix_email_lower", "@fields": ["email"],
+      { "index.lookup": { name: "ix_email_lower",
           "@expr": "lower((email)::text)" } },
-      { "index.lookup": { name: "ix_tags_gin", "@fields": ["tags"],
+      { "index.lookup": { name: "ix_tags_gin",
           "@expr": "string_to_array((tags)::text, ','::text)", "@using": "gin" } },
       { "source.rdb": { name: "src", "@table": "users" } },
     ] } },
   ] } });
-  return (await new MetaDataLoader().load([new InMemoryStringSource(json)])).root;
+  const result = await new MetaDataLoader().load([new InMemoryStringSource(json)]);
+  if (result.errors.length > 0) {
+    throw new Error(`fixture does not load:\n${result.errors.map((e) => e.message).join("\n")}`);
+  }
+  return result.root;
 }
 
 describe("buildExpectedSchema — expression/functional indexes", () => {

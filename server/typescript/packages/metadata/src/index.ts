@@ -299,5 +299,14 @@ export {
   retirementHint,
 } from "./retired-vocabulary.js";
 export type { RetirementNote, RetiredEntry, VocabularyRewrite } from "./retired-vocabulary.js";
+// Its sibling: pairs of LIVE attributes that may not sit on one node. Same two consumers,
+// same reason — a retirement removes a name, a contradiction refuses a combination.
+export {
+  ATTR_CONTRADICTIONS,
+  contradictionsFor,
+  contradictionScopeMatches,
+  contradictionHint,
+} from "./attr-contradictions.js";
+export type { AttrContradiction } from "./attr-contradictions.js";
 export { rewriteDocument } from "./vocabulary-rewrite.js";
 export type { RewriteResult, RewriteChange, RewriteRefusal, RewriteOpts } from "./vocabulary-rewrite.js";

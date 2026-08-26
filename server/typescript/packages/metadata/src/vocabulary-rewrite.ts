@@ -40,12 +40,19 @@
 // (flow mappings, `{ name: x, readOnly: true }`) was not matched at all. YAML's value extent
 // is not derivable by scanning; JSON's is.
 //
+// IT ALSO RESOLVES ATTRIBUTE CONTRADICTIONS — two LIVE attributes that may not sit on one
+// node (`attr-contradictions.ts`). Same machinery, different match: a retirement finds one
+// key, a contradiction finds a PAIR inside one node body, which is exactly what `scopeRanges`
+// already answers. Doing it by proximity instead ("a `fields` with an `expr` near it") was
+// tried and took a `fields` whose neighbouring `expr` belonged to a SIBLING node.
+//
 // IT REFUSES WHAT IT CANNOT KNOW. A retirement with no `rewrite` (`@status: abandoned`) is
 // reported, never guessed at. Deleting the node, retyping it, and fixing the residue it
 // describes are all defensible, and a wrong guess emits metadata that LOADS and means
 // something different — strictly worse than leaving it alone, because the adopter would
 // believe the migration finished.
 
+import { ATTR_CONTRADICTIONS, contradictionScopeMatches } from "./attr-contradictions.js";
 import {
   RETIRED_VOCABULARY,
   note,
@@ -158,15 +165,61 @@ function scopeRanges(source: string): ScopeRange[] {
   return ranges;
 }
 
-/** The type key governing `offset` — the innermost body containing it. */
-function scopeAt(ranges: readonly ScopeRange[], offset: number): string | undefined {
+/** The innermost node body containing `offset`. */
+function scopeRangeAt(ranges: readonly ScopeRange[], offset: number): ScopeRange | undefined {
   let best: ScopeRange | undefined;
   for (const r of ranges) {
     if (offset <= r.bodyStart || offset >= r.bodyEnd) continue;
     // Properly nested ranges: the innermost containing one starts last.
     if (best === undefined || r.bodyStart > best.bodyStart) best = r;
   }
-  return best?.typeKey;
+  return best;
+}
+
+/** The type key governing `offset`. Derived from the range so the two cannot disagree —
+ *  a retirement asks WHICH type, a contradiction asks WHICH NODE, and answering them from
+ *  two separate walks is how the pair-matching would drift from the scoping. */
+function scopeAt(ranges: readonly ScopeRange[], offset: number): string | undefined {
+  return scopeRangeAt(ranges, offset)?.typeKey;
+}
+
+/** One key occurrence: where the key starts, and where its value begins. */
+interface KeySite {
+  readonly keyStart: number;
+  readonly afterKey: number;
+}
+
+/** Every place `attr` appears as a key inside `range`'s OWN body — a nested node's key of
+ *  the same name belongs to that node, not to this one. Containment alone is not enough:
+ *  a node body contains its children's bodies, so the innermost enclosing range must BE
+ *  this range. That identity test is what proximity matching cannot express. */
+function ownKeys(
+  source: string,
+  ranges: readonly ScopeRange[],
+  range: ScopeRange,
+  attr: string,
+): KeySite[] {
+  const out: KeySite[] = [];
+  const re = keyPattern(attr);
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(source)) !== null) {
+    if (m.index <= range.bodyStart || m.index >= range.bodyEnd) continue;
+    if (scopeRangeAt(ranges, m.index)?.bodyStart !== range.bodyStart) continue;
+    out.push({ keyStart: m.index, afterKey: m.index + m[0].length });
+  }
+  return out;
+}
+
+/** Does this key carry a string that actually says something? */
+function suppliesText(source: string, site: KeySite): boolean {
+  const raw = valueSpan(source, site.afterKey)?.raw;
+  if (raw === undefined) return false;
+  try {
+    const v: unknown = JSON.parse(raw);
+    return typeof v === "string" && v.trim().length > 0;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -279,6 +332,45 @@ export function rewriteDocument(source: string, opts: RewriteOpts = {}): Rewrite
       if (entry.isSubTypeRetirement !== true || !inWindow(entry)) continue;
       if (`${entry.type}.${entry.subType}` !== r.typeKey) continue;
       refusals.push({ ...note(entry), subject: r.typeKey, line: lineAt(source, r.keyIndex) });
+    }
+  }
+
+  // ── Attribute contradictions: two LIVE attrs that may not sit on one node ──
+  //
+  // Matched per NODE, not per occurrence, because the illegal thing is the pair. `ownKeys`
+  // supplies the node-identity test the proximity approach could not: a `@fields` and an
+  // `@expr` that merely appear near each other may belong to different siblings.
+  //
+  // THE TWO SIDES ARE ASKED DIFFERENT QUESTIONS, mirroring the loader's Rule 1a exactly
+  // (`validation-passes.ts`, `hasFieldsAttr` vs `hasExpr`). The DROP side counts on
+  // PRESENCE — `@fields: []` beside `@expr` is still a declaration of both, and is the case
+  // where the discard is total. The KEEP side counts only when it actually supplies a key,
+  // so `@expr: ""` beside `@fields` is a plain column index the loader accepts and this
+  // must not touch. If those two predicates ever diverge, this deletes an attribute from a
+  // document that was loading.
+  //
+  // IT SEES ONLY THIS NODE'S OWN TEXT. A node declaring `@expr` while INHERITING `@fields`
+  // through `extends` contradicts itself in the loaded model and not on the page, and no
+  // raw-text rewriter can resolve a super-reference. That case stays a refusal from the
+  // loader — correctly, since the fix is on the parent and is the adopter's call.
+  for (const range of ranges) {
+    for (const c of ATTR_CONTRADICTIONS) {
+      if (opts.maxVersion !== undefined && !atOrBefore(c.since, opts.maxVersion)) continue;
+      if (!contradictionScopeMatches(c, range.typeKey)) continue;
+      if (!ownKeys(source, ranges, range, c.keep).some((k) => suppliesText(source, k))) continue;
+
+      for (const site of ownKeys(source, ranges, range, c.drop)) {
+        const span = valueSpan(source, site.afterKey);
+        if (span === undefined) continue;
+        const { start, end } = dropSpan(source, site.keyStart, span.end);
+        edits.push({ start, end, text: "" });
+        changes.push({
+          attr: c.drop,
+          from: c.drop,
+          to: `(removed — @${c.keep} keys this node)`,
+          line: lineAt(source, site.keyStart),
+        });
+      }
     }
   }
 

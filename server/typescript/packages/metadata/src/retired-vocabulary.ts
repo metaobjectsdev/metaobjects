@@ -25,6 +25,11 @@
 // already decided to fail, and it returns undefined for anything it does not recognise, so
 // `@maxLenght` still reports as an unknown attribute. The map speaks only where it KNOWS.
 //
+// ITS SIBLING IS `attr-contradictions.ts` — pairs of LIVE attributes that may not sit on one
+// node. Same two consumers (the loader's diagnostic and the `meta upgrade` rewriter), same
+// reason for existing; kept apart because a retirement matches ONE name while a contradiction
+// matches a PAIR, and merging them would give every entry here fields it can never use.
+//
 // CROSS-PORT: this is a DIAGNOSTIC, not registered vocabulary — it affects no registry
 // manifest and no load outcome, so it carries no registry-conformance obligation. The other
 // four ports fail identically today, just with the generic message; mirroring this map is a

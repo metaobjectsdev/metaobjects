@@ -58,11 +58,12 @@ const META = JSON.stringify({
                 "@where": "deleted_at IS NULL",
               },
             },
-            // Expression index (sqlite-valid expression).
+            // Expression index (sqlite-valid expression). NO `@fields` beside it: an index
+            // key is `@fields` XOR `@expr` (#342), and this fixture used to declare both —
+            // passing only because the harness never checked `result.errors`.
             {
               "index.lookup": {
                 name: "accounts_email_lower_idx",
-                "@fields": ["email"],
                 "@expr": "lower(email)",
               },
             },
@@ -108,7 +109,14 @@ async function applyRaw(sqlText: string): Promise<void> {
 }
 
 async function migrateFromEmpty(): Promise<ReturnType<typeof buildExpectedSchema>> {
-  const root = (await new MetaDataLoader().load([new InMemoryStringSource(META)])).root;
+  // The load verdict is CHECKED, not discarded. Taking `.root` off an errored result is how
+  // this fixture went on declaring `@fields` beside `@expr` for a release after the loader
+  // started refusing it — proving engine behaviour from metadata no adopter can author.
+  const result = await new MetaDataLoader().load([new InMemoryStringSource(META)]);
+  if (result.errors.length > 0) {
+    throw new Error(`fixture does not load:\n${result.errors.map((e) => e.message).join("\n")}`);
+  }
+  const root = result.root;
   const expected = buildExpectedSchema(root, { dialect: "sqlite" });
   const actual0 = await introspectSqlite(k);
   const initial = await diff({ expected, actual: actual0, dialect: "sqlite" });

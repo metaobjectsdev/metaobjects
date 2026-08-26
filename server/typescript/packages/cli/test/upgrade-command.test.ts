@@ -122,7 +122,7 @@ describe("meta upgrade", () => {
   // skipped, and the command exited 1 having examined nothing. That was the honest reading
   // of a rewriter that could not edit YAML; it is not a contract, and #339 is the report of
   // what it cost — a 161-file YAML estate carrying 405 retired constructs was handed
-  // "no retired vocabulary found".
+  // a bare "nothing found".
 
   async function yamlProject(...docs: string[]): Promise<string> {
     const root = await mkdtemp(join(tmpdir(), "meta-upgrade-yaml-"));
@@ -182,7 +182,7 @@ describe("meta upgrade", () => {
     const clean = "metadata:\n  package: acme::shop\n  children: []\n";
     const { code, out } = await run([await yamlProject(clean, clean)], ".");
     expect(code).toBe(0);
-    expect(out).toContain("no retired vocabulary found (2 file(s) checked)");
+    expect(out).toContain("nothing to rewrite (2 file(s) checked)");
   });
 
   // "I could not look" and "I looked and it is clean" must not share an exit code.

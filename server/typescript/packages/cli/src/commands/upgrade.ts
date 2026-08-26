@@ -1,6 +1,8 @@
 // server/typescript/packages/cli/src/commands/upgrade.ts
 //
-// `meta upgrade` — rewrite retired vocabulary in this project's metadata.
+// `meta upgrade` — rewrite what the current loader no longer accepts in this project's
+// metadata: RETIRED vocabulary (`retired-vocabulary.ts`) and ATTRIBUTE CONTRADICTIONS —
+// pairs of live attributes that may not sit on one node (`attr-contradictions.ts`).
 //
 // DELIBERATELY NOT `meta migrate`. That command owns DATABASE SCHEMA (ADR-0015) and an
 // adopter reading `migrate` expects DDL. Overloading it with a metadata rewrite would make
@@ -56,9 +58,10 @@ export async function upgradeCommand(args: string[], cwd: string): Promise<numbe
     if ((err as Error).message === "__help__") {
       log.info(
         "meta upgrade [<project>] [--to <version>] [--apply]\n\n" +
-          "  Rewrites retired metadata vocabulary in JSON and YAML metadata alike.\n" +
+          "  Rewrites metadata the current loader no longer accepts, in JSON and YAML alike:\n" +
+          "  retired vocabulary, and pairs of live attributes that may no longer sit together.\n" +
           "  Previews by default; --apply writes.\n" +
-          "  Retirements needing a human decision are REFUSED and listed with their guide.\n\n" +
+          "  Changes needing a human decision are REFUSED and listed with their guide.\n\n" +
           "  Exit: 0 clean · 1 refusals remain · 2 bad usage · 3 some files could not be read.",
       );
       return 0;
@@ -139,13 +142,16 @@ export async function upgradeCommand(args: string[], cwd: string): Promise<numbe
     );
   }
 
-  // Every conclusion states how many files it is a conclusion ABOUT. "No retired vocabulary
-  // found" read on its own says the estate is clean, and it is the last line, so it is the
-  // one that sticks — on the estate that reported this, it was the opposite of the truth.
+  // Every conclusion states how many files it is a conclusion ABOUT. A bare "nothing found"
+  // read on its own says the estate is clean, and it is the last line, so it is the one that
+  // sticks — on the estate that reported this, it was the opposite of the truth.
+  //
+  // It says "nothing to rewrite", not "your metadata loads": this command knows about retired
+  // vocabulary and attribute contradictions, and nothing else. `meta verify` owns the verdict.
   const scope = `${checked} file(s) checked${notChecked.length > 0 ? `, ${notChecked.length} NOT checked` : ""}`;
 
   if (totalChanges === 0 && totalRefusals === 0) {
-    log.info(`meta upgrade — no retired vocabulary found (${scope}).`);
+    log.info(`meta upgrade — nothing to rewrite (${scope}).`);
   } else if (totalChanges === 0) {
     // Refusals only. Reporting "rewrote 0 declarations", or advertising `--apply`, both
     // promise an action guaranteed to change nothing and bury the fact that the remaining

@@ -13,6 +13,7 @@
 import type { MetaData } from "../shared/meta-data.js";
 import type { MetaObject } from "../core/object/meta-object.js";
 import type { MetaReferenceIdentity } from "../core/identity/meta-identity.js";
+import { contradictionHint, contradictionsFor } from "../attr-contradictions.js";
 import { ParseError, type ErrorCode } from "../errors.js";
 import { resolveObjectRef, didYouMeanHint } from "../naming-refs.js";
 import { PACKAGE_SEPARATOR, CHILD_REF_SEPARATOR } from "../shared/structural.js";
@@ -2165,15 +2166,25 @@ export function validateIndexLookupFields(root: MetaData): ParseError[] {
       const hasExpr = typeof exprRaw === "string" && exprRaw.trim().length > 0;
 
       // Rule 1a: exactly one of @fields / @expr may be DECLARED.
+      //
+      // The closing sentence comes from `attr-contradictions.ts`, which is also what
+      // `meta upgrade` rewrites from — so the fix an adopter is TOLD about and the edit
+      // the tool MAKES are one statement, and a change to either moves both. #337 is the
+      // reason it names the command at all: an adopter shown only that their metadata is
+      // invalid concludes the tool has a bug, because nothing points at the way out.
       if (hasFieldsAttr && hasExpr) {
+        const contradiction = contradictionsFor(label).find(
+          (c) => c.drop === INDEX_ATTR_FIELDS && c.keep === IDENTITY_ATTR_EXPR,
+        );
         errors.push(
           new ParseError(
+            // The site states WHICH node broke the rule; the table states the RULE and the
+            // fix. Splitting it that way is what keeps one copy of each.
             `${label} "${node.name}" on "${obj.name}" declares BOTH ` +
-              `@${INDEX_ATTR_FIELDS} and @${IDENTITY_ATTR_EXPR}; they are the two ` +
-              `mutually exclusive ways to key an index. @${IDENTITY_ATTR_EXPR} is used ` +
-              `INSTEAD of @${INDEX_ATTR_FIELDS} — drop one. ` +
-              `(Declaring both previously loaded but silently discarded ` +
-              `@${INDEX_ATTR_FIELDS}.)`,
+              `@${INDEX_ATTR_FIELDS} and @${IDENTITY_ATTR_EXPR}: ` +
+              (contradiction === undefined
+                ? `@${IDENTITY_ATTR_EXPR} is used INSTEAD of @${INDEX_ATTR_FIELDS} — drop one.`
+                : contradictionHint(contradiction)),
             { code: "ERR_INVALID_INDEX", source: node.source },
           ),
         );

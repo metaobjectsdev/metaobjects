@@ -596,6 +596,11 @@ Declaring **neither** — or **both** — is `ERR_INVALID_INDEX`. This applies t
 `identity.secondary` as well as `index.lookup`: uniqueness lives in the type, so a unique
 index keys itself the same way.
 
+Legacy metadata declaring both used to load, with `@fields` **silently discarded**. If you
+meet one, `meta upgrade --apply` drops `@fields` — do not hand-pick the survivor: the index
+in the database is the expression one, so keeping `@expr` reproduces it and keeping
+`@fields` would emit a migration against live data.
+
 The db provider contributes physical-tuning attrs alongside either form: `@orders`
 (per-column sort direction), `@using` (access method — `gin`/`gist`/`hash`; default
 `btree`), and `@where` (partial-index predicate).

@@ -22,12 +22,18 @@
 // span replacement on the original text, and any region not deliberately changed comes back
 // byte-identical. That is the same guarantee the JSON arm makes, by the same means.
 //
+// IT ALSO RESOLVES ATTRIBUTE CONTRADICTIONS (`../attr-contradictions.ts`), matched per NODE
+// rather than per pair — the illegal thing is the PAIR of keys, so the unit is the mapping
+// that holds one node's own keys. `eachNodeBody` below is that walk. Doing it by proximity
+// instead was tried in the JSON arm and took a `fields` belonging to a sibling node.
+//
 // SIGIL-FREE, PER ADR-0006. YAML authoring writes bare attribute keys (`violation:`) and the
 // desugar re-adds the `@` when lowering to canonical JSON. So a rename emits a BARE key here
 // where the JSON arm emits `"@name"`. A leading `@` is still matched on input — an author who
 // wrote one gets it fixed rather than skipped — but is never introduced.
 
 import { LineCounter, isMap, isSeq, parseDocument, type Node, type Pair } from "yaml";
+import { ATTR_CONTRADICTIONS, contradictionScopeMatches } from "../attr-contradictions.js";
 import {
   RETIRED_VOCABULARY,
   note,
@@ -163,6 +169,49 @@ function eachPair(
   }
 }
 
+/** A node's own key set: the mapping that a `<type>.<subType>:` key introduces. */
+interface NodeBody {
+  readonly items: readonly Pair[];
+  readonly flow: boolean;
+}
+
+/**
+ * Visit every node BODY in the document.
+ *
+ * The unit is the body rather than the pair because a contradiction is a property of a
+ * SIBLING SET. `body.items` is exactly this node's own keys — a child node lives inside the
+ * value of a `children:` pair, so it is reached by recursion and never mistaken for a
+ * sibling.
+ */
+function eachNodeBody(node: unknown, visit: (typeKey: string, body: NodeBody) => void): void {
+  if (isMap(node)) {
+    for (const pair of node.items) {
+      const k = keyText(pair.key);
+      if (k !== undefined && TYPE_KEY.test(k) && isMap(pair.value)) {
+        visit(k, { items: pair.value.items as Pair[], flow: pair.value.flow === true });
+      }
+      if (pair.value != null) eachNodeBody(pair.value, visit);
+    }
+    return;
+  }
+  if (isSeq(node)) {
+    for (const item of node.items) eachNodeBody(item as Node, visit);
+  }
+}
+
+/** An authored `@` must not hide a key from either table; the sigil is never introduced. */
+function bareKey(pair: Pair): string | undefined {
+  const k = keyText(pair.key);
+  if (k === undefined) return undefined;
+  return k.startsWith("@") ? k.slice(1) : k;
+}
+
+/** Does this pair carry a string that actually says something? */
+function suppliesText(pair: Pair): boolean {
+  const v = (pair.value as { value?: unknown } | null)?.value;
+  return typeof v === "string" && v.trim().length > 0;
+}
+
 /**
  * Rewrite retired vocabulary in one raw YAML metadata document.
  *
@@ -187,6 +236,43 @@ export function rewriteYamlDocument(source: string, opts: RewriteOpts = {}): Yam
   const lineOf = (offset: number): number => lineCounter.linePos(offset).line;
   const inWindow = (e: RetiredEntry): boolean =>
     opts.maxVersion === undefined || atOrBefore(e.since, opts.maxVersion);
+
+  // ── Attribute contradictions: two LIVE attrs that may not sit on one node ──
+  //
+  // THE TWO SIDES ARE ASKED DIFFERENT QUESTIONS, mirroring the loader's Rule 1a exactly
+  // (`validation-passes.ts`, `hasFieldsAttr` vs `hasExpr`) and the JSON arm's copy of it.
+  // The DROP side counts on PRESENCE — an empty `fields: []` beside `expr` is still a
+  // declaration of both, and is the case where the discard is total. The KEEP side counts
+  // only when it supplies a key, so a blank `expr: ""` beside `fields` is a plain column
+  // index the loader accepts and this must leave alone.
+  //
+  // IT SEES ONLY THIS NODE'S OWN KEYS. A node declaring `expr` while INHERITING `fields`
+  // through `extends` contradicts itself in the loaded model and not on the page; no
+  // raw-document rewriter can resolve a super-reference, so that stays the loader's refusal.
+  eachNodeBody(doc.contents, (typeKey, body) => {
+    for (const c of ATTR_CONTRADICTIONS) {
+      if (opts.maxVersion !== undefined && !atOrBefore(c.since, opts.maxVersion)) continue;
+      if (!contradictionScopeMatches(c, typeKey)) continue;
+      if (!body.items.some((p) => bareKey(p) === c.keep && suppliesText(p))) continue;
+
+      for (const pair of body.items) {
+        if (bareKey(pair) !== c.drop) continue;
+        const span = pairSpan(pair);
+        if (span === undefined) continue;
+        const d = dropSpan(source, span, body.flow);
+        // Undeletable in place (a sequence item's leading key) — leave it, and let the
+        // loader keep refusing rather than reshape the author's sequence.
+        if (d === undefined) continue;
+        edits.push({ ...d, text: "" });
+        changes.push({
+          attr: c.drop,
+          from: c.drop,
+          to: `(removed — ${c.keep} keys this node)`,
+          line: lineOf(span.keyStart),
+        });
+      }
+    }
+  });
 
   eachPair(doc.contents, undefined, (pair, scope, flow) => {
     const key = keyText(pair.key);
