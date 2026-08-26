@@ -5,6 +5,25 @@
 family (0.22.0, 0.23.0) · **Supersedes:** `@verifiedBy` (§4), which this retires rather
 than narrows.
 
+## 0a. The §4 `@status` ruling is REVERSED IN PART (2026-08-26) — read FR-039 first
+
+**The `@status` half of §4 does not stand.** [FR-039](2026-08-26-fr-039-retired-status-restore-design.md)
+restores a retired-capability status as a single `@status: retired` member, and
+[the requirements-as-metadata ruling](../../../spec/design-docs/2026-08-10-requirements-as-metadata-ruling.md)
+Amendment 4 records why.
+
+In short: the ruling that authorised `requirement.*` tested six claims and refuted five. The
+one that held — 0 of 24 without a ledger, 19 of 40 with — is the retired-capability
+guardrail, and §4 removed it while leaving the five refuted claims in place. §4's own
+evidence (29 unresolvable `@implementedBy` references reported as zero) is real but is a
+**reporting** defect: those references dangle because the ruling deliberately specified that
+they should. FR-039 answers it structurally instead, by **forbidding** `@implementedBy` on a
+retired entry so the references cannot exist.
+
+**What survives from §4, unaffected:** the retirement of `@verifiedBy` — whose reasoning is
+independent and stands in full — and the prescriptive/journal rule itself, which FR-039
+keeps and satisfies rather than overturns.
+
 ## 0b. The §4 ruling (2026-08-20)
 
 **Ruled: retire all three together** — `abandoned`/`superseded` from `@status`,

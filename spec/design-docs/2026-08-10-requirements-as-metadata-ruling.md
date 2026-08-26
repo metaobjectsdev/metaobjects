@@ -264,3 +264,65 @@ the forcing function is the coverage gate. Nothing here reinstates `satisfies:` 
 **Cost, stated honestly.** Registering a type means five ports, the byte-gated
 `expected-registry.json` manifest, and conformance fixtures. That is the price of it being
 metadata, and it was accepted when the vocabulary was approved.
+
+## Amendment 4 (2026-08-26) — FR-038 reversed the surviving finding; `retired` restores it
+
+**This amendment records that ruling point 2's `@status` enum was reversed by FR-038
+(0.24.0, 2026-08-21) without amending this document, and rules that the reversal was wrong
+in its `@status` half.** Until FR-039 ships, the enum written above — `live | partial |
+abandoned | superseded` — describes vocabulary **the loader rejects**. Read point 2 with
+this amendment.
+
+**What FR-038 removed.** `@verifiedBy`, `@supersededBy`, and the `abandoned` / `superseded`
+members of `@status`, on the rule *"a requirement is prescriptive; it states what should be
+true and is never a journal of what happened."*
+
+**Why the `@status` half does not stand.** Everything above §"What survived" is a record of
+five refuted claims and one that held. The one that held is this one — 0 of 24 without a
+ledger, 19 of 40 with — and its entire mechanism is a status value on an entry that stays
+where the live entry stood. FR-038 removed the survivor and left the five refuted claims in
+place. Nothing in FR-038 is new information about that claim's *value*; the re-open bar in
+§"Do not re-run" was therefore never cleared.
+
+**The finding FR-038 did have, stated correctly.** One estate carried 29 `@implementedBy`
+references that could never resolve, across 14 entries, while `meta verify` reported zero
+dangling references. That is real, and it is worth keeping. But those references dangle
+**because point 2 above says they should** — the exemption is specified, deliberately, three
+paragraphs up. The defect is that `verify` printed `0` where it meant `29 unresolved on
+retired entries (expected)`. Silence and zero are different claims and the gate made the
+wrong one. A reporting defect was answered by deleting vocabulary.
+
+**The correction, per FR-039.** One member, `retired`, replacing both retired values, with
+`@implementedBy` **forbidden** on it rather than exempt — so the references cannot dangle
+because they cannot exist, and the bug class is unreachable rather than patched. Point 4's
+resolving `@supersededBy`, asked for here and never built, returns with it and is what makes
+a superseded-then-superseded chain walkable.
+
+**FR-038's prescriptive/journal rule survives this amendment.** It is correct, and `retired`
+is admissible under it: the entry states *"this shall not be rebuilt"* — a prohibition in
+force, falsifiable by its reappearance — rather than narrating what happened. The old name
+described the past; the charter of the new one is the standing rule. `@verifiedBy` stays
+retired on its own merits, which are independent and unaffected.
+
+**One counter-argument, recorded because it was persuasive and is answered.** On 2026-08-21
+a restore was proposed, then argued down on adopter evidence: an estate showed that
+`partial` + `@disposition` loads clean and that its 61 retired entries could be sorted into
+42 deletions and 19 legitimate `partial`/`live` re-files. That answers *can the records be
+preserved* (yes). It does not answer *is an agent proposing this work stopped*, and on that
+question re-filing is worse than deleting: `partial` asserts a capability is **intended and
+unfinished**, which to a retrieval-driven agent is an invitation to finish the near-exact
+decoy. The same estate stated the correction on 2026-08-26 — *"I treated it as documentation
+when its function is suppression."* Retention and suppression are two functions; only the
+second has controlled evidence.
+
+**What is still not claimed.** 19 of 40 is under half, and no production prevention case has
+been documented. In the audited estate nothing routes an agent to the ledger at all, which
+is consistent with that number. FR-039 §6 pairs the restore with the consumer that would
+move it, and says plainly that whether it moves is unmeasured.
+
+**Process, and this is the second occurrence on this file.** Amendment 3 records an approval
+"recorded as a documentation amendment and an issue written as the opposite of what was
+approved". Here a committed ruling was reversed by a design document that never touched it,
+leaving two contradictory shipped statements — the exact failure FR-038 was written to
+resolve. **A committed ruling is reversed by amending it, in this file. A re-open bar is a
+precondition, not a formality.**
