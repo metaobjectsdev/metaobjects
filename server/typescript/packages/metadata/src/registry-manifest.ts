@@ -112,7 +112,7 @@ interface ManifestType {
  * constant read `"0.10"`). Bump with that script — never by hand — so the manifest and
  * all four port constants move together.
  */
-export const METAMODEL_VERSION = "0.12";
+export const METAMODEL_VERSION = "0.13";
 
 /** The full canonical manifest. All collections are sorted for byte-stability. */
 interface RegistryManifest {

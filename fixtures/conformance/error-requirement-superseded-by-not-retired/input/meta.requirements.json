@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "requirement.functional": {
+          "name": "OrderRecord",
+          "@level": 4,
+          "@status": "live",
+          "@statement": "An order records what was bought and for how much",
+          "@counterexample": "An order row that cannot say who placed it",
+          "@supersededBy": "demo::OrderRecordV2"
+        }
+      }
+    ]
+  }
+}

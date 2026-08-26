@@ -200,10 +200,56 @@ on `live`/`partial` and allowed on `planned`.** On `planned` the nodes do not ex
 that is the entry doing its job. Anywhere else it means the model moved and the claim went
 stale, so repoint it or delete the entry.
 
-`@status` is a closed enum (`planned | live | partial`) enforced by the **loader**, so a typo
-fails the load in every language rather than silently disabling the entry.
+`@status` is a closed enum (`planned | live | partial | retired`) enforced by the **loader**,
+so a typo fails the load in every language rather than silently disabling the entry.
 
 `@trackedBy` names issues or tickets and is **not** resolved — `verify` has no network.
+
+## `retired` — the status the whole feature was measured on
+
+A capability that was **built and then deliberately removed** is `@status: retired`. It is
+the most load-bearing member of the enum, because it is the only one with controlled evidence
+behind it: given a feature brief for a capability that had been retired, agents working from
+the model alone proposed rebuilding it **24 times out of 24**, each believing they were
+reusing rather than reviving. One run called it *"a near-exact decoy"* — a retired feature is
+**more** attractive to a retrieval-driven agent than a live one, because it was purpose-built
+for exactly the request and never got complicated by contact with production. Arms carrying a
+ledger caught it **19 times out of 40**.
+
+**Write the statement as a prohibition.** A requirement states what should be true and never
+narrates what happened, and `retired` satisfies that rule by stating a rule in force:
+
+```jsonc
+{ "requirement.functional": {
+    "name": "orderExpiry", "@level": 4, "@status": "retired",
+    "@statement": "An unpaid order is never expired by a wall-clock timer",
+    "@counterexample": "An order cancelled by elapsed time rather than by the customer",
+    "@supersededBy": "acme::caps::orderHold",
+    "@notes": "Shipped 2026-03, removed 2026-06: a fixed window cancelled orders mid-checkout whenever a payment provider was slow."
+}}
+```
+
+`@statement: "We used to expire orders on a timer"` is a diary entry, and no gate will catch
+it. `@counterexample` is where the entry earns its keep — on a retired requirement it
+describes **the revival**, which is the thing a future reader is about to propose.
+
+**Three rules the loader enforces:**
+
+1. **`@implementedBy` is refused** (`ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS`). A retired
+   capability has no implementation by definition, so the references cannot dangle because
+   they cannot exist. If deleting them feels wrong, that usually means the capability is not
+   actually retired — an entry whose nodes are still there is `live` or `partial`. What used
+   to implement it goes in `notes`.
+2. **`@supersededBy` names the requirement that replaced it**, and is legal here only. It is
+   RESOLVED, so a dangling one fails the build — which is what keeps a chain walkable when
+   the replacement is itself retired later. A prose note points one hop and rots.
+3. **It never counts toward object coverage, and is exempt from architectural universality.**
+   Retiring a capability must not silence "nothing claims this entity", and a withdrawn policy
+   governs nothing.
+
+**One honest limit.** 19 of 40 is under half, and the guardrail only fires if something routes
+an agent to the ledger. `meta docs` emits retired entries into the requirements surface; if
+your agents never read it, restoring the entry buys you a coin flip. Point at it.
 
 > **`@verifiedBy` was retired in `0.24.0`, and `verify` no longer looks at your tests.** It asked
 > you to name a test and then checked only that the **name** occurred somewhere in the test

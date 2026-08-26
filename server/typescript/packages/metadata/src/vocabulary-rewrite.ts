@@ -53,6 +53,7 @@
 // believe the migration finished.
 
 import { ATTR_CONTRADICTIONS, contradictionScopeMatches } from "./attr-contradictions.js";
+import type { AttrContradiction } from "./attr-contradictions.js";
 import {
   RETIRED_VOCABULARY,
   note,
@@ -210,6 +211,16 @@ function ownKeys(
   return out;
 }
 
+
+/** True when `keep` holds one of the entry's `keepValues` (or the entry names none,
+ *  in which case mere presence is the contradiction). */
+function keepValueMatches(source: string, site: KeySite, c: AttrContradiction): boolean {
+  if (c.keepValues === undefined) return true;
+  const raw = valueSpan(source, site.afterKey)?.raw;
+  if (raw === undefined) return false;
+  return c.keepValues.some((v) => rawEquals(raw, v));
+}
+
 /** Does this key carry a string that actually says something? */
 function suppliesText(source: string, site: KeySite): boolean {
   const raw = valueSpan(source, site.afterKey)?.raw;
@@ -357,7 +368,11 @@ export function rewriteDocument(source: string, opts: RewriteOpts = {}): Rewrite
     for (const c of ATTR_CONTRADICTIONS) {
       if (opts.maxVersion !== undefined && !atOrBefore(c.since, opts.maxVersion)) continue;
       if (!contradictionScopeMatches(c, range.typeKey)) continue;
-      if (!ownKeys(source, ranges, range, c.keep).some((k) => suppliesText(source, k))) continue;
+      // `keep` must be present AND, when the entry names values, hold one of them —
+      // otherwise @status and @implementedBy would contradict on every status.
+      if (!ownKeys(source, ranges, range, c.keep).some(
+        (k) => suppliesText(source, k) && keepValueMatches(source, k, c),
+      )) continue;
 
       for (const site of ownKeys(source, ranges, range, c.drop)) {
         const span = valueSpan(source, site.afterKey);
@@ -385,8 +400,9 @@ export function rewriteDocument(source: string, opts: RewriteOpts = {}): Rewrite
       const afterKey = m.index + m[0].length;
 
       // Scope is decided HERE, per occurrence, from the enclosing node.
-      const scope = scopeAt(ranges, keyStart);
-      if (scope === undefined || !scopeMatches(entry, scope)) continue;
+      const scopeRange = scopeRangeAt(ranges, keyStart);
+      const scope = scopeRange?.typeKey;
+      if (scope === undefined || scopeRange === undefined || !scopeMatches(entry, scope)) continue;
 
       const line = lineAt(source, keyStart);
       const span = valueSpan(source, afterKey);
@@ -417,8 +433,18 @@ export function rewriteDocument(source: string, opts: RewriteOpts = {}): Rewrite
       const rw = entry.rewrite;
       if (rw === undefined) refuse();
       else if (rw.kind === "renameAttr") {
-        edits.push({ start: keyStart, end: keyEnd, text: `"@${rw.to}"` });
-        changes.push({ attr, from: attr, to: rw.to, line });
+        // A rename onto a key the node ALREADY declares would emit a duplicate — two
+        // `"@counterexample"` members in one object, where JSON parsers silently take
+        // the last and the author's surviving text is the one that loses. Refuse
+        // instead: which of the two sentences is the real one is exactly the judgement
+        // `meta upgrade` does not make.
+        const target = ownKeys(source, ranges, scopeRange, rw.to)
+          .filter((k) => k.keyStart !== keyStart);
+        if (target.length > 0) refuse();
+        else {
+          edits.push({ start: keyStart, end: keyEnd, text: `"@${rw.to}"` });
+          changes.push({ attr, from: attr, to: rw.to, line });
+        }
       } else if (rw.kind === "dropAttr") drop();
       else if (span === undefined) continue;
       else if (rawEquals(span.raw, rw.fromValue)) {

@@ -16,9 +16,10 @@ see that, no other diagnostic in the run is trustworthy — fix it first and re-
 ## A load failure on RETIRED vocabulary — run `meta upgrade`, do not hand-sweep
 
 `@status` is not the only way the load fails before any of this runs. **0.24.0** retired
-`@violation` (→ `@counterexample`), `@verifiedBy`, `@supersededBy` and the `abandoned` /
-`superseded` members of `@status`; **0.24.1** made an index key `@fields` **XOR** `@expr`, so a
-node declaring both is now `ERR_INVALID_INDEX`. There is no deprecation shim for any of them —
+`@violation` (→ `@counterexample`) and `@verifiedBy`; **0.24.1** made an index key `@fields`
+**XOR** `@expr`, so a node declaring both is now `ERR_INVALID_INDEX`. **0.24.2 reversed half
+of the 0.24.0 cut**: `abandoned` and `superseded` become **`@status: retired`**, and
+`@supersededBy` is registered again — this time as a reference the loader resolves. There is no deprecation shim for any of them —
 the registry is sealed (ADR-0023), so a legacy document does not load at all and every check on
 this page is unreachable until it does.
 
@@ -32,11 +33,9 @@ told about and the edit the tool makes cannot drift apart. It fixes only what ha
 answer and **refuses the rest, exiting non-zero** — a partial migration can never be recorded
 as finished by CI. Two refusals are expected on a real ledger and both are yours to decide:
 
-- **`@status: abandoned` / `superseded`.** What happens to a retired capability's record is a
-  judgement nobody wrote down. Under FR-038 a requirement is prescriptive — it states what
-  should be true and is never a journal — so the entry is normally **deleted** (version control
-  holds that it existed) with anything a future reader still needs moved to `notes` on the
-  surviving entry.
+- **`@status: abandoned` / `superseded` are no longer refused** — they rewrite to `retired`,
+  and the same run drops the `@implementedBy` that a retired entry may not carry. This was the
+  canonical judgement case in 0.24.0; FR-039 made it determinate.
 - **`origin.collection`.** Retired to `origin.aggregate @agg: collect`; the attribute sets
   differ, so the tool will not guess.
 
@@ -81,6 +80,8 @@ name the remedy; this table exists so you can act on one without re-deriving the
 | `ERR_REQUIREMENT_ARCH_NO_IMPLEMENTERS` | a `live`/`partial` `requirement.architectural` that nothing implements | a policy declared and applied to nothing. Claim the nodes it governs, or drop it to `planned` — which is exempt, because it is not applied yet by definition. |
 | `ERR_REQUIREMENT_LEVEL_NESTING` | a node's `@level` disagrees with the level of the parent it nests under | nesting IS the hierarchy. Move the node to the right parent rather than editing the level to match where it happens to sit. |
 | `ERR_REQUIREMENT_BAD_LEVEL` | `@level` is not an integer inside the allowed range | levels are L1–L5 and nothing else. |
+| `ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS` | a `@status: retired` entry declares `@implementedBy` | a retired capability has no implementation by definition. Delete the attribute and put what used to implement it in `notes`; if the nodes are still there, the capability is `live` or `partial`, not retired. |
+| `ERR_REQUIREMENT_SUPERSEDED_BY_NOT_RETIRED` | `@supersededBy` on a status other than `retired` | it names what REPLACED a withdrawn capability, so on a live one there is nothing for it to say. |
 | `ERR_MISSING_REQUIRED_ATTR` | a required attr is absent | `@statement`, `@status` and `@counterexample` are required on both subtypes; `@level` is required on `functional` and optional on `architectural`. |
 | `ERR_BAD_ATTR_VALUE` | a closed-enum attr has an unknown value | `@status` and `@disposition` are enforced by the LOADER, so a typo fails the load in every port rather than passing in some. |
 

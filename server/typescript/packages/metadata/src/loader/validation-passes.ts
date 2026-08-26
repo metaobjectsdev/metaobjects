@@ -136,6 +136,13 @@ import {
   opsForSubType,
   opsForField,
 } from "../core/query/query-constants.js";
+import {
+  REQUIREMENT,
+  REQUIREMENT_ATTR_STATUS,
+  REQUIREMENT_ATTR_IMPLEMENTED_BY,
+  REQUIREMENT_ATTR_SUPERSEDED_BY,
+  REQUIREMENT_STATUS_RETIRED,
+} from "../core/requirement/requirement-constants.js";
 
 // ---------------------------------------------------------------------------
 // Layout dataGrid @defaultSortField validation
@@ -2402,4 +2409,76 @@ function checkProjectionFilterRefs(
       }
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// FR-039 — a retired requirement's link vocabulary
+//
+// Two rules, and the first is the whole structural point of the FR.
+//
+//   1. `@status: retired` may NOT carry `@implementedBy`. Not exempt from the
+//      dangling-reference check — REFUSED. 0.24.0 removed the previous retired
+//      vocabulary because `verify` was SILENT on dangling refs for it, hiding 29
+//      unresolvable references across 14 entries in one estate while reporting
+//      zero. That silence was a deliberate EXEMPTION, so the fix was diagnosed as
+//      "delete the vocabulary". Forbidding the attribute makes the bug class
+//      UNREACHABLE instead: a retired capability has no implementation by
+//      definition, so its references cannot dangle because they cannot exist.
+//
+//   2. `@supersededBy` is legal ONLY on `retired`. It names what REPLACED a
+//      withdrawn capability; on a live one there is nothing to have replaced it.
+//      Resolution of the reference itself is `verify`'s job (it owns every other
+//      @implementedBy-style resolution) — the loader owns the shape.
+//
+// Runs in every port. `requirement.*` gate logic otherwise lives only in the TS
+// CLI, which is exactly why THIS rule belongs in the loader: a Java or Python
+// estate would otherwise be free to author the shape the rule exists to prevent.
+//
+// ADR-0039: children()/attr() throughout — never own* — so a requirement that
+// inherits its status through `extends` is judged on its EFFECTIVE status.
+// ---------------------------------------------------------------------------
+
+export function validateRetiredRequirementLinks(root: MetaData): ParseError[] {
+  const errors: ParseError[] = [];
+
+  const walk = (node: MetaData): void => {
+    for (const child of node.children()) {
+      if (child.type === REQUIREMENT) {
+        const status = child.attr(REQUIREMENT_ATTR_STATUS);
+        const isRetired = status === REQUIREMENT_STATUS_RETIRED;
+
+        if (isRetired && child.attr(REQUIREMENT_ATTR_IMPLEMENTED_BY) !== undefined) {
+          errors.push(
+            new ParseError(
+              `requirement.${child.subType} "${child.name}" is @status: ` +
+                `${REQUIREMENT_STATUS_RETIRED} and declares @${REQUIREMENT_ATTR_IMPLEMENTED_BY}. ` +
+                `A retired capability has no implementation — that is what retiring it means. ` +
+                `Delete the attribute; if the nodes are still there, the capability is not retired. ` +
+                `What used to implement it belongs in \`notes\`, and what REPLACED it in ` +
+                `@${REQUIREMENT_ATTR_SUPERSEDED_BY}.`,
+              { code: "ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS", source: child.source },
+            ),
+          );
+        }
+
+        if (!isRetired && child.attr(REQUIREMENT_ATTR_SUPERSEDED_BY) !== undefined) {
+          errors.push(
+            new ParseError(
+              `requirement.${child.subType} "${child.name}" declares ` +
+                `@${REQUIREMENT_ATTR_SUPERSEDED_BY} but its @${REQUIREMENT_ATTR_STATUS} is ` +
+                `"${status ?? "(absent)"}". That attribute names the requirement which REPLACED a ` +
+                `withdrawn one, so it is legal only on @${REQUIREMENT_ATTR_STATUS}: ` +
+                `${REQUIREMENT_STATUS_RETIRED}.`,
+              { code: "ERR_REQUIREMENT_SUPERSEDED_BY_NOT_RETIRED", source: child.source },
+            ),
+          );
+        }
+      }
+      // Hierarchy IS nesting, so a retired requirement can sit at any depth.
+      walk(child);
+    }
+  };
+
+  walk(root);
+  return errors;
 }

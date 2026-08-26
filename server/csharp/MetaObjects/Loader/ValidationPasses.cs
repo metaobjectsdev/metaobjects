@@ -10,6 +10,7 @@
 
 using System.Text.RegularExpressions;
 using MetaObjects.Core.Attr;
+using MetaObjects.Core.Requirement;
 using MetaObjects.Meta;
 using MetaObjects.Persistence.Source;
 using MetaObjects.Source;
@@ -4016,6 +4017,72 @@ public static class ValidationPasses
     // Ported from typescript/packages/metadata/src/loader/validation-passes.ts
     // validateIndexLookupFields.
     // =========================================================================
+
+    /// <summary>
+    /// FR-039 — a retired requirement's link vocabulary. Two rules, and the first is the
+    /// structural point of the FR.
+    ///
+    /// <para>1. <c>@status: retired</c> may NOT carry <c>@implementedBy</c>. Not exempt from
+    /// the dangling-reference check — REFUSED. 0.24.0 removed the previous retired vocabulary
+    /// because <c>verify</c> was SILENT on dangling refs for it, hiding 29 unresolvable
+    /// references across 14 entries in one estate while reporting zero. Forbidding the
+    /// attribute makes the bug class UNREACHABLE instead: a retired capability has no
+    /// implementation by definition, so its references cannot dangle because they cannot
+    /// exist.</para>
+    ///
+    /// <para>2. <c>@supersededBy</c> is legal ONLY on <c>retired</c>. Resolution of the
+    /// reference is verify's job; the loader owns the shape.</para>
+    ///
+    /// <para>ADR-0039: Children()/Attr() throughout — never Own* — so a requirement that
+    /// inherits its status through <c>extends</c> is judged on its EFFECTIVE status.</para>
+    /// </summary>
+    public static IReadOnlyList<MetaError> ValidateRetiredRequirementLinks(MetaData root)
+    {
+        var errors = new List<MetaError>();
+
+        void Walk(MetaData node)
+        {
+            foreach (var child in node.Children())
+            {
+                if (child.Type == TYPE_REQUIREMENT)
+                {
+                    var status = child.Attr(RequirementConstants.REQUIREMENT_ATTR_STATUS) as string;
+                    var isRetired = status == RequirementConstants.REQUIREMENT_STATUS_RETIRED;
+
+                    if (isRetired
+                        && child.Attr(RequirementConstants.REQUIREMENT_ATTR_IMPLEMENTED_BY) is not null)
+                    {
+                        errors.Add(new MetaError(
+                            $"requirement.{child.SubType} \"{child.Name}\" is @status: " +
+                            $"{RequirementConstants.REQUIREMENT_STATUS_RETIRED} and declares " +
+                            "@implementedBy. A retired capability has no implementation — that is " +
+                            "what retiring it means. Delete the attribute; if the nodes are still " +
+                            "there, the capability is not retired. What used to implement it belongs " +
+                            "in `notes`, and what REPLACED it in @supersededBy.",
+                            ErrorCode.ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS,
+                            Envelope: child.Source));
+                    }
+
+                    if (!isRetired
+                        && child.Attr(RequirementConstants.REQUIREMENT_ATTR_SUPERSEDED_BY) is not null)
+                    {
+                        errors.Add(new MetaError(
+                            $"requirement.{child.SubType} \"{child.Name}\" declares @supersededBy " +
+                            $"but its @status is \"{status ?? "(absent)"}\". That attribute names the " +
+                            "requirement which REPLACED a withdrawn one, so it is legal only on " +
+                            $"@status: {RequirementConstants.REQUIREMENT_STATUS_RETIRED}.",
+                            ErrorCode.ERR_REQUIREMENT_SUPERSEDED_BY_NOT_RETIRED,
+                            Envelope: child.Source));
+                    }
+                }
+                // Hierarchy IS nesting, so a retired requirement can sit at any depth.
+                Walk(child);
+            }
+        }
+
+        Walk(root);
+        return errors;
+    }
 
     public static IReadOnlyList<MetaError> ValidateIndexLookupFields(MetaData root)
     {

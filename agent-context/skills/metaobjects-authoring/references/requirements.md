@@ -5,13 +5,31 @@ describe. Read the existing requirement nodes before designing anything. Two rul
 more than the rest.
 
 **1. A requirement is PRESCRIPTIVE — it states what should be true, never what happened.**
-So when a capability is retired, **delete its requirement** in the same change that removes
-the code. `status` is `planned | live | partial`; there is no member meaning "we used to do
-this", because every one of those three describes something meant to be true now or soon.
+`status` is `planned | live | partial | retired`, and every one of them states something
+meant to be true. `retired` is not the exception: it means **"this was built, then
+deliberately removed, and must not be rebuilt"** — a prohibition in force, falsifiable by
+exactly one observable, the capability reappearing.
 
-What a deleted entry leaves behind is a diff, which is the right home for it. If something
-about the retirement is worth carrying forward — why it went, what replaced it — put that in
-`notes` on the entry that survives, where a reader looking at today's model will find it.
+So write a retired entry as a rule, not a diary. `statement: "An unpaid order is never
+expired by a wall-clock timer"` is a prohibition; `"We used to expire orders on a timer"` is
+history wearing a requirement's shape, and no gate will catch it. On a retired entry
+`counterexample` describes **the revival** — the thing a future reader is about to propose.
+
+**Do not delete a retired capability's entry.** Keeping it is the single most load-bearing
+thing this vocabulary does: given a brief for a capability that had been retired, agents
+working from the model alone proposed rebuilding it 24 times out of 24. The entry is what
+stops that, so a retirement is a status change plus a rewritten statement, never a deletion.
+
+Three rules the loader enforces on `retired`:
+
+- **`implementedBy` is REFUSED** — a retired capability has no implementation by definition.
+  What used to implement it goes in `notes`. If deleting the references feels wrong, the
+  capability is probably not retired: an entry whose nodes are still there is `live` or
+  `partial`.
+- **`supersededBy` names the requirement that replaced it**, legal here only, and RESOLVED —
+  so the chain still works when the replacement is itself retired later.
+- It never counts toward object coverage, and is exempt from the architectural universality
+  check.
 
 Leaving a dangling `implementedBy` is **correct only on `planned`**: the entry precedes the
 nodes. On `live` or `partial` the same dangling reference is an error — the model moved and

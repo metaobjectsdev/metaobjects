@@ -42,6 +42,10 @@ public static class RequirementConstants
     /// <summary>1 solution · 2 segment (app/library) · 3 service · 4 object · 5 member.</summary>
     public const string REQUIREMENT_ATTR_LEVEL = "level";
     public const string REQUIREMENT_ATTR_STATUS = "status";
+
+    /// <summary>FR-039 — the requirement that REPLACED a retired one. Resolving reference,
+    /// legal on <c>retired</c> only.</summary>
+    public const string REQUIREMENT_ATTR_SUPERSEDED_BY = "supersededBy";
     public const string REQUIREMENT_ATTR_DISPOSITION = "disposition";
     public const string REQUIREMENT_ATTR_TRACKED_BY = "trackedBy";
     public const string REQUIREMENT_ATTR_STATEMENT = "statement";
@@ -61,6 +65,12 @@ public static class RequirementConstants
     public const string REQUIREMENT_STATUS_PARTIAL = "partial";
 
     /// <summary>
+    /// FR-039 — built, then deliberately removed; it must NOT be rebuilt. PRESCRIPTIVE:
+    /// the entry states a prohibition in force, falsifiable by the capability reappearing.
+    /// </summary>
+    public const string REQUIREMENT_STATUS_RETIRED = "retired";
+
+    /// <summary>
     /// The closed status set, in DECLARATION order — the manifest emits
     /// <c>allowedValues</c> in this order, so it is part of the cross-port contract
     /// (never sorted).
@@ -70,6 +80,7 @@ public static class RequirementConstants
         REQUIREMENT_STATUS_PLANNED,
         REQUIREMENT_STATUS_LIVE,
         REQUIREMENT_STATUS_PARTIAL,
+        REQUIREMENT_STATUS_RETIRED,
     ];
 
     /// <summary>
@@ -89,6 +100,16 @@ public static class RequirementConstants
     /// any other status the decision IS the status, and recording a second one can only
     /// agree with it or contradict it.
     /// </summary>
+    /// <summary>
+    /// Statuses on which <c>@implementedBy</c> is REFUSED AT LOAD (FR-039). Forbidding the
+    /// attribute makes the dangling-reference bug class UNREACHABLE rather than exempt —
+    /// a retired capability has no implementation by definition.
+    /// </summary>
+    public static readonly string[] REQUIREMENT_STATUSES_FORBIDDING_IMPLEMENTORS =
+    {
+        REQUIREMENT_STATUS_RETIRED,
+    };
+
     public static readonly string[] REQUIREMENT_STATUSES_WITH_OUTSTANDING_WORK =
     [
         REQUIREMENT_STATUS_PLANNED,

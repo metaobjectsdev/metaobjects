@@ -263,6 +263,14 @@ public final class ErrorMessageConstants {
      */
     public static final String ERR_INVALID_INDEX = "ERR_INVALID_INDEX";
 
+    /** FR-039 — a retired requirement may not declare @implementedBy. */
+    public static final String ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS =
+            "ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS";
+
+    /** FR-039 — @supersededBy is legal only on @status: retired. */
+    public static final String ERR_REQUIREMENT_SUPERSEDED_BY_NOT_RETIRED =
+            "ERR_REQUIREMENT_SUPERSEDED_BY_NOT_RETIRED";
+
     /**
      * #208 (DDL-ownership escape valves, design doc §5 R1): a {@code source.rdb}
      * declares both {@code @sql} and {@code @unmanaged} on the same source.

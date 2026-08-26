@@ -96,6 +96,7 @@ export interface RetiredEntry extends RetirementNote {
 }
 
 const REQUIREMENT_MIGRATION = "docs/features/migrations/verified-by-retirement.md";
+const RETIRED_STATUS_MIGRATION = "docs/features/migrations/retired-status-restore.md";
 
 export const RETIRED_VOCABULARY: readonly RetiredEntry[] = [
   // ── 0.24.0: `@violation` is renamed `@counterexample` ──
@@ -129,21 +130,58 @@ export const RETIRED_VOCABULARY: readonly RetiredEntry[] = [
     // behaviour anyone else can observe.
     rewrite: { kind: "dropAttr" },
   },
+  // (@supersededBy is NOT retired vocabulary. 0.24.0 deregistered it; FR-039 registers
+  // it again on `retired` only, and this time it RESOLVES — which is what the
+  // 2026-08-10 ruling asked for at point 4 and never got. An entry here would make
+  // `meta upgrade` delete an attribute the loader now accepts.)
+  // ── FR-039 (0.24.2): `abandoned` / `superseded` become `retired` ──
+  //
+  // These were retired in 0.24.0 on the rule that a requirement never journals what
+  // happened, and `meta upgrade` REFUSED them because what becomes of a retired
+  // capability's record was judgement. FR-039 restores the capability under a name
+  // that states the standing rule rather than the history — `retired` means "this
+  // must not be rebuilt" — so the edit is no longer a judgement call and the tool
+  // can make it.
+  //
+  // TWO entries rather than one value-map, because the rewriter's `renameAttrValue`
+  // carries a single `fromValue` and `attrValues` already scopes each occurrence to
+  // the value it fires on. `otherwise` is therefore unreachable, and is `refuse` so
+  // that a future third member cannot be silently dropped by this entry.
+  //
+  // `@implementedBy` on one of these is handled by ATTR_CONTRADICTIONS, not here —
+  // it is a live attribute made illegal by a sibling's VALUE, which is a different
+  // match shape. Both passes run in one `meta upgrade`, so a legacy entry carrying
+  // both is fully repaired in a single run rather than rewritten into a file that
+  // still will not load.
   {
-    type: "requirement", subType: "*", attr: "supersededBy",
-    since: "0.24.0",
-    why: "a requirement is prescriptive — it states what should be true and is never a " +
-         "journal of what happened",
-    migration: REQUIREMENT_MIGRATION,
-    rewrite: { kind: "dropAttr" },
+    type: "requirement", subType: "*", attr: "status",
+    attrValues: ["abandoned"],
+    since: "0.24.2",
+    why: "a retired capability is recorded as `retired`, which states the standing rule " +
+         "(do not rebuild this) rather than narrating what happened to it",
+    migration: RETIRED_STATUS_MIGRATION,
+    rewrite: {
+      kind: "renameAttrValue",
+      toAttr: "status",
+      fromValue: "abandoned",
+      toValue: "retired",
+      otherwise: "refuse",
+    },
   },
   {
     type: "requirement", subType: "*", attr: "status",
-    attrValues: ["abandoned", "superseded"],
-    since: "0.24.0",
-    why: "retiring a capability is DELETING its requirement; version control holds that it " +
-         "existed, and `notes` on a surviving entry holds what a reader still needs",
-    migration: REQUIREMENT_MIGRATION,
+    attrValues: ["superseded"],
+    since: "0.24.2",
+    why: "`superseded` was `retired` plus a pointer, and the pointer is @supersededBy — " +
+         "which is registered again, and now RESOLVES",
+    migration: RETIRED_STATUS_MIGRATION,
+    rewrite: {
+      kind: "renameAttrValue",
+      toAttr: "status",
+      fromValue: "superseded",
+      toValue: "retired",
+      otherwise: "refuse",
+    },
   },
 
   // ── FR-037 R1: @readOnly becomes the @mutability enum (0.24.0) ──

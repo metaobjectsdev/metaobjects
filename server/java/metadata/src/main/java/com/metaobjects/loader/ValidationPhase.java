@@ -232,6 +232,9 @@ public final class ValidationPhase {
         pass(collected, () -> validateFilterableHasSupportedOps(root));
         pass(collected, () -> validateSortableHasSupportedSubtype(root));
         pass(collected, () -> validateIndexLookupFields(root));
+        // FR-039 — a retired requirement carries no @implementedBy (refused, not exempted,
+        // so the dangling-ref class is unreachable) and @supersededBy is legal only there.
+        pass(collected, () -> validateRetiredRequirementLinks(root));
         // The capability ledger's closed status enum (requirements-as-metadata
         // ruling, Amendment 3) — the loader owns what is UNCONDITIONAL.
         pass(collected, () -> validateRequirementStatus(root));
@@ -4821,6 +4824,69 @@ public final class ValidationPhase {
     //
     // Code: ERR_INVALID_INDEX.
     // =========================================================================
+
+    /**
+     * FR-039 — a retired requirement's link vocabulary. Two rules, and the first is the
+     * structural point of the FR.
+     *
+     * <p>1. {@code @status: retired} may NOT carry {@code @implementedBy}. Not exempt from
+     * the dangling-reference check — REFUSED. 0.24.0 removed the previous retired
+     * vocabulary because {@code verify} was SILENT on dangling refs for it, hiding 29
+     * unresolvable references across 14 entries in one estate while reporting zero.
+     * Forbidding the attribute makes the bug class UNREACHABLE instead: a retired
+     * capability has no implementation by definition, so its references cannot dangle
+     * because they cannot exist.</p>
+     *
+     * <p>2. {@code @supersededBy} is legal ONLY on {@code retired}. Resolution of the
+     * reference is verify's job; the loader owns the shape.</p>
+     *
+     * <p>ADR-0039: the RESOLVING accessor throughout, so a requirement inheriting its
+     * status through {@code extends} is judged on its EFFECTIVE status.</p>
+     */
+    static void validateRetiredRequirementLinks(MetaRoot root) {
+        for (MetaData rootChild : root.getChildren(MetaData.class, false)) {
+            walkRetiredRequirementLinks(rootChild);
+        }
+    }
+
+    private static void walkRetiredRequirementLinks(MetaData node) {
+        if (node instanceof MetaRequirement) {
+            MetaRequirement req = (MetaRequirement) node;
+            String status = req.getStatus();
+            boolean isRetired = MetaRequirement.STATUS_RETIRED.equals(status);
+
+            if (isRetired && req.hasMetaAttr(MetaRequirement.ATTR_IMPLEMENTED_BY)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS
+                        + ": requirement." + req.getSubType() + " \"" + req.getName()
+                        + "\" is @status: " + MetaRequirement.STATUS_RETIRED
+                        + " and declares @" + MetaRequirement.ATTR_IMPLEMENTED_BY
+                        + ". A retired capability has no implementation — that is what"
+                        + " retiring it means. Delete the attribute; if the nodes are still"
+                        + " there, the capability is not retired. What used to implement it"
+                        + " belongs in `notes`, and what REPLACED it in @"
+                        + MetaRequirement.ATTR_SUPERSEDED_BY + ".",
+                    ErrorCode.ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS, req.getSource());
+            }
+
+            if (!isRetired && req.hasMetaAttr(MetaRequirement.ATTR_SUPERSEDED_BY)) {
+                throw new MetaDataException(
+                    ErrorMessageConstants.ERR_REQUIREMENT_SUPERSEDED_BY_NOT_RETIRED
+                        + ": requirement." + req.getSubType() + " \"" + req.getName()
+                        + "\" declares @" + MetaRequirement.ATTR_SUPERSEDED_BY
+                        + " but its @" + MetaRequirement.ATTR_STATUS + " is \""
+                        + (status == null ? "(absent)" : status)
+                        + "\". That attribute names the requirement which REPLACED a"
+                        + " withdrawn one, so it is legal only on @"
+                        + MetaRequirement.ATTR_STATUS + ": " + MetaRequirement.STATUS_RETIRED + ".",
+                    ErrorCode.ERR_REQUIREMENT_SUPERSEDED_BY_NOT_RETIRED, req.getSource());
+            }
+        }
+        // Hierarchy IS nesting, so a retired requirement can sit at any depth.
+        for (MetaData child : node.getChildren(MetaData.class, false)) {
+            walkRetiredRequirementLinks(child);
+        }
+    }
 
     static void validateIndexLookupFields(MetaRoot root) {
         for (MetaData rootChild : root.getChildren(MetaData.class, false)) {

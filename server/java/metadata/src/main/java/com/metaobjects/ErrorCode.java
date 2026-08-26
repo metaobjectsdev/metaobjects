@@ -421,6 +421,12 @@ public enum ErrorCode {
      * entity's effective (resolved, via {@code extends:}) field set.
      */
     ERR_INVALID_INDEX,
+    /** FR-039 — @status: retired declares @implementedBy. Refused rather than exempted:
+     *  a retired capability has no implementation BY DEFINITION, so forbidding the
+     *  attribute makes the dangling-reference class unreachable instead of tolerated. */
+    ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS,
+    /** FR-039 — @supersededBy on a requirement whose @status is not `retired`. */
+    ERR_REQUIREMENT_SUPERSEDED_BY_NOT_RETIRED,
 
     /**
      * #195: an {@code origin.computed} {@code @expr} tree contains a node whose

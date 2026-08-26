@@ -73,14 +73,19 @@ code behind a grep hit; a "duplicate" validator's *divergence* is the finding.
   whole-estate migration.
   **First establish the estate LOADS.** An older ledger fails the load outright, so
   `meta verify` never runs and everything in `references/requirements.md` is unavailable:
-  `@violation`, `@verifiedBy`, `@supersededBy` and `@status: abandoned | superseded` were
-  retired in **0.24.0** (no deprecation shim — ADR-0023 seals the registry), and an index key
-  declaring both `@fields` and `@expr` is refused since **0.24.1**. Run **`meta upgrade`**
-  (previews by default; `--apply` writes) before auditing, and audit the upgraded tree. It
-  rewrites only what has one correct answer and **refuses the rest, exiting non-zero** —
-  `@status: abandoned` is refused because what happens to a retired capability's record is
-  judgment, not substitution. **A refusal is itself the finding**: it names the entries whose
-  disposition nobody recorded.
+  `@violation` and `@verifiedBy` were retired in **0.24.0** (no deprecation shim — ADR-0023
+  seals the registry); an index key declaring both `@fields` and `@expr` is refused since
+  **0.24.1**; and **0.24.2** turned `@status: abandoned | superseded` into **`retired`**. Run
+  **`meta upgrade`** (previews by default; `--apply` writes) before auditing, and audit the
+  upgraded tree. It rewrites only what has one correct answer and **refuses the rest, exiting
+  non-zero** — a refusal is itself a finding, naming the entries whose disposition nobody
+  recorded.
+  **Then audit the `retired` entries specifically.** They are where the ledger earns its
+  keep — agents proposing a retired capability's rebuild is the one failure this mechanism
+  has controlled evidence against — and they are also where it decays quietly. Check that
+  each `@statement` reads as a PROHIBITION rather than a diary entry ("X is never done",
+  not "we used to do X"), and that `@counterexample` describes the REVIVAL. A retired entry
+  whose statement narrates history is invisible to the reader it exists to stop.
 - [ ] **F. Drift-gate adoption.** Is `meta verify` wired into CI / pre-commit? Which
   subverbs (`--codegen` / `--templates` / `--db`)? Committed-codegen freshness gate?
   Advisories heeded? Routine `--no-verify` bypass? Loader `ERR_*` / warnings addressed?

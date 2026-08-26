@@ -1,5 +1,5 @@
 {
-  "metamodelVersion": "0.12",
+  "metamodelVersion": "0.13",
   "types": [
     {
       "type": "attr",
@@ -3849,9 +3849,17 @@
           "allowedValues": [
             "planned",
             "live",
-            "partial"
+            "partial",
+            "retired"
           ],
-          "description": "As on requirement.functional. A live or partial architectural requirement claimed by NOTHING is an error: a policy declared and applied to nothing. A planned one is exempt from that check — it is not applied yet by definition."
+          "description": "As on requirement.functional. A live or partial architectural requirement claimed by NOTHING is an error: a policy declared and applied to nothing. planned is exempt from that check — it is not applied yet by definition — and retired is exempt because a withdrawn policy governs nothing."
+        },
+        {
+          "name": "supersededBy",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The requirement that REPLACED this one. Legal on @status: retired only (ERR_REQUIREMENT_SUPERSEDED_BY_NOT_RETIRED otherwise), and RESOLVED like any other reference, so a dangling one is ERR_REQUIREMENT_DANGLING_REF and a supersession chain stays walkable: A names B, and when B is retired in turn it names C. That resolution is the whole point — 0.24.0 deregistered an unresolved string, and the 2026-08-10 ruling had asked for the resolving form (point 4) which was never built. A prose note in @notes points one hop and goes stale; this does not."
         },
         {
           "name": "trackedBy",
@@ -3924,9 +3932,17 @@
           "allowedValues": [
             "planned",
             "live",
-            "partial"
+            "partial",
+            "retired"
           ],
-          "description": "planned intended but not built yet; live implemented and in use; partial implemented with known gaps. A requirement is PRESCRIPTIVE — it states what SHOULD happen and is never a journal of what happened — so a capability that no longer applies is DELETED, not annotated as retired; the record of it having existed belongs to version control and to notes on the entries that survive. A dangling @implementedBy is an ERROR on live/partial (the model moved, the requirement is stale) and ALLOWED on planned, where the nodes do not exist YET. A planned requirement also never contributes to object coverage: planning a capability must not silence the warning that nothing implements it."
+          "description": "planned intended but not built yet; live implemented and in use; partial implemented with known gaps; retired BUILT THEN DELIBERATELY REMOVED — it must not be rebuilt. A requirement is PRESCRIPTIVE: it states what SHOULD be true and never journals what happened, and retired satisfies that because it states a prohibition in force, falsifiable by the capability reappearing. On retired, @implementedBy is REFUSED at load (ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS) — a retired capability has no implementation by definition, so its references cannot dangle because they cannot exist; @supersededBy names the requirement that replaced it. A dangling @implementedBy is an ERROR on live/partial (the model moved, the requirement is stale) and ALLOWED on planned, where the nodes do not exist YET. Neither planned nor retired contributes to object coverage: planning a capability must not silence the warning that nothing implements it, and neither must retiring one."
+        },
+        {
+          "name": "supersededBy",
+          "valueType": "string",
+          "isArray": false,
+          "required": false,
+          "description": "The requirement that REPLACED this one. Legal on @status: retired only (ERR_REQUIREMENT_SUPERSEDED_BY_NOT_RETIRED otherwise), and RESOLVED like any other reference, so a dangling one is ERR_REQUIREMENT_DANGLING_REF and a supersession chain stays walkable: A names B, and when B is retired in turn it names C. That resolution is the whole point — 0.24.0 deregistered an unresolved string, and the 2026-08-10 ruling had asked for the resolving form (point 4) which was never built. A prose note in @notes points one hop and goes stale; this does not."
         },
         {
           "name": "trackedBy",

@@ -31,7 +31,12 @@ describe("retiredAttr", () => {
 
   test("matches a wildcard type entry across every subtype of that type", () => {
     expect(retiredAttr("requirement.functional", "verifiedBy")).toBeDefined();
-    expect(retiredAttr("requirement.architectural", "supersededBy")).toBeDefined();
+    expect(retiredAttr("requirement.architectural", "verifiedBy")).toBeDefined();
+  });
+
+  test("@supersededBy is NOT retired — FR-039 registered it again, resolving", () => {
+    expect(retiredAttr("requirement.functional", "supersededBy")).toBeUndefined();
+    expect(retiredAttr("requirement.architectural", "supersededBy")).toBeUndefined();
   });
 
   test("knows @readOnly became @mutability", () => {
@@ -55,9 +60,11 @@ describe("retiredAttr", () => {
 });
 
 describe("retiredAttrValue", () => {
-  test("knows @status: abandoned and superseded were dropped", () => {
-    expect(retiredAttrValue("requirement.functional", "status", "abandoned")?.since).toBe("0.24.0");
-    expect(retiredAttrValue("requirement.functional", "status", "superseded")?.since).toBe("0.24.0");
+  test("knows @status: abandoned and superseded are rewritten to `retired` (FR-039)", () => {
+    // Still retired VALUES — authoring either fails the load — but 0.24.2 made the fix
+    // mechanical rather than a refusal, so the `since` moves with the entry that owns it.
+    expect(retiredAttrValue("requirement.functional", "status", "abandoned")?.since).toBe("0.24.2");
+    expect(retiredAttrValue("requirement.functional", "status", "superseded")?.since).toBe("0.24.2");
   });
 
   test("a surviving value of the same attr is NOT reported as retired", () => {
@@ -141,10 +148,25 @@ describe("mechanical rewrites", () => {
     expect(RETIRED_VOCABULARY.find((x) => x.attr === "verifiedBy")?.rewrite?.kind).toBe("dropAttr");
   });
 
-  test("@status: abandoned is JUDGMENT — no rewrite, guide required", () => {
+  test("@status: abandoned is MECHANICAL now — it rewrites to `retired` (FR-039)", () => {
+    // This was the canonical judgement case: 0.24.0 deleted the capability, so what
+    // became of a retired entry's record was the author's call and `meta upgrade`
+    // refused. FR-039 restored the capability under a prescriptive name, which makes
+    // the edit determinate — the entry it names is the one the loader now accepts.
     const e = RETIRED_VOCABULARY.find((x) => x.attrValues?.includes("abandoned") === true);
-    expect(e?.rewrite).toBeUndefined();
-    expect(e?.migration).toBeDefined();
+    expect(e?.rewrite).toEqual({
+      kind: "renameAttrValue",
+      toAttr: "status",
+      fromValue: "abandoned",
+      toValue: "retired",
+      otherwise: "refuse",
+    });
+    expect(e?.migration).toContain("retired-status-restore");
+  });
+
+  test("@status: superseded rewrites to `retired` too — the pointer is @supersededBy", () => {
+    const e = RETIRED_VOCABULARY.find((x) => x.attrValues?.includes("superseded") === true);
+    expect(e?.rewrite).toMatchObject({ fromValue: "superseded", toValue: "retired" });
   });
 
   test("@readOnly carries a key+value rewrite, not a bare rename", () => {

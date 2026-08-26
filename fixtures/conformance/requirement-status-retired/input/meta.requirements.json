@@ -1,0 +1,47 @@
+{
+  "metadata.root": {
+    "package": "acme::caps",
+    "children": [
+      {
+        "requirement.functional": {
+          "name": "OrderExpiry",
+          "@level": 4,
+          "@status": "retired",
+          "@statement": "An unpaid order is never expired by a wall-clock timer",
+          "@counterexample": "An order cancelled by elapsed time rather than by the customer",
+          "@supersededBy": "acme::caps::OrderHold",
+          "@notes": "The timer shipped in 2026-03 and was removed in 2026-06: it cancelled orders mid-checkout whenever a payment provider was slow. Do not reintroduce clock-driven cancellation."
+        }
+      },
+      {
+        "requirement.functional": {
+          "name": "OrderHold",
+          "@level": 4,
+          "@status": "live",
+          "@statement": "An unpaid order is held until the customer abandons it or pays",
+          "@counterexample": "An order that disappears while its payment is still in flight"
+        }
+      },
+      {
+        "requirement.architectural": {
+          "name": "NoAmbientClockInDomainLogic",
+          "@status": "retired",
+          "@statement": "Domain rules never read the wall clock directly",
+          "@counterexample": "A branch whose outcome changes with the time of day it runs",
+          "@supersededBy": "acme::caps::ClockIsInjected"
+        }
+      },
+      {
+        "requirement.architectural": {
+          "name": "ClockIsInjected",
+          "@status": "live",
+          "@statement": "Domain rules receive the current time as an argument",
+          "@counterexample": "A rule that calls a system clock inside its own body",
+          "@implementedBy": [
+            "acme::caps::OrderHold"
+          ]
+        }
+      }
+    ]
+  }
+}

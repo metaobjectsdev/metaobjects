@@ -19,6 +19,8 @@ import {
   REQUIREMENT_STATUSES_WITH_OUTSTANDING_WORK,
   type RequirementDisposition,
   type RequirementStatus,
+  REQUIREMENT_STATUS_RETIRED,
+  REQUIREMENT_ATTR_SUPERSEDED_BY,
 } from "./requirement-constants.js";
 
 export class MetaRequirement extends MetaData {
@@ -72,6 +74,20 @@ export class MetaRequirement extends MetaData {
     return s !== undefined && REQUIREMENT_STATUSES_WITH_OUTSTANDING_WORK.includes(s);
   }
 
+  /** Built, then deliberately removed. Carries no `@implementedBy` (the loader
+   *  refuses it), never counts toward object coverage, and is exempt from the
+   *  architectural universality check — a withdrawn policy governs nothing. */
+  isRetired(): boolean {
+    return this.status() === REQUIREMENT_STATUS_RETIRED;
+  }
+
+  /** The requirement that REPLACED this one (FR-039). Legal on `retired` only;
+   *  `verify` resolves it, so a supersession chain stays walkable. */
+  supersededBy(): string | undefined {
+    const v = this.attr(REQUIREMENT_ATTR_SUPERSEDED_BY);
+    return typeof v === "string" && v.trim() !== "" ? v : undefined;
+  }
+
   implementedBy(): string[] {
     const v = this.attr(REQUIREMENT_ATTR_IMPLEMENTED_BY);
     return Array.isArray(v) ? (v as string[]) : [];
@@ -92,7 +108,8 @@ export class MetaRequirement extends MetaData {
   }
 
   /** True when a dangling `@implementedBy` is an ERROR rather than expected.
-   *  `planned` is the only exemption — there the nodes do not exist YET. */
+   *  `planned` is exempt (the nodes do not exist YET) and `retired` cannot reach
+   *  this at all, because the loader refuses `@implementedBy` there. */
   requiresLiveNodes(): boolean {
     const s = this.status();
     return s !== undefined && REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES.includes(s);

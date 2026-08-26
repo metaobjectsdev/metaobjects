@@ -69,6 +69,7 @@ from .meta.core.requirement.meta_requirement import MetaRequirement
 from .meta.core.requirement.requirement_constants import (
     REQUIREMENT_ATTR_DISPOSITION,
     REQUIREMENT_ATTR_IMPLEMENTED_BY,
+    REQUIREMENT_ATTR_SUPERSEDED_BY,
     REQUIREMENT_ATTR_LEVEL,
     REQUIREMENT_ATTR_STATEMENT,
     REQUIREMENT_ATTR_STATUS,
@@ -636,6 +637,14 @@ _REQUIREMENT_COMMON_ATTRS = [
     ),
     AttrSchema(name=REQUIREMENT_ATTR_STATEMENT, value_type=ATTR_SUBTYPE_STRING, required=True),
     AttrSchema(name=REQUIREMENT_ATTR_COUNTEREXAMPLE, value_type=ATTR_SUBTYPE_STRING, required=True),
+    # FR-039 -- the requirement that REPLACED a retired one. Declared BEFORE
+    # @implementedBy to match the canonical spec's child order, which the registry
+    # manifest emits verbatim and every port byte-matches.
+    AttrSchema(
+        name=REQUIREMENT_ATTR_SUPERSEDED_BY,
+        value_type=ATTR_SUBTYPE_STRING,
+        required=False,
+    ),
     AttrSchema(
         name=REQUIREMENT_ATTR_IMPLEMENTED_BY,
         value_type=ATTR_SUBTYPE_STRING,

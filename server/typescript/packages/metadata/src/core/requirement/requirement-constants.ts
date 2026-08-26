@@ -37,6 +37,13 @@ export const REQUIREMENT_ATTR_STATEMENT = "statement";
 export const REQUIREMENT_ATTR_COUNTEREXAMPLE = "counterexample";
 export const REQUIREMENT_ATTR_IMPLEMENTED_BY = "implementedBy";
 
+/** FR-039 — the requirement that REPLACED a retired one. A resolving reference,
+ *  so a supersession chain stays walkable: A -> B, and when B is retired too it
+ *  carries its own. Legal ONLY on `retired`; the original 2026-08-10 ruling
+ *  asked for a resolving `supersededBy` (point 4) and 0.24.0 deregistered the
+ *  unresolved string version without ever building it. */
+export const REQUIREMENT_ATTR_SUPERSEDED_BY = "supersededBy";
+
 // ---------------------------------------------------------------------------
 // Status — a closed enum, enforced by the registry via `allowedValues`. This is
 // the one payload with controlled evidence behind it: model-only agents flagged
@@ -47,17 +54,30 @@ export const REQUIREMENT_ATTR_IMPLEMENTED_BY = "implementedBy";
 export const REQUIREMENT_STATUS_PLANNED = "planned";
 export const REQUIREMENT_STATUS_LIVE = "live";
 export const REQUIREMENT_STATUS_PARTIAL = "partial";
+/** FR-039 — built, then deliberately removed; it must NOT be rebuilt.
+ *
+ *  PRESCRIPTIVE, which is what makes it admissible under FR-038's rule that a
+ *  requirement never journals what happened: the entry states a prohibition in
+ *  force, falsifiable by exactly one observable — the capability reappearing.
+ *  The retired `abandoned` described the past; this describes the standing rule.
+ *
+ *  This is the status the ledger's only surviving controlled result is about:
+ *  model-only agents flagged a deliberately-retired capability 0 times out of
+ *  24, ledger arms 19 of 40. */
+export const REQUIREMENT_STATUS_RETIRED = "retired";
 
 export const REQUIREMENT_STATUSES = [
   REQUIREMENT_STATUS_PLANNED,
   REQUIREMENT_STATUS_LIVE,
   REQUIREMENT_STATUS_PARTIAL,
+  REQUIREMENT_STATUS_RETIRED,
 ] as const;
 export type RequirementStatus = (typeof REQUIREMENT_STATUSES)[number];
 
 /** Statuses whose implementing nodes are supposed to still exist. A dangling
  *  `@implementedBy` on one of these means the model moved and the requirement is
- *  stale. `planned` is the only exemption — there the nodes do not exist YET. */
+ *  stale. `planned` is exempt — there the nodes do not exist YET — and `retired`
+ *  cannot appear here at all, because it may not carry `@implementedBy`. */
 export const REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES: readonly RequirementStatus[] = [
   REQUIREMENT_STATUS_LIVE,
   REQUIREMENT_STATUS_PARTIAL,
@@ -69,6 +89,19 @@ export const REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES: readonly RequirementStat
 export const REQUIREMENT_STATUSES_WITH_OUTSTANDING_WORK: readonly RequirementStatus[] = [
   REQUIREMENT_STATUS_PLANNED,
   REQUIREMENT_STATUS_PARTIAL,
+];
+
+/** Statuses on which `@implementedBy` is REFUSED AT LOAD (FR-039).
+ *
+ *  This is the structural half of FR-039 and the reason it is a list rather
+ *  than an inline test. FR-038 removed `abandoned` because `verify` was SILENT
+ *  on dangling refs for it, hiding 29 unresolvable references across 14 entries
+ *  in one estate. That silence was a deliberate EXEMPTION — dangling was
+ *  specified as correct there. Forbidding the attribute outright makes the bug
+ *  class UNREACHABLE instead: a retired capability has no implementation by
+ *  definition, so the references cannot dangle because they cannot exist. */
+export const REQUIREMENT_STATUSES_FORBIDDING_IMPLEMENTORS: readonly RequirementStatus[] = [
+  REQUIREMENT_STATUS_RETIRED,
 ];
 
 // ---------------------------------------------------------------------------

@@ -135,25 +135,38 @@ describe("surgical editing", () => {
 
 describe("refusals — the honest half", () => {
   test("REFUSES a judgment case instead of guessing", () => {
-    const src = `{ "requirement.functional": { "name": "x", "@status": "abandoned" } }`;
+    // `@status: abandoned` was the canonical judgement case until FR-039 gave the
+    // capability a prescriptive name and made the edit determinate. A case that is
+    // STILL judgement: `identity.secondary @unique` — whether the node becomes an
+    // `index.lookup` or stays a unique key is the author's call, and only they know.
+    const src = `{ "identity.secondary": { "name": "byEmail", "@unique": true, "@fields": ["email"] } }`;
     const r = rewriteDocument(src);
-    // Untouched: deleting the node, retyping it, or fixing the residue are all defensible
-    // and only a human knows which. Guessing would emit metadata that LOADS and means
-    // something different.
     expect(r.text).toBe(src);
     expect(r.changes).toHaveLength(0);
     expect(r.refusals).toHaveLength(1);
-    expect(r.refusals[0]?.migration).toContain("verified-by-retirement");
+    expect(r.refusals[0]?.migration).toContain("identity-secondary-to-index-lookup");
+  });
+
+  test("@status: abandoned is MECHANICAL now, and takes @implementedBy with it (FR-039)", () => {
+    const src = `{ "requirement.functional": { "name": "x", "@status": "abandoned", "@implementedBy": ["a::B"] } }`;
+    const r = rewriteDocument(src);
+    expect(r.refusals).toHaveLength(0);
+    expect(r.text).toContain('"@status": "retired"');
+    // Both passes run in ONE invocation. If only the status moved, `meta upgrade --apply`
+    // would exit 0 on a document that still does not load — the #342 failure exactly.
+    expect(r.text).not.toContain("@implementedBy");
   });
 
   test("a refusal still reports the mechanical changes made alongside it", () => {
-    const src = `{ "requirement.functional": {
-      "name": "x", "@verifiedBy": ["T"], "@status": "abandoned" } }`;
+    const src = `{ "metadata.root": { "children": [
+      { "requirement.functional": { "name": "x", "@verifiedBy": ["T"], "@status": "live", "@statement": "s" } },
+      { "identity.secondary": { "name": "byEmail", "@unique": true, "@fields": ["email"] } }
+    ]}}`;
     const r = rewriteDocument(src);
-    expect(r.changes).toHaveLength(1);
-    expect(r.refusals).toHaveLength(1);
+    expect(r.changes).toHaveLength(1);   // @verifiedBy dropped
+    expect(r.refusals).toHaveLength(1);  // @unique refused
     expect(r.text).not.toContain("@verifiedBy");
-    expect(r.text).toContain('"abandoned"');
+    expect(r.text).toContain('"@unique"');
   });
 });
 
@@ -188,7 +201,11 @@ describe("scoping", () => {
   // A wildcard entry (`requirement.*`) governs every subtype. Scoping per FILE meant one
   // pass per subtype key present, so a single occurrence was reported once per pass — two
   // refusals, and a summary claiming two declarations, for one line of metadata.
-  test("reports ONE refusal per occurrence, not one per subtype in the file", () => {
+  test("reports ONE change per occurrence, not one per subtype in the file", () => {
+    // Was a refusal test; `@status: abandoned` rewrites now (FR-039), so the same
+    // per-occurrence property is asserted on the CHANGE list instead. The bug it
+    // guards is unchanged: scoping per FILE ran one pass per subtype key present,
+    // so one line of metadata was reported once per pass.
     const src = `{
   "metadata.root": { "children": [
     { "requirement.functional": { "name": "a", "@status": "abandoned" } },
@@ -196,8 +213,8 @@ describe("scoping", () => {
   ]}
 }`;
     const r = rewriteDocument(src);
-    expect(r.refusals).toHaveLength(1);
-    expect(r.refusals[0]?.subject).toBe("@status");
+    expect(r.changes).toHaveLength(1);
+    expect(r.changes[0]?.attr).toBe("status");
   });
 });
 

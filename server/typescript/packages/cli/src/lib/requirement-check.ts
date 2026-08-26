@@ -194,6 +194,43 @@ export function collectAddressedRequirements(root: MetaData): AddressedRequireme
   return out;
 }
 
+
+/**
+ * Resolve a `@supersededBy` reference to a requirement in the same ledger (FR-039).
+ *
+ * A requirement is addressed the way every other node is: a package qualifies the
+ * ROOT-level node only, and each dotted segment after it walks CHILD names — so
+ * `acme::caps::Billing.InvoiceRecord` names the `InvoiceRecord` child of the
+ * root-level `Billing`. A bare reference binds package-locally first and then at
+ * root level, which is the ADR-0042 contract every other reference already follows.
+ *
+ * Deliberately resolves against the LEDGER, not the model: a capability is replaced
+ * by another capability. Pointing this at an entity would be `@implementedBy` wearing
+ * a different name, and `@implementedBy` is exactly what a retired entry may not have.
+ */
+export function resolveRequirementRef(
+  addressed: readonly AddressedRequirement[],
+  ref: string,
+  referrerPkg: string,
+): MetaRequirement | undefined {
+  const keyed = new Map<string, MetaRequirement>();
+  for (const { node, path } of addressed) {
+    const pkg = node.package ?? node.fileDefaultPackage ?? "";
+    if (pkg !== "") keyed.set(`${pkg}::${path}`, node);
+    // Bare path is registered too, so a single-package ledger can reference
+    // without repeating its own package on every line.
+    if (!keyed.has(path)) keyed.set(path, node);
+  }
+  // An FQN binds exactly; a bare ref prefers the referrer's own package.
+  const exact = keyed.get(ref);
+  if (exact !== undefined) return exact;
+  if (referrerPkg !== "") {
+    const local = keyed.get(`${referrerPkg}::${ref}`);
+    if (local !== undefined) return local;
+  }
+  return undefined;
+}
+
 /** The nodes alone, for callers with no use for the address. */
 export function collectRequirements(root: MetaData): MetaRequirement[] {
   return collectAddressedRequirements(root).map((r) => r.node);
@@ -388,6 +425,32 @@ export function checkRequirements(root: MetaData, scan: RequirementScan = scanRe
               `the model moved and the requirement is stale).` + didYouMeanHint(root, owner),
           });
         }
+      }
+    }
+
+    // -- @supersededBy resolution (FR-039) ------------------------------------
+    // The 2026-08-10 ruling asked for exactly this at point 4 — "a supersededBy
+    // that RESOLVES (FQN-checked, so verify can fail on a dangling one), turning
+    // 'deleted in S6' from an inert comment into a build gate" — and 0.24.0
+    // deregistered the unresolved string version without ever building it.
+    //
+    // Resolution is what makes a supersession CHAIN survive. A prose note points
+    // one hop and rots when that hop is itself retired; a resolved reference does
+    // not, because the target is a real node carrying its own @supersededBy.
+    //
+    // The target is a REQUIREMENT, not a model node: a capability is replaced by
+    // another capability. It resolves package-locally under ADR-0042 through the
+    // requirement's own effective package, exactly as @implementedBy does.
+    const superseded = req.supersededBy();
+    if (superseded !== undefined) {
+      const referrerPkg = req.package ?? req.fileDefaultPackage ?? "";
+      if (resolveRequirementRef(addressed, superseded, referrerPkg) === undefined) {
+        out.push({
+          severity: "error", code: ERR_REQUIREMENT_DANGLING_REF, path: reqPath,
+          message: `@supersededBy '${superseded}' does not name a requirement in the loaded ` +
+            `ledger. It must name the requirement that REPLACED this one — if nothing did, ` +
+            `drop the attribute and let \`notes\` carry why the capability went.`,
+        });
       }
     }
 

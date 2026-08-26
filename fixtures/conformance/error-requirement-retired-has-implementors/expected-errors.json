@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.requirements.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['requirement.functional']"
+      }
+    }
+  ],
+  "warnings": []
+}

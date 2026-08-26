@@ -94,6 +94,12 @@ class ErrorCode(str, Enum):
     # references / sourceRefField-not-matching / M:N-attr-on-1:N). The symmetric-
     # on-hetero + symmetric+sourceRefField rules emit ERR_BAD_ATTR_VALUE instead.
     ERR_INVALID_INDEX = "ERR_INVALID_INDEX"
+    # FR-039 -- @status: retired declares @implementedBy. Refused rather than exempted:
+    # a retired capability has no implementation BY DEFINITION, so forbidding the
+    # attribute makes the dangling-reference class unreachable instead of tolerated.
+    ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS = "ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS"
+    # FR-039 -- @supersededBy on a requirement whose @status is not `retired`.
+    ERR_REQUIREMENT_SUPERSEDED_BY_NOT_RETIRED = "ERR_REQUIREMENT_SUPERSEDED_BY_NOT_RETIRED"
     ERR_INVALID_RELATIONSHIP = "ERR_INVALID_RELATIONSHIP"
     # identity.reference @references names an FK target object that does not resolve
     # to any object in the loaded tree (a dangling cross-reference between metadata).

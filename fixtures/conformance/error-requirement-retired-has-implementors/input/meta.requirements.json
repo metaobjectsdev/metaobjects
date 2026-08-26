@@ -1,0 +1,17 @@
+{
+  "metadata.root": {
+    "package": "demo",
+    "children": [
+      {
+        "requirement.functional": {
+          "name": "OrderTimer",
+          "@level": 4,
+          "@status": "retired",
+          "@statement": "An unpaid order is never expired by a wall-clock timer",
+          "@counterexample": "An order cancelled by elapsed time rather than by the customer",
+          "@implementedBy": ["demo::shop::Order"]
+        }
+      }
+    ]
+  }
+}

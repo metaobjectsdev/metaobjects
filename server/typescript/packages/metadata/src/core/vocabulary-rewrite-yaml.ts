@@ -34,6 +34,7 @@
 
 import { LineCounter, isMap, isSeq, parseDocument, type Node, type Pair } from "yaml";
 import { ATTR_CONTRADICTIONS, contradictionScopeMatches } from "../attr-contradictions.js";
+import type { AttrContradiction } from "../attr-contradictions.js";
 import {
   RETIRED_VOCABULARY,
   note,
@@ -206,6 +207,16 @@ function bareKey(pair: Pair): string | undefined {
   return k.startsWith("@") ? k.slice(1) : k;
 }
 
+/** True when `keep` holds one of the entry's `keepValues` (or the entry names none,
+ *  in which case mere presence is the contradiction). Mirrors the JSON rewriter's
+ *  `keepValueMatches` — one rule, two doors, and a divergence here is a file format
+ *  silently migrating differently from the other. */
+function keepValueMatches(pair: Pair, c: AttrContradiction): boolean {
+  if (c.keepValues === undefined) return true;
+  const v = (pair.value as { value?: unknown } | null)?.value;
+  return typeof v === "string" && c.keepValues.includes(v);
+}
+
 /** Does this pair carry a string that actually says something? */
 function suppliesText(pair: Pair): boolean {
   const v = (pair.value as { value?: unknown } | null)?.value;
@@ -253,7 +264,11 @@ export function rewriteYamlDocument(source: string, opts: RewriteOpts = {}): Yam
     for (const c of ATTR_CONTRADICTIONS) {
       if (opts.maxVersion !== undefined && !atOrBefore(c.since, opts.maxVersion)) continue;
       if (!contradictionScopeMatches(c, typeKey)) continue;
-      if (!body.items.some((p) => bareKey(p) === c.keep && suppliesText(p))) continue;
+      // `keep` must be present AND, when the entry names values, hold one of them —
+      // otherwise status and implementedBy would contradict on every status.
+      if (!body.items.some(
+        (p) => bareKey(p) === c.keep && suppliesText(p) && keepValueMatches(p, c),
+      )) continue;
 
       for (const pair of body.items) {
         if (bareKey(pair) !== c.drop) continue;
@@ -326,6 +341,13 @@ export function rewriteYamlDocument(source: string, opts: RewriteOpts = {}): Yam
       const rw = entry.rewrite;
       if (rw === undefined) refuse();
       else if (rw.kind === "renameAttr") {
+        // NOTE — the JSON rewriter refuses a rename onto a key the node already declares,
+        // because two `"@counterexample"` members in one object parse silently with the
+        // last one winning. YAML needs no such guard: a duplicate key is a hard PARSE
+        // ERROR, so the same document fails loudly on the next load rather than quietly
+        // losing the author's surviving sentence. Same rule, different blast radius —
+        // if `eachPair` ever gains sibling access, mirror the JSON guard here anyway.
+        //
         // Preserve the author's quoting style; YAML keys are usually bare, but a quoted key
         // must stay quoted or the surrounding style stops being self-consistent.
         const rawKey = source.slice(span.keyStart, span.keyEnd);

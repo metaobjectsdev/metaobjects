@@ -196,6 +196,16 @@ export const ERROR_CODES = [
   // @fields), whichever is declared supplies no key, or a named field does not exist
   // on the owning entity's effective (resolved via extends) field set.
   "ERR_INVALID_INDEX",
+  // FR-039 — a requirement.* with @status: retired declares @implementedBy. Refused
+  // rather than exempted: a retired capability has no implementation BY DEFINITION,
+  // so forbidding the attribute makes the dangling-reference class unreachable
+  // instead of silently tolerated (which is what 0.24.0 removed the old vocabulary
+  // over — 29 unresolvable refs across 14 entries reported as zero).
+  "ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS",
+  // FR-039 — @supersededBy on a requirement whose @status is not `retired`. The
+  // attribute names what REPLACED a withdrawn capability; on a live one there is
+  // nothing to have replaced it.
+  "ERR_REQUIREMENT_SUPERSEDED_BY_NOT_RETIRED",
   // #195 — origin.computed @expr: the expression tree's inferred root type does
   // not equal the carrying field's declared field.<subType>. A computed column's
   // type is DERIVED from its expression, never asserted (no @convert escape),

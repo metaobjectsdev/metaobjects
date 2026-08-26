@@ -62,7 +62,7 @@ public class FunctionalRequirement extends MetaRequirement {
             // hand-written string comparison in one CLI.
             def.requiredAttributeWithConstraints(ATTR_STATUS)
                .ofType(StringAttribute.SUBTYPE_STRING)
-               .withEnum(STATUS_PLANNED, STATUS_LIVE, STATUS_PARTIAL);
+               .withEnum(STATUS_PLANNED, STATUS_LIVE, STATUS_PARTIAL, STATUS_RETIRED);
 
             def.optionalAttributeWithConstraints(ATTR_DISPOSITION)
                .ofType(StringAttribute.SUBTYPE_STRING)
@@ -75,6 +75,11 @@ public class FunctionalRequirement extends MetaRequirement {
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
 
             def.requiredAttributeWithConstraints(ATTR_COUNTEREXAMPLE)
+               .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
+
+            // @supersededBy: FR-039. Declared BEFORE @implementedBy to match the
+            // canonical spec's child order, which the registry manifest emits verbatim.
+            def.optionalAttributeWithConstraints(ATTR_SUPERSEDED_BY)
                .ofType(StringAttribute.SUBTYPE_STRING).asSingle();
 
             def.optionalAttributeWithConstraints(ATTR_IMPLEMENTED_BY)

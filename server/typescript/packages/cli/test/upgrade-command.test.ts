@@ -40,16 +40,20 @@ const WITH_RETIRED = `{
   }
 }`;
 
+// A retirement `meta upgrade` still REFUSES. `@status: abandoned` held this role until
+// FR-039 made it mechanical (-> `retired`); `identity.secondary @unique` is judgement
+// for the same reason abandoned used to be — whether the node becomes an `index.lookup`
+// or stays a unique key is a modelling decision only the author can make.
 const NEEDS_DECISION = `{
   "metadata.root": {
     "package": "acme::shop",
     "children": [
-      { "requirement.functional": {
-          "name": "oldThing",
-          "@level": 4,
-          "@status": "abandoned",
-          "@statement": "Something we stopped doing",
-          "@counterexample": "n/a"
+      { "object.entity": {
+          "name": "Order",
+          "children": [
+            { "field.string": { "name": "ref" }},
+            { "identity.secondary": { "name": "byRef", "@unique": true, "@fields": ["ref"] }}
+          ]
       }}
     ]
   }
@@ -101,7 +105,7 @@ describe("meta upgrade", () => {
     const root = await project(NEEDS_DECISION);
     expect(await upgradeCommand([root, "--apply"], root)).toBe(1);
     // And leaves the judgment case alone rather than guessing.
-    expect(await readFile(join(root, "metaobjects", "meta.json"), "utf8")).toContain('"abandoned"');
+    expect(await readFile(join(root, "metaobjects", "meta.json"), "utf8")).toContain('"@unique"');
   });
 
   test("--to bounds which retirements apply", async () => {
@@ -199,7 +203,7 @@ describe("meta upgrade", () => {
 
   test("a YAML retirement needing a decision still exits 1, not 3", async () => {
     const root = await yamlProject(
-      "metadata:\n  children:\n    - requirement.functional: { name: r, status: abandoned }\n",
+      "metadata:\n  children:\n    - identity.secondary: { name: byRef, unique: true, fields: [ref] }\n",
     );
     expect((await run([root, "--apply"], root)).code).toBe(1);
   });

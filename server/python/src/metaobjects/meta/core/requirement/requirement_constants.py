@@ -26,6 +26,9 @@ REQUIREMENT_SUBTYPES = (
 #: 1 solution · 2 segment (app/library) · 3 service · 4 object · 5 member.
 REQUIREMENT_ATTR_LEVEL = "level"
 REQUIREMENT_ATTR_STATUS = "status"
+# FR-039 -- the requirement that REPLACED a retired one. Resolving reference,
+# legal on `retired` only.
+REQUIREMENT_ATTR_SUPERSEDED_BY = "supersededBy"
 REQUIREMENT_ATTR_DISPOSITION = "disposition"
 REQUIREMENT_ATTR_TRACKED_BY = "trackedBy"
 REQUIREMENT_ATTR_STATEMENT = "statement"
@@ -41,11 +44,15 @@ REQUIREMENT_ATTR_IMPLEMENTED_BY = "implementedBy"
 REQUIREMENT_STATUS_PLANNED = "planned"
 REQUIREMENT_STATUS_LIVE = "live"
 REQUIREMENT_STATUS_PARTIAL = "partial"
+# FR-039 -- built, then deliberately removed; it must NOT be rebuilt. PRESCRIPTIVE:
+# the entry states a prohibition in force, falsifiable by the capability reappearing.
+REQUIREMENT_STATUS_RETIRED = "retired"
 
 REQUIREMENT_STATUSES = (
     REQUIREMENT_STATUS_PLANNED,
     REQUIREMENT_STATUS_LIVE,
     REQUIREMENT_STATUS_PARTIAL,
+    REQUIREMENT_STATUS_RETIRED,
 )
 
 #: Statuses whose implementing nodes are supposed to still exist. A dangling
@@ -63,6 +70,11 @@ REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES = (
 # Statuses with outstanding work, so a @disposition is meaningful on them. On any
 # other status the decision IS the status, and recording a second one can only
 # agree with it or contradict it.
+# Statuses on which `@implementedBy` is REFUSED AT LOAD (FR-039). Forbidding the
+# attribute makes the dangling-reference bug class UNREACHABLE rather than exempt --
+# a retired capability has no implementation by definition.
+REQUIREMENT_STATUSES_FORBIDDING_IMPLEMENTORS = (REQUIREMENT_STATUS_RETIRED,)
+
 REQUIREMENT_STATUSES_WITH_OUTSTANDING_WORK = (
     REQUIREMENT_STATUS_PLANNED,
     REQUIREMENT_STATUS_PARTIAL,

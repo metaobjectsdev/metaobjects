@@ -7,6 +7,88 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added — a retired capability gets its status back: `@status: retired` (FR-039)
+
+`@status` gains a fourth member, **`retired`**, and `@supersededBy` is registered again — this
+time as a reference the loader **resolves**. `0.24.0` had retired `abandoned`, `superseded` and
+`@supersededBy`; this reverses that half of the change. `@verifiedBy` stays retired, on
+reasoning that is independent and unaffected.
+
+**Additive. Nothing that loads on `0.24.x` stops loading**, and a ledger using only
+`planned | live | partial` sees no change at all.
+
+**Why it came back.** The ruling that authorised `requirement.*` tested six claims under
+control across five rounds and 52 agents, with pre-registered kill conditions, and **refuted
+five**: requirements-stop-rebuilding, node-side `satisfies:` links, must-be-ambient,
+dead-code-finding, drift-prevention. The one that HELD is the retired-capability guardrail —
+model-only agents flagged a deliberately-retired capability **0 times out of 24**, every run
+proposing to extend it "each believing it was reusing rather than reviving"; ledger arms caught
+it **19 of 40**. One run named it *"a near-exact decoy"*. `0.24.0` removed the survivor and
+left the five refuted claims in place.
+
+**The finding that removed it was real, and is answered — structurally.** One estate carried
+**29 `@implementedBy` references that could never resolve, across 14 entries, while `meta
+verify` reported zero.** But those references dangled *because the ruling deliberately
+specified that they should*: severity was conditional on status, and dangling on a retired
+entry was chartered as correct. The defect was that `verify` printed `0` where it meant
+`29 unresolved on retired entries (expected)` — a **reporting** defect answered by deleting
+vocabulary. So `retired` forbids `@implementedBy` outright
+(`ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS`, a LOAD error in all five ports) rather than
+exempting it. A retired capability has no implementation by definition, so the references
+cannot dangle because they cannot exist — the bug class is unreachable rather than patched.
+That is also the shape one adopting estate had already reached by hand, moving retirement
+history out of `@implementedBy` on the grounds that *"what used to implement a retired
+capability is real information in the wrong field."*
+
+**It is PRESCRIPTIVE, which is what makes it admissible under the rule that removed it.**
+`0.24.0` retired the old vocabulary on the principle that a requirement states what should be
+true and never journals what happened. That rule is kept. A `retired` entry states **"this must
+not be rebuilt"** — a prohibition in force, falsifiable by exactly one observable, the
+capability reappearing. The old name described the past; this one is chartered as the standing
+rule, and the authoring guidance says so: `"An unpaid order is never expired by a wall-clock
+timer"` is a requirement, `"We used to expire orders on a timer"` is a diary entry.
+
+**A status member, not a new subtype**, for two reasons that only read as decisive with the
+measurement in front of you: the claim that held is literally *"a status field prevents
+reviving retired features"*, and hierarchy is nesting — a subtype change moves the node while
+a status change is one word. What was proven works *because the retired entry sits where the
+live one sat*.
+
+**`@supersededBy` resolves now**, which is what the original ruling asked for (point 4: *"a
+`supersededBy` that RESOLVES, FQN-checked, so `verify` can fail on a dangling one"*) and never
+got — `0.24.0` deregistered the unresolved string without building the resolving version. It
+names the requirement that replaced the withdrawn one, is legal on `retired` only
+(`ERR_REQUIREMENT_SUPERSEDED_BY_NOT_RETIRED`), and resolves package-locally under ADR-0042. The
+resolution is the point: an adopting estate hit a supersession that was **itself** superseded
+(A → B, B dropped, the live answer a third thing), and a prose note points one hop and rots
+where a resolved reference chains.
+
+**Gates.** `retired` never counts toward object coverage (the same call as `planned` — retiring
+a capability must not silence "nothing claims this entity") and is exempt from architectural
+universality (a withdrawn policy governs nothing). It keeps its level and its place in the tree.
+
+**`meta upgrade` now repairs the case it used to refuse.** `@status: abandoned` was the
+canonical judgement case and exited non-zero; the edit is determinate now, so
+`abandoned`/`superseded` → `retired` is mechanical and **the same run drops the
+`@implementedBy` a retired entry may not carry** — one invocation leaves a loading estate
+rather than rewriting into a document that still fails, which is the `#342` failure exactly.
+Also fixed while in that code: a `renameAttr` rewrite onto a key the node **already declares**
+emitted a duplicate JSON member (two `"@counterexample"` in one object, last silently winning);
+it refuses now. YAML needs no guard — a duplicate key is a hard parse error there.
+
+**What is NOT claimed.** 19 of 40 is under half, and no production prevention case has been
+documented. In the estate audited for it, **nothing routed an agent to the ledger at all** — no
+rule file, no always-loaded doc, no generated context cited it — which is consistent with that
+number rather than surprising. Restoring the status is necessary and **not sufficient**; if
+nothing points at the ledger it buys a coin flip.
+
+`metamodelVersion` moves `0.12` → `0.13`. Migration guide:
+[`docs/features/migrations/retired-status-restore.md`](docs/features/migrations/retired-status-restore.md).
+Design: `docs/superpowers/specs/2026-08-26-fr-039-retired-status-restore-design.md`, and
+Amendment 4 of `spec/design-docs/2026-08-10-requirements-as-metadata-ruling.md`, which records
+that the reversal was made without amending the ruling it reversed.
+
+
 ### Added — `meta verify` lints how a requirement is AUTHORED, in a section of its own
 
 `meta verify` already gated the requirement ledger for **referential integrity** — links at
@@ -862,7 +944,7 @@ carries **four** vocabulary retirements plus **one rename**, batched deliberatel
 template-direction split, the requirement vocabulary going prescriptive-only (FR-038), the
 `@readOnly` → `@mutability` enum (FR-037 R1), `origin.collection` (FR-037 R2), and
 `@violation` → `@counterexample` on `requirement.*`. The fifth was caught *before* ship and
-folded in rather than held for `0.25.0` — holding it out would have made every adopter with a
+folded in rather than held for `0.24.2` — holding it out would have made every adopter with a
 ledger edit the same files twice, the second pass landing on the hand-judgment `abandoned`
 cases they had just finished. Concentrating breaking vocabulary is what the window is for. Two
 further changes are DEFAULT FLIPS rather than corrections of previously-wrong behaviour —
@@ -937,7 +1019,7 @@ vocabulary asked outright whether it meant "we know this requirement is currentl
 violation." A name that misleads its own approver has earned replacing, and the only slot where
 renaming registered vocabulary is cheap is this one.
 
-**It rides 0.24.0 rather than 0.25.0, and that is the whole point of the window.** Holding it
+**It rides 0.24.0 rather than 0.24.2, and that is the whole point of the window.** Holding it
 out would have made every adopter with a ledger migrate the same files twice —
 `@verifiedBy`/`@supersededBy`/`@status` now, `@violation` later — with the second pass landing
 on the `abandoned` entries that need hand judgment rather than a substitution. A fifth change

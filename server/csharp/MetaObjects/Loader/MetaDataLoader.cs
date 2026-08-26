@@ -630,6 +630,11 @@ public class MetaDataLoader
             // and each must exist in the entity's effective field set (ERR_INVALID_INDEX).
             errors.AddRange(ValidationPasses.ValidateIndexLookupFields(root));
 
+            // FR-039 — a retired requirement carries no @implementedBy (refused, not
+            // exempted, so the dangling-ref class is unreachable) and @supersededBy is
+            // legal only there.
+            errors.AddRange(ValidationPasses.ValidateRetiredRequirementLinks(root));
+
             // Phase 2 — validation DERIVED FROM THE TYPE REGISTRY: each node's TypeDefinition
             // carries its reference descriptors (relationship @objectRef, identity.reference
             // @references for core; a downstream provider's type carries its own) + validator,

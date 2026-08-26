@@ -1,0 +1,15 @@
+{
+  "errors": [
+    {
+      "code": "ERR_REQUIREMENT_SUPERSEDED_BY_NOT_RETIRED",
+      "source": {
+        "format": "json",
+        "files": [
+          "meta.requirements.json"
+        ],
+        "jsonPath": "$['metadata.root'].children[0]['requirement.functional']"
+      }
+    }
+  ],
+  "warnings": []
+}

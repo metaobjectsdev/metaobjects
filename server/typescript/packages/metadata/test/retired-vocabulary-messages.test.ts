@@ -46,9 +46,14 @@ describe("#337 — a retired attribute explains itself", () => {
     expect(msg).not.toContain("not declared by any registered provider");
   });
 
-  test("@supersededBy is covered too — both halves of the FR-038 retirement", async () => {
+  test("@supersededBy is NOT retired — FR-039 registered it again", async () => {
+    // 0.24.0 deregistered it; FR-039 brought it back on `retired` only, and this time
+    // it RESOLVES. On a LIVE requirement it is still refused, but by the shape rule
+    // rather than as retired vocabulary — the message must not say "retired in 0.24.0",
+    // which would send an adopter to delete an attribute the loader now accepts.
     const msg = await loadErrors(requirement({ "@supersededBy": "OrderRecordV2" }));
-    expect(msg).toContain("retired in 0.24.0");
+    expect(msg).not.toContain("retired in 0.24.0");
+    expect(msg).toContain("legal only on @status: retired");
   });
 
   // The load must still FAIL. A friendlier message that also started accepting the
@@ -67,12 +72,13 @@ describe("#337 — a retired attribute explains itself", () => {
 });
 
 describe("#337 — a retired ENUM VALUE explains itself", () => {
-  test("@status: abandoned says it was retired and why deleting is the migration", async () => {
+  test("@status: abandoned names `retired` as the migration, not deletion (FR-039)", async () => {
     const msg = await loadErrors(requirement({ "@status": "abandoned" }));
-    expect(msg).toContain("retired in 0.24.0");
-    expect(msg).toContain("docs/features/migrations/verified-by-retirement.md");
-    // The surviving members still surface — the reader needs both halves.
-    expect(msg).toContain("planned, live, partial");
+    expect(msg).toContain("retired in 0.24.2");
+    expect(msg).toContain("docs/features/migrations/retired-status-restore.md");
+    // The surviving members still surface — the reader needs both halves, and the
+    // fourth one IS the answer to this particular error.
+    expect(msg).toContain("planned, live, partial, retired");
   });
 
   test("a surviving member loads clean", async () => {

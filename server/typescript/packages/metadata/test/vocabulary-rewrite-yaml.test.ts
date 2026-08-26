@@ -80,13 +80,16 @@ describe("rewriteYamlDocument", () => {
   });
 
   test("drops a MIDDLE key of a flow mapping without stranding a comma", () => {
-    const src = "metadata:\n  children:\n    - requirement.functional: { name: R4, supersededBy: R1, level: L4 }\n";
+    // Vehicle: @verifiedBy, still a dropAttr retirement. (@supersededBy was the vehicle
+    // until FR-039 registered it again — the flow-mapping mechanics under test are the
+    // same, only the droppable attribute changed.)
+    const src = "metadata:\n  children:\n    - requirement.functional: { name: R4, verifiedBy: T1, level: L4 }\n";
     const r = rewriteYamlDocument(src);
     expect(r.text).toContain("{ name: R4, level: L4 }");
   });
 
   test("drops the LAST key of a flow mapping by taking the PRECEDING comma", () => {
-    const src = "metadata:\n  children:\n    - requirement.functional: { name: R5, supersededBy: R1 }\n";
+    const src = "metadata:\n  children:\n    - requirement.functional: { name: R5, verifiedBy: T1 }\n";
     const r = rewriteYamlDocument(src);
     expect(r.text).toContain("{ name: R5 }");
     // Whatever it produced must still be valid YAML — a fixer may never emit a broken file.
@@ -95,12 +98,23 @@ describe("rewriteYamlDocument", () => {
   });
 
   test("refuses a retirement that needs a human decision instead of guessing", () => {
-    const src = "metadata:\n  children:\n    - requirement.functional: { name: R6, status: abandoned }\n";
+    // `@status: abandoned` used to be the refusal case; FR-039 made it mechanical
+    // (-> `retired`), so the refusal contract needs a case that is STILL judgement.
+    // `identity.secondary @unique` is one: the fix is re-modelling the node as an
+    // `index.lookup` or leaving it a unique key, and only the author knows which.
+    const src = "metadata:\n  children:\n    - identity.secondary: { name: R6, unique: true }\n";
     const r = rewriteYamlDocument(src);
     expect(r.changes).toEqual([]);
     expect(r.refusals).toHaveLength(1);
-    expect(r.refusals[0]).toMatchObject({ subject: "@status", value: "abandoned", since: "0.24.0" });
+    expect(r.refusals[0]).toMatchObject({ subject: "@unique" });
     expect(r.text).toBe(src);
+  });
+
+  test("@status: abandoned is now a mechanical rewrite to `retired` (FR-039)", () => {
+    const src = "metadata:\n  children:\n    - requirement.functional: { name: R7, status: abandoned }\n";
+    const r = rewriteYamlDocument(src);
+    expect(r.refusals).toEqual([]);
+    expect(r.text).toContain("status: retired");
   });
 
   test("scopes every occurrence by its enclosing node, never by the file", () => {

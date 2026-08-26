@@ -202,8 +202,8 @@ meanings and their gates.
 
 | axis | value |
 |---|---|
-| package version | **MINOR** — `0.25.0` / Maven `7.25.0`. Registered vocabulary, and it headlines the release on purpose (ADR-0035 Amendment 1). |
-| `metamodelVersion` | moves — set with `node scripts/check-metamodel-version.mjs --set <v>` |
+| package version | **PATCH** — npm/PyPI/NuGet `0.24.2`, Maven `7.24.2`. See below. |
+| `metamodelVersion` | **`0.12` → `0.13`** — its own axis, and it moving does NOT force a package minor (ADR-0035 Amendment 2). |
 | ports | all five; `expected-registry.json` is byte-gated, plus `registry-conformance` and negative fixtures for §4.2 |
 | adopter action | **none required.** An estate on `planned/live/partial` is untouched. |
 
@@ -214,11 +214,30 @@ judgment. With `retired` registered the edit becomes determinate — `abandoned`
 0.24.0 migration could not automate becomes mechanical. That is a direct argument for this
 shape over any alternative.
 
-**1.0 readiness.** This moves `metamodelVersion`, and `docs/1.0-readiness.md` §G3's standing
-recommendation is one more coordinated release with no such move. It is additive and forces
-zero adopter edits, so there is a defensible reading that G3 is not reset — but that is the
-maintainer's ruling and §G3 says to record it **in that bullet**, not in a changelog. It must
-be ruled explicitly before this ships, either way.
+**Why PATCH, and why the two version axes must not be read off each other.** ADR-0035
+Amendment 1 sorts vocabulary by CONSUMER IMPACT: **attribute ⇒ PATCH**, top-level type ⇒
+MINOR, subtype ⇒ PATCH when inert. This adds one enum member to an existing attribute and one
+attribute — both the PATCH tier. Nothing that loads on `0.24.x` stops loading, and no adopter
+must edit anything.
+
+The trap worth naming, because a first pass through this fell into it: the
+`check-metamodel-version` gate reports **"required bump: minor"**, and that is a statement
+about **`metamodelVersion`**, not about the package. They are separate contracts — the whole
+point of Amendment 2 — and reading the package version off the metamodel gate is exactly the
+conflation it exists to prevent.
+
+**And the caret rule decides it, not just permits it.** `^0.24.x` resolves a patch, so an
+estate carrying the retired vocabulary picks the repair up on a routine `npm update`;
+`0.25.0` would strand it behind a deliberate bump. That is the `0.21.5` lesson stated in
+that release's own changelog — **a MINOR cannot reach the adopters a bug has already
+broken** — and it applies with more force here, because the estate this FR exists for is
+broken by `0.24.0` right now.
+
+**1.0 readiness.** `metamodelVersion` moves, and `docs/1.0-readiness.md` §G3's standing
+recommendation was one more coordinated release with no such move. **RULED (2026-08-26):
+this does NOT reset the clock and IS the quiet release** — recorded in the G3 bullet itself,
+per that document's own instruction, on the reasoning that G3 measures BREAKING churn and
+this forces zero adopter edits where `0.24.1` forced some.
 
 ## 8. Open questions
 

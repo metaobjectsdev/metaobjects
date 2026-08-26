@@ -91,6 +91,10 @@ public abstract class MetaRequirement extends MetaData {
     /** FQN references to the model nodes realising this requirement. */
     public static final String ATTR_IMPLEMENTED_BY = "implementedBy";
 
+    /** FR-039 — the requirement that REPLACED a retired one. A resolving reference,
+     *  legal on {@link #STATUS_RETIRED} only, so a supersession chain stays walkable. */
+    public static final String ATTR_SUPERSEDED_BY = "supersededBy";
+
     // ------------------------------------------------------------------
     // Status — a closed enum, enforced by the registry via allowedValues.
     // ------------------------------------------------------------------
@@ -106,9 +110,18 @@ public abstract class MetaRequirement extends MetaData {
     /** Implemented with known gaps. */
     public static final String STATUS_PARTIAL = "partial";
 
+    /**
+     * FR-039 — built, then deliberately removed; it must NOT be rebuilt.
+     *
+     * <p>PRESCRIPTIVE, which is what makes it admissible under FR-038's rule that a
+     * requirement never journals what happened: the entry states a prohibition in force,
+     * falsifiable by exactly one observable — the capability reappearing.</p>
+     */
+    public static final String STATUS_RETIRED = "retired";
+
     /** The closed status set, in declaration order (load-bearing — the manifest emits it). */
     public static final List<String> STATUSES = Collections.unmodifiableList(
-            Arrays.asList(STATUS_PLANNED, STATUS_LIVE, STATUS_PARTIAL));
+            Arrays.asList(STATUS_PLANNED, STATUS_LIVE, STATUS_PARTIAL, STATUS_RETIRED));
 
     /**
      * Statuses whose implementing nodes are supposed to STILL EXIST. A dangling
@@ -124,6 +137,18 @@ public abstract class MetaRequirement extends MetaData {
      *  one can only agree with it or contradict it. */
     public static final List<String> STATUSES_WITH_OUTSTANDING_WORK =
             Collections.unmodifiableList(Arrays.asList(STATUS_PLANNED, STATUS_PARTIAL));
+
+    /**
+     * Statuses on which {@code @implementedBy} is REFUSED AT LOAD (FR-039).
+     *
+     * <p>0.24.0 removed {@code abandoned} because {@code verify} was SILENT on dangling
+     * refs for it, hiding 29 unresolvable references across 14 entries in one estate.
+     * That silence was a deliberate EXEMPTION. Forbidding the attribute outright makes
+     * the bug class UNREACHABLE instead — a retired capability has no implementation by
+     * definition, so its references cannot dangle because they cannot exist.</p>
+     */
+    public static final List<String> STATUSES_FORBIDDING_IMPLEMENTORS =
+            Collections.unmodifiableList(Arrays.asList(STATUS_RETIRED));
 
     /** Disposition -- what was DECIDED about the outstanding work. Orthogonal to
      *  status, which says whether the work is done. Declaration order is contractual

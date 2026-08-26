@@ -41,6 +41,19 @@ export interface AttrContradiction {
   readonly drop: string;
   /** The attribute whose presence makes `drop` illegal, and which survives the rewrite. */
   readonly keep: string;
+  /**
+   * When set, `keep` makes `drop` illegal only at THESE values — the pair is a
+   * contradiction of meaning rather than of mere co-occurrence.
+   *
+   * It lists every spelling that has ever carried the meaning, across the version
+   * boundary, and that is load-bearing rather than defensive: the rewriter runs the
+   * contradiction pass BEFORE the retirement pass, so a legacy document still says
+   * `abandoned` at the moment this is evaluated. Listing only the modern value would
+   * make `meta upgrade --apply` rewrite the status, leave the contradicting sibling
+   * behind, and exit 0 on a file that still does not load — the exact failure #342
+   * was filed for.
+   */
+  readonly keepValues?: readonly string[];
   /** The release that started refusing the pair. */
   readonly since: string;
   /** One line stating the RULE, in the present tense — the loader has already said WHICH
@@ -52,6 +65,29 @@ export interface AttrContradiction {
 }
 
 export const ATTR_CONTRADICTIONS: readonly AttrContradiction[] = [
+  // ── FR-039: a retired requirement has no implementation (0.24.2) ──
+  //
+  // The pair is @status: retired + @implementedBy. It is a contradiction of MEANING,
+  // not of co-occurrence — @status and @implementedBy sit together happily on every
+  // other status — which is why this is the first entry needing `keepValues`.
+  //
+  // Mechanical, and the reason it is: a retired capability has no implementation BY
+  // DEFINITION, so the reference list describes nodes that are gone. That is not a
+  // judgement call about what the author meant; it is what retiring something IS. The
+  // record of what used to implement it belongs in `notes` (the shape one adopting
+  // estate reached by hand before any ruling, on the grounds that "what used to
+  // implement a retired capability is real information in the wrong field") and what
+  // REPLACED it belongs in @supersededBy, which resolves.
+  {
+    type: "requirement", subType: "*",
+    drop: "implementedBy", keep: "status",
+    keepValues: ["retired", "abandoned", "superseded"],
+    since: "0.24.2",
+    why: "a retired requirement has no implementation — that is what retiring it means",
+    effect: "the references named nodes that are gone, so dropping them removes a list " +
+            "nothing could resolve; what REPLACED the capability goes in @supersededBy " +
+            "and why it went goes in `notes`",
+  },
   // ── #342: an index key is @fields XOR @expr (0.24.1) ──
   //
   // Both subtypes, because ADR-0040 puts uniqueness in the TYPE: `identity.secondary` IS a

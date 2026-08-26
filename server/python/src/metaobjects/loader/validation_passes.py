@@ -76,6 +76,7 @@ from ..shared.base_types import (
     TYPE_OBJECT,
     TYPE_ORIGIN,
     TYPE_RELATIONSHIP,
+    TYPE_REQUIREMENT,
     TYPE_SOURCE,
     TYPE_TEMPLATE,
 )
@@ -236,6 +237,9 @@ def run_validations(
     # #335 Half B — @sortable on an array field, or a subtype with no operator band → error.
     _validate_sortable_has_supported_subtype(root, errors)
     _validate_index_lookup_fields(root, errors)
+    # FR-039 -- a retired requirement carries no @implementedBy (refused, not exempted,
+    # so the dangling-ref class is unreachable) and @supersededBy is legal only there.
+    _validate_retired_requirement_links(root, errors)
 
 
 # ---------------------------------------------------------------------------
@@ -3827,3 +3831,75 @@ def _validate_index_lookup_fields(root: MetaData, errors: list[MetaError]) -> No
                         ),
                         envelope=node.source,
                     ))
+
+
+# ---------------------------------------------------------------------------
+# FR-039 -- a retired requirement's link vocabulary
+#
+# Two rules, and the first is the structural point of the FR.
+#
+#   1. `@status: retired` may NOT carry `@implementedBy`. Not exempt from the
+#      dangling-reference check -- REFUSED. 0.24.0 removed the previous retired
+#      vocabulary because `verify` was SILENT on dangling refs for it, hiding 29
+#      unresolvable references across 14 entries in one estate while reporting
+#      zero. Forbidding the attribute makes the bug class UNREACHABLE instead: a
+#      retired capability has no implementation by definition.
+#   2. `@supersededBy` is legal ONLY on `retired`. Resolution of the reference is
+#      `verify`'s job; the loader owns the shape.
+#
+# `requirement.*` gate logic otherwise lives only in the TS CLI, which is exactly
+# why THIS rule belongs in the loader: a Python estate would otherwise be free to
+# author the shape the rule exists to prevent.
+#
+# ADR-0039: attrs() is the RESOLVING accessor in Python (attr() is own-only), so a
+# requirement inheriting its status through `extends` is judged on its EFFECTIVE one.
+# ---------------------------------------------------------------------------
+
+
+def _validate_retired_requirement_links(root: MetaData, errors: list[MetaError]) -> None:
+    from ..meta.core.requirement.requirement_constants import (
+        REQUIREMENT_ATTR_IMPLEMENTED_BY,
+        REQUIREMENT_ATTR_STATUS,
+        REQUIREMENT_ATTR_SUPERSEDED_BY,
+        REQUIREMENT_STATUS_RETIRED,
+    )
+
+    def walk(node: MetaData) -> None:
+        for child in node.children():
+            if child.type == TYPE_REQUIREMENT:
+                attrs = child.attrs()
+                status = attrs.get(REQUIREMENT_ATTR_STATUS)
+                is_retired = status == REQUIREMENT_STATUS_RETIRED
+
+                if is_retired and REQUIREMENT_ATTR_IMPLEMENTED_BY in attrs:
+                    errors.append(MetaError(
+                        code=ErrorCode.ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS,
+                        message=(
+                            f'requirement.{child.sub_type} "{child.name}" is @status: '
+                            f"{REQUIREMENT_STATUS_RETIRED} and declares "
+                            f"@{REQUIREMENT_ATTR_IMPLEMENTED_BY}. A retired capability has no "
+                            f"implementation -- that is what retiring it means. Delete the "
+                            f"attribute; if the nodes are still there, the capability is not "
+                            f"retired. What used to implement it belongs in `notes`, and what "
+                            f"REPLACED it in @{REQUIREMENT_ATTR_SUPERSEDED_BY}."
+                        ),
+                        envelope=child.source,
+                    ))
+
+                if not is_retired and REQUIREMENT_ATTR_SUPERSEDED_BY in attrs:
+                    shown = status if status is not None else "(absent)"
+                    errors.append(MetaError(
+                        code=ErrorCode.ERR_REQUIREMENT_SUPERSEDED_BY_NOT_RETIRED,
+                        message=(
+                            f'requirement.{child.sub_type} "{child.name}" declares '
+                            f"@{REQUIREMENT_ATTR_SUPERSEDED_BY} but its "
+                            f'@{REQUIREMENT_ATTR_STATUS} is "{shown}". That attribute names '
+                            f"the requirement which REPLACED a withdrawn one, so it is legal "
+                            f"only on @{REQUIREMENT_ATTR_STATUS}: {REQUIREMENT_STATUS_RETIRED}."
+                        ),
+                        envelope=child.source,
+                    ))
+            # Hierarchy IS nesting, so a retired requirement can sit at any depth.
+            walk(child)
+
+    walk(root)

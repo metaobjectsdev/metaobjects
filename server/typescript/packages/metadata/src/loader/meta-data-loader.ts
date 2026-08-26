@@ -18,7 +18,7 @@ import { ParseError } from "../errors.js";
 import type { LoaderWarning } from "../source.js";
 import { codeSource, resolvedSource } from "../source.js";
 import { parseJson } from "../parser-json.js";
-import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateSortableHasSupportedSubtype, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateIndexLookupFields, validateProjectionFilter } from "./validation-passes.js";
+import { validateDataGridSortFields, validateFilterableHasIndex, validateFilterableHasSupportedOps, validateSortableHasSupportedSubtype, validateOriginPaths, validateDerivedFieldProvidability, validateDataGridFilterValues, validateFieldObjectStorage, validateFieldMap, validateTemplatePayloadRefs, validateFieldDefaults, validateRelationships, validateIndexLookupFields, validateProjectionFilter, validateRetiredRequirementLinks } from "./validation-passes.js";
 import { runRegisteredValidation } from "./validation-registry.js";
 import { validateSourceRoles } from "../persistence/source/validate-source-roles.js";
 import { validateSourceEscapes } from "../persistence/source/validate-source-escapes.js";
@@ -610,6 +610,11 @@ export class MetaDataLoader {
       // and every field must exist in the entity's effective (resolved) field set
       // (ADR-0039: resolving accessor, so inherited fields via extends are visible).
       errors.push(...validateIndexLookupFields(root));
+
+      // FR-039 — a retired requirement carries no @implementedBy (refused, not
+      // exempted, so the dangling-ref class is unreachable) and @supersededBy is
+      // legal only on `retired`.
+      errors.push(...validateRetiredRequirementLinks(root));
 
       // Phase 2 — validation DERIVED FROM THE TYPE REGISTRY: each node's TypeDefinition
       // carries its reference descriptors + imperative validator, run as one recursive walk

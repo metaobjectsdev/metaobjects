@@ -39,6 +39,15 @@ public static class RequirementSchema
         ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
         Required: true);
 
+    /// <summary>@supersededBy — FR-039. The requirement that REPLACED a retired one.
+    /// Legal on @status: retired only, and resolved by verify so a supersession chain
+    /// stays walkable. Declared BEFORE @implementedBy to match the canonical spec's
+    /// child order, which the registry manifest emits verbatim.</summary>
+    private static readonly AttrSchema SupersededByAttr = new AttrSchema(
+        Name: RequirementConstants.REQUIREMENT_ATTR_SUPERSEDED_BY,
+        ValueType: AttrConstants.ATTR_SUBTYPE_STRING,
+        Required: false);
+
     /// <summary>@implementedBy — FQN references to the realising model nodes. Optional on
     /// both (an organisational functional level legitimately carries none).</summary>
     private static readonly AttrSchema ImplementedByAttr = new AttrSchema(
@@ -89,6 +98,7 @@ public static class RequirementSchema
         TrackedByAttr,
         StatementAttr,
         CounterexampleAttr,
+        SupersededByAttr,
         ImplementedByAttr,
     ];
 
@@ -100,6 +110,7 @@ public static class RequirementSchema
         TrackedByAttr,
         StatementAttr,
         CounterexampleAttr,
+        SupersededByAttr,
         ImplementedByAttr,
     ];
 

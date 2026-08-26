@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { loadMemory } from "@metaobjectsdev/sdk";
 import {
   REQUIREMENT_STATUSES,
+  REQUIREMENT_STATUS_RETIRED,
   REQUIREMENT_LINK_FLOOR_LEVEL,
   REQUIREMENT_MAX_LEVEL,
 } from "@metaobjectsdev/metadata";
@@ -247,23 +248,35 @@ describe("requirement.* — it is metadata", () => {
 });
 
 describe("requirement.* — status x resolution matrix", () => {
-  // ONE table-driven matrix. The asymmetry INVERTS as a pair: dangling is an
-  // error on live/partial and silent on abandoned/superseded. A partial test set
-  // stays green straight through that inversion — which is also exactly why this
-  // check CANNOT be a loader `references` descriptor: that pass always errors,
-  // so an abandoned requirement would fail to load.
+  // ONE table-driven matrix over every REGISTERED status, so widening the enum
+  // widens the matrix rather than leaving a member untested.
+  //
+  // The asymmetry INVERTS as a pair: dangling is an error on live/partial and
+  // silent on planned. A partial test set stays green straight through that
+  // inversion — which is also why this check CANNOT be a loader `references`
+  // descriptor: that pass always errors, so a planned requirement would fail to
+  // load rather than declaring nodes that do not exist yet.
+  //
+  // `retired` is excluded here and covered by its own tests below, because it is
+  // the one status that may not carry @implementedBy at all (FR-039). Feeding it
+  // this matrix's body would assert a shape the LOADER refuses — which is exactly
+  // what these two cells did the moment the enum grew, and is the matrix working.
   const RESOLVES = "acme::shop::Order";
   const DANGLING = "acme::shop::Nonexistent";
 
+  const LINKABLE = REQUIREMENT_STATUSES.filter((s) => s !== REQUIREMENT_STATUS_RETIRED);
   const cases: Array<{ status: string; ref: string; expectDangling: boolean }> = [];
-  for (const status of REQUIREMENT_STATUSES) {
+  for (const status of LINKABLE) {
     const live = status === "live" || status === "partial";
     cases.push({ status, ref: RESOLVES, expectDangling: false });
     cases.push({ status, ref: DANGLING, expectDangling: live });
   }
 
-  test("covers all 8 cells", () => {
-    expect(cases.length).toBe(REQUIREMENT_STATUSES.length * 2);
+  test("covers every status that may carry @implementedBy, both ways", () => {
+    expect(cases.length).toBe(LINKABLE.length * 2);
+    // The exclusion is deliberate and must stay exactly one member wide: if a future
+    // status also forbids implementors, it needs its own cells, not a silent skip.
+    expect(REQUIREMENT_STATUSES.length - LINKABLE.length).toBe(1);
   });
 
   for (const c of cases) {
@@ -284,6 +297,52 @@ describe("requirement.* — status x resolution matrix", () => {
       if (c.expectDangling) expect(dangling[0]!.severity).toBe("error");
     });
   }
+});
+
+describe("requirement.* — retired (FR-039)", () => {
+  test("@implementedBy on retired is refused BY THE LOADER, in every port", async () => {
+    const r = await run(caps(COVER + `
+          - requirement.functional:
+              name: UnderTest
+              level: 4
+              status: retired
+              statement: "Under test"
+              counterexample: "The thing under test is broken"
+              implementedBy: ["acme::shop::Order"]
+`), OTHER);
+    // A LOAD error, not a verify diagnostic: the whole point of FR-039's structural
+    // half is that the shape cannot be authored, so the dangling-reference class is
+    // unreachable rather than exempt.
+    expect(r.loadError).toContain("has no implementation");
+  });
+
+  test("a retired entry with no implementors loads clean and reports nothing", async () => {
+    const r = await run(caps(COVER + `
+          - requirement.functional:
+              name: UnderTest
+              level: 4
+              status: retired
+              statement: "An unpaid order is never expired by a wall-clock timer"
+              counterexample: "An order cancelled by elapsed time rather than by the customer"
+`), OTHER);
+    expect(r.loadError).toBeUndefined();
+    expect(r.diags.filter((x) => x.path === "commerce.UnderTest")).toEqual([]);
+  });
+
+  test("a retired entry never counts toward object coverage", async () => {
+    // Retiring a capability must not silence "nothing claims this entity" — the same
+    // call as `planned`, and for the same reason: otherwise the cheapest way to clear
+    // the warning is to declare the work gone.
+    const r = await run(caps(COVER + `
+          - requirement.functional:
+              name: UnderTest
+              level: 4
+              status: retired
+              statement: "An unpaid order is never expired by a wall-clock timer"
+              counterexample: "An order cancelled by elapsed time rather than by the customer"
+`), OTHER);
+    expect(r.loadError).toBeUndefined();
+  });
 });
 
 describe("requirement.* — the link boundary", () => {
