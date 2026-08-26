@@ -6,6 +6,7 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
 ## [Unreleased]
+
 ### Added — `meta verify` lints how a requirement is AUTHORED, in a section of its own
 
 `meta verify` already gated the requirement ledger for **referential integrity** — links at
@@ -63,6 +64,7 @@ delete. The checks now split by what they are ABOUT: a check on what a node effe
 *says* (two slots holding one sentence) reads resolving, because a child may override one
 slot and inherit the other; a check on a *declaration*, whose fix is one edit at one node,
 reads own-only. Both are sanctioned `own*()` uses under ADR-0039 and say so at the call site.
+
 ### Changed — a requirement diagnostic is addressed by its dotted path, not its bare name
 
 `meta verify` printed requirement findings as `ERR_… [orderRecord]`. Hierarchy is nesting, so
@@ -100,7 +102,6 @@ the text on disk is not the effective model, so an attr arriving through `extend
 overlay is linted on what the node effectively carries (ADR-0039 resolving accessors
 throughout). TypeScript-CLI-only, like the rest of the requirements gate.
 
-## [0.24.1] — npm `0.24.1` · PyPI `0.24.1` · NuGet `0.24.1` · Maven `7.24.1`
 ### Fixed — `meta upgrade` now repairs the `@fields` + `@expr` index key ([#342](https://github.com/metaobjectsdev/metaobjects/issues/342))
 
 `0.24.1` made an index key **`@fields` XOR `@expr`**, correcting a spelling that used to load
@@ -184,6 +185,7 @@ third, independent confirmation that `@fields` was contributing nothing to the D
 only" and that YAML files were "named and refused".** The YAML arm shipped with #339; the doc
 had been describing a limitation that no longer existed, on the exact command an adopter reads
 before running it against their estate.
+
 ### Fixed — the generated requirements page renders a requirement's `title`
 
 The doc surface headed every entry by its dotted camelCase path and dropped `title` entirely,
@@ -215,6 +217,9 @@ adds nothing machine-readable; a test now pins that widening the projection did 
 wire. Whitespace inside a title is collapsed at the render tier, not in the projection — a
 newline in a heading re-parents every line after it and silently costs the document its
 structure, but that is a markdown fact rather than a fact about the ledger.
+
+## [0.24.1] — npm `0.24.1` · PyPI `0.24.1` · NuGet `0.24.1` · Maven `7.24.1`
+
 ### Fixed — an expression index was undeclarable, and the one spelling that loaded was half-ignored ([#342](https://github.com/metaobjectsdev/metaobjects/issues/342))
 
 **`@expr` was registered, built and rendered — and unreachable.** The registry has always
