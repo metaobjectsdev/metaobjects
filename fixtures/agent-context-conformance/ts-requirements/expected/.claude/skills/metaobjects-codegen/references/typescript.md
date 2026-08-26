@@ -133,10 +133,10 @@ cross-subtype 404. Conformance-gated by `fixtures/api-contract-conformance/tph`
 (HTTP wire shape) and `fixtures/persistence-conformance/tph-*` (single-table
 runtime semantics).
 
-## Docs — `meta docs` (one door, two surfaces)
+## Docs — `meta docs` (one door, three surfaces)
 
 Documentation is NOT a `meta gen` generator. The single door is the `meta docs`
-command, which emits two cross-linked **surfaces** under one output dir (default
+command, which emits three cross-linked **surfaces** under one output dir (default
 `./docs`):
 
 - **model surface** (`./docs/<Entity>.md`, `./docs/<Template>.md`) — the neutral
@@ -146,11 +146,19 @@ command, which emits two cross-linked **surfaces** under one output dir (default
   `./docs/api/AGENT-API.md`) — the SDK/API reference: the concrete imports,
   function signatures, payload field shapes, and runnable examples for *this*
   project's generated code.
+- **requirements surface** (`./docs/requirements.md`, `./docs/requirements.toon`) —
+  the declared `requirement.*` ledger as documentation, with each entry headed by its
+  dotted path and its `title` where it has one, and each entity page naming the
+  requirements that claim it. Metadata-alone like the model surface, so it needs no
+  gen config. **On by default since 0.24.0** — a project declaring no `requirement.*`
+  nodes writes no requirements file and the run says nothing about the surface at all,
+  deliberately: reporting "0 requirement pages" would advertise a surface that never ran.
 
 ```bash
-npx meta docs                     # both surfaces → ./docs (model) + ./docs/api (api)
+npx meta docs                     # all three → ./docs (model) + ./docs/api + ./docs/requirements.*
 npx meta docs --model             # model surface only
 npx meta docs --api               # api surface only
+npx meta docs --requirements      # requirement ledger only
 npx meta docs --out ./site-docs   # write under a different root
 ```
 
