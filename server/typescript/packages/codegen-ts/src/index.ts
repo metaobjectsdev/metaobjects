@@ -205,8 +205,9 @@ export { requirementTests } from "./generators/requirement-tests.js";
 export { requirementsFile } from "./generators/requirements-file.js";
 export type { RequirementRow } from "./generators/requirements-view.js";
 // The projection itself, not just its type: it is the authority on WHICH doc slots a
-// requirement surface actually renders, and `meta verify`'s authoring lint asserts
-// that `title`/`summary` are not among them. That claim needs to be checkable.
+// requirement surface actually renders, and `meta verify`'s authoring lint tells an
+// author that `summary` is invisible while `title` is the entry's label. Both halves of
+// that claim need to be checkable against the projection rather than asserted in prose.
 export { requirementRows } from "./generators/requirements-view.js";
 export type {
   RequirementTestsOpts,

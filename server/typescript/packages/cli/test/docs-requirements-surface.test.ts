@@ -42,6 +42,7 @@ const WITH_LEDGER = {
           name: "checkout",
           "@level": 2,
           "@status": "live",
+          "@title": "Basket checkout",
           "@statement": "A shopper can pay for a basket.",
           "@counterexample": "A basket that cannot be paid for.",
           children: [
@@ -113,6 +114,20 @@ describe("meta docs — the requirements surface", () => {
     const md = await readFile(join(out, "requirements.md"), "utf8");
     expect(md).toContain("## checkout");
     expect(md).toContain("### checkout.capture");
+  });
+
+  // spec/capability-ledger.md charters `title` as the label an index shows. Asserted
+  // through the REAL command rather than at the renderer, because the chain that lost it
+  // was loader -> projection -> renderer and only the whole chain proves it arrives.
+  // `checkout` carries one and `capture` does not, so this cannot pass by rendering a
+  // constant: the titled entry gains the label and the untitled one is byte-unchanged.
+  test("the emitted markdown carries `title` beside the path, and only where authored", async () => {
+    const root = await project(WITH_LEDGER);
+    const out = join(root, "docs");
+    expect(await docsCommand([root, "--out", out, "--requirements"], root)).toBe(0);
+    const md = await readFile(join(out, "requirements.md"), "utf8");
+    expect(md).toContain("## checkout — Basket checkout\n");
+    expect(md).toContain("### checkout.capture\n");
   });
 
   test("the emitted TOON declares its row count", async () => {

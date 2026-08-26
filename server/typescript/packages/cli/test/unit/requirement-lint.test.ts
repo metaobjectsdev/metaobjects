@@ -464,14 +464,13 @@ metadata:
 });
 
 describe("the inert-slot claim is checked, not assumed", () => {
-  test("the doc surface projects neither summary nor notes — and title is a KNOWN gap", async () => {
+  test("the doc surface projects `title` but neither `summary` nor `notes`", async () => {
     // WARN_REQUIREMENT_INERT_DOC_SLOT tells an author their `summary` is invisible; this
     // pins that claim against the projection every requirement doc surface renders from.
     //
-    // `title` is asserted absent too, but as a KNOWN GAP rather than a guarantee: the
-    // requirement attribute table in spec/capability-ledger.md charters it, and the
-    // renderer does not honour it yet. When that is fixed this assertion is the one that
-    // should fail and be deleted — which is the point of writing it down here.
+    // `title` is the other half of the same claim and must be asserted PRESENT: the lint
+    // message tells an author `title` is different and IS read, so a projection that
+    // dropped it would make the diagnostic lie. It was exactly that for one release.
     const dir = mkdtempSync(join(tmpdir(), "req-rows-"));
     try {
       mkdirSync(join(dir, "metaobjects"));
@@ -486,8 +485,7 @@ describe("the inert-slot claim is checked, not assumed", () => {
       for (const row of rows) {
         const keys = Object.keys(row);
         expect(keys).not.toContain("summary");
-        // KNOWN GAP, not a guarantee — see above.
-        expect(keys).not.toContain("title");
+        expect(keys).toContain("title");
         // `notes` is on the same list for the OPPOSITE reason — chartered
         // internal-only, so its absence here is the documentation provider working.
         expect(keys).not.toContain("notes");

@@ -203,7 +203,6 @@ the levels, not enumerate them. What it may not do is stay level or go back up.
 
 The name is the node's identity and its address: nesting makes `commerce.orders.orderRecord`
 a dotted child-name path like any other, so no separate id scheme is needed.
-| `notes` | any | Free text. |
 
 ### `status` is a closed enum
 

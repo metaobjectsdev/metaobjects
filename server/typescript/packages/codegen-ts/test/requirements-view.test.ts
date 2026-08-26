@@ -45,6 +45,7 @@ const MODEL = {
           "@statement": "A shopper can pay for a basket.",
           "@counterexample": "A basket that cannot be paid for.",
           "@description": "Covers the payment path, not fulfilment.",
+          "@title": "Basket checkout",
           "@notes": NOTES_SENTINEL,
           children: [
             {
@@ -138,6 +139,24 @@ describe("requirementRows — the docs projection", () => {
     const capture = rows.find((r) => r.path === "checkout.payment.capture");
     expect(capture?.implementedBy).toEqual(["acme::shop::Order"]);
     expect(capture?.claimedConcerns).toEqual(["object.entity"]);
+  });
+
+  // spec/capability-ledger.md charters `title` on a requirement by name: "`name` is an
+  // identifier, this is what an index shows". A projection that drops it makes the label
+  // unreachable to EVERY renderer at once, which is why it is pinned here and not only
+  // at the markdown tier.
+  test("projects `title` — the label the ledger charters for an index", async () => {
+    const rows = requirementRows(await load(MODEL));
+    const checkout = rows.find((r) => r.path === "checkout");
+    expect(checkout?.title).toBe("Basket checkout");
+  });
+
+  // Two absent-cases would make every renderer handle both; `stringAttr` normalises the
+  // declared-but-empty one away, and this is the case that proves it.
+  test("an absent `title` projects undefined, never the empty string", async () => {
+    const rows = requirementRows(await load(MODEL));
+    const payment = rows.find((r) => r.path === "checkout.payment");
+    expect(payment?.title).toBeUndefined();
   });
 
   test("emits `description` — it is chartered user-facing", async () => {

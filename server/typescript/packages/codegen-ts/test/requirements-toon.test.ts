@@ -15,6 +15,7 @@ import { renderRequirementsToon } from "../src/generators/requirements-toon.js";
 import type { RequirementRow } from "../src/generators/requirements-view.js";
 
 const row = (over: Partial<RequirementRow> & Pick<RequirementRow, "path" | "depth">): RequirementRow => ({
+  title: undefined,
   subType: "functional",
   level: undefined,
   status: undefined,
@@ -63,6 +64,18 @@ describe("renderRequirementsToon", () => {
   test("includes nested rows, not just root-level ones", () => {
     const toon = renderRequirementsToon(ROWS);
     expect(toon).toContain("checkout.payment.capture");
+  });
+
+  // The column set is the WIRE CONTRACT — a reader diffing two runs must not see a new
+  // column appear because the projection grew one. `title` is a human LABEL: the markdown
+  // index renders it, and nothing machine-readable is served by carrying it here. This
+  // pins that the row widening for the markdown tier did not leak into the header.
+  test("`title` is NOT a column — widening the projection must not widen the wire", () => {
+    const toon = renderRequirementsToon([
+      row({ path: "checkout", depth: 0, title: "Basket checkout", statement: "A shopper can pay." }),
+    ]);
+    expect(toon).toContain("requirements[1]{path,subType,level,status,disposition,claims,statement}");
+    expect(toon).not.toContain("Basket checkout");
   });
 
   // TOON quotes comma-bearing strings. Asserted rather than assumed: if the encoder's

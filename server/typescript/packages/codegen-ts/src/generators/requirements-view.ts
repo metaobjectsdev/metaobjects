@@ -24,6 +24,7 @@
 
 import {
   DOC_ATTR_DESCRIPTION,
+  DOC_ATTR_TITLE,
   REQUIREMENT_ATTR_STATEMENT,
   REQUIREMENT_ATTR_COUNTEREXAMPLE,
 } from "@metaobjectsdev/metadata";
@@ -36,6 +37,14 @@ export interface RequirementRow {
   readonly path: string;
   /** 0 for a root-level requirement. Derived from `path`, so it cannot disagree with it. */
   readonly depth: number;
+  /**
+   * The entry's LABEL, where the author wrote one. `spec/capability-ledger.md` charters
+   * `title` on a requirement by name — "`name` is an identifier, this is what an index
+   * shows" — so a surface that projects the address and drops the label renders an index
+   * the charter already described differently. The address stays the primary key; this
+   * rides beside it, never in place of it.
+   */
+  readonly title: string | undefined;
   /** "functional" | "architectural" — the check-polarity axis. */
   readonly subType: string;
   /** Undefined on an unlevelled architectural requirement (the flat policy form). */
@@ -78,6 +87,7 @@ export function requirementRows(root: MetaData): RequirementRow[] {
       // Derived rather than threaded: a separately-tracked depth could drift from the
       // path that renders beside it, and there is only one right answer.
       depth: view.path.split(".").length - 1,
+      title: stringAttr(node, DOC_ATTR_TITLE),
       subType: view.subType,
       level: view.level,
       status: view.status,

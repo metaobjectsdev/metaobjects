@@ -12,6 +12,7 @@ import { renderRequirementsMarkdown } from "../src/generators/requirements-markd
 import type { RequirementRow } from "../src/generators/requirements-view.js";
 
 const row = (over: Partial<RequirementRow> & Pick<RequirementRow, "path" | "depth">): RequirementRow => ({
+  title: undefined,
   subType: "functional",
   level: undefined,
   status: undefined,
@@ -31,6 +32,7 @@ const ROWS: RequirementRow[] = [
     depth: 0,
     level: 2,
     status: "live",
+    title: "Basket checkout",
     statement: "A shopper can pay for a basket.",
     counterexample: "A basket that cannot be paid for.",
     description: "Covers the payment path, not fulfilment.",
@@ -63,6 +65,49 @@ describe("renderRequirementsMarkdown", () => {
     expect(md).toContain("## checkout");
     expect(md).toContain("### checkout.payment");
     expect(md).toContain("#### checkout.payment.capture");
+  });
+
+  // spec/capability-ledger.md charters `title` on a requirement as the label an index
+  // shows. The renderer ignored it for one release; these five pin the whole contract.
+  test("renders `title` in the heading — the slot the ledger charters as the index label", () => {
+    const md = renderRequirementsMarkdown(ROWS);
+    expect(md).toContain("## checkout — Basket checkout");
+  });
+
+  // The address is the join key every OTHER surface prints: the TOON first column,
+  // shape C's backlinks, every `verify` diagnostic. A reader arriving from one of them
+  // searches for the path, so a title must never displace it.
+  test("the path survives beside the title, so the address stays greppable", () => {
+    const md = renderRequirementsMarkdown([
+      row({ path: "checkout", depth: 0, title: "Basket checkout" }),
+    ]);
+    expect(md).toContain("checkout");
+    expect(md.split("\n")[4]).toBe("## checkout — Basket checkout");
+  });
+
+  test("an untitled requirement heads by path alone — byte-identical to the pre-title output", () => {
+    const md = renderRequirementsMarkdown([row({ path: "checkout.payment", depth: 1 })]);
+    expect(md).toContain("### checkout.payment\n");
+    expect(md).not.toContain("—");
+  });
+
+  // The projection normalises a DECLARED-BUT-EMPTY title to undefined, but a title of
+  // pure whitespace survives it (it has length) and collapses to "" only here. Without
+  // this the heading gains a dangling separator with nothing after it.
+  test("a whitespace-only title adds no separator", () => {
+    const md = renderRequirementsMarkdown([row({ path: "checkout", depth: 0, title: "   " })]);
+    expect(md).toContain("## checkout\n");
+    expect(md).not.toContain("—");
+  });
+
+  // A newline in a title ends the heading and re-parents every line after it, so the
+  // document silently loses its structure. Collapsing is the renderer's job, not the
+  // author's: nothing rejects a multi-line title at load.
+  test("a multi-line title collapses rather than breaking the heading", () => {
+    const md = renderRequirementsMarkdown([
+      row({ path: "checkout", depth: 0, title: "  Basket\n  checkout  " }),
+    ]);
+    expect(md).toContain("## checkout — Basket checkout\n");
   });
 
   test("carries the prescriptive pair — what should be true, and what breaking it looks like", () => {

@@ -184,6 +184,37 @@ third, independent confirmation that `@fields` was contributing nothing to the D
 only" and that YAML files were "named and refused".** The YAML arm shipped with #339; the doc
 had been describing a limitation that no longer existed, on the exact command an adopter reads
 before running it against their estate.
+### Fixed — the generated requirements page renders a requirement's `title`
+
+The doc surface headed every entry by its dotted camelCase path and dropped `title` entirely,
+so a chartered slot was authored and never shown. `spec/capability-ledger.md`'s requirement
+attribute table names `title` for this node type precisely because a requirement's `name` is
+an identifier — *"a short noun-phrase label — `name` is an identifier, this is what an index
+shows"* — and the doc-surface design's own §8 already assumed the index rendered it, describing
+what happens when a citation lands in that slot: *"A generated index reproduces a citation like
+`title: "FR-448 — …"` as inert text. It **renders** it; it does not resolve it."* Only §5's
+enumeration of what a row carries omitted it, and the implementation followed §5.
+
+**No new vocabulary, so no ADR.** ADR-0037 is the decision procedure for *expanding* the
+metamodel, and `title` is registered common doc vocabulary already chartered on this node type
+by name. What §8 routed to ADR-0037 is the different, still-deferred question of whether a
+**citation** deserves a slot of its own; that stays out of scope, and `WARN_REQUIREMENT_TITLE_IS_AN_ID`
+is the interim answer.
+
+The label renders in the heading **after** the path — `## checkout.payment — Payment capture` —
+rather than in place of it. Two reasons, neither stylistic: a `path` is unique by construction
+and a `title` is not, so a title-keyed heading can collide and leave two entries fighting over
+one markdown anchor; and every sibling surface names a requirement by its path — the TOON
+artifact's first column, the backlink on a claimed entity's page, and every `verify` diagnostic
+— so a reader arriving from any of them searches for the path. A requirement with no `title`
+heads by its path alone, so its output is **byte-identical** to before.
+
+`requirements.toon` is untouched. Its column order is a wire contract
+(`requirements[N]{path,subType,level,status,disposition,claims,statement}`) and a human label
+adds nothing machine-readable; a test now pins that widening the projection did not widen the
+wire. Whitespace inside a title is collapsed at the render tier, not in the projection — a
+newline in a heading re-parents every line after it and silently costs the document its
+structure, but that is a markdown fact rather than a fact about the ledger.
 ### Fixed — an expression index was undeclarable, and the one spelling that loaded was half-ignored ([#342](https://github.com/metaobjectsdev/metaobjects/issues/342))
 
 **`@expr` was registered, built and rendered — and unreachable.** The registry has always

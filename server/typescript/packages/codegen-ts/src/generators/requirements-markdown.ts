@@ -24,6 +24,33 @@ function heading(depth: number): string {
   return "#".repeat(Math.min(depth + 2, 6));
 }
 
+/**
+ * The heading line: the ADDRESS, then the LABEL where there is one.
+ *
+ * `spec/capability-ledger.md` charters `title` on a requirement as the thing an index
+ * shows, so it belongs here and not in the fact bar. It rides BESIDE the path rather
+ * than replacing it, for two reasons that are not stylistic:
+ *
+ *  - `path` is unique by construction and a `title` is not, so a title-keyed heading can
+ *    collide — two entries with the same heading, and two markdown anchors fighting over
+ *    one slug.
+ *  - Every sibling surface names a requirement by its path: the TOON artifact's first
+ *    column, shape C's `requirement.<subType> <path>` backlinks, and every `verify`
+ *    diagnostic. A reader arriving from any of them searches for the path.
+ *
+ * An untitled requirement therefore renders exactly as it did before this line existed.
+ *
+ * Whitespace is COLLAPSED here rather than in the projection. A newline inside a title
+ * ends the heading and re-parents everything after it, so the document silently loses
+ * its structure — but that is a markdown fact, not a fact about the ledger, and another
+ * consumer of `RequirementRow` is entitled to the authored string.
+ */
+function headingLine(r: RequirementRow): string {
+  const title = r.title?.replace(/\s+/g, " ").trim();
+  const label = title === undefined || title === "" ? "" : ` — ${title}`;
+  return `${heading(r.depth)} ${r.path}${label}`;
+}
+
 /** The one-line fact bar: the attrs that are scannable rather than readable. */
 function facts(r: RequirementRow): string {
   const parts: string[] = [`\`${r.subType}\``];
@@ -37,7 +64,7 @@ function facts(r: RequirementRow): string {
 }
 
 function renderOne(r: RequirementRow): string {
-  const out: string[] = [`${heading(r.depth)} ${r.path}`, "", facts(r), ""];
+  const out: string[] = [headingLine(r), "", facts(r), ""];
 
   if (r.statement !== undefined) out.push(r.statement, "");
   // The prescriptive pair. A requirement MUST be violable, so the counterexample is not

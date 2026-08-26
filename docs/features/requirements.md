@@ -114,13 +114,14 @@ name, so `title: "FR-467 — Order recording"` is two things in one slot. Split 
 `@trackedBy`, which is read and is the slot for exactly that, and the noun phrase stays as the
 title. `verify` warns (`WARN_REQUIREMENT_TITLE_IS_AN_ID`).
 
+`title` renders on the generated requirements page, in the heading, **after** the dotted path:
+`## checkout.payment — Payment capture`. The path stays there because it is the address every
+other surface prints — the TOON artifact's first column, the backlink on a claimed entity's
+page, and every `verify` diagnostic — so a reader arriving from any of them can search for it.
+A requirement with no `title` heads by its path alone.
+
 `notes` is unrendered on purpose: it is chartered internal-only, so being absent from every
 published surface is the point of it.
-
-> **Known gap.** `title` is chartered but the generated requirements page does not render it
-> yet — it headings each entry by its dotted path. Until that is fixed a title is authored and
-> not shown; `verify` does not warn about that, because a tool reporting its own backlog in your
-> terminal is noise.
 
 Two failure modes are worth naming because both look like diligence:
 
@@ -254,7 +255,7 @@ ledger agrees with the model but *records less than its author thinks*.
 | `WARN_REQUIREMENT_NAME_RESTATES_STATEMENT` | The `name` and `@statement` say the same thing, so the claim is written twice and the address is one of the copies. |
 | `WARN_REQUIREMENT_PROSE_EMPTY` | `@statement` or `@counterexample` is declared but blank. The loader requires the attribute to be *present*, never to say anything. |
 | `WARN_REQUIREMENT_PROSE_DUPLICATED` | `description` repeats `@statement` — whole, or as its opening sentence — or `@counterexample` does. |
-| `WARN_REQUIREMENT_INERT_DOC_SLOT` | `summary` is set on a requirement, where `@statement` already holds the one-line sentence and nothing reads it. `title` is NOT flagged — it is chartered as the entry's label. |
+| `WARN_REQUIREMENT_INERT_DOC_SLOT` | `summary` is set on a requirement, where `@statement` already holds the one-line sentence and nothing reads it. `title` is NOT flagged — it is chartered as the entry's label and the generated page renders it. |
 | `WARN_REQUIREMENT_TITLE_IS_AN_ID` | `title` opens with a catalogue or ticket id. Split it: the id to `@trackedBy`, the noun phrase stays the title. |
 
 **Every lint finding is a warning and none of them can fail your build.** That is deliberate

@@ -40,8 +40,9 @@ split before writing any of them:
 **`title` is a LABEL and is chartered here; `summary` is not.** A requirement's `name` is an
 identifier and its address renders as a dotted camelCase path, so a short noun-phrase `title` is
 what an index shows — the requirement attribute table in `spec/capability-ledger.md` says so by
-name. `summary` is different: `statement` is already the required one-line sentence, so a
-`summary` can only repeat it and nothing reads it (`verify` warns,
+name, and the generated requirements page renders it in the heading after the path
+(`## checkout.payment — Payment capture`). `summary` is different: `statement` is already the
+required one-line sentence, so a `summary` can only repeat it and nothing reads it (`verify` warns,
 `WARN_REQUIREMENT_INERT_DOC_SLOT`). `notes` is unrendered on purpose — chartered internal-only.
 
 **Never put a catalogue or ticket id in `title`.** A title is a noun phrase; an id is not a name.
