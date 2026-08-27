@@ -7,6 +7,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — `bun run release` ran the private-registry publisher instead of the release
+
+npm and bun both run `pre<name>` before `<name>`, with no per-script opt-out. The root
+manifest declared **both** `release` and `prerelease`, so `bun run release <version>` — the
+command `docs/RELEASING.md` and the release skill both name — silently invoked
+`scripts/prerelease.mjs` first and never reached `scripts/release.mjs`. The `0.24.2` cut hit
+it and published through `bun scripts/release.mjs` directly.
+
+**It failed loudly only by accident.** The hook died on absent `MO_REGISTRY_*` credentials;
+with `tools/prerelease/registry.env` present it would have SUCCEEDED, publishing a
+private-registry iteration as an invisible side effect of every public release.
+
+The private-registry publisher is now **`bun run prerelease:publish`** (same script, same
+flags). `bun run release` is unchanged and now reaches the release.
+
+A gate ships with the fix, because the collision is a property of the two NAMES rather than
+of either script: `scripts/check-script-name-hooks.mjs` fails when any root script is
+`pre<x>`/`post<x>` for another root script, wired into `ci-local.sh`'s `gates` lane.
+
 ## [0.24.2] — npm `0.24.2` · PyPI `0.24.2` · NuGet `0.24.2` · Maven `7.24.2`
 
 ### Fixed — the JVM agent-context staleness nudge compared two different version lines, so it fired forever ([#347](https://github.com/metaobjectsdev/metaobjects/issues/347))

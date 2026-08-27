@@ -134,7 +134,7 @@ Publish in tier order so a dependent never lands before its dependency. **`forge
    carries it — so a lockstep RC at `0.24.0-rc.1` would publish thirteen packages and then
    fail irreversibly on the fourteenth. `scripts/release.mjs` now preflights the target
    version against **every** package in the set (it used to check only the cli), and
-   `bun run prerelease` skips burned numbers when choosing an iteration.
+   `bun run prerelease:publish` skips burned numbers when choosing an iteration.
 
 ## Versioning policy
 
@@ -353,7 +353,7 @@ Spot-check `dist` reflects the change (a deleted source's `.js` is gone, new cod
 
 > **Most changes do not need this.** To try an unreleased change against a downstream
 > project, publish a PRE-RELEASE to the private registry instead —
-> [`docs/features/prerelease.md`](features/prerelease.md), `bun run prerelease`. It is
+> [`docs/features/prerelease.md`](features/prerelease.md), `bun run prerelease:publish`. It is
 > reversible, invisible to the public registries, and costs no version number.
 >
 > A **public** RC is for the one case a private registry cannot cover: **dependencies or

@@ -154,6 +154,17 @@ gate_publish_intent() { scripts/check-publish-intent.sh; }
 # set is tier-ordered and closed over its own sibling deps. Offline (manifests only).
 gate_publish_set() { node scripts/publish-set.mjs --check && node scripts/test-publish-set.mjs; }
 
+# ── no root script may be another root script's lifecycle hook ───────────────
+# npm and bun both run `pre<name>` before `<name>`, with no per-script opt-out. So
+# declaring BOTH `release` and `prerelease` made `bun run release <version>` — the
+# command docs/RELEASING.md and the release skill both name — run the private-registry
+# publisher instead, and never reach the release. The 0.24.2 cut hit it. It failed loudly
+# only because MO_REGISTRY_* was unset; with tools/prerelease/registry.env present the
+# hook would have SUCCEEDED, publishing a private iteration as an invisible side effect
+# of every public release. The collision is a property of the two NAMES, so the gate
+# checks names. Offline; one manifest.
+gate_script_name_hooks() { node scripts/check-script-name-hooks.mjs; }
+
 # ── release hygiene: no pre-release version may be committed ──────────────────
 # scripts/prerelease.mjs bumps every version declaration in place and restores them on
 # exit; a crashed run (or a hand-run sed) can leave an -rc.N behind. That is not cosmetic:
@@ -410,6 +421,7 @@ if want gates; then step    "bun-version parity"               gate_bun_version;
 if want gates; then step    "publish-intent parity"            gate_publish_intent;         fi
 if want gates; then step    "publish-set parity"               gate_publish_set;            fi
 if want gates; then step    "no committed pre-release version" gate_no_prerelease_versions; fi
+if want gates; then step    "script-name hook collisions"      gate_script_name_hooks;      fi
 if want gates; then step    "metamodel-version bump"           gate_metamodel_version;      fi
 if want gates; then step_if bun "peer-range bounds"            gate_peer_ranges;            fi
 if want gates; then step_if bun "shipped doc examples load"    gate_doc_examples;           fi

@@ -3,16 +3,16 @@
 // unreleased change can be iterated against downstream consumers without cutting a real
 // release on npm / PyPI / NuGet / Maven Central.
 //
-//   bun run prerelease                       # next iteration, npm (the default scope)
-//   bun run prerelease --only npm,csharp     # pick ports
-//   bun run prerelease --only all            # all four
-//   bun run prerelease --iter 5              # pin the iteration number
-//   bun run prerelease --base 0.25.0         # override the in-development version
+//   bun run prerelease:publish                       # next iteration, npm (the default scope)
+//   bun run prerelease:publish --only npm,csharp     # pick ports
+//   bun run prerelease:publish --only all            # all four
+//   bun run prerelease:publish --iter 5              # pin the iteration number
+//   bun run prerelease:publish --base 0.25.0         # override the in-development version
 //
 // The base version is read from CHANGELOG.md's topmost `## [x.y.z]` header — the
 // repository's own declaration of what is being worked on — falling back to minor+1 when
 // that entry is already released. `--base` overrides both.
-//   bun run prerelease --dry-run             # build + normalize + gate, publish nothing
+//   bun run prerelease:publish --dry-run             # build + normalize + gate, publish nothing
 //
 // Registry address and token come from tools/prerelease/registry.env (gitignored) or the
 // environment — never from anything committed. See docs/features/prerelease.md.

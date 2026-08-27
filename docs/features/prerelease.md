@@ -15,7 +15,7 @@ releases with a verified one-command revert.
 | Registry | one Gitea instance serving npm, PyPI, NuGet and Maven — the address is configuration (`MO_REGISTRY_BASE`), never a committed default; see [§7](#7-running-your-own-registry) |
 | Reads | **anonymous** — a consumer needs the URL and the owner, no account and no token |
 | Writes | token only, in gitignored local config, never in a committed file |
-| Publisher | `bun run prerelease` (`scripts/prerelease.mjs`) |
+| Publisher | `bun run prerelease:publish` (`scripts/prerelease.mjs`) |
 | Consumer | `tools/prerelease/prerelease-link.sh link` / `unlink` |
 | Guard (consumer) | `tools/prerelease/detect-prerelease-pins.sh` |
 | Guard (this repo) | `scripts/check-no-prerelease-versions.sh` |
@@ -74,7 +74,7 @@ irreversibly on the fourteenth.
 
 Two places now handle that instead of discovering it late:
 
-- `bun run prerelease` picks its iteration number by skipping every number already taken on
+- `bun run prerelease:publish` picks its iteration number by skipping every number already taken on
   the pre-release registry **or on public npm**, for any package in the set. With
   `0.24.0-rc.1` burned and `rc.1`–`rc.3` used privately, it selects `rc.4`. An explicit
   `--iter` that lands on a burned number still works — the pre-release registry is a
@@ -100,12 +100,12 @@ cp tools/prerelease/registry.env.example tools/prerelease/registry.env
 Then:
 
 ```bash
-bun run prerelease                      # next iteration, npm (the default scope)
-bun run prerelease --only python,csharp # pick ports
-bun run prerelease --only all           # all four
-bun run prerelease --iter 7             # pin the iteration number
-bun run prerelease --base 0.25.0        # target a different in-development version
-bun run prerelease --dry-run            # build + normalize + gate, publish nothing
+bun run prerelease:publish                      # next iteration, npm (the default scope)
+bun run prerelease:publish --only python,csharp # pick ports
+bun run prerelease:publish --only all           # all four
+bun run prerelease:publish --iter 7             # pin the iteration number
+bun run prerelease:publish --base 0.25.0        # target a different in-development version
+bun run prerelease:publish --dry-run            # build + normalize + gate, publish nothing
 ```
 
 Version declarations are edited in place and **always restored on exit**; the script
