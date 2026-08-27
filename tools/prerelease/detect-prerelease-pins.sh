@@ -162,11 +162,24 @@ hit() { echo "  ✖ $1" >&2; fail=1; }
 scan() {  # scan <label> <grep-args...>
   local label="$1"; shift
   local out
-  out=$(grep -rInE --binary-files=without-match "${MANIFESTS[@]}" "${EXCLUDES[@]}" "$@" "$ROOT" 2>/dev/null | head -20) || return 0
+  # DO NOT pipe grep into `head` here. Under `set -o pipefail` a truncated pipe makes grep
+  # die of SIGPIPE (141) once its output exceeds the ~64KB pipe buffer, the pipeline reports
+  # that failure, `|| return 0` fires, and the hit is NEVER recorded. The effect is inverted
+  # severity: the MORE violations there are, the likelier this passes. Measured against this
+  # script before the fix -- 5 violations exited 1, 400 violations exited 0.
+  #
+  # So: capture everything, decide on the full result, and truncate only for DISPLAY --
+  # announcing what was withheld, because a guard that silently shows less than it found is
+  # indistinguishable from one that found less.
+  out=$(grep -rInE --binary-files=without-match "${MANIFESTS[@]}" "${EXCLUDES[@]}" "$@" "$ROOT" 2>/dev/null) || true
   [ -n "$out" ] || return 0
   hit "$label"
+  local n
+  n=$(printf '%s\n' "$out" | wc -l)
   # shellcheck disable=SC2001
-  echo "$out" | sed 's/^/      /' >&2
+  printf '%s\n' "$out" | head -20 | sed 's/^/      /' >&2
+  [ "$n" -gt 20 ] && echo "      ... and $((n - 20)) more not shown" >&2
+  return 0
 }
 
 # Print every line of a file, `grep -n` style. The tier-A extractor.
@@ -267,11 +280,18 @@ scan_files() {
   [ -n "$files" ] || return 0
   while IFS= read -r f; do
     [ -n "$f" ] || continue
-    out=$("$extractor" "$f" | grep -E -- "$PRIVATE_HOST_RE" | head -20)
+    # Unlike scan() this pipeline is SAFE to truncate for the verdict -- it is guarded on
+    # $out's CONTENT, not on the pipeline's exit status, so a SIGPIPE'd grep still leaves the
+    # lines head printed and hit() still fires. Only the DISPLAY is capped, and the withheld
+    # count is announced for the same reason it is there.
+    out=$("$extractor" "$f" | grep -E -- "$PRIVATE_HOST_RE") || true
     [ -n "$out" ] || continue
     hit "$label"
+    local n
+    n=$(printf '%s\n' "$out" | wc -l)
     # shellcheck disable=SC2001
-    echo "$out" | sed "s|^|      $f:|" >&2
+    printf '%s\n' "$out" | head -20 | sed "s|^|      $f:|" >&2
+    [ "$n" -gt 20 ] && echo "      ... and $((n - 20)) more not shown in $f" >&2
   done <<< "$files"
 }
 
