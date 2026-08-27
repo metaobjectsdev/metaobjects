@@ -7,7 +7,7 @@
   <parent>
     <groupId>com.metaobjects</groupId>
     <artifactId>metaobjects</artifactId>
-    <version>7.24.1</version>
+    <version>7.24.2</version>
   </parent>
 
   <artifactId>metaobjects-codegen-kotlin</artifactId>

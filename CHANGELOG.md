@@ -7,6 +7,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.24.2] — npm `0.24.2` · PyPI `0.24.2` · NuGet `0.24.2` · Maven `7.24.2`
+
 ### Fixed — the JVM agent-context staleness nudge compared two different version lines, so it fired forever ([#347](https://github.com/metaobjectsdev/metaobjects/issues/347))
 
 `meta agent-docs` **copies** the agent-instruction files into a consuming repo; it does not
