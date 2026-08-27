@@ -221,7 +221,10 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
             AgentContextScaffold.Manifest manifest = new AgentContextScaffold.Manifest(
                     version, generatedBy, new ArrayList<>(), new ArrayList<>(),
                     new LinkedHashMap<>());
-            String nudge = AgentContextScaffold.staleness(
+            // ACROSS VERSION LINES on purpose: the manifest is stamped by the Node CLI with an
+            // npm version (0.24.1) while installedVersion() is the Maven one (7.24.1), so plain
+            // equality never matched and this nudged on every build forever. See the javadoc.
+            String nudge = AgentContextScaffold.stalenessAcrossVersionLines(
                     manifest, AgentContextScaffold.installedVersion());
             if (nudge != null) {
                 getLog().warn(nudge);

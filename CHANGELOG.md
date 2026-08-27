@@ -7,6 +7,44 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — the JVM agent-context staleness nudge compared two different version lines, so it fired forever ([#347](https://github.com/metaobjectsdev/metaobjects/issues/347))
+
+`meta agent-docs` **copies** the agent-instruction files into a consuming repo; it does not
+link. So the copy freezes at whatever version wrote it and a dependency bump never touches it —
+an agent then reads old instructions and authors vocabulary the current loader rejects. A
+staleness advisory exists in all four ports to break that silence, and on `gen`/`verify` it
+compares the version that scaffolded the context against the installed one.
+
+**On the JVM those are two different version lines and can never be equal.** `generatedBy` is
+always an **npm** version, because `meta agent-docs` is the canonical scaffolder for every port
+and the others redirect to it. `AgentContextScaffold.installedVersion()` reads the **Maven**
+artifact version, which carries a historical major of `7` by design. The comparison is exact
+equality — deliberately, so prerelease drift still nudges — so `"7.24.1".equals("0.24.1")` was
+false and always would be. The nudge fired on **every `mvn metaobjects:generate`, in
+perpetuity, including when the context was perfectly in sync.** Not silent: permanently loud,
+which carries the same amount of signal and gets tuned out faster.
+
+C# and Python were never affected — both read a version on the `0.x` line. **Java and Kotlin
+are the broken pair**, and only because the Maven major is deliberately different.
+
+**The fix is in the coordinate, not the comparison.** `stalenessAcrossVersionLines` reduces both
+sides to the release they name (`7.24.1` and `0.24.1` both → `24.1`) and keeps the equality
+EXACT, so every property the original contract defends survives — an RC-scaffolded context
+against a final release still nudges. The message still names both real versions. The plain
+`staleness` is untouched; its javadoc forbids relaxing it into a semver compare and is right.
+
+Correct while the four registries share a `minor.patch` — the documented lockstep rule, already
+relied on by `scripts/prerelease.mjs` and `scripts/release-verify.mjs`, which both build the
+Maven version as `7.` + npm's remainder. It is a convention rather than a gate, and that is the
+accepted trade: reporting in-sync across a hypothetical future gap is strictly better than a
+check that can never match.
+
+**Why it survived:** the existing tests used a `generatedBy` of `"7.2.1"` — a **shape production
+cannot produce**, since only the Node CLI writes that field. The fixture asserted a world where
+both operands were on the Maven line, so the pure function looked correct and the deployed
+comparison was never exercised. Six regression cases now use the real shape.
+
+
 ### Added — a retired capability gets its status back: `@status: retired` (FR-039)
 
 `@status` gains a fourth member, **`retired`**, and `@supersededBy` is registered again — this

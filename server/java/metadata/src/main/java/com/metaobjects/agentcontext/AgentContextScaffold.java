@@ -78,6 +78,65 @@ public final class AgentContextScaffold {
     }
 
     /**
+     * The comparable coordinate of a version — everything after the leading major.
+     *
+     * <p>{@code "7.24.1"} and {@code "0.24.1"} both yield {@code "24.1"}. Returns the input
+     * unchanged when there is no {@code '.'}, so a malformed or sentinel value never becomes
+     * something that accidentally matches.
+     */
+    static String releaseCoordinate(String version) {
+        if (version == null) {
+            return null;
+        }
+        int dot = version.indexOf('.');
+        return dot < 0 ? version : version.substring(dot + 1);
+    }
+
+    /**
+     * {@link #staleness} for a consumer whose installed version sits on a DIFFERENT VERSION
+     * LINE from the one that stamped the manifest.
+     *
+     * <p>This exists because of a fact peculiar to the JVM. The manifest is always stamped by
+     * the Node CLI — {@code meta agent-docs} is the canonical scaffolder for every port and the
+     * others redirect to it — so {@code generatedBy} is always an npm version ({@code 0.24.1}).
+     * The JVM's {@link #installedVersion()} reads the Maven artifact version ({@code 7.24.1}),
+     * which carries a historical major of {@code 7} by design. Exact equality between those two
+     * is false and always will be, so the plain {@link #staleness} nudged on EVERY build, in
+     * perpetuity, including when the context was perfectly in sync. An advisory that cries wolf
+     * in the inner loop gets tuned out, and then it is not there for the upgrade it exists for.
+     *
+     * <p>The fix is in the COORDINATE, not in the comparison: both sides are reduced to the
+     * release they name and the equality stays EXACT, so every property {@link #staleness}'s
+     * contract defends — prerelease and build-metadata drift still nudging — is preserved. Do
+     * not instead relax {@link #staleness} into a semver compare; its javadoc forbids that, and
+     * it is right.
+     *
+     * <p>Correct while the four registries share a {@code minor.patch}, which is the documented
+     * lockstep rule and is already relied on by the release tooling
+     * ({@code scripts/prerelease.mjs} and {@code scripts/release-verify.mjs} both construct the
+     * Maven version as {@code 7.} + npm's remainder). It is a CONVENTION rather than a gate: if
+     * lockstep ever breaks, this reports in-sync across a real gap. That is the accepted trade,
+     * and it is strictly better than a check that can never match.
+     *
+     * @param manifest       the parsed prior manifest, or {@code null} if none on disk.
+     * @param currentVersion the installed version, on this port's own line.
+     * @return the nudge message naming BOTH real versions, or {@code null} when in sync.
+     */
+    public static String stalenessAcrossVersionLines(Manifest manifest, String currentVersion) {
+        if (manifest == null) {
+            return null;
+        }
+        String stamped = releaseCoordinate(manifest.generatedBy());
+        // A null/absent generatedBy is legacy and must still nudge — delegate, which says so.
+        if (stamped != null && stamped.equals(releaseCoordinate(currentVersion))) {
+            return null;
+        }
+        // Message construction lives in ONE place; this only decides whether to ask for it.
+        // The delegate cannot return null here: the coordinates differ, so the versions do.
+        return staleness(manifest, currentVersion);
+    }
+
+    /**
      * The installed MetaObjects version, resolved the idiomatic Maven way: read
      * {@code /META-INF/maven/com.metaobjects/metaobjects-metadata/pom.properties} from the
      * classpath (Maven stamps this into the built jar). Falls back to

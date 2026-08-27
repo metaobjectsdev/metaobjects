@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -27,6 +28,58 @@ import static org.junit.Assert.assertTrue;
  * <p>Advisory only — the production method never throws and never blocks.
  */
 public class AgentContextStalenessTest {
+
+    // ---- across version lines (the JVM's actual situation) ---------------------
+    //
+    // Every fixture ABOVE uses a `7.x` generatedBy, and that shape CANNOT OCCUR: the manifest
+    // is written only by the Node CLI, which stamps an npm version. Those cases pin the pure
+    // function's contract and are correct as such — but they are also why nobody noticed that
+    // the JVM was comparing `7.24.1` against `0.24.1` on every build and nudging forever.
+    // These cases use the shape production actually produces.
+
+    @Test
+    public void sameRelease_acrossLines_isNotStale() {
+        assertNull("npm-stamped 0.24.1 vs Maven 7.24.1 is the SAME release — must not nudge",
+                AgentContextScaffold.stalenessAcrossVersionLines(manifest("0.24.1"), "7.24.1"));
+    }
+
+    @Test
+    public void differentRelease_acrossLines_nudgesNamingBothRealVersions() {
+        String msg = AgentContextScaffold.stalenessAcrossVersionLines(manifest("0.23.1"), "7.24.1");
+        assertNotNull("a real release gap must still nudge", msg);
+        // The message names the REAL versions, not the stripped coordinates — a reader has to
+        // recognise what is installed and what is on disk.
+        assertTrue("should name the stamped version", msg.contains("0.23.1"));
+        assertTrue("should name the installed version", msg.contains("7.24.1"));
+    }
+
+    @Test
+    public void prereleaseDrift_acrossLines_stillNudges() {
+        // The pure contract's exact-equality property survives the coordinate reduction:
+        // 24.1-rc.1 != 24.1, so an RC-scaffolded context against a final release still nudges.
+        assertNotNull(AgentContextScaffold.stalenessAcrossVersionLines(
+                manifest("0.24.1-rc.1"), "7.24.1"));
+    }
+
+    @Test
+    public void absentGeneratedBy_acrossLines_stillNudges() {
+        assertNotNull("a legacy manifest with no stamp must not read as in-sync",
+                AgentContextScaffold.stalenessAcrossVersionLines(manifest(null), "7.24.1"));
+    }
+
+    @Test
+    public void nullManifest_acrossLines_isNotStale() {
+        assertNull(AgentContextScaffold.stalenessAcrossVersionLines(null, "7.24.1"));
+    }
+
+    @Test
+    public void releaseCoordinate_stripsOnlyTheLeadingMajor() {
+        assertEquals("24.1", AgentContextScaffold.releaseCoordinate("7.24.1"));
+        assertEquals("24.1", AgentContextScaffold.releaseCoordinate("0.24.1"));
+        assertEquals("24.1-rc.1", AgentContextScaffold.releaseCoordinate("0.24.1-rc.1"));
+        // No dot: returned unchanged, so a sentinel cannot accidentally match a real version.
+        assertEquals("unknown", AgentContextScaffold.releaseCoordinate("unknown"));
+    }
 
     private static AgentContextScaffold.Manifest manifest(String generatedBy) {
         return new AgentContextScaffold.Manifest(
