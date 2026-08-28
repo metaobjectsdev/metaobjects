@@ -2,6 +2,14 @@
 // zero DB code, so requiring them was a dead-but-mandatory tsc obligation). A model
 // that DOES emit DB code must still set them, and omitting them errors clearly rather
 // than silently defaulting (which would e.g. emit sqlite for a Postgres project).
+//
+// The two halves later split on WHERE the answer is needed. `dialect` stays eager:
+// a wrong default silently emits the wrong SQL for every sourced object, so the model
+// alone settles it. `dbImport` is only ever read by a generator that emits
+// `import { db } from …`, and a project whose generated queries take `db` as a
+// parameter never has one — so demanding it from the MODEL convicted projects that
+// could not use it. It is now demanded at the point of USE, by the generator that
+// needs it, naming that generator.
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,6 +17,7 @@ import { join } from "node:path";
 import { MetaDataLoader, InMemoryStringSource } from "@metaobjectsdev/metadata";
 import { runGen } from "../src/runner.js";
 import { entityFile } from "../src/generators/entity-file.js";
+import { routesFile } from "../src/generators/routes-file.js";
 import type { MetaobjectsGenConfig } from "../src/metaobjects-config.js";
 
 let tmp: string;
@@ -82,8 +91,51 @@ describe("#194 item 3 — dbImport/dialect optional for value-object-only and so
       err = e as Error;
     }
     expect(err).toBeDefined();
-    expect(err!.message).toContain("dialect and dbImport");
+    expect(err!.message).toContain("dialect");
     expect(err!.message).toContain("User"); // names the DB-emitting object
+  });
+
+  test("a DB entity with dialect but no dbImport generates when nothing emits a db import", async () => {
+    // The shape the eager guard convicted: a real sourced entity, a generator that
+    // takes `db` as a parameter rather than importing a singleton. Nothing can read
+    // dbImport, so nothing may demand it.
+    const root = await load(ENTITY);
+    const cfg = { ...configNoDb(), dialect: "sqlite" as const } as MetaobjectsGenConfig;
+    const result = await runGen({ config: cfg, metadata: root, projectRoot: tmp });
+    expect(result.files.length).toBeGreaterThan(0);
+  });
+
+  test("a generator that DOES emit `import { db }` still demands dbImport, and names itself", async () => {
+    const root = await load(ENTITY);
+    const cfg = {
+      ...configNoDb(),
+      dialect: "sqlite" as const,
+      generators: [routesFile()],
+    } as MetaobjectsGenConfig;
+    let err: Error | undefined;
+    try {
+      await runGen({ config: cfg, metadata: root, projectRoot: tmp });
+    } catch (e) {
+      err = e as Error;
+    }
+    expect(err).toBeDefined();
+    expect(err!.message).toContain("dbImport");
+    expect(err!.message).toContain("routes"); // the runner prefixes [<generator>]
+  });
+
+  test("an explicit dbImport equal to the default is honoured, not read as absent", async () => {
+    // Declaration is tracked, never inferred by comparing against DEFAULT_DB_IMPORT:
+    // `meta init` scaffolds a relative path, and a project is free to write the same
+    // string the default happens to use.
+    const root = await load(ENTITY);
+    const cfg = {
+      ...configNoDb(),
+      dialect: "sqlite" as const,
+      dbImport: "./db",
+      generators: [routesFile()],
+    } as MetaobjectsGenConfig;
+    const result = await runGen({ config: cfg, metadata: root, projectRoot: tmp });
+    expect(result.files.length).toBeGreaterThan(0);
   });
 
   test("a DB entity WITH dbImport/dialect set generates normally (no regression)", async () => {

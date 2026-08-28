@@ -7,6 +7,36 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — `dbImport` was demanded from the model, and blocked an upgrade nobody saw fail
+
+`#194` made `dialect` and `dbImport` optional config, then required both from any model
+declaring a `source.rdb`. `dialect` belongs there: every sourced object is lowered to SQL, so a
+wrong default is silently wrong everywhere. **`dbImport` does not.** Only a generator emitting
+`import { db } from …` can read it, and a project whose generated queries take `db` as an
+explicit parameter — the shape the scaffolded `queriesFile()` emits — has no singleton to name.
+Such a project was refused, and told its model "generates database code for: …" that in fact
+imported nothing.
+
+**What that cost, measured on the public reference app.** Its automated dependency PR
+(`0.20.11` → `0.21.6`) had been failing since **15 August**, twelve days, on exactly this:
+
+```
+meta: verify --codegen: regeneration failed: codegen config is missing dbImport —
+  required because this model generates database code for: CouncilTurn, Council.
+##[error]Process completed with exit code 1
+```
+
+The remedy is one config line, which no bot can write — so the app sat four minor lines behind
+with a red PR nobody reads, while every human-facing signal said it was healthy. When the
+upgrade was finally done by hand it took that one line and two generated deltas.
+
+`dbImport` is now demanded at the point of **use**: reading it is what proves a generator emits
+the import, so reading is what asks for it, and the runner's existing `[<generator>]` wrapper
+names which one. A generator that never touches it never demands it. Declaration is *tracked*,
+never inferred by comparing against the default — `meta init` scaffolds a relative path and a
+project may legitimately write the default's own string. Verified against the reference app:
+published `0.24.2` fails, this build emits all 29 files byte-identically.
+
 ### Fixed — `meta verify --codegen` convicted files MetaObjects never wrote
 
 Found by re-running the documented TypeScript quickstart cold against published `0.24.2`, as a

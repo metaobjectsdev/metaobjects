@@ -242,31 +242,41 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
   }
 
   // #194 — dbImport / dialect are optional config, BUT a model that declares a
-  // source.rdb genuinely needs them. Only a sourced object emits database
+  // source.rdb genuinely needs `dialect`. Only a sourced object emits database
   // artifacts (schema / query / route code), and every generator below gates
   // that emission on hasAnyRdbSource — the #248 R2 source-based predicate — so a
   // sourceless object (a value object, or a sourceless projection) emits zero DB
   // code. Guard BEFORE normalizeConfig fills its inert defaults, so a DB project
-  // that forgot either gets a clear error naming the objects, never
-  // silently-defaulted output (e.g. a Postgres project quietly emitting sqlite).
-  // A model of only value objects and/or sourceless projections reaches
-  // normalizeConfig and gets the harmless placeholders.
+  // that forgot it gets a clear error naming the objects, never
+  // silently-defaulted output (a Postgres project quietly emitting sqlite).
+  //
+  // `dbImport` is NOT part of this check, and the difference is where the answer
+  // is needed. A dialect is a property of the MODEL: every sourced object is
+  // lowered to SQL, and a wrong default is silently wrong everywhere. A dbImport
+  // is a property of a GENERATOR: only one that emits `import { db } from …` can
+  // read it, and a project whose generated queries take `db` as a parameter has
+  // no singleton to name. Demanding it from the model convicted exactly those
+  // projects — the error even told them their model "generates database code"
+  // that in fact imported nothing. It is demanded below at the point of USE, by
+  // the generator that reads it, which the runner names in the thrown message.
   const dbEmittingObjects = safeEntities.filter(
     (e) => !e.isAbstract && hasAnyRdbSource(e),
   );
-  if (dbEmittingObjects.length > 0) {
-    const missing: string[] = [];
-    if (opts.config.dialect === undefined) missing.push("dialect");
-    if (opts.config.dbImport === undefined) missing.push("dbImport");
-    if (missing.length > 0) {
-      const names = dbEmittingObjects.map((e) => e.name).join(", ");
-      throw new Error(
-        `codegen config is missing ${missing.join(" and ")} — required because this model ` +
-          `generates database code for: ${names}. Set ${missing.join(" and ")} in ` +
-          `metaobjects.config.ts. (A model of only value objects and/or sourceless projections may omit them.)`,
-      );
-    }
+  if (dbEmittingObjects.length > 0 && opts.config.dialect === undefined) {
+    const names = dbEmittingObjects.map((e) => e.name).join(", ");
+    throw new Error(
+      `codegen config is missing dialect — required because this model ` +
+        `generates database code for: ${names}. Set dialect in ` +
+        `metaobjects.config.ts. (A model of only value objects and/or sourceless projections may omit it.)`,
+    );
   }
+
+  /** Did the AUTHOR declare a dbImport reachable by this target? Tracked, never
+   *  inferred by comparing against DEFAULT_DB_IMPORT — `meta init` scaffolds a
+   *  relative path and a project may legitimately write the default's own string,
+   *  which a value comparison would then read as absent. */
+  const dbImportUndeclaredFor = (targetName: string): boolean =>
+    (opts.config.targets?.[targetName]?.dbImport ?? opts.config.dbImport) === undefined;
 
   // 2. Resolve targets + entity-module target.
   const config = normalizeConfig(opts.config);
@@ -428,6 +438,25 @@ export async function runGen(opts: RunGenOpts): Promise<RunGenResult> {
       ...(projectRoot !== undefined && { projectRoot }),
       warn: (msg) => warnings.push(`[${generator.name}] ${msg}`),
     };
+
+    // The point of USE for an undeclared dbImport (see the guard above). Reading
+    // it is what proves this generator emits a db-singleton import, so reading is
+    // what asks for it; a generator that never touches it never demands it. The
+    // throw travels through the `[${generator.name}]` wrapper below, so the message
+    // names the generator that wants the path. Both surfaces are covered because a
+    // generator may read either.
+    if (dbImportUndeclaredFor(selfTarget.name)) {
+      const demand = (): never => {
+        throw new Error(
+          `codegen config is missing dbImport — this generator emits ` +
+            `\`import { db } from …\` and needs the module to import it from. Set dbImport in ` +
+            `metaobjects.config.ts (or on this generator's target). A project whose generated ` +
+            `queries take \`db\` as a parameter never needs it.`,
+        );
+      };
+      Object.defineProperty(renderContext, "dbImport", { get: demand, configurable: true });
+      Object.defineProperty(ctx.config, "dbImport", { get: demand, configurable: true });
+    }
 
     let files: EmittedFile[];
     try {
