@@ -7,6 +7,32 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — three first-touch defects, found running the quickstart cold on the published `0.24.3`
+
+`0.24.3` made the cold quickstart part of the release procedure. Run against the published
+`0.24.3` — fresh external project, install, `meta init`, author, `gen`, `tsc`, `migrate --from-db
+--apply`, boot the generated Fastify server, five verbs, `verify` — both of that release's
+headline fixes are confirmed live (`verify --codegen` passes with 16 `tsc` artifacts in `outDir`;
+a hand-edited generated file merges and then verifies clean). Three defects remained on the path
+there, all of them the first thing a newcomer meets:
+
+- **`meta init` reported an edit it had made as an instruction to make it.** It sets `"type":
+  "module"` for you, then printed `meta: set \`"type": "module"\` in package.json` — an imperative,
+  on the last line the scaffold prints, telling you to do what it had just done. It reads as an
+  unmet TODO on a run that succeeded. Now past tense. The existing test asserted only that the
+  warning *contained* `"type": "module"`, which is why the phrasing could never fail it; it now
+  pins the tense.
+- **`npx tsc` — the hint every `meta gen` prints — has no compiler to run.** Nothing MetaObjects
+  installs brings `typescript`, so the printed next step hits npm's guard package: *"This is not
+  the tsc command you are looking for."* Named in `docs/ports/typescript.md`'s install section and
+  again where the hint is documented.
+- **The documented order makes that typecheck fail.** "Typecheck the generated code" precedes
+  "Use", where `src/db.ts` is written — but the default `routesFile()` emits `import { db } from
+  "../db.js"`, the module `dbImport` names and `meta init` scaffolds a path to without creating.
+  Following the page top to bottom ends in `TS2307: Cannot find module '../db.js'` on a project
+  with nothing wrong. The section now states both prerequisites and shows the exact error.
+
+
 ## [0.24.3] — 2026-08-27
 
 _A coordinated PATCH across all four registries (npm `0.24.3` · PyPI `0.24.3` · NuGet `0.24.3` ·
