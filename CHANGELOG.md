@@ -7,6 +7,21 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.24.4] — 2026-08-28
+
+_A coordinated PATCH across all four registries (npm `0.24.4` · PyPI `0.24.4` · NuGet `0.24.4` ·
+Maven `7.24.4`), full lockstep across all 14 `@metaobjectsdev/*` publish candidates. **The only
+changed product file is in `cli`** — so the other 13 npm packages, PyPI, NuGet and Maven Central
+are version-parity bumps. `metamodelVersion` stays `0.13`: no registered vocabulary changed._
+
+**Every fix here was found by running the product's own documented path and looking at what it
+printed** — not by a test. `0.24.3` made the cold quickstart part of the release procedure; this
+is its first cut, and it is what the procedure is for. Four defects, and the shape they share is
+that each one is the tool *saying* something untrue about work it had just done: a scaffold
+instructing you to do what it already did, a hint naming a command that cannot run, a page whose
+own order fails its own instruction, and a gate reporting a denominator it had not earned. None
+of them break a build. All four are the first thing a newcomer sees.
+
 ### Fixed — `meta verify --templates` reported a different denominator depending on whether it passed
 
 The same project, the same run: **"11 drift error(s) across 29 template(s)"** while red, and
