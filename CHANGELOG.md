@@ -110,6 +110,19 @@ Blast radius was every project that hand-edits generated output and runs `--code
 for `requirementTests()` stubs, which are worthless until hand-edited because the assertion is the
 author's to write. Design: `spec/design-docs/2026-08-27-codegen-drift-hand-edits-design.md`.
 
+### Fixed — the pre-release pin detector passed when the violation was large
+
+`scan()` piped `grep` into `head -20` under `set -o pipefail`. Once the output exceeds the ~64KB
+pipe buffer, `head` closes the pipe, `grep` dies of SIGPIPE, the pipeline reports that failure, and
+`|| return 0` returns **before** the hit is recorded. The severity was inverted: a small breach
+failed the check, a large one passed it silently. Independently reproduced against a synthetic
+500-violation tree — the old script exits 0, the fixed one exits 1.
+
+The full result is now captured and decided on, with truncation only for display and a line naming
+what was withheld. This matters beyond this repo: the script's header instructs adopters to copy it
+into every downstream consumer that participates in pre-release testing, so any copy taken before
+this carries the same inverted severity and should be re-copied.
+
 ### Fixed — `bun run release` ran the private-registry publisher instead of the release
 
 npm and bun both run `pre<name>` before `<name>`, with no per-script opt-out. The root
