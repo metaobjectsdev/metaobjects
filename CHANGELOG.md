@@ -7,6 +7,10 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.24.3] — 2026-08-27
+
+_npm `0.24.3` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+
 ### Fixed — `dbImport` was demanded from the model, and blocked an upgrade nobody saw fail
 
 `#194` made `dialect` and `dbImport` optional config, then required both from any model
