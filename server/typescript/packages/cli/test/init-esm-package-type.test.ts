@@ -37,7 +37,15 @@ describe("meta init — ESM package type", () => {
     const result = await init({ cwd: dir, quiet: true });
 
     expect(readPkg().type).toBe("module");
-    expect(result.warnings.join("\n")).toContain('"type": "module"');
+    const warned = result.warnings.join("\n");
+    expect(warned).toContain('"type": "module"');
+    // The message must REPORT the edit, not instruct the user to make it. It is the
+    // last line `meta init` prints, so an imperative there reads as an unmet TODO —
+    // a scaffold that had just done the right thing looked like it had failed. The
+    // substring assertion above cannot tell the two phrasings apart, which is how
+    // the imperative survived; this pins the tense.
+    expect(warned).toContain("for you");
+    expect(warned).not.toMatch(/^meta: set `"type"/m);
   });
 
   test("sets it when the manifest has no type field at all", async () => {

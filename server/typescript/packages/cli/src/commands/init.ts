@@ -603,9 +603,12 @@ async function ensureEsmPackageType(cwd: string, result: InitResult): Promise<vo
   // Preserve the file's existing indentation rather than reformatting someone's manifest.
   const indent = /\n(\s+)"/.exec(raw)?.[1] ?? "  ";
   await writeFile(pkgPath, `${JSON.stringify(pkg, null, indent)}\n`, "utf8");
+  // Past tense, deliberately: this reports an edit already made. The imperative
+  // ("set `\"type\": \"module\"`") read as a TODO on the one line a newcomer sees
+  // last, so a scaffold that had just done the right thing looked like it had failed.
   result.warnings.push(
-    'set `"type": "module"` in package.json — MetaObjects scaffolds and generates ESM, ' +
-      "which a CommonJS project cannot compile.",
+    'package.json declared no module system — set `"type": "module"` for you, because ' +
+      "MetaObjects scaffolds and generates ESM, which a CommonJS project cannot compile.",
   );
   if (added.length > 0) {
     result.warnings.push(

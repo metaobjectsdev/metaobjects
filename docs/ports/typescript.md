@@ -34,6 +34,13 @@ auto-installed); add it explicitly:
 npm install fastify
 ```
 
+Nothing above installs a TypeScript compiler. If you intend to run the `npx tsc`
+that every `meta gen` hint prints, add one:
+
+```bash
+npm install --save-dev typescript
+```
+
 ## Configure
 
 Two config files, by design:
@@ -177,8 +184,28 @@ meta migrate --dialect d1                                        # Cloudflare D1
 
 ### Typecheck the generated code
 
-`npx tsc` (the hint every `meta gen`/`meta migrate` prints) works out of the
-box with a stock `tsc --init` tsconfig: the generated code emits
+Two prerequisites first, because the printed hint names neither and a cold run
+hits both:
+
+```bash
+npm install --save-dev typescript      # `npx tsc` without it hits npm's guard
+                                       # package ("This is not the tsc command
+                                       # you are looking for") — nothing MetaObjects
+                                       # installs brings a compiler.
+```
+
+…and **wire `src/db.ts` first** (the "Use" section below). The default
+`routesFile()` generator emits `import { db } from "../db.js"` — the module named
+by `dbImport` in `metaobjects.config.ts`, which `meta init` scaffolds but does not
+create. Typechecking before it exists reports a real missing module on a project
+with nothing wrong:
+
+```
+src/generated/Author.routes.ts(4,20): error TS2307: Cannot find module '../db.js'
+```
+
+With both in place, `npx tsc` (the hint every `meta gen`/`meta migrate` prints)
+works out of the box with a stock `tsc --init` tsconfig: the generated code emits
 `.js`-extensioned relative imports (`import { Author } from "./Author.js"`),
 which resolve correctly under **both** Node's native ESM resolution
 (`"module": "nodenext"`, the `tsc --init` default) **and** bundler-style
