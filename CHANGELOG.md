@@ -7,6 +7,23 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — `meta verify --templates` reported a different denominator depending on whether it passed
+
+The same project, the same run: **"11 drift error(s) across 29 template(s)"** while red, and
+**"22 template(s) clean"** once fixed. Seven templates appear to vanish on the way to green.
+Both numbers were real and neither line named its actual unit — the failure line divided by every
+`template.*` node found, **including every one the loop skips** (a subtype it does not check —
+a project-local `template.*` from an adopter's own provider), while the pass line divided by
+**bodies verified** (an `@kind: email` template has up to three and is one template). So the red
+line claimed a denominator of work it had not done, and the two lines could not be compared to
+each other at all. Both now count templates at least one body of which was actually examined.
+
+Found in the drift-gate demo receipt on the public reference app — the artifact whose whole
+purpose is to be checked by a skeptical reader. The existing tests could not see it: every
+assertion matched on a substring, and both phrasings contain the word `template(s)`. The new
+test asserts the **pair** — the same fixture reports the same number passing and failing —
+because the failure half alone was already correct for a single-body template.
+
 ### Fixed — three first-touch defects, found running the quickstart cold on the published `0.24.3`
 
 `0.24.3` made the cold quickstart part of the release procedure. Run against the published

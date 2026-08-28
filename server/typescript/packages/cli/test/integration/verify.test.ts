@@ -178,6 +178,69 @@ describe("meta verify", () => {
     }
   });
 
+  // The two report lines must divide by the SAME thing for the SAME project. They
+  // did not: the pass line counted BODIES verified and the failure line counted every
+  // template NODE found, skipped ones included. An @kind=email template has two or
+  // three bodies and is one template, so it separates the units on its own — and a
+  // real project read "11 drift error(s) across 29 template(s)" while red and
+  // "22 template(s) clean" once green, seven templates apparently vanishing.
+  //
+  // Asserting the PAIR is what makes this non-vacuous: the failure half alone was
+  // already 1 under the old code. (The other half of the old inflation — a template
+  // the loop skips — needs a project-local `template.*` subtype from a provider, the
+  // shape that produced the 29-vs-22 above; core vocabulary requires a body on every
+  // prompt and email, so it cannot be built from core alone.)
+  describe("both report lines divide by the same denominator", () => {
+    function scaffoldEmail(htmlBody: string): string {
+      const tmp = mkdtempSync(join(tmpdir(), "metaobjects-verify-denom-"));
+      mkdirSync(join(tmp, "metaobjects"), { recursive: true });
+      writeFileSync(join(tmp, "metaobjects", "meta.ai.json"), JSON.stringify({
+        "metadata.root": {
+          package: "acme::ai",
+          children: [
+            { "object.value": { name: "P", children: [{ "field.string": { name: "name" } }] } },
+            {
+              // ONE template, TWO renderable bodies — the shape that separates the units.
+              "template.output": {
+                name: "Welcome",
+                "@kind": "email",
+                "@payloadRef": "P",
+                "@subjectRef": "e/subj",
+                "@htmlBodyRef": "e/html",
+              },
+            },
+          ],
+        },
+      }), "utf8");
+      mkdirSync(join(tmp, "prompts", "e"), { recursive: true });
+      writeFileSync(join(tmp, "prompts", "e", "subj"), "Hello {{name}}", "utf8");
+      writeFileSync(join(tmp, "prompts", "e", "html"), htmlBody, "utf8");
+      return tmp;
+    }
+
+    test("counts TEMPLATES, not bodies, when it passes", async () => {
+      const tmp = scaffoldEmail("<p>Hi {{name}}</p>");
+      try {
+        expect(await run(["verify", "--cwd", tmp])).toBe(0);
+        const all = [...out, ...err].join("\n");
+        expect(all).toContain("1 template(s) clean");
+        expect(all).not.toContain("2 template(s) clean");   // two bodies, one template
+      } finally {
+        rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    test("and reports that same 1 when it fails", async () => {
+      const tmp = scaffoldEmail("<p>Hi {{nonExistentField}}</p>");
+      try {
+        expect(await run(["verify", "--cwd", tmp])).toBe(1);
+        expect([...out, ...err].join("\n")).toContain("across 1 template(s)");
+      } finally {
+        rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+  });
+
   test("a custom --prompts dir is honored", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "metaobjects-verify-custom-"));
     mkdirSync(join(tmp, "metaobjects"), { recursive: true });

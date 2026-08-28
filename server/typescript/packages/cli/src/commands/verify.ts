@@ -581,7 +581,18 @@ export async function verifyCommand(
 
     let errorCount = 0;
     let warnCount = 0;
-    let checked = 0;
+    // Both report lines below must divide by the SAME thing, and it must be
+    // something that was actually examined. They used to disagree: the failure line
+    // divided by `templates.length` — every node found, INCLUDING every one the loop
+    // `continue`s past (unknown subtype, no renderable body ref) — while the pass
+    // line divided by a count of bodies verified. On a real project the same run read
+    // "11 drift error(s) across 29 template(s)" while failing and "22 template(s)
+    // clean" once fixed: seven templates apparently vanishing on the way to green,
+    // and a failure line claiming a denominator of work that had not been done.
+    // `checkedTemplates` is now the single unit — templates at least one body of
+    // which was verified. (An @kind=email template has up to three bodies and still
+    // counts once; the line says "template(s)", so it counts templates.)
+    let checkedTemplates = 0;
 
     for (const tmpl of templates) {
       // ADR-0039: effective attrs — @payloadRef may be inherited via an abstract template.
@@ -645,6 +656,7 @@ export async function verifyCommand(
       const requiredSlots = promptRules ? attrAsStringArray(tmpl.attr(TEMPLATE_ATTR_REQUIRED_SLOTS)) : [];
       const requiredTags = promptRules ? attrAsStringArray(tmpl.attr(TEMPLATE_ATTR_REQUIRED_TAGS)) : [];
 
+      let anyBodyChecked = false;
       for (const { label, ref } of refs) {
         // Render-engine drift check: mustache variables ↔ payload field names.
         const text = provider.resolve(ref);
@@ -656,7 +668,7 @@ export async function verifyCommand(
           continue;
         }
         const drift = verify(text, fieldTree, { provider, requiredSlots, requiredTags });
-        checked++;
+        anyBodyChecked = true;
         for (const e of drift) {
           if (e.code === ERR_REQUIRED_SLOT_UNUSED) {
             log.warn(`[${tmpl.name}] (${label}) ${e.code}: ${e.path}`);
@@ -667,16 +679,17 @@ export async function verifyCommand(
           }
         }
       }
+      if (anyBodyChecked) checkedTemplates++;
     }
 
     if (errorCount > 0) {
       log.error(
-        `meta verify — ${errorCount} drift error(s) across ${templates.length} template(s).`,
+        `meta verify — ${errorCount} drift error(s) across ${checkedTemplates} template(s).`,
       );
       return 1;
     }
     log.info(
-      `meta verify — ${checked} template(s) clean${warnCount > 0 ? ` (${warnCount} warning(s))` : ""}.`,
+      `meta verify — ${checkedTemplates} template(s) clean${warnCount > 0 ? ` (${warnCount} warning(s))` : ""}.`,
     );
     return 0;
   }
