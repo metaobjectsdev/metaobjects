@@ -7,6 +7,42 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — `meta verify --codegen` convicted files MetaObjects never wrote
+
+Found by re-running the documented TypeScript quickstart cold against published `0.24.2`, as a
+pre-launch check. Every documented step passes — `meta init`, `meta gen`, `npx tsc` clean,
+`meta migrate --from-db … --apply` creates the table, the generated Fastify server serves all five
+verbs, an empty `@required` string is a 400 — and then the drift gate **exits 1 on a project with
+no drift of any kind**, naming sixteen files:
+
+```
+npx tsc                             # the quickstart's own instruction
+meta verify --codegen               - src/generated/Author.js  (committed but regen would not emit it)
+                                    - src/generated/Author.d.ts.map (…)   … 16 in total   exit 1
+```
+
+A stock `tsc --init` config sets no `outDir`, so the compiler writes `.js` / `.d.ts` / `.map`
+beside the sources it compiled — into the generated directory. The gate's orphan branch fired on
+**every** file in `outDir` that a fresh regen would not produce, whether or not MetaObjects had
+ever written it.
+
+**The rule is jurisdiction, not staleness.** `outDir` is a directory, not a namespace MetaObjects
+owns. "A regen no longer emits this path" means *stale generated output* only for a path we have a
+record of WRITING; for anything else it means the file was never ours. `.gen-state/.hashes.json`
+already records exactly that, and `meta gen`'s own orphan sweep already scopes itself to those
+paths (`listGeneratedPaths`) before it will delete anything — so the write path and the gate were
+answering the same ownership question two different ways. They now agree.
+
+Nothing is given up on the case the branch exists for: a file MetaObjects wrote that a regen no
+longer emits — an entity deleted or renamed — is still in the manifest, so it is still drift and
+still exits 1. With **no** manifest at all there is no evidence to tell our stale output from a
+stranger's file, so the old conservative verdict stands, matching the fail-closed default the
+content branch uses. Both halves are pinned by tests.
+
+Blast radius was every project that compiles in place and runs `--codegen` in CI — and, because
+the quickstart tells you to run `npx tsc`, every project that follows it exactly. Sibling of the
+hand-edit conflation below: same gate, the other branch.
+
 ### Fixed — `meta verify --codegen` convicted the hand edits the product tells you to make
 
 `meta gen` three-way-merges a hand edit into generated output and reports `merged`. That is the

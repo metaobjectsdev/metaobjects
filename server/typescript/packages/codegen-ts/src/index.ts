@@ -64,7 +64,10 @@ export { decideAndWrite, GitMissingError } from "./overwrite-policy.js";
 // The committed half of `.gen-state`. Exported for `verify --codegen`, which needs
 // the same "is this still exactly what the generator wrote?" evidence the write path
 // uses — without it the gate cannot tell a preserved hand edit from stale output.
-export { contentHash, readGeneratedHash } from "./overwrite-policy.js";
+// `listGeneratedPaths` answers the sibling question — WHICH paths we have ever
+// written — which is how the gate scopes itself to its own output instead of
+// convicting every stranger's file that happens to sit in the same directory.
+export { contentHash, readGeneratedHash, listGeneratedPaths } from "./overwrite-policy.js";
 
 export { CodegenError } from "./errors.js";
 export { GENERATED_HEADER, EXTRA_SUFFIX, DEFAULT_OUT_DIR, CODEGEN_ATTR_EMIT_TANSTACK, CODEGEN_ATTR_EMIT_GRID, CODEGEN_ATTR_EMIT_FORM, CODEGEN_ATTR_EMIT_ROUTES } from "./constants.js";

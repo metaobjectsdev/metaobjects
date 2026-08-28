@@ -176,18 +176,7 @@ describe("meta verify --codegen — hand-edited generated output", () => {
     }
   });
 
-  test("an extra committed file is still drift — only the content branch changed", async () => {
-    const root = setupRepo();
-    try {
-      expect(await run(["gen", "--cwd", root])).toBe(0);
-      writeFileSync(join(root, OUT, "Stray.ts"), "export const stray = 1;\n");
-
-      out = []; err = [];
-      const exit = await run(["verify", "--cwd", root, "--codegen"]);
-      expect(all()).toContain("Stray.ts");
-      expect(exit).toBe(1);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
+  // The orphan branch ("committed but regen would not emit it") is pinned in
+  // verify-codegen-foreign-files.test.ts: it convicts a path we RECORDED writing
+  // and now no longer emit, and leaves files MetaObjects never wrote alone.
 });

@@ -39,7 +39,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve, isAbsolute } from "node:path";
-import { runGen, contentHash, readGeneratedHash } from "@metaobjectsdev/codegen-ts";
+import {
+  runGen,
+  contentHash,
+  readGeneratedHash,
+  listGeneratedPaths,
+} from "@metaobjectsdev/codegen-ts";
 import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 import type { MetaData } from "@metaobjectsdev/metadata";
 
@@ -191,6 +196,11 @@ export async function computeCodegenDrift(
     // Diff each committed outDir against its temp mirror.
     const driftedFiles = new Set<string>();
     const lines: string[] = [];
+
+    // Whether we have any record of what we wrote here. With records, the orphan
+    // branch below can scope itself to our own output; with none, it cannot tell
+    // our stale output from a stranger's file, so the old verdict stands.
+    const haveWriteRecords = listGeneratedPaths(projectGenStateDir).length > 0;
     for (const committed of committedDirs) {
       const fresh = tempFor(committed);
       const committedFiles = new Set(listFiles(committed));
@@ -201,6 +211,19 @@ export async function computeCodegenDrift(
         const inCommitted = committedFiles.has(rel);
         const inFresh = freshFiles.has(rel);
         if (inCommitted && !inFresh) {
+          // JURISDICTION, not staleness. A regen not emitting a path means
+          // "stale generated output" only for a path we have ever WRITTEN; for
+          // anything else it means the file was never ours. outDir is a
+          // directory, not a namespace we own: the documented quickstart itself
+          // fills it with strangers — `npx tsc` under a stock tsconfig (no
+          // `outDir` of its own) drops .js/.d.ts/.map beside the sources — and
+          // convicting those failed a project with no drift of any kind.
+          // `meta gen`'s orphan sweep already scopes itself this way via
+          // `listGeneratedPaths` before it will delete anything; the gate asks
+          // the same question of the same evidence so the two doors agree.
+          if (haveWriteRecords && readGeneratedHash(projectGenStateDir, relKey) === undefined) {
+            continue;
+          }
           driftedFiles.add(relKey);
           lines.push(`- ${relKey} (committed but regen would not emit it)`);
         } else if (!inCommitted && inFresh) {
