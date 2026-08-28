@@ -1,6 +1,6 @@
 # Requirements-first with MetaObjects: a measured case study
 
-*2026-08-23. Written against `axi-core`, a new Python package, using the MetaObjects 0.24 line.*
+*2026-08-23. Written against `axi-toolkit`, a new Python package, using the MetaObjects 0.24 line.*
 
 This is a record of one thing that worked, with the numbers behind it and the boundary around
 it. It is deliberately specific: the interesting result is not "MetaObjects is good for
