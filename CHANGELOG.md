@@ -9,7 +9,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [0.24.3] — 2026-08-27
 
-_npm `0.24.3` (full lockstep across all 14 `@metaobjectsdev/*` publish candidates)._
+_A coordinated PATCH across all four registries (npm `0.24.3` · PyPI `0.24.3` · NuGet `0.24.3` ·
+Maven `7.24.3`), full lockstep across all 14 `@metaobjectsdev/*` publish candidates. **Every fix in
+it is TypeScript-side** — `cli`, `codegen-ts`, and repo tooling — so PyPI, NuGet and Maven Central
+are version-parity bumps with no changed product file. `metamodelVersion` stays `0.13`: no
+registered vocabulary changed._
+
+**The theme is a gate that convicted the innocent.** Three of the five fixes are a check failing
+work the product itself sanctions — the documented quickstart's own `npx tsc`, the hand edits
+three-way merge exists to preserve, and a model whose generators never import a `db` singleton.
+Two were found by running the documented quickstart cold against the published `0.24.2`, which is
+now part of the release procedure rather than a thing done at a cut.
 
 ### Fixed — `dbImport` was demanded from the model, and blocked an upgrade nobody saw fail
 
