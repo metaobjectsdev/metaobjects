@@ -7,6 +7,43 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed — `meta verify --codegen` convicted the hand edits the product tells you to make
+
+`meta gen` three-way-merges a hand edit into generated output and reports `merged`. That is the
+documented contract — *"anything inside a generated file is fair game to hand-edit; three-way
+merge preserves it."* `verify --codegen` then failed the same file, and **the remedy it printed
+could not work**: running `meta gen` merges the edit back in, so the next run failed identically.
+Reproduced on a clean external install:
+
+```
+meta gen                            src/generated/Bot.ts, merged
+meta verify --codegen               ~ src/generated/Bot.ts (committed content differs …)
+                                    Run 'meta gen' to regenerate, then commit the result.   exit 1
+meta gen && meta verify --codegen   exit 1
+```
+
+`computeCodegenDrift` byte-compared committed output against a fresh regen, and its own header
+admitted the conflation — *"either 'metadata changed but `meta gen` wasn't re-run' or 'a generated
+file was hand-edited'."* **Only the first is drift.**
+
+**The evidence to tell them apart already existed and was already committed.**
+`.gen-state/.hashes.json` records what the GENERATOR WROTE rather than what the file became, and
+is the committed half of `.gen-state` precisely so the question is answerable on a machine that
+did not generate the output. The gate now asks the question it can honestly answer — *is the
+generated contribution current?* — by comparing a fresh regen's hash against the recorded one. It
+**fails closed**: no recorded hash, no proof, old verdict.
+
+The two structural branches are untouched (an orphaned committed file and an uncommitted new one
+are both still drift), and genuine staleness still exits 1 and still names the file. What this
+gives up, stated: a hand edit that *contradicts* the metadata is no longer caught here — but it
+never could be told apart from a legitimate one, so the gate failed both, and a gate that fails
+the sanctioned workflow gets switched off. The compiler and the test suite keep hand-written logic
+honest; `verify` keeps the generated contribution honest.
+
+Blast radius was every project that hand-edits generated output and runs `--codegen` in CI, worst
+for `requirementTests()` stubs, which are worthless until hand-edited because the assertion is the
+author's to write. Design: `spec/design-docs/2026-08-27-codegen-drift-hand-edits-design.md`.
+
 ### Fixed — `bun run release` ran the private-registry publisher instead of the release
 
 npm and bun both run `pre<name>` before `<name>`, with no per-script opt-out. The root

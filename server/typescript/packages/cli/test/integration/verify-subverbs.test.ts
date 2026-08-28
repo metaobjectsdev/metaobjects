@@ -5,8 +5,9 @@
  *   - `verify --templates` runs the template/prompt drift gate (clean → 0, drift → 1).
  *   - bare `verify` is back-compat (= --templates) and prints the subverb note.
  *   - `verify --codegen` regenerates to a temp dir and diffs the committed output:
- *       committed == fresh regen → 0; an injected difference (hand-edited
- *       generated file) → 1, naming the drifted file.
+ *       committed == fresh regen → 0; generated content that has gone STALE against
+ *       the metadata → 1, naming the drifted file. A hand-edited generated file is
+ *       NOT drift (see verify-codegen-hand-edits.test.ts).
  *   - an invalid flag → exit 2 with usage.
  *
  * The --db dispatch is covered by verify-db-drift.test.ts; here we only assert
@@ -138,7 +139,7 @@ describe("meta verify — subverbs (ADR-0021 D2)", () => {
     }
   });
 
-  // 2. --codegen: committed == fresh regen → 0; mutate a committed file → 1.
+  // 2. --codegen: committed == fresh regen → 0; stale generated content → 1.
   test("--codegen: committed output matches a fresh regen → exit 0", async () => {
     const root = setupCodegenRepo();
     try {
@@ -151,14 +152,24 @@ describe("meta verify — subverbs (ADR-0021 D2)", () => {
     }
   });
 
-  test("--codegen: a hand-edited committed generated file → exit 1 + names the file", async () => {
+  // The VEHICLE changed here, not the assertion. This case used to inject drift by
+  // hand-editing a generated file — but a hand edit is not drift: `meta gen`
+  // three-way-merges it and the product invites it, so convicting it made the gate
+  // fail its own sanctioned workflow with a remedy that looped. Stale generated
+  // content is the genuine article, and it still exits 1 and still names the file.
+  // See spec/design-docs/2026-08-27-codegen-drift-hand-edits-design.md; the hand-edit
+  // case is asserted clean in verify-codegen-hand-edits.test.ts.
+  test("--codegen: committed output stale against the metadata → exit 1 + names the file", async () => {
     const root = setupCodegenRepo();
     try {
       expect(await run(["gen", "--cwd", root])).toBe(0);
-      // Inject drift: hand-edit a committed generated file.
-      const userFile = join(genOutDir(root), "User.ts");
-      const original = readFileSync(userFile, "utf8");
-      writeFileSync(userFile, original + "\n// hand edit that regen would not produce\n", "utf8");
+      // Inject drift: change the metadata and do NOT re-run `meta gen`.
+      const metaFile = join(root, "metaobjects", "myapp.json");
+      writeFileSync(
+        metaFile,
+        readFileSync(metaFile, "utf8").replace('"@maxLength": 255', '"@maxLength": 128'),
+        "utf8",
+      );
 
       expect(await run(["verify", "--cwd", root, "--codegen"])).toBe(1);
       const all = [...out, ...err].join("\n");

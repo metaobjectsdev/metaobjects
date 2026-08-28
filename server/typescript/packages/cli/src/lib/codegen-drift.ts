@@ -2,10 +2,25 @@
 //
 // Regenerates the configured codegen into a throwaway temp directory and DIFFs
 // the freshly-generated file tree against the committed output (the config's
-// outDir / per-target outDirs). Any difference — a file present in one tree but
-// not the other, or differing content — is drift: either "metadata changed but
-// `meta gen` wasn't re-run" or "a generated file was hand-edited". Reuses the
-// exact same `runGen` pipeline `meta gen` uses, so the comparison is faithful.
+// outDir / per-target outDirs). Reuses the exact same `runGen` pipeline `meta gen`
+// uses, so the comparison is faithful.
+//
+// A DIFFERENCE IS NOT AUTOMATICALLY DRIFT. This gate used to treat "metadata
+// changed but `meta gen` wasn't re-run" and "a generated file was hand-edited" as
+// one verdict. Only the first is drift; the second is the documented workflow —
+// `meta gen` three-way-merges hand edits and reports "merged", and the product
+// says in as many words that anything inside a generated file is fair game to
+// edit. Convicting both made the gate unusable for anyone who took that offer,
+// and its printed remedy was a LOOP: running `meta gen` merges the edit back in,
+// so the next run failed identically. Requirement-test stubs were the worst case,
+// being worthless until hand-edited.
+//
+// The discriminator is `.gen-state/.hashes.json`, which records what the GENERATOR
+// WROTE rather than what the file became, and is the committed half of `.gen-state`
+// precisely so this is answerable on a machine that did not generate the output.
+// When a fresh regen hashes to what we recorded writing, the generator's
+// contribution is current and the on-disk difference is a preserved hand edit.
+// Design: spec/design-docs/2026-08-27-codegen-drift-hand-edits-design.md
 //
 // Faithfulness note: generated content can embed import paths computed RELATIVE
 // to a target's outDir (and between targets). To keep the regen byte-identical
@@ -24,7 +39,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve, isAbsolute } from "node:path";
-import { runGen } from "@metaobjectsdev/codegen-ts";
+import { runGen, contentHash, readGeneratedHash } from "@metaobjectsdev/codegen-ts";
 import type { MetaobjectsGenConfig } from "@metaobjectsdev/codegen-ts";
 import type { MetaData } from "@metaobjectsdev/metadata";
 
@@ -96,6 +111,11 @@ export async function computeCodegenDrift(
   scope?: (fqn: string) => boolean,
 ): Promise<CodegenDriftResult> {
   const root = isAbsolute(projectRoot) ? projectRoot : resolve(projectRoot);
+
+  // The PROJECT's snapshot manifest, never the temp one built below — that temp
+  // manifest only describes the regen that just ran, so it can say nothing about
+  // what `meta gen` last wrote here. Same default location runner.ts derives.
+  const projectGenStateDir = join(root, ".metaobjects", ".gen-state");
 
   const committedDirs = committedOutDirs(config, root);
   if (committedDirs.length === 0) {
@@ -189,7 +209,12 @@ export async function computeCodegenDrift(
         } else {
           const a = readFileSync(join(committed, rel), "utf8");
           const b = readFileSync(join(fresh, rel), "utf8");
-          if (a !== b) {
+          // Not `a !== b` alone: that convicts the hand edit `meta gen` preserved.
+          // The question this gate can honestly answer is "is the GENERATED
+          // contribution current?", and the recorded hash answers exactly it.
+          // FAILS CLOSED, matching `isPristineGenerated`: with no recorded hash
+          // nothing is proven, so the old byte verdict stands.
+          if (a !== b && readGeneratedHash(projectGenStateDir, relKey) !== contentHash(b)) {
             driftedFiles.add(relKey);
             lines.push(`~ ${relKey} (committed content differs from a fresh regen)`);
           }
