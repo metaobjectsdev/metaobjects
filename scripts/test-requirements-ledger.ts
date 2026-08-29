@@ -10,13 +10,18 @@ import { join } from "node:path";
 const CHECK = "scripts/check-requirements-ledger.ts";
 const REPO = process.cwd();
 
-/** Run the gate with `metaobjects/meta.requirements.yaml` set to `yaml`. */
-function runAgainst(yaml: string): { status: number; output: string } {
+/** Run the gate with `metaobjects/meta.requirements.yaml` set to `yaml`.
+ *
+ *  `expectWarnings` is the gate's warning-count pin. These fixtures are a few
+ *  nodes each, not the real ledger's live-functional count, so every case must
+ *  say what it expects — which is also what lets one case drive the pin WRONG
+ *  and prove the count check fires. */
+function runAgainst(yaml: string, expectWarnings = 1): { status: number; output: string } {
   const dir = mkdtempSync(join(tmpdir(), "mo-ledger-"));
   try {
     mkdirSync(join(dir, "metaobjects"), { recursive: true });
     writeFileSync(join(dir, "metaobjects", "meta.requirements.yaml"), yaml);
-    const run = spawnSync("bun", [join(REPO, CHECK)], {
+    const run = spawnSync("bun", [join(REPO, CHECK), String(expectWarnings)], {
       cwd: dir,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
@@ -96,6 +101,18 @@ expect("implementedBy above the link floor is caught", floor.status !== 0, floor
 
 const missing = runAgainst("");
 expect("an empty ledger is caught", missing.status !== 0, missing.output);
+
+// The count check, driven wrong on a ledger that is otherwise perfect. This is
+// the case that matters most: `meta verify` prints at most 20 warnings per
+// section and then truncates, so the printed codes are a sample and the TOTAL is
+// what makes a warning past the cap visible at all. A gate whose count check
+// never fires would leave that hole open while looking closed.
+const miscounted = runAgainst(VALID, 2);
+expect(
+  "a wrong warning count is caught",
+  miscounted.status !== 0 && miscounted.output.includes("expected 2"),
+  miscounted.output,
+);
 
 if (failures > 0) {
   console.error(`test-requirements-ledger: ${failures} failure(s)`);

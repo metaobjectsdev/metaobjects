@@ -249,6 +249,96 @@ metadata.root:
               counterexample: >-
                 An adopter hand-writing a foreign key, a CRUD route or a validator
                 chain the metadata already describes.
+              children:
+                - requirement.functional:
+                    name: entityAndSchema
+                    title: Entity and schema artifacts
+                    level: 3
+                    status: live
+                    statement: >-
+                      The types and the table definitions an adopter would otherwise
+                      write by hand are emitted from the declaration, in the idiom of
+                      the language they land in.
+                    counterexample: >-
+                      A field added to the declaration and then added a second time, by
+                      hand, to a type and to a table.
+
+                - requirement.functional:
+                    name: dataAccess
+                    title: Data access
+                    level: 3
+                    status: live
+                    statement: >-
+                      Reading and writing a declared object is generated as typed code,
+                      so a query naming something the model does not have fails before
+                      it runs.
+                    counterexample: >-
+                      A misspelled field reaching the database and coming back as a
+                      runtime error, rather than failing where it was written.
+
+                - requirement.functional:
+                    name: apiSurface
+                    title: API surface
+                    level: 3
+                    status: live
+                    statement: >-
+                      The request and response contract for a declared object is
+                      generated from the declaration, and is the same contract whichever
+                      language serves it.
+                    counterexample: >-
+                      Two servers built from one declaration disagreeing about whether
+                      an absent field means leave it alone or clear it.
+
+                - requirement.functional:
+                    name: webClient
+                    title: Web client artifacts
+                    level: 3
+                    status: live
+                    statement: >-
+                      The forms, grids and typed calls a browser needs are generated
+                      from the same declaration that generated what serves them.
+                    counterexample: >-
+                      A field added to the model, served by the API and missing from the
+                      screen, because the two were built from different lists.
+
+                - requirement.functional:
+                    name: ownershipAndRegeneration
+                    title: Ownership and regeneration
+                    level: 3
+                    status: live
+                    statement: >-
+                      Generated output belongs to the adopter: a hand edit inside it
+                      survives the next regeneration, and the generator that produced it
+                      can be taken over and changed.
+                    counterexample: >-
+                      A hand edit inside generated output silently gone after the next
+                      run.
+                    notes: >-
+                      What makes the promise keepable is a committed merge base — one
+                      hash per generated path, recorded when it was written. Without it
+                      a machine that did not generate the output cannot tell a file it
+                      wrote from one somebody edited, so a fresh clone or a CI runner
+                      overwrites hand edits instead of refusing them by name. The
+                      snapshot bodies are ignored; the hashes are committed, and that
+                      asymmetry is the whole mechanism.
+
+                - requirement.functional:
+                    name: documentationAndAgentContext
+                    title: Documentation and agent context
+                    level: 3
+                    status: live
+                    statement: >-
+                      The documentation and the agent-facing context an adopter reads
+                      are derived from the model, so neither can describe a model that
+                      no longer exists.
+                    counterexample: >-
+                      A shipped page or instruction teaching vocabulary that was retired
+                      before it was written.
+                    notes: >-
+                      The counterexample is the observed failure, three separate times,
+                      and an adopter found it every time rather than a gate. That is
+                      why it is stated as a capability with a check behind it instead of
+                      an editorial habit.
 
           - requirement.functional:
               name: runtimeMetadata
@@ -261,6 +351,61 @@ metadata.root:
               counterexample: >-
                 A dynamic admin screen that needs a code change and a redeploy to show
                 a newly declared field.
+              children:
+                - requirement.functional:
+                    name: metadataDrivenCrud
+                    title: Metadata-driven CRUD
+                    level: 3
+                    status: live
+                    statement: >-
+                      Creating, reading, updating and deleting a declared object works
+                      from the declaration alone, with no generated code in the path.
+                    counterexample: >-
+                      A newly declared object that cannot be stored or listed until
+                      something has been generated and deployed.
+
+                - requirement.functional:
+                    name: typedQueryAndFilter
+                    title: Typed query and filter
+                    level: 3
+                    status: live
+                    statement: >-
+                      A caller filters and sorts by declared fields only, and an
+                      undeclared or disallowed one is refused rather than ignored.
+                    counterexample: >-
+                      A filter naming a field nobody declared, quietly returning every
+                      row instead of being refused.
+                    notes: >-
+                      Refused rather than ignored is the load-bearing half. Dropping an
+                      unrecognised filter is the fail-OPEN reading: the caller believes
+                      the result is narrowed, and it is the whole table.
+
+                - requirement.functional:
+                    name: validationEnforcement
+                    title: Validation enforcement
+                    level: 3
+                    status: live
+                    statement: >-
+                      A declared constraint is applied to a value at the moment it
+                      arrives, by the runtime itself.
+                    counterexample: >-
+                      A value that breaks a declared rule, stored anyway, and found only
+                      when something downstream chokes on it.
+                    description: >-
+                      Covers applying a rule at run time. Declaring the rule once so it
+                      can be applied everywhere is constraints, under declare.
+
+                - requirement.functional:
+                    name: relationshipNavigation
+                    title: Relationship navigation
+                    level: 3
+                    status: live
+                    statement: >-
+                      A declared relationship can be traversed at run time, from one row
+                      to the rows it relates to, without hand-written join code.
+                    counterexample: >-
+                      Reaching an order's lines needing a query somebody wrote by hand,
+                      restating a join the model already describes.
 
           - requirement.functional:
               name: driftDetection
