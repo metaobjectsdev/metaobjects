@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from metaobjects.naming import DEFAULT_COLUMN_NAMING
+
 
 @dataclass
 class GenConfig:
@@ -23,5 +25,12 @@ class GenConfig:
     # maps a declaring metadata package ("acme::shop") to the Python import module; with a
     # single ``provided_enum_namespace`` fallback for the one-module case. A referenced
     # @provided enum whose package resolves to no module is a codegen-time error.
+    # How a field with no explicit `@column` becomes a physical column name
+    # ("literal" | "snake_case" | "kebab-case"). Config, never metadata: the same model
+    # must be able to drive a snake_case schema and a literal-column one. Defaults to
+    # `literal`, this port's historical behaviour — but `meta migrate`, which owns
+    # schema for EVERY port (ADR-0015), defaults to `snake_case`, so a project whose
+    # tables it created wants `snake_case` here or an explicit `@column` per field.
+    column_naming: str = DEFAULT_COLUMN_NAMING
     provided_enum_namespace: str | None = None
     provided_enum_packages: dict[str, str] = field(default_factory=dict)

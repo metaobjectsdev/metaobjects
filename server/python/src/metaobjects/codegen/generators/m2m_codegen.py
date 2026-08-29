@@ -26,6 +26,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from metaobjects.meta.core.field import field_constants as fc
+from metaobjects.naming import (
+    DEFAULT_COLUMN_NAMING,
+    apply_column_naming_strategy,
+    resolve_column_name,
+)
 from metaobjects.meta.core.field.meta_field import MetaField
 from metaobjects.meta.meta_data import MetaData
 from metaobjects.meta.core.identity.identity_constants import (
@@ -92,15 +97,18 @@ def _physical_table(entity: MetaObject) -> str:
     return entity.name
 
 
-def _column_of(field: MetaField | None, fallback: str) -> str:
-    """Physical column name for a metadata field name: its ``@column`` override,
-    else the field's own name. Mirrors the runtime ``object_manager._column_of``
-    (no implicit snake_case — the metadata field name IS the column unless
-    ``@column`` overrides)."""
+def _column_of(
+    field: MetaField | None, fallback: str, strategy: str = DEFAULT_COLUMN_NAMING
+) -> str:
+    """Physical column name for a junction FK. Delegates to the shared
+    :func:`metaobjects.naming.resolve_column_name` — the SAME resolver the runtime uses,
+    so generated junction SQL and runtime SQL cannot disagree about a column name.
+
+    *fallback* covers the case where the field could not be resolved at all; it is a
+    bare metadata name, so it goes through the strategy too."""
     if field is None:
-        return fallback
-    col = field.attrs().get(fc.FIELD_ATTR_COLUMN)
-    return col if isinstance(col, str) and col else field.name
+        return apply_column_naming_strategy(fallback, strategy)
+    return resolve_column_name(field, strategy)
 
 
 def _field_named(entity: MetaObject, field_name: str) -> MetaField | None:
@@ -144,7 +152,9 @@ def m2m_relationships(entity: MetaObject) -> list[MetaRelationship]:
 
 
 def resolve_m2m_descriptors(
-    entity: MetaObject, object_index: dict[str, MetaObject]
+    entity: MetaObject,
+    object_index: dict[str, MetaObject],
+    column_naming: str = DEFAULT_COLUMN_NAMING,
 ) -> list[M2mDescriptor]:
     """Resolve every M:N navigation on *entity* into a build-time descriptor.
 
@@ -181,11 +191,12 @@ def resolve_m2m_descriptors(
                 target_plural=plural_lowercase(target.name),
                 junction_table=_physical_table(junction),
                 target_table=_physical_table(target),
-                source_column=_column_of(source_fk, fields.source_field),
-                target_column=_column_of(target_fk, fields.target_field),
+                source_column=_column_of(source_fk, fields.source_field, column_naming),
+                target_column=_column_of(target_fk, fields.target_field, column_naming),
                 target_pk_column=_column_of(
                     _field_named(target, pk_field_name(target)),
                     pk_field_name(target),
+                    column_naming,
                 ),
                 symmetric=rel.symmetric(),
             )

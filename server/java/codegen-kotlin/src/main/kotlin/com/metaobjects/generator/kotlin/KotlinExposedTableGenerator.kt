@@ -42,6 +42,22 @@ import com.metaobjects.generator.util.GeneratedFileWriter
  */
 open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject>() {
 
+    /**
+     * The project's column-naming strategy for fields carrying no explicit `@column`,
+     * from the `columnNaming` generator arg
+     * (`<args><columnNaming>literal</columnNaming></args>` in the pom). Values match the
+     * cross-port vocabulary: `snake_case` (this port's default, and its historical
+     * behaviour), `literal`, `kebab-case`.
+     *
+     * It is CONFIG, not metadata — ADR-0023 does not apply. The same model must be able
+     * to drive a snake_case Postgres schema and a literal-column one, which is precisely
+     * why the strategy lives beside the generator rather than in the metadata, and why
+     * the byte-gated registry prose for `@column` describes it as the default *"via
+     * columnNamingStrategy"*.
+     */
+    protected fun columnNaming(): String =
+        getArg(ARG_COLUMN_NAMING, KotlinGenUtil.DEFAULT_COLUMN_NAMING)
+
     override fun getFilterClass(): Class<MetaObject> = MetaObject::class.java
 
     override fun execute(loader: MetaDataLoader) {
@@ -616,7 +632,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                     // when cross-package) via crossPackageEnumImports above.
                     enumColumnSpec(field, entity)
                 } else {
-                    KotlinTypeMapper.exposedColumnSpec(field)
+                    KotlinTypeMapper.exposedColumnSpec(field, KotlinGenUtil.resolveColumnName(field, columnNaming()))
                 }
                 val withAuto = when {
                     isPk && incrementPk -> "$baseSpec.autoIncrement()"
@@ -647,7 +663,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                     // enums take the customEnumeration form here too.
                     enumColumnSpec(field, entity)
                 } else {
-                    KotlinTypeMapper.exposedColumnSpec(field)
+                    KotlinTypeMapper.exposedColumnSpec(field, KotlinGenUtil.resolveColumnName(field, columnNaming()))
                 }
                 append("    val ${KotlinNaming.safeColumnProperty(field.name)} = $baseSpec.nullable()\n")
             }
@@ -750,7 +766,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 val parentName = field.name
                 val parentNullable = parentName !in primaryFieldNames &&
                     !KotlinGenUtil.isRequiredField(field)
-                val colName = KotlinGenUtil.camelToSnake(parentName)
+                val colName = KotlinGenUtil.resolveColumnName(field, columnNaming())
                 // Jackson codec: a Map<String, V> stored in one JSONB column, encoded/decoded via
                 // the shared metaJsonbMapper (MetaJsonbMapper.kt support file). A TypeReference
                 // captures the erased generic so the read decodes back to Map<String, V> — NOT the
@@ -771,10 +787,13 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 val target = KotlinGenUtil.resolveObjectByShortOrFqn(loader, ref) ?: continue
                 for (subField in target.metaFields) {
                     val propertyName = parentName + subField.name.replaceFirstChar { it.uppercase() }
-                    // Physical column name: snake-join parent + sub-field, both snake_case-d.
+                    // Physical column name: the parent's resolved column + "_" + the
+                    // sub-field's. Both halves go through resolveColumnName, so an explicit
+                    // `@column` on either wins — the same rule as the TS reference's
+                    // flattenObjectField (`resolveColumnName(field, strategy) + "_" + inner.name`).
                     // E.g. parent "homeAddress" + sub "streetLine1" → "home_address_street_line1".
-                    val colName = KotlinGenUtil.camelToSnake(parentName) + "_" +
-                        KotlinGenUtil.camelToSnake(subField.name)
+                    val colName = KotlinGenUtil.resolveColumnName(field, columnNaming()) + "_" +
+                        KotlinGenUtil.resolveColumnName(subField, columnNaming())
                     val baseSpec = KotlinTypeMapper.exposedColumnSpec(subField, colName)
                     // Sub-column is nullable iff the parent is nullable OR the sub-field itself is.
                     val nullable = parentNullable || !KotlinGenUtil.isRequiredField(subField)
@@ -792,7 +811,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
                 // that plugin is enabled every VO carrying a java.util.UUID / java.time.* /
                 // java.math.BigDecimal / java.net.* field fails to compile. Jackson round-trips them
                 // via its kotlin + jsr310 modules with zero per-type plumbing.
-                val colName = KotlinGenUtil.camelToSnake(parentName)
+                val colName = KotlinGenUtil.resolveColumnName(field, columnNaming())
                 val ref = readObjectRef(field)
                 val target = ref?.let { KotlinGenUtil.resolveObjectByShortOrFqn(loader, it) }
                 val decode = if (target != null) {
@@ -848,6 +867,10 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
     // `protected companion` (was `private`) so subclasses overriding [buildObjectColumns] can
     // reference the @storage vocabulary constants.
     protected companion object {
+
+        /** Generator arg naming the column-naming strategy (see [columnNaming]). */
+        const val ARG_COLUMN_NAMING = "columnNaming"
+
         /** Cross-language @storage attr on field.object — values: flattened | jsonb (default). */
         const val ATTR_STORAGE = "storage"
         const val STORAGE_FLATTENED = "flattened"
@@ -1195,7 +1218,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val targetTable = PackageMapping.splitFqn(target.name).second + "Table"
         val relShortName = rel.shortName ?: rel.name
         val propertyName = readColumnAttr(rel) ?: (relShortName + "Id")
-        val colName = KotlinGenUtil.camelToSnake(propertyName)
+        val colName = KotlinGenUtil.applyColumnNamingStrategy(propertyName, columnNaming())
         val refSuffix = referentialActionSuffix(rel.onDeleteRaw, rel.onUpdateRaw)
         return FkColumnSpec(
             propertyName = propertyName,
@@ -1224,7 +1247,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
         val ownerShort = PackageMapping.splitFqn(owner.name).second
         val ownerTable = ownerShort + "Table"
         val propertyName = ownerShort.replaceFirstChar { it.lowercaseChar() } + "Id"
-        val colName = KotlinGenUtil.camelToSnake(propertyName)
+        val colName = KotlinGenUtil.applyColumnNamingStrategy(propertyName, columnNaming())
         val refSuffix = referentialActionSuffix(rel.onDeleteRaw, rel.onUpdateRaw)
         return FkColumnSpec(
             propertyName = propertyName,
@@ -1513,7 +1536,7 @@ open class KotlinExposedTableGenerator : MultiFileDirectGeneratorBase<MetaObject
     private fun enumColumnSpec(field: EnumField, entity: MetaObject): String {
         val enumCn = KotlinTypeMapper.enumTypeName(field, entity)
             ?: error("enumTypeName returned null for EnumField '${field.name}' on ${entity.name}")
-        val colName = KotlinGenUtil.camelToSnake(field.name)
+        val colName = KotlinGenUtil.resolveColumnName(field, columnNaming())
         val simple = enumCn.simpleName
         val intMap = readIntValueMap(field)
             ?: return "enumerationByName(\"$colName\", ${KotlinTypeMapper.ENUM_VARCHAR_LEN}, $simple::class)"

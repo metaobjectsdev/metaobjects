@@ -7,6 +7,7 @@
 // keeps codegen + verify only. There is no `migrate` / `--from-db` surface here.
 
 using MetaObjects.Cli;
+using MetaObjects.Codegen;
 
 if (args.Length == 0)
 {
@@ -49,6 +50,7 @@ static int RunGen(string[] rest)
     string? outDir = null;
     string ns = GenCommand.DefaultNamespace;
     bool emitAbstractShapes = false;
+    string? columnNamingRaw = null;
     bool list = false;
     string? generatorsCsv = null;
     string? templateRoot = null;
@@ -62,7 +64,27 @@ static int RunGen(string[] rest)
         else if (rest[i] == "--template-root" && i + 1 < rest.Length) templateRoot = rest[++i];
         else if (rest[i] == "--template-spec" && i + 1 < rest.Length) templateSpecPath = rest[++i];
         else if (rest[i] == "--emit-abstract-shapes") emitAbstractShapes = true;
+        else if (rest[i] == "--column-naming" && i + 1 < rest.Length) columnNamingRaw = rest[++i];
         else if (!rest[i].StartsWith('-')) metadataDir ??= rest[i];
+    }
+
+    // How a field with NO explicit `@column` becomes a physical column name. The
+    // strategy has always existed on GenConfig and every generator honours it; the CLI
+    // simply never set it, so a `dotnet meta gen` adopter was pinned to Literal with no
+    // way out. That is a break rather than a preference: schema is Node-owned
+    // (ADR-0015) and `meta migrate` defaults to snake_case, so a multi-word field
+    // produced `[Column("createdAt")]` against a database column `created_at`.
+    //
+    // An unknown value is a usage error, never a silent fallback to the default — a
+    // typo'd strategy would otherwise generate a whole entity tree bound to the wrong
+    // columns and report success.
+    var columnNaming = ColumnNamingStrategy.Literal;
+    if (columnNamingRaw is not null && !TryParseColumnNaming(columnNamingRaw, out columnNaming))
+    {
+        Console.Error.WriteLine(
+            $"error: unknown --column-naming \"{columnNamingRaw}\"; expected one of: " +
+            "literal, snake_case, kebab-case");
+        return 2;
     }
 
     // `--list` — discoverability surface (ADR-0021 D3). Print and exit 0, no codegen.
@@ -81,7 +103,7 @@ static int RunGen(string[] rest)
     // first-run case where BOTH are missing.
     if (outDir is null)
     {
-        Console.Error.WriteLine("usage: dotnet meta gen <metadataDir> --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--template-spec <json>] [--emit-abstract-shapes]");
+        Console.Error.WriteLine("usage: dotnet meta gen <metadataDir> --out <dir> [--namespace <ns>] [--generators <a,b,c>] [--template-root <dir>] [--template-spec <json>] [--emit-abstract-shapes] [--column-naming literal|snake_case|kebab-case]");
         Console.Error.WriteLine("       dotnet meta gen --list");
         return 2;
     }
@@ -113,9 +135,11 @@ static int RunGen(string[] rest)
     var outcome = resolvedMeta.Files is { } files
         ? GenCommand.Run(
             MetaObjects.Loader.MetaDataLoader.FromUris(files.Select(f => new Uri(f)).ToList()),
-            outDir, ns, emitAbstractShapes, generatorNames, templateRoot, templateSpecPath, projectRoot)
+            outDir, ns, emitAbstractShapes, generatorNames, templateRoot, templateSpecPath, projectRoot,
+            columnNaming)
         : GenCommand.Run(
-            resolvedMeta.Directory, outDir, ns, emitAbstractShapes, generatorNames, templateRoot, templateSpecPath);
+            resolvedMeta.Directory, outDir, ns, emitAbstractShapes, generatorNames, templateRoot, templateSpecPath,
+            columnNaming);
     if (!outcome.Ok)
     {
         foreach (var e in outcome.LoadErrors) Console.Error.WriteLine($"  load error: {e}");
@@ -217,6 +241,23 @@ static int RunDocs(string[] rest)
 // the process — callers may treat the result as always-present and keep
 // their existing (now-unreachable-when-omitted) null checks for the OTHER
 // positional/option they still require.
+/// <summary>
+/// Parse a <c>--column-naming</c> value into its <see cref="ColumnNamingStrategy"/>.
+/// The spellings are the cross-port ones (TS <c>metaobjects.config.ts</c>
+/// <c>columnNamingStrategy</c>, Kotlin's <c>columnNaming</c> generator arg), not
+/// .NET enum names, so one vocabulary reads the same in every port's config.
+/// </summary>
+static bool TryParseColumnNaming(string raw, out ColumnNamingStrategy strategy)
+{
+    switch (raw)
+    {
+        case "literal":     strategy = ColumnNamingStrategy.Literal;   return true;
+        case "snake_case":  strategy = ColumnNamingStrategy.SnakeCase; return true;
+        case "kebab-case":  strategy = ColumnNamingStrategy.KebabCase; return true;
+        default:            strategy = ColumnNamingStrategy.Literal;   return false;
+    }
+}
+
 static ResolvedMetadata ResolveMetadataDirOrExit(string? metadataDir)
 {
     if (metadataDir is not null) return new ResolvedMetadata(metadataDir, null);

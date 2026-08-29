@@ -358,7 +358,7 @@ object KotlinTypeMapper {
      * the two-arg overload [exposedColumnSpec] and pass the column name explicitly.
      */
     fun exposedColumnSpec(field: MetaField<*>): String =
-        exposedColumnSpec(field, KotlinGenUtil.camelToSnake(field.name))
+        exposedColumnSpec(field, KotlinGenUtil.resolveColumnName(field))
 
     /**
      * Return the fully-qualified import required for the Exposed column function this

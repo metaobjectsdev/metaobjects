@@ -67,9 +67,10 @@ public static class GenCommand
     /// </summary>
     public static Outcome Run(
         string metadataDir, string outDir, string ns, bool emitAbstractShapes,
-        IReadOnlyList<string>? generatorNames, string? templateRoot, string? templateSpecPath = null)
+        IReadOnlyList<string>? generatorNames, string? templateRoot, string? templateSpecPath = null,
+        ColumnNamingStrategy columnNaming = ColumnNamingStrategy.Literal)
         => Run(MetaDataLoader.FromDirectory(metadataDir), outDir, ns, emitAbstractShapes,
-            generatorNames, templateRoot, templateSpecPath, ProjectRootFor(metadataDir));
+            generatorNames, templateRoot, templateSpecPath, ProjectRootFor(metadataDir), columnNaming);
 
     /// <summary>
     /// The project a metadata directory belongs to: its PARENT, i.e. the directory
@@ -96,7 +97,8 @@ public static class GenCommand
     public static Outcome Run(
         LoadResult load, string outDir, string ns, bool emitAbstractShapes,
         IReadOnlyList<string>? generatorNames, string? templateRoot, string? templateSpecPath = null,
-        string? projectRoot = null)
+        string? projectRoot = null,
+        ColumnNamingStrategy columnNaming = ColumnNamingStrategy.Literal)
     {
         var loadErrors = load.Errors.Select(e => e.Code.ToString()).ToList();
         if (loadErrors.Count > 0)
@@ -137,6 +139,10 @@ public static class GenCommand
             Namespace = ns,
             EmitAbstractShapes = emitAbstractShapes,
             GenStateDir = genStateDir,
+            // How a field with no explicit `@column` becomes a column name. Defaults to
+            // Literal (EF's property=column convention) — this port's historical
+            // behaviour — and is selected per project with `--column-naming`.
+            ColumnNamingStrategy = columnNaming,
         };
         CodegenRunner.RunResult result;
         try

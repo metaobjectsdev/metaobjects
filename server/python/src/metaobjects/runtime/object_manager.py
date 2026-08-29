@@ -36,6 +36,7 @@ from ..meta.meta_root import MetaRoot
 from ..meta.core.object.meta_object import MetaObject
 from ..meta.core.field.meta_field import MetaField
 from ..meta.core.field import field_constants as fc
+from ..naming import DEFAULT_COLUMN_NAMING, resolve_column_name
 from ..meta.core.identity import identity_constants as ic
 from ..meta.persistence.db import db_constants as dbc
 from ..meta.persistence.source.meta_source import MetaSource
@@ -176,9 +177,21 @@ class PostgresDriver:
 class ObjectManager:
     """Method-based read API. Translates Filter dicts → parameterized SQL."""
 
-    def __init__(self, root: MetaRoot, driver: PostgresDriver) -> None:
+    def __init__(
+        self,
+        root: MetaRoot,
+        driver: PostgresDriver,
+        column_naming: str = DEFAULT_COLUMN_NAMING,
+    ) -> None:
         self._root = root
         self._driver = driver
+        # How a field with no explicit `@column` becomes a physical column name.
+        # Config, never metadata: the same model must be able to drive a snake_case
+        # schema and a literal-column one. Defaults to `literal`, this port's
+        # historical behaviour — but note `meta migrate`, which owns schema for EVERY
+        # port (ADR-0015), defaults to `snake_case`, so a project whose tables it
+        # created wants `snake_case` here or an explicit `@column` per field.
+        self._column_naming = column_naming
         self._entity_by_name: dict[str, MetaObject] = {}
         # ADR-0039 sanctioned own: top-level entity scan on the loader ROOT
         # (metadata.root is never extended, so own == effective) — mirrors the TS
@@ -278,7 +291,7 @@ class ObjectManager:
             # model, which carries derived fields) must not try to INSERT it; drop it here.
             if f.is_derived():
                 continue
-            insert_cols.append(_column_of(f))
+            insert_cols.append(_column_of(f, self._column_naming))
             params.append(_coerce_write_value(f, raw))
 
         # RETURNING the physical column set so the inserted row — including any
@@ -287,8 +300,8 @@ class ObjectManager:
         # column on the write table (it is computed by the replica view), so it is
         # excluded from RETURNING; the write-through re-read below fetches it via the view.
         returning_fields = [f for f in entity.fields() if not f.is_derived()]
-        all_cols = [_column_of(f) for f in returning_fields]
-        col_to_field = {_column_of(f): f.name for f in returning_fields}
+        all_cols = [_column_of(f, self._column_naming) for f in returning_fields]
+        col_to_field = {_column_of(f, self._column_naming): f.name for f in returning_fields}
 
         if insert_cols:
             col_list = ", ".join(_q(c) for c in insert_cols)
@@ -355,7 +368,7 @@ class ObjectManager:
         entity = self._require_entity(entity_name)
         table = self._table_name(entity)
         pk_field = self._primary_pk_field(entity)
-        pk_col = _column_of(entity.find_field(pk_field))
+        pk_col = _column_of(entity.find_field(pk_field), self._column_naming)
 
         # #203 — @autoSet: bump every onUpdate column to now(), and NEVER rewrite an
         # onCreate column — strip it even if the caller supplied a (stale) value.
@@ -389,7 +402,7 @@ class ObjectManager:
             # UPDATE it; drop it from the SET list.
             if f.is_derived():
                 continue
-            set_cols.append(_column_of(f))
+            set_cols.append(_column_of(f, self._column_naming))
             params.append(_coerce_write_value(f, raw))
         if not set_cols:
             # No columns to set → just read the (scoped) row back by PK (no-op update).
@@ -400,13 +413,13 @@ class ObjectManager:
         # the write table (computed by the replica view); the write-through re-read below
         # fetches them via the view.
         returning_fields = [f for f in entity.fields() if not f.is_derived()]
-        all_cols = [_column_of(f) for f in returning_fields]
-        col_to_field = {_column_of(f): f.name for f in returning_fields}
+        all_cols = [_column_of(f, self._column_naming) for f in returning_fields]
+        col_to_field = {_column_of(f, self._column_naming): f.name for f in returning_fields}
         assignments = ", ".join(f"{_q(c)} = %s" for c in set_cols)
         params.append(_coerce_write_value(entity.find_field(pk_field), id_value))
         where = f"{_q(pk_col)} = %s"
         if tph is not None:
-            where += f" AND {_q(_column_of(entity.find_field(tph.field)))} = %s"
+            where += f" AND {_q(_column_of(entity.find_field(tph.field), self._column_naming))} = %s"
             params.append(tph.value)
         sql = (
             f"UPDATE {_q(table)} SET {assignments} WHERE {where} "
@@ -456,14 +469,14 @@ class ObjectManager:
         entity = self._require_entity(entity_name)
         table = self._table_name(entity)
         pk_field = self._primary_pk_field(entity)
-        pk_col = _column_of(entity.find_field(pk_field))
+        pk_col = _column_of(entity.find_field(pk_field), self._column_naming)
         params: list[Any] = [_coerce_write_value(entity.find_field(pk_field), id_value)]
         where = f"{_q(pk_col)} = %s"
         # FR-017 TPH: a subtype delete is scoped to its discriminator (cross-subtype
         # delete matches no row → False, mirroring the per-subtype route's 404).
         tph = tph_subtype_of(entity)
         if tph is not None:
-            where += f" AND {_q(_column_of(entity.find_field(tph.field)))} = %s"
+            where += f" AND {_q(_column_of(entity.find_field(tph.field), self._column_naming))} = %s"
             params.append(tph.value)
         sql = f"DELETE FROM {_q(table)} WHERE {where}"
         return self._driver.execute_rowcount(sql, tuple(params)) > 0
@@ -482,14 +495,14 @@ class ObjectManager:
         # derived origin.* columns), else the entity's own primary source. All effective
         # fields (incl. derived) are selected — the view exposes them.
         table = self._read_source_name(entity)
-        cols = [_column_of(f) for f in entity.fields()]
+        cols = [_column_of(f, self._column_naming) for f in entity.fields()]
         sql = f'SELECT {", ".join(_q(c) for c in cols)} FROM {_q(table)}'
         params: list[Any] = []
         # FR-017 TPH: a subtype read is scoped to its discriminator value (a row of
         # a different subtype is invisible); the base entity (no @discriminatorValue)
         # reads polymorphically across the single table.
         filter = self._scope_filter(filter, tph_subtype_of(entity))
-        where = _compile_filter(filter, entity) if filter else None
+        where = _compile_filter(filter, entity, self._column_naming) if filter else None
         if where is not None:
             sql += " WHERE " + where[0]
             params.extend(where[1])
@@ -497,7 +510,7 @@ class ObjectManager:
             order_parts = []
             for field_name, direction in sort:
                 f = entity.find_field(field_name)
-                col = _column_of(f) if f is not None else field_name
+                col = _column_of(f, self._column_naming) if f is not None else field_name
                 d = "DESC" if direction.lower() == "desc" else "ASC"
                 order_parts.append(f"{_q(col)} {d}")
             if order_parts:
@@ -509,7 +522,7 @@ class ObjectManager:
         result = self._driver.select(sql, tuple(params))
         # Map raw column → metadata field name for cross-port row-shape parity.
         # Values stay native (ADR-0019); the boundary canonicalizes them.
-        col_to_field = {_column_of(f): f.name for f in entity.fields()}
+        col_to_field = {_column_of(f, self._column_naming): f.name for f in entity.fields()}
         self.last_column_oids = {
             col_to_field.get(c, c): oid for c, oid in result.column_oids.items()
         }
@@ -528,7 +541,7 @@ class ObjectManager:
         sql = f"SELECT COUNT(*) FROM {_q(table)}"
         params: list[Any] = []
         filter = self._scope_filter(filter, tph_subtype_of(entity))  # FR-017 TPH subtype scope
-        where = _compile_filter(filter, entity) if filter else None
+        where = _compile_filter(filter, entity, self._column_naming) if filter else None
         if where is not None:
             sql += " WHERE " + where[0]
             params.extend(where[1])
@@ -670,7 +683,7 @@ class ObjectManager:
             raise ValueError(
                 f"Junction '{junction.name}' has no field '{field_name}'"
             )
-        return _column_of(f)
+        return _column_of(f, self._column_naming)
 
     def primary_key_field(self, entity_name: str) -> str:
         """The single-field primary-key NAME for an entity, from its
@@ -695,7 +708,9 @@ class ObjectManager:
 # ----------------------------------------------------------------------------
 
 
-def _compile_filter(f: Filter | None, entity: MetaObject) -> tuple[str, list[Any]] | None:
+def _compile_filter(
+    f: Filter | None, entity: MetaObject, column_naming: str = DEFAULT_COLUMN_NAMING
+) -> tuple[str, list[Any]] | None:
     if not f:
         return None
     # Top-level `and: [filter, filter, ...]` combinator.
@@ -703,7 +718,7 @@ def _compile_filter(f: Filter | None, entity: MetaObject) -> tuple[str, list[Any
         parts: list[str] = []
         params: list[Any] = []
         for child in f["and"]:
-            compiled = _compile_filter(child, entity)
+            compiled = _compile_filter(child, entity, column_naming)
             if compiled is None:
                 continue
             parts.append("(" + compiled[0] + ")")
@@ -716,7 +731,7 @@ def _compile_filter(f: Filter | None, entity: MetaObject) -> tuple[str, list[Any
     params = []
     for field_name, ops in f.items():
         mf = entity.find_field(field_name)
-        col = _column_of(mf) if mf is not None else field_name
+        col = _column_of(mf, column_naming) if mf is not None else field_name
         if not isinstance(ops, dict):
             # Shortcut: {field: value} → equality. Encoded like any other bound
             # value (see _op_clause) so an int-backed enum reaches SQL as its int.
@@ -992,11 +1007,13 @@ def _parse_datetime(text: str, *, tz_aware: bool) -> _dt.datetime:
     return dt.replace(tzinfo=None)
 
 
-def _column_of(field: MetaField | None) -> str:
+def _column_of(field: MetaField | None, strategy: str = DEFAULT_COLUMN_NAMING) -> str:
+    """Physical column for a field. Module-level shim over the shared
+    :func:`metaobjects.naming.resolve_column_name` so the runtime and codegen cannot
+    drift on what a column is called."""
     if field is None:
         return ""
-    col = field.get_meta_attr(fc.FIELD_ATTR_COLUMN)  # ADR-0039 resolving: @column may be inherited
-    return col if isinstance(col, str) and col else field.name
+    return resolve_column_name(field, strategy)
 
 
 def _q(ident: str) -> str:

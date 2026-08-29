@@ -1,5 +1,6 @@
 package com.metaobjects.manager.db;
 
+import com.metaobjects.database.ColumnNaming;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -49,6 +50,9 @@ public class SimpleMappingHandlerDB implements MappingHandler {
 	// MetaObject.getPrimaryRdbTableName() / .getPrimaryRdbViewName()), not
 	// from object-level @dbTable / @dbView (dropped in Stage 2).
 	public final static String COL_REF      = "column";
+
+	/** @see #setColumnNaming(String) */
+	private String columnNaming = ColumnNaming.DEFAULT;
 	public final static String SEQ_REF      = "dbSequence";
 	public final static String SEQ_START_REF   = "dbSeqStart";
 
@@ -504,7 +508,36 @@ public class SimpleMappingHandlerDB implements MappingHandler {
     protected String getColumnRef( MetaField mf )
     {
       String col = getPersistenceAttribute( mf, COL_REF );
-      return col != null ? col : mf.getName();
+      if ( col != null ) return col;
+      // No explicit @column: the project's column-naming strategy decides. Shared with
+      // the Kotlin Exposed generator via ColumnNaming so the two JVM ports cannot
+      // disagree about what a column is called — they used to, this one resolving
+      // literal while that one hardcoded snake_case.
+      return ColumnNaming.apply( mf.getName(), columnNaming );
+    }
+
+    /**
+     * How a field with NO explicit {@code @column} becomes a column name:
+     * {@code literal} (the default and this port's historical behaviour),
+     * {@code snake_case}, or {@code kebab-case}.
+     *
+     * <p>Worth setting: schema migrations are owned by the Node {@code meta} CLI for
+     * every port (ADR-0015) and {@code meta migrate} defaults to {@code snake_case}, so
+     * a database whose tables it created wants {@code snake_case} here — otherwise a
+     * multi-word field name queries a column that does not exist.</p>
+     */
+    public void setColumnNaming( String strategy )
+    {
+      // Validate eagerly: a typo caught at configuration time beats one that surfaces
+      // as a "column does not exist" on the first query of every multi-word field.
+      ColumnNaming.apply( "probe", strategy );
+      this.columnNaming = strategy;
+    }
+
+    /** @return the configured column-naming strategy (default {@link ColumnNaming#DEFAULT}). */
+    public String getColumnNaming()
+    {
+      return columnNaming;
     }
     
     /**

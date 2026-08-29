@@ -6,6 +6,7 @@ import com.metaobjects.field.MetaField
 import com.metaobjects.field.ObjectField
 import com.metaobjects.field.TimeField
 import com.metaobjects.field.TimestampField
+import com.metaobjects.database.ColumnNaming
 import com.metaobjects.generator.GeneratorException
 import com.metaobjects.loader.MetaDataLoader
 import com.metaobjects.`object`.MetaObject
@@ -310,6 +311,42 @@ public object KotlinGenUtil {
      * letter (the second rule splits "URLPath" into "url_path" rather than "u_r_l_path").
      * The whole result is then lowercased. Non-ASCII letters are passed through unchanged.
      */
+    /**
+     * The project's column-naming strategy: how a field with NO explicit `@column`
+     * becomes a physical column name.
+     *
+     * The vocabulary and the algorithm are the shared JVM ones
+     * ([com.metaobjects.database.ColumnNaming]), which the Java runtime's
+     * `ObjectManagerDB` also resolves through — the two JVM ports used to disagree,
+     * this one hardcoding snake_case and ignoring `@column`, that one resolving literal.
+     *
+     * This generator's DEFAULT stays `snake_case`, which is what it always emitted;
+     * the shared default is `literal`, which is what the runtime always resolved.
+     * Neither moves, because a default that moved would silently re-point generated
+     * tables or live queries at columns that do not exist.
+     */
+    const val COLUMN_NAMING_SNAKE_CASE: String = ColumnNaming.SNAKE_CASE
+    const val COLUMN_NAMING_LITERAL: String = ColumnNaming.LITERAL
+    const val COLUMN_NAMING_KEBAB_CASE: String = ColumnNaming.KEBAB_CASE
+    const val DEFAULT_COLUMN_NAMING: String = COLUMN_NAMING_SNAKE_CASE
+
+    /** Apply a column-naming strategy to a bare name. */
+    fun applyColumnNamingStrategy(name: String, strategy: String): String =
+        ColumnNaming.apply(name, strategy)
+
+    /**
+     * THE physical column name for a field: its explicit `@column` when present, else
+     * `field.name` through the project's strategy.
+     *
+     * Every column-name string this port emits goes through here. It used to be a bare
+     * [camelToSnake] of the field name at each site, which discarded `@column`
+     * entirely — so a field declaring one bound the WRONG column at runtime, silently.
+     *
+     * ADR-0039: read RESOLVING — `@column` may be inherited through `extends`.
+     */
+    fun resolveColumnName(field: MetaField<*>, strategy: String = DEFAULT_COLUMN_NAMING): String =
+        ColumnNaming.resolve(field, strategy)
+
     fun camelToSnake(name: String): String {
         if (name.isEmpty()) return name
         val sb = StringBuilder(name.length + 4)
