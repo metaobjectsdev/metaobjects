@@ -57,6 +57,11 @@ export default defineConfig({
 });
 ```
 
+The `.js` specifiers in this file's own imports are correct and are **not** what
+`extStyle` governs. `metaobjects.config.ts` is loaded by the CLI under Node, never by
+Turbopack; `extStyle` decides only how *generated* modules import each other. `meta eject`
+prints these lines for you — paste them as given.
+
 `<Entity>.meta.ts` deliberately does **not** get the directive. It is plain data with no
 hooks and no React import — imported *by* a client component, which under RSC is exactly
 where the boundary already is. The directive marks the boundary module, not everything
@@ -172,7 +177,7 @@ believes is good.
 Register the pool so the runtime can drain it before suspending:
 
 ```ts
-// lib/db.ts
+// src/lib/db.ts — the `@/lib/db` imported above, under the stock `@/*` → `./src/*` alias
 import { Pool } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { attachDatabasePool } from "@vercel/functions";
@@ -184,7 +189,7 @@ export const db = drizzle(pool);
 ```
 
 Two notes on scope. This is host guidance, not MetaObjects behaviour — the generated code
-never opens a connection, which is exactly why `lib/db.ts` is yours to write and why both
+never opens a connection, which is exactly why `src/lib/db.ts` is yours to write and why both
 `queriesFile` and `routesFileHono` take `db` as a parameter. And it applies to a **pooled
 TCP driver**; an HTTP-based driver (Neon serverless, PlanetScale) holds no socket between
 requests and needs none of this. Vercel's own connection-management documentation is the
