@@ -65,12 +65,19 @@ focus.
 | Level | What it is | Scale | May additionally carry |
 |---|---|---|---|
 | **L1 Solution** | the whole solution; at enterprise scale, one of several | enterprise | — |
-| **L2 Segment** | a major segmentation — an application, a library, a deployable | app / library | — |
+| **L2 Segment** | a major segmentation of the problem domain — a capability area, never a module | domain area | — |
 | **L3 Service** | a service-grain capability, as one testable statement | service | — |
 | **L4 Object** | the capability as it lands on a model **object** | object | `implementedBy` (object FQNs) |
 | **L5 Member** | the capability as it lands on a **field, view or identity** | member | `implementedBy` (dotted member refs) |
 
-`level`, `status`, `statement` and `violation` are **required at every level**, L1 included —
+**L1–L3 are problem-domain, and that is a contract rather than a preference.** `level`'s
+registered description — byte-gated in `expected-registry.json`, so every port carries it
+verbatim — reads: *"L1-L3 are levels of abstraction and ownership in the problem domain, NOT
+of code structure."* A directory, package, deployable or module is therefore not admissible at
+any of those tiers. The mechanical test: if a behaviour-preserving refactor would force a node
+to move, its level is wrong.
+
+`level`, `status`, `statement` and `counterexample` are **required at every level**, L1 included —
 the loader refuses a functional requirement missing any of them. The level changes only what
 is *additionally* legal. This is deliberate: "a requirement must be violable" is the rule
 that keeps the ledger from filling with descriptions, and a level-conditional carve-out
@@ -206,10 +213,22 @@ a dotted child-name path like any other, so no separate id scheme is needed.
 
 ### `status` is a closed enum
 
-`planned | live | partial`. An unknown value is a **hard error** — this is the one payload
-with controlled evidence behind it, and leaving it an unchecked string would let a typo
-silently disable it. There is no member meaning "retired": a requirement is prescriptive,
-so a capability that no longer applies is DELETED.
+`planned | live | partial | retired`. An unknown value is a **hard error** — this is the one
+payload with controlled evidence behind it, and leaving it an unchecked string would let a
+typo silently disable it.
+
+`retired` is prescriptive, which is what makes it admissible: the entry states *"this must
+not be rebuilt"* — a prohibition in force, falsifiable by one observable — rather than
+journalling what happened. It was restored in `0.24.2` because it is the one claim the
+controlled round did not refute: model-only agents flagged a deliberately-retired capability
+**0 times out of 24**, every run proposing to extend it, against ledger arms catching it
+**19 of 40**.
+
+A retired entry **may not carry `implementedBy`** (`ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS`,
+a LOAD error in all five ports): a retired capability has no implementation by definition, so
+the dangling-reference class is unreachable rather than tolerated. It may carry
+`supersededBy`, which is legal on `retired` only and RESOLVES like any other reference, so a
+supersession chain stays walkable.
 
 ### `implementedBy` resolution, severity conditional on status
 

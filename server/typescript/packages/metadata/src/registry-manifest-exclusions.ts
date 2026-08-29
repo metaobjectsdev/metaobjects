@@ -33,7 +33,7 @@
 //        - INHERITANCE_ANCHOR the `metadata.base` per-port abstract anchor (the
 //                           deferred `inheritsFrom` facet; other ports register
 //                           only the concrete `metadata.root`).
-//        - PRESENTATION_ONLY the 11 generic `view.*` controls (checkbox/date/…)
+//        - PRESENTATION_ONLY the 13 generic `view.*` controls (checkbox/date/…)
 //                           — a TS-web presentation facet (TS web client + TS
 //                           form codegen consume them; zero backend/codegen/
 //                           render consumers in any port), like the TS-only `D1`
@@ -127,7 +127,7 @@ export const EXCLUDED_PER_TYPE_ATTRS: ReadonlyMap<string, ExclusionReason> = new
 /**
  * `(type, subType)` rows carved OUT of the agreed vocabulary, with reason.
  * `metadata.base` is the per-port inheritance anchor (INHERITANCE_ANCHOR); the
- * 11 generic `view.*` controls are TS-web-presentation-only (PRESENTATION_ONLY).
+ * 13 generic `view.*` controls are TS-web-presentation-only (PRESENTATION_ONLY).
  * Returns the reason, or `undefined` for an INCLUDED (logical) row.
  */
 export function classifyTypeSubType(
