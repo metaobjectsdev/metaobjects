@@ -34,9 +34,7 @@ describe("reference-templates reader", () => {
     }
   });
 
-  // unskip in Task 6 — the `// targets:` header line is only present on `routes-hono`
-  // today; entity/queries/routes/barrel gain it in Task 6.
-  test.skip("every reference template parses as a module and declares its target", () => {
+  test("every reference template parses as a module and declares its target", () => {
     for (const name of REFERENCE_GENERATOR_NAMES) {
       const src = readReferenceTemplate(name);
       // A template with no `targets:` line leaves an adopter guessing what it is coupled to.
