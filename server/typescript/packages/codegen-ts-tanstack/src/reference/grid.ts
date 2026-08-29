@@ -32,6 +32,7 @@ import {
   isTphSubtype,
   CODEGEN_ATTR_EMIT_TANSTACK,
   CODEGEN_ATTR_EMIT_GRID,
+  withClientDirective,
 } from "@metaobjectsdev/codegen-ts";
 import {
   renderColumnsFile,
@@ -71,7 +72,10 @@ export const tanstackGrid = function tanstackGrid(opts?: TanstackGridOpts): Gene
     }
     return {
       path: entityOutputPath(ctx.renderContext.outputLayout, entity.package, `${entity.name}.columns.tsx`),
-      content: await formatTs(renderColumnsFile(entity, ctx.renderContext)),
+      content: withClientDirective(
+        await formatTs(renderColumnsFile(entity, ctx.renderContext)),
+        ctx.renderContext.clientDirective,
+      ),
     };
   });
   const generator: Generator = {

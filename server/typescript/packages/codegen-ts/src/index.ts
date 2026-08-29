@@ -252,3 +252,7 @@ export type {
   SweepOrphansArgs,
   SweepOrphansResult,
 } from "./orphan-sweep.js";
+
+// FR-040 §6.4 — the client-component directive for generated CLIENT artifacts.
+// Public so an OWNED generator applies it the same way the built-ins do.
+export { withClientDirective, CLIENT_DIRECTIVE } from "./client-directive.js";

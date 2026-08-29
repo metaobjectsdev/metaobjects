@@ -1,5 +1,7 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, entityMetaFileName, renderEntityMetaFile, servesReadApi, isTphSubtype, CODEGEN_ATTR_EMIT_TANSTACK } from "@metaobjectsdev/codegen-ts";
+import { perEntity, type Generator, type GeneratorFactory, formatTs, entityOutputPath, entityMetaFileName, renderEntityMetaFile, servesReadApi, isTphSubtype, CODEGEN_ATTR_EMIT_TANSTACK,
+  withClientDirective,
+} from "@metaobjectsdev/codegen-ts";
 import { renderHooksFile } from "./templates/hooks-file.js";
 
 export interface TanstackQueryOpts {
@@ -43,7 +45,12 @@ export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): G
       };
       return [metaFile, {
         path: entityOutputPath(ctx.renderContext.outputLayout, entity.package, `${entity.name}.hooks.ts`),
-        content: await formatTs(renderHooksFile(entity, ctx.renderContext)),
+        // Outside formatTs deliberately: the directive must stay the module's first
+        // token, and a formatter is entitled to move a leading string expression.
+        content: withClientDirective(
+          await formatTs(renderHooksFile(entity, ctx.renderContext)),
+          ctx.renderContext.clientDirective,
+        ),
       }];
     }),
   };

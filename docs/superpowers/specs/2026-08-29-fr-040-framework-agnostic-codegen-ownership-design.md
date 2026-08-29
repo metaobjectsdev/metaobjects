@@ -308,11 +308,41 @@ the agent could have done itself — which is the correct relationship.
    PASS, because the config is re-read under a fresh temp name each load while the
    `./codegen/generators/entity.js` it imports keeps its stable path in the module
    cache, so the second load silently re-uses the pre-edit generator.
-4. **Is `"use client"` ever right to emit by default?** Emitting it unconditionally is
-   harmless in non-RSC bundlers but provokes module-level-directive warnings in Rollup.
-   The §4.2 position is that the adopter owns this decision — but if the overwhelming
-   majority of React adopters want it, a default with an opt-out may serve better. Left
-   open deliberately; §4.2 does not depend on the answer.
+4. ~~**Is `"use client"` ever right to emit by default?**~~ **ANSWERED: a config knob,
+   `clientDirective`, defaulted OFF — and never a metamodel attribute.**
+
+   *Not metadata.* ADR-0037's step 0 settles it before "subtype or attribute?" — the
+   directive is a fact about the adopter's BUNDLER TOPOLOGY, not about the entity, and
+   nothing in the metamodel could derive it. Registered, every non-TS port would carry
+   vocabulary it can never dispatch on, which is exactly the `source.rdb @role` mistake
+   that retired four members in 0.21.0. It belongs beside `extStyle` and
+   `pluralizeCollections`, whose own doc comment states the rule: a per-port codegen
+   concern (ADR-0001) is config, not a metadata attribute, and carries no cross-port
+   conformance cost.
+
+   *Off by default.* The generated form/hook/grid modules genuinely ARE client
+   components, so the directive is a true statement about them — but it is only
+   REQUIRED under RSC, and elsewhere it is inert and warned about, so defaulting it on
+   would put noise in every generated UI file for the majority to save the minority one
+   line. The asymmetry that argued for defaulting on — a runtime error for RSC adopters
+   versus a build warning for everyone else — is **what FR-040 itself removed**: the
+   question was open because an RSC adopter had no seam at all. Now they have this flag,
+   or `meta eject form` and a one-line prepend. The open question answers itself once the
+   escape hatch exists.
+
+   *Flipping the default needs evidence, not a majority estimate.* The standard is
+   `extStyle` in 0.20.1, where the default moved because the documented quickstart
+   provably failed under a stock `tsc --init`. The equivalent trigger here would be the
+   quickstart failing on a default Next.js app.
+
+   Scope: one boolean, not per-generator granularity — all four current UI generators
+   emit genuinely client-only modules, and §6.1's "defer finer seams until an adopter
+   needs one" applies equally. `<Entity>.meta.ts` is deliberately NOT included: it is
+   plain data imported BY a client component, and in RSC the boundary is the importing
+   component, not everything it reaches. Applied via the exported `withClientDirective`
+   so an owned generator does it the same way; gated by
+   `codegen-ts-tanstack/test/client-directive.test.ts`, which asserts both halves —
+   OFF is byte-identical to omitted, ON is first-token and exactly once.
 
 ## 7. Process note
 

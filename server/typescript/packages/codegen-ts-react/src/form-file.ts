@@ -1,6 +1,6 @@
 import type { MetaObject } from "@metaobjectsdev/metadata";
 import { OBJECT_ATTR_DISCRIMINATOR } from "@metaobjectsdev/metadata";
-import { perEntity, type Generator, type GeneratorFactory, entityOutputPath, servesWriteApi, isProjection, isTphSubtype, CODEGEN_ATTR_EMIT_FORM } from "@metaobjectsdev/codegen-ts";
+import { perEntity, type Generator, type GeneratorFactory, entityOutputPath, servesWriteApi, isProjection, isTphSubtype, CODEGEN_ATTR_EMIT_FORM, withClientDirective } from "@metaobjectsdev/codegen-ts";
 import { renderFormFile } from "./templates/form-file.js";
 
 export interface FormFileOpts {
@@ -45,7 +45,10 @@ export const formFile = function formFile(opts?: FormFileOpts): Generator {
       }
       return {
         path: entityOutputPath(ctx.config.outputLayout ?? "flat", entity.package, `${entity.name}.form.tsx`),
-        content: renderFormFile(entity, ctx.renderContext),
+        content: withClientDirective(
+          renderFormFile(entity, ctx.renderContext),
+          ctx.renderContext.clientDirective,
+        ),
       };
     }),
   };

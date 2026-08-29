@@ -32,6 +32,7 @@ import {
   servesReadApi,
   isTphSubtype,
   CODEGEN_ATTR_EMIT_TANSTACK,
+  withClientDirective,
 } from "@metaobjectsdev/codegen-ts";
 import { renderHooksFile } from "@metaobjectsdev/codegen-ts-tanstack";
 
@@ -76,7 +77,10 @@ export const tanstackQuery = function tanstackQuery(opts?: TanstackQueryOpts): G
       };
       return [metaFile, {
         path: entityOutputPath(ctx.renderContext.outputLayout, entity.package, `${entity.name}.hooks.ts`),
-        content: await formatTs(renderHooksFile(entity, ctx.renderContext)),
+        content: withClientDirective(
+        await formatTs(renderHooksFile(entity, ctx.renderContext)),
+        ctx.renderContext.clientDirective,
+      ),
       }];
     }),
   };

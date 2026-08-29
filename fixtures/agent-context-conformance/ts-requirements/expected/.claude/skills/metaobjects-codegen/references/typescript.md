@@ -258,6 +258,11 @@ config value in `metaobjects.config.ts`:
   esbuild are documented to accept it and webpack needs `resolve.extensionAlias` to do the
   same. **If a generated import fails to resolve, set `extStyle: "none"` and retest** for
   your toolchain rather than assuming either setting from this list.
+- **`clientDirective`** — `true` prepends `"use client";` to the generated form, hooks,
+  columns and grid-hook modules. Defaults to `false`. **Set it if your framework compiles
+  server and client from one tree** (React Server Components — Next.js App Router and
+  friends); leave it off otherwise, where the directive is inert and some bundlers warn
+  about it.
 - **`outDir`** / **`targets`** — where output lands, per generator.
 - **`apiPrefix`**, **`dialect`** — route mounting and column mapping.
 
@@ -293,7 +298,24 @@ it is worth knowing which one you are in before you start**:
   Svelte or Angular instead of React, you are writing a renderer, and the honest move is
   to keep the generator's metadata walk and replace the render call entirely.
 
-For the wrap-the-output case:
+**`"use client"` needs no ejecting at all — it is a config knob.** The generated form,
+hooks, columns and grid-hook modules are client components; React Server Components
+frameworks (Next.js App Router and friends) require the directive saying so. Set it once:
+
+```ts
+export default defineConfig({
+  clientDirective: true,   // prepend `"use client";` to generated client artifacts
+  // ...
+});
+```
+
+Defaults to `false`, because the directive is only *required* under RSC and is inert
+(and warned about by some bundlers) everywhere else. It is applied ahead of the
+`@generated` header, exactly once, and only to the four client artifacts — the entity
+module, the query helpers and `<Entity>.meta.ts` are untouched, since `.meta.ts` is plain
+data and in RSC the boundary is the importing component, not everything it reaches.
+
+For the general wrap-the-output case — a directive or header MetaObjects does not model:
 
 ```ts
 // codegen/generators/form.ts — OWNED
@@ -302,7 +324,7 @@ import { renderFormFile } from "@metaobjectsdev/codegen-ts-react";
 // ...inside generate():
 if (!ctx.renderContext) throw new Error("renderContext is required (provided by runGen)");
 const body = renderFormFile(entity, ctx.renderContext);
-return { path, content: `"use client";\n` + body };   // your framework's requirement
+return { path, content: `// @my-framework:client\n` + body };
 ```
 
 You keep receiving upstream fixes to `renderFormFile` while owning the one line your

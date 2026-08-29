@@ -28,6 +28,7 @@ import {
   isProjection,
   isTphSubtype,
   CODEGEN_ATTR_EMIT_FORM,
+  withClientDirective,
 } from "@metaobjectsdev/codegen-ts";
 import { renderFormFile } from "@metaobjectsdev/codegen-ts-react";
 
@@ -71,8 +72,13 @@ export const formFile = function formFile(opts?: FormFileOpts): Generator {
       if (!ctx.renderContext) {
         throw new Error("form-file: renderContext is required (provided by runGen)");
       }
-      // The framework-coupled seam. Prepend a directive here if your toolchain needs one.
-      const body = renderFormFile(entity, ctx.renderContext);
+      // The framework-coupled seam. `withClientDirective` applies the project-level
+      // `clientDirective` config knob (FR-040 §6.4); for a directive your framework
+      // needs that MetaObjects does not model, prepend it right here.
+      const body = withClientDirective(
+        renderFormFile(entity, ctx.renderContext),
+        ctx.renderContext.clientDirective,
+      );
       return {
         path: entityOutputPath(ctx.config.outputLayout ?? "flat", entity.package, `${entity.name}.form.tsx`),
         content: body,
