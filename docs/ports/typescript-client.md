@@ -156,8 +156,10 @@ The URL grammar this fetcher must speak is defined in
 >
 > If your framework compiles server and client from one tree and resolves each half under different
 > export conditions — React Server Components, Angular universal, Qwik — an emitted client artifact
-> may need a marker directive. That is a one-line change in the generator you own:
-> `content = '"use client";\n' + renderFormFile(entity, ctx.renderContext)`. A resolution error in
+> may need a marker directive. That is a one-line change in the generator you own: inside its
+> existing `if (!ctx.renderContext) throw …` guard (every reference template has one — `ctx.renderContext`
+> is optional on the raw context), change only the `content:` line to
+> `content: '"use client";\n' + renderFormFile(entity, ctx.renderContext)`. A resolution error in
 > that situation often names a package that IS installed; read it as a boundary problem, not a
 > missing dependency. Full procedure: the `metaobjects-codegen` skill, "Your framework isn't the
 > default".

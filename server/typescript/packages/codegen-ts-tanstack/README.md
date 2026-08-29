@@ -62,8 +62,9 @@ the entity-module target's `importBase` when not); the grid-hook imports its sib
 Each of `tanstackQuery()`, `tanstackGrid()` and `tanstackGridHook()` has a reference template:
 `meta eject hooks` / `grid` / `grid-hook` copies one into `codegen/generators/` for you to own. Each
 renderer (`renderHooksFile`, `renderColumnsFile`, `renderGridHookFile`) is exported, so retargeting
-is usually a wrapper, not a rewrite — compose it and change the one step your framework needs, e.g.
-`content = '"use client";\n' + renderHooksFile(entity, ctx.renderContext)`.
+is usually a wrapper, not a rewrite — compose it and change the one step your framework needs.
+Inside the ejected file's existing `if (!ctx.renderContext) throw …` guard, change only the
+`content:` line, e.g. `content: '"use client";\n' + renderHooksFile(entity, ctx.renderContext)`.
 
 ## Pairs with
 

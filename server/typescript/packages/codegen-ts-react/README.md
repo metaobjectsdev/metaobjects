@@ -31,7 +31,8 @@ routed (relative when same target, the entity-module target's `importBase` when 
 `formFile()` has a reference template: `meta eject form` copies it into `codegen/generators/form.ts`
 for you to own. The emitted component is React with react-hook-form — if your framework needs a
 marker directive or a different import shape, compose the exported renderer and change that one
-step: `content = '"use client";\n' + renderFormFile(entity, ctx.renderContext)`.
+step. Inside the ejected file's existing `if (!ctx.renderContext) throw …` guard, change only the
+`content:` line: `content: '"use client";\n' + renderFormFile(entity, ctx.renderContext)`.
 
 ## Pairs with
 
