@@ -29,6 +29,78 @@ metadata.root:
         counterexample: >-
           A model that has to be restated by hand in each language, or generated code
           that stops compiling once the toolchain is removed.
+        children:
+          - requirement.functional:
+              name: declare
+              title: Declare the model
+              level: 2
+              status: live
+              statement: >-
+                A domain model is expressed once, in typed metadata, with enough
+                fidelity that every downstream artifact can be derived from it.
+              counterexample: >-
+                A model fact restated inside a generator, a migration or a
+                hand-written type because the metadata cannot say it.
+
+          - requirement.functional:
+              name: codegen
+              title: Codegen
+              level: 2
+              status: live
+              statement: >-
+                Every artifact derivable from the declaration is emitted as idiomatic
+                per-language code the adopter owns and may hand-edit.
+              counterexample: >-
+                An adopter hand-writing a foreign key, a CRUD route or a validator
+                chain the metadata already describes.
+
+          - requirement.functional:
+              name: runtimeMetadata
+              title: Runtime metadata
+              level: 2
+              status: live
+              statement: >-
+                Metadata loaded at runtime drives behaviour with no generated code in
+                the path.
+              counterexample: >-
+                A dynamic admin screen that needs a code change and a redeploy to show
+                a newly declared field.
+
+          - requirement.functional:
+              name: driftDetection
+              title: Drift detection
+              level: 2
+              status: live
+              statement: >-
+                Divergence between the declaration and what was built from it is
+                detected before it reaches production.
+              counterexample: >-
+                A renamed field that silently degrades a prompt, or a column the
+                database has and the model does not.
+
+          - requirement.functional:
+              name: promptConstruction
+              title: Prompt construction
+              level: 2
+              status: live
+              statement: >-
+                A prompt is code: its payload is a typed projection, its text is
+                external and provider-resolved, and its rendering is deterministic.
+              counterexample: >-
+                A whitespace change silently breaking an exact-prefix prompt-cache hit.
+
+          - requirement.functional:
+              name: governTheStandard
+              title: Govern the standard
+              level: 2
+              status: live
+              statement: >-
+                The registered vocabulary is identical in every port, changes only
+                deliberately, and records its retirements so they cannot be revived by
+                accident.
+              counterexample: >-
+                One attribute meaning three different things in three ports while every
+                gate reports green.
 
     - requirement.architectural:
         name: quality
