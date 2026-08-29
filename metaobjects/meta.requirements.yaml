@@ -175,7 +175,9 @@ metadata.root:
                     name: declaredPrompts
                     title: Declared prompts
                     level: 3
-                    status: live
+                    status: partial
+                    disposition: deferred
+                    trackedBy: ["metaobjectsdev/metaobjects#18"]
                     statement: >-
                       What a prompt sends to a model is a declared typed shape, so what
                       it sends is a fact about the model rather than a property of the
@@ -187,6 +189,12 @@ metadata.root:
                     description: >-
                       Covers declaring the payload and the response shape. Rendering
                       them and reading a reply back are under promptConstruction.
+                    notes: >-
+                      Partial, and the gap is one thing: a declared prompt cannot be
+                      discovered and registered by a host over an open protocol, so an
+                      LLM host still has to be told by hand what exists. Everything a
+                      prompt is declared FROM ships in all five ports. Deferred rather
+                      than accepted — it is wanted, it is not scheduled.
 
                 - requirement.functional:
                     name: governanceVocabulary
@@ -407,6 +415,24 @@ metadata.root:
                       Reaching an order's lines needing a query somebody wrote by hand,
                       restating a join the model already describes.
 
+                - requirement.functional:
+                    name: osgiRuntimeVariant
+                    title: OSGi runtime variant
+                    level: 3
+                    status: retired
+                    statement: >-
+                      Runtime metadata is consumable from inside a dynamic module
+                      container that can load and unload providers at runtime.
+                    counterexample: >-
+                      A metadata registry whose contents depend on which modules happen
+                      to be started.
+                    notes: >-
+                      Retired under ADR-0012. Nothing replaced it, which is why this
+                      entry carries no supersededBy: the requirement was withdrawn
+                      rather than re-homed. A registry whose vocabulary depends on load
+                      order is the opposite of the sealed, deliberately-agreed registry
+                      that later became the default.
+
           - requirement.functional:
               name: driftDetection
               title: Drift detection
@@ -467,6 +493,25 @@ metadata.root:
                     counterexample: >-
                       The only way to learn whether production matches the model being
                       to run a migration against production.
+
+                - requirement.functional:
+                    name: perPortMigrationEngines
+                    title: Per-port migration engines
+                    level: 3
+                    status: retired
+                    statement: >-
+                      Each language port computes and applies its own schema migrations
+                      from the declaration.
+                    counterexample: >-
+                      Two ports emitting different migrations for one declaration, so
+                      the database that results depends on who ran the tool.
+                    supersededBy: metaobjects.driftDetection.schemaMigration
+                    notes: >-
+                      Retired under ADR-0015: schema migration is owned by one shared
+                      engine. The per-port engines were removed, and with them the
+                      dev/test auto-create path, so runtime data access is now pure
+                      data access. Do not reintroduce a second migration engine in any
+                      port — the counterexample above is what it produces.
 
           - requirement.functional:
               name: promptConstruction

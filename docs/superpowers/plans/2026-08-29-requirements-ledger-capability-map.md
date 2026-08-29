@@ -92,7 +92,7 @@ L2    governTheStandard    L3  crossLanguageIdentity  vocabularyLifecycle
                                versioningAndRelease                             (3)
 ```
 
-**Architectural tree — 26 nodes.**
+**Architectural tree — 25 nodes.** (1 root + 7 characteristics + 17 claims.)
 
 ```
 L1  quality
@@ -115,7 +115,7 @@ L3  perPortMigrationEngines   under driftDetection, supersededBy metaobjects::sc
 L3  osgiRuntimeVariant        under runtimeMetadata, no supersededBy
 ```
 
-Total: **67 nodes**.
+Total: **66 nodes**.
 
 ---
 
@@ -1063,14 +1063,14 @@ MSG
 
 ---
 
-### Task 8: The eighteen quality claims at L3
+### Task 8: The seventeen quality claims at L3
 
 **Files:**
 - Modify: `metaobjects/meta.requirements.yaml`
 
 **Interfaces:**
 - Consumes: the seven L2 characteristics from Task 7.
-- Produces: eighteen L3 architectural nodes, named exactly as in the inventory. This completes the architectural tree; nothing goes below L3.
+- Produces: seventeen L3 architectural nodes, named exactly as in the inventory. This completes the architectural tree; nothing goes below L3.
 
 An architectural L3 must be **universally quantified** — "every X does Y" — because its check is universality, not existence. A statement about one place belongs in the functional tree.
 
@@ -1082,7 +1082,7 @@ An architectural L3 must be **universally quantified** — "every X does Y" — 
 | `wireContractStability` | Wire contract stability | every value crosses the wire in one agreed form regardless of which port serialised it |
 | `registryVocabularyParity` | Registry vocabulary parity | every port registers exactly the same vocabulary, proven by matching one manifest rather than by inspection |
 
-- [ ] **Step 2: Author the remaining fifteen**
+- [ ] **Step 2: Author the remaining fourteen**
 
 | parent | name | title | what it must promise |
 |---|---|---|---|
@@ -1106,11 +1106,11 @@ An architectural L3 must be **universally quantified** — "every X does Y" — 
 - [ ] **Step 3: Run the gate**
 
 Run: `bun scripts/check-requirements-ledger.ts`
-Expected: PASS — 65 entries (39 functional, 26 architectural), still 39 × `WARN_REQUIREMENT_NOTHING_IMPLEMENTS`.
+Expected: PASS — 64 entries (39 functional, 25 architectural), still 39 × `WARN_REQUIREMENT_NOTHING_IMPLEMENTS`.
 
 - [ ] **Step 4: Verify every architectural statement is universally quantified**
 
-Read the eighteen back. Any statement that describes one place rather than every place belongs in the functional tree — move it or rewrite it.
+Read the seventeen back. Any statement that describes one place rather than every place belongs in the functional tree — move it or rewrite it.
 
 - [ ] **Step 5: Commit**
 
@@ -1119,7 +1119,7 @@ git add metaobjects/meta.requirements.yaml
 git commit -m "$(cat <<'MSG'
 feat(requirements): the eighteen quality claims at L3
 
-Completes the architectural tree at 26 nodes. Each is universally quantified —
+Completes the architectural tree at 25 nodes. Each is universally quantified —
 "every X does Y" — because an architectural requirement's check is
 universality, not existence; a claim about one place belongs in the functional
 tree.
@@ -1149,7 +1149,7 @@ The ledger so far is all `live`. This task exercises the parts of the vocabulary
 
 - [ ] **Step 1: Add the retired migration-engine entry under `driftDetection`**
 
-`@supersededBy` is RESOLVED, so the target must exist in this ledger. A bare name binds package-locally (ADR-0042); both nodes are in package `metaobjects`, so the fully-qualified form is `metaobjects::schemaMigration`.
+`@supersededBy` is RESOLVED, so the target must exist in this ledger. The referent is addressed by its DOTTED PATH, not by a bare name: `resolveRequirementRef` keys every requirement as `<package>::<dotted.path>` and registers the bare path too, so a single-package ledger writes `metaobjects.driftDetection.schemaMigration`. `metaobjects::schemaMigration` does NOT resolve — `schemaMigration` is nested, and the package half is not a substitute for the address.
 
 ```yaml
                 - requirement.functional:
@@ -1175,7 +1175,7 @@ The ledger so far is all `live`. This task exercises the parts of the vocabulary
 - [ ] **Step 2: Verify `@supersededBy` resolves**
 
 Run: `bun scripts/check-requirements-ledger.ts`
-Expected: PASS — 66 entries.
+Expected: PASS — 65 entries.
 
 If you see `ERR_REQUIREMENT_DANGLING_REF`, the target name is wrong. If you see `ERR_REQUIREMENT_SUPERSEDED_BY_NOT_RETIRED`, the status is not `retired`. If you see `ERR_REQUIREMENT_RETIRED_HAS_IMPLEMENTORS`, an `implementedBy` crept in — a retired entry may not carry one.
 
@@ -1261,7 +1261,7 @@ git add metaobjects/meta.requirements.yaml docs/superpowers/specs/2026-08-29-met
 git commit -m "$(cat <<'MSG'
 feat(requirements): retired capabilities, dispositions, and a fifth finding
 
-Completes Phase 1 at 67 nodes. Two retired entries give @status: retired and
+Completes Phase 1 at 66 nodes. Two retired entries give @status: retired and
 @supersededBy their first real use outside a four-node conformance fixture: the
 per-port migration engines (ADR-0015), superseded by the single shared engine,
 and the OSGi runtime variant (ADR-0012), which carries no supersededBy because
@@ -1286,7 +1286,7 @@ MSG
 
 ## Done when
 
-- `metaobjects/meta.requirements.yaml` holds 67 nodes: 39 functional (37 live, 2 retired) and 26 architectural, plus one `partial` with a recorded disposition.
+- `metaobjects/meta.requirements.yaml` holds 66 nodes: 41 functional (38 live, 1 partial, 2 retired) and 25 architectural.
 - `bun scripts/check-requirements-ledger.ts` passes, reporting zero errors and exactly `WARN_REQUIREMENT_NOTHING_IMPLEMENTS`.
 - `bun scripts/test-requirements-ledger.ts` passes all four cases.
 - `scripts/ci-local.sh --only gates` passes.

@@ -44,8 +44,9 @@ Five phases. Each is independently valuable; each gets its own plan.
 
 - **Phase 1 - the capability map** (this document). The L1-L3 organisational tiers for the
   whole solution: a pillar-anchored functional capability map, and an ISO/IEC 25010 quality
-  tree for the non-functional set. Roughly 65 nodes, all prose, no L4/L5, no codegen, no
-  bespoke tooling. Loads under the stock strict registry today.
+  tree for the non-functional set. 66 nodes as authored - 41 functional (39 live-or-partial,
+  2 retired) and 25 architectural - all prose, no L4/L5, no codegen, no bespoke tooling. Loads
+  under the stock strict registry today.
 - **Phase 2 - the vocabulary branch.** L4 per concrete subtype, plus L5 for
   promise-bearing attributes only. The requirement-to-metamodel link is **derived** from the
   node's dotted path, and a repo-local `verify` checks each requirement is implemented in
@@ -266,7 +267,7 @@ L3 by the conformance corpora that already run.
 
 ### What Phase 1 proves
 
-Authoring roughly 65 nodes exercises, under strict load: both subtypes; nesting and strictly
+Authoring 66 nodes exercises, under strict load: both subtypes; nesting and strictly
 descending levels; a levelled architectural tree (0.23.0); the organisational-tier exemption
 above; `@disposition` and `@trackedBy` on genuine open questions; and `@status: retired` with
 `@supersededBy` (0.24.2), for which this repository has real subjects - the removed Java
@@ -298,9 +299,11 @@ the whole deliverable.
 
 ## Drift found while specifying this, and fixed by it
 
-Four defects, all found by reading the shipped artifacts against each other. They are fixed in
-this program rather than filed, because a dogfooding program whose first act is to file
-tickets against the feature it is dogfooding has not dogfooded anything.
+Five findings, all from reading the shipped artifacts against each other. The first four are
+fixed in this program rather than filed, because a dogfooding program whose first act is to
+file tickets against the feature it is dogfooding has not dogfooded anything. The fifth is
+REPORTED and deliberately not fixed - it is a product decision affecting every adopter, and
+the reason is given with it.
 
 1. **`spec/capability-ledger.md` contradicts the loader on `retired`.** It gives the enum as
    *"`planned | live | partial`"* and states *"There is no member meaning "retired": a
@@ -313,6 +316,29 @@ tickets against the feature it is dogfooding has not dogfooded anything.
 3. **The same document contradicts the byte-gated `@level` description on L2**, as set out
    above. It admits deployables and libraries; the registry forbids code structure at L1-L3.
 4. **`registry-manifest-exclusions.ts` says "the 11 generic `view.*` controls"**; there are 13.
+5. **`WARN_REQUIREMENT_NOTHING_IMPLEMENTS` has no organisational-tier exemption, where its
+   architectural twin does.** The functional rule is
+   `!architectural && live && !subtreeClaimsAnything(req)`
+   (`cli/src/lib/requirement-check.ts:502`). The architectural one additionally tests
+   `req.mayReferenceModel()` (`:477`), which is false for L1-L3 of a levelled tree. So an
+   architectural organisational tier is exempt and a functional one is not.
+
+   Both guards' own comments make the same argument, and the architectural one names the
+   functional case explicitly while exempting only itself: *"an 'ISO 25010 Security' at L1
+   delegates to its children and names nothing, **exactly as an L1 functional node does**."*
+   The functional guard says it too - *"an organisational tier legitimately implements nothing
+   ITSELF - it delegates to children, and that is the whole shape of the tree"* - and then
+   applies no exemption.
+
+   For a ledger whose subject is a solution rather than a domain model, no subtree can ever
+   claim anything, so every live functional node warns permanently. This ledger emits 39 such
+   warnings and will emit more in Phase 2. They are pinned by
+   `scripts/check-requirements-ledger.ts` rather than silenced.
+
+   **Reported, not fixed here.** The rule is correct for the adopter case it was written for -
+   a functional subtree claiming nothing usually IS a capability nobody built - so changing it
+   affects every adopter and is a product decision, not a defect in this program. The candidate
+   fix is to apply the same `mayReferenceModel()` predicate on both sides.
 
 ## Two facts a later phase must not re-derive
 
