@@ -658,14 +658,20 @@ actually ships: runtime helpers, and codegen where it exists.)
 had no product change since `0.24.4`. Under version-parity that was unreadable, because every
 registry carried the same number whether or not anything in it had moved.
 
-**One thing this breaks, and it must ship with the rule.** The JVM agent-context staleness nudge
-(`AgentContextScaffold.stalenessAcrossVersionLines`) reduces both sides to the release they name
-and compares them EXACTLY. Its own contract says it is *"correct while the four registries share a
-`minor.patch` … a CONVENTION rather than a gate: if lockstep ever breaks, this reports in-sync
-across a real gap."* Convergent publishing breaks that premise, and the failure mode inverts from
-[#347](https://github.com/metaobjectsdev/metaobjects/issues/347)'s permanently-loud false positive
-to a **silent false negative**. Promote the convention to a gate before relying on this rule in
-anger.
+**One thing this broke, fixed in the same release.** The agent-context staleness nudge assumed the
+four registries shared a `minor.patch`. Under convergent publishing a port legitimately sits behind
+npm — while `meta agent-docs`, the canonical scaffolder for every port, stamps the npm version it
+ran from — so every port nudged a correct setup, and the remedy re-stamped the same newer version:
+[#347](https://github.com/metaobjectsdev/metaobjects/issues/347)'s permanently-loud advisory, in all
+four ports at once. A context stamped by a **strictly newer** release is no longer treated as stale.
+Anything not orderable as a plain `N.N.N` still nudges — prereleases, build metadata, and the
+`0.0.0` unresolved-install sentinel — so the "any drift nudges" property is intact.
+
+The opposite failure is **narrowed, not closed**: equal coordinates still assert in-sync, so a port
+parked at `24.4` across several npm releases will not be told its context has moved. Settling that
+needs the shipped context hashed rather than its version compared, and the JVM ships no
+agent-context content — only the manifest reader. Live limitation, recorded here rather than in an
+issue nobody reads.
 
 ## Public-repo hygiene
 

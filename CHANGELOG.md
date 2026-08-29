@@ -5,7 +5,64 @@ here. The format follows [Keep a Changelog](https://keepachangelog.com/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 (pre-1.0; MINOR bumps may introduce breaking changes with notice).
 
-## [Unreleased]
+## [0.24.5] — 2026-08-29
+
+**A registry now publishes only when it changed.** The version-parity rule standing since
+`0.20.13` is retired, and this is the first release cut under its replacement — so the four
+registries may legitimately carry different numbers from here on.
+
+### Changed — publish what changed; converge the number when you do
+
+`docs/RELEASING.md` **contradicted itself five lines apart.** It mandated *"every release bumps
+all four registries, with version-parity bumps where a port has no changed file"* and then stated
+that the conformance corpus + `CAPABILITIES.json` — *"not a shared version"* — is the coordination
+point. Both cannot be the rule. If the shared version is not what carries the cross-language
+guarantee, publishing byte-identical content to three registries to keep it aligned buys nothing;
+the phrase *"version-parity bump"* appears **ten times** in this file paying for it. `0.24.3` and
+`0.24.4` were each a single changed file in `cli`, and each became a four-registry event.
+
+The new rule: **a registry publishes only when it has a changed product file, and when it does it
+adopts the current shared `minor.patch`**, skipping the numbers it sat out. Two carve-outs, because
+only ONE lockstep relaxes — the **14 npm packages still move atomically with each other** (they
+cross-depend), and a change to `expected-registry.json` / `metamodelVersion` **still forces all
+four**, because that is the cross-port contract every port byte-matches.
+
+A lagging version becomes information: PyPI at `0.24.4` while npm is at `0.24.7` says PyPI has had
+no product change since `0.24.4`. Under parity that was unreadable, because every registry carried
+the same number whether or not anything in it had moved.
+
+`scripts/release-verify.mjs` gains `--registries=npm,pypi,nuget,maven` so a cut verifies only what
+it published; without it the script reports a red ✗ for a port behaving exactly as the rule
+requires, and a gate that fails on correct behaviour is one people learn to run with their eyes
+closed. The default stays all four — forgetting the flag over-checks rather than under-checks — and
+a scoped run names the registries it did **not** check on every invocation, because a partial run
+printing only ✓s reads exactly like a full one.
+
+### Fixed — a context newer than the install is not stale (all five ports)
+
+The rule above broke the agent-context staleness nudge, in **every port**, and the fix ships in the
+same release. A port now legitimately sits behind npm — while `meta agent-docs`, the canonical
+scaffolder for every port, stamps the npm version it ran from. So a Python install at `0.24.4`
+whose context was scaffolded by npm `0.24.7` is **correct**, and every port nudged it; running the
+suggested remedy re-stamps `0.24.7`, so the advisory could never be satisfied and fired on every
+build forever. That is [#347](https://github.com/metaobjectsdev/metaobjects/issues/347) exactly,
+reborn in four ports at once — the JVM through `stalenessAcrossVersionLines`, and TS / C# / Python
+through plain equality on their own `0.x` line. One bug, three different routes.
+
+A context stamped by a **strictly newer** release is no longer treated as stale. The suppression is
+deliberately narrow because it contradicts a documented decision — all three non-JVM ports carried
+*"Don't 'fix' this into a semver compare"*, written when install and scaffolder always matched.
+That property is preserved exactly: anything not orderable as a plain `N.N.N` still nudges —
+prereleases, build metadata, non-numeric versions, and the `0.0.0` unresolved-install sentinel,
+which must never assert "in sync".
+
+**Two bounds, stated rather than hidden.** Ordering on `minor.patch` assumes both versions sit in
+the same release *series*; across the one-time `1.0`/`8.0` cut a `0.24.x` context against a `1.0.0`
+install reads as "ahead" and the nudge is suppressed once — a missed advisory, never a wrong action.
+And the opposite failure is **narrowed, not closed**: equal coordinates still assert in-sync, so a
+port parked at `24.4` across several npm releases is not told its context has moved. Settling that
+needs the shipped context hashed rather than its version compared, and the JVM ships no
+agent-context content — only the manifest reader.
 
 ### Fixed — eight defects found by adopting the product from scratch, twice
 
