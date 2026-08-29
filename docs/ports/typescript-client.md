@@ -45,8 +45,10 @@ Two disjoint dependency trees. The codegen packages live under
 packages live under `client/web/packages/` and have zero Node-only deps.
 
 Angular follows the same two-package pattern and exists in-repo, source-only
-by decision — see ["Angular 18"](#angular-18) below. Future framework
-integrations (Svelte, React Native) will follow the same pattern.
+by decision — see ["Angular 18"](#angular-18) below. The two-package split is
+the shape a first-party integration takes when there is one — it is not a
+commitment to add more. Reaching another framework is an ownership move, not
+a roadmap item: eject the generator and retarget its emit (FR-040).
 
 ## Browser runtime packages
 
@@ -147,6 +149,18 @@ export function App() {
 The URL grammar this fetcher must speak is defined in
 [`features/api-contract.md`](../features/api-contract.md) — `GET /api/author?...`,
 `POST /api/author`, etc.
+
+> **These generators are yours.** `formFile()`, `tanstackQuery()`, `tanstackGrid()` and
+> `tanstackGridHook()` are ordinary generators with reference templates you can take ownership of:
+> `meta eject form` (or `hooks` / `grid` / `grid-hook`) copies one into `codegen/generators/`.
+>
+> If your framework compiles server and client from one tree and resolves each half under different
+> export conditions — React Server Components, Angular universal, Qwik — an emitted client artifact
+> may need a marker directive. That is a one-line change in the generator you own:
+> `content = '"use client";\n' + renderFormFile(entity, ctx.renderContext)`. A resolution error in
+> that situation often names a package that IS installed; read it as a boundary problem, not a
+> missing dependency. Full procedure: the `metaobjects-codegen` skill, "Your framework isn't the
+> default".
 
 ## Generated React forms
 
