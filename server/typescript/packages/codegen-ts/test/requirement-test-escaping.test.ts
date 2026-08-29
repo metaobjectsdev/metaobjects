@@ -1,6 +1,6 @@
 // Author prose goes into a string literal and a JSDoc block, so it must be escaped.
 //
-// `@statement` and `@violation` are free text a human writes. Interpolated raw, an
+// `statement` and `counterexample` are free text a human writes. Interpolated raw, an
 // apostrophe-free but quote-bearing sentence closes the generated string literal, a
 // backslash starts an escape, a newline breaks the single-line literal, and a `*/`
 // ends the JSDoc comment early and drops the rest of the file into syntax soup.
@@ -10,6 +10,10 @@
 // generated-code defect a text assertion cannot see. So these tests EXECUTE the stub.
 
 import { describe, test, expect } from "bun:test";
+import {
+  REQUIREMENT_STATUSES,
+  REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES,
+} from "@metaobjectsdev/metadata";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -54,7 +58,7 @@ function parsedCleanly(out: string): boolean {
 }
 
 describe("author prose cannot break the generated stub", () => {
-  test("a double quote in the violation", () => {
+  test("a double quote in the counterexample", () => {
     const src = render("Notes are private.", 'the GM sees a player\'s "secret" notes');
     expect(parsedCleanly(runStub(src).out)).toBe(true);
   });
@@ -65,7 +69,7 @@ describe("author prose cannot break the generated stub", () => {
   });
 
   test("an embedded newline", () => {
-    const src = render("Multi-line prose survives.", "a violation\ndescribed over two lines");
+    const src = render("Multi-line prose survives.", "a counterexample\ndescribed over two lines");
     expect(parsedCleanly(runStub(src).out)).toBe(true);
   });
 
@@ -89,7 +93,7 @@ describe("author prose cannot break the generated stub", () => {
   });
 });
 
-// `@statement` and `@violation` are the OBVIOUS free-text fields, and escaping only
+// `statement` and `counterexample` are the OBVIOUS free-text fields, and escaping only
 // those leaves the same hole open in four more places that reach the same literal and
 // the same JSDoc block. `@trackedBy` is the sharpest of them: it is registered as
 // free-form on purpose — `verify` never resolves it, because which sprint owns a gap
@@ -140,11 +144,22 @@ describe("every author-supplied field is escaped, not just the two obvious ones"
 });
 
 describe("a retired requirement does not redden the suite forever", () => {
-  // `abandoned` / `superseded` describe a capability deliberately retired — their
-  // `@implementedBy` is SUPPOSED to dangle. A failing stub for one is a permanent red
-  // build for something nobody intends to build, and the app silences the whole
-  // generator to escape it, taking the `live` stubs with it.
-  for (const status of ["planned", "abandoned", "superseded"]) {
+  // A status that does not claim the capability works RIGHT NOW — `planned`, not built
+  // yet; `retired`, built then deliberately removed — must not emit a failing stub. A
+  // permanent red build for something nobody intends to build is what makes an app
+  // silence the whole generator, taking the `live` stubs with it.
+  //
+  // Both lists are DERIVED from the loader's enum rather than written out. They used to
+  // be literals naming `abandoned` and `superseded`, and when 0.24.0 retired both and
+  // 0.24.2 put `retired` in their place, this file went on asserting the behaviour of
+  // two statuses the loader had begun REFUSING while saying nothing about the one that
+  // replaced them — passing throughout, and pinning the defect instead of catching it.
+  // The split under test is the semantic one: does this status claim the capability
+  // works now, or not.
+  const SKIPS = REQUIREMENT_STATUSES.filter((s) => !REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES.includes(s));
+  const FAILS = REQUIREMENT_STATUSES.filter((s) => REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES.includes(s));
+
+  for (const status of SKIPS) {
     test(`${status} emits a skipped test`, () => {
       const src = renderRequirementTest({
         view: { ...view, status },
@@ -158,7 +173,7 @@ describe("a retired requirement does not redden the suite forever", () => {
     });
   }
 
-  for (const status of ["live", "partial"]) {
+  for (const status of FAILS) {
     test(`${status} still fails until filled — it claims the capability works`, () => {
       const src = renderRequirementTest({
         view: { ...view, status },
