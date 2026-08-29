@@ -210,10 +210,12 @@ Work the list in order; the first two cost nothing.
 config value in `metaobjects.config.ts`:
 
 - **`extStyle`** — `"js"` emits `./Entity.js` specifiers, correct for Node ESM and a plain
-  `tsc` with `nodenext`. **Set `"none"` for any bundler-resolution toolchain** (Vite,
-  Turbopack, webpack, esbuild, Rollup): most bundlers do not perform the TypeScript
-  `.js`→`.ts` rewrite, so extensioned specifiers fail to resolve — including between two
-  generated files, which makes the whole generated tree unresolvable.
+  `tsc` with `nodenext`. Bundlers disagree on whether they perform the TypeScript
+  `.js`→`.ts` rewrite: it fails outright under **Turbopack** — including between two
+  generated files, which makes the whole generated tree unresolvable — while Vite and
+  esbuild are documented to accept it and webpack needs `resolve.extensionAlias` to do the
+  same. **If a generated import fails to resolve, set `extStyle: "none"` and retest** for
+  your toolchain rather than assuming either setting from this list.
 - **`outDir`** / **`targets`** — where output lands, per generator.
 - **`apiPrefix`**, **`dialect`** — route mounting and column mapping.
 
@@ -242,6 +244,7 @@ is exported, so this is usually a wrapper, not a rewrite:
 import { renderFormFile } from "@metaobjectsdev/codegen-ts-react";
 
 // ...inside generate():
+if (!ctx.renderContext) throw new Error("renderContext is required (provided by runGen)");
 const body = renderFormFile(entity, ctx.renderContext);
 return { path, content: `"use client";\n` + body };   // your framework's requirement
 ```
