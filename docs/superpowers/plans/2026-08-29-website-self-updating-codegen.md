@@ -207,9 +207,21 @@ describe("examples/showcase — drift gate", () => {
     expect(exit).toBe(0);
   });
 
-  test("committed generated/ts is byte-identical to a fresh regen", async () => {
+  test("committed output carries no codegen drift and no orphans", async () => {
     const exit = await run(["verify", "--cwd", SHOWCASE, "--codegen"]);
     expect(exit).toBe(0);
+  });
+
+  // `verify --codegen` is NOT sufficient on its own — MEASURED during Task 1.
+  // Renaming an export in the committed output leaves `--codegen` reporting "no
+  // codegen drift", `meta gen` reporting `merged`, and the edit still on disk.
+  // That is correct product behaviour (hand edits are sanctioned and three-way
+  // merged) and wrong for THIS corpus, whose files the website claims are purely
+  // generated. A pristine regen has no merge base, so it cannot preserve an edit.
+  test("committed output is byte-identical to a PRISTINE regen", async () => {
+    // copy metaobjects/, templates/, metaobjects.config.ts and
+    // .metaobjects/config.json into a temp dir — deliberately NOT .gen-state —
+    // run `gen --cwd tmp`, then byte-compare the two trees, file list included.
   });
 });
 ```
@@ -1185,11 +1197,15 @@ for (const p of PORTS) {
 }
 if (failed) process.exit(1);
 
+// `--check` must regenerate PRISTINE — into a temp tree with no `.gen-state` —
+// and byte-compare. Two reasons, both measured in Task 1:
+//   1. A `git status` check cannot see a COMMITTED hand edit: `meta gen`
+//      three-way-merges it, so the tree is clean and the gate is green while the
+//      site publishes a hand-written line as generated output.
+//   2. A gate must not write to the tree it is checking, and in the release
+//      preflight it runs right after the clean-tree check.
 if (CHECK) {
-  // Scope is the WHOLE example dir, not just generated/: a regen also rewrites
-  // .metaobjects/.gen-state/.hashes.json, which CLAUDE.md requires to be committed.
-  const diff = spawnSync("git", ["status", "--porcelain", "examples/showcase"],
-    { cwd: REPO, encoding: "utf8" }).stdout.trim();
+  const diff = diffPristineRegen(REPO);
   if (diff) {
     console.error(`✗ showcase output is stale — run \`bun run regen:showcase\` and commit:\n${diff}`);
     process.exit(1);
