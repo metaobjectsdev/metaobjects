@@ -418,6 +418,55 @@ metadata.root:
               counterexample: >-
                 A renamed field that silently degrades a prompt, or a column the
                 database has and the model does not.
+              children:
+                - requirement.functional:
+                    name: schemaMigration
+                    title: Schema migration
+                    level: 3
+                    status: live
+                    statement: >-
+                      The difference between a declaration and a live database is
+                      computed, and emitted as a migration that can be applied and
+                      undone.
+                    counterexample: >-
+                      A schema change that goes forward and not back, so the only way
+                      out of a bad deploy is a restore from backup.
+
+                - requirement.functional:
+                    name: codegenDrift
+                    title: Codegen drift
+                    level: 3
+                    status: live
+                    statement: >-
+                      Generated output that no longer matches the declaration it came
+                      from is reported before it is deployed.
+                    counterexample: >-
+                      A field renamed in the model months ago, still spelled the old way
+                      in code that ships, with every build green.
+
+                - requirement.functional:
+                    name: promptAndTemplateDrift
+                    title: Prompt and template drift
+                    level: 3
+                    status: live
+                    statement: >-
+                      A prompt that names something the model no longer has is caught
+                      when it is built, not when it is sent.
+                    counterexample: >-
+                      A renamed field leaving a hole in a prompt, so the model answers a
+                      question it was never fully asked and nothing reports an error.
+
+                - requirement.functional:
+                    name: liveDatabaseVerification
+                    title: Live database verification
+                    level: 3
+                    status: live
+                    statement: >-
+                      A running database can be checked against the declaration without
+                      changing it.
+                    counterexample: >-
+                      The only way to learn whether production matches the model being
+                      to run a migration against production.
 
           - requirement.functional:
               name: promptConstruction
@@ -429,6 +478,52 @@ metadata.root:
                 external and provider-resolved, and its rendering is deterministic.
               counterexample: >-
                 A whitespace change silently breaking an exact-prefix prompt-cache hit.
+              children:
+                - requirement.functional:
+                    name: payloadProjection
+                    title: Payload projection
+                    level: 3
+                    status: live
+                    statement: >-
+                      What a prompt sends is a declared projection, authoritative over
+                      anything that could be derived instead, so growth in what is sent
+                      arrives as a diff.
+                    counterexample: >-
+                      A payload that grew by a whole nested object nobody chose, because
+                      a field's shape was taken from where its value comes from rather
+                      than from what was declared.
+                    notes: >-
+                      The counterexample is an observed defect. Three ports typed a
+                      payload field from its origin child instead of its declaration,
+                      and the worst arm substituted the related entity for the curated
+                      shape the author had declared — invisible in review, because the
+                      metadata still read as curated.
+
+                - requirement.functional:
+                    name: deterministicRender
+                    title: Deterministic render
+                    level: 3
+                    status: live
+                    statement: >-
+                      One payload and one template render to the same bytes on every run
+                      and in every language.
+                    counterexample: >-
+                      Two runs over one unchanged payload producing different bytes, so
+                      the exact-prefix cache hit is lost and the same prompt is paid for
+                      twice.
+
+                - requirement.functional:
+                    name: parserOnReceipt
+                    title: Parser on receipt
+                    level: 3
+                    status: live
+                    statement: >-
+                      A declared response shape is parsed and checked when a reply
+                      arrives, rather than trusted.
+                    counterexample: >-
+                      A reply that is nearly the right shape read as though it were the
+                      right shape, carrying a wrong value onward as if it had been
+                      checked.
 
           - requirement.functional:
               name: governTheStandard
@@ -442,6 +537,60 @@ metadata.root:
               counterexample: >-
                 One attribute meaning three different things in three ports while every
                 gate reports green.
+              children:
+                - requirement.functional:
+                    name: crossLanguageIdentity
+                    title: Cross-language identity
+                    level: 3
+                    status: live
+                    statement: >-
+                      One declaration means the same thing in every language, and a
+                      divergence fails a gate rather than reaching an adopter.
+                    counterexample: >-
+                      One model producing two different column names on one machine,
+                      depending on which language's runtime wrote the row.
+                    notes: >-
+                      Measured, not feared. A single attribute naming a column was found
+                      to mean three different things across the ports at once — one used
+                      it as a field name, one ignored it entirely and hardcoded a
+                      convention, one resolved it literally — while every port
+                      byte-matched the shared vocabulary manifest throughout. The
+                      manifest proves the ports SPELL the vocabulary identically and is
+                      blind to what they DO with it. This entry is the promise that
+                      blindness needs.
+
+                - requirement.functional:
+                    name: vocabularyLifecycle
+                    title: Vocabulary lifecycle
+                    level: 3
+                    status: live
+                    statement: >-
+                      Vocabulary enters deliberately and leaves recorded, with a
+                      mechanical path from the retired form to the one that replaced it.
+                    counterexample: >-
+                      A construct that was deliberately removed, rebuilt by someone who
+                      believed they were extending it, because nothing they could read
+                      said it had been taken out on purpose.
+                    notes: >-
+                      The counterexample is the one claim a controlled round did not
+                      refute: against a deliberately-retired capability, model-only
+                      agents flagged it 0 times out of 24 — every run proposing to extend
+                      it, each believing it was reusing rather than reviving — while
+                      arms with a ledger caught it 19 of 40. Under half is not a
+                      guarantee, and the entry does not claim to be one.
+
+                - requirement.functional:
+                    name: versioningAndRelease
+                    title: Versioning and release
+                    level: 3
+                    status: live
+                    statement: >-
+                      What metadata may say and what the software offers are separate
+                      contracts with separate version numbers, and a change to either
+                      moves its own.
+                    counterexample: >-
+                      A change to what metadata may say, shipped under a number that only
+                      ever promised a change to the software.
 
     - requirement.architectural:
         name: quality

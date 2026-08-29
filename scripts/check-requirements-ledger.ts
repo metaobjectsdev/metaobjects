@@ -44,7 +44,7 @@ const EXPECTED_WARNING = "WARN_REQUIREMENT_NOTHING_IMPLEMENTS";
  *  drives this gate against throwaway ledgers of a few nodes. CI invokes the
  *  gate bare, so the pin is what runs against the real ledger; there is no env
  *  var and nothing to set accidentally. */
-const DEFAULT_EXPECTED_WARNING_COUNT = 29;
+const DEFAULT_EXPECTED_WARNING_COUNT = 39;
 const EXPECTED_WARNING_COUNT = process.argv[2] !== undefined
   ? Number(process.argv[2])
   : DEFAULT_EXPECTED_WARNING_COUNT;
