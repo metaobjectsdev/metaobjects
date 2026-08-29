@@ -150,6 +150,17 @@ devDependency is aligned to `runtime-ts`'s peer range, which it contradicted. Se
 **TanStack Table v8 requirement is now discoverable** — `@metaobjectsdev/tanstack` bounds the
 peer at v8, but nothing told an adopter installing `@tanstack/react-table` themselves.
 
+**One recipe, explicitly a convenience.** [`docs/recipes/nextjs-vercel.md`](docs/recipes/nextjs-vercel.md)
+walks the Next.js App Router + Vercel path — the `extStyle: "none"` / `clientDirective: true`
+config delta, `routesFileHono()` mounted at `app/api/[[...route]]/route.ts` via `hono/vercel`,
+and generated query helpers called straight from a Server Component. It changes no package
+file, and it opens by saying the general procedure lives in the `metaobjects-codegen` skill:
+it is a shortcut past reasoning an agent could do unaided, which is the only relationship
+FR-040 permits it to have. Two of its notes exist because the failure is SILENT — a Server
+Component reading the database is not a dynamic signal, so the page prerenders at build and
+serves build-time rows forever while looking correct in `next dev`; and `apiPrefix` is baked
+into the emitted route path, so a Hono `basePath` on top double-prefixes it.
+
 Design: `docs/superpowers/specs/2026-08-29-fr-040-framework-agnostic-codegen-ownership-design.md`.
 Amends [ADR-0034](spec/decisions/ADR-0034-codegen-scaffold-and-own.md).
 
