@@ -211,6 +211,17 @@ function selectPorts(): Port[] {
 function generateInto(project: string, ports: Port[]): void {
   for (const p of ports) {
     p.generate(project);
+    // A generator that wrote nothing and exited 0 is the failure this whole corpus
+    // exists to catch, and it is not hypothetical: the Maven plugin ran both JVM
+    // generators against an empty model, wrote zero files, and reported BUILD
+    // SUCCESS. In write mode that would silently EMPTY a committed tree, and `✓`
+    // would still print. A port that produced nothing did not succeed.
+    const empty = p.dirs.filter((d) => listFiles(join(project, "generated", d)).length === 0);
+    if (empty.length) {
+      throw new Error(
+        `${p.name} exited 0 but wrote no files to ${empty.map((d) => `generated/${d}`).join(", ")}`,
+      );
+    }
     console.log(`  ✓ ${p.name}`);
   }
 }

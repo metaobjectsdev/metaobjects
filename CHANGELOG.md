@@ -129,6 +129,40 @@ preserved the wire shape exactly. Everything below is what went wrong on the way
   `"type": "commonjs"` explicitly — false on the dominant first-touch path. (Introduced by
   `0.24.4`'s own fix to that same line, which corrected the tense and got the premise wrong.)
 
+### Fixed — two ports scattering or skipping work while reporting success (Maven, NuGet)
+
+Found the same way as the eight above, by a different exercise: generating ONE small model
+with every port, from the repo root, to build the corpus the website publishes as real
+`meta gen` output. Both are the shape this release keeps finding — a tool saying something
+untrue about work it had just done.
+
+- **Java/Kotlin: `<loader><sourceDir>` with no `<sources>` loaded NOTHING, ran the
+  generators against an empty model, wrote zero files, and reported `BUILD SUCCESS`.**
+  The precedence ladder consults the port-neutral config only when the pom names *neither*
+  key — naming either means the pom owns the concern — so `<sourceDir>` alone took the
+  pom-owns-it branch with an empty source list. That is the shape the shipped adopter
+  guidance teaches, and it is also the remedy `0.24.0`'s own `ERR_COLLECTION_NOT_FOUND`
+  prints (*"declare `<sourceDir>`/`<sources>` explicitly"*), so following the fix for a
+  silently-empty model put you back into one. A directory now expands through the SAME
+  `DirectorySource` walk the loader itself uses for a directory source, so "which files
+  count as metadata" keeps one definition; a `<sourceDir>` that exists but holds no
+  metadata is `ERR_COLLECTION_NOT_FOUND` rather than an empty model, since reaching the
+  expensive outcome by a different road is still the expensive outcome. A nonexistent
+  `<sourceDir>` already failed and still does. **Purely additive** — a pom naming
+  `<sources>`, or naming neither, is unaffected.
+- **C#: `dotnet meta gen` anchored `.gen-state/.hashes.json` on the process working
+  directory**, so generating from anywhere but the project root wrote a stray
+  `.metaobjects/` into the caller's cwd and left the real project with no record of what
+  was written — the entire reason that manifest is committed. The Python port already
+  anchors on the metadata dir's parent and its docstring says why. The C# **test assembly
+  had been doing this into its own `bin/`** for as long as the manifest has existed,
+  invisible because `bin/` is ignored, and worse than untidy: every test in the assembly
+  then shared ONE manifest keyed by bare filename — precisely the collision that docstring
+  warns about. An explicit `<metadataDir>` now anchors on its parent; with it omitted the
+  `.metaobjects/config.json` ladder has already resolved relative to cwd, so cwd is the
+  project. **Not a behaviour change for the documented invocation** — only the
+  cwd-is-not-the-project case moves, and that case was broken.
+
 
 ## [0.24.4] — 2026-08-28
 

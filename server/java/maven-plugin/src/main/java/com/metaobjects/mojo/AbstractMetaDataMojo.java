@@ -270,6 +270,22 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
         List<String> neutralSources = resolveNeutralSourcesIfPomIsSilent(loaderConfig);
         if (!neutralSources.isEmpty()) {
             sources = neutralSources;
+        } else if ((sources == null || sources.isEmpty()) && srcDir != null) {
+            // <sourceDir> alone. The ladder above deliberately does not fire here —
+            // naming EITHER key means the pom owns the concern — which used to leave
+            // this branch with an empty source list: the generators ran against an
+            // empty model, wrote zero files, and the build reported SUCCESS.
+            //
+            // That is the shape the adopter guidance teaches, and it is also the
+            // remedy 0.24.0's own ERR_COLLECTION_NOT_FOUND prints ("declare
+            // <sourceDir>/<sources> explicitly"), so following the fix for a silent
+            // empty model landed you back in one. A directory names a directory:
+            // expand it, through the SAME DirectorySource walk the loader itself uses
+            // (via SourceResolver), so "which files count as metadata" keeps one
+            // definition. The sourceDir base is dropped because the expansion is
+            // already absolute.
+            sources = expandSourceDir(srcDir);
+            sourceDir = null;
         }
 
         // An unknown <library> name is a HARD failure naming the ones this version ships,
@@ -534,6 +550,37 @@ public abstract class AbstractMetaDataMojo extends AbstractMojo
      *     either {@code <sourceDir>} or {@code <sources>} (i.e. the neutral file is
      *     not consulted at all)
      */
+    /**
+     * Expand a {@code <loader><sourceDir>} that carries no {@code <sources>} into the
+     * metadata files it holds.
+     *
+     * <p>Delegates to {@link com.metaobjects.config.SourceResolver}, so the extension
+     * filter and ordering are {@code DirectorySource}'s — the same walk the loader
+     * performs for a directory source, rather than a second definition of what counts
+     * as metadata.
+     *
+     * <p>A directory holding NOTHING is a failure, not an empty model. The whole point
+     * of this branch is that generating zero files while reporting success is the
+     * expensive outcome, and an empty directory reaches it by a different road than an
+     * unnamed one.
+     */
+    protected List<String> expandSourceDir(File srcDir) {
+        Path dir = srcDir.getAbsoluteFile().toPath().normalize();
+        List<String> expanded = com.metaobjects.config.SourceResolver
+                .resolveSources(getProjectBaseDir().toPath(),
+                        List.of(java.util.Map.of("path", dir.toString())))
+                .stream()
+                .map(p -> "model:file:" + p.toString().replace(java.io.File.separatorChar, '/'))
+                .toList();
+        if (expanded.isEmpty()) {
+            throw new MetaDataException(
+                    "<loader><sourceDir> " + dir + " holds no metadata files. Point it at a "
+                            + "directory containing metadata, or name the files with <sources>.",
+                    ErrorCode.ERR_COLLECTION_NOT_FOUND);
+        }
+        return expanded;
+    }
+
     protected List<String> resolveNeutralSourcesIfPomIsSilent(LoaderParam loaderConfig) {
         boolean pomNamesLocation =
                 (loaderConfig.getSourceDir() != null && !loaderConfig.getSourceDir().isBlank())

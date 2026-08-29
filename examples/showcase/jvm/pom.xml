@@ -48,11 +48,14 @@
         <artifactId>metaobjects-maven-plugin</artifactId>
         <version>${metaobjects.version}</version>
         <configuration>
+          <!-- <sourceDir> with no <sources> is the documented shape: a directory
+               names a directory, and the plugin expands it. Needs the plugin at or
+               after the version that made that true — before it, naming <sourceDir>
+               alone loaded nothing, ran the generators against an empty model and
+               reported BUILD SUCCESS. `bun scripts/regen-showcase.ts` fails loudly
+               on that now rather than emptying the committed trees. -->
           <loader>
             <sourceDir>../metaobjects</sourceDir>
-            <sources>
-              <source>meta.subscriber.yaml</source>
-            </sources>
           </loader>
           <generators>
             <generator>
