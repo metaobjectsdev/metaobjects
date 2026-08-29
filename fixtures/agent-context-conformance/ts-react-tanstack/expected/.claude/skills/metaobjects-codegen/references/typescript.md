@@ -11,6 +11,7 @@ packages. Codegen runs through the Node `meta` CLI (`@metaobjectsdev/cli`, binar
 - Run
 - Multiple output targets
 - Field subtype → column mapping
+- Retargeting to another framework — the TypeScript procedure
 
 ## Install
 
@@ -232,3 +233,133 @@ The VO type, its Zod `InsertSchema`, and this `.$type<>()` all import the VO fro
 the same module (layout/package/`extStyle`-aware resolution). An opaque jsonb column
 (`field.string @dbColumnType: jsonb`) gets no `.$type<>()` — it stays `unknown`,
 which is the correct shape for freeform payloads with no fixed VO.
+
+## Retargeting to another framework — the TypeScript procedure
+
+This is the TypeScript implementation of the retargeting doctrine in SKILL.md
+("Your framework isn't the default"). Read that first for the order of moves;
+everything below — `meta eject`, `metaobjects.config.ts` keys, the exported
+`render*` functions — is Node-CLI-specific and exists only on this port.
+
+The shipped reference templates emit for **Fastify on Node** (plus a Hono variant) with
+Drizzle and Zod. If that is not your stack, retargeting is the **normal first move** — not
+a workaround and not a sign of a bug. Each template's header carries a `targets:` line
+naming exactly what its emit is coupled to and which call to swap.
+
+Work the list in order; the first two cost nothing.
+
+**1. Check the target-shaped config first.** Several apparent codegen failures are one
+config value in `metaobjects.config.ts`:
+
+- **`extStyle`** — `"js"` emits `./Entity.js` specifiers, correct for Node ESM and a plain
+  `tsc` with `nodenext`. Bundlers disagree on whether they perform the TypeScript
+  `.js`→`.ts` rewrite: it fails outright under **Turbopack** — including between two
+  generated files, which makes the whole generated tree unresolvable — while Vite and
+  esbuild are documented to accept it and webpack needs `resolve.extensionAlias` to do the
+  same. **If a generated import fails to resolve, set `extStyle: "none"` and retest** for
+  your toolchain rather than assuming either setting from this list.
+- **`outDir`** / **`targets`** — where output lands, per generator.
+- **`apiPrefix`**, **`dialect`** — route mounting and column mapping.
+
+**2. Ask whether your framework splits the module graph.** Some frameworks compile server
+and client from one source tree and resolve each half under *different export conditions*
+(React Server Components, Angular universal, Qwik). Where they do:
+
+- a generated artifact using client-only APIs may need a **marker directive** or a distinct
+  import path, and
+- the resulting error frequently **names a package that is installed and present** — because
+  resolution failed under the server condition, not because the dependency is missing.
+
+Read that error as a *boundary* problem, not a dependency problem. The fix belongs in the
+generator that emits the artifact, which you own.
+
+**3. If the emit is wrong for your framework, own the generator.**
+
+    meta eject --list          # every template you can take ownership of
+    meta eject form            # copies it to codegen/generators/form.ts
+
+Then compose the engine and replace only the step that differs. Every generator's renderer
+is exported, so wrapping is available — but **how much that buys you differs by tier, and
+it is worth knowing which one you are in before you start**:
+
+- **Entity module (`entity`)** — genuinely composable. `renderDrizzleSchema`,
+  `renderZodValidators`, `renderInferredTypes`, `renderFilterAllowlist` and friends are
+  separate exported sections the template assembles into a `Code[]`. Swap or drop one and
+  keep the rest.
+- **Routes and UI (`routes`, `routes-hono`, `form`, `hooks`, `grid`, `grid-hook`)** — one
+  whole-file renderer each, so "replace a step" really means wrap the whole output. That
+  is enough for a marker directive, a header, or a post-process, and it is what the RSC
+  case below needs. It is **not** enough to retarget the emitted framework: if you need
+  Svelte or Angular instead of React, you are writing a renderer, and the honest move is
+  to keep the generator's metadata walk and replace the render call entirely.
+
+For the wrap-the-output case:
+
+```ts
+// codegen/generators/form.ts — OWNED
+import { renderFormFile } from "@metaobjectsdev/codegen-ts-react";
+
+// ...inside generate():
+if (!ctx.renderContext) throw new Error("renderContext is required (provided by runGen)");
+const body = renderFormFile(entity, ctx.renderContext);
+return { path, content: `"use client";\n` + body };   // your framework's requirement
+```
+
+You keep receiving upstream fixes to `renderFormFile` while owning the one line your
+framework cares about. **Forking the whole renderer is the thing to avoid**, not owning the
+generator.
+
+**4. Server-tier output is usually already portable.** The entity module (a table plus
+validation schemas) and the query helpers (which take `db` as a parameter rather than
+importing a singleton) carry no HTTP-framework coupling — a server-rendered component can
+call a generated query directly. Retargeting is usually only needed at the routes and UI
+tiers.
+
+### Never read metadata through an `own*()` accessor (ADR-0039) — top bug source
+
+When writing OR reviewing a generator, **read every field/node property and iterate
+every member set through the resolving/effective accessor — never the `own*()` form.**
+`extends` is a **super-reference, not a flatten**: a concrete field/entity that
+`extends` an abstract parent keeps its inherited attributes and members physically on
+the parent, reachable only through the *resolving* accessor. An `own*()` read of an
+effective property (`isArray`, `subType`, `maxLength`, `precision`/`scale`, `default`,
+the physical column name, `objectRef`, `storage`, `required`, …) or an own-only member
+iteration **silently drops everything inherited via `extends`** — the classic symptom
+was a concrete field that inherited `isArray: true` from an abstract parent generating
+a *scalar* column. These reads compile and pass every fixture that never exercises
+`extends`, so they are a latent, cross-port top bug source.
+
+**The one legitimate `own*()` use:** a generator emitting a generated **subclass** that
+`extends` a generated base iterates **own members** (`ownFields()`) so the inherited
+members are **not re-emitted** — the generated base class already declares them (the
+`class Sub extends Base` / TPH pattern). Everywhere else, resolve. (The own-mode
+canonical serializer and overlay-merge are the only other sanctioned own reads, and
+they are library-internal, not app-generator concerns.) The one deliberately-own
+attribute is `@dbColumnType` — a physical column-type override that is never inherited.
+
+**Per-port own↔resolving mapping** (reach for the resolving column; comment any
+`own*()` call with the sanctioned case it is):
+
+| Port | Resolving (default — use this) | Own-only (avoid unless emitting a subclass's own members) |
+|---|---|---|
+| TypeScript | `attr(name)`, `children()`, `fields()` | `ownAttr(name)`, `ownChildren()`, `ownFields()`, the raw `isArray` field flag |
+| Python | `attrs().get(name)`, `children()`, `fields()` | `attr(name)` **(own!)**, `own_children()`, `own_fields()` |
+| Java / Kotlin | `getMetaAttr(name)`, resolving `getChildren()` | `getMetaAttr(name, false)`, own-only child walks |
+| C# | resolving attr/`Children`/`Fields` accessors | `IsArray` native flag, `OwnChildren()`, own attr reads |
+
+**Naming inversion — the trap:** the *default-named* accessor is NOT consistently the
+safe one. **TS `attr()` RESOLVES; Python `attr()` is OWN** (own-only). In Python you
+must call `attrs().get(name)` to get the inherited value — a bare `attr(name)` is the
+own read that drops inheritance. When you review or port a generator, check the port's
+convention, not the method name.
+
+**Close but not exact?** You don't always need a new generator — a generated file is
+a normal source file. Copy it and customize the copy (three-way merge preserves your
+edits on regen), or customize the template a built-in renders from. Reach for a
+custom generator when you want the change applied **consistently across every
+entity** (the scale win); a one-off edit when it's genuinely one file.
+
+**The decision ladder:** a built-in fits → use it · close → customize the
+output/template · doesn't fit → write a generator that emits your shape *from the
+metadata* · only the genuinely un-modelable (business algorithms, external calls) is
+hand-written outside codegen — and it still imports the generated types.
