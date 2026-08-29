@@ -13,6 +13,7 @@
 import {
   REQUIREMENT_STATUSES,
   REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES,
+  REQUIREMENT_STATUS_RETIRED,
 } from "@metaobjectsdev/metadata";
 import { GENERATED_HEADER } from "../constants.js";
 import type { RequirementView, ResolvedClaim } from "../requirement-walk.js";
@@ -117,8 +118,17 @@ export function renderRequirementTest(a: RequirementTestArgs): string {
   // A `live` or `partial` stub asserts FAILURE until someone writes the real
   // assertion over it. `expect.unreachable` names the requirement in the failure
   // message, so a red run says which claim is unproven rather than just "failed".
+  // The two skipped statuses mean OPPOSITE things, so they must not share a body.
+  // `planned` is intended-not-built and the instruction is to write the assertion when
+  // it becomes live. `retired` is built-then-deliberately-removed, and telling a reader
+  // to write it "when this becomes live" instructs them to revive the capability —
+  // inverting the one guardrail 0.24.2 restored `retired` for. The repo's own harness
+  // generator already branches here; the shipped renderer now does too.
   const body = skipped
-    ? `  // Intended, not built. Write the assertion when this becomes live.`
+    ? a.view.status === REQUIREMENT_STATUS_RETIRED
+      ? `  // Retired: this capability was deliberately removed and must not be rebuilt.\n` +
+        `  // If you assert anything here, assert that it STAYS removed.`
+      : `  // Intended, not built. Write the assertion when this becomes live.`
     : `  expect.unreachable(\n` +
       `    "unimplemented requirement stub: ${testName} — " +\n` +
       `    "replace this with an assertion that fails when: ${forStringLiteral(a.counterexample)}",\n` +

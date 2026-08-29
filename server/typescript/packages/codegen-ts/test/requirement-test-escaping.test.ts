@@ -13,6 +13,7 @@ import { describe, test, expect } from "bun:test";
 import {
   REQUIREMENT_STATUSES,
   REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES,
+  type RequirementStatus,
 } from "@metaobjectsdev/metadata";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -156,8 +157,26 @@ describe("a retired requirement does not redden the suite forever", () => {
   // replaced them — passing throughout, and pinning the defect instead of catching it.
   // The split under test is the semantic one: does this status claim the capability
   // works now, or not.
-  const SKIPS = REQUIREMENT_STATUSES.filter((s) => !REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES.includes(s));
-  const FAILS = REQUIREMENT_STATUSES.filter((s) => REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES.includes(s));
+  // LITERAL, not derived. The implementation computes its skip set as
+  // `REQUIREMENT_STATUSES minus REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES`; a test that
+  // computes the identical expression proves only that the code agrees with itself.
+  // Move `retired` into the live-nodes list by mistake and both would follow, every
+  // assertion below would follow, and every retired entry would emit a permanently red
+  // stub with the suite still green — the exact regression this block exists for.
+  //
+  // Written out, the expectations are independent. The exhaustiveness check underneath
+  // is what stops them going stale, which is the failure this file had before: it named
+  // `abandoned` and `superseded` for a release after the loader stopped accepting them.
+  const SKIPS: readonly RequirementStatus[] = ["planned", "retired"];
+  const FAILS: readonly RequirementStatus[] = ["live", "partial"];
+
+  test("the two lists together are exactly the loader's status enum", () => {
+    expect([...SKIPS, ...FAILS].sort()).toEqual([...REQUIREMENT_STATUSES].sort());
+    // And the split agrees with what the enum MEANS, checked once rather than assumed
+    // for every case below.
+    for (const s of FAILS) expect(REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES).toContain(s);
+    for (const s of SKIPS) expect(REQUIREMENT_STATUSES_REQUIRING_LIVE_NODES).not.toContain(s);
+  });
 
   for (const status of SKIPS) {
     test(`${status} emits a skipped test`, () => {

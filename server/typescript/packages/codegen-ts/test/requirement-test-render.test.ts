@@ -51,6 +51,11 @@ describe("renderRequirementTest", () => {
     });
     expect(src).toContain("test.skip");
     expect(src).not.toContain("expect.unreachable");
+    // And it must not read as an instruction to REVIVE the capability. `planned` and
+    // `retired` are both skipped and mean opposite things, so sharing a body told a
+    // reader of a retired stub to write the assertion "when this becomes live".
+    expect(src).toContain("must not be rebuilt");
+    expect(src).not.toContain("becomes live");
   });
 
   test("a PARTIAL stub fails like live, and carries its disposition and tracking", () => {
