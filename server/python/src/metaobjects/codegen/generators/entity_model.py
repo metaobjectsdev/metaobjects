@@ -339,13 +339,20 @@ def _field_line(field: MetaField, imports: set[str], config: GenConfig) -> tuple
     else:
         assignment = " = None"
 
-    # Pydantic field name = @column when present, else field.name. A cross-port
-    # entity carries the camelCase field.name (the TS property) AND the snake_case
-    # @column (the physical DB column); the Python model field IS the column, so it
-    # binds straight to the row. Backward-compatible: snake-authored models with no
-    # @column emit field.name unchanged.
-    py_name = field.attrs().get(fc.FIELD_ATTR_COLUMN) or field.name
-    return f"    {py_name}: {annotation}{assignment}", uses_field
+    # Pydantic field name = field.name, ALWAYS. `@column` is the physical column name,
+    # a different axis: it is what the persistence layer binds to, never what the model
+    # calls the field. Every other surface in this port already keyed by field.name —
+    # the FR-036 create/patch models, the generated router, and the runtime, whose
+    # ObjectManager maps {_column_of(f): f.name} on every read and RETURNING clause
+    # "for cross-port row-shape parity" — so keying the read model by @column made one
+    # generated module disagree with itself, and its stated reason (that the model field
+    # binds straight to the row) was never true.
+    #
+    # Idiomatic snake_case for a Python consumer is a real goal and this is not the
+    # lever for it: `columnNamingStrategy` applied to field.name is, because @column is
+    # free-form — `callPurpose` + `@column: purpose_code` used to emit a field
+    # `purpose_code`, which is neither the wire name nor derived from the field name.
+    return f"    {field.name}: {annotation}{assignment}", uses_field
 
 
 def _primary_identity_field_names(entity: MetaObject) -> list[str]:

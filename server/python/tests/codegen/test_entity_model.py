@@ -128,22 +128,34 @@ def test_nested_object_array_imports_ref() -> None:
     assert "posts: list[PostBrief] | None = None" in out
 
 
-def test_column_attr_overrides_python_field_name() -> None:
-    """A field's ``@column`` (the physical DB column) is the READ-model Pydantic field
-    name when present, falling back to ``field.name``. This lets one entity carry the
-    camelCase ``field.name`` the TS port emits as a property AND the snake_case
-    ``@column`` the Python read model emits as the model field (= DB column), so a single
-    cross-port entity feeds both languages idiomatically. The FR-036 create/patch
-    VALIDATION models, by contrast, key by the WIRE name (field.name) — the router
-    validates the raw wire body (see test_create_model_validates_against_wire_name)."""
+def test_column_attr_does_not_rename_the_read_model_field() -> None:
+    """``@column`` is the PHYSICAL column name. It must not become the Pydantic field
+    name — that is a different axis, and conflating them made one generated module
+    disagree with itself.
+
+    The read model used to key by ``@column``. Everything else in this port keys by
+    ``field.name``: the FR-036 create/patch models, the generated router (it stamps
+    ``dto["createdAt"]``), and the runtime — ``ObjectManager`` maps
+    ``{_column_of(f): f.name}`` on every read and RETURNING clause, commented "for
+    cross-port row-shape parity". So the read model's stated reason ("the Python model
+    field IS the column, so it binds straight to the row") was false: the runtime never
+    hands out column-keyed rows.
+
+    It also leaked. ``@column`` is a free-form override, so a field ``callPurpose`` with
+    ``@column: purpose_code`` produced a Pydantic field ``purpose_code`` — neither the
+    wire name nor anything derived from the field name, just the DB column surfacing in
+    the API shape. Idiomatic snake_case for Python is a real goal; the lever for it is
+    ``columnNamingStrategy`` applied to ``field.name``, not the column override.
+    """
     f = _f("callPurpose", fc.FIELD_SUBTYPE_STRING, required=True)
-    f.set_attr(fc.FIELD_ATTR_COLUMN, "call_purpose")
+    # Deliberately NOT the snake_case of the field name — that coincidence is what made
+    # the old behaviour look right.
+    f.set_attr(fc.FIELD_ATTR_COLUMN, "purpose_code")
     e = _entity("LlmCall", [f], package="app::telemetry")
     out = render_entity_model(e)
-    # Scope to the read model (before the first validation model): it binds @column.
     read_model = out.split("class LlmCallCreate")[0]
-    assert "call_purpose: str" in read_model
-    assert "callPurpose" not in read_model
+    assert "callPurpose: str" in read_model
+    assert "purpose_code" not in read_model
 
 
 def test_field_name_used_when_no_column_attr() -> None:
@@ -301,8 +313,9 @@ def test_create_model_validates_against_wire_name_not_column() -> None:
     f.set_attr(fc.FIELD_ATTR_COLUMN, "full_name")
     mod = _load_models(_entity("Person", [f], package="app::p"))
 
-    # Read model keeps the @column name; the create model keys by the wire name.
-    assert "full_name" in mod.Person.model_fields
+    # BOTH key by the wire name now — the read model no longer renames itself to
+    # @column, so one module no longer disagrees with itself about what a field is called.
+    assert "fullName" in mod.Person.model_fields
     assert "fullName" in mod.PersonCreate.model_fields
     # An over-length WIRE value is now actually rejected (was silently dropped before).
     with pytest.raises(ValidationError):
