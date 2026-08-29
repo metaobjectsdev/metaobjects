@@ -57,4 +57,55 @@ describe("meta eject", () => {
       expect(r.importLine).toContain(`/codegen/generators/${name}.js`);
     }
   });
+
+  // Fix round 2. Ejecting is only complete if the config actually ends up importing the
+  // LOCAL copy. Every template but the four `meta init` scaffolds is already imported in
+  // a working config from its package, so the instruction has to be REPLACE — told to
+  // "paste", a reader either duplicates the identifier or, worse, leaves both imports
+  // and keeps the generator entry bound to the PACKAGE one, silently running the
+  // packaged generator while editing the ejected file.
+  test("reports the exact binding to replace, and where it currently comes from", async () => {
+    const r = await ejectGenerator({ cwd, name: "grid" });
+    // grid.ts exports tanstackGrid — the symbol does NOT follow the file name, which is
+    // why this is derived from the template's own import line rather than the name.
+    expect(r.exportName).toBe("tanstackGrid");
+    expect(r.packageName).toBe("@metaobjectsdev/codegen-ts-tanstack");
+  });
+
+  test("the reported export name always matches the template's own import line", async () => {
+    for (const name of ejectableNames()) {
+      const r = await ejectGenerator({ cwd, name, force: true });
+      expect(r.importLine).toBe(`import { ${r.exportName} } from "./codegen/generators/${name}.js";`);
+    }
+  });
+
+  // An ejected file is ordinary source in the adopter's repo: its imports must be
+  // DECLARED or their `tsc` reports TS2307 on the file we just told them they own.
+  // `meta init` adds the two packages its four scaffolded generators need; the UI
+  // templates import two more that nothing declares, so eject has to say so.
+  test("names the @metaobjectsdev packages the ejected file needs but the project lacks", async () => {
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ name: "p", private: true }), "utf8");
+    const r = await ejectGenerator({ cwd, name: "form" });
+    const notes = r.dependencyNotes.join("\n");
+    expect(notes).toContain("@metaobjectsdev/codegen-ts-react");
+    expect(notes).toContain("npm i -D");
+  });
+
+  test("says nothing about dependencies the project already declares", async () => {
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({
+        name: "p",
+        private: true,
+        devDependencies: {
+          "@metaobjectsdev/codegen-ts": "^0.24.4",
+          "@metaobjectsdev/codegen-ts-react": "^0.24.4",
+          "@metaobjectsdev/metadata": "^0.24.4",
+        },
+      }),
+      "utf8",
+    );
+    const r = await ejectGenerator({ cwd, name: "form" });
+    expect(r.dependencyNotes).toEqual([]);
+  });
 });
