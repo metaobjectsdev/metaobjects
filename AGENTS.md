@@ -150,7 +150,9 @@ Worked examples: a Drizzle TS-server integration → `server/typescript/packages
 - `runtime-web/` (`@metaobjectsdev/runtime-web`) — pure framework-agnostic browser core (currency, filter-qs, EntityFetcher contract, GridConfig). Zero React, zero TanStack.
 - `react/` (`@metaobjectsdev/react`) — React runtime: `useEntityForm`, `<CurrencyInput>`.
 - `tanstack/` (`@metaobjectsdev/tanstack`) — TanStack runtime: `EntityFetcherProvider`, `<EntityGrid>`, default cell renderers.
-- Future: `angular/`, `svelte/`, `react-native/`.
+- MetaObjects does not add a first-party package per framework. React ships a codegen+runtime pair;
+  Angular ships source-only (ADR-0048's promotion bar). Any other framework is reached by owning and
+  retargeting the generators (FR-040), not by waiting for an official package.
 
 ### Framework integration: separate codegen and runtime packages
 
@@ -175,7 +177,9 @@ Runtime side (browser):              Codegen side (server):
                 └── @metaobjectsdev/tanstack
 ```
 
-Future framework integrations (Angular, Svelte, React Native) follow the same two-package pattern.
+The two-package split is the shape a first-party integration takes when there is one — it is not a
+commitment to add more. Reaching another framework is an ownership move, not a roadmap item: eject
+the generator and retarget its emit (FR-040).
 
 A user's `metaobjects.config.ts`:
 
