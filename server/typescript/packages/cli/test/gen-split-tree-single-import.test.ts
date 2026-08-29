@@ -37,9 +37,12 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, 
 import { dirname, join, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { readReferenceTemplate, REFERENCE_GENERATOR_NAMES } from "@metaobjectsdev/codegen-ts";
+import { META_BIN, ensureFreshDist } from "./integration/support/built-cli.js";
 
-const CLI_ROOT = resolve(import.meta.dirname, "..");
-const META_BIN = join(CLI_ROOT, "dist", "bin", "meta.js");
+// `META_BIN` + the stale-dist check come from the shared harness: which dists a
+// `node dist/bin/meta.js` run depends on is the part that rots, and it must not be
+// stated twice. This gate keeps its REBUILD-in-place behaviour (see ensureFreshDist's
+// doc) rather than the throwing variant its sibling uses.
 // Inside the workspace so the CLI's jiti can resolve @metaobjectsdev/* while the temp
 // project still holds its OWN nearest-wins node_modules (the planted ts-poet).
 const WORKSPACE_TMP = resolve(import.meta.dirname, "fixtures", "__tmp__");
@@ -74,52 +77,6 @@ const CONFIG = [
   `  generators: [entityFile(), queriesFile(), routesFile(), barrel()],`,
   `});`,
 ].join("\n");
-
-/** Newest .ts mtime under a src dir (excluding reference/ scaffold assets, which the
- *  CLI reads from src at runtime and which need no rebuild). */
-function newestSrcMtime(dir: string): number {
-  let newest = 0;
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const p = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (entry.name === "reference") continue;
-      newest = Math.max(newest, newestSrcMtime(p));
-    } else if (entry.name.endsWith(".ts")) {
-      newest = Math.max(newest, statSync(p).mtimeMs);
-    }
-  }
-  return newest;
-}
-
-/** The gate runs the BUILT CLI under node, so it needs a dist at least as new as src.
- *  A stale/missing dist is rebuilt in place (a red gate on every src edit trains
- *  people to ignore it; a silent skip is how gates go vacuous). If the rebuild does
- *  not converge, fail loudly. */
-function ensureFreshDist(): void {
-  const codegenTsRoot = dirname(
-    createRequire(import.meta.url).resolve("@metaobjectsdev/codegen-ts/package.json"),
-  );
-  const sdkRoot = dirname(
-    createRequire(import.meta.url).resolve("@metaobjectsdev/sdk/package.json"),
-  );
-  for (const { name, pkgRoot, srcDir, distFile } of [
-    { name: "codegen-ts", pkgRoot: codegenTsRoot, srcDir: join(codegenTsRoot, "src"), distFile: join(codegenTsRoot, "dist", "index.js") },
-    { name: "cli", pkgRoot: CLI_ROOT, srcDir: join(CLI_ROOT, "src"), distFile: META_BIN },
-    { name: "sdk", pkgRoot: sdkRoot, srcDir: join(sdkRoot, "src"), distFile: join(sdkRoot, "dist", "index.js") },
-  ]) {
-    const stale = (): boolean =>
-      !existsSync(distFile) || newestSrcMtime(srcDir) > statSync(distFile).mtimeMs;
-    if (!stale()) continue;
-    console.error(`[gen-split-tree gate] ${name} dist is stale — rebuilding (bun run build in ${pkgRoot})`);
-    const build = Bun.spawnSync(["bun", "run", "build"], { cwd: pkgRoot, stdout: "pipe", stderr: "pipe" });
-    if (build.exitCode !== 0 || stale()) {
-      throw new Error(
-        `${name} dist is missing or older than its src and the in-place rebuild did not fix it — ` +
-          `this gate runs the built CLI under node; run: bun run --filter '*' build\n${build.stderr.toString()}`,
-      );
-    }
-  }
-}
 
 /** The ts-poet copy that @metaobjectsdev/codegen-ts itself loads, plus its runtime
  *  dependency closure (dprint-node — required eagerly by ts-poet's Code.js — and

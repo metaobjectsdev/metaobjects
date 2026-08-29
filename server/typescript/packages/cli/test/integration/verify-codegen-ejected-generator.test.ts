@@ -28,16 +28,16 @@
  *      GENERATOR is real drift until regenerated. Test 3 holds both at once — a
  *      preserved hand edit sitting in the same file as a regenerated generator change.
  *
- * WHY SUBPROCESSES. This gate must run the built CLI under node, one process per
- * command, exactly as an adopter does. In-process (`run()` from bun:test) it cannot
- * see the behaviour at all and reports a FALSE PASS: the config file is re-read under
- * a fresh random temp name on every load, but the `./codegen/generators/entity.js` it
- * imports resolves to a stable path and stays in the module cache, so the second load
- * silently re-uses the PRE-EDIT generator and `verify` finds no drift. An in-process
- * version of test 2 therefore passes for the wrong reason while asserting the
- * opposite of the truth. Do not "simplify" this file back to in-process `run()`.
+ * WHY SUBPROCESSES (see `support/built-cli.ts`). This gate must run the built CLI under
+ * node, ONE PROCESS PER COMMAND, exactly as an adopter does. In-process (`run()` from
+ * bun:test) it cannot see the behaviour at all and reports a FALSE PASS: the config file
+ * is re-read under a fresh random temp name on every load, but the
+ * `./codegen/generators/entity.js` it imports resolves to a stable path and stays in the
+ * module cache, so the second load silently re-uses the PRE-EDIT generator and `verify`
+ * finds no drift. Written in-process first, test 2 passed while asserting the opposite
+ * of the truth. Do not "simplify" this file back to in-process `run()`.
  */
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, beforeAll } from "bun:test";
 import {
   appendFileSync,
   cpSync,
@@ -45,16 +45,12 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  readdirSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { createRequire } from "node:module";
+import { join, resolve } from "node:path";
+import { meta, requireFreshDist } from "./support/built-cli.js";
 
-const CLI_ROOT = resolve(import.meta.dirname, "..", "..");
-const META_BIN = join(CLI_ROOT, "dist", "bin", "meta.js");
 const FIXTURES = resolve(import.meta.dirname, "..", "fixtures");
 // Inside the workspace, so the ejected template's `@metaobjectsdev/codegen-ts` import
 // resolves by walking up to the workspace root.
@@ -76,64 +72,6 @@ const CONFIG = [
   `  generators: [entityFile()],`,
   `});`,
 ].join("\n");
-
-/** Newest .ts mtime under a src dir (excluding reference/ scaffold assets, which the
- *  CLI reads from src at runtime and which need no rebuild). */
-function newestSrcMtime(dir: string): number {
-  let newest = 0;
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const p = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (entry.name === "reference") continue;
-      newest = Math.max(newest, newestSrcMtime(p));
-    } else if (entry.name.endsWith(".ts")) {
-      newest = Math.max(newest, statSync(p).mtimeMs);
-    }
-  }
-  return newest;
-}
-
-/** This gate runs the BUILT CLI under node, so it needs a dist at least as new as src.
- *  A stale/missing dist is rebuilt in place; if that does not converge, fail loudly
- *  rather than skip (a silent skip is how gates go vacuous). */
-function ensureFreshDist(): void {
-  const req = createRequire(import.meta.url);
-  const codegenTsRoot = dirname(req.resolve("@metaobjectsdev/codegen-ts/package.json"));
-  const sdkRoot = dirname(req.resolve("@metaobjectsdev/sdk/package.json"));
-  for (const { name, pkgRoot, srcDir, distFile } of [
-    { name: "codegen-ts", pkgRoot: codegenTsRoot, srcDir: join(codegenTsRoot, "src"), distFile: join(codegenTsRoot, "dist", "index.js") },
-    { name: "cli", pkgRoot: CLI_ROOT, srcDir: join(CLI_ROOT, "src"), distFile: META_BIN },
-    { name: "sdk", pkgRoot: sdkRoot, srcDir: join(sdkRoot, "src"), distFile: join(sdkRoot, "dist", "index.js") },
-  ]) {
-    const stale = (): boolean =>
-      !existsSync(distFile) || newestSrcMtime(srcDir) > statSync(distFile).mtimeMs;
-    if (!stale()) continue;
-    console.error(`[verify-codegen-ejected gate] ${name} dist is stale — rebuilding in ${pkgRoot}`);
-    const build = Bun.spawnSync(["bun", "run", "build"], { cwd: pkgRoot, stdout: "pipe", stderr: "pipe" });
-    if (build.exitCode !== 0 || stale()) {
-      throw new Error(
-        `${name} dist is missing or older than its src and the in-place rebuild did not fix it — ` +
-          `this gate runs the built CLI under node; run: bun run --filter '*' build\n${build.stderr.toString()}`,
-      );
-    }
-  }
-}
-
-interface CliResult {
-  exit: number;
-  output: string;
-}
-
-/** One `meta` invocation, in its own process — the adopter path (`#!/usr/bin/env node`). */
-async function meta(cwd: string, ...args: string[]): Promise<CliResult> {
-  const proc = Bun.spawn(["node", META_BIN, ...args], { cwd, stdout: "pipe", stderr: "pipe" });
-  const [out, err, exit] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { exit, output: `${out}\n${err}` };
-}
 
 /**
  * A project that owns its entity generator: the fixture metadata, a real
@@ -171,9 +109,12 @@ function handEdit(root: string): void {
   );
 }
 
+// Precondition once per FILE, not per test: this gate runs the BUILT CLI.
+beforeAll(requireFreshDist);
+
 describe("meta verify --codegen — an ejected (adopter-owned) generator", () => {
   test("owning a generator is not itself drift", async () => {
-    ensureFreshDist();
+
     const root = await setupRepo();
     try {
       expect(await meta(root, "gen")).toMatchObject({ exit: 0 });
@@ -187,7 +128,7 @@ describe("meta verify --codegen — an ejected (adopter-owned) generator", () =>
   }, 120_000);
 
   test("editing the owned generator is drift — the gate follows the adopter's source", async () => {
-    ensureFreshDist();
+
     const root = await setupRepo();
     try {
       expect(await meta(root, "gen")).toMatchObject({ exit: 0 });
@@ -206,7 +147,7 @@ describe("meta verify --codegen — an ejected (adopter-owned) generator", () =>
   }, 120_000);
 
   test("the remedy terminates, and a hand edit still survives the regen", async () => {
-    ensureFreshDist();
+
     const root = await setupRepo();
     try {
       expect(await meta(root, "gen")).toMatchObject({ exit: 0 });
