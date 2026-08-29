@@ -57,6 +57,14 @@ the entity module from wherever `entityFile()` is routed (relative when same tar
 the entity-module target's `importBase` when not); the grid-hook imports its sibling
 `<Entity>.columns` from within its own target.
 
+### The generator is yours
+
+Each of `tanstackQuery()`, `tanstackGrid()` and `tanstackGridHook()` has a reference template:
+`meta eject hooks` / `grid` / `grid-hook` copies one into `codegen/generators/` for you to own. Each
+renderer (`renderHooksFile`, `renderColumnsFile`, `renderGridHookFile`) is exported, so retargeting
+is usually a wrapper, not a rewrite — compose it and change the one step your framework needs, e.g.
+`content = '"use client";\n' + renderHooksFile(entity, ctx.renderContext)`.
+
 ## Pairs with
 
 - Runtime: [`@metaobjectsdev/tanstack`](../../../../client/web/packages/tanstack) — generated hooks and columns import from here.

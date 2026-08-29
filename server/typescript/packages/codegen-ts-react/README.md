@@ -26,6 +26,13 @@ export default defineConfig({
 targets". The form imports the entity module from wherever `entityFile()` is
 routed (relative when same target, the entity-module target's `importBase` when not).
 
+### The generator is yours
+
+`formFile()` has a reference template: `meta eject form` copies it into `codegen/generators/form.ts`
+for you to own. The emitted component is React with react-hook-form — if your framework needs a
+marker directive or a different import shape, compose the exported renderer and change that one
+step: `content = '"use client";\n' + renderFormFile(entity, ctx.renderContext)`.
+
 ## Pairs with
 
 - Runtime: [`@metaobjectsdev/react`](../../../../client/web/packages/react) — the generated forms import from here.
