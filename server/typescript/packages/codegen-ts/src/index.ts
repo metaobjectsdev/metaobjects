@@ -161,6 +161,7 @@ export { renderFilterAllowlist, renderSortAllowlist } from "./templates/filter-a
 export { renderEntityConstants, resourcePath } from "./templates/entity-constants.js";
 export { renderQueriesFile } from "./templates/queries-file.js";
 export { renderRoutesFile } from "./templates/routes-file.js";
+export { renderRoutesFileHono } from "./templates/routes-file-hono.js";
 export { renderValueObjectFile } from "./templates/value-object-file.js";
 export { renderProjectionDecl } from "./templates/projection-decl.js";
 export type { ProjectionDeclOpts } from "./templates/projection-decl.js";

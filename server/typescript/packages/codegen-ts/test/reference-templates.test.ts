@@ -33,6 +33,17 @@ describe("reference-templates reader", () => {
       expect(src).not.toContain("@metaobjectsdev/codegen-ts/generators");
     }
   });
+
+  // unskip in Task 6 — the `// targets:` header line is only present on `routes-hono`
+  // today; entity/queries/routes/barrel gain it in Task 6.
+  test.skip("every reference template parses as a module and declares its target", () => {
+    for (const name of REFERENCE_GENERATOR_NAMES) {
+      const src = readReferenceTemplate(name);
+      // A template with no `targets:` line leaves an adopter guessing what it is coupled to.
+      expect(src).toContain("// targets:");
+      expect(() => new Bun.Transpiler({ loader: "ts" }).transformSync(src)).not.toThrow();
+    }
+  });
 });
 
 describe("makeReferenceReader — per-package template hosting", () => {
