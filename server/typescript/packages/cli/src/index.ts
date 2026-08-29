@@ -19,6 +19,8 @@ COMMANDS:
   init --config-only    Write only .metaobjects/config.json — for a Maven- or pip-rooted project
   agent-docs            Scaffold only the agent-context (.metaobjects/ + .claude/skills/) — canonical redirect target for all language ports
   gen [<entity>...]     Codegen TS targets from your declared metadata
+  eject <generator>     Copy a reference generator into codegen/generators/ to own it (any time after init)
+  eject --list          List every ejectable generator name, grouped by package
   types [query]         Search the metadata vocabulary (types, subtypes, @attrs) by name or description
   export                Flatten loaded metadata to one canonical JSON artifact
   docs [<project-root>] --out <dir>  Generate neutral metadata documentation (entity + template pages; --site for HTML site)
@@ -113,6 +115,24 @@ field.enum). Warnings only — it never fails the build. Opt out with --no-antip
 or META_NO_ANTIPATTERNS=1.
 
 NOTE: outDir, dialect, dbImport, extStyle are read from metaobjects.config.ts
+`,
+  eject: `meta eject — copy a reference generator into your repo so you own it
+
+USAGE:
+  meta eject <name>      Copy generator <name> into codegen/generators/<name>.ts
+  meta eject --list      List every ejectable generator name, grouped by package
+
+FLAGS:
+  --list                 List ejectable generators instead of copying one
+  --force                Overwrite an already-ejected file (default: never clobber)
+  --help, -h             Print this help
+
+\`meta init\` copies four generators (entity, queries, routes, barrel) into
+codegen/generators/ automatically (ADR-0034 scaffold-and-own). \`meta eject\` is
+the same operation for ANY generator — one you skipped at init time, a UI-tier
+generator like form/hooks/grid, or one a package gains later. It prints the
+import line to paste into metaobjects.config.ts, and it never overwrites a
+file you already own unless you pass --force.
 `,
   verify: `meta verify — drift gate (templates / DB schema / codegen / migration replay)
 
@@ -373,6 +393,10 @@ export async function run(argv: string[]): Promise<number> {
     case "gen": {
       const { genCommand } = await import("./commands/gen.js");
       return genCommand(rest, cwd, fmt);
+    }
+    case "eject": {
+      const { ejectCommand } = await import("./commands/eject.js");
+      return ejectCommand(rest, cwd);
     }
     case "export": {
       const { exportCommand } = await import("./commands/export.js");
