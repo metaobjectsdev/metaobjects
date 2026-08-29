@@ -20,12 +20,11 @@
 //                prepend to it, or replace the call entirely with your own renderer.
 // composes-with: grid.ts (the column definitions this hook's grid state pairs with).
 
-import { LAYOUT_SUBTYPE_DATA_GRID, type MetaObject } from "@metaobjectsdev/metadata";
+import { type MetaObject } from "@metaobjectsdev/metadata";
 import {
   perEntity,
   type Generator,
   type GeneratorFactory,
-  type GenContext,
   formatTs,
   entityOutputPath,
   entityMetaFileName,
@@ -35,44 +34,15 @@ import {
   CODEGEN_ATTR_EMIT_TANSTACK,
   CODEGEN_ATTR_EMIT_GRID,
 } from "@metaobjectsdev/codegen-ts";
-import { renderGridHookFile } from "@metaobjectsdev/codegen-ts-tanstack";
+import {
+  renderGridHookFile,
+  hasDataGridLayout,
+  warnMissingDataGridLayout,
+} from "@metaobjectsdev/codegen-ts-tanstack";
 
 export interface TanstackGridHookOpts {
   filter?: (entity: MetaObject) => boolean;
   target?: string;
-}
-
-// The two helpers below are copied from this package's own (non-public) data-grid-gate —
-// grid.ts and grid-hook.ts share the identical gate, so both copies must stay in sync if
-// you edit one.
-
-/** True when the entity declares (or inherits) at least one `layout.dataGrid`. */
-function hasDataGridLayout(entity: MetaObject): boolean {
-  // layouts() is effective — own + inherited layouts (from extends:/super:).
-  return entity.layouts().some((l) => l.subType === LAYOUT_SUBTYPE_DATA_GRID);
-}
-
-/**
- * Grid artifacts are opt-IN per entity: an entity produces one only when it declares
- * a `layout.dataGrid` child. Fires ONLY when the generator emitted nothing at all, so a
- * model that uses grids anywhere stays silent (#287). See grid.ts for the full rationale
- * — kept in sync there.
- */
-function warnMissingDataGridLayout(
-  ctx: GenContext,
-  passesOtherGates: (entity: MetaObject) => boolean,
-  artifact: string,
-): void {
-  const candidates = ctx.entities.filter(passesOtherGates);
-  if (candidates.length === 0) return;
-  if (candidates.some(hasDataGridLayout)) return;   // the model uses grids — say nothing
-  ctx.warn(
-    `no ${artifact} emitted for ${candidates.map((e) => e.name).join(", ")} — grid ` +
-      `artifacts are opt-in per entity via a \`layout.dataGrid\` child, and no object in ` +
-      `this model declares one. Add e.g. ` +
-      `{"layout.dataGrid": {"name": "default", "@columns": ["id", "name"]}} to an entity ` +
-      `to emit its grid.`,
-  );
 }
 
 /**

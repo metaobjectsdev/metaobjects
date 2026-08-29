@@ -17,7 +17,8 @@
 //                prepend to it, or replace the call entirely with your own renderer.
 // composes-with: entity.ts (imports the schemas the form validates against).
 
-import { type MetaObject, OBJECT_ATTR_DISCRIMINATOR } from "@metaobjectsdev/metadata";
+import type { MetaObject } from "@metaobjectsdev/metadata";
+import { OBJECT_ATTR_DISCRIMINATOR } from "@metaobjectsdev/metadata";
 import {
   perEntity,
   type Generator,

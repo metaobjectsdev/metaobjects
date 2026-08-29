@@ -9,6 +9,12 @@ export { renderHooksFile } from "./templates/hooks-file.js";
 export { renderColumnsFile } from "./templates/columns-file.js";
 export { renderGridHookFile } from "./templates/grid-hook-file.js";
 
+// FR-040 §4.2(b) — the grid/grid-hook data-grid opt-in gate is a STEP in the pipeline
+// those two owned templates compose, not an internal detail either may fork. Public so
+// `grid.ts` and `grid-hook.ts` import one shared implementation instead of each
+// carrying its own copy.
+export { hasDataGridLayout, warnMissingDataGridLayout } from "./data-grid-gate.js";
+
 // FR-040 §4.1 — the copyable reference generators this package ships in
 // `src/reference/`, and the reader `meta init`/`meta eject` use to read them.
 export { resolveReferenceRoot, readReferenceTemplate, REFERENCE_GENERATOR_NAMES } from "./reference-templates.js";

@@ -33,4 +33,23 @@ describe("codegen-ts-tanstack reference templates", () => {
     expect(src).toContain("useEntityFetcher()");
     expect(src).toContain("@metaobjectsdev/tanstack");
   });
+
+  // FR-040 §4.2(b) — the data-grid opt-in gate is a STEP in the pipeline grid.ts and
+  // grid-hook.ts compose, not an internal detail either template may fork. Regression
+  // guard for a real defect: both templates once carried their own inlined copy of
+  // `hasDataGridLayout`/`warnMissingDataGridLayout` instead of importing the one
+  // implementation — a happy-path "does it work" test would not have caught that.
+  test("grid and grid-hook import the data-grid gate, never fork it", () => {
+    for (const name of ["grid", "grid-hook"] as const) {
+      const src = readReferenceTemplate(name);
+      expect(src).not.toContain("function hasDataGridLayout");
+      expect(src).not.toContain("function warnMissingDataGridLayout");
+      expect(src).not.toContain("data-grid-gate");
+      expect(src).toContain("hasDataGridLayout");
+      expect(src).toContain("warnMissingDataGridLayout");
+      // Both must come from the SAME import statement pulling from the package's
+      // public entry point as the renderer — never a second, deeper specifier.
+      expect(src).toContain('from "@metaobjectsdev/codegen-ts-tanstack";');
+    }
+  });
 });
