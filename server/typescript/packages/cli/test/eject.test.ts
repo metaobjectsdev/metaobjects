@@ -108,4 +108,49 @@ describe("meta eject", () => {
     const r = await ejectGenerator({ cwd, name: "form" });
     expect(r.dependencyNotes).toEqual([]);
   });
+
+  // Fix round 3. The question is "will this resolve", not "is it in one particular
+  // field". A library consuming MetaObjects through peerDependencies — the correct
+  // declaration for a package whose consumer supplies the version — had every one of
+  // them reported missing and was told to install what it already had; following that
+  // advice adds a competing copy, which is the class-identity split this repo has been
+  // bitten by twice (ts-poet, and the metadata node guards).
+  test("counts peer and optional dependencies as declared, not missing", async () => {
+    await writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({
+        name: "p",
+        private: true,
+        peerDependencies: {
+          "@metaobjectsdev/codegen-ts": "^0.24.4",
+          "@metaobjectsdev/codegen-ts-react": "^0.24.4",
+        },
+        optionalDependencies: { "@metaobjectsdev/metadata": "^0.24.4" },
+      }),
+      "utf8",
+    );
+    const r = await ejectGenerator({ cwd, name: "form" });
+    expect(r.dependencyNotes).toEqual([]);
+  });
+
+  // Fix round 3. The matcher required the closing quote straight after the package name,
+  // so a SUBPATH import matched nothing and produced no note at all —
+  // `@metaobjectsdev/metadata/constants` is a real documented subpath (the browser-safe
+  // pure-constants entry, added because a value import from the root barrel dragged
+  // node:url into browser bundles). A template gaining one would silently lose its note,
+  // which is the drift reading imports from the file is supposed to prevent.
+  test("a subpath import still names its package", async () => {
+    await writeFile(join(cwd, "package.json"), JSON.stringify({ name: "p", private: true }), "utf8");
+    const r = await ejectGenerator({ cwd, name: "form" });
+    // Prove it on the real function rather than a hand-built string, so this cannot
+    // pass against a regex the product does not use.
+    const { dependencyNotesForTemplate } = await import("../src/commands/eject.js");
+    const notes = await dependencyNotesForTemplate(
+      cwd,
+      'import { X } from "@metaobjectsdev/metadata/constants";\n',
+    );
+    expect(notes.join("\n")).toContain("@metaobjectsdev/metadata");
+    expect(notes.join("\n")).not.toContain("/constants");
+    expect(r.path).toBe("codegen/generators/form.ts");
+  });
 });

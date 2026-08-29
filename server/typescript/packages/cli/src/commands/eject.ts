@@ -128,7 +128,14 @@ export interface EjectResult {
  *  knows, and a table would drift from it the moment a template gains an import. */
 function requiredPackages(templateSource: string): string[] {
   const found = new Set<string>();
-  for (const m of templateSource.matchAll(/from\s+"(@metaobjectsdev\/[\w-]+)"/g)) {
+  // The optional trailing group matches a SUBPATH and is deliberately not captured: what
+  // has to be installed is the package, and `@metaobjectsdev/metadata/constants` is a
+  // real, documented subpath this codebase already uses (the browser-safe pure-constants
+  // entry). Requiring the closing quote straight after the package name — as this did —
+  // made any such import match nothing at all, so a template gaining one would get no
+  // note. That is the drift this function exists to prevent, reappearing inside the
+  // function itself.
+  for (const m of templateSource.matchAll(/from\s+"(@metaobjectsdev\/[\w-]+)(?:\/[\w./-]+)?"/g)) {
     if (m[1] !== undefined) found.add(m[1]);
   }
   return [...found].sort();
@@ -148,7 +155,7 @@ function requiredPackages(templateSource: string): string[] {
  * missing package and the version to match is the useful half; silently rewriting
  * someone's manifest is not.
  */
-async function dependencyNotes(cwd: string, templateSource: string): Promise<string[]> {
+export async function dependencyNotesForTemplate(cwd: string, templateSource: string): Promise<string[]> {
   const required = requiredPackages(templateSource);
   if (required.length === 0) return [];
 
@@ -157,10 +164,19 @@ async function dependencyNotes(cwd: string, templateSource: string): Promise<str
     const pkg = JSON.parse(await readFile(join(cwd, "package.json"), "utf8")) as {
       dependencies?: Record<string, string>;
       devDependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+      optionalDependencies?: Record<string, string>;
     };
+    // All four fields, because the question is "will this resolve and will their tsc be
+    // happy", not "is it in one particular field". A library that consumes MetaObjects
+    // through `peerDependencies` (the correct declaration for a package whose consumer
+    // supplies the version) had every one of them reported as missing, and was told to
+    // install what it already had — advice that, followed, adds a competing copy.
     declared = new Set([
       ...Object.keys(pkg.dependencies ?? {}),
       ...Object.keys(pkg.devDependencies ?? {}),
+      ...Object.keys(pkg.peerDependencies ?? {}),
+      ...Object.keys(pkg.optionalDependencies ?? {}),
     ]);
   } catch {
     // No readable manifest — say what the file needs and let the adopter place it.
@@ -190,7 +206,7 @@ export async function ejectGenerator(opts: EjectOptions): Promise<EjectResult> {
   const exportName = extractExportName(importLine, opts.name);
   const rel = `${OWNED_GENERATORS_DIR}/${opts.name}.ts`;
   const abs = join(opts.cwd, rel);
-  const notes = await dependencyNotes(opts.cwd, templateSource);
+  const notes = await dependencyNotesForTemplate(opts.cwd, templateSource);
   const common = {
     path: rel,
     importLine,
@@ -248,21 +264,30 @@ export async function ejectCommand(args: string[], cwd: string): Promise<number>
       log.info(`Ejected "${flags.name}" -> ${result.path}. You own it now (ADR-0034 scaffold-and-own).`);
     }
     // REPLACE, never "paste". A generator reaches `generators: [...]` under ONE binding,
-    // and for every template but the four `meta init` scaffolds that binding already
-    // exists as a package import (`import { formFile } from "@metaobjectsdev/codegen-ts-react"`
-    // is what the docs show). Told to "paste", a reader gets a duplicate identifier at
-    // best — and at worst deletes nothing, keeps `formFile()` in the array bound to the
-    // PACKAGE import, and silently runs the packaged generator while editing the ejected
-    // file. That failure is invisible and is the exact one ejecting exists to prevent.
-    log.info(
-      `In metaobjects.config.ts, REPLACE the existing import of "${result.exportName}" ` +
-      `(it currently comes from "${result.packageName}") with:`,
-    );
+    // so a reader told to "paste" gets a duplicate identifier at best — and at worst
+    // deletes nothing, keeps `formFile()` in the array bound to the PACKAGE import, and
+    // silently runs the packaged generator while editing the ejected file. That failure
+    // is invisible and is the exact one ejecting exists to prevent.
+    //
+    // But eject reads no config, so it cannot know WHICH of the three states this project
+    // is in, and stating one of them as fact is wrong in the other two — including for the
+    // four `meta init` scaffolds, whose config already imports from ./codegen/generators/,
+    // which is precisely the `meta eject <name> --force` re-sync case. Name the goal, then
+    // the three branches; the reader knows which one they are looking at.
+    log.info(`In metaobjects.config.ts, "${result.exportName}" must resolve to this file:`);
     log.info(`  ${result.importLine}`);
     log.info(
-      `Leave the ${result.exportName}() entry in \`generators\` as it is — it now resolves ` +
-      "to your local copy. If you add the import without removing the package one, the " +
-      "config still runs the PACKAGED generator and your edits do nothing.",
+      `  - If it is imported from "${result.packageName}", REPLACE that import with the ` +
+      "line above. Adding a second one leaves `generators` bound to the PACKAGED " +
+      "generator, and your edits to this file do nothing.",
+    );
+    log.info(
+      "  - If it is already imported from ./codegen/generators/ (what `meta init` " +
+      "scaffolds), it points here already — nothing to change.",
+    );
+    log.info(
+      `  - If ${result.exportName}() is not in \`generators\` yet, add the import above ` +
+      "AND the entry.",
     );
     for (const line of result.dependencyNotes) log.info(line);
     return 0;
