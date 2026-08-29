@@ -132,6 +132,10 @@ metadata:
     # <<<
 ```
 
+**No `@responseRef`, deliberately.** Since 0.24.0 the whole inbound tier (parser, tolerant extractor, response-format fragment) keys off `@responseRef` (ADR-0052), and this prompt declares none — so it generates a render and a payload record and nothing that reads a model's reply. That is correct for what the article shows: its transcript is `ERR_VAR_NOT_ON_PAYLOAD`, a check of the prompt's own variables against its own payload, which needs no response type. The reason this is a `template.prompt` rather than reusing advanced-modeling's `template.output` is simply that the article's block shows a `template.prompt` — not "the inbound tier", which this does not exercise.
+
+**Verified before this plan was written:** this exact model loads clean, `verify --templates --prompts templates` reports `1 template(s) clean`, and the requirements summary reports `1/1 entities claimed` — so the requirement's `implementedBy` genuinely resolves.
+
 - [ ] **Step 2: Write the template text and project config**
 
 `examples/showcase/templates/subscriber/blurb.mustache`:
@@ -152,7 +156,14 @@ Write one sentence about {{subscriberName}}, whose account is {{status}}.
 }
 ```
 
-`examples/showcase/.metaobjects/.gitignore` — copy `examples/advanced-modeling/.metaobjects/.gitignore` verbatim (it gitignores the gen-state bodies while keeping `.hashes.json`).
+`examples/showcase/.metaobjects/.gitignore` — **do NOT copy advanced-modeling's.** That file is a single line, `.gen-state/`, which git-ignores `.hashes.json` too — the file CLAUDE.md requires to be COMMITTED, and without which a fresh clone silently overwrites hand edits. `meta verify` prints the remedy itself. Write the correct form:
+
+```gitignore
+.gen-state/*
+!.gen-state/.hashes.json
+```
+
+**Then fix `examples/advanced-modeling/.metaobjects/.gitignore` the same way and commit its `.hashes.json` in this task.** It is a live defect, not plan scope creep: left alone, the CLI's multi-line warning about it lands inside every captured transcript, so the site would publish a nag about the example's own broken setup.
 
 `examples/showcase/metaobjects.config.ts` — same import style as advanced-modeling (this example is embedded in the monorepo, so generators import directly from the package):
 
@@ -211,10 +222,10 @@ Expected: FAIL — no `generated/ts` exists yet.
 - [ ] **Step 5: Generate the committed output**
 
 ```bash
-cd examples/showcase && bun ../../server/typescript/packages/cli/src/index.ts gen
+cd examples/showcase && bun ../../server/typescript/packages/cli/bin/meta.ts gen
 ```
 
-Note `src/index.ts` is a MODULE, not an entry point — the executable is `bin/meta.ts`. Running `bun src/index.ts` exits 0 silently and writes nothing, which reads exactly like success.
+**`bin/meta.ts` is the executable.** `src/index.ts` is a MODULE — running it exits 0 silently and writes nothing, which reads exactly like success. Every CLI invocation in this plan uses `bin/meta.ts`; if you find one that does not, it is a bug in the plan.
 
 - [ ] **Step 6: Run the test to verify it passes**
 
@@ -312,7 +323,13 @@ export function extractMarkedRegion(source: string, id: string): string {
   // every dedent to zero the moment a region contains one.
   const indents = region.filter((l) => l.trim()).map((l) => l.match(/^ */)![0].length);
   const common = indents.length ? Math.min(...indents) : 0;
-  return region.map((l) => (l.trim() ? l.slice(common) : l)).join("\n").trim();
+  // Trim blank LINES, never whitespace: `.trim()` would strip the first line's
+  // remaining indent whenever it is not the least-indented line, destroying the
+  // relative structure the dedent exists to preserve.
+  const body = region.map((l) => (l.trim() ? l.slice(common) : l));
+  while (body.length && !body[0].trim()) body.shift();
+  while (body.length && !body[body.length - 1].trim()) body.pop();
+  return body.join("\n");
 }
 ```
 
@@ -378,6 +395,17 @@ describe("matchSubsequence", () => {
     const r = matchSubsequence(["export const c = 3;", "export const a = 1;"], FULL);
     expect(r.ok).toBe(false);
   });
+
+  // Every real caller does readFileSync(...).split("\n") on a newline-terminated
+  // file, which yields a trailing "". Unstripped it matches the first blank line
+  // at or after the cursor, consuming a position and skewing every elision after
+  // it. This is the shape the gate ALWAYS receives, so it must be tested.
+  test("a trailing empty line from split() does not skew the match", () => {
+    const inline = ["export const a = 1;", ""];
+    expect(matchSubsequence(splitLines("export const a = 1;\n"), FULL))
+      .toEqual({ ok: true, positions: [2] });
+    expect(inline[1]).toBe("");   // documents the shape being guarded against
+  });
 });
 
 describe("renderWithElisions", () => {
@@ -408,6 +436,17 @@ Expected: FAIL — module not found.
 export type MatchResult =
   | { ok: true; positions: number[] }
   | { ok: false; failedAt: number; line: string };
+
+/**
+ * The ONLY way callers may turn file text into lines. `split("\n")` on a
+ * newline-terminated file leaves a trailing "" that matches the first blank line
+ * at or after the cursor, consuming a position and skewing every later elision.
+ */
+export function splitLines(text: string): string[] {
+  const lines = text.split("\n");
+  if (lines.length && lines[lines.length - 1] === "") lines.pop();
+  return lines;
+}
 
 /**
  * Is every inline line present, IN ORDER, in the real generated file?
@@ -552,16 +591,30 @@ Expected: FAIL — module not found.
 ```ts
 import { readFileSync } from "node:fs";
 
-export interface Vocabulary { subTypes: Set<string>; attrs: Set<string> }
+export interface Vocabulary {
+  subTypes: Set<string>;
+  attrs: Set<string>;
+  /** Bare type key → its default subtype, e.g. `metadata` → `root`. */
+  defaultSubTypes: Record<string, string>;
+}
 
-/** Bare in canonical JSON AND in YAML — never `@`-prefixed. */
-const RESERVED = new Set([
-  "metadata", "metadata.root", "name", "package", "extends",
-  "abstract", "overlay", "isArray", "children", "value",
-]);
+// Imported by SOURCE PATH, not package name: bun's isolated linker puts
+// @metaobjectsdev/metadata inside each package's own node_modules, unreachable from
+// scripts/. Same pattern and same reason as scripts/check-doc-examples.ts:47.
+// NEVER retype metamodel strings (CLAUDE.md, "Constants discipline") — RESERVED_KEYS
+// is the single definition, 8 entries built from named constants.
+import { RESERVED_KEYS } from "../../server/typescript/packages/metadata/src/shared/structural.js";
+
+/** Narrowed from `unknown` — CLAUDE.md forbids `any`. */
+interface RegistryManifest {
+  types: { type: string; subType: string; attrs?: { name: string }[] }[];
+  commonAttrs?: { name: string }[];
+  defaultSubTypes: Record<string, string>;
+  metamodelVersion: string;
+}
 
 export function loadVocabulary(registryPath: string): Vocabulary {
-  const m = JSON.parse(readFileSync(registryPath, "utf8"));
+  const m = JSON.parse(readFileSync(registryPath, "utf8")) as RegistryManifest;
   const subTypes = new Set<string>();
   const attrs = new Set<string>();
   for (const t of m.types) {
@@ -569,13 +622,15 @@ export function loadVocabulary(registryPath: string): Vocabulary {
     for (const a of t.attrs ?? []) attrs.add(a.name);
   }
   for (const a of m.commonAttrs ?? []) attrs.add(a.name);
-  return { subTypes, attrs };
+  return { subTypes, attrs, defaultSubTypes: m.defaultSubTypes };
 }
 
 const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 const KEY = /^(\s*(?:-\s*)?)([A-Za-z_][\w.]*)(:)(.*)$/;
+/** Keys INSIDE an inline flow map: `{ table: subscribers, required: true }`. */
+const FLOW_KEY = /([{,]\s*)([A-Za-z_][\w.]*)(\s*:)/g;
 
 export function highlightMetadata(yaml: string, vocab: Vocabulary): string {
   return yaml.split("\n").map((line) => {
@@ -586,8 +641,12 @@ export function highlightMetadata(yaml: string, vocab: Vocabulary): string {
     const [, lead, key, colon, rest] = m;
 
     let cls: string;
-    if (vocab.subTypes.has(key)) cls = "keyword";
-    else if (RESERVED.has(key) || vocab.attrs.has(key)) cls = "key";
+    // A BARE type key (`metadata:`) is a TYPE, not a reserved structural key — the
+    // manifest's defaultSubTypes resolves it to metadata.root. Colouring it `key`
+    // renders the root line blue while every other subtype renders gold, which is
+    // the inconsistent-colouring defect this work exists to remove.
+    if (vocab.subTypes.has(key) || vocab.defaultSubTypes[key]) cls = "keyword";
+    else if (RESERVED_KEYS.has(key) || vocab.attrs.has(key)) cls = "key";
     else throw new Error(
       `unknown metadata key "${key}" — not a registered type.subType, ` +
       `not a registered attribute, not a reserved keyword. ` +
@@ -603,9 +662,34 @@ export function highlightMetadata(yaml: string, vocab: Vocabulary): string {
 Run: `bun test scripts/site/highlight-metadata.test.ts`
 Expected: PASS, 8 tests.
 
+- [ ] **Step 4b: Classify flow-map keys — the gate is VACUOUS without this**
+
+`KEY` reaches only the first key on a line, and the showcase model is written almost entirely as inline flow maps:
+
+```yaml
+- source.rdb:      { table: subscribers }
+- field.string:    { name: email, maxLength: 320, required: true }
+- identity.primary: { name: primary, fields: [id], generation: increment }
+```
+
+Without `FLOW_KEY`, `table` / `maxLength` / `required` / `fields` / `generation` are never classified — **exactly the attribute names a retirement would hit**. So "a site example using retired vocabulary fails the build" would be false for the showcase's own primary snippet while eight tests report green. Add:
+
+```ts
+test("classifies keys INSIDE an inline flow map", () => {
+  const html = highlightMetadata("- source.rdb: { table: subscribers }", vocab);
+  expect(html).toContain('<span class="keyword">source.rdb</span>');
+  expect(html).toContain('<span class="key">table</span>');
+});
+
+test("throws on a retired attribute inside a flow map, not just at line start", () => {
+  expect(() => highlightMetadata("- requirement.functional: { verifiedBy: [x] }", vocab))
+    .toThrow(/unknown metadata key.*verifiedBy/i);
+});
+```
+
 - [ ] **Step 5: Widen to the real corpus, then commit**
 
-Run `highlightMetadata` over every marked region in `examples/showcase/` and `examples/advanced-modeling/`. Inline flow-maps (`{ table: subscribers }`) contain inner keys the line regex does not reach; extend `KEY` handling to also classify keys inside `{ ... }` on the same line, and add a test for `- source.rdb: { table: subscribers }` asserting both `source.rdb` (keyword) and `table` (key) are spanned. Do not silently leave inner keys unstyled — the prompts article's current markup does exactly that, and it is one of the defects this replaces.
+Run `highlightMetadata` over every marked region in `examples/showcase/` and `examples/advanced-modeling/`. Also emit a `string` class for the value half of a line — `www/index.html:252` uses `<span class="string">` there today, and the design promises the page looks as it does now.
 
 ```bash
 git add scripts/site/highlight-metadata.ts scripts/site/highlight-metadata.test.ts
@@ -635,11 +719,17 @@ Use `highlight.js` (mature grammars for all six languages, synchronous, no WASM)
 
 ```ts
 import { describe, test, expect } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { highlightCode } from "./highlight-code.js";
 
 describe("highlightCode", () => {
-  test("emits ONLY the site's palette classes", () => {
-    const html = highlightCode(`export const a = "x"; // note`, "ts");
+  // Run over REAL generated output, not a one-liner: the one-liner contains no
+  // function or class title, so it cannot see the multi-class spans that leak.
+  test("emits ONLY the site's palette classes, over real generated output", () => {
+    const html = highlightCode(
+      readFileSync(resolve(import.meta.dirname,
+        "../../examples/showcase/generated/ts/Subscriber.ts"), "utf8"), "ts");
     const classes = [...html.matchAll(/class="([^"]+)"/g)].map((m) => m[1]);
     expect(classes.length).toBeGreaterThan(0);
     for (const c of classes)
@@ -703,7 +793,7 @@ export type Lang = "ts" | "java" | "kotlin" | "csharp" | "python" | "sql" | "con
 const SCOPE_TO_CLASS: Record<string, string> = {
   comment: "comment", keyword: "keyword", built_in: "keyword", type: "keyword",
   literal: "keyword", string: "string", number: "string", regexp: "string",
-  attr: "key", property: "key", title: "key", "title.function": "key",
+  attr: "key", property: "key", title: "key", variable: "key", params: "key",
 };
 
 const esc = (s: string) =>
@@ -714,8 +804,10 @@ function highlightConsole(source: string): string {
   return source.split("\n").map((line) => {
     if (line.startsWith("$ ")) return `<span class="ok">$</span> ${esc(line.slice(2))}`;
     if (/\bERR_[A-Z_]+/.test(line)) return `<span class="err">${esc(line)}</span>`;
+    // >= 0, not > 0: a full-line `# comment` is the common shell-transcript case,
+    // and `> 0` renders exactly that one unstyled.
     const hash = line.indexOf("#");
-    if (hash > 0) return `${esc(line.slice(0, hash))}<span class="comment">${esc(line.slice(hash))}</span>`;
+    if (hash >= 0) return `${esc(line.slice(0, hash))}<span class="comment">${esc(line.slice(hash))}</span>`;
     return esc(line);
   }).join("\n");
 }
@@ -723,9 +815,17 @@ function highlightConsole(source: string): string {
 export function highlightCode(source: string, lang: Lang): string {
   if (lang === "console") return highlightConsole(source);
   const html = hljs.highlight(source, { language: lang }).value;
-  return html.replace(/<span class="hljs-([\w.]+)">/g, (_, scope) => {
-    const cls = SCOPE_TO_CLASS[scope];
-    return cls ? `<span class="${cls}">` : "<span>";
+  // highlight.js emits MULTI-class spans for sub-scopes: `hljs-title function_`,
+  // `hljs-title class_`, `hljs-variable language_`, `hljs-meta keyword`. A regex
+  // requiring exactly `hljs-<word>` cannot see them, so they would pass through
+  // untouched onto a page whose CSS has no .hljs-* rules at all.
+  return html.replace(/<span class="([^"]*)">/g, (_, raw: string) => {
+    for (const token of raw.split(/\s+/)) {
+      const scope = token.replace(/^hljs-/, "").replace(/_$/, "");
+      const cls = SCOPE_TO_CLASS[scope];
+      if (cls) return `<span class="${cls}">`;
+    }
+    return "<span>";
   });
 }
 ```
@@ -764,10 +864,22 @@ Copy `examples/showcase/metaobjects/meta.subscriber.yaml` to `examples/showcase/
 Verify by hand before writing any code:
 
 ```bash
-cd examples/showcase/drift && bun ../../../server/typescript/packages/cli/src/index.ts verify --templates; echo "exit=$?"
+cd examples/showcase/drift && \
+  bun ../../../server/typescript/packages/cli/bin/meta.ts verify --templates --prompts templates
+echo "exit=$?"
 ```
 
-Expected: a line containing `ERR_VAR_NOT_ON_PAYLOAD`, exit 1. If the code differs, use what the tool actually prints — the page shows real output, so the fixture is built to match the CLI, never the reverse.
+Expected — **verified against the real CLI before this plan was written**:
+
+```
+meta: [subscriberBlurb] (prompt) ERR_VAR_NOT_ON_PAYLOAD: subscriberName
+meta: meta verify — 1 drift error(s) across 1 template(s).
+exit=1
+```
+
+**`--prompts templates` is load-bearing.** `verify`'s default prompts dir is `prompts` (`commands/verify.ts:83`) and the showcase's text lives in `templates/`, so omitting it yields `ERR_PARTIAL_UNRESOLVED` — "your text file is missing" — instead of `ERR_VAR_NOT_ON_PAYLOAD`. That is a DIFFERENT error, and it would be published onto the page whose whole argument is payload drift. The `exitCode !== 0` half of the test passes either way, so only the message assertion catches it.
+
+Do not "use whatever the tool prints" here: the expected code is stated above because the fixture is built to produce exactly it.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -805,7 +917,8 @@ describe("normalizeTranscript", () => {
 
 describe("captureTranscript", () => {
   test("the drift fixture really fails, and the failure is the page content", () => {
-    const r = captureTranscript(["verify", "--templates"],
+    // --prompts templates is required: without it the error is ERR_PARTIAL_UNRESOLVED.
+    const r = captureTranscript(["verify", "--templates", "--prompts", "templates"],
       resolve(REPO, "examples/showcase/drift"));
     expect(r.exitCode).not.toBe(0);
     expect(r.text).toContain("ERR_VAR_NOT_ON_PAYLOAD");
@@ -824,8 +937,9 @@ Expected: FAIL — module not found.
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
+// bin/meta.ts, NOT src/index.ts — the latter is a module and exits 0 writing nothing.
 const CLI = (repoRoot: string) =>
-  resolve(repoRoot, "server/typescript/packages/cli/src/index.ts");
+  resolve(repoRoot, "server/typescript/packages/cli/bin/meta.ts");
 
 export function captureTranscript(argv: string[], cwd: string):
   { text: string; exitCode: number } {
@@ -841,7 +955,13 @@ export function captureTranscript(argv: string[], cwd: string):
  * and user-rooted is fatal, never silently redacted — a redaction would hide that the
  * capture reached outside the repo at all.
  */
-const HOME_PATH = /(^|[\s"'(])(\/(?:home|Users)\/[^\s"')]+|[A-Za-z]:\\Users\\[^\s"')]+)/;
+/**
+ * ONE predicate, boundary-free, used by BOTH this and the payload's final sweep.
+ * A leading-boundary requirement (`(^|[\s"'(])`) misses `file:///home/…`,
+ * `--cwd=/home/…` and `[/home/…`; two different predicates means the weaker one
+ * runs first and the stronger one never sees what it was written for.
+ */
+export const HOME_PATH = /(?:\/(?:home|Users)\/|[A-Za-z]:\\Users\\)[^\s"')]+/;
 
 export function normalizeTranscript(text: string, repoRoot: string): string {
   const out = text
@@ -850,7 +970,7 @@ export function normalizeTranscript(text: string, repoRoot: string): string {
     .replace(/\b\d+(\.\d+)?\s?(ms|s)\b/g, "<time>");
   const leak = HOME_PATH.exec(out);
   if (leak) throw new Error(
-    `absolute home path in transcript: ${leak[2]} — refusing to publish it`);
+    `absolute home path in transcript: ${leak[0]} — refusing to publish it`);
   return out;
 }
 ```
@@ -879,12 +999,24 @@ The first real use of Task 3's gate. Produces the excerpt files every later port
 - Test: `scripts/site/excerpts.test.ts`
 
 **Interfaces:**
-- Consumes: `matchSubsequence` (Task 3), `examples/showcase/generated/ts/**` (Task 1).
-- Produces: `examples/showcase/inline/<id>.txt` — one committed excerpt per generated-code snippet. Later tasks add `java-dto.txt`, `kotlin-entity.txt`, `csharp-entity.txt`, `python-model.txt`, `sql-migration.txt` in the same directory, same format.
+- Consumes: `matchSubsequence`, `splitLines` (Task 3), `examples/showcase/generated/ts/**` (Task 1).
+- Produces:
+  - `scripts/site/snippets.ts` — **the single registry of snippet ids.** `SNIPPETS: Record<SnippetId, SnippetSource>` where a source is either `{ kind: "marker"; file: string }` or `{ kind: "excerpt"; inline: string; full: string; lang: Lang }`.
+  - `examples/showcase/inline/<id>.txt` — one committed excerpt per `kind: "excerpt"` entry.
+
+**Why a registry rather than three lists.** The excerpt test, the payload builder and the site's placeholders each need the same id set. Hand-typing it three times is exactly how an id ends up in the payload with no page referencing it, which makes `assertBijection` throw and fails both the release preflight and every deploy. Everything downstream — Task 8's ports, Task 9's payload, Task 12's placeholders, Task 13's bijection — reads `SNIPPETS`.
 
 - [ ] **Step 1: Cut the excerpts by hand**
 
-Read `examples/showcase/generated/ts/Subscriber.ts` and copy the ~20 lines the page should show — the Drizzle table, the insert schema, and the two type aliases — into `examples/showcase/inline/ts-entity.txt`, verbatim, in file order. Do the same for the `requirementTests()` output into `ts-requirement-test.txt`.
+Read `examples/showcase/generated/ts/Subscriber.ts` and copy the ~20 lines the page should show — the Drizzle table, the insert schema, and the two type aliases — into `examples/showcase/inline/ts-entity.txt`, verbatim, in file order.
+
+Do the same for the `requirementTests()` output into `ts-requirement-test.txt`. **Its real path is not `Subscriber.requirements.test.ts`.** The generator emits `requirements/<dotted.requirement.path>.<type>.<subType>.test.ts` (`codegen-ts/src/generators/requirement-tests.ts:84,97-100`, pinned by `test/requirement-tests-generator.test.ts:81-85`), one file per requirement × per distinct `type.subType` it claims. For this showcase — `implementedBy: [acme::Subscriber.status]`, a `field.enum` — that is:
+
+```
+generated/ts/requirements/subscriberCanBePausedWithoutErasingHistory.field.enum.test.ts
+```
+
+The default filter is `functional && level >= 4`; the showcase's `level: 5` satisfies it. Confirm the emitted name by listing the directory after Task 1's `meta gen` rather than trusting this path.
 
 The excerpt must be a subsequence in **file order**: you may skip lines, never reorder them.
 
@@ -894,30 +1026,27 @@ The excerpt must be a subsequence in **file order**: you may skip lines, never r
 import { describe, test, expect } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { matchSubsequence } from "./subsequence.js";
+import { matchSubsequence, splitLines } from "./subsequence.js";
+import { SNIPPETS } from "./snippets.js";
 
-const SHOWCASE = resolve(import.meta.dirname, "../../examples/showcase");
-const INLINE = join(SHOWCASE, "inline");
-
-/** Excerpt id → the generated file it must be a subsequence of. */
-const SOURCES: Record<string, string> = {
-  "ts-entity": "generated/ts/Subscriber.ts",
-  "ts-requirement-test": "generated/ts/Subscriber.requirements.test.ts",
-};
+const REPO = resolve(import.meta.dirname, "../..");
+const INLINE = resolve(REPO, "examples/showcase/inline");
 
 describe("committed excerpts are real", () => {
-  test("every excerpt file has a declared source — none is orphaned", () => {
+  test("every excerpt file has a registry entry — none is orphaned", () => {
     const ids = readdirSync(INLINE).map((f) => f.replace(/\.txt$/, ""));
-    for (const id of ids) expect(Object.keys(SOURCES)).toContain(id);
+    for (const id of ids) expect(SNIPPETS[id]?.kind).toBe("excerpt");
   });
 
-  for (const [id, rel] of Object.entries(SOURCES)) {
-    test(`${id} is an in-order subsequence of ${rel}`, () => {
-      const inline = readFileSync(join(INLINE, `${id}.txt`), "utf8").split("\n");
-      const full = readFileSync(join(SHOWCASE, rel), "utf8").split("\n");
+  for (const [id, src] of Object.entries(SNIPPETS)) {
+    if (src.kind !== "excerpt") continue;
+    test(`${id} is an in-order subsequence of ${src.full}`, () => {
+      // splitLines, NOT split("\n") — a trailing "" skews every elision.
+      const inline = splitLines(readFileSync(resolve(REPO, src.inline), "utf8"));
+      const full = splitLines(readFileSync(resolve(REPO, src.full), "utf8"));
       const r = matchSubsequence(inline, full);
       if (!r.ok) throw new Error(
-        `${id}: line ${r.failedAt + 1} is no longer in ${rel}:\n  ${r.line}`);
+        `${id}: line ${r.failedAt + 1} is no longer in ${src.full}:\n  ${r.line}`);
       expect(r.ok).toBe(true);
     });
   }
@@ -964,29 +1093,38 @@ git commit -m "feat(showcase): committed TS excerpts, gated as real output"
 
 ---
 
-### Task 8: Generate the four non-TypeScript ports
+### Task 8: Generate the CLI ports (TypeScript, Python, C#)
+
+Three of the five ports expose a real CLI. Java and Kotlin do not, and they are Task 8b.
 
 **Files:**
 - Create: `scripts/regen-showcase.ts`
 - Test: `scripts/site/regen-showcase.test.ts`
-- Create: `examples/showcase/generated/{java,kotlin,csharp,python,sql}/**` (generated, committed)
-- Create: `examples/showcase/inline/{java-dto,kotlin-entity,csharp-entity,python-model,sql-migration}.txt`
-- Modify: `scripts/site/excerpts.test.ts` (add the five new `SOURCES` entries)
+- Create: `examples/showcase/generated/{python,csharp,sql}/**` (generated, committed)
+- Create: `examples/showcase/inline/{python-model,csharp-entity,sql-migration}.txt`
+- Modify: `scripts/site/snippets.ts` (add the three entries)
 - Modify: `package.json` (add `"regen:showcase": "bun scripts/regen-showcase.ts"`)
 
 **Interfaces:**
 - Consumes: `examples/showcase/metaobjects/**`.
 - Produces: `examples/showcase/generated/<port>/**` and a `--check` mode that exits non-zero on any diff.
 
-- [ ] **Step 1: Find each port's real invocation**
+- [ ] **Step 1: Confirm each CLI runs**
 
-Do not guess. Read `docs/features/cli.md` for the locked per-port CLI matrix, then confirm each command runs:
+Read `docs/features/cli.md` for the locked per-port matrix. The three CLI ports:
+
+| Port | Command | Notes |
+|---|---|---|
+| TypeScript | `bun <repo>/server/typescript/packages/cli/bin/meta.ts gen` | verified working |
+| C# | `dotnet meta gen` | the tool must be BUILT and installed first |
+| Python | `metaobjects gen` | needs the port's venv on PATH (`uv run`) |
+| SQL | `bun <repo>/…/bin/meta.ts migrate …` | schema is Node-only (ADR-0015) |
 
 ```bash
-mvn -v && dotnet --version && uv --version   # all present on the maintainer machine
+dotnet --version && uv --version    # both present on the maintainer machine
 ```
 
-Per the matrix: TypeScript `meta gen`, C# `dotnet meta gen`, Java/Kotlin `mvn metaobjects:generate`, Python `metaobjects gen`. Schema (`migrate`) is Node-`meta`-only, so `generated/sql/` comes from the TS CLI.
+Each needs a project directory the way `examples/showcase/` is one for TS. Create the minimum scaffolding each CLI requires — nothing more.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -1048,7 +1186,9 @@ for (const p of PORTS) {
 if (failed) process.exit(1);
 
 if (CHECK) {
-  const diff = spawnSync("git", ["status", "--porcelain", "examples/showcase/generated"],
+  // Scope is the WHOLE example dir, not just generated/: a regen also rewrites
+  // .metaobjects/.gen-state/.hashes.json, which CLAUDE.md requires to be committed.
+  const diff = spawnSync("git", ["status", "--porcelain", "examples/showcase"],
     { cwd: REPO, encoding: "utf8" }).stdout.trim();
   if (diff) {
     console.error(`✗ showcase output is stale — run \`bun run regen:showcase\` and commit:\n${diff}`);
@@ -1058,9 +1198,9 @@ if (CHECK) {
 }
 ```
 
-- [ ] **Step 5: Generate, cut the five excerpts, extend the excerpt test**
+- [ ] **Step 5: Generate, cut three excerpts, extend the registry**
 
-Run `bun run regen:showcase`, then cut each port's ~20-line excerpt into `examples/showcase/inline/` exactly as Task 7 did, and add all five to `SOURCES` in `scripts/site/excerpts.test.ts`.
+Run `bun run regen:showcase`, then cut each port's ~20-line excerpt into `examples/showcase/inline/` exactly as Task 7 did, and add the three entries to `SNIPPETS` in `scripts/site/snippets.ts`.
 
 - [ ] **Step 6: Run both tests to verify they pass**
 
@@ -1070,9 +1210,48 @@ Expected: PASS.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add examples/showcase scripts/regen-showcase.ts scripts/site/regen-showcase.test.ts scripts/site/excerpts.test.ts package.json
-git commit -m "feat(showcase): generate and gate all five ports"
+git add examples/showcase scripts/regen-showcase.ts scripts/site/regen-showcase.test.ts scripts/site/snippets.ts package.json
+git commit -m "feat(showcase): generate and gate the CLI ports"
 ```
+
+---
+
+### Task 8b: Generate the JVM ports (Java, Kotlin)
+
+**Java and Kotlin have no CLI that generates against a project directory.** The Maven plugin needs a full `pom.xml` carrying `<loader>`, `<generators>` and `<globals><output>` blocks (see `server/java/maven-plugin/src/test/resources/mojo/pom.xml`) *and* `com.metaobjects:metaobjects-maven-plugin` installed to the local repo at the current version — which means building the whole Java tree first.
+
+The repo's own conformance artifacts do not go through the plugin at all: they are produced by **test code calling the generator classes directly** (`SpringM2mCodegenTest`, `GeneratedAuthorControllerHarness`). That is the cheaper and more honest path here too.
+
+**Files:**
+- Create: a JVM entry point invoking the Spring + Kotlin generators against `examples/showcase/metaobjects/` and writing to `examples/showcase/generated/{java,kotlin}/`
+- Create: `examples/showcase/inline/{java-dto,kotlin-entity}.txt`
+- Modify: `scripts/regen-showcase.ts` (add the two JVM entries)
+- Modify: `scripts/site/snippets.ts`
+
+- [ ] **Step 1: Find the generator entry points**
+
+```bash
+git grep -n "class .*Generator" server/java/codegen-spring/src/main/java | head
+git grep -n "class .*Generator" server/java/codegen-kotlin/src/main/kotlin | head
+```
+
+Read how `SpringM2mCodegenTest` constructs a loader and drives a generator, and copy that shape. Do **not** invent an API.
+
+- [ ] **Step 2: Write the failing test**
+
+Extend `scripts/site/excerpts.test.ts` — the registry-driven loop already covers any new `SNIPPETS` entry, so adding `java-dto` and `kotlin-entity` to the registry *is* the failing test. Run it and watch it fail on the missing files.
+
+- [ ] **Step 3: Implement the entry point and generate**
+
+- [ ] **Step 4: Cut the two excerpts, re-run, and commit**
+
+```bash
+bun test scripts/site/excerpts.test.ts
+git add examples/showcase server/java scripts/regen-showcase.ts scripts/site/snippets.ts
+git commit -m "feat(showcase): generate and gate the JVM ports"
+```
+
+**If the JVM generators turn out to need substantially more scaffolding than this**, stop and say so rather than expanding the task — the "all five ports" decision was made on the understanding that every port already generates from a shared model, and if that is false for the JVM, the scope is worth re-deciding rather than absorbing.
 
 ---
 
@@ -1163,7 +1342,7 @@ Assemble in this order, throwing on any gate failure:
 4. **Transcript snippets** — `captureTranscript` on `examples/showcase/drift`, assert a non-zero exit (a fixture gone green means the page would show a stale error), `normalizeTranscript`, `highlightCode(..., "console")`.
 5. **Requirement link check** — run `meta verify` on `examples/showcase` and assert exit 0, so `@implementedBy` genuinely resolves. The requirements page's whole claim is "resolved, not trusted".
 6. **Registries** — read the cli package version (npm), and the port version files, into the five-key block.
-7. **Final sweep** — `JSON.stringify(payload)` must not match `/\/(home|Users)\//`.
+7. **Final sweep** — `JSON.stringify(payload)` must not match `HOME_PATH` **imported from `transcript.ts`**. Do not retype the pattern: two spellings of one rule is how the weaker one ends up being the one that runs.
 
 - [ ] **Step 4: Implement `build-site-payload.ts`**
 
@@ -1227,10 +1406,13 @@ Beside `gate_doc_examples` (line 202), following its comment style — the repo'
 # The website publishes generated code and claims it is real `meta gen` output. Nothing
 # checked that until this gate: the excerpt must be a real subsequence of real output,
 # the drift fixture must still fail, and the payload must carry no absolute home path.
+#
+# Deliberately does NOT run regen-showcase --check. That shells out to mvn/dotnet/uv,
+# and this lane is `step_if bun` — guarded on bun alone, measured at 0.1m, and included
+# in `--quick`, the documented pre-PR command. Port regeneration is checked in the
+# release preflight and the per-port release-tag lanes instead.
 gate_site_payload() {
-  bun test scripts/site \
-    && bun scripts/regen-showcase.ts --check \
-    && bun scripts/build-site-payload.ts --check
+  bun test scripts/site && bun scripts/build-site-payload.ts --check
 }
 ```
 
@@ -1264,10 +1446,13 @@ try {
 
 ```bash
 bash scripts/ci-local.sh --only gates
-bun scripts/release.mjs 9.9.9 --dry-run   # must reach the bump with the new check green
 ```
 
-Do not pipe either through `tail` — `pipefail` aside, the repo has twice reported the exit status of `tail` instead of the gate.
+**Do NOT verify with `bun scripts/release.mjs 9.9.9 --dry-run`.** `--dry-run` exits at `release.mjs:157` — *after* Phase 1 has written `9.9.9` into all 14 package.json files, run `bun run clean && bun run build`, and done `rm -f bun.lock && bun install`. Nothing reverts it, and this repo already carries a scar from a corrupting version bump. It also needs a live `npm whoami` and 14 registry round-trips just to reach the new check.
+
+Instead, factor the preflight body into a function and unit-test it, or add a `--preflight-only` flag that returns before Phase 1 — and verify with that.
+
+Do not pipe either command through `tail` — the repo has twice reported the exit status of `tail` instead of the gate.
 
 - [ ] **Step 4: Commit**
 
@@ -1346,9 +1531,16 @@ describe("assertBijection", () => {
       .toThrow(/showcase-model/);
   });
 
-  test("passes when every entry is referenced exactly once", () => {
+  test("passes when every entry is referenced by some page", () => {
     const html = { "index.html": `<pre data-snippet="ts-entity"></pre><pre data-snippet="showcase-model"></pre>` };
     expect(() => assertBijection(html, payload as never)).not.toThrow();
+  });
+
+  test("a DUPLICATE placeholder for one id is reported", () => {
+    const html = { "index.html":
+      `<pre data-snippet="ts-entity"></pre><pre data-snippet="ts-entity"></pre>` +
+      `<pre data-snippet="showcase-model"></pre>` };
+    expect(() => assertBijection(html, payload as never)).toThrow(/duplicate.*ts-entity/i);
   });
 });
 ```
@@ -1365,8 +1557,13 @@ Idempotence matters: the injector must replace a placeholder's existing content 
 ```ts
 import type { SitePayload } from "./payload.js";
 
+// Ids come from the page's own HTML via ([^"]+), so they are not trusted regex.
+// An unescaped `.` over-matches and a `(`/`[`/`+` throws SyntaxError — and the
+// design's own worked id is "ts/Subscriber".
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 const BLOCK = (id: string) => new RegExp(
-  `(<pre[^>]*data-snippet="${id}"[^>]*>)[\\s\\S]*?(</pre>)` +
+  `(<pre[^>]*data-snippet="${escapeRe(id)}"[^>]*>)[\\s\\S]*?(</pre>)` +
   `(\\s*<details>[\\s\\S]*?</details>)?`, "g");
 
 const PLACEHOLDER = /<pre[^>]*data-snippet="([^"]+)"/g;
@@ -1427,19 +1624,30 @@ git commit -m "feat(site): payload injector, bijection check, and local preview"
 **Repo: `metaobjectsdev.github.io`.** `metaobjects.dev` and `metaobjectsdev.github.io` are two checkouts of the SAME remote. Work in one, and confirm `git log --oneline -1` matches `origin/main` before editing — a stale checkout has produced a wrong claim here before.
 
 **Files:**
-- Modify: `www/index.html` (~9 blocks → placeholders)
+- Modify: `www/index.html` (**11** convertible blocks → placeholders; of its 13 `<pre>` blocks, line 192 is the assess.md prompt and line 415 is shell — both stay)
 - Modify: `www/requirements.html` (1 block → placeholder)
 - Modify: `www/articles/prompts-are-code.html` (2 blocks → placeholders)
 - Modify: `www/styles.css` (palette)
 
 - [ ] **Step 1: Audit `tok-*` before deleting anything**
 
+The `tok-*` rules are **not in `styles.css`** — they live in inline `<style>` blocks: `www/requirements.html:47-48` (global) and `www/articles/prompts-are-code.html:48-52` (scoped under `.article`). A `grep tok- www/styles.css` returns nothing, which reads as "no rules to keep" and is how you would delete markup whose styling lives elsewhere.
+
 ```bash
-cd <site-repo> && grep -o 'class="tok-[a-z]*"' www/*.html www/articles/*.html | sort | uniq -c
-grep -n 'tok-' www/styles.css
+cd <site-repo>
+grep -o 'class="tok-[a-z]*"' www/*.html www/articles/*.html | sort | uniq -c
+sed -n '40,60p' www/requirements.html            # the inline <style>
+sed -n '44,56p' www/articles/prompts-are-code.html
 ```
 
-If any `tok-*` class appears **outside** a `<pre>` block, keep its CSS rule and migrate only the code blocks. Deleting a rule still in use is a silent visual regression on a site with no tests.
+If any `tok-*` class appears **outside** a `<pre>` block, keep its rule and migrate only the code blocks. Deleting a rule still in use is a silent visual regression on a site with no tests.
+
+**Also add the two classes that do not exist yet.** `www/styles.css:429-432` defines `.example-code .comment/.keyword/.key/.string` and nothing for `ok`/`err`, so every transcript block would ship unstyled:
+
+```css
+.example-code .ok  { color: #97c895; }
+.example-code .err { color: #e06c5f; }
+```
 
 - [ ] **Step 2: Replace each block with a placeholder**
 
@@ -1449,7 +1657,9 @@ Every block becomes:
 <pre class="example-code" data-snippet="<id>"></pre>
 ```
 
-The ids, matching Task 9's payload exactly: `showcase-model`, `ts-entity`, `java-dto`, `kotlin-entity`, `csharp-entity`, `python-model`, `sql-migration`, `showcase-requirement`, `showcase-prompt`, `verify-transcript`, and the four deep-section ids from Task 7: `deep-model`, `deep-validators`, `deep-currency`, `deep-projection`.
+**Do not hand-type the id list.** Read it from `scripts/site/snippets.ts` (Task 7) — that registry is the single source, and three hand-maintained copies is exactly what puts an id in the payload that no page references.
+
+`ts-requirement-test` belongs on **`requirements.html`**, the page whose claim it proves — not on `index.html`. Counting: 11 on `index.html`, 2 on `requirements.html` (the ledger entry and the generated test stub), 2 on `prompts-are-code.html`.
 
 - [ ] **Step 3: Rewrite the prose the model change invalidates**
 
@@ -1496,37 +1706,49 @@ Do **not** push yet — the pages render empty until Task 13 lands the deploy st
 
 **Files:**
 - Modify (site repo): `.github/workflows/deploy.yml`
-- Create (this repo): `scripts/site-inject-ci.ts`
+- Create (this repo): `scripts/site-inject-ci.mjs`
 - Modify (this repo): `scripts/release.mjs` (extend Task 10's preflight)
-- Test: `scripts/site/bijection.test.ts`
+- Test: `scripts/site-bijection.test.ts` — **deliberately NOT under `scripts/site/`**, because `gate_site_payload` runs `bun test scripts/site`, which globs that directory, and this test reaches the network. The gates lane must stay offline-safe.
 
 - [ ] **Step 1: Add the deploy step**
 
 In `deploy.yml`, **before** "Setup Pages", following the existing reference-docs step's comment style:
 
 ```yaml
-    # Snippet injection: clone metaobjects at its latest RELEASE TAG — not main —
+    # Snippet injection: clone metaobjects at its latest npm RELEASE TAG — not main —
     # and inject its committed site-payload.json into the pages' data-snippet
     # placeholders. Pinning to the tag matters: an unrelated site edit triggers a
     # deploy, and against main that deploy would publish unreleased snippets.
     - name: Inject generated snippets
       run: |
-        git clone --depth 1 https://github.com/metaobjectsdev/metaobjects.git /tmp/mo
+        git clone --filter=blob:none https://github.com/metaobjectsdev/metaobjects.git /tmp/mo
         cd /tmp/mo
-        TAG=$(git ls-remote --tags --refs origin 'v*' \
-              | awk -F/ '{print $NF}' | sort -V | tail -1)
-        git fetch --depth 1 origin "refs/tags/$TAG:refs/tags/$TAG"
+        # The repo carries TWO tag lines: v0.x (npm lockstep) and v7.x (JVM).
+        # `sort -V | tail -1` over 'v*' returns v7.20.12 — a Maven-only cut from June
+        # — and always will, because 7 sorts above 0. Filter to the npm line.
+        TAG=$(git tag -l 'v0.*' | grep -E '^v0\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+        test -n "$TAG" || { echo "no v0.x release tag found"; exit 1; }
         git checkout "$TAG"
         echo "injecting snippets from metaobjects $TAG"
-        bun install --frozen-lockfile
-        bun scripts/site-inject-ci.ts --site "$GITHUB_WORKSPACE/www"
+        node scripts/site-inject-ci.mjs --site "$GITHUB_WORKSPACE/www"
 ```
 
-Use `git ls-remote` rather than `git fetch --all`: **`--all` deletes local release tags**, and this project has been bitten by that.
+Three things here are load-bearing, each from a real failure:
+
+- **`node`, not `bun`.** This workflow's only toolchain step is `actions/setup-node@v4`; `ubuntu-latest` has no `bun`, so a `bun` line is `command not found` and — sitting before "Upload artifact" — fails the whole Pages deploy. Hence Step 2 ships the CI injector as **plain Node ESM with zero dependencies**, and there is no `install` line at all. (A root `bun install` would fetch all 16 workspace packages to run a regex replace.)
+- **Filter the tag line.** Verified: `git tag -l 'v*' | sort -V | tail -1` = `v7.20.12`. Unfiltered, the site pins to a June tree with no `examples/showcase/` in it, forever.
+- **`git ls-remote`/`git tag -l`, never `git fetch --all`** — `--all` deletes local release tags, and this project has been bitten by that.
 
 - [ ] **Step 2: Add the CI injector entry point (this repo)**
 
-`scripts/site-inject-ci.ts` reads `examples/showcase/site-payload.json`, walks the given `www/` tree, calls `assertBijection` then `injectSnippets`, and writes in place. It exits non-zero on any bijection failure — a deploy that publishes empty code blocks is worse than a deploy that fails.
+`scripts/site-inject-ci.mjs` reads `examples/showcase/site-payload.json`, walks the given `www/` tree, and writes in place. **Plain Node ESM, zero dependencies** — the deploy runner has Node and nothing else. `inject.ts`'s only import is `import type`, which is erased, so the logic ports directly; keep the two in sync by having the `.mjs` be the sole implementation and `inject.ts` re-export from it, rather than two copies.
+
+**It must NOT run the bidirectional `assertBijection` at deploy time.** The asymmetry is deliberate:
+
+- **A placeholder with no payload entry → hard fail.** It would otherwise ship a visibly empty code block.
+- **A payload entry no page references → warn, do not fail.**
+
+Running the bidirectional check here would make *every* site deploy fail — including unrelated prose edits — from the moment someone adds a placeholder until the next metaobjects release. That inverts D4's whole rationale: the tag pin exists to keep deploy risk OFF release day, not to hand it to every site edit. The bidirectional check belongs in the release preflight (Step 3), where it is fixable before anything publishes.
 
 - [ ] **Step 3: Write the failing cross-repo preflight test**
 
@@ -1536,9 +1758,9 @@ Because a failed Pages deploy is expensive to recover, the bijection is also che
 import { describe, test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { assertBijection } from "./inject.js";
+import { assertBijection } from "./site/inject.js";
 
-const REPO = resolve(import.meta.dirname, "../..");
+const REPO = resolve(import.meta.dirname, "..");
 const PAGES = ["www/index.html", "www/requirements.html", "www/articles/prompts-are-code.html"];
 
 describe("payload ↔ live site bijection", () => {
@@ -1561,7 +1783,7 @@ describe("payload ↔ live site bijection", () => {
 
 - [ ] **Step 4: Wire it into the release preflight**
 
-Extend Task 10's `release.mjs` block with `bun test scripts/site/bijection.test.ts`. It reaches the network, so it belongs in the release preflight and **not** in `ci-local.sh`'s gates lane, which must stay offline-safe.
+Extend Task 10's `release.mjs` block with `bun test scripts/site-bijection.test.ts`. It reaches the network, so it belongs in the release preflight and **not** in `ci-local.sh`'s gates lane, which must stay offline-safe.
 
 - [ ] **Step 5: Push the site repo, then verify live**
 
@@ -1572,7 +1794,7 @@ Then verify against the live site: the blocks render, `<details>` expands, and `
 - [ ] **Step 6: Commit**
 
 ```bash
-git add scripts/site-inject-ci.ts scripts/site/bijection.test.ts scripts/release.mjs
+git add scripts/site-inject-ci.mjs scripts/site-bijection.test.ts scripts/release.mjs
 git commit -m "feat(site): deploy-time injection pinned to the release tag"
 ```
 
@@ -1688,7 +1910,11 @@ In the same clone the Task 13 step already made — do not clone twice:
 
 - [ ] **Step 4: Verify live**
 
-After the deploy, `curl -s https://metaobjects.dev/llms.txt | head -20` must match `docs/llms/llms.txt`. This also removes 20 of the original 31 hand-edited version references.
+After the deploy, `curl -s https://metaobjects.dev/llms.txt | head -20` must match `docs/llms/llms.txt`.
+
+**State the claim honestly.** An earlier draft said this "removes 20 of the original 31 hand-edited version references." It does not. `docs/llms/llms.txt` contains literal `0.24.4` (3×), `7.24.4` (6×) and `0.24.0`; `llms-full.txt` has 10 more. Copying them de-duplicates the edit — those refs stop being maintained in TWO repos and stay maintained in ONE — but nothing here generates them from `SitePayload.registries`.
+
+Generating them is a real follow-on (template + the `registries` block), deliberately not folded in: `docs/llms/*` is also consumed directly by agents from this repo, so templating it is a change to an adopter-facing artifact and deserves its own decision.
 
 - [ ] **Step 5: Commit**
 
@@ -1698,10 +1924,159 @@ git add scripts/site/llms.test.ts && git commit -m "feat(site): llms mirrors gen
 
 ---
 
+### Task 16: `--metamodel --site` stops lying
+
+A flag the CLI accepts and silently ignores. This ships to adopters and is worth fixing on its own, independent of the website.
+
+**Files:**
+- Modify: `server/typescript/packages/cli/src/commands/docs.ts:213`
+- Test: `server/typescript/packages/cli/test/docs-metamodel-site.test.ts`
+
+- [ ] **Step 1: Confirm the defect**
+
+```bash
+cd examples/advanced-modeling
+bun ../../server/typescript/packages/cli/bin/meta.ts docs --metamodel --site --out /tmp/x
+find /tmp/x -name '*.html' | wc -l     # 0
+find /tmp/x -name '*.md'   | wc -l     # 16
+```
+
+`--metamodel` returns at `docs.ts:213-214`, before the `--site` branch at ~349. The flag is parsed, accepted, and dropped.
+
+- [ ] **Step 2: Write the failing test**
+
+```ts
+import { describe, test, expect } from "bun:test";
+import { run } from "../src/index.js";
+
+describe("meta docs --metamodel --site", () => {
+  test("refuses explicitly rather than silently ignoring --site", async () => {
+    const exit = await run(["docs", "--metamodel", "--site", "--out", TMP]);
+    expect(exit).not.toBe(0);
+  });
+
+  test("--metamodel alone still writes the markdown pages", async () => {
+    const exit = await run(["docs", "--metamodel", "--out", TMP2]);
+    expect(exit).toBe(0);
+    expect(readdirSync(join(TMP2, "metamodel")).length).toBeGreaterThan(10);
+  });
+});
+```
+
+- [ ] **Step 3: Implement the refusal**
+
+```ts
+if (flags.metamodel) {
+  // --site builds HTML from a MODEL (docs-site's own loader + templates); the
+  // metamodel surface is a different renderer over the registry, and docs-site has
+  // no markdown renderer to bridge them. Rather than accept the flag and drop it,
+  // refuse and say where the rendered form lives.
+  if (flags.site) {
+    log.error(
+      "docs: --site is not supported with --metamodel. The metamodel reference is " +
+      "markdown; the rendered form is published at https://metaobjects.dev/reference");
+    return 2;
+  }
+  return metamodelDocsCommand(cwd, flags.out);
+}
+```
+
+**Deliberately not building HTML into the CLI.** Doing so would add a markdown-renderer dependency to a published package for one surface. The website renders it instead (Task 17), keeping that dependency in `scripts/`, dev-only — and giving the pages the metaobjects.dev look rather than the docs-site adopter theme. If adopters later ask to render it locally, that is a scoped follow-on with a reason to exist.
+
+- [ ] **Step 4: Run the tests, then commit**
+
+```bash
+cd server/typescript/packages/cli && bun test test/docs-metamodel-site.test.ts
+git add server/typescript/packages/cli && git commit -m "fix(docs): --metamodel --site refuses instead of silently ignoring --site"
+```
+
+---
+
+### Task 17: `/reference` becomes the metamodel reference
+
+**Files:**
+- Create: `scripts/site/reference.ts` (markdown → HTML in the site's own shell)
+- Test: `scripts/site/reference.test.ts`
+- Modify (site repo): `.github/workflows/deploy.yml`
+- Modify: root `package.json` (markdown renderer as a **devDependency**)
+
+**Interfaces:**
+- Produces: `renderReference(mdDir: string): Record<string, string>` — repo-relative HTML path → page HTML.
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+describe("renderReference", () => {
+  test("renders every metamodel markdown page to HTML", () => {
+    const pages = renderReference(MD_DIR);
+    expect(Object.keys(pages).length).toBe(16);
+    expect(Object.keys(pages)).toContain("index.html");
+  });
+
+  test("rewrites .md links to .html so navigation works", () => {
+    const html = renderReference(MD_DIR)["index.html"];
+    expect(html).toContain('href="types/field.html');
+    expect(html).not.toContain('.md"');
+  });
+
+  test("uses the site shell, not a bare fragment", () => {
+    expect(renderReference(MD_DIR)["index.html"]).toContain('<link rel="stylesheet"');
+  });
+
+  test("escapes nothing it should not — attribute descriptions contain < and >", () => {
+    const html = renderReference(MD_DIR)["types/field.html"];
+    expect(html).not.toContain("<script");
+  });
+});
+```
+
+- [ ] **Step 2: Run it to see it fail, then implement**
+
+Generate the markdown with `meta docs --metamodel` into a temp dir, render each page with the markdown library into the site's header/footer shell, and rewrite intra-doc `.md` links to `.html`.
+
+- [ ] **Step 3: Add the deploy step**
+
+In the clone the Task 13 step already made — **do not clone twice**:
+
+```yaml
+        node scripts/site-render-reference.mjs --out "$GITHUB_WORKSPACE/www/reference"
+```
+
+- [ ] **Step 4: Verify live, then commit**
+
+`/reference` must show the metamodel index — all 69 `type.subType` pairs — and `types/field.html` must show the attribute table.
+
+---
+
+### Task 18: The adopter docs move to `/reference/example`
+
+They are still worth publishing: a self-referential metamodel page cannot show that `meta docs` works on a real project. They just must not own the word "Reference".
+
+**Files:**
+- Modify (site repo): `.github/workflows/deploy.yml`, `www/index.html` (nav)
+
+- [ ] **Step 1: Repoint the existing generation step**
+
+The existing "Generate wizardsofodd reference docs" step writes to `www/reference/`. Change its destination to `www/reference/example/` and rename the step to say what it is — *a real project documented by `meta docs`*, not "reference docs".
+
+Order matters: it must run **after** Task 17's step, or the metamodel render will clear `www/reference/` and take the example with it. The existing step does `rm -rf "$GITHUB_WORKSPACE/www/reference"` — narrow that `rm` to its own subdirectory.
+
+- [ ] **Step 2: Fix the site navigation**
+
+Any nav link labelled "Reference" now points at the metamodel. Add a link to the example from the reference index, labelled as what it is.
+
+- [ ] **Step 3: Verify both live, then commit**
+
+`/reference` = the metamodel; `/reference/example` = the adopter model. Both must render, and no nav link may 404.
+
+---
+
 ## Done when
 
 - Every metadata and generated-code block on `metaobjects.dev` comes from `site-payload.json`.
-- `bash scripts/ci-local.sh --only gates` is green, including `gate_site_payload`.
-- `bun scripts/release.mjs <next> --dry-run` passes the new preflight.
+- `bash scripts/ci-local.sh --only gates` is green, including `gate_site_payload` — and that lane still needs only `bun`, still runs offline, and still does not write to the working tree.
+- The release preflight passes, verified via `--preflight-only` (**never** via `release.mjs <v> --dry-run`, which bumps 14 package.json files and regenerates the lockfile before it exits).
 - Each of the eight gates has been seen to FAIL when its condition is broken, and then to pass again.
 - The live site renders every block, `<details>` expands, and `view-source` shows no `<script>`.
+- `/reference` shows the metamodel — all 69 `type.subType` pairs — and `/reference/example` shows the adopter model. No nav link 404s.
+- `meta docs --metamodel --site` refuses with a message instead of silently dropping `--site`.

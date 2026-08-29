@@ -145,9 +145,13 @@ drift-gated. Its prose on the site moves from the fictional `blog` package to th
 
 The showcase also declares a `template.prompt` with a `@payloadRef` and a `@textRef`, plus the
 template text file it names. This is required by `prompts-are-code.html`, whose YAML block shows a
-payload beside a prompt. It cannot reuse `examples/advanced-modeling`'s prompt: that node is a
-`template.output` — outbound-only, emitting no parser (ADR-0052) — while the article's subject is
-the inbound tier and its transcript shows a prompt-side verify failure.
+payload beside a prompt, and it cannot reuse `examples/advanced-modeling`'s node because that one is
+a `template.output` — a different subtype from the one the article displays.
+
+It carries **no `@responseRef`**, so it exercises no part of the inbound tier: since 0.24.0 the
+parser, tolerant extractor and response-format fragment all key off `@responseRef` (ADR-0052). That
+is correct for what the article shows — its transcript is `ERR_VAR_NOT_ON_PAYLOAD`, a check of the
+prompt's own variables against its own payload, which needs no response type.
 
 `examples/showcase/drift/` exists **to fail**. It is the showcase prompt with one payload member
 renamed, so `meta verify` produces a real `ERR_VAR_NOT_ON_PAYLOAD`, which is the content of that
@@ -279,6 +283,12 @@ The payload gains a `registries` block carrying one coordinate per registry plus
 `docs/llms/{llms,llms-full}.txt` → `www/`, as a copy step in the same deploy job. The two are
 byte-identical today, so this codifies the current state rather than changing it.
 
+**What C does and does not do, stated precisely:** the mirrors contain 20 literal version strings of
+their own, and copying them does not generate those. It stops them being maintained in TWO repos and
+leaves them maintained in ONE. Generating them from the `registries` block is a real follow-on,
+deliberately excluded here because `docs/llms/*` is also read directly by agents out of this repo, so
+templating it changes an adopter-facing artifact and deserves its own decision.
+
 ## Gates
 
 | Gate | Runs | Catches |
@@ -318,12 +328,35 @@ Stated rather than discovered later.
   could be captured the same way as a CLI transcript — but it is deliberately left out rather than
   folded in silently.
 
+## D6 — `/reference` documents the metamodel, not an adopter's model
+
+The site's `/reference` is generated from a public adopter application, so a visitor clicking
+"Reference" on the MetaObjects site gets that app's entities rather than the metamodel. This was not
+a decision anyone made. `meta docs --metamodel` already renders the full registry — 16 pages, index
+plus per-family attribute tables, byte-gated as `fixtures/metamodel-docs/expected/` — but
+`meta docs --metamodel --site` **writes those 16 markdown files and zero HTML**, because
+`--metamodel` returns at `docs.ts:213-214`, before the `--site` branch. `--site` is accepted and
+dropped, so the adopter path was simply the only one producing HTML.
+
+Three consequences, each its own task: the CLI **refuses** `--metamodel --site` rather than ignoring
+it (a defect that ships to adopters regardless of the website); the site pipeline renders the 16
+markdown pages into the site's own shell and publishes them at `/reference`; and the adopter docs
+move to `/reference/example`, relabelled as what they are — a real project documented by
+`meta docs`, which is evidence a self-referential metamodel page cannot provide.
+
+The markdown renderer stays a **devDependency in `scripts/`**, not a runtime dependency of a
+published package, and the pages get the metaobjects.dev look rather than the docs-site adopter
+theme.
+
 ## Sequencing
 
 1. **B** — showcase corpus, `regen-showcase`, payload builder, gates, site placeholders and
    deploy injection. Includes all five block kinds and the fifth-pillar content.
 2. **A** — `registries` block in the payload; the per-port table renders from it.
 3. **C** — llms mirrors as a deploy copy step.
+4. **Reference docs** — the `--metamodel --site` fix, then `/reference`, then the adopter move.
+   Last because it shares the deploy workflow Task 13 rewrites; two plans editing that file is how
+   they conflict.
 
 A and C are additive to a transport B establishes, which is why they follow it rather than
 competing with it.
