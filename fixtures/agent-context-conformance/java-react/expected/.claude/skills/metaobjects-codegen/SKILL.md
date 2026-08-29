@@ -220,14 +220,68 @@ The doctrine, in order of what to try:
    routes and UI tiers.
 
 Hand-rolling *away from* metadata is the anti-pattern. Generating *your own shape from*
-metadata is the point: if the default output doesn't fit, write a generator that emits
-your shape from the metadata. Only the genuinely un-modelable (business algorithms,
-external calls) is hand-written outside codegen — and it still imports the generated
-types.
+metadata is the point.
 
-**The commands, config keys and exported render functions that implement this differ per
-port.** They are in this skill's `references/` fragment for your server language — read
-it before acting on the steps above.
+### Never read metadata through an `own*()` accessor (ADR-0039) — top bug source
+
+When writing OR reviewing a generator, **read every field/node property and iterate
+every member set through the resolving/effective accessor — never the `own*()` form.**
+`extends` is a **super-reference, not a flatten**: a concrete field/entity that
+`extends` an abstract parent keeps its inherited attributes and members physically on
+the parent, reachable only through the *resolving* accessor. An `own*()` read of an
+effective property (`isArray`, `subType`, `maxLength`, `precision`/`scale`, `default`,
+the physical column name, `objectRef`, `storage`, `required`, …) or an own-only member
+iteration **silently drops everything inherited via `extends`** — the classic symptom
+was a concrete field that inherited `isArray: true` from an abstract parent generating
+a *scalar* column. These reads compile and pass every fixture that never exercises
+`extends`, so they are a latent, cross-port top bug source.
+
+**The one legitimate `own*()` use:** a generator emitting a generated **subclass** that
+`extends` a generated base iterates **own members** (`ownFields()`) so the inherited
+members are **not re-emitted** — the generated base class already declares them (the
+`class Sub extends Base` / TPH pattern). Everywhere else, resolve. (The own-mode
+canonical serializer and overlay-merge are the only other sanctioned own reads, and
+they are library-internal, not app-generator concerns.) The one deliberately-own
+attribute is `@dbColumnType` — a physical column-type override that is never inherited.
+
+**Per-port own↔resolving mapping** (reach for the resolving column; comment any
+`own*()` call with the sanctioned case it is):
+
+| Port | Resolving (default — use this) | Own-only (avoid unless emitting a subclass's own members) |
+|---|---|---|
+| TypeScript | `attr(name)`, `children()`, `fields()` | `ownAttr(name)`, `ownChildren()`, `ownFields()`, the raw `isArray` field flag |
+| Python | `attrs().get(name)`, `children()`, `fields()` | `attr(name)` **(own!)**, `own_children()`, `own_fields()` |
+| Java / Kotlin | `getMetaAttr(name)`, resolving `getChildren()` | `getMetaAttr(name, false)`, own-only child walks |
+| C# | resolving attr/`Children`/`Fields` accessors | `IsArray` native flag, `OwnChildren()`, own attr reads |
+
+**Naming inversion — the trap:** the *default-named* accessor is NOT consistently the
+safe one. **TS `attr()` RESOLVES; Python `attr()` is OWN** (own-only). In Python you
+must call `attrs().get(name)` to get the inherited value — a bare `attr(name)` is the
+own read that drops inheritance. When you review or port a generator, check the port's
+convention, not the method name.
+
+**Close but not exact?** You don't always need a new generator — a generated file is
+a normal source file. Copy it and customize the copy (three-way merge preserves your
+edits on regen), or customize the template a built-in renders from. Reach for a
+custom generator when you want the change applied **consistently across every
+entity** (the scale win); a one-off edit when it's genuinely one file.
+
+**The decision ladder:** a built-in fits → use it · close → customize the
+output/template · doesn't fit → write a generator that emits your shape *from the
+metadata* · only the genuinely un-modelable (business algorithms, external calls) is
+hand-written outside codegen — and it still imports the generated types.
+
+**The commands and config keys that implement the steps above differ per port, and the
+ports differ in how much is written down.** TypeScript has the whole procedure as a
+documented one — `meta eject`, the `metaobjects.config.ts` keys, the exported `render*`
+functions — in this skill's `references/typescript.md`. **The other ports have no eject
+command.** There, owning a generator means implementing that port's generator interface
+— `com.metaobjects.generator.Generator` (Java / Kotlin),
+`metaobjects.codegen.generator.Generator` (Python), `MetaObjects.Codegen.IGenerator`
+(C#) — and registering it with the build tool that runs codegen for your port. Their
+`references/` fragments document what each built-in emits, which is what you compare
+your own emit against; they do not carry a step-by-step retargeting procedure, so do
+not go looking for one.
 
 ## Dialects
 
