@@ -624,6 +624,52 @@ metadata.root:
               notes: >-
                 The dominant characteristic for this project and the one the entire
                 conformance apparatus exists to defend. Author its children first.
+              children:
+                - requirement.architectural:
+                    name: byteIdenticalRendering
+                    title: Byte-identical rendering
+                    level: 3
+                    status: live
+                    statement: >-
+                      Every port renders one declared template over one payload to the
+                      same bytes.
+                    counterexample: >-
+                      One payload rendering differently depending on which language
+                      produced it, with no error raised anywhere.
+                    notes: >-
+                      The failure this guards against is quiet by nature. A conditional
+                      section over a derived accessor was dropped silently by every
+                      port's render engine while one of them appeared correct, because
+                      the same payload arriving as a generated record answered the
+                      accessor by its own method and the same payload arriving as a map
+                      did not. Nothing errored; the block simply vanished. No fixture
+                      used a derived accessor at all, which is why it survived.
+
+                - requirement.architectural:
+                    name: wireContractStability
+                    title: Wire contract stability
+                    level: 3
+                    status: live
+                    statement: >-
+                      Every value crosses the wire in one agreed form, whichever port
+                      serialised it.
+                    counterexample: >-
+                      A money amount arriving as a fractional number from one service
+                      and as an integer from another, both claiming to implement the
+                      same declaration.
+
+                - requirement.architectural:
+                    name: registryVocabularyParity
+                    title: Registry vocabulary parity
+                    level: 3
+                    status: live
+                    statement: >-
+                      Every port registers exactly the same vocabulary, and that is
+                      established by matching one manifest rather than by anybody
+                      comparing them.
+                    counterexample: >-
+                      Two ports agreeing on a construct and a third never having
+                      registered it, found by an adopter rather than by a gate.
 
           - requirement.architectural:
               name: maintainability
@@ -638,6 +684,42 @@ metadata.root:
                 A construct written as a bare string in one place and as a named
                 constant in another, where renaming it still compiles and fails at run
                 time.
+              children:
+                - requirement.architectural:
+                    name: strictProvenance
+                    title: Strict provenance
+                    level: 3
+                    status: live
+                    statement: >-
+                      Every attribute the loader accepts comes from a declared provider,
+                      so an invented one fails the load rather than reaching a generator.
+                    counterexample: >-
+                      A generator emitting output from an attribute nobody ever
+                      registered, because nothing along the way refused it.
+
+                - requirement.architectural:
+                    name: ownAccessorDiscipline
+                    title: Effective-value access
+                    level: 3
+                    status: live
+                    statement: >-
+                      Every read of an element's effective value resolves what it
+                      inherits, so nothing declared on a parent is silently dropped.
+                    counterexample: >-
+                      A concrete field built on an abstract one losing its inherited
+                      length limit at the moment something asks how long it may be.
+
+                - requirement.architectural:
+                    name: namedMetamodelConstants
+                    title: Named vocabulary constants
+                    level: 3
+                    status: live
+                    statement: >-
+                      Every reference to vocabulary from code goes through a named
+                      constant, so a typo fails to compile instead of failing to match.
+                    counterexample: >-
+                      A misspelled construct name in a comparison that therefore never
+                      matches, and a branch that silently never runs.
 
           - requirement.architectural:
               name: flexibility
@@ -650,6 +732,43 @@ metadata.root:
               counterexample: >-
                 A generated artifact that stops compiling the moment the toolchain is
                 uninstalled.
+              children:
+                - requirement.architectural:
+                    name: generatedCodeRunsStandalone
+                    title: Generated code stands alone
+                    level: 3
+                    status: live
+                    statement: >-
+                      Every generated artifact compiles and runs with MetaObjects
+                      uninstalled.
+                    counterexample: >-
+                      An adopter unable to remove the toolchain without their build
+                      breaking, so the decision to adopt cannot be reversed.
+
+                - requirement.architectural:
+                    name: scaffoldAndOwn
+                    title: Scaffold and own
+                    level: 3
+                    status: live
+                    statement: >-
+                      Every generator an adopter depends on can be copied into their own
+                      repository and changed there.
+                    counterexample: >-
+                      A change to generated output that an adopter needs and can only
+                      get by waiting for a release.
+
+                - requirement.architectural:
+                    name: providerExtension
+                    title: Provider extension
+                    level: 3
+                    status: live
+                    statement: >-
+                      Every way of adding vocabulary is a declared provider, so adding
+                      any never requires a fork or switching off a check.
+                    counterexample: >-
+                      A project needing one extra attribute and having to choose between
+                      maintaining a fork and switching off the check that refuses
+                      invented ones.
 
           - requirement.architectural:
               name: reliability
@@ -662,6 +781,29 @@ metadata.root:
               counterexample: >-
                 A name that could mean two things, resolved by taking one of them,
                 with the choice depending on which was read first.
+              children:
+                - requirement.architectural:
+                    name: failClosedLoading
+                    title: Fail-closed loading
+                    level: 3
+                    status: live
+                    statement: >-
+                      Every ambiguous or unresolvable declaration is refused at load
+                      rather than resolved by guess.
+                    counterexample: >-
+                      A bare name that exists in two packages binding to one of them, so
+                      the model builds against the wrong target and nothing says so.
+
+                - requirement.architectural:
+                    name: reversibleMigrations
+                    title: Reversible migrations
+                    level: 3
+                    status: live
+                    statement: >-
+                      Every emitted migration has a counterpart that undoes it.
+                    counterexample: >-
+                      A deploy that went wrong with no step available but restoring from
+                      backup.
 
           - requirement.architectural:
               name: security
@@ -673,6 +815,30 @@ metadata.root:
               counterexample: >-
                 A parameter nobody declared reaching the database, because it was on no
                 list that would have refused it.
+              children:
+                - requirement.architectural:
+                    name: failClosedFilters
+                    title: Fail-closed filters
+                    level: 3
+                    status: live
+                    statement: >-
+                      Every filter and sort a caller supplies is checked against a
+                      declared allowlist, and anything not on it is refused.
+                    counterexample: >-
+                      One surface among many accepting a filter field that is on no
+                      allowlist, because that one was written by hand.
+
+                - requirement.architectural:
+                    name: noCredentialSurface
+                    title: No credential surface
+                    level: 3
+                    status: live
+                    statement: >-
+                      Nothing MetaObjects generates or stores accepts, holds or
+                      transmits a credential.
+                    counterexample: >-
+                      A generated artifact or a tool's own state carrying a password, so
+                      committing the result leaks it.
 
           - requirement.architectural:
               name: performance
@@ -684,6 +850,30 @@ metadata.root:
                 grow with the size of the model.
               counterexample: >-
                 A browser paying to download code that only ever runs on a server.
+              children:
+                - requirement.architectural:
+                    name: browserBundleBudget
+                    title: Browser bundle budget
+                    level: 3
+                    status: live
+                    statement: >-
+                      Nothing a browser bundle pulls in requires server-only code to be
+                      reachable from it.
+                    counterexample: >-
+                      A single value imported from a package's root dragging a
+                      server-only module into the graph, so nothing that uses it can be
+                      bundled at all.
+
+                - requirement.architectural:
+                    name: promptCachePrefixStability
+                    title: Prompt cache prefix stability
+                    level: 3
+                    status: live
+                    statement: >-
+                      Every render of an unchanged prompt produces an unchanged prefix.
+                    counterexample: >-
+                      A release that changes no prompt text and invalidates every cached
+                      prefix anyway.
 
           - requirement.architectural:
               name: interaction
@@ -696,3 +886,33 @@ metadata.root:
               counterexample: >-
                 A refusal naming a code and not the thing refused, so the next step is
                 to go and read the source of the tool.
+              children:
+                - requirement.architectural:
+                    name: actionableLoaderErrors
+                    title: Actionable errors
+                    level: 3
+                    status: live
+                    statement: >-
+                      Every refusal names what was wrong, where it was, and what would
+                      fix it.
+                    counterexample: >-
+                      An error naming a construct and not the declaration that used it,
+                      so finding the line is a search.
+
+                - requirement.architectural:
+                    name: agentContextAccuracy
+                    title: Agent context accuracy
+                    level: 3
+                    status: live
+                    statement: >-
+                      Every piece of agent-facing context ships vocabulary the loader
+                      currently accepts.
+                    counterexample: >-
+                      A shipped instruction teaching a construct the loader refuses, so
+                      following it exactly produces a model that will not load.
+                    notes: >-
+                      A requirement rather than an editorial nicety because it has
+                      failed three separate times — a shipped page or skill teaching
+                      vocabulary that had already been retired — and an adopter found it
+                      on every one of those occasions. Context that is wrong is worse
+                      than context that is missing: it is followed.
