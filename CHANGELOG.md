@@ -139,6 +139,25 @@ peer at v8, but nothing told an adopter installing `@tanstack/react-table` thems
 Design: `docs/superpowers/specs/2026-08-29-fr-040-framework-agnostic-codegen-ownership-design.md`.
 Amends [ADR-0034](spec/decisions/ADR-0034-codegen-scaffold-and-own.md).
 
+**Review round.** Five of the fixes above are review findings on FR-040's own first
+draft, and one is worth naming because it is the shape this project keeps convicting
+itself of: **the five new templates shipped with no equivalence gate.** ADR-0034 makes a
+copyable template safe by running it *and* the built-in it was copied from over a fixture
+corpus and requiring byte-identical output — and that gate covered only the four
+`meta init` scaffolds. Since `src/reference` is excluded from tsconfig, the five new ones
+were imported by nothing, executed by nothing and type-checked by nothing: a renamed
+engine export, or a drifted `filter` deciding WHICH entities emit, would have reached an
+adopter running `meta eject` before it reached a red lane. The tsconfig comment even
+asserted the coverage, having been copy-pasted into the two UI packages from the one
+where it was true. Every template is now gated in every package, the file SET is
+compared as well as the contents (a drifted filter changes what is emitted, not how), and
+each gate asserts its own coverage equals `REFERENCE_GENERATOR_NAMES` so the tenth
+template cannot repeat this. Also fixed from that round: `meta eject` told you to *paste*
+an import that collides with the package import already in the documented config — whose
+quiet failure mode is a config that keeps running the PACKAGED generator while you edit
+the ejected file — and never named the dependency the ejected file imports, so the
+adopter's own `tsc` reported TS2307 on the file the CLI had just said they owned.
+
 ### Fixed — eight defects found by adopting the product from scratch, twice
 
 Two adoption runs against the published `0.24.4`, docs followed literally and nothing fixed
