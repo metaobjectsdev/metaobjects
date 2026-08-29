@@ -150,18 +150,25 @@ don't silently churn the existing code.
 
 ## Write your own generators — the built-ins rarely fit an app exactly
 
-The built-in generators (entity, queries, routes, form, grid, barrel) cover the
-common shape, but **real apps routinely need output the built-ins don't emit as-is**
-— a bespoke REST contract, custom DTO/response shapes, an app-specific service or
-repository layer, a UI the defaults don't produce. When that happens the model-first
-move is **not** to abandon metadata and hand-write the layer. Write a **custom
-generator** that reads the same metadata and emits *your* app's shape.
+The built-in generators (entity, queries, routes, routes-hono, barrel, form, hooks,
+grid, grid-hook) cover the common shape, but **real apps routinely need output the
+built-ins don't emit as-is** — a bespoke REST contract, custom DTO/response shapes,
+an app-specific service or repository layer, a UI the defaults don't produce. When
+that happens the model-first move is **not** to abandon metadata and hand-write the
+layer. Write a **custom generator** that reads the same metadata and emits *your*
+app's shape.
 
 Treat this as a first-class, expected activity — not an escape hatch. A custom
 generator is still model-first: it derives from the metadata spine, so it
 regenerates on change and stays consistent across every entity — the leverage you'd
 forfeit by hand-writing. Hand-rolling *away from* metadata is the anti-pattern;
 generating *your own shape from* metadata is the point.
+
+This is for when the *shape* itself needs to change. If a built-in's shape is
+already right and only the *target* is wrong — a different framework than the
+shipped reference emits for — every one of these nine is individually ownable via
+`meta eject`; see "Your framework isn't the default" below before reaching for a
+from-scratch generator.
 
 The plugin interface is small (`@metaobjectsdev/codegen-ts`): a `Generator` is
 `{ name, filter?, generate }`, where `generate(ctx)` returns `EmittedFile[]`
@@ -189,6 +196,65 @@ ctx) => …)` is the one-shot variant (a barrel, an app-config). Add your genera
 the `generators` array in `metaobjects.config.ts` next to the built-ins — it runs in
 the same pass, writes under the same target rules, and carries the `@generated`
 header so it round-trips like any other.
+
+## Your framework isn't the default — the retargeting procedure
+
+The shipped reference templates emit for **Fastify on Node** (plus a Hono variant) with
+Drizzle and Zod. If that is not your stack, retargeting is the **normal first move** — not
+a workaround and not a sign of a bug. Each template's header carries a `targets:` line
+naming exactly what its emit is coupled to and which call to swap.
+
+Work the list in order; the first two cost nothing.
+
+**1. Check the target-shaped config first.** Several apparent codegen failures are one
+config value in `metaobjects.config.ts`:
+
+- **`extStyle`** — `"js"` emits `./Entity.js` specifiers, correct for Node ESM and a plain
+  `tsc` with `nodenext`. **Set `"none"` for any bundler-resolution toolchain** (Vite,
+  Turbopack, webpack, esbuild, Rollup): most bundlers do not perform the TypeScript
+  `.js`→`.ts` rewrite, so extensioned specifiers fail to resolve — including between two
+  generated files, which makes the whole generated tree unresolvable.
+- **`outDir`** / **`targets`** — where output lands, per generator.
+- **`apiPrefix`**, **`dialect`** — route mounting and column mapping.
+
+**2. Ask whether your framework splits the module graph.** Some frameworks compile server
+and client from one source tree and resolve each half under *different export conditions*
+(React Server Components, Angular universal, Qwik). Where they do:
+
+- a generated artifact using client-only APIs may need a **marker directive** or a distinct
+  import path, and
+- the resulting error frequently **names a package that is installed and present** — because
+  resolution failed under the server condition, not because the dependency is missing.
+
+Read that error as a *boundary* problem, not a dependency problem. The fix belongs in the
+generator that emits the artifact, which you own.
+
+**3. If the emit is wrong for your framework, own the generator.**
+
+    meta eject --list          # every template you can take ownership of
+    meta eject form            # copies it to codegen/generators/form.ts
+
+Then compose the engine and replace only the step that differs. Every generator's renderer
+is exported, so this is usually a wrapper, not a rewrite:
+
+```ts
+// codegen/generators/form.ts — OWNED
+import { renderFormFile } from "@metaobjectsdev/codegen-ts-react";
+
+// ...inside generate():
+const body = renderFormFile(entity, ctx.renderContext);
+return { path, content: `"use client";\n` + body };   // your framework's requirement
+```
+
+You keep receiving upstream fixes to `renderFormFile` while owning the one line your
+framework cares about. **Forking the whole renderer is the thing to avoid**, not owning the
+generator.
+
+**4. Server-tier output is usually already portable.** The entity module (a table plus
+validation schemas) and the query helpers (which take `db` as a parameter rather than
+importing a singleton) carry no HTTP-framework coupling — a server-rendered component can
+call a generated query directly. Retargeting is usually only needed at the routes and UI
+tiers.
 
 ### Never read metadata through an `own*()` accessor (ADR-0039) — top bug source
 
