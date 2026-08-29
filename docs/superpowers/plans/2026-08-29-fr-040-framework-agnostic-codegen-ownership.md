@@ -1373,7 +1373,7 @@ No gaps.
 
 **Deliberate red states:** Task 2 Step 6 leaves the name-loop test failing on `routes-hono` until Task 3 ships the asset; Task 3 Step 6 skips the header-contract test until Task 6 completes it. Both are called out in their steps with instructions not to weaken the assertion. **Tasks 2, 3 and 6 must therefore land in order.** Tasks 8 and 9 are independent and may be done at any point.
 
-**Open questions carried from the spec:** §6.1 (how small the exported render surface can be) is answered conservatively by Task 1 — four whole-file renderers, no sub-steps — deferring finer seams until an adopter needs one. §6.2 (import rewriting) is tested in Task 4 Step 1. §6.3 (`verify --codegen` vs ejected generators) is **not** addressed by any task and should be resolved before release. §6.4 (`"use client"` by default) is deliberately left to the adopter per §4.2.
+**Open questions carried from the spec:** §6.1 (how small the exported render surface can be) is answered conservatively by Task 1 — four whole-file renderers, no sub-steps — deferring finer seams until an adopter needs one. §6.2 (import rewriting) is tested in Task 4 Step 1. §6.3 (`verify --codegen` vs ejected generators) was **not** addressed by any task; it has since been resolved — the gate needs no knowledge of ejection, and the round trip (eject → edit the owned generator → drift → `meta gen` → clean, with a hand edit surviving throughout) is pinned by `cli/test/integration/verify-codegen-ejected-generator.test.ts`. See the spec's §6.3 for the full answer, including why that gate must run in a subprocess. §6.4 (`"use client"` by default) is deliberately left to the adopter per §4.2.
 
 ---
 

@@ -288,9 +288,26 @@ the agent could have done itself — which is the correct relationship.
 2. **Does `meta eject` need import rewriting beyond the config line?** The thin
    templates import only their package's engine, so probably not — but this must be
    verified per template rather than assumed, since the UI templates are new.
-3. **Should `verify --codegen` know about ejected generators?** An ejected generator is
-   the adopter's source, so drift detection against it is presumably still correct, but
-   the interaction with the three-way merge base deserves an explicit answer.
+3. ~~**Should `verify --codegen` know about ejected generators?**~~ **ANSWERED: no —
+   and the answer is now pinned rather than assumed.** The gate re-runs the same
+   `runGen` over the same loaded config, and a generator's provenance (a
+   `@metaobjectsdev/*` import, or a local `./codegen/generators/` one) is invisible to
+   both, so "what a fresh regen would produce" already means "what the ADOPTER'S
+   generator would produce". Ejecting is therefore not drift; editing the owned
+   generator is; and the printed remedy converges, because the discriminator is
+   `.gen-state/.hashes.json` — a record of what the GENERATOR WROTE — so `meta gen`
+   writes through the new generator and re-records the hash. That last point is not
+   free: it is exactly where the 0.24.3 hand-edit loop lived, and the two cases must
+   not be conflated — a hand edit in a generated FILE is preserved and forgiven, while
+   a change to the GENERATOR is real drift until regenerated. Both hold together (a
+   preserved hand edit beside a regenerated generator change). None of the nine
+   reference templates does project-relative IO, so the temp-tree regen's
+   `projectRoot` remapping does not reach them.
+   Gate: `cli/test/integration/verify-codegen-ejected-generator.test.ts`. It runs the
+   built CLI in a SUBPROCESS per command deliberately — in-process it reports a FALSE
+   PASS, because the config is re-read under a fresh temp name each load while the
+   `./codegen/generators/entity.js` it imports keeps its stable path in the module
+   cache, so the second load silently re-uses the pre-edit generator.
 4. **Is `"use client"` ever right to emit by default?** Emitting it unconditionally is
    harmless in non-RSC bundlers but provokes module-level-directive warnings in Rollup.
    The §4.2 position is that the adopter owns this decision — but if the overwhelming
