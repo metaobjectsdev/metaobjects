@@ -416,3 +416,54 @@ describe("init --d1", () => {
     expect(configTs).not.toContain('"./src/db"');
   });
 });
+
+describe("init() — scaffolded config.ts honesty", () => {
+  // A cold adoption probe found `dbImport: "../db"` scaffolded pointing at a file
+  // `init` never creates, with nothing in the config saying so.
+  //
+  // NOTE: an earlier draft of this fix commented `dbImport` out entirely. That
+  // regresses the default scaffold — verified by running `meta gen` against it:
+  // the default `generators` array wires routesFile() (Fastify), whose emitted
+  // routes DO `import { db } from …` (server/typescript/packages/codegen-ts/src/
+  // templates/routes-file.ts), and the runner demands dbImport at that point of
+  // use (`runner.ts`'s dbImportUndeclaredFor), throwing `codegen config is
+  // missing dbImport` on the very first `meta gen` after a fresh `meta init`.
+  // `queriesFile` genuinely takes `db` as a parameter and never reads dbImport —
+  // but routesFile (what `init` actually scaffolds) does. So dbImport must stay
+  // ACTIVE; the fix is telling the user what to do about the file it names.
+  test("dbImport carries a comment naming the file the user must create", async () => {
+    const code = await initCommand([], cwd);
+    expect(code).toBe(0);
+    const configTs = readFileSync(join(cwd, "metaobjects.config.ts"), "utf8");
+    expect(configTs).toMatch(/dbImport:\s*"\.\.\/db",/);
+    expect(configTs).toContain("src/db.ts");
+  });
+
+  test("meta gen still succeeds against the scaffolded config for an entity with a source.rdb", async () => {
+    // Regression pin for the near-miss above: the scaffold's dbImport must stay
+    // functional (routesFile() genuinely needs it), not just present-with-a-comment.
+    expect(await initCommand([], cwd)).toBe(0);
+    writeFileSync(
+      join(cwd, "metaobjects", "meta.common.json"),
+      JSON.stringify({
+        metadata: {
+          package: "probe",
+          children: [{
+            "object.entity": {
+              name: "Author",
+              children: [
+                { "source.rdb": { "@table": "authors" } },
+                { "field.string": { name: "id" } },
+                { "identity.primary": { "@fields": ["id"] } },
+              ],
+            },
+          }],
+        },
+      }, null, 2),
+    );
+    const { genCommand } = await import("../src/commands/gen.js");
+    expect(await genCommand([], cwd)).toBe(0);
+    const routes = readFileSync(join(cwd, "src", "generated", "Author.routes.ts"), "utf8");
+    expect(routes).toContain('import { db } from "../db.js"');
+  });
+});

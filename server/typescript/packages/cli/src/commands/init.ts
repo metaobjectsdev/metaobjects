@@ -89,7 +89,9 @@ import { barrel } from "./codegen/generators/barrel.js";
 export default defineConfig({
   outDir:    "src/generated",
   extStyle:  "js",   // ".js"-extensioned relative imports — safe under Node ESM / tsc nodenext AND bundlers
-  dbImport:  "../db",
+  dbImport:  "../db",   // routesFile() below emits \`import { db } from …\` — create
+                        // src/db.ts exporting your Drizzle \`db\` instance before \`meta gen\`.
+                        // (queriesFile() takes db as a parameter and never reads this.)
   dialect:   "${dialect}",
   apiPrefix: "",     // set to "/api" if your routes mount under /api
   generators: [
