@@ -71,8 +71,12 @@ describe("examples/showcase — drift gate (the site's corpus)", () => {
       const exit = await run(["gen", "--cwd", tmp]);
       expect(exit).toBe(0);
 
-      const fresh = join(tmp, "generated");
-      const committed = join(SHOWCASE, "generated");
+      // Scoped to the TS port: `generated/` also holds the python/csharp/sql
+      // trees, which this run does not produce. Their equivalent gate is
+      // `bun scripts/regen-showcase.ts --check`, which regenerates all four the
+      // same pristine way; this one is the TS half, run where the TS CLI is.
+      const fresh = join(tmp, "generated", "ts");
+      const committed = join(SHOWCASE, "generated", "ts");
       expect(listFilesRecursive(fresh)).toEqual(listFilesRecursive(committed));
 
       for (const rel of listFilesRecursive(fresh)) {

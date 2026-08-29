@@ -8,10 +8,15 @@ import type { Lang } from "./highlight-code.js";
  * payload with no page referencing it — which makes the bijection check throw and
  * fails both the release preflight and every deploy. Everything reads this.
  *
- * Three kinds, one per source of truth:
+ * Four kinds, one per source of truth:
  *   marker      a HAND-AUTHORED file, delimited in place by `# >>> snippet:` markers
  *   excerpt     MACHINE-OWNED output, whose committed excerpt is gated as an
  *               in-order subsequence of the real generated file
+ *   whole       MACHINE-OWNED output short enough to publish ENTIRE. No excerpt to
+ *               keep in sync and no subsequence gate — the published text IS the
+ *               file, which is a stricter guarantee than any excerpt can make.
+ *               Use it only when cutting would drop something load-bearing; an
+ *               8-line CREATE TABLE has no line to spare.
  *   transcript  live CLI output, captured by running the tool
  *
  * Paths are repo-relative.
@@ -19,6 +24,7 @@ import type { Lang } from "./highlight-code.js";
 export type SnippetSource =
   | { kind: "marker"; file: string; lang: Lang }
   | { kind: "excerpt"; inline: string; full: string; lang: Lang }
+  | { kind: "whole"; file: string; lang: Lang }
   | { kind: "transcript"; cwd: string; argv: string[] };
 
 const SHOWCASE = "examples/showcase";
@@ -34,6 +40,24 @@ export const SNIPPETS: Record<string, SnippetSource> = {
     kind: "excerpt", lang: "ts",
     inline: `${SHOWCASE}/inline/ts-entity.txt`,
     full: `${SHOWCASE}/generated/ts/Subscriber.ts`,
+  },
+  "python-model": {
+    kind: "excerpt", lang: "python",
+    inline: `${SHOWCASE}/inline/python-model.txt`,
+    full: `${SHOWCASE}/generated/python/Subscriber.py`,
+  },
+  "csharp-entity": {
+    kind: "excerpt", lang: "csharp",
+    inline: `${SHOWCASE}/inline/csharp-entity.txt`,
+    full: `${SHOWCASE}/generated/csharp/Subscriber.g.cs`,
+  },
+  // The DDL `meta migrate` emits for the same model. Published WHOLE: at eight
+  // lines every one carries something the model declared — the AUTOINCREMENT from
+  // `generation: increment`, the VARCHAR(320) from `maxLength`, and the CHECK from
+  // the enum's `values`.
+  "sql-migration": {
+    kind: "whole", lang: "sql",
+    file: `${SHOWCASE}/generated/sql/init/up.sql`,
   },
 
   // ── The fifth pillar: requirements and testing ─────────────────────────────

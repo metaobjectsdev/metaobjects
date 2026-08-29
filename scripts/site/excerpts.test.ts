@@ -17,7 +17,7 @@ describe("committed excerpts are real generated output", () => {
 
   test("every registry entry's files exist", () => {
     for (const [id, src] of Object.entries(SNIPPETS)) {
-      const paths = src.kind === "marker" ? [src.file]
+      const paths = src.kind === "marker" || src.kind === "whole" ? [src.file]
         : src.kind === "excerpt" ? [src.inline, src.full]
         : [src.cwd];
       for (const p of paths) {
@@ -40,6 +40,20 @@ describe("committed excerpts are real generated output", () => {
       expect(r.ok).toBe(true);
     });
   }
+
+  // A `whole` snippet publishes a generated file entire, so the thing an excerpt's
+  // subsequence gate exists to prove — that the published text is real output — is
+  // true by construction. What still needs proving is that the kind was not reached
+  // for reflexively: past ~25 lines the page wants a cut, not a wall of text.
+  test("a whole snippet is short enough to justify publishing entire", () => {
+    const WHOLE_MAX_LINES = 25;
+    for (const [id, src] of Object.entries(SNIPPETS)) {
+      if (src.kind !== "whole") continue;
+      const lines = splitLines(readFileSync(resolve(REPO, src.file), "utf8")).length;
+      expect({ id, lines: lines <= WHOLE_MAX_LINES })
+        .toEqual({ id, lines: true });
+    }
+  });
 
   test("an excerpt is genuinely SHORTER than its source — else why excerpt", () => {
     for (const [id, src] of Object.entries(SNIPPETS)) {
