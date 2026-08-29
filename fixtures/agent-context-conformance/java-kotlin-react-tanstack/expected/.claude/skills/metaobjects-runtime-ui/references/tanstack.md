@@ -20,9 +20,14 @@ this package.
 ```bash
 npm install @metaobjectsdev/tanstack @metaobjectsdev/runtime-web
 npm install --save-dev @metaobjectsdev/codegen-ts-tanstack
+npm i @tanstack/react-table@^8.21.3
 ```
 
-Peer-deps: `@tanstack/react-query`, `@tanstack/react-table`.
+Peer-deps: `@tanstack/react-query`, `@tanstack/react-table`. **Pin the react-table
+major explicitly** — the registry's `latest` is v9, which removed `useReactTable`
+and `getCoreRowModel` (both used by `<EntityGrid>`), so a bare
+`npm i @tanstack/react-table` installs a version this package's `^8.20.0` peer range
+rejects and poisons every later install in the project with `ERESOLVE`.
 
 ## Key exports
 
