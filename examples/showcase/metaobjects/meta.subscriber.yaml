@@ -1,0 +1,58 @@
+# acme — the landing-page showcase for metaobjects.dev.
+#
+# Deliberately small. This model exists to be the five-language example on the
+# website and nothing else; anything richer belongs in examples/advanced-modeling/.
+# Sigil-free YAML (ADR-0006): bare keys here lower to @-prefixed attrs in canonical
+# JSON, while name/extends/children stay bare in both surfaces.
+#
+# The `# >>> snippet:` markers below delimit what the website publishes inline.
+# Markers are the mechanism for HAND-AUTHORED files only — generated output is
+# rewritten by every regen, so its excerpt lives beside it and is gated as an
+# in-order subsequence of the real file instead.
+metadata:
+  package: acme
+  children:
+    # >>> snippet: showcase-model
+    - object.entity:
+        name: Subscriber
+        children:
+          - source.rdb:      { table: subscribers }
+          - field.long:      { name: id }
+          - field.string:    { name: email, maxLength: 320, required: true }
+          - field.string:    { name: name }
+          - field.enum:
+              name: status
+              values: [active, paused, cancelled]
+              required: true
+          - field.timestamp: { name: createdAt, autoSet: onCreate }
+          - identity.primary: { name: primary, fields: [id], generation: increment }
+    # <<<
+
+    # >>> snippet: showcase-requirement
+    - requirement.functional:
+        name: subscriberCanBePausedWithoutErasingHistory
+        title: Pausing preserves history
+        level: 5
+        status: live
+        statement: "A subscriber's participation is switched by their own status, so they
+          can be paused while everything they did stays on the record."
+        counterexample: "A subscriber who can only be stopped by deletion, taking every
+          record of their activity with them."
+        description: >-
+          A status on the subscriber rather than a deletion, so withdrawing an
+          account leaves its history intact.
+        implementedBy: [acme::Subscriber.status]
+    # <<<
+
+    # >>> snippet: showcase-prompt
+    - object.value:
+        name: SubscriberBlurbPayload
+        children:
+          - field.string: { name: subscriberName }
+          - field.string: { name: status }
+
+    - template.prompt:
+        name: subscriberBlurb
+        payloadRef: SubscriberBlurbPayload
+        textRef: subscriber/blurb
+    # <<<
