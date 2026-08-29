@@ -18,6 +18,15 @@ import { readReferenceTemplate, REFERENCE_GENERATOR_NAMES } from "@metaobjectsde
 // the consumer's repo so they OWN them; metaobjects.config.ts imports them locally.
 const OWNED_GENERATORS_DIR = "codegen/generators";
 
+// The scaffolded config's outDir + dbImport, as named constants so the throwing-stub
+// path below is DERIVED from the same values the config template embeds rather than
+// duplicated as a second literal that could drift from it.
+const SCAFFOLD_OUT_DIR = "src/generated";
+const SCAFFOLD_DB_IMPORT = "../db";
+// "src/generated" + "../db" -> "src/db" -> "src/db.ts" (dbImport resolves relative
+// to outDir, same as the module specifier a generated route file emits).
+const DB_STUB_REL_PATH = `${join(SCAFFOLD_OUT_DIR, SCAFFOLD_DB_IMPORT)}.ts`;
+
 const META_COMMON_JSON = JSON.stringify(
   {
     metadata: {
@@ -87,10 +96,12 @@ import { routesFile } from "./codegen/generators/routes.js";
 import { barrel } from "./codegen/generators/barrel.js";
 
 export default defineConfig({
-  outDir:    "src/generated",
+  outDir:    "${SCAFFOLD_OUT_DIR}",
   extStyle:  "js",   // ".js"-extensioned relative imports — safe under Node ESM / tsc nodenext AND bundlers
-  dbImport:  "../db",   // routesFile() below emits \`import { db } from …\` — create
-                        // src/db.ts exporting your Drizzle \`db\` instance before \`meta gen\`.
+  dbImport:  "${SCAFFOLD_DB_IMPORT}",   // routesFile() below emits \`import { db } from …\` — meta init
+                        // scaffolded ${DB_STUB_REL_PATH} as a THROWING STUB (types clean, no
+                        // driver chosen) so meta gen and tsc pass; replace it with your real
+                        // Drizzle connection before running the app.
                         // (queriesFile() takes db as a parameter and never reads this.)
   dialect:   "${dialect}",
   apiPrefix: "",     // set to "/api" if your routes mount under /api
@@ -108,6 +119,59 @@ export default defineConfig({
 });
 `;
 }
+
+// The throwing-stub scaffolded at `dbImport`'s resolved path (DB_STUB_REL_PATH,
+// "src/db.ts" by default). It exists so `meta gen` and a fresh project's FIRST
+// `tsc` both succeed with no driver chosen and no dependency added — deliberately
+// NOT a real connection. Every generated route only ever passes `db` straight
+// through to `mountCrudRoutes(...)`; nothing reads a property off it at import
+// time, so a value typed `unknown` (not `any`) satisfies every call site while
+// making a genuine runtime use (mountCrudRoutes calling `db.select()` etc.) throw
+// immediately with an actionable message instead of failing to resolve at all.
+// Built as an array of plain single-quoted lines (not a template literal) so the
+// backticks and quotes inside the comment/message need no escaping.
+const DB_STUB_BODY = [
+  "// `meta init` scaffolded this file because the generated Fastify routes",
+  '// `import { db } from "../db.js"` (see `dbImport` in metaobjects.config.ts) —',
+  "// a module that has to exist for `meta gen` and `tsc` to succeed. MetaObjects",
+  "// cannot fill it in for real without choosing a database driver on your",
+  "// behalf (better-sqlite3 vs @libsql/client vs pg vs postgres.js) and adding a",
+  "// dependency you may not want, so this is a STUB, not a connection.",
+  "//",
+  "// It type-checks and satisfies every generated import, but throws the first",
+  "// time anything actually touches `db` at runtime. Replace the export below",
+  "// with your real Drizzle connection, e.g.:",
+  "//",
+  '//   import { drizzle } from "drizzle-orm/better-sqlite3";',
+  '//   import Database from "better-sqlite3";',
+  '//   export const db = drizzle(new Database("dev.sqlite"));',
+  "//",
+  "// (swap the driver import for your dialect — see",
+  "// docs/recipes/wiring-generated-queries.md for SQLite/libsql, Cloudflare D1,",
+  "// Postgres and multi-tenant setups.)",
+  "",
+  "const UNWIRED_MESSAGE =",
+  '  "src/db.ts is still the scaffolded stub meta init wrote — it cannot choose " +',
+  "  \"a database driver for you. Replace 'export const db = ...' below with \" +",
+  '  "your real Drizzle connection, e.g.:\\n\\n" +',
+  "  \"  import { drizzle } from 'drizzle-orm/better-sqlite3';\\n\" +",
+  "  \"  import Database from 'better-sqlite3';\\n\" +",
+  "  \"  export const db = drizzle(new Database('dev.sqlite'));\\n\";",
+  "",
+  "function unwired(): never {",
+  "  throw new Error(UNWIRED_MESSAGE);",
+  "}",
+  "",
+  "/**",
+  " * Stand-in for your real Drizzle database connection. Generated code only",
+  " * ever passes `db` straight through to `mountCrudRoutes(...)` — it never",
+  " * reads a property off it at import time — so this typechecks everywhere",
+  " * `db` is used, and throws the message above the first time anything really",
+  " * touches it.",
+  " */",
+  "export const db: unknown = new Proxy({}, { get: unwired });",
+  "",
+].join("\n");
 
 const NEXT_STEPS = `
 Initialized metaobjects/ + .metaobjects/ + metaobjects.config.ts
@@ -478,7 +542,7 @@ export async function init(opts: InitOptions): Promise<InitResult> {
     );
     result.created.push(".metaobjects/AGENTS.md", ".metaobjects/CLAUDE.md", ".claude/skills/metaobjects-*", AGENT_CONTEXT_MANIFEST_PATH);
     for (const name of REFERENCE_GENERATOR_NAMES) result.created.push(`${OWNED_GENERATORS_DIR}/${name}.ts`);
-    result.created.push("metaobjects.config.ts", ".gitignore");
+    result.created.push("metaobjects.config.ts", DB_STUB_REL_PATH, ".gitignore");
     return result;
   }
 
@@ -529,6 +593,20 @@ export async function init(opts: InitOptions): Promise<InitResult> {
   if (!(await fileExists(forgeConfigPath))) {
     await writeFile(forgeConfigPath, buildMetaobjectsConfigBody(opts.d1 ? "d1" : "sqlite"), "utf8");
     result.created.push("metaobjects.config.ts");
+  }
+
+  // Scaffold the `dbImport` throwing stub at DB_STUB_REL_PATH ("src/db.ts" by
+  // default) — ONLY if absent, so a re-run never clobbers a user's real db module
+  // (same "write once" precedent as writeOwnedGenerators above). Without this, the
+  // scaffolded config declares `dbImport: "../db"` pointing at a module `meta init`
+  // never creates, and a fresh project's FIRST `tsc` fails to resolve it.
+  const dbStubPath = join(opts.cwd, DB_STUB_REL_PATH);
+  if (!(await fileExists(dbStubPath))) {
+    await mkdir(dirname(dbStubPath), { recursive: true });
+    await writeFile(dbStubPath, DB_STUB_BODY, "utf8");
+    result.created.push(DB_STUB_REL_PATH);
+  } else {
+    result.preserved.push(DB_STUB_REL_PATH);
   }
 
   // Scaffold a minimal root .gitignore ONLY when the project has none — never

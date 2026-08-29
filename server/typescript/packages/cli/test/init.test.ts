@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import ts from "typescript";
 import { init, initCommand, nextStepsBlock } from "../src/commands/init.js";
 import { saveConfig, ConfigSchema } from "@metaobjectsdev/sdk";
 
@@ -466,4 +467,120 @@ describe("init() — scaffolded config.ts honesty", () => {
     const routes = readFileSync(join(cwd, "src", "generated", "Author.routes.ts"), "utf8");
     expect(routes).toContain('import { db } from "../db.js"');
   });
+});
+
+// Task 15 — closes the residue Task 9 (above) made discoverable but did not
+// eliminate: `meta init` declared `dbImport: "../db"` but never created the
+// module, so a fresh project's FIRST `tsc` failed to resolve it. The fix is a
+// scaffolded THROWING STUB: it types clean and satisfies every generated
+// import, choosing no driver and adding no dependency, but throws a clear,
+// actionable error the first time anything actually touches `db` at runtime.
+describe("init() — dbImport throwing stub (Task 15)", () => {
+  test("scaffolds src/db.ts as a throwing stub, typed without `any`, that exports `db`", async () => {
+    const result = await init({ cwd });
+    expect(result.created).toContain("src/db.ts");
+    const body = readFileSync(join(cwd, "src", "db.ts"), "utf8");
+    // Zero live imports — no driver chosen, no dependency added. (Driver names
+    // may appear in the comment's illustrative example line; that's the point.)
+    expect(body).not.toMatch(/^import /m);
+    expect(body).not.toMatch(/\bany\b/);
+    expect(body).toContain("export const db: unknown");
+    // Actually throws on first real use, rather than silently no-op-ing.
+    expect(body).toContain("new Proxy(");
+    expect(body).toContain("throw new Error(");
+  });
+
+  test("the thrown message names the file and shows a concrete replacement line", async () => {
+    await init({ cwd });
+    const body = readFileSync(join(cwd, "src", "db.ts"), "utf8");
+    expect(body).toContain("src/db.ts");
+    expect(body).toContain("export const db = drizzle(");
+  });
+
+  test("does NOT clobber an existing src/db.ts on a re-run with --force", async () => {
+    await init({ cwd });
+    const realDb = 'import { drizzle } from "drizzle-orm/better-sqlite3";\nexport const db = drizzle({} as never);\n';
+    writeFileSync(join(cwd, "src", "db.ts"), realDb, "utf8");
+
+    const result = await init({ cwd, force: true });
+
+    expect(result.preserved).toContain("src/db.ts");
+    expect(result.created).not.toContain("src/db.ts");
+    expect(readFileSync(join(cwd, "src", "db.ts"), "utf8")).toBe(realDb);
+  });
+
+  test("dry run (--print) reports src/db.ts as a would-be-created file", async () => {
+    const result = await init({ cwd, printOnly: true });
+    expect(result.created).toContain("src/db.ts");
+    expect(existsSync(join(cwd, "src", "db.ts"))).toBe(false);
+  });
+
+  // The headline gate: the documented sequence — init, author an entity with a
+  // source.rdb child, gen, tsc — must all succeed with no unresolved-module
+  // error. Mirrors the "meta gen still succeeds..." regression pin above, one
+  // step further: it actually type-checks the generated output + the scaffolded
+  // stub with the real TypeScript compiler this repo depends on, under the same
+  // nodenext options a stock `tsc --init` project resolves relative imports
+  // with. The temp dir is placed INSIDE the cli package (not the OS tmpdir) so
+  // node module resolution for fastify/drizzle-orm/zod/@metaobjectsdev/runtime-ts
+  // — real deps the generated routes import — walks up to cli's own
+  // node_modules, the same way a real installed project would resolve them.
+  test("end to end: init -> author a source.rdb entity -> gen -> tsc resolves dbImport with no unresolved-module error", async () => {
+    const dir = mkdtempSync(join(import.meta.dirname, "tmp-dbstub-tsc-"));
+    try {
+      expect(await initCommand([], dir)).toBe(0);
+      writeFileSync(
+        join(dir, "metaobjects", "meta.common.json"),
+        JSON.stringify({
+          metadata: {
+            package: "probe",
+            children: [{
+              "object.entity": {
+                name: "Author",
+                children: [
+                  { "source.rdb": { "@table": "authors" } },
+                  { "field.string": { name: "id" } },
+                  { "identity.primary": { "@fields": ["id"] } },
+                ],
+              },
+            }],
+          },
+        }, null, 2),
+      );
+      const { genCommand } = await import("../src/commands/gen.js");
+      expect(await genCommand([], dir)).toBe(0);
+
+      const generatedDir = join(dir, "src", "generated");
+      const rootFiles = [
+        join(generatedDir, "Author.ts"),
+        join(generatedDir, "Author.queries.ts"),
+        join(generatedDir, "Author.routes.ts"),
+        join(dir, "src", "db.ts"),
+      ];
+      const program = ts.createProgram(rootFiles, {
+        noEmit: true,
+        strict: true,
+        skipLibCheck: true,
+        target: ts.ScriptTarget.ES2022,
+        module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      });
+      const diagnostics = ts.getPreEmitDiagnostics(program);
+      // TS2307 = "Cannot find module" — the exact class of error the missing
+      // src/db.ts used to produce. Scoped to this one code (rather than
+      // asserting zero diagnostics overall) because this repo's own dev
+      // dependency graph carries an unrelated, pre-existing `fastify` version
+      // skew (the `cli` package's devDependency vs `runtime-ts`'s peer range)
+      // that surfaces as a structural type mismatch under a real compiler —
+      // orthogonal to the dbImport defect this gate exists to catch, and not
+      // something a fresh external install (a single resolved fastify version)
+      // would ever see.
+      const unresolvedModules = diagnostics
+        .filter((d) => d.code === 2307)
+        .map((d) => ts.flattenDiagnosticMessageText(d.messageText, "\n"));
+      expect(unresolvedModules).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
