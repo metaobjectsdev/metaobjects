@@ -20,19 +20,28 @@ import { resolve } from "node:path";
 const REPO = resolve(import.meta.dirname, "../..");
 
 describe("regen-showcase", () => {
-  test(
-    "--check exits 0 when committed output matches a fresh regen",
-    () => {
-      const r = spawnSync("bun", ["scripts/regen-showcase.ts", "--check"], {
-        cwd: REPO,
-        encoding: "utf8",
-      });
-      if (r.status !== 0) {
-        throw new Error(`showcase is stale:\n${r.stdout ?? ""}${r.stderr ?? ""}`);
-      }
-      expect(r.status).toBe(0);
-    },
-    // Cold, this builds the C# CLI and resolves the Python venv.
-    600_000,
-  );
+  // `--bun-only` on purpose: this file runs in the gates lane, which is guarded on
+  // bun alone and is the documented pre-PR command. Maven alone costs ~20s — more
+  // than every other port together — and a lane that shells out to mvn/dotnet/uv
+  // would FAIL rather than skip on a machine without them. The skipped ports are
+  // named in the output, and the release preflight runs `--all-ports`, which
+  // refuses to leave any of them out.
+  const r = spawnSync("bun", ["scripts/regen-showcase.ts", "--check", "--bun-only"], {
+    cwd: REPO,
+    encoding: "utf8",
+  });
+
+  test("--check --bun-only exits 0 when the ts and sql output match a fresh regen", () => {
+    if (r.status !== 0) {
+      throw new Error(`showcase is stale:\n${r.stdout ?? ""}${r.stderr ?? ""}`);
+    }
+    expect(r.status).toBe(0);
+  });
+
+  // The scope above is a deliberate cost decision, so it has to stay a decision:
+  // if every port became bun-drivable the flag would be a no-op nobody removed,
+  // and if a new port arrived it would sit unchecked here with nothing saying so.
+  test("--bun-only genuinely leaves ports out, and names them", () => {
+    expect(r.stdout).toContain("NOT checked");
+  });
 });

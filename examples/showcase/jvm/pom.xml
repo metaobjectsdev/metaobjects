@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The JVM half of the landing-page showcase.
+
+  Java and Kotlin have no standalone codegen CLI: on the JVM, codegen runs in the
+  build tool (docs/features/cli.md), so generating the same model the other ports
+  generate needs a real Maven project. This is that project, and nothing else —
+  it compiles nothing, ships nothing, and exists only so `mvn metaobjects:generate`
+  has somewhere to run. Its shape is the one the adopter docs teach.
+
+  Output lands in ../generated/{java,kotlin} beside the other ports' trees.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>dev.metaobjects.showcase</groupId>
+  <artifactId>metaobjects-showcase-jvm</artifactId>
+  <version>1.0.0</version>
+  <packaging>pom</packaging>
+
+  <properties>
+    <!-- Kept in lockstep with server/java/pom.xml by scripts/check-pom-versions.sh:
+         this project is OUTSIDE the reactor, so `mvn versions:set` never touches it. -->
+    <metaobjects.version>7.24.4</metaobjects.version>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <dependencies>
+    <!-- The generator classes the plugin loads by name below. -->
+    <dependency>
+      <groupId>com.metaobjects</groupId>
+      <artifactId>metaobjects-codegen-spring</artifactId>
+      <version>${metaobjects.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.metaobjects</groupId>
+      <artifactId>metaobjects-codegen-kotlin</artifactId>
+      <version>${metaobjects.version}</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>com.metaobjects</groupId>
+        <artifactId>metaobjects-maven-plugin</artifactId>
+        <version>${metaobjects.version}</version>
+        <configuration>
+          <loader>
+            <sourceDir>../metaobjects</sourceDir>
+            <sources>
+              <source>meta.subscriber.yaml</source>
+            </sources>
+          </loader>
+          <generators>
+            <generator>
+              <classname>com.metaobjects.generator.spring.SpringDtoGenerator</classname>
+              <args><outputDir>../generated/java</outputDir></args>
+            </generator>
+            <generator>
+              <classname>com.metaobjects.generator.kotlin.KotlinEntityGenerator</classname>
+              <args><outputDir>../generated/kotlin</outputDir></args>
+            </generator>
+          </generators>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

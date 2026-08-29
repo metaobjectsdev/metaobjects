@@ -148,8 +148,16 @@ for f in integration-tests/pom.xml integration-tests-kotlin/pom.xml \
   [ -f "$f" ] && sed -i 's|<version>PREV-VERSION</version>|<version>7.X.Y</version>|' "$f"
 done
 
+# The website showcase's JVM project (examples/showcase/jvm/pom.xml) lives OUTSIDE
+# server/java and pins the version as a PROPERTY, not a <parent>, so neither the
+# reactor walk nor the sed loop above reaches it. Miss it and the showcase quietly
+# regenerates against the PREVIOUS release's plugin.
+sed -i 's|<metaobjects.version>PREV-VERSION</metaobjects.version>|<metaobjects.version>7.X.Y</metaobjects.version>|' \
+  ../../examples/showcase/jvm/pom.xml
+
 # Verify zero stragglers:
 grep -rln '<version>PREV-VERSION<' . --include='pom.xml'   # should be empty
+scripts/check-pom-versions.sh                              # gates every non-reactor pom
 ```
 
 Commit the bump on `main`:
@@ -231,7 +239,9 @@ for f in integration-tests/pom.xml integration-tests-kotlin/pom.xml \
          examples/spring-example/pom.xml; do
   [ -f "$f" ] && sed -i 's|<version>7.X.Y</version>|<version>7.X.Z-SNAPSHOT</version>|' "$f"
 done
-git add server/java
+sed -i 's|<metaobjects.version>7.X.Y</metaobjects.version>|<metaobjects.version>7.X.Z-SNAPSHOT</metaobjects.version>|' \
+  ../../examples/showcase/jvm/pom.xml
+git add server/java ../../examples/showcase/jvm/pom.xml
 git commit -m "chore(java): bump to 7.X.Z-SNAPSHOT post-7.X.Y"
 git push origin main
 ```

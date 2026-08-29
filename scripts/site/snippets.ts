@@ -51,6 +51,16 @@ export const SNIPPETS: Record<string, SnippetSource> = {
     inline: `${SHOWCASE}/inline/csharp-entity.txt`,
     full: `${SHOWCASE}/generated/csharp/Subscriber.g.cs`,
   },
+  "java-dto": {
+    kind: "excerpt", lang: "java",
+    inline: `${SHOWCASE}/inline/java-dto.txt`,
+    full: `${SHOWCASE}/generated/java/acme/SubscriberDto.java`,
+  },
+  "kotlin-entity": {
+    kind: "excerpt", lang: "kotlin",
+    inline: `${SHOWCASE}/inline/kotlin-entity.txt`,
+    full: `${SHOWCASE}/generated/kotlin/acme/Subscriber.kt`,
+  },
   // The DDL `meta migrate` emits for the same model. Published WHOLE: at eight
   // lines every one carries something the model declared — the AUTOINCREMENT from
   // `generation: increment`, the VARCHAR(320) from `maxLength`, and the CHECK from

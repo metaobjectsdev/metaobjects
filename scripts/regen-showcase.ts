@@ -6,6 +6,7 @@
  *   bun scripts/regen-showcase.ts               # write
  *   bun scripts/regen-showcase.ts --check       # fail if the committed tree is stale
  *   bun scripts/regen-showcase.ts --all-ports   # refuse to skip a port (release preflight)
+ *   bun scripts/regen-showcase.ts --bun-only    # only the ports bun alone can drive
  *
  * The website claims these files are real `meta gen` output. A stale tree is a
  * stale claim on a public page, which is why `--check` runs in the release
@@ -27,9 +28,17 @@
  *
  * ── Ports ────────────────────────────────────────────────────────────────────
  *
- * Two ports need only bun; python needs `uv`, csharp needs `dotnet`. A port whose
- * toolchain is absent is SKIPPED and named in the output — never silently. Pass
- * `--all-ports` to turn a skip into a failure; the release preflight does.
+ * Two ports need only bun; python needs `uv`, csharp needs `dotnet`, and the JVM
+ * pair needs `mvn`. A port whose toolchain is absent is SKIPPED and named in the
+ * output — never silently. Pass `--all-ports` to turn a skip into a failure; the
+ * release preflight does.
+ *
+ * Java and Kotlin arrive together because they have no standalone codegen CLI: on
+ * the JVM, codegen runs in the build tool (docs/features/cli.md), so one
+ * `mvn metaobjects:generate` over `examples/showcase/jvm/pom.xml` drives both. That
+ * pom names the plugin by VERSION rather than building it, so the JVM port needs the
+ * artifacts resolvable — from Maven Central at a released version, or from
+ * `cd server/java && mvn install` while the reactor sits on a -SNAPSHOT.
  */
 import { spawnSync } from "node:child_process";
 import {
@@ -45,16 +54,30 @@ const META_CLI = resolve(REPO, "server/typescript/packages/cli/bin/meta.ts");
 
 const CHECK = process.argv.includes("--check");
 const ALL_PORTS = process.argv.includes("--all-ports");
+// The gates lane is guarded on bun alone and is the documented pre-PR command, so it
+// must not shell out to mvn/dotnet/uv — Maven alone costs ~20s, more than every other
+// port together. `--bun-only` scopes the run to ts + sql and NAMES what it left out;
+// the release preflight runs `--all-ports`, which refuses to leave anything out.
+const BUN_ONLY = process.argv.includes("--bun-only");
+if (BUN_ONLY && ALL_PORTS) {
+  console.error("✗ --bun-only and --all-ports contradict each other");
+  process.exit(2);
+}
 
 /** The inputs a pristine regen needs. `.gen-state` is deliberately absent. */
-const INPUTS = ["metaobjects", "templates", "metaobjects.config.ts"];
+const INPUTS = ["metaobjects", "templates", "metaobjects.config.ts", "jvm"];
 
 interface Port {
-  /** Directory under `generated/` this port owns. */
+  /** Label for the output line. */
   readonly name: string;
+  /**
+   * Directories under `generated/` this port owns. Usually one; the JVM entry owns
+   * two, because a single Maven run drives the Java and Kotlin generators together.
+   */
+  readonly dirs: readonly string[];
   /** Executable that must be on PATH, or null when bun alone suffices. */
   readonly tool: string | null;
-  /** Generates into `<project>/generated/<name>`. Throws on failure. */
+  /** Generates into `<project>/generated/<dir>` for each of its dirs. Throws on failure. */
   generate(project: string): void;
 }
 
@@ -81,6 +104,7 @@ const PORTS: Port[] = [
     // generator list all come from metaobjects.config.ts, exactly as an
     // adopter's `meta gen` does.
     name: "ts",
+    dirs: ["ts"],
     tool: null,
     generate: (project) => run(["bun", META_CLI, "gen", "--cwd", project]),
   },
@@ -88,6 +112,7 @@ const PORTS: Port[] = [
     // Python and C# are flag-only: metadata dir in, --out dir out. Neither needs
     // project scaffolding, so neither gets any.
     name: "python",
+    dirs: ["python"],
     tool: "uv",
     generate: (project) =>
       run([
@@ -101,6 +126,7 @@ const PORTS: Port[] = [
     // tool would have to be packed and installed at the current version first,
     // and this generates from the working tree, which is what a gate wants.
     name: "csharp",
+    dirs: ["csharp"],
     tool: "dotnet",
     generate: (project) =>
       run([
@@ -120,6 +146,7 @@ const PORTS: Port[] = [
     // reproduce. Only the SQL bodies are committed, under a fixed `init/`; the
     // bodies themselves are byte-identical to what the engine wrote.
     name: "sql",
+    dirs: ["sql"],
     tool: null,
     generate: (project) => {
       const scratch = mkdtempSync(join(tmpdir(), "showcase-migrate-"));
@@ -148,9 +175,26 @@ const PORTS: Port[] = [
       }
     },
   },
+  {
+    // One Maven run, two output trees. The pom pins the plugin version, which
+    // scripts/check-pom-versions.sh keeps in lockstep with the reactor — this
+    // project sits OUTSIDE the reactor, so `mvn versions:set` never touches it and
+    // a missed bump would silently regenerate against the PREVIOUS release.
+    name: "jvm",
+    dirs: ["java", "kotlin"],
+    tool: "mvn",
+    generate: (project) =>
+      run(["mvn", "-q", "metaobjects:generate"], { cwd: join(project, "jvm") }),
+  },
 ];
 
 function selectPorts(): Port[] {
+  if (BUN_ONLY) {
+    for (const p of PORTS.filter((p) => p.tool)) {
+      console.log(`  ⊘ ${p.name} — --bun-only, NOT checked`);
+    }
+    return PORTS.filter((p) => !p.tool);
+  }
   const skipped = PORTS.filter((p) => p.tool && !have(p.tool));
   if (skipped.length && ALL_PORTS) {
     console.error(
@@ -194,20 +238,20 @@ function diffTrees(fresh: string, committed: string, ports: Port[]): string[] {
   const problems: string[] = [];
   // Scoped per port: a skipped port's committed output must not read as an
   // orphan just because its toolchain is absent.
-  for (const p of ports) {
-    const a = join(fresh, p.name);
-    const b = join(committed, p.name);
+  for (const dir of ports.flatMap((p) => p.dirs)) {
+    const a = join(fresh, dir);
+    const b = join(committed, dir);
     const fa = listFiles(a);
     const fb = listFiles(b);
     for (const rel of fb.filter((f) => !fa.includes(f))) {
-      problems.push(`${p.name}/${rel}: committed but no longer generated`);
+      problems.push(`${dir}/${rel}: committed but no longer generated`);
     }
     for (const rel of fa.filter((f) => !fb.includes(f))) {
-      problems.push(`${p.name}/${rel}: generated but not committed`);
+      problems.push(`${dir}/${rel}: generated but not committed`);
     }
     for (const rel of fa.filter((f) => fb.includes(f))) {
       if (readFileSync(join(a, rel), "utf8") !== readFileSync(join(b, rel), "utf8")) {
-        problems.push(`${p.name}/${rel}: differs from a pristine regen`);
+        problems.push(`${dir}/${rel}: differs from a pristine regen`);
       }
     }
   }
@@ -237,7 +281,7 @@ if (CHECK) {
 } else {
   // Write mode clears the output AND the merge base, so what lands is what a
   // pristine regen produces — the contract `--check` then enforces.
-  if (ALL_PORTS || ports.length === PORTS.length) {
+  if (!BUN_ONLY && (ALL_PORTS || ports.length === PORTS.length)) {
     rmSync(join(SHOWCASE, "generated"), { recursive: true, force: true });
     rmSync(join(SHOWCASE, ".metaobjects", ".gen-state"), { recursive: true, force: true });
   } else {
