@@ -8,3 +8,7 @@ export { tanstackGridHook, type TanstackGridHookOpts } from "./tanstack-grid-hoo
 export { renderHooksFile } from "./templates/hooks-file.js";
 export { renderColumnsFile } from "./templates/columns-file.js";
 export { renderGridHookFile } from "./templates/grid-hook-file.js";
+
+// FR-040 §4.1 — the copyable reference generators this package ships in
+// `src/reference/`, and the reader `meta init`/`meta eject` use to read them.
+export { resolveReferenceRoot, readReferenceTemplate, REFERENCE_GENERATOR_NAMES } from "./reference-templates.js";
