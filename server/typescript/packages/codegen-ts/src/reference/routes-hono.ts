@@ -42,6 +42,16 @@ export interface RoutesFileHonoOpts {
 
 export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts): Generator {
   const userFilter = opts?.filter ?? (() => true);
+  // Eligibility, minus the TPH question — stated ONCE so the emit set and the warn set
+  // below cannot drift apart. They differ only by `!isTphSubtype` vs `isTphSubtype`, and
+  // written out twice a later edit to one silently makes an entity either stop emitting
+  // without being named as held back, or get warned about while still emitting.
+  // (Same shape as tanstack's grid generator, which factors it the same way.)
+  const passesOtherGates = (e: MetaObject): boolean =>
+    // ADR-0039: resolving — a concrete entity may inherit @emitRoutes via extends.
+    e.attr(CODEGEN_ATTR_EMIT_ROUTES) !== false
+    && hasAnyRdbSource(e)
+    && userFilter(e);
   const generator: Generator = {
     name: "routes-file-hono",
     // Marks this as the Hono routes generator so the runner can aggregate
@@ -57,18 +67,11 @@ export const routesFileHono = function routesFileHono(opts?: RoutesFileHonoOpts)
     // these to a discriminator-aware renderer; the Hono runtime has no discriminator
     // support yet, so this fails CLOSED and the run says so (see the warning below)
     // rather than shipping an artifact that returns the wrong rows.
-    filter: (e: MetaObject) =>
-      e.attr(CODEGEN_ATTR_EMIT_ROUTES) !== false
-      && hasAnyRdbSource(e)
-      && !isTphSubtype(e)
-      && userFilter(e),
+    filter: (e: MetaObject) => passesOtherGates(e) && !isTphSubtype(e),
     generate: async (ctx) => {
       // One note per run naming every TPH subtype held back, so the gap is visible at
       // `meta gen` time rather than discovered as missing endpoints in production.
-      const skipped = ctx.entities.filter(
-        (e) => e.attr(CODEGEN_ATTR_EMIT_ROUTES) !== false
-          && hasAnyRdbSource(e) && isTphSubtype(e) && userFilter(e),
-      );
+      const skipped = ctx.entities.filter((e) => passesOtherGates(e) && isTphSubtype(e));
       if (skipped.length > 0) {
         ctx.warn(
           `no Hono routes emitted for the TPH subtype(s) ${skipped.map((e) => e.name).join(", ")} — ` +

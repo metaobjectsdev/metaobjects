@@ -3,6 +3,26 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, mkdirSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
+
+/** The minimal persistable entity both `meta gen` probes below author into a freshly
+ *  scaffolded project. One copy: a metadata-shape change (a newly required child, a
+ *  renamed attr) would otherwise have to be applied twice, and missing one makes an
+ *  unrelated test fail for a reason that has nothing to do with what it checks. */
+const PROBE_ENTITY = JSON.stringify({
+  metadata: {
+    package: "probe",
+    children: [{
+      "object.entity": {
+        name: "Author",
+        children: [
+          { "source.rdb": { "@table": "authors" } },
+          { "field.string": { name: "id" } },
+          { "identity.primary": { "@fields": ["id"] } },
+        ],
+      },
+    }],
+  },
+}, null, 2);
 import { init, initCommand, nextStepsBlock } from "../src/commands/init.js";
 import { saveConfig, ConfigSchema } from "@metaobjectsdev/sdk";
 
@@ -495,21 +515,7 @@ describe("init() — scaffolded config.ts honesty", () => {
     expect(await initCommand([], cwd)).toBe(0);
     writeFileSync(
       join(cwd, "metaobjects", "meta.common.json"),
-      JSON.stringify({
-        metadata: {
-          package: "probe",
-          children: [{
-            "object.entity": {
-              name: "Author",
-              children: [
-                { "source.rdb": { "@table": "authors" } },
-                { "field.string": { name: "id" } },
-                { "identity.primary": { "@fields": ["id"] } },
-              ],
-            },
-          }],
-        },
-      }, null, 2),
+      PROBE_ENTITY,
     );
     const { genCommand } = await import("../src/commands/gen.js");
     expect(await genCommand([], cwd)).toBe(0);
@@ -599,27 +605,20 @@ describe("init() — dbImport throwing stub (Task 15)", () => {
   // node module resolution for fastify/drizzle-orm/zod/@metaobjectsdev/runtime-ts
   // — real deps the generated routes import — walks up to cli's own
   // node_modules, the same way a real installed project would resolve them.
+  // ...and under `test/fixtures/__tmp__/`, the ONE gitignored slot for this (root
+  // .gitignore has `__tmp__/`, and every sibling temp-using test uses it). Placed bare
+  // under `test/` it survives a crash or Ctrl-C — the `finally` never runs — and then
+  // `tsconfig.typecheck.json`'s `test/**/*` compiles a whole scaffolded project into
+  // this package's own typecheck, with dozens of untracked files in `git status`.
   test("end to end: init -> author a source.rdb entity -> gen -> tsc resolves dbImport with no unresolved-module error", async () => {
-    const dir = mkdtempSync(join(import.meta.dirname, "tmp-dbstub-tsc-"));
+    const tmpRoot = join(import.meta.dirname, "fixtures", "__tmp__");
+    mkdirSync(tmpRoot, { recursive: true });
+    const dir = mkdtempSync(join(tmpRoot, "dbstub-tsc-"));
     try {
       expect(await initCommand([], dir)).toBe(0);
       writeFileSync(
         join(dir, "metaobjects", "meta.common.json"),
-        JSON.stringify({
-          metadata: {
-            package: "probe",
-            children: [{
-              "object.entity": {
-                name: "Author",
-                children: [
-                  { "source.rdb": { "@table": "authors" } },
-                  { "field.string": { name: "id" } },
-                  { "identity.primary": { "@fields": ["id"] } },
-                ],
-              },
-            }],
-          },
-        }, null, 2),
+        PROBE_ENTITY,
       );
       const { genCommand } = await import("../src/commands/gen.js");
       expect(await genCommand([], dir)).toBe(0);
