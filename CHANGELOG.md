@@ -64,6 +64,81 @@ port parked at `24.4` across several npm releases is not told its context has mo
 needs the shipped context hashed rather than its version compared, and the JVM ships no
 agent-context content — only the manifest reader.
 
+### Added — FR-040: codegen ownership is the framework story
+
+**MetaObjects does not need a codegen package per framework. It needs the ownership doctrine
+it already publishes to be true all the way down** — and in three places it was not. A codegen
+library cannot chase frameworks: there are more of them than any library can carry, they turn
+over faster than a release line, and each one added is a permanent liability the metamodel —
+the actual durable asset — gains nothing from. The shipped agent context already says the
+right thing ("treat this as a first-class, expected activity — not an escape hatch"). This is
+the release that makes it true. **The bar is not "Next.js works": it is that an agent adopting
+onto a stack nobody wrote a recipe for — Svelte, Nuxt, Qwik — reaches a working generator
+unaided, and treats having done so as normal.**
+
+**How it was found, and the framing error worth recording.** A cold adoption probe ran the
+documented TypeScript quickstart against published `0.24.4` inside a Next.js 16 / React 19 app
+on Turbopack with a real Postgres. Its substantive result was **positive and is not in
+dispute**: the schema and server tiers work on that stack unmodified — `queriesFile()` takes
+`db` as a parameter, so a Server Component calls it with no HTTP hop; `routesFileHono()` is
+deps-injected, the shape an App Router Route Handler wants; the full cross-port API contract
+held. The probe then reported eight "findings", and **most were mis-framed as defects.** The
+default templates target Fastify on Node; that they do not emit Next.js output is the
+templates doing what they say. Recording that error is the point — a report that reads a
+template mismatch as a product failure will keep proposing framework packages forever. Three
+findings survived re-scoring, and they are what shipped.
+
+- **`meta eject <generator>` — the ownership move is now a command.** ADR-0034 had `meta init`
+  eagerly copy four generators (`entity`, `queries`, `routes`, `barrel`) into
+  `codegen/generators/` and own them. The other five could be *used* but never *owned*: there
+  was no supported way to get one's source, at init time or after. `meta eject` is that same
+  copy operation generalised to every ejectable name in every package, callable at any time —
+  for a generator you skipped at init, or one a package gained since. `meta eject --list`
+  names all nine grouped by package (`entity`, `queries`, `routes`, `routes-hono`, `barrel`
+  from `codegen-ts`; `form` from `codegen-ts-react`; `hooks`, `grid`, `grid-hook` from
+  `codegen-ts-tanstack`). It never clobbers without `--force`, matching `init`'s rule, and it
+  reports the import line to paste by **parsing it out of the template's own header** rather
+  than re-deriving it from the file name — a generator's exported symbol does not follow its
+  file name (`hooks.ts` exports `tanstackQuery`, `routes-hono.ts` exports `routesFileHono`),
+  so a derived map would drift from what the template already tells a human to paste.
+- **The UI tier became ownable at all.** It was the gap with no workaround: an RSC app needs
+  `"use client"` at the top of generated form/hook files, and there was no seam to add it —
+  the choice was use the package's output verbatim or hand-write the tier and leave metadata
+  behind. Four new reference templates (`form`, `hooks`, `grid`, `grid-hook`) plus a new
+  `routes-hono`, and the render layer is **promoted to public API** — `renderFormFile`,
+  `renderHooksFile`, `renderColumnsFile`, `renderGridHookFile`, each a stable
+  `(entity, ctx) => string` — so an owned generator composes the engine and replaces only the
+  step its framework disagrees about, instead of copying ~600 lines of package internals out.
+  `codegen-ts` already exported `renderRoutesFile`; this applies the same pattern to the UI
+  packages. The reference-template reader is now a per-package factory, so a package that
+  gains templates later is picked up by `meta eject` with no other change.
+- **Every reference template documents its own swap point.** A `targets:` header block on all
+  nine states what the template targets, when to use it, what it emits, where to change it,
+  and what it composes with — so an agent retargeting reads the seam out of the file rather
+  than inferring it. Paired with a new **"Your framework isn't the default — the retargeting
+  procedure"** section in the `metaobjects-codegen` skill, which is the general answer the
+  per-framework recipes were standing in for.
+
+**Docs stop promising what the project does not intend to ship.** `AGENTS.md` and the port
+docs described a first-party package per framework as the way to reach a new framework; that
+was never the plan and is now stated as the ownership move it actually is. The agent-facing
+quickstart in `docs/llms/` had been teaching the **deprecated** `@metaobjectsdev/codegen-ts/generators`
+import path, and the ownership one-liner samples in the docs did not type-check — both fixed,
+with the samples now compiled.
+
+**`meta init` scaffold honesty.** Four fixes where the scaffold said something untrue about
+its own output, the same class the `0.24.4` line was cut for: it stopped eagerly scaffolding
+an unwired `routes-hono.ts` (a file nothing imported, presented as if it were live); it now
+scaffolds a **throwing** `src/db.ts` stub, so the module the default `routesFile()` imports
+exists and fails with an instruction rather than `TS2307`; it names the `.gen-state` manifest
+and explains `dbImport` instead of leaving both as unexplained config; and its `fastify`
+devDependency is aligned to `runtime-ts`'s peer range, which it contradicted. Separately, the
+**TanStack Table v8 requirement is now discoverable** — `@metaobjectsdev/tanstack` bounds the
+peer at v8, but nothing told an adopter installing `@tanstack/react-table` themselves.
+
+Design: `docs/superpowers/specs/2026-08-29-fr-040-framework-agnostic-codegen-ownership-design.md`.
+Amends [ADR-0034](spec/decisions/ADR-0034-codegen-scaffold-and-own.md).
+
 ### Fixed — eight defects found by adopting the product from scratch, twice
 
 Two adoption runs against the published `0.24.4`, docs followed literally and nothing fixed
